@@ -513,6 +513,12 @@ DIAGNOSTICS.update({
     "SS1702": {"tier": "T0", "summary": "Call activated more than once.",
                "found": "A call reached by two `do`s, or `do`-activated and used as a cleanup worker.",
                "suggested": "Activate a call exactly once (README §17 #2/#43)."},
+    # WS2-093: an op with no `effect` rows claims purity; its transitive effective
+    # set must be empty for that claim to be sound (deny-tier — purity is a real
+    # guarantee callers rely on, e.g. `memory heap no` / const-fold safety).
+    "SS1705": {"tier": "T0", "summary": "Pure operation has a non-empty effective effect set.",
+               "found": "An op with no `effect` rows that transitively activates a call/task/cleanup carrying an effect.",
+               "suggested": "Declare the effects it actually causes (`effect <action> <resource>`), or stop activating the effectful target — a pure op must be provably side-effect-free (README §10.6/§30.3.2, WS2-093)."},
     "SS5400": {"tier": "T1", "summary": "`suppress` needs a `because` rationale.",
                "found": "A `suppress CODE` row with no `because`.",
                "suggested": "Write `suppress CODE because \"…\"` (README §30.6.2, §17 #54)."},
@@ -3812,6 +3818,7 @@ def _validate_configure(program: Program) -> None:
     _validate_step_split(program)
     _validate_activation_count(program)
     _validate_effect_coverage(program)
+    _validate_purity(program)
 
 
 def _validate_activation_count(program: Program) -> None:
@@ -3850,105 +3857,163 @@ def _validate_activation_count(program: Program) -> None:
             )
 
 
+# --------------------------------------------------------------------------
+# Effect-system primitives (README ss8/ss15/ss17 #5, effect-union WS2-040).
+# Extracted to module scope (was nested in _validate_effect_coverage) so the
+# coverage check (WS2-040), the completeness check (WS2-091), and the purity
+# proof (WS2-093) all compute the *same* effective-effect set from one source of
+# truth instead of three drifting copies.
+# --------------------------------------------------------------------------
+
+def _effect_rows_of(ent: Entity) -> set:
+    """The (action, resource) pairs an entity *itself* declares via `effect`."""
+    return {
+        (e.payload[0], e.payload[1])
+        for e in ent.facts("effect")
+        if len(e.payload) >= 2
+    }
+
+
+def _capability_grants(program: Program) -> dict:
+    """name -> set of (action, resource) pairs each `capability` grants."""
+    grants: dict[str, set] = {}
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind == "capability":
+            grants[ent.name] = {
+                (g.payload[0], g.payload[1])
+                for g in ent.facts("grants")
+                if len(g.payload) >= 2
+            }
+    return grants
+
+
+def _op_capability_grants(op: Entity, cap_grants: dict) -> set:
+    """The (action, resource) pairs an op holds via its own `uses` capabilities."""
+    cov: set = set()
+    for u in op.facts("uses"):
+        if u.payload:
+            cov |= cap_grants.get(u.payload[0], set())
+    return cov
+
+
+def _effect_action_covers(grant_action: str, effect_action: str) -> bool:
+    # README ss8: a `readWrite` grant subsumes the `read` and `write` actions
+    # on the same resource (an op authorized to read+write may do either).
+    # Mirrors semsc: `grant_access == "readWrite" and action in {read, write}`.
+    return grant_action == effect_action or (
+        grant_action == "readWrite" and effect_action in ("read", "write")
+    )
+
+
+def _effect_path_covers(covered: set, action: str, resource: str) -> bool:
+    # README ss8: capability effect paths are hierarchical — a grant of
+    # `<action> <prefix>` authorizes every narrower `<action> <prefix>.<sub>`
+    # effect (e.g. `read http.request` covers `read http.request.body`).
+    # Mirrors semsc's _effect_path_covers; an exact match is the base case.
+    for gact, gres in covered:
+        if _effect_action_covers(gact, action) and (
+            resource == gres or resource.startswith(gres + ".")
+        ):
+            return True
+    return False
+
+
+def _invoked_user_op(program: Program, call: Entity):
+    """The user operation/function a call/task `invokes`, or None for an external
+    (dotted) target or an unresolved bare name."""
+    inv = call.fact("invokes")
+    if inv and inv.payload and "." not in inv.payload[0]:
+        target = program.entities.get(inv.payload[0])
+        if target is not None and target.kind in ("operation", "function"):
+            return target
+    return None
+
+
+def _effective_effects(program: Program, op: Entity, seen: set) -> set:
+    """Transitive effective effects across the call graph (README ss29 #10).
+    Authority is caller-granted and does NOT encapsulate: an effect a callee
+    triggers is part of every caller's effective set, so each op on the path
+    must declare/cover it (README ss8; pinned by the entropy/clock/process
+    capability tests and the WS2-091 completeness / WS2-093 purity gates)."""
+    if op.name in seen:
+        return set()
+    seen.add(op.name)
+    eff = set(_effect_rows_of(op))
+    for row in op.rows:
+        if row.predicate not in _STEP_SPLIT or not row.payload:
+            continue
+        ref = program.entities.get(row.payload[0])
+        if ref is None:
+            continue
+        eff |= _effect_rows_of(ref)
+        workers = [ref]
+        if ref.kind == "cleanup":
+            cr = ref.fact("call")
+            w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
+            if w is not None:
+                workers.append(w)
+                eff |= _effect_rows_of(w)
+        for w in workers:
+            if w.kind in ("call", "task"):
+                callee = _invoked_user_op(program, w)
+                if callee is not None:
+                    eff |= _effective_effects(program, callee, seen)
+    return eff
+
+
 def _validate_effect_coverage(program: Program) -> None:
     """An operation's *effective* effects are its own plus those of the calls/
     tasks/cleanups it activates; every effective effect should be covered by a
     `uses` capability (README ss8, ss15, ss17 #5; effect-union WS2-040). An
     uncovered effect — including one introduced by an activated call — warns."""
-    cap_grants: dict[str, set] = {}
-    for name in program.order:
-        ent = program.entities[name]
-        if ent.kind == "capability":
-            cap_grants[ent.name] = {
-                (g.payload[0], g.payload[1])
-                for g in ent.facts("grants")
-                if len(g.payload) >= 2
-            }
-
-    def effects_of(ent: Entity):
-        return {
-            (e.payload[0], e.payload[1])
-            for e in ent.facts("effect")
-            if len(e.payload) >= 2
-        }
-
-    def invoked_user_op(call: Entity):
-        inv = call.fact("invokes")
-        if inv and inv.payload and "." not in inv.payload[0]:
-            target = program.entities.get(inv.payload[0])
-            if target is not None and target.kind in ("operation", "function"):
-                return target
-        return None
-
-    def _grants_of(op: Entity) -> set:
-        cov: set = set()
-        for u in op.facts("uses"):
-            if u.payload:
-                cov |= cap_grants.get(u.payload[0], set())
-        return cov
-
-    def _action_covers(grant_action: str, effect_action: str) -> bool:
-        # README ss8: a `readWrite` grant subsumes the `read` and `write` actions
-        # on the same resource (an op authorized to read+write may do either).
-        # Mirrors semsc: `grant_access == "readWrite" and action in {read, write}`.
-        return grant_action == effect_action or (
-            grant_action == "readWrite" and effect_action in ("read", "write")
-        )
-
-    def _covered_by(covered: set, action: str, resource: str) -> bool:
-        # README ss8: capability effect paths are hierarchical — a grant of
-        # `<action> <prefix>` authorizes every narrower `<action> <prefix>.<sub>`
-        # effect (e.g. `read http.request` covers `read http.request.body`).
-        # Mirrors semsc's _effect_path_covers; an exact match is the base case.
-        for gact, gres in covered:
-            if _action_covers(gact, action) and (
-                resource == gres or resource.startswith(gres + ".")
-            ):
-                return True
-        return False
-
-    def effective_effects(op: Entity, seen: set) -> set:
-        """Transitive effective effects across the call graph (README ss29 #10).
-        Authority is caller-granted and does NOT encapsulate: an effect a callee
-        triggers is part of every caller's effective set, so each op on the path
-        must hold a covering `uses` capability of its own (README ss8; pinned by
-        the entropy/clock/process capability tests)."""
-        if op.name in seen:
-            return set()
-        seen.add(op.name)
-        eff = set(effects_of(op))
-        for row in op.rows:
-            if row.predicate not in _STEP_SPLIT or not row.payload:
-                continue
-            ref = program.entities.get(row.payload[0])
-            if ref is None:
-                continue
-            eff |= effects_of(ref)
-            workers = [ref]
-            if ref.kind == "cleanup":
-                cr = ref.fact("call")
-                w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
-                if w is not None:
-                    workers.append(w)
-                    eff |= effects_of(w)
-            for w in workers:
-                if w.kind in ("call", "task"):
-                    callee = invoked_user_op(w)
-                    if callee is not None:
-                        eff |= effective_effects(callee, seen)
-        return eff
-
+    cap_grants = _capability_grants(program)
     for name in program.order:
         op = program.entities[name]
         if op.kind not in ("operation", "function"):
             continue
-        own = _grants_of(op)
-        for action, resource in sorted(effective_effects(op, set())):
-            if not _covered_by(own, action, resource):
+        own = _op_capability_grants(op, cap_grants)
+        for action, resource in sorted(_effective_effects(program, op, set())):
+            if not _effect_path_covers(own, action, resource):
                 program.warnings.append(
                     f"{op.name}: effective effect `{action} {resource}` is not "
                     f"covered by a `uses` capability (README ss8, ss17 #5)"
                 )
+
+
+def _validate_purity(program: Program) -> None:
+    """WS2-093 (purity proof, README ss10.6/ss30.3.2): an operation with NO own
+    `effect` rows is asserting it is pure (side-effect-free). For that assertion
+    to be *sound* its transitive effective-effect set must be empty — a "pure"
+    op that activates (directly or transitively) any effectful call/task/cleanup
+    is lying, and callers that rely on the purity guarantee (`memory heap no`,
+    const-folding/replay safety) would be unsound. This is deny-tier (T0): purity
+    is a contract, not a hint, so the gate refuses to lower the unproven op.
+
+    Why effective (not own) effects: an op can carry zero `effect` rows yet still
+    cause effects through the calls it activates — that hidden flow is exactly
+    what makes a naive purity claim unsound, so we prove emptiness over the full
+    transitive union built by `_effective_effects` (the same machinery WS2-040
+    coverage uses), not just the op's own declarations."""
+    for name in program.order:
+        op = program.entities[name]
+        if op.kind not in ("operation", "function"):
+            continue
+        # An op declaring its own effects is not claiming purity — WS2-091
+        # completeness governs that case, not this purity proof.
+        if _effect_rows_of(op):
+            continue
+        effective = _effective_effects(program, op, set())
+        if effective:
+            action, resource = sorted(effective)[0]
+            raise EavError(
+                f"operation {op.name!r} declares no `effect` rows (claiming purity) "
+                f"but transitively causes the effect `{action} {resource}`; a pure "
+                f"op must be provably side-effect-free — declare the effects it "
+                f"actually performs or stop activating the effectful target "
+                f"(README ss10.6/ss30.3.2, WS2-093)",
+                op.line, code="SS1705",
+            )
 
 
 # Activation step -> the entity kind it must reference (README ss13/ss34.4).

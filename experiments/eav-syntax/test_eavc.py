@@ -2454,6 +2454,9 @@ def test_random_seed_from_entropy_requires_capability():
         'appRandSeed exports main\nappRandSeed purpose "p"\nappRandSeed invariant "i"\n'
         "ExitCode is alias\nExitCode for Int32\n"
         "main is operation\nmain out ExitCode\nmain async no\n"
+        # main declares the entropy read it transitively causes (complete per
+        # WS2-091, not "pure" per WS2-093) but holds no covering `uses` cap.
+        "main effect read random.entropy\n"
         'main purpose "p"\nmain invariant "i"\n'
         "main let okCode immutable ExitCode 0\n"
         "main do draw\nmain do show\nmain return okCode\n"
@@ -2526,6 +2529,9 @@ def test_clock_read_requires_capability():
         'appClockRead exports main\nappClockRead purpose "p"\nappClockRead invariant "i"\n'
         "ExitCode is alias\nExitCode for Int32\n"
         "main is operation\nmain out ExitCode\nmain async no\n"
+        # main declares the wall-clock read it transitively causes (complete per
+        # WS2-091, not "pure" per WS2-093) but holds no covering `uses` cap.
+        "main effect read clock.wall\n"
         'main purpose "p"\nmain invariant "i"\n'
         "main let okCode immutable ExitCode 0\n"
         "main do readClock\nmain do show\nmain return okCode\n"
@@ -2585,8 +2591,11 @@ def test_process_exit_returns_code_through_runtime():
 def test_process_exit_requires_covering_capability():
     # WS3-101: termination is capability-mediated — without a covering capability
     # the effective `terminate process.self` effect is flagged.
+    # main declares the effect it transitively causes (complete per WS2-091, not
+    # "pure" per WS2-093) but holds no covering `uses` cap — WS2-040 warns.
     stdlib = open(os.path.join(STD, "standard.process.sem"), encoding="utf-8").read()
-    composed = stdlib + "\n" + _PROCESS_EXIT_MAIN.format(cap="")
+    composed = stdlib + "\n" + _PROCESS_EXIT_MAIN.format(
+        cap="main effect terminate process.self\n")
     prog = eavc.parse(composed)
     assert any("terminate process.self" in w and "not covered" in w
                for w in prog.warnings)
@@ -6765,30 +6774,37 @@ def test_uncovered_effect_warns():
 def test_effect_union_reports_call_level_gap():
     # WS2-040 / README §17 #5: an effect introduced by an activated call is part
     # of the op's effective effects and must be covered by the op's `uses`.
+    # `main` declares the effect (so it is complete per WS2-091 and not "pure"
+    # per WS2-093) but holds no covering `uses` — the coverage gap WS2-040 warns.
     src = (
         "dbReader is capability\ndbReader grants read database\n"
-        "main is operation\nmain out ExitCode\nmain do queryCall\nmain return okCode\n"
+        "main is operation\nmain out ExitCode\nmain effect read database\n"
+        "main do queryCall\nmain return okCode\n"
         "main let okCode immutable ExitCode 0\n"
         "queryCall is call\nqueryCall in main\nqueryCall invokes sqlite.query\n"
         "queryCall effect read database\nqueryCall out rows Int64\n"
     )
     prog = eavc.parse(src)  # main `uses` nothing -> effective (read, database) uncovered
-    assert any("read database" in w for w in prog.warnings)
+    assert any("read database" in w and "not covered" in w for w in prog.warnings)
 
 
 def test_effect_coverage_transitive_call_graph():
     # WS2-041 / README §29 #10: an effect of a transitively-called user op is
     # part of the caller's effective effects and must be covered.
+    # `main` re-declares the transitively-caused effect (complete per WS2-091,
+    # not "pure" per WS2-093) but holds no covering `uses` — WS2-040 still warns.
     src = (
-        "main is operation\nmain out ExitCode\nmain do callHelper\nmain return okCode\n"
+        "main is operation\nmain out ExitCode\nmain effect write network.socket\n"
+        "main do callHelper\nmain return okCode\n"
         "main let okCode immutable ExitCode 0\n"
         "callHelper is call\ncallHelper in main\ncallHelper invokes helper\n"
         "callHelper out r Int64\n"
         "helper is operation\nhelper out Int64\nhelper effect write network.socket\n"
         "helper let z immutable Int64 0\nhelper return z\n"
     )
-    prog = eavc.parse(src)  # main neither declares nor `uses` the network effect
-    assert any("write network.socket" in w and w.startswith("main") for w in prog.warnings)
+    prog = eavc.parse(src)  # main declares the effect but `uses` no covering cap
+    assert any("write network.socket" in w and w.startswith("main")
+               and "not covered" in w for w in prog.warnings)
 
 
 def test_covered_effect_no_warning():
@@ -9178,3 +9194,118 @@ def test_r067_decimal_float_operand_still_rejected():
     with pytest.raises(eavc.EavError) as excinfo:
         eavc.parse(src)
     assert getattr(excinfo.value, "code", None) == "SS3093"
+
+
+# --------------------------------------------------------------------------
+# WS2-093 — purity proof: an op with NO `effect` rows must be statically proven
+# pure (its transitive effective-effect set must be empty). A "pure" op that
+# activates an effectful target is a deny-tier (SS1705) error. README §10.6/§30.3.2.
+# --------------------------------------------------------------------------
+
+
+def test_ws2_093_pure_op_activating_effectful_target_rejected():
+    """No-op-failing: before WS2-093 a no-`effect` op that transitively caused an
+    effect was only a coverage *warning* (SS0900) — the program still parsed. With
+    the purity proof it is a deny-tier SS1705 error: `impureHelper` declares no
+    `effect` rows yet activates `socketWriteCall` (a `write network.socket`
+    effect), so its purity claim is unsound and parse must raise."""
+    src = (
+        "impureHelper is operation\nimpureHelper out Int64\n"
+        "impureHelper do socketWriteCall\nimpureHelper return zeroValue\n"
+        "impureHelper let zeroValue immutable Int64 0\n"
+        "socketWriteCall is call\nsocketWriteCall in impureHelper\n"
+        "socketWriteCall invokes net.writeSocket\n"
+        "socketWriteCall effect write network.socket\n"
+        "socketWriteCall out bytesWritten Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(src)
+    assert getattr(excinfo.value, "code", None) == "SS1705"
+    assert "write network.socket" in excinfo.value.message
+    assert "impureHelper" in excinfo.value.message
+
+
+def test_ws2_093_transitively_impure_pure_op_rejected():
+    """No-op-failing: the impurity is one hop deeper — `outerPureClaim` declares no
+    effects and activates a call into `innerEffectfulOp`, which itself declares an
+    effect. The transitive effective set is non-empty, so the purity claim on the
+    *outer* op is unsound and SS1705 fires (purity proves over the full call graph,
+    not just direct activations)."""
+    src = (
+        "outerPureClaim is operation\nouterPureClaim out Int64\n"
+        "outerPureClaim do innerCall\nouterPureClaim return zeroValue\n"
+        "outerPureClaim let zeroValue immutable Int64 0\n"
+        "innerCall is call\ninnerCall in outerPureClaim\n"
+        "innerCall invokes innerEffectfulOp\ninnerCall out innerResult Int64\n"
+        "innerEffectfulOp is operation\ninnerEffectfulOp out Int64\n"
+        "innerEffectfulOp effect write console.stdout\n"
+        "innerEffectfulOp let innerZero immutable Int64 0\n"
+        "innerEffectfulOp return innerZero\n"
+    )
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(src)
+    assert getattr(excinfo.value, "code", None) == "SS1705"
+    assert "write console.stdout" in excinfo.value.message
+
+
+def test_ws2_093_genuinely_pure_op_passes_with_empty_effective_set():
+    """A genuinely pure helper (only pure-math activations, no `effect` rows on it
+    or any transitive callee) parses cleanly, and its effective-effect set is
+    asserted empty — the positive half of the purity proof."""
+    src = (
+        "addPureValues is operation\n"
+        "addPureValues in leftValue Int64\naddPureValues in rightValue Int64\n"
+        "addPureValues out Int64\n"
+        "addPureValues do sumCall\naddPureValues return summedValue\n"
+        "sumCall is call\nsumCall in addPureValues\nsumCall invokes math.addInt64\n"
+        "sumCall arg left Int64 leftValue\nsumCall arg right Int64 rightValue\n"
+        "sumCall out summedValue Int64\n"
+    )
+    prog = eavc.parse(src)  # must not raise
+    pureOp = prog.entities["addPureValues"]
+    assert eavc._effective_effects(prog, pureOp, set()) == set()
+
+
+def test_ws2_093_pure_op_runs_and_replays_safely():
+    """A pure helper that is genuinely side-effect-free can be activated by an
+    effectful `main` and the whole program JIT-runs to its expected value and
+    replays deterministically — purity does not block lowering, it just must be
+    true. (No-op lowering would print nothing / wrong value, so this is a real
+    runtime guard, not a parse-only assertion.)"""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path examples.purityProof\nm purpose "p"\n'
+        'm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        # the pure helper: no `effect` rows, no transitive effects
+        "doublePureValue is operation\ndoublePureValue in inputValue Int64\n"
+        "doublePureValue out Int64\n"
+        "doublePureValue do doubleCall\ndoublePureValue return doubledValue\n"
+        "doubleCall is call\ndoubleCall in doublePureValue\n"
+        "doubleCall invokes math.addInt64\n"
+        "doubleCall arg left Int64 inputValue\ndoubleCall arg right Int64 inputValue\n"
+        "doubleCall out doubledValue Int64\n"
+        # main is the effectful caller (declares + covers the console effect)
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main effect write console.stdout\nmain uses stdoutWriter\n"
+        "main let seedValue immutable Int64 21\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do computeCall\nmain do showCall\nmain return okCode\n"
+        "computeCall is call\ncomputeCall in main\n"
+        "computeCall invokes doublePureValue\n"
+        "computeCall arg inputValue Int64 seedValue\ncomputeCall out doubledSeed Int64\n"
+        "showCall is call\nshowCall in main\n"
+        "showCall invokes console.writeIntegerLine\nshowCall arg value Int64 doubledSeed\n"
+    )
+    # the pure helper must have an empty effective set even though main is effectful
+    prog = eavc.parse(src)
+    assert eavc._effective_effects(prog, prog.entities["doublePureValue"], set()) == set()
+    out, code = eavc._record_run(src)
+    assert code == 0, out
+    assert out.strip() == "42"  # 21 doubled
+    # replay determinism: a second run reproduces the captured output exactly
+    replay_out, replay_code = eavc._record_run(src)
+    assert replay_code == 0
+    assert replay_out == out
