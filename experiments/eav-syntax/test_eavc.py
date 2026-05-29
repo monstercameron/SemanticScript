@@ -4544,7 +4544,7 @@ def test_app_event_stream_smoke_console_scaffolding_runs():
 # console-observable/README-sanctioned core runs (or is deferred per spec), the
 # port lints clean, and the original v0.1 source coexists untouched.
 _APP_PORT_MATRIX = {
-    "html-template-lab": ("runs", ["standard.html.sem"]),
+    "html-template-lab": ("runs", []),
     "taskforge-api-client": ("runs", []),
     "taskforge-tui": ("runs", []),
     "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
@@ -4591,26 +4591,31 @@ def test_app_desktop_window_smoke_deferred():
 
 
 def test_app_html_template_lab_jit_runs():
-    # X-040: the html-template-lab port escapes a dynamic title and renders it.
-    composed = _app_program("html-template-lab", "standard.html.sem")
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(composed)))
+    # X-040: the html-template-lab port renders the FULL dashboard document via an
+    # htmlTemplate island + html.render, auto-escaping every hole.
+    src = open(os.path.join(APPS, "html-template-lab", "main.sem"), encoding="utf-8").read()
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
     proc = subprocess.run(
         [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=composed, capture_output=True, text=True,
+        input=src, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == '<li class="task">Buy &lt;milk&gt; &amp; eggs</li>'
+    out = proc.stdout
+    assert "<!doctype html>" in out and "<ol class=\"todo-list\">" in out
+    assert "TaskForge &lt;Today&gt;" in out          # title escaped
+    assert "Buy &lt;milk&gt; &amp; eggs" in out       # first todo escaped
+    assert "Ship the report" in out                   # second todo
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")
 def test_app_html_template_lab_builds_exe(tmp_path):
-    # X-040: the port also compiles to a native exe that runs.
-    composed = _app_program("html-template-lab", "standard.html.sem")
+    # X-040: the port also compiles to a native exe that renders the document.
+    src = open(os.path.join(APPS, "html-template-lab", "main.sem"), encoding="utf-8").read()
     out = str(tmp_path / ("htmllab" + (".exe" if sys.platform == "win32" else "")))
-    eavc.build_executable(eavc.parse(composed), out)
+    eavc.build_executable(eavc.parse(src), out)
     proc = subprocess.run([out], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
-    assert "&lt;milk&gt;" in proc.stdout
+    assert "<!doctype html>" in proc.stdout and "&lt;milk&gt;" in proc.stdout
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")

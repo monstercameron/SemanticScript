@@ -1,9 +1,10 @@
-# html-template-lab — EAV port (apps/html-template-lab, originally semsc v0.1).
+# html-template-lab — EAV port (apps/html-template-lab, semsc v0.1 §16 showcase).
 #
-# Renders a todo dashboard list item to the console. Dynamic task text is escaped
-# through standard.html `escapeText` (the runtime's HTML escaper) and assembled
-# with string.concat — the running form of §16 HTML rendering (X-040). Compose
-# this with std/standard.html.sem; compiles to a native exe and JIT-runs.
+# Renders the COMPLETE todo dashboard HTML document via an `htmlTemplate` island
+# with `{{hole}}` substitution through `html.render` (X-011 runtime): the literal
+# segments are interleaved with the auto-escaped hole values. This is the §16
+# html-template form (not a single string.concat) — it JIT-runs and builds to a
+# native exe, printing the full hydrated document. (X-040)
 
 HtmlTemplateLab is project
 HtmlTemplateLab module appHtmlTemplateLab
@@ -13,8 +14,8 @@ HtmlTemplateLab entry main
 appHtmlTemplateLab is module
 appHtmlTemplateLab path apps.htmlTemplateLab
 appHtmlTemplateLab exports main
-appHtmlTemplateLab purpose "Render and print one escaped todo list item as HTML"
-appHtmlTemplateLab invariant "The dynamic task title is HTML-escaped before composition"
+appHtmlTemplateLab purpose "Render the full todo dashboard HTML document"
+appHtmlTemplateLab invariant "All dynamic holes are HTML-escaped by html.render"
 
 ExitCode is alias
 ExitCode for Int32
@@ -23,45 +24,50 @@ stdoutWriter is capability
 stdoutWriter grants write console.stdout
 stdoutWriter purpose "Allow controlled writes to standard output"
 
+dashboardPage is htmlTemplate
+dashboardPage body html
+    <!doctype html>
+    <html lang="en"><head><title>{{pageTitle}}</title></head>
+    <body><main class="todo-shell"><h1>{{pageTitle}}</h1>
+    <ol class="todo-list">
+    <li class="{{firstClass}}"><span class="todo-title">{{firstTitle}}</span><span class="todo-status">{{firstStatus}}</span></li>
+    <li class="{{secondClass}}"><span class="todo-title">{{secondTitle}}</span><span class="todo-status">{{secondStatus}}</span></li>
+    </ol></main></body></html>
+
 main is operation
 main out ExitCode
 main effect write console.stdout
 main uses stdoutWriter
 main async no
 main memory heap no
-main purpose "Escape a task title and print it inside an HTML list item"
-main invariant "The printed HTML contains the escaped, not raw, title"
-main let rawTitle immutable String "Buy <milk> & eggs"
-main let openTag immutable String "<li class=\"task\">"
-main let closeTag immutable String "</li>"
+main purpose "Hydrate the dashboard template and print the rendered HTML"
+main invariant "Writes the complete escaped HTML document"
+main let pageTitle immutable String "TaskForge <Today>"
+main let firstClass immutable String "todo done"
+main let firstTitle immutable String "Buy <milk> & eggs"
+main let firstStatus immutable String "done"
+main let secondClass immutable String "todo open"
+main let secondTitle immutable String "Ship the report"
+main let secondStatus immutable String "open"
 main let okCode immutable ExitCode 0
-main do escapeTitle
-main do composeOpen
-main do composeFull
-main do writeItem
+main do renderDashboard
+main do writeDashboard
 main return okCode
 
-escapeTitle is call
-escapeTitle in main
-escapeTitle invokes escapeText
-escapeTitle arg text String rawTitle
-escapeTitle out safeTitle String
+renderDashboard is call
+renderDashboard in main
+renderDashboard invokes html.render
+renderDashboard arg template HtmlTemplate dashboardPage
+renderDashboard arg pageTitle String pageTitle
+renderDashboard arg firstClass String firstClass
+renderDashboard arg firstTitle String firstTitle
+renderDashboard arg firstStatus String firstStatus
+renderDashboard arg secondClass String secondClass
+renderDashboard arg secondTitle String secondTitle
+renderDashboard arg secondStatus String secondStatus
+renderDashboard out dashboardHtml String
 
-composeOpen is call
-composeOpen in main
-composeOpen invokes string.concat
-composeOpen arg left String openTag
-composeOpen arg right String safeTitle
-composeOpen out openPlusTitle String
-
-composeFull is call
-composeFull in main
-composeFull invokes string.concat
-composeFull arg left String openPlusTitle
-composeFull arg right String closeTag
-composeFull out itemHtml String
-
-writeItem is call
-writeItem in main
-writeItem invokes console.writeLine
-writeItem arg text String itemHtml
+writeDashboard is call
+writeDashboard in main
+writeDashboard invokes console.writeLine
+writeDashboard arg text String dashboardHtml
