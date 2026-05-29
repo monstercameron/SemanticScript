@@ -171,6 +171,9 @@ DIAGNOSTICS.update({
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
+    "SS0951": {"tier": "T1", "summary": "Unbounded loop over an untrusted size.",
+               "found": "A back-edge loop whose exit guard reads a `typeTrust rawExternal`/`secret` value, with no `maxIterations <n>` row on the owning operation.",
+               "suggested": "Bound a loop driven by untrusted input with `maxIterations <n>` so a hostile size cannot spin the process (R-082, README §13/§27)."},
     "SS3095": {"tier": "T1", "summary": "Arithmetic on wall-clock time.",
                "found": "A math.* call with a `WallTime` operand (elapsed/duration or local-time arithmetic).",
                "suggested": "Use a `MonotonicInstant` for durations, or an explicit timezone conversion for calendar math; `WallTime` has no arithmetic (README §30.5.3/§27)."},
@@ -1502,6 +1505,7 @@ RESERVED_WORDS = {
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
+    "maxIterations",                       # R-082 loop iteration bound
     "clientResponse", "errorBoundary",     # X-079 error-disclosure rows
     "optOut",                              # X-080 protection opt-out row
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
@@ -1555,6 +1559,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "optOut", "readShared", "setShared", "allocateIn", "releaseRegion",
         "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
         "requires", "ensures",  # X-092 checked contracts
+        "maxIterations",  # R-082 loop iteration bound for untrusted-size loops
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
@@ -1564,6 +1569,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "readShared", "setShared", "allocateIn", "releaseRegion",
         "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
         "requires", "ensures",  # X-092 checked contracts
+        "maxIterations",  # R-082 loop iteration bound for untrusted-size loops
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -2728,13 +2734,60 @@ def _lint_sqlite_usage(program: Program) -> list:
     return diags
 
 
+def _branch_goto_target_and_guards(row, owned: dict):
+    """R-082: for any `branch <guard> … goto LABEL` row, return
+    `(label, guard_names)` where `guard_names` is the set of value/call names
+    whose recomputation inside a loop body constitutes progress toward this
+    exit. Returns `(None, set())` for a non-goto branch (e.g. `branch else`).
+
+    Payload layouts (see `_emit_branch` / `_row_refs`):
+      if|ifFalse|ifVariant VALUE goto L         -> guard {VALUE}
+      ifValue LEFT cmp RIGHT goto L             -> guard {LEFT, RIGHT}
+      ifOut CALL cmp RIGHT goto L               -> guard {CALL, CALL.out, RIGHT}
+      ifError|ifReady|ifPending|ifCanceled CALL goto L -> guard {CALL}
+    For ifOut/ifError/ifReady the call name itself is a guard: re-running the
+    call recomputes its `out`/readiness/error, which the X-115 logic could not
+    see because it only tracked bound value names, not the back-edge call."""
+    p = row.payload
+    if not p or "goto" not in p:
+        return None, set()
+    guard = p[0]
+    label = p[p.index("goto") + 1] if p.index("goto") + 1 < len(p) else None
+    if label is None:
+        return None, set()
+    guards: set = set()
+    if guard in ("if", "ifFalse", "ifVariant") and len(p) >= 2:
+        guards.add(p[1])
+    elif guard == "ifValue" and len(p) >= 4:
+        guards.update({p[1], p[3]})
+    elif guard == "ifOut" and len(p) >= 4:
+        # The inspected value is the call's `out` binding; recomputing it (by
+        # re-running the call) or the right operand both make progress.
+        guards.add(p[1])  # the call name (re-run = recompute)
+        guards.add(p[3])  # right operand
+        call = owned.get(p[1])
+        if call is not None:
+            for o in call.facts("out"):
+                if o.payload:
+                    guards.add(o.payload[0])
+    elif guard in ("ifError", "ifReady", "ifPending", "ifCanceled") and len(p) >= 2:
+        guards.add(p[1])  # the fallible/async call; re-running it re-decides
+    return label, guards
+
+
 def _lint_loop_no_progress(program: Program) -> list:
-    """X-100 / README §13, §33.3: a best-effort divergence lint. A back-edge loop
-    that provably makes no progress toward an exit warns: either it has no exit
-    path at all (no `return`, no branch/goto leaving the loop), or its exit
-    guard value is never recomputed/mutated inside the loop body (a loop-invariant
-    guard). Halting is undecidable, so this catches only the common footguns and
-    never warns when an exit guard is recomputed (e.g. a counting loop)."""
+    """X-100 / R-082 / README §13, §33.3: a best-effort divergence lint. A
+    back-edge loop that provably makes no progress toward an exit warns: either
+    it has no exit path at all (no `return`, no branch/goto leaving the loop), or
+    none of its exit guards is ever recomputed/mutated inside the loop body (a
+    loop-invariant guard). Halting is undecidable, so this catches only the
+    common footguns and never warns when an exit guard is recomputed (a counting
+    loop, or a guard whose helper-call inputs are mutated each turn).
+
+    R-082 widened guard recognition beyond bare `if`/`ifFalse` to every branch
+    form (`ifValue`, `ifOut`, `ifError`, async readiness), and now counts
+    helper-mediated progress: re-running a guard-producing call, rebinding its
+    `out`, or mutating any of that call's input args all keep the loop live."""
     diags: list = []
     for n in program.order:
         op = program.entities[n]
@@ -2750,24 +2803,44 @@ def _lint_loop_no_progress(program: Program) -> list:
             if program.entities[c].kind in ("call", "task")
             and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
         }
+        # R-082: map each owned call to its input arg value names, so a guard
+        # recomputed via a helper whose inputs are mutated each turn counts as
+        # progress even when the guard's own `out` name is not directly rebound.
+        call_inputs = {
+            name: {a.payload[2] for a in c.facts("arg") if len(a.payload) >= 3}
+            for name, c in owned.items()
+        }
+        # producer[outName] = the call name that binds it (helper guard producer)
+        producer: dict = {}
+        for name, c in owned.items():
+            for o in c.facts("out"):
+                if o.payload:
+                    producer[o.payload[0]] = name
         for gi, r in enumerate(rows):
-            # identify a back-edge: goto/branch-goto to a label at an earlier row
+            # identify a back-edge: a bare goto, or any branch-goto form, to a
+            # label at an earlier row. R-082: branch back-edges may use any guard
+            # form, so resolve the target through the shared helper rather than a
+            # fixed payload[3] slot (which only fit if/ifFalse/ifVariant).
             tgt = None
             if r.predicate == "goto" and r.payload:
                 tgt = r.payload[0]
-            elif r.predicate == "branch" and len(r.payload) >= 4 and r.payload[2] == "goto":
-                tgt = r.payload[3]
+            elif r.predicate == "branch":
+                tgt = _branch_goto_target_and_guards(r, owned)[0]
             li = labels.get(tgt) if tgt is not None else None
             if li is None or li >= gi:
                 continue  # forward edge or unknown target -> not a loop back-edge
             has_return = False
-            exit_conds: list = []      # guard value per exit branch (None = unconditional)
-            recomputed: set = set()    # values (re)bound/mutated inside the loop body
+            exit_guards: list = []     # set of guard names per exit (empty = unconditional)
+            recomputed: set = set()    # values/calls (re)bound/mutated inside the loop body
             for j in range(li, gi + 1):
                 rj = rows[j]
                 if rj.predicate == "return":
                     has_return = True
                 if rj.predicate in ("do", "start", "join", "poll") and rj.payload:
+                    # R-082: re-running a call inside the body is itself progress
+                    # for ifOut/ifError/ifReady guards keyed on the call name; it
+                    # also recomputes the call's `out` bindings.
+                    recomputed.add(rj.payload[0])
                     call = owned.get(rj.payload[0])
                     if call is not None:
                         for o in call.facts("out"):
@@ -2778,26 +2851,18 @@ def _lint_loop_no_progress(program: Program) -> list:
                 # an exit is a branch/goto (other than this back-edge) leaving [li, gi]
                 t2 = None
                 if rj.predicate == "goto" and j != gi and rj.payload:
-                    t2 = (rj.payload[0], None)
-                elif rj.predicate == "branch" and len(rj.payload) >= 4 and rj.payload[2] == "goto":
-                    # X-115: the guard value lives at payload[1] for every
-                    # guarded branch form, not only bare `if`. The canonical loop
-                    # exit is `branch ifFalse <guard> goto <label>` (countdown.sem
-                    # and most loops), so restricting to "if" treated every
-                    # ifFalse/ifVariant exit as unconditional and silently missed
-                    # non-progressing loops. Mirror the guard set used elsewhere
-                    # (cf. the §13 return/branch-condition extraction).
-                    guard = (rj.payload[1]
-                             if rj.payload[0] in ("if", "ifFalse", "ifVariant")
-                             else None)
-                    t2 = (rj.payload[3], guard)
+                    t2 = (rj.payload[0], set())
+                elif rj.predicate == "branch":
+                    label, guards = _branch_goto_target_and_guards(rj, owned)
+                    if label is not None:
+                        t2 = (label, guards)
                 if t2 is not None:
                     ti = labels.get(t2[0])
                     if ti is None or ti < li or ti > gi:
-                        exit_conds.append(t2[1])
+                        exit_guards.append(t2[1])
             if has_return:
                 continue
-            if not exit_conds:
+            if not exit_guards:
                 diags.append(Diagnostic(
                     "SS0950", "warning",
                     f"loop at {tgt!r} in {op.name!r} has no exit path (no return, no "
@@ -2805,10 +2870,26 @@ def _lint_loop_no_progress(program: Program) -> list:
                     f"(README §13/§33.3)",
                     rows[li].line, op.name))
                 continue
-            # exits exist; the loop progresses if any exit is unconditional or its
-            # guard is recomputed inside the body. Otherwise the guard is invariant.
-            if not any(c is None or c in recomputed for c in exit_conds):
-                guards = sorted({c for c in exit_conds if c})
+
+            def _exit_progresses(guard_set: set) -> bool:
+                # An unconditional exit (bare goto) always progresses.
+                if not guard_set:
+                    return True
+                for g in guard_set:
+                    if g in recomputed:
+                        return True
+                    # R-082 helper-mediated progress: the guard is produced by a
+                    # body call whose inputs are mutated/recomputed each turn, so
+                    # its value changes even though its own name is not re-bound.
+                    src_call = producer.get(g, g if g in call_inputs else None)
+                    if src_call is not None and (call_inputs.get(src_call, set()) & recomputed):
+                        return True
+                return False
+
+            # exits exist; the loop progresses if ANY exit can change toward being
+            # taken. Otherwise every exit guard is loop-invariant -> no progress.
+            if not any(_exit_progresses(g) for g in exit_guards):
+                guards = sorted({g for gs in exit_guards for g in gs})
                 diags.append(Diagnostic(
                     "SS0950", "warning",
                     f"loop at {tgt!r} in {op.name!r} makes no progress: its exit "
@@ -3652,6 +3733,7 @@ def _validate_program(program: Program) -> None:
     _validate_path_traversal(program)
     _validate_ssrf(program)
     _validate_dos_bounds(program)
+    _validate_untrusted_loop_bounds(program)
     _validate_error_disclosure(program)
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
@@ -5142,6 +5224,105 @@ def _validate_dos_bounds(program: Program) -> None:
                 f"input but declares no `timeout`/`budget`; bound it so a slow or "
                 f"hostile peer cannot stall the process (README §27)",
                 ent.line, code="SS3078")
+
+
+def _validate_untrusted_loop_bounds(program: Program) -> None:
+    """R-082 / README §13/§27: a back-edge loop whose exit is decided by an
+    untrusted value (a `typeTrust rawExternal`/`secret`-typed size/count) must
+    carry an explicit `maxIterations <n>` row on the owning operation, else it is
+    rejected (SS0951). A hostile peer can otherwise pick an enormous size and spin
+    the process — the loop analogue of the X-078 external-I/O bound.
+
+    The trigger is type-driven and narrow on purpose: only loops whose exit guard
+    (or a guard-producing call's input) reads a value typed `rawExternal`/`secret`
+    fire. A loop over a trusted/internal size, a fixed capacity, or a validated
+    length never trips this, so existing fixed-capacity buffer loops stay legal."""
+    untrusted_types = {
+        program.entities[n].name for n in program.order
+        for r in program.entities[n].facts("typeTrust")
+        if r.payload and r.payload[0] in ("rawExternal", "secret")
+    }
+    if not untrusted_types:
+        return  # no untrusted-typed values exist -> nothing to bound
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        rows = op.rows
+        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        if not labels:
+            continue
+        owned = {
+            program.entities[c].name: program.entities[c]
+            for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        }
+        # value -> declared type, from inputs, lets, and owned-call outputs.
+        value_type: dict = {}
+        for r in op.facts("in"):
+            if len(r.payload) >= 2:
+                value_type[r.payload[0]] = r.payload[1]
+        for r in op.facts("let"):
+            if len(r.payload) >= 3:
+                value_type[r.payload[0]] = r.payload[2]
+        for c in owned.values():
+            for o in c.facts("out"):
+                if len(o.payload) >= 2:
+                    value_type[o.payload[0]] = o.payload[1]
+        call_inputs = {
+            name: [a.payload[2] for a in c.facts("arg") if len(a.payload) >= 3]
+            for name, c in owned.items()
+        }
+        # producer[outName] = the call whose `out` binds it, so a Bool guard
+        # computed from an untrusted operand is traced back to that operand.
+        producer: dict = {}
+        for name, c in owned.items():
+            for o in c.facts("out"):
+                if o.payload:
+                    producer[o.payload[0]] = name
+
+        def _guard_is_untrusted(guard_names: set) -> bool:
+            for g in guard_names:
+                if value_type.get(g) in untrusted_types:
+                    return True
+                # The guard may name a call (ifOut/ifError) or be a value bound
+                # by a call's `out` (if/ifFalse over a comparison result). Either
+                # way, an untrusted input to that producing call decides the exit.
+                src_call = g if g in call_inputs else producer.get(g)
+                for inp in call_inputs.get(src_call, ()):
+                    if value_type.get(inp) in untrusted_types:
+                        return True
+            return False
+
+        for gi, r in enumerate(rows):
+            tgt = None
+            if r.predicate == "goto" and r.payload:
+                tgt = r.payload[0]
+            elif r.predicate == "branch":
+                tgt = _branch_goto_target_and_guards(r, owned)[0]
+            li = labels.get(tgt) if tgt is not None else None
+            if li is None or li >= gi:
+                continue  # forward edge / unknown target -> not a back-edge loop
+            untrusted_exit = False
+            for j in range(li, gi + 1):
+                rj = rows[j]
+                if rj.predicate != "branch":
+                    continue
+                label, guards = _branch_goto_target_and_guards(rj, owned)
+                if label is None:
+                    continue
+                ti = labels.get(label)
+                if ti is None or ti < li or ti > gi:  # an exit branch
+                    if _guard_is_untrusted(guards):
+                        untrusted_exit = True
+            if untrusted_exit and op.fact("maxIterations") is None:
+                raise EavError(
+                    f"loop at {tgt!r} in {op.name!r} iterates under an untrusted "
+                    f"(`rawExternal`/`secret`) size but declares no "
+                    f"`maxIterations <n>`; bound it so a hostile size cannot spin "
+                    f"the process (R-082, README §13/§27)",
+                    rows[li].line, code="SS0951")
 
 
 def _validate_error_disclosure(program: Program) -> None:

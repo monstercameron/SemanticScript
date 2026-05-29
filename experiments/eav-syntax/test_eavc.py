@@ -9178,3 +9178,217 @@ def test_r067_decimal_float_operand_still_rejected():
     with pytest.raises(eavc.EavError) as excinfo:
         eavc.parse(src)
     assert getattr(excinfo.value, "code", None) == "SS3093"
+
+
+# === R-082: no-progress + untrusted-loop analysis across all branch forms ===
+
+_R082_HEAD = (
+    "P is project\nP module m\nP target console\nP entry spin\n"
+    "m is module\nm path a.b\nm exports spin\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+)
+
+
+def test_r082_loop_no_progress_ifvalue_invariant_guard_warns():
+    """R-082: a back-edge loop whose `ifValue` exit compares two values that are
+    never mutated in the body makes no progress -> SS0950. No-op-failing: the
+    X-115 code only recognized if/ifFalse/ifVariant guards (it keyed on
+    payload[2] == 'goto', which is false for the 6-token ifValue form), so it
+    treated this ifValue exit as unconditional and never warned."""
+    src = _R082_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "spin forever"\nspin invariant "operands never move"\n'
+        "spin let counterValue immutable Int64 0\nspin let limitValue immutable Int64 10\n"
+        "spin let okCode immutable ExitCode 0\n"
+        "spin at loopHead branch ifValue counterValue greaterThanOrEqual limitValue goto loopExit\n"
+        "spin do noop\nspin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "noop is call\nnoop in spin\nnoop invokes console.writeIntegerLine\n"
+        "noop arg value Int64 counterValue\n"
+    )
+    ss0950 = [d for d in eavc.lint(eavc.parse(src)) if d.code == "SS0950"]
+    assert ss0950
+    # Distinguishes new behavior from old: the OLD code could not see an ifValue
+    # exit at all and so warned via the "no exit path" branch. The new code must
+    # recognize the exit and report the *invariant-guard* ("makes no progress")
+    # path naming the ifValue operands.
+    assert "makes no progress" in ss0950[0].message
+    assert "counterValue" in ss0950[0].message
+
+
+def test_r082_loop_progressing_ifvalue_operand_mutated_no_warning():
+    """R-082: an `ifValue` loop whose left operand IS mutated each turn (via a
+    helper out + set) progresses and must NOT warn — guards the new ifValue path
+    against over-warning on real counting loops."""
+    src = _R082_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "count up"\nspin invariant "counter advances each turn"\n'
+        "spin let counterValue mutable Int64 0\nspin let limitValue immutable Int64 10\n"
+        "spin let oneStep immutable Int64 1\nspin let okCode immutable ExitCode 0\n"
+        "spin at loopHead branch ifValue counterValue greaterThanOrEqual limitValue goto loopExit\n"
+        "spin do stepUp\nspin set counterValue nextCounter\nspin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "stepUp is call\nstepUp in spin\nstepUp invokes math.addInt64\n"
+        "stepUp arg left Int64 counterValue\nstepUp arg right Int64 oneStep\nstepUp out nextCounter Int64\n"
+    )
+    assert "SS0950" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_r082_loop_no_progress_ifout_stale_out_warns():
+    """R-082: an `ifOut` loop inspecting a call's `out` warns when the call is
+    only run ONCE before the loop head and never re-run inside the body — its
+    `out` can never change, so the exit is never taken. No-op-failing: the
+    X-115 code never saw ifOut guards at all (payload[2] != 'goto'), so it
+    treated this as having an unconditional exit and stayed silent."""
+    src = _R082_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "stuck on a stale out"\nspin invariant "checkDone runs once"\n'
+        "spin let counterValue immutable Int64 0\nspin let limitValue immutable Int64 10\n"
+        "spin let okCode immutable ExitCode 0\n"
+        "spin do checkDone\n"
+        "spin at loopHead branch ifOut checkDone greaterThanOrEqual limitValue goto loopExit\n"
+        "spin do noop\nspin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "checkDone is call\ncheckDone in spin\ncheckDone invokes math.addInt64\n"
+        "checkDone arg left Int64 counterValue\ncheckDone arg right Int64 counterValue\n"
+        "checkDone out doneValue Int64\n"
+        "noop is call\nnoop in spin\nnoop invokes console.writeIntegerLine\n"
+        "noop arg value Int64 counterValue\n"
+    )
+    ss0950 = [d for d in eavc.lint(eavc.parse(src)) if d.code == "SS0950"]
+    assert ss0950
+    # No-op-failing vs old: the OLD code never recognized an ifOut exit, so it
+    # warned via "no exit path". The new code must recognize the exit and report
+    # the invariant-guard ("makes no progress") path keyed on the checkDone call.
+    assert "makes no progress" in ss0950[0].message
+    assert "checkDone" in ss0950[0].message
+
+
+def test_r082_loop_progressing_ifout_call_rerun_no_warning():
+    """R-082: an `ifOut` loop whose inspected call IS re-run each iteration
+    progresses (its out is recomputed) and must NOT warn. This exercises the new
+    're-running a guard call is progress' rule (the call name, not just its out
+    binding, is added to the recomputed set)."""
+    src = _R082_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "advance by re-running the guard"\nspin invariant "checkDone recomputes each turn"\n'
+        "spin let counterValue mutable Int64 0\nspin let limitValue immutable Int64 10\n"
+        "spin let oneStep immutable Int64 1\nspin let okCode immutable ExitCode 0\n"
+        "spin at loopHead do checkDone\n"
+        "spin branch ifOut checkDone greaterThanOrEqual limitValue goto loopExit\n"
+        "spin do stepUp\nspin set counterValue nextCounter\nspin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "checkDone is call\ncheckDone in spin\ncheckDone invokes math.addInt64\n"
+        "checkDone arg left Int64 counterValue\ncheckDone arg right Int64 counterValue\n"
+        "checkDone out doneValue Int64\n"
+        "stepUp is call\nstepUp in spin\nstepUp invokes math.addInt64\n"
+        "stepUp arg left Int64 counterValue\nstepUp arg right Int64 oneStep\nstepUp out nextCounter Int64\n"
+    )
+    assert "SS0950" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_r082_helper_mediated_progress_via_guard_input_no_warning():
+    """R-082: a counting loop whose `ifFalse` guard is produced by a helper call
+    OUTSIDE the loop body (before loopHead), where only the guard's INPUT is
+    mutated in the body, has a declared progress path and must NOT warn. The
+    X-115 recomputed-set only tracked directly-rebound guard names, so it would
+    have falsely flagged this helper-mediated loop as non-progressing."""
+    src = _R082_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "helper-mediated counting loop"\nspin invariant "guard input advances each turn"\n'
+        "spin let counterValue mutable Int64 0\nspin let limitValue immutable Int64 10\n"
+        "spin let oneStep immutable Int64 1\nspin let okCode immutable ExitCode 0\n"
+        "spin do checkContinue\n"
+        "spin at loopHead branch ifFalse keepGoing goto loopExit\n"
+        "spin do stepUp\nspin set counterValue nextCounter\nspin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "checkContinue is call\ncheckContinue in spin\ncheckContinue invokes math.lessThanInt64\n"
+        "checkContinue arg left Int64 counterValue\ncheckContinue arg right Int64 limitValue\n"
+        "checkContinue out keepGoing Bool\n"
+        "stepUp is call\nstepUp in spin\nstepUp invokes math.addInt64\n"
+        "stepUp arg left Int64 counterValue\nstepUp arg right Int64 oneStep\nstepUp out nextCounter Int64\n"
+    )
+    assert "SS0950" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+_R082_UNTRUSTED_HEAD = (
+    "P is project\nP module m\nP target console\nP entry processBatch\n"
+    "m is module\nm path a.b\nm exports processBatch\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "UntrustedCount is alias\nUntrustedCount for Int64\n"
+    "UntrustedCount typeTrust rawExternal\n"
+)
+
+
+def _r082_untrusted_loop_src(bound_row: str) -> str:
+    # A loop whose exit guard is computed from an untrusted (`rawExternal`) size.
+    # `bound_row` is either "" (no bound) or a `maxIterations` row.
+    return _R082_UNTRUSTED_HEAD + (
+        "processBatch is operation\nprocessBatch in batchSize UntrustedCount\n"
+        "processBatch out ExitCode\nprocessBatch async no\n"
+        'processBatch purpose "iterate over an attacker-chosen size"\n'
+        'processBatch invariant "index advances each turn"\n'
+        + bound_row +
+        "processBatch let zeroIndex immutable Int64 0\nprocessBatch let oneStep immutable Int64 1\n"
+        "processBatch let currentIndex mutable Int64 zeroIndex\n"
+        "processBatch let okCode immutable ExitCode 0\n"
+        "processBatch at loopHead do doneCheck\n"
+        "processBatch branch if reachedEnd goto loopExit\n"
+        "processBatch do stepIndex\nprocessBatch set currentIndex nextIndex\nprocessBatch goto loopHead\n"
+        "processBatch at loopExit return okCode\n"
+        "doneCheck is call\ndoneCheck in processBatch\ndoneCheck invokes math.greaterThanOrEqualInt64\n"
+        "doneCheck arg left Int64 currentIndex\ndoneCheck arg right UntrustedCount batchSize\n"
+        "doneCheck out reachedEnd Bool\n"
+        "stepIndex is call\nstepIndex in processBatch\nstepIndex invokes math.addInt64\n"
+        "stepIndex arg left Int64 currentIndex\nstepIndex arg right Int64 oneStep\nstepIndex out nextIndex Int64\n"
+    )
+
+
+def test_r082_untrusted_loop_without_max_iterations_rejects():
+    """R-082: a back-edge loop whose exit guard is decided by an untrusted
+    (`typeTrust rawExternal`) size and that declares no `maxIterations <n>` row
+    is a hard error (SS0951). No-op-failing: SS0951 and the `maxIterations` verb
+    did not exist before, so this program parsed clean."""
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(_r082_untrusted_loop_src(""))
+    assert getattr(excinfo.value, "code", None) == "SS0951"
+
+
+def test_r082_untrusted_loop_with_max_iterations_accepts():
+    """R-082: the same untrusted loop with an explicit `maxIterations <n>` bound
+    parses clean — the bound is the required progress contract for untrusted
+    iteration."""
+    prog = eavc.parse(_r082_untrusted_loop_src("processBatch maxIterations 100000\n"))
+    op = prog.entities["processBatch"]
+    assert op.fact("maxIterations") is not None  # the bound row is preserved
+
+
+def test_r082_trusted_size_loop_needs_no_max_iterations():
+    """R-082 must stay narrow: a loop over a TRUSTED size (a plain Int64, no
+    `rawExternal`/`secret` trust label) does not require `maxIterations` and must
+    parse clean. This is what keeps existing fixed-capacity buffer loops legal —
+    no-op-failing in the over-broad direction (a heuristic that flagged every
+    counting loop would reject this)."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry processBatch\n"
+        "m is module\nm path a.b\nm exports processBatch\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "processBatch is operation\nprocessBatch in batchSize Int64\n"
+        "processBatch out ExitCode\nprocessBatch async no\n"
+        'processBatch purpose "iterate over a trusted size"\n'
+        'processBatch invariant "index advances each turn"\n'
+        "processBatch let zeroIndex immutable Int64 0\nprocessBatch let oneStep immutable Int64 1\n"
+        "processBatch let currentIndex mutable Int64 zeroIndex\n"
+        "processBatch let okCode immutable ExitCode 0\n"
+        "processBatch at loopHead do doneCheck\n"
+        "processBatch branch if reachedEnd goto loopExit\n"
+        "processBatch do stepIndex\nprocessBatch set currentIndex nextIndex\nprocessBatch goto loopHead\n"
+        "processBatch at loopExit return okCode\n"
+        "doneCheck is call\ndoneCheck in processBatch\ndoneCheck invokes math.greaterThanOrEqualInt64\n"
+        "doneCheck arg left Int64 currentIndex\ndoneCheck arg right Int64 batchSize\n"
+        "doneCheck out reachedEnd Bool\n"
+        "stepIndex is call\nstepIndex in processBatch\nstepIndex invokes math.addInt64\n"
+        "stepIndex arg left Int64 currentIndex\nstepIndex arg right Int64 oneStep\nstepIndex out nextIndex Int64\n"
+    )
+    prog = eavc.parse(src)  # must not raise SS0951
+    assert "SS0951" not in {d.code for d in eavc.lint(prog)}
