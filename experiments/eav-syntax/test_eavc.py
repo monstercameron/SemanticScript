@@ -4087,6 +4087,58 @@ def test_irreducible_cfg_warns():
     assert "SS1315" in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
+def test_loop_no_exit_path_warns():
+    # X-100 / §13 §33.3: a back-edge loop with no exit path (no return, no
+    # branch/goto leaving the loop) is a likely infinite loop. No-op-failing: a
+    # checker that ignores progress would not flag it.
+    src = (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "p"\nspin invariant "i"\n'
+        "spin let okCode immutable ExitCode 0\n"
+        'spin let t immutable String "x"\n'
+        "spin at loopTop do tick\nspin goto loopTop\nspin return okCode\n"
+        "tick is call\ntick in spin\ntick invokes console.writeLine\ntick arg text String t\n"
+    )
+    assert "SS0950" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_loop_invariant_exit_guard_warns():
+    # X-100: an exit branch exists, but its guard is bound once before the loop
+    # and never recomputed in the body -> no progress toward the exit.
+    src = (
+        "stuck is operation\nstuck out ExitCode\nstuck async no\n"
+        'stuck purpose "p"\nstuck invariant "i"\n'
+        "stuck let okCode immutable ExitCode 0\n"
+        'stuck let t immutable String "x"\nstuck let shouldStop immutable Bool false\n'
+        "stuck at loopTop do tick\nstuck branch if shouldStop goto loopEnd\n"
+        "stuck goto loopTop\nstuck at loopEnd return okCode\n"
+        "tick is call\ntick in stuck\ntick invokes console.writeLine\ntick arg text String t\n"
+    )
+    assert "SS0950" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_counting_loop_makes_progress_no_warning():
+    # X-100: the canonical counting loop recomputes its exit guard each iteration
+    # and mutates the index -> progresses, so it must NOT warn.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main let finalIndex immutable Int64 10\nmain let indexStep immutable Int64 1\n"
+        "main let currentIndex mutable Int64 0\n"
+        "main at loopStart do doneCall\nmain branch if loopDone goto loopEnd\n"
+        "main do nextIndexCall\nmain set currentIndex nextIndex\nmain goto loopStart\n"
+        "main at loopEnd return okCode\n"
+        "doneCall is call\ndoneCall in main\ndoneCall invokes math.greaterThanOrEqualInt64\n"
+        "doneCall arg left Int64 currentIndex\ndoneCall arg right Int64 finalIndex\n"
+        "doneCall out loopDone Bool\n"
+        "nextIndexCall is call\nnextIndexCall in main\nnextIndexCall invokes math.addInt64\n"
+        "nextIndexCall arg left Int64 currentIndex\nnextIndexCall arg right Int64 indexStep\n"
+        "nextIndexCall out nextIndex Int64\n"
+    )
+    assert "SS0950" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

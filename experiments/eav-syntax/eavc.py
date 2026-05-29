@@ -150,6 +150,9 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
+               "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
+               "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
     "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
                "found": "An app operation with a runtimeBinding/intrinsic body.",
                "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
@@ -2237,6 +2240,87 @@ def _lint_sqlite_usage(program: Program) -> list:
     return diags
 
 
+def _lint_loop_no_progress(program: Program) -> list:
+    """X-100 / README §13, §33.3: a best-effort divergence lint. A back-edge loop
+    that provably makes no progress toward an exit warns: either it has no exit
+    path at all (no `return`, no branch/goto leaving the loop), or its exit
+    guard value is never recomputed/mutated inside the loop body (a loop-invariant
+    guard). Halting is undecidable, so this catches only the common footguns and
+    never warns when an exit guard is recomputed (e.g. a counting loop)."""
+    diags: list = []
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        rows = op.rows
+        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        if not labels:
+            continue
+        owned = {
+            program.entities[c].name: program.entities[c]
+            for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        }
+        for gi, r in enumerate(rows):
+            # identify a back-edge: goto/branch-goto to a label at an earlier row
+            tgt = None
+            if r.predicate == "goto" and r.payload:
+                tgt = r.payload[0]
+            elif r.predicate == "branch" and len(r.payload) >= 4 and r.payload[2] == "goto":
+                tgt = r.payload[3]
+            li = labels.get(tgt) if tgt is not None else None
+            if li is None or li >= gi:
+                continue  # forward edge or unknown target -> not a loop back-edge
+            has_return = False
+            exit_conds: list = []      # guard value per exit branch (None = unconditional)
+            recomputed: set = set()    # values (re)bound/mutated inside the loop body
+            for j in range(li, gi + 1):
+                rj = rows[j]
+                if rj.predicate == "return":
+                    has_return = True
+                if rj.predicate in ("do", "start", "join", "poll") and rj.payload:
+                    call = owned.get(rj.payload[0])
+                    if call is not None:
+                        for o in call.facts("out"):
+                            if o.payload:
+                                recomputed.add(o.payload[0])
+                if rj.predicate == "set" and rj.payload:
+                    recomputed.add(rj.payload[0])
+                # an exit is a branch/goto (other than this back-edge) leaving [li, gi]
+                t2 = None
+                if rj.predicate == "goto" and j != gi and rj.payload:
+                    t2 = (rj.payload[0], None)
+                elif rj.predicate == "branch" and len(rj.payload) >= 4 and rj.payload[2] == "goto":
+                    guard = rj.payload[1] if rj.payload[0] == "if" else None
+                    t2 = (rj.payload[3], guard)
+                if t2 is not None:
+                    ti = labels.get(t2[0])
+                    if ti is None or ti < li or ti > gi:
+                        exit_conds.append(t2[1])
+            if has_return:
+                continue
+            if not exit_conds:
+                diags.append(Diagnostic(
+                    "SS0950", "warning",
+                    f"loop at {tgt!r} in {op.name!r} has no exit path (no return, no "
+                    f"branch/goto leaving the loop) — likely an infinite loop "
+                    f"(README §13/§33.3)",
+                    rows[li].line, op.name))
+                continue
+            # exits exist; the loop progresses if any exit is unconditional or its
+            # guard is recomputed inside the body. Otherwise the guard is invariant.
+            if not any(c is None or c in recomputed for c in exit_conds):
+                guards = sorted({c for c in exit_conds if c})
+                diags.append(Diagnostic(
+                    "SS0950", "warning",
+                    f"loop at {tgt!r} in {op.name!r} makes no progress: its exit "
+                    f"guard {guards} is never recomputed or mutated in the loop body "
+                    f"(README §13/§33.3)",
+                    rows[li].line, op.name))
+    return diags
+
+
 def _control_edges(program: Program) -> list:
     """(op, fromLabel|entry, toLabel) control-flow edges from goto/branch."""
     edges: list = []
@@ -2653,6 +2737,7 @@ def lint(program: Program) -> list:
                 op.line, op.name))
     diags.extend(_lint_variant_exhaustiveness(program))
     diags.extend(_lint_sqlite_usage(program))
+    diags.extend(_lint_loop_no_progress(program))
     # README ss6 / WS2-035: metadata payload-shape checks. Free-text metadata
     # (purpose/invariant/deprecated) carries a quoted string; identifier metadata
     # (tag/owner) carries a bare identifier.
