@@ -243,6 +243,12 @@ DIAGNOSTICS.update({
     "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
                "found": "A `branch else` that doesn't follow a guard branch.",
                "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
+    "SS1901": {"tier": "T3", "summary": "sqlite column result not consumed before next read.",
+               "found": "A `column*` result left unconsumed before the next read on a statement.",
+               "suggested": "Bind and use the column value before stepping again (README §17 #23)."},
+    "SS1902": {"tier": "T3", "summary": "Multi-write sqlite sequence without a transaction.",
+               "found": "Two or more writes on one database handle with no transaction.",
+               "suggested": "Wrap multi-write sequences in a transaction (README §17 #24)."},
     "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
                "found": "A call result used before its `do`, or a catch var on the success path.",
                "suggested": "Reference the binding only after it is produced (README §25)."},
@@ -1617,6 +1623,109 @@ def _lint_variant_exhaustiveness(program: Program) -> list:
     return diags
 
 
+def _sqlite_kind(target: str):
+    """Classify a sqlite.* call target for usage linting (README ss19/ss26)."""
+    if not target.startswith("sqlite."):
+        return None
+    name = target[len("sqlite."):]
+    if name.startswith("column") or name in ("step", "next"):
+        return "read"
+    if name in ("exec", "execute", "run", "insert", "update", "delete", "writeRow"):
+        return "write"
+    if name in ("beginTransaction", "begin", "transaction", "savepoint"):
+        return "txn"
+    return None
+
+
+def _row_refs(row, owned: dict) -> list:
+    """Value names a step row reads: a `do`/`join` call's argument values, plus
+    return values and branch conditions."""
+    p = row.payload
+    refs: list = []
+    if row.predicate in ("do", "start", "join", "poll") and p:
+        call = owned.get(p[0])
+        if call:
+            refs += [a.payload[2] for a in call.facts("arg") if len(a.payload) >= 3]
+    elif row.predicate == "return":
+        refs += [t for t in p if t not in ("value", "ok", "error", "nil", "void")]
+    elif row.predicate == "branch" and p:
+        g = p[0]
+        if g in ("if", "ifFalse", "ifVariant") and len(p) >= 2:
+            refs.append(p[1])
+        elif g in ("ifValue", "ifOut") and len(p) >= 4:
+            refs += [p[1], p[3]]
+    return refs
+
+
+def _lint_sqlite_usage(program: Program) -> list:
+    """README ss19 / ss17 #23/#24: a sqlite `column*` result must be consumed
+    before the next read on the same statement (the borrowed value is invalidated
+    by `step`/the next column read), and multi-write sequences on one database
+    handle require a wrapping transaction."""
+    diags: list = []
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        owned = {
+            program.entities[c].name: program.entities[c]
+            for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        }
+
+        def target_of(call):
+            inv = call.fact("invokes")
+            return inv.payload[0] if inv and inv.payload else ""
+
+        def first_arg(call):
+            rows = [a for a in call.facts("arg") if len(a.payload) >= 3]
+            return rows[0].payload[2] if rows else None
+
+        has_txn = any(_sqlite_kind(target_of(c)) == "txn" for c in owned.values())
+        pending: dict = {}      # statement handle -> (outName, line)
+        writes: dict = {}       # db handle -> count
+        for row in op.rows:
+            for r in _row_refs(row, owned):
+                for stmt, (nm, _ln) in list(pending.items()):
+                    if nm == r:
+                        del pending[stmt]
+            if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
+                continue
+            call = owned.get(row.payload[0])
+            if call is None:
+                continue
+            kind = _sqlite_kind(target_of(call))
+            if kind == "read":
+                stmt = first_arg(call)
+                if stmt in pending:
+                    diags.append(Diagnostic(
+                        "SS1901", "warning",
+                        f"sqlite column result {pending[stmt][0]!r} in {op.name!r} is "
+                        f"not consumed before the next read on statement {stmt!r}; the "
+                        f"borrowed value is invalidated (README ss17 #23)",
+                        pending[stmt][1], op.name))
+                if target_of(call).startswith("sqlite.column"):
+                    o = call.fact("out")
+                    if o and o.payload:
+                        pending[stmt] = (o.payload[0], row.line)
+                else:
+                    pending.pop(stmt, None)  # step/next invalidates pending columns
+            elif kind == "write":
+                db = first_arg(call)
+                writes[db] = writes.get(db, 0) + 1
+        if not has_txn:
+            for db, count in writes.items():
+                if count >= 2:
+                    diags.append(Diagnostic(
+                        "SS1902", "warning",
+                        f"{count} sqlite writes on handle {db!r} in {op.name!r} with no "
+                        f"transaction; wrap multi-write sequences in a transaction "
+                        f"(README ss17 #24)",
+                        op.line, op.name))
+    return diags
+
+
 def _control_edges(program: Program) -> list:
     """(op, fromLabel|entry, toLabel) control-flow edges from goto/branch."""
     edges: list = []
@@ -2024,6 +2133,7 @@ def lint(program: Program) -> list:
                 f"(a multi-entry loop); prefer structured goto (README ss17 #15)",
                 op.line, op.name))
     diags.extend(_lint_variant_exhaustiveness(program))
+    diags.extend(_lint_sqlite_usage(program))
     # README ss17 #30/#31: `branch else` is the default only after a guard branch.
     for n in program.order:
         op = program.entities[n]

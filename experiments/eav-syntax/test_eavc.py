@@ -1710,6 +1710,68 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
+def test_sqlite_column_not_consumed_warns():
+    # README §17 #23: a column result left unconsumed before the next read warns.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\nmain let stmt immutable Int64 1\n"
+        "main do readA\nmain do readB\nmain return okCode\n"
+        "readA is call\nreadA in main\nreadA invokes sqlite.columnText\n"
+        "readA arg statement Int64 stmt\nreadA out colA String\n"
+        "readB is call\nreadB in main\nreadB invokes sqlite.columnText\n"
+        "readB arg statement Int64 stmt\nreadB out colB String\n"
+    )
+    assert "SS1901" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_sqlite_column_consumed_no_warning():
+    # Consuming colA (passing it to a write) before the next read is clean.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\nmain let stmt immutable Int64 1\n"
+        "main do readA\nmain do useColA\nmain do readB\nmain return okCode\n"
+        "readA is call\nreadA in main\nreadA invokes sqlite.columnText\n"
+        "readA arg statement Int64 stmt\nreadA out colA String\n"
+        "useColA is call\nuseColA in main\nuseColA invokes console.writeLine\n"
+        "useColA arg text String colA\n"
+        "readB is call\nreadB in main\nreadB invokes sqlite.columnText\n"
+        "readB arg statement Int64 stmt\nreadB out colB String\n"
+    )
+    assert "SS1901" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_sqlite_multi_write_without_transaction_warns():
+    # README §17 #24: two writes on one handle with no transaction warns.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\nmain let db immutable Int64 1\n"
+        "main let q immutable String \"INSERT\"\n"
+        "main do writeA\nmain do writeB\nmain return okCode\n"
+        "writeA is call\nwriteA in main\nwriteA invokes sqlite.exec\n"
+        "writeA arg database Int64 db\nwriteA arg query String q\nwriteA discards \"x\"\n"
+        "writeB is call\nwriteB in main\nwriteB invokes sqlite.exec\n"
+        "writeB arg database Int64 db\nwriteB arg query String q\nwriteB discards \"x\"\n"
+    )
+    assert "SS1902" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_sqlite_multi_write_with_transaction_no_warning():
+    # A begin-transaction call clears the multi-write warning.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\nmain let db immutable Int64 1\n"
+        "main let q immutable String \"INSERT\"\n"
+        "main do beginTx\nmain do writeA\nmain do writeB\nmain return okCode\n"
+        "beginTx is call\nbeginTx in main\nbeginTx invokes sqlite.beginTransaction\n"
+        "beginTx arg database Int64 db\nbeginTx discards \"x\"\n"
+        "writeA is call\nwriteA in main\nwriteA invokes sqlite.exec\n"
+        "writeA arg database Int64 db\nwriteA arg query String q\nwriteA discards \"x\"\n"
+        "writeB is call\nwriteB in main\nwriteB invokes sqlite.exec\n"
+        "writeB arg database Int64 db\nwriteB arg query String q\nwriteB discards \"x\"\n"
+    )
+    assert "SS1902" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_out_referenced_before_do_rejected():
     # README §25 / WS2-050: a call result used before the `do` that produces it.
     src = (
