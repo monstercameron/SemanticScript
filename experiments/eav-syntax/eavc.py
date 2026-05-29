@@ -858,6 +858,39 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+def semantic_diff(old: Program, new: Program) -> list:
+    """Semantic (not line) diff between two programs: entities added/removed and
+    per-operation effect/out changes (README ss24 `diff`)."""
+    out: list[str] = []
+    old_names, new_names = set(old.order), set(new.order)
+    for n in sorted(new_names - old_names):
+        out.append(f"+ {new.entities[n].kind} {n}")
+    for n in sorted(old_names - new_names):
+        out.append(f"- {old.entities[n].kind} {n}")
+
+    def effects(prog, n):
+        return {tuple(e.payload[:2]) for e in prog.entities[n].facts("effect")
+                if len(e.payload) >= 2}
+
+    def out_sig(prog, n):
+        r = prog.entities[n].fact("out")
+        return tuple(r.payload) if r and r.payload else ()
+
+    for n in sorted(old_names & new_names):
+        if old.entities[n].kind != new.entities[n].kind:
+            out.append(f"~ {n}: kind {old.entities[n].kind} -> {new.entities[n].kind}")
+            continue
+        if old.entities[n].kind in ("operation", "function"):
+            ae, be = effects(old, n), effects(new, n)
+            for e in sorted(be - ae):
+                out.append(f"~ {n}: +effect {' '.join(e)}")
+            for e in sorted(ae - be):
+                out.append(f"~ {n}: -effect {' '.join(e)}")
+            if out_sig(old, n) != out_sig(new, n):
+                out.append(f"~ {n}: out {out_sig(old, n)} -> {out_sig(new, n)}")
+    return out
+
+
 def describe(program: Program, name: str) -> str:
     """A human/agent summary of an entity's contract (README ss24 `explain`)."""
     ent = program.entities.get(name)
@@ -2363,6 +2396,15 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_diff(args) -> int:
+    """Print the semantic diff between two programs."""
+    old = parse(_read_source(args.old))
+    new = parse(_read_source(args.new))
+    for line in semantic_diff(old, new):
+        sys.stdout.write(line + "\n")
+    return 0
+
+
 def cmd_describe(args) -> int:
     """Summarize an entity's contract."""
     program = parse(_read_source(args.path))
@@ -2485,6 +2527,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
     sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
     sp_scaffold.set_defaults(func=cmd_scaffold)
+
+    sp_diff = sub.add_parser("diff", help="semantic diff between two programs")
+    sp_diff.add_argument("old", help="old EAV source file")
+    sp_diff.add_argument("new", help="new EAV source file")
+    sp_diff.set_defaults(func=cmd_diff)
 
     sp_describe = sub.add_parser("describe", help="summarize an entity's contract")
     sp_describe.add_argument("path", help="EAV source file, or - for stdin")

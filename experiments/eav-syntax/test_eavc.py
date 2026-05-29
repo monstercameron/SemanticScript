@@ -103,6 +103,22 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+def test_semantic_diff_detects_changes():
+    old = eavc.parse(
+        "a is operation\na out Int64\n"
+        "b is operation\nb out Int64\nb effect write console.stdout\n"
+    )
+    new = eavc.parse(
+        "a is operation\na out ExitCode\n"          # out changed
+        "added is operation\nadded out Int64\n"     # b removed, added added
+    )
+    diff = eavc.semantic_diff(old, new)
+    text = "\n".join(diff)
+    assert "+ operation added" in text
+    assert "- operation b" in text
+    assert "~ a: out" in text
+
+
 def test_describe_entity_summary():
     prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
     text = eavc.describe(prog, "addTwoValues")
