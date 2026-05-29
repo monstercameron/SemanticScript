@@ -2635,6 +2635,32 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def _configure_program(gate=""):
+    return (
+        "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
+        "Demo configure setupBuild\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "setupBuild is operation\nsetupBuild out ExitCode\nsetupBuild async no\n"
+        'setupBuild purpose "p"\nsetupBuild invariant "i"\n' + gate +
+        "setupBuild let okCode immutable ExitCode 0\nsetupBuild return okCode\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        "main return okCode\n"
+    )
+
+
+def test_ungated_configure_ok():
+    eavc.parse(_configure_program())  # no raise
+
+
+def test_gated_configure_rejected():
+    # WS3-043: a configure op runs once, ungated — a forTarget gate is an error.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_configure_program(gate="setupBuild forTarget console\n"))
+    assert getattr(exc.value, "code", None) == "SS3043"
+
+
 def _platform_override_program(name="maxRetries", value="9"):
     return (
         "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"

@@ -270,6 +270,9 @@ DIAGNOSTICS.update({
     "SS3041D": {"tier": "T1", "summary": "Local binding shadows a project constant.",
                 "found": "A `let` whose name matches a project constant.",
                 "suggested": "Rename the local binding (no shadow, README §28.1)."},
+    "SS3043": {"tier": "T1", "summary": "Gated configure operation.",
+               "found": "A `configure` op carrying a forTarget/forPlatform gate.",
+               "suggested": "configure runs once, ungated — remove the gate (README §30.3.2)."},
     "SS3042A": {"tier": "T1", "summary": "Override names an undeclared constant.",
                 "found": "A platform `override` whose name is not a project constant.",
                 "suggested": "Override only declared project constants (README §28.1)."},
@@ -2837,6 +2840,16 @@ def _validate_configure(program: Program) -> None:
                     f"use only build.* capabilities (README ss30.3.2)",
                     eff.line,
                     code="SS3002",
+                )
+        # README ss30.3.2 / WS3-043: a configure op runs once, ungated — a
+        # `forTarget`/`forPlatform` gate on it is an error.
+        for gate in ("forTarget", "forPlatform"):
+            grow = op.fact(gate)
+            if grow is not None:
+                raise EavError(
+                    f"configure op {name!r} carries a `{gate}` gate; configure runs "
+                    f"once and ungated at build time (README ss30.3.2, WS3-043)",
+                    grow.line, code="SS3043",
                 )
     _validate_step_split(program)
     _validate_activation_count(program)
