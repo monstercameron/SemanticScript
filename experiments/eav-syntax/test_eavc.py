@@ -3634,6 +3634,33 @@ def test_project_test_discovery_by_layout(tmp_path, capsys):
     assert any("integration_smoke.sem" in f for f in found["testsDir"])
 
 
+def test_project_test_discovery_recurses_nested(tmp_path):
+    """R-006: discovery must recurse — a submodule's src/feature/feature.test.sem
+    and a nested tests/integration/case.sem are found, each exactly once, with
+    stable relative paths. The old `src/*.test.sem` / `tests/*.sem` globs missed
+    both nested files."""
+    root = tmp_path / "nested"
+    (root / "src" / "feature").mkdir(parents=True)
+    (root / "tests" / "integration").mkdir(parents=True)
+    (root / "tests" / "golden").mkdir(parents=True)
+    (root / "src" / "main.test.sem").write_text("# unit\n", encoding="utf-8")
+    (root / "src" / "feature" / "feature.test.sem").write_text("# unit\n", encoding="utf-8")
+    (root / "tests" / "top.sem").write_text("# e2e\n", encoding="utf-8")
+    (root / "tests" / "integration" / "case.sem").write_text("# e2e\n", encoding="utf-8")
+    # a .sem fixture under golden/ must NOT be picked up as a test source
+    (root / "tests" / "golden" / "fixture.sem").write_text("# asset\n", encoding="utf-8")
+
+    found = eavc.discover_project_tests(str(root))
+    co = sorted(f.replace("\\", "/") for f in found["coLocated"])
+    td = sorted(f.replace("\\", "/") for f in found["testsDir"])
+    assert co == ["src/feature/feature.test.sem", "src/main.test.sem"]
+    assert td == ["tests/integration/case.sem", "tests/top.sem"]
+    # every test appears exactly once
+    assert len(co) == len(set(co)) and len(td) == len(set(td))
+    # golden fixtures are not test sources
+    assert all("golden" not in f for f in td)
+
+
 def test_app_layout_conversion_plan(tmp_path):
     # WS3-049: plan the relayout of a *flat* app into the framework layout
     # (the real apps already use the build.sem + src/ layout, §28.2).

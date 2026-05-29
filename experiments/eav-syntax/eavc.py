@@ -845,16 +845,24 @@ def golden_match(produced: str, golden_path: str, expected_digest: str = None,
 
 
 def discover_project_tests(root: str) -> dict:
-    """Locate tests by layout (README §28.7): co-located `src/*.test.sem` (unit/
-    semantic) and `tests/` suites (integration/e2e), plus `tests/golden/` assets."""
+    """Locate tests by layout (README §28.7): co-located `src/**/*.test.sem`
+    (unit/semantic) and `tests/**/*.sem` suites (integration/e2e), plus
+    `tests/golden/` assets. R-006: both scans recurse so a submodule's
+    `src/feature/feature.test.sem` and a nested `tests/integration/case.sem` are
+    found, not only the top level. The `tests/golden/` directory holds fixtures,
+    not test sources, so it is excluded from the suite scan."""
     import glob
     import os
     src_dir = os.path.join(root, "src")
-    co_located = sorted(glob.glob(os.path.join(
-        src_dir if os.path.isdir(src_dir) else root, "*.test.sem")))
-    tests_dir = sorted(glob.glob(os.path.join(root, "tests", "*.sem")))
+    base = src_dir if os.path.isdir(src_dir) else root
+    co_located = sorted(glob.glob(
+        os.path.join(base, "**", "*.test.sem"), recursive=True))
+    golden_dir = os.path.normpath(os.path.join(root, "tests", "golden"))
+    tests_dir = sorted(
+        f for f in glob.glob(os.path.join(root, "tests", "**", "*.sem"), recursive=True)
+        if not os.path.normpath(f).startswith(golden_dir + os.sep))
     golden = sorted(glob.glob(os.path.join(root, "tests", "golden", "*"))) if os.path.isdir(
-        os.path.join(root, "tests", "golden")) else []
+        golden_dir) else []
     return {
         "coLocated": [os.path.relpath(f, root) for f in co_located],
         "testsDir": [os.path.relpath(f, root) for f in tests_dir],
