@@ -4298,6 +4298,53 @@ def test_view_used_within_lifetime_accepted():
     assert "SS1560" not in codes and "SS1566" not in codes
 
 
+def _move_src(transfer_row, reuse=True):
+    reuse_rows = (
+        "main do reuseH\n" if reuse else ""
+    )
+    reuse_call = (
+        "reuseH is call\nreuseH in main\nreuseH invokes resource.use\n"
+        "reuseH arg h OpaquePointer handle\n" if reuse else ""
+    )
+    return (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do openH\nmain do consumeH\n" + reuse_rows + "main return okCode\n"
+        "openH is call\nopenH in main\nopenH invokes resource.open\n"
+        "openH out handle OpaquePointer\nopenH owns handle\n"
+        "consumeH is call\nconsumeH in main\nconsumeH invokes resource.transfer\n"
+        + transfer_row + reuse_call
+    )
+
+
+def test_use_after_move_rejected():
+    # WS1-113 / §32.1 #9: an owned handle reused after a `consumes yes` call is a
+    # use-after-move (SS1564). No-op-failing: without move tracking the reuse looks
+    # like an ordinary borrow.
+    src = _move_src("consumeH arg h OpaquePointer handle consumes yes\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1564"
+
+
+def test_takesownership_use_after_move_rejected():
+    # WS1-113: the call-level `takesOwnership <handle>` form also moves it.
+    src = _move_src(
+        "consumeH arg h OpaquePointer handle\nconsumeH takesOwnership handle\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1564"
+
+
+def test_borrow_consumes_no_keeps_owner():
+    # WS1-113: `consumes no` is a borrow — the caller keeps ownership and may
+    # reuse the handle afterward.
+    src = _move_src("consumeH arg h OpaquePointer handle consumes no\n")
+    prog = eavc.parse(src)
+    assert "main" in prog.entities  # no SS1564 raised
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

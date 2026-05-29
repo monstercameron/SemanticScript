@@ -136,6 +136,12 @@ DIAGNOSTICS: dict[str, dict] = {
         "found": "A call that `borrows` a resource also declares `owns`/`cleanedBy`.",
         "suggested": "Views borrow and never clean up — drop `owns`/`cleanedBy`; only the owning resource cleans (README §32.1 #9).",
     },
+    "SS1564": {
+        "tier": "T0",
+        "summary": "Use of a consumed (moved) owned handle.",
+        "found": "An owned handle is reused after a call consumed it (`arg … consumes yes` / `takesOwnership`).",
+        "suggested": "Ownership transferred to the callee — do not reuse the handle after the consuming call; bind the callee's result instead (README §32.1 #9).",
+    },
 }
 
 
@@ -1061,6 +1067,7 @@ RESERVED_WORDS = {
     "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
+    "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1116,11 +1123,13 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
         "cleanedBy", "effect", "async",  # async = tolerated-deprecated (ss5)
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
+        "takesOwnership",                     # WS1-113 ownership transfer
     },
     "task": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
         "cleanedBy", "effect",
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
+        "takesOwnership",                     # WS1-113 ownership transfer
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
     "storage": {
@@ -1291,6 +1300,7 @@ def token_sync_drift() -> set:
         "ifPending", "ifCanceled", "else", "onFailure", "equals", "notEquals",
         "greaterThan", "lessThan", "bind", "propagate", "logAndSuppress",
         "because", "immutable", "mutable",
+        "consumes",  # WS1-113 ownership-transfer sub-keyword on an `arg` row tail
     }
     interop = {"export", "c"}
     homed = set()
@@ -3165,6 +3175,7 @@ def _validate_program(program: Program) -> None:
     _validate_islands(program)
     _validate_ownership_edges(program)
     _validate_view_lifetimes(program)
+    _validate_transfer_moves(program)
     _validate_html_trust(program)
     _validate_time_safety(program)
     _validate_numeric_precision(program)
@@ -4236,6 +4247,74 @@ def _validate_view_lifetimes(program: Program) -> None:
                     f"but is returned out of {op.name!r}; it would outlive its "
                     f"borrowed source (README §32.1 #9)",
                     row.line, code="SS1560")
+
+
+def _validate_transfer_moves(program: Program) -> None:
+    """WS1-113 / README §32.1 #9: ownership transfer is source data. Passing an
+    owned handle to a call transfers it only when the row says so — `arg <slot>
+    <type> <value> consumes yes` or a call-level `takesOwnership <value>`;
+    otherwise the call borrows it and the caller keeps ownership. Once a handle is
+    consumed (moved), reusing it is a use-after-move hard error (SS1564). The walk
+    is linear over the op's step order and stays conservative across labels (a
+    label between the move and the use may be a different path)."""
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        calls = {
+            program.entities[c].name: program.entities[c]
+            for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        }
+        owned: set = set()
+        for c in calls.values():
+            for o in c.facts("owns"):
+                if o.payload:
+                    owned.add(o.payload[0])
+        if not owned:
+            continue
+        label_idx = [i for i, r in enumerate(op.rows) if r.label is not None]
+
+        def _uses(call, handle):
+            return any(len(a.payload) >= 3 and a.payload[2] == handle
+                       for a in call.facts("arg"))
+
+        def _consumed_by(call):
+            out: set = set()
+            for a in call.facts("arg"):
+                p = a.payload
+                if (len(p) >= 5 and p[3] == "consumes" and p[4] in ("yes", "true", "1")
+                        and p[2] in owned):
+                    out.add(p[2])
+            for t in call.facts("takesOwnership"):
+                if t.payload and t.payload[0] in owned:
+                    out.add(t.payload[0])
+            return out
+
+        moved: dict = {}  # handle -> row index where it was consumed
+        for i, row in enumerate(op.rows):
+            if row.predicate in ("do", "start", "join", "poll") and row.payload:
+                call = calls.get(row.payload[0])
+                if call is None:
+                    continue
+                for h, mi in moved.items():
+                    if _uses(call, h) and not any(mi < li <= i for li in label_idx):
+                        raise EavError(
+                            f"owned handle {h!r} is used by {call.name!r} in {op.name!r} "
+                            f"after it was consumed (moved) — ownership has transferred to "
+                            f"the earlier callee (README §32.1 #9)",
+                            row.line, code="SS1564")
+                for h in _consumed_by(call):
+                    moved[h] = i
+            elif row.predicate == "return":
+                for h, mi in moved.items():
+                    if h in row.payload and not any(mi < li <= i for li in label_idx):
+                        raise EavError(
+                            f"owned handle {h!r} is returned from {op.name!r} after it was "
+                            f"consumed (moved) — ownership has transferred away "
+                            f"(README §32.1 #9)",
+                            row.line, code="SS1564")
 
 
 def _validate_html_trust(program: Program) -> None:

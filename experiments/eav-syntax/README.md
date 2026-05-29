@@ -2228,6 +2228,25 @@ This is a lifetime/escape checker, not a borrow checker:
 
 A *resource* without cleanup is already SS1503/SS3900 (above).
 
+### Ownership transfer rows (WS1-113, §32.1 #9)
+
+Passing an owned handle to a call **borrows** it by default — the caller keeps
+ownership and its cleanup duty. Transfer is explicit, declared either as an `arg`
+tail or a call-level row:
+
+```sem
+closeOver is call
+closeOver invokes runtime.adopt
+closeOver arg handle OpaquePointer fileHandle consumes yes   # transfer (move)
+# — or, equivalently —
+closeOver takesOwnership fileHandle
+```
+
+Once a handle is consumed (moved), reusing it — as a later call argument or a
+`return` — is a use-after-move hard error (**SS1564**). `consumes no` (or no
+tail) is a borrow and the handle stays caller-owned. The check is linear over the
+operation's step order and stays conservative across labels.
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the
