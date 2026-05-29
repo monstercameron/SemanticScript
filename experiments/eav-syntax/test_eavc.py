@@ -2209,6 +2209,25 @@ def test_record_construction_and_access_lower():
     assert "extractvalue {i64, i64}" in ir_text
 
 
+def test_cyclic_module_storage_init_rejected():
+    # README §30.2.1: module-storage init is a DAG; a cycle is a hard error.
+    src = (
+        "s1 is storage\ns1 scope module\ns1 type Int64\ns1 mutability immutable\ns1 value s2\n"
+        "s2 is storage\ns2 scope module\ns2 type Int64\ns2 mutability immutable\ns2 value s1\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS3022"
+
+
+def test_module_storage_init_dag_ok():
+    src = (
+        "base is storage\nbase scope module\nbase type Int64\nbase mutability immutable\nbase value 0\n"
+        "derived is storage\nderived scope module\nderived type Int64\nderived mutability immutable\nderived value base\n"
+    )
+    assert "derived" in eavc.parse(src).entities
+
+
 def test_module_storage_effectful_init_rejected():
     # README §30.2.1: a module-storage initializer must be effect-free.
     src = (

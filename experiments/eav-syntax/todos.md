@@ -153,7 +153,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-106 Lower defer/cleanup (reverse-order, before each return; trap-during-cleanup fatal). →test: defer order; §33.8 abort. _(eavc: `_emit_defers` runs registered cleanups' worker calls in reverse registration order before every return/fallthrough; `examples/defer_order.sem` → work/second/first; `test_e2e_defer_reverse_order`. trap-during-cleanup-fatal pending.)_
 - [x] WS1-107 Lower async lifecycle on single-thread backend (start eager, poll always-ready, ifPending never). →test: §13 backend-semantics goldens. _(eavc: `start`→eager `_emit_call`, join/poll/cancel/detach no-op, `ifReady` unconditional, `ifPending`/`ifCanceled` fall through; `start` requires async yes (SS1140); `examples/async_demo.sem`→42, `test_e2e_async_single_thread`, `test_start_in_async_no_operation_rejected`)_
 - [x] WS1-108 Lower construction/access/compare derived targets. →test: `Task.new` round-trips. _(eavc: record .new/.field via insertvalue/extractvalue, enum .variant discriminants, compare via icmp; `examples/record_demo.sem`, `test_record_construction_and_access_lower`)_
-- [ ] WS1-109 Module init order (imports first, doc order); cyclic-init reject; failing-init traps. →test: §30.2.1 order golden.
+- [x] WS1-109 Module init order (imports first, doc order); cyclic-init reject; failing-init traps. →test: §30.2.1 order golden. _(eavc: `_validate_module_init_order` — module-storage init is doc-order over a DAG; a reference cycle is rejected SS3022; `test_cyclic_module_storage_init_rejected`, `test_module_storage_init_dag_ok`. failing-init-traps is a runtime concern.)_
 
 ---
 

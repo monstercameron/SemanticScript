@@ -159,6 +159,9 @@ DIAGNOSTICS.update({
     "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
                "found": "A platform targetRuntime other than native/wasm.",
                "suggested": "Use `native` or `wasm` (README §7)."},
+    "SS3022": {"tier": "T0", "summary": "Cyclic module-storage initialization.",
+               "found": "Module storage initializers forming a reference cycle.",
+               "suggested": "Break the cycle; init is doc-order over a DAG (§30.2.1)."},
     "SS3021": {"tier": "T1", "summary": "Effectful module-storage initializer.",
                "found": "A module storage `value` referencing a call/operation.",
                "suggested": "Use a literal/constant/prior-storage initializer (§30.2.1)."},
@@ -2125,7 +2128,43 @@ def _validate_program(program: Program) -> None:
                     row.line,
                 )
     _validate_calls(program)
+    _validate_module_init_order(program)
     _validate_configure(program)
+
+
+def _validate_module_init_order(program: Program) -> None:
+    """Module-storage init is doc order with no cycles (README ss30.2.1): a
+    storage initializer referencing another storage forms a DAG; a cycle is a
+    hard error."""
+    storages = {
+        n for n in program.order
+        if program.entities[n].kind == "storage"
+        and (program.entities[n].fact("scope") or Row("", "", [], 0)).payload[:1] == ["module"]
+    }
+    deps: dict = {}
+    for s in storages:
+        v = program.entities[s].fact("value")
+        target = v.payload[0] if v and v.payload else None
+        deps[s] = target if target in storages else None
+
+    color: dict = {}  # 0=visiting, 1=done
+
+    def visit(node, stack):
+        if color.get(node) == 1:
+            return
+        if node in stack:
+            cycle = " -> ".join(stack[stack.index(node):] + [node])
+            raise EavError(
+                f"cyclic module-storage initialization: {cycle} (README ss30.2.1)",
+                program.entities[node].line, code="SS3022",
+            )
+        nxt = deps.get(node)
+        if nxt is not None:
+            visit(nxt, stack + [node])
+        color[node] = 1
+
+    for s in storages:
+        visit(s, [])
     _validate_html(program)
     _validate_cleanup(program)
 
