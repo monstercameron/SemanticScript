@@ -188,6 +188,15 @@ def test_configure_runtime_effect_rejected():
     assert exc.value.code == "SS3002"
 
 
+def test_platform_targetruntime_validated():
+    # WS3-040: a platform targetRuntime must be native or wasm.
+    eavc.parse("p is platform\np targetRuntime native\n")  # ok
+    eavc.parse("p is platform\np targetRuntime wasm\n")     # ok
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("p is platform\np targetRuntime jvm\n")
+    assert exc.value.code == "SS0740"
+
+
 def test_native_link_merge_and_dedup():
     # WS3-037: per-platform output + ordered/deduped native-link flags.
     prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())

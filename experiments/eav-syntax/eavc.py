@@ -150,6 +150,9 @@ DIAGNOSTICS.update({
     "SS3043": {"tier": "T1", "summary": "Duplicate `export c` symbol.",
                "found": "Two operations exporting the same C symbol.",
                "suggested": "Export symbols must be unique (README §30.4.2)."},
+    "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
+               "found": "A platform targetRuntime other than native/wasm.",
+               "suggested": "Use `native` or `wasm` (README §7)."},
     "SS3002": {"tier": "T0", "summary": "configure op declares a runtime effect.",
                "found": "A build-time `configure` op with a non-build.* effect.",
                "suggested": "configure is build-time; use only build.* (README §30.3.2)."},
@@ -1680,6 +1683,15 @@ def _validate_program(program: Program) -> None:
                     )
         elif ent.kind == "enum":
             _validate_enum(ent)
+        elif ent.kind == "platform":
+            tr = ent.fact("targetRuntime")
+            if tr and tr.payload and tr.payload[0] not in ("native", "wasm"):
+                raise EavError(
+                    f"platform {ent.name!r} targetRuntime {tr.payload[0]!r} must be "
+                    f"`native` or `wasm` (README ss7)",
+                    tr.line,
+                    code="SS0740",
+                )
         elif ent.kind == "errorCase" and ent.fact("of") is None:
             raise EavError(
                 f"errorCase {ent.name!r} needs an `of <Error>` row (README ss9)",
