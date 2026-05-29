@@ -4218,6 +4218,13 @@ validator. A bytes→text decode (`bytes.toText`/`string.fromBytes`/
 plain `String` is a hard error (**SS3096**), so invalid UTF-8 cannot silently
 corrupt an internal string.
 
+**Secure-by-default opt-out (X-080).** Security is on by default (auto-escape,
+secure cookies, CSRF, host allowlist). Weakening any of it is an explicit,
+justified row — `optOut <protection> because "…"`; an opt-out with no `because`
+is a hard error (**SS3080**), so every weakened default stays greppable and
+accountable. (The default cookie/header/CSRF *builders* live in the deferred web
+stdlib.)
+
 ### Async intrinsics
 
 ```sem

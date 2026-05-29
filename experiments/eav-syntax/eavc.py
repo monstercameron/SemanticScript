@@ -207,6 +207,9 @@ DIAGNOSTICS.update({
     "SS3096": {"tier": "T1", "summary": "Unvalidated bytes-to-text conversion.",
                "found": "A bytes->text decode of a `rawExternal` source whose `out` type is not a `validated`/`trustedInternal` text type.",
                "suggested": "Decode untrusted bytes through a trust boundary that handles invalid UTF-8 explicitly and yields a `validated` text type (README §10.6/§16)."},
+    "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
+               "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
+               "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -1108,6 +1111,7 @@ RESERVED_WORDS = {
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
     "clientResponse", "errorBoundary",     # X-079 error-disclosure rows
+    "optOut",                              # X-080 protection opt-out row
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1138,7 +1142,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "module", "target", "entry", "mode", "languageVersion", "toolchain",
         "require", "replace", "allowEffect", "platform", "constant", "configure",
         "nativeLibrary", "nativeHeader", "nativeLinkFlag",
-        "resolved", "toolchainResolved", "effectSurface",
+        "resolved", "toolchainResolved", "effectSurface", "optOut",
     },
     "module": {"path", "imports", "exports"},
     "capability": {"grants"},
@@ -1152,12 +1156,13 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
+        "optOut",
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
-        "branch", "return", "goto", "set", "errorBoundary",
+        "branch", "return", "goto", "set", "errorBoundary", "optOut",
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -1183,7 +1188,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "htmlTemplate": {"body"},
     "webServer": {
         "host", "port", "startup", "shutdown", "notFound", "methodNotAllowed",
-        "route", "middleware",
+        "route", "middleware", "optOut",
     },
     "platform": {
         "os", "arch", "targetRuntime", "output", "override",
@@ -3246,6 +3251,7 @@ def _validate_program(program: Program) -> None:
     _validate_dos_bounds(program)
     _validate_error_disclosure(program)
     _validate_utf8_boundary(program)
+    _validate_protection_optout(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4813,6 +4819,25 @@ def _validate_utf8_boundary(program: Program) -> None:
                 f"{out_type!r}, which is not a validated text type; cross a UTF-8 "
                 f"validation boundary that yields a `validated` type (README §10.6)",
                 ent.line, code="SS3096")
+
+
+def _validate_protection_optout(program: Program) -> None:
+    """X-080 / README §14: secure-by-default — every protection opt-out (disable
+    auto-escape, allow plaintext cookies, skip CSRF, widen the host allowlist, …)
+    must be an explicit, justified row: `optOut <protection> because "…"`. An
+    opt-out with no `because` is a hard error (SS3080), keeping every weakened
+    default greppable and accountable."""
+    for n in program.order:
+        ent = program.entities[n]
+        for r in ent.facts("optOut"):
+            if not r.payload:
+                continue
+            if "because" not in r.payload:
+                raise EavError(
+                    f"{ent.kind} {ent.name!r} opts out of protection {r.payload[0]!r} "
+                    f"without a `because`; every security opt-out must be explicit and "
+                    f"justified (README §14)",
+                    r.line, code="SS3080")
 
 
 def _validate_time_safety(program: Program) -> None:

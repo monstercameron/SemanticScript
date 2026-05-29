@@ -4816,6 +4816,31 @@ def test_validated_bytes_to_text_accepted():
     assert "ingest" in prog.entities
 
 
+def test_protection_optout_without_because_rejected():
+    # X-080 / §14: a security opt-out must carry a `because` rationale -> SS3080.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main optOut autoEscape\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3080"
+
+
+def test_protection_optout_with_because_accepted():
+    # X-080: a justified opt-out is explicit + greppable, and accepted.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main optOut autoEscape because "rendering a pre-sanitized trusted fragment"\n'
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+    )
+    prog = eavc.parse(src)
+    assert "main" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
