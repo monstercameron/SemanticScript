@@ -6929,6 +6929,58 @@ class EavCodegen:
             fmt = self.global_string(b"%g\n\x00")
             val = arg("value", "Float64")
             result = builder.call(self.runtime("printf"), [fmt, val])
+        elif target.startswith("buffer."):
+            # WS1-119: a length-carrying buffer laid out as [i64 len][n bytes][1
+            # scratch]. Access is bounds-checked: an out-of-bounds index sets the
+            # fallible error (`err`) and is redirected to the scratch byte, so a
+            # bad index is a BufferBoundsError, never an out-of-bounds load/store.
+            i8 = ir.IntType(8)
+            i64 = ir.IntType(64)
+
+            def _load_len(buf):
+                return builder.load(builder.bitcast(buf, i64.as_pointer()))
+
+            def _safe_off(buf, idx):
+                length = _load_len(buf)
+                oob = builder.or_(builder.icmp_signed(">=", idx, length),
+                                  builder.icmp_signed("<", idx, ir.Constant(i64, 0)))
+                scratch = builder.add(ir.Constant(i64, 8), length)  # the scratch byte
+                inb = builder.add(ir.Constant(i64, 8), idx)
+                return oob, builder.select(oob, scratch, inb)
+
+            if target == "buffer.create":
+                n = arg("size", "Int64")
+                total = builder.add(n, ir.Constant(i64, 9))  # 8 len + n + 1 scratch
+                ptr = builder.call(self.runtime("malloc"), [total])
+                builder.store(n, builder.bitcast(ptr, i64.as_pointer()))
+                result = ptr
+            elif target == "buffer.length":
+                result = _load_len(arg("buffer", "OpaquePointer"))
+            elif target == "buffer.get":
+                buf = arg("buffer", "OpaquePointer")
+                err, off = _safe_off(buf, arg("index", "Int64"))
+                result = builder.load(builder.gep(buf, [off]))  # i8 (Byte)
+            elif target == "buffer.set":
+                buf = arg("buffer", "OpaquePointer")
+                err, off = _safe_off(buf, arg("index", "Int64"))
+                val = arg("value", "Byte")
+                if val.type != i8:
+                    val = builder.trunc(val, i8) if val.type.width > 8 else builder.zext(val, i8)
+                builder.store(val, builder.gep(buf, [off]))
+                result = ir.Constant(ir.IntType(32), 0)
+            elif target == "buffer.slice":
+                buf = arg("buffer", "OpaquePointer")
+                start = arg("start", "Int64")
+                length = arg("length", "Int64")
+                buflen = _load_len(buf)
+                end = builder.add(start, length)
+                err = builder.or_(builder.icmp_signed(">", end, buflen),
+                                  builder.icmp_signed("<", start, ir.Constant(i64, 0)))
+                off = builder.select(err, builder.add(ir.Constant(i64, 8), buflen),
+                                     builder.add(ir.Constant(i64, 8), start))
+                result = builder.gep(buf, [off])  # a view pointer into the buffer
+            else:
+                result = ir.Constant(ir.IntType(32), 0)
         elif target in ("math.divideInt64", "math.moduloInt64"):
             left = arg("left", "Int64")
             right = arg("right", "Int64")

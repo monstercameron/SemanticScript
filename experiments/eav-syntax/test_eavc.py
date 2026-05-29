@@ -5292,6 +5292,54 @@ def test_standard_memory_contract_and_impl():
     assert proc.returncode == 0, proc.stderr
 
 
+_BUFFER_RUNTIME_SRC = (
+    "Buf is project\nBuf module appBuf\nBuf target console\nBuf entry main\n"
+    "appBuf is module\nappBuf path a.b\n"
+    'appBuf purpose "p"\nappBuf invariant "i"\n'
+    "ExitCode is alias\nExitCode for Int32\nBuffer is alias\nBuffer for OpaquePointer\n"
+    "BufferBoundsError is error\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    "main let cap immutable Int64 4\nmain let zero immutable Int64 0\n"
+    "main let oobIndex immutable Int64 99\nmain let val immutable Byte 65\n"
+    'main let oobMsg immutable String "oob"\n'
+    "main let okCode immutable ExitCode 0\n"
+    "main do makeBuf\nmain do put\nmain branch ifError put goto failed\n"
+    "main do len\nmain do show\n"
+    "main do getOob\nmain branch ifError getOob goto outOfBounds\n"
+    "main return okCode\n"
+    "main at failed return okCode\n"
+    "main at outOfBounds do showOob\nmain return okCode\n"
+    "makeBuf is call\nmakeBuf in main\nmakeBuf invokes buffer.create\n"
+    "makeBuf arg size Int64 cap\nmakeBuf out buf Buffer\n"
+    "put is call\nput in main\nput invokes buffer.set\n"
+    "put arg buffer Buffer buf\nput arg index Int64 zero\nput arg value Byte val\n"
+    "put out wrote Int32\nput catch e BufferBoundsError\n"
+    "len is call\nlen in main\nlen invokes buffer.length\n"
+    "len arg buffer Buffer buf\nlen out n Int64\n"
+    "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 n\n"
+    "getOob is call\ngetOob in main\ngetOob invokes buffer.get\n"
+    "getOob arg buffer Buffer buf\ngetOob arg index Int64 oobIndex\n"
+    "getOob out byteVal Byte\ngetOob catch e2 BufferBoundsError\n"
+    "showOob is call\nshowOob in main\nshowOob invokes console.writeLine\n"
+    "showOob arg text String oobMsg\n"
+)
+
+
+def test_buffer_runtime_bounds_checked_jit_runs():
+    # WS1-119: buffer.create/length/get/set JIT-run with real bounds checks — an
+    # in-bounds length prints (4) and an out-of-bounds get takes the BufferBoundsError
+    # branch (prints "oob"). No-op-failing: an ignored buffer.* would not lower to
+    # the malloc + bounds-checked load/store this exercises.
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(_BUFFER_RUNTIME_SRC)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_BUFFER_RUNTIME_SRC, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "4" in proc.stdout      # buffer.length
+    assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

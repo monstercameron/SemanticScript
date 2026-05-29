@@ -1,5 +1,6 @@
 # standard.buffer.semsig — generated signature sidecar (README §10.6, §29 #14).
-# DEFERRED runtime (WS1-119): bounds-checked buffers/slices. A `Buffer` carries
+# Runtime (WS1-119): bounds-checked buffers/slices, lowered + JIT-run. A `Buffer`
+# carries
 # its length; element access is `buffer.get index` -> Result (byte or
 # BufferBoundsError) — there is NO indexing/offset syntax in app source, so an
 # out-of-bounds access is a checked error, never UB. `buffer.slice` returns a
@@ -24,6 +25,12 @@ ByteCount purpose "A length / index measured in bytes"
 
 BufferBoundsError is error
 BufferBoundsError purpose "An index or range outside a buffer's length (never UB)"
+
+bufferCreate is intrinsic
+bufferCreate target buffer.create
+bufferCreate arg size ByteCount
+bufferCreate out buffer Buffer
+bufferCreate purpose "Allocate a zeroed, length-carrying buffer of `size` bytes (deferred runtime)"
 
 bufferLength is intrinsic
 bufferLength target buffer.length
