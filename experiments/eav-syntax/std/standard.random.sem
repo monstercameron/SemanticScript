@@ -1,0 +1,50 @@
+# standard.random — EAV-native seeded RNG (§27 planned; §30.5.3 authority model).
+#
+# Parity with semsc's `std/random` surface, the EAV-clean way: randomness is
+# authority. Drawing a *seed* from the environment is a capability-mediated effect
+# (`seedFromEntropy`), so a seeded-random capability makes a run reproducible
+# (§30.5.3) and replayable under `mode capturedOutputReplay`. The PRNG step
+# itself (`nextRandom`) is a pure, deterministic LCG over an Int64 state — same
+# seed, same sequence — so it needs no authority and lowers to plain arithmetic.
+
+standardRandom is module
+standardRandom path standard.random
+standardRandom purpose "Seeded deterministic RNG with a capability-gated entropy seed"
+standardRandom invariant "nextRandom is pure (same seed, same sequence); seeding from entropy is capability-mediated"
+
+entropySource is capability
+entropySource grants read random.entropy
+entropySource purpose "Authority to draw a non-deterministic seed from the environment"
+
+seedFromEntropy is operation
+seedFromEntropy out Int64
+seedFromEntropy effect read random.entropy
+seedFromEntropy uses entropySource
+seedFromEntropy body runtimeBinding eav_http_now_millis
+seedFromEntropy purpose "Draw a non-deterministic seed (capability-gated); inject a fixed seed for determinism"
+
+nextRandom is operation
+nextRandom in state Int64
+nextRandom out Int64
+nextRandom async no
+nextRandom purpose "Advance the PRNG state one step with a 64-bit LCG (pure, wrapping)"
+nextRandom invariant "Deterministic: the same state always yields the same next state"
+nextRandom let multiplier immutable Int64 6364136223846793005
+nextRandom let increment immutable Int64 1442695040888963407
+nextRandom do scaleState
+nextRandom do addIncrement
+nextRandom return advancedState
+
+scaleState is call
+scaleState in nextRandom
+scaleState invokes math.multiplyInt64
+scaleState arg left Int64 state
+scaleState arg right Int64 multiplier
+scaleState out scaledState Int64
+
+addIncrement is call
+addIncrement in nextRandom
+addIncrement invokes math.addInt64
+addIncrement arg left Int64 scaledState
+addIncrement arg right Int64 increment
+addIncrement out advancedState Int64

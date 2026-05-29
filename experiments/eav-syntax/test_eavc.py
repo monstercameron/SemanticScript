@@ -2177,6 +2177,77 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+_RANDOM_SEQ_MAIN = """
+RandomSeq is project
+RandomSeq module appRandom
+RandomSeq target console
+RandomSeq entry main
+
+appRandom is module
+appRandom path examples.randomSeq
+appRandom exports main
+appRandom purpose "Advance a seeded PRNG one step"
+appRandom invariant "Deterministic from the fixed seed"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Advance the PRNG from seed 1 and print the next state"
+main invariant "Prints the deterministic next state for seed 1"
+main let seed immutable Int64 1
+main let okCode immutable ExitCode 0
+main do step
+main do show
+main return okCode
+
+step is call
+step in main
+step invokes nextRandom
+step arg state Int64 seed
+step out nextState Int64
+
+show is call
+show in main
+show invokes console.writeIntegerLine
+show arg value Int64 nextState
+"""
+
+
+def test_random_seeded_sequence_is_deterministic():
+    # WS3-103: the pure LCG gives the same next state for the same seed.
+    stdlib = open(os.path.join(STD, "standard.random.sem"), encoding="utf-8").read()
+    composed = stdlib + "\n" + _RANDOM_SEQ_MAIN
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "7806831264735756412"  # LCG(seed=1)
+
+
+def test_random_seed_from_entropy_requires_capability():
+    # WS3-103: drawing a seed from entropy is capability-mediated.
+    stdlib = open(os.path.join(STD, "standard.random.sem"), encoding="utf-8").read()
+    main = (
+        "RandSeed is project\nRandSeed module appRandSeed\n"
+        "RandSeed target console\nRandSeed entry main\n"
+        "appRandSeed is module\nappRandSeed path examples.randSeed\n"
+        'appRandSeed exports main\nappRandSeed purpose "p"\nappRandSeed invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do draw\nmain do show\nmain return okCode\n"
+        "draw is call\ndraw in main\ndraw invokes seedFromEntropy\ndraw out s Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 s\n"
+    )
+    prog = eavc.parse(stdlib + "\n" + main)
+    assert any("read random.entropy" in w and "not covered" in w for w in prog.warnings)
+
+
 _CLOCK_CONV_MAIN = """
 ClockConv is project
 ClockConv module appClock
