@@ -8622,3 +8622,44 @@ def test_mcp_stdio_session_round_trips_and_errors():
     # the malformed line is surfaced as a parse error (id null), not dropped
     parse_errors = [r for r in responses if r.get("error", {}).get("code") == -32700]
     assert parse_errors and parse_errors[0]["id"] is None
+
+
+# === X-111: eavc new scaffolding (_new_project_files) coverage ===
+
+def test_new_project_name_normalization_and_runs(tmp_path):
+    """X-111: _new_project_files derives a PascalCase project/module and a
+    camelCase module name from an arbitrary directory name (hyphens, underscores,
+    and digits as separators), and the generated tree lints clean and runs,
+    greeting with the normalized name. Exercises the name-normalization branches
+    a stub scaffold would not reproduce."""
+    root = tmp_path / "my-cool_app2"
+    assert eavc.main(["new", str(root)]) == 0
+    assert "MyCoolApp2 is project" in (root / "build.sem").read_text(encoding="utf-8")
+    assert "myCoolApp2 is module" in (root / "src" / "main.sem").read_text(encoding="utf-8")
+    # the composed project lints clean (no error-severity diagnostics)
+    composed = eavc.load_project(str(root))
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(composed)))
+    # and runs, greeting with the PascalCase name
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", str(root)],
+        capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "hello from MyCoolApp2" in proc.stdout
+
+
+def test_new_project_files_all_separator_name_falls_back_to_app():
+    """X-111: a directory name with no alphanumeric parts falls back to 'App'."""
+    files = eavc._new_project_files("---")
+    assert "App is project" in files["build.sem"]
+    assert "app is module" in files["src/main.sem"]
+
+
+def test_new_project_files_emits_complete_canonical_tree():
+    """X-111: the scaffold map contains every canonical file (§28.2) and the
+    test stub is a co-located *.test.sem with a tag-test operation."""
+    files = eavc._new_project_files("demoApp")
+    assert set(files) == {
+        "build.sem", "src/main.sem", "src/main.test.sem",
+        ".gitignore", "tests/golden/.gitkeep"}
+    assert "tag test" in files["src/main.test.sem"]
+    assert files[".gitignore"].strip() == "dist/"
