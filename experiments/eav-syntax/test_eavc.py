@@ -103,6 +103,20 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+@pytest.mark.parametrize("pattern", list(eavc.SCAFFOLD_PATTERNS))
+def test_scaffold_parses_and_lints_clean(pattern):
+    # WS4-021: scaffold output parses and lints with no error-severity diagnostics.
+    prog = eavc.parse(eavc.scaffold(pattern))
+    diags = eavc.lint(prog)
+    assert not any(d.severity == "error" for d in diags), [d.render() for d in diags]
+
+
+def test_scaffold_console_program_runs():
+    prog = eavc.parse(eavc.scaffold("console-program"))
+    ir_text = str(eavc.lower_to_llvm(prog))
+    assert 'call i32 @"puts"' in ir_text
+
+
 def test_summarize_counts_by_kind():
     prog = eavc.parse(_ir_helper_program())
     counts = eavc.summarize(prog)

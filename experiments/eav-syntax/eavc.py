@@ -858,6 +858,65 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+SCAFFOLD_PATTERNS = ("console-program", "fallible-write")
+
+
+def scaffold(pattern: str) -> str:
+    """Emit a canonical, ready-to-edit EAV program for a pattern (README ss24).
+    The output parses, lints clean, and (where runnable) JIT-executes."""
+    if pattern == "console-program":
+        return (
+            "Scaffold is project\nScaffold module scaffoldModule\n"
+            "Scaffold target console\nScaffold entry main\n\n"
+            "scaffoldModule is module\nscaffoldModule path examples.scaffold\n"
+            "scaffoldModule exports main\n"
+            'scaffoldModule purpose "Scaffolded console program"\n'
+            'scaffoldModule invariant "main is the only entry operation"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
+            "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+            "main uses stdoutWriter\nmain memory heap no\nmain async no\n"
+            'main purpose "Write a line and exit 0"\n'
+            'main invariant "Always returns 0"\n'
+            'main let greeting immutable String "edit me"\n'
+            "main let okCode immutable ExitCode 0\n"
+            "main do writeGreeting\nmain return okCode\n\n"
+            "writeGreeting is call\nwriteGreeting in main\n"
+            "writeGreeting invokes console.writeLine\n"
+            "writeGreeting arg text String greeting\n"
+        )
+    if pattern == "fallible-write":
+        return (
+            "Scaffold is project\nScaffold module scaffoldModule\n"
+            "Scaffold target console\nScaffold entry main\n\n"
+            "scaffoldModule is module\nscaffoldModule path examples.scaffold\n"
+            "scaffoldModule exports main\n"
+            'scaffoldModule purpose "Scaffolded fallible-write program"\n'
+            'scaffoldModule invariant "Handles the write failure path"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
+            "ConsoleWriteError is error\n\n"
+            "WriteFailed is errorCase\nWriteFailed of ConsoleWriteError\n"
+            "WriteFailed payload Int32\n\n"
+            "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+            "main uses stdoutWriter\nmain memory heap no\nmain async no\n"
+            'main purpose "Write a line; return 1 on failure"\n'
+            'main invariant "Returns 1 on any write failure"\n'
+            'main let greeting immutable String "edit me"\n'
+            "main let okCode immutable ExitCode 0\n"
+            "main let failCode immutable ExitCode 1\n"
+            "main do writeGreeting\n"
+            "main branch ifError writeGreeting goto failed\n"
+            "main return okCode\n"
+            "main at failed return failCode\n\n"
+            "writeGreeting is call\nwriteGreeting in main\n"
+            "writeGreeting invokes console.writeLine\n"
+            "writeGreeting arg text String greeting\n"
+            "writeGreeting catch writeError ConsoleWriteError\n"
+        )
+    raise EavError(f"unknown scaffold pattern {pattern!r}")
+
+
 QUERY_DIMENSIONS = (
     "effects", "uses", "labels", "calls", "types", "ownership-leaked",
 )
@@ -2226,6 +2285,16 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_scaffold(args) -> int:
+    """Print a canonical scaffold for a pattern."""
+    try:
+        sys.stdout.write(scaffold(args.pattern))
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_fmt(args) -> int:
     """Print the canonical EAV formatting of a program."""
     program = parse(_read_source(args.path))
@@ -2312,6 +2381,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_query.add_argument("dimension", help=f"one of: {', '.join(QUERY_DIMENSIONS)}")
     sp_query.add_argument("path", help="EAV source file, or - for stdin")
     sp_query.set_defaults(func=cmd_query)
+
+    sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
+    sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
+    sp_scaffold.set_defaults(func=cmd_scaffold)
 
     args = parser.parse_args(argv)
     try:
