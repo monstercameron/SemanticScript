@@ -566,6 +566,18 @@ def _ir_helper_program():
     )
 
 
+def test_token_sync_drift_guard_green():
+    # X-005: every reserved word has a §5/§6/§22 home (or is a documented future
+    # token). A new unsynced reserved word would make this fail.
+    assert eavc.token_sync_drift() == set()
+
+
+def test_token_sync_guard_detects_unsynced(monkeypatch):
+    # Adding a reserved word with no home makes the guard report it.
+    monkeypatch.setattr(eavc, "RESERVED_WORDS", eavc.RESERVED_WORDS | {"zzznewword"})
+    assert "zzznewword" in eavc.token_sync_drift()
+
+
 def test_diagnostics_registry_round_trip():
     # Every registry entry has a tier + repair fields (single source of truth).
     assert eavc.DIAGNOSTICS

@@ -816,6 +816,34 @@ def _check_unique_labels(ent: Entity, predicate: str, what: str, cite: str) -> N
         seen.add(name)
 
 
+# Reserved words with no §5 predicate home yet — reserved for a future version
+# (the drift guard tolerates exactly these; anything else unhomed is a failure).
+RESERVED_FUTURE = {"using"}
+
+
+def token_sync_drift() -> set:
+    """X-005 drift guard (README §2↔§5↔§22↔§30.7): every reserved word must have
+    a home — a literal/value, a core token, a guard/comparator sub-keyword, an
+    entity kind, a primitive type, or a predicate in some §5/§6/§22 set. Returns
+    the set of unsynced reserved words (excluding the documented future set)."""
+    literals = {"nil", "true", "false", "yes", "no"}
+    core = {"is", "at"}
+    guards = {
+        "if", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
+        "ifPending", "ifCanceled", "else", "onFailure", "equals", "notEquals",
+        "greaterThan", "lessThan", "bind", "propagate", "logAndSuppress",
+        "because", "immutable", "mutable",
+    }
+    interop = {"export", "c"}
+    homed = set()
+    homed |= literals | core | guards | interop
+    homed |= ENTITY_KINDS | PRIMITIVE_TYPES | {"Result"}
+    homed |= UNIVERSAL_PREDICATES | set(_META_PREDS) | set(_GATE_PREDS)
+    for preds in ALLOWED_PREDICATES.values():
+        homed |= preds
+    return RESERVED_WORDS - homed - RESERVED_FUTURE
+
+
 def _predicate_allowed(kind: str, predicate: str) -> bool:
     if predicate in UNIVERSAL_PREDICATES:
         return True
