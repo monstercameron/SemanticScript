@@ -177,6 +177,12 @@ DIAGNOSTICS.update({
     "SS2804": {"tier": "T0", "summary": "Dependency sha256 digest mismatch.",
                "found": "A resolved dependency's content hash != its lock digest.",
                "suggested": "Re-fetch the dependency; a mismatch is a tamper signal (§28.4)."},
+    "SS1323": {"tier": "T0", "summary": "`join` before `start`.",
+               "found": "A `join TASK` appearing before the task is started.",
+               "suggested": "Start the task before joining it (README §15.5)."},
+    "SS1324": {"tier": "T0", "summary": "Task `ifError` before `join`.",
+               "found": "A `branch ifError TASK` before the task is joined.",
+               "suggested": "Join the task before reading its error (README §13/§15.5)."},
     "SS1320": {"tier": "T0", "summary": "Started task never resolved.",
                "found": "A `start TASK` with no join/poll/cancel/detach.",
                "suggested": "Resolve the task before return (README §17 #20)."},
@@ -2678,6 +2684,28 @@ def _validate_async_lifecycle(op: Entity) -> None:
             f"before return (README ss17 #20)",
             op.line, code="SS1320",
         )
+    # Ordered lifecycle (README ss13/ss15.5): join needs a prior start; an
+    # `ifError TASK` needs a prior `join` (a task's error is read after join).
+    started_so_far: set = set()
+    joined_so_far: set = set()
+    for row in op.rows:
+        if row.predicate == "start" and row.payload:
+            started_so_far.add(row.payload[0])
+        elif row.predicate == "join" and row.payload:
+            if row.payload[0] not in started_so_far:
+                raise EavError(
+                    f"`join {row.payload[0]}` has no prior `start` (README ss15.5)",
+                    row.line, code="SS1323",
+                )
+            joined_so_far.add(row.payload[0])
+        elif (row.predicate == "branch" and len(row.payload) >= 2
+              and row.payload[0] == "ifError" and row.payload[1] in started):
+            if row.payload[1] not in joined_so_far:
+                raise EavError(
+                    f"`branch ifError {row.payload[1]}` reads a task's error before "
+                    f"`join` (README ss13/ss15.5)",
+                    row.line, code="SS1324",
+                )
 
 
 def _validate_let_forward_refs(op: Entity) -> None:

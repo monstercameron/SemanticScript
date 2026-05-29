@@ -2388,6 +2388,29 @@ def test_e2e_async_single_thread():
     assert "42" in proc.stdout
 
 
+def test_join_before_start_rejected():
+    # README §15.5: a task lifecycle illegal transition — join before start.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain async yes\n"
+            "main join t\nmain start t\n"
+            "t is task\nt in main\nt invokes x.y\n"
+        )
+    assert exc.value.code == "SS1323"
+
+
+def test_iferror_task_before_join_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain async yes\n"
+            "main let okCode immutable ExitCode 0\n"
+            "main start t\nmain branch ifError t goto failed\nmain join t\n"
+            "main return okCode\nmain at failed return okCode\n"
+            "t is task\nt in main\nt invokes x.y\nt catch e SomeError\n"
+        )
+    assert exc.value.code == "SS1324"
+
+
 def test_started_task_must_be_resolved():
     # README §17 #20: a started task must be resolved before return.
     with pytest.raises(eavc.EavError) as exc:
