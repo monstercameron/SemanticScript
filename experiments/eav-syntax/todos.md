@@ -175,7 +175,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS2-015 #17 defers reverse-order · #18 onFailure propagate (catch + Result) · #19 logAndSuppress needs because.
 - [ ] WS2-016 #20 started task resolved before return · #21 cancel needs start · #22 ifCanceled needs cancel+join.
 - [ ] WS2-017 #23 sqlite column consumed before next read · #24 multi-write needs txn · #25 non-void no out/catch/discards = error.
-- [ ] WS2-018 #26 no dotted internal refs · #27 declaration reorderable, steps not · #28 immutable-rebind reject / mutable rebind ok.
+- [x] WS2-018 #26 no dotted internal refs · #27 declaration reorderable, steps not · #28 immutable-rebind reject / mutable rebind ok. _(eavc: dotted internal-ref reject SS1326 (#26, `test_dotted_internal_reference_rejected`), reorder-stable decls (#27, `test_operation_decl_rows_reorder_stable`), immutable-rebind reject + mutable rebind (#28, `test_lower_immutable_rebind_rejected`, `test_lower_mutable_rebind_stores_to_alloca`))_
 - [ ] WS2-019 #29 dup field/variant · #30/#31 branch-else default-only-after-guard formatter warn · #32 dup route reject.
 - [ ] WS2-020 #33 template arg=hole names · #34 String→HtmlSafeUrl reject · #35 fallible-no-error-path warn (cleanup-worker exempt).
 - [ ] WS2-021 #36 ifOut-before-error warn · #37 alias-dotted only in `for` · #38 entry exports (MD1013) · #39 owns w/o cleanedBy warn.

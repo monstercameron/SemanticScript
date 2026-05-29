@@ -1506,6 +1506,15 @@ def test_void_console_write_needs_no_discards():
     assert prog.entities["w"].fact("discards") is None
 
 
+def test_dotted_internal_reference_rejected():
+    # README §3 / §17 #26: internal references are bare; dots are external-only.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain do foo.bar\n"
+        )
+    assert exc.value.code == "SS1326"
+
+
 def test_activate_entity_not_owned_rejected():
     # README ss17 #4: do/start/defer must reference an in-op entity.
     with pytest.raises(eavc.EavError) as exc:

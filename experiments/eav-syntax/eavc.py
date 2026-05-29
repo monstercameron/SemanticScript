@@ -168,6 +168,9 @@ DIAGNOSTICS.update({
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
+    "SS1326": {"tier": "T1", "summary": "Dotted name in an internal reference.",
+               "found": "A `do`/`start`/`defer` (etc.) target containing a dot.",
+               "suggested": "Internal refs are bare; dots are external-path only (§3)."},
     "SS1345": {"tier": "T1", "summary": "Ordering comparison on Bool/enum.",
                "found": "A compare.lessThan/greaterThan on a Bool or enum operand.",
                "suggested": "Bool/enum are equals-only; use equal/notEqual (README §17 #45)."},
@@ -1686,6 +1689,14 @@ def _validate_step_split(program: Program) -> None:
             expected = _STEP_SPLIT.get(row.predicate)
             if expected is None or not row.payload:
                 continue
+            if "." in row.payload[0]:
+                raise EavError(
+                    f"`{row.predicate} {row.payload[0]}` uses a dotted name; internal "
+                    f"references are bare (dots are external-path only, README ss3, "
+                    f"ss26)",
+                    row.line,
+                    code="SS1326",
+                )
             ref = program.entities.get(row.payload[0])
             if ref is None:
                 raise EavError(
