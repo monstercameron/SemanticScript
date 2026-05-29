@@ -2992,6 +2992,36 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
     for argv in invocations:
         rc = eavc.main(argv)
         assert rc == 0, (argv, capsys.readouterr())
+
+
+def _compare_ir(target, atype, va, vb):
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        f"main let a immutable {atype} {va}\nmain let b immutable {atype} {vb}\n"
+        "main let okCode immutable ExitCode 0\nmain do cmp\nmain return okCode\n"
+        f"cmp is call\ncmp in main\ncmp invokes {target}\n"
+        f"cmp arg left {atype} a\ncmp arg right {atype} b\ncmp out result Bool\n"
+    )
+    return str(eavc.lower_to_llvm(eavc.parse(src)))
+
+
+def test_compare_codegen_depth():
+    # X-064: _emit_compare branches — String (strcmp), Float64 ordered/unordered,
+    # and the ordering-on-String reject (SS1345).
+    assert "strcmp" in _compare_ir("compare.equalString", "String", '"x"', '"y"')
+    assert "fcmp" in _compare_ir("compare.equalFloat64", "Float64", "1.0", "2.0")
+    assert "fcmp" in _compare_ir("compare.notEqualFloat64", "Float64", "1.0", "2.0")
+    assert "fcmp" in _compare_ir("compare.lessThanFloat64", "Float64", "1.0", "2.0")
+    with pytest.raises(eavc.EavError) as exc:
+        _compare_ir("compare.lessThanString", "String", '"x"', '"y"')
+    assert getattr(exc.value, "code", None) == "SS1345"
+
+
+def test_diagnostic_emission_guard():
     # X-062: every diagnostic code in the registry is actually emitted somewhere
     # (a literal "CODE" appears beyond its registry definition), not merely
     # defined. Catches drift where a new code is registered without being wired.
