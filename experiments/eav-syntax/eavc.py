@@ -1052,6 +1052,13 @@ class EavCodegen:
         p = row.payload
         guard = p[0]
         if guard == "ifError":
+            callee = self.program.entities.get(p[1])
+            if callee is None or callee.fact("catch") is None:
+                raise EavError(
+                    f"`branch ifError {p[1]}` needs {p[1]!r} to be a fallible call "
+                    f"with a `catch` row (README ss13, ss17 #6)",
+                    row.line,
+                )
             info = self._call_info.get(p[1])
             err = info[1] if info and info[1] is not None else ir.Constant(ir.IntType(1), 0)
             cont = self._new_cont(fn)

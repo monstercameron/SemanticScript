@@ -530,6 +530,24 @@ def test_lower_branch_iffalse_inverts_to_cbranch():
     assert "br i1 " in ir_text
 
 
+def test_iferror_requires_catch():
+    # README ss13/ss17 #6: ifError needs a fallible call with a catch row.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do sumCall\nmain branch ifError sumCall goto failed\n"
+        "main return okCode\nmain at failed return okCode\n"
+        "sumCall is call\nsumCall in main\nsumCall invokes math.addInt64\n"
+        "sumCall arg left Int64 okCode\nsumCall arg right Int64 okCode\n"
+        "sumCall out total Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(src))
+    assert "catch" in exc.value.message
+
+
 def test_lower_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
     src = (
