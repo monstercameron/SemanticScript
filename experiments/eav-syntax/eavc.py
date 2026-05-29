@@ -188,6 +188,12 @@ DIAGNOSTICS.update({
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
+    "SS1340": {"tier": "T4", "summary": "ifValue/ifOut is comparison sugar.",
+               "found": "A `branch ifValue`/`ifOut` guard.",
+               "suggested": "Informational; fmt canonicalizes to compare + branch if (§13)."},
+    "SS1542": {"tier": "T1", "summary": "cleanup onFailure without a worker catch.",
+               "found": "A cleanup `onFailure` whose worker call has no `catch`.",
+               "suggested": "Add a `catch` to the worker, or drop onFailure (§17 #42)."},
     "SS1326": {"tier": "T1", "summary": "Dotted name in an internal reference.",
                "found": "A `do`/`start`/`defer` (etc.) target containing a dot.",
                "suggested": "Internal refs are bare; dots are external-path only (§3)."},
@@ -1591,6 +1597,17 @@ def lint(program: Program) -> list:
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind in ("operation", "function"):
+            for row in ent.rows:
+                if (row.predicate == "branch" and row.payload
+                        and row.payload[0] in ("ifValue", "ifOut")):
+                    diags.append(Diagnostic(
+                        "SS1340", "info",
+                        f"{row.payload[0]} is sugar; fmt canonicalizes it to a "
+                        f"compare call + `branch if` (README ss13)",
+                        row.line, ent.name))
     for w in program.warnings:
         diags.append(Diagnostic("SS0900", "warning", w))
     diags.extend(_suppress_diagnostics(program, diags))
@@ -2018,6 +2035,18 @@ def _validate_cleanup(program: Program) -> None:
                         f"error, README ss15.6, ss29 #2)",
                         ent.line,
                         code="SS1518",
+                    )
+            # README ss17 #42: onFailure is meaningful only if the worker can
+            # fail — it requires the worker call to have a `catch`.
+            if onfail and onfail.payload:
+                worker = program.entities.get(calls[0].payload[0]) if calls[0].payload else None
+                if worker is not None and worker.fact("catch") is None:
+                    raise EavError(
+                        f"cleanup {ent.name!r} declares `onFailure` but its worker "
+                        f"{worker.name!r} has no `catch` (nothing to handle, README "
+                        f"ss17 #42)",
+                        ent.line,
+                        code="SS1542",
                     )
             resource = cleans[0].payload[0] if cleans[0].payload else None
             if resource is not None and resource not in owned:

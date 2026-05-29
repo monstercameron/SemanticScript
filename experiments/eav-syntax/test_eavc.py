@@ -1580,7 +1580,7 @@ _CLEANUP_BASE = (
     "openDb arg path String dbPath\nopenDb out db Int64\nopenDb owns db\n"
     "openDb cleanedBy closeCleanup\n"
     "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
-    "closeDb arg database Int64 db\n"
+    "closeDb arg database Int64 db\ncloseDb catch closeErr SqliteCloseError\n"
 )
 
 
@@ -1628,6 +1628,27 @@ def test_onfailure_propagate_needs_result():
     # main returns Result -> ok
     good = base + "main is operation\nmain out Result ExitCode SomeError\n"
     assert "main" in eavc.parse(good).entities
+
+
+def test_cleanup_onfailure_needs_worker_catch():
+    # README §17 #42: onFailure requires the worker call to have a catch.
+    src = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\nopenDb cleanedBy closeCleanup\n"
+        "closeNoCatch is call\ncloseNoCatch in main\ncloseNoCatch invokes sqlite.closeDatabase\n"
+        "closeNoCatch arg database Int64 db\n"  # no catch
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeNoCatch\n"
+        'closeCleanup onFailure logAndSuppress\ncloseCleanup because "x"\n'
+        "closeCleanup cleans db\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS1542"
+
+
+def test_ifvalue_emits_sugar_info():
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "ifvalue.sem"), encoding="utf-8").read())
+    assert "SS1340" in {d.code for d in eavc.lint(prog)}
 
 
 def test_cleanup_logandsuppress_requires_because():

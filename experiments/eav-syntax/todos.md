@@ -179,7 +179,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS2-019 #29 dup field/variant · #30/#31 branch-else default-only-after-guard formatter warn · #32 dup route reject.
 - [ ] WS2-020 #33 template arg=hole names · #34 String→HtmlSafeUrl reject · #35 fallible-no-error-path warn (cleanup-worker exempt).
 - [ ] WS2-021 #36 ifOut-before-error warn · #37 alias-dotted only in `for` · #38 entry exports (MD1013) · #39 owns w/o cleanedBy warn.
-- [ ] WS2-022 #40 ifOut/ifValue sugar info · #41 cleanup one cleans/call · #42 onFailure iff catch · #43 cleanup worker not `do`-activated.
+- [x] WS2-022 #40 ifOut/ifValue sugar info · #41 cleanup one cleans/call · #42 onFailure iff catch · #43 cleanup worker not `do`-activated. _(eavc: ifValue/ifOut info SS1340 (#40, `test_ifvalue_emits_sugar_info`); one cleans/call (#41, `_validate_cleanup`); onFailure needs worker catch SS1542 (#42, `test_cleanup_onfailure_needs_worker_catch`); cleanup worker not do-activated (#43, `test_cleanup_worker_also_do_activated_rejected`))_
 - [ ] WS2-023 #44 cleanup-worker out/no-catch needs discards · #45 Bool/enum equals-only · #46 entity-name unique in module.
 - [x] WS2-024 #47 binding-name no-shadow · #48 invokes resolution · #49 construction-target match. _(eavc: `_validate_no_shadow` (#47), `_validate_calls` invokes resolution (#48), `_emit_derived_target` field-arg match (#49); `test_binding_no_shadow_rejected`, `test_invokes_unresolved_bare_target_rejected`, `test_record_new_missing_field_rejected`)_
 - [ ] WS2-025 #50 runtimeBinding declares effects + app-source warn · #51 invokes unambiguous · #52 ifVariant exhaustiveness · #53 bind definite-assignment · #54 suppress code+because · #55 forTarget/forPlatform valid target/platform.
