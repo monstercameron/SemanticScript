@@ -1,0 +1,138 @@
+# taskforge-web — EAV port core (apps/taskforge-web, semsc v0.1 webServer app).
+#
+# The flagship §19 web app. The HTTP server loop + route/handler/middleware
+# dispatch are DEFERRED (README §34/WS3-017, gated behind sigs/standard.http.semsig);
+# the §14 handler ABIs are validated by WS2-026. What this port RUNS is the app's
+# content core — the integrated sqlite + html pipeline that produces a page body:
+# open an in-memory DB, seed a todo, read it back, HTML-escape it, and render the
+# page the /todos handler would return. JIT-runs AND builds to a native exe,
+# exercising the real sqlite and html runtimes together. (X-043)
+
+TaskforgeWeb is project
+TaskforgeWeb module appTaskforgeWeb
+TaskforgeWeb target console
+TaskforgeWeb entry main
+
+appTaskforgeWeb is module
+appTaskforgeWeb path apps.taskforgeWeb
+appTaskforgeWeb exports main
+appTaskforgeWeb purpose "Render the /todos page body from sqlite-backed data (server loop deferred)"
+appTaskforgeWeb invariant "The rendered page contains the HTML-escaped todo title read from the database"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+dbWriter is capability
+dbWriter grants write database.local
+dbWriter purpose "Allow controlled reads/writes to the local sqlite database"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main effect write database.local
+main uses stdoutWriter
+main uses dbWriter
+main async no
+main memory heap no
+main purpose "Seed a todo, read it from sqlite, escape it, and render the page body"
+main invariant "Renders the page the /todos handler would return"
+main let createSql immutable String "CREATE TABLE todos(id INTEGER, title TEXT)"
+main let insertSql immutable String "INSERT INTO todos VALUES(1, 'Buy <milk> & eggs')"
+main let selectSql immutable String "SELECT title FROM todos"
+main let titleColumn immutable Int32 0
+main let pageOpen immutable String "<html><body><ul><li>"
+main let pageClose immutable String "</li></ul></body></html>"
+main let okCode immutable ExitCode 0
+main do openDb
+main do createTable
+main do seedTodo
+main do prepareSelect
+main do stepRow
+main do readTitle
+main do escapeTitle
+main do composeOpen
+main do composeFull
+main do writePage
+main do finalizeSelect
+main do closeDb
+main return okCode
+
+openDb is call
+openDb in main
+openDb invokes openInMemory
+openDb out database SqliteDatabase
+
+createTable is call
+createTable in main
+createTable invokes exec
+createTable arg database SqliteDatabase database
+createTable arg sql String createSql
+createTable discards "create status"
+
+seedTodo is call
+seedTodo in main
+seedTodo invokes exec
+seedTodo arg database SqliteDatabase database
+seedTodo arg sql String insertSql
+seedTodo discards "insert status"
+
+prepareSelect is call
+prepareSelect in main
+prepareSelect invokes prepareStatement
+prepareSelect arg database SqliteDatabase database
+prepareSelect arg sql String selectSql
+prepareSelect out selectStatement SqliteStatement
+
+stepRow is call
+stepRow in main
+stepRow invokes stepStatement
+stepRow arg statement SqliteStatement selectStatement
+stepRow discards "step outcome"
+
+readTitle is call
+readTitle in main
+readTitle invokes columnText
+readTitle arg statement SqliteStatement selectStatement
+readTitle arg columnIndex Int32 titleColumn
+readTitle out rawTitle SqliteText
+
+escapeTitle is call
+escapeTitle in main
+escapeTitle invokes escapeText
+escapeTitle arg text String rawTitle
+escapeTitle out safeTitle String
+
+composeOpen is call
+composeOpen in main
+composeOpen invokes string.concat
+composeOpen arg left String pageOpen
+composeOpen arg right String safeTitle
+composeOpen out openPlusTitle String
+
+composeFull is call
+composeFull in main
+composeFull invokes string.concat
+composeFull arg left String openPlusTitle
+composeFull arg right String pageClose
+composeFull out pageHtml String
+
+writePage is call
+writePage in main
+writePage invokes console.writeLine
+writePage arg text String pageHtml
+
+finalizeSelect is call
+finalizeSelect in main
+finalizeSelect invokes finalizeStatement
+finalizeSelect arg statement SqliteStatement selectStatement
+finalizeSelect discards "finalize status"
+
+closeDb is call
+closeDb in main
+closeDb invokes closeDatabase
+closeDb arg database SqliteDatabase database
+closeDb discards "close status"

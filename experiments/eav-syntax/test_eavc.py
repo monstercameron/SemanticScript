@@ -3742,6 +3742,20 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+def test_app_taskforge_web_content_core_runs():
+    # X-043: the web app's content core (sqlite query -> html render) runs,
+    # integrating the real sqlite + html runtimes; the server loop is deferred.
+    composed = _app_program("taskforge-web", "standard.sqlite.sem", "standard.html.sem")
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(composed)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == (
+        "<html><body><ul><li>Buy &lt;milk&gt; &amp; eggs</li></ul></body></html>")
+
+
 def test_app_taskforge_tui_render_core_runs():
     # X-042: the TUI render core JIT-runs (interactive loop/collections/json/fs
     # deferred); it draws the frame, a row, status, and navigation.
