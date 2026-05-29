@@ -1470,6 +1470,25 @@ def test_builtin_targets_need_no_import():
     assert 'call i32 (i8*, ...) @"printf"' in ir_text
 
 
+def test_e2e_convert_widen_runs():
+    # WS1-095/WS3-014: convert.toInt64 widens Int32 -> Int64 (sext).
+    proc = _eavc_run("convert_demo.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "200" in proc.stdout
+
+
+def test_convert_lowering_forms():
+    assert "sext i32" in _ir_for("convert_demo.sem")
+    src = (
+        "P is project\nP module m\nP target console\nP entry conv\nm is module\nm path a.b\n"
+        "conv is operation\nconv in n Int64\nconv out Float64\n"
+        "conv do toF\nconv return f\n"
+        "toF is call\ntoF in conv\ntoF invokes convert.toFloat64\n"
+        "toF arg inputValue Int64 n\ntoF out f Float64\n"
+    )
+    assert "sitofp i64" in _ir_for_source(src)
+
+
 def test_e2e_float_math_and_writefloatline():
     # WS3-011/013: math.addFloat64 + console.writeFloatLine. 1.5 + 2.5 == 4.
     proc = _eavc_run("float_math.sem")

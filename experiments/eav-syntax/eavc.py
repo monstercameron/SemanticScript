@@ -1579,7 +1579,8 @@ def _target_is_nonvoid(target: str, program: Program):
     """Whether a call target yields a value eavc can statically judge: True for
     math.* (arith/compare), False for console.* (void), the callee's `out`
     presence for a bare user op, and None (unknown) for other external targets."""
-    if target.startswith("math.") or target.startswith("compare."):
+    if (target.startswith("math.") or target.startswith("compare.")
+            or target.startswith("convert.to")):
         return True
     if target.startswith("console."):
         return False
@@ -2310,6 +2311,8 @@ class EavCodegen:
             )
         elif target.startswith("compare."):
             result = self._emit_compare(target, args, builder, sym, call)
+        elif target.startswith("convert.to"):
+            result = self._emit_convert(target, args, builder, sym, call)
         elif target in self.functions:
             callee = self.program.entities[target]
             vals = []
@@ -2379,6 +2382,37 @@ class EavCodegen:
                 return builder.fcmp_unordered("!=", left, right)
             return builder.fcmp_ordered(self._CMP_OPS[op], left, right)
         return builder.icmp_signed(self._CMP_OPS[op], left, right)
+
+    def _emit_convert(self, target, args, builder, sym, call):
+        """Explicit numeric conversion `convert.to<Type>` (README ss33.5): int
+        widen=sext / narrow=trunc, int->float=sitofp, float->int=fptosi (trunc
+        toward zero), float widen/narrow=fpext/fptrunc."""
+        dst_name = target[len("convert.to"):]
+        dst = self.ir_type(dst_name)
+        if not args:
+            raise EavError(f"{target!r} needs one input arg", call.line)
+        a = next(iter(args.values()))
+        src_name = a.payload[1]
+        val = self._resolve(a.payload[2], src_name, builder, sym)
+        src = val.type
+        src_float = self.is_float_type(src_name)
+        dst_float = self.resolve_type_name(dst_name) in _FLOAT_TYPE_NAMES
+        if src_float and dst_float:
+            dst_bits = 64 if self.resolve_type_name(dst_name) == "Float64" else 32
+            src_bits = 64 if self.resolve_type_name(src_name) == "Float64" else 32
+            if dst_bits == src_bits:
+                return val
+            return builder.fpext(val, dst) if dst_bits > src_bits else builder.fptrunc(val, dst)
+        if src_float and not dst_float:
+            return builder.fptosi(val, dst)
+        if not src_float and dst_float:
+            return builder.sitofp(val, dst)
+        # int -> int
+        if dst.width > src.width:
+            return builder.sext(val, dst)
+        if dst.width < src.width:
+            return builder.trunc(val, dst)
+        return val
 
     def _guard_div_zero(self, builder, divisor) -> None:
         """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a

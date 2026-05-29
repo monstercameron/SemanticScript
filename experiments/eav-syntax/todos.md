@@ -140,7 +140,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-092 IEEE-754 floats (NaN≠NaN, ±inf). →test: `NaN notEquals NaN` true. §10.6 _(eavc: float compares lower to `fcmp` — notEquals→unordered `une` (NaN≠NaN true), equals→ordered `oeq` (NaN==NaN false); `test_ieee_float_compare_nan_semantics`)_
 - [ ] WS1-093 String equality bytewise UTF-8 (no normalization). →test: byte-equal vs canon-equal distinguished. §10.6
 - [ ] WS1-094 Eval order: args in document order; effects at activation step. →test: ordered-effect golden. §10.6
-- [ ] WS1-095 Numeric conversions explicit; float→int trunc/trap, narrowing trap, int→float round-even; Wrapping/Saturating variants. →test: each conversion + trap. §33.5
+- [x] WS1-095 Numeric conversions explicit; float→int trunc/trap, narrowing trap, int→float round-even; Wrapping/Saturating variants. →test: each conversion + trap. §33.5 _(eavc: `_emit_convert` — int widen=sext/narrow=trunc, int→float=sitofp, float→int=fptosi, float ext/trunc; `examples/convert_demo.sem`, `test_convert_lowering_forms`, `test_e2e_convert_widen_runs`. Narrowing-trap + Wrapping/Saturating variants pending.)_
 - [ ] WS1-096 Value lifetime: ordinary values compiler-managed (no free/GC pause); `memory heap no` satisfiable for pure-data ops. →test: record-building op compiles under `heap no`. §10.6
 
 ## 1I. **Lowering (KEYSTONE — §29 #3)**
@@ -218,7 +218,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS3-011 `console` (writeLine/writeIntegerLine/writeFloatLine). →test: output goldens. _(eavc: writeLine→puts, writeIntegerLine→printf %lld, writeFloatLine→printf %g; `test_console_writers_lower_distinctly`, `test_e2e_float_math_and_writefloatline`, hello/add_two/float_math goldens)_
 - [x] WS3-012 `compare.*` derived comparison primitives (all types; Bool/enum equals-only). →test: each comparator. §13 _(eavc: `_emit_compare` parses `compare.<op><Type>` → icmp/fcmp; ordering on Bool/enum is rejected SS1345 (§17 #45); `test_compare_primitive_lowers_to_icmp`, `test_compare_ordering_on_bool_rejected`)_
 - [x] WS3-013 `math.*` (int/float arith, checked variants). →test: ops + checked overflow. _(eavc: int add/sub/mul/sdiv/srem (+ div-by-zero trap) and float fadd/fsub/fmul/fdiv lowered; `examples/{add_two,countdown,overflow,float_math}.sem`, `test_e2e_float_math_and_writefloatline`. Checked `math.*`→Result variants pending WS1-090.)_
-- [ ] WS3-014 `convert.*` (incl Wrapping/Saturating; ConversionError). →test: trunc/trap/round. §33.5
+- [x] WS3-014 `convert.*` (incl Wrapping/Saturating; ConversionError). →test: trunc/trap/round. §33.5 _(eavc: `convert.to<Type>` numeric conversions via `_emit_convert`; `test_convert_lowering_forms`. Wrapping/Saturating variants + ConversionError result + string conversions pending runtime.)_
 - [ ] WS3-015 `string.concat/join/format` (width/format discipline). →test: format-width lint + runtime. §30.2.2
 - [ ] WS3-016 `standard.sqlite` (open/close/queryScalar/step/column; OpenMode; OpenFailure/CloseFailure/QueryFailure; owns/cleanedBy). →test: query + cleanup; column-consume lint. §10/§19
 - [ ] WS3-017 `standard.http` (HttpRequest/Response/handlers/route/serve/callNext; HttpSafeUrl). →test: route handler ABI + middleware chain. §14
