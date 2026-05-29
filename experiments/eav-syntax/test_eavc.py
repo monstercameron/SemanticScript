@@ -137,6 +137,19 @@ def test_suppress_scoped_to_entity_not_children():
     assert any(d.code == "MD1021" and d.entity == "helper" for d in diags)
 
 
+def test_fortarget_must_name_declared_target():
+    # README §30.3.1 / §17 #55: forTarget value must be a project target.
+    base = (
+        "App is project\nApp module m\nApp target console\nApp entry main\n"
+        + _MOD
+        + "main is operation\nmain out ExitCode\nmain purpose \"p\"\nmain invariant \"i\"\n"
+    )
+    bad = eavc.lint(eavc.parse(base + "main forTarget wasm\n"))
+    assert any(d.code == "SS3010" for d in bad)
+    ok = eavc.lint(eavc.parse(base + "main forTarget console\n"))
+    assert not any(d.code == "SS3010" for d in ok)
+
+
 def test_emitted_diagnostics_carry_codes():
     # Tagged diagnostics expose their registry code on the exception.
     with pytest.raises(eavc.EavError) as exc:

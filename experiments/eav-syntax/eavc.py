@@ -138,6 +138,12 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS3010": {"tier": "T1", "summary": "forTarget names an undeclared target.",
+               "found": "A `forTarget X` where X is not a project target.",
+               "suggested": "Use a target declared by the project (README §30.3.1)."},
+    "SS3011": {"tier": "T1", "summary": "forPlatform names an undeclared platform.",
+               "found": "A `forPlatform X` where X is not a declared platform entity.",
+               "suggested": "Declare the platform, or fix the name (README §30.3.1)."},
     "SS1702": {"tier": "T0", "summary": "Call activated more than once.",
                "found": "A call reached by two `do`s, or `do`-activated and used as a cleanup worker.",
                "suggested": "Activate a call exactly once (README §17 #2/#43)."},
@@ -840,10 +846,41 @@ def lint(program: Program) -> list:
                 diags.append(Diagnostic("MD1012", "error",
                                         f"exported/entry operation {ent.name!r} is missing an invariant",
                                         ent.line, ent.name))
+    diags.extend(_lint_gates(program))
     for w in program.warnings:
         diags.append(Diagnostic("SS0900", "warning", w))
     diags.extend(_suppress_diagnostics(program, diags))
     return _apply_suppressions(program, diags)
+
+
+def _lint_gates(program: Program) -> list:
+    """`forTarget`/`forPlatform` reference-closure (README ss30.3.1, ss17 #55): a
+    gate value must name a target declared by the project, or a declared
+    platform entity."""
+    targets: set = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "project":
+            for t in ent.facts("target"):
+                if t.payload:
+                    targets.add(t.payload[0])
+    platforms = {n for n in program.order if program.entities[n].kind == "platform"}
+    out: list[Diagnostic] = []
+    for n in program.order:
+        ent = program.entities[n]
+        for row in ent.facts("forTarget"):
+            if row.payload and row.payload[0] not in targets:
+                out.append(Diagnostic("SS3010", "error",
+                                      f"forTarget {row.payload[0]!r} is not a target "
+                                      f"declared by the project",
+                                      row.line, ent.name))
+        for row in ent.facts("forPlatform"):
+            if row.payload and row.payload[0] not in platforms:
+                out.append(Diagnostic("SS3011", "error",
+                                      f"forPlatform {row.payload[0]!r} is not a "
+                                      f"declared platform entity",
+                                      row.line, ent.name))
+    return out
 
 
 def _apply_suppressions(program: Program, diags: list) -> list:
