@@ -4177,6 +4177,13 @@ decode arg text RawJson body          # body is typeTrust rawExternal
 decode limit maximumBytes 65536       # required for untrusted input
 ```
 
+**CSPRNG vs deterministic RNG (X-073).** Security material (keys/tokens/nonces/
+salts) must be drawn from the CSPRNG (`random.entropy`). A value drawn from a
+seeded/deterministic RNG (`random.deterministic`, …) that flows into a security
+generator (`crypto.generateToken`/`generateNonce`/`generateSalt`/`generateKey`/
+`randomBytes`) is a hard error (**SS3073**); the seeded RNG stays valid for
+reproducible non-security use.
+
 ### Async intrinsics
 
 ```sem

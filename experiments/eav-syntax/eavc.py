@@ -189,6 +189,9 @@ DIAGNOSTICS.update({
     "SS3077": {"tier": "T1", "summary": "Untrusted decode without a size limit.",
                "found": "A decode (json.parse/decode/createDocument/codec.decode) of a `rawExternal` input with no `limit maximumBytes` row.",
                "suggested": "Bound untrusted decoding: add `limit maximumBytes <n>` (and depth/element caps) so malformed input cannot exhaust memory (README §16)."},
+    "SS3073": {"tier": "T1", "summary": "Deterministic RNG feeding a security generator.",
+               "found": "A value drawn from `random.deterministic`/seeded RNG is passed to a key/token/nonce/salt generator.",
+               "suggested": "Security material must be drawn from the CSPRNG (`random.entropy`); a seeded RNG is for reproducible non-security use only (README §30.5.3)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3216,6 +3219,8 @@ def _validate_program(program: Program) -> None:
     _validate_sink_typing(program)
     _validate_secret_flow(program)
     _validate_decode_limits(program)
+    _validate_random_source(program)
+    _validate_nonce_affinity(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4465,6 +4470,92 @@ def _validate_decode_limits(program: Program) -> None:
                 f"declares no `limit maximumBytes <n>`; bound untrusted decoding so "
                 f"hostile input cannot exhaust memory (README §16)",
                 ent.line, code="SS3077")
+
+
+_DETERMINISTIC_RANDOM_TARGETS = (
+    "random.deterministic", "random.seeded", "random.seededInt64",
+    "random.fromSeed", "random.pseudo",
+)
+_SECURITY_GEN_TARGETS = (
+    "crypto.generateToken", "crypto.generateNonce", "crypto.generateSalt",
+    "crypto.generateKey", "crypto.randomBytes", "bcrypt.randomBytes",
+)
+
+
+def _validate_random_source(program: Program) -> None:
+    """X-073 / README §30.5.3: security material (keys/tokens/nonces/salts) must
+    come from the CSPRNG, never a seeded/deterministic RNG. A value drawn from a
+    deterministic-random target that flows into a security generator is a hard
+    error (SS3073). (The seeded RNG remains valid for reproducible non-security
+    use; entropy vs deterministic is a capability distinction, §30.5.3.)"""
+    deterministic = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            if inv and inv.payload and inv.payload[0] in _DETERMINISTIC_RANDOM_TARGETS:
+                for o in ent.facts("out"):
+                    if o.payload:
+                        deterministic.add(o.payload[0])
+    if not deterministic:
+        return
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target not in _SECURITY_GEN_TARGETS:
+            continue
+        for a in ent.facts("arg"):
+            if len(a.payload) >= 3 and a.payload[2] in deterministic:
+                raise EavError(
+                    f"call {ent.name!r} seeds security generator {target!r} with the "
+                    f"deterministic-RNG value {a.payload[2]!r}; security material must "
+                    f"come from the CSPRNG (`random.entropy`), not a seeded RNG "
+                    f"(README §30.5.3)",
+                    ent.line, code="SS3073")
+
+
+def _validate_nonce_affinity(program: Program) -> None:
+    """X-073 / README §30.5.3: a nonce/IV is affine — consumed on use. A value
+    produced by `crypto.generateNonce`/`generateIv` that is consumed by two or
+    more cryptographic calls is a nonce-reuse hard error (SS3073); reusing a
+    nonce across encryptions breaks the cipher's security."""
+    nonce_values = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            if inv and inv.payload and inv.payload[0] in (
+                    "crypto.generateNonce", "crypto.generateIv"):
+                for o in ent.facts("out"):
+                    if o.payload:
+                        nonce_values.add(o.payload[0])
+    if not nonce_values:
+        return
+    crypto_uses: dict = {}  # nonce value -> first consuming call name
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not (target.startswith("crypto.") or target.startswith("cipher.")
+                or target.startswith("aead.")):
+            continue
+        if target in ("crypto.generateNonce", "crypto.generateIv"):
+            continue
+        for a in ent.facts("arg"):
+            val = a.payload[2] if len(a.payload) >= 3 else None
+            if val in nonce_values:
+                if val in crypto_uses:
+                    raise EavError(
+                        f"nonce {val!r} is consumed again by {ent.name!r} after "
+                        f"{crypto_uses[val]!r}; a nonce/IV is affine — reusing one "
+                        f"across encryptions is a security failure (README §30.5.3)",
+                        ent.line, code="SS3073")
+                crypto_uses[val] = ent.name
 
 
 def _validate_time_safety(program: Program) -> None:

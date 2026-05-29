@@ -4589,6 +4589,69 @@ def test_untrusted_decode_with_limit_accepted():
     assert "parseReq" in prog.entities
 
 
+def _token_gen_src(rng_target):
+    return (
+        "mintToken is operation\nmintToken out ExitCode\nmintToken async no\n"
+        'mintToken purpose "p"\nmintToken invariant "i"\n'
+        "mintToken let okCode immutable ExitCode 0\nmintToken let seedSize immutable Int64 32\n"
+        "mintToken do draw\nmintToken do gen\nmintToken return okCode\n"
+        "draw is call\ndraw in mintToken\ndraw invokes " + rng_target + "\n"
+        "draw arg size Int64 seedSize\ndraw out seedValue Int64\n"
+        "gen is call\ngen in mintToken\ngen invokes crypto.generateToken\n"
+        "gen arg source Int64 seedValue\ngen out token String\n"
+    )
+
+
+def test_seeded_rng_into_security_gen_rejected():
+    # X-073 / §30.5.3: a deterministic-RNG draw feeding a token generator is a
+    # hard error — security material needs the CSPRNG.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_token_gen_src("random.deterministic"))
+    assert getattr(exc.value, "code", None) == "SS3073"
+
+
+def test_entropy_rng_into_security_gen_accepted():
+    # X-073: drawing from the CSPRNG (random.entropy) is the accepted path.
+    prog = eavc.parse(_token_gen_src("random.entropy"))
+    assert "mintToken" in prog.entities
+
+
+def test_nonce_reuse_rejected():
+    # X-073: a nonce is affine — consuming it in two cryptographic calls is a
+    # nonce-reuse error (SS3073).
+    src = (
+        "seal is operation\nseal out ExitCode\nseal async no\n"
+        'seal purpose "p"\nseal invariant "i"\n'
+        "seal let okCode immutable ExitCode 0\nseal in plainA String\nseal in plainB String\n"
+        "seal do makeNonce\nseal do encA\nseal do encB\nseal return okCode\n"
+        "makeNonce is call\nmakeNonce in seal\nmakeNonce invokes crypto.generateNonce\n"
+        "makeNonce out nonce OpaquePointer\n"
+        "encA is call\nencA in seal\nencA invokes crypto.encrypt\n"
+        "encA arg nonce OpaquePointer nonce\nencA arg plaintext String plainA\nencA out ctA String\n"
+        "encB is call\nencB in seal\nencB invokes crypto.encrypt\n"
+        "encB arg nonce OpaquePointer nonce\nencB arg plaintext String plainB\nencB out ctB String\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3073"
+
+
+def test_nonce_single_use_accepted():
+    # X-073: a nonce consumed by exactly one cryptographic call is fine.
+    src = (
+        "seal is operation\nseal out ExitCode\nseal async no\n"
+        'seal purpose "p"\nseal invariant "i"\n'
+        "seal let okCode immutable ExitCode 0\nseal in plain String\n"
+        "seal do makeNonce\nseal do enc\nseal return okCode\n"
+        "makeNonce is call\nmakeNonce in seal\nmakeNonce invokes crypto.generateNonce\n"
+        "makeNonce out nonce OpaquePointer\n"
+        "enc is call\nenc in seal\nenc invokes crypto.encrypt\n"
+        "enc arg nonce OpaquePointer nonce\nenc arg plaintext String plain\nenc out ct String\n"
+    )
+    prog = eavc.parse(src)
+    assert "seal" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
