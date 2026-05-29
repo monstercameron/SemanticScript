@@ -1036,6 +1036,21 @@ def test_effect_union_reports_call_level_gap():
     assert any("read database" in w for w in prog.warnings)
 
 
+def test_effect_coverage_transitive_call_graph():
+    # WS2-041 / README §29 #10: an effect of a transitively-called user op is
+    # part of the caller's effective effects and must be covered.
+    src = (
+        "main is operation\nmain out ExitCode\nmain do callHelper\nmain return okCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "callHelper is call\ncallHelper in main\ncallHelper invokes helper\n"
+        "callHelper out r Int64\n"
+        "helper is operation\nhelper out Int64\nhelper effect write network.socket\n"
+        "helper let z immutable Int64 0\nhelper return z\n"
+    )
+    prog = eavc.parse(src)  # main neither declares nor `uses` the network effect
+    assert any("write network.socket" in w and w.startswith("main") for w in prog.warnings)
+
+
 def test_covered_effect_no_warning():
     prog = eavc.parse(
         "writer is capability\nwriter grants write console.stdout\n"

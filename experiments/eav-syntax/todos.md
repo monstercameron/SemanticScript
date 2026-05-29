@@ -193,7 +193,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 2D. Effect / authority / cleanup analysis
 - [x] WS2-040 Effect-union: op effective effects = own + activated call/task/cleanup effects; uses covers union; both-direction check. →test: capability gap on call-level effect reported on op. §15 _(eavc: `_validate_effect_coverage` unions own + activated call/task/cleanup-worker effects, warns on uncovered; `test_effect_union_reports_call_level_gap`, `test_covered_effect_no_warning`)_
-- [ ] WS2-041 Capability coverage across call graph (§29 #10 algorithm). →test: uncovered transitive effect flagged.
+- [x] WS2-041 Capability coverage across call graph (§29 #10 algorithm). →test: uncovered transitive effect flagged. _(eavc: `effective_effects` does a transitive (cycle-guarded) closure over activated calls' invoked user ops; uncovered transitive effect warns on the caller; `test_effect_coverage_transitive_call_graph`)_
 - [ ] WS2-042 Ownership/cleanup graph closure (SS1502) on every success path. →test: missing cleanup on a path = error.
 - [ ] WS2-043 forTarget/forPlatform reference-closure (filtered set has no dangling refs); filtering-phase-first. →test: included→pruned ref = hard error per target. §30.3.1
 

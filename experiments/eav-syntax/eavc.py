@@ -1012,6 +1012,41 @@ def _validate_effect_coverage(program: Program) -> None:
             if len(e.payload) >= 2
         }
 
+    def invoked_user_op(call: Entity):
+        inv = call.fact("invokes")
+        if inv and inv.payload and "." not in inv.payload[0]:
+            target = program.entities.get(inv.payload[0])
+            if target is not None and target.kind in ("operation", "function"):
+                return target
+        return None
+
+    def effective_effects(op: Entity, seen: set):
+        """Transitive effective effects across the call graph (README ss29 #10)."""
+        if op.name in seen:
+            return set()
+        seen.add(op.name)
+        eff = set(effects_of(op))
+        for row in op.rows:
+            if row.predicate not in _STEP_SPLIT or not row.payload:
+                continue
+            ref = program.entities.get(row.payload[0])
+            if ref is None:
+                continue
+            eff |= effects_of(ref)
+            workers = [ref]
+            if ref.kind == "cleanup":
+                cr = ref.fact("call")
+                w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
+                if w is not None:
+                    workers.append(w)
+                    eff |= effects_of(w)
+            for w in workers:
+                if w.kind in ("call", "task"):
+                    callee = invoked_user_op(w)
+                    if callee is not None:
+                        eff |= effective_effects(callee, seen)
+        return eff
+
     for name in program.order:
         op = program.entities[name]
         if op.kind not in ("operation", "function"):
@@ -1020,19 +1055,7 @@ def _validate_effect_coverage(program: Program) -> None:
         for u in op.facts("uses"):
             if u.payload:
                 covered |= cap_grants.get(u.payload[0], set())
-        effective = set(effects_of(op))
-        for row in op.rows:
-            if row.predicate in _STEP_SPLIT and row.payload:
-                ref = program.entities.get(row.payload[0])
-                if ref is None:
-                    continue
-                effective |= effects_of(ref)
-                if ref.kind == "cleanup":
-                    cr = ref.fact("call")
-                    worker = program.entities.get(cr.payload[0]) if cr and cr.payload else None
-                    if worker is not None:
-                        effective |= effects_of(worker)
-        for action, resource in sorted(effective):
+        for action, resource in sorted(effective_effects(op, set())):
             if (action, resource) not in covered:
                 program.warnings.append(
                     f"{op.name}: effective effect `{action} {resource}` is not "
