@@ -743,6 +743,37 @@ def test_iferror_requires_catch():
     assert "catch" in exc.value.message
 
 
+def test_binding_no_shadow_rejected():
+    # README ss17 #47: a let may not reuse a param or another let name.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "op is operation\nop in x Int64\nop out Int64\n"
+            "op let x immutable Int64 1\nop return x\n"
+        )
+    assert "shadows" in exc.value.message
+    with pytest.raises(eavc.EavError):
+        eavc.parse(
+            "op is operation\nop out Int64\n"
+            "op let y immutable Int64 1\nop let y immutable Int64 2\nop return y\n"
+        )
+
+
+def test_record_new_missing_field_rejected():
+    # README ss17 #49: construction-target args must cover the record's fields.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "Point is record\nPoint field x Int64\nPoint field y Int64\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let px immutable Int64 1\nmain let okCode immutable ExitCode 0\n"
+        "main do build\nmain return okCode\n"
+        "build is call\nbuild in main\nbuild invokes Point.new\n"
+        "build arg x Int64 px\nbuild out p Point\n"  # missing field y
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(src))
+    assert "missing field arg" in exc.value.message
+
+
 def test_invokes_unresolved_bare_target_rejected():
     # README ss15: a bare invokes target must name an in-module operation.
     with pytest.raises(eavc.EavError) as exc:

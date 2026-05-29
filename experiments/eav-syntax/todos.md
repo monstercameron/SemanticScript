@@ -181,7 +181,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS2-021 #36 ifOut-before-error warn · #37 alias-dotted only in `for` · #38 entry exports (MD1013) · #39 owns w/o cleanedBy warn.
 - [ ] WS2-022 #40 ifOut/ifValue sugar info · #41 cleanup one cleans/call · #42 onFailure iff catch · #43 cleanup worker not `do`-activated.
 - [ ] WS2-023 #44 cleanup-worker out/no-catch needs discards · #45 Bool/enum equals-only · #46 entity-name unique in module.
-- [ ] WS2-024 #47 binding-name no-shadow · #48 invokes resolution · #49 construction-target match.
+- [x] WS2-024 #47 binding-name no-shadow · #48 invokes resolution · #49 construction-target match. _(eavc: `_validate_no_shadow` (#47), `_validate_calls` invokes resolution (#48), `_emit_derived_target` field-arg match (#49); `test_binding_no_shadow_rejected`, `test_invokes_unresolved_bare_target_rejected`, `test_record_new_missing_field_rejected`)_
 - [ ] WS2-025 #50 runtimeBinding declares effects + app-source warn · #51 invokes unambiguous · #52 ifVariant exhaustiveness · #53 bind definite-assignment · #54 suppress code+because · #55 forTarget/forPlatform valid target/platform.
 
 ## 2C. Metadata rules (MD10xx, §6, §30.6)

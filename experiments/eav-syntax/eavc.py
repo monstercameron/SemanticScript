@@ -780,6 +780,7 @@ def _validate_program(program: Program) -> None:
             _validate_body_kind(ent)
             _validate_labels(ent, program)
             _validate_return_arity(ent)
+            _validate_no_shadow(ent)
             for row in ent.facts("let"):
                 if row.payload and row.payload[0] in RESERVED_WORDS:
                     raise EavError(
@@ -1011,6 +1012,26 @@ def _validate_calls(program: Program) -> None:
                     f"{target!r} (README ss15)",
                     ent.line,
                 )
+
+
+def _validate_no_shadow(op: Entity) -> None:
+    """Binding names must not shadow (README ss17 #47): a `let` may not reuse a
+    parameter name or another `let` name in the same operation."""
+    seen: dict[str, str] = {}
+    for r in op.facts("in"):
+        if r.payload:
+            seen[r.payload[0]] = "input"
+    for r in op.facts("let"):
+        if not r.payload:
+            continue
+        nm = r.payload[0]
+        if nm in seen:
+            raise EavError(
+                f"binding {nm!r} shadows an existing {seen[nm]} in {op.name!r} "
+                f"(README ss17 #47)",
+                r.line,
+            )
+        seen[nm] = "let"
 
 
 def _op_has_steps(op: Entity) -> bool:
