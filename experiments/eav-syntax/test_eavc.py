@@ -1883,6 +1883,21 @@ def test_onfailure_propagate_needs_result():
     assert "main" in eavc.parse(good).entities
 
 
+def test_cleanup_worker_out_without_catch_needs_discards():
+    # README §17 #44: a cleanup worker with an out and no catch needs discards.
+    src = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\nopenDb cleanedBy closeCleanup\n"
+        "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
+        "closeDb arg database Int64 db\ncloseDb out closeCount Int64\n"  # out, no catch/discards
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        "closeCleanup cleans db\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS1544"
+
+
 def test_cleanup_onfailure_needs_worker_catch():
     # README §17 #42: onFailure requires the worker call to have a catch.
     src = (

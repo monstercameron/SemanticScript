@@ -222,6 +222,9 @@ DIAGNOSTICS.update({
     "SS1340": {"tier": "T4", "summary": "ifValue/ifOut is comparison sugar.",
                "found": "A `branch ifValue`/`ifOut` guard.",
                "suggested": "Informational; fmt canonicalizes to compare + branch if (§13)."},
+    "SS1544": {"tier": "T1", "summary": "cleanup worker out/no-catch needs discards.",
+               "found": "A cleanup worker with an `out`, no `catch`, no `discards`.",
+               "suggested": "Add `discards \"reason\"` to the worker (§17 #44)."},
     "SS1542": {"tier": "T1", "summary": "cleanup onFailure without a worker catch.",
                "found": "A cleanup `onFailure` whose worker call has no `catch`.",
                "suggested": "Add a `catch` to the worker, or drop onFailure (§17 #42)."},
@@ -2422,6 +2425,16 @@ def _validate_cleanup(program: Program) -> None:
                         ent.line,
                         code="SS1542",
                     )
+            # README ss17 #44: a cleanup worker that produces an `out` but has no
+            # `catch` drops a value — it needs an explicit `discards`.
+            worker = program.entities.get(calls[0].payload[0]) if calls[0].payload else None
+            if (worker is not None and worker.fact("out") is not None
+                    and worker.fact("catch") is None and worker.fact("discards") is None):
+                raise EavError(
+                    f"cleanup worker {worker.name!r} has an `out` and no `catch`; its "
+                    f"result is dropped and needs `discards` (README ss17 #44)",
+                    worker.line, code="SS1544",
+                )
             resource = cleans[0].payload[0] if cleans[0].payload else None
             if resource is not None and resource not in owned:
                 raise EavError(
