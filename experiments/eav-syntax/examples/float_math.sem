@@ -1,0 +1,49 @@
+# float_math — Float64 arithmetic + console.writeFloatLine (README ss10.6).
+# 1.5 + 2.5 == 4.0. Exercises math.addFloat64 and the float writer.
+# (todos WS3-011, WS3-013)
+
+FloatMath is project
+FloatMath module examplesFloatMath
+FloatMath target console
+FloatMath entry main
+
+examplesFloatMath is module
+examplesFloatMath path examples.floatMath
+examplesFloatMath exports main
+examplesFloatMath purpose "Add two Float64 values and print the sum"
+examplesFloatMath invariant "main is the only entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute 1.5 + 2.5 and print it"
+main invariant "Writes exactly one float line: 4"
+main let leftValue immutable Float64 1.5
+main let rightValue immutable Float64 2.5
+main let okCode immutable ExitCode 0
+main do sumCall
+main do writeSum
+main return okCode
+
+sumCall is call
+sumCall in main
+sumCall invokes math.addFloat64
+sumCall arg left Float64 leftValue
+sumCall arg right Float64 rightValue
+sumCall out total Float64
+
+writeSum is call
+writeSum in main
+writeSum invokes console.writeFloatLine
+writeSum arg value Float64 total

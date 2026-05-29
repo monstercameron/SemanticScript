@@ -1445,6 +1445,21 @@ def test_builtin_targets_need_no_import():
     assert 'call i32 (i8*, ...) @"printf"' in ir_text
 
 
+def test_e2e_float_math_and_writefloatline():
+    # WS3-011/013: math.addFloat64 + console.writeFloatLine. 1.5 + 2.5 == 4.
+    proc = _eavc_run("float_math.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "4" in proc.stdout
+
+
+def test_console_writers_lower_distinctly():
+    # WS3-011: writeLine->puts, writeIntegerLine/writeFloatLine->printf with
+    # the right format string.
+    assert 'call i32 @"puts"' in _ir_for("hello_world.sem")
+    assert "%lld" in _ir_for("add_two.sem")
+    assert "%g" in _ir_for("float_math.sem")
+
+
 def test_e2e_overflow_wraps_twos_complement():
     # README ss10.6: signed Int64 addition wraps. INT64_MAX + 1 == INT64_MIN.
     proc = _eavc_run("overflow.sem")

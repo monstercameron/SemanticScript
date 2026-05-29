@@ -215,9 +215,9 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 3B. Standard library modules (.semsig + impl)  — each: signatures, error contracts, tests
 - [ ] WS3-010 `standard.core` primitives if factored out (or built-in). →test: type availability.
-- [ ] WS3-011 `console` (writeLine/writeIntegerLine/writeFloatLine). →test: output goldens.
+- [x] WS3-011 `console` (writeLine/writeIntegerLine/writeFloatLine). →test: output goldens. _(eavc: writeLine→puts, writeIntegerLine→printf %lld, writeFloatLine→printf %g; `test_console_writers_lower_distinctly`, `test_e2e_float_math_and_writefloatline`, hello/add_two/float_math goldens)_
 - [ ] WS3-012 `compare.*` derived comparison primitives (all types; Bool/enum equals-only). →test: each comparator. §13
-- [ ] WS3-013 `math.*` (int/float arith, checked variants). →test: ops + checked overflow.
+- [x] WS3-013 `math.*` (int/float arith, checked variants). →test: ops + checked overflow. _(eavc: int add/sub/mul/sdiv/srem (+ div-by-zero trap) and float fadd/fsub/fmul/fdiv lowered; `examples/{add_two,countdown,overflow,float_math}.sem`, `test_e2e_float_math_and_writefloatline`. Checked `math.*`→Result variants pending WS1-090.)_
 - [ ] WS3-014 `convert.*` (incl Wrapping/Saturating; ConversionError). →test: trunc/trap/round. §33.5
 - [ ] WS3-015 `string.concat/join/format` (width/format discipline). →test: format-width lint + runtime. §30.2.2
 - [ ] WS3-016 `standard.sqlite` (open/close/queryScalar/step/column; OpenMode; OpenFailure/CloseFailure/QueryFailure; owns/cleanedBy). →test: query + cleanup; column-consume lint. §10/§19
