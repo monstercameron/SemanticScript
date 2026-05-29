@@ -177,6 +177,9 @@ DIAGNOSTICS.update({
     "SS3070": {"tier": "T1", "summary": "Untrusted value reaches a trust-sensitive sink.",
                "found": "An arg whose type is `typeTrust rawExternal` (or secret) is passed to a `trustConstraint` sink slot.",
                "suggested": "Cross a `trustBoundary` validator first so the value becomes `validated`/`trustedInternal` (README §16/§26)."},
+    "SS3071": {"tier": "T1", "summary": "Untyped or string-built value into a typed sink.",
+               "found": "A plain String (or a `string.concat` result) passed to a `trustConstraint arg <slot> <TrustedType>` sink.",
+               "suggested": "Build the required trusted type (e.g. SqlText/HtmlSafeUrl/SafePath) via a constructor or trust boundary; never assemble interpreter input by string concatenation (README §16/§30.2.2)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3184,6 +3187,7 @@ def _validate_program(program: Program) -> None:
     _validate_time_safety(program)
     _validate_numeric_precision(program)
     _validate_trust_flow(program)
+    _validate_sink_typing(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4190,6 +4194,16 @@ _TRUST_LABELS = ("rawExternal", "validated", "trustedInternal", "secret")
 _UNTRUSTED_AT_SINK = ("rawExternal", "secret")
 
 
+def _sink_key(ent: Entity) -> str:
+    """The name a call's `invokes` uses to reach this sink: an intrinsic is
+    reached by its dotted `target`, a user op/function by its entity name."""
+    if ent.kind == "intrinsic":
+        t = ent.fact("target")
+        if t and t.payload:
+            return t.payload[0]
+    return ent.name
+
+
 def _validate_trust_flow(program: Program) -> None:
     """X-070 / README §16/§26: typed trust/taint flow. A type carries a trust
     label (`typeTrust <T> rawExternal|validated|trustedInternal|secret`).
@@ -4222,7 +4236,7 @@ def _validate_trust_flow(program: Program) -> None:
         slots = {r.payload[1] for r in ent.facts("trustConstraint")
                  if len(r.payload) >= 2 and r.payload[0] == "arg"}
         if slots:
-            sink_slots[ent.name] = slots
+            sink_slots[_sink_key(ent)] = slots
     if not sink_slots:
         return
     for n in program.order:
@@ -4244,6 +4258,71 @@ def _validate_trust_flow(program: Program) -> None:
                         f"slot {a.payload[0]!r} of {callee!r} without a validation "
                         f"boundary (README §16/§26)",
                         call.line, code="SS3070")
+
+
+def _validate_sink_typing(program: Program) -> None:
+    """X-071 / README §16/§30.2.2: every interpreting sink (SQL/HTML/path/URL/…)
+    declares the trusted type it requires with `trustConstraint arg <slot>
+    <TrustedType>`. The arg must then BE that trusted type (or a
+    `validated`/`trustedInternal`-labeled type) — a plain `String` is rejected,
+    and a value assembled by `string.concat` may never reach a sink (no
+    string-built queries/markup). Hard error SS3071. (`rawExternal`/`secret` into
+    a sink is SS3070, X-070.)"""
+    label_of = {}
+    for n in program.order:
+        for r in program.entities[n].facts("typeTrust"):
+            if r.payload and r.payload[0] in _TRUST_LABELS:
+                label_of[program.entities[n].name] = r.payload[0]
+    string_built = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            if inv and inv.payload and inv.payload[0] == "string.concat":
+                for o in ent.facts("out"):
+                    if o.payload:
+                        string_built.add(o.payload[0])
+    # sinks with a REQUIRED trusted type: `trustConstraint arg <slot> <Type>`
+    sink_required = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function", "intrinsic"):
+            continue
+        req = {r.payload[1]: r.payload[2] for r in ent.facts("trustConstraint")
+               if len(r.payload) >= 3 and r.payload[0] == "arg"}
+        if req:
+            sink_required[_sink_key(ent)] = req
+    if not sink_required:
+        return
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        inv = call.fact("invokes")
+        callee = inv.payload[0] if inv and inv.payload else ""
+        req = sink_required.get(callee)
+        if not req:
+            continue
+        for a in call.facts("arg"):
+            if len(a.payload) < 3 or a.payload[0] not in req:
+                continue
+            slot, argtype, value = a.payload[0], a.payload[1], a.payload[2]
+            required = req[slot]
+            if value in string_built:
+                raise EavError(
+                    f"call {call.name!r} passes a string-built value {value!r} into "
+                    f"the {required} sink slot {slot!r} of {callee!r}; build the "
+                    f"trusted type, never concatenate interpreter input "
+                    f"(README §16/§30.2.2)",
+                    call.line, code="SS3071")
+            if argtype != required and label_of.get(argtype) not in (
+                    "validated", "trustedInternal"):
+                raise EavError(
+                    f"call {call.name!r} passes {value!r} (type {argtype!r}) into the "
+                    f"{required} sink slot {slot!r} of {callee!r}; a raw/untyped value "
+                    f"must become a {required} at a trust boundary first "
+                    f"(README §16)",
+                    call.line, code="SS3071")
 
 
 def _validate_time_safety(program: Program) -> None:

@@ -4392,6 +4392,63 @@ def test_typetrust_unknown_label_rejected():
     assert getattr(exc.value, "code", None) == "SS3070"
 
 
+_SQL_SINK = (
+    "SqlText is alias\nSqlText for String\n"
+    "sqlExec is intrinsic\nsqlExec target sql.exec\nsqlExec arg sql SqlText\n"
+    "sqlExec out rows Int64\nsqlExec trustConstraint arg sql SqlText\n"
+)
+
+
+def _sink_call_src(arg_row, extra=""):
+    return (
+        _SQL_SINK +
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n" + extra +
+        "main do runSql\nmain return okCode\n"
+        "runSql is call\nrunSql in main\nrunSql invokes sql.exec\n"
+        + arg_row + "runSql out rows Int64\n"
+    )
+
+
+def test_plain_string_into_typed_sink_rejected():
+    # X-071 / §16: a plain String into a SqlText sink is rejected — build the
+    # trusted type at a boundary, never pass raw/untyped interpreter input.
+    src = _sink_call_src(
+        "runSql arg sql String rawText\n",
+        extra='main let rawText immutable String "SELECT 1"\n')
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+
+def test_trusted_type_into_sink_accepted():
+    # X-071: the required trusted type (SqlText) is accepted at the sink.
+    src = _sink_call_src(
+        "runSql arg sql SqlText safeText\n",
+        extra='main let safeText immutable SqlText "SELECT 1"\n')
+    prog = eavc.parse(src)
+    assert "main" in prog.entities  # no SS3071
+
+
+def test_string_concat_into_sink_rejected():
+    # X-071 / §30.2.2: a `string.concat` result may never reach an interpreter
+    # sink (no string-built queries), even if its type token matches.
+    src = _sink_call_src(
+        "runSql arg sql SqlText builtText\n",
+        extra=(
+            'main let prefix immutable String "SELECT * FROM t WHERE id="\n'
+            'main let suffix immutable String "1"\n'
+            "main do buildSql\n"
+            "buildSql is call\nbuildSql in main\nbuildSql invokes string.concat\n"
+            "buildSql arg left String prefix\nbuildSql arg right String suffix\n"
+            "buildSql out builtText SqlText\n"
+        ))
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

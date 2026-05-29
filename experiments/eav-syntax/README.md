@@ -4138,6 +4138,21 @@ explicit `out`→`arg` dataflow with no aliasing — so the check is exact, not
 heuristic. (This promotes `trustConstraint` from advisory to enforced when the
 arg type carries a trust label.)
 
+**Sink-typing (X-071).** When a sink names the trusted type it requires —
+`trustConstraint arg <slot> <TrustedType>` (SQL→`SqlText`, HTML→`HtmlSafeUrl`,
+path→`SafePath`, …) — the arg must *be* that trusted type, or a
+`validated`/`trustedInternal`-labeled type. A plain `String` is rejected
+(**SS3071**), and a value assembled by `string.concat` may **never** reach a sink
+(no string-built queries/markup, §30.2.2) — you build the trusted type at a
+boundary, never by concatenation:
+
+```sem
+sqlExec trustConstraint arg sql SqlText   # the SQL sink requires SqlText
+# runSql arg sql String rawText           -> SS3071 (plain String)
+# runSql arg sql SqlText concatResult     -> SS3071 (string-built)
+# runSql arg sql SqlText validatedQuery   -> ok
+```
+
 ### Async intrinsics
 
 ```sem
