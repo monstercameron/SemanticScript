@@ -2118,6 +2118,16 @@ def test_activate_entity_not_owned_rejected():
     assert "owned by" in exc.value.message
 
 
+def test_shared_catch_var_incompatible_types_warns():
+    # README §25 / WS2-051: a catch var reused with incompatible error types warns.
+    src = (
+        "main is operation\nmain out ExitCode\nmain do callA\nmain do callB\n"
+        "callA is call\ncallA in main\ncallA invokes x.a\ncallA catch e ErrorA\n"
+        "callB is call\ncallB in main\ncallB invokes x.b\ncallB catch e ErrorB\n"
+    )
+    assert "SS2551" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_uncovered_effect_warns():
     # README ss8 / ss17 #5: a declared effect with no covering `uses` warns.
     prog = eavc.parse(

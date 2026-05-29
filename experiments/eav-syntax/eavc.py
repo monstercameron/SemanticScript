@@ -252,6 +252,9 @@ DIAGNOSTICS.update({
     "SS1203": {"tier": "T1", "summary": "`let` forward-references a later binding.",
                "found": "A `let` initializer naming a `let` declared later.",
                "suggested": "Reorder so the referenced binding comes first (§12)."},
+    "SS2551": {"tier": "T3", "summary": "Shared catch var with incompatible types.",
+               "found": "A catch variable reused across calls with different error types.",
+               "suggested": "Use distinct catch names, or a common error type (README §25)."},
     "SS1315": {"tier": "T3", "summary": "Irreducible control flow.",
                "found": "A multi-entry loop (CFG not T1-T2 reducible).",
                "suggested": "Restructure to a single-entry loop (README §17 #15)."},
@@ -1904,6 +1907,28 @@ def lint(program: Program) -> list:
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_ownership_and_entry_export(program))
+    # README ss25 / WS2-051: a catch/err variable reused across calls with
+    # incompatible error types warns.
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        catch_types: dict = {}
+        for cn in program.order:
+            call = program.entities[cn]
+            owner = call.fact("in")
+            if (call.kind in ("call", "task") and owner and owner.payload
+                    and owner.payload[0] == op.name):
+                c = call.fact("catch")
+                if c and len(c.payload) >= 2:
+                    catch_types.setdefault(c.payload[0], set()).add(c.payload[1])
+        for var, types in catch_types.items():
+            if len(types) > 1:
+                diags.append(Diagnostic(
+                    "SS2551", "warning",
+                    f"catch variable {var!r} is shared across calls with "
+                    f"incompatible error types {sorted(types)} (README ss25)",
+                    op.line, op.name))
     # README ss17 #15: warn on irreducible control flow (multi-entry loops).
     for n in program.order:
         op = program.entities[n]
