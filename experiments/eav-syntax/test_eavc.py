@@ -8836,3 +8836,82 @@ def test_x114_sql_placeholder_count_matches_call_params():
                 + "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.prepareStatement\n"
                   "runQuery arg sql SqlText insertSql\n")
     assert _island_code(prepared) is None
+
+
+# === R-017: platform-aware native builds ===
+
+_TWO_PLATFORM_PROGRAM = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path a.b\nm exports main\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "linuxX64 is platform\nlinuxX64 os linux\nlinuxX64 arch amd64\n"
+    'linuxX64 output "dist/app-linux"\nlinuxX64 nativeLibrary "m"\n'
+    "windowsX64 is platform\nwindowsX64 os windows\nwindowsX64 arch amd64\n"
+    'windowsX64 output "dist/app.exe"\nwindowsX64 nativeLibrary "ws2_32"\n'
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\nmain return okCode\n'
+    "linuxOnlyHelper is operation\nlinuxOnlyHelper out ExitCode\nlinuxOnlyHelper async no\n"
+    "linuxOnlyHelper forPlatform linuxX64\n"
+    'linuxOnlyHelper purpose "linux only"\nlinuxOnlyHelper invariant "i"\n'
+    "linuxOnlyHelper let z immutable ExitCode 0\nlinuxOnlyHelper return z\n"
+)
+
+
+def test_r017_platform_triples_and_links_differ():
+    """R-017: building one project for two declared platforms emits different
+    LLVM triples and resolves different output paths + native link inputs. Under
+    the old code the triple was always the host's and the platform was ignored."""
+    prog = eavc.parse(_TWO_PLATFORM_PROGRAM)
+    linux_triple = eavc.lower_to_llvm(prog, "linuxX64").triple
+    windows_triple = eavc.lower_to_llvm(prog, "windowsX64").triple
+    assert linux_triple == "x86_64-unknown-linux-gnu"
+    assert windows_triple == "x86_64-pc-windows-msvc"
+    assert linux_triple != windows_triple
+    linux_links = eavc.merge_native_links(prog, "linuxX64")
+    windows_links = eavc.merge_native_links(prog, "windowsX64")
+    assert linux_links["output"] == "dist/app-linux"
+    assert windows_links["output"] == "dist/app.exe"
+    assert linux_links["libraries"] == ["m"]
+    assert windows_links["libraries"] == ["ws2_32"]
+
+
+def test_r017_forplatform_code_absent_from_other_platform_build():
+    """R-017: an operation gated `forPlatform linuxX64` is lowered into a linux
+    build but absent from a windows build; a host build (no platform) keeps it."""
+    prog = eavc.parse(_TWO_PLATFORM_PROGRAM)
+    assert "linuxOnlyHelper" in str(eavc.lower_to_llvm(prog, "linuxX64"))
+    assert "linuxOnlyHelper" not in str(eavc.lower_to_llvm(prog, "windowsX64"))
+    assert "linuxOnlyHelper" in str(eavc.lower_to_llvm(prog))  # host: no filtering
+
+
+def test_r017_platform_triple_mapping_variants():
+    """R-017: _platform_triple maps os/arch/targetRuntime variants — macos arm64,
+    a wasi runtime, and an unspecified os falling back to the host triple."""
+    import llvmlite.binding as llvm
+    mac = eavc.parse(
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "macArm is platform\nmacArm os macos\nmacArm arch arm64\n")
+    assert eavc._platform_triple(mac.entities["macArm"]) == "arm64-apple-darwin"
+    wasm = eavc.parse(
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "wasmTarget is platform\nwasmTarget targetRuntime wasm\n")
+    assert eavc._platform_triple(wasm.entities["wasmTarget"]) == "wasm32-unknown-emscripten"
+    bare = eavc.parse(
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        'linkOnly is platform\nlinkOnly nativeLibrary "m"\n')
+    assert eavc._platform_triple(bare.entities["linkOnly"]) == llvm.get_default_triple()
+
+
+def test_r017_unknown_platform_exits_structured_json(tmp_path, capsys):
+    """R-017: `build --platform <unknown>` exits nonzero with a structured
+    sem.build.v1 error naming the declared platforms — not a traceback."""
+    import json
+    src = tmp_path / "prog.sem"
+    src.write_text(_TWO_PLATFORM_PROGRAM, encoding="utf-8")
+    rc = eavc.main(["build", str(src), "--platform", "doesNotExist"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["surface"] == "sem.build.v1"
+    assert payload["ok"] is False
+    assert payload["status"] == "unknown-platform"
+    assert "linuxX64" in payload["declared"] and "windowsX64" in payload["declared"]

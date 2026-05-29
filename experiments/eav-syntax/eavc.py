@@ -1157,6 +1157,56 @@ def merge_native_links(program: Program, platform_name: str) -> dict:
     }
 
 
+_PLATFORM_ARCH_TRIPLE = {
+    "amd64": "x86_64", "x86_64": "x86_64", "x64": "x86_64",
+    "arm64": "aarch64", "aarch64": "aarch64",
+    "x86": "i686", "i686": "i686", "i386": "i686",
+    "wasm32": "wasm32",
+}
+
+
+def _platform_triple(plat: "Entity") -> str:
+    """Map a `platform` entity's os/arch/targetRuntime to an LLVM target triple
+    (R-017, README §28.1). A wasm/wasi runtime wins; otherwise os+arch select the
+    triple. Unspecified/unknown os falls back to the host triple, so a platform
+    that only carries native-link rows still builds for the host."""
+    import llvmlite.binding as _llvm
+
+    def val(pred):
+        row = plat.fact(pred)
+        return (row.payload[0].lower() if row and row.payload else "")
+
+    os_name, arch, runtime = val("os"), val("arch"), val("targetRuntime")
+    # `targetRuntime` is `native` or `wasm` (SS0740); a wasm runtime is a wasm32
+    # emscripten triple regardless of os/arch.
+    if runtime == "wasm":
+        return "wasm32-unknown-emscripten"
+    machine = _PLATFORM_ARCH_TRIPLE.get(arch, "x86_64")
+    if os_name in ("windows", "win", "win32"):
+        return f"{machine}-pc-windows-msvc"
+    if os_name in ("macos", "darwin", "osx"):
+        return f"{'arm64' if machine == 'aarch64' else machine}-apple-darwin"
+    if os_name in ("linux",):
+        return f"{machine}-unknown-linux-gnu"
+    return _llvm.get_default_triple()
+
+
+def _resolve_build_platform(program: Program, name: Optional[str]) -> Optional["Entity"]:
+    """Resolve a `--platform NAME` to its declared `platform` entity (R-017).
+    `None` means the host default (no platform filtering, host triple). An
+    unknown name raises an EavError naming the declared platforms."""
+    if name is None:
+        return None
+    ent = program.entities.get(name)
+    if ent is None or ent.kind != "platform":
+        declared = sorted(n for n in program.order
+                          if program.entities[n].kind == "platform")
+        raise EavError(
+            f"unknown platform {name!r}; declared platforms: {declared} "
+            f"(README §28.1/§30.3.1)")
+    return ent
+
+
 def module_path_for(root_module: str, reldir: str) -> str:
     """A submodule's import path = the project root module + its relative
     directory segments (README ss28.3)."""
@@ -6636,10 +6686,14 @@ class EavCodegen:
     """Generate an llvmlite ``ir.Module`` from a parsed EAV ``Program`` (console
     program model). Construction is cheap; call :meth:`generate` to emit IR."""
 
-    def __init__(self, program: Program):
+    def __init__(self, program: Program, platform: Optional["Entity"] = None):
         self.program = program
+        # R-017: the build platform (a resolved `platform` entity, or None for
+        # host) drives the module triple and `forPlatform` inclusion.
+        self.build_platform = platform
         self.module = ir.Module(name="eav")
-        self.module.triple = llvm.get_default_triple()
+        self.module.triple = (_platform_triple(platform) if platform is not None
+                              else llvm.get_default_triple())
         self.aliases = {
             a.name: a.fact("for").payload[0]
             for a in program.of_kind("alias")
@@ -6847,7 +6901,20 @@ class EavCodegen:
             for p in proj.facts("configure")
             if p.payload
         }
-        ops = [o for o in self.program.of_kind("operation") if o.name not in configure_ops]
+        # R-017 / README §30.3.1: when building for a specific platform, exclude
+        # operations gated `forPlatform <other>` so e.g. linuxX64-only code is
+        # absent from a windows build. A host build (no `--platform`) applies no
+        # platform filtering, preserving existing behavior.
+        build_plat_name = self.build_platform.name if self.build_platform else None
+
+        def _included_for_platform(op: Entity) -> bool:
+            gates = [r.payload[0] for r in op.facts("forPlatform") if r.payload]
+            if not gates or build_plat_name is None:
+                return True
+            return build_plat_name in gates
+
+        ops = [o for o in self.program.of_kind("operation")
+               if o.name not in configure_ops and _included_for_platform(o)]
         for op in ops:
             self.functions[op.name] = self._declare_function(op)
         for op in ops:
@@ -7727,9 +7794,12 @@ class EavCodegen:
         )
 
 
-def lower_to_llvm(program: Program) -> ir.Module:
-    """Lower a parsed EAV Program to an llvmlite ir.Module (console model)."""
-    return EavCodegen(program).generate()
+def lower_to_llvm(program: Program, platform: Optional[str] = None) -> ir.Module:
+    """Lower a parsed EAV Program to an llvmlite ir.Module (console model). R-017:
+    `platform` names a declared `platform` entity to build for (host default when
+    None) — it sets the module triple and applies `forPlatform` filtering."""
+    plat = _resolve_build_platform(program, platform)
+    return EavCodegen(program, plat).generate()
 
 
 _NATIVE_INIT_DONE = False
@@ -8192,14 +8262,18 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
-def build_executable(program: Program, out_path: str) -> str:
+def build_executable(program: Program, out_path: str,
+                     platform: Optional[str] = None) -> str:
     """Compile a program to a native executable: lower to LLVM IR, then drive a C
     compiler over the IR plus any native runtime sources the program's
-    runtimeBinding symbols need (manifest-driven). Returns the exe path."""
+    runtimeBinding symbols need (manifest-driven). Returns the exe path. R-017:
+    `platform` selects the declared `platform` entity to lower for (triple +
+    forPlatform); a real cross-toolchain for a non-host triple is out of scope
+    (R-031), so the host compiler still drives the link."""
     import os
     import subprocess
     import tempfile
-    module = lower_to_llvm(program)
+    module = lower_to_llvm(program, platform)
     cc = _find_c_compiler()
     if cc is None:
         raise EavError("no C compiler found to build an executable "
@@ -8246,6 +8320,7 @@ SEM_SURFACES = (
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
+    "sem.build.v1",
 )
 
 EAV_AGENT_RULES = (
@@ -8843,11 +8918,33 @@ def _default_build_output(path: str, explicit_output: Optional[str]) -> str:
 
 
 def cmd_build(args) -> int:
-    """Compile a program to a native executable (IR -> clang -> exe)."""
+    """Compile a program to a native executable (IR -> clang -> exe). R-017: an
+    optional `--platform NAME` selects a declared `platform` entity (triple +
+    forPlatform + its `output` row); an unknown platform exits with a structured
+    sem.build.v1 error."""
+    import os
     program = parse_compact(_read_program_source(args.path))
-    out_path = _default_build_output(args.path, args.output)
+    platform = getattr(args, "platform", None)
     try:
-        sys.stdout.write(build_executable(program, out_path) + "\n")
+        plat = _resolve_build_platform(program, platform)
+    except EavError as exc:
+        declared = sorted(n for n in program.order
+                          if program.entities[n].kind == "platform")
+        sys.stdout.write(_json_envelope(
+            "sem.build.v1", ok=False, status="unknown-platform",
+            platform=platform, declared=declared, message=str(exc)) + "\n")
+        return 2
+    # a platform's `output` row is the default output when no --output is given
+    out_path = args.output
+    if not out_path and plat is not None:
+        links = merge_native_links(program, plat.name)
+        if links.get("output"):
+            base = args.path if os.path.isdir(args.path) else os.path.dirname(
+                os.path.abspath(args.path))
+            out_path = os.path.join(base, links["output"])
+    out_path = _default_build_output(args.path, out_path)
+    try:
+        sys.stdout.write(build_executable(program, out_path, platform) + "\n")
         return 0
     except EavError as exc:
         sys.stderr.write(f"eavc: {exc}\n")
@@ -9284,6 +9381,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_build = sub.add_parser("build", help="compile a program to a native exe")
     sp_build.add_argument("path", help="EAV/compact source file, or - for stdin")
     sp_build.add_argument("--output", "-o", help="output executable path")
+    sp_build.add_argument("--platform", help="declared platform entity to build for "
+                          "(triple/forPlatform/output); host default when omitted")
     sp_build.set_defaults(func=cmd_build)
 
     sp_fmt = sub.add_parser("fmt", help="format a program to a surface")
