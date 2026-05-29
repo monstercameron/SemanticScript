@@ -2367,6 +2367,37 @@ the contract; the language enforces it; agents `import`/`call` these modules and
 learn the rules via `sem docs`/`.semsig`. Hand-rolled allocation or a raw pointer
 in app source is rejected — the safe path is the only path.
 
+#### Memory-safety model — Normative (§1J, WS1-121)
+
+EAV is memory-safe by construction: there is no GC and no manual `free` in app
+source, yet use-after-free, double-free, leaks, out-of-bounds, and data races are
+unrepresentable or statically rejected. The model has six pillars, each enforced
+above and reconciled with §10.6 (values), §29 #14 (memory), and §32.1 #9
+(ownership):
+
+1. **Value classes.** Primitives, `String`, `record`, `enum`, and `error` are
+   plain values — compiler-managed, by-value, move semantics; they never take
+   `owns`/`free`. Opaque resource handles are the only owned things.
+2. **Ownership + cleanup.** A resource is the `owns`/`cleanedBy` producer; its
+   cleanup must be `defer`-ed on every path (SS1503/SS3900) and runs in reverse
+   registration order before each return.
+3. **Borrowed views.** `borrows`/`lifetime`/`mayEscape` mark a non-owning view;
+   a view never cleans (SS1566) and a `mayEscape no` view may not escape its
+   source (SS1560), including across stdlib call boundaries.
+4. **Transfer.** Ownership moves only via `consumes yes`/`takesOwnership`; reuse
+   after a move is rejected (SS1564).
+5. **Regions + bounds.** `region`/`allocateIn`/`releaseRegion` give arena
+   allocation (allocate-many/free-once) gated by an allocator capability
+   (SS1563), with wrong-region-free unrepresentable (SS1562) and
+   use-after-release rejected (SS1561); `Buffer`/`Slice` access is bounds-checked
+   (SS1568, never UB).
+6. **FFI + concurrency.** A foreign allocator re-enters only as an owned wrapper
+   (`unsafe`/`wrapsAs`/`cleanedBy`/`allocator`, SS1569); cross-task state is a
+   guarded `sharedState` (SS3083/SS3084).
+
+The **C-bug → EAV-defense coverage table** is generated from `DEFECT_LEDGER`
+(X-101, `docs/defect-ledger.md`); every memory row maps to a WS1-110…120 item.
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

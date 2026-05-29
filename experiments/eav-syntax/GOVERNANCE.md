@@ -1,7 +1,13 @@
 # EAV-Steps — governance, versioning, glossary
 
-Contract version: **eav-0.3** (must equal `eavc.CONTRACT_VERSION`; the
+Contract version: **eav-0.3.1** (must equal `eavc.CONTRACT_VERSION`; the
 `test_contract_version_lockstep` check fails if they drift — X-020).
+
+> **eav-0.3.1** adds the §1J memory-safety model (WS1-110…122): the `region` and
+> `sharedState` entity kinds; the `borrows`/`lifetime`/`mayEscape`,
+> `consumes`/`takesOwnership`, `allocateIn`/`releaseRegion`,
+> `readShared`/`setShared`, and `unsafe`/`wrapsAs`/`allocator` rows; and the
+> SS1560–SS1571 + SS3083/SS3084 checks. Additive over eav-0.3 (no removals).
 
 ## Change protocol / docs lockstep (X-020)
 

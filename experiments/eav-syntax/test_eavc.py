@@ -5390,6 +5390,22 @@ def test_app_source_raw_allocation_rejected():
     assert "SS5000" in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
+def test_memory_safety_model_spec_and_version():
+    # WS1-121: the normative Memory-safety model section exists, the contract
+    # version is bumped + lockstepped to GOVERNANCE.md, and every memory defense in
+    # the ledger maps to a WS1-1xx owning todo.
+    readme = open(os.path.join(HERE, "README.md"), encoding="utf-8").read()
+    assert "Memory-safety model — Normative" in readme
+    assert eavc.CONTRACT_VERSION == "eav-0.3.1"
+    gov = open(os.path.join(HERE, "GOVERNANCE.md"), encoding="utf-8").read()
+    assert eavc.CONTRACT_VERSION in gov  # X-020 lockstep
+    # every memory-asset defense row maps to a WS1-1xx owning todo (no orphans)
+    mem_rows = [r for r in eavc.DEFECT_LEDGER if r["asset"] == "memory"]
+    assert mem_rows
+    for r in mem_rows:
+        assert r["todo"] is not None and r["todo"].startswith("WS1-1"), r
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

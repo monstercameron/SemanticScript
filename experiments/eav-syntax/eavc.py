@@ -44,7 +44,7 @@ from typing import Optional
 
 # Contract version for the EAV-Steps front end. Bumping this requires updating
 # GOVERNANCE.md (the change-protocol lockstep check, X-020).
-CONTRACT_VERSION = "eav-0.3"
+CONTRACT_VERSION = "eav-0.3.1"
 
 
 class EavError(Exception):
