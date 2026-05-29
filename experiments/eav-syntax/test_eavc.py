@@ -2177,6 +2177,55 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+def test_math_int_ops_jit_run():
+    # WS3-100: extended pure Int64 math targets JIT-run to their expected values.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let n immutable Int64 7\nmain let okCode immutable ExitCode 0\n"
+        "main do popcount\nmain do show\nmain return okCode\n"
+        "popcount is call\npopcount in main\npopcount invokes math.popcountInt64\n"
+        "popcount arg value Int64 n\npopcount out bitCount Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 bitCount\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "3"  # popcount(7) == 3
+
+
+def test_math_float_sqrt_jit_run():
+    # WS3-100: Float64 unary intrinsics (llvm.sqrt) JIT-run.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let x immutable Float64 16.0\nmain let okCode immutable ExitCode 0\n"
+        "main do root\nmain do show\nmain return okCode\n"
+        "root is call\nroot in main\nroot invokes math.sqrtFloat64\n"
+        "root arg value Float64 x\nroot out result Float64\n"
+        "show is call\nshow in main\nshow invokes console.writeFloatLine\n"
+        "show arg value Float64 result\n"
+    )
+    ir_text = eavc._ir_for_source(src) if hasattr(eavc, "_ir_for_source") else str(
+        eavc.lower_to_llvm(eavc.parse(src)))
+    assert "llvm.sqrt" in ir_text
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "4"  # sqrt(16.0) == 4
+
+
 def _storage_program(mutability, with_effect):
     cap = ""
     eff = ""

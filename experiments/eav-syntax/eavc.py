@@ -3899,6 +3899,7 @@ _INT_BINOPS = {
 _FLOAT_BINOPS = {
     "math.addFloat64": "fadd", "math.subtractFloat64": "fsub",
     "math.multiplyFloat64": "fmul", "math.divideFloat64": "fdiv",
+    "math.fmodFloat64": "frem",
 }
 # Integer comparison targets -> icmp_signed predicate.
 _INT_CMP = {
@@ -3914,6 +3915,33 @@ _FLOAT_CMP_ORDERED = {
     "math.greaterThanFloat64": ">", "math.greaterThanOrEqualFloat64": ">=",
 }
 _FLOAT_CMP_UNORDERED = {"math.notEqualFloat64": "!="}
+# WS3-100: pure Float64 unary ops -> LLVM math intrinsics (one `value` arg).
+_FLOAT_UNARY_INTRIN = {
+    "math.sqrtFloat64": "llvm.sqrt", "math.absFloat64": "llvm.fabs",
+    "math.floorFloat64": "llvm.floor", "math.ceilFloat64": "llvm.ceil",
+    "math.truncFloat64": "llvm.trunc", "math.roundFloat64": "llvm.round",
+    "math.sinFloat64": "llvm.sin", "math.cosFloat64": "llvm.cos",
+    "math.expFloat64": "llvm.exp", "math.exp2Float64": "llvm.exp2",
+    "math.logFloat64": "llvm.log", "math.log2Float64": "llvm.log2",
+    "math.log10Float64": "llvm.log10",
+}
+# Pure Float64 binary ops -> LLVM intrinsics (`left`,`right`).
+_FLOAT_BINARY_INTRIN = {
+    "math.powFloat64": "llvm.pow", "math.minFloat64": "llvm.minnum",
+    "math.maxFloat64": "llvm.maxnum", "math.copysignFloat64": "llvm.copysign",
+}
+# Int64 unary ops -> LLVM integer intrinsics (one `value` arg).
+_INT_UNARY_INTRIN = {
+    "math.popcountInt64": "llvm.ctpop",
+    "math.countTrailingZerosInt64": "llvm.cttz",
+    "math.countLeadingZerosInt64": "llvm.ctlz",
+}
+# Int64 ops computed directly from arithmetic/bit/select (no intrinsic).
+_MATH_COMPUTED = {
+    "math.negateInt64", "math.absInt64", "math.squareInt64", "math.signInt64",
+    "math.isEvenInt64", "math.isOddInt64", "math.isPowerOfTwoInt64",
+    "math.minInt64", "math.maxInt64", "math.absDiffInt64",
+}
 
 
 def _norm_type(tok: str) -> str:
@@ -4484,6 +4512,46 @@ class EavCodegen:
         self._cont_count += 1
         return fn.append_basic_block(f"cont{self._cont_count}")
 
+    def _emit_math_computed(self, target, arg, builder):
+        """Pure Int64 math ops (WS3-100) computed from arithmetic/bit/select."""
+        i64 = ir.IntType(64)
+        zero = ir.Constant(i64, 0)
+        one = ir.Constant(i64, 1)
+        if target == "math.negateInt64":
+            return builder.sub(zero, arg("value", "Int64"))
+        if target == "math.squareInt64":
+            v = arg("value", "Int64")
+            return builder.mul(v, v)
+        if target == "math.absInt64":
+            v = arg("value", "Int64")
+            return builder.select(builder.icmp_signed("<", v, zero), builder.sub(zero, v), v)
+        if target == "math.signInt64":
+            v = arg("value", "Int64")
+            return builder.select(
+                builder.icmp_signed(">", v, zero), one,
+                builder.select(builder.icmp_signed("<", v, zero),
+                               ir.Constant(i64, -1), zero))
+        if target == "math.isEvenInt64":
+            return builder.icmp_signed("==", builder.and_(arg("value", "Int64"), one), zero)
+        if target == "math.isOddInt64":
+            return builder.icmp_signed("==", builder.and_(arg("value", "Int64"), one), one)
+        if target == "math.isPowerOfTwoInt64":
+            v = arg("value", "Int64")
+            positive = builder.icmp_signed(">", v, zero)
+            masked = builder.and_(v, builder.sub(v, one))
+            return builder.and_(positive, builder.icmp_signed("==", masked, zero))
+        if target == "math.minInt64":
+            left, right = arg("left", "Int64"), arg("right", "Int64")
+            return builder.select(builder.icmp_signed("<", left, right), left, right)
+        if target == "math.maxInt64":
+            left, right = arg("left", "Int64"), arg("right", "Int64")
+            return builder.select(builder.icmp_signed(">", left, right), left, right)
+        if target == "math.absDiffInt64":
+            diff = builder.sub(arg("left", "Int64"), arg("right", "Int64"))
+            return builder.select(builder.icmp_signed("<", diff, zero),
+                                  builder.sub(zero, diff), diff)
+        raise EavError(f"unhandled computed math target {target!r}")
+
     def _emit_call(self, call, builder, sym, let_mut) -> None:
         target_row = call.fact("invokes")
         if not target_row or not target_row.payload:
@@ -4543,6 +4611,21 @@ class EavCodegen:
             result = builder.fcmp_unordered(
                 _FLOAT_CMP_UNORDERED[target], arg("left", "Float64"), arg("right", "Float64")
             )
+        elif target in _FLOAT_UNARY_INTRIN:
+            fn = self.module.declare_intrinsic(_FLOAT_UNARY_INTRIN[target], [ir.DoubleType()])
+            result = builder.call(fn, [arg("value", "Float64")])
+        elif target in _FLOAT_BINARY_INTRIN:
+            fn = self.module.declare_intrinsic(_FLOAT_BINARY_INTRIN[target], [ir.DoubleType()])
+            result = builder.call(fn, [arg("left", "Float64"), arg("right", "Float64")])
+        elif target in _INT_UNARY_INTRIN:
+            i64 = ir.IntType(64)
+            fn = self.module.declare_intrinsic(_INT_UNARY_INTRIN[target], [i64])
+            if target == "math.popcountInt64":
+                result = builder.call(fn, [arg("value", "Int64")])
+            else:  # cttz/ctlz take (value, is_zero_poison:i1)
+                result = builder.call(fn, [arg("value", "Int64"), ir.Constant(ir.IntType(1), 0)])
+        elif target in _MATH_COMPUTED:
+            result = self._emit_math_computed(target, arg, builder)
         elif target.startswith("compare."):
             result = self._emit_compare(target, args, builder, sym, call)
         elif target.startswith("convert.to"):
