@@ -7626,3 +7626,377 @@ def test_noop_codegen_would_fail():
     empty.verify()
     with pytest.raises(NameError):
         empty.get_function("main")
+
+
+# === X-112 / X-113 coverage backfill ===
+# X-112: ownership-edge checker (_validate_ownership_edges) additional coverage.
+# X-113: taint/secret/sink-typing (_validate_sink_typing, _validate_secret_flow)
+#        additional coverage.
+
+
+# ---------------------------------------------------------------------------
+# X-112: ownership-edge fixtures
+# ---------------------------------------------------------------------------
+
+def _owned_function_program(violation="", ret="doWork return okCode\n",
+                             out_type="ExitCode"):
+    """Minimal source fixture with a *function* (not operation) entity that
+    owns a handle — exercises the `function` branch of
+    _validate_ownership_edges.  The violation row is injected before the
+    return; callers pass a row that triggers a specific ownership diagnostic."""
+    return (
+        "Handle is alias\nHandle for OpaquePointer\n"
+        f"doWork is function\ndoWork out {out_type}\n"
+        "doWork let okCode immutable ExitCode 0\n"
+        "doWork do openH\ndoWork defer hCleanup\n"
+        + violation + ret
+        + "openH is call\nopenH in doWork\nopenH invokes res.open\n"
+        "openH out handle Handle\nopenH owns handle\nopenH cleanedBy hCleanup\n"
+        "closeH is call\ncloseH in doWork\ncloseH invokes res.close\n"
+        'closeH arg h Handle handle\ncloseH discards "release"\n'
+        "hCleanup is cleanup\nhCleanup in doWork\nhCleanup call closeH\n"
+        'hCleanup because "release"\nhCleanup cleans handle\n'
+    )
+
+
+# -- X-112 rejecting fixtures (ownership-edge, function body) ----------------
+
+def test_owned_handle_alias_in_function_rejected():
+    # X-112: SS3044A fires for a `function` entity, not only an `operation`.
+    # No-op-failing: a validator that only checks operations would miss this.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_owned_function_program(
+            violation="doWork let aliasHandle immutable Handle handle\n"))
+    assert getattr(exc.value, "code", None) == "SS3044A"
+
+
+def test_owned_handle_double_cleanup_in_function_rejected():
+    # X-112: SS3044B fires when the same cleanup is deferred twice in a function.
+    # No-op-failing: a validator that only scans operations would not catch this.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_owned_function_program(
+            violation="doWork defer hCleanup\n"))
+    assert getattr(exc.value, "code", None) == "SS3044B"
+
+
+def test_owned_handle_escape_in_function_rejected():
+    # X-112: SS3044C fires when an owned handle appears in a `return` of a
+    # function.  No-op-failing: a validator that only tracks operation returns
+    # would miss this.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_owned_function_program(
+            ret="doWork return handle\n", out_type="Handle"))
+    assert getattr(exc.value, "code", None) == "SS3044C"
+
+
+def test_multiple_owned_handles_alias_of_one_triggers_ss3044a():
+    # X-112: when an operation owns multiple handles, aliasing only one of
+    # them still triggers SS3044A for that handle.
+    # No-op-failing: a stub that skips the alias loop would accept this.
+    src = (
+        "Handle is alias\nHandle for OpaquePointer\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do openResourceA\nmain do openResourceB\n"
+        "main defer cleanupA\nmain defer cleanupB\n"
+        # alias handle from openResourceA — this is the violation
+        "main let aliasOfA immutable Handle handleA\n"
+        "main return okCode\n"
+        "openResourceA is call\nopenResourceA in main\n"
+        "openResourceA invokes res.openA\n"
+        "openResourceA out handleA Handle\n"
+        "openResourceA owns handleA\nopenResourceA cleanedBy cleanupA\n"
+        "openResourceB is call\nopenResourceB in main\n"
+        "openResourceB invokes res.openB\n"
+        "openResourceB out handleB Handle\n"
+        "openResourceB owns handleB\nopenResourceB cleanedBy cleanupB\n"
+        "closeResourceA is call\ncloseResourceA in main\n"
+        "closeResourceA invokes res.closeA\n"
+        'closeResourceA arg h Handle handleA\ncloseResourceA discards "done"\n'
+        "cleanupA is cleanup\ncleanupA in main\ncleanupA call closeResourceA\n"
+        'cleanupA because "release A"\ncleanupA cleans handleA\n'
+        "closeResourceB is call\ncloseResourceB in main\n"
+        "closeResourceB invokes res.closeB\n"
+        'closeResourceB arg h Handle handleB\ncloseResourceB discards "done"\n'
+        "cleanupB is cleanup\ncleanupB in main\ncleanupB call closeResourceB\n"
+        'cleanupB because "release B"\ncleanupB cleans handleB\n'
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3044A"
+
+
+# -- X-112 accepting fixtures (ownership-edge, happy paths) ------------------
+
+def test_function_with_owned_handle_and_deferred_cleanup_accepted():
+    # X-112: a function that owns a handle, defers its cleanup exactly once,
+    # and returns a non-handle value must not raise SS3044A/B/C.
+    prog = eavc.parse(_owned_function_program())
+    assert "doWork" in prog.entities
+    diag_codes = {d.code for d in eavc.lint(prog)}
+    assert "SS3044A" not in diag_codes
+    assert "SS3044B" not in diag_codes
+    assert "SS3044C" not in diag_codes
+
+
+def test_operation_with_no_owned_handles_bypasses_ownership_edge_check():
+    # X-112: the early `if not owned: continue` path — an operation that
+    # makes calls but owns nothing must not produce SS3044 diagnostics.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let greeting immutable String "hello"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do greetCall\nmain return okCode\n"
+        "greetCall is call\ngreetCall in main\ngreetCall invokes console.writeLine\n"
+        "greetCall arg text String greeting\n"
+    )
+    prog = eavc.parse(src)
+    assert "main" in prog.entities
+    diag_codes = {d.code for d in eavc.lint(prog)}
+    assert "SS3044A" not in diag_codes
+    assert "SS3044B" not in diag_codes
+    assert "SS3044C" not in diag_codes
+
+
+# ---------------------------------------------------------------------------
+# X-113: sink-typing (_validate_sink_typing) fixtures
+# ---------------------------------------------------------------------------
+
+# Intrinsic sink fixture for sink-typing tests (sql.exec with SqlText constraint).
+_X113_INTRINSIC_SQL_SINK = (
+    "SqlText is alias\nSqlText for String\n"
+    "sqlExec is intrinsic\nsqlExec target sql.exec\n"
+    "sqlExec arg sql SqlText\nsqlExec out rows Int64\n"
+    "sqlExec trustConstraint arg sql SqlText\n"
+)
+
+
+def test_trustedinternal_type_at_sink_accepted():
+    # X-113: a type whose typeTrust label is `trustedInternal` satisfies a
+    # sink constraint even when its name differs from the required type name.
+    # No-op-failing: a validator that only accepts the exact declared type
+    # name would incorrectly reject a trustedInternal-labelled variant.
+    src = (
+        _X113_INTRINSIC_SQL_SINK
+        + "TrustedSqlParam is alias\nTrustedSqlParam for String\n"
+        "TrustedSqlParam typeTrust trustedInternal\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        'main let safeSql immutable TrustedSqlParam "SELECT 1"\n'
+        "main do runQuery\nmain return okCode\n"
+        "runQuery is call\nrunQuery in main\nrunQuery invokes sql.exec\n"
+        "runQuery arg sql TrustedSqlParam safeSql\n"
+        "runQuery out rows Int64\n"
+    )
+    prog = eavc.parse(src)
+    assert "main" in prog.entities   # no SS3071 raised
+
+
+def test_string_concat_into_user_function_sink_rejected():
+    # X-113: a string-built value reaching a *user function* sink (not just
+    # an intrinsic) is SS3071.
+    # No-op-failing: a validator that only checks intrinsic-target sinks
+    # would accept this program.
+    src = (
+        "SqlText is alias\nSqlText for String\n"
+        "execQuery is function\nexecQuery in sql SqlText\nexecQuery out ExitCode\n"
+        'execQuery async no\nexecQuery purpose "p"\nexecQuery invariant "i"\n'
+        "execQuery trustConstraint arg sql SqlText\n"
+        "execQuery let okCode immutable ExitCode 0\nexecQuery return okCode\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        'main let queryPrefix immutable String "SELECT * FROM t WHERE id="\n'
+        'main let queryId immutable String "1"\n'
+        "main do buildQuery\nmain do runQuery\nmain return okCode\n"
+        "buildQuery is call\nbuildQuery in main\nbuildQuery invokes string.concat\n"
+        "buildQuery arg left String queryPrefix\n"
+        "buildQuery arg right String queryId\n"
+        "buildQuery out builtQuery SqlText\n"
+        "runQuery is call\nrunQuery in main\nrunQuery invokes execQuery\n"
+        "runQuery arg sql SqlText builtQuery\nrunQuery out code ExitCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+
+def test_rawexternal_into_user_function_sink_rejected():
+    # X-113: a rawExternal value reaching a *user function* sink is SS3070.
+    # No-op-failing: a validator that only checks intrinsic sinks misses this.
+    src = (
+        "RawSql is alias\nRawSql for String\nRawSql typeTrust rawExternal\n"
+        "execQuery is function\nexecQuery in sql RawSql\nexecQuery out ExitCode\n"
+        'execQuery async no\nexecQuery purpose "p"\nexecQuery invariant "i"\n'
+        "execQuery trustConstraint arg sql\n"
+        "execQuery let okCode immutable ExitCode 0\nexecQuery return okCode\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let rawInput immutable RawSql "DROP TABLE users"\n'
+        "main let okCode immutable ExitCode 0\nmain do callQuery\nmain return okCode\n"
+        "callQuery is call\ncallQuery in main\ncallQuery invokes execQuery\n"
+        "callQuery arg sql RawSql rawInput\ncallQuery out code ExitCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3070"
+
+
+def test_no_trustconstraint_declared_bypasses_sink_typing():
+    # X-113: when no entity declares a `trustConstraint`, _validate_sink_typing
+    # returns early via the `if not sink_required: return` path.  No
+    # SS3071 should be raised even if a string-built value is used.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let rawText immutable String "hello"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do writeText\nmain return okCode\n"
+        "writeText is call\nwriteText in main\nwriteText invokes console.writeLine\n"
+        "writeText arg text String rawText\n"
+    )
+    prog = eavc.parse(src)   # no SS3071 raised — early-return path
+    assert "main" in prog.entities
+
+
+# ---------------------------------------------------------------------------
+# X-113: secret-flow (_validate_secret_flow) fixtures
+# ---------------------------------------------------------------------------
+
+def test_hardcoded_secret_let_in_operation_rejected():
+    # X-113: a `let` binding inside an *operation* that initialises a
+    # secret-typed value from a literal is SS3072 (the operation-let path,
+    # distinct from the module-storage path tested elsewhere).
+    # No-op-failing: a validator that only checks `storage` entities would
+    # miss this path (lines 4683–4691 of _validate_secret_flow).
+    src = (
+        "ApiKey is alias\nApiKey for String\nApiKey typeTrust secret\n"
+        "doAuth is operation\ndoAuth out ExitCode\ndoAuth async no\n"
+        'doAuth purpose "p"\ndoAuth invariant "i"\n'
+        'doAuth let hardcodedKey immutable ApiKey "sk-hardcoded-bad"\n'
+        "doAuth let okCode immutable ExitCode 0\ndoAuth return okCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_secret_written_to_log_sink_rejected():
+    # X-113: a secret-typed value passed to a `log.*` target is SS3072.
+    # _is_observable_sink treats any log.* call as an observable channel.
+    # No-op-failing: a validator that only blocks `console.*` targets misses
+    # this path.
+    src = (
+        "ApiKey is alias\nApiKey for String\nApiKey typeTrust secret\n"
+        "logOp is operation\nlogOp out ExitCode\nlogOp async no\n"
+        'logOp purpose "p"\nlogOp invariant "i"\n'
+        "logOp in secretKey ApiKey\nlogOp let okCode immutable ExitCode 0\n"
+        "logOp do logCall\nlogOp return okCode\n"
+        "logCall is call\nlogCall in logOp\nlogCall invokes log.warn\n"
+        "logCall arg message ApiKey secretKey\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_secret_written_to_console_write_integer_line_rejected():
+    # X-113: a secret-typed integer written to console.writeIntegerLine is
+    # SS3072.  No-op-failing: a validator that only blocks console.writeLine
+    # would miss the writeIntegerLine target.
+    src = (
+        "SecretCount is alias\nSecretCount for Int64\nSecretCount typeTrust secret\n"
+        "leakIntOp is operation\nleakIntOp out ExitCode\nleakIntOp async no\n"
+        'leakIntOp purpose "p"\nleakIntOp invariant "i"\n'
+        "leakIntOp in secretCount SecretCount\n"
+        "leakIntOp let okCode immutable ExitCode 0\n"
+        "leakIntOp do showCount\nleakIntOp return okCode\n"
+        "showCount is call\nshowCount in leakIntOp\n"
+        "showCount invokes console.writeIntegerLine\n"
+        "showCount arg value SecretCount secretCount\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_secret_math_not_equal_comparison_rejected():
+    # X-113: comparing secrets via `math.notEqualInt64` is SS3074.
+    # The `_qual` guard ("qual" substring) matches notEqual as well as equal.
+    # No-op-failing: a validator that only blocks math.equalInt64 misses the
+    # notEqual variant.
+    src = (
+        "SecretPin is alias\nSecretPin for Int64\nSecretPin typeTrust secret\n"
+        "checkPinOp is operation\ncheckPinOp out Bool\ncheckPinOp async no\n"
+        'checkPinOp purpose "p"\ncheckPinOp invariant "i"\n'
+        "checkPinOp in givenPin SecretPin\ncheckPinOp in expectedPin SecretPin\n"
+        "checkPinOp do cmpOp\ncheckPinOp return notSame\n"
+        "cmpOp is call\ncmpOp in checkPinOp\ncmpOp invokes math.notEqualInt64\n"
+        "cmpOp arg left SecretPin givenPin\ncmpOp arg right SecretPin expectedPin\n"
+        "cmpOp out notSame Bool\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3074"
+
+
+def test_secret_math_equal_int64_comparison_rejected():
+    # X-113: comparing secrets via `math.equalInt64` is SS3074.
+    # No-op-failing: a validator that only checks compare.* misses the
+    # math.equalInt64 variant.
+    src = (
+        "SecretCode is alias\nSecretCode for Int64\nSecretCode typeTrust secret\n"
+        "verifyPinOp is operation\nverifyPinOp out Bool\nverifyPinOp async no\n"
+        'verifyPinOp purpose "p"\nverifyPinOp invariant "i"\n'
+        "verifyPinOp in givenCode SecretCode\nverifyPinOp in expectedCode SecretCode\n"
+        "verifyPinOp do cmpCall\nverifyPinOp return matchedResult\n"
+        "cmpCall is call\ncmpCall in verifyPinOp\ncmpCall invokes math.equalInt64\n"
+        "cmpCall arg left SecretCode givenCode\n"
+        "cmpCall arg right SecretCode expectedCode\n"
+        "cmpCall out matchedResult Bool\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3074"
+
+
+def test_no_secret_types_bypasses_secret_flow_check():
+    # X-113: when no type declares `typeTrust secret`, _validate_secret_flow
+    # returns early via the `if not secret_types: return` path.
+    # No-op-failing: ensures the early-exit code path is exercised without
+    # producing a false-positive SS3072/SS3074.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let greeting immutable String "hi"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do greetCall\nmain return okCode\n"
+        "greetCall is call\ngreetCall in main\ngreetCall invokes console.writeLine\n"
+        "greetCall arg text String greeting\n"
+    )
+    prog = eavc.parse(src)   # no SS3072/SS3074 — early-return path
+    assert "main" in prog.entities
+
+
+def test_secret_arithmetic_add_not_flagged_as_timing_leak():
+    # X-113: a `math.addInt64` call on a secret-typed operand is NOT a
+    # timing side-channel — only *equality* checks (`qual` substring) leak
+    # the secret's value.  The `_qual` guard must not match `addInt64`.
+    # No-op-failing: a validator that blocks all math.* on secrets (not only
+    # equality) would incorrectly reject this and this test would not pass.
+    src = (
+        "SecretOffset is alias\nSecretOffset for Int64\n"
+        "SecretOffset typeTrust secret\n"
+        "computeOp is operation\ncomputeOp out Int64\ncomputeOp async no\n"
+        'computeOp purpose "p"\ncomputeOp invariant "i"\n'
+        "computeOp in baseOffset SecretOffset\ncomputeOp in stepSize Int64\n"
+        "computeOp do addOp\ncomputeOp return computedResult\n"
+        "addOp is call\naddOp in computeOp\naddOp invokes math.addInt64\n"
+        "addOp arg left SecretOffset baseOffset\naddOp arg right Int64 stepSize\n"
+        "addOp out computedResult Int64\n"
+    )
+    prog = eavc.parse(src)   # no SS3074 raised
+    assert "computeOp" in prog.entities
