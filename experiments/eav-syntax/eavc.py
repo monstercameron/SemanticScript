@@ -951,8 +951,10 @@ def _validate_program(program: Program) -> None:
 
 
 def _validate_effect_coverage(program: Program) -> None:
-    """Every declared `effect` should be covered by a `uses` capability whose
-    `grants` matches action+resource; uncovered is a warning (README ss8, ss17 #5)."""
+    """An operation's *effective* effects are its own plus those of the calls/
+    tasks/cleanups it activates; every effective effect should be covered by a
+    `uses` capability (README ss8, ss15, ss17 #5; effect-union WS2-040). An
+    uncovered effect — including one introduced by an activated call — warns."""
     cap_grants: dict[str, set] = {}
     for name in program.order:
         ent = program.entities[name]
@@ -962,6 +964,14 @@ def _validate_effect_coverage(program: Program) -> None:
                 for g in ent.facts("grants")
                 if len(g.payload) >= 2
             }
+
+    def effects_of(ent: Entity):
+        return {
+            (e.payload[0], e.payload[1])
+            for e in ent.facts("effect")
+            if len(e.payload) >= 2
+        }
+
     for name in program.order:
         op = program.entities[name]
         if op.kind not in ("operation", "function"):
@@ -970,10 +980,22 @@ def _validate_effect_coverage(program: Program) -> None:
         for u in op.facts("uses"):
             if u.payload:
                 covered |= cap_grants.get(u.payload[0], set())
-        for eff in op.facts("effect"):
-            if len(eff.payload) >= 2 and (eff.payload[0], eff.payload[1]) not in covered:
+        effective = set(effects_of(op))
+        for row in op.rows:
+            if row.predicate in _STEP_SPLIT and row.payload:
+                ref = program.entities.get(row.payload[0])
+                if ref is None:
+                    continue
+                effective |= effects_of(ref)
+                if ref.kind == "cleanup":
+                    cr = ref.fact("call")
+                    worker = program.entities.get(cr.payload[0]) if cr and cr.payload else None
+                    if worker is not None:
+                        effective |= effects_of(worker)
+        for action, resource in sorted(effective):
+            if (action, resource) not in covered:
                 program.warnings.append(
-                    f"{op.name}: effect `{eff.payload[0]} {eff.payload[1]}` is not "
+                    f"{op.name}: effective effect `{action} {resource}` is not "
                     f"covered by a `uses` capability (README ss8, ss17 #5)"
                 )
 

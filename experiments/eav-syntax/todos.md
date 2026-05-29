@@ -192,7 +192,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS2-034 `suppress <CODE> because "…"` scope = subject entity + one code; operation covers its steps/let/labels, not child call/task/cleanup. →test: child-row suppress not covered. §30.6.2 _(eavc: `_apply_suppressions`/`_suppress_diagnostics` — suppress needs because (SS5400) + real code (SS5401), scoped to the subject entity; `test_suppress_removes_diagnostic_on_same_entity`, `test_suppress_without_because_errors`, `test_suppress_unknown_code_errors`, `test_suppress_scoped_to_entity_not_children`)_
 
 ## 2D. Effect / authority / cleanup analysis
-- [ ] WS2-040 Effect-union: op effective effects = own + activated call/task/cleanup effects; uses covers union; both-direction check. →test: capability gap on call-level effect reported on op. §15
+- [x] WS2-040 Effect-union: op effective effects = own + activated call/task/cleanup effects; uses covers union; both-direction check. →test: capability gap on call-level effect reported on op. §15 _(eavc: `_validate_effect_coverage` unions own + activated call/task/cleanup-worker effects, warns on uncovered; `test_effect_union_reports_call_level_gap`, `test_covered_effect_no_warning`)_
 - [ ] WS2-041 Capability coverage across call graph (§29 #10 algorithm). →test: uncovered transitive effect flagged.
 - [ ] WS2-042 Ownership/cleanup graph closure (SS1502) on every success path. →test: missing cleanup on a path = error.
 - [ ] WS2-043 forTarget/forPlatform reference-closure (filtered set has no dangling refs); filtering-phase-first. →test: included→pruned ref = hard error per target. §30.3.1

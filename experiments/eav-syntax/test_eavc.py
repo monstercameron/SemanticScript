@@ -996,6 +996,20 @@ def test_uncovered_effect_warns():
                for w in prog.warnings)
 
 
+def test_effect_union_reports_call_level_gap():
+    # WS2-040 / README §17 #5: an effect introduced by an activated call is part
+    # of the op's effective effects and must be covered by the op's `uses`.
+    src = (
+        "dbReader is capability\ndbReader grants read database\n"
+        "main is operation\nmain out ExitCode\nmain do queryCall\nmain return okCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "queryCall is call\nqueryCall in main\nqueryCall invokes sqlite.query\n"
+        "queryCall effect read database\nqueryCall out rows Int64\n"
+    )
+    prog = eavc.parse(src)  # main `uses` nothing -> effective (read, database) uncovered
+    assert any("read database" in w for w in prog.warnings)
+
+
 def test_covered_effect_no_warning():
     prog = eavc.parse(
         "writer is capability\nwriter grants write console.stdout\n"
