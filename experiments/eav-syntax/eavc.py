@@ -417,6 +417,16 @@ DIAGNOSTICS.update({
     "SS3024Q": {"tier": "T1", "summary": "sql placeholder/arg-count mismatch.",
                 "found": "A sql island whose `?` count differs from the call's param args.",
                 "suggested": "One `?` per parameter arg (README §16)."},
+    # R-080: fail-closed island indentation. The island body shares a common
+    # leading-space prefix (README §16/§33.2); a non-blank line shallower than
+    # the island's first body line is a visually ambiguous paste, not a deeper
+    # nesting, so it is rejected rather than silently re-anchored to column 1.
+    "SS3024I": {"tier": "T1", "summary": "Inconsistent island indentation.",
+                "found": "A `body <kind>` island whose lines do not share a common "
+                         "leading-space prefix (a line dedents below the island anchor "
+                         "or mixes tabs/spaces).",
+                "suggested": "Indent every island line to at least the first body line, "
+                             "spaces only (README §16, §33.2)."},
     "SS3025": {"tier": "T1", "summary": "Trusted fragment minted off-boundary.",
                "found": "An HtmlTrustedFragment produced by a call other than html.trustFragment.",
                "suggested": "Mint trusted fragments only at html.trustFragment (README §16)."},
@@ -1078,6 +1088,47 @@ def typed_comments(source: str) -> list:
     return out
 
 
+def _line_comment(text: str) -> Optional[str]:
+    """Return the comment portion of a line (from the first *unquoted* `#` to the
+    end), or None if the line has no comment. String-aware so `# security:` text
+    inside a `"..."` literal is not mistaken for a typed comment (README §2).
+
+    R-080: typed-comment retention reuses this so a `# security:` note that is
+    actually source data (e.g. inside a quoted value) is never harvested as
+    metadata, only genuine comments are."""
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "#":
+            return text[i:]
+        if ch == '"':
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text[i] == '"':
+                    i += 1
+                    break
+                i += 1
+            continue
+        i += 1
+    return None
+
+
+def _typed_comment_of_line(text: str) -> Optional[tuple[str, str]]:
+    """Match a single line's (string-aware) comment against the typed-comment
+    grammar, returning (tag, text) or None (README §2, R-080)."""
+    comment = _line_comment(text)
+    if comment is None:
+        return None
+    m = _TYPED_COMMENT_RE.match(comment)
+    if m:
+        return (m.group(1), m.group(2).strip())
+    return None
+
+
 def docs(semsig_program: Program) -> list:
     """Generate an API catalog from a loaded .semsig (README ss27 `sem docs`):
     one line per intrinsic — `target(arg:Type, …) -> Out [throws Err]` + purpose."""
@@ -1634,6 +1685,11 @@ class Program:
     order: list[str] = field(default_factory=list)
     islands: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # R-080: typed comments (`# <tag>: text`, README §2/§34) retained as
+    # structured metadata so important `# security:`/`# failure:` notes survive
+    # into docs/describe surfaces instead of disappearing. Each item is
+    # (tag, text, line); line is 1-based for the source row carrying the comment.
+    typed_comments: list[tuple[str, str, int]] = field(default_factory=list)
 
     def add(self, entity: Entity) -> None:
         self.entities[entity.name] = entity
@@ -1804,7 +1860,10 @@ def _leading_spaces(raw: str) -> int:
         if ch == " ":
             n += 1
         elif ch == "\t":
-            raise EavError("island indentation must be spaces, not tabs (README ss2)")
+            raise EavError(
+                "island indentation must be spaces, not tabs (README ss2/ss16)",
+                code="SS3024I",
+            )
         else:
             break
     return n
@@ -1834,6 +1893,14 @@ def parse(source_text: str) -> Program:
         raw = raw_lines[i]
         lineno = i + 1
         stripped = raw.strip()
+        # R-080: retain typed comments (`# <tag>: text`) as structured metadata.
+        # Harvested here at the top of the row loop, so both full-line and
+        # trailing typed comments are captured; island body lines are consumed by
+        # the island block (which sets `i = j`) and never re-enter this loop, so
+        # foreign-content `#` text (CSS/SQL comments) is correctly excluded.
+        tc = _typed_comment_of_line(raw)
+        if tc is not None:
+            program.typed_comments.append((tc[0], tc[1], lineno))
         if not stripped or stripped.startswith("#"):
             i += 1
             continue
@@ -1963,11 +2030,29 @@ def parse(source_text: str) -> Program:
                     j += 1
                     continue
                 break
-            # Common-prefix strip.
+            # R-080: fail-closed indentation. The first non-blank body line is
+            # the island anchor; every subsequent non-blank line must be indented
+            # at least as deep (deeper = nested HTML/JSON/SQL, which is fine). A
+            # line shallower than the anchor — but still indented — is a visually
+            # ambiguous paste (README §16/§33.2): the old common-prefix strip
+            # would silently re-anchor it to column 1 and corrupt the island, so
+            # we reject it instead. The anchor is the common prefix stripped
+            # uniformly, preserving relative nesting verbatim.
             indented = [b for b in body_lines if b.strip()]
             if indented:
-                common = min(_leading_spaces(b) for b in indented)
-                body_lines = [b[common:] if b.strip() else "" for b in body_lines]
+                base = _leading_spaces(indented[0])
+                for b in indented[1:]:
+                    if _leading_spaces(b) < base:
+                        raise EavError(
+                            f"inconsistent island indentation in {subject!r} "
+                            f"{island_kind!r} body: line {b.strip()!r} is indented "
+                            f"less than the island's first line (anchor {base} "
+                            f"spaces); island lines share a common leading-space "
+                            f"prefix and may only nest deeper (README ss16/ss33.2)",
+                            lineno,
+                            code="SS3024I",
+                        )
+                body_lines = [b[base:] if b.strip() else "" for b in body_lines]
             while body_lines and not body_lines[-1].strip():
                 body_lines.pop()
             program.islands[(subject, island_kind)] = body_lines
@@ -2346,6 +2431,35 @@ def semantic_diff(old: Program, new: Program) -> list:
     return out
 
 
+def entity_typed_comments(program: Program, name: str) -> list:
+    """R-080: typed comments (`# <tag>: text`) attributed to one entity by source
+    proximity — comments within the entity's row span, plus a short preamble
+    window of comment/blank lines immediately above its `is` row (the idiomatic
+    place for a `# security:`/`# failure:` note). Returns [(tag, text, line)] in
+    source order so important notes are reviewable per-entity, not just globally.
+    """
+    if not program.typed_comments:
+        return []
+    ent = program.entities.get(name)
+    if ent is None:
+        raise EavError(f"no entity named {name!r}")
+    row_lines = [ent.line] + [r.line for r in ent.rows]
+    start, end = min(row_lines), max(row_lines)
+    # Lines occupied by any *other* entity's `is` row — a typed comment above
+    # `start` belongs to this entity only until one of those lines is crossed.
+    other_is_lines = sorted(
+        o.line for o in program.entities.values() if o.name != name
+    )
+    prev_is = max((ln for ln in other_is_lines if ln < start), default=0)
+    # Attribute a comment to this entity when it sits inside the row span, or in
+    # the preamble window between the previous entity's `is` row and this one.
+    return [
+        (tag, text, ln)
+        for (tag, text, ln) in program.typed_comments
+        if (start <= ln <= end) or (prev_is < ln < start)
+    ]
+
+
 def describe(program: Program, name: str) -> str:
     """A human/agent summary of an entity's contract (README ss24 `explain`)."""
     ent = program.entities.get(name)
@@ -2365,6 +2479,10 @@ def describe(program: Program, name: str) -> str:
         steps = [r for r in ent.rows if r.label is not None or r.predicate in STEP_PREDICATES]
         labels = [r.label for r in ent.rows if r.label is not None]
         lines.append(f"  steps {len(steps)}; labels {labels}")
+    # R-080: surface retained typed comments so a `# security:`/`# failure:`
+    # note attached to this entity is reviewable in the contract summary.
+    for tag, text, _ln in entity_typed_comments(program, name):
+        lines.append(f"  # {tag}: {text}")
     return "\n".join(lines)
 
 
@@ -8994,9 +9112,15 @@ def cmd_check(args) -> int:
     else:
         nxt = [_next_command(["test", args.path], "run the test operations"),
                _next_command(["build", args.path], "compile to a native exe")]
+    # R-080: surface retained typed comments (`# security:`/`# failure:` …) on
+    # the machine-facing check envelope so important notes stay reviewable in
+    # downstream tooling instead of disappearing.
+    typed = [{"tag": t, "text": txt, "line": ln}
+             for (t, txt, ln) in program.typed_comments]
     sys.stdout.write(_json_envelope(
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
-        diagnostics=[d.render() for d in diags], nextCommands=nxt) + "\n")
+        diagnostics=[d.render() for d in diags], typedComments=typed,
+        nextCommands=nxt) + "\n")
     return 0
 
 
