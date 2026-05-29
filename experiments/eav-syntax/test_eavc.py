@@ -44,6 +44,25 @@ def test_invalid_corpus_is_populated():
 MANIFESTS = os.path.join(HERE, "manifests")
 
 
+def test_supply_chain_allowlist():
+    # WS3-036: a dep effect not in allowEffect is refused.
+    build = eavc.parse(
+        "P is project\nP allowEffect read database\nP allowEffect write console.stdout\n"
+    )
+    ok_lock = eavc.parse("P is project\nP effectSurface read database\n")
+    eavc.verify_supply_chain(build, ok_lock)  # ok
+    bad_lock = eavc.parse("P is project\nP effectSurface connect socket\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.verify_supply_chain(build, bad_lock)
+    assert exc.value.code == "SS2805"
+
+
+def test_supply_chain_manifest_goldens_consistent():
+    build = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
+    lock = eavc.parse(open(os.path.join(MANIFESTS, "build.sem.lock"), encoding="utf-8").read())
+    eavc.verify_supply_chain(build, lock)  # the goldens are consistent
+
+
 def test_mvs_selects_highest():
     # WS3-033: minimal version selection picks the highest required version.
     reqs = [("a", "v1.2.0"), ("a", "v1.3.0"), ("a", "v1.2.9"), ("b", "v2.0.0")]

@@ -138,6 +138,9 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS2805": {"tier": "T0", "summary": "Dependency requests an un-allowed effect.",
+               "found": "A lock effectSurface effect with no matching build.sem allowEffect.",
+               "suggested": "Add an `allowEffect`, or drop the dependency (§28.5)."},
     "SS2804": {"tier": "T0", "summary": "Dependency sha256 digest mismatch.",
                "found": "A resolved dependency's content hash != its lock digest.",
                "suggested": "Re-fetch the dependency; a mismatch is a tamper signal (§28.4)."},
@@ -401,6 +404,31 @@ def mvs_select(requirements: list) -> dict:
         if name not in best or key > best[name][0]:
             best[name] = (key, ver)
     return {name: ver for name, (key, ver) in best.items()}
+
+
+def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
+    """Supply-chain allowlist (README ss28.5): every effect in the resolved
+    `effectSurface` (lock) must be permitted by an `allowEffect` row (build.sem).
+    An un-allowed effect is refused (SS2805)."""
+    builds = build_program.of_kind("project")
+    locks = lock_program.of_kind("project")
+    allowed = {
+        (r.payload[0], r.payload[1])
+        for proj in builds for r in proj.facts("allowEffect")
+        if len(r.payload) >= 2
+    }
+    surface = [
+        (r.payload[0], r.payload[1])
+        for proj in locks for r in proj.facts("effectSurface")
+        if len(r.payload) >= 2
+    ]
+    violations = [eff for eff in surface if eff not in allowed]
+    if violations:
+        raise EavError(
+            f"dependency effect surface requests un-allowed effects {violations} "
+            f"(not in build.sem allowEffect, README ss28.5)",
+            code="SS2805",
+        )
 
 
 def sha256_hex(data: bytes) -> str:

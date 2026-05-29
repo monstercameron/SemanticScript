@@ -236,7 +236,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS3-033 MVS resolver (highest required; no solver). →test: MVS selection golden. §28.4 _(eavc: `mvs_select` picks the highest required semver per module (release > pre-release), no solver; `test_mvs_selects_highest`, `test_mvs_release_beats_prerelease`)_
 - [x] WS3-034 sha256 content-addressed integrity; digest mismatch = hard error. →test: tampered dep rejects. §28.4 _(eavc: `sha256_hex`/`verify_digest` — mismatch is SS2804 hard error; `test_sha256_digest_verify_and_mismatch`)_
 - [ ] WS3-035 `sem mod tidy` lock gen; `sem vendor`; module cache. →test: tidy reproducible; vendor build. §28.4
-- [ ] WS3-036 Supply-chain capability allowlist (`allowEffect`); dep requesting un-allowed cap refused. →test: socket-requesting dep rejected. §28.5
+- [x] WS3-036 Supply-chain capability allowlist (`allowEffect`); dep requesting un-allowed cap refused. →test: socket-requesting dep rejected. §28.5 _(eavc: `verify_supply_chain` — a lock `effectSurface` effect not in build.sem `allowEffect` is refused SS2805; `test_supply_chain_allowlist`, `test_supply_chain_manifest_goldens_consistent`)_
 - [ ] WS3-037 Platform entity (os/arch/targetRuntime/output/override + per-platform native rows); native-link merge order/dedup. →test: per-platform output + flag dedup. §28.1
 - [ ] WS3-038 `configure` op (root module, build-time, excluded from runtime build, not gated). →test: configure runs once pre-compile; not in binary. §30.3.2
 - [ ] WS3-039 Entry ABIs (console out ExitCode no-in; wasm export; webServer = server entity); multi-target entry via forTarget. →test: each target ABI; two entries gated. §11/§7
