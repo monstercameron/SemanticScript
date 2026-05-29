@@ -3665,6 +3665,23 @@ def test_new_project_refuses_to_clobber_without_force(tmp_path, capsys):
     assert "is module" in replaced
 
 
+def test_new_enable_docs_index_flag_rejected(tmp_path, capsys):
+    """R-004: `--enable-docs-index` previously parsed but did nothing — a silent
+    no-op for an explicit feature flag. Until persistent docs-index scaffolding
+    exists (R-051) the flag must fail with a structured diagnostic and create
+    no files, not green-light a project with no index."""
+    import json
+    root = tmp_path / "indexed"
+    rc = eavc.main(["new", str(root), "--enable-docs-index"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "unsupported-flag"
+    assert "--enable-docs-index" in payload["unsupported"]
+    # the no-op path would have scaffolded a tree; the rejection must not
+    assert not (root / "build.sem").exists()
+
+
 def test_semsig_legal_entity_set():
     # WS4-006: a .semsig holds only intrinsic + referenced types (+ header).
     import glob

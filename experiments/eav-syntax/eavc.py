@@ -8166,6 +8166,17 @@ def cmd_new(args) -> int:
     stale-file protection used by the patch loop."""
     import os
     root = args.path
+    if getattr(args, "enable_docs_index", False):
+        # R-004: the flag implied scaffolding work, but persistent docs-index
+        # generation is not implemented yet (tracked by R-051). Reject it with a
+        # structured diagnostic instead of silently no-op'ing an explicit flag.
+        sys.stdout.write(_json_envelope(
+            "sem.new.v1", ok=False, status="unsupported-flag", root=root,
+            unsupported=["--enable-docs-index"], created=[],
+            hint="persistent docs-index scaffolding is not implemented yet "
+                 "(R-051); run `new` without --enable-docs-index, or use the "
+                 "in-memory `docs search` surface") + "\n")
+        return 2
     files = _new_project_files(os.path.basename(os.path.normpath(root)))
     collisions = sorted(
         rel for rel in files
