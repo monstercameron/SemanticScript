@@ -38,6 +38,23 @@ def _ir_for_source(src: str) -> str:
 # --------------------------------------------------------------------------
 
 
+def test_query_dimensions():
+    prog = eavc.parse(_ir_helper_program())
+    assert eavc.query(prog, "calls") == ["s math.addInt64"]
+    assert "addTwo" in " ".join(eavc.query(prog, "types")) or eavc.query(prog, "types") == []
+    # effects: helper program has none declared
+    assert eavc.query(prog, "effects") == []
+
+
+def test_query_ownership_leaked():
+    src = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\n"  # owns but no cleanedBy
+    )
+    leaked = eavc.query(eavc.parse(src), "ownership-leaked")
+    assert any("openDb" in r for r in leaked)
+
+
 def test_summarize_counts_by_kind():
     prog = eavc.parse(_ir_helper_program())
     counts = eavc.summarize(prog)

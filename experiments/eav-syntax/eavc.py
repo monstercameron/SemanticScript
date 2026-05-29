@@ -792,6 +792,39 @@ def parse(source_text: str) -> Program:
     return program
 
 
+QUERY_DIMENSIONS = (
+    "effects", "uses", "labels", "calls", "types", "ownership-leaked",
+)
+
+
+def query(program: Program, dimension: str) -> list:
+    """Answer a structural query over a program (README ss24 `query`)."""
+    rows: list[str] = []
+    for name in program.order:
+        ent = program.entities[name]
+        if dimension == "effects" and ent.kind in ("operation", "function"):
+            for e in ent.facts("effect"):
+                if len(e.payload) >= 2:
+                    rows.append(f"{ent.name} {e.payload[0]} {e.payload[1]}")
+        elif dimension == "uses" and ent.kind in ("operation", "function"):
+            for u in ent.facts("uses"):
+                if u.payload:
+                    rows.append(f"{ent.name} {u.payload[0]}")
+        elif dimension == "labels" and ent.kind in ("operation", "function"):
+            for r in ent.rows:
+                if r.label is not None:
+                    rows.append(f"{ent.name} {r.label}")
+        elif dimension == "calls" and ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            rows.append(f"{ent.name} {inv.payload[0] if inv and inv.payload else '?'}")
+        elif dimension == "types" and ent.kind in ("record", "enum", "alias"):
+            rows.append(f"{ent.kind} {ent.name}")
+        elif dimension == "ownership-leaked" and ent.kind in ("call", "task"):
+            if ent.fact("owns") is not None and ent.fact("cleanedBy") is None:
+                rows.append(f"{ent.name} owns without cleanedBy")
+    return rows
+
+
 def summarize(program: Program) -> dict:
     """Inventory of a program: entity counts by kind (README ss24 `inventory`)."""
     counts: dict[str, int] = {}
@@ -2127,6 +2160,20 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_query(args) -> int:
+    """Print the result of a structural query (`--dimension`)."""
+    program = parse(_read_source(args.path))
+    if args.dimension not in QUERY_DIMENSIONS:
+        sys.stderr.write(
+            f"eavc: unknown query dimension {args.dimension!r}; choose from "
+            f"{', '.join(QUERY_DIMENSIONS)}\n"
+        )
+        return 2
+    for line in query(program, args.dimension):
+        sys.stdout.write(line + "\n")
+    return 0
+
+
 def cmd_inventory(args) -> int:
     """Print entity counts by kind."""
     program = parse(_read_source(args.path))
@@ -2186,6 +2233,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_explain = sub.add_parser("explain", help="explain a diagnostic code")
     sp_explain.add_argument("code", help="diagnostic code, e.g. SS1502")
     sp_explain.set_defaults(func=cmd_explain)
+
+    sp_query = sub.add_parser("query", help="structural query over a program")
+    sp_query.add_argument("dimension", help=f"one of: {', '.join(QUERY_DIMENSIONS)}")
+    sp_query.add_argument("path", help="EAV source file, or - for stdin")
+    sp_query.set_defaults(func=cmd_query)
 
     args = parser.parse_args(argv)
     try:
