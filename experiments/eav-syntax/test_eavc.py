@@ -277,6 +277,16 @@ def test_format_repair_has_found_and_suggested():
     assert "Suggested fix:" in text
 
 
+def test_lint_explain_cli_registry_backed():
+    # WS4-023: `lint --explain CODE` prints the registry rationale + pattern.
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "lint", "--explain", "SS1041"],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0
+    assert "SS1041" in proc.stdout and "Suggested fix:" in proc.stdout
+
+
 def test_lint_module_metadata_required():
     # README §6: modules require purpose + invariant (MD1001/MD1002).
     prog = eavc.parse("m is module\nm path a.b\n")

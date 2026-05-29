@@ -2596,7 +2596,15 @@ def cmd_inventory(args) -> int:
 
 
 def cmd_lint(args) -> int:
-    """Lint a program: print all MD/lint diagnostics; exit 1 if any are errors."""
+    """Lint a program: print all MD/lint diagnostics; exit 1 if any are errors.
+    With `--explain CODE`, print the registry rationale + required pattern."""
+    if getattr(args, "explain", None):
+        try:
+            sys.stdout.write(format_repair(args.explain) + "\n")
+            return 0
+        except EavError as exc:
+            sys.stderr.write(f"eavc: {exc}\n")
+            return 2
     program = parse(_read_source(args.path))
     diags = lint(program)
     for d in diags:
@@ -2634,13 +2642,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("parse", cmd_parse),
         ("lower", cmd_lower),
         ("run", cmd_run),
-        ("lint", cmd_lint),
         ("inventory", cmd_inventory),
         ("fmt", cmd_fmt),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_lint = sub.add_parser("lint", help="lint a program (or --explain a code)")
+    sp_lint.add_argument("path", nargs="?", help="EAV source file, or - for stdin")
+    sp_lint.add_argument("--explain", metavar="CODE", help="explain a diagnostic code")
+    sp_lint.set_defaults(func=cmd_lint)
 
     sp_explain = sub.add_parser("explain", help="explain a diagnostic code")
     sp_explain.add_argument("code", help="diagnostic code, e.g. SS1502")
