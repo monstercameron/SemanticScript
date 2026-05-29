@@ -5614,6 +5614,56 @@ def test_contract_runtime_value_emits_check():
     assert proc.returncode != 0  # the precondition trap fired
 
 
+def _sec_call_src(call):
+    return (
+        "doSec is operation\ndoSec out ExitCode\ndoSec async no\n"
+        'doSec purpose "p"\ndoSec invariant "i"\n'
+        "doSec let okCode immutable ExitCode 0\ndoSec let weakCost immutable Int32 4\n"
+        'doSec let pw immutable String "pw"\ndoSec let buf immutable OpaquePointer 0\n'
+        'doSec let cap immutable Int32 60\ndoSec let userInput immutable String "x"\n'
+        'doSec let tmpl immutable String "rows: %d\\n"\n'
+        "doSec in runtimeFmt String\n"
+        "doSec do theCall\ndoSec return okCode\n" + call
+    )
+
+
+def test_weak_password_hash_cost_rejected():
+    # WS2-086 / §8: bcrypt.hashPassword with a constant cost < 10 is rejected.
+    src = _sec_call_src(
+        "theCall is call\ntheCall in doSec\ntheCall invokes bcrypt.hashPassword\n"
+        "theCall arg plaintext String pw\ntheCall arg cost Int32 weakCost\n"
+        "theCall arg outBuffer OpaquePointer buf\ntheCall arg outCapacity Int32 cap\n"
+        "theCall out st Int32\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3086"
+
+
+def test_format_string_must_be_constant_rejected():
+    # WS2-086 / §30.2.2: a non-constant printf format is a format-string injection.
+    src = _sec_call_src(
+        "theCall is call\ntheCall in doSec\ntheCall invokes c.printf\n"
+        "theCall arg format String runtimeFmt\ntheCall discards \"x\"\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3088"
+
+
+def test_constant_format_string_accepted():
+    # WS2-086: a constant format (a literal-bound let) is fine.
+    src = _sec_call_src(
+        "theCall is call\ntheCall in doSec\ntheCall invokes c.printf\n"
+        "theCall arg format String tmpl\ntheCall discards \"x\"\n")
+    prog = eavc.parse(src)
+    assert "doSec" in prog.entities
+
+
+def test_security_lint_parity_map_reconciled():
+    # WS2-086: the semsc security-lint names map to real EAV diagnostics.
+    for name, code in eavc.SECURITY_LINT_PARITY.items():
+        assert code in eavc.DIAGNOSTICS, (name, code)
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

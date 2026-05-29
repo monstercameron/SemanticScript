@@ -234,6 +234,15 @@ DIAGNOSTICS.update({
     "SS1563": {"tier": "T1", "summary": "Allocation without an allocator capability.",
                "found": "An op that `allocateIn` a region has no `uses` capability granting `allocate heap.<region>` (or `allocate heap`).",
                "suggested": "Grant + `uses` an allocator capability (`grants allocate heap.<region>`) for the region (README §8/§29 #14)."},
+    "SS3086": {"tier": "T1", "summary": "Weak password-hash cost.",
+               "found": "A bcrypt.hashPassword with a constant cost below the safe minimum.",
+               "suggested": "Use a cost >= 10 (12 recommended) so password hashing stays expensive (README §8)."},
+    "SS3087": {"tier": "T1", "summary": "Non-constant shell command.",
+               "found": "A shell/exec call whose command is not a compile-time constant (command injection).",
+               "suggested": "Build the command from a constant + an argv list, never a runtime-assembled command string (README §16/§30.2.2)."},
+    "SS3088": {"tier": "T1", "summary": "Non-constant format string.",
+               "found": "A printf-family call whose format argument is not a compile-time constant (format-string injection).",
+               "suggested": "The format string must be a literal/constant; pass dynamic values as arguments (README §30.2.2)."},
     "SS3092": {"tier": "T1", "summary": "Precondition statically violated at a call.",
                "found": "A call passes a literal that violates the callee's `requires <cond> <param>`.",
                "suggested": "Pass a value satisfying the precondition; a satisfying literal is discharged (no runtime check), an unknown value gets a runtime assert (README §6/§10.6)."},
@@ -3468,6 +3477,7 @@ def _validate_program(program: Program) -> None:
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
     _validate_shared_state(program)
+    _validate_security_parity(program)
     _validate_contracts(program)
     _validate_typestate(program)
     _validate_lock_ordering(program)
@@ -5129,6 +5139,87 @@ def _contract_holds(cond: str, value: int):
     if cond == "nonZero":
         return value != 0
     return None
+
+
+_PRINTF_TARGETS = ("c.printf", "printf", "console.format", "c.fprintf", "c.sprintf")
+_SHELL_TARGETS = ("shell.run", "shell.exec", "process.exec", "c.system", "os.exec",
+                  "c.popen")
+_BCRYPT_HASH_TARGETS = ("bcrypt.hashPassword", "bcrypt.hash")
+_MIN_BCRYPT_COST = 10
+
+# WS2-086: the semsc security-lint names reconciled to the EAV X6 diagnostics.
+SECURITY_LINT_PARITY = {
+    "insecure-pseudorandom": "SS3073",            # X-073 CSPRNG vs deterministic
+    "weak-password-hash-cost": "SS3086",          # new (this batch)
+    "shell-command-not-constant": "SS3087",       # new (this batch)
+    "format-string-must-be-constant": "SS3088",   # new (this batch)
+    "hardcoded-secret": "SS3072",                 # X-072 secret-typed values
+    "unguarded-http-input": "SS3077",             # X-077 untrusted decode limits
+    "untrusted-http-html-hydration": "SS3071",    # X-071 sink-typing / auto-escape
+    "unescaped-json-string-interpolation": "SS3071",  # X-071 no string-built sinks
+}
+
+
+def _validate_security_parity(program: Program) -> None:
+    """WS2-086 / X6: port the remaining semsc security lints. A `bcrypt.hashPassword`
+    with a constant cost < 10 is rejected (SS3086); a shell/exec command that is
+    not a compile-time constant is rejected (SS3087, command injection); a
+    printf-family format that is not constant is rejected (SS3088, format-string
+    injection). The other names in SECURITY_LINT_PARITY are the existing X-071/072/
+    073/077 checks (reconciled, not re-implemented)."""
+    const_names, int_const = set(), {}
+    for n in program.order:
+        ent = program.entities[n]
+        rows = []
+        if ent.kind == "storage":
+            vr = ent.fact("value")
+            if vr and vr.payload:
+                rows.append((ent.name, vr.payload[0]))
+        if ent.kind in ("operation", "function"):
+            rows += [(r.payload[0], r.payload[3]) for r in ent.facts("let")
+                     if len(r.payload) >= 4]
+        for nm, val in rows:
+            if val.startswith('"') or val.lstrip("-").isdigit() or val in ("true", "false"):
+                const_names.add(nm)
+                if val.lstrip("-").isdigit():
+                    int_const[nm] = int(val)
+
+    def is_const(tok):
+        return (tok.startswith('"') or tok.lstrip("-").isdigit()
+                or tok in ("true", "false") or tok in const_names)
+
+    def const_int(tok):
+        return int(tok) if tok.lstrip("-").isdigit() else int_const.get(tok)
+
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        args = {a.payload[0]: a.payload[2] for a in ent.facts("arg") if len(a.payload) >= 3}
+        if target in _BCRYPT_HASH_TARGETS and "cost" in args:
+            ci = const_int(args["cost"])
+            if ci is not None and ci < _MIN_BCRYPT_COST:
+                raise EavError(
+                    f"call {ent.name!r} hashes a password with cost {ci} (< "
+                    f"{_MIN_BCRYPT_COST}); use a cost >= {_MIN_BCRYPT_COST} (README §8)",
+                    ent.line, code="SS3086")
+        if target in _SHELL_TARGETS:
+            for slot in ("command", "cmd", "commandLine"):
+                if slot in args and not is_const(args[slot]):
+                    raise EavError(
+                        f"call {ent.name!r} runs a non-constant shell command "
+                        f"{args[slot]!r} via {target!r}; the command must be constant — "
+                        f"pass dynamic data as argv, never a built command string "
+                        f"(README §16/§30.2.2)",
+                        ent.line, code="SS3087")
+        if target in _PRINTF_TARGETS and "format" in args and not is_const(args["format"]):
+            raise EavError(
+                f"call {ent.name!r} uses a non-constant format {args['format']!r} in "
+                f"{target!r}; the format string must be constant — pass dynamic values "
+                f"as arguments (README §30.2.2)",
+                ent.line, code="SS3088")
 
 
 def _validate_contracts(program: Program) -> None:
