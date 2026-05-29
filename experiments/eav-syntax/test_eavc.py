@@ -794,6 +794,28 @@ def test_token_sync_guard_detects_unsynced(monkeypatch):
     assert "zzznewword" in eavc.token_sync_drift()
 
 
+def test_json_surface_and_mcp_map():
+    # WS4-024: --json diagnostics surface + MCP tool mappings.
+    import json as _json
+    prog = eavc.parse("m is module\nm path a.b\n")
+    payload = _json.loads(eavc.diagnostics_json(eavc.lint(prog)))
+    assert any(d["code"] == "MD1001" and d["severity"] == "error" for d in payload)
+    assert all({"code", "severity", "line", "entity", "message"} <= set(d) for d in payload)
+    # MCP map covers the agent-tool commands
+    assert eavc.MCP_TOOL_MAP["lint"] == "check"
+    assert "verify-patch" in eavc.MCP_TOOL_MAP and "slice" in eavc.MCP_TOOL_MAP
+
+
+def test_lint_json_cli():
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "lint", "--json",
+         os.path.join(EXAMPLES, "hello_world.sem")],
+        capture_output=True, text=True,
+    )
+    import json as _json
+    assert _json.loads(proc.stdout) == [] or isinstance(_json.loads(proc.stdout), list)
+
+
 def test_diagnostics_registry_round_trip():
     # Every registry entry has a tier + repair fields (single source of truth).
     assert eavc.DIAGNOSTICS

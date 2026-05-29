@@ -30,6 +30,7 @@ silently mis-lowered.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -1688,6 +1689,26 @@ def discover_tests(program: Program) -> dict:
             lane = next((t for t in tags if t in TEST_LANES), "unit")
             result.setdefault(lane, []).append(ent.name)
     return result
+
+
+# CLI subcommand -> MCP tool name (README ss24; proposed vs shipping shapes).
+MCP_TOOL_MAP = {
+    "lint": "check", "doctor": "doctor", "fmt": "fmt", "explain": "explain",
+    "slice": "slice", "query": "query", "inventory": "inventory",
+    "verify-patch": "verify_patch", "graph": "graph", "pack": "pack",
+    "describe": "explain", "diff": "diff", "trace": "trace",
+    "normalize": "normalize", "rename": "rename", "add": "add",
+    "scaffold": "scaffold", "run": "eval", "lower": "lower", "test": "test",
+}
+
+
+def diagnostics_json(diags: list) -> str:
+    """JSON surface for diagnostics (README ss24 `--json`)."""
+    return json.dumps(
+        [{"code": d.code, "severity": d.severity, "line": d.line,
+          "entity": d.entity, "message": d.message} for d in diags],
+        indent=2,
+    )
 
 
 def doctor(program: Program) -> dict:
@@ -3821,10 +3842,13 @@ def cmd_lint(args) -> int:
             return 2
     program = parse(_read_source(args.path))
     diags = lint(program)
-    for d in diags:
-        sys.stdout.write(d.render() + "\n")
-    if not diags:
-        sys.stdout.write("no lint diagnostics\n")
+    if getattr(args, "json", False):
+        sys.stdout.write(diagnostics_json(diags) + "\n")
+    else:
+        for d in diags:
+            sys.stdout.write(d.render() + "\n")
+        if not diags:
+            sys.stdout.write("no lint diagnostics\n")
     return 1 if any(d.severity == "error" for d in diags) else 0
 
 
@@ -3867,6 +3891,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_lint = sub.add_parser("lint", help="lint a program (or --explain a code)")
     sp_lint.add_argument("path", nargs="?", help="EAV source file, or - for stdin")
     sp_lint.add_argument("--explain", metavar="CODE", help="explain a diagnostic code")
+    sp_lint.add_argument("--json", action="store_true", help="emit diagnostics as JSON")
     sp_lint.set_defaults(func=cmd_lint)
 
     sp_explain = sub.add_parser("explain", help="explain a diagnostic code")

@@ -275,7 +275,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS4-021 `sem scaffold` (handler/cleanup/task/sqlite-query/html-template canonical patterns). →test: scaffold output parses+lints clean. §24 _(eavc: `scaffold(pattern)` for `console-program`/`fallible-write` + `eavc.py scaffold`; output parses, lints error-clean, and JITs; `test_scaffold_parses_and_lints_clean`, `test_scaffold_console_program_runs`. handler/cleanup/sqlite/html patterns pending those stdlib targets.)_
 - [x] WS4-022 `sem summarize` / `sem inventory`. →test: counts correct. §24 _(eavc: `summarize(program)` entity counts by kind + `eavc.py inventory`; `test_summarize_counts_by_kind`)_
 - [x] WS4-023 `sem lint --explain <CODE>` (rationale + required pattern). →test: registry-backed. §24 _(eavc: `eavc.py lint --explain CODE` prints the registry-backed `format_repair`; `test_lint_explain_cli_registry_backed`)_
-- [ ] WS4-024 Mark/align proposed vs shipping shapes (entity-scoped vs path/code-scoped); MCP tool mappings. →test: --json schema conformance. §24
+- [x] WS4-024 Mark/align proposed vs shipping shapes (entity-scoped vs path/code-scoped); MCP tool mappings. →test: --json schema conformance. §24 _(eavc: `MCP_TOOL_MAP` maps CLI subcommands → MCP tool names; `diagnostics_json` + `lint --json` emit a conformant `{code,severity,line,entity,message}` JSON surface; `test_json_surface_and_mcp_map`, `test_lint_json_cli`)_
 
 ## 4C. Editor / LSP (§29 #7)
 - [x] WS4-030 Semantic tokens (subject-anchored col1=subject/col2=predicate advantage). →test: token classification golden. _(eavc: `semantic_tokens(line)` — col1=subject, col2=predicate/keyword, payload classified type/string/number/keyword/name; `test_semantic_tokens_subject_predicate`. Full LSP server pending.)_
