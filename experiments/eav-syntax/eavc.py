@@ -192,6 +192,9 @@ DIAGNOSTICS.update({
     "SS3073": {"tier": "T1", "summary": "Deterministic RNG feeding a security generator.",
                "found": "A value drawn from `random.deterministic`/seeded RNG is passed to a key/token/nonce/salt generator.",
                "suggested": "Security material must be drawn from the CSPRNG (`random.entropy`); a seeded RNG is for reproducible non-security use only (README §30.5.3)."},
+    "SS3076": {"tier": "T1", "summary": "Path traversal / absolute-escape literal at a filesystem op.",
+               "found": "An `fs.*` path argument is a literal containing a `..` segment or an absolute root.",
+               "suggested": "Confine paths under a root with `fs.resolveWithin <root>` (producing a SafePath); never pass a `..`/absolute path literal to a filesystem op (README §8/§27)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3221,6 +3224,7 @@ def _validate_program(program: Program) -> None:
     _validate_decode_limits(program)
     _validate_random_source(program)
     _validate_nonce_affinity(program)
+    _validate_path_traversal(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4556,6 +4560,51 @@ def _validate_nonce_affinity(program: Program) -> None:
                         f"across encryptions is a security failure (README §30.5.3)",
                         ent.line, code="SS3073")
                 crypto_uses[val] = ent.name
+
+
+def _validate_path_traversal(program: Program) -> None:
+    """X-076 / README §8/§27: a filesystem path must be confined under a root. A
+    literal `fs.*` path argument that contains a `..` segment or is absolute is an
+    obvious traversal/escape — a hard error (SS3076). (Raw-String paths into an
+    `fs.*` sink that requires `SafePath` are caught by sink-typing, X-071/SS3071;
+    runtime confinement rides `fs.resolveWithin`.)"""
+    literals = {}  # binding name -> unquoted literal string
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if (tr and tr.payload and tr.payload[0] == "String"
+                    and vr and vr.payload and vr.payload[0].startswith('"')):
+                literals[ent.name] = vr.payload[0].strip('"')
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if (len(r.payload) >= 4 and r.payload[2] == "String"
+                        and r.payload[3].startswith('"')):
+                    literals[r.payload[0]] = r.payload[3].strip('"')
+
+    def _is_traversal(path: str) -> bool:
+        segs = path.replace("\\", "/").split("/")
+        return ".." in segs or path.startswith("/") or (len(path) > 1 and path[1] == ":")
+
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not (target.startswith("fs.") or target.startswith("filesystem.")):
+            continue
+        for a in ent.facts("arg"):
+            if len(a.payload) < 3:
+                continue
+            val = a.payload[2]
+            lit = val.strip('"') if val.startswith('"') else literals.get(val)
+            if lit is not None and _is_traversal(lit):
+                raise EavError(
+                    f"call {ent.name!r} passes the path {lit!r} to {target!r}; a `..` or "
+                    f"absolute path escapes its root — confine it with "
+                    f"`fs.resolveWithin <root>` (README §8)",
+                    ent.line, code="SS3076")
 
 
 def _validate_time_safety(program: Program) -> None:

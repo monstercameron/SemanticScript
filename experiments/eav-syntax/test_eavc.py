@@ -4652,6 +4652,53 @@ def test_nonce_single_use_accepted():
     assert "seal" in prog.entities
 
 
+def test_path_traversal_literal_rejected():
+    # X-076 / §8: a `..` path literal at a filesystem op escapes its root -> SS3076.
+    src = (
+        "readIt is operation\nreadIt out ExitCode\nreadIt async no\n"
+        'readIt purpose "p"\nreadIt invariant "i"\n'
+        'readIt let badPath immutable String "../../etc/passwd"\n'
+        "readIt let okCode immutable ExitCode 0\nreadIt do rf\nreadIt return okCode\n"
+        "rf is call\nrf in readIt\nrf invokes fs.readFile\n"
+        "rf arg path String badPath\nrf out contents String\nrf catch e FsError\n"
+        "FsError is error\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3076"
+
+
+def test_absolute_path_literal_rejected():
+    # X-076: an absolute path literal also escapes a confined root.
+    src = (
+        "readIt is operation\nreadIt out ExitCode\nreadIt async no\n"
+        'readIt purpose "p"\nreadIt invariant "i"\n'
+        'readIt let absPath immutable String "/etc/shadow"\n'
+        "readIt let okCode immutable ExitCode 0\nreadIt do rf\nreadIt return okCode\n"
+        "rf is call\nrf in readIt\nrf invokes fs.readFile\n"
+        "rf arg path String absPath\nrf out contents String\nrf catch e FsError\n"
+        "FsError is error\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3076"
+
+
+def test_confined_relative_path_accepted():
+    # X-076: a plain relative filename under the root is fine.
+    src = (
+        "readIt is operation\nreadIt out ExitCode\nreadIt async no\n"
+        'readIt purpose "p"\nreadIt invariant "i"\n'
+        'readIt let okPath immutable String "data/report.txt"\n'
+        "readIt let okCode immutable ExitCode 0\nreadIt do rf\nreadIt return okCode\n"
+        "rf is call\nrf in readIt\nrf invokes fs.readFile\n"
+        "rf arg path String okPath\nrf out contents String\nrf catch e FsError\n"
+        "FsError is error\n"
+    )
+    prog = eavc.parse(src)
+    assert "readIt" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

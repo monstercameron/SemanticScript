@@ -4182,7 +4182,15 @@ salts) must be drawn from the CSPRNG (`random.entropy`). A value drawn from a
 seeded/deterministic RNG (`random.deterministic`, …) that flows into a security
 generator (`crypto.generateToken`/`generateNonce`/`generateSalt`/`generateKey`/
 `randomBytes`) is a hard error (**SS3073**); the seeded RNG stays valid for
-reproducible non-security use.
+reproducible non-security use. A nonce/IV is affine — consuming one
+(`crypto.generateNonce`/`generateIv` output) in two cryptographic calls is a
+nonce-reuse error (also SS3073).
+
+**Path-traversal-safe filesystem (X-076).** A filesystem path is confined under a
+root. An `fs.*` path argument that is a literal containing a `..` segment or an
+absolute root is a hard error (**SS3076**); confine paths with `fs.resolveWithin
+<root>` (which yields a `SafePath`), and raw-String paths into a `SafePath` sink
+are caught by sink-typing (SS3071).
 
 ### Async intrinsics
 
