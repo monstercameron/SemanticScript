@@ -644,6 +644,38 @@ def test_iferror_requires_catch():
     assert "catch" in exc.value.message
 
 
+def test_invokes_unresolved_bare_target_rejected():
+    # README ss15: a bare invokes target must name an in-module operation.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "doThing is call\ndoThing in main\ndoThing invokes noSuchOp\n"
+            "main is operation\nmain out ExitCode\n"
+        )
+    assert "unresolved bare target" in exc.value.message
+
+
+def test_invokes_arg_name_mismatch_rejected():
+    # README ss17 #49: arg slots must match the callee's `in` names.
+    base = (
+        "addTwo is operation\naddTwo in leftValue Int64\naddTwo in rightValue Int64\n"
+        "addTwo out Int64\naddTwo do s\naddTwo return r\n"
+        "s is call\ns in addTwo\ns invokes math.addInt64\n"
+        "s arg left Int64 leftValue\ns arg right Int64 rightValue\ns out r Int64\n"
+        "caller is operation\ncaller out Int64\n"
+        "caller let one immutable Int64 1\ncaller do invokeAdd\ncaller return v\n"
+        "invokeAdd is call\ninvokeAdd in caller\ninvokeAdd invokes addTwo\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:  # wrong arg name
+        eavc.parse(
+            base
+            + "invokeAdd arg wrongName Int64 one\ninvokeAdd arg rightValue Int64 one\n"
+            "invokeAdd out v Int64\n"
+        )
+    assert "not an input of" in exc.value.message
+    with pytest.raises(eavc.EavError):  # missing required arg
+        eavc.parse(base + "invokeAdd arg leftValue Int64 one\ninvokeAdd out v Int64\n")
+
+
 def test_lower_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
     src = (

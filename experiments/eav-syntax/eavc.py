@@ -676,6 +676,54 @@ def _validate_program(program: Program) -> None:
                     f"(README ss10), got {row.payload!r}",
                     row.line,
                 )
+    _validate_calls(program)
+
+
+def _validate_calls(program: Program) -> None:
+    """Resolve `invokes` and match arg slots (README ss15, ss17 #48/#49).
+
+    A *bare* (dotless) invokes target must name an in-module operation; an
+    unresolved bare target is a hard error. For calls into a user operation,
+    arg slots must match the callee's `in` names one-to-one (dotted/built-in
+    targets are external and not checked here)."""
+    ops = {
+        name
+        for name in program.order
+        if program.entities[name].kind in ("operation", "function")
+    }
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        if not inv or not inv.payload:
+            continue
+        target = inv.payload[0]
+        if "." in target:
+            continue  # imported / compiler-derived / intrinsic — external
+        if target not in ops:
+            raise EavError(
+                f"call {ent.name!r} invokes {target!r}, which is not an in-module "
+                f"operation (unresolved bare target, README ss15)",
+                ent.line,
+            )
+        callee = program.entities[target]
+        in_names = [r.payload[0] for r in callee.facts("in") if r.payload]
+        arg_names = [a.payload[0] for a in ent.facts("arg") if a.payload]
+        for an in arg_names:
+            if an not in in_names:
+                raise EavError(
+                    f"call {ent.name!r} arg {an!r} is not an input of {target!r} "
+                    f"(README ss15, ss17 #49)",
+                    ent.line,
+                )
+        for inn in in_names:
+            if inn not in arg_names:
+                raise EavError(
+                    f"call {ent.name!r} is missing arg {inn!r} required by "
+                    f"{target!r} (README ss15)",
+                    ent.line,
+                )
 
 
 def _op_has_steps(op: Entity) -> bool:

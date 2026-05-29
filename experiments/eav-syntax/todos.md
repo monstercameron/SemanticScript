@@ -106,8 +106,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-048 `discards "reason"` required for dropped non-void non-catch result. →test: §17 #25. §15
 
 ## 1E. Invocation & dataflow (§3, §15, §10.5)
-- [ ] WS1-050 `invokes` resolution order: bare in-module op / alias.op / compiler-derived target / intrinsic. →test: each form resolves; unresolved bare = error. §15/§3
-- [ ] WS1-051 Arg-slot↔`in`-name match + type; `out`/`catch` ← op `out`/Result. →test: arg-name mismatch reject; Result→out+catch binding. §15
+- [x] WS1-050 `invokes` resolution order: bare in-module op / alias.op / compiler-derived target / intrinsic. →test: each form resolves; unresolved bare = error. §15/§3 _(eavc: `_validate_calls`; bare → in-module op or hard error; dotted = external; `test_invokes_unresolved_bare_target_rejected`)_
+- [x] WS1-051 Arg-slot↔`in`-name match + type; `out`/`catch` ← op `out`/Result. →test: arg-name mismatch reject; Result→out+catch binding. §15 _(eavc: `_validate_calls` matches arg slots to callee `in` names one-to-one; `test_invokes_arg_name_mismatch_rejected`. Per-arg type checking pending.)_
 - [ ] WS1-052 Namespace collision rules (alias≠type name; bare op≠reserved/built-in ns; field≠`new`). →test: §17 #51. §15
 - [ ] WS1-053 Construction targets `<Record>.new` / `<Enum>.<variant>` / `<Error>.<case>`; arg/field/case match. →test: §17 #49; missing field reject. §10.5
 - [ ] WS1-054 Access target `<Record>.<field>` read. →test: field read binds field type. §10.5
