@@ -438,6 +438,9 @@ DIAGNOSTICS.update({
     "SS5400": {"tier": "T1", "summary": "`suppress` needs a `because` rationale.",
                "found": "A `suppress CODE` row with no `because`.",
                "suggested": "Write `suppress CODE because \"…\"` (README §30.6.2, §17 #54)."},
+    "SS5402": {"tier": "T1", "summary": "`suppress` targets a deny-tier diagnostic.",
+               "found": "A `suppress CODE` where CODE is tier T0/T1/T2 (soundness/UB/security/structural).",
+               "suggested": "Deny-tier diagnostics are non-suppressible — fix the cause. Only advisory T3/T4 codes may be suppressed with a `because` (README §30.6.2)."},
     "SS5401": {"tier": "T1", "summary": "`suppress` names an unknown diagnostic code.",
                "found": "A `suppress CODE` where CODE is not in the registry.",
                "suggested": "Use a real code from `sem explain` (README §30.6.2)."},
@@ -3045,7 +3048,10 @@ def _apply_suppressions(program: Program, diags: list) -> list:
     for name in program.order:
         ent = program.entities[name]
         for row in ent.facts("suppress"):
-            if row.payload and "because" in row.payload:
+            # WS2-072: only advisory (T3/T4) codes are suppressible; a deny-tier
+            # (T0/T1/T2) suppress is rejected (SS5402) and stays in effect.
+            if (row.payload and "because" in row.payload
+                    and DIAGNOSTICS.get(row.payload[0], {}).get("tier") in ("T3", "T4")):
                 suppressed.add((ent.name, row.payload[0]))
     return [d for d in diags if (d.entity, d.code) not in suppressed]
 
@@ -3068,6 +3074,14 @@ def _suppress_diagnostics(program: Program, diags: list) -> list:
                 extra.append(Diagnostic("SS5401", "error",
                                         f"`suppress {code}` names an unknown diagnostic code",
                                         row.line, ent.name))
+            elif DIAGNOSTICS[code].get("tier") in ("T0", "T1", "T2"):
+                extra.append(Diagnostic(
+                    "SS5402", "error",
+                    f"`suppress {code}` targets a deny-tier "
+                    f"({DIAGNOSTICS[code].get('tier')}) diagnostic; soundness/UB/"
+                    f"security/structural codes are non-suppressible — fix the cause "
+                    f"(README §30.6.2)",
+                    row.line, ent.name))
     return extra
 
 

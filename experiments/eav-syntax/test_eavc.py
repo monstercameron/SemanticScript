@@ -4525,6 +4525,41 @@ def test_secret_constant_time_compare_accepted():
     assert "checkTok" in prog.entities  # no SS3074
 
 
+def test_suppress_deny_tier_rejected():
+    # WS2-072: a deny-tier (T0/T1/T2) code is non-suppressible — `suppress` of one
+    # is itself an error (SS5402), and the underlying diagnostic stays in effect.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main suppress SS3070 because "we accept the risk"\n'
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+    )
+    assert "SS5402" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_suppress_advisory_tier_allowed():
+    # WS2-072: an advisory (T3) code may be suppressed with a `because`; the
+    # suppressed diagnostic is dropped and no SS5402 is raised.
+    base = (
+        "near is operation\nnear out Bool\nnear async no\n"
+        'near purpose "p"\nnear invariant "i"\n'
+        "near in left Float64\nnear in right Float64\n"
+        "near do cmp\nnear return same\n"
+        "cmp is call\ncmp in near\ncmp invokes math.equalFloat64\n"
+        "cmp arg left Float64 left\ncmp arg right Float64 right\ncmp out same Bool\n"
+    )
+    assert "SS3094" in {d.code for d in eavc.lint(eavc.parse(base))}  # fires by default
+    suppressed = base + 'cmp suppress SS3094 because "tolerance not needed here"\n'
+    codes = {d.code for d in eavc.lint(eavc.parse(suppressed))}
+    assert "SS3094" not in codes and "SS5402" not in codes
+
+
+def test_every_diagnostic_code_is_tier_classified():
+    # WS2-072: every registry code carries a tier in T0..T4 (deny vs advisory).
+    for code, meta in eavc.DIAGNOSTICS.items():
+        assert meta.get("tier") in ("T0", "T1", "T2", "T3", "T4"), code
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

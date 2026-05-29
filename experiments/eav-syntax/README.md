@@ -5378,7 +5378,16 @@ no-silent-silencing stance. The form is a row:
 ```
 
 `because` is already reserved (§2). A `suppress` row without a `because` string
-is itself a hard error. Suppression is scoped to the **subject entity and the one
+is itself a hard error, as is naming an unknown code.
+
+**Deny vs advisory (WS2-072).** Only **advisory** diagnostics (tier T3/T4) may be
+suppressed. A **deny-tier** code — T0/T1/T2, i.e. the soundness/UB, memory-safety,
+security-sink/secret, and structural invariants — is **non-suppressible**: a
+`suppress` of one is itself a hard error (SS5402) and the underlying diagnostic
+stays in effect. You fix the cause, you do not silence it. (Every registry code
+carries a tier, so the deny set is exhaustive.)
+
+Suppression is scoped to the **subject entity and the one
 named code**; there is no file-wide or wildcard suppression. For an `operation`
 subject, that scope covers diagnostics attributed to the operation's own rows —
 its steps, `let`/declaration rows, and `at` labels — but **not** diagnostics
