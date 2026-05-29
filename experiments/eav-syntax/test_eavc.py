@@ -729,17 +729,32 @@ def test_cleanup_well_formed_accepts():
     assert prog.entities["closeCleanup"].kind == "cleanup"
 
 
-def test_lower_do_on_task_rejected():
+def test_split_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
-    src = (
-        "P is project\nP module m\nP target console\nP entry main\n"
-        "m is module\nm path a.b\n"
-        "t is task\nt invokes some.thing\n"
-        "main is operation\nmain out ExitCode\nmain do t\n"
-    )
     with pytest.raises(eavc.EavError) as exc:
-        eavc.lower_to_llvm(eavc.parse(src))
-    assert "task" in exc.value.message
+        eavc.parse(
+            "fetchThing is task\nfetchThing invokes some.thing\n"
+            "main is operation\nmain out ExitCode\nmain do fetchThing\n"
+        )
+    assert "requires a call" in exc.value.message
+
+
+def test_split_start_on_call_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "fetchThing is call\nfetchThing invokes some.thing\n"
+            "main is operation\nmain out ExitCode\nmain start fetchThing\n"
+        )
+    assert "requires a task" in exc.value.message
+
+
+def test_split_defer_on_call_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "fetchThing is call\nfetchThing invokes some.thing\n"
+            "main is operation\nmain out ExitCode\nmain defer fetchThing\n"
+        )
+    assert "requires a cleanup" in exc.value.message
 
 
 # --------------------------------------------------------------------------

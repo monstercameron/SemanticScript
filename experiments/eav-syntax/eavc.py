@@ -678,6 +678,47 @@ def _validate_program(program: Program) -> None:
                 )
     _validate_calls(program)
     _validate_cleanup(program)
+    _validate_step_split(program)
+
+
+# Activation step -> the entity kind it must reference (README ss13/ss34.4).
+_STEP_SPLIT = {
+    "do": "call",
+    "defer": "cleanup",
+    "start": "task",
+    "join": "task",
+    "poll": "task",
+    "cancel": "task",
+    "detach": "task",
+}
+
+
+def _validate_step_split(program: Program) -> None:
+    """The call/task/cleanup split is non-negotiable (README ss34.4): `do`
+    activates a call, `start/join/poll/cancel/detach` a task, `defer` a cleanup.
+    Cross-use is a hard error."""
+    for name in program.order:
+        op = program.entities[name]
+        if op.kind not in ("operation", "function"):
+            continue
+        for row in op.rows:
+            expected = _STEP_SPLIT.get(row.predicate)
+            if expected is None or not row.payload:
+                continue
+            ref = program.entities.get(row.payload[0])
+            if ref is None:
+                raise EavError(
+                    f"`{row.predicate} {row.payload[0]}` references an undeclared "
+                    f"entity (README ss13)",
+                    row.line,
+                )
+            if ref.kind != expected:
+                raise EavError(
+                    f"`{row.predicate} {ref.name}` targets a {ref.kind}; "
+                    f"`{row.predicate}` requires a {expected} "
+                    f"(call/task/cleanup split, README ss34.4)",
+                    row.line,
+                )
 
 
 def _validate_cleanup(program: Program) -> None:
