@@ -5669,6 +5669,82 @@ def _json_envelope(surface: str, **payload) -> str:
     return json.dumps(body, indent=2)
 
 
+EAV_MCP_TOOLS = {
+    "version": (["version", "--json"], "Contract version surface"),
+    "agent_docs": (["agent-docs"], "Version-matched EAV agent rules"),
+    "check": (["check"], "Source lane: parse + lint status"),
+    "readiness": (["readiness", "--json"], "Environment lane status"),
+    "deps": (["deps"], "Dependency graph"),
+    "context": (["context"], "Project envelope"),
+    "symbols": (["symbols"], "Full entity graph"),
+    "size": (["size"], "Footprint probe"),
+    "eval": (["eval"], "JIT-run a snippet"),
+    "fix_plan": (["fix", "--plan"], "Repair plan from diagnostics"),
+    "docs": (["docs"], "Docs catalog (list/get/search)"),
+    "test": (["test"], "Run tag-test operations"),
+}
+
+
+def _mcp_dispatch(tool: str, arguments: dict) -> str:
+    """Run a tool by building its argv and capturing stdout (MCP tools/call)."""
+    import contextlib
+    import io
+    spec = EAV_MCP_TOOLS.get(tool)
+    if spec is None:
+        return f'{{"error": "unknown tool {tool}"}}'
+    argv = list(spec[0])
+    if "path" in arguments:
+        argv.append(arguments["path"])
+    for flag in ("search", "get"):
+        if arguments.get(flag):
+            argv += [f"--{flag}", arguments[flag]]
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            main(argv)
+    except SystemExit:
+        pass
+    return buf.getvalue()
+
+
+def mcp_handle(request: dict) -> dict:
+    """Handle one MCP JSON-RPC request (initialize / tools/list / tools/call)."""
+    method = request.get("method")
+    rid = request.get("id")
+    base = {"jsonrpc": "2.0", "id": rid}
+    if method == "initialize":
+        return {**base, "result": {
+            "protocolVersion": "2024-11-05",
+            "serverInfo": {"name": "eavc", "version": CONTRACT_VERSION},
+            "capabilities": {"tools": {}}}}
+    if method == "tools/list":
+        return {**base, "result": {"tools": [
+            {"name": name, "description": desc,
+             "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}
+            for name, (_argv, desc) in EAV_MCP_TOOLS.items()]}}
+    if method == "tools/call":
+        params = request.get("params", {})
+        text = _mcp_dispatch(params.get("name", ""), params.get("arguments", {}))
+        return {**base, "result": {"content": [{"type": "text", "text": text}]}}
+    return {**base, "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+def cmd_mcp(args) -> int:
+    """Run the MCP stdio JSON-RPC server (one request per line)."""
+    import json
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+        except ValueError:
+            continue
+        sys.stdout.write(json.dumps(mcp_handle(request)) + "\n")
+        sys.stdout.flush()
+    return 0
+
+
 def cmd_version(args) -> int:
     """Emit the eavc contract version surface (sem.version.v1)."""
     if getattr(args, "json", False):
@@ -6237,6 +6313,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_readiness = sub.add_parser("readiness", help="environment lane: toolchain status")
     sp_readiness.add_argument("--json", action="store_true")
     sp_readiness.set_defaults(func=cmd_readiness)
+
+    sp_mcp = sub.add_parser("mcp", help="run the MCP stdio JSON-RPC server")
+    sp_mcp.set_defaults(func=cmd_mcp)
 
     sp_version = sub.add_parser("version", help="emit the contract version surface")
     sp_version.add_argument("--json", action="store_true", help="emit JSON envelope")

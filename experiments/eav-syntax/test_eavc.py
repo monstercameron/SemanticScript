@@ -3057,6 +3057,25 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_mcp_server_handler():
+    # WS4-110: MCP initialize / tools/list / tools/call over the cmd surfaces.
+    import json
+    init = eavc.mcp_handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    assert init["result"]["serverInfo"]["name"] == "eavc"
+    assert init["result"]["serverInfo"]["version"] == eavc.CONTRACT_VERSION
+    lst = eavc.mcp_handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    names = {t["name"] for t in lst["result"]["tools"]}
+    assert {"check", "version", "fix_plan"}.issubset(names)
+    call = eavc.mcp_handle({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "check", "arguments": {"path": os.path.join(EXAMPLES, "hello_world.sem")}}})
+    text = call["result"]["content"][0]["text"]
+    assert json.loads(text)["surface"] == "sem.check.v1"
+    # unknown method -> JSON-RPC error
+    err = eavc.mcp_handle({"jsonrpc": "2.0", "id": 4, "method": "nope"})
+    assert err["error"]["code"] == -32601
+
+
 def test_docs_index_get_search(capsys):
     # WS4-117: docs list / get / keyword-ranked search.
     import json
