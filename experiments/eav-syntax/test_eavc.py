@@ -9309,3 +9309,146 @@ def test_ws2_093_pure_op_runs_and_replays_safely():
     replay_out, replay_code = eavc._record_run(src)
     assert replay_code == 0
     assert replay_out == out
+
+
+# --------------------------------------------------------------------------
+# WS2-091 — completeness (no undeclared effect): effective(op) must be either
+# declared on the op or covered by a `uses` capability the op holds. An effect
+# that is neither declared nor covered is a deny-tier (SS1706) error; an
+# over-declared effect (declared but never performed) is a T3 advisory that runs.
+# README §15/§17 #5.
+# --------------------------------------------------------------------------
+
+
+def test_ws2_091_undeclared_uncovered_callee_effect_rejected():
+    """No-op-failing: before WS2-091 a caller that activated an effectful callee
+    without declaring OR authorizing the effect parsed (only a coverage warning);
+    now it is a deny-tier SS1706. `auditAccessOp` declares only `read database`
+    and holds no capability for the network write its callee performs, so the
+    `write network.socket` effect is a genuinely hidden/unauthorized leak."""
+    src = (
+        "auditAccessOp is operation\nauditAccessOp out Int64\n"
+        "auditAccessOp effect read database\n"
+        "auditAccessOp do emitAuditCall\nauditAccessOp return zeroValue\n"
+        "auditAccessOp let zeroValue immutable Int64 0\n"
+        "emitAuditCall is call\nemitAuditCall in auditAccessOp\n"
+        "emitAuditCall invokes net.writeSocket\n"
+        "emitAuditCall effect write network.socket\n"
+        "emitAuditCall out bytesWritten Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(src)
+    assert getattr(excinfo.value, "code", None) == "SS1706"
+    assert "write network.socket" in excinfo.value.message
+    assert "auditAccessOp" in excinfo.value.message
+
+
+def test_ws2_091_declaring_the_effect_passes():
+    """Declaring the previously-leaked effect makes the contract complete — the
+    same program now parses without SS1706 (the positive half of completeness)."""
+    src = (
+        "auditAccessOp is operation\nauditAccessOp out Int64\n"
+        "auditAccessOp effect read database\n"
+        "auditAccessOp effect write network.socket\n"  # now declared -> complete
+        "auditAccessOp do emitAuditCall\nauditAccessOp return zeroValue\n"
+        "auditAccessOp let zeroValue immutable Int64 0\n"
+        "emitAuditCall is call\nemitAuditCall in auditAccessOp\n"
+        "emitAuditCall invokes net.writeSocket\n"
+        "emitAuditCall effect write network.socket\n"
+        "emitAuditCall out bytesWritten Int64\n"
+    )
+    prog = eavc.parse(src)  # must not raise SS1706
+    # completeness holds: the effective effect is in the op's declared set
+    op = prog.entities["auditAccessOp"]
+    assert ("write", "network.socket") in eavc._effect_rows_of(op)
+    assert ("write", "network.socket") in eavc._effective_effects(prog, op, set())
+
+
+def test_ws2_091_covering_capability_also_satisfies_completeness():
+    """The delegation pattern the ported web apps use: a caller that does NOT
+    re-declare a callee's effect but holds a *covering* `uses` capability for it is
+    complete (the effect is authorized in-source, not hidden) — so SS1706 must NOT
+    fire. This is the refinement that keeps taskforge-web's handlers green."""
+    src = (
+        "networkWriter is capability\nnetworkWriter grants write network.socket\n"
+        "delegatingOp is operation\ndelegatingOp out Int64\n"
+        "delegatingOp effect read database\n"
+        "delegatingOp uses networkWriter\n"  # authorizes the network write w/o redeclaring it
+        "delegatingOp do emitAuditCall\ndelegatingOp return zeroValue\n"
+        "delegatingOp let zeroValue immutable Int64 0\n"
+        "emitAuditCall is call\nemitAuditCall in delegatingOp\n"
+        "emitAuditCall invokes net.writeSocket\n"
+        "emitAuditCall effect write network.socket\n"
+        "emitAuditCall out bytesWritten Int64\n"
+    )
+    prog = eavc.parse(src)  # must not raise SS1706 (covered by capability)
+    op = prog.entities["delegatingOp"]
+    assert ("write", "network.socket") not in eavc._effect_rows_of(op)  # not declared
+    assert ("write", "network.socket") in eavc._effective_effects(prog, op, set())  # but effective
+
+
+def test_ws2_091_over_declared_effect_warns_t3_and_runs():
+    """An over-declared effect — declared on the op but produced by nothing the op
+    activates — is safe (the op claims more authority than it exercises) so it is
+    at most a T3 advisory warning (SS0900), not a blocker, and the program still
+    JIT-runs. The over-declaring op (`accumulateAuditCounter`) activates only the
+    known user-op `addAuditUnit`, so its activation surface is fully accounted for
+    and the advisory can fire soundly. `main` performs the console write (a dotted
+    target whose effects we cannot see), so its own declared effect is correctly
+    NOT flagged as over-declared. No-op-failing: the over-declaration warning
+    string did not exist before WS2-091, and a no-op lowering prints nothing."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path examples.overDeclared\nm purpose "p"\n'
+        'm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "networkWriter is capability\nnetworkWriter grants write network.socket\n"
+        # a pure user-op the accumulator activates (no effects at all)
+        "addAuditUnit is operation\naddAuditUnit in runningTotal Int64\n"
+        "addAuditUnit out Int64\n"
+        "addAuditUnit let oneStep immutable Int64 1\n"
+        "addAuditUnit do addOneCall\naddAuditUnit return increasedTotal\n"
+        "addOneCall is call\naddOneCall in addAuditUnit\naddOneCall invokes math.addInt64\n"
+        "addOneCall arg left Int64 runningTotal\naddOneCall arg right Int64 oneStep\n"
+        "addOneCall out increasedTotal Int64\n"
+        # the over-declaring op: declares + covers `write network.socket` but only
+        # activates the pure user-op `addAuditUnit`, which never performs it.
+        "accumulateAuditCounter is operation\n"
+        "accumulateAuditCounter in startTotal Int64\naccumulateAuditCounter out Int64\n"
+        "accumulateAuditCounter effect write network.socket\n"
+        "accumulateAuditCounter uses networkWriter\n"
+        "accumulateAuditCounter do accumulateCall\n"
+        "accumulateAuditCounter return accumulatedTotal\n"
+        "accumulateCall is call\naccumulateCall in accumulateAuditCounter\n"
+        "accumulateCall invokes addAuditUnit\n"
+        "accumulateCall arg runningTotal Int64 startTotal\n"
+        "accumulateCall out accumulatedTotal Int64\n"
+        # main wires it up and prints the result (dotted console write)
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        # main is complete: the network effect propagates up from the callee's
+        # declaration, so main authorizes it with a covering capability. main's
+        # console write goes through a dotted target, so it is not over-declared.
+        "main effect write console.stdout\nmain uses stdoutWriter\n"
+        "main uses networkWriter\n"
+        "main let seedValue immutable Int64 41\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do computeCall\nmain do showCall\nmain return okCode\n"
+        "computeCall is call\ncomputeCall in main\n"
+        "computeCall invokes accumulateAuditCounter\n"
+        "computeCall arg startTotal Int64 seedValue\ncomputeCall out finalTotal Int64\n"
+        "showCall is call\nshowCall in main\n"
+        "showCall invokes console.writeIntegerLine\nshowCall arg value Int64 finalTotal\n"
+    )
+    prog = eavc.parse(src)  # over-declaration must NOT raise
+    assert any("write network.socket" in w and "over-declared" in w
+               and w.startswith("accumulateAuditCounter") for w in prog.warnings)
+    # main's console-write declaration must NOT be flagged (dotted target unseen)
+    assert not any("console.stdout" in w and "over-declared" in w for w in prog.warnings)
+    # tier of the over-declaration advisory is the soft SS0900 lane (T3)
+    assert eavc.DIAGNOSTICS["SS0900"]["tier"] == "T3"
+    # and the program still runs to its expected output
+    out, code = eavc._record_run(src)
+    assert code == 0, out
+    assert out.strip() == "42"  # 41 + 1
