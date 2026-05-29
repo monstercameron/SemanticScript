@@ -3747,6 +3747,38 @@ def test_project_aware_commands_accept_app_directories(capsys):
         assert json.loads(out)["surface"] == surface, f"mcp:{tool}"
 
 
+def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
+    """R-002: check on a clean scaffold emits replayable nextCommands
+    (test/build <root>). Replaying each replayable argv must not crash with a
+    Python traceback — it must exit cleanly or report a structured status. Before
+    R-001 the emitted `test <root>` crashed with a directory PermissionError, so
+    the loop was not actually replayable after a green check."""
+    import json
+    root = tmp_path / "replayapp"
+    assert eavc.main(["new", str(root)]) == 0
+    check = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "check", "--json", str(root)],
+        capture_output=True, text=True)
+    assert "Traceback (most recent call last)" not in check.stderr, check.stderr
+    payload = json.loads(check.stdout)
+    assert payload["status"] in ("ok", "ok-with-warnings")
+    replayable = [c for c in payload["nextCommands"] if c.get("replayable")]
+    assert replayable, "expected at least one replayable next command"
+    saw_test = False
+    for c in replayable:
+        argv = c["argv"]
+        rp = subprocess.run(
+            [sys.executable, os.path.join(HERE, "eavc.py")] + argv,
+            capture_output=True, text=True)
+        assert "Traceback (most recent call last)" not in rp.stderr, \
+            f"replay {argv} crashed:\n{rp.stderr}"
+        if argv[0] == "test":
+            saw_test = True
+            # the previously-broken command now returns a structured surface
+            assert json.loads(rp.stdout)["surface"] == "sem.test.v1"
+    assert saw_test, "check should emit a replayable `test <root>` command"
+
+
 def test_new_project_refuses_to_clobber_without_force(tmp_path, capsys):
     """R-005: `eavc new` must not destroy existing source. A mistyped path that
     already holds `src/main.sem` returns nonzero with a collision list and leaves
