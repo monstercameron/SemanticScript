@@ -1134,6 +1134,19 @@ def test_compare_ordering_on_bool_rejected():
     assert exc.value.code == "SS1345"
 
 
+def test_arg_document_order_preserved():
+    # README §10.6: a call's args bind in document order (left then right), so
+    # subtractInt64(a, b) lowers to `sub a, b`, not `sub b, a`.
+    src = (
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "sub2 is operation\nsub2 in a Int64\nsub2 in b Int64\nsub2 out Int64\n"
+        "sub2 do s\nsub2 return r\n"
+        "s is call\ns in sub2\ns invokes math.subtractInt64\n"
+        "s arg left Int64 a\ns arg right Int64 b\ns out r Int64\n"
+    )
+    assert 'sub i64 %"a", %"b"' in _ir_for_source(src)
+
+
 def test_ieee_float_compare_nan_semantics():
     # README ss10.6: NaN != NaN is true (unordered une); NaN == NaN is false
     # (ordered oeq). The comparator choice in IR encodes IEEE-754 semantics.
