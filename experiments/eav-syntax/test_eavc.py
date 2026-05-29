@@ -9178,3 +9178,156 @@ def test_r067_decimal_float_operand_still_rejected():
     with pytest.raises(eavc.EavError) as excinfo:
         eavc.parse(src)
     assert getattr(excinfo.value, "code", None) == "SS3093"
+
+
+# ---------------------------------------------------------------------------
+# R-072: Secret-observable-sink coverage — html.render / json.serialize* /
+#        makeError (error-case constructor) / clientResponse
+# ---------------------------------------------------------------------------
+
+def test_r072_secret_into_html_render_hole_rejected():
+    # R-072 / §30.1.1: a secret-typed value passed as a hole arg to html.render
+    # leaks into the rendered HTML document served to HTTP clients — SS3072.
+    # No-op-failing: a validator that only covers console.write*/log.* passes this.
+    src = (
+        "ApiToken is alias\nApiToken for String\nApiToken typeTrust secret\n"
+        "page is htmlTemplate\npage body html\n    <span>{{token}}</span>\n"
+        "renderOp is operation\nrenderOp out ExitCode\nrenderOp async no\n"
+        'renderOp purpose "render page"\nrenderOp invariant "never leaks secret"\n'
+        "renderOp in secretToken ApiToken\nrenderOp let okCode immutable ExitCode 0\n"
+        "renderOp do renderCall\nrenderOp return okCode\n"
+        "renderCall is call\nrenderCall in renderOp\nrenderCall invokes html.render\n"
+        "renderCall arg template HtmlTemplate page\n"
+        "renderCall arg token ApiToken secretToken\n"
+        "renderCall out rendered HtmlFragment\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_r072_secret_into_json_serialize_document_rejected():
+    # R-072 / §30.1.1: a secret value passed to json.serializeDocument (a JSON
+    # serialization target) surfaces the secret in the wire-format response — SS3072.
+    # No-op-failing: a validator that only covers console.write*/log.* passes this.
+    src = (
+        "ApiToken is alias\nApiToken for String\nApiToken typeTrust secret\n"
+        "JsonText is alias\nJsonText for String\n"
+        "serializeOp is operation\nserializeOp out ExitCode\nserializeOp async no\n"
+        'serializeOp purpose "serialize to JSON"\nserializeOp invariant "never leaks secret"\n'
+        "serializeOp in secretToken ApiToken\nserializeOp let okCode immutable ExitCode 0\n"
+        "serializeOp do serCall\nserializeOp return okCode\n"
+        "serCall is call\nserCall in serializeOp\nserCall invokes json.serializeDocument\n"
+        "serCall arg document ApiToken secretToken\n"
+        "serCall out text JsonText\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_r072_secret_into_json_encode_rejected():
+    # R-072 / §30.1.1: a secret value passed to a json.encode* target is SS3072.
+    # No-op-failing: a validator that only blocks json.serial* misses json.encode*.
+    src = (
+        "SessionKey is alias\nSessionKey for String\nSessionKey typeTrust secret\n"
+        "encodeOp is operation\nencodeOp out ExitCode\nencodeOp async no\n"
+        'encodeOp purpose "encode to JSON"\nencodeOp invariant "never leaks secret"\n'
+        "encodeOp in sessionKey SessionKey\nencodeOp let okCode immutable ExitCode 0\n"
+        "encodeOp do encCall\nencodeOp return okCode\n"
+        "encCall is call\nencCall in encodeOp\nencCall invokes json.encodeString\n"
+        "encCall arg value SessionKey sessionKey\n"
+        "encCall out text String\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_r072_secret_into_make_error_constructor_rejected():
+    # R-072 / §30.1.1: a secret passed as the payload of an error-case constructor
+    # call (ErrorDomain.ErrorCase) embeds it in an error report that can surface in
+    # logs, diagnostics, or response bodies — SS3072.
+    # No-op-failing: a validator that only covers observable-sink targets misses
+    # error-case constructor calls (where invokes = ErrorType.CaseName).
+    # Error case syntax: a standalone `errorCase` entity with `of <Error>` and
+    # optional `payload <Type>`; the constructor call invokes `AuthError.BadToken`.
+    src = (
+        "PasswordHash is alias\nPasswordHash for String\nPasswordHash typeTrust secret\n"
+        "AuthError is error\n"
+        "BadToken is errorCase\nBadToken of AuthError\nBadToken payload PasswordHash\n"
+        "authOp is operation\nauthOp out ExitCode\nauthOp async no\n"
+        'authOp purpose "auth check"\nauthOp invariant "never embeds secret in error"\n'
+        "authOp in givenHash PasswordHash\n"
+        "authOp let okCode immutable ExitCode 0\nauthOp do makeErrCall\nauthOp return okCode\n"
+        "makeErrCall is call\nmakeErrCall in authOp\n"
+        "makeErrCall invokes AuthError.BadToken\n"
+        "makeErrCall arg status PasswordHash givenHash\n"
+        "makeErrCall out authErr AuthError\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_r072_secret_into_client_response_slot_rejected():
+    # R-072 / §30.1.1: a secret-typed value passed to a clientResponse-tagged slot
+    # leaks the secret to the HTTP client — SS3072.
+    # No-op-failing: a validator that only covers _OBSERVABLE_SINK_TARGETS misses
+    # clientResponse-tagged call parameters.
+    src = (
+        "ApiKey is alias\nApiKey for String\nApiKey typeTrust secret\n"
+        "sendOp is intrinsic\nsendOp target http.writeResponse\n"
+        "sendOp arg body ApiKey\nsendOp clientResponse arg body\n"
+        "sendOp out written Int32\n"
+        "handleOp is operation\nhandleOp out ExitCode\nhandleOp async no\n"
+        'handleOp purpose "send response"\nhandleOp invariant "never sends secret"\n'
+        "handleOp in secretKey ApiKey\n"
+        "handleOp let okCode immutable ExitCode 0\nhandleOp do sendCall\nhandleOp return okCode\n"
+        "sendCall is call\nsendCall in handleOp\nsendCall invokes http.writeResponse\n"
+        "sendCall arg body ApiKey secretKey\nsendCall out w Int32\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_r072_secret_to_crypto_verify_still_accepted():
+    # R-072 / §30.1.1: passing a secret to a crypto/verify target is usage (not
+    # observation) and must remain accepted — no SS3072.
+    # This test confirms the R-072 additions do not break the accepted-verify path.
+    src = (
+        "PasswordHash is alias\nPasswordHash for String\nPasswordHash typeTrust secret\n"
+        "verifyOp is operation\nverifyOp out Bool\nverifyOp async no\n"
+        'verifyOp purpose "verify password"\nverifyOp invariant "secret stays opaque"\n'
+        "verifyOp in givenHash PasswordHash\nverifyOp in expectedHash PasswordHash\n"
+        "verifyOp do verifyCall\nverifyOp return matchResult\n"
+        "verifyCall is call\nverifyCall in verifyOp\nverifyCall invokes crypto.verifyHmac\n"
+        "verifyCall arg given PasswordHash givenHash\n"
+        "verifyCall arg expected PasswordHash expectedHash\n"
+        "verifyCall out matchResult Bool\n"
+    )
+    prog = eavc.parse(src)
+    assert "verifyOp" in prog.entities   # no SS3072
+
+
+def test_r072_html_render_template_arg_not_flagged():
+    # R-072: the 'template' slot of html.render carries an HtmlTemplate entity
+    # reference — it is not a user-data hole and must NOT be flagged as a secret
+    # even if the type name were to collide.  A clean render with a non-secret
+    # text hole must succeed (no SS3072).
+    src = (
+        "greeting is htmlTemplate\ngreeting body html\n    <h1>{{title}}</h1>\n"
+        "Title is alias\nTitle for String\n"
+        "renderOp is operation\nrenderOp out ExitCode\nrenderOp async no\n"
+        'renderOp purpose "render greeting"\nrenderOp invariant "no secrets"\n'
+        'renderOp let pageTitle immutable Title "Hello"\n'
+        "renderOp let okCode immutable ExitCode 0\n"
+        "renderOp do renderCall\nrenderOp return okCode\n"
+        "renderCall is call\nrenderCall in renderOp\nrenderCall invokes html.render\n"
+        "renderCall arg template HtmlTemplate greeting\n"
+        "renderCall arg title Title pageTitle\n"
+        "renderCall out rendered HtmlFragment\n"
+    )
+    prog = eavc.parse(src)
+    assert "renderOp" in prog.entities   # no SS3072
