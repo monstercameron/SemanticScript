@@ -951,6 +951,33 @@ def test_compare_primitive_lowers_to_icmp():
     assert "icmp slt i64" in _ir_for_source(src)
 
 
+def test_compare_string_equality_bytewise():
+    # README §10.6: String equality is bytewise via strcmp.
+    src = (
+        "P is project\nP module m\nP target console\nP entry eq\nm is module\nm path a.b\n"
+        "eq is operation\neq in a String\neq in b String\neq out Bool\n"
+        "eq do cmpCall\neq return r\n"
+        "cmpCall is call\ncmpCall in eq\ncmpCall invokes compare.equalString\n"
+        "cmpCall arg left String a\ncmpCall arg right String b\ncmpCall out r Bool\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert 'call i32 @"strcmp"' in ir_text
+    assert "icmp eq i32" in ir_text
+
+
+def test_compare_ordering_on_string_rejected():
+    src = (
+        "P is project\nP module m\nP target console\nP entry cmp\nm is module\nm path a.b\n"
+        "cmp is operation\ncmp in a String\ncmp in b String\ncmp out Bool\n"
+        "cmp do cmpCall\ncmp return r\n"
+        "cmpCall is call\ncmpCall in cmp\ncmpCall invokes compare.lessThanString\n"
+        "cmpCall arg left String a\ncmpCall arg right String b\ncmpCall out r Bool\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(src))
+    assert exc.value.code == "SS1345"
+
+
 def test_compare_ordering_on_bool_rejected():
     # README §17 #45: Bool/enum are equals-only.
     src = (

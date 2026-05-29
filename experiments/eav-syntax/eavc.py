@@ -2047,6 +2047,9 @@ class EavCodegen:
                              name="malloc")
         elif name in ("strcpy", "strcat"):
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i8p]), name=name)
+        elif name == "strcmp":
+            fn = ir.Function(self.module, ir.FunctionType(ir.IntType(32), [i8p, i8p]),
+                             name="strcmp")
         else:
             raise EavError(f"no runtime declaration for {name!r}")
         self._runtime[name] = fn
@@ -2441,12 +2444,13 @@ class EavCodegen:
         if op is None or not typ:
             raise EavError(f"unrecognized compare target {target!r}", call.line)
         ordering = op in ("lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual")
-        ent = self.program.entities.get(self.resolve_type_name(typ))
+        resolved = self.resolve_type_name(typ)
+        ent = self.program.entities.get(resolved)
         is_enum = ent is not None and ent.kind == "enum"
-        if ordering and (self.resolve_type_name(typ) == "Bool" or is_enum):
+        if ordering and (resolved in ("Bool", "String") or is_enum):
             raise EavError(
-                f"{target!r}: Bool and enum support equals/notEquals only, not "
-                f"ordering (README ss13, ss17 #45)",
+                f"{target!r}: Bool, String, and enum support equals/notEquals "
+                f"only, not ordering (README ss10.6, ss17 #45)",
                 call.line,
                 code="SS1345",
             )
@@ -2454,6 +2458,11 @@ class EavCodegen:
         right = self._resolve(args["right"].payload[2], typ, builder, sym) if "right" in args else None
         if left is None or right is None:
             raise EavError(f"{target!r} needs left and right args", call.line)
+        if resolved == "String":
+            # README ss10.6: String equality is bytewise (strcmp), no normalization.
+            cmp = builder.call(self.runtime("strcmp"), [left, right])
+            pred = "==" if op == "equal" else "!="
+            return builder.icmp_signed(pred, cmp, ir.Constant(ir.IntType(32), 0))
         if self.is_float_type(typ):
             if op == "notEqual":
                 return builder.fcmp_unordered("!=", left, right)
