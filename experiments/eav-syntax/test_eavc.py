@@ -3029,6 +3029,24 @@ def test_test_runner_executes_tag_test_ops():
     assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
 
 
+def test_check_next_commands(tmp_path, capsys):
+    # WS4-112: check carries machine-facing nextCommands with argv + replayable.
+    import json
+    ok_path = os.path.join(EXAMPLES, "hello_world.sem")
+    eavc.main(["check", ok_path])
+    env = json.loads(capsys.readouterr().out)
+    assert env["nextCommands"], "ok check should suggest next steps"
+    nc = env["nextCommands"][0]
+    assert "argv" in nc and nc["replayable"] is True and nc["argv"][0] in ("test", "build")
+    # an error source suggests `fix --plan`
+    bad = tmp_path / "bad.sem"
+    bad.write_text("Thing is record\nThing field new TaskId\n", encoding="utf-8")
+    eavc.main(["check", str(bad)])
+    benv = json.loads(capsys.readouterr().out)
+    if benv["status"] == "lint-diagnostics":
+        assert any(c["argv"][0] == "fix" for c in benv["nextCommands"])
+
+
 def test_versioned_json_envelopes(capsys):
     # WS4-111: every JSON surface emits a consistent versioned envelope
     # {surface, version, ok}, and each surface is declared in SEM_SURFACES.

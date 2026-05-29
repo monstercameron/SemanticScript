@@ -5655,6 +5655,12 @@ EAV_SKILLS = {
 }
 
 
+def _next_command(argv: list, description: str, replayable: bool = True) -> dict:
+    """A machine-facing next-step descriptor (README §24/§32.3 #20)."""
+    return {"argv": argv, "command": "eavc " + " ".join(argv),
+            "replayable": replayable, "description": description}
+
+
 def _json_envelope(surface: str, **payload) -> str:
     import json
     body = {"surface": surface, "version": "v1", "ok": True}
@@ -5801,9 +5807,20 @@ def cmd_check(args) -> int:
     warnings = [d for d in diags if d.severity == "warning"]
     status = ("lint-diagnostics" if errors
               else "ok-with-warnings" if warnings else "ok")
+    # README §24/§32.3 #20: machine-facing next steps.
+    if status == "lint-diagnostics":
+        nxt = [_next_command(["fix", args.path, "--plan"],
+                             "derive a repair plan for the errors")]
+    elif status == "ok-with-warnings":
+        nxt = [_next_command(["fix", args.path, "--plan", "--include-warnings"],
+                             "review warning cleanup"),
+               _next_command(["test", args.path], "run the test operations")]
+    else:
+        nxt = [_next_command(["test", args.path], "run the test operations"),
+               _next_command(["build", args.path], "compile to a native exe")]
     sys.stdout.write(_json_envelope(
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
-        diagnostics=[d.render() for d in diags]) + "\n")
+        diagnostics=[d.render() for d in diags], nextCommands=nxt) + "\n")
     return 0
 
 
