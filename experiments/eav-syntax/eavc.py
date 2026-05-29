@@ -988,13 +988,23 @@ class EavCodegen:
         if tok in sym:
             return self._load(sym[tok], builder)
         resolved = self.resolve_type_name(type_name)
+        # Not a binding -> must be a well-formed literal of the expected type.
+        # An unbound identifier here is an out-of-scope reference (README ss25).
         if resolved == "String":
-            return self.global_string(_decode_string_literal(tok))
+            if tok.startswith('"'):
+                return self.global_string(_decode_string_literal(tok))
+            raise EavError(f"{tok!r} is not in scope (expected a String binding)")
         if resolved == "Bool":
-            return ir.Constant(ir.IntType(1), 1 if tok in ("true", "1", "yes") else 0)
+            if tok in ("true", "false"):  # README ss4: yes/no are not Bool values
+                return ir.Constant(ir.IntType(1), 1 if tok == "true" else 0)
+            raise EavError(f"{tok!r} is not in scope (expected a Bool binding or true/false)")
         if resolved in _FLOAT_TYPE_NAMES:
-            return ir.Constant(self.ir_type(type_name), float(tok))
-        return ir.Constant(self.ir_type(type_name), _parse_int_literal_value(tok))
+            if tok[:1].isdigit() or tok[:1] in "-.":
+                return ir.Constant(self.ir_type(type_name), float(tok))
+            raise EavError(f"{tok!r} is not in scope (expected a Float binding)")
+        if tok[:1].isdigit() or (tok[:1] == "-" and tok[1:2].isdigit()):
+            return ir.Constant(self.ir_type(type_name), _parse_int_literal_value(tok))
+        raise EavError(f"{tok!r} is not in scope (expected an integer binding)")
 
     def _load(self, entry, builder):
         if entry[0] == "val":

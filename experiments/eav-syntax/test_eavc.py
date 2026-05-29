@@ -530,6 +530,24 @@ def test_lower_branch_iffalse_inverts_to_cbranch():
     assert "br i1 " in ir_text
 
 
+def test_branch_if_lowers_and_unbound_condition_rejected():
+    # README ss13/ss17 #8: `branch if COND goto L` needs a Bool in scope.
+    good = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let flag immutable Bool true\nmain let okCode immutable ExitCode 0\n"
+        "main branch if flag goto done\nmain return okCode\n"
+        "main at done return okCode\n"
+    )
+    ir_text = _ir_for_source(good)
+    assert "br i1 " in ir_text
+    bad = good.replace("branch if flag goto done", "branch if missingFlag goto done")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(bad))
+    assert "not in scope" in exc.value.message
+
+
 def test_iferror_requires_catch():
     # README ss13/ss17 #6: ifError needs a fallible call with a catch row.
     src = (

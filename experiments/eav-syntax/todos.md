@@ -116,7 +116,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 1F. Control flow & guards (§13, §33.4)
 - [x] WS1-060 `do/branch/goto/return/at`. →test: CFG goldens. §13 _(eavc: `examples/countdown.sem` exercises `at`/`do`/`branch ifFalse`/`goto`/`return`; `test_e2e_countdown_runs`, `test_lower_branch_iffalse_inverts_to_cbranch`)_
-- [ ] WS1-061 Guard `if`/`ifFalse` (Bool in scope). →test: §17 #8. §13
+- [x] WS1-061 Guard `if`/`ifFalse` (Bool in scope). →test: §17 #8. §13 _(eavc: if/ifFalse → cbranch; value resolution rejects unbound/out-of-scope conditions; `test_branch_if_lowers_and_unbound_condition_rejected`)_
 - [x] WS1-062 `ifError CALL` (after `do`) / `ifError TASK` (after `join`); needs `catch`; `poll` not a predecessor. →test: §17 #6; ifError w/o catch reject. §13 _(eavc: ifError lowers to result-error cbranch and requires a `catch`; `test_lower_hello_world_emits_puts_and_error_branch`, `test_iferror_requires_catch`. TASK/join path pending async.)_
 - [ ] WS1-063 `ifVariant VALUE VARIANT [bind PAYLOAD] goto`; payload catch-style scope; exhaustiveness; canonical default `goto`. →test: §17 #52/#53; non-exhaustive warns; bind-off-path reject. §13/§10.5
 - [ ] WS1-064 Payload definite-assignment across shared labels (every predecessor binds same name/type). →test: mixed-predecessor bind reject. §13
