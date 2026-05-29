@@ -640,6 +640,11 @@ def mvs_select(requirements: list) -> dict:
 SEMSIG_SCHEMA_VERSIONS = {"1.0"}
 
 
+_SEMSIG_LEGAL_KINDS = {
+    "semsig", "intrinsic", "record", "enum", "alias", "error", "errorCase",
+}
+
+
 def load_semsig(source: str) -> Program:
     """Parse a `.semsig` sidecar and validate its header (README ss26). An
     unknown schema `version` is rejected (SS2601)."""
@@ -647,6 +652,17 @@ def load_semsig(source: str) -> Program:
     headers = program.of_kind("semsig")
     if not headers:
         raise EavError("a .semsig file needs a `semsig` header entity (README ss26)")
+    # README ss26 / WS4-006: a .semsig holds only intrinsic signatures + the
+    # record/enum/alias/error types they reference (plus its header).
+    for n in program.order:
+        kind = program.entities[n].kind
+        if kind not in _SEMSIG_LEGAL_KINDS:
+            raise EavError(
+                f".semsig may not contain a {kind!r} entity "
+                f"({program.entities[n].name!r}); only intrinsic signatures and the "
+                f"types they reference are legal (README ss26, WS4-006)",
+                program.entities[n].line,
+            )
     for sig in headers:
         ver = sig.fact("version")
         v = ver.payload[0].strip('"') if ver and ver.payload else None

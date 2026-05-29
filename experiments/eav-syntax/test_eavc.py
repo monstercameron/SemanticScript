@@ -3057,6 +3057,22 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_semsig_legal_entity_set():
+    # WS4-006: a .semsig holds only intrinsic + referenced types (+ header).
+    import glob
+    legal = {"semsig", "intrinsic", "record", "enum", "alias", "error", "errorCase"}
+    for path in glob.glob(os.path.join(SIGS, "*.semsig")):
+        prog = eavc.load_semsig(open(path, encoding="utf-8").read())
+        assert all(prog.entities[n].kind in legal for n in prog.order), path
+    # an operation in a .semsig is rejected
+    bad = (
+        "sig is semsig\nsig version \"1.0\"\nsig generatedBy \"eavc\"\nsig describes x\n"
+        "main is operation\nmain out Int64\nmain let r immutable Int64 0\nmain return r\n"
+    )
+    with pytest.raises(eavc.EavError):
+        eavc.load_semsig(bad)
+
+
 def test_task_templates(capsys):
     # WS4-025: each `task` template emits its checklist sections.
     import json
