@@ -2994,6 +2994,35 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_coverage_floor_probe():
+    # X-068: a stdlib-`trace`-style line-coverage probe over eavc.py (no third-party
+    # dep) with a floor that fails on a big regression. Parsing + linting + lowering
+    # + formatting every example covers a substantial slice of the compiler.
+    import glob
+    eav_file = eavc.__file__
+    hit = set()
+
+    def tracer(frame, event, arg):
+        if event == "line" and frame.f_code.co_filename == eav_file:
+            hit.add(frame.f_lineno)
+        return tracer
+
+    old = sys.gettrace()
+    sys.settrace(tracer)
+    try:
+        for path in glob.glob(os.path.join(EXAMPLES, "*.sem")):
+            src = open(path, encoding="utf-8").read()
+            prog = eavc.parse(src)
+            eavc.lint(prog)
+            str(eavc.lower_to_llvm(prog))
+            eavc.format_program(prog)
+    finally:
+        sys.settrace(old)
+    # Floor below the current ~1570; regressing the example workload's reach
+    # (e.g. a lowering path going dark) fails the guard.
+    assert len(hit) >= 1400, f"coverage floor regressed: only {len(hit)} eavc lines hit"
+
+
 def test_stdlib_modules_coverage_guard():
     # WS3-107: every std/*.sem module lints clean and every operation is bodied
     # (a runtimeBinding/intrinsic body, or step rows) — no stub operations.
