@@ -303,9 +303,9 @@ DIAGNOSTICS.update({
     "SS2601": {"tier": "T1", "summary": "Invalid webServer route method.",
                "found": "A route method outside GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS.",
                "suggested": "Use a bare standard HTTP method (README §14)."},
-    "SS2602": {"tier": "T1", "summary": "Dynamic webServer route token.",
-               "found": "A route path with a `:param` or `*` wildcard.",
-               "suggested": "Use exact-match static routes in v0.3 (README §14)."},
+    "SS2602": {"tier": "T1", "summary": "Malformed webServer route parameter.",
+               "found": "A `:` route segment whose name is not a valid identifier.",
+               "suggested": "Write `:name` with an identifier, or `*` for the catch-all (README §14)."},
     "SS2603": {"tier": "T1", "summary": "webServer handler ABI mismatch.",
                "found": "A handler whose inputs/output don't match its role ABI.",
                "suggested": "Match the §14 handler ABI for its role (README §14)."},
@@ -3706,12 +3706,22 @@ def _validate_webserver_abi(program: Program) -> None:
                     f"{sorted(_HTTP_METHODS)} (README ss14, WS2-026)",
                     r.line, code="SS2601",
                 )
-            if ":" in path or "*" in path:
-                raise EavError(
-                    f"webServer {ws.name!r} route {path!r} uses a dynamic token; only "
-                    f"exact-match static routes are allowed (README ss14, WS2-026)",
-                    r.line, code="SS2602",
-                )
+            # README ss14: dynamic routing — a `:name` path-parameter segment
+            # and the `*` catch-all wildcard are accepted. Their dispatch
+            # (param extraction, wildcard fallback) is part of the webServer
+            # runtime and lowers with the deferred `target webServer` codegen; a
+            # `:` segment must still name a valid identifier so the param binding
+            # is well-formed.
+            for seg in path.strip('"').split("/"):
+                if seg == "*" or not seg.startswith(":"):
+                    continue
+                if not _IDENT_RE.match(seg[1:]):
+                    raise EavError(
+                        f"webServer {ws.name!r} route {path!r} has a malformed route "
+                        f"parameter {seg!r}; use `:name` with an identifier "
+                        f"(README ss14)",
+                        r.line, code="SS2602",
+                    )
             if len(r.payload) >= 3:
                 check_abi(r.payload[2], _HANDLER_ABI, r.line, "route handler")
         for pred, abi in (("notFound", _HANDLER_ABI), ("methodNotAllowed", _HANDLER_ABI),

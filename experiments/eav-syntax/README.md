@@ -2041,9 +2041,14 @@ appServer middleware "/tasks" authMiddleware
 Route document order is route-match priority. Identical routes (same method +
 path) are a hard lint error.
 
-**Static routes only.** v0.3 supports exact-match static routes only. Route
-parameters (`:id`), wildcards (`*`), and query string binding are not part of
-v0.3. Dynamic routing patterns are planned for a future version.
+**Dynamic routing.** A path segment of the form `:name` is a route parameter
+(e.g. `route GET "/api/todos/:id" showTodoHandler`); `*` is the catch-all
+wildcard used as the not-found fallback (`route GET "*" notFoundHandler`). The
+`:name` segment must name a valid identifier. Document order is match priority,
+so list static routes before the `*` catch-all. Parameter extraction and the
+wildcard fallback are part of the webServer runtime and lower with the
+`target webServer` codegen. Query-string binding is still out of scope (read
+the query through `http.requestQueryParam`).
 
 HTTP method values: `GET POST PUT DELETE PATCH HEAD OPTIONS`. Bare names, no
 quotes.

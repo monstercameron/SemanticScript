@@ -2841,9 +2841,13 @@ def test_webserver_bad_method_rejected():
     assert getattr(exc.value, "code", None) == "SS2601"
 
 
-def test_webserver_dynamic_route_rejected():
+def test_webserver_dynamic_route_accepted():
+    # §14 dynamic routing (user-approved reversal of the v0.3 static-only rule):
+    # a `:id` route parameter now lints clean; a malformed `:` segment is SS2602.
+    prog = eavc.parse(_webserver_program("api route GET /users/:id healthHandler\n", _OK_HANDLER))
+    assert not [d.render() for d in eavc.lint(prog) if d.severity == "error"]
     with pytest.raises(eavc.EavError) as exc:
-        eavc.parse(_webserver_program("api route GET /users/:id healthHandler\n", _OK_HANDLER))
+        eavc.lint(eavc.parse(_webserver_program("api route GET /users/: healthHandler\n", _OK_HANDLER)))
     assert getattr(exc.value, "code", None) == "SS2602"
 
 
@@ -4719,6 +4723,81 @@ def test_app_http_runtime_gauntlet_full_port():
     # the deferred server is gated at codegen, not lint
     with pytest.raises(eavc.EavError):
         eavc.lower_to_llvm(prog)
+
+
+_DYNAMIC_ROUTE_SERVER = """
+DynRoute is project
+DynRoute module m
+DynRoute target webServer
+DynRoute entry srv
+m is module
+m path apps.dyn
+m exports srv
+m purpose "p"
+m invariant "i"
+respWriter is capability
+respWriter grants write http.response
+respWriter purpose "write responses"
+srv is webServer
+srv host "127.0.0.1"
+srv port 8080
+srv route GET "/api/todos/:id" showHandler
+srv route POST "/api/todos/:id/complete" completeHandler
+srv route GET "*" notFoundHandler
+srv notFound notFoundHandler
+showHandler is operation
+showHandler in request HttpRequest
+showHandler in response HttpResponse
+showHandler out Int32
+showHandler effect write http.response
+showHandler uses respWriter
+showHandler memory heap no
+showHandler async no
+showHandler purpose "p"
+showHandler invariant "i"
+showHandler let okCode immutable Int32 0
+showHandler return okCode
+completeHandler is operation
+completeHandler in request HttpRequest
+completeHandler in response HttpResponse
+completeHandler out Int32
+completeHandler effect write http.response
+completeHandler uses respWriter
+completeHandler memory heap no
+completeHandler async no
+completeHandler purpose "p"
+completeHandler invariant "i"
+completeHandler let okCode immutable Int32 0
+completeHandler return okCode
+notFoundHandler is operation
+notFoundHandler in request HttpRequest
+notFoundHandler in response HttpResponse
+notFoundHandler out Int32
+notFoundHandler effect write http.response
+notFoundHandler uses respWriter
+notFoundHandler memory heap no
+notFoundHandler async no
+notFoundHandler purpose "p"
+notFoundHandler invariant "i"
+notFoundHandler let okCode immutable Int32 0
+notFoundHandler return okCode
+"""
+
+
+def test_webserver_dynamic_routing():
+    # §14 dynamic routing (user-approved): `:name` route params and the `*`
+    # catch-all are accepted (parse + lint; dispatch lowers with the deferred
+    # target webServer codegen). A malformed `:` segment is SS2602.
+    prog = eavc.parse(_DYNAMIC_ROUTE_SERVER)
+    assert not [d.render() for d in eavc.lint(prog) if d.severity == "error"]
+    server = prog.of_kind("webServer")[0]
+    paths = [r.payload[1].strip('"') for r in server.facts("route") if len(r.payload) >= 2]
+    assert "/api/todos/:id" in paths and "*" in paths
+    # a `:` segment with no identifier is still rejected
+    bad = _DYNAMIC_ROUTE_SERVER.replace('"/api/todos/:id"', '"/api/todos/:"')
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lint(eavc.parse(bad))
+    assert getattr(exc.value, "code", None) == "SS2602"
 
 
 def test_app_taskforge_web_content_core_runs():
