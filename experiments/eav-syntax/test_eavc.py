@@ -44,6 +44,15 @@ def test_invalid_corpus_is_populated():
 MANIFESTS = os.path.join(HERE, "manifests")
 
 
+def test_module_path_and_internal_visibility():
+    # WS3-032: submodule path = root + reldir; internal/ leak rejected.
+    assert eavc.module_path_for("acme", "app/taskWeb") == "acme.app.taskWeb"
+    assert eavc.internal_import_allowed("acme.app.handlers", "acme.app.internal.db")
+    assert eavc.internal_import_allowed("acme.app", "acme.app.internal.db")
+    assert not eavc.internal_import_allowed("other.mod", "acme.app.internal.db")
+    assert eavc.internal_import_allowed("anything", "acme.app.public")  # no internal seg
+
+
 def test_mod_tidy_reproducible_and_valid_lock():
     # WS3-035: tidy generates a valid, reproducible lock from the manifest.
     build = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())

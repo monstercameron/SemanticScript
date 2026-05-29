@@ -614,6 +614,24 @@ def merge_native_links(program: Program, platform_name: str) -> dict:
     }
 
 
+def module_path_for(root_module: str, reldir: str) -> str:
+    """A submodule's import path = the project root module + its relative
+    directory segments (README ss28.3)."""
+    parts = [p for p in reldir.replace("\\", "/").split("/") if p]
+    return ".".join([root_module] + parts)
+
+
+def internal_import_allowed(importer_path: str, target_path: str) -> bool:
+    """`internal/` visibility (README ss28.3): a module path with an `internal`
+    segment is importable only by modules under the parent of that `internal`
+    boundary. Returns False for an out-of-tree leak."""
+    segs = target_path.split(".")
+    if "internal" not in segs:
+        return True
+    parent = ".".join(segs[: segs.index("internal")])
+    return importer_path == parent or importer_path.startswith(parent + ".")
+
+
 def mod_tidy(build_program: Program) -> str:
     """Generate a `build.sem.lock` from a `build.sem` manifest (README ss28.4):
     MVS-resolved requires (with content digests), toolchainResolved, and the
