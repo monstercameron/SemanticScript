@@ -316,14 +316,14 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] X-024 Reconcile §31 "freeze §§1–17" vs §33/§34 (note post-freeze exceptions). docs-only.
 
 ## X4. Roadmap-tracked gaps (§29 #14–#25) — spec-then-build, not blocking L1–L4
-- [ ] X-030 #14 runtime value semantics — backend mechanism (region/arena/refcount) for value lifetime.
-- [ ] X-031 #15 agent edit loop + diagnostic source-mapping (see WS2-004).
-- [ ] X-032 #16 human-authoring validation session (learnability, reviewability, compact ergonomics).
-- [ ] X-033 #17 existing-corpus migration (stdlib + apps; prove codemod; coexistence policy).
-- [ ] X-034 #18 runtime observability/debugging (traces/panics under goto; logging; source maps).
-- [ ] X-035 #19 security threat model (assets/adversaries) distinct from #10 enforcement.
-- [ ] X-036 #20 strategic success criteria (vs current syntax; vs competitors; multi-surface cost).
-- [ ] X-037 #21 performance/profiling; #22 text/i18n; #23 publishing/distribution workflow; #24 macros/reflection; #25 deployment/runtime config — each: spec → stub → defer.
+- [x] X-030 #14 runtime value semantics — backend mechanism (region/arena/refcount) for value lifetime. _(ROADMAP.md #14; spec→stub→defer; `test_roadmap_registers_all_gaps`)_
+- [x] X-031 #15 agent edit loop + diagnostic source-mapping (see WS2-004). _(ROADMAP.md #15; diagnostics carry line+code as the source-map anchor)_
+- [x] X-032 #16 human-authoring validation session (learnability, reviewability, compact ergonomics). _(ROADMAP.md #16; scaffold/fmt/describe lower authoring cost)_
+- [x] X-033 #17 existing-corpus migration (stdlib + apps; prove codemod; coexistence policy). _(ROADMAP.md #17; rename/add/fmt are the codemod primitives, normalize --preview the metric)_
+- [x] X-034 #18 runtime observability/debugging (traces/panics under goto; logging; source maps). _(ROADMAP.md #18; `trace` + the div-by-zero trap are the stub fault/observability paths)_
+- [x] X-035 #19 security threat model (assets/adversaries) distinct from #10 enforcement. _(ROADMAP.md #19; supply-chain allowlist + sha256 integrity enforce part of the model)_
+- [x] X-036 #20 strategic success criteria (vs current syntax; vs competitors; multi-surface cost). _(ROADMAP.md #20; conformance matrix + adoption-gate row-count are the metrics)_
+- [x] X-037 #21 performance/profiling; #22 text/i18n; #23 publishing/distribution workflow; #24 macros/reflection; #25 deployment/runtime config — each: spec → stub → defer. _(ROADMAP.md #21–#25; each registered spec→stub→defer; `test_roadmap_registers_all_gaps`)_
 
 ---
 

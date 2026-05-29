@@ -566,6 +566,13 @@ def _ir_helper_program():
     )
 
 
+def test_roadmap_registers_all_gaps():
+    # X-030..X-037: every §29 roadmap gap #14–#25 has a register entry.
+    roadmap = open(os.path.join(HERE, "ROADMAP.md"), encoding="utf-8").read()
+    for n in range(14, 26):
+        assert f"## #{n} " in roadmap, f"gap #{n} missing from ROADMAP.md"
+
+
 def test_token_sync_drift_guard_green():
     # X-005: every reserved word has a §5/§6/§22 home (or is a documented future
     # token). A new unsynced reserved word would make this fail.
