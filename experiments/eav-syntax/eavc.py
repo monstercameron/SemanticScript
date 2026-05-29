@@ -5657,6 +5657,44 @@ def cmd_skills(args) -> int:
     return 0
 
 
+def cmd_check(args) -> int:
+    """Source lane (sem.check.v1): parse + lint, classify ok / ok-with-warnings /
+    lint-diagnostics / compiler-error (README check/readiness split)."""
+    try:
+        program = parse_compact(_read_source(args.path))
+    except EavError as exc:
+        sys.stdout.write(_json_envelope(
+            "sem.check.v1", status="compiler-error", ok=False,
+            diagnostics=[str(exc)]) + "\n")
+        return 0
+    diags = lint(program)
+    errors = [d for d in diags if d.severity == "error"]
+    warnings = [d for d in diags if d.severity == "warning"]
+    status = ("lint-diagnostics" if errors
+              else "ok-with-warnings" if warnings else "ok")
+    sys.stdout.write(_json_envelope(
+        "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
+        diagnostics=[d.render() for d in diags]) + "\n")
+    return 0
+
+
+def cmd_readiness(args) -> int:
+    """Environment lane (sem.readiness.v1): toolchain availability. Exits nonzero
+    unless ok (README readiness lane)."""
+    cc = _find_c_compiler()
+    try:
+        import llvmlite  # noqa: F401
+        have_llvm = True
+    except ImportError:
+        have_llvm = False
+    ok = bool(cc) and have_llvm
+    status = "ok" if ok else "degraded"
+    sys.stdout.write(_json_envelope(
+        "sem.readiness.v1", status=status, ok=ok,
+        cCompiler=bool(cc), llvmlite=have_llvm) + "\n")
+    return 0 if ok else 1
+
+
 def cmd_build(args) -> int:
     """Compile a program to a native executable (IR -> clang -> exe)."""
     import os
@@ -5909,6 +5947,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_check = sub.add_parser("check", help="source lane: parse + lint status")
+    sp_check.add_argument("path", help="EAV/compact source file, or - for stdin")
+    sp_check.add_argument("--json", action="store_true")
+    sp_check.set_defaults(func=cmd_check)
+
+    sp_readiness = sub.add_parser("readiness", help="environment lane: toolchain status")
+    sp_readiness.add_argument("--json", action="store_true")
+    sp_readiness.set_defaults(func=cmd_readiness)
 
     sp_version = sub.add_parser("version", help="emit the contract version surface")
     sp_version.add_argument("--json", action="store_true", help="emit JSON envelope")

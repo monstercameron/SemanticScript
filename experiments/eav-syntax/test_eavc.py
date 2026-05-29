@@ -2994,6 +2994,29 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_check_and_readiness_lanes(capsys):
+    # WS4-113: check (source lane) classifies status; readiness (environment lane).
+    import json
+    eavc.main(["check", os.path.join(EXAMPLES, "hello_world.sem")])
+    ok = json.loads(capsys.readouterr().out)
+    assert ok["surface"] == "sem.check.v1" and ok["status"] in ("ok", "ok-with-warnings")
+    # readiness reports the toolchain lane
+    rc = eavc.main(["readiness", "--json"])
+    rd = json.loads(capsys.readouterr().out)
+    assert rd["surface"] == "sem.readiness.v1"
+    assert rd["ok"] == (rc == 0)
+    assert "cCompiler" in rd and "llvmlite" in rd
+
+
+def test_check_classifies_compiler_error(tmp_path, capsys):
+    import json
+    bad = tmp_path / "bad.sem"
+    bad.write_text("main badpredicate x\n", encoding="utf-8")  # no `is` row first
+    eavc.main(["check", str(bad)])
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "compiler-error" and out["ok"] is False
+
+
 def test_bootstrap_surfaces(capsys):
     # WS4-115: version / agent-docs / skills JSON surfaces.
     import json
