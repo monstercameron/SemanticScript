@@ -1736,6 +1736,16 @@ def test_iferror_requires_catch():
     assert "catch" in exc.value.message
 
 
+def test_let_forward_reference_rejected():
+    # README §12: a let may not forward-reference a later let.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\n"
+            "main let a immutable Int64 b\nmain let b immutable Int64 0\n"
+        )
+    assert exc.value.code == "SS1203"
+
+
 def test_binding_no_shadow_rejected():
     # README ss17 #47: a let may not reuse a param or another let name.
     with pytest.raises(eavc.EavError) as exc:

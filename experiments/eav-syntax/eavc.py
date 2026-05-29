@@ -219,6 +219,9 @@ DIAGNOSTICS.update({
     "SS1542": {"tier": "T1", "summary": "cleanup onFailure without a worker catch.",
                "found": "A cleanup `onFailure` whose worker call has no `catch`.",
                "suggested": "Add a `catch` to the worker, or drop onFailure (§17 #42)."},
+    "SS1203": {"tier": "T1", "summary": "`let` forward-references a later binding.",
+               "found": "A `let` initializer naming a `let` declared later.",
+               "suggested": "Reorder so the referenced binding comes first (§12)."},
     "SS1326": {"tier": "T1", "summary": "Dotted name in an internal reference.",
                "found": "A `do`/`start`/`defer` (etc.) target containing a dot.",
                "suggested": "Internal refs are bare; dots are external-path only (§3)."},
@@ -2024,6 +2027,7 @@ def _validate_program(program: Program) -> None:
             )
         _check_dotted_types(ent)
         if ent.kind in ("operation", "function"):
+            _validate_let_forward_refs(ent)
             _validate_body_kind(ent)
             _validate_labels(ent, program)
             _validate_return_arity(ent)
@@ -2558,6 +2562,22 @@ def _validate_async_lifecycle(op: Entity) -> None:
             f"before return (README ss17 #20)",
             op.line, code="SS1320",
         )
+
+
+def _validate_let_forward_refs(op: Entity) -> None:
+    """`let` initializers may not forward-reference a later `let` (README ss12):
+    bindings are positional, defined before use."""
+    let_rows = [r for r in op.facts("let") if r.payload]
+    index = {r.payload[0]: i for i, r in enumerate(let_rows)}
+    for i, r in enumerate(let_rows):
+        if len(r.payload) > 3:
+            v = r.payload[3]
+            if v in index and index[v] > i:
+                raise EavError(
+                    f"`let {r.payload[0]}` forward-references {v!r}, declared later "
+                    f"(README ss12); bindings are positional",
+                    r.line, code="SS1203",
+                )
 
 
 def _validate_no_shadow(op: Entity) -> None:
