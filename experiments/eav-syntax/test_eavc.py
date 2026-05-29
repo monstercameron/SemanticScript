@@ -2591,6 +2591,50 @@ def test_bare_variant_outside_type_directed_position_rejected():
     assert getattr(exc.value, "code", None) == "SS1028"
 
 
+def _constant_program(extra_lets="", dup=False, target_uses=True):
+    dup_row = "Demo constant maxRetries Int64 9\n" if dup else ""
+    use = ("main do show\n" if target_uses else "")
+    show = (
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 maxRetries\n" if target_uses else ""
+    )
+    return (
+        "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
+        "Demo constant maxRetries Int64 5\n" + dup_row +
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n' + extra_lets +
+        "main let okCode immutable ExitCode 0\n" + use + "main return okCode\n" + show
+    )
+
+
+def test_project_constant_bare_read_jit_runs():
+    # WS3-041: a project constant is readable by bare name (project-global) and
+    # lowers to its build value.
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_constant_program(), capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "5"
+
+
+def test_project_constant_local_shadow_rejected():
+    # WS3-041: a local binding may not shadow a project constant.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_constant_program(
+            extra_lets="main let maxRetries immutable Int64 0\n", target_uses=False))
+    assert getattr(exc.value, "code", None) == "SS3041D"
+
+
+def test_project_constant_collision_rejected():
+    # WS3-041: two constants with the same name collide.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_constant_program(dup=True, target_uses=False))
+    assert getattr(exc.value, "code", None) == "SS3041C"
+
+
 def test_windows_gui_target_reserved_error():
     # WS3-044 / X-045: `target windowsGui` is a hard reserved-target error.
     src = (

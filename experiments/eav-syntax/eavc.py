@@ -264,6 +264,12 @@ DIAGNOSTICS.update({
     "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
                "found": "A return of a base/sibling type where the out is an alias newtype.",
                "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
+    "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
+                "found": "Two `PROJECT constant` rows with the same name.",
+                "suggested": "Use one constant per name (README §28.1)."},
+    "SS3041D": {"tier": "T1", "summary": "Local binding shadows a project constant.",
+                "found": "A `let` whose name matches a project constant.",
+                "suggested": "Rename the local binding (no shadow, README §28.1)."},
     "SS0744": {"tier": "T1", "summary": "Reserved target windowsGui is unspecified.",
                "found": "A project targeting `windowsGui` (GUI module not defined in v0.3).",
                "suggested": "Remove the windowsGui target until the GUI spec lands (README §27)."},
@@ -2691,6 +2697,7 @@ def _validate_program(program: Program) -> None:
     _validate_return_exactness(program)
     _validate_storage_mutation(program)
     _validate_reserved_targets(program)
+    _validate_constants(program)
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
@@ -3324,6 +3331,38 @@ def _storage_entities(program: Program) -> dict:
 def _is_module_storage(st: Entity) -> bool:
     scope = st.fact("scope")
     return bool(scope and scope.payload and scope.payload[0] == "module")
+
+
+def _validate_constants(program: Program) -> None:
+    """README ss28.1 / WS3-041: a `PROJECT constant` is a project-global read-only
+    value. Duplicate constant names collide (hard error), and a local binding may
+    not shadow a constant name (hard error)."""
+    seen: dict = {}
+    for proj in program.of_kind("project"):
+        for c in proj.facts("constant"):
+            if not c.payload:
+                continue
+            if c.payload[0] in seen:
+                raise EavError(
+                    f"duplicate project constant {c.payload[0]!r} (README ss28.1, "
+                    f"WS3-041)",
+                    c.line, code="SS3041C",
+                )
+            seen[c.payload[0]] = c.line
+    if not seen:
+        return
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for r in op.facts("let"):
+            if r.payload and r.payload[0] in seen:
+                raise EavError(
+                    f"local binding {r.payload[0]!r} in {op.name!r} shadows the "
+                    f"project constant {r.payload[0]!r} (no shadow, README ss28.1, "
+                    f"WS3-041)",
+                    r.line, code="SS3041D",
+                )
 
 
 def _validate_reserved_targets(program: Program) -> None:
@@ -4025,6 +4064,14 @@ class EavCodegen:
         }
         self.functions: dict[str, ir.Function] = {}
         self._runtime: dict[str, ir.Function] = {}
+        # README ss28.1 / WS3-041: project constants are project-global read-only
+        # values, visible by bare name in any module.
+        self.project_constants = {
+            c.payload[0]: (c.payload[1], c.payload[2:])
+            for proj in program.of_kind("project")
+            for c in proj.facts("constant")
+            if len(c.payload) >= 3
+        }
         self._str_count = 0
         self.entry_name = "main"
         self._record_layouts: dict[str, tuple] = {}  # name -> (struct_type, field_names)
@@ -4305,6 +4352,11 @@ class EavCodegen:
             return self.functions[tok]
         # README ss10 / WS1-028: a bare enum variant is valid in a type-directed
         # position (the resolved type is that enum); it lowers to its discriminant.
+        # README ss28.1 / WS3-041: a bare reference to a project constant reads
+        # its build value (project-global, no import).
+        if tok in getattr(self, "project_constants", {}):
+            ctype, cval = self.project_constants[tok]
+            return self._const_value(self.resolve_type_name(ctype), list(cval))
         if ote is not None and ote.kind == "enum":
             variants = [v.payload[0] for v in ote.facts("variant") if v.payload]
             if tok in variants:
