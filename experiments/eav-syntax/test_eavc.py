@@ -5266,6 +5266,32 @@ def test_view_missing_lifetime_rejected():
     assert getattr(exc.value, "code", None) == "SS1571"
 
 
+def test_standard_memory_contract_and_impl():
+    # WS1-118 / §8 §29 #14: the safe allocator API. The standard.memory sidecar
+    # declares the Region/View/OwnedBuffer/AllocationFailure types and the
+    # memory.openRegion/allocateIn/releaseRegion intrinsics (allocateIn returns a
+    # View that borrows the region — a WS1-111 view); the in-language impl is the
+    # `region` construct, which JIT-runs an open/allocate/release.
+    prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.memory.semsig"),
+                                 encoding="utf-8").read())
+    assert not any(d.severity == "error" for d in eavc.lint(prog))
+    targets = {l.split("(")[0] for l in eavc.docs(prog)}
+    for t in ("memory.openRegion", "memory.allocateIn", "memory.releaseRegion"):
+        assert t in targets, t
+    aliases = {a.name for a in prog.of_kind("alias")}
+    assert {"Region", "View", "OwnedBuffer"} <= aliases
+    assert any(e.name == "AllocationFailure" for e in prog.of_kind("error"))
+    # allocateIn is a borrowing view (mayEscape no) per WS1-111
+    alloc = prog.entities["memoryAllocateIn"]
+    assert alloc.fact("borrows") and alloc.fact("lifetime")
+    assert alloc.fact("mayEscape").payload[0] == "no"
+    # the in-language impl (the region construct) JIT-runs allocate-many/free-once
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_ARENA_SRC, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
