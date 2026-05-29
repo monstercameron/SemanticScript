@@ -4800,12 +4800,30 @@ def _validate_sink_typing(program: Program) -> None:
 
 _OBSERVABLE_SINK_TARGETS = (
     "console.writeLine", "console.writeIntegerLine", "console.writeFloatLine",
+    # R-072: HTML render surfaces a value into a client-visible document
+    "html.render",
+)
+
+# R-072: JSON serialization prefixes that surface a value into a wire-format
+# representation (json.serialize, json.encode, json.stringify, json.serializeDocument, …)
+_OBSERVABLE_SINK_JSON_PREFIXES = (
+    "json.serial",   # json.serialize / json.serializeDocument
+    "json.encode",   # json.encode*
+    "json.stringify",  # json.stringify*
 )
 
 
 def _is_observable_sink(target: str) -> bool:
-    # console writes and any log.* call surface a value to a human-readable channel
-    return target in _OBSERVABLE_SINK_TARGETS or target.startswith("log.")
+    # console writes, log.*, html.render, and JSON serialization surface a value to
+    # a human-readable or wire-format channel (R-072 extends the original X-072 set)
+    if target in _OBSERVABLE_SINK_TARGETS:
+        return True
+    if target.startswith("log."):
+        return True
+    for prefix in _OBSERVABLE_SINK_JSON_PREFIXES:
+        if target.startswith(prefix):
+            return True
+    return False
 
 
 def _is_literal_token(tok: str) -> bool:
@@ -4816,18 +4834,50 @@ def _is_literal_token(tok: str) -> bool:
 
 
 def _validate_secret_flow(program: Program) -> None:
-    """X-072 / README §30.1.1, §8: a `typeTrust secret` value is usable
+    """X-072 / R-072 / README §30.1.1, §8: a `typeTrust secret` value is usable
     (verify/sign/TLS) but never *observable*. Passing a secret-typed value to an
-    observable sink (console/log) is a hard error (SS3072), and a secret-typed
-    binding may not be initialized from a source literal ("no hardcoded secrets" —
-    load it from a capability-gated source). Because secrets can never reach an
-    observable/transcript sink, there is nothing to leak into a capturedOutputReplay
-    transcript — the compile-time block is stronger than runtime redaction."""
+    observable sink (console/log/html.render/json.serialize*/error-constructor/
+    clientResponse) is a hard error (SS3072), and a secret-typed binding may not be
+    initialized from a source literal ("no hardcoded secrets" — load it from a
+    capability-gated source).
+
+    R-072 extension adds:
+    - html.render:             a secret rendered into an HTML document leaks to HTTP clients
+    - json.serialize*/encode*/ stringify*: a secret serialized to JSON leaks over the wire
+    - Error-case constructors: a secret passed as a payload into an error constructor
+      (call invokes ErrorDomain.ErrorCase) embeds it in an error report
+    - clientResponse slots:   a secret reaching a client-response parameter leaks to the
+      HTTP client (complements the trustedInternal check in X-079 / SS3079)
+
+    capturedOutputReplay transcript: because a secret can never reach stdout (the
+    console/log blocks above fire first), it can never enter a captured-output-replay
+    transcript either — the compile-time block is stronger than runtime redaction, so
+    there is no separate transcript check needed."""
     secret_types = {program.entities[n].name for n in program.order
                     for r in program.entities[n].facts("typeTrust")
                     if r.payload and r.payload[0] == "secret"}
     if not secret_types:
         return
+
+    # Collect error-type names so we can detect error-case constructor calls
+    # (a call that invokes ErrorDomain.ErrorCase, where ErrorDomain is a known error).
+    # R-072: a secret passed as the payload of an error constructor ends up in the error
+    # report and can surface in logs, responses, or UI — reject at compile time.
+    error_types = {program.entities[n].name for n in program.order
+                   if program.entities[n].kind == "error"}
+
+    # Collect clientResponse slot names per callee key so we can detect a secret
+    # reaching a client-facing response parameter (R-072 / complement to X-079).
+    client_slots: dict = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function", "intrinsic"):
+            continue
+        slots = {r.payload[1] for r in ent.facts("clientResponse")
+                 if len(r.payload) >= 2 and r.payload[0] == "arg"}
+        if slots:
+            client_slots[_sink_key(ent)] = slots
+
     for n in program.order:
         ent = program.entities[n]
         # no hardcoded secrets: a secret-typed storage/let initialized from a literal
@@ -4849,18 +4899,54 @@ def _validate_secret_flow(program: Program) -> None:
                         f"initialized from a literal {r.payload[3]!r}; load secrets from "
                         f"a capability-gated source (README §8)",
                         r.line, code="SS3072")
-        # no observable secrets: a secret-typed arg into a console/log sink
+        # no observable secrets: a secret-typed arg into an observable sink
         if ent.kind in ("call", "task"):
             inv = ent.fact("invokes")
             target = inv.payload[0] if inv and inv.payload else ""
             if _is_observable_sink(target):
                 for a in ent.facts("arg"):
+                    # html.render: skip the 'template' slot — only hole args carry
+                    # user data that would be rendered into the document
+                    if target == "html.render" and len(a.payload) >= 1 and a.payload[0] == "template":
+                        continue
                     if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                        _val = a.payload[2] if len(a.payload) >= 3 else "?"
                         raise EavError(
-                            f"call {ent.name!r} writes a secret value {a.payload[2]!r} "
+                            f"call {ent.name!r} writes a secret value {_val!r} "
                             f"to the observable sink {target!r}; a secret is usable but "
-                            f"never observable (README §30.1.1)",
+                            f"never observable (README §30.1.1, R-072)",
                             ent.line, code="SS3072")
+
+            # R-072: error-case constructor — a call that invokes ErrorDomain.ErrorCase
+            # where ErrorDomain is a known error type embeds its arg in an error report.
+            if "." in target:
+                domain = target.split(".", 1)[0]
+                if domain in error_types:
+                    for a in ent.facts("arg"):
+                        if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                            _val = a.payload[2] if len(a.payload) >= 3 else "?"
+                            raise EavError(
+                                f"call {ent.name!r} passes a secret value {_val!r} "
+                                f"into the error constructor {target!r}; secrets in error "
+                                f"payloads can surface in logs, responses, and diagnostics "
+                                f"(README §30.1.1, R-072)",
+                                ent.line, code="SS3072")
+
+            # R-072: clientResponse sink — a secret reaching a client-response parameter
+            # leaks to the HTTP client (complements X-079 / SS3079 for trustedInternal).
+            resp_slots = client_slots.get(target)
+            if resp_slots:
+                for a in ent.facts("arg"):
+                    if (len(a.payload) >= 2 and a.payload[0] in resp_slots
+                            and a.payload[1] in secret_types):
+                        _val = a.payload[2] if len(a.payload) >= 3 else "?"
+                        raise EavError(
+                            f"call {ent.name!r} sends a secret value {_val!r} "
+                            f"to the client-response slot {a.payload[0]!r} of "
+                            f"{target!r}; a secret must never reach a client-facing "
+                            f"response (README §30.1.1, R-072)",
+                            ent.line, code="SS3072")
+
             # X-074: a secret may be compared only in constant time. A
             # `math.*`/`compare.*` equality on a secret operand leaks via timing.
             if ((target.startswith("math.") or target.startswith("compare."))
