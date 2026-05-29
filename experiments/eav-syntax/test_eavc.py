@@ -4493,6 +4493,38 @@ def test_secret_consumed_by_verify_accepted():
     assert "checkAuth" in prog.entities  # no SS3072
 
 
+def test_secret_variable_compare_rejected():
+    # X-074 / §13: comparing a secret with `compare.*`/`math.*` equality leaks via
+    # timing -> SS3074. No-op-failing: an ordinary compare would be accepted.
+    src = (
+        "Secret is alias\nSecret for String\nSecret typeTrust secret\n"
+        "checkTok is operation\ncheckTok out Bool\ncheckTok async no\n"
+        'checkTok purpose "p"\ncheckTok invariant "i"\n'
+        "checkTok in given Secret\ncheckTok in expected Secret\n"
+        "checkTok do cmp\ncheckTok return same\n"
+        "cmp is call\ncmp in checkTok\ncmp invokes compare.equalString\n"
+        "cmp arg left Secret given\ncmp arg right Secret expected\ncmp out same Bool\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3074"
+
+
+def test_secret_constant_time_compare_accepted():
+    # X-074: `crypto.equalConstantTime` is the sanctioned secret comparison.
+    src = (
+        "Secret is alias\nSecret for String\nSecret typeTrust secret\n"
+        "checkTok is operation\ncheckTok out Bool\ncheckTok async no\n"
+        'checkTok purpose "p"\ncheckTok invariant "i"\n'
+        "checkTok in given Secret\ncheckTok in expected Secret\n"
+        "checkTok do cmp\ncheckTok return same\n"
+        "cmp is call\ncmp in checkTok\ncmp invokes crypto.equalConstantTime\n"
+        "cmp arg left Secret given\ncmp arg right Secret expected\ncmp out same Bool\n"
+    )
+    prog = eavc.parse(src)
+    assert "checkTok" in prog.entities  # no SS3074
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

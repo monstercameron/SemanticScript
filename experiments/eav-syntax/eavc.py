@@ -183,6 +183,9 @@ DIAGNOSTICS.update({
     "SS3072": {"tier": "T1", "summary": "Secret value observed, or hardcoded.",
                "found": "A `typeTrust secret` value reaches an observable sink (console/log), or a secret-typed binding is initialized from a literal.",
                "suggested": "A secret is usable (verify/sign) but never observable — don't print/log it; load it from a capability-gated source, never a source literal (README §30.1.1/§8)."},
+    "SS3074": {"tier": "T1", "summary": "Non-constant-time comparison of a secret.",
+               "found": "A `math.*`/`compare.*` equality on a `typeTrust secret` operand (timing side-channel).",
+               "suggested": "Compare secrets only with `crypto.equalConstantTime` (README §13)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -4392,6 +4395,17 @@ def _validate_secret_flow(program: Program) -> None:
                             f"to the observable sink {target!r}; a secret is usable but "
                             f"never observable (README §30.1.1)",
                             ent.line, code="SS3072")
+            # X-074: a secret may be compared only in constant time. A
+            # `math.*`/`compare.*` equality on a secret operand leaks via timing.
+            if ((target.startswith("math.") or target.startswith("compare."))
+                    and "qual" in target):  # equal / notEqual / Equal
+                for a in ent.facts("arg"):
+                    if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                        raise EavError(
+                            f"call {ent.name!r} compares a secret {a.payload[2]!r} with "
+                            f"{target!r}; secrets compare only via "
+                            f"`crypto.equalConstantTime` (timing side-channel, README §13)",
+                            ent.line, code="SS3074")
 
 
 def _validate_time_safety(program: Program) -> None:

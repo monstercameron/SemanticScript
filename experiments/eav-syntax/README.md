@@ -4161,6 +4161,10 @@ capability-gated source. Because a secret can never reach an observable or
 transcript sink, there is nothing to leak into a `capturedOutputReplay`
 transcript: the compile-time block is stronger than runtime redaction.
 
+**Constant-time secret comparison (X-074).** Comparing a secret with a
+`math.*`/`compare.*` equality leaks via timing — a hard error (**SS3074**).
+Secrets compare only through `crypto.equalConstantTime`.
+
 ### Async intrinsics
 
 ```sem
