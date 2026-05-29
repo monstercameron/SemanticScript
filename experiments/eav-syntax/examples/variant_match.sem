@@ -1,0 +1,60 @@
+# variant_match — `branch ifVariant VALUE VARIANT goto L` narrows a payloadless
+# enum by discriminant (README ss10.5/ss13). Builds Status.done and matches it,
+# printing "is done". (todos WS1-063)
+
+VariantMatch is project
+VariantMatch module examplesVariantMatch
+VariantMatch target console
+VariantMatch entry main
+
+examplesVariantMatch is module
+examplesVariantMatch path examples.variantMatch
+examplesVariantMatch exports main
+examplesVariantMatch purpose "Match an enum value with ifVariant"
+examplesVariantMatch invariant "Takes the done path only when the value is the done variant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Status is enum
+Status variant open
+Status variant done
+Status purpose "Lifecycle state of a task"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build a done Status and branch on it with ifVariant"
+main invariant "Prints 'is done' when the value matches the done variant"
+main let doneText immutable String "is done"
+main let openText immutable String "still open"
+main let okCode immutable ExitCode 0
+main do makeStatus
+main branch ifVariant currentStatus done goto isDone
+main do writeOpen
+main return okCode
+main at isDone do writeDone
+main return okCode
+
+makeStatus is call
+makeStatus in main
+makeStatus invokes Status.done
+makeStatus out currentStatus Status
+
+writeDone is call
+writeDone in main
+writeDone invokes console.writeLine
+writeDone arg text String doneText
+
+writeOpen is call
+writeOpen in main
+writeOpen invokes console.writeLine
+writeOpen arg text String openText

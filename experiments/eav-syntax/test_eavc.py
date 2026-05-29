@@ -2238,6 +2238,13 @@ def test_enum_variant_discriminant_lowers():
     assert "ret i32 2" in ir_text  # readWrite's repr discriminant
 
 
+def test_e2e_variant_match():
+    # WS1-063: ifVariant narrows a payloadless enum by discriminant.
+    proc = _eavc_run("variant_match.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "is done"
+
+
 def test_e2e_operation_reference_indirect_call():
     # WS1-036/056: operationType binding invoked indirectly -> 42.
     proc = _eavc_run("operation_ref.sem")

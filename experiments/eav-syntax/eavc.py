@@ -219,6 +219,9 @@ DIAGNOSTICS.update({
     "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
                "found": "A `branch else` that doesn't follow a guard branch.",
                "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
+    "SS1352": {"tier": "T1", "summary": "ifVariant names an unknown/ambiguous variant.",
+               "found": "A `branch ifVariant … VARIANT` not resolvable to one enum.",
+               "suggested": "Use a variant that belongs to exactly one enum (§10.5)."},
     "SS1340": {"tier": "T4", "summary": "ifValue/ifOut is comparison sugar.",
                "found": "A `branch ifValue`/`ifOut` guard.",
                "suggested": "Informational; fmt canonicalizes to compare + branch if (§13)."},
@@ -3309,6 +3312,32 @@ class EavCodegen:
             cond = self._resolve(p[1], "Bool", builder, sym)
             cont = self._new_cont(fn)
             builder.cbranch(cond, cont, label_blocks[p[3]])
+            return ir.IRBuilder(cont)
+        if guard == "ifVariant":
+            # README ss13/ss10.5: `branch ifVariant VALUE VARIANT goto L` narrows a
+            # payloadless enum value by comparing its discriminant. (bind PAYLOAD
+            # for data-carrying variants is pending.)
+            value_tok, variant = p[1], p[2]
+            gi = p.index("goto")
+            label = p[gi + 1]
+            matches = [
+                e for e in self.program.of_kind("enum")
+                if variant in [v.payload[0] for v in e.facts("variant") if v.payload]
+            ]
+            if len(matches) != 1:
+                raise EavError(
+                    f"`ifVariant … {variant}`: variant {variant!r} is unknown or "
+                    f"ambiguous across enums (README ss10.5)",
+                    row.line, code="SS1352",
+                )
+            enum_ent = matches[0]
+            variants = [v.payload[0] for v in enum_ent.facts("variant") if v.payload]
+            repr_map = {r.payload[0]: int(r.payload[1]) for r in enum_ent.facts("repr") if len(r.payload) >= 2}
+            disc = repr_map.get(variant, variants.index(variant))
+            lv = self._resolve(value_tok, "Int32", builder, sym)
+            cond = builder.icmp_signed("==", lv, ir.Constant(ir.IntType(32), disc))
+            cont = self._new_cont(fn)
+            builder.cbranch(cond, label_blocks[label], cont)
             return ir.IRBuilder(cont)
         if guard in ("ifValue", "ifOut"):
             # README ss13 sugar: `branch ifValue X <cmp> Y goto L` (and `ifOut
