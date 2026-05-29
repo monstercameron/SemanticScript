@@ -3185,6 +3185,104 @@ def test_runtime_native_symbol_lane():
     assert eavc._runtime_libs_for(plain) == []
 
 
+def _manifest_library(name):
+    """Load one library entry from the real runtime/manifest.json by name."""
+    import json
+    path = os.path.join(eavc._runtime_dir(), "manifest.json")
+    manifest = json.loads(open(path, encoding="utf-8").read())
+    for lib in manifest["libraries"]:
+        if lib["name"] == name:
+            return lib
+    raise AssertionError(f"no manifest library named {name!r}")
+
+
+def test_runtime_links_resolve_per_platform_without_compiling():
+    """R-018: the pure resolver returns a platform-scoped link set without
+    compiling. The old code had no resolver and the manifest carried a flat
+    `libs: ["ws2_32"]` on eav_http that every platform inherited, so there was no
+    way to ask for the Linux/macOS link set at all — this test could not even be
+    written against the old surface (no `_resolve_runtime_links`, no `platforms`
+    sections)."""
+    http = _manifest_library("eav_http")
+    # Windows keeps the cross-platform base plus the Winsock library (R-013).
+    win = eavc._resolve_runtime_links(http, "windows")
+    assert "ws2_32" in win["libs"]
+    assert "_CRT_SECURE_NO_WARNINGS" in win["defines"]  # base define preserved
+    assert win["sources"]  # base sources preserved
+    # POSIX hosts must NOT see ws2_32 or the link fails with -lws2_32 (R-013).
+    for posix_platform in ("linux", "macos", "wasi"):
+        resolved = eavc._resolve_runtime_links(http, posix_platform)
+        assert "ws2_32" not in resolved["libs"], posix_platform
+        assert "_CRT_SECURE_NO_WARNINGS" in resolved["defines"]  # base retained
+
+
+def test_runtime_links_sqlite_unix_thread_dl_math():
+    """R-018: SQLite's Unix link inputs (pthread/dl/m) resolve only on Unix
+    platforms, never on Windows. Under the old flat-manifest code these libs
+    could not be expressed per platform at all."""
+    sqlite = _manifest_library("eav_runtime")
+    for unix_platform in ("linux", "macos"):
+        resolved = eavc._resolve_runtime_links(sqlite, unix_platform)
+        assert set(["pthread", "dl", "m"]).issubset(set(resolved["libs"])), unix_platform
+    win = eavc._resolve_runtime_links(sqlite, "windows")
+    assert win["libs"] == []  # no Unix link inputs leak onto Windows
+    # base defines survive on every platform
+    assert "SQLITE_THREADSAFE=0" in win["defines"]
+
+
+def test_runtime_links_reject_unknown_platform_keys():
+    """R-018: a typo'd platform section (e.g. `win` instead of `windows`) must
+    fail closed instead of silently dropping the Windows-only Winsock lib. The
+    old code had no validation and no platform sections, so an unknown key was
+    simply impossible to detect."""
+    bogus_section = {
+        "name": "eav_bogus", "provides": ["eav_bogus_"],
+        "sources": ["x.c"], "platforms": {"win": {"libs": ["ws2_32"]}},
+    }
+    with pytest.raises(eavc.EavError):
+        eavc._resolve_runtime_links(bogus_section, "windows")
+    # an unknown *target* platform argument is also rejected
+    good = {"name": "eav_ok", "provides": ["eav_ok_"], "sources": ["x.c"]}
+    with pytest.raises(eavc.EavError):
+        eavc._resolve_runtime_links(good, "solaris")
+    # an unknown compiler overlay key is rejected too
+    bad_cc = {
+        "name": "eav_cc", "provides": ["eav_cc_"], "sources": ["x.c"],
+        "compiler": {"borland": {"libs": ["weird"]}},
+    }
+    with pytest.raises(eavc.EavError):
+        eavc._resolve_runtime_links(bad_cc, "windows")
+
+
+def test_runtime_links_compiler_overlay_merges_after_platform():
+    """R-018: an optional `compiler.<driver>` overlay merges after the platform
+    layer with first-occurrence-wins de-duplication. The old surface had no
+    compiler overlays at all."""
+    lib = {
+        "name": "eav_overlay", "provides": ["eav_overlay_"],
+        "sources": ["base.c"],
+        "defines": ["BASE_DEFINE"],
+        "platforms": {"windows": {"defines": ["WIN_DEFINE"], "libs": ["ws2_32"]}},
+        "compiler": {"msvc": {"defines": ["WIN_DEFINE", "MSVC_DEFINE"]}},
+    }
+    resolved = eavc._resolve_runtime_links(lib, "windows", compiler="msvc")
+    # base then platform then compiler order, no duplicate WIN_DEFINE
+    assert resolved["defines"] == ["BASE_DEFINE", "WIN_DEFINE", "MSVC_DEFINE"]
+    # without the compiler arg the overlay is not applied
+    no_overlay = eavc._resolve_runtime_links(lib, "windows")
+    assert no_overlay["defines"] == ["BASE_DEFINE", "WIN_DEFINE"]
+
+
+def test_host_platform_name_maps_sys_platform():
+    """R-018: the host platform mapping the real build uses. Asserting the
+    current host keeps the actual compile path bound to the real platform (so
+    Windows builds still link ws2_32)."""
+    name = eavc._host_platform_name()
+    assert name in ("windows", "linux", "macos", "wasi")
+    if sys.platform == "win32":
+        assert name == "windows"
+
+
 def test_cli_subcommands_in_process(tmp_path, capsys):
     # X-060: drive each cmd_* through main() in-process (not just subprocess), so
     # the CLI dispatch surface is covered. Each invocation returns 0.

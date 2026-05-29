@@ -7673,17 +7673,107 @@ def _shared_lib_suffix() -> str:
     return ".so"
 
 
-def _ensure_runtime_lib(lib: dict):
+# R-018: the canonical platform-section keys the runtime manifest understands.
+# Anything outside this set in a `platforms` block is rejected so a typo like
+# `platforms.win` never silently drops Windows-only link inputs (e.g. ws2_32).
+_RUNTIME_MANIFEST_PLATFORMS = ("windows", "linux", "macos", "wasi")
+
+# R-018: optional `compiler.<driver>` overlay keys for driver-specific flags
+# (e.g. MSVC `.lib` link shapes vs GNU `-l`). Validated the same way as the
+# platform keys so unknown driver overlays fail closed instead of being ignored.
+_RUNTIME_MANIFEST_COMPILERS = ("gnu", "clang", "msvc", "zig")
+
+
+def _host_platform_name() -> str:
+    """R-018: map the running host's `sys.platform` to a runtime-manifest platform
+    key (`windows`/`linux`/`macos`/`wasi`). This is what `_ensure_runtime_lib` and
+    `build_executable` pass to the resolver on a real (non-cross) build, so the
+    actual compile on this host keeps using the real platform's link inputs."""
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform.startswith("wasi") or sys.platform.startswith("emscripten"):
+        return "wasi"
+    # Other Unixes (BSDs) link like Linux for our manifest's purposes.
+    return "linux"
+
+
+def _resolve_runtime_links(library: dict, platform: str,
+                           compiler: Optional[str] = None) -> dict:
+    """R-018: pure resolver — given one runtime-manifest `library` entry and a
+    target `platform` (`windows`/`linux`/`macos`/`wasi`), return the merged
+    source/include/define/lib set for that host WITHOUT compiling. The flat
+    top-level fields are the cross-platform base; `platforms.<platform>` adds
+    host-specific entries (R-013: Winsock `ws2_32` is windows-only), and an
+    optional `compiler.<driver>` overlay (`gnu`/`clang`/`msvc`/`zig`) adds
+    driver-specific entries. Order is base -> platform -> compiler with
+    first-occurrence-wins de-duplication so the plan is deterministic.
+
+    Tests drive this with an explicit `platform=` so a Linux/macOS resolved link
+    set can be asserted on a Windows host without a Linux machine.
+    """
+    if platform not in _RUNTIME_MANIFEST_PLATFORMS:
+        raise EavError(
+            f"unknown runtime platform {platform!r}; "
+            f"expected one of {', '.join(_RUNTIME_MANIFEST_PLATFORMS)}"
+        )
+    platforms = library.get("platforms", {}) or {}
+    unknown = [k for k in platforms if k not in _RUNTIME_MANIFEST_PLATFORMS]
+    if unknown:
+        raise EavError(
+            f"runtime library {library.get('name')!r} declares unknown "
+            f"platform key(s) {sorted(unknown)}; expected one of "
+            f"{', '.join(_RUNTIME_MANIFEST_PLATFORMS)}"
+        )
+    compilers = library.get("compiler", {}) or {}
+    unknown_cc = [k for k in compilers if k not in _RUNTIME_MANIFEST_COMPILERS]
+    if unknown_cc:
+        raise EavError(
+            f"runtime library {library.get('name')!r} declares unknown "
+            f"compiler overlay key(s) {sorted(unknown_cc)}; expected one of "
+            f"{', '.join(_RUNTIME_MANIFEST_COMPILERS)}"
+        )
+    overlays = [library, platforms.get(platform, {})]
+    if compiler is not None:
+        overlays.append(compilers.get(compiler, {}))
+
+    def merged(field: str) -> list:
+        seen: list = []
+        for layer in overlays:
+            for value in layer.get(field, []) or []:
+                if value not in seen:
+                    seen.append(value)  # base then platform then compiler order
+        return seen
+
+    return {
+        "name": library.get("name"),
+        "provides": list(library.get("provides", []) or []),
+        "sources": merged("sources"),
+        "include": merged("include"),
+        "defines": merged("defines"),
+        "libs": merged("libs"),
+    }
+
+
+def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     """Build (cached) one native runtime library described by runtime/manifest.json
     and return its path, or None if no C compiler is available. The compiler is
     domain-agnostic — it only compiles the `sources` the manifest lists; the
-    sqlite/http knowledge lives in those C sources and the `.sem` stdlib."""
+    sqlite/http knowledge lives in those C sources and the `.sem` stdlib.
+
+    R-018/R-013: link inputs are resolved through `_resolve_runtime_links` for
+    the given `platform` (host platform by default) so Windows-only libs such as
+    ws2_32 are appended on Windows but never on a resolved POSIX plan."""
     import os
     import subprocess
     rt = _runtime_dir()
+    resolved = _resolve_runtime_links(lib, platform or _host_platform_name())
     build_dir = os.path.join(rt, "_build")
     out = os.path.join(build_dir, lib["name"] + _shared_lib_suffix())
-    sources = [os.path.normpath(os.path.join(rt, s)) for s in lib["sources"]]
+    sources = [os.path.normpath(os.path.join(rt, s)) for s in resolved["sources"]]
     manifest = os.path.join(rt, "manifest.json")
     inputs = [p for p in (sources + [manifest]) if os.path.exists(p)]
     if os.path.exists(out) and all(
@@ -7695,11 +7785,11 @@ def _ensure_runtime_lib(lib: dict):
         return None
     os.makedirs(build_dir, exist_ok=True)
     cmd = list(cc) + ["-O2", "-shared", "-o", out] + sources
-    for inc in lib.get("include", []):
+    for inc in resolved["include"]:
         cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
-    for d in lib.get("defines", []):
+    for d in resolved["defines"]:
         cmd.append("-D" + d)
-    for libname in lib.get("libs", []):
+    for libname in resolved["libs"]:
         cmd.append("-l" + libname)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -7741,6 +7831,26 @@ def _runtime_libs_for(program: Program) -> list:
         lib for lib in manifest.get("libraries", [])
         if any(s.startswith(p) for s in referenced for p in lib.get("provides", []))
     ]
+
+
+def build_link_plan(program: Program, platform: Optional[str] = None,
+                    compiler: Optional[str] = None) -> dict:
+    """R-018: a dry-run native link plan — for each runtime library the program
+    references, the resolved source/include/define/lib set for `platform` (host
+    platform by default) WITHOUT compiling. This is the JSON-serializable view of
+    exactly what `build_executable`/`_ensure_runtime_lib` will pass to the C
+    compiler, so cross-platform link inputs (R-013: Windows-only ws2_32) can be
+    inspected and asserted without a build."""
+    resolved_platform = platform or _host_platform_name()
+    libraries = [
+        _resolve_runtime_links(lib, resolved_platform, compiler)
+        for lib in _runtime_libs_for(program)
+    ]
+    return {
+        "platform": resolved_platform,
+        "compiler": compiler,
+        "libraries": libraries,
+    }
 
 
 def _register_runtime_symbols(program: Program) -> None:
@@ -7966,14 +8076,18 @@ def build_executable(program: Program, out_path: str) -> str:
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
+    # R-018/R-013: resolve each runtime library's link inputs for the host
+    # platform so Windows-only libs (ws2_32) are appended on Windows and
+    # POSIX-only libs (pthread/dl/m) are appended on Unix — never both.
     for lib in _runtime_libs_for(program):
-        for s in lib["sources"]:
+        resolved = _resolve_runtime_links(lib, _host_platform_name())
+        for s in resolved["sources"]:
             cmd.append(os.path.normpath(os.path.join(rt, s)))
-        for inc in lib.get("include", []):
+        for inc in resolved["include"]:
             cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
-        for d in lib.get("defines", []):
+        for d in resolved["defines"]:
             cmd.append("-D" + d)
-        for libname in lib.get("libs", []):
+        for libname in resolved["libs"]:
             cmd.append("-l" + libname)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True)
