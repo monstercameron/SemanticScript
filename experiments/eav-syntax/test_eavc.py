@@ -4648,22 +4648,40 @@ def test_app_port_coverage_and_coexistence_guard():
         assert not errs, f"{app} port regressed lint-clean: {errs}"
 
 
-def test_app_desktop_window_smoke_deferred():
-    # X-045: desktop GUI is deferred — its `standard.gui` contract loads, app
-    # source is not ported, and a windowsGui project hard-errors (reserved).
+def test_app_desktop_window_smoke_full_port():
+    # X-045: the desktop GUI app is FULLY ported (all 4 ops, every gui.* call)
+    # against sigs/standard.gui.semsig and lints clean as `target console`; GUI
+    # *execution* stays deferred — `target windowsGui` hard-errors (SS0744).
     gui = eavc.load_semsig(open(os.path.join(SIGS, "standard.gui.semsig"),
                                 encoding="utf-8").read())
-    assert any(l.startswith("gui.applicationCreate(") for l in eavc.docs(gui))
-    src = (
-        "DesktopSmoke is project\nDesktopSmoke module m\n"
-        "DesktopSmoke target windowsGui\nDesktopSmoke entry main\n"
-        'm is module\nm path apps.desktopWindowSmoke\nm purpose "p"\nm invariant "i"\n'
-        "main is operation\nmain out ExitCode\nmain async no\n"
-        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
-        "main return okCode\nExitCode is alias\nExitCode for Int32\n"
-    )
+    gui_targets = [l.split("(")[0] for l in eavc.docs(gui)]
+    # the full surface the port invokes is recorded in the contract
+    for t in ("gui.applicationCreate", "gui.windowCreate", "gui.controlOnEvent",
+              "gui.listBoxAppendItem", "gui.textBoxText", "gui.applicationRun"):
+        assert t in gui_targets, f"{t} missing from standard.gui.semsig"
+
+    src = open(os.path.join(APPS, "desktop-window-smoke", "main.sem"),
+               encoding="utf-8").read()
+    prog = eavc.parse(src)
+    # op-count parity with the original v0.1 app (4 ops), and the call/task split
+    ops = [o.name for o in prog.of_kind("operation")]
+    assert ops == ["main", "appendGreetingFromInput",
+                   "inspectSelectedGreeting", "clearGreetings"]
+    assert len(prog.of_kind("storage")) == 19      # entity-count parity
+    assert len(prog.of_kind("call")) == 31
+    # every event handler is registered through a gui.controlOnEvent call
+    on_event = [c for c in prog.of_kind("call")
+                if (c.fact("invokes") and c.fact("invokes").payload
+                    and c.fact("invokes").payload[0] == "gui.controlOnEvent")]
+    assert len(on_event) == 4
+    # the full port lints clean (gui.* deferred as external targets)
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
+
+    # GUI execution stays deferred: a windowsGui target hard-errors (SS0744).
     with pytest.raises(eavc.EavError) as exc:
-        eavc.parse(src)
+        eavc.parse(src.replace("DesktopWindowSmoke target console",
+                               "DesktopWindowSmoke target windowsGui"))
     assert getattr(exc.value, "code", None) == "SS0744"
 
 

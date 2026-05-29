@@ -1,8 +1,11 @@
 # standard.gui.semsig — DEFERRED GUI contract (README ss27, WS3-044/X-045).
 # GUI is not specified in v0.3 and `target windowsGui` is a hard compile error
-# (SS0744). This file only RECORDS the conversion target for the desktop GUI
-# apps (gui entities -> standard.gui calls) so the port lands when a GUI module
-# is specified. No app source is ported in v0.3.
+# (SS0744). This file RECORDS the full conversion target for the desktop GUI
+# apps (gui entities -> standard.gui calls): every gui.* intrinsic the ported
+# `apps/desktop-window-smoke` source invokes, plus the handle/text/enum types
+# they reference. The port (apps/desktop-window-smoke/main.sem) converts the
+# whole app against this contract and lints clean as `target console`; only the
+# GUI *runtime* (windowsGui) is deferred. No gui.* symbol is lowered in v0.3.
 
 guiSig is semsig
 guiSig version "1.0"
@@ -17,9 +20,54 @@ GuiWindow is alias
 GuiWindow for OpaquePointer
 GuiWindow purpose "An opaque GUI window handle (deferred runtime)"
 
+GuiControl is alias
+GuiControl for OpaquePointer
+GuiControl purpose "An opaque GUI control handle attachable to a window"
+
+GuiTextLabel is alias
+GuiTextLabel for OpaquePointer
+GuiTextLabel purpose "An opaque static text label control handle"
+
+GuiTextBox is alias
+GuiTextBox for OpaquePointer
+GuiTextBox purpose "An opaque single-line text input control handle"
+
+GuiButton is alias
+GuiButton for OpaquePointer
+GuiButton purpose "An opaque push-button control handle"
+
+GuiListBox is alias
+GuiListBox for OpaquePointer
+GuiListBox purpose "An opaque scrollable list control handle"
+
+GuiSession is alias
+GuiSession for OpaquePointer
+GuiSession purpose "Per-event GUI session context passed to handlers"
+
+GuiEvent is alias
+GuiEvent for OpaquePointer
+GuiEvent purpose "An opaque GUI event record passed to handlers"
+
 GuiText is alias
 GuiText for String
 GuiText purpose "GUI display text"
+
+GuiPixels is alias
+GuiPixels for Int32
+GuiPixels purpose "A pixel measurement for window/control geometry"
+
+GuiWindowLayout is enum
+GuiWindowLayout variant verticalStackGuiWindowLayout
+GuiWindowLayout purpose "Window child-control layout strategy"
+
+GuiListBoxSelectionMode is enum
+GuiListBoxSelectionMode variant singleGuiListBoxSelectionMode
+GuiListBoxSelectionMode purpose "How many list rows may be selected at once"
+
+GuiEventKind is enum
+GuiEventKind variant clickGuiEventKind
+GuiEventKind variant enterPressedGuiEventKind
+GuiEventKind purpose "The control event a handler is registered for"
 
 applicationCreate is intrinsic
 applicationCreate target gui.applicationCreate
@@ -30,11 +78,108 @@ applicationCreate purpose "Create a GUI application (deferred — windowsGui is 
 windowCreate is intrinsic
 windowCreate target gui.windowCreate
 windowCreate arg title GuiText
+windowCreate arg width GuiPixels
+windowCreate arg height GuiPixels
+windowCreate arg layout GuiWindowLayout
+windowCreate arg resizable Int32
 windowCreate out window GuiWindow
 windowCreate purpose "Create a top-level window (deferred — windowsGui is reserved)"
+
+textLabelCreate is intrinsic
+textLabelCreate target gui.textLabelCreate
+textLabelCreate arg text GuiText
+textLabelCreate out control GuiTextLabel
+textLabelCreate purpose "Create a static text label control (deferred)"
+
+textBoxCreate is intrinsic
+textBoxCreate target gui.textBoxCreate
+textBoxCreate arg placeholder GuiText
+textBoxCreate arg maxLength Int32
+textBoxCreate out control GuiTextBox
+textBoxCreate purpose "Create a single-line text input control (deferred)"
+
+buttonCreate is intrinsic
+buttonCreate target gui.buttonCreate
+buttonCreate arg text GuiText
+buttonCreate arg isDefault Int32
+buttonCreate out control GuiButton
+buttonCreate purpose "Create a push button control (deferred)"
+
+listBoxCreate is intrinsic
+listBoxCreate target gui.listBoxCreate
+listBoxCreate arg selectionMode GuiListBoxSelectionMode
+listBoxCreate out control GuiListBox
+listBoxCreate purpose "Create a scrollable list control (deferred)"
+
+windowAddControl is intrinsic
+windowAddControl target gui.windowAddControl
+windowAddControl arg window GuiWindow
+windowAddControl arg control GuiControl
+windowAddControl out added Int32
+windowAddControl purpose "Attach a control to a window (deferred)"
+
+controlOnEvent is intrinsic
+controlOnEvent target gui.controlOnEvent
+controlOnEvent arg control GuiControl
+controlOnEvent arg eventKind GuiEventKind
+controlOnEvent arg handler GuiEventHandler
+controlOnEvent out registered Int32
+controlOnEvent purpose "Register an event handler on a control (deferred)"
+
+applicationSetMainWindow is intrinsic
+applicationSetMainWindow target gui.applicationSetMainWindow
+applicationSetMainWindow arg application GuiApplication
+applicationSetMainWindow arg window GuiWindow
+applicationSetMainWindow out assigned Int32
+applicationSetMainWindow purpose "Designate a window as the application main window (deferred)"
 
 applicationRun is intrinsic
 applicationRun target gui.applicationRun
 applicationRun arg application GuiApplication
 applicationRun out exit ExitCode
 applicationRun purpose "Run the GUI event loop (deferred — windowsGui is reserved)"
+
+textBoxText is intrinsic
+textBoxText target gui.textBoxText
+textBoxText arg session GuiSession
+textBoxText arg textBox GuiTextBox
+textBoxText out text GuiText
+textBoxText purpose "Read the current text of a text box (deferred)"
+
+textBoxSetText is intrinsic
+textBoxSetText target gui.textBoxSetText
+textBoxSetText arg session GuiSession
+textBoxSetText arg textBox GuiTextBox
+textBoxSetText arg text String
+textBoxSetText out updated Int32
+textBoxSetText purpose "Replace the text of a text box (deferred)"
+
+textLabelSetText is intrinsic
+textLabelSetText target gui.textLabelSetText
+textLabelSetText arg session GuiSession
+textLabelSetText arg textLabel GuiTextLabel
+textLabelSetText arg text GuiText
+textLabelSetText out updated Int32
+textLabelSetText purpose "Replace the text of a text label (deferred)"
+
+listBoxAppendItem is intrinsic
+listBoxAppendItem target gui.listBoxAppendItem
+listBoxAppendItem arg session GuiSession
+listBoxAppendItem arg listBox GuiListBox
+listBoxAppendItem arg text String
+listBoxAppendItem out appended Int32
+listBoxAppendItem purpose "Append one row to a list box (deferred)"
+
+listBoxClear is intrinsic
+listBoxClear target gui.listBoxClear
+listBoxClear arg session GuiSession
+listBoxClear arg listBox GuiListBox
+listBoxClear out cleared Int32
+listBoxClear purpose "Remove every row from a list box (deferred)"
+
+listBoxSelectedIndex is intrinsic
+listBoxSelectedIndex target gui.listBoxSelectedIndex
+listBoxSelectedIndex arg session GuiSession
+listBoxSelectedIndex arg listBox GuiListBox
+listBoxSelectedIndex out selectedIndex Int32
+listBoxSelectedIndex purpose "Return the selected row index, or a negative sentinel (deferred)"
