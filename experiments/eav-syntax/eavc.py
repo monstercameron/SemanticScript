@@ -1628,6 +1628,24 @@ def semantic_tokens(line: str) -> list:
     return out
 
 
+TEST_LANES = ("unit", "component", "integration", "e2e", "golden")
+
+
+def discover_tests(program: Program) -> dict:
+    """Discover test operations by `tag test` and group them by lane tag
+    (README ss28.7/ss30.5). An op tagged `test` with no lane tag is a unit test."""
+    result: dict = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function"):
+            continue
+        tags = [r.payload[0] for r in ent.facts("tag") if r.payload]
+        if "test" in tags:
+            lane = next((t for t in tags if t in TEST_LANES), "unit")
+            result.setdefault(lane, []).append(ent.name)
+    return result
+
+
 def doctor(program: Program) -> dict:
     """Severity-grouped lint report with per-code suggested fixes (README ss24)."""
     groups: dict = {"error": [], "warning": [], "info": []}
@@ -3707,6 +3725,19 @@ def cmd_slice(args) -> int:
         return 2
 
 
+def cmd_test(args) -> int:
+    """Discover `tag test` operations, optionally filtered by --lane."""
+    lanes = discover_tests(parse(_read_source(args.path)))
+    selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
+    total = 0
+    for lane in sorted(selected):
+        for op in selected[lane]:
+            sys.stdout.write(f"{lane}: {op}\n")
+            total += 1
+    sys.stdout.write(f"{total} test operation(s)\n")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     """Print a severity-grouped diagnostic report with suggested fixes."""
     groups = doctor(parse(_read_source(args.path)))
@@ -3794,6 +3825,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_explain = sub.add_parser("explain", help="explain a diagnostic code")
     sp_explain.add_argument("code", help="diagnostic code, e.g. SS1502")
     sp_explain.set_defaults(func=cmd_explain)
+
+    sp_test = sub.add_parser("test", help="discover `tag test` ops (by lane)")
+    sp_test.add_argument("path", help="EAV source file, or - for stdin")
+    sp_test.add_argument("--lane", choices=TEST_LANES, default=None)
+    sp_test.set_defaults(func=cmd_test)
 
     sp_query = sub.add_parser("query", help="structural query over a program")
     sp_query.add_argument("dimension", help=f"one of: {', '.join(QUERY_DIMENSIONS)}")

@@ -709,6 +709,19 @@ def _ir_helper_program():
     )
 
 
+def test_discover_tests_by_lane():
+    # X-004: `tag test` discovery, grouped by lane tag.
+    src = (
+        "checkAdd is operation\ncheckAdd out Bool\ncheckAdd tag test\ncheckAdd tag unit\n"
+        "checkFlow is operation\ncheckFlow out Bool\ncheckFlow tag test\ncheckFlow tag e2e\n"
+        "helper is operation\nhelper out Int64\n"  # not a test
+    )
+    lanes = eavc.discover_tests(eavc.parse(src))
+    assert lanes["unit"] == ["checkAdd"]
+    assert lanes["e2e"] == ["checkFlow"]
+    assert "helper" not in {op for v in lanes.values() for op in v}
+
+
 def test_contract_version_lockstep():
     # X-020: the code contract version must appear in GOVERNANCE.md (bumping the
     # version requires updating the doc).
