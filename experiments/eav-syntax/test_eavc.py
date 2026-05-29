@@ -181,9 +181,9 @@ def test_parse_reserved_word_ok_as_arg_slot_label():
 
 def test_parse_labeled_step_row():
     prog = eavc.parse(
-        "main is operation\nmain at failed return code\n"
+        "main is operation\nmain out Int64\nmain at failed return code\n"
     )
-    row = prog.entities["main"].rows[0]
+    row = prog.entities["main"].rows[-1]
     assert row.label == "failed"
     assert row.predicate == "return"
     assert row.payload == ["code"]
@@ -546,6 +546,33 @@ def test_branch_if_lowers_and_unbound_condition_rejected():
     with pytest.raises(eavc.EavError) as exc:
         eavc.lower_to_llvm(eavc.parse(bad))
     assert "not in scope" in exc.value.message
+
+
+def test_return_arity_void_op_rejects_value():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain let x immutable Int64 1\nmain return x\n"
+        )
+    assert "returns void" in exc.value.message
+
+
+def test_return_arity_result_rejects_both_nil_and_both_value():
+    base = (
+        "look is operation\nlook out Result Task LookupError\n"
+        "look let t immutable Int64 1\nlook let e immutable Int64 2\n"
+    )
+    with pytest.raises(eavc.EavError):  # both nil
+        eavc.parse(base + "look return nil nil\n")
+    with pytest.raises(eavc.EavError):  # both value
+        eavc.parse(base + "look return t e\n")
+    # one value + one nil is well-formed
+    prog = eavc.parse(base + "look return t nil\n")
+    assert "look" in prog.entities
+
+
+def test_return_arity_single_rejects_void_return():
+    with pytest.raises(eavc.EavError):
+        eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
 def test_label_undefined_target_rejected():

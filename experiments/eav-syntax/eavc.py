@@ -654,6 +654,7 @@ def _validate_program(program: Program) -> None:
             )
         if ent.kind in ("operation", "function"):
             _validate_labels(ent, program)
+            _validate_return_arity(ent)
             for row in ent.facts("let"):
                 if row.payload and row.payload[0] in RESERVED_WORDS:
                     raise EavError(
@@ -672,6 +673,40 @@ def _validate_program(program: Program) -> None:
                 raise EavError(
                     "`out Result` needs exactly an OK type and an ERR type "
                     f"(README ss10), got {row.payload!r}",
+                    row.line,
+                )
+
+
+def _validate_return_arity(op: Entity) -> None:
+    """Return arity must match `out` (README ss13, ss17 #10): void -> no value;
+    single -> one value; Result -> exactly one filled slot and one `nil`."""
+    out_row = op.fact("out")
+    is_result = bool(out_row and out_row.payload and out_row.payload[0] == "Result")
+    is_void = out_row is None or not out_row.payload
+    for row in op.rows:
+        if row.predicate != "return":
+            continue
+        p = [t for t in row.payload if t != "void"]
+        if is_void:
+            if p:
+                raise EavError(
+                    f"{op.name!r} returns void but `return` carries a value "
+                    f"(README ss17 #10)",
+                    row.line,
+                )
+        elif is_result:
+            nils = p.count("nil")
+            if len(p) != 2 or nils != 1:
+                raise EavError(
+                    f"{op.name!r} returns Result: `return` needs exactly one value "
+                    f"and one `nil` (README ss13, ss17 #10), got {row.payload!r}",
+                    row.line,
+                )
+        else:
+            if len(p) != 1 or "nil" in p:
+                raise EavError(
+                    f"{op.name!r} returns a single value: `return` needs exactly "
+                    f"one value (README ss17 #10), got {row.payload!r}",
                     row.line,
                 )
 

@@ -97,7 +97,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1D. Operation / call / task / cleanup model (§11, §15, §15.5, §15.6, §34.4)
 - [x] WS1-040 Operation decl rows `in/out/effect/uses/memory/async/label/let/body`; order-independent except `in` order. →test: reorder-stable parse. §11 _(eavc: `test_operation_decl_rows_reorder_stable`; `in` order preserved via `op.facts("in")`)_
 - [ ] WS1-041 `body steps|runtimeBinding <t>|intrinsic <n>`; non-step body has no steps. →test: runtimeBinding op has no step rows. §11
-- [ ] WS1-042 Return arity from `out` (void/single/Result one-nil-slot). →test: §17 #10; both-nil + both-value reject. §13
+- [x] WS1-042 Return arity from `out` (void/single/Result one-nil-slot). →test: §17 #10; both-nil + both-value reject. §13 _(eavc: `_validate_return_arity`; `test_return_arity_void_op_rejects_value`, `test_return_arity_result_rejects_both_nil_and_both_value`, `test_return_arity_single_rejects_void_return`)_
 - [x] WS1-043 `call` structure (invokes/arg/out/catch/owns/cleanedBy/effect/discards). →test: infallible vs fallible parse. §15 _(eavc: `test_lower_value_call_binds_value` (infallible out → bind value), `test_lower_hello_world_key_rows` (fallible catch → ignore void + bind error); owns/cleanedBy/discards parsed, console lowering ignores them)_
 - [ ] WS1-044 **Split**: `do`→call, `start/join/poll/cancel/detach`→task, `defer`→cleanup; cross-use = hard error (§34.4, non-negotiable). →test: `do <task>` reject; `start <call>` reject; `defer <call>` reject. §13/§34.4
 - [ ] WS1-045 Task entity (async counterpart) + lifecycle state machine (RUNNING/COMPLETED/CONSUMED/CANCELED/…); illegal transitions reject. →test: lifecycle table goldens; `ifError` before `join` reject. §13/§15.5
