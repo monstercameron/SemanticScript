@@ -305,7 +305,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] X-014 §6 metadata → typed comments. →test: docs still generated from comments.
 - [ ] X-015 §28 manifest → build record + `standard.build` (project/target/.../platform/forTarget/forPlatform demoted). →test: build from record.
 - [ ] X-016 intrinsic/semsig/trustConstraint → `.semsig` sidecar only. →test: no app-source intrinsic.
-- [ ] X-017 **Preserve verbatim** (do NOT migrate): call/task/cleanup split (§34.4), effect/capability boundary (§34.1b), tape/control/type primitives. →test: split cross-use still hard-errors post-migration.
+- [x] X-017 **Preserve verbatim** (do NOT migrate): call/task/cleanup split (§34.4), effect/capability boundary (§34.1b), tape/control/type primitives. →test: split cross-use still hard-errors post-migration. _(eavc: the call/task/cleanup split stays a hard error (`_validate_step_split`, `test_split_do_on_task_rejected`/`test_split_start_on_call_rejected`/`test_split_defer_on_call_rejected`); the effect/capability boundary (`uses`+`grants`+`effect`) and tape/control/type primitives are unchanged by every migration step.)_
 - [ ] X-018 Shrink §2 reserved set to minimal-core as each section migrates; keep §2↔§5 in sync (X-005). →test: drift guard green after each migration.
 
 ## X3. Docs, governance, rollout (§29 #8/#13, change protocol)
