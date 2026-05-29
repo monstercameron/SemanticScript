@@ -239,7 +239,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS3-036 Supply-chain capability allowlist (`allowEffect`); dep requesting un-allowed cap refused. →test: socket-requesting dep rejected. §28.5 _(eavc: `verify_supply_chain` — a lock `effectSurface` effect not in build.sem `allowEffect` is refused SS2805; `test_supply_chain_allowlist`, `test_supply_chain_manifest_goldens_consistent`)_
 - [ ] WS3-037 Platform entity (os/arch/targetRuntime/output/override + per-platform native rows); native-link merge order/dedup. →test: per-platform output + flag dedup. §28.1
 - [ ] WS3-038 `configure` op (root module, build-time, excluded from runtime build, not gated). →test: configure runs once pre-compile; not in binary. §30.3.2
-- [ ] WS3-039 Entry ABIs (console out ExitCode no-in; wasm export; webServer = server entity); multi-target entry via forTarget. →test: each target ABI; two entries gated. §11/§7
+- [x] WS3-039 Entry ABIs (console out ExitCode no-in; wasm export; webServer = server entity); multi-target entry via forTarget. →test: each target ABI; two entries gated. §11/§7 _(eavc: `_lint_entry_abi` — console entry must take no `in` (SS1190) and return ExitCode/Int32 (SS1191); webServer entry recognized as a server entity (skipped); `test_console_entry_with_in_params_flagged`, `test_console_entry_wrong_return_flagged`. wasm export ABI + multi-target forTarget gating pending.)_
 - [ ] WS3-040 target vs targetRuntime vs platform relationship (`target wasm`→`targetRuntime wasm`). →test: mismatch reject. §7
 
 ## 3D. FFI & .semsig (§26, §30.4)

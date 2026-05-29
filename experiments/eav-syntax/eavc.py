@@ -159,6 +159,12 @@ DIAGNOSTICS.update({
     "SS2804": {"tier": "T0", "summary": "Dependency sha256 digest mismatch.",
                "found": "A resolved dependency's content hash != its lock digest.",
                "suggested": "Re-fetch the dependency; a mismatch is a tamper signal (§28.4)."},
+    "SS1190": {"tier": "T1", "summary": "console entry has `in` parameters.",
+               "found": "A console entry operation that declares `in` rows.",
+               "suggested": "Console entries take no params; use capabilities (README §11)."},
+    "SS1191": {"tier": "T1", "summary": "console entry returns non-ExitCode.",
+               "found": "A console entry whose `out` is not ExitCode/Int32.",
+               "suggested": "Return ExitCode (alias for Int32) (README §11)."},
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
@@ -1369,6 +1375,7 @@ def lint(program: Program) -> list:
                 ent.line, ent.name))
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
+    diags.extend(_lint_entry_abi(program))
     for w in program.warnings:
         diags.append(Diagnostic("SS0900", "warning", w))
     diags.extend(_suppress_diagnostics(program, diags))
@@ -1771,6 +1778,37 @@ def _target_is_nonvoid(target: str, program: Program):
         if callee is not None and callee.kind in ("operation", "function"):
             return callee.fact("out") is not None
     return None
+
+
+def _lint_entry_abi(program: Program) -> list:
+    """Entry-point ABIs (README ss11): a `console` entry operation takes no `in`
+    parameters and returns ExitCode/Int32. Reported by the linter since it is a
+    whole-program (project+target+entry) cross-reference. (wasm/webServer pending.)"""
+    alias_map = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
+    out: list[Diagnostic] = []
+    for proj in program.of_kind("project"):
+        targets = {t.payload[0] for t in proj.facts("target") if t.payload}
+        entry = proj.fact("entry")
+        if not entry or not entry.payload or "console" not in targets:
+            continue
+        ent = program.entities.get(entry.payload[0])
+        if ent is None or ent.kind not in ("operation", "function"):
+            continue  # webServer entry is a server entity, not an operation
+        if ent.facts("in"):
+            out.append(Diagnostic("SS1190", "error",
+                                  f"console entry {ent.name!r} must take no `in` "
+                                  f"parameters (README ss11)", ent.line, ent.name))
+        orow = ent.fact("out")
+        otype = orow.payload[0] if orow and orow.payload else None
+        if _resolve_alias(otype, alias_map) not in ("Int32", "ExitCode"):
+            out.append(Diagnostic("SS1191", "error",
+                                  f"console entry {ent.name!r} must return ExitCode/"
+                                  f"Int32, got {otype!r} (README ss11)", ent.line, ent.name))
+    return out
 
 
 def _validate_calls(program: Program) -> None:

@@ -66,6 +66,23 @@ def test_supply_chain_manifest_goldens_consistent():
 SIGS = os.path.join(HERE, "sigs")
 
 
+def test_console_entry_with_in_params_flagged():
+    # WS3-039 / README §11: console entry takes no `in` parameters.
+    prog = eavc.parse(
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "main is operation\nmain in extra Int64\nmain out ExitCode\n"
+    )
+    assert "SS1190" in {d.code for d in eavc.lint(prog)}
+
+
+def test_console_entry_wrong_return_flagged():
+    prog = eavc.parse(
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "main is operation\nmain out String\n"
+    )
+    assert "SS1191" in {d.code for d in eavc.lint(prog)}
+
+
 def test_export_c_duplicate_symbol_rejected():
     # WS3-054 / README §30.4.2: export symbols must be unique C identifiers.
     src = (
