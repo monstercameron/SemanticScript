@@ -1303,6 +1303,14 @@ def query(program: Program, dimension: str) -> list:
     return rows
 
 
+def doctor(program: Program) -> dict:
+    """Severity-grouped lint report with per-code suggested fixes (README ss24)."""
+    groups: dict = {"error": [], "warning": [], "info": []}
+    for d in lint(program):
+        groups.setdefault(d.severity, []).append(d)
+    return groups
+
+
 def summarize(program: Program) -> dict:
     """Inventory of a program: entity counts by kind (README ss24 `inventory`)."""
     counts: dict[str, int] = {}
@@ -2990,6 +2998,20 @@ def cmd_query(args) -> int:
     return 0
 
 
+def cmd_doctor(args) -> int:
+    """Print a severity-grouped diagnostic report with suggested fixes."""
+    groups = doctor(parse(_read_source(args.path)))
+    total = sum(len(v) for v in groups.values())
+    for severity in ("error", "warning", "info"):
+        for d in groups.get(severity, []):
+            sys.stdout.write(d.render() + "\n")
+            if severity == "error" and d.code in DIAGNOSTICS:
+                sys.stdout.write("    " + DIAGNOSTICS[d.code]["suggested"] + "\n")
+    if total == 0:
+        sys.stdout.write("healthy: no diagnostics\n")
+    return 1 if groups.get("error") else 0
+
+
 def cmd_inventory(args) -> int:
     """Print entity counts by kind."""
     program = parse(_read_source(args.path))
@@ -3049,6 +3071,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("run", cmd_run),
         ("inventory", cmd_inventory),
         ("fmt", cmd_fmt),
+        ("doctor", cmd_doctor),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")

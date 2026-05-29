@@ -414,6 +414,14 @@ def test_scaffold_console_program_runs():
     assert 'call i32 @"puts"' in ir_text
 
 
+def test_doctor_groups_by_severity():
+    # WS4-013: doctor groups diagnostics by severity.
+    prog = eavc.parse("m is module\nm path a.b\n")  # missing purpose + invariant
+    groups = eavc.doctor(prog)
+    assert {d.code for d in groups["error"]} >= {"MD1001", "MD1002"}
+    assert isinstance(groups["warning"], list)
+
+
 def test_summarize_counts_by_kind():
     prog = eavc.parse(_ir_helper_program())
     counts = eavc.summarize(prog)
