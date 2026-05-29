@@ -8507,3 +8507,58 @@ def test_x115_loop_with_no_exit_path_warns():
     )
     codes = [d.code for d in eavc.lint(eavc.parse(src))]
     assert "SS0950" in codes
+
+
+# === R-015: build artifacts live in a writable cache, not the runtime bundle ===
+
+def test_runtime_cache_dir_outside_bundle_and_honors_env(tmp_path, monkeypatch):
+    """R-015: build artifacts must not be written under the (possibly read-only)
+    runtime bundle. `_runtime_cache_dir` is a new, user-writable location outside
+    `_runtime_dir`, overridable via EAVC_CACHE_DIR. (No-op-failing: the helper did
+    not exist before, and the old build path wrote into the bundle.)"""
+    monkeypatch.setenv("EAVC_CACHE_DIR", str(tmp_path / "cache"))
+    cache = eavc._runtime_cache_dir()
+    assert os.path.realpath(cache) == os.path.realpath(str(tmp_path / "cache"))
+    assert os.path.isdir(cache)  # created on demand
+    bundle = os.path.realpath(eavc._runtime_dir())
+    assert not os.path.realpath(cache).startswith(bundle)
+
+
+def test_build_scratch_ir_not_written_to_runtime_bundle(tmp_path, monkeypatch):
+    """R-015: build_executable writes its scratch .ll into the writable output
+    directory, not the runtime bundle. Spy on mkstemp's target dir; under the old
+    code it was `_runtime_dir()` (the bundle)."""
+    if eavc._find_c_compiler() is None:
+        pytest.skip("no C compiler available to build a native exe")
+    import tempfile as _tempfile
+    captured = {}
+    real_mkstemp = _tempfile.mkstemp
+
+    def spy_mkstemp(*args, **kwargs):
+        captured["dir"] = kwargs.get("dir")
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(_tempfile, "mkstemp", spy_mkstemp)
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
+    out = tmp_path / "app.exe"
+    result = eavc.build_executable(prog, str(out))
+    assert os.path.exists(result)
+    assert captured.get("dir") is not None
+    assert os.path.realpath(captured["dir"]) != os.path.realpath(eavc._runtime_dir())
+    # the bundle holds no leftover scratch IR
+    import glob
+    assert glob.glob(os.path.join(eavc._runtime_dir(), "*.ll")) == []
+
+
+def test_runtime_lib_cache_lives_in_cache_dir(tmp_path, monkeypatch):
+    """R-015: a compiled native runtime library lands under `_runtime_cache_dir`
+    (/_build), not under the runtime bundle's `_build`."""
+    if eavc._find_c_compiler() is None:
+        pytest.skip("no C compiler available to build the runtime library")
+    monkeypatch.setenv("EAVC_CACHE_DIR", str(tmp_path / "cache"))
+    lib = _manifest_library("eav_runtime")
+    path = eavc._ensure_runtime_lib(lib)
+    assert path and os.path.exists(path)
+    cache = os.path.realpath(eavc._runtime_cache_dir())
+    assert os.path.realpath(path).startswith(cache)
+    assert not os.path.realpath(path).startswith(os.path.realpath(eavc._runtime_dir()))

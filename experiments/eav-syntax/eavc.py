@@ -7757,6 +7757,20 @@ def _runtime_dir() -> str:
     return os.path.join(_bundle_dir(), "runtime")
 
 
+def _runtime_cache_dir() -> str:
+    """A user-writable cache directory for native build artifacts (R-015). The
+    runtime bundle (`_runtime_dir`) can be read-only — a packaged install or a
+    PyInstaller `_MEIPASS` extraction — and is shared, so compiled runtime
+    libraries and scratch IR must NOT be written beside the bundled sources.
+    They live here instead. Override with `EAVC_CACHE_DIR`."""
+    import os
+    import tempfile
+    base = os.environ.get("EAVC_CACHE_DIR") or os.path.join(
+        tempfile.gettempdir(), "eavc-cache")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
 def _find_c_compiler():
     """Locate a C compiler for building native runtime libraries, mirroring the
     reference toolchain: EAVC_CC, then clang on PATH / the common Windows LLVM
@@ -7884,7 +7898,10 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     import subprocess
     rt = _runtime_dir()
     resolved = _resolve_runtime_links(lib, platform or _host_platform_name())
-    build_dir = os.path.join(rt, "_build")
+    # R-015: the compiled shared library lands in the user-writable cache, not
+    # under the (possibly read-only/shared) runtime bundle. Sources are still
+    # read from `rt`; only the build output moves.
+    build_dir = os.path.join(_runtime_cache_dir(), "_build")
     out = os.path.join(build_dir, lib["name"] + _shared_lib_suffix())
     sources = [os.path.normpath(os.path.join(rt, s)) for s in resolved["sources"]]
     manifest = os.path.join(rt, "manifest.json")
@@ -8190,7 +8207,10 @@ def build_executable(program: Program, out_path: str) -> str:
     rt = _runtime_dir()
     out_dir = os.path.dirname(os.path.abspath(out_path))
     os.makedirs(out_dir, exist_ok=True)
-    ll_fd, ll_path = tempfile.mkstemp(suffix=".ll", dir=rt)
+    # R-015: write scratch IR into the (writable) output directory, never into
+    # the runtime bundle, which may be read-only or shared across concurrent
+    # builds. mkstemp keeps the name unique so parallel builds do not collide.
+    ll_fd, ll_path = tempfile.mkstemp(suffix=".ll", dir=out_dir)
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
