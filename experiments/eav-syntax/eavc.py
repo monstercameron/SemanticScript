@@ -547,6 +547,26 @@ def resolve_semsig(target: str, sigs: list):
     return None
 
 
+def build_empty_plan() -> dict:
+    """`standard.build` BuildPlan (README ss30.3.2): build-time data assembled by
+    the root module's `configure` op. Pure (no runtime effect)."""
+    return {"targets": {}, "constants": {}}
+
+
+def build_with_target(plan: dict, name: str, kind: str) -> dict:
+    """Add/replace a BuildTarget by name (merge-by-name: a later target with the
+    same name replaces the earlier one)."""
+    out = {"targets": dict(plan["targets"]), "constants": dict(plan["constants"])}
+    out["targets"][name] = kind
+    return out
+
+
+def build_with_constant(plan: dict, name: str, value) -> dict:
+    out = {"targets": dict(plan["targets"]), "constants": dict(plan["constants"])}
+    out["constants"][name] = value
+    return out
+
+
 def merge_native_links(program: Program, platform_name: str) -> dict:
     """Merge native-link rows for a platform (README ss28.1): project-level then
     platform-level `nativeLibrary`/`nativeHeader`/`nativeLinkFlag`, in order with

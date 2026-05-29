@@ -214,6 +214,17 @@ def test_platform_targetruntime_validated():
     assert exc.value.code == "SS0740"
 
 
+def test_build_plan_builder_merge_by_name():
+    # WS3-021: standard.build BuildPlan builder; withTarget merges by name (replace).
+    plan = eavc.build_empty_plan()
+    assert plan == {"targets": {}, "constants": {}}
+    plan = eavc.build_with_target(plan, "app", "console")
+    plan = eavc.build_with_constant(plan, "release", "true")
+    plan = eavc.build_with_target(plan, "app", "wasm")  # same name -> replace
+    assert plan["targets"] == {"app": "wasm"}
+    assert plan["constants"] == {"release": "true"}
+
+
 def test_native_link_merge_and_dedup():
     # WS3-037: per-platform output + ordered/deduped native-link flags.
     prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
