@@ -1,0 +1,429 @@
+# taskforge-web/pages — EAV port (apps/taskforge-web/pages, semsc v0.1).
+#
+# The three server-rendered page handlers — landing, dashboard, 404 — each
+# composes component fragments (from the components module) into a page
+# `htmlTemplate`, hydrates it through `html.render`, and writes it back via
+# `http.responseText`. Converted from the v0.1 `html template`/`html.hydrate.X`/
+# `components.renderX` forms. Part of the multi-module taskforge-web port
+# (X-043); rendering + the HTTP runtime are deferred (target webServer), so this
+# parses + lints clean against standard.http / standard.html / the components
+# module's exported render-operations.
+
+appTaskforgeWebPages is module
+appTaskforgeWebPages path apps.taskforgeWeb.pages
+appTaskforgeWebPages imports http standard.http
+appTaskforgeWebPages imports html standard.html
+appTaskforgeWebPages imports components apps.taskforgeWeb.components
+appTaskforgeWebPages exports homePageHandler
+appTaskforgeWebPages exports dashboardPageHandler
+appTaskforgeWebPages exports notFoundPageHandler
+appTaskforgeWebPages purpose "Server-rendered HTML pages for TaskForge Web: landing, dashboard, and 404"
+appTaskforgeWebPages invariant "Each page composes typed HtmlFragment slots into a page template and writes it via http.responseText"
+
+HtmlFragment is alias
+HtmlFragment for String
+HtmlFragment purpose "A rendered, escaped HTML fragment composed into a page"
+
+HtmlTemplate is alias
+HtmlTemplate for String
+HtmlTemplate purpose "A named html template hydrated by html.render"
+
+HtmlDocument is alias
+HtmlDocument for String
+HtmlDocument purpose "A complete rendered HTML document written to the response"
+
+HttpStatusCode is alias
+HttpStatusCode for Int32
+HttpStatusCode purpose "An HTTP response status code"
+
+HttpContentType is alias
+HttpContentType for String
+HttpContentType purpose "An HTTP response Content-Type value"
+
+httpResponseWriter is capability
+httpResponseWriter grants write http.response
+httpResponseWriter purpose "Authority to write server-rendered page bodies to the HttpResponse"
+
+httpStatusOkLocal is storage module immutable HttpStatusCode 200
+htmlContentType is storage module immutable HttpContentType "text/html; charset=utf-8"
+
+HomePageTemplate is htmlTemplate
+HomePageTemplate body html
+  <!doctype html>
+  <html lang="en" class="h-full antialiased">
+  <head>
+  {{headFragment}}
+  </head>
+  <body class="min-h-full text-ink-900">
+  {{heroBackgroundFragment}}
+  <main class="mx-auto max-w-7xl px-6 py-8 sm:py-10">
+  {{brandHeaderFragment}}
+  <section class="mt-6 grid items-start gap-10 lg:mt-10 lg:grid-cols-[1.1fr_minmax(0,420px)] lg:gap-16">
+  {{landingHeroFragment}}
+  {{authCardFragment}}
+  </section>
+  {{featureGridFragment}}
+  <section class="mt-12 grid gap-5 lg:grid-cols-[1fr_360px]">
+  <div class="glass rounded-2xl p-6 shadow-glow-soft">
+  <h3 class="text-sm font-semibold uppercase tracking-wider text-ink-500">What you get</h3>
+  <ol class="mt-4 space-y-3 text-sm text-ink-700">
+  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">1</span><span><strong class="text-ink-900">Sign in</strong> with the seeded demo account or create your own - bcrypt cost-12 hashing, fresh session per login.</span></li>
+  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">2</span><span><strong class="text-ink-900">Land on your dashboard</strong> - a server-rendered shell that the bundled JS hydrates with your todos from the JSON API.</span></li>
+  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">3</span><span><strong class="text-ink-900">Add, complete, delete</strong> - every change persists to SQLite immediately, scoped to your <code class="font-mono text-xs">user_id</code> via foreign-key constraint.</span></li>
+  </ol>
+  </div>
+  {{statusCardFragment}}
+  </section>
+  {{appFooterFragment}}
+  </main>
+  <script src="/assets/home.js" defer></script>
+  </body>
+  </html>
+
+homePageHandler is operation
+homePageHandler in request HttpRequest
+homePageHandler in response HttpResponse
+homePageHandler out Int32
+homePageHandler effect write http.response
+homePageHandler uses httpResponseWriter
+homePageHandler memory arena request
+homePageHandler async no
+homePageHandler purpose "GET / — hydrate HomePageTemplate into a full HTML document and write it back as text/html"
+homePageHandler invariant "Read-only: no SQL, no auth, no cookies; all dynamic holes are escaped fragment slots"
+homePageHandler let homePageTitleText immutable String "TaskForge Web - Modern multi-user todos"
+homePageHandler let homeProductNameText immutable String "TaskForge Web"
+homePageHandler let homeTaglineText immutable String "Multi-user todos, server-rendered, securely stored."
+homePageHandler let homeHeadlineText immutable String "Production-grade todos, built end-to-end in SemanticScript."
+homePageHandler let homeLeadText immutable String "A full-stack web app - bcrypt-hashed auth, SQLite-backed state, typed server-rendered HTML, vanilla-JS interactivity. No client framework, no ORM, no surprises."
+homePageHandler let homeVersionText immutable String "1.1.0"
+homePageHandler let homeBcryptCostText immutable String "12"
+homePageHandler let homeApiBaseUrlText immutable String "http://127.0.0.1:18090"
+homePageHandler let homeDemoUsernameText immutable String "demo"
+homePageHandler let homeDemoPasswordText immutable String "demo1234"
+homePageHandler do renderHomeHeadCall
+homePageHandler do renderHomeBackgroundCall
+homePageHandler do renderHomeBrandCall
+homePageHandler do renderHomeHeroCall
+homePageHandler do renderHomeLoginPanelCall
+homePageHandler do renderHomeRegisterPanelCall
+homePageHandler do renderHomeAuthCardCall
+homePageHandler do renderHomeFeatureGridCall
+homePageHandler do renderHomeStatusCardCall
+homePageHandler do renderHomeFooterCall
+homePageHandler do hydrateHomePageCall
+homePageHandler do writeHomePageCall
+homePageHandler return writeHomePageStatus
+
+renderHomeHeadCall is call
+renderHomeHeadCall in homePageHandler
+renderHomeHeadCall invokes components.renderPageShellHead
+renderHomeHeadCall arg pageTitleText String homePageTitleText
+renderHomeHeadCall out homeHeadFragment HtmlFragment
+
+renderHomeBackgroundCall is call
+renderHomeBackgroundCall in homePageHandler
+renderHomeBackgroundCall invokes components.renderHeroBackground
+renderHomeBackgroundCall out homeHeroBackgroundFragment HtmlFragment
+
+renderHomeBrandCall is call
+renderHomeBrandCall in homePageHandler
+renderHomeBrandCall invokes components.renderBrandHeader
+renderHomeBrandCall arg productNameText String homeProductNameText
+renderHomeBrandCall arg taglineText String homeTaglineText
+renderHomeBrandCall out homeBrandHeaderFragment HtmlFragment
+
+renderHomeHeroCall is call
+renderHomeHeroCall in homePageHandler
+renderHomeHeroCall invokes components.renderLandingHero
+renderHomeHeroCall arg productNameText String homeProductNameText
+renderHomeHeroCall arg headlineText String homeHeadlineText
+renderHomeHeroCall arg leadText String homeLeadText
+renderHomeHeroCall out homeLandingHeroFragment HtmlFragment
+
+renderHomeLoginPanelCall is call
+renderHomeLoginPanelCall in homePageHandler
+renderHomeLoginPanelCall invokes components.renderLoginPanel
+renderHomeLoginPanelCall arg demoUsernameText String homeDemoUsernameText
+renderHomeLoginPanelCall arg demoPasswordText String homeDemoPasswordText
+renderHomeLoginPanelCall out homeLoginPanelFragment HtmlFragment
+
+renderHomeRegisterPanelCall is call
+renderHomeRegisterPanelCall in homePageHandler
+renderHomeRegisterPanelCall invokes components.renderRegisterPanel
+renderHomeRegisterPanelCall out homeRegisterPanelFragment HtmlFragment
+
+renderHomeAuthCardCall is call
+renderHomeAuthCardCall in homePageHandler
+renderHomeAuthCardCall invokes components.renderAuthCard
+renderHomeAuthCardCall arg loginPanelFragment HtmlFragment homeLoginPanelFragment
+renderHomeAuthCardCall arg registerPanelFragment HtmlFragment homeRegisterPanelFragment
+renderHomeAuthCardCall out homeAuthCardFragment HtmlFragment
+
+renderHomeFeatureGridCall is call
+renderHomeFeatureGridCall in homePageHandler
+renderHomeFeatureGridCall invokes components.renderFeatureGrid
+renderHomeFeatureGridCall out homeFeatureGridFragment HtmlFragment
+
+renderHomeStatusCardCall is call
+renderHomeStatusCardCall in homePageHandler
+renderHomeStatusCardCall invokes components.renderStatusCard
+renderHomeStatusCardCall arg versionText String homeVersionText
+renderHomeStatusCardCall arg bcryptCostText String homeBcryptCostText
+renderHomeStatusCardCall arg apiBaseUrlText String homeApiBaseUrlText
+renderHomeStatusCardCall out homeStatusCardFragment HtmlFragment
+
+renderHomeFooterCall is call
+renderHomeFooterCall in homePageHandler
+renderHomeFooterCall invokes components.renderAppFooter
+renderHomeFooterCall out homeAppFooterFragment HtmlFragment
+
+hydrateHomePageCall is call
+hydrateHomePageCall in homePageHandler
+hydrateHomePageCall invokes html.render
+hydrateHomePageCall arg template HtmlTemplate HomePageTemplate
+hydrateHomePageCall arg headFragment HtmlFragment homeHeadFragment
+hydrateHomePageCall arg heroBackgroundFragment HtmlFragment homeHeroBackgroundFragment
+hydrateHomePageCall arg brandHeaderFragment HtmlFragment homeBrandHeaderFragment
+hydrateHomePageCall arg landingHeroFragment HtmlFragment homeLandingHeroFragment
+hydrateHomePageCall arg authCardFragment HtmlFragment homeAuthCardFragment
+hydrateHomePageCall arg featureGridFragment HtmlFragment homeFeatureGridFragment
+hydrateHomePageCall arg statusCardFragment HtmlFragment homeStatusCardFragment
+hydrateHomePageCall arg appFooterFragment HtmlFragment homeAppFooterFragment
+hydrateHomePageCall out homePageHtml HtmlDocument
+
+writeHomePageCall is call
+writeHomePageCall in homePageHandler
+writeHomePageCall invokes http.responseText
+writeHomePageCall arg response HttpResponse response
+writeHomePageCall arg status HttpStatusCode httpStatusOkLocal
+writeHomePageCall arg body HtmlDocument homePageHtml
+writeHomePageCall arg contentType HttpContentType htmlContentType
+writeHomePageCall out writeHomePageStatus Int32
+
+DashboardPageTemplate is htmlTemplate
+DashboardPageTemplate body html
+  <!doctype html>
+  <html lang="en" class="h-full antialiased">
+  <head>
+  {{headFragment}}
+  </head>
+  <body class="min-h-full text-ink-900">
+  {{heroBackgroundFragment}}
+  <main class="mx-auto max-w-5xl px-6 py-8 sm:py-10">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+  <a href="/" class="group flex items-center gap-3">
+  <div class="flex h-11 w-11 items-center justify-center rounded-2xl grad-btn text-xl font-bold text-white shadow-glow-brand transition group-hover:scale-105">T</div>
+  <div>
+  <div class="text-base font-semibold tracking-tight text-ink-900">{{productNameText}}</div>
+  <div class="text-xs text-ink-500">Your personal todo workspace</div>
+  </div>
+  </a>
+  <div class="flex items-center gap-3">
+  <div id="userPill" class="hidden items-center gap-2 rounded-full border border-ink-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-ink-700 shadow-sm sm:flex">
+  <div id="userAvatar" class="flex h-6 w-6 items-center justify-center rounded-full grad-btn text-[10px] font-bold text-white">?</div>
+  <span id="userPillLabel">Loading...</span>
+  </div>
+  <button id="logoutButton" type="button" class="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-sm transition hover:bg-ink-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-200">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+  Sign out
+  </button>
+  </div>
+  </header>
+
+  <section class="fade-up mt-8 grid gap-5 sm:grid-cols-[1.4fr_1fr_1fr]">
+  <div class="glass rounded-2xl p-6 shadow-glow-soft sm:col-span-3 sm:row-start-1 lg:col-span-1">
+  <div class="text-xs font-semibold uppercase tracking-wider text-ink-500">Welcome back</div>
+  <h1 id="welcomeLine" class="mt-2 text-2xl font-semibold tracking-tight text-ink-900">Loading...</h1>
+  <p class="mt-2 text-sm text-ink-600">Your todos sync to SQLite on every change. Sessions cookie-backed, HttpOnly + SameSite=Strict.</p>
+  </div>
+  <div class="glass rounded-2xl p-6 shadow-glow-soft">
+  <div class="flex items-center justify-between">
+  <span class="text-xs font-semibold uppercase tracking-wider text-ink-500">Open</span>
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-brand-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
+  </div>
+  <div id="statOpen" class="mt-2 text-3xl font-semibold tracking-tight text-ink-900">-</div>
+  <div class="mt-1 text-xs text-ink-500">awaiting your attention</div>
+  </div>
+  <div class="glass rounded-2xl p-6 shadow-glow-soft">
+  <div class="flex items-center justify-between">
+  <span class="text-xs font-semibold uppercase tracking-wider text-ink-500">Completed</span>
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  </div>
+  <div id="statDone" class="mt-2 text-3xl font-semibold tracking-tight text-ink-900">-</div>
+  <div class="mt-1 text-xs text-ink-500">already done</div>
+  </div>
+  </section>
+
+  <section class="fade-up mt-6 glass rounded-3xl p-6 shadow-glow-soft sm:p-8">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+  <div>
+  <h2 class="text-lg font-semibold tracking-tight text-ink-900">Your todos</h2>
+  <p id="todoCountLine" class="mt-0.5 text-sm text-ink-500">Loading...</p>
+  </div>
+  <button id="newTodoButton" type="button" class="grad-btn inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-300">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  New todo
+  </button>
+  </div>
+
+  <form id="newTodoForm" class="mt-5 hidden space-y-3 rounded-2xl border border-brand-200/60 bg-gradient-to-br from-brand-50/70 to-fuchsia-50/40 p-5 shadow-sm">
+  <div>
+  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="newTodoTitle">Title</label>
+  <input id="newTodoTitle" name="title" type="text" required maxlength="500" placeholder="What needs doing?" class="mt-1.5 block w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" />
+  </div>
+  <div>
+  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="newTodoBody">Notes <span class="font-normal normal-case text-ink-400">(optional)</span></label>
+  <textarea id="newTodoBody" name="body" rows="2" maxlength="10000" placeholder="Extra context, links, sub-tasks..." class="mt-1.5 block w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"></textarea>
+  </div>
+  <div class="flex flex-wrap items-center gap-3">
+  <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="newTodoPriority">Priority</label>
+  <select id="newTodoPriority" name="priority" class="rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200">
+  <option value="1">High</option>
+  <option value="2" selected>Medium</option>
+  <option value="3">Low</option>
+  </select>
+  <button id="cancelNewTodoButton" type="button" class="ml-auto rounded-xl px-3 py-2 text-sm font-medium text-ink-500 transition hover:text-ink-700">Cancel</button>
+  <button type="submit" class="grad-btn rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-300">Save todo</button>
+  </div>
+  <p id="newTodoResult" class="min-h-[1.25rem] text-sm"></p>
+  </form>
+
+  <ul id="todoList" class="mt-5 space-y-2.5 scroll-thin">
+  <li class="rounded-2xl bg-ink-50/70 px-4 py-6 text-center text-sm text-ink-500">Loading your todos...</li>
+  </ul>
+  </section>
+
+  {{appFooterFragment}}
+  </main>
+  <script src="/assets/dashboard.js" defer></script>
+  </body>
+  </html>
+
+dashboardPageHandler is operation
+dashboardPageHandler in request HttpRequest
+dashboardPageHandler in response HttpResponse
+dashboardPageHandler out Int32
+dashboardPageHandler effect write http.response
+dashboardPageHandler uses httpResponseWriter
+dashboardPageHandler memory arena request
+dashboardPageHandler async no
+dashboardPageHandler purpose "GET /dashboard — render the logged-in dashboard shell; dashboard.js fetches /api/auth/me + /api/todos"
+dashboardPageHandler invariant "Server-side auth check is deferred to the API calls the page makes"
+dashboardPageHandler let dashboardTitleText immutable String "TaskForge Web - Dashboard"
+dashboardPageHandler let dashboardProductNameText immutable String "TaskForge Web"
+dashboardPageHandler do renderDashHeadCall
+dashboardPageHandler do renderDashBackgroundCall
+dashboardPageHandler do renderDashFooterCall
+dashboardPageHandler do hydrateDashboardCall
+dashboardPageHandler do writeDashboardCall
+dashboardPageHandler return writeDashboardStatus
+
+renderDashHeadCall is call
+renderDashHeadCall in dashboardPageHandler
+renderDashHeadCall invokes components.renderPageShellHead
+renderDashHeadCall arg pageTitleText String dashboardTitleText
+renderDashHeadCall out dashHeadFragment HtmlFragment
+
+renderDashBackgroundCall is call
+renderDashBackgroundCall in dashboardPageHandler
+renderDashBackgroundCall invokes components.renderHeroBackground
+renderDashBackgroundCall out dashHeroBackgroundFragment HtmlFragment
+
+renderDashFooterCall is call
+renderDashFooterCall in dashboardPageHandler
+renderDashFooterCall invokes components.renderAppFooter
+renderDashFooterCall out dashAppFooterFragment HtmlFragment
+
+hydrateDashboardCall is call
+hydrateDashboardCall in dashboardPageHandler
+hydrateDashboardCall invokes html.render
+hydrateDashboardCall arg template HtmlTemplate DashboardPageTemplate
+hydrateDashboardCall arg headFragment HtmlFragment dashHeadFragment
+hydrateDashboardCall arg heroBackgroundFragment HtmlFragment dashHeroBackgroundFragment
+hydrateDashboardCall arg productNameText String dashboardProductNameText
+hydrateDashboardCall arg appFooterFragment HtmlFragment dashAppFooterFragment
+hydrateDashboardCall out dashboardPageHtml HtmlDocument
+
+writeDashboardCall is call
+writeDashboardCall in dashboardPageHandler
+writeDashboardCall invokes http.responseText
+writeDashboardCall arg response HttpResponse response
+writeDashboardCall arg status HttpStatusCode httpStatusOkLocal
+writeDashboardCall arg body HtmlDocument dashboardPageHtml
+writeDashboardCall arg contentType HttpContentType htmlContentType
+writeDashboardCall out writeDashboardStatus Int32
+
+NotFoundPageTemplate is htmlTemplate
+NotFoundPageTemplate body html
+  <!doctype html>
+  <html lang="en" class="h-full antialiased">
+  <head>
+  {{headFragment}}
+  </head>
+  <body class="min-h-full text-ink-900">
+  {{heroBackgroundFragment}}
+  <main class="mx-auto flex max-w-xl flex-col items-center px-6 py-24 text-center">
+  <div class="fade-up glass rounded-3xl p-10 shadow-glow-soft">
+  <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl grad-btn text-2xl font-bold text-white shadow-glow-brand">404</div>
+  <h1 class="mt-6 text-3xl font-semibold tracking-tight text-ink-900">Page not found</h1>
+  <p class="mt-3 max-w-md text-sm leading-relaxed text-ink-600">The URL you requested isn't part of TaskForge Web's route table. Head back to the home page or jump into your dashboard.</p>
+  <div class="mt-7 flex flex-wrap justify-center gap-3">
+  <a href="/" class="grad-btn inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-glow-brand transition hover:shadow-lg">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  Home
+  </a>
+  <a href="/dashboard" class="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-5 py-2.5 text-sm font-semibold text-ink-700 shadow-sm transition hover:bg-ink-50 hover:shadow-md">
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+  Dashboard
+  </a>
+  </div>
+  </div>
+  </main>
+  </body>
+  </html>
+
+notFoundPageHandler is operation
+notFoundPageHandler in request HttpRequest
+notFoundPageHandler in response HttpResponse
+notFoundPageHandler out Int32
+notFoundPageHandler effect write http.response
+notFoundPageHandler uses httpResponseWriter
+notFoundPageHandler memory arena request
+notFoundPageHandler async no
+notFoundPageHandler purpose "Dispatched by the not-found hook (path '*' route in the main module's table)"
+notFoundPageHandler invariant "Always returns 404 + an HTML body linking back to / and /dashboard"
+notFoundPageHandler let notFoundTitleText immutable String "404 - TaskForge Web"
+notFoundPageHandler let notFoundStatusCode immutable HttpStatusCode 404
+notFoundPageHandler do renderNotFoundHeadCall
+notFoundPageHandler do renderNotFoundBackgroundCall
+notFoundPageHandler do hydrateNotFoundCall
+notFoundPageHandler do writeNotFoundCall
+notFoundPageHandler return writeNotFoundStatus
+
+renderNotFoundHeadCall is call
+renderNotFoundHeadCall in notFoundPageHandler
+renderNotFoundHeadCall invokes components.renderPageShellHead
+renderNotFoundHeadCall arg pageTitleText String notFoundTitleText
+renderNotFoundHeadCall out notFoundHeadFragment HtmlFragment
+
+renderNotFoundBackgroundCall is call
+renderNotFoundBackgroundCall in notFoundPageHandler
+renderNotFoundBackgroundCall invokes components.renderHeroBackground
+renderNotFoundBackgroundCall out notFoundHeroBackgroundFragment HtmlFragment
+
+hydrateNotFoundCall is call
+hydrateNotFoundCall in notFoundPageHandler
+hydrateNotFoundCall invokes html.render
+hydrateNotFoundCall arg template HtmlTemplate NotFoundPageTemplate
+hydrateNotFoundCall arg headFragment HtmlFragment notFoundHeadFragment
+hydrateNotFoundCall arg heroBackgroundFragment HtmlFragment notFoundHeroBackgroundFragment
+hydrateNotFoundCall out notFoundPageHtml HtmlDocument
+
+writeNotFoundCall is call
+writeNotFoundCall in notFoundPageHandler
+writeNotFoundCall invokes http.responseText
+writeNotFoundCall arg response HttpResponse response
+writeNotFoundCall arg status HttpStatusCode notFoundStatusCode
+writeNotFoundCall arg body HtmlDocument notFoundPageHtml
+writeNotFoundCall arg contentType HttpContentType htmlContentType
+writeNotFoundCall out writeNotFoundStatus Int32
