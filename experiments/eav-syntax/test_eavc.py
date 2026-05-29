@@ -8663,3 +8663,38 @@ def test_new_project_files_emits_complete_canonical_tree():
         ".gitignore", "tests/golden/.gitkeep"}
     assert "tag test" in files["src/main.test.sem"]
     assert files[".gitignore"].strip() == "dist/"
+
+
+# === X-117: native exe-build ↔ JIT parity ===
+
+def test_x117_native_build_matches_jit_run(tmp_path):
+    """X-117: build_executable emits an exe whose stdout + exit code match
+    `eavc run` (the JIT) for representative programs — native↔JIT parity. A no-op
+    builder (empty exe) would diverge from the JIT output. Skipped without a C
+    compiler."""
+    if eavc._find_c_compiler() is None:
+        pytest.skip("no C compiler available to build a native exe")
+    suffix = ".exe" if sys.platform == "win32" else ""
+    for example in ("hello_world.sem", "add_two.sem", "countdown.sem"):
+        path = os.path.join(EXAMPLES, example)
+        prog = eavc.parse(open(path, encoding="utf-8").read())
+        exe = str(tmp_path / (example.replace(".sem", "") + suffix))
+        eavc.build_executable(prog, exe)
+        native = subprocess.run([exe], capture_output=True, text=True)
+        jit = subprocess.run(
+            [sys.executable, os.path.join(HERE, "eavc.py"), "run", path],
+            capture_output=True, text=True)
+        assert native.stdout.splitlines() == jit.stdout.splitlines(), \
+            f"{example}: native {native.stdout!r} vs jit {jit.stdout!r}"
+        assert native.returncode == jit.returncode, example
+
+
+def test_x117_build_without_compiler_raises_documented_error(monkeypatch, tmp_path):
+    """X-117: with no C compiler, build_executable raises the documented EavError
+    naming the EAVC_CC / clang / zig recovery path, rather than crashing."""
+    monkeypatch.setattr(eavc, "_find_c_compiler", lambda: None)
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.build_executable(prog, str(tmp_path / "noexe"))
+    message = str(excinfo.value)
+    assert "EAVC_CC" in message or "clang" in message or "compiler" in message
