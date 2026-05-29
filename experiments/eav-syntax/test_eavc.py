@@ -3057,6 +3057,26 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_project_test_discovery_by_layout(tmp_path, capsys):
+    # WS3-048: tests discovered by location — co-located src/*.test.sem + tests/.
+    root = tmp_path / "proj"
+    eavc.main(["new", str(root)])
+    capsys.readouterr()
+    (root / "tests").mkdir(exist_ok=True)
+    (root / "tests" / "integration_smoke.sem").write_text("# e2e\n", encoding="utf-8")
+    found = eavc.discover_project_tests(str(root))
+    assert any("main.test.sem" in f for f in found["coLocated"])
+    assert any("integration_smoke.sem" in f for f in found["testsDir"])
+
+
+def test_app_layout_conversion_plan():
+    # WS3-049: plan the relayout of a flat app into the framework layout.
+    plan = eavc.app_layout_plan(os.path.join(APPS, "html-template-lab"))
+    assert plan["app"] == "html-template-lab" and plan["output"] == "build/"
+    moves = {m["from"]: m["to"] for m in plan["moves"]}
+    assert moves.get("main.sem") == os.path.join("src", "main.sem")
+
+
 def test_sem_file_family_classification():
     # WS3-045: each file role in the .sem family is recognized.
     assert eavc.classify_sem_file("/x/build.sem") == "build"

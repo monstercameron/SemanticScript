@@ -663,6 +663,42 @@ def load_project(root: str) -> str:
     return "\n".join(open(f, encoding="utf-8").read() for f in files)
 
 
+def discover_project_tests(root: str) -> dict:
+    """Locate tests by layout (README §28.7): co-located `src/*.test.sem` (unit/
+    semantic) and `tests/` suites (integration/e2e), plus `tests/golden/` assets."""
+    import glob
+    import os
+    src_dir = os.path.join(root, "src")
+    co_located = sorted(glob.glob(os.path.join(
+        src_dir if os.path.isdir(src_dir) else root, "*.test.sem")))
+    tests_dir = sorted(glob.glob(os.path.join(root, "tests", "*.sem")))
+    golden = sorted(glob.glob(os.path.join(root, "tests", "golden", "*"))) if os.path.isdir(
+        os.path.join(root, "tests", "golden")) else []
+    return {
+        "coLocated": [os.path.relpath(f, root) for f in co_located],
+        "testsDir": [os.path.relpath(f, root) for f in tests_dir],
+        "golden": [os.path.relpath(f, root) for f in golden if os.path.isfile(f)],
+    }
+
+
+def app_layout_plan(app_dir: str) -> dict:
+    """Plan the §28.8 relayout of a flat app into the framework layout: source +
+    co-located tests under `src/`, the manifest at the root, output under
+    `build/`. Returns the move map without touching the filesystem."""
+    import glob
+    import os
+    moves = []
+    for f in sorted(glob.glob(os.path.join(app_dir, "*.sem")) +
+                    glob.glob(os.path.join(app_dir, "*.semsig"))):
+        base = os.path.basename(f)
+        role = classify_sem_file(f)
+        dest = (base if role in ("build", "lock")
+                else os.path.join("src", base))  # source/test/semsig -> src/
+        moves.append({"from": base, "to": dest, "role": role})
+    return {"app": os.path.basename(os.path.normpath(app_dir)),
+            "moves": moves, "output": "build/"}
+
+
 def _read_program_source(path: str) -> str:
     """Read a single file, or compose a project directory (WS3-046)."""
     import os
