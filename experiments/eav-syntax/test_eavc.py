@@ -1338,7 +1338,7 @@ def test_split_start_on_call_rejected():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(
             "fetchThing is call\nfetchThing invokes some.thing\n"
-            "main is operation\nmain out ExitCode\nmain start fetchThing\n"
+            "main is operation\nmain out ExitCode\nmain async yes\nmain start fetchThing\n"
         )
     assert "requires a task" in exc.value.message
 
@@ -1468,6 +1468,22 @@ def test_builtin_targets_need_no_import():
     ir_text = _ir_for_source(src)
     assert "add i64" in ir_text
     assert 'call i32 (i8*, ...) @"printf"' in ir_text
+
+
+def test_e2e_async_single_thread():
+    # README §13: start eager, ifReady always taken -> task result printed.
+    proc = _eavc_run("async_demo.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "42" in proc.stdout
+
+
+def test_start_in_async_no_operation_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain async no\nmain start t\n"
+            "t is task\nt in main\nt invokes x.y\n"
+        )
+    assert exc.value.code == "SS1140"
 
 
 def test_e2e_defer_reverse_order():

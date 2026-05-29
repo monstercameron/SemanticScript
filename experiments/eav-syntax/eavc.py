@@ -138,6 +138,9 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
+               "found": "A `start` step in an operation that is not `async yes`.",
+               "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
     "SS1345": {"tier": "T1", "summary": "Ordering comparison on Bool/enum.",
                "found": "A compare.lessThan/greaterThan on a Bool or enum operand.",
                "suggested": "Bool/enum are equals-only; use equal/notEqual (README §17 #45)."},
@@ -1333,6 +1336,7 @@ def _validate_program(program: Program) -> None:
             _validate_labels(ent, program)
             _validate_return_arity(ent)
             _validate_no_shadow(ent)
+            _validate_async(ent)
             for row in ent.facts("let"):
                 if row.payload and row.payload[0] in RESERVED_WORDS:
                     raise EavError(
@@ -1647,6 +1651,20 @@ def _validate_calls(program: Program) -> None:
                     f"{target!r} (README ss15)",
                     ent.line,
                 )
+
+
+def _validate_async(op: Entity) -> None:
+    """A `start` step requires `async yes` (README ss11): you can't start a task
+    in a synchronous operation."""
+    arow = op.fact("async")
+    is_async = bool(arow and arow.payload and arow.payload[0] == "yes")
+    if not is_async and any(r.predicate == "start" for r in op.rows):
+        raise EavError(
+            f"operation {op.name!r} has a `start` step but is not `async yes` "
+            f"(README ss11)",
+            op.line,
+            code="SS1140",
+        )
 
 
 def _validate_no_shadow(op: Entity) -> None:
@@ -2206,6 +2224,17 @@ class EavCodegen:
             if cleanup is not None:
                 self._defers.append(cleanup)
             return builder
+        if pred == "start":
+            # Single-thread backend (README ss13): `start` runs the task eagerly;
+            # its result is available immediately (poll always-ready, join cheap).
+            task = self.program.entities.get(p[0]) if p else None
+            if task is not None and task.kind == "task":
+                self._emit_call(task, builder, sym, let_mut)
+            return builder
+        if pred in ("join", "poll", "cancel", "detach"):
+            # join/poll/cancel/detach: no-ops on the single-thread backend; the
+            # task already completed at `start` (README ss13).
+            return builder
         if pred == "return":
             return self._emit_return(op, fn, row, builder, sym)
         if pred == "branch":
@@ -2267,9 +2296,19 @@ class EavCodegen:
             cont = self._new_cont(fn)
             builder.cbranch(cond, cont, label_blocks[p[3]])
             return ir.IRBuilder(cont)
+        if guard == "ifReady":
+            # README ss13: single-thread tasks are always ready after `start`,
+            # so `ifReady` is unconditionally taken; the fallthrough (pending)
+            # path is emitted into a fresh, unreachable continuation block.
+            builder.branch(label_blocks[p[3]])
+            return ir.IRBuilder(self._new_cont(fn))
+        if guard in ("ifPending", "ifCanceled"):
+            # Never taken on the single-thread backend (never pending; not
+            # canceled unless `cancel` ran) — fall through (README ss13).
+            return builder
         raise EavError(
             f"branch guard {guard!r} is not modeled by the LLVM console code "
-            "generator (todos WS1-062..066)",
+            "generator (todos WS1-066 sugar)",
             row.line,
         )
 
