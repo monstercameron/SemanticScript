@@ -1,4 +1,4 @@
-# EAV threat-model coverage matrix (X-083)
+# EAV defect-class coverage ledger (X-101)
 
 | Defect class | Asset | EAV defense | Status | Owning todo |
 | --- | --- | --- | --- | --- |
@@ -20,3 +20,13 @@
 | Use-after-free / use-after-move / view escape | memory | SS1564 | ✅ | WS1-111/113 |
 | Per-record authorization / session / business logic | authority | application-domain authZ; the stdlib seam is capabilities + the trust types, but the policy is app code | — | n/a (out-of-language) |
 | Off-by-one / logic bugs | correctness | inherent app-logic class; mitigated by tests/goldens, not a language invariant | — | n/a (out-of-language) |
+| Leak / double-free of plain values (no GC) | memory | value-class move + free-at-last-use; ownership rules drafted, codegen pending | 🟡 | WS1-110 |
+| Wrong-region / arena allocation safety | memory | region entity + allocator-as-capability; allocation runtime pending | 🟡 | WS1-112 |
+| Buffer/slice out-of-bounds (no OOB/UB) | memory | bounds-checked Buffer/Slice with view lifetimes; buffer runtime pending | 🟡 | WS1-115 |
+| Owned-resource leak (file/db/handle) | reliability | SS1503 | ✅ | WS1-114 |
+| Divergence / infinite loop | correctness | SS0950 | ✅ | X-100 |
+| Source-observable nondeterminism | correctness | clock/random-as-capability + capturedOutputReplay done; collection ordering pends the collections runtime | 🟡 | X-094 |
+| Unchecked pre/postconditions | correctness | invariant/guarantee are metadata; statically-discharged/trapping requires/ensures pending | 🟡 | X-092 |
+| Protocol/typestate misuse | correctness | SS1564 | 🟡 | X-091 |
+| Error-context loss on propagate | reliability | onFailure propagate exists; causedBy provenance chaining pending | 🟡 | X-099 |
+| Data race / TOCTOU outside guards | correctness | single-thread backend is race-free; the concurrent backend gates X-082/X-090; race-to-trust outside guards is app discipline + review | — | n/a (out-of-language) |

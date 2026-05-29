@@ -1100,15 +1100,64 @@ SECURITY_COVERAGE = [
 
 def security_matrix_markdown() -> str:
     """Render SECURITY_COVERAGE as a Markdown table (X-083 living matrix)."""
+    return _coverage_markdown("EAV threat-model coverage matrix (X-083)",
+                              SECURITY_COVERAGE)
+
+
+# X-101 defect-class coverage ledger (README §29 #19): extends the X-083 security
+# matrix to ALL defect families — memory (§1J), correctness/reliability (X7) —
+# with partial (🟡) rows for defenses whose runtime is still deferred and
+# out-of-language rows for inherent/app-only classes plus their review seam.
+_ADDITIONAL_DEFECT_LEDGER = [
+    {"vuln": "Leak / double-free of plain values (no GC)", "asset": "memory",
+     "todo": "WS1-110", "code": None, "status": "partial",
+     "note": "value-class move + free-at-last-use; ownership rules drafted, codegen pending"},
+    {"vuln": "Wrong-region / arena allocation safety", "asset": "memory",
+     "todo": "WS1-112", "code": None, "status": "partial",
+     "note": "region entity + allocator-as-capability; allocation runtime pending"},
+    {"vuln": "Buffer/slice out-of-bounds (no OOB/UB)", "asset": "memory",
+     "todo": "WS1-115", "code": None, "status": "partial",
+     "note": "bounds-checked Buffer/Slice with view lifetimes; buffer runtime pending"},
+    {"vuln": "Owned-resource leak (file/db/handle)", "asset": "reliability",
+     "todo": "WS1-114", "code": "SS1503", "status": "covered",
+     "note": "owns/cleanedBy + defer on every path; explicit ordering rows pending (WS1-114)"},
+    {"vuln": "Divergence / infinite loop", "asset": "correctness",
+     "todo": "X-100", "code": "SS0950", "status": "covered",
+     "note": "no-progress / no-exit-path loop lint"},
+    {"vuln": "Source-observable nondeterminism", "asset": "correctness",
+     "todo": "X-094", "code": None, "status": "partial",
+     "note": "clock/random-as-capability + capturedOutputReplay done; collection ordering pends the collections runtime"},
+    {"vuln": "Unchecked pre/postconditions", "asset": "correctness",
+     "todo": "X-092", "code": None, "status": "partial",
+     "note": "invariant/guarantee are metadata; statically-discharged/trapping requires/ensures pending"},
+    {"vuln": "Protocol/typestate misuse", "asset": "correctness",
+     "todo": "X-091", "code": "SS1564", "status": "partial",
+     "note": "resource open/use/close + move lifecycle enforced; general typestate machine pending"},
+    {"vuln": "Error-context loss on propagate", "asset": "reliability",
+     "todo": "X-099", "code": None, "status": "partial",
+     "note": "onFailure propagate exists; causedBy provenance chaining pending"},
+    {"vuln": "Data race / TOCTOU outside guards", "asset": "correctness",
+     "todo": None, "code": None, "status": "out-of-language",
+     "note": "single-thread backend is race-free; the concurrent backend gates X-082/X-090; race-to-trust outside guards is app discipline + review"},
+]
+DEFECT_LEDGER = SECURITY_COVERAGE + _ADDITIONAL_DEFECT_LEDGER
+
+
+def _coverage_markdown(title: str, rows_data: list) -> str:
     icon = {"covered": "✅", "partial": "🟡", "out-of-language": "—"}
-    rows = ["| Vulnerability class | Asset | EAV defense | Status | Owning todo |",
+    rows = ["| Defect class | Asset | EAV defense | Status | Owning todo |",
             "| --- | --- | --- | --- | --- |"]
-    for r in SECURITY_COVERAGE:
+    for r in rows_data:
         defense = r["code"] or r["note"]
         rows.append(
             f"| {r['vuln']} | {r['asset']} | {defense} | {icon.get(r['status'], r['status'])} "
             f"| {r['todo'] or 'n/a (out-of-language)'} |")
-    return "# EAV threat-model coverage matrix (X-083)\n\n" + "\n".join(rows) + "\n"
+    return f"# {title}\n\n" + "\n".join(rows) + "\n"
+
+
+def defect_ledger_markdown() -> str:
+    """Render the full defect-class ledger as Markdown (X-101)."""
+    return _coverage_markdown("EAV defect-class coverage ledger (X-101)", DEFECT_LEDGER)
 
 
 def _effect_surface(lock_program: Program) -> set:

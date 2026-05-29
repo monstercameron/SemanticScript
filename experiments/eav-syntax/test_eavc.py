@@ -4895,6 +4895,33 @@ def test_security_matrix_markdown_renders():
     assert md.count("\n|") >= len(eavc.SECURITY_COVERAGE)  # a row per entry
 
 
+def test_defect_ledger_covers_all_families():
+    # X-101 / §29 #19: the ledger extends the security matrix to memory +
+    # correctness/reliability families; every row is classified, named codes are
+    # real, and out-of-language rows carry a note. Every defect family is present.
+    valid = {"covered", "partial", "out-of-language"}
+    assets = set()
+    for r in eavc.DEFECT_LEDGER:
+        assert r["status"] in valid and r["vuln"] and r["asset"] and r["note"], r
+        if r["code"] is not None:
+            assert r["code"] in eavc.DIAGNOSTICS, r["code"]
+        if r["status"] == "out-of-language":
+            assert r["code"] is None, r
+        else:
+            assert r["todo"] is not None, r
+        assets.add(r["asset"])
+    # all major defect families are represented
+    assert {"memory", "correctness", "reliability", "trust"} <= assets
+    # the ledger is a superset of the security matrix
+    assert len(eavc.DEFECT_LEDGER) > len(eavc.SECURITY_COVERAGE)
+
+
+def test_defect_ledger_markdown_renders():
+    md = eavc.defect_ledger_markdown()
+    assert "defect-class coverage ledger" in md
+    assert md.count("\n|") >= len(eavc.DEFECT_LEDGER)
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
