@@ -2994,6 +2994,24 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_versioned_json_envelopes(capsys):
+    # WS4-111: every JSON surface emits a consistent versioned envelope
+    # {surface, version, ok}, and each surface is declared in SEM_SURFACES.
+    import json
+    path = os.path.join(EXAMPLES, "hello_world.sem")
+    cmds = [
+        ["version", "--json"], ["agent-docs", "--json"], ["skills", "--json"],
+        ["check", path], ["readiness", "--json"], ["deps", path],
+        ["context", path], ["symbols", path], ["size", path], ["fix", path, "--plan"],
+    ]
+    for argv in cmds:
+        eavc.main(argv)
+        env = json.loads(capsys.readouterr().out)
+        assert env["version"] == "v1", argv
+        assert env["surface"] in eavc.SEM_SURFACES, env["surface"]
+        assert "ok" in env, argv
+
+
 def test_fix_plan_and_fmt_check(tmp_path, capsys):
     # WS4-114: fix --plan emits a suggestions plan; fmt --check detects drift.
     import json
