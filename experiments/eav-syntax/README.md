@@ -380,7 +380,7 @@ predicates (§6) are available on every entity kind and listed separately.
 | `alias` | `is for typeTrust` | — |
 | `sharedState` | `is scope type mutability value guard owner` (WS2-083) | — |
 | `region` | `is strategy scope capacity` (WS1-112) | — |
-| `operation` | `is in out effect uses memory async label let body export trustConstraint errorBoundary optOut` | `do defer start join poll cancel detach branch return goto set at readShared setShared allocateIn releaseRegion` |
+| `operation` | `is in out effect uses memory async label let body export trustConstraint errorBoundary optOut maxIterations` | `do defer start join poll cancel detach branch return goto set at readShared setShared allocateIn releaseRegion` |
 | `call` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
 | `task` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
 | `cleanup` | `is in call onFailure because cleans` | — |
