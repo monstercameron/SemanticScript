@@ -3057,6 +3057,31 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_sem_file_family_classification():
+    # WS3-045: each file role in the .sem family is recognized.
+    assert eavc.classify_sem_file("/x/build.sem") == "build"
+    assert eavc.classify_sem_file("/x/build.sem.lock") == "lock"
+    assert eavc.classify_sem_file("/x/standard.http.semsig") == "semsig"
+    assert eavc.classify_sem_file("/x/src/main.test.sem") == "test"
+    assert eavc.classify_sem_file("/x/src/main.sem") == "source"
+    assert eavc.classify_sem_file("/x/README.md") == "other"
+
+
+def test_project_directory_resolution(tmp_path, capsys):
+    # WS3-046: run/check resolve a project directory (compose src/*.sem, excluding
+    # tests + build.sem) — a multi-module project composes and runs.
+    root = tmp_path / "multi"
+    eavc.main(["new", str(root)])
+    capsys.readouterr()
+    # load_project composes only the runtime source (not build.sem / *.test.sem)
+    composed = eavc.load_project(str(root))
+    assert "is project" in composed and "writeGreeting" in composed
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", str(root)],
+        capture_output=True, text=True)
+    assert proc.returncode == 0 and "hello from Multi" in proc.stdout
+
+
 def test_new_project_scaffold(tmp_path, capsys):
     # WS3-047: eavc new produces a tree that checks clean, runs, and tests green.
     import json

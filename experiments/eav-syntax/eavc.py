@@ -645,6 +645,50 @@ _SEMSIG_LEGAL_KINDS = {
 }
 
 
+def load_project(root: str) -> str:
+    """Project driver (README §28.2/§28.3): compose the runtime source of a
+    project directory — every `src/*.sem` (or top-level `*.sem`) that is not a
+    `*.test.sem` — into one program string. `build.sem`/`.lock`/tests are not
+    part of the runtime program."""
+    import glob
+    import os
+    src_dir = os.path.join(root, "src")
+    scan = src_dir if os.path.isdir(src_dir) else root
+    files = sorted(
+        f for f in glob.glob(os.path.join(scan, "*.sem"))
+        if classify_sem_file(f) == "source"
+    )
+    if not files:
+        raise EavError(f"no source .sem files found under {scan!r} (README ss28.2)")
+    return "\n".join(open(f, encoding="utf-8").read() for f in files)
+
+
+def _read_program_source(path: str) -> str:
+    """Read a single file, or compose a project directory (WS3-046)."""
+    import os
+    if path != "-" and os.path.isdir(path):
+        return load_project(path)
+    return _read_source(path)
+
+
+def classify_sem_file(path: str) -> str:
+    """Role of a file in the `.sem` family (README §28.2): build / lock / semsig /
+    test / source / other."""
+    import os
+    base = os.path.basename(path)
+    if base == "build.sem":
+        return "build"
+    if base == "build.sem.lock":
+        return "lock"
+    if base.endswith(".semsig"):
+        return "semsig"
+    if base.endswith(".test.sem"):
+        return "test"
+    if base.endswith(".sem"):
+        return "source"
+    return "other"
+
+
 def load_semsig(source: str) -> Program:
     """Parse a `.semsig` sidecar and validate its header (README ss26). An
     unknown schema `version` is rejected (SS2601)."""
@@ -5602,7 +5646,7 @@ def cmd_lower(args) -> int:
 
 def cmd_run(args) -> int:
     """JIT-compile and execute the program; return its process exit code."""
-    program = parse(_read_source(args.path))
+    program = parse(_read_program_source(args.path))
     sys.stdout.flush()
     return jit_run(program)
 
@@ -6059,7 +6103,7 @@ def cmd_check(args) -> int:
     """Source lane (sem.check.v1): parse + lint, classify ok / ok-with-warnings /
     lint-diagnostics / compiler-error (README check/readiness split)."""
     try:
-        program = parse_compact(_read_source(args.path))
+        program = parse_compact(_read_program_source(args.path))
     except EavError as exc:
         sys.stdout.write(_json_envelope(
             "sem.check.v1", status="compiler-error", ok=False,
@@ -6107,8 +6151,10 @@ def cmd_readiness(args) -> int:
 def cmd_build(args) -> int:
     """Compile a program to a native executable (IR -> clang -> exe)."""
     import os
-    program = parse_compact(_read_source(args.path))
-    default = os.path.splitext(args.path)[0] if args.path != "-" else "a"
+    program = parse_compact(_read_program_source(args.path))
+    default = (os.path.splitext(args.path)[0] if args.path != "-"
+               and not os.path.isdir(args.path) else
+               os.path.join(args.path, "app") if os.path.isdir(args.path) else "a")
     out_path = args.output or (default + (".exe" if sys.platform == "win32" else ""))
     try:
         sys.stdout.write(build_executable(program, out_path) + "\n")
