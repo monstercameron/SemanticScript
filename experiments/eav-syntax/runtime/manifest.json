@@ -1,0 +1,19 @@
+{
+  "comment": "Native runtime libraries linked into JIT/native builds. eavc reads this data — it carries no per-library knowledge in the compiler. A library is built (cached) and loaded only when a program references a runtimeBinding symbol matching one of its `provides` prefixes.",
+  "libraries": [
+    {
+      "name": "eav_runtime",
+      "provides": ["eav_sqlite_"],
+      "sources": [
+        "eav_sqlite.c",
+        "../../../SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c",
+        "../../../third_party/sqlite/sqlite3.c"
+      ],
+      "include": [
+        "../../../SemanticScript/runtime/native_sqlite",
+        "../../../third_party/sqlite"
+      ],
+      "defines": ["SQLITE_THREADSAFE=0", "SQLITE_OMIT_LOAD_EXTENSION"]
+    }
+  ]
+}

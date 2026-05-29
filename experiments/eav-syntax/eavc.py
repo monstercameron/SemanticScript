@@ -2247,19 +2247,27 @@ def lint(program: Program) -> list:
                 diags.append(Diagnostic("MD1012", "error",
                                         f"exported/entry operation {ent.name!r} is missing an invariant",
                                         ent.line, ent.name))
-    for name in program.order:
-        ent = program.entities[name]
-        if ent.kind in ("operation", "function") and _op_body_kind(ent) in (
-            "runtimeBinding", "intrinsic"
-        ):
-            # README ss17 #50: primitive bodies belong in a stdlib/.semsig-backed
-            # module, not application source.
-            diags.append(Diagnostic(
-                "SS5000", "warning",
-                f"operation {ent.name!r} has a `{_op_body_kind(ent)}` body in "
-                f"application source; primitive bodies belong in a .semsig-backed "
-                f"stdlib module (README ss17 #50)",
-                ent.line, ent.name))
+    # README ss17 #50: a primitive (runtimeBinding/intrinsic) body belongs in a
+    # stdlib/.semsig-backed module, not application source. A file that declares
+    # a `standard.*` module IS that boundary, so its primitive bodies are exempt.
+    is_stdlib_module = any(
+        program.entities[n].kind == "module"
+        and (program.entities[n].fact("path") or Row("", "", [], 0)).payload[:1]
+        and program.entities[n].fact("path").payload[0].startswith("standard.")
+        for n in program.order
+    )
+    if not is_stdlib_module:
+        for name in program.order:
+            ent = program.entities[name]
+            if ent.kind in ("operation", "function") and _op_body_kind(ent) in (
+                "runtimeBinding", "intrinsic"
+            ):
+                diags.append(Diagnostic(
+                    "SS5000", "warning",
+                    f"operation {ent.name!r} has a `{_op_body_kind(ent)}` body in "
+                    f"application source; primitive bodies belong in a .semsig-backed "
+                    f"stdlib module (README ss17 #50)",
+                    ent.line, ent.name))
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
@@ -4519,6 +4527,119 @@ def _ensure_native_init() -> None:
         _NATIVE_INIT_DONE = True
 
 
+def _runtime_dir() -> str:
+    import os
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "runtime")
+
+
+def _find_c_compiler():
+    """Locate a C compiler for building native runtime libraries, mirroring the
+    reference toolchain: EAVC_CC, then clang on PATH / the common Windows LLVM
+    install, then `zig cc`. Returns a command prefix list or None."""
+    import os
+    from shutil import which
+    env = os.environ.get("EAVC_CC")
+    if env:
+        return [env] if os.path.exists(env) else env.split()
+    clang = which("clang") or (
+        "C:/Program Files/LLVM/bin/clang.exe"
+        if os.path.exists("C:/Program Files/LLVM/bin/clang.exe") else None
+    )
+    if clang:
+        return [clang]
+    zig = which("zig")
+    if zig:
+        return [zig, "cc"]
+    return None
+
+
+def _shared_lib_suffix() -> str:
+    if sys.platform == "win32":
+        return ".dll"
+    if sys.platform == "darwin":
+        return ".dylib"
+    return ".so"
+
+
+def _ensure_runtime_lib(lib: dict):
+    """Build (cached) one native runtime library described by runtime/manifest.json
+    and return its path, or None if no C compiler is available. The compiler is
+    domain-agnostic — it only compiles the `sources` the manifest lists; the
+    sqlite/http knowledge lives in those C sources and the `.sem` stdlib."""
+    import os
+    import subprocess
+    rt = _runtime_dir()
+    build_dir = os.path.join(rt, "_build")
+    out = os.path.join(build_dir, lib["name"] + _shared_lib_suffix())
+    sources = [os.path.normpath(os.path.join(rt, s)) for s in lib["sources"]]
+    manifest = os.path.join(rt, "manifest.json")
+    inputs = sources + [manifest, os.path.join(rt, "eav_sqlite.c")]
+    inputs = [p for p in inputs if os.path.exists(p)]
+    if os.path.exists(out) and all(
+        os.path.getmtime(out) >= os.path.getmtime(p) for p in inputs
+    ):
+        return out  # cached and fresh
+    cc = _find_c_compiler()
+    if cc is None:
+        return None
+    os.makedirs(build_dir, exist_ok=True)
+    cmd = list(cc) + ["-O2", "-shared", "-o", out] + sources
+    for inc in lib.get("include", []):
+        cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
+    for d in lib.get("defines", []):
+        cmd.append("-D" + d)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise EavError(
+            f"failed to build runtime library {lib['name']!r}: {proc.stderr.strip()}"
+        )
+    return out
+
+
+def _register_runtime_symbols(program: Program) -> None:
+    """Resolve the program's `runtimeBinding` symbols that a native runtime
+    library provides, building and loading that library and registering each
+    symbol with the JIT. Symbols not matched by any library (e.g. libc `abs`)
+    are left to the JIT's default resolver. Driven entirely by
+    runtime/manifest.json — no per-library logic in the compiler."""
+    import ctypes
+    import json
+    import os
+    referenced = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("operation", "function"):
+            body = ent.fact("body")
+            if (body and body.payload and body.payload[0] == "runtimeBinding"
+                    and len(body.payload) >= 2):
+                referenced.add(body.payload[1])
+    if not referenced:
+        return
+    manifest_path = os.path.join(_runtime_dir(), "manifest.json")
+    if not os.path.exists(manifest_path):
+        return
+    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
+    for lib in manifest.get("libraries", []):
+        prefixes = lib.get("provides", [])
+        needed = {s for s in referenced if any(s.startswith(p) for p in prefixes)}
+        if not needed:
+            continue
+        path = _ensure_runtime_lib(lib)
+        if path is None:
+            raise EavError(
+                f"program uses runtime symbols {sorted(needed)} provided by "
+                f"{lib['name']!r}, but no C compiler was found to build it "
+                f"(set EAVC_CC, or install clang/zig)"
+            )
+        cdll = ctypes.CDLL(path)
+        for sym in needed:
+            try:
+                addr = ctypes.cast(getattr(cdll, sym), ctypes.c_void_p).value
+            except AttributeError:
+                continue
+            llvm.add_symbol(sym, addr)
+
+
 def jit_run(program: Program) -> int:
     """JIT-compile and execute the program's entry operation; return its exit
     code. stdout is the C runtime's, flushed when this process exits."""
@@ -4526,6 +4647,7 @@ def jit_run(program: Program) -> int:
 
     module = lower_to_llvm(program)
     _ensure_native_init()
+    _register_runtime_symbols(program)
     mod = llvm.parse_assembly(str(module))
     mod.verify()
     tm = llvm.Target.from_default_triple().create_target_machine()

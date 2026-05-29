@@ -22,6 +22,109 @@ import eavc  # noqa: E402
 
 EXAMPLES = os.path.join(HERE, "examples")
 INVALID_CORPUS = os.path.join(HERE, "invalid_corpus")
+SIGS = os.path.join(HERE, "sigs")
+STD = os.path.join(HERE, "std")
+
+
+def _have_c_compiler():
+    return eavc._find_c_compiler() is not None
+
+
+# A `main` that drives the standard.sqlite surface through a full round-trip.
+# eavc has no cross-file import resolution, so the parity test composes the
+# stdlib module with this main (what an importer would assemble).
+_SQLITE_ROUNDTRIP_MAIN = """
+SqliteRoundTrip is project
+SqliteRoundTrip module appSqliteRoundTrip
+SqliteRoundTrip target console
+SqliteRoundTrip entry main
+
+appSqliteRoundTrip is module
+appSqliteRoundTrip path examples.sqliteRoundTrip
+appSqliteRoundTrip exports main
+appSqliteRoundTrip purpose "Exercise the standard.sqlite round-trip end to end"
+appSqliteRoundTrip invariant "Prints the text column read back from the inserted row"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Open in-memory, create+insert, prepare+step, read the text column, print it"
+main invariant "Prints the name inserted into the row"
+main let createSql immutable String "CREATE TABLE t(id INTEGER, name TEXT)"
+main let insertSql immutable String "INSERT INTO t VALUES(7, 'eav')"
+main let selectSql immutable String "SELECT id, name FROM t"
+main let nameColumn immutable Int32 1
+main let okCode immutable ExitCode 0
+main do dbOpen
+main do createTbl
+main do insertRow
+main do prepareSelect
+main do stepRow
+main do readName
+main do showName
+main do finalizeSelect
+main do closeDb
+main return okCode
+
+dbOpen is call
+dbOpen in main
+dbOpen invokes openInMemory
+dbOpen out database SqliteDatabase
+
+createTbl is call
+createTbl in main
+createTbl invokes exec
+createTbl arg database SqliteDatabase database
+createTbl arg sql String createSql
+createTbl discards "create-table status"
+
+insertRow is call
+insertRow in main
+insertRow invokes exec
+insertRow arg database SqliteDatabase database
+insertRow arg sql String insertSql
+insertRow discards "insert status"
+
+prepareSelect is call
+prepareSelect in main
+prepareSelect invokes prepareStatement
+prepareSelect arg database SqliteDatabase database
+prepareSelect arg sql String selectSql
+prepareSelect out selectStatement SqliteStatement
+
+stepRow is call
+stepRow in main
+stepRow invokes stepStatement
+stepRow arg statement SqliteStatement selectStatement
+stepRow discards "step outcome (row expected)"
+
+readName is call
+readName in main
+readName invokes columnText
+readName arg statement SqliteStatement selectStatement
+readName arg columnIndex Int32 nameColumn
+readName out nameText SqliteText
+
+showName is call
+showName in main
+showName invokes console.writeLine
+showName arg text String nameText
+
+finalizeSelect is call
+finalizeSelect in main
+finalizeSelect invokes finalizeStatement
+finalizeSelect arg statement SqliteStatement selectStatement
+finalizeSelect discards "finalize status"
+
+closeDb is call
+closeDb in main
+closeDb invokes closeDatabase
+closeDb arg database SqliteDatabase database
+closeDb discards "close status"
+"""
 
 
 def _corpus_files():
@@ -84,9 +187,6 @@ def test_supply_chain_manifest_goldens_consistent():
     build = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
     lock = eavc.parse(open(os.path.join(MANIFESTS, "build.sem.lock"), encoding="utf-8").read())
     eavc.verify_supply_chain(build, lock)  # the goldens are consistent
-
-
-SIGS = os.path.join(HERE, "sigs")
 
 
 def test_console_entry_with_in_params_flagged():
@@ -2627,6 +2727,48 @@ def test_e2e_add_two_runs():
     proc = _eavc_run("add_two.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
+
+
+def test_sqlite_stdlib_parses_lints_and_has_parity_surface():
+    # WS3-016: standard.sqlite is an EAV-native runtimeBinding wrapper over the
+    # eav_sqlite_* runtime ABI; it parses, lints clean, and covers the original
+    # semsc.py surface (open/close/exec/prepare/step/bind/column/transactions).
+    src = open(os.path.join(STD, "standard.sqlite.sem"), encoding="utf-8").read()
+    prog = eavc.parse(src)
+    assert not any(d.severity == "error" for d in eavc.lint(prog))
+    ops = {n for n in prog.order if prog.entities[n].kind == "operation"}
+    parity = {
+        "openDatabase", "closeDatabase", "exec", "queryScalarInt64",
+        "prepareStatement", "finalizeStatement", "resetStatement", "stepStatement",
+        "bindInt64", "bindDouble", "bindText", "bindNull",
+        "columnCount", "columnType", "columnName", "columnInt64", "columnDouble",
+        "columnText", "columnByteCount", "lastInsertRowId", "changedRowCount",
+        "beginImmediateTransaction", "commitTransaction", "rollbackTransaction",
+        "enableWalMode", "errorMessage", "libraryVersion",
+    }
+    assert parity.issubset(ops), parity - ops
+    # every operation binds an eav_sqlite_* runtime symbol (no compiler-owned sqlite)
+    for n in ops:
+        body = prog.entities[n].fact("body")
+        assert body and body.payload[0] == "runtimeBinding"
+        assert body.payload[1].startswith("eav_sqlite_")
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the sqlite runtime")
+def test_e2e_sqlite_roundtrip_through_real_engine():
+    # WS3-016 parity: compose the standard.sqlite stdlib with a driver main and
+    # JIT-run a full round-trip against the vendored SQLite engine (built from
+    # third_party/sqlite via the eav_sqlite shim). Open in-memory -> create ->
+    # insert -> prepare -> step -> columnText -> print -> finalize -> close.
+    # A no-op lowering (or an unlinked runtime) cannot produce "eav".
+    stdlib = open(os.path.join(STD, "standard.sqlite.sem"), encoding="utf-8").read()
+    composed = stdlib + "\n" + _SQLITE_ROUNDTRIP_MAIN
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "eav"
 
 
 def test_e2e_runtime_binding_calls_libc_symbol():
