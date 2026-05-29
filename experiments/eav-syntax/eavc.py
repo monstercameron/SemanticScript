@@ -1035,6 +1035,82 @@ def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
         )
 
 
+# X-083 threat-model coverage matrix (README §29 #19). Each row maps a
+# vulnerability class to its asset, the EAV defense (a real diagnostic code, an
+# external mechanism, or an explicit out-of-language note), status, and the
+# owning todo. `security_matrix_markdown` renders it; a test (X-083) asserts every
+# named diagnostic code exists in DIAGNOSTICS and every row is classified.
+SECURITY_COVERAGE = [
+    {"vuln": "SQL/HTML/path/URL injection", "asset": "trust", "todo": "X-070/X-071",
+     "code": "SS3071", "status": "covered",
+     "note": "typed trust flow + sink-typing; raw String / string-built input rejected at sinks"},
+    {"vuln": "Untrusted value at a trust-sensitive sink", "asset": "trust", "todo": "X-070",
+     "code": "SS3070", "status": "covered",
+     "note": "rawExternal/secret value into a trustConstraint sink is rejected"},
+    {"vuln": "Secret disclosure (logs/transcripts/source)", "asset": "confidentiality",
+     "todo": "X-072", "code": "SS3072", "status": "covered",
+     "note": "secret value to an observable sink, or a hardcoded secret literal, is rejected"},
+    {"vuln": "Timing side-channel on secret compare", "asset": "confidentiality",
+     "todo": "X-074", "code": "SS3074", "status": "covered",
+     "note": "secrets compare only via crypto.equalConstantTime"},
+    {"vuln": "Weak/predictable crypto randomness + nonce reuse", "asset": "confidentiality",
+     "todo": "X-073", "code": "SS3073", "status": "covered",
+     "note": "security material needs the CSPRNG; nonces/IVs are affine"},
+    {"vuln": "SSRF (server-side request forgery)", "asset": "authority", "todo": "X-075",
+     "code": "SS3075", "status": "covered",
+     "note": "internal/loopback/metadata URL literal rejected; HttpSafeUrl required"},
+    {"vuln": "Path traversal / absolute-escape", "asset": "authority", "todo": "X-076",
+     "code": "SS3076", "status": "covered",
+     "note": "../ or absolute fs path literal rejected; SafePath required"},
+    {"vuln": "Deserialization DoS / type confusion", "asset": "availability", "todo": "X-077",
+     "code": "SS3077", "status": "covered",
+     "note": "untrusted decode requires a size limit"},
+    {"vuln": "Resource-exhaustion DoS (slow peer)", "asset": "availability", "todo": "X-078",
+     "code": "SS3078", "status": "covered",
+     "note": "external I/O over untrusted input requires a timeout/budget"},
+    {"vuln": "Information disclosure via error detail", "asset": "confidentiality",
+     "todo": "X-079", "code": "SS3079", "status": "covered",
+     "note": "internal error to a client-response sink requires an errorBoundary mapping"},
+    {"vuln": "Insecure-by-default web surface", "asset": "authority", "todo": "X-080",
+     "code": "SS3080", "status": "covered",
+     "note": "every protection opt-out requires an explicit `because`"},
+    {"vuln": "Supply-chain effect escalation", "asset": "supply-chain", "todo": "X-081",
+     "code": "SS2805", "status": "covered",
+     "note": "fail-closed: dependency effect surface must be in the root allowlist; no transitive escalation"},
+    {"vuln": "Malformed-UTF-8 corruption at input boundary", "asset": "trust",
+     "todo": "X-096", "code": "SS3096", "status": "covered",
+     "note": "bytes->text decode of untrusted input must yield a validated text type"},
+    {"vuln": "Float used for money/exact value", "asset": "correctness", "todo": "X-093",
+     "code": "SS3093", "status": "covered",
+     "note": "Decimal/Money kept out of Float arithmetic; Float equality warns (SS3094)"},
+    {"vuln": "Wall-clock arithmetic / elapsed-time bug", "asset": "correctness",
+     "todo": "X-095", "code": "SS3095", "status": "covered",
+     "note": "WallTime has no arithmetic; durations use MonotonicInstant"},
+    {"vuln": "Use-after-free / use-after-move / view escape", "asset": "memory",
+     "todo": "WS1-111/113", "code": "SS1564", "status": "covered",
+     "note": "borrowed-view escape (SS1560), view-with-cleanup (SS1566), use-after-move (SS1564)"},
+    {"vuln": "Per-record authorization / session / business logic", "asset": "authority",
+     "todo": None, "code": None, "status": "out-of-language",
+     "note": "application-domain authZ; the stdlib seam is capabilities + the trust types, but the policy is app code"},
+    {"vuln": "Off-by-one / logic bugs", "asset": "correctness", "todo": None, "code": None,
+     "status": "out-of-language",
+     "note": "inherent app-logic class; mitigated by tests/goldens, not a language invariant"},
+]
+
+
+def security_matrix_markdown() -> str:
+    """Render SECURITY_COVERAGE as a Markdown table (X-083 living matrix)."""
+    icon = {"covered": "✅", "partial": "🟡", "out-of-language": "—"}
+    rows = ["| Vulnerability class | Asset | EAV defense | Status | Owning todo |",
+            "| --- | --- | --- | --- | --- |"]
+    for r in SECURITY_COVERAGE:
+        defense = r["code"] or r["note"]
+        rows.append(
+            f"| {r['vuln']} | {r['asset']} | {defense} | {icon.get(r['status'], r['status'])} "
+            f"| {r['todo'] or 'n/a (out-of-language)'} |")
+    return "# EAV threat-model coverage matrix (X-083)\n\n" + "\n".join(rows) + "\n"
+
+
 def _effect_surface(lock_program: Program) -> set:
     return {
         (r.payload[0], r.payload[1])

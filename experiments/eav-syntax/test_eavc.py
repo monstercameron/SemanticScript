@@ -4863,6 +4863,38 @@ def test_protection_optout_with_because_accepted():
     assert "main" in prog.entities
 
 
+def test_security_coverage_matrix_consistent():
+    # X-083 / §29 #19: every matrix row is classified, every named defense code is a
+    # real registry diagnostic, and out-of-language rows carry a note (no orphans).
+    valid_status = {"covered", "partial", "out-of-language"}
+    for r in eavc.SECURITY_COVERAGE:
+        assert r["status"] in valid_status, r
+        assert r["vuln"] and r["asset"] and r["note"], r
+        if r["code"] is not None:
+            assert r["code"] in eavc.DIAGNOSTICS, r["code"]
+        if r["status"] == "out-of-language":
+            assert r["todo"] is None and r["code"] is None, r
+        else:
+            assert r["todo"] is not None, r  # an in-language defense has an owning todo
+
+
+def test_security_coverage_matrix_covers_implemented_codes():
+    # X-083: every security/safety diagnostic the workstream landed is represented
+    # in the matrix (the matrix tracks the real enforced defenses, no gaps).
+    matrix_codes = {r["code"] for r in eavc.SECURITY_COVERAGE if r["code"]}
+    for code in ("SS3070", "SS3071", "SS3072", "SS3073", "SS3074", "SS3075",
+                 "SS3076", "SS3077", "SS3078", "SS3079", "SS3080", "SS3096",
+                 "SS2805", "SS1564"):
+        assert code in matrix_codes, code
+
+
+def test_security_matrix_markdown_renders():
+    # X-083: the living matrix renders as a Markdown table from the data.
+    md = eavc.security_matrix_markdown()
+    assert "threat-model coverage matrix" in md
+    assert md.count("\n|") >= len(eavc.SECURITY_COVERAGE)  # a row per entry
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
