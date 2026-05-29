@@ -80,7 +80,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-023 Reserved-word table (§2) enforced for entity/var/type names; **exempt** arg-slot/field/variant labels. →test: `arg path …` ok, `path is record` errors. §2 _(eavc: `RESERVED_WORDS`; `test_parse_reserved_word_as_entity_name_rejected`, `test_parse_reserved_word_as_variable_rejected`, `test_parse_reserved_word_ok_as_arg_slot_label`)_
 - [x] WS1-024 `at LABEL <stepPred> …` labeled-step (one model, §1 row-class 4); label col 3, step col 4+. →test: labeled step parses; `at` not usable as bare predicate. §1/§13 _(eavc: `test_parse_labeled_step_row`)_
 - [x] WS1-025 `async`-on-`call` tolerated-deprecated exception (promotes to task on fmt). →test: `call … async yes` parses with deprecation note. §5 _(eavc: `Program.warnings`; `test_async_on_call_parses_with_deprecation_note`, `test_no_spurious_async_deprecation_for_plain_call`)_
-- [ ] WS1-026 EBNF grammar doc + invalid-example corpus (§29 #1). →test: corpus all-reject. §29#1
+- [x] WS1-026 EBNF grammar doc + invalid-example corpus (§29 #1). →test: corpus all-reject. §29#1 _(eavc: `GRAMMAR.md` (EBNF for the four row classes + lexical rules) + `invalid_corpus/` (17 fixtures); `test_invalid_corpus_all_reject`)_
 
 ## 1C. Types (§10, §33.6–33.7)
 - [x] WS1-030 Primitives Int8–64/UInt8–64/Float32/64/Bool/String/Void/Byte (Byte alias UInt8). →test: lowering widths. §10 _(eavc: `PRIMITIVE_TYPES`, `_norm_type` Byte→UInt8; `test_primitive_types_complete`, `test_byte_lowers_to_uint8`)_
