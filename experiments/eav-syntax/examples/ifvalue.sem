@@ -1,0 +1,50 @@
+# ifvalue — `branch ifValue X <cmp> Y goto L` comparison sugar (README ss13).
+# Prints "equal" because 5 equals 5. (todos WS1-066)
+
+IfValue is project
+IfValue module examplesIfValue
+IfValue target console
+IfValue entry main
+
+examplesIfValue is module
+examplesIfValue path examples.ifValue
+examplesIfValue exports main
+examplesIfValue purpose "Branch on a value comparison with ifValue"
+examplesIfValue invariant "Reaches the equal path only when the operands compare equal"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compare two values with ifValue and print which path is taken"
+main invariant "Prints equal iff the two operands compare equal"
+main let left immutable Int64 5
+main let right immutable Int64 5
+main let equalText immutable String "equal"
+main let differentText immutable String "different"
+main let okCode immutable ExitCode 0
+main branch ifValue left equals right goto bothEqual
+main do writeDifferent
+main return okCode
+main at bothEqual do writeEqual
+main return okCode
+
+writeEqual is call
+writeEqual in main
+writeEqual invokes console.writeLine
+writeEqual arg text String equalText
+
+writeDifferent is call
+writeDifferent in main
+writeDifferent invokes console.writeLine
+writeDifferent arg text String differentText

@@ -1838,6 +1838,19 @@ def test_e2e_add_two_runs():
     assert "42" in proc.stdout
 
 
+def test_e2e_ifvalue_comparison_branch():
+    # WS1-066: `branch ifValue X equals Y goto L` lowers to compare + branch.
+    proc = _eavc_run("ifvalue.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "equal"
+
+
+def test_ifvalue_lowers_to_icmp_branch():
+    ir_text = _ir_for("ifvalue.sem")
+    assert "icmp eq i64" in ir_text
+    assert "br i1 " in ir_text
+
+
 def test_e2e_compound_condition_sequential_guards():
     # README ss33.4: A AND B is two sequential guards (no and/or keyword).
     proc = _eavc_run("compound.sem")

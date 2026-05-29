@@ -2290,8 +2290,10 @@ def _validate_labels(op: Entity, program: Program) -> None:
     for row in op.rows:
         if row.predicate == "goto" and row.payload:
             refs.add(row.payload[0])
-        elif row.predicate == "branch" and len(row.payload) >= 4 and row.payload[2] == "goto":
-            refs.add(row.payload[3])
+        elif row.predicate == "branch" and "goto" in row.payload:
+            gi = row.payload.index("goto")
+            if gi + 1 < len(row.payload):
+                refs.add(row.payload[gi + 1])
     for ref in refs:
         if ref not in defs:
             raise EavError(
@@ -2748,6 +2750,17 @@ class EavCodegen:
             return builder.load(self.module_storage[tok][0])
         return self._literal_or_ref(type_name, tok, builder, sym)
 
+    def _resolve_as(self, tok, llvm_type, builder, sym):
+        """Resolve a token to a value of a given LLVM type: load a binding, or
+        build a literal constant of that type (used by ifValue/ifOut operands)."""
+        if tok in sym:
+            return self._load(sym[tok], builder)
+        if tok in getattr(self, "module_storage", {}):
+            return builder.load(self.module_storage[tok][0])
+        if isinstance(llvm_type, (ir.FloatType, ir.DoubleType)):
+            return ir.Constant(llvm_type, float(tok))
+        return ir.Constant(llvm_type, _parse_int_literal_value(tok))
+
     def _emit_step(self, op, fn, row, builder, sym, let_mut, label_blocks):
         pred = row.predicate
         p = row.payload
@@ -2844,6 +2857,33 @@ class EavCodegen:
             cond = self._resolve(p[1], "Bool", builder, sym)
             cont = self._new_cont(fn)
             builder.cbranch(cond, cont, label_blocks[p[3]])
+            return ir.IRBuilder(cont)
+        if guard in ("ifValue", "ifOut"):
+            # README ss13 sugar: `branch ifValue X <cmp> Y goto L` (and `ifOut
+            # CALL <cmp> Y`) lower to a comparison + conditional branch.
+            gi = p.index("goto")
+            label = p[gi + 1]
+            left_tok, cmp_tok, right_tok = p[1], p[2], p[3]
+            if guard == "ifOut":
+                callee = self.program.entities.get(p[1])
+                orow = callee.fact("out") if callee else None
+                if not (orow and orow.payload):
+                    raise EavError(f"`ifOut {p[1]}` needs an `out` binding", row.line)
+                left_tok = orow.payload[0]
+            preds = {"equals": "==", "notEquals": "!=", "lessThan": "<",
+                     "lessThanOrEqual": "<=", "greaterThan": ">",
+                     "greaterThanOrEqual": ">="}
+            if cmp_tok not in preds:
+                raise EavError(f"unknown comparator {cmp_tok!r} in {guard} (README ss13)", row.line)
+            lx = self._resolve(left_tok, "Int64", builder, sym)
+            ly = self._resolve_as(right_tok, lx.type, builder, sym)
+            if isinstance(lx.type, (ir.FloatType, ir.DoubleType)):
+                cond = (builder.fcmp_unordered("!=", lx, ly) if cmp_tok == "notEquals"
+                        else builder.fcmp_ordered(preds[cmp_tok], lx, ly))
+            else:
+                cond = builder.icmp_signed(preds[cmp_tok], lx, ly)
+            cont = self._new_cont(fn)
+            builder.cbranch(cond, label_blocks[label], cont)
             return ir.IRBuilder(cont)
         if guard == "ifReady":
             # README ss13: single-thread tasks are always ready after `start`,
