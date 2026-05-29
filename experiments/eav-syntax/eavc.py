@@ -7525,6 +7525,42 @@ class EavCodegen:
             result = self._emit_compare(target, args, builder, sym, call)
         elif target.startswith("convert.to"):
             result = self._emit_convert(target, args, builder, sym, call)
+        elif target.startswith("decimal."):
+            # R-067: Decimal/Money are scaled Int64 — fixed scale 2 (raw value is
+            # the amount * 100). add/subtract/equal are scale-invariant integer
+            # ops; multiply divides the raw product by 100 and divide scales the
+            # dividend by 100, both truncating toward zero (sdiv). Overflow and
+            # divide-by-zero set the fallible DecimalError flag (`err`) that
+            # `branch ifError` consumes — never a silent wrap or UB.
+            i64 = ir.IntType(64)
+            hundred = ir.Constant(i64, 100)
+            if target == "decimal.add":
+                result, err = self._overflow_op("sadd", builder,
+                                                arg("left", "Decimal"), arg("right", "Decimal"))
+            elif target == "decimal.subtract":
+                result, err = self._overflow_op("ssub", builder,
+                                                arg("left", "Decimal"), arg("right", "Decimal"))
+            elif target == "decimal.multiply":
+                product, err = self._overflow_op("smul", builder,
+                                                 arg("left", "Decimal"), arg("right", "Decimal"))
+                result = builder.sdiv(product, hundred)  # rescale, toward zero
+            elif target == "decimal.divide":
+                dividend = arg("left", "Decimal")
+                divisor = arg("right", "Decimal")
+                scaled, overflow = self._overflow_op("smul", builder, dividend, hundred)
+                is_zero = builder.icmp_signed("==", divisor, ir.Constant(i64, 0))
+                # avoid UB: divide by 1 on the zero path; the err flag carries the
+                # DecimalError so the result on that path is never observed.
+                safe_divisor = builder.select(is_zero, ir.Constant(i64, 1), divisor)
+                result = builder.sdiv(scaled, safe_divisor)
+                err = builder.or_(is_zero, overflow)
+            elif target == "decimal.equal":
+                result = builder.icmp_signed("==", arg("left", "Decimal"), arg("right", "Decimal"))
+            else:
+                raise EavError(
+                    f"decimal target {target!r} is not modeled by the code "
+                    f"generator (R-067 lowers add/subtract/multiply/divide/equal)",
+                    call.line)
         elif target == "string.concat":
             # README ss30.2.2: heap-concatenate two NUL-terminated strings.
             result = self._concat(builder, arg("left", "String"), arg("right", "String"))
@@ -7713,6 +7749,20 @@ class EavCodegen:
         tb.call(self.runtime("trap"), [])
         tb.unreachable()
         builder.position_at_end(cont_bb)
+
+    def _overflow_op(self, op: str, builder, left, right):
+        """Call `llvm.{op}.with.overflow.i64` (op in sadd/ssub/smul) and return
+        (result_i64, overflow_i1) (R-067). llvmlite's `declare_intrinsic` reports
+        the wrong signature for these, so the intrinsic is declared by hand with
+        its canonical `{i64, i1} (i64, i64)` type and cached on the module."""
+        i64 = ir.IntType(64)
+        name = f"llvm.{op}.with.overflow.i64"
+        fn = self.module.globals.get(name)
+        if fn is None:
+            agg_ty = ir.LiteralStructType([i64, ir.IntType(1)])
+            fn = ir.Function(self.module, ir.FunctionType(agg_ty, [i64, i64]), name=name)
+        aggregate = builder.call(fn, [left, right])
+        return builder.extract_value(aggregate, 0), builder.extract_value(aggregate, 1)
 
     def _guard_div_zero(self, builder, divisor) -> None:
         """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a

@@ -1,9 +1,13 @@
 # standard.decimal.semsig — generated signature sidecar (README §16, §27).
-# DEFERRED runtime: exact fixed-point money/decimal math. `Decimal` is a scaled
-# 64-bit integer (a fixed number of fractional digits), NOT a binary float — so
-# 0.1 + 0.2 == 0.3 exactly and there is no representation error for currency.
-# X-093: Float operands into `decimal.*` (and Decimal/Money operands into Float
-# `math.*`) are rejected (SS3093); `==`/`!=` on Float operands warn (SS3094).
+# Exact fixed-point money/decimal math. `Decimal` is a scaled 64-bit integer,
+# NOT a binary float — so 0.1 + 0.2 == 0.3 exactly and there is no representation
+# error for currency. R-067: the runtime is now LOWERED at scale 2 (raw value =
+# amount * 100): add/subtract/equal are scale-invariant integer ops; multiply
+# divides the raw product by 100 and divide scales the dividend by 100, both
+# truncating toward zero; overflow and divide-by-zero raise DecimalError (the
+# fallible `catch`). X-093: Float operands into `decimal.*` (and Decimal/Money
+# operands into Float `math.*`) are rejected (SS3093); `==`/`!=` on Float
+# operands warn (SS3094).
 
 decimalSig is semsig
 decimalSig version "1.0"
@@ -27,7 +31,7 @@ decimalAdd arg left Decimal
 decimalAdd arg right Decimal
 decimalAdd out sum Decimal
 decimalAdd catch DecimalError
-decimalAdd purpose "Exact addition of two fixed-point decimals (deferred runtime)"
+decimalAdd purpose "Exact addition of two fixed-point decimals (R-067: lowered at scale 2, truncate toward zero)"
 
 decimalSubtract is intrinsic
 decimalSubtract target decimal.subtract
@@ -35,7 +39,7 @@ decimalSubtract arg left Decimal
 decimalSubtract arg right Decimal
 decimalSubtract out difference Decimal
 decimalSubtract catch DecimalError
-decimalSubtract purpose "Exact subtraction of two fixed-point decimals (deferred runtime)"
+decimalSubtract purpose "Exact subtraction of two fixed-point decimals (R-067: lowered at scale 2, truncate toward zero)"
 
 decimalMultiply is intrinsic
 decimalMultiply target decimal.multiply
@@ -43,7 +47,7 @@ decimalMultiply arg left Decimal
 decimalMultiply arg right Decimal
 decimalMultiply out product Decimal
 decimalMultiply catch DecimalError
-decimalMultiply purpose "Exact multiplication with defined rounding (deferred runtime)"
+decimalMultiply purpose "Exact multiplication with defined rounding (R-067: lowered at scale 2, truncate toward zero)"
 
 decimalDivide is intrinsic
 decimalDivide target decimal.divide
@@ -51,7 +55,7 @@ decimalDivide arg left Decimal
 decimalDivide arg right Decimal
 decimalDivide out quotient Decimal
 decimalDivide catch DecimalError
-decimalDivide purpose "Exact division with defined rounding; divide-by-zero is a DecimalError (deferred runtime)"
+decimalDivide purpose "Exact division with defined rounding; divide-by-zero is a DecimalError (R-067: lowered at scale 2, truncate toward zero)"
 
 decimalEqual is intrinsic
 decimalEqual target decimal.equal

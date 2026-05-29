@@ -8993,3 +8993,127 @@ def test_r021_built_runtime_lib_uses_keyed_path():
     # the keyed name carries a 16-hex-char digest suffix
     import re
     assert re.search(r"eav_runtime-[0-9a-f]{16}", os.path.basename(built))
+
+
+# === R-067: decimal arithmetic lowering (scale 2, truncate) ===
+
+_DECIMAL_HEAD = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path a.b\nm exports main\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "Decimal is alias\nDecimal for Int64\n"
+    "DecimalError is error\n"
+    "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+)
+
+
+def _decimal_binop_stdout(target, left, right):
+    """JIT-run `target left right` over scaled-Int64 Decimals; return the printed
+    raw scaled result."""
+    src = (_DECIMAL_HEAD
+           + "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+             "main uses stdoutWriter\nmain async no\n"
+             'main purpose "p"\nmain invariant "i"\n'
+           + f"main let leftValue immutable Decimal {left}\n"
+             f"main let rightValue immutable Decimal {right}\n"
+             "main let okCode immutable ExitCode 0\n"
+             "main do compute\nmain do show\nmain return okCode\n"
+             f"compute is call\ncompute in main\ncompute invokes {target}\n"
+             "compute arg left Decimal leftValue\ncompute arg right Decimal rightValue\n"
+             "compute out computed Decimal\n"
+             "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+             "show arg value Int64 computed\n")
+    out, code = eavc._record_run(src)
+    assert code == 0, out
+    return out.strip()
+
+
+def test_r067_decimal_arithmetic_exact_scaled_values():
+    """R-067: decimal.add/subtract/multiply/divide JIT-run to exact scale-2 raw
+    values (truncating toward zero). A no-op or Float lowering would not produce
+    these exact integers (e.g. 1.00/3.00 truncates to 33, not 0.333...)."""
+    assert _decimal_binop_stdout("decimal.add", 150, 250) == "400"        # 1.50 + 2.50 = 4.00
+    assert _decimal_binop_stdout("decimal.subtract", 400, 150) == "250"   # 4.00 - 1.50 = 2.50
+    assert _decimal_binop_stdout("decimal.multiply", 150, 200) == "300"   # 1.50 * 2.00 = 3.00
+    assert _decimal_binop_stdout("decimal.divide", 300, 200) == "150"     # 3.00 / 2.00 = 1.50
+    assert _decimal_binop_stdout("decimal.divide", 100, 300) == "33"      # 1.00 / 3.00 -> trunc 0.33
+
+
+def test_r067_decimal_equal_is_exact():
+    """R-067: decimal.equal is exact integer equality (sound, unlike Float)."""
+    def equal(left, right):
+        src = (_DECIMAL_HEAD
+               + "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+                 "main uses stdoutWriter\nmain async no\n"
+                 'main purpose "p"\nmain invariant "i"\n'
+               + f"main let leftValue immutable Decimal {left}\n"
+                 f"main let rightValue immutable Decimal {right}\n"
+                 "main let okCode immutable ExitCode 0\n"
+                 "main let oneValue immutable Int64 1\nmain let zeroValue immutable Int64 0\n"
+                 "main do compute\nmain branch ifFalse areEqual goto falseLabel\n"
+                 "main do printTrue\nmain goto endLabel\n"
+                 "main at falseLabel do printFalse\nmain at endLabel return okCode\n"
+                 "compute is call\ncompute in main\ncompute invokes decimal.equal\n"
+                 "compute arg left Decimal leftValue\ncompute arg right Decimal rightValue\n"
+                 "compute out areEqual Bool\n"
+                 "printTrue is call\nprintTrue in main\nprintTrue invokes console.writeIntegerLine\n"
+                 "printTrue arg value Int64 oneValue\n"
+                 "printFalse is call\nprintFalse in main\nprintFalse invokes console.writeIntegerLine\n"
+                 "printFalse arg value Int64 zeroValue\n")
+        out, code = eavc._record_run(src)
+        assert code == 0, out
+        return out.strip()
+    assert equal(150, 150) == "1"
+    assert equal(150, 200) == "0"
+
+
+def _decimal_fallible_path(target, left, right):
+    """JIT-run a fallible decimal op with `catch DecimalError` + `branch ifError`;
+    print 99 on the error path, the result otherwise."""
+    src = (_DECIMAL_HEAD
+           + "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+             "main uses stdoutWriter\nmain async no\n"
+             'main purpose "p"\nmain invariant "i"\n'
+           + f"main let leftValue immutable Decimal {left}\n"
+             f"main let rightValue immutable Decimal {right}\n"
+             "main let okCode immutable ExitCode 0\nmain let errValue immutable Int64 99\n"
+             "main do compute\nmain branch ifError compute goto errLabel\n"
+             "main do showOk\nmain goto endLabel\n"
+             "main at errLabel do showErr\nmain at endLabel return okCode\n"
+             f"compute is call\ncompute in main\ncompute invokes {target}\n"
+             "compute arg left Decimal leftValue\ncompute arg right Decimal rightValue\n"
+             "compute out computed Decimal\ncompute catch decErr DecimalError\n"
+             "showOk is call\nshowOk in main\nshowOk invokes console.writeIntegerLine\n"
+             "showOk arg value Int64 computed\n"
+             "showErr is call\nshowErr in main\nshowErr invokes console.writeIntegerLine\n"
+             "showErr arg value Int64 errValue\n")
+    out, code = eavc._record_run(src)
+    assert code == 0, out
+    return out.strip()
+
+
+def test_r067_decimal_divide_by_zero_and_overflow_are_decimal_errors():
+    """R-067: divide-by-zero and multiply overflow set the DecimalError flag the
+    `branch ifError` consumes (prints 99); a normal op takes the success path."""
+    assert _decimal_fallible_path("decimal.divide", 300, 0) == "99"        # div by zero
+    assert _decimal_fallible_path("decimal.multiply", 10000000000, 10000000000) == "99"  # i64 overflow
+    assert _decimal_fallible_path("decimal.divide", 300, 200) == "150"     # success path
+
+
+def test_r067_decimal_float_operand_still_rejected():
+    """R-067 keeps X-093: a Float operand into a decimal.* op is still SS3093 —
+    the two number worlds must not mix."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\nDecimal is alias\nDecimal for Int64\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let d immutable Decimal 100\nmain let f immutable Float64 1.5\n"
+        "main let okCode immutable ExitCode 0\nmain do bad\nmain return okCode\n"
+        "bad is call\nbad in main\nbad invokes decimal.add\n"
+        "bad arg left Decimal d\nbad arg right Float64 f\nbad out s Decimal\n"
+    )
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(src)
+    assert getattr(excinfo.value, "code", None) == "SS3093"
