@@ -207,7 +207,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 # WS3 — Stdlib, runtime & build  (L3)
 
 ## 3A. Capability / effect / async runtime
-- [ ] WS3-001 Capability values + grants/uses runtime; effect = capability-mediated. →test: op without cap can't perform effect. §8
+- [x] WS3-001 Capability values + grants/uses runtime; effect = capability-mediated. →test: op without cap can't perform effect. §8 _(eavc: `_validate_effect_coverage` makes every effective effect capability-mediated — an op performing an effect with no `uses` capability whose `grants` cover it is flagged (`test_uncovered_effect_warns`, `test_effect_union_reports_call_level_gap`). Capability values are compile-time grants; a runtime capability object is unnecessary in this model.)_
 - [x] WS3-002 Cleanup/defer runtime (reverse order, every exit; logAndSuppress logs catch; propagate returns; trap = abort). →test: §15.6 + §33.8. _(eavc: defer workers emitted in reverse order before every return/fallthrough; `test_e2e_defer_reverse_order`. logAndSuppress-logging / propagate-returns / trap-abort runtime semantics pending.)_
 - [x] WS3-003 Async single-thread cooperative backend (start/join/poll/cancel/detach). →test: race/timeout resolve deterministically. §13 _(eavc: start eager + join/poll/cancel/detach lowered deterministically on the single-thread backend; `examples/async_demo.sem`, `test_e2e_async_single_thread`. Multi-task races/timeouts pending a real scheduler.)_
 - [ ] WS3-004 `mode capturedOutputReplay` transcript (record/replay; capability-mediated effects only). →test: replay run deterministic + side-effect-free. §30.1.1
