@@ -213,6 +213,12 @@ DIAGNOSTICS.update({
     "MD1013": {"tier": "T3", "summary": "Project entry is not exported.",
                "found": "An `entry` entity with no `exports` row.",
                "suggested": "Export the entry entity (README §7)."},
+    "SS3201": {"tier": "T0", "summary": "Duplicate webServer route.",
+               "found": "Two routes with the same METHOD + PATH.",
+               "suggested": "Make each route's method+path unique (§17 #32)."},
+    "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
+               "found": "A `branch else` that doesn't follow a guard branch.",
+               "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
     "SS1340": {"tier": "T4", "summary": "ifValue/ifOut is comparison sugar.",
                "found": "A `branch ifValue`/`ifOut` guard.",
                "suggested": "Informational; fmt canonicalizes to compare + branch if (§13)."},
@@ -1802,6 +1808,23 @@ def lint(program: Program) -> list:
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_ownership_and_entry_export(program))
+    # README ss17 #30/#31: `branch else` is the default only after a guard branch.
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        prev_was_guard = False
+        for row in op.rows:
+            if row.predicate == "branch" and row.payload:
+                if row.payload[0] == "else" and not prev_was_guard:
+                    diags.append(Diagnostic(
+                        "SS3001", "warning",
+                        "`branch else` should follow a guard branch (it is the "
+                        "default-only-after-guard, README ss17 #30/#31)",
+                        row.line, op.name))
+                prev_was_guard = row.payload[0] != "else"
+            elif row.label is None and row.predicate in STEP_PREDICATES:
+                prev_was_guard = False
     # README ss17 #35: a fallible call (has `catch`) activated by `do` should have
     # an error path (`branch ifError`); a cleanup worker is exempt.
     cleanup_workers = {
@@ -2011,6 +2034,18 @@ def _validate_program(program: Program) -> None:
                     )
         elif ent.kind == "enum":
             _validate_enum(ent)
+        elif ent.kind == "webServer":
+            seen_routes: set = set()
+            for r in ent.facts("route"):
+                if len(r.payload) >= 2:
+                    key = (r.payload[0], r.payload[1])
+                    if key in seen_routes:
+                        raise EavError(
+                            f"webServer {ent.name!r} has a duplicate route "
+                            f"{r.payload[0]} {r.payload[1]} (README ss17 #32)",
+                            r.line, code="SS3201",
+                        )
+                    seen_routes.add(key)
         elif ent.kind == "platform":
             tr = ent.fact("targetRuntime")
             if tr and tr.payload and tr.payload[0] not in ("native", "wasm"):

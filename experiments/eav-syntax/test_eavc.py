@@ -1206,6 +1206,25 @@ def test_parse_result_arity_enforced():
     assert prog.entities["op"].fact("out").payload == ["Result", "Task", "LookupError"]
 
 
+def test_duplicate_route_rejected():
+    # README §17 #32: a webServer may not declare a duplicate METHOD+PATH route.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            'srv is webServer\nsrv route GET "/x" handlerA\nsrv route GET "/x" handlerB\n'
+        )
+    assert exc.value.code == "SS3201"
+
+
+def test_branch_else_without_guard_warns():
+    # README §17 #30/#31: branch else is default-only-after-guard.
+    prog = eavc.parse(
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main branch else target done\nmain at done return okCode\n"
+    )
+    assert "SS3001" in {d.code for d in eavc.lint(prog)}
+
+
 def test_parse_enum_duplicate_variant_rejected():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse("E is enum\nE variant open\nE variant open\n")
