@@ -79,3 +79,38 @@ ensureDirectory in directoryPath String
 ensureDirectory out Int32
 ensureDirectory body runtimeBinding eav_http_ensure_directory
 ensureDirectory purpose "Create a directory if missing (parent must exist); returns 0 on success"
+
+# --- server loop + request/response handler ABI (WS3-017) ---
+# The blocking socket server (ss_http_server_run) is signal-shutdown-only, so it
+# is driven from a real process, not a unit test; the handler ABI + response
+# writer below lower + link into a native exe.
+
+HttpHandler is operationType
+HttpHandler in OpaquePointer
+HttpHandler in OpaquePointer
+HttpHandler out Int32
+HttpHandler purpose "A request handler: (request, response) -> status int"
+
+respond is operation
+respond in response OpaquePointer
+respond in status Int32
+respond in body String
+respond out Int32
+respond body runtimeBinding eav_http_respond
+respond purpose "Write a plaintext response body + status; returns the runtime status"
+
+requestPath is operation
+requestPath in request OpaquePointer
+requestPath out String
+requestPath body runtimeBinding eav_http_request_path
+requestPath purpose "Read the request path from a live request"
+
+serve is operation
+serve in host String
+serve in port Int32
+serve in method String
+serve in path String
+serve in handler HttpHandler
+serve out Int32
+serve body runtimeBinding eav_http_serve
+serve purpose "Run the blocking HTTP server for one route+handler (until SIGINT)"

@@ -3078,6 +3078,83 @@ _HTML_RENDER_SRC = (
 )
 
 
+_HTTP_SERVER_MAIN = """
+HttpServerDemo is project
+HttpServerDemo module appHttpServer
+HttpServerDemo target console
+HttpServerDemo entry main
+
+appHttpServer is module
+appHttpServer path apps.httpServer
+appHttpServer exports main
+appHttpServer purpose "Serve one route with a handler"
+appHttpServer invariant "Routes GET /health to healthHandler"
+
+ExitCode is alias
+ExitCode for Int32
+
+healthHandler is operation
+healthHandler in request OpaquePointer
+healthHandler in response OpaquePointer
+healthHandler out Int32
+healthHandler async no
+healthHandler purpose "Respond 200 ok to a health probe"
+healthHandler invariant "Writes a 200 plaintext response"
+healthHandler let okStatus immutable Int32 200
+healthHandler let bodyText immutable String "ok"
+healthHandler let continueCode immutable Int32 0
+healthHandler do sendResponse
+healthHandler return continueCode
+
+sendResponse is call
+sendResponse in healthHandler
+sendResponse invokes respond
+sendResponse arg response OpaquePointer response
+sendResponse arg status Int32 okStatus
+sendResponse arg body String bodyText
+sendResponse discards "runtime status"
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Run the HTTP server on /health"
+main invariant "Serves until shutdown"
+main let host immutable String "127.0.0.1"
+main let port immutable Int32 8080
+main let getMethod immutable String "GET"
+main let healthPath immutable String "/health"
+main let handlerRef immutable HttpHandler healthHandler
+main let okCode immutable ExitCode 0
+main do startServer
+main return okCode
+
+startServer is call
+startServer in main
+startServer invokes serve
+startServer arg host String host
+startServer arg port Int32 port
+startServer arg method String getMethod
+startServer arg path String healthPath
+startServer arg handler HttpHandler handlerRef
+startServer discards "server exit status"
+"""
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to link the server")
+def test_http_server_links_into_exe(tmp_path):
+    # WS3-017: the blocking HTTP server (ss_http_server_run) + a handler/response
+    # wire through the runtimeBinding seam and link into a native exe (the live
+    # blocking serve is signal-shutdown-driven, run from a real process).
+    stdlib = open(os.path.join(STD, "standard.http.sem"), encoding="utf-8").read()
+    program = eavc.parse(stdlib + "\n" + _HTTP_SERVER_MAIN)
+    assert not any(d.severity == "error" for d in eavc.lint(program))
+    ir = str(eavc.lower_to_llvm(program))
+    assert "eav_http_serve" in ir and "eav_http_respond" in ir
+    out = str(tmp_path / ("server" + (".exe" if sys.platform == "win32" else "")))
+    eavc.build_executable(program, out)
+    assert os.path.exists(out)
+
+
 def test_html_render_full_document():
     # X-011: html.render renders the full htmlTemplate document, auto-escaping
     # text holes (not a single string.concat line).

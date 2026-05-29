@@ -79,3 +79,36 @@ EAV_EXPORT int eav_http_value_is_empty(const char *value) {
 EAV_EXPORT int eav_http_ensure_directory(const char *directory_path) {
     return ss_http_filesystem_ensure_directory(directory_path);
 }
+
+/* ---- server loop + request/response (WS3-017) ---- */
+
+/* A handler is an EAV operation lowered as int(request, response) — its JIT/
+ * native function pointer is passed straight through as an SSHttpHandler. */
+EAV_EXPORT int eav_http_serve(const char *host, int port, const char *method,
+                              const char *path, SSHttpHandler handler) {
+    SSHttpRoute route;
+    route.method = method;
+    route.path = path;
+    route.handler = handler;
+    route.middleware = 0;
+    SSHttpServerConfig config;
+    memset(&config, 0, sizeof(config));
+    config.host = host;
+    config.port = (unsigned short)port;
+    config.routes = &route;
+    config.route_count = 1;
+    return ss_http_server_run(&config);  /* blocks until SIGINT/SIGTERM */
+}
+
+EAV_EXPORT int eav_http_respond(void *response, int status, const char *body) {
+    return ss_http_response_text((SSHttpResponse *)response, status, body, "text/plain");
+}
+
+EAV_EXPORT int eav_http_server_shutting_down(void) {
+    return ss_http_server_is_shutting_down();
+}
+
+EAV_EXPORT const char *eav_http_request_path(void *request) {
+    return ss_http_request_method((const SSHttpRequest *)request)
+        ? ss_http_request_path((const SSHttpRequest *)request) : "";
+}
