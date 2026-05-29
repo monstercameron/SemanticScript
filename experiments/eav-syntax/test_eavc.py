@@ -3742,6 +3742,25 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+def test_app_desktop_window_smoke_deferred():
+    # X-045: desktop GUI is deferred — its `standard.gui` contract loads, app
+    # source is not ported, and a windowsGui project hard-errors (reserved).
+    gui = eavc.load_semsig(open(os.path.join(SIGS, "standard.gui.semsig"),
+                                encoding="utf-8").read())
+    assert any(l.startswith("gui.applicationCreate(") for l in eavc.docs(gui))
+    src = (
+        "DesktopSmoke is project\nDesktopSmoke module m\n"
+        "DesktopSmoke target windowsGui\nDesktopSmoke entry main\n"
+        'm is module\nm path apps.desktopWindowSmoke\nm purpose "p"\nm invariant "i"\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        "main return okCode\nExitCode is alias\nExitCode for Int32\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS0744"
+
+
 def test_app_html_template_lab_jit_runs():
     # X-040: the html-template-lab port escapes a dynamic title and renders it.
     composed = _app_program("html-template-lab", "standard.html.sem")
