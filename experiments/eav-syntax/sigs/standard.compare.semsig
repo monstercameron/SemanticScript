@@ -1,0 +1,17 @@
+# standard.compare.semsig — compiler-built-in comparison namespace (README ss26).
+compareSig is semsig
+compareSig version "1.0"
+compareSig generatedBy "eavc 0.1"
+compareSig describes standard.compare
+compareEqualInt64 is intrinsic
+compareEqualInt64 target compare.equalInt64
+compareEqualInt64 arg left Int64
+compareEqualInt64 arg right Int64
+compareEqualInt64 out equal Bool
+compareEqualInt64 purpose "Whether two Int64 values are equal"
+compareLessThanInt64 is intrinsic
+compareLessThanInt64 target compare.lessThanInt64
+compareLessThanInt64 arg left Int64
+compareLessThanInt64 arg right Int64
+compareLessThanInt64 out less Bool
+compareLessThanInt64 purpose "Whether the left Int64 is less than the right"

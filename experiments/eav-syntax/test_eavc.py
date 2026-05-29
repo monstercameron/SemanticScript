@@ -3240,6 +3240,32 @@ def test_list_pure_length_predicate_jit_runs():
     assert proc.stdout.strip() == "1"  # length 0 -> isEmpty true
 
 
+def test_stdlib_parity_coverage_guard():
+    # X-008: every EAV-sanctioned standard.* module has an EAVC catalog
+    # (.semsig signature or .sem stdlib); semsc's libc-mirror modules are
+    # explicitly outside the v0.3 sanctioned surface (§27 External surface).
+    sanctioned = {
+        "console", "math", "compare", "convert", "string", "assert", "test",
+        "build", "html", "sqlite", "http",
+        "process", "clock", "random", "net", "list", "map", "json",
+    }
+    semsc_only = {
+        "bit", "bool", "bytes", "ctype", "numeric", "sort", "inttypes", "stdlib",
+        "stdio", "log", "memory", "iso646", "errno", "constants", "limits",
+        "stddef", "char", "buffer", "slice", "small_list", "array", "signal",
+        "jwt", "bcrypt", "event", "document", "gui",
+    }
+
+    def has_catalog(module):
+        return (os.path.exists(os.path.join(SIGS, f"standard.{module}.semsig"))
+                or os.path.exists(os.path.join(STD, f"standard.{module}.sem")))
+
+    missing = sorted(m for m in sanctioned if not has_catalog(m))
+    assert not missing, f"sanctioned standard.* modules lacking a catalog: {missing}"
+    # the two surfaces are disjoint — a module is sanctioned xor semsc-only
+    assert not (sanctioned & semsc_only)
+
+
 def test_json_semsig_contract_and_enum_discriminant():
     # WS3-106 (deferred codec): the json contract loads, and its value-kind enum
     # round-trips its discriminant in a type-directed position.

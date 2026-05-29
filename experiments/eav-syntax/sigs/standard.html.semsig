@@ -1,0 +1,21 @@
+# standard.html.semsig — HTML render/trust namespace (README ss16, ss26).
+htmlSig is semsig
+htmlSig version "1.0"
+htmlSig generatedBy "eavc 0.1"
+htmlSig describes standard.html
+HtmlFragment is alias
+HtmlFragment for String
+HtmlFragment purpose "An escaped HTML fragment"
+HtmlTrustedFragment is alias
+HtmlTrustedFragment for String
+HtmlTrustedFragment purpose "A pre-sanitized HTML fragment that renders verbatim"
+htmlEscapeText is intrinsic
+htmlEscapeText target html.escapeText
+htmlEscapeText arg text String
+htmlEscapeText out fragment HtmlFragment
+htmlEscapeText purpose "Escape text into an HTML fragment by sink context"
+htmlTrustFragment is intrinsic
+htmlTrustFragment target html.trustFragment
+htmlTrustFragment arg raw String
+htmlTrustFragment out fragment HtmlTrustedFragment
+htmlTrustFragment purpose "Mint a trusted fragment that bypasses auto-escaping (boundary)"
