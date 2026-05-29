@@ -127,77 +127,18 @@ appConsoleStdoutWriter is capability
 appConsoleStdoutWriter grants write console.stdout
 appConsoleStdoutWriter purpose "Authority for listener operations to print proof that they ran"
 
-smokeStreamName is storage
-smokeStreamName scope module
-smokeStreamName type EventStreamName
-smokeStreamName mutability immutable
-smokeStreamName value "app.event-stream-smoke"
-
-smokeEventType is storage
-smokeEventType scope module
-smokeEventType type EventTypeName
-smokeEventType mutability immutable
-smokeEventType value "smoke.event.created"
-
-smokeEventKey is storage
-smokeEventKey scope module
-smokeEventKey type EventKey
-smokeEventKey mutability immutable
-smokeEventKey value "demo"
-
-smokePayloadJson is storage
-smokePayloadJson scope module
-smokePayloadJson type EventPayloadJson
-smokePayloadJson mutability immutable
-smokePayloadJson value "{\"message\":\"hello event\"}"
-
-smokeQueueCapacity is storage
-smokeQueueCapacity scope module
-smokeQueueCapacity type EventQueueCapacity
-smokeQueueCapacity mutability immutable
-smokeQueueCapacity value 16
-
-zeroEventId is storage
-zeroEventId scope module
-zeroEventId type EventId
-zeroEventId mutability immutable
-zeroEventId value 0
-
-nullEventOutputBuffer is storage
-nullEventOutputBuffer scope module
-nullEventOutputBuffer type EventOutputBuffer
-nullEventOutputBuffer mutability immutable
-nullEventOutputBuffer value 0
-
-nullEventOutputCapacity is storage
-nullEventOutputCapacity scope module
-nullEventOutputCapacity type EventBufferCapacity
-nullEventOutputCapacity mutability immutable
-nullEventOutputCapacity value 0
-
-successExitCode is storage
-successExitCode scope module
-successExitCode type ExitCode
-successExitCode mutability immutable
-successExitCode value 0
-
-failedExitCode is storage
-failedExitCode scope module
-failedExitCode type ExitCode
-failedExitCode mutability immutable
-failedExitCode value 1
-
-firstListenerText is storage
-firstListenerText scope module
-firstListenerText type String
-firstListenerText mutability immutable
-firstListenerText value "listener-one handled smoke.event.created"
-
-secondListenerText is storage
-secondListenerText scope module
-secondListenerText type String
-secondListenerText mutability immutable
-secondListenerText value "listener-two handled smoke.event.created"
+smokeStreamName is storage module immutable EventStreamName "app.event-stream-smoke"
+smokeEventType is storage module immutable EventTypeName "smoke.event.created"
+smokeEventKey is storage module immutable EventKey "demo"
+smokePayloadJson is storage module immutable EventPayloadJson "{\"message\":\"hello event\"}"
+smokeQueueCapacity is storage module immutable EventQueueCapacity 16
+zeroEventId is storage module immutable EventId 0
+nullEventOutputBuffer is storage module immutable EventOutputBuffer 0
+nullEventOutputCapacity is storage module immutable EventBufferCapacity 0
+successExitCode is storage module immutable ExitCode 0
+failedExitCode is storage module immutable ExitCode 1
+firstListenerText is storage module immutable String "listener-one handled smoke.event.created"
+secondListenerText is storage module immutable String "listener-two handled smoke.event.created"
 
 eventIdGreaterThan is operation
 eventIdGreaterThan in left EventId

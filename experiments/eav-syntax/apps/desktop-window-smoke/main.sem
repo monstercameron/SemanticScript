@@ -122,116 +122,25 @@ guiClearAuthority grants write gui.control.listBox.items
 guiClearAuthority grants write gui.control.textLabel.text
 guiClearAuthority purpose "Authority to clear the list and update the status label"
 
-helloGuiTitle is storage
-helloGuiTitle scope module
-helloGuiTitle type GuiText
-helloGuiTitle mutability immutable
-helloGuiTitle value "Hello GUI"
-
-headingText is storage
-headingText scope module
-headingText type GuiText
-headingText mutability immutable
-headingText value "Hello from SemanticScript"
-
-greetingPlaceholder is storage
-greetingPlaceholder scope module
-greetingPlaceholder type GuiText
-greetingPlaceholder mutability immutable
-greetingPlaceholder value "Type a greeting"
-
-sayHelloText is storage
-sayHelloText scope module
-sayHelloText type GuiText
-sayHelloText mutability immutable
-sayHelloText value "Say hello"
-
-inspectSelectedText is storage
-inspectSelectedText scope module
-inspectSelectedText type GuiText
-inspectSelectedText mutability immutable
-inspectSelectedText value "Inspect selected"
-
-clearGreetingsText is storage
-clearGreetingsText scope module
-clearGreetingsText type GuiText
-clearGreetingsText mutability immutable
-clearGreetingsText value "Clear greetings"
-
-statusReadyText is storage
-statusReadyText scope module
-statusReadyText type GuiText
-statusReadyText mutability immutable
-statusReadyText value "Ready"
-
-emptyGuiText is storage
-emptyGuiText scope module
-emptyGuiText type GuiText
-emptyGuiText mutability immutable
-emptyGuiText value ""
-
-greetingAddedStatusText is storage
-greetingAddedStatusText scope module
-greetingAddedStatusText type GuiText
-greetingAddedStatusText mutability immutable
-greetingAddedStatusText value "Greeting added"
-
-selectedGreetingStatusText is storage
-selectedGreetingStatusText scope module
-selectedGreetingStatusText type GuiText
-selectedGreetingStatusText mutability immutable
-selectedGreetingStatusText value "Selected greeting inspected"
-
-greetingsClearedStatusText is storage
-greetingsClearedStatusText scope module
-greetingsClearedStatusText type GuiText
-greetingsClearedStatusText mutability immutable
-greetingsClearedStatusText value "Greeting list cleared"
-
-windowWidth is storage
-windowWidth scope module
-windowWidth type GuiPixels
-windowWidth mutability immutable
-windowWidth value 640
-
-windowHeight is storage
-windowHeight scope module
-windowHeight type GuiPixels
-windowHeight mutability immutable
-windowHeight value 400
-
-maxGreetingLength is storage
-maxGreetingLength scope module
-maxGreetingLength type Int32
-maxGreetingLength mutability immutable
-maxGreetingLength value 200
-
-yesGuiFlag is storage
-yesGuiFlag scope module
-yesGuiFlag type Int32
-yesGuiFlag mutability immutable
-yesGuiFlag value 1
-
-noGuiFlag is storage
-noGuiFlag scope module
-noGuiFlag type Int32
-noGuiFlag mutability immutable
-noGuiFlag value 0
-
-greetingInputHandle is storage
-greetingInputHandle scope module
-greetingInputHandle type GuiTextBox
-greetingInputHandle mutability mutable
-
-greetingListHandle is storage
-greetingListHandle scope module
-greetingListHandle type GuiListBox
-greetingListHandle mutability mutable
-
-statusLabelHandle is storage
-statusLabelHandle scope module
-statusLabelHandle type GuiTextLabel
-statusLabelHandle mutability mutable
+helloGuiTitle is storage module immutable GuiText "Hello GUI"
+headingText is storage module immutable GuiText "Hello from SemanticScript"
+greetingPlaceholder is storage module immutable GuiText "Type a greeting"
+sayHelloText is storage module immutable GuiText "Say hello"
+inspectSelectedText is storage module immutable GuiText "Inspect selected"
+clearGreetingsText is storage module immutable GuiText "Clear greetings"
+statusReadyText is storage module immutable GuiText "Ready"
+emptyGuiText is storage module immutable GuiText ""
+greetingAddedStatusText is storage module immutable GuiText "Greeting added"
+selectedGreetingStatusText is storage module immutable GuiText "Selected greeting inspected"
+greetingsClearedStatusText is storage module immutable GuiText "Greeting list cleared"
+windowWidth is storage module immutable GuiPixels 640
+windowHeight is storage module immutable GuiPixels 400
+maxGreetingLength is storage module immutable Int32 200
+yesGuiFlag is storage module immutable Int32 1
+noGuiFlag is storage module immutable Int32 0
+greetingInputHandle is storage module mutable GuiTextBox
+greetingListHandle is storage module mutable GuiListBox
+statusLabelHandle is storage module mutable GuiTextLabel
 
 main is operation
 main out ExitCode

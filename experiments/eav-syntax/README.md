@@ -1302,6 +1302,19 @@ schemaReady mutability mutable
 schemaReady value false
 ```
 
+**Single-line storage form.** Because a constant is one declaration, the
+`is storage` row may carry the scope, mutability, type, and (optional) value
+inline — `NAME is storage <scope> <mutability> <type> [value]` — consistent with
+the one-line `let NAME <mutability> <type> <value>`. This is the compact
+authoring form for module constants; it parses to the same scope/mutability/
+type/value facts as the multi-row form above:
+
+```sem
+escapeByte is storage module immutable Int32 27
+greeting is storage module immutable String "hello world"
+lastRevision is storage module mutable Int64           # mutable, no initial value
+```
+
 ### Mutating a mutable binding
 
 A mutable binding — a local `let NAME mutable …` or a module-level `storage`

@@ -85,71 +85,17 @@ fetchBodyHeapRelease is capability
 fetchBodyHeapRelease grants free heap
 fetchBodyHeapRelease purpose "Authority to release HttpTextResponse body copies returned by net.fetchText"
 
-taskForgeHealthUrl is storage
-taskForgeHealthUrl scope module
-taskForgeHealthUrl type Url
-taskForgeHealthUrl mutability immutable
-taskForgeHealthUrl value "http://127.0.0.1:18090/health"
-
-taskForgeVersionUrl is storage
-taskForgeVersionUrl scope module
-taskForgeVersionUrl type Url
-taskForgeVersionUrl mutability immutable
-taskForgeVersionUrl value "http://127.0.0.1:18090/api/version"
-
-taskForgeTodosUrl is storage
-taskForgeTodosUrl scope module
-taskForgeTodosUrl type Url
-taskForgeTodosUrl mutability immutable
-taskForgeTodosUrl value "http://127.0.0.1:18090/api/todos"
-
-timeoutMillis is storage
-timeoutMillis scope module
-timeoutMillis type NetworkTimeoutMilliseconds
-timeoutMillis mutability immutable
-timeoutMillis value 3000
-
-maxBodyBytes is storage
-maxBodyBytes scope module
-maxBodyBytes type ResponseBodyLimitBytes
-maxBodyBytes mutability immutable
-maxBodyBytes value 1048576
-
-redirectLimit is storage
-redirectLimit scope module
-redirectLimit type HttpRedirectLimit
-redirectLimit mutability immutable
-redirectLimit value 5
-
-successfulExitCode is storage
-successfulExitCode scope module
-successfulExitCode type ExitCode
-successfulExitCode mutability immutable
-successfulExitCode value 0
-
-startedText is storage
-startedText scope module
-startedText type String
-startedText mutability immutable
-startedText value "started TaskForge fetches before awaiting"
-
-healthLabelText is storage
-healthLabelText scope module
-healthLabelText type String
-healthLabelText mutability immutable
-healthLabelText value "TaskForge /health response:"
-
-versionLabelText is storage
-versionLabelText scope module
-versionLabelText type String
-versionLabelText mutability immutable
-versionLabelText value "TaskForge /api/version response:"
-
-todosLabelText is storage
-todosLabelText scope module
-todosLabelText type String
-todosLabelText mutability immutable
-todosLabelText value "TaskForge /api/todos unauthenticated response:"
+taskForgeHealthUrl is storage module immutable Url "http://127.0.0.1:18090/health"
+taskForgeVersionUrl is storage module immutable Url "http://127.0.0.1:18090/api/version"
+taskForgeTodosUrl is storage module immutable Url "http://127.0.0.1:18090/api/todos"
+timeoutMillis is storage module immutable NetworkTimeoutMilliseconds 3000
+maxBodyBytes is storage module immutable ResponseBodyLimitBytes 1048576
+redirectLimit is storage module immutable HttpRedirectLimit 5
+successfulExitCode is storage module immutable ExitCode 0
+startedText is storage module immutable String "started TaskForge fetches before awaiting"
+healthLabelText is storage module immutable String "TaskForge /health response:"
+versionLabelText is storage module immutable String "TaskForge /api/version response:"
+todosLabelText is storage module immutable String "TaskForge /api/todos unauthenticated response:"
 
 main is operation
 main out ExitCode

@@ -93,48 +93,15 @@ httpResponseWriter is capability
 httpResponseWriter grants write http.response
 httpResponseWriter purpose "Authority to write status, body, content type, and custom response headers"
 
-okStatus is storage
-okStatus scope module
-okStatus type Int32
-okStatus mutability immutable
-okStatus value 200
-
-createdStatus is storage
-createdStatus scope module
-createdStatus type Int32
-createdStatus mutability immutable
-createdStatus value 201
-
-noContentStatus is storage
-noContentStatus scope module
-noContentStatus type Int32
-noContentStatus mutability immutable
-noContentStatus value 204
-
-redirectStatus is storage
-redirectStatus scope module
-redirectStatus type Int32
-redirectStatus mutability immutable
-redirectStatus value 302
-
-badRequestStatus is storage
-badRequestStatus scope module
-badRequestStatus type Int32
-badRequestStatus mutability immutable
-badRequestStatus value 400
-
-largeBodyThreshold is storage
-largeBodyThreshold scope module
-largeBodyThreshold type ByteCount
-largeBodyThreshold mutability immutable
-largeBodyThreshold value 12
+okStatus is storage module immutable Int32 200
+createdStatus is storage module immutable Int32 201
+noContentStatus is storage module immutable Int32 204
+redirectStatus is storage module immutable Int32 302
+badRequestStatus is storage module immutable Int32 400
+largeBodyThreshold is storage module immutable ByteCount 12
 largeBodyThreshold purpose "Split body-size tests between the small fixture and the large fixture"
 
-indexBody is storage
-indexBody scope module
-indexBody type String
-indexBody mutability immutable
-indexBody value "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware\n"
+indexBody is storage module immutable String "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware\n"
 indexBody purpose "Static index response listing the HTTP Runtime Gauntlet routes and pinned edge-case behavior"
 
 httpRuntimeGauntletServer is webServer

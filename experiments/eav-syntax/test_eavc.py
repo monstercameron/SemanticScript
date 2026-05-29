@@ -3234,6 +3234,65 @@ def test_set_step_assigns_mutable_and_runs():
     assert proc.stdout.strip() == "42"
 
 
+_INLINE_STORAGE_SRC = """
+InlineStorage is project
+InlineStorage module examplesInlineStorage
+InlineStorage target console
+InlineStorage entry main
+
+examplesInlineStorage is module
+examplesInlineStorage path examples.inlineStorage
+examplesInlineStorage exports main
+examplesInlineStorage purpose "Declare a module constant in one line and print it"
+examplesInlineStorage invariant "Prints 7 — the single-line storage value"
+
+ExitCode is alias
+ExitCode for Int32
+
+answerConstant is storage module immutable Int64 7
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print the single-line module constant"
+main invariant "Writes exactly one integer line: 7"
+main let okCode immutable ExitCode 0
+main do writeIt
+main return okCode
+
+writeIt is call
+writeIt in main
+writeIt invokes console.writeIntegerLine
+writeIt arg value Int64 answerConstant
+"""
+
+
+def test_inline_storage_declaration_runs():
+    # §12 single-line module-storage form: `NAME is storage <scope> <mutability>
+    # <type> <value>` populates scope/mutability/type/value in one row, like the
+    # one-line `let`. Prints 7 — if the inline tokens were dropped the global
+    # would default to 0 and print 0.
+    prog = eavc.parse(_INLINE_STORAGE_SRC)
+    st = prog.entities["answerConstant"]
+    assert [r.payload[0] for r in st.facts("scope")] == ["module"]
+    assert [r.payload[0] for r in st.facts("type")] == ["Int64"]
+    assert [r.payload[0] for r in st.facts("value")] == ["7"]
+    assert not [d.render() for d in eavc.lint(prog) if d.severity == "error"]
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_INLINE_STORAGE_SRC, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "7"
+
+
 def test_set_step_on_immutable_rejected():
     # §12: `set` on an immutable let (or unknown name) is SS1087.
     src = _SET_STEP_SRC.replace("main let chosen mutable Int64 0",
@@ -4676,18 +4735,24 @@ def test_app_taskforge_web_content_core_runs():
         "<html><body><ul><li>Buy &lt;milk&gt; &amp; eggs</li></ul></body></html>")
 
 
-def test_app_taskforge_tui_render_core_runs():
-    # X-042: the TUI render core JIT-runs (interactive loop/collections/json/fs
-    # deferred); it draws the frame, a row, status, and navigation.
+def test_app_taskforge_tui_full_port():
+    # X-042: the 24-op heap-array terminal todo app is FULLY ported (the keyboard
+    # reader, ANSI control, buffer/JSON helpers, renderer + modal, scroll math,
+    # JSON load/save, todo mutators, and the imperative `main` state machine using
+    # the §12 `set` step). Execution is deferred (c.terminalReadKey + interactive
+    # loop have no headless runtime); the whole app parses + lints clean.
     src = open(os.path.join(APPS, "taskforge-tui", "main.sem"), encoding="utf-8").read()
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
-    proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=src, capture_output=True, text=True,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "TODO TUI" in proc.stdout
-    assert "Up/Down select" in proc.stdout
+    prog = eavc.parse(src)
+    # op-count parity with the original v0.1 app (24 ops)
+    assert len(prog.of_kind("operation")) == 24
+    # the imperative state machine is expressed with the `set` step (README §12)
+    set_rows = [r for op in prog.of_kind("operation") for r in op.rows
+                if r.predicate == "set"]
+    assert len(set_rows) >= 30  # main alone reassigns mutable state ~30+ times
+    # the full port lints clean (c.*/pointer.* deferred as external targets)
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
+    assert not [d.render() for d in diags if d.severity != "error"]
 
 
 def test_app_taskforge_api_client_full_port():
@@ -4764,7 +4829,7 @@ def test_app_event_stream_smoke_full_port():
 _APP_PORT_MATRIX = {
     "html-template-lab": ("runs", []),
     "taskforge-api-client": ("deferred", []),
-    "taskforge-tui": ("runs", []),
+    "taskforge-tui": ("deferred", []),
     "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
     "http-runtime-gauntlet": ("deferred", []),
     "event-stream-smoke": ("deferred", []),

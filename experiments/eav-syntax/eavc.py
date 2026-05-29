@@ -1384,6 +1384,21 @@ def parse(source_text: str) -> Program:
                 )
             program.add(Entity(name=subject, kind=kind, line=lineno))
             current_kind_of[subject] = kind
+            # README ss12: single-line module-storage form, consistent with the
+            # one-line `let NAME MUTABILITY TYPE VALUE`. Extra tokens on the
+            # `is storage` row — `NAME is storage <scope> <mutability> <type>
+            # [value...]` — populate the scope/mutability/type/value facts so a
+            # constant is one row, not five. The verbose multi-row form (each
+            # `NAME scope/type/mutability/value` on its own line) stays valid.
+            if kind == "storage" and len(payload) > 1:
+                inline = payload[1:]
+                ent = program.entities[subject]
+                slots = ("scope", "mutability", "type")
+                for idx, slot_pred in enumerate(slots):
+                    if idx < len(inline):
+                        ent.rows.append(Row(subject, slot_pred, [inline[idx]], lineno))
+                if len(inline) > 3:
+                    ent.rows.append(Row(subject, "value", inline[3:], lineno))
             i += 1
             continue
 
