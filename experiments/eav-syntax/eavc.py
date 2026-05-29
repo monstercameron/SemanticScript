@@ -5886,10 +5886,49 @@ def cmd_fmt(args) -> int:
     Input may be either canonical EAV or compact-profile source; compact is
     expanded first, so `fmt --surface eav` canonicalizes compact and
     `fmt --surface compact` round-trips it (README ss23/ss24)."""
-    program = parse_compact(_read_source(args.path))
+    src = _read_source(args.path)
+    program = parse_compact(src)
     surface = getattr(args, "surface", "eav")
-    sys.stdout.write(format_compact(program) if surface == "compact"
-                     else format_program(program))
+    formatted = (format_compact(program) if surface == "compact"
+                 else format_program(program))
+    if getattr(args, "check", False):
+        # README §24: drift check — exit nonzero if the source is not already
+        # canonically formatted (keeps diffs/patch landings stable).
+        if formatted.strip() != src.strip():
+            sys.stderr.write("eavc: fmt drift — run `eavc fmt` to canonicalize\n")
+            return 1
+        return 0
+    sys.stdout.write(formatted)
+    return 0
+
+
+def cmd_fix(args) -> int:
+    """Derive a repair plan from lint diagnostics (sem.fixPlan.v1). Blocker-first
+    by default; `--include-warnings` adds cleanup guidance. The plan is
+    suggestions-only (machine-applicable auto-edits are future work)."""
+    program = parse_compact(_read_source(args.path))
+    diags = lint(program)
+    targeted = (diags if getattr(args, "include_warnings", False)
+                else [d for d in diags if d.severity == "error"])
+    items = []
+    for d in targeted:
+        entry = DIAGNOSTICS.get(d.code, {})
+        items.append({"code": d.code, "severity": d.severity, "line": d.line,
+                      "message": d.message, "found": entry.get("found"),
+                      "suggested": entry.get("suggested")})
+    status = "suggestions-only" if items else "ok"
+    sys.stdout.write(_json_envelope(
+        "sem.fixPlan.v1", status=status, planUsable=False, diagnostics=items) + "\n")
+    return 0
+
+
+def cmd_patch(args) -> int:
+    """Apply a repair plan (sem.patch.v1). eavc plans are suggestions-only, so
+    patch reports that no machine-applicable edits are available rather than
+    mutating source blindly."""
+    sys.stdout.write(_json_envelope(
+        "sem.patch.v1", status="suggestions-only", applied=0,
+        note="plan is suggestions-only; apply the suggested repairs manually") + "\n")
     return 0
 
 
@@ -6092,7 +6131,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--surface", choices=("eav", "compact"), default="eav",
         help="output surface: canonical EAV (default) or compact profile",
     )
+    sp_fmt.add_argument("--check", action="store_true",
+                        help="exit nonzero if the source is not canonically formatted")
     sp_fmt.set_defaults(func=cmd_fmt)
+
+    sp_fix = sub.add_parser("fix", help="derive a repair plan from diagnostics")
+    sp_fix.add_argument("path", help="EAV/compact source file, or - for stdin")
+    sp_fix.add_argument("--plan", action="store_true", help="emit the plan (default)")
+    sp_fix.add_argument("--include-warnings", action="store_true")
+    sp_fix.add_argument("--json", action="store_true")
+    sp_fix.set_defaults(func=cmd_fix)
+
+    sp_patch = sub.add_parser("patch", help="apply a repair plan")
+    sp_patch.add_argument("plan", nargs="?", help="plan JSON file")
+    sp_patch.add_argument("--apply", action="store_true")
+    sp_patch.add_argument("--dry-run", action="store_true")
+    sp_patch.add_argument("--json", action="store_true")
+    sp_patch.set_defaults(func=cmd_patch)
 
     sp_lint = sub.add_parser("lint", help="lint a program (or --explain a code)")
     sp_lint.add_argument("path", nargs="?", help="EAV source file, or - for stdin")

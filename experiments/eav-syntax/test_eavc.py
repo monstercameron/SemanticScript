@@ -2994,6 +2994,30 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_fix_plan_and_fmt_check(tmp_path, capsys):
+    # WS4-114: fix --plan emits a suggestions plan; fmt --check detects drift.
+    import json
+    # a program with a lint error -> fix plan lists it with its repair
+    bad = tmp_path / "bad.sem"
+    bad.write_text(
+        "Thing is record\nThing field a Int64\nThing purpose bare\n", encoding="utf-8")
+    eavc.main(["fix", str(bad), "--plan"])
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["surface"] == "sem.fixPlan.v1" and plan["status"] == "suggestions-only"
+    assert any(d["code"] == "MD1042" for d in plan["diagnostics"])
+    # fmt --check: canonically-formatted source passes, drifted source fails
+    canon = tmp_path / "canon.sem"
+    canon.write_text(eavc.format_program(eavc.parse(
+        open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())),
+        encoding="utf-8")
+    assert eavc.main(["fmt", "--check", str(canon)]) == 0
+    drift = tmp_path / "drift.sem"
+    drift.write_text(
+        "main is operation\nmain   out   ExitCode\nExitCode is alias\nExitCode for Int32\n",
+        encoding="utf-8")
+    assert eavc.main(["fmt", "--check", str(drift)]) == 1
+
+
 def test_deps_context_symbols_surfaces(capsys):
     # WS4-116: deps / context / symbols inspection surfaces.
     import json
