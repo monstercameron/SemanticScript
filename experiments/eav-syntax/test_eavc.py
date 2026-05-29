@@ -2948,6 +2948,32 @@ def test_windows_gui_target_reserved_error():
     assert getattr(exc.value, "code", None) == "SS0744"
 
 
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler for the runtime lane")
+def test_runtime_native_symbol_lane():
+    # X-061: the runtimeBinding native-symbol lane — discover compiler, select the
+    # manifest lib for a program's symbols, build it, and register the symbols.
+    assert eavc._find_c_compiler() is not None
+    sqlite_stub = (
+        "standardSqlite is module\nstandardSqlite path standard.sqlite\n"
+        'standardSqlite purpose "p"\nstandardSqlite invariant "i"\n'
+        "openInMemory is operation\nopenInMemory out OpaquePointer\n"
+        "openInMemory body runtimeBinding eav_sqlite_open_memory\n"
+        'openInMemory purpose "open"\n'
+    )
+    prog = eavc.parse(sqlite_stub)
+    assert eavc._referenced_runtime_symbols(prog) == {"eav_sqlite_open_memory"}
+    libs = eavc._runtime_libs_for(prog)
+    assert [lib["name"] for lib in libs] == ["eav_runtime"]
+    path = eavc._ensure_runtime_lib(libs[0])
+    assert path and os.path.exists(path)
+    # registration resolves the symbol into the JIT without raising
+    eavc._ensure_native_init()
+    eavc._register_runtime_symbols(prog)
+    # a program with no runtimeBinding selects no runtime libs
+    plain = eavc.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
+    assert eavc._runtime_libs_for(plain) == []
+
+
 def test_cli_subcommands_in_process(tmp_path, capsys):
     # X-060: drive each cmd_* through main() in-process (not just subprocess), so
     # the CLI dispatch surface is covered. Each invocation returns 0.
