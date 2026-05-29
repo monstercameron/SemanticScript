@@ -7842,6 +7842,19 @@ def _record_run(source: str):
     return proc.stdout, proc.returncode
 
 
+def _record_run_full(source: str):
+    """Like `_record_run`, but also returns stderr. `eval` needs the compiler/
+    runtime diagnostics, not only stdout (R-008): a parse/compile failure surfaces
+    on stderr (`eavc: …`) and must reach the caller, not be dropped."""
+    import os
+    import subprocess
+    proc = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), "run", "-"],
+        input=source, capture_output=True, text=True,
+    )
+    return proc.stdout, proc.stderr, proc.returncode
+
+
 def captured_output_replay(source: str) -> dict:
     """README ss30.1.1: `mode capturedOutputReplay` determinism mode.
 
@@ -8270,17 +8283,52 @@ _EVAL_SCAFFOLD = (
 )
 
 
+def _source_declares_project(source_text: str) -> bool:
+    """R-008: detect a real `<name> is project` entity row by lexing rows, not a
+    raw substring search. Comments and string literals therefore cannot
+    masquerade as a project declaration — `# … is project` is a comment row, and
+    `"is project"` lexes to a single string token, not the `is`/`project`
+    sequence."""
+    if source_text.startswith("﻿"):
+        source_text = source_text[1:]
+    for raw in source_text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        try:
+            tokens = tokenize_line(raw)
+        except EavError:
+            continue
+        if len(tokens) >= 3 and tokens[1] == "is" and tokens[2] == "project":
+            return True
+    return False
+
+
 def cmd_eval(args) -> int:
     """Run a snippet through the JIT without scaffolding (sem.eval.v1): if the
-    source has no `project`, wrap it in a minimal console program, then JIT-run
-    and return captured stdout + exit code."""
+    source declares no `project` entity, wrap it in a minimal console program,
+    then JIT-run and return captured stdout/stderr + exit code and a status.
+
+    R-008: project detection is lexical (not a substring), so a snippet whose
+    comment or string text mentions `is project` still wraps and runs; and the
+    payload carries stderr + a `status` so a compile failure is actionable
+    instead of a bare `ok:false` with the diagnostic dropped."""
     src = _read_source(args.path)
-    if "is project" not in src:
+    wrapped = not _source_declares_project(src)
+    if wrapped:
         src = _EVAL_SCAFFOLD + src
-    out, code = _record_run(src)
+    out, err, code = _record_run_full(src)
+    if code == 0:
+        status = "ok"
+    elif err.startswith("eavc:") or "\neavc:" in err:
+        # parse/compile failure surfaces through main's EavError handler
+        status = "compile-failed"
+    else:
+        status = "nonzero-exit"
     sys.stdout.write(_json_envelope(
-        "sem.eval.v1", ok=(code == 0), exitCode=code,
-        stdout=out, stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n")) + "\n")
+        "sem.eval.v1", ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
+        stdout=out, stderr=err,
+        stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n")) + "\n")
     return 0
 
 

@@ -3931,6 +3931,81 @@ def test_eval_snippet_jit(tmp_path):
     assert payload["ok"] is True and payload["stdoutLines"] == ["42"]
 
 
+def test_eval_comment_mentioning_is_project_still_wraps(tmp_path, capsys):
+    """R-008: project detection is lexical, so a comment that mentions
+    'is project' does not block scaffolding. Under the old substring check this
+    snippet was left unwrapped and failed to run (ok:false)."""
+    import json
+    snippet = (
+        "# this comment mentions is project but is not a project row\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let n immutable Int64 42\nmain let okCode immutable ExitCode 0\n"
+        "main do show\nmain return okCode\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 n\n"
+    )
+    snip = tmp_path / "snip.sem"
+    snip.write_text(snippet, encoding="utf-8")
+    eavc.main(["eval", str(snip)])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["wrapped"] is True
+    assert payload["ok"] is True
+    assert payload["status"] == "ok"
+    assert payload["stdoutLines"] == ["42"]
+
+
+def test_eval_string_literal_is_project_still_wraps(tmp_path, capsys):
+    """R-008: a String value of "is project" lexes to one token, not a project
+    row, so the snippet still wraps and runs."""
+    import json
+    snippet = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main let projectLabel immutable String "is project"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do show\nmain return okCode\n"
+        "show is call\nshow in main\nshow invokes console.writeLine\n"
+        "show arg text String projectLabel\n"
+    )
+    snip = tmp_path / "snip.sem"
+    snip.write_text(snippet, encoding="utf-8")
+    eavc.main(["eval", str(snip)])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["wrapped"] is True
+    assert payload["ok"] is True
+    assert payload["stdoutLines"] == ["is project"]
+
+
+def test_eval_real_project_not_wrapped(tmp_path, capsys):
+    """R-008: a source that really declares a project entity is not wrapped."""
+    import json
+    src = open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read()
+    f = tmp_path / "prog.sem"
+    f.write_text(src, encoding="utf-8")
+    eavc.main(["eval", str(f)])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["wrapped"] is False
+    assert payload["ok"] is True
+
+
+def test_eval_compile_failure_surfaces_stderr_and_status(tmp_path, capsys):
+    """R-008: a snippet that fails to compile reports status compile-failed and
+    includes the compiler diagnostic on stderr instead of dropping it. The
+    status/stderr keys are new, so this fails on the old payload too."""
+    import json
+    snippet = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+        "brokenThing is gadget\n"  # unknown entity kind -> parse-time EavError
+    )
+    snip = tmp_path / "bad.sem"
+    snip.write_text(snippet, encoding="utf-8")
+    eavc.main(["eval", str(snip)])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["status"] == "compile-failed"
+    assert "eavc:" in payload["stderr"]
+
+
 def test_check_and_readiness_lanes(capsys):
     # WS4-113: check (source lane) classifies status; readiness (environment lane).
     import json
