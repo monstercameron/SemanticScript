@@ -210,6 +210,18 @@ DIAGNOSTICS.update({
     "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
                "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
                "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
+    "SS1561": {"tier": "T1", "summary": "Use after region release.",
+               "found": "A value allocated in a region is used after that region was released.",
+               "suggested": "Do not use a region-allocated value past its `releaseRegion`; the arena's memory is gone (README §29 #14)."},
+    "SS1565": {"tier": "T1", "summary": "Double region release.",
+               "found": "A region is `releaseRegion`-d twice in one operation.",
+               "suggested": "Release each region exactly once (README §29 #14)."},
+    "SS1570": {"tier": "T1", "summary": "Region missing strategy/scope.",
+               "found": "A `region` without a `strategy` (arena|fixedBuffer|general) or without a `scope`.",
+               "suggested": "Declare `strategy <arena|fixedBuffer|general>` and `scope <op>` on the region (README §29 #14)."},
+    "SS1571": {"tier": "T1", "summary": "View missing lifetime.",
+               "found": "A call/task that `borrows` a resource declares no `lifetime`.",
+               "suggested": "A borrowed view must name what it borrows from: add `lifetime <region|resource>` (README §32.1 #9)."},
     "SS1569": {"tier": "T1", "summary": "Unsafe FFI allocator missing its wrapping rows.",
                "found": "An `unsafe yes` binding without all of `wrapsAs`/`cleanedBy`/`allocator`.",
                "suggested": "A foreign allocator must re-enter as an owned resource: declare `wrapsAs <OwnedType>` + `cleanedBy <freeTarget>` + `allocator <region|c.heap>` (README §26/§30.4)."},
@@ -5098,10 +5110,14 @@ def _validate_regions(program: Program) -> None:
             continue
         strat = ent.fact("strategy")
         if not (strat and strat.payload and strat.payload[0] in _REGION_STRATEGIES):
-            raise EavError(
+            raise EavError(  # WS1-120 SS1570
                 f"region {ent.name!r} needs a `strategy` of "
                 f"{', '.join(_REGION_STRATEGIES)} (README §29 #14)",
-                ent.line, code="SS1562")
+                ent.line, code="SS1570")
+        if ent.fact("scope") is None:
+            raise EavError(  # WS1-120 SS1570
+                f"region {ent.name!r} needs a `scope <op>` (README §29 #14)",
+                ent.line, code="SS1570")
         regions[ent.name] = strat.payload[0]
     for n in program.order:
         op = program.entities[n]
@@ -5121,8 +5137,27 @@ def _validate_regions(program: Program) -> None:
                     return True
             return False
 
-        allocated = set()
+        calls = {program.entities[c].name: program.entities[c]
+                 for c in program.order
+                 if program.entities[c].kind in ("call", "task")
+                 and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]}
+        allocated, released, var_region = set(), set(), {}
         for row in op.rows:
+            # SS1561: a value allocated in a region used after its release
+            refs = []
+            if row.predicate in ("do", "start", "join", "poll") and row.payload:
+                c = calls.get(row.payload[0])
+                if c is not None:
+                    refs = [a.payload[2] for a in c.facts("arg") if len(a.payload) >= 3]
+            elif row.predicate == "return":
+                refs = [t for t in row.payload
+                        if t not in ("value", "ok", "error", "nil", "void")]
+            for r in refs:
+                if var_region.get(r) in released:
+                    raise EavError(
+                        f"{op.name!r} uses {r!r} after its region "
+                        f"{var_region[r]!r} was released (use-after-region-release, "
+                        f"README §29 #14)", row.line, code="SS1561")
             if row.predicate == "allocateIn" and row.payload:
                 region = row.payload[0]
                 if region not in regions:
@@ -5135,6 +5170,8 @@ def _validate_regions(program: Program) -> None:
                         f"capability granting `allocate heap.{region}` (README §8)",
                         row.line, code="SS1563")
                 allocated.add(region)
+                if len(row.payload) >= 2:
+                    var_region[row.payload[1]] = region
             elif row.predicate == "releaseRegion" and row.payload:
                 region = row.payload[0]
                 if region not in regions:
@@ -5146,6 +5183,11 @@ def _validate_regions(program: Program) -> None:
                         f"{op.name!r} releases region {region!r} but never allocated in it "
                         f"(free/allocate mismatch, README §29 #14)",
                         row.line, code="SS1562")
+                if region in released:
+                    raise EavError(  # WS1-120 SS1565
+                        f"{op.name!r} releases region {region!r} twice "
+                        f"(double-release, README §29 #14)", row.line, code="SS1565")
+                released.add(region)
 
 
 def _validate_shared_state(program: Program) -> None:
@@ -5311,6 +5353,11 @@ def _validate_view_lifetimes(program: Program) -> None:
                 f"{'owns' if ent.fact('owns') else 'cleanedBy'} — a view does not "
                 f"clean up (README §32.1 #9)",
                 ent.line, code="SS1566")
+        if ent.fact("lifetime") is None:  # WS1-120 SS1571
+            raise EavError(
+                f"{ent.kind} {ent.name!r} borrows a resource but declares no "
+                f"`lifetime` — a view must name what it borrows from (README §32.1 #9)",
+                ent.line, code="SS1571")
         me = ent.fact("mayEscape")
         if not (me and me.payload and me.payload[0] == "no"):
             continue

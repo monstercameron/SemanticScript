@@ -5194,6 +5194,78 @@ def test_ffi_allocator_fully_wrapped_accepted():
     assert "allocBuffer" in prog.entities
 
 
+def test_region_use_after_release_rejected():
+    # WS1-120 SS1561: using a region-allocated value after releaseRegion.
+    src = (
+        "Reg is project\nReg module appReg\nReg target console\nReg entry main\n"
+        "appReg is module\nappReg path a.b\n"
+        'appReg purpose "p"\nappReg invariant "i"\nExitCode is alias\nExitCode for Int32\n'
+        "rgn is region\nrgn strategy arena\nrgn scope main\n"
+        "ac is capability\nac grants allocate heap.rgn\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain uses ac\nmain effect allocate heap.rgn\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main allocateIn rgn buf OpaquePointer\nmain releaseRegion rgn\nmain do useIt\n"
+        "main return okCode\n"
+        "useIt is call\nuseIt in main\nuseIt invokes c.someUse\nuseIt arg p OpaquePointer buf\n"
+        "useIt discards \"x\"\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1561"
+
+
+def test_region_double_release_rejected():
+    # WS1-120 SS1565: releasing a region twice.
+    src = (
+        "Reg is project\nReg module appReg\nReg target console\nReg entry main\n"
+        "appReg is module\nappReg path a.b\n"
+        'appReg purpose "p"\nappReg invariant "i"\nExitCode is alias\nExitCode for Int32\n'
+        "rgn is region\nrgn strategy arena\nrgn scope main\n"
+        "ac is capability\nac grants allocate heap.rgn\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain uses ac\nmain effect allocate heap.rgn\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main allocateIn rgn buf OpaquePointer\nmain releaseRegion rgn\nmain releaseRegion rgn\n"
+        "main return okCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1565"
+
+
+def test_memory_safety_lint_rule_set_registered():
+    # WS1-120: the memory-safety lint codes are all in the registry with a tier,
+    # so doctor/explain can surface them. (SS1567 plain-value-owns is deferred —
+    # it conflicts with the integer-fd handle convention in current eavc code.)
+    for code in ("SS1560", "SS1561", "SS1562", "SS1563", "SS1564", "SS1565",
+                 "SS1566", "SS1568", "SS1569", "SS1570", "SS1571"):
+        assert code in eavc.DIAGNOSTICS, code
+        assert eavc.DIAGNOSTICS[code]["tier"] in ("T0", "T1", "T2", "T3", "T4")
+
+
+def test_region_missing_strategy_rejected():
+    # WS1-120 SS1570: a region without a strategy.
+    src = "rgn is region\nrgn scope main\n"
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1570"
+
+
+def test_view_missing_lifetime_rejected():
+    # WS1-120 SS1571: a borrowed view that declares no lifetime.
+    src = (
+        "mk is operation\nmk out ExitCode\nmk async no\n"
+        'mk purpose "p"\nmk invariant "i"\n'
+        "mk in src Buffer\nmk let okCode immutable ExitCode 0\nmk do sl\nmk return okCode\n"
+        "sl is call\nsl in mk\nsl invokes buffer.slice\nsl arg buffer Buffer src\n"
+        "sl out win Slice\nsl borrows src\nsl mayEscape no\n"  # no `lifetime`
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1571"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
