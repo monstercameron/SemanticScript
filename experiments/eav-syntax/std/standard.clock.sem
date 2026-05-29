@@ -12,9 +12,52 @@ standardClock path standard.clock
 standardClock purpose "Capability-gated wall-clock reads plus pure time-unit conversions"
 standardClock invariant "Reading the clock is a capability-mediated effect; conversions are pure"
 
+# X-095 time-safety typing (§30.5.3): two distinct 64-bit (Y2038-safe) instant
+# types. `WallTime` is UTC/display time — it has NO arithmetic (calendar math
+# needs explicit timezone conversion). `MonotonicInstant` measures elapsed time;
+# subtract two of them for a duration. Applying math.* to a `WallTime` is SS3095.
+WallTime is alias
+WallTime for Int64
+WallTime purpose "UTC wall-clock time (ms since the Unix epoch); display only, no arithmetic"
+
+MonotonicInstant is alias
+MonotonicInstant for Int64
+MonotonicInstant purpose "A monotonic clock reading for measuring elapsed time (durations/timeouts)"
+
+DurationMillis is alias
+DurationMillis for Int64
+DurationMillis purpose "An elapsed-time span in milliseconds (the difference of two MonotonicInstants)"
+
 wallClock is capability
 wallClock grants read clock.wall
 wallClock purpose "Authority to read the wall clock (inject a fixed clock for deterministic tests)"
+
+monotonicClock is capability
+monotonicClock grants read clock.monotonic
+monotonicClock purpose "Authority to read the monotonic clock (for durations/timeouts)"
+
+nowMonotonic is operation
+nowMonotonic out MonotonicInstant
+nowMonotonic effect read clock.monotonic
+nowMonotonic uses monotonicClock
+nowMonotonic body runtimeBinding eav_http_now_millis
+nowMonotonic purpose "Current monotonic clock reading for measuring elapsed time (capability-gated)"
+
+elapsedMillis is operation
+elapsedMillis in startInstant MonotonicInstant
+elapsedMillis in endInstant MonotonicInstant
+elapsedMillis out DurationMillis
+elapsedMillis async no
+elapsedMillis purpose "Elapsed milliseconds between two monotonic readings (end - start); the only sound time difference"
+elapsedMillis do subtractInstants
+elapsedMillis return spanValue
+
+subtractInstants is call
+subtractInstants in elapsedMillis
+subtractInstants invokes math.subtractInt64
+subtractInstants arg left MonotonicInstant endInstant
+subtractInstants arg right MonotonicInstant startInstant
+subtractInstants out spanValue DurationMillis
 
 nowMillis is operation
 nowMillis out Int64

@@ -4139,6 +4139,51 @@ def test_counting_loop_makes_progress_no_warning():
     assert "SS0950" not in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
+def _time_arith_src(time_type):
+    return (
+        f"{time_type} is alias\n{time_type} for Int64\n"
+        "diff is operation\ndiff out Int64\ndiff async no\n"
+        'diff purpose "p"\ndiff invariant "i"\n'
+        f"diff in startInstant {time_type}\ndiff in endInstant {time_type}\n"
+        "diff do sub\ndiff return span\n"
+        "sub is call\nsub in diff\nsub invokes math.subtractInt64\n"
+        f"sub arg left {time_type} endInstant\nsub arg right {time_type} startInstant\n"
+        "sub out span Int64\n"
+    )
+
+
+def test_walltime_arithmetic_rejected():
+    # X-095 / §30.5.3: measuring elapsed time (subtracting WallTime) is a hard
+    # error — wall-clock time has no arithmetic. No-op-failing: a checker that
+    # ignores the operand type would accept it (WallTime resolves to Int64).
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_time_arith_src("WallTime"))
+    assert getattr(exc.value, "code", None) == "SS3095"
+
+
+def test_monotonic_instant_duration_accepted():
+    # X-095: subtracting two MonotonicInstants yields a duration — the sound,
+    # accepted form. It must NOT raise.
+    prog = eavc.parse(_time_arith_src("MonotonicInstant"))
+    assert "diff" in prog.entities
+
+
+def test_walltime_local_arithmetic_rejected():
+    # X-095: naive calendar arithmetic on WallTime (adding) is also rejected.
+    src = (
+        "WallTime is alias\nWallTime for Int64\n"
+        "addDay is operation\naddDay out WallTime\naddDay async no\n"
+        'addDay purpose "p"\naddDay invariant "i"\n'
+        "addDay in now WallTime\naddDay let dayMillis immutable Int64 86400000\n"
+        "addDay do bump\naddDay return later\n"
+        "bump is call\nbump in addDay\nbump invokes math.addInt64\n"
+        "bump arg left WallTime now\nbump arg right Int64 dayMillis\nbump out later WallTime\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3095"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

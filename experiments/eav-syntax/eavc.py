@@ -153,6 +153,9 @@ DIAGNOSTICS.update({
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
+    "SS3095": {"tier": "T1", "summary": "Arithmetic on wall-clock time.",
+               "found": "A math.* call with a `WallTime` operand (elapsed/duration or local-time arithmetic).",
+               "suggested": "Use a `MonotonicInstant` for durations, or an explicit timezone conversion for calendar math; `WallTime` has no arithmetic (README §30.5.3/§27)."},
     "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
                "found": "An app operation with a runtimeBinding/intrinsic body.",
                "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
@@ -3124,6 +3127,7 @@ def _validate_program(program: Program) -> None:
     _validate_islands(program)
     _validate_ownership_edges(program)
     _validate_html_trust(program)
+    _validate_time_safety(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4088,6 +4092,31 @@ def _validate_islands(program: Program) -> None:
                         f"{len(params)} parameter arg(s) (README ss16, WS3-024)",
                         call.line, code="SS3024Q",
                     )
+
+
+def _validate_time_safety(program: Program) -> None:
+    """X-095 / README §30.5.3: time-safety typing. `WallTime` (UTC/display) and
+    `MonotonicInstant` (durations/timeouts) are distinct. Measuring elapsed time
+    or doing naive calendar arithmetic on `WallTime` is a hard error — wall-clock
+    time has no arithmetic; subtract `MonotonicInstant`s for a duration, or use an
+    explicit timezone conversion for calendar math. (Both are 64-bit, Y2038-safe.)"""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not (target.startswith("math.")):
+            continue
+        for a in ent.facts("arg"):
+            if len(a.payload) >= 2 and a.payload[1] == "WallTime":
+                raise EavError(
+                    f"call {ent.name!r} applies {target!r} to a `WallTime` operand "
+                    f"{a.payload[0]!r}; wall-clock time has no arithmetic — use a "
+                    f"`MonotonicInstant` for durations or an explicit timezone "
+                    f"conversion for calendar math (README §30.5.3)",
+                    ent.line, code="SS3095",
+                )
 
 
 def _validate_html_trust(program: Program) -> None:

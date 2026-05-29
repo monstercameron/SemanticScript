@@ -5244,6 +5244,15 @@ capability makes a run deterministic, and combined with `mode
 capturedOutputReplay` (§30.1.1) makes it fully replayable. This is why time and
 randomness are modeled as authority, not built-ins.
 
+**Time-safety typing (X-095).** `standard.clock` exposes two distinct 64-bit
+(Y2038-safe) instant types: `WallTime` (UTC/display) and `MonotonicInstant`
+(durations/timeouts). Applying arithmetic (`math.*`) to a `WallTime` operand is a
+hard error (**SS3095**) — wall-clock time has no arithmetic: measuring elapsed
+time subtracts two `MonotonicInstant`s (`clock.elapsedMillis`), and calendar math
+requires an explicit timezone conversion. This makes "measured elapsed time with
+the wall clock" and "naive local-time arithmetic" unrepresentable rather than
+silently wrong.
+
 ### 30.6 Documentation and suppression
 
 #### 30.6.1 Doc generation from source — Normative
