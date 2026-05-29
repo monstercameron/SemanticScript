@@ -1,0 +1,61 @@
+# record_demo — record construction (<Record>.new) + field access
+# (<Record>.<field>) lowered to LLVM struct insertvalue/extractvalue.
+# Builds a Point{x,y} and prints x. (todos WS1-053/054/108, WS3-022)
+
+RecordDemo is project
+RecordDemo module examplesRecordDemo
+RecordDemo target console
+RecordDemo entry main
+
+examplesRecordDemo is module
+examplesRecordDemo path examples.recordDemo
+examplesRecordDemo exports main
+examplesRecordDemo purpose "Construct a record and read one of its fields"
+examplesRecordDemo invariant "Prints the x field of the constructed point"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Point is record
+Point field x Int64
+Point field y Int64
+Point purpose "A 2D integer point"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Point(11, 22) and print its x"
+main invariant "Writes exactly one integer line: 11"
+main let px immutable Int64 11
+main let py immutable Int64 22
+main let okCode immutable ExitCode 0
+main do buildPoint
+main do readX
+main do writeX
+main return okCode
+
+buildPoint is call
+buildPoint in main
+buildPoint invokes Point.new
+buildPoint arg x Int64 px
+buildPoint arg y Int64 py
+buildPoint out point Point
+
+readX is call
+readX in main
+readX invokes Point.x
+readX arg record Point point
+readX out xValue Int64
+
+writeX is call
+writeX in main
+writeX invokes console.writeIntegerLine
+writeX arg value Int64 xValue

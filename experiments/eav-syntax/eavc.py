@@ -1157,6 +1157,7 @@ class EavCodegen:
         self._runtime: dict[str, ir.Function] = {}
         self._str_count = 0
         self.entry_name = "main"
+        self._record_layouts: dict[str, tuple] = {}  # name -> (struct_type, field_names)
 
     # -- types --
     def resolve_type_name(self, name: str) -> str:
@@ -1170,9 +1171,23 @@ class EavCodegen:
         resolved = self.resolve_type_name(name)
         if resolved in _PRIMITIVE_IR:
             return _PRIMITIVE_IR[resolved]
-        # records/enums/errors are schema in the console model; represent an
-        # opaque handle as i64 (they are not constructed at runtime here).
+        ent = self.program.entities.get(resolved)
+        if ent is not None and ent.kind == "record":
+            return self._record_layout(ent)[0]
+        if ent is not None and ent.kind == "enum":
+            return ir.IntType(32)  # discriminant
+        # errors and other named types: opaque i64 handle in the console model.
         return ir.IntType(64)
+
+    def _record_layout(self, rec: Entity):
+        """(LLVM struct type, ordered field names) for a record, cached."""
+        if rec.name in self._record_layouts:
+            return self._record_layouts[rec.name]
+        fields = [f for f in rec.facts("field") if len(f.payload) >= 2]
+        struct_t = ir.LiteralStructType([self.ir_type(f.payload[1]) for f in fields])
+        names = [f.payload[0] for f in fields]
+        self._record_layouts[rec.name] = (struct_t, names)
+        return self._record_layouts[rec.name]
 
     def is_float_type(self, name: str) -> bool:
         return self.resolve_type_name(name) in _FLOAT_TYPE_NAMES
@@ -1469,11 +1484,7 @@ class EavCodegen:
                 vals.append(self._resolve(a.payload[2], a.payload[1], builder, sym))
             result = builder.call(self.functions[target], vals)
         else:
-            raise EavError(
-                f"call target {target!r} is not modeled by the LLVM console code "
-                "generator (todos WS3 stdlib)",
-                call.line,
-            )
+            result = self._emit_derived_target(target, call, args, builder, sym)
 
         self._call_info[call.name] = (result, err)
 
@@ -1490,6 +1501,62 @@ class EavCodegen:
                 builder.store(result, sym[name][1])
             else:
                 sym[name] = ("val", result)
+
+
+    def _emit_derived_target(self, target, call, args, builder, sym):
+        """Compiler-derived construction/access targets (README ss10.5): a record
+        `<Record>.new`/`<Record>.<field>` and a payloadless `<Enum>.<variant>`."""
+        head, _, tail = target.rpartition(".")
+        ent = self.program.entities.get(head)
+        if ent is not None and ent.kind == "record":
+            struct_t, field_names = self._record_layout(ent)
+            if tail == "new":
+                value = ir.Constant(struct_t, ir.Undefined)
+                for idx, fname in enumerate(field_names):
+                    a = args.get(fname)
+                    if a is None:
+                        raise EavError(
+                            f"call {call.name!r} to {target!r} is missing field arg "
+                            f"{fname!r} (README ss10.5)",
+                            call.line,
+                        )
+                    fval = self._resolve(a.payload[2], a.payload[1], builder, sym)
+                    value = builder.insert_value(value, fval, idx)
+                return value
+            if tail in field_names:
+                rec_arg = args.get("record") or next(iter(args.values()), None)
+                if rec_arg is None:
+                    raise EavError(
+                        f"call {call.name!r} to field access {target!r} needs the "
+                        f"record as its arg (README ss10.5)",
+                        call.line,
+                    )
+                recval = self._resolve(rec_arg.payload[2], rec_arg.payload[1], builder, sym)
+                return builder.extract_value(recval, field_names.index(tail))
+            raise EavError(
+                f"{target!r}: record {head!r} has no field {tail!r} (README ss10.5)",
+                call.line,
+            )
+        if ent is not None and ent.kind == "enum":
+            variants = [v.payload[0] for v in ent.facts("variant") if v.payload]
+            if tail not in variants:
+                raise EavError(
+                    f"{target!r}: enum {head!r} has no variant {tail!r} "
+                    f"(README ss10.5)",
+                    call.line,
+                )
+            repr_map = {
+                r.payload[0]: int(r.payload[1])
+                for r in ent.facts("repr")
+                if len(r.payload) >= 2
+            }
+            disc = repr_map.get(tail, variants.index(tail))
+            return ir.Constant(ir.IntType(32), disc)
+        raise EavError(
+            f"call target {target!r} is not modeled by the LLVM console code "
+            "generator (todos WS3 stdlib)",
+            call.line,
+        )
 
 
 def lower_to_llvm(program: Program) -> ir.Module:

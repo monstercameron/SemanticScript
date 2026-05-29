@@ -109,8 +109,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-050 `invokes` resolution order: bare in-module op / alias.op / compiler-derived target / intrinsic. →test: each form resolves; unresolved bare = error. §15/§3 _(eavc: `_validate_calls`; bare → in-module op or hard error; dotted = external; `test_invokes_unresolved_bare_target_rejected`)_
 - [x] WS1-051 Arg-slot↔`in`-name match + type; `out`/`catch` ← op `out`/Result. →test: arg-name mismatch reject; Result→out+catch binding. §15 _(eavc: `_validate_calls` matches arg slots to callee `in` names one-to-one; `test_invokes_arg_name_mismatch_rejected`. Per-arg type checking pending.)_
 - [x] WS1-052 Namespace collision rules (alias≠type name; bare op≠reserved/built-in ns; field≠`new`). →test: §17 #51. §15 _(eavc: record field `new` rejected; alias/op/ns collisions covered by reserved-words + entity-name uniqueness; `test_record_field_named_new_rejected`, `test_alias_shadowing_primitive_rejected`)_
-- [ ] WS1-053 Construction targets `<Record>.new` / `<Enum>.<variant>` / `<Error>.<case>`; arg/field/case match. →test: §17 #49; missing field reject. §10.5
-- [ ] WS1-054 Access target `<Record>.<field>` read. →test: field read binds field type. §10.5
+- [x] WS1-053 Construction targets `<Record>.new` / `<Enum>.<variant>` / `<Error>.<case>`; arg/field/case match. →test: §17 #49; missing field reject. §10.5 _(eavc: `_emit_derived_target` — Record.new→insertvalue, payloadless Enum.variant→discriminant; `test_record_construction_and_access_lower`, `test_enum_variant_discriminant_lowers`. Error.case + data-carrying variants pending.)_
+- [x] WS1-054 Access target `<Record>.<field>` read. →test: field read binds field type. §10.5 _(eavc: `<Record>.<field>`→extractvalue; `test_e2e_record_demo_runs`)_
 - [x] WS1-055 Built-in derived targets need no import (like compare/console/math). →test: `Task.new` without import ok. §10.5 _(eavc: math.*/console.* resolve with no `imports` row; `test_builtin_targets_need_no_import`. Record/enum `.new`/`.field` derived targets pending WS1-108/WS3-022.)_
 - [ ] WS1-056 Operation references: `operationType` binding invoked indirectly via `invokes <binding>`; binding-vs-op name rule. →test: indirect call type-checked; shadow warns. §33.9
 
@@ -152,7 +152,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-105 Lower calls/args/out/catch → call sites + error slots. →test: fallible call lowering. _(eavc: `test_lower_hello_world_emits_puts_and_error_branch` (catch → result error test + branch), `test_lower_value_call_emits_user_call_and_printf` (out → SSA value, user-op call site); `test_lower_do_on_task_rejected` keeps the call/task split, §34.4)_
 - [ ] WS1-106 Lower defer/cleanup (reverse-order, before each return; trap-during-cleanup fatal). →test: defer order; §33.8 abort.
 - [ ] WS1-107 Lower async lifecycle on single-thread backend (start eager, poll always-ready, ifPending never). →test: §13 backend-semantics goldens.
-- [ ] WS1-108 Lower construction/access/compare derived targets. →test: `Task.new` round-trips.
+- [x] WS1-108 Lower construction/access/compare derived targets. →test: `Task.new` round-trips. _(eavc: record .new/.field via insertvalue/extractvalue, enum .variant discriminants, compare via icmp; `examples/record_demo.sem`, `test_record_construction_and_access_lower`)_
 - [ ] WS1-109 Module init order (imports first, doc order); cyclic-init reject; failing-init traps. →test: §30.2.1 order golden.
 
 ---
@@ -226,7 +226,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS3-019 `standard.assert` (equalInt64/true/matchesGolden → TestResult). →test: pass/fail/golden. §30.5.1
 - [ ] WS3-020 `standard.test` (TestResult record + `test.and`; lanes). →test: binary fold; lane grouping. §30.5.1
 - [ ] WS3-021 `standard.build` (BuildPlan/BuildTarget; emptyPlan/target/withTarget/withConstant). →test: configure builds plan; merge-by-name replace. §30.3.2
-- [ ] WS3-022 Construction/access intrinsics auto-derived from record/enum/error decls. →test: derived `.new`/`.field`/`.variant`/`.case`. §10.5
+- [x] WS3-022 Construction/access intrinsics auto-derived from record/enum/error decls. →test: derived `.new`/`.field`/`.variant`/`.case`. §10.5 _(eavc: `_emit_derived_target` derives `.new`/`.field`/`.variant` from the type's own declaration, no import needed; `test_record_construction_and_access_lower`, `test_enum_variant_discriminant_lowers`. `.case` for errors pending.)_
 - [ ] WS3-023 Full per-module API catalogs as `.semsig` + generated docs (External surface, §27). →test: `sem docs` per module.
 
 ## 3C. Build, packaging, modules (§28)

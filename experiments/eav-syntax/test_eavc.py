@@ -871,6 +871,35 @@ def test_no_and_or_guard_keyword():
         eavc.lower_to_llvm(eavc.parse(src))
 
 
+def test_record_construction_and_access_lower():
+    # README ss10.5: <Record>.new -> insertvalue; <Record>.<field> -> extractvalue.
+    ir_text = _ir_for("record_demo.sem")
+    assert "insertvalue {i64, i64} undef, i64 11, 0" in ir_text
+    assert "insertvalue {i64, i64}" in ir_text
+    assert "extractvalue {i64, i64}" in ir_text
+
+
+def test_e2e_record_demo_runs():
+    proc = _eavc_run("record_demo.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "11" in proc.stdout
+
+
+def test_enum_variant_discriminant_lowers():
+    # README ss10.5: a payloadless <Enum>.<variant> lowers to its discriminant.
+    src = (
+        "P is project\nP module m\nP target console\nP entry getDisc\n"
+        "m is module\nm path a.b\n"
+        "Mode is enum\nMode variant readOnly\nMode variant readWrite\n"
+        "Mode repr readOnly 1\nMode repr readWrite 2\n"
+        "getDisc is operation\ngetDisc out Int32\n"
+        "getDisc do pick\ngetDisc return d\n"
+        "pick is call\npick in getDisc\npick invokes Mode.readWrite\npick out d Int32\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert "ret i32 2" in ir_text  # readWrite's repr discriminant
+
+
 def test_e2e_factorial_recursion():
     # README ss33.3: direct recursion is permitted. factorial(5) == 120.
     proc = _eavc_run("factorial.sem")
