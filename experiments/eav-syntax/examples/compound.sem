@@ -1,0 +1,68 @@
+# compound — A AND B is two sequential guards; there is no `and`/`or` (README
+# ss33.4). Prints "both positive" only when a > 0 and b > 0. (todos WS1-068)
+
+Compound is project
+Compound module examplesCompound
+Compound target console
+Compound entry main
+
+examplesCompound is module
+examplesCompound path examples.compound
+examplesCompound exports main
+examplesCompound purpose "Show compound conditions as sequential guards"
+examplesCompound invariant "Reaches the both-positive path only when both checks pass"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print whether both a and b are positive using sequential guards"
+main invariant "The both-positive write is guarded by two ifFalse checks in series"
+main let a immutable Int64 3
+main let b immutable Int64 4
+main let zero immutable Int64 0
+main let bothText immutable String "both positive"
+main let notBothText immutable String "not both positive"
+main let okCode immutable ExitCode 0
+main do checkA
+main branch ifFalse aPositive goto notBoth
+main do checkB
+main branch ifFalse bPositive goto notBoth
+main do writeBoth
+main return okCode
+main at notBoth do writeNotBoth
+main return okCode
+
+checkA is call
+checkA in main
+checkA invokes math.greaterThanInt64
+checkA arg left Int64 a
+checkA arg right Int64 zero
+checkA out aPositive Bool
+
+checkB is call
+checkB in main
+checkB invokes math.greaterThanInt64
+checkB arg left Int64 b
+checkB arg right Int64 zero
+checkB out bPositive Bool
+
+writeBoth is call
+writeBoth in main
+writeBoth invokes console.writeLine
+writeBoth arg text String bothText
+
+writeNotBoth is call
+writeNotBoth in main
+writeNotBoth invokes console.writeLine
+writeNotBoth arg text String notBothText

@@ -853,6 +853,24 @@ def test_e2e_add_two_runs():
     assert "42" in proc.stdout
 
 
+def test_e2e_compound_condition_sequential_guards():
+    # README ss33.4: A AND B is two sequential guards (no and/or keyword).
+    proc = _eavc_run("compound.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "both positive" in proc.stdout
+
+
+def test_no_and_or_guard_keyword():
+    # `and`/`or` are not guards; a branch using them is rejected.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let f immutable Bool true\nmain let okCode immutable ExitCode 0\n"
+        "main branch and f goto done\nmain return okCode\nmain at done return okCode\n"
+    )
+    with pytest.raises(eavc.EavError):
+        eavc.lower_to_llvm(eavc.parse(src))
+
+
 def test_e2e_factorial_recursion():
     # README ss33.3: direct recursion is permitted. factorial(5) == 120.
     proc = _eavc_run("factorial.sem")

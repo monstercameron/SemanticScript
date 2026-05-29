@@ -123,7 +123,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-065 Async guards `ifReady/ifPending/ifCanceled` (after poll/join+cancel). →test: §17 #22; ifCanceled w/o cancel+join reject. §13
 - [ ] WS1-066 Non-canonical sugar lowering: `ifOut`/`ifValue` → comparison call + `branch if`; `branch else` → `goto`; deterministic generated names + reuse + collision suffix. →test: fmt(sugar) golden; fmt idempotent. §13
 - [ ] WS1-067 Comparator-lowering table → `compare.<cmp><Type>`; Bool/enum equals/notEquals only. →test: §17 #45; `greaterThan Bool` reject. §13
-- [ ] WS1-068 Compound conditions = sequential guards (no and/or). →test: A∧B / A∨B goldens. §33.4
+- [x] WS1-068 Compound conditions = sequential guards (no and/or). →test: A∧B / A∨B goldens. §33.4 _(eavc: `examples/compound.sem` does A∧B via two sequential `ifFalse` guards; `test_e2e_compound_condition_sequential_guards`, `test_no_and_or_guard_keyword`)_
 - [x] WS1-069 Label lint: every goto/branch target has one `at`; unique; referenced; dead-label warn. →test: §17 #11/#12/#13. §13 _(eavc: `_validate_labels`; `test_label_undefined_target_rejected`, `test_label_duplicate_rejected`, `test_label_dead_warns`)_
 - [x] WS1-070 Recursion permitted (direct/mutual); unbounded → trap; `memory stack` bound. →test: recursion lowers; deep-recursion traps. §33.3 _(eavc: ops declared before bodies defined, so self/mutual calls resolve; `examples/factorial.sem`, `test_e2e_factorial_recursion`, `test_recursive_self_call_lowers`. Stack-bound trap pending runtime checks.)_
 
