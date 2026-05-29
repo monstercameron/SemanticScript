@@ -2635,6 +2635,60 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+_HTML_TRUST_BASE = (
+    "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
+    'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+    "ExitCode is alias\nExitCode for Int32\n"
+    "HtmlFragment is alias\nHtmlFragment for String\n"
+    "HtmlTrustedFragment is alias\nHtmlTrustedFragment for String\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    'main let raw immutable String "<b>x</b>"\nmain let okCode immutable ExitCode 0\n'
+    "main do mint\nmain return okCode\n"
+)
+
+
+def test_html_trusted_fragment_off_boundary_rejected():
+    # WS3-025: only html.trustFragment may mint an HtmlTrustedFragment.
+    src = _HTML_TRUST_BASE + (
+        "mint is call\nmint in main\nmint invokes html.escapeText\n"
+        "mint arg text String raw\nmint out frag HtmlTrustedFragment\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3025"
+
+
+def test_html_trusted_fragment_via_boundary_ok():
+    src = _HTML_TRUST_BASE + (
+        "mint is call\nmint in main\nmint invokes html.trustFragment\n"
+        "mint arg raw String raw\nmint out frag HtmlTrustedFragment\n"
+    )
+    eavc.parse(src)  # no raise
+
+
+def test_html_fragment_newtypes_not_interchangeable():
+    # WS3-025 / §10: passing an HtmlFragment where an HtmlTrustedFragment user-op
+    # input is declared is the no-coercion newtype error (SS3710).
+    src = (
+        "HtmlFragment is alias\nHtmlFragment for String\n"
+        "HtmlTrustedFragment is alias\nHtmlTrustedFragment for String\n"
+        "renderTrusted is operation\nrenderTrusted in fragment HtmlTrustedFragment\n"
+        "renderTrusted out Int32\nrenderTrusted let r immutable Int32 0\n"
+        "renderTrusted return r\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let escaped immutable HtmlFragment "<b>x</b>"\n'
+        'main let okCode immutable ExitCode 0\nmain do callRender\nmain return okCode\n'
+        "callRender is call\ncallRender in main\ncallRender invokes renderTrusted\n"
+        "callRender discards \"demo\"\ncallRender arg fragment HtmlFragment escaped\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3710"
+
+
 def _webserver_program(route_row, handler_block):
     return (
         "Demo is project\nDemo module m\nDemo target webServer\n"

@@ -279,6 +279,9 @@ DIAGNOSTICS.update({
     "SS3042B": {"tier": "T1", "summary": "Override value type mismatch.",
                 "found": "A platform override value that does not match the constant's type.",
                 "suggested": "Match the constant's declared type (README §28.1)."},
+    "SS3025": {"tier": "T1", "summary": "Trusted fragment minted off-boundary.",
+               "found": "An HtmlTrustedFragment produced by a call other than html.trustFragment.",
+               "suggested": "Mint trusted fragments only at html.trustFragment (README §16)."},
     "SS2601": {"tier": "T1", "summary": "Invalid webServer route method.",
                "found": "A route method outside GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS.",
                "suggested": "Use a bare standard HTTP method (README §14)."},
@@ -2755,6 +2758,7 @@ def _validate_program(program: Program) -> None:
     _validate_storage_mutation(program)
     _validate_reserved_targets(program)
     _validate_webserver_abi(program)
+    _validate_html_trust(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -3540,6 +3544,29 @@ def _validate_webserver_abi(program: Program) -> None:
             for row in ws.facts(pred):
                 if row.payload:
                     check_abi(row.payload[0], abi, row.line, f"{pred} handler")
+
+
+def _validate_html_trust(program: Program) -> None:
+    """README ss16/ss26 / WS3-025: `HtmlTrustedFragment` bypasses auto-escaping,
+    so it may be minted only at the `html.trustFragment` trust boundary. A call
+    producing an `HtmlTrustedFragment` from any other target is rejected. (The
+    HtmlFragment/HtmlTrustedFragment newtypes are non-interchangeable via the §10
+    no-coercion rule, SS3710.)"""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        out = ent.fact("out")
+        if out and len(out.payload) >= 2 and out.payload[1] == "HtmlTrustedFragment":
+            inv = ent.fact("invokes")
+            target = inv.payload[0] if inv and inv.payload else ""
+            if target != "html.trustFragment":
+                raise EavError(
+                    f"call {ent.name!r} produces an HtmlTrustedFragment from "
+                    f"{target!r}; only `html.trustFragment` may mint a trusted "
+                    f"fragment (README ss16/ss26, WS3-025)",
+                    ent.line, code="SS3025",
+                )
 
 
 def _validate_reserved_targets(program: Program) -> None:
