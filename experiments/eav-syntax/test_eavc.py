@@ -8698,3 +8698,55 @@ def test_x117_build_without_compiler_raises_documented_error(monkeypatch, tmp_pa
         eavc.build_executable(prog, str(tmp_path / "noexe"))
     message = str(excinfo.value)
     assert "EAVC_CC" in message or "clang" in message or "compiler" in message
+
+
+# === X-118: new-CLI conformance enumeration ===
+
+def test_x118_cli_conformance_new_subcommands(capsys):
+    """X-118: every newer subcommand parses argv, exits with a defined code, and
+    emits its documented JSON shape. Extends the X-060 in-process CLI harness."""
+    import json
+    hello = os.path.join(EXAMPLES, "hello_world.sem")
+    # (argv, expected sem.*.v1 surface, acceptable exit codes)
+    envelope_cmds = [
+        (["version", "--json"], "sem.version.v1", (0,)),
+        (["agent-docs"], "sem.agentDocs.v1", (0,)),
+        (["readiness", "--json"], "sem.readiness.v1", (0, 1)),
+        (["check", hello], "sem.check.v1", (0,)),
+        (["eval", hello], "sem.eval.v1", (0,)),
+        (["test", hello], "sem.test.v1", (0, 1)),
+        (["skills", "list"], "sem.skills.v1", (0,)),
+        (["fix", hello, "--plan"], "sem.fixPlan.v1", (0,)),
+        (["deps", hello], "sem.deps.v1", (0,)),
+        (["context", hello], "sem.context.v1", (0,)),
+        (["symbols", hello], "sem.symbols.v1", (0,)),
+        (["size", hello], "sem.size.v1", (0,)),
+    ]
+    for argv, surface, codes in envelope_cmds:
+        rc = eavc.main(argv)
+        out = capsys.readouterr().out
+        assert rc in codes, (argv, rc)
+        assert json.loads(out)["surface"] == surface, argv
+    # lint --json emits a diagnostics array (list), not a sem.*.v1 envelope
+    rc = eavc.main(["lint", hello, "--json"])
+    lint_out = capsys.readouterr().out
+    assert rc == 0
+    assert isinstance(json.loads(lint_out), list)
+    # doctor emits a human (non-JSON) report and exits cleanly
+    rc = eavc.main(["doctor", hello])
+    doctor_out = capsys.readouterr().out
+    assert rc == 0 and doctor_out.strip()
+
+
+def test_x118_bad_args_exit_nonzero(tmp_path, capsys):
+    """X-118: a missing required argument exits nonzero (argparse SystemExit), and
+    a structured runtime error returns nonzero rather than crashing."""
+    for argv in (["check"], ["eval"], ["explain"],
+                 ["slice", os.path.join(EXAMPLES, "hello_world.sem")]):
+        with pytest.raises(SystemExit) as excinfo:
+            eavc.main(argv)
+        assert excinfo.value.code != 0, argv
+        capsys.readouterr()
+    # a structured runtime error (missing patch plan) returns nonzero, not raise
+    assert eavc.main(["patch", str(tmp_path / "nope.json")]) == 2
+    capsys.readouterr()
