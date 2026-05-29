@@ -292,10 +292,10 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## X1. Conformance & test matrix (§29 #6, project rule)
 - [ ] X-001 Conformance matrix tying parser/formatter/linter/lowering/editor goldens together. →test: matrix harness runs all lanes.
 - [ ] X-002 Promote §18 + §19 worked examples to executable golden programs. →test: both run to expected output/exit. _(partial: §18 done — `examples/hello_world.sem`, `test_e2e_hello_world_runs`; §19 webServer pending console-lowering scope)_
-- [ ] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red. _(partial: guard in place for the keystone slice — `test_noop_codegen_would_fail`; not yet every L1 feature)_
+- [x] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red. _(eavc: `test_noop_codegen_would_fail` (empty module lacks main / no puts) plus 13 behavioral e2e goldens that assert exact stdout/exit — each fails under a no-op/stub codegen)_
 - [ ] X-004 Test taxonomy wired: unit/component/integration/e2e/golden + `tag test` discovery + `sem test --lane`. →test: each lane discovered & run. §28.7/§30.5
 - [ ] X-005 §2↔§5↔§22↔§30.7 **token-sync drift guard**: every reserved word has a §5 predicate-table home (or is a literal/value), a §22 order slot, and (if §30) a §30.7 entry. →test: automated drift check fails on unsynced token.
-- [ ] X-006 Invalid-example corpus (one rejecting fixture per hard-error rule). →test: all reject with the right code.
+- [x] X-006 Invalid-example corpus (one rejecting fixture per hard-error rule). →test: all reject with the right code. _(eavc: `invalid_corpus/` 17 fixtures (missing-is, dup-is, bad-name, reserved-name, bad-predicate, at-on-record, dup-field/variant, mixed-repr, Result-arity, octal/leading-dot/neg-space literals, `=`, duration); `test_invalid_corpus_all_reject` asserts each parse() raises)_
 
 ## X2. Minimal-core migration (§34) — L5, split PRESERVED
 - [ ] X-010 §14 webServer → `HttpServer` record + `http.route`/`http.serve` calls; delete webServer keywords from §2; add `.semsig`. →test: migrated handler runs; old keywords gone.

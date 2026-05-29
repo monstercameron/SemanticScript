@@ -21,6 +21,24 @@ sys.path.insert(0, HERE)
 import eavc  # noqa: E402
 
 EXAMPLES = os.path.join(HERE, "examples")
+INVALID_CORPUS = os.path.join(HERE, "invalid_corpus")
+
+
+def _corpus_files():
+    import glob
+    return sorted(glob.glob(os.path.join(INVALID_CORPUS, "*.sem")))
+
+
+@pytest.mark.parametrize("path", _corpus_files())
+def test_invalid_corpus_all_reject(path):
+    # X-006 / §29 #1: every invalid-example fixture is rejected at parse time.
+    src = open(path, encoding="utf-8").read()
+    with pytest.raises(eavc.EavError):
+        eavc.parse(src)
+
+
+def test_invalid_corpus_is_populated():
+    assert len(_corpus_files()) >= 15
 
 
 def _ir_for(name: str) -> str:
