@@ -2994,6 +2994,32 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_captured_output_replay_multiline_transcript():
+    # X-066: a multi-line transcript is captured in order, deterministic across
+    # record runs, and replayed side-effect-free.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\nP mode capturedOutputReplay\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        'main uses stdoutWriter\nmain async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let firstLine immutable String "alpha"\n'
+        'main let secondLine immutable String "beta"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do writeFirst\nmain do writeSecond\nmain return okCode\n"
+        "writeFirst is call\nwriteFirst in main\nwriteFirst invokes console.writeLine\n"
+        "writeFirst arg text String firstLine\n"
+        "writeSecond is call\nwriteSecond in main\nwriteSecond invokes console.writeLine\n"
+        "writeSecond arg text String secondLine\n"
+    )
+    result = eavc.captured_output_replay(src)
+    assert result["transcript"] == ["alpha", "beta"]
+    assert result["deterministic"] is True
+    assert result["sideEffectFree"] is True
+
+
 def test_validator_reject_paths():
     # X-065: rejecting fixtures for the heavily-branched validators.
     rejects = [
