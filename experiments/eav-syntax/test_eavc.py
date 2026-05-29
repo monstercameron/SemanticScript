@@ -3057,6 +3057,30 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_new_project_scaffold(tmp_path, capsys):
+    # WS3-047: eavc new produces a tree that checks clean, runs, and tests green.
+    import json
+    root = tmp_path / "demoapp"
+    eavc.main(["new", str(root)])
+    created = json.loads(capsys.readouterr().out)
+    assert created["surface"] == "sem.new.v1"
+    for rel in ("build.sem", "src/main.sem", "src/main.test.sem", ".gitignore"):
+        assert (root / rel).exists(), rel
+    # the entry program checks clean and runs to its greeting
+    main_src = (root / "src" / "main.sem").read_text(encoding="utf-8")
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(main_src)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", str(root / "src" / "main.sem")],
+        capture_output=True, text=True)
+    assert proc.returncode == 0 and "hello from Demoapp" in proc.stdout
+    # the test stub runs green
+    test_src = (root / "src" / "main.test.sem").read_text(encoding="utf-8")
+    report = eavc.run_tests(eavc.parse(test_src))
+    assert report["compositeStatus"] == "pass"
+    # build.sem parses
+    eavc.parse((root / "build.sem").read_text(encoding="utf-8"))
+
+
 def test_semsig_legal_entity_set():
     # WS4-006: a .semsig holds only intrinsic + referenced types (+ header).
     import glob

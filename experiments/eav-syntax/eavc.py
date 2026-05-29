@@ -5653,7 +5653,7 @@ SEM_SURFACES = (
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
-    "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1",
+    "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
 )
 
 EAV_AGENT_RULES = (
@@ -5785,6 +5785,65 @@ EAV_TASK_TEMPLATES = {
         "lintRules": ["run `check` — zero error-severity diagnostics"],
     },
 }
+
+
+def _new_project_files(name: str) -> dict:
+    """The canonical `eavc new` skeleton (§28.2) as a {relpath: content} map."""
+    pas = "".join(p[:1].upper() + p[1:] for p in __import__("re").split(r"[^A-Za-z0-9]+", name) if p) or "App"
+    mod = pas[:1].lower() + pas[1:]
+    main = (
+        f"{pas} is project\n{pas} module {mod}\n{pas} target console\n{pas} entry main\n\n"
+        f"{mod} is module\n{mod} path src.main\n{mod} exports main\n"
+        f'{mod} purpose "Entry module for {pas}"\n{mod} invariant "main is the only entry"\n\n'
+        "ExitCode is alias\nExitCode for Int32\nExitCode purpose \"Process exit status\"\n\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "Allow controlled stdout writes"\n\n'
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses stdoutWriter\nmain async no\n"
+        f'main purpose "Greet from {pas}"\nmain invariant "Writes one greeting line"\n'
+        f'main let greeting immutable String "hello from {pas}"\n'
+        "main let okCode immutable ExitCode 0\nmain do writeGreeting\nmain return okCode\n\n"
+        "writeGreeting is call\nwriteGreeting in main\nwriteGreeting invokes console.writeLine\n"
+        "writeGreeting arg text String greeting\n"
+    )
+    test = (
+        f"{pas}Tests is project\n{pas}Tests module {mod}Tests\n{pas}Tests target console\n"
+        f"{pas}Tests entry checkGreetingLength\n\n"
+        f"{mod}Tests is module\n{mod}Tests path src.mainTest\n{mod}Tests exports checkGreetingLength\n"
+        f'{mod}Tests purpose "Unit tests for {pas}"\n{mod}Tests invariant "All tag-test ops pass"\n\n'
+        "ExitCode is alias\nExitCode for Int32\n\n"
+        "checkGreetingLength is operation\ncheckGreetingLength out ExitCode\n"
+        "checkGreetingLength async no\ncheckGreetingLength tag test\n"
+        'checkGreetingLength purpose "Smoke test stub"\ncheckGreetingLength invariant "Returns 0"\n'
+        "checkGreetingLength let pass immutable ExitCode 0\ncheckGreetingLength return pass\n"
+    )
+    build = (
+        f"{pas} is project\n{pas} target console\n{pas} entry main\n"
+        f'{pas} languageVersion "1.0"\n{pas} toolchain "eavc"\n'
+    )
+    return {
+        "build.sem": build,
+        "src/main.sem": main,
+        "src/main.test.sem": test,
+        ".gitignore": "dist/\n",
+        "tests/golden/.gitkeep": "",
+    }
+
+
+def cmd_new(args) -> int:
+    """Scaffold a canonical EAV project tree (§28.2)."""
+    import os
+    root = args.path
+    files = _new_project_files(os.path.basename(os.path.normpath(root)))
+    created = []
+    for rel, content in files.items():
+        dest = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(content)
+        created.append(rel)
+    sys.stdout.write(_json_envelope("sem.new.v1", root=root, created=sorted(created)) + "\n")
+    return 0
 
 
 def cmd_task(args) -> int:
@@ -6386,6 +6445,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sp_mcp = sub.add_parser("mcp", help="run the MCP stdio JSON-RPC server")
     sp_mcp.set_defaults(func=cmd_mcp)
+
+    sp_new = sub.add_parser("new", help="scaffold a canonical EAV project tree")
+    sp_new.add_argument("path", help="project root directory to create")
+    sp_new.add_argument("--enable-docs-index", action="store_true")
+    sp_new.set_defaults(func=cmd_new)
 
     sp_task = sub.add_parser("task", help="emit an agent workflow checklist")
     sp_task.add_argument("template", help="one of: " + ", ".join(sorted(EAV_TASK_TEMPLATES)))
