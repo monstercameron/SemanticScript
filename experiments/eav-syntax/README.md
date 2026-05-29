@@ -4153,6 +4153,14 @@ sqlExec trustConstraint arg sql SqlText   # the SQL sink requires SqlText
 # runSql arg sql SqlText validatedQuery   -> ok
 ```
 
+**Secret-typed values (X-072).** A `typeTrust secret` value is *usable*
+(verify/sign/TLS) but never *observable*. Writing a secret to an observable sink
+(console/`log.*`) is a hard error (**SS3072**), and a secret-typed binding may
+not be initialized from a source literal — no hardcoded secrets; load them from a
+capability-gated source. Because a secret can never reach an observable or
+transcript sink, there is nothing to leak into a `capturedOutputReplay`
+transcript: the compile-time block is stronger than runtime redaction.
+
 ### Async intrinsics
 
 ```sem

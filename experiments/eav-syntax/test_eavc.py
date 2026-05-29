@@ -4449,6 +4449,50 @@ def test_string_concat_into_sink_rejected():
     assert getattr(exc.value, "code", None) == "SS3071"
 
 
+def test_secret_to_console_rejected():
+    # X-072 / §30.1.1: a secret value written to an observable sink is rejected.
+    src = (
+        "ApiKey is alias\nApiKey for String\nApiKey typeTrust secret\n"
+        "leak is operation\nleak out ExitCode\nleak async no\n"
+        'leak purpose "p"\nleak invariant "i"\n'
+        "leak in key ApiKey\nleak let okCode immutable ExitCode 0\n"
+        "leak do show\nleak return okCode\n"
+        "show is call\nshow in leak\nshow invokes console.writeLine\n"
+        "show arg text ApiKey key\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_hardcoded_secret_literal_rejected():
+    # X-072 / §8: a secret-typed binding initialized from a literal is rejected.
+    src = (
+        "ApiKey is alias\nApiKey for String\nApiKey typeTrust secret\n"
+        'hardKey is storage module immutable ApiKey "sk-deadbeef"\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3072"
+
+
+def test_secret_consumed_by_verify_accepted():
+    # X-072: a secret is usable — passing it to a non-observable verify op is fine.
+    src = (
+        "Secret is alias\nSecret for String\nSecret typeTrust secret\n"
+        "checkAuth is operation\ncheckAuth out Bool\ncheckAuth async no\n"
+        'checkAuth purpose "p"\ncheckAuth invariant "i"\n'
+        "checkAuth in token Secret\ncheckAuth do verify\ncheckAuth return ok\n"
+        "verify is call\nverify in checkAuth\nverify invokes bcrypt.verifyPassword\n"
+        "verify arg password Secret token\nverify out ok Bool\n"
+    )
+    prog = eavc.parse(src)
+    assert "checkAuth" in prog.entities  # no SS3072
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

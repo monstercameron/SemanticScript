@@ -180,6 +180,9 @@ DIAGNOSTICS.update({
     "SS3071": {"tier": "T1", "summary": "Untyped or string-built value into a typed sink.",
                "found": "A plain String (or a `string.concat` result) passed to a `trustConstraint arg <slot> <TrustedType>` sink.",
                "suggested": "Build the required trusted type (e.g. SqlText/HtmlSafeUrl/SafePath) via a constructor or trust boundary; never assemble interpreter input by string concatenation (README §16/§30.2.2)."},
+    "SS3072": {"tier": "T1", "summary": "Secret value observed, or hardcoded.",
+               "found": "A `typeTrust secret` value reaches an observable sink (console/log), or a secret-typed binding is initialized from a literal.",
+               "suggested": "A secret is usable (verify/sign) but never observable — don't print/log it; load it from a capability-gated source, never a source literal (README §30.1.1/§8)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3188,6 +3191,7 @@ def _validate_program(program: Program) -> None:
     _validate_numeric_precision(program)
     _validate_trust_flow(program)
     _validate_sink_typing(program)
+    _validate_secret_flow(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4323,6 +4327,71 @@ def _validate_sink_typing(program: Program) -> None:
                     f"must become a {required} at a trust boundary first "
                     f"(README §16)",
                     call.line, code="SS3071")
+
+
+_OBSERVABLE_SINK_TARGETS = (
+    "console.writeLine", "console.writeIntegerLine", "console.writeFloatLine",
+)
+
+
+def _is_observable_sink(target: str) -> bool:
+    # console writes and any log.* call surface a value to a human-readable channel
+    return target in _OBSERVABLE_SINK_TARGETS or target.startswith("log.")
+
+
+def _is_literal_token(tok: str) -> bool:
+    if tok.startswith('"'):
+        return True
+    t = tok.lstrip("-")
+    return t.replace(".", "", 1).isdigit() or tok in ("true", "false", "yes", "no")
+
+
+def _validate_secret_flow(program: Program) -> None:
+    """X-072 / README §30.1.1, §8: a `typeTrust secret` value is usable
+    (verify/sign/TLS) but never *observable*. Passing a secret-typed value to an
+    observable sink (console/log) is a hard error (SS3072), and a secret-typed
+    binding may not be initialized from a source literal ("no hardcoded secrets" —
+    load it from a capability-gated source). Because secrets can never reach an
+    observable/transcript sink, there is nothing to leak into a capturedOutputReplay
+    transcript — the compile-time block is stronger than runtime redaction."""
+    secret_types = {program.entities[n].name for n in program.order
+                    for r in program.entities[n].facts("typeTrust")
+                    if r.payload and r.payload[0] == "secret"}
+    if not secret_types:
+        return
+    for n in program.order:
+        ent = program.entities[n]
+        # no hardcoded secrets: a secret-typed storage/let initialized from a literal
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if (tr and tr.payload and tr.payload[0] in secret_types
+                    and vr and vr.payload and _is_literal_token(vr.payload[0])):
+                raise EavError(
+                    f"storage {ent.name!r} is a secret type initialized from a literal "
+                    f"{vr.payload[0]!r}; load secrets from a capability-gated source, "
+                    f"never a source literal (README §8)",
+                    ent.line, code="SS3072")
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if (len(r.payload) >= 4 and r.payload[2] in secret_types
+                        and _is_literal_token(r.payload[3])):
+                    raise EavError(
+                        f"binding {r.payload[0]!r} in {ent.name!r} is a secret type "
+                        f"initialized from a literal {r.payload[3]!r}; load secrets from "
+                        f"a capability-gated source (README §8)",
+                        r.line, code="SS3072")
+        # no observable secrets: a secret-typed arg into a console/log sink
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            target = inv.payload[0] if inv and inv.payload else ""
+            if _is_observable_sink(target):
+                for a in ent.facts("arg"):
+                    if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                        raise EavError(
+                            f"call {ent.name!r} writes a secret value {a.payload[2]!r} "
+                            f"to the observable sink {target!r}; a secret is usable but "
+                            f"never observable (README §30.1.1)",
+                            ent.line, code="SS3072")
 
 
 def _validate_time_safety(program: Program) -> None:
