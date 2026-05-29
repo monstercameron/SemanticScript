@@ -3205,6 +3205,17 @@ showIt arg text String decoded
 """
 
 
+def test_net_semsig_contract_loads():
+    # WS3-104 (deferred runtime): the net contract loads and documents its surface.
+    prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.net.semsig"),
+                                 encoding="utf-8").read())
+    lines = eavc.docs(prog)
+    assert any(l.startswith("net.connect(") and "throws NetError" in l for l in lines)
+    assert any(l.startswith("net.send(") for l in lines)
+    assert any(l.startswith("net.receive(") for l in lines)
+    assert any(l.startswith("net.close(") for l in lines)
+
+
 def test_http_stdlib_parses_lints_and_has_surface():
     # WS3-017: standard.http is an EAV-native runtimeBinding wrapper over the
     # eav_http_* runtime ABI (pure request/codec/session helpers).

@@ -1,0 +1,52 @@
+# standard.net.semsig — generated signature sidecar (README ss26, ss27).
+# DEFERRED: socket/network-client lowering needs sockets + the deferred FFI ABI
+# and lands with the http server runtime (WS3-017). Parity now is this contract:
+# the typed surface + capability/effect shape (§8, §28.5) app code typechecks
+# against. (todos WS3-104)
+
+netSig is semsig
+netSig version "1.0"
+netSig generatedBy "eavc 0.1"
+netSig describes standard.net
+
+NetEndpoint is alias
+NetEndpoint for String
+NetEndpoint purpose "A host:port endpoint string for a network connection"
+
+NetSocket is alias
+NetSocket for OpaquePointer
+NetSocket purpose "An opaque connected-socket handle, released by netClose"
+
+NetError is error
+NetError purpose "Represent connect/send/receive/close failures"
+
+netConnect is intrinsic
+netConnect target net.connect
+netConnect arg endpoint NetEndpoint
+netConnect out socket NetSocket
+netConnect catch NetError
+netConnect owns socket cleanedBy net.close
+netConnect async yes
+netConnect purpose "Open a client connection to an endpoint (capability-gated network effect)"
+
+netSend is intrinsic
+netSend target net.send
+netSend arg socket NetSocket
+netSend arg payload String
+netSend out sent Int64
+netSend catch NetError
+netSend purpose "Send bytes over a connected socket"
+
+netReceive is intrinsic
+netReceive target net.receive
+netReceive arg socket NetSocket
+netReceive out received String
+netReceive catch NetError
+netReceive async yes
+netReceive purpose "Receive bytes from a connected socket"
+
+netClose is intrinsic
+netClose target net.close
+netClose arg socket NetSocket
+netClose out closed Int32
+netClose purpose "Close a connected socket"
