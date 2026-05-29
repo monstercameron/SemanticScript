@@ -1470,6 +1470,20 @@ def test_builtin_targets_need_no_import():
     assert 'call i32 (i8*, ...) @"printf"' in ir_text
 
 
+def test_e2e_string_concat():
+    # WS3-015: string.concat via libc malloc/strlen/strcpy/strcat.
+    proc = _eavc_run("string_concat.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "Hello, world" in proc.stdout
+
+
+def test_string_concat_lowers_via_libc():
+    ir_text = _ir_for("string_concat.sem")
+    assert 'call i64 @"strlen"' in ir_text
+    assert 'call i8* @"malloc"' in ir_text
+    assert 'call i8* @"strcat"' in ir_text
+
+
 def test_e2e_async_single_thread():
     # README §13: start eager, ifReady always taken -> task result printed.
     proc = _eavc_run("async_demo.sem")

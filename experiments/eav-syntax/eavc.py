@@ -1584,7 +1584,7 @@ def _target_is_nonvoid(target: str, program: Program):
     math.* (arith/compare), False for console.* (void), the callee's `out`
     presence for a bare user op, and None (unknown) for other external targets."""
     if (target.startswith("math.") or target.startswith("compare.")
-            or target.startswith("convert.to")):
+            or target.startswith("convert.to") or target == "string.concat"):
         return True
     if target.startswith("console."):
         return False
@@ -2039,6 +2039,14 @@ class EavCodegen:
             fn = ir.Function(
                 self.module, ir.FunctionType(ir.VoidType(), []), name="llvm.trap"
             )
+        elif name == "strlen":
+            fn = ir.Function(self.module, ir.FunctionType(ir.IntType(64), [i8p]),
+                             name="strlen")
+        elif name == "malloc":
+            fn = ir.Function(self.module, ir.FunctionType(i8p, [ir.IntType(64)]),
+                             name="malloc")
+        elif name in ("strcpy", "strcat"):
+            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i8p]), name=name)
         else:
             raise EavError(f"no runtime declaration for {name!r}")
         self._runtime[name] = fn
@@ -2371,6 +2379,17 @@ class EavCodegen:
             result = self._emit_compare(target, args, builder, sym, call)
         elif target.startswith("convert.to"):
             result = self._emit_convert(target, args, builder, sym, call)
+        elif target == "string.concat":
+            # README ss30.2.2: heap-concatenate two NUL-terminated strings.
+            left = arg("left", "String")
+            right = arg("right", "String")
+            la = builder.call(self.runtime("strlen"), [left])
+            lb = builder.call(self.runtime("strlen"), [right])
+            total = builder.add(builder.add(la, lb), ir.Constant(ir.IntType(64), 1))
+            buf = builder.call(self.runtime("malloc"), [total])
+            builder.call(self.runtime("strcpy"), [buf, left])
+            builder.call(self.runtime("strcat"), [buf, right])
+            result = buf
         elif target in self.functions:
             callee = self.program.entities[target]
             vals = []

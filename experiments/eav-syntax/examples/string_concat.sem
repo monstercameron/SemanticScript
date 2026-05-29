@@ -1,0 +1,48 @@
+# string_concat — string.concat lowered via libc malloc/strlen/strcpy/strcat
+# (README ss30.2.2). Prints "Hello, world". (todos WS3-015)
+
+StringConcat is project
+StringConcat module examplesStringConcat
+StringConcat target console
+StringConcat entry main
+
+examplesStringConcat is module
+examplesStringConcat path examples.stringConcat
+examplesStringConcat exports main
+examplesStringConcat purpose "Concatenate two strings and print the result"
+examplesStringConcat invariant "main is the only entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap yes
+main async no
+main purpose "Concatenate a greeting and print it"
+main invariant "Writes exactly: Hello, world"
+main let greeting immutable String "Hello, "
+main let subject immutable String "world"
+main let okCode immutable ExitCode 0
+main do joinText
+main do writeJoined
+main return okCode
+
+joinText is call
+joinText in main
+joinText invokes string.concat
+joinText arg left String greeting
+joinText arg right String subject
+joinText out message String
+
+writeJoined is call
+writeJoined in main
+writeJoined invokes console.writeLine
+writeJoined arg text String message
