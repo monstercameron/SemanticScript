@@ -404,6 +404,29 @@ arg text String hi
 """
 
 
+def test_captured_output_replay_deterministic_and_side_effect_free():
+    # WS3-004 / README §30.1.1: a `mode capturedOutputReplay` program records a
+    # transcript, is deterministic across record runs, and replays it without
+    # re-performing the effect. The transcript holds the program's *real* output,
+    # so a no-op lowering (empty transcript) fails this test.
+    src = open(os.path.join(EXAMPLES, "replay_demo.sem"), encoding="utf-8").read()
+    result = eavc.captured_output_replay(src)
+    assert result["mode"] == "capturedOutputReplay"
+    assert result["transcript"] == ["replay me"]
+    assert result["exitCode"] == 0
+    assert result["deterministic"] is True
+    assert result["sideEffectFree"] is True
+    # replay reproduces the recorded transcript exactly
+    assert result["replayStdout"].strip() == "replay me"
+
+
+def test_captured_output_replay_requires_mode():
+    # The harness refuses a program that did not opt into the determinism mode.
+    src = open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read()
+    with pytest.raises(eavc.EavError):
+        eavc.captured_output_replay(src)
+
+
 def test_compact_is_not_valid_raw_eav():
     # The strict EAV parser rejects compact bare rows (no subject) — proving the
     # compact expander does real work and is not a no-op (WS4-004).

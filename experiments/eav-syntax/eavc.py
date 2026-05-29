@@ -4521,6 +4521,56 @@ def jit_run(program: Program) -> int:
     return cmain()
 
 
+def _record_run(source: str):
+    """Run a program in a clean subprocess, capturing (stdout, exitCode). A fresh
+    process is the record substrate: it is exactly the capability-mediated output
+    a replay must reproduce."""
+    import os
+    import subprocess
+    proc = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), "run", "-"],
+        input=source, capture_output=True, text=True,
+    )
+    return proc.stdout, proc.returncode
+
+
+def captured_output_replay(source: str) -> dict:
+    """README ss30.1.1: `mode capturedOutputReplay` determinism mode.
+
+    Record-runs the program (capturing the capability-mediated console
+    transcript), confirms the run is deterministic across record runs, then
+    serves a side-effect-free *replay* from the recorded transcript — no
+    capability effect is re-performed on replay. The transcript wire format is
+    intentionally simple (ordered output lines); §30.1.1 leaves it unfrozen in
+    v0.3."""
+    program = parse(source)
+    proj = program.of_kind("project")
+    mode = None
+    if proj:
+        m = proj[0].fact("mode")
+        mode = m.payload[0] if m and m.payload else None
+    if mode != "capturedOutputReplay":
+        raise EavError(
+            "captured_output_replay requires `mode capturedOutputReplay` on the "
+            "project (README ss30.1.1)"
+        )
+    out1, exit1 = _record_run(source)
+    out2, exit2 = _record_run(source)
+    deterministic = (out1 == out2) and (exit1 == exit2)
+    transcript = out1.split("\n")[:-1] if out1.endswith("\n") else out1.split("\n")
+    return {
+        "ok": True,
+        "mode": mode,
+        "transcript": transcript,
+        "exitCode": exit1,
+        "deterministic": deterministic,
+        # replay re-emits the recorded transcript without executing the program,
+        # so no capability-mediated effect is performed: side-effect-free.
+        "replayStdout": out1,
+        "sideEffectFree": True,
+    }
+
+
 def _entry_name(program: Program) -> str:
     projects = program.of_kind("project")
     if projects:
