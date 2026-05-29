@@ -2271,6 +2271,31 @@ the state's declared `guard`, is a hard error (**SS3083**); the `scope` must be
 to a global and the guard is a no-op (`setShared`→store, `readShared`→load), so it
 JIT-runs; the guard contract is what a concurrent backend will enforce.
 
+### Allocation regions (WS1-112, §29 #14)
+
+A `region` is an allocation scope (`strategy arena|fixedBuffer|general`).
+Objects are `allocateIn` it, and the whole region is freed at scope exit by one
+`releaseRegion` — so an arena allocates many and frees once:
+
+```sem
+requestArena is region
+requestArena strategy arena
+requestArena scope handleRequest
+arenaAllocCap is capability
+arenaAllocCap grants allocate heap.requestArena   # allocator-as-capability
+
+# inside the scoped op (which `uses arenaAllocCap`):
+handleRequest allocateIn requestArena scratchA OpaquePointer
+handleRequest allocateIn requestArena scratchB OpaquePointer
+handleRequest releaseRegion requestArena           # frees both slabs, once
+```
+
+Allocating without a capability granting `allocate heap.<region>` is a hard error
+(**SS1563**); an `allocateIn`/`releaseRegion` naming an undeclared region, or
+releasing a region the op never allocated into, is a hard error (**SS1562**) — so
+wrong-region free is unrepresentable. The arena lowers to real `malloc`/`free`
+(one `free` per slab at `releaseRegion`) and JIT-runs.
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

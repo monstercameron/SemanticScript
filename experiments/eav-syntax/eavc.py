@@ -210,6 +210,12 @@ DIAGNOSTICS.update({
     "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
                "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
                "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
+    "SS1562": {"tier": "T1", "summary": "Region free/allocate mismatch.",
+               "found": "An `allocateIn`/`releaseRegion` names an undeclared region, or an op releases a region it never allocated into.",
+               "suggested": "Allocate and release the same declared `region`; wrong-region free is unrepresentable when both name the same region (README §29 #14)."},
+    "SS1563": {"tier": "T1", "summary": "Allocation without an allocator capability.",
+               "found": "An op that `allocateIn` a region has no `uses` capability granting `allocate heap.<region>` (or `allocate heap`).",
+               "suggested": "Grant + `uses` an allocator capability (`grants allocate heap.<region>`) for the region (README §8/§29 #14)."},
     "SS3083": {"tier": "T1", "summary": "Unguarded shared-state access.",
                "found": "A `readShared`/`setShared` with no `protectedBy`, or a token that isn't the state's declared `guard`.",
                "suggested": "Access shared state only while holding its guard token: `… protectedBy <the sharedState's guard>` (README §8/§27)."},
@@ -618,6 +624,7 @@ ENTITY_KINDS = {
     "module",
     "capability",
     "sharedState",  # WS2-083 guarded cross-task mutable state
+    "region",       # WS1-112 allocation region (arena/fixedBuffer/general)
     "error",
     "errorCase",
     "record",
@@ -652,6 +659,8 @@ STEP_PREDICATES = {
     "set",
     "readShared",
     "setShared",
+    "allocateIn",
+    "releaseRegion",
 }
 
 # Island-introducing predicate: indentation after `body <kind>` is semantic
@@ -1268,6 +1277,7 @@ RESERVED_WORDS = {
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
+    "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
@@ -1308,6 +1318,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "module": {"path", "imports", "exports"},
     "capability": {"grants"},
     "sharedState": {"scope", "type", "mutability", "value", "guard", "owner"},
+    "region": {"strategy", "scope", "capacity"},
     "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
     "record": {"field", "typeTrust"},
@@ -1318,14 +1329,14 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
-        "optOut", "readShared", "setShared",
+        "optOut", "readShared", "setShared", "allocateIn", "releaseRegion",
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "errorBoundary", "optOut",
-        "readShared", "setShared",
+        "readShared", "setShared", "allocateIn", "releaseRegion",
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -3417,6 +3428,7 @@ def _validate_program(program: Program) -> None:
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
     _validate_shared_state(program)
+    _validate_regions(program)
     _validate_numeric_ub(program)
     _validate_constants(program)
     _validate_overrides(program)
@@ -5010,6 +5022,73 @@ _INT_WIDTHS = {"Int8": 8, "UInt8": 8, "Byte": 8, "Int16": 16, "UInt16": 16,
                "Int32": 32, "UInt32": 32, "ExitCode": 32, "Int64": 64, "UInt64": 64}
 
 
+_REGION_STRATEGIES = ("arena", "fixedBuffer", "general")
+
+
+def _validate_regions(program: Program) -> None:
+    """WS1-112 / README §29 #14: a `region` (strategy arena|fixedBuffer|general)
+    is an allocation scope. Objects are `allocateIn <region>` and the whole region
+    is freed by `releaseRegion <region>`. Allocating requires an allocator
+    capability covering `allocate heap.<region>` (SS1563), and an `allocateIn`/
+    `releaseRegion` must name a declared region, with each release matching an
+    allocation in the same op — so wrong-region free is unrepresentable (SS1562)."""
+    regions = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind != "region":
+            continue
+        strat = ent.fact("strategy")
+        if not (strat and strat.payload and strat.payload[0] in _REGION_STRATEGIES):
+            raise EavError(
+                f"region {ent.name!r} needs a `strategy` of "
+                f"{', '.join(_REGION_STRATEGIES)} (README §29 #14)",
+                ent.line, code="SS1562")
+        regions[ent.name] = strat.payload[0]
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        grants = set()
+        for u in op.facts("uses"):
+            cap = program.entities.get(u.payload[0]) if u.payload else None
+            if cap and cap.kind == "capability":
+                for g in cap.facts("grants"):
+                    if len(g.payload) >= 2:
+                        grants.add((g.payload[0], g.payload[1]))
+
+        def _alloc_covered(region):
+            for act, res in grants:
+                if act == "allocate" and (res == "heap" or res == f"heap.{region}"):
+                    return True
+            return False
+
+        allocated = set()
+        for row in op.rows:
+            if row.predicate == "allocateIn" and row.payload:
+                region = row.payload[0]
+                if region not in regions:
+                    raise EavError(
+                        f"{op.name!r} allocates in undeclared region {region!r} "
+                        f"(README §29 #14)", row.line, code="SS1562")
+                if not _alloc_covered(region):
+                    raise EavError(
+                        f"{op.name!r} allocates in region {region!r} without an allocator "
+                        f"capability granting `allocate heap.{region}` (README §8)",
+                        row.line, code="SS1563")
+                allocated.add(region)
+            elif row.predicate == "releaseRegion" and row.payload:
+                region = row.payload[0]
+                if region not in regions:
+                    raise EavError(
+                        f"{op.name!r} releases undeclared region {region!r} "
+                        f"(README §29 #14)", row.line, code="SS1562")
+                if region not in allocated:
+                    raise EavError(
+                        f"{op.name!r} releases region {region!r} but never allocated in it "
+                        f"(free/allocate mismatch, README §29 #14)",
+                        row.line, code="SS1562")
+
+
 def _validate_shared_state(program: Program) -> None:
     """WS2-083 / README §8/§27: guarded cross-task mutable state. A `sharedState`
     entity declares a `guard <token>`; every `readShared`/`setShared` of it must be
@@ -6169,6 +6248,9 @@ class EavCodegen:
         elif name == "malloc":
             fn = ir.Function(self.module, ir.FunctionType(i8p, [ir.IntType(64)]),
                              name="malloc")
+        elif name == "free":
+            fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
+                             name="free")
         elif name in ("strcpy", "strcat"):
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i8p]), name=name)
         elif name == "strcmp":
@@ -6442,6 +6524,23 @@ class EavCodegen:
                 f"(`let {name} mutable …`) or mutable module storage (README ss12)",
                 row.line, code="SS1087",
             )
+        if pred == "allocateIn":
+            # WS1-112: `allocateIn <region> <var> <Type>` allocates a slab in the
+            # region (single-thread: a malloc), binds <var> to the pointer, and
+            # tracks it under the region so releaseRegion frees the whole arena.
+            region, var = p[0], p[1]
+            slab = builder.call(self.runtime("malloc"),
+                                [ir.Constant(ir.IntType(64), 8)])
+            sym[var] = ("val", slab)
+            sym.setdefault("__rgn_" + region, []).append(slab)
+            return builder
+        if pred == "releaseRegion":
+            # WS1-112: free every slab allocated in the region (arena free-once).
+            region = p[0]
+            for slab in sym.get("__rgn_" + region, []):
+                builder.call(self.runtime("free"), [slab])
+            sym["__rgn_" + region] = []
+            return builder
         if pred == "readShared":
             # WS2-083: `readShared <var> <Type> <state> protectedBy <token>` loads
             # the shared-state global into a fresh immutable local (guard is a

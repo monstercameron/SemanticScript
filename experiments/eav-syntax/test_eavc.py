@@ -5041,6 +5041,59 @@ def test_shared_state_bad_scope_rejected():
     assert getattr(exc.value, "code", None) == "SS3084"
 
 
+_ARENA_SRC = (
+    "Arena is project\nArena module appArena\n"
+    "Arena target console\nArena entry main\n"
+    "appArena is module\nappArena path a.b\n"
+    'appArena purpose "p"\nappArena invariant "i"\n'
+    "ExitCode is alias\nExitCode for Int32\n"
+    "requestArena is region\nrequestArena strategy arena\nrequestArena scope main\n"
+    "arenaAllocCap is capability\narenaAllocCap grants allocate heap.requestArena\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    "main uses arenaAllocCap\nmain effect allocate heap.requestArena\n"
+    "main let okCode immutable ExitCode 0\n"
+    "main allocateIn requestArena bufferA OpaquePointer\n"
+    "main allocateIn requestArena bufferB OpaquePointer\n"
+    "main releaseRegion requestArena\nmain return okCode\n"
+)
+
+
+def test_region_arena_allocates_and_frees_jit_runs():
+    # WS1-112: an arena allocates N slabs and frees them at scope exit. No-op-
+    # failing: the IR must emit real malloc/free calls (an ignored construct would
+    # emit neither), and it JIT-runs.
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(_ARENA_SRC)))
+    ir = str(eavc.lower_to_llvm(eavc.parse(_ARENA_SRC)))
+    assert '@"malloc"' in ir and '@"free"' in ir
+    assert ir.count('call void @"free"') >= 2  # one free per allocated slab
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_ARENA_SRC, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_region_allocate_without_capability_rejected():
+    # WS1-112 / §8: allocating in a region with no allocator capability -> SS1563.
+    src = _ARENA_SRC.replace("main uses arenaAllocCap\n", "")
+    src = src.replace("main effect allocate heap.requestArena\n", "")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1563"
+
+
+def test_region_free_mismatch_rejected():
+    # WS1-112: releasing a region the op never allocated into -> SS1562.
+    src = _ARENA_SRC.replace(
+        "requestArena is region\nrequestArena strategy arena\nrequestArena scope main\n",
+        "requestArena is region\nrequestArena strategy arena\nrequestArena scope main\n"
+        "otherArena is region\notherArena strategy arena\notherArena scope main\n",
+    ).replace("main releaseRegion requestArena\n", "main releaseRegion otherArena\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1562"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
