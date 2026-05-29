@@ -28,10 +28,11 @@ APPS = os.path.join(HERE, "apps")
 
 
 def _app_program(app, *stdlibs):
-    """Compose an app's main.sem with the stdlib modules it imports (eavc has no
-    cross-file import resolution, so tests assemble what an importer would)."""
+    """Compose an app project (build.sem project + src/ modules, via load_project)
+    with the stdlib modules it imports (eavc has no cross-file import resolution,
+    so tests assemble what an importer would)."""
     parts = [open(os.path.join(STD, s), encoding="utf-8").read() for s in stdlibs]
-    parts.append(open(os.path.join(APPS, app, "main.sem"), encoding="utf-8").read())
+    parts.append(eavc.load_project(os.path.join(APPS, app)))
     return "\n".join(parts)
 
 
@@ -3391,12 +3392,18 @@ def test_project_test_discovery_by_layout(tmp_path, capsys):
     assert any("integration_smoke.sem" in f for f in found["testsDir"])
 
 
-def test_app_layout_conversion_plan():
-    # WS3-049: plan the relayout of a flat app into the framework layout.
-    plan = eavc.app_layout_plan(os.path.join(APPS, "html-template-lab"))
-    assert plan["app"] == "html-template-lab" and plan["output"] == "build/"
+def test_app_layout_conversion_plan(tmp_path):
+    # WS3-049: plan the relayout of a *flat* app into the framework layout
+    # (the real apps already use the build.sem + src/ layout, §28.2).
+    flat = tmp_path / "flatapp"
+    flat.mkdir()
+    (flat / "main.sem").write_text("X is project\n", encoding="utf-8")
+    (flat / "build.sem").write_text("X is project\n", encoding="utf-8")
+    plan = eavc.app_layout_plan(str(flat))
+    assert plan["app"] == "flatapp" and plan["output"] == "build/"
     moves = {m["from"]: m["to"] for m in plan["moves"]}
     assert moves.get("main.sem") == os.path.join("src", "main.sem")
+    assert moves.get("build.sem") == "build.sem"
 
 
 def test_sem_file_family_classification():
@@ -3433,11 +3440,15 @@ def test_new_project_scaffold(tmp_path, capsys):
     assert created["surface"] == "sem.new.v1"
     for rel in ("build.sem", "src/main.sem", "src/main.test.sem", ".gitignore"):
         assert (root / rel).exists(), rel
-    # the entry program checks clean and runs to its greeting
+    # the project (build.sem project + src/ modules) checks clean and runs
+    composed = eavc.load_project(str(root))
+    assert "is project" in composed and "is module" in composed  # build.sem + src/
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(composed)))
+    # src/main.sem is a pure module (the project lives in build.sem, README §28.2)
     main_src = (root / "src" / "main.sem").read_text(encoding="utf-8")
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(main_src)))
+    assert "is project" not in main_src and "is module" in main_src
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "eavc.py"), "run", str(root / "src" / "main.sem")],
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", str(root)],
         capture_output=True, text=True)
     assert proc.returncode == 0 and "hello from Demoapp" in proc.stdout
     # the test stub runs green
@@ -4704,8 +4715,7 @@ def test_app_http_runtime_gauntlet_full_port():
     # webServer entity (24 routes + 23 middleware), all handler ABIs validated,
     # routes exact-match-checked. Server *execution* (target webServer lowering)
     # is deferred (§27): the harness parses + lints clean but is not codegen'd.
-    src = open(os.path.join(APPS, "http-runtime-gauntlet", "main.sem"),
-               encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "http-runtime-gauntlet"))
     prog = eavc.parse(src)
     # op-count parity with the original v0.1 app (27 ops)
     assert len(prog.of_kind("operation")) == 27
@@ -4800,18 +4810,25 @@ def test_webserver_dynamic_routing():
     assert getattr(exc.value, "code", None) == "SS2602"
 
 
-def test_app_taskforge_web_content_core_runs():
-    # X-043: the web app's content core (sqlite query -> html render) runs,
-    # integrating the real sqlite + html runtimes; the server loop is deferred.
-    composed = _app_program("taskforge-web", "standard.sqlite.sem", "standard.html.sem")
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(composed)))
-    proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=composed, capture_output=True, text=True,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == (
-        "<html><body><ul><li>Buy &lt;milk&gt; &amp; eggs</li></ul></body></html>")
+def test_app_taskforge_web_project_layout():
+    # X-043 (WIP): taskforge-web uses the §28.2 build.sem + src/ layout — the
+    # project manifest in build.sem, modules under src/ (root + components/ +
+    # pages/ submodule directories), a generated build.sem.lock. The components
+    # and pages submodules are ported + lint clean per-module; the main API
+    # module (18 ops) is the pending bulk.
+    web = os.path.join(APPS, "taskforge-web")
+    assert os.path.isfile(os.path.join(web, "build.sem"))
+    assert os.path.isfile(os.path.join(web, "build.sem.lock"))
+    for rel in ("src/main.sem", "src/components/main.sem", "src/pages/main.sem"):
+        assert os.path.isfile(os.path.join(web, rel)), rel
+    # build.sem owns the project; src/ modules carry no project entity (§28.2)
+    build = eavc.parse(open(os.path.join(web, "build.sem"), encoding="utf-8").read())
+    assert build.of_kind("project") and build.of_kind("project")[0].name == "TaskforgeWeb"
+    # the two ported submodules lint clean on their own
+    for sub in ("components", "pages"):
+        prog = eavc.parse(open(os.path.join(web, "src", sub, "main.sem"),
+                               encoding="utf-8").read())
+        assert not [d.render() for d in eavc.lint(prog) if d.severity == "error"]
 
 
 def test_app_taskforge_tui_full_port():
@@ -4820,7 +4837,7 @@ def test_app_taskforge_tui_full_port():
     # JSON load/save, todo mutators, and the imperative `main` state machine using
     # the §12 `set` step). Execution is deferred (c.terminalReadKey + interactive
     # loop have no headless runtime); the whole app parses + lints clean.
-    src = open(os.path.join(APPS, "taskforge-tui", "main.sem"), encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "taskforge-tui"))
     prog = eavc.parse(src)
     # op-count parity with the original v0.1 app (24 ops)
     assert len(prog.of_kind("operation")) == 24
@@ -4844,8 +4861,7 @@ def test_app_taskforge_api_client_full_port():
     net_targets = [l.split("(")[0] for l in eavc.docs(netsig)]
     assert "net.fetchText" in net_targets and "net.freeTextBody" in net_targets
 
-    src = open(os.path.join(APPS, "taskforge-api-client", "main.sem"),
-               encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "taskforge-api-client"))
     prog = eavc.parse(src)
     # op-count parity with the original v0.1 app (1 op)
     assert [o.name for o in prog.of_kind("operation")] == ["main"]
@@ -4882,8 +4898,7 @@ def test_app_event_stream_smoke_full_port():
               "event.closeSubscription", "event.closeStream"):
         assert t in ev_targets, f"{t} missing from standard.event.semsig"
 
-    src = open(os.path.join(APPS, "event-stream-smoke", "main.sem"),
-               encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "event-stream-smoke"))
     prog = eavc.parse(src)
     # op-count parity with the original v0.1 app (4 ops)
     ops = [o.name for o in prog.of_kind("operation")]
@@ -4909,7 +4924,7 @@ _APP_PORT_MATRIX = {
     "html-template-lab": ("runs", []),
     "taskforge-api-client": ("deferred", []),
     "taskforge-tui": ("deferred", []),
-    "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
+    "taskforge-web": ("deferred", []),
     "http-runtime-gauntlet": ("deferred", []),
     "event-stream-smoke": ("deferred", []),
     "desktop-window-smoke": ("deferred", []),
@@ -4945,8 +4960,7 @@ def test_app_desktop_window_smoke_full_port():
               "gui.listBoxAppendItem", "gui.textBoxText", "gui.applicationRun"):
         assert t in gui_targets, f"{t} missing from standard.gui.semsig"
 
-    src = open(os.path.join(APPS, "desktop-window-smoke", "main.sem"),
-               encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "desktop-window-smoke"))
     prog = eavc.parse(src)
     # op-count parity with the original v0.1 app (4 ops), and the call/task split
     ops = [o.name for o in prog.of_kind("operation")]
@@ -4973,7 +4987,7 @@ def test_app_desktop_window_smoke_full_port():
 def test_app_html_template_lab_jit_runs():
     # X-040: the html-template-lab port renders the FULL dashboard document via an
     # htmlTemplate island + html.render, auto-escaping every hole.
-    src = open(os.path.join(APPS, "html-template-lab", "main.sem"), encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "html-template-lab"))
     assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
     proc = subprocess.run(
         [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
@@ -4990,7 +5004,7 @@ def test_app_html_template_lab_jit_runs():
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")
 def test_app_html_template_lab_builds_exe(tmp_path):
     # X-040: the port also compiles to a native exe that renders the document.
-    src = open(os.path.join(APPS, "html-template-lab", "main.sem"), encoding="utf-8").read()
+    src = eavc.load_project(os.path.join(APPS, "html-template-lab"))
     out = str(tmp_path / ("htmllab" + (".exe" if sys.platform == "win32" else "")))
     eavc.build_executable(eavc.parse(src), out)
     proc = subprocess.run([out], capture_output=True, text=True)

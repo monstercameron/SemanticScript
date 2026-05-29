@@ -20,14 +20,6 @@ appTaskforgeWebPages exports notFoundPageHandler
 appTaskforgeWebPages purpose "Server-rendered HTML pages for TaskForge Web: landing, dashboard, and 404"
 appTaskforgeWebPages invariant "Each page composes typed HtmlFragment slots into a page template and writes it via http.responseText"
 
-HtmlFragment is alias
-HtmlFragment for String
-HtmlFragment purpose "A rendered, escaped HTML fragment composed into a page"
-
-HtmlTemplate is alias
-HtmlTemplate for String
-HtmlTemplate purpose "A named html template hydrated by html.render"
-
 HtmlDocument is alias
 HtmlDocument for String
 HtmlDocument purpose "A complete rendered HTML document written to the response"

@@ -32,10 +32,6 @@
 #     `showCursor` on the quit path (the only path that hid the cursor); EAV
 #     cleanups are handle-scoped (`cleans <handle>` required).
 
-TaskforgeTui is project
-TaskforgeTui module appTaskforgeTui
-TaskforgeTui target console
-TaskforgeTui entry main
 
 appTaskforgeTui is module
 appTaskforgeTui path apps.taskforgeTui

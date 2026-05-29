@@ -23,10 +23,6 @@
 # error path are dropped (EAV tasks carry no cancel token, a console entry
 # returns ExitCode, and console.writeLine is void).
 
-TaskforgeApiClient is project
-TaskforgeApiClient module appTaskforgeApiClient
-TaskforgeApiClient target console
-TaskforgeApiClient entry main
 
 appTaskforgeApiClient is module
 appTaskforgeApiClient path apps.taskforgeApiClient

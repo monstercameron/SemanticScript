@@ -20,10 +20,6 @@
 # dropped: EAV tasks carry no per-task timeout/cancel token and console.writeLine
 # is infallible (void) — language differences, not feature reductions.
 
-EventStreamSmoke is project
-EventStreamSmoke module appEventStreamSmoke
-EventStreamSmoke target console
-EventStreamSmoke entry main
 
 appEventStreamSmoke is module
 appEventStreamSmoke path apps.eventStreamSmoke

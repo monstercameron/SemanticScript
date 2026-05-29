@@ -27,10 +27,6 @@
 #   - inline `call`/`argument`/`run`/`bind`/`ignore` records -> first-class
 #     `call` entities with `arg`/`out`/`discards` (the §20 split).
 
-HttpRuntimeGauntlet is project
-HttpRuntimeGauntlet module appHttpRuntimeGauntlet
-HttpRuntimeGauntlet target webServer
-HttpRuntimeGauntlet entry httpRuntimeGauntletServer
 
 appHttpRuntimeGauntlet is module
 appHttpRuntimeGauntlet path apps.httpRuntimeGauntlet

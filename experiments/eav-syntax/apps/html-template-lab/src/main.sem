@@ -6,10 +6,6 @@
 # html-template form (not a single string.concat) — it JIT-runs and builds to a
 # native exe, printing the full hydrated document. (X-040)
 
-HtmlTemplateLab is project
-HtmlTemplateLab module appHtmlTemplateLab
-HtmlTemplateLab target console
-HtmlTemplateLab entry main
 
 appHtmlTemplateLab is module
 appHtmlTemplateLab path apps.htmlTemplateLab

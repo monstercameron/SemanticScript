@@ -16,10 +16,6 @@
 # when a GUI runtime module is specified, the gui.* intrinsics gain bodies and
 # this source runs unchanged. (X-045)
 
-DesktopWindowSmoke is project
-DesktopWindowSmoke module appDesktopWindowSmoke
-DesktopWindowSmoke target console
-DesktopWindowSmoke entry main
 
 appDesktopWindowSmoke is module
 appDesktopWindowSmoke path apps.desktopWindowSmoke

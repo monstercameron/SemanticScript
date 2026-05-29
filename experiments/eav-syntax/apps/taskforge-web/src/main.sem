@@ -8,10 +8,6 @@
 # page the /todos handler would return. JIT-runs AND builds to a native exe,
 # exercising the real sqlite and html runtimes together. (X-043)
 
-TaskforgeWeb is project
-TaskforgeWeb module appTaskforgeWeb
-TaskforgeWeb target console
-TaskforgeWeb entry main
 
 appTaskforgeWeb is module
 appTaskforgeWeb path apps.taskforgeWeb

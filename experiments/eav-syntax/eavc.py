@@ -650,21 +650,29 @@ _SEMSIG_LEGAL_KINDS = {
 
 
 def load_project(root: str) -> str:
-    """Project driver (README §28.2/§28.3): compose the runtime source of a
-    project directory — every `src/*.sem` (or top-level `*.sem`) that is not a
-    `*.test.sem` — into one program string. `build.sem`/`.lock`/tests are not
-    part of the runtime program."""
+    """Project driver (README §28.2/§28.3): compose the runtime program of a
+    project directory. The `project` entity lives in `build.sem` (the manifest,
+    §7/§28), so it is prepended; the modules live under `src/` — every
+    `src/**/*.sem` (recursively, so each submodule directory's root `main.sem`
+    is included) that is not a `*.test.sem`. `build.sem.lock` and tests are not
+    part of the runtime program. A flat `<root>/*.sem` layout (no `src/`, no
+    `build.sem`) is still accepted for single-file demos."""
     import glob
     import os
+    parts: list[str] = []
+    build = os.path.join(root, "build.sem")
+    if os.path.isfile(build):
+        parts.append(open(build, encoding="utf-8").read())
     src_dir = os.path.join(root, "src")
     scan = src_dir if os.path.isdir(src_dir) else root
     files = sorted(
-        f for f in glob.glob(os.path.join(scan, "*.sem"))
+        f for f in glob.glob(os.path.join(scan, "**", "*.sem"), recursive=True)
         if classify_sem_file(f) == "source"
     )
-    if not files:
+    if not files and not parts:
         raise EavError(f"no source .sem files found under {scan!r} (README ss28.2)")
-    return "\n".join(open(f, encoding="utf-8").read() for f in files)
+    parts.extend(open(f, encoding="utf-8").read() for f in files)
+    return "\n".join(parts)
 
 
 def golden_match(produced: str, golden_path: str, expected_digest: str = None,
@@ -6042,7 +6050,6 @@ def _new_project_files(name: str) -> dict:
     pas = "".join(p[:1].upper() + p[1:] for p in __import__("re").split(r"[^A-Za-z0-9]+", name) if p) or "App"
     mod = pas[:1].lower() + pas[1:]
     main = (
-        f"{pas} is project\n{pas} module {mod}\n{pas} target console\n{pas} entry main\n\n"
         f"{mod} is module\n{mod} path src.main\n{mod} exports main\n"
         f'{mod} purpose "Entry module for {pas}"\n{mod} invariant "main is the only entry"\n\n'
         "ExitCode is alias\nExitCode for Int32\nExitCode purpose \"Process exit status\"\n\n"
@@ -6068,7 +6075,7 @@ def _new_project_files(name: str) -> dict:
         "checkGreetingLength let pass immutable ExitCode 0\ncheckGreetingLength return pass\n"
     )
     build = (
-        f"{pas} is project\n{pas} target console\n{pas} entry main\n"
+        f"{pas} is project\n{pas} module {mod}\n{pas} target console\n{pas} entry main\n"
         f'{pas} languageVersion "1.0"\n{pas} toolchain "eavc"\n'
     )
     return {
