@@ -3346,6 +3346,74 @@ def test_html_render_full_document():
     assert proc.stdout.strip() == "<h1>Hi &lt;b&gt;x&lt;/b&gt;</h1><p>A &amp; B</p>"
 
 
+_FRAGMENT_NEST_SRC = (
+    "FragNest is project\nFragNest module appFragNest\n"
+    "FragNest target console\nFragNest entry main\n"
+    "appFragNest is module\nappFragNest path a.b\n"
+    'appFragNest purpose "p"\nappFragNest invariant "i"\n'
+    "ExitCode is alias\nExitCode for Int32\n"
+    "HtmlFragment is alias\nHtmlFragment for String\n"
+    "HtmlTemplate is alias\nHtmlTemplate for String\n"
+    "inner is htmlTemplate\ninner body html\n  <b>{{name}}</b>\n\n"
+    "outer is htmlTemplate\nouter body html\n  <div>{{frag}}</div><p>{{text}}</p>\n\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    'main let name immutable String "x"\nmain let text immutable String "a<i>b"\n'
+    "main let okCode immutable ExitCode 0\n"
+    "main do renderInner\nmain do renderOuter\nmain do show\nmain return okCode\n"
+    "renderInner is call\nrenderInner in main\nrenderInner invokes html.render\n"
+    "renderInner arg template HtmlTemplate inner\nrenderInner arg name String name\n"
+    "renderInner out frag HtmlFragment\n"
+    "renderOuter is call\nrenderOuter in main\nrenderOuter invokes html.render\n"
+    "renderOuter arg template HtmlTemplate outer\n"
+    "renderOuter arg frag HtmlFragment frag\nrenderOuter arg text String text\n"
+    "renderOuter out doc String\n"
+    "show is call\nshow in main\nshow invokes console.writeLine\nshow arg text String doc\n"
+)
+
+
+def test_html_render_fragment_hole_inserted_raw():
+    # README ss16 §10: an HtmlFragment hole is already-escaped/trusted markup, so
+    # html.render nests it RAW; only plain String holes are escaped. No-op-failing:
+    # the prior lowering escaped every non-HtmlSafeUrl hole, double-escaping the
+    # nested fragment.
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(_FRAGMENT_NEST_SRC)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_FRAGMENT_NEST_SRC, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    # the fragment is nested raw; the sibling String hole is still escaped
+    assert proc.stdout.strip() == "<div><b>x</b></div><p>a&lt;i&gt;b</p>"
+
+
+_CONST_ALIAS_SRC = (
+    "Alias is project\nAlias module appAlias\n"
+    "Alias target console\nAlias entry main\n"
+    "appAlias is module\nappAlias path a.b\n"
+    'appAlias purpose "p"\nappAlias invariant "i"\n'
+    "ExitCode is alias\nExitCode for Int32\n"
+    'doneClass is storage module immutable String "todo-row todo-row-done"\n'
+    "firstClass is storage module immutable String doneClass\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    "main let okCode immutable ExitCode 0\n"
+    "main do show\nmain return okCode\n"
+    "show is call\nshow in main\nshow invokes console.writeLine\nshow arg text String firstClass\n"
+)
+
+
+def test_cross_module_storage_initializer_resolves():
+    # README ss12: a module constant may alias another constant's value
+    # (firstClass <- doneClass). No-op-failing: codegen previously required a
+    # literal and raised on the reference token.
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(_CONST_ALIAS_SRC)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_CONST_ALIAS_SRC, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "todo-row todo-row-done"
+
+
 def test_frozen_executable_packaging():
     # X-025: the packager exists and eavc is frozen-path-aware; if a built exe is
     # present (dist/eavc[.exe] from `python package.py`), it runs standalone.
@@ -5019,21 +5087,75 @@ _APP_PORT_MATRIX = {
 }
 
 
+def _v1_module_op_count(app):
+    # Operations in the v0.1 source modules (excluding build.sem + *.test.sem),
+    # i.e. the same surface the EAV port composes from src/.
+    import glob
+    n = 0
+    for f in glob.glob(os.path.join(V1_APPS, app, "**", "*.sem"), recursive=True):
+        base = os.path.basename(f)
+        if base == "build.sem" or base.endswith(".test.sem"):
+            continue
+        n += sum(1 for l in open(f, encoding="utf-8") if l.startswith("operation "))
+    return n
+
+
+def _v1_route_count(app):
+    import glob
+    n = 0
+    for f in glob.glob(os.path.join(V1_APPS, app, "**", "*.sem"), recursive=True):
+        if os.path.basename(f).endswith(".test.sem"):
+            continue
+        n += sum(1 for l in open(f, encoding="utf-8") if l.startswith("route "))
+    return n
+
+
 def test_app_port_coverage_and_coexistence_guard():
-    originals = os.path.normpath(os.path.join(HERE, "..", "..", "apps"))
+    # X-047 (§28.8 / §29 #17): every EAV port is a 1:1 port — its op-count and
+    # route-count match the v0.1 source exactly (a stub with fewer ops FAILS),
+    # the composed project lints clean, the original v0.1 app coexists untouched,
+    # and a deferred port records its deferral. (This guard previously certified
+    # stubs; it is now exact.)
     for app, (status, stdlibs) in _APP_PORT_MATRIX.items():
         port_dir = os.path.join(APPS, app)
         assert os.path.isdir(port_dir), f"no EAV port for {app}"
         # coexistence: the original v0.1 app still exists, untouched
-        assert os.path.isdir(os.path.join(originals, app)), f"original {app} missing"
+        assert os.path.isdir(os.path.join(V1_APPS, app)), f"original {app} missing"
+        prog = eavc.parse(eavc.load_project(port_dir))
+        # op-count parity with the v0.1 source (operations never split, §20)
+        eav_ops = len(prog.of_kind("operation"))
+        v1_ops = _v1_module_op_count(app)
+        assert eav_ops == v1_ops, \
+            f"{app}: op-count {eav_ops} != v0.1 {v1_ops} (stub / dropped ops?)"
+        # route-count parity for webServer apps
+        eav_routes = sum(len([r for r in ws.rows if r.predicate == "route"])
+                         for ws in prog.of_kind("webServer"))
+        assert eav_routes == _v1_route_count(app), \
+            f"{app}: route-count {eav_routes} != v0.1 {_v1_route_count(app)}"
+        # the composed project lints clean
+        errs = [d.render() for d in eavc.lint(prog) if d.severity == "error"]
+        assert not errs, f"{app} port regressed lint-clean: {errs}"
         if status == "deferred":
             assert os.path.exists(os.path.join(port_dir, "README.md")), \
                 f"{app} deferral not recorded"
-            continue
-        composed = _app_program(app, *stdlibs)
-        diags = eavc.lint(eavc.parse(composed))
-        errs = [d.render() for d in diags if d.severity == "error"]
-        assert not errs, f"{app} port regressed lint-clean: {errs}"
+
+
+def test_app_port_parity_guard_rejects_a_stub():
+    # The guard is exact, so a port that drops modules/operations FAILS it.
+    # Reproduce the previously-rejected html-template-lab stub (the main module
+    # alone, 1 op) and confirm it does not meet the v0.1 op-count (3 ops).
+    import re
+    v1_ops = _v1_module_op_count("html-template-lab")
+    assert v1_ops == 3
+    # the main module alone declares 1 operation (it even fails to parse on its
+    # own — the cross-module page call is unresolved), well under the v0.1 count.
+    main_text = open(os.path.join(APPS, "html-template-lab", "src", "main.sem"),
+                     encoding="utf-8").read()
+    stub_ops = len(re.findall(r"(?m)^\w+ is operation$", main_text))
+    assert stub_ops < v1_ops  # a single-module stub fails op-count parity
+    # the full multi-module port, by contrast, meets it
+    full = eavc.parse(eavc.load_project(os.path.join(APPS, "html-template-lab")))
+    assert len(full.of_kind("operation")) == v1_ops
 
 
 def test_app_desktop_window_smoke_full_port():
@@ -5073,20 +5195,40 @@ def test_app_desktop_window_smoke_full_port():
 
 
 def test_app_html_template_lab_jit_runs():
-    # X-040: the html-template-lab port renders the FULL dashboard document via an
-    # htmlTemplate island + html.render, auto-escaping every hole.
-    src = eavc.load_project(os.path.join(APPS, "html-template-lab"))
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+    # X-040/X-047: the FULL 5-module port (main + shared + todo-domain +
+    # todo-components + todo-pages) JIT-runs and prints the complete dashboard.
+    # The page op calls the component op across modules and nests its rendered
+    # HtmlFragment RAW (already-escaped markup is not double-escaped); the row
+    # classes resolve through cross-module storage initializers.
+    web = os.path.join(APPS, "html-template-lab")
+    prog = eavc.parse(eavc.load_project(web))
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
+    assert not [d.render() for d in diags if d.severity != "error"]
+    # op-count parity with the v0.1 source (3 ops across the module graph)
+    assert sorted(o.name for o in prog.of_kind("operation")) == [
+        "main", "renderTodoDashboardPage", "renderTodoListFragment"]
+    for rel in ("src/main.sem", "src/shared/main.sem", "src/todo-domain/main.sem",
+                "src/todo-components/main.sem", "src/todo-pages/main.sem"):
+        assert os.path.isfile(os.path.join(web, rel)), rel
+
     proc = subprocess.run(
         [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=src, capture_output=True, text=True,
+        input=eavc.load_project(web), capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
-    assert "<!doctype html>" in out and "<ol class=\"todo-list\">" in out
-    assert "TaskForge &lt;Today&gt;" in out          # title escaped
-    assert "Buy &lt;milk&gt; &amp; eggs" in out       # first todo escaped
-    assert "Ship the report" in out                   # second todo
+    assert "<!doctype html>" in out
+    assert "<title>TaskForge TUI HTML Template Lab</title>" in out
+    # the component fragment is nested RAW into the page (not double-escaped):
+    assert '<section class="todo-list-region"' in out
+    assert "&lt;section" not in out
+    # all three todo-domain rows render, with cross-module-resolved row classes
+    assert "Wire native webserver" in out
+    assert "Split HTML rendering into modules" in out
+    assert "Keep template inputs explicit" in out
+    assert '<li class="todo-row todo-row-done">' in out   # firstTodoClassName -> shared.doneTodoClassName
+    assert '<li class="todo-row todo-row-open">' in out    # second/third -> shared.openTodoClassName
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")
@@ -5097,7 +5239,9 @@ def test_app_html_template_lab_builds_exe(tmp_path):
     eavc.build_executable(eavc.parse(src), out)
     proc = subprocess.run([out], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
-    assert "<!doctype html>" in proc.stdout and "&lt;milk&gt;" in proc.stdout
+    assert "<!doctype html>" in proc.stdout
+    assert '<section class="todo-list-region"' in proc.stdout  # raw-nested fragment
+    assert "Keep template inputs explicit" in proc.stdout      # third todo-domain row
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")

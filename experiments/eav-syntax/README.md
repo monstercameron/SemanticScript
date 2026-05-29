@@ -2627,6 +2627,14 @@ renderTask arg status String taskStatusText
 renderTask out fragment HtmlFragment
 ```
 
+**Hole escaping by arg type.** `html.render` auto-escapes plain text holes
+(`String` and other scalar types) by sink context. Holes whose arg type is
+already-safe HTML are passed through verbatim: `HtmlSafeUrl` (a validated URL),
+and `HtmlFragment`/`HtmlTrustedFragment` (a rendered/trusted fragment nested into
+an outer template — escaping already-escaped markup would corrupt it). This is
+how a page template embeds a component's rendered fragment as a raw `{{frag}}`
+hole.
+
 For `{{rec.field}}` holes, the arg provides the record binding; the runtime
 extracts the named field. The arg type must be a `record` entity with the
 matching field name declared (§10):

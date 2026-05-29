@@ -4833,6 +4833,25 @@ class EavCodegen:
         return ir.Constant(_PRIMITIVE_IR.get(resolved, ir.IntType(64)),
                            _parse_int_literal_value(tok))
 
+    def _literal_tokens_for_storage(self, st: Entity, seen=None):
+        """Resolve a module-storage initializer to its underlying literal tokens,
+        following references to other immutable module-storage constants — a
+        constant may alias another module's constant value (README ss12; e.g.
+        `firstTodoClassName String doneTodoClassName`)."""
+        seen = seen or set()
+        if st.name in seen:
+            raise EavError(f"cyclic storage initializer through {st.name!r}",
+                           st.line, code="SS1212")
+        seen.add(st.name)
+        value_row = st.fact("value")
+        if not value_row or not value_row.payload:
+            return None
+        tok = value_row.payload[0]
+        ref = self.program.entities.get(tok)
+        if ref is not None and ref.kind == "storage":
+            return self._literal_tokens_for_storage(ref, seen)
+        return value_row.payload
+
     def _make_module_storage(self, st: Entity) -> None:
         type_row = st.fact("type")
         if not type_row or not type_row.payload:
@@ -4855,9 +4874,9 @@ class EavCodegen:
         gv.global_constant = bool(
             mut and mut.payload and mut.payload[0] == "immutable"
         )
-        value_row = st.fact("value")
-        if value_row and value_row.payload:
-            gv.initializer = self._const_value(resolved, value_row.payload)
+        value_tokens = self._literal_tokens_for_storage(st)
+        if value_tokens:
+            gv.initializer = self._const_value(resolved, value_tokens)
         else:
             gv.initializer = ir.Constant(_PRIMITIVE_IR[resolved], 0)
         self.module_storage[st.name] = (gv, type_row.payload[0])
@@ -5388,7 +5407,11 @@ class EavCodegen:
                 if a is None or len(a.payload) < 3:
                     continue
                 val = self._resolve(a.payload[2], a.payload[1], builder, sym)
-                if a.payload[1] != "HtmlSafeUrl":
+                # Text holes are auto-escaped; pass through values that are already
+                # safe HTML: an HtmlSafeUrl, or a rendered/trusted fragment nested
+                # into an outer template (escaping it again would corrupt the
+                # already-escaped markup). README ss16 §10 fragment newtypes.
+                if a.payload[1] not in ("HtmlSafeUrl", "HtmlFragment", "HtmlTrustedFragment"):
                     val = builder.call(self.runtime("eav_http_html_escape"), [val])
                 piece = val
             result = piece if result is None else self._concat(builder, result, piece)

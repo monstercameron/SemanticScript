@@ -1,0 +1,86 @@
+# html-template-lab/todo-pages — EAV port (apps/html-template-lab/modules/todo-pages).
+#
+# Page-level HTML assembly for the console-rendered todo dashboard: a
+# full-document htmlTemplate and a page hydration operation. The page wires demo
+# todo-domain constants into the component operation and passes the resulting
+# HtmlFragment into its own template as a RAW hole (already-escaped markup is
+# nested, not re-escaped — README ss16 §10 fragment newtype).
+
+appHtmlTemplateLabTodoPages is module
+appHtmlTemplateLabTodoPages path apps.htmlTemplateLab.todoPages
+appHtmlTemplateLabTodoPages imports html standard.html
+appHtmlTemplateLabTodoPages imports shared apps.htmlTemplateLab.shared
+appHtmlTemplateLabTodoPages imports todoDomain apps.htmlTemplateLab.todoDomain
+appHtmlTemplateLabTodoPages imports todoComponents apps.htmlTemplateLab.todoComponents
+appHtmlTemplateLabTodoPages exports renderTodoDashboardPage
+appHtmlTemplateLabTodoPages purpose "Page-level HTML assembly for the console-rendered todo dashboard"
+appHtmlTemplateLabTodoPages invariant "The page wires todo-domain constants into the component op; the full-document template only receives the rendered HtmlFragment"
+
+HtmlDocument is alias
+HtmlDocument for String
+HtmlDocument purpose "A complete rendered HTML document written to the console"
+
+# TodoDashboardPageTemplate: the full todo dashboard HTML document shell
+# (htmlTemplate takes `body`; the v0.1 `purpose` is carried as this comment).
+TodoDashboardPageTemplate is htmlTemplate
+TodoDashboardPageTemplate body html
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>{{pageTitleText}}</title>
+      <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; color: #17202a; background: #f5f7fb; }
+        .todo-shell { max-width: 46rem; margin: 0 auto; }
+        .todo-panel { border: 1px solid #ccd4e0; border-radius: 8px; background: white; padding: 1rem 1.25rem; }
+        .todo-list { display: grid; gap: 0.5rem; padding-left: 1.25rem; }
+        .todo-row { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; }
+        .todo-row-done .todo-title { text-decoration: line-through; color: #506070; }
+        .todo-status { font-size: 0.85rem; color: #445; }
+      </style>
+    </head>
+    <body>
+      <main class="{{shellClassName}}">
+        <article class="{{panelClassName}}">
+          <h1>{{pageTitleText}}</h1>
+          <p>{{introText}}</p>
+          {{todoListFragment}}
+        </article>
+      </main>
+    </body>
+  </html>
+
+renderTodoDashboardPage is operation
+renderTodoDashboardPage out HtmlDocument
+renderTodoDashboardPage async no
+renderTodoDashboardPage memory heap no
+renderTodoDashboardPage purpose "Hydrate the full HTML document from shared copy and the todo-list component fragment"
+renderTodoDashboardPage invariant "The page depends on the component module through an explicit op call and passes the resulting HtmlFragment into its own template"
+renderTodoDashboardPage do renderTodoListFragmentCall
+renderTodoDashboardPage do hydrateDashboardPage
+renderTodoDashboardPage return dashboardPageHtml
+
+renderTodoListFragmentCall is call
+renderTodoListFragmentCall in renderTodoDashboardPage
+renderTodoListFragmentCall invokes renderTodoListFragment
+renderTodoListFragmentCall arg firstTodoTitleText String firstTodoTitleText
+renderTodoListFragmentCall arg firstTodoStatusText String firstTodoStatusText
+renderTodoListFragmentCall arg firstTodoClassName String firstTodoClassName
+renderTodoListFragmentCall arg secondTodoTitleText String secondTodoTitleText
+renderTodoListFragmentCall arg secondTodoStatusText String secondTodoStatusText
+renderTodoListFragmentCall arg secondTodoClassName String secondTodoClassName
+renderTodoListFragmentCall arg thirdTodoTitleText String thirdTodoTitleText
+renderTodoListFragmentCall arg thirdTodoStatusText String thirdTodoStatusText
+renderTodoListFragmentCall arg thirdTodoClassName String thirdTodoClassName
+renderTodoListFragmentCall out todoListFragment HtmlFragment
+
+hydrateDashboardPage is call
+hydrateDashboardPage in renderTodoDashboardPage
+hydrateDashboardPage invokes html.render
+hydrateDashboardPage arg template HtmlTemplate TodoDashboardPageTemplate
+hydrateDashboardPage arg pageTitleText String todoDashboardPageTitleText
+hydrateDashboardPage arg introText String todoDashboardIntroText
+hydrateDashboardPage arg shellClassName String shellClassName
+hydrateDashboardPage arg panelClassName String panelClassName
+hydrateDashboardPage arg todoListFragment HtmlFragment todoListFragment
+hydrateDashboardPage out dashboardPageHtml HtmlDocument
