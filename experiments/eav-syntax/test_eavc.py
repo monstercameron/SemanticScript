@@ -109,6 +109,23 @@ def test_export_c_valid_unique_ok():
     assert "SS3043" not in codes and "SS3042" not in codes
 
 
+def test_semsig_catalogs_load_and_doc():
+    # WS3-023: every .semsig catalog loads and `docs` lists its API surface.
+    import glob
+    sig_files = sorted(glob.glob(os.path.join(SIGS, "*.semsig")))
+    assert len(sig_files) >= 3
+    for path in sig_files:
+        prog = eavc.load_semsig(open(path, encoding="utf-8").read())
+        api = eavc.docs(prog)
+        assert api, f"{path} produced no docs"
+    # the console catalog documents writeLine with its throws clause
+    console = eavc.load_semsig(open(os.path.join(SIGS, "standard.console.semsig"),
+                                    encoding="utf-8").read())
+    lines = eavc.docs(console)
+    assert any("console.writeLine(String)" in l and "throws ConsoleWriteError" in l
+               for l in lines)
+
+
 def test_semsig_loads_and_indexes_targets():
     # WS3-050/051/052: load a .semsig, validate header, index intrinsic targets.
     prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.sqlite.semsig"),

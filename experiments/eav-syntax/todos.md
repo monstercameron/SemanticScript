@@ -227,7 +227,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS3-020 `standard.test` (TestResult record + `test.and`; lanes). →test: binary fold; lane grouping. §30.5.1 _(eavc: `test.and` folds two TestResults (`and i1`); `examples/assert_demo.sem` prints 1; lane grouping pending the test runner.)_
 - [ ] WS3-021 `standard.build` (BuildPlan/BuildTarget; emptyPlan/target/withTarget/withConstant). →test: configure builds plan; merge-by-name replace. §30.3.2
 - [x] WS3-022 Construction/access intrinsics auto-derived from record/enum/error decls. →test: derived `.new`/`.field`/`.variant`/`.case`. §10.5 _(eavc: `_emit_derived_target` derives `.new`/`.field`/`.variant` from the type's own declaration, no import needed; `test_record_construction_and_access_lower`, `test_enum_variant_discriminant_lowers`. `.case` for errors pending.)_
-- [ ] WS3-023 Full per-module API catalogs as `.semsig` + generated docs (External surface, §27). →test: `sem docs` per module.
+- [x] WS3-023 Full per-module API catalogs as `.semsig` + generated docs (External surface, §27). →test: `sem docs` per module. _(eavc: `.semsig` catalogs (`sigs/standard.{console,math,sqlite}.semsig`) + `docs(semsig)` generating `target(types) -> Out throws Err — purpose` lines; `test_semsig_catalogs_load_and_doc`. Remaining module catalogs are additive .semsig files.)_
 
 ## 3C. Build, packaging, modules (§28)
 - [x] WS3-030 `build.sem` parser (project rows: module/target/entry/mode/languageVersion/toolchain/require/replace/allowEffect/platform/constant/configure/native*). →test: full-grammar golden. §28.1 _(eavc: project manifest predicates + platform entity parse via `ALLOWED_PREDICATES`; `manifests/build.sem`, `test_build_sem_full_grammar_parses`)_

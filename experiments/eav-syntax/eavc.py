@@ -517,6 +517,27 @@ def semsig_targets(program: Program) -> dict:
     return out
 
 
+def docs(semsig_program: Program) -> list:
+    """Generate an API catalog from a loaded .semsig (README ss27 `sem docs`):
+    one line per intrinsic — `target(arg:Type, …) -> Out [throws Err]` + purpose."""
+    out: list[str] = []
+    for n in semsig_program.order:
+        ent = semsig_program.entities[n]
+        if ent.kind != "intrinsic":
+            continue
+        tgt = ent.fact("target")
+        target = tgt.payload[0] if tgt and tgt.payload else ent.name
+        params = ", ".join(r.payload[-1] for r in ent.facts("arg") if r.payload)
+        orow = ent.fact("out")
+        ret = orow.payload[0] if orow and orow.payload else "Void"
+        crow = ent.fact("catch")
+        throws = f" throws {crow.payload[0]}" if crow and crow.payload else ""
+        purpose = ent.fact("purpose")
+        doc = f" — {purpose.payload[0].strip(chr(34))}" if purpose and purpose.payload else ""
+        out.append(f"{target}({params}) -> {ret}{throws}{doc}")
+    return out
+
+
 def resolve_semsig(target: str, sigs: list):
     """Resolution order (README ss26): scan loaded .semsig Programs in order;
     the first that defines an intrinsic for `target` wins (first-target wins)."""

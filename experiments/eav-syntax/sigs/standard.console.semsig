@@ -1,0 +1,25 @@
+# standard.console.semsig — console API catalog (README ss26/ss27).
+
+consoleSig is semsig
+consoleSig version "1.0"
+consoleSig generatedBy "eavc 0.1"
+consoleSig describes standard.console
+
+writeLine is intrinsic
+writeLine target console.writeLine
+writeLine arg text String
+writeLine catch ConsoleWriteError
+writeLine async no
+writeLine purpose "Write a line of text to standard output"
+
+writeIntegerLine is intrinsic
+writeIntegerLine target console.writeIntegerLine
+writeIntegerLine arg value Int64
+writeIntegerLine async no
+writeIntegerLine purpose "Write a signed integer followed by a newline"
+
+writeFloatLine is intrinsic
+writeFloatLine target console.writeFloatLine
+writeFloatLine arg value Float64
+writeFloatLine async no
+writeFloatLine purpose "Write a float followed by a newline"
