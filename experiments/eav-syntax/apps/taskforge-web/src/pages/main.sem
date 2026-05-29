@@ -24,18 +24,6 @@ HtmlDocument is alias
 HtmlDocument for String
 HtmlDocument purpose "A complete rendered HTML document written to the response"
 
-HttpStatusCode is alias
-HttpStatusCode for Int32
-HttpStatusCode purpose "An HTTP response status code"
-
-HttpContentType is alias
-HttpContentType for String
-HttpContentType purpose "An HTTP response Content-Type value"
-
-httpResponseWriter is capability
-httpResponseWriter grants write http.response
-httpResponseWriter purpose "Authority to write server-rendered page bodies to the HttpResponse"
-
 httpStatusOkLocal is storage module immutable HttpStatusCode 200
 htmlContentType is storage module immutable HttpContentType "text/html; charset=utf-8"
 

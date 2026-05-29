@@ -4,7 +4,7 @@
 
 TaskforgeWeb is project
 TaskforgeWeb module appTaskforgeWeb
-TaskforgeWeb target console
-TaskforgeWeb entry main
+TaskforgeWeb target webServer
+TaskforgeWeb entry taskForgeWebServer
 TaskforgeWeb languageVersion "1.0"
 TaskforgeWeb toolchain "eavc"

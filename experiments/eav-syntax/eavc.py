@@ -243,12 +243,12 @@ DIAGNOSTICS.update({
     "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
                "found": "A `branch else` that doesn't follow a guard branch.",
                "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
-    "SS1901": {"tier": "T3", "summary": "sqlite column result not consumed before next read.",
-               "found": "A `column*` result left unconsumed before the next read on a statement.",
-               "suggested": "Bind and use the column value before stepping again (README §17 #23)."},
+    "SS1901": {"tier": "T3", "summary": "sqlite column pointer used after step/reset invalidated it.",
+               "found": "A `columnText`/`columnBlob`/`columnName` value used after a later step/reset on its statement.",
+               "suggested": "Copy or consume the borrowed column value before advancing the statement (README §17 #23)."},
     "SS1902": {"tier": "T3", "summary": "Multi-write sqlite sequence without a transaction.",
-               "found": "Two or more writes on one database handle with no transaction.",
-               "suggested": "Wrap multi-write sequences in a transaction (README §17 #24)."},
+               "found": "Two or more prepared+stepped INSERT/UPDATE/DELETE statements with no BEGIN/COMMIT.",
+               "suggested": "Bracket multi-write sequences in a transaction (README §17 #24)."},
     "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
                "found": "A call result used before its `do`, or a catch var on the success path.",
                "suggested": "Reference the binding only after it is produced (README §25)."},
@@ -2056,12 +2056,94 @@ def _row_refs(row, owned: dict) -> list:
     return refs
 
 
+# SQL statement classes, read from a `body sql` island's first verb (README
+# ss19). Only INSERT/UPDATE/DELETE/REPLACE are row-mutating writes; CREATE/SELECT
+# and the transaction verbs are not. Mirrors semsc's _SQL_WRITE_STATEMENT_VERBS.
+_SQL_WRITE_VERBS = frozenset({"INSERT", "UPDATE", "DELETE", "REPLACE"})
+_SQL_BEGIN_VERBS = frozenset({"BEGIN", "SAVEPOINT"})
+_SQL_COMMIT_VERBS = frozenset({"COMMIT", "RELEASE"})
+# A live columnText/columnBlob/columnName pointer is SQLite-owned and invalidated
+# by step/reset on the SAME statement; sibling column reads do NOT invalidate it
+# (semsc _COLUMN_TEXT_INVALIDATORS / _OWNED_COLUMN_SOURCES).
+_OWNED_COLUMN_TARGETS = frozenset({
+    "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
+})
+_COLUMN_INVALIDATOR_TARGETS = frozenset({
+    "sqlite.stepStatement", "sqlite.resetStatement",
+})
+_SQLITE_TXN_BEGIN_TARGETS = frozenset({
+    "sqlite.beginTransaction", "sqlite.beginImmediateTransaction",
+})
+_SQLITE_TXN_COMMIT_TARGETS = frozenset({
+    "sqlite.commitTransaction",
+})
+
+
+def _sql_first_verb(sql_text: str):
+    """The leading SQL keyword (uppercased), skipping `--`/`/* */` comments and
+    whitespace. Port of semsc's _sql_first_verb_lint."""
+    i, n = 0, len(sql_text)
+    while i < n:
+        ch = sql_text[i]
+        if ch.isspace():
+            i += 1
+            continue
+        if sql_text.startswith("--", i):
+            nl = sql_text.find("\n", i + 2)
+            if nl == -1:
+                return None
+            i = nl + 1
+            continue
+        if sql_text.startswith("/*", i):
+            end = sql_text.find("*/", i + 2)
+            if end == -1:
+                return None
+            i = end + 2
+            continue
+        if ch.isalpha():
+            s = i
+            while i < n and (sql_text[i].isalpha() or sql_text[i] == "_"):
+                i += 1
+            return sql_text[s:i].upper()
+        return None
+    return None
+
+
 def _lint_sqlite_usage(program: Program) -> list:
-    """README ss19 / ss17 #23/#24: a sqlite `column*` result must be consumed
-    before the next read on the same statement (the borrowed value is invalidated
-    by `step`/the next column read), and multi-write sequences on one database
-    handle require a wrapping transaction."""
+    """README ss19 / ss17 #23/#24, aligned with semsc's SS3113/SS3635:
+
+    SS1901 - a `columnText`/`columnBlob`/`columnName` value points into
+    SQLite-owned memory that a later `step`/`reset` on the SAME statement
+    invalidates. Flag the value used as a call argument that follows such an
+    invalidation. Sibling column reads do not invalidate, and copied scalars
+    (`columnInt64` etc.) are never tracked.
+
+    SS1902 - an operation that prepares and steps two or more row-mutating
+    statements (INSERT/UPDATE/DELETE/REPLACE) must make the transaction boundary
+    visible (a begin/commit call pair, or `sqlite.exec` of BEGIN.../COMMIT...)."""
     diags: list = []
+
+    def target_of(call):
+        inv = call.fact("invokes")
+        return inv.payload[0] if inv and inv.payload else ""
+
+    def sql_text_of(call):
+        for a in call.facts("arg"):
+            if len(a.payload) >= 3 and a.payload[0] == "sql":
+                body = program.islands.get((a.payload[2], "sql"))
+                if body is not None:
+                    return "\n".join(body)
+        return None
+
+    def stmt_arg(call):
+        for a in call.facts("arg"):
+            if len(a.payload) >= 3 and a.payload[1] == "SqliteStatement":
+                return a.payload[2]
+        return None
+
+    def out_names(call):
+        return [o.payload[0] for o in call.facts("out") if o.payload]
+
     for n in program.order:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
@@ -2073,55 +2155,85 @@ def _lint_sqlite_usage(program: Program) -> list:
             and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
         }
 
-        def target_of(call):
-            inv = call.fact("invokes")
-            return inv.payload[0] if inv and inv.payload else ""
+        # ---- SS1902: multi-write transaction boundary ----
+        write_steps = 0
+        has_begin = has_commit = False
+        for call in owned.values():
+            tgt = target_of(call)
+            if tgt in _SQLITE_TXN_BEGIN_TARGETS:
+                has_begin = True
+                continue
+            if tgt in _SQLITE_TXN_COMMIT_TARGETS:
+                has_commit = True
+                continue
+            if tgt == "sqlite.prepareStatement":
+                verb = _sql_first_verb(sql_text_of(call) or "")
+                if verb in _SQL_WRITE_VERBS:
+                    produced = set(out_names(call))
+                    stepped = any(
+                        target_of(s) == "sqlite.stepStatement"
+                        and stmt_arg(s) in produced
+                        for s in owned.values())
+                    if stepped:
+                        write_steps += 1
+            elif tgt == "sqlite.exec":
+                verb = _sql_first_verb(sql_text_of(call) or "")
+                if verb in _SQL_BEGIN_VERBS:
+                    has_begin = True
+                elif verb in _SQL_COMMIT_VERBS:
+                    has_commit = True
+        if write_steps >= 2 and not (has_begin and has_commit):
+            diags.append(Diagnostic(
+                "SS1902", "warning",
+                f"{write_steps} row-mutating sqlite statements in {op.name!r} with no "
+                f"wrapping transaction; bracket multi-write sequences in BEGIN/COMMIT "
+                f"so a later failure cannot leave partial state (README ss17 #24)",
+                op.line, op.name))
 
-        def first_arg(call):
-            rows = [a for a in call.facts("arg") if len(a.payload) >= 3]
-            return rows[0].payload[2] if rows else None
-
-        has_txn = any(_sqlite_kind(target_of(c)) == "txn" for c in owned.values())
-        pending: dict = {}      # statement handle -> (outName, line)
-        writes: dict = {}       # db handle -> count
+        # ---- SS1901: column borrow use-after-invalidation ----
+        produced: dict = {}        # value name -> (owning statement, produce line)
+        invalidations: list = []   # (owning statement, invalidation line)
+        label_lines = [r.line for r in op.rows if r.predicate == "at"]
         for row in op.rows:
-            for r in _row_refs(row, owned):
-                for stmt, (nm, _ln) in list(pending.items()):
-                    if nm == r:
-                        del pending[stmt]
             if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
                 continue
             call = owned.get(row.payload[0])
             if call is None:
                 continue
-            kind = _sqlite_kind(target_of(call))
-            if kind == "read":
-                stmt = first_arg(call)
-                if stmt in pending:
-                    diags.append(Diagnostic(
-                        "SS1901", "warning",
-                        f"sqlite column result {pending[stmt][0]!r} in {op.name!r} is "
-                        f"not consumed before the next read on statement {stmt!r}; the "
-                        f"borrowed value is invalidated (README ss17 #23)",
-                        pending[stmt][1], op.name))
-                if target_of(call).startswith("sqlite.column"):
-                    o = call.fact("out")
-                    if o and o.payload:
-                        pending[stmt] = (o.payload[0], row.line)
-                else:
-                    pending.pop(stmt, None)  # step/next invalidates pending columns
-            elif kind == "write":
-                db = first_arg(call)
-                writes[db] = writes.get(db, 0) + 1
-        if not has_txn:
-            for db, count in writes.items():
-                if count >= 2:
-                    diags.append(Diagnostic(
-                        "SS1902", "warning",
-                        f"{count} sqlite writes on handle {db!r} in {op.name!r} with no "
-                        f"transaction; wrap multi-write sequences in a transaction "
-                        f"(README ss17 #24)",
-                        op.line, op.name))
+            tgt = target_of(call)
+            if tgt in _OWNED_COLUMN_TARGETS:
+                for nm in out_names(call):
+                    produced[nm] = (stmt_arg(call), row.line)
+            if tgt in _COLUMN_INVALIDATOR_TARGETS:
+                invalidations.append((stmt_arg(call), row.line))
+        if produced and invalidations:
+            for row in op.rows:
+                if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
+                    continue
+                call = owned.get(row.payload[0])
+                if call is None:
+                    continue
+                use_line = row.line
+                for a in call.facts("arg"):
+                    if len(a.payload) < 3 or a.payload[2] not in produced:
+                        continue
+                    val = a.payload[2]
+                    own_stmt, prod_line = produced[val]
+                    for inv_stmt, inv_line in invalidations:
+                        if not (prod_line < inv_line < use_line):
+                            continue
+                        if (inv_stmt is not None and own_stmt is not None
+                                and inv_stmt != own_stmt):
+                            continue
+                        if any(inv_line < ln < use_line for ln in label_lines):
+                            continue  # a label may put them on different paths
+                        diags.append(Diagnostic(
+                            "SS1901", "warning",
+                            f"sqlite column value {val!r} in {op.name!r} is used after a "
+                            f"later step/reset on the same statement invalidated it; copy "
+                            f"or consume it before advancing (README ss17 #23)",
+                            prod_line, op.name))
+                        break
     return diags
 
 
@@ -3143,8 +3255,39 @@ def _validate_effect_coverage(program: Program) -> None:
                 return target
         return None
 
-    def effective_effects(op: Entity, seen: set):
-        """Transitive effective effects across the call graph (README ss29 #10)."""
+    def _grants_of(op: Entity) -> set:
+        cov: set = set()
+        for u in op.facts("uses"):
+            if u.payload:
+                cov |= cap_grants.get(u.payload[0], set())
+        return cov
+
+    def _action_covers(grant_action: str, effect_action: str) -> bool:
+        # README ss8: a `readWrite` grant subsumes the `read` and `write` actions
+        # on the same resource (an op authorized to read+write may do either).
+        # Mirrors semsc: `grant_access == "readWrite" and action in {read, write}`.
+        return grant_action == effect_action or (
+            grant_action == "readWrite" and effect_action in ("read", "write")
+        )
+
+    def _covered_by(covered: set, action: str, resource: str) -> bool:
+        # README ss8: capability effect paths are hierarchical — a grant of
+        # `<action> <prefix>` authorizes every narrower `<action> <prefix>.<sub>`
+        # effect (e.g. `read http.request` covers `read http.request.body`).
+        # Mirrors semsc's _effect_path_covers; an exact match is the base case.
+        for gact, gres in covered:
+            if _action_covers(gact, action) and (
+                resource == gres or resource.startswith(gres + ".")
+            ):
+                return True
+        return False
+
+    def effective_effects(op: Entity, seen: set) -> set:
+        """Transitive effective effects across the call graph (README ss29 #10).
+        Authority is caller-granted and does NOT encapsulate: an effect a callee
+        triggers is part of every caller's effective set, so each op on the path
+        must hold a covering `uses` capability of its own (README ss8; pinned by
+        the entropy/clock/process capability tests)."""
         if op.name in seen:
             return set()
         seen.add(op.name)
@@ -3174,12 +3317,9 @@ def _validate_effect_coverage(program: Program) -> None:
         op = program.entities[name]
         if op.kind not in ("operation", "function"):
             continue
-        covered: set = set()
-        for u in op.facts("uses"):
-            if u.payload:
-                covered |= cap_grants.get(u.payload[0], set())
+        own = _grants_of(op)
         for action, resource in sorted(effective_effects(op, set())):
-            if (action, resource) not in covered:
+            if not _covered_by(own, action, resource):
                 program.warnings.append(
                     f"{op.name}: effective effect `{action} {resource}` is not "
                     f"covered by a `uses` capability (README ss8, ss17 #5)"
@@ -3846,6 +3986,16 @@ def _validate_islands(program: Program) -> None:
                     if a.payload and a.payload[0] not in
                     ("sql", "query", "database", "db", "statement")
                 ]
+                # README ss16 / WS3-024: the placeholder/arg-count check applies to
+                # calls that pass params inline. A prepared statement
+                # (`sqlite.prepareStatement`) that binds its `?` parameters through
+                # separate `bind*` calls passes no inline params, so it is exempt;
+                # but a prepare that DOES pass inline params is still checked.
+                inv = call.fact("invokes")
+                if (inv and inv.payload
+                        and inv.payload[0].endswith(".prepareStatement")
+                        and not params):
+                    continue
                 if len(params) != placeholders:
                     raise EavError(
                         f"sql island {ent.name!r} has {placeholders} `?` "

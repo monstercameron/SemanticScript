@@ -25,6 +25,9 @@ INVALID_CORPUS = os.path.join(HERE, "invalid_corpus")
 SIGS = os.path.join(HERE, "sigs")
 STD = os.path.join(HERE, "std")
 APPS = os.path.join(HERE, "apps")
+# The untouched v0.1 SemanticScript apps at the repo root — the porting source of
+# record and the parity baseline (X-047). The EAV ports under APPS must not mutate them.
+V1_APPS = os.path.normpath(os.path.join(HERE, "..", "..", "apps"))
 
 
 def _app_program(app, *stdlibs):
@@ -1966,64 +1969,87 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
-def test_sqlite_column_not_consumed_warns():
-    # README §17 #23: a column result left unconsumed before the next read warns.
+def test_sqlite_column_used_after_step_warns():
+    # README §17 #23 (semsc SS3113): a borrowed columnText pointer used AFTER a
+    # later step on the same statement is a use-after-invalidation. (No-op-failing:
+    # the old rule flagged the wrong site; a no-op lowering would not flag at all.)
     src = (
         "main is operation\nmain out ExitCode\nmain async no\n"
-        "main let okCode immutable ExitCode 0\nmain let stmt immutable Int64 1\n"
-        "main do readA\nmain do readB\nmain return okCode\n"
-        "readA is call\nreadA in main\nreadA invokes sqlite.columnText\n"
-        "readA arg statement Int64 stmt\nreadA out colA String\n"
-        "readB is call\nreadB in main\nreadB invokes sqlite.columnText\n"
-        "readB arg statement Int64 stmt\nreadB out colB String\n"
+        "main let okCode immutable ExitCode 0\nmain let stmt immutable SqliteStatement 1\n"
+        "main do readTitle\nmain do stepRow\nmain do useTitle\nmain return okCode\n"
+        "readTitle is call\nreadTitle in main\nreadTitle invokes sqlite.columnText\n"
+        "readTitle arg statement SqliteStatement stmt\nreadTitle out title String\n"
+        "stepRow is call\nstepRow in main\nstepRow invokes sqlite.stepStatement\n"
+        "stepRow arg statement SqliteStatement stmt\nstepRow discards \"x\"\n"
+        "useTitle is call\nuseTitle in main\nuseTitle invokes console.writeLine\n"
+        "useTitle arg text String title\n"
     )
     assert "SS1901" in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
-def test_sqlite_column_consumed_no_warning():
-    # Consuming colA (passing it to a write) before the next read is clean.
+def test_sqlite_sibling_column_reads_no_warning():
+    # Reading several columns from one row before stepping is the idiomatic
+    # pattern: sibling column reads do NOT invalidate each other, and scalar
+    # columnInt64 copies are never borrowed. Neither must warn.
     src = (
         "main is operation\nmain out ExitCode\nmain async no\n"
-        "main let okCode immutable ExitCode 0\nmain let stmt immutable Int64 1\n"
-        "main do readA\nmain do useColA\nmain do readB\nmain return okCode\n"
-        "readA is call\nreadA in main\nreadA invokes sqlite.columnText\n"
-        "readA arg statement Int64 stmt\nreadA out colA String\n"
-        "useColA is call\nuseColA in main\nuseColA invokes console.writeLine\n"
-        "useColA arg text String colA\n"
-        "readB is call\nreadB in main\nreadB invokes sqlite.columnText\n"
-        "readB arg statement Int64 stmt\nreadB out colB String\n"
+        "main let okCode immutable ExitCode 0\nmain let stmt immutable SqliteStatement 1\n"
+        "main do readId\nmain do readTitle\nmain do useTitle\nmain do stepRow\nmain return okCode\n"
+        "readId is call\nreadId in main\nreadId invokes sqlite.columnInt64\n"
+        "readId arg statement SqliteStatement stmt\nreadId out rowId Int64\n"
+        "readTitle is call\nreadTitle in main\nreadTitle invokes sqlite.columnText\n"
+        "readTitle arg statement SqliteStatement stmt\nreadTitle out title String\n"
+        "useTitle is call\nuseTitle in main\nuseTitle invokes console.writeLine\n"
+        "useTitle arg text String title\n"
+        "stepRow is call\nstepRow in main\nstepRow invokes sqlite.stepStatement\n"
+        "stepRow arg statement SqliteStatement stmt\nstepRow discards \"x\"\n"
     )
     assert "SS1901" not in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
-def test_sqlite_multi_write_without_transaction_warns():
-    # README §17 #24: two writes on one handle with no transaction warns.
-    src = (
+def _two_prepared_writes(body_steps, extra_calls=""):
+    # body_steps: the `main do ...` lines (transaction calls interleaved or not).
+    return (
+        "insertSql is storage\ninsertSql scope module\ninsertSql type SqlText\n"
+        "insertSql mutability immutable\ninsertSql body sql\n  INSERT INTO t VALUES (?)\n\n"
         "main is operation\nmain out ExitCode\nmain async no\n"
-        "main let okCode immutable ExitCode 0\nmain let db immutable Int64 1\n"
-        "main let q immutable String \"INSERT\"\n"
-        "main do writeA\nmain do writeB\nmain return okCode\n"
-        "writeA is call\nwriteA in main\nwriteA invokes sqlite.exec\n"
-        "writeA arg database Int64 db\nwriteA arg query String q\nwriteA discards \"x\"\n"
-        "writeB is call\nwriteB in main\nwriteB invokes sqlite.exec\n"
-        "writeB arg database Int64 db\nwriteB arg query String q\nwriteB discards \"x\"\n"
+        "main let okCode immutable ExitCode 0\nmain let db immutable SqliteDatabase 1\n"
+        + body_steps + "main return okCode\n"
+        "prepA is call\nprepA in main\nprepA invokes sqlite.prepareStatement\n"
+        "prepA arg database SqliteDatabase db\nprepA arg sql SqlText insertSql\nprepA out stA SqliteStatement\n"
+        "stepA is call\nstepA in main\nstepA invokes sqlite.stepStatement\n"
+        "stepA arg statement SqliteStatement stA\nstepA discards \"x\"\n"
+        "prepB is call\nprepB in main\nprepB invokes sqlite.prepareStatement\n"
+        "prepB arg database SqliteDatabase db\nprepB arg sql SqlText insertSql\nprepB out stB SqliteStatement\n"
+        "stepB is call\nstepB in main\nstepB invokes sqlite.stepStatement\n"
+        "stepB arg statement SqliteStatement stB\nstepB discards \"x\"\n"
+        + extra_calls
     )
+
+
+def test_sqlite_multi_write_without_transaction_warns():
+    # README §17 #24 (semsc SS3635): two prepared+stepped INSERTs with no
+    # BEGIN/COMMIT warn. CREATE/exec-of-non-write are not counted as writes.
+    src = _two_prepared_writes("main do prepA\nmain do stepA\nmain do prepB\nmain do stepB\n")
     assert "SS1902" in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
-def test_sqlite_multi_write_with_transaction_no_warning():
-    # A begin-transaction call clears the multi-write warning.
-    src = (
-        "main is operation\nmain out ExitCode\nmain async no\n"
-        "main let okCode immutable ExitCode 0\nmain let db immutable Int64 1\n"
-        "main let q immutable String \"INSERT\"\n"
-        "main do beginTx\nmain do writeA\nmain do writeB\nmain return okCode\n"
-        "beginTx is call\nbeginTx in main\nbeginTx invokes sqlite.beginTransaction\n"
-        "beginTx arg database Int64 db\nbeginTx discards \"x\"\n"
-        "writeA is call\nwriteA in main\nwriteA invokes sqlite.exec\n"
-        "writeA arg database Int64 db\nwriteA arg query String q\nwriteA discards \"x\"\n"
-        "writeB is call\nwriteB in main\nwriteB invokes sqlite.exec\n"
-        "writeB arg database Int64 db\nwriteB arg query String q\nwriteB discards \"x\"\n"
+def test_sqlite_multi_write_with_exec_transaction_no_warning():
+    # `sqlite.exec` of BEGIN.../COMMIT... around the writes (the original
+    # taskforge-web idiom) makes the boundary visible -> no warning.
+    src = _two_prepared_writes(
+        "main do beginTx\nmain do prepA\nmain do stepA\n"
+        "main do prepB\nmain do stepB\nmain do commitTx\n",
+        extra_calls=(
+            "beginSql is storage\nbeginSql scope module\nbeginSql type SqlText\n"
+            "beginSql mutability immutable\nbeginSql body sql\n  BEGIN IMMEDIATE\n\n"
+            "commitSql is storage\ncommitSql scope module\ncommitSql type SqlText\n"
+            "commitSql mutability immutable\ncommitSql body sql\n  COMMIT\n\n"
+            "beginTx is call\nbeginTx in main\nbeginTx invokes sqlite.exec\n"
+            "beginTx arg database SqliteDatabase db\nbeginTx arg sql SqlText beginSql\nbeginTx discards \"x\"\n"
+            "commitTx is call\ncommitTx in main\ncommitTx invokes sqlite.exec\n"
+            "commitTx arg database SqliteDatabase db\ncommitTx arg sql SqlText commitSql\ncommitTx discards \"x\"\n"
+        ),
     )
     assert "SS1902" not in {d.code for d in eavc.lint(eavc.parse(src))}
 
@@ -4811,11 +4837,9 @@ def test_webserver_dynamic_routing():
 
 
 def test_app_taskforge_web_project_layout():
-    # X-043 (WIP): taskforge-web uses the §28.2 build.sem + src/ layout — the
-    # project manifest in build.sem, modules under src/ (root + components/ +
-    # pages/ submodule directories), a generated build.sem.lock. The components
-    # and pages submodules are ported + lint clean per-module; the main API
-    # module (18 ops) is the pending bulk.
+    # X-043: taskforge-web uses the §28.2 build.sem + src/ layout — the project
+    # manifest in build.sem, modules under src/ (root + components/ + pages/
+    # submodule directories), a generated build.sem.lock.
     web = os.path.join(APPS, "taskforge-web")
     assert os.path.isfile(os.path.join(web, "build.sem"))
     assert os.path.isfile(os.path.join(web, "build.sem.lock"))
@@ -4829,6 +4853,70 @@ def test_app_taskforge_web_project_layout():
         prog = eavc.parse(open(os.path.join(web, "src", sub, "main.sem"),
                                encoding="utf-8").read())
         assert not [d.render() for d in eavc.lint(prog) if d.severity == "error"]
+
+
+def test_app_taskforge_web_full_port():
+    # X-043: the ENTIRE multi-module taskforge-web app is FULLY ported (no stubs):
+    # the 18-op sqlite/bcrypt/json/session API module + 10 component render ops +
+    # 3 server-rendered page handlers + the webServer entity routing all 16 routes,
+    # in the §28.2 build.sem + src/ layout. Execution is deferred (target
+    # webServer); the whole composed project parses + lints clean (0 diagnostics).
+    web = os.path.join(APPS, "taskforge-web")
+    prog = eavc.parse(eavc.load_project(web))
+
+    # build.sem manifest: a no-entry webServer target whose entry is the server
+    # entity (not an operation), and that entity is exported by its module (§28).
+    build = eavc.parse(open(os.path.join(web, "build.sem"), encoding="utf-8").read())
+    project = build.of_kind("project")[0]
+    assert project.fact("target").payload[0] == "webServer"
+    assert project.fact("entry").payload[0] == "taskForgeWebServer"
+    assert "taskForgeWebServer" not in {o.name for o in prog.of_kind("operation")}
+
+    # op-count parity with the untouched v0.1 app (18 main + 10 components + 3 pages)
+    def _v1_ops(rel):
+        path = os.path.join(V1_APPS, "taskforge-web", rel)
+        return sum(1 for l in open(path, encoding="utf-8") if l.startswith("operation "))
+    assert _v1_ops("main.sem") == 18
+    assert (_v1_ops("main.sem") + _v1_ops("components/main.sem")
+            + _v1_ops("pages/main.sem")) == 31
+    assert len(prog.of_kind("operation")) == 31
+    assert len(prog.of_kind("webServer")) == 1
+
+    # route parity: same {method, path} set as the v0.1 source, including the §14
+    # dynamic `:id`/`:filename` params and the `*` catch-all (404 fallback).
+    ws = prog.of_kind("webServer")[0]
+    port_routes = {(r.payload[0], r.payload[1].strip('"'))
+                   for r in ws.rows if r.predicate == "route"}
+    v1_routes = set()
+    for line in open(os.path.join(V1_APPS, "taskforge-web", "main.sem"), encoding="utf-8"):
+        t = line.split()
+        if t[:1] == ["route"] and len(t) >= 4:
+            v1_routes.add((t[2], t[3].strip('"')))
+    assert port_routes == v1_routes
+    assert len(port_routes) == 16
+    assert ("GET", "*") in port_routes              # catch-all 404 (notFoundPageHandler)
+    assert ("GET", "/api/todos/:id") in port_routes  # §14 dynamic path param
+
+    # every route handler is a real operation with the (request, response) ABI,
+    # resolved across the main/pages submodules (WS2-026 handler-ABI validation).
+    for method, path in port_routes:
+        handler_name = next(r.payload[2] for r in ws.rows if r.predicate == "route"
+                            and r.payload[0] == method and r.payload[1].strip('"') == path)
+        handler = prog.entities[handler_name]
+        assert handler.kind == "operation", handler_name
+        in_types = {p.payload[1] for p in handler.rows
+                    if p.predicate == "in" and len(p.payload) >= 2}
+        assert {"HttpRequest", "HttpResponse"} <= in_types, handler_name
+
+    # the full composed project lints clean: 0 errors AND 0 warnings.
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
+    assert not [d.render() for d in diags if d.severity != "error"]
+
+    # the v0.1 source coexists untouched (still a SemanticScript module, no EAV rows)
+    v1_text = open(os.path.join(V1_APPS, "taskforge-web", "main.sem"), encoding="utf-8").read()
+    assert "webServer taskForgeWebServer" in v1_text  # original semsc keyword form
+    assert " is webServer" not in v1_text             # not rewritten to EAV
 
 
 def test_app_taskforge_tui_full_port():
