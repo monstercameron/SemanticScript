@@ -3742,6 +3742,20 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+def test_app_taskforge_tui_render_core_runs():
+    # X-042: the TUI render core JIT-runs (interactive loop/collections/json/fs
+    # deferred); it draws the frame, a row, status, and navigation.
+    src = open(os.path.join(APPS, "taskforge-tui", "main.sem"), encoding="utf-8").read()
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "TODO TUI" in proc.stdout
+    assert "Up/Down select" in proc.stdout
+
+
 def test_app_taskforge_api_client_console_core_runs():
     # X-041: the client's console scaffolding JIT-runs; net is deferred (§27).
     src = open(os.path.join(APPS, "taskforge-api-client", "main.sem"), encoding="utf-8").read()

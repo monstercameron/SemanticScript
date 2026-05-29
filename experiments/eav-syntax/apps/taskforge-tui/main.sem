@@ -1,0 +1,71 @@
+# taskforge-tui — EAV port (apps/taskforge-tui, semsc v0.1 terminal todo app).
+#
+# The interactive loop needs terminal INPUT, collections for dynamic rows, JSON
+# persistence, and filesystem state — all DEFERRED in v0.3 (README §27), gated
+# behind their .semsig contracts. Per X-042 this ports the console/control/
+# let-state core: it renders the static TUI screen (frame + a row + status +
+# navigation) deterministically, JIT-runs and builds to an exe.
+
+TaskforgeTui is project
+TaskforgeTui module appTaskforgeTui
+TaskforgeTui target console
+TaskforgeTui entry main
+
+appTaskforgeTui is module
+appTaskforgeTui path apps.taskforgeTui
+appTaskforgeTui exports main
+appTaskforgeTui purpose "Render the static TUI screen (interactive loop deferred)"
+appTaskforgeTui invariant "Renders the frame, one row, status, and navigation in order"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main memory heap no
+main purpose "Draw the initial TUI screen frame, a sample row, and the help line"
+main invariant "Writes the top frame, a row, the bottom frame, and navigation"
+main let topFrameText immutable String "  TODO TUI                                              todos.json\n  +-------+------+------------------------------------------+\n  | Sel   | Done | Note                                     |\n  +-------+------+------------------------------------------+"
+main let sampleRowText immutable String "  | >   1 | [ ]  | buy milk                                 |"
+main let bottomFrameText immutable String "  +-------+------+------------------------------------------+"
+main let statusText immutable String "  Status: 1 todo loaded"
+main let navigationText immutable String "  Up/Down select | Right edit/new | Enter/Space done | D delete | Esc quit"
+main let okCode immutable ExitCode 0
+main do drawTopFrame
+main do drawSampleRow
+main do drawBottomFrame
+main do drawStatus
+main do drawNavigation
+main return okCode
+
+drawTopFrame is call
+drawTopFrame in main
+drawTopFrame invokes console.writeLine
+drawTopFrame arg text String topFrameText
+
+drawSampleRow is call
+drawSampleRow in main
+drawSampleRow invokes console.writeLine
+drawSampleRow arg text String sampleRowText
+
+drawBottomFrame is call
+drawBottomFrame in main
+drawBottomFrame invokes console.writeLine
+drawBottomFrame arg text String bottomFrameText
+
+drawStatus is call
+drawStatus in main
+drawStatus invokes console.writeLine
+drawStatus arg text String statusText
+
+drawNavigation is call
+drawNavigation in main
+drawNavigation invokes console.writeLine
+drawNavigation arg text String navigationText
