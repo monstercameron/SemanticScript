@@ -103,6 +103,37 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+def test_trace_lists_steps_and_bindings():
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    lines = eavc.trace(prog, "main")
+    text = "\n".join(lines)
+    assert "do answerCall -> answerValue" in text
+    assert "do writeAnswer" in text
+    assert "return successExitCode" in text
+    # live binding set grows as bindings are introduced
+    assert any("answerValue" in l and "live:" in l for l in lines)
+
+
+def test_trace_defers_run_reverse():
+    lines = eavc.trace(eavc.parse(_DEFER_TRACE_SRC), "main")
+    assert any("defers run (reverse): ['cleanupB', 'cleanupA']" in l for l in lines)
+
+
+_DEFER_TRACE_SRC = (
+    "ownerA is call\nownerA in main\nownerA invokes x.o\nownerA out rA Int64\n"
+    "ownerA owns rA\nownerA cleanedBy cleanupA\n"
+    "ownerB is call\nownerB in main\nownerB invokes x.p\nownerB out rB Int64\n"
+    "ownerB owns rB\nownerB cleanedBy cleanupB\n"
+    "wA is call\nwA in main\nwA invokes x.a\n"
+    "wB is call\nwB in main\nwB invokes x.b\n"
+    "cleanupA is cleanup\ncleanupA in main\ncleanupA call wA\ncleanupA cleans rA\n"
+    "cleanupB is cleanup\ncleanupB in main\ncleanupB call wB\ncleanupB cleans rB\n"
+    "main is operation\nmain out ExitCode\nmain let okCode immutable ExitCode 0\n"
+    "main do ownerA\nmain do ownerB\nmain defer cleanupA\nmain defer cleanupB\n"
+    "main return okCode\n"
+)
+
+
 def test_normalize_preview_round_trip_preserved():
     src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
     p = eavc.normalize_preview(src)

@@ -858,6 +858,43 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+def trace(program: Program, op_name: str) -> list:
+    """Simulate the primary (document-order) path through an operation, tracking
+    live bindings and defers up to the first return (README ss24 `trace`)."""
+    op = program.entities.get(op_name)
+    if op is None or op.kind not in ("operation", "function"):
+        raise EavError(f"{op_name!r} is not an operation")
+    live: set = {r.payload[0] for r in op.facts("in") if r.payload}
+    defers: list = []
+    lines: list[str] = []
+    for row in op.rows:
+        if row.label is not None:
+            lines.append(f"at {row.label}:")
+        pred, p = row.predicate, row.payload
+        if pred == "let" and p:
+            live.add(p[0])
+            lines.append(f"  let {p[0]}  | live: {sorted(live)}")
+        elif pred == "do" and p:
+            call = program.entities.get(p[0])
+            out = call.fact("out") if call else None
+            if out and out.payload:
+                live.add(out.payload[0])
+                lines.append(f"  do {p[0]} -> {out.payload[0]}  | live: {sorted(live)}")
+            else:
+                lines.append(f"  do {p[0]}")
+        elif pred == "defer" and p:
+            defers.append(p[0])
+            lines.append(f"  defer {p[0]}  | defers: {defers}")
+        elif pred == "branch":
+            lines.append(f"  branch {' '.join(p)} (fallthrough simulated)")
+        elif pred == "goto" and p:
+            lines.append(f"  goto {p[0]}")
+        elif pred == "return":
+            lines.append(f"  return {' '.join(p)}  | defers run (reverse): {defers[::-1]}")
+            break
+    return lines
+
+
 def _logical_row_count(program: Program) -> int:
     """Total EAV rows (one `is` row + each fact/step row per entity)."""
     return sum(1 + len(program.entities[n].rows) for n in program.order)
@@ -2451,6 +2488,18 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_trace(args) -> int:
+    """Print a primary-path trace of an operation."""
+    program = parse(_read_source(args.path))
+    try:
+        for line in trace(program, args.operation):
+            sys.stdout.write(line + "\n")
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_normalize(args) -> int:
     """Preview normalizing a program (row delta + round-trip gate)."""
     p = normalize_preview(_read_source(args.path))
@@ -2609,6 +2658,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_verify = sub.add_parser("verify-patch", help="verify a program is sound")
     sp_verify.add_argument("path", help="EAV source file, or - for stdin")
     sp_verify.set_defaults(func=cmd_verify_patch)
+
+    sp_trace = sub.add_parser("trace", help="primary-path trace of an operation")
+    sp_trace.add_argument("path", help="EAV source file, or - for stdin")
+    sp_trace.add_argument("operation", help="operation name")
+    sp_trace.set_defaults(func=cmd_trace)
 
     sp_norm = sub.add_parser("normalize", help="preview normalizing to canonical EAV")
     sp_norm.add_argument("path", help="EAV source file, or - for stdin")
