@@ -3693,6 +3693,90 @@ def test_project_test_discovery_recurses_nested(tmp_path):
     assert all("golden" not in f for f in td)
 
 
+def test_check_workspace_root_isolates_fixtures(capsys):
+    """R-003: checking the experiment root must NOT compose every unrelated
+    fixture into one program. Before the fix, `load_project(root)` fell back to a
+    recursive `**/*.sem` scan when there was no `src/`, gluing apps/, examples/,
+    std/, manifests/ and the negative `invalid_corpus/` together — the malformed
+    `=` fixture then made `check` report a misleading `compiler-error`.
+
+    A no-op (unfixed) `cmd_check` returns status `compiler-error` here; this test
+    asserts the workspace envelope instead, so it goes red against the old code."""
+    import json
+    rc = eavc.main(["check", "--json", HERE])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["surface"] == "sem.check.v1"
+    # the misleading composed compiler-error is gone; this is a workspace envelope
+    assert payload["status"] == "workspace"
+    children = payload["children"]
+    assert payload["childCount"] == len(children) >= 1
+    # the negative corpus is never composed into a normal check
+    assert all("invalid_corpus" not in c["name"] for c in children)
+    # every real app/example/std/signature child checks clean on its own
+    not_clean = [c for c in children if not c["ok"]]
+    assert not_clean == [], not_clean
+    assert payload["ok"] is True and rc == 0
+    # apps appear as composed project units, libraries/examples as standalone files
+    kinds = {c["kind"] for c in children}
+    assert {"project", "file"} <= kinds
+
+
+def test_load_project_non_project_dir_does_not_recurse(tmp_path):
+    """R-003: a non-project directory (no build.sem, no src/) composes only its
+    top-level *.sem files, never the whole subtree. The old recursive `**` scan
+    pulled a nested fixture into the program; this asserts the nested file is
+    excluded so unrelated subtrees cannot leak in."""
+    root = tmp_path / "workspace"
+    (root / "nested").mkdir(parents=True)
+    (root / "top.sem").write_text("# top-level demo file\n", encoding="utf-8")
+    (root / "nested" / "leaked.sem").write_text(
+        "LeakedMarkerProgram is project\n", encoding="utf-8")
+    composed = eavc.load_project(str(root))
+    assert "top-level demo file" in composed
+    # the nested subtree must not be composed (old recursion would include it)
+    assert "LeakedMarkerProgram" not in composed
+
+
+def test_check_workspace_reports_failing_child_and_excludes_corpus(tmp_path, capsys):
+    """R-003: a workspace check reports each child's own status and stays negative
+    when any child is broken, while `invalid_corpus/` is excluded by design. The
+    old code composed everything and could only emit a single compiler-error; this
+    asserts per-child isolation, a non-zero exit on a broken child, and corpus
+    exclusion."""
+    import json
+    root = tmp_path / "ws"
+    (root / "examples").mkdir(parents=True)
+    (root / "invalid_corpus").mkdir(parents=True)
+    # a clean standalone example
+    (root / "examples" / "good.sem").write_text(
+        'Good is project\nGood module goodMod\nGood target console\nGood entry run\n\n'
+        'goodMod is module\ngoodMod path examples.good\ngoodMod exports run\n'
+        'goodMod purpose "Clean demo"\ngoodMod invariant "Returns 0"\n\n'
+        'ExitCode is alias\nExitCode for Int32\n\n'
+        'run is operation\nrun out ExitCode\nrun async no\n'
+        'run purpose "Return success"\nrun invariant "Always 0"\n'
+        'run let okCode immutable ExitCode 0\nrun return okCode\n',
+        encoding="utf-8")
+    # a broken standalone example (the legacy `=` assignment is rejected)
+    (root / "examples" / "broken.sem").write_text(
+        "broken let total = subtotal + tax\n", encoding="utf-8")
+    # a negative fixture that must never be composed/checked
+    (root / "invalid_corpus" / "rejectme.sem").write_text(
+        "alsoBroken let x = 1\n", encoding="utf-8")
+
+    rc = eavc.main(["check", "--json", str(root)])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "workspace"
+    names = {c["name"]: c for c in payload["children"]}
+    assert "examples/good.sem" in names and names["examples/good.sem"]["ok"]
+    assert "examples/broken.sem" in names
+    assert names["examples/broken.sem"]["status"] == "compiler-error"
+    # invalid_corpus is excluded from the workspace check entirely
+    assert all("invalid_corpus" not in n for n in names)
+    # one broken child makes the whole workspace not-ok and exits non-zero
+    assert payload["ok"] is False and rc == 1
+
+
 def test_app_layout_conversion_plan(tmp_path):
     # WS3-049: plan the relayout of a *flat* app into the framework layout
     # (the real apps already use the build.sem + src/ layout, §28.2).
