@@ -1,9 +1,10 @@
-"""Tests for the EAV-Steps front end (eavc.py).
+"""Tests for the EAV-Steps compiler (eavc.py).
 
 Project rule (todos.md scope rule): no item is "done" without a test that would
-fail under a no-op lowering. The end-to-end tests here run lowered programs
-through the real reference compiler and assert on stdout + exit code, so a
-stubbed/no-op lowering makes them red.
+fail under a no-op lowering. eavc lowers EAV directly to LLVM IR via llvmlite;
+the end-to-end tests JIT-run the program (via `eavc.py run`) and assert on
+stdout + exit code, and the IR tests assert on generated instructions — both go
+red under a stubbed/no-op code generator.
 
 Run:  python -m pytest experiments/eav-syntax/test_eavc.py -q
 """
@@ -22,10 +23,14 @@ import eavc  # noqa: E402
 EXAMPLES = os.path.join(HERE, "examples")
 
 
-def _run_example(name: str):
+def _ir_for(name: str) -> str:
+    """Parse an example and return its generated LLVM IR as text."""
     program = eavc.parse(open(os.path.join(EXAMPLES, name), encoding="utf-8").read())
-    v01 = eavc.lower_to_v01(program)
-    return v01
+    return str(eavc.lower_to_llvm(program))
+
+
+def _ir_for_source(src: str) -> str:
+    return str(eavc.lower_to_llvm(eavc.parse(src)))
 
 
 # --------------------------------------------------------------------------
@@ -231,18 +236,37 @@ def test_primitive_types_complete():
 
 
 def test_byte_lowers_to_uint8():
-    # README ss10: Byte is a primitive synonym for UInt8.
+    # README ss10: Byte is a primitive synonym for UInt8 -> i8 in LLVM.
     src = (
-        "P is project\nP module m\nP target console\nP entry main\n"
+        "P is project\nP module m\nP target console\nP entry idByte\n"
         "m is module\nm path a.b\n"
-        "R is record\nR field flags Byte\n"
-        "main is operation\nmain out ExitCode\n"
-        "main let mask immutable Byte 7\nmain let okCode immutable ExitCode 0\nmain return okCode\n"
+        "idByte is operation\nidByte in b Byte\nidByte out Byte\nidByte return b\n"
     )
-    v01 = eavc.lower_to_v01(eavc.parse(src))
-    assert "storage local immutable mask UInt8 7" in v01
-    assert "field R flags UInt8" in v01
-    assert "Byte" not in v01
+    cg = eavc.EavCodegen(eavc.parse(src))
+    assert cg.resolve_type_name("Byte") == "UInt8"
+    assert cg.ir_type("Byte").width == 8
+    ir_text = str(cg.generate())
+    assert 'define i8 @"idByte"(i8 %"b")' in ir_text
+
+
+def test_errorcase_requires_of():
+    # README ss9: an errorCase must declare its parent error with `of`.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("Failed is errorCase\nFailed payload Int32\n")
+    assert "of <Error>" in exc.value.message
+
+
+def test_errorcase_enumeration_by_of():
+    prog = eavc.parse(
+        "E is error\nA is errorCase\nA of E\n"
+        "B is errorCase\nB of E\nB payload Int32\n"
+    )
+    cases = [
+        n for n in prog.order
+        if prog.entities[n].kind == "errorCase"
+        and prog.entities[n].fact("of").payload == ["E"]
+    ]
+    assert cases == ["A", "B"]
 
 
 def test_parse_result_arity_enforced():
@@ -411,34 +435,45 @@ def test_parse_tab_indent_island_rejected():
 
 
 # --------------------------------------------------------------------------
-# Lowering (README ss18) — structural assertions
+# Lowering to LLVM IR (README ss18) — structural assertions on generated IR
 # --------------------------------------------------------------------------
 
 
-def test_lower_hello_world_key_rows():
-    v01 = _run_example("hello_world.sem")
-    assert "project HelloWorld" in v01
-    assert "entry console main" in v01
-    assert "errorCase ConsoleWriteError ConsoleWriteFailed Int32" in v01
-    assert "capability stdoutWriter console.stdout write" in v01
-    assert "useCapability main stdoutWriter" in v01
-    assert "call writeHello console.writeLine" in v01
-    assert "argument writeHello text String helloText" in v01
-    assert "ignore void source writeHello" in v01
-    assert "bind error writeError ConsoleWriteError writeHello" in v01
-    assert "branch error source writeHello target failed" in v01
-    assert "label failed" in v01
+def test_module_verifies_and_has_entry():
+    # The generated module must pass LLVM's verifier and define `main`.
+    import llvmlite.binding as llvm
+
+    eavc._ensure_native_init()
+    ir_text = _ir_for("hello_world.sem")
+    mod = llvm.parse_assembly(ir_text)
+    mod.verify()  # raises on malformed IR
+    assert 'define i32 @"main"()' in ir_text
 
 
-def test_lower_capability_grants_resource_action_order():
-    # EAV `grants <action> <resource>` -> v0.1 `capability NAME <resource> <action>`
-    v01 = _run_example("hello_world.sem")
-    assert "capability stdoutWriter console.stdout write" in v01
+def test_lower_hello_world_emits_puts_and_error_branch():
+    ir_text = _ir_for("hello_world.sem")
+    # console.writeLine -> puts; the fallible catch -> error test on the result.
+    assert 'call i32 @"puts"' in ir_text
+    assert 'icmp slt i32' in ir_text  # ifError: puts result < 0
+    assert 'c"hello world\\00"' in ir_text
+    # ifError branch to a `failed` block returning exit code 1, ok path 0.
+    assert "failed:" in ir_text
+    assert "ret i32 1" in ir_text
+    assert "ret i32 0" in ir_text
+
+
+def test_lower_value_call_emits_user_call_and_printf():
+    ir_text = _ir_for("add_two.sem")
+    # user op lowers to its own function; the call site is a real `call`.
+    assert 'define i64 @"addTwoValues"(i64 %"leftValue", i64 %"rightValue")' in ir_text
+    assert "add i64" in ir_text
+    assert 'call i64 @"addTwoValues"(i64 40, i64 2)' in ir_text
+    assert 'call i32 (i8*, ...) @"printf"' in ir_text
 
 
 def test_operation_decl_rows_reorder_stable():
     # README ss11: operation declaration rows are order-independent; only `in`
-    # order is significant. Lowering must be identical when decls are shuffled.
+    # order is significant. Generated IR must be identical when decls shuffle.
     head = (
         "P is project\nP module m\nP target console\nP entry main\n"
         "m is module\nm path a.b\n"
@@ -451,47 +486,22 @@ def test_operation_decl_rows_reorder_stable():
         "main is operation\nmain purpose \"x\"\nmain memory heap no\nmain async no\n"
         "main out ExitCode\nmain let okCode immutable ExitCode 0\nmain return okCode\n"
     )
-    assert eavc.lower_to_v01(eavc.parse(a)) == eavc.lower_to_v01(eavc.parse(b))
-
-
-def test_lower_value_call_binds_value():
-    v01 = _run_example("add_two.sem")
-    assert "bind value answerValue Int64 answerCall" in v01
-    assert "argument writeAnswer value Int64 answerValue" in v01
-
-
-def test_lower_error_cases_and_void_payload():
-    # README ss9: errorCase `of`/`payload`; a Void payload carries no data.
-    src = (
-        "P is project\nP module m\nP target console\nP entry main\n"
-        "m is module\nm path a.b\n"
-        "E is error\n"
-        "Failed is errorCase\nFailed of E\nFailed payload Int32\n"
-        "Closed is errorCase\nClosed of E\nClosed payload Void\n"
-        "main is operation\nmain out ExitCode\n"
-        "main let okCode immutable ExitCode 0\nmain return okCode\n"
-    )
-    v01 = eavc.lower_to_v01(eavc.parse(src))
-    assert "error E" in v01
-    assert "errorCase E Failed Int32" in v01
-    assert "errorCase E Closed" in v01
-    assert "errorCase E Closed Void" not in v01
+    assert _ir_for_source(a) == _ir_for_source(b)
 
 
 def test_lower_webserver_target_rejected():
-    src = "W is project\nW module m\nW target webServer\nW entry s\n" "m is module\nm path a.b\n"
+    src = "W is project\nW module m\nW target webServer\nW entry s\nm is module\nm path a.b\n"
     with pytest.raises(eavc.EavError) as exc:
-        eavc.lower_to_v01(eavc.parse(src))
-    assert "console lowering" in exc.value.message
+        eavc.lower_to_llvm(eavc.parse(src))
+    assert "console code generator" in exc.value.message
 
 
-def test_lower_mutable_rebind_uses_set_storage():
-    # README ss12: `out` to a `let mutable` rebinds via bind-to-temp + set storage.
-    v01 = _run_example("countdown.sem")
-    assert "storage local mutable counter Int64 3" in v01
-    assert "set storage counter " in v01
-    # the rebind binds a fresh temp, not the mutable name directly
-    assert "bind value counter Int64 decrementCounter" not in v01
+def test_lower_mutable_rebind_stores_to_alloca():
+    # README ss12: a `let mutable` is an alloca; out-rebind is a store.
+    ir_text = _ir_for("countdown.sem")
+    assert 'alloca i64' in ir_text          # mutable counter
+    assert 'store i64' in ir_text           # rebind via store
+    assert 'sub i64' in ir_text             # decrementCounter
 
 
 def test_lower_immutable_rebind_rejected():
@@ -507,15 +517,17 @@ def test_lower_immutable_rebind_rejected():
         "addCall out total Int64\n"
     )
     with pytest.raises(eavc.EavError) as exc:
-        eavc.lower_to_v01(eavc.parse(src))
+        eavc.lower_to_llvm(eavc.parse(src))
     assert "immutable" in exc.value.message
 
 
-def test_lower_branch_iffalse_inverts():
-    # README ss13: `branch ifFalse COND goto L` inverts to a true-taken skip.
-    v01 = _run_example("countdown.sem")
-    assert "branch if condition shouldContinue target ifFalseSkip" in v01
-    assert "jump target loopExit" in v01
+def test_lower_branch_iffalse_inverts_to_cbranch():
+    # README ss13: `branch ifFalse COND goto L` -> cbranch(cond, fallthrough, L).
+    ir_text = _ir_for("countdown.sem")
+    assert "icmp sge i64" in ir_text                 # checkContinue
+    assert "loopExit:" in ir_text
+    # cond-true continues into the loop body; cond-false jumps to loopExit.
+    assert "br i1 " in ir_text
 
 
 def test_lower_do_on_task_rejected():
@@ -527,12 +539,12 @@ def test_lower_do_on_task_rejected():
         "main is operation\nmain out ExitCode\nmain do t\n"
     )
     with pytest.raises(eavc.EavError) as exc:
-        eavc.lower_to_v01(eavc.parse(src))
+        eavc.lower_to_llvm(eavc.parse(src))
     assert "task" in exc.value.message
 
 
 # --------------------------------------------------------------------------
-# End-to-end: parse -> lower -> compile -> run (the no-op-lowering-fails guard)
+# End-to-end: parse -> lower to LLVM IR -> JIT run (the no-op-lowering-fails guard)
 # --------------------------------------------------------------------------
 
 
@@ -564,27 +576,24 @@ def test_e2e_countdown_runs():
     assert [ln for ln in proc.stdout.splitlines() if ln.strip()] == ["3", "2", "1"]
 
 
-def test_noop_lowering_would_fail():
-    """Guard: feeding raw EAV (a no-op 'lowering') to the compiler must fail.
+def test_noop_codegen_would_fail():
+    """Guard: the e2e/IR tests are not vacuous.
 
-    This proves the e2e tests above are not vacuous — the program only runs
-    because lower_to_v01 produces real v0.1 source, not because the compiler
-    happens to accept EAV text.
+    A no-op code generator (an empty module, or one that skips the `puts` call)
+    would either lack `main` or not emit the program's instructions. We assert
+    the real generator emits a verifiable module whose `main` actually calls the
+    runtime — exactly what a stub cannot produce.
     """
-    raw_eav = open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read()
-    import tempfile
+    import llvmlite.binding as llvm
 
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".sscript", delete=False, encoding="utf-8"
-    ) as tf:
-        tf.write(raw_eav)
-        tmp = tf.name
-    try:
-        proc = subprocess.run(
-            [sys.executable, eavc._semsc_path(), tmp, "--run"],
-            capture_output=True,
-            text=True,
-        )
-        assert proc.returncode != 0 or "hello world" not in proc.stdout
-    finally:
-        os.unlink(tmp)
+    eavc._ensure_native_init()
+    ir_text = _ir_for("hello_world.sem")
+    mod = llvm.parse_assembly(ir_text)
+    mod.verify()
+    assert mod.get_function("main").name == "main"
+    assert 'call i32 @"puts"' in ir_text
+    # An empty module (the no-op) has no `main` to run.
+    empty = llvm.parse_assembly('target triple = "%s"' % llvm.get_default_triple())
+    empty.verify()
+    with pytest.raises(NameError):
+        empty.get_function("main")

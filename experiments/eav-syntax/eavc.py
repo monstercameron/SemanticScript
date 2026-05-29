@@ -1,42 +1,37 @@
 #!/usr/bin/env python3
-"""eavc — EAV-Steps front end (lexer, parser, lowering, CLI).
+"""eavc — EAV-Steps compiler front end and LLVM backend (lexer, parser, codegen, CLI).
 
 This is the keystone vertical slice for the EAV-Steps v0.3 spec (README.md). It
 implements WS1-100 (the lowering ADR) and WS1-101 (parse -> lower -> run Hello
 World) from todos.md.
 
-ADR (WS1-100): EAV-Steps is lowered as a *second front end* that normalizes
-canonical EAV source into the existing v0.1 verb-led SemanticScript text, which
-the reference compiler (``SemanticScript/compiler/semsc.py``) already parses,
-lowers, and runs. We do not fork the backend AST: we reuse the entire existing
-compile/run pipeline by emitting the v0.1 surface it already accepts. This keeps
-the EAV experiment anchored to a real, executable backend instead of a parallel
-stub, and makes the no-op-lowering-fails guarantee concrete -- a stubbed
-lowering produces a program that does not compile or does not print.
+ADR (WS1-100): eavc is **its own backend**. A parsed EAV Program is lowered
+*directly to LLVM IR* with ``llvmlite`` and JIT-executed in process. There is no
+transpilation to any other surface syntax and no dependency on the reference
+compiler — eavc owns lexing, parsing, semantic validation, and code generation.
+The no-op-lowering-fails guarantee is concrete: a stubbed code generator emits a
+module that fails ``verify()`` or prints nothing.
 
-The front end is intentionally split into three pure stages so each is testable
-in isolation:
+The front end is split into pure stages so each is testable in isolation:
 
     tokenize_line(text)        -> list[str]            (lexer, README ss2)
     parse(source_text)         -> Program              (parser, README ss1/ss5)
-    lower_to_v01(program)      -> str                  (lowering, README ss18)
+    lower_to_llvm(program)     -> llvmlite.ir.Module   (codegen, README ss18)
+    jit_run(program)           -> int                  (JIT execution)
 
 Scope of this slice: the parser accepts the full four-row-class grammar and all
 entity kinds in README ss5 so real programs parse without special-casing; the
-lowering targets the *console* program model end to end (Hello World, ss18).
-Constructs that only make sense for the webServer/wasm targets are parsed but
-rejected by the console lowering with a clear message, rather than silently
-dropped.
+code generator targets the *console* program model end to end (Hello World,
+ss18). Constructs that only make sense for the webServer/wasm targets are parsed
+but rejected by the console code generator with a clear message, rather than
+silently mis-lowered.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import re
-import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -652,6 +647,11 @@ def _validate_program(program: Program) -> None:
             )
         elif ent.kind == "enum":
             _validate_enum(ent)
+        elif ent.kind == "errorCase" and ent.fact("of") is None:
+            raise EavError(
+                f"errorCase {ent.name!r} needs an `of <Error>` row (README ss9)",
+                ent.line,
+            )
         if ent.kind in ("operation", "function"):
             for row in ent.facts("let"):
                 if row.payload and row.payload[0] in RESERVED_WORDS:
@@ -717,21 +717,20 @@ def _validate_enum(ent: Entity) -> None:
 
 
 # --------------------------------------------------------------------------
-# 3. Lowering  (README ss18 — EAV -> v0.1 verb-led SemanticScript)
+# 3. Lowering to LLVM IR  (README ss18 — EAV -> LLVM IR via llvmlite)
 # --------------------------------------------------------------------------
+#
+# eavc is its own backend. A parsed EAV Program is lowered *directly* to an
+# llvmlite ir.Module and JIT-executed (or emitted as textual IR). There is no
+# transpilation to any other surface syntax. The console program model runs end
+# to end here; webServer/wasm/sqlite/http targets are rejected with a clear
+# message rather than mis-lowered.
 
-# Aliases that name a type the reference compiler already knows built-in; we do
-# not re-declare these with a `type` row (it already treats ExitCode as i32).
-BUILTIN_ALIASES = {"ExitCode"}
-
-# Operation declaration predicates, emitted before the body in v0.1.
-_OP_DECL_PREDS = {"in", "out", "effect", "uses", "memory", "async", "purpose",
-                  "invariant", "note", "rationale", "risk", "example", "tag",
-                  "deprecated", "owner", "label", "export", "body"}
-
+from llvmlite import ir
+import llvmlite.binding as llvm
 
 # Built-in primitive types (README ss10) — usable with no `is` row. `Byte` is a
-# primitive synonym for `UInt8` (same width, freely interchangeable at the ABI).
+# primitive synonym for `UInt8`.
 PRIMITIVE_TYPES = {
     "Int8", "Int16", "Int32", "Int64",
     "UInt8", "UInt16", "UInt32", "UInt64",
@@ -739,353 +738,465 @@ PRIMITIVE_TYPES = {
     "Bool", "String", "Void", "Byte",
 }
 
+# EAV primitive type name -> llvmlite IR type. `ExitCode` is the conventional
+# `alias for Int32`, resolved here so console entries lower without a type row.
+_PRIMITIVE_IR = {
+    "Int8": ir.IntType(8), "UInt8": ir.IntType(8), "Byte": ir.IntType(8),
+    "Int16": ir.IntType(16), "UInt16": ir.IntType(16),
+    "Int32": ir.IntType(32), "UInt32": ir.IntType(32), "ExitCode": ir.IntType(32),
+    "Int64": ir.IntType(64), "UInt64": ir.IntType(64),
+    "Float32": ir.FloatType(), "Float64": ir.DoubleType(),
+    "Bool": ir.IntType(1),
+    "String": ir.IntType(8).as_pointer(),
+    "Void": ir.VoidType(),
+}
+
+_FLOAT_TYPE_NAMES = {"Float32", "Float64"}
+
+# Integer math targets -> llvmlite IRBuilder binary-op method names.
+_INT_BINOPS = {
+    "math.addInt64": "add", "math.subtractInt64": "sub",
+    "math.multiplyInt64": "mul", "math.divideInt64": "sdiv",
+    "math.moduloInt64": "srem",
+}
+# Float math targets -> IRBuilder fp binary-op method names.
+_FLOAT_BINOPS = {
+    "math.addFloat64": "fadd", "math.subtractFloat64": "fsub",
+    "math.multiplyFloat64": "fmul", "math.divideFloat64": "fdiv",
+}
+# Integer comparison targets -> icmp_signed predicate.
+_INT_CMP = {
+    "math.equalInt64": "==", "math.notEqualInt64": "!=",
+    "math.lessThanInt64": "<", "math.lessThanOrEqualInt64": "<=",
+    "math.greaterThanInt64": ">", "math.greaterThanOrEqualInt64": ">=",
+}
+
 
 def _norm_type(tok: str) -> str:
-    """Normalize a type token for lowering. `Byte` lowers to `UInt8` (README ss10)."""
+    """Normalize a type token. `Byte` is a synonym for `UInt8` (README ss10)."""
     return "UInt8" if tok == "Byte" else tok
 
 
-def lower_to_v01(program: Program) -> str:
-    """Lower a parsed EAV Program to v0.1 verb-led source text (console target).
-
-    Returns text the reference compiler accepts. Raises EavError for constructs
-    that the console lowering does not model (webServer/wasm/sqlite/http), so a
-    caller never gets a silently-wrong program.
-    """
-
-    projects = program.of_kind("project")
-    if not projects:
-        raise EavError("no `project` entity found (README ss7)")
-    project = projects[0]
-
-    target_row = project.fact("target")
-    target = target_row.payload[0] if target_row and target_row.payload else "console"
-    if target != "console":
-        raise EavError(
-            f"console lowering only supports `target console`, got {target!r}; "
-            "webServer/wasm lowering is out of scope for this slice (todos WS3)"
-        )
-
-    module_row = project.fact("module")
-    module_entity = None
-    if module_row and module_row.payload:
-        module_entity = program.entities.get(module_row.payload[0])
-    module_path = "examples.program"
-    if module_entity is not None:
-        path_row = module_entity.fact("path")
-        if path_row and path_row.payload:
-            module_path = path_row.payload[0]
-
-    entry_row = project.fact("entry")
-    if not entry_row or not entry_row.payload:
-        raise EavError("project needs an `entry` row (README ss7)")
-    entry_op = entry_row.payload[0]
-
-    out: list[str] = []
-    out.append(f"project {project.name}")
-    out.append("target console")
-    out.append("runtime native 1")
-    out.append(f"module {module_path}")
-    out.append(f"entry console {entry_op}")
-    out.append("")
-
-    # Imports (alias path) from the module entity.
-    if module_entity is not None:
-        for row in module_entity.facts("imports"):
-            if len(row.payload) >= 2:
-                out.append(f"import {row.payload[0]} {row.payload[1]}")
-
-    # Aliases -> `type NAME BASE` (skip compiler built-ins).
-    for alias in program.of_kind("alias"):
-        if alias.name in BUILTIN_ALIASES:
-            continue
-        for_row = alias.fact("for")
-        if for_row and for_row.payload:
-            out.append(f"type {alias.name} {for_row.payload[0]}")
-
-    # Records -> `record` + `field` rows (schema/metadata; ss10).
-    for rec in program.of_kind("record"):
-        out.append(f"record {rec.name}")
-        for fr in rec.facts("field"):
-            if len(fr.payload) >= 2:
-                out.append(f"field {rec.name} {fr.payload[0]} {_norm_type(fr.payload[1])}")
-
-    # Errors and error cases (README ss9).
-    for err in program.of_kind("error"):
-        out.append(f"error {err.name}")
-    for case in program.of_kind("errorCase"):
-        of_row = case.fact("of")
-        if not of_row or not of_row.payload:
-            raise EavError(f"errorCase {case.name!r} missing `of` (README ss9)", case.line)
-        parent = of_row.payload[0]
-        payload_row = case.fact("payload")
-        if payload_row and payload_row.payload and payload_row.payload[0] != "Void":
-            out.append(f"errorCase {parent} {case.name} {payload_row.payload[0]}")
-        else:
-            out.append(f"errorCase {parent} {case.name}")
-
-    # Capabilities (README ss8): grants <action> <resource> -> resource action.
-    for cap in program.of_kind("capability"):
-        for gr in cap.facts("grants"):
-            if len(gr.payload) >= 2:
-                action, resource = gr.payload[0], gr.payload[1]
-                out.append(f"capability {cap.name} {resource} {action}")
-
-    out.append("")
-
-    # Operations.
-    for op in program.of_kind("operation"):
-        _lower_operation(program, op, out)
-        out.append("")
-
-    return "\n".join(out).rstrip() + "\n"
-
-
-def _lower_operation(program: Program, op: Entity, out: list[str]) -> None:
-    out.append(f"operation {op.name}")
-
-    # Declaration rows first, in a stable order.
-    for row in op.facts("in"):
-        if len(row.payload) >= 2:
-            out.append(f"input operation {op.name} {row.payload[0]} {row.payload[1]}")
-
-    out_row = op.fact("out")
-    if out_row and out_row.payload:
-        out.append(f"output operation {op.name} {' '.join(out_row.payload)}")
-
-    for row in op.facts("effect"):
-        out.append(f"effect {op.name} {' '.join(row.payload)}")
-
-    for row in op.facts("memory"):
-        out.append(f"memory {op.name} {' '.join(row.payload)}")
-
-    async_row = op.fact("async")
-    if async_row and async_row.payload:
-        out.append(f"async {op.name} {async_row.payload[0]}")
-
-    purpose_row = op.fact("purpose")
-    if purpose_row and purpose_row.payload:
-        out.append(f"purpose operation {op.name} {purpose_row.payload[0]}")
-
-    for row in op.facts("invariant"):
-        out.append(f"invariant operation {op.name} {row.payload[0]}")
-
-    for row in op.facts("uses"):
-        if row.payload:
-            out.append(f"useCapability {op.name} {row.payload[0]}")
-
-    # Mutability of each `let` name in this op. An `out` to a `let mutable` is a
-    # rebind (README ss12) lowered via `set storage`; an `out` to a `let
-    # immutable` is a hard error (README ss12, ss17 #28).
-    let_mut = {
-        r.payload[0]: r.payload[1]
-        for r in op.facts("let")
-        if len(r.payload) >= 2 and r.payload[1] in ("mutable", "immutable")
-    }
-
-    # Body rows in document order. `let` -> storage; steps -> verb rows.
-    for row in op.rows:
-        if row.label is not None:
-            out.append(f"label {row.label}")
-            _lower_step(program, op, row, out, let_mut)
-            continue
-        if row.predicate == "let":
-            _lower_let(op, row, out)
-        elif row.predicate in STEP_PREDICATES:
-            _lower_step(program, op, row, out, let_mut)
-        # declaration predicates already emitted; ignore here.
-
-
-def _lower_let(op: Entity, row: Row, out: list[str]) -> None:
-    # let NAME mutable|immutable TYPE [VALUE]
-    p = row.payload
-    if len(p) < 3:
-        raise EavError(f"`let` row needs NAME MUT TYPE [VALUE], got {p!r}", row.line)
-    name, mut, typ = p[0], p[1], _norm_type(p[2])
-    if mut not in ("mutable", "immutable"):
-        raise EavError(f"`let` mutability must be mutable|immutable, got {mut!r}", row.line)
-    value = " ".join(p[3:]) if len(p) > 3 else ""
-    if value:
-        out.append(f"storage local {mut} {name} {typ} {value}")
+def _parse_int_literal_value(tok: str) -> int:
+    neg = tok.startswith("-")
+    body = (tok[1:] if neg else tok).replace("_", "")
+    if body.startswith("0x"):
+        value = int(body, 16)
+    elif body.startswith("0b"):
+        value = int(body, 2)
     else:
-        out.append(f"storage local {mut} {name} {typ}")
+        value = int(body, 10)
+    return -value if neg else value
 
 
-def _lower_step(
-    program: Program, op: Entity, row: Row, out: list[str], let_mut: dict[str, str]
-) -> None:
-    pred = row.predicate
-    p = row.payload
-    if pred == "do":
-        if not p:
-            raise EavError("`do` needs a call name", row.line)
-        call_name = p[0]
-        call = program.entities.get(call_name)
-        if call is None or call.kind not in ("call", "task"):
-            raise EavError(
-                f"`do {call_name}` does not name a call entity (README ss15)", row.line
+def _decode_string_literal(tok: str) -> bytes:
+    """Decode an EAV string literal token (with quotes) to NUL-terminated bytes,
+    applying the README ss2 escape rules."""
+    if not (len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"'):
+        raise EavError(f"expected a string literal, got {tok!r}")
+    inner = tok[1:-1]
+    out = bytearray()
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "\\":
+            esc = inner[i + 1]
+            if esc == "n":
+                out.append(0x0A); i += 2
+            elif esc == "t":
+                out.append(0x09); i += 2
+            elif esc == '"':
+                out.append(0x22); i += 2
+            elif esc == "\\":
+                out.append(0x5C); i += 2
+            elif esc == "x":
+                out.append(int(inner[i + 2:i + 4], 16)); i += 4
+            else:
+                raise EavError(f"unsupported escape \\{esc} in {tok!r}")
+        else:
+            out.extend(ch.encode("utf-8")); i += 1
+    out.append(0)
+    return bytes(out)
+
+
+class EavCodegen:
+    """Generate an llvmlite ``ir.Module`` from a parsed EAV ``Program`` (console
+    program model). Construction is cheap; call :meth:`generate` to emit IR."""
+
+    def __init__(self, program: Program):
+        self.program = program
+        self.module = ir.Module(name="eav")
+        self.module.triple = llvm.get_default_triple()
+        self.aliases = {
+            a.name: a.fact("for").payload[0]
+            for a in program.of_kind("alias")
+            if a.fact("for") and a.fact("for").payload
+        }
+        self.functions: dict[str, ir.Function] = {}
+        self._runtime: dict[str, ir.Function] = {}
+        self._str_count = 0
+        self.entry_name = "main"
+
+    # -- types --
+    def resolve_type_name(self, name: str) -> str:
+        seen: set[str] = set()
+        while name in self.aliases and name not in seen:
+            seen.add(name)
+            name = self.aliases[name]
+        return _norm_type(name)
+
+    def ir_type(self, name: str) -> ir.Type:
+        resolved = self.resolve_type_name(name)
+        if resolved in _PRIMITIVE_IR:
+            return _PRIMITIVE_IR[resolved]
+        # records/enums/errors are schema in the console model; represent an
+        # opaque handle as i64 (they are not constructed at runtime here).
+        return ir.IntType(64)
+
+    def is_float_type(self, name: str) -> bool:
+        return self.resolve_type_name(name) in _FLOAT_TYPE_NAMES
+
+    # -- runtime + constants --
+    def runtime(self, name: str) -> ir.Function:
+        if name in self._runtime:
+            return self._runtime[name]
+        i32 = ir.IntType(32)
+        i8p = ir.IntType(8).as_pointer()
+        if name == "puts":
+            fn = ir.Function(self.module, ir.FunctionType(i32, [i8p]), name="puts")
+        elif name == "printf":
+            fn = ir.Function(
+                self.module, ir.FunctionType(i32, [i8p], var_arg=True), name="printf"
             )
-        if call.kind == "task":
+        else:
+            raise EavError(f"no runtime declaration for {name!r}")
+        self._runtime[name] = fn
+        return fn
+
+    def global_string(self, data: bytes) -> ir.Value:
+        self._str_count += 1
+        typ = ir.ArrayType(ir.IntType(8), len(data))
+        gv = ir.GlobalVariable(self.module, typ, name=f".str.{self._str_count}")
+        gv.global_constant = True
+        gv.linkage = "internal"
+        gv.initializer = ir.Constant(typ, bytearray(data))
+        z = ir.Constant(ir.IntType(32), 0)
+        return gv.gep([z, z])
+
+    # -- entry --
+    def generate(self) -> ir.Module:
+        projects = self.program.of_kind("project")
+        if not projects:
+            raise EavError("no `project` entity found (README ss7)")
+        project = projects[0]
+        target_row = project.fact("target")
+        target = target_row.payload[0] if target_row and target_row.payload else "console"
+        if target != "console":
             raise EavError(
-                f"`do {call_name}` activates a task; tasks use start/join "
-                "(README ss34.4)",
-                row.line,
+                "the LLVM console code generator only supports `target console`, "
+                f"got {target!r}; webServer/wasm lowering is out of scope (todos WS3)"
             )
-        _lower_call(call, out, let_mut)
-        return
-    if pred == "branch":
-        _lower_branch(row, out)
-        return
-    if pred == "goto":
-        if not p:
-            raise EavError("`goto` needs a label", row.line)
-        out.append(f"jump target {p[0]}")
-        return
-    if pred == "return":
-        _lower_return(op, row, out)
-        return
-    if pred in ("start", "join", "poll", "cancel", "detach", "defer"):
+        entry_row = project.fact("entry")
+        if entry_row and entry_row.payload:
+            self.entry_name = entry_row.payload[0]
+        ops = self.program.of_kind("operation")
+        for op in ops:
+            self.functions[op.name] = self._declare_function(op)
+        for op in ops:
+            self._define_function(op)
+        return self.module
+
+    def _signature(self, op: Entity):
+        out_row = op.fact("out")
+        if out_row and out_row.payload:
+            head = out_row.payload[0]
+            ret = self.ir_type(out_row.payload[1] if head == "Result" else head)
+        else:
+            ret = ir.VoidType()
+        params = [
+            self.ir_type(r.payload[1]) for r in op.facts("in") if len(r.payload) >= 2
+        ]
+        return ret, params
+
+    def _declare_function(self, op: Entity) -> ir.Function:
+        ret, params = self._signature(op)
+        fn = ir.Function(self.module, ir.FunctionType(ret, params), name=op.name)
+        for param, in_row in zip(fn.args, op.facts("in")):
+            param.name = in_row.payload[0]
+        return fn
+
+    # -- body --
+    def _define_function(self, op: Entity) -> None:
+        fn = self.functions[op.name]
+        let_mut = {
+            r.payload[0]: r.payload[1]
+            for r in op.facts("let")
+            if len(r.payload) >= 2 and r.payload[1] in ("mutable", "immutable")
+        }
+        sym: dict[str, tuple] = {}
+        for param, in_row in zip(fn.args, op.facts("in")):
+            sym[in_row.payload[0]] = ("val", param)
+
+        entry = fn.append_basic_block("entry")
+        builder = ir.IRBuilder(entry)
+
+        # Pre-create a block per label so forward gotos resolve.
+        label_blocks: dict[str, ir.Block] = {}
+        for row in op.rows:
+            if row.label is not None and row.label not in label_blocks:
+                label_blocks[row.label] = fn.append_basic_block(row.label)
+
+        self._call_info: dict[str, tuple] = {}
+        self._cont_count = 0
+
+        for row in op.rows:
+            if row.label is not None:
+                blk = label_blocks[row.label]
+                if not builder.block.is_terminated:
+                    builder.branch(blk)
+                builder = ir.IRBuilder(blk)
+                builder = self._emit_step(op, fn, row, builder, sym, let_mut, label_blocks)
+                continue
+            if row.predicate == "let":
+                self._emit_let(op, row, builder, sym, let_mut)
+                continue
+            if row.predicate in STEP_PREDICATES:
+                builder = self._emit_step(
+                    op, fn, row, builder, sym, let_mut, label_blocks
+                )
+
+        if not builder.block.is_terminated:
+            ret = fn.function_type.return_type
+            if isinstance(ret, ir.VoidType):
+                builder.ret_void()
+            else:
+                builder.ret(ir.Constant(ret, 0))
+
+    def _emit_let(self, op, row, builder, sym, let_mut) -> None:
+        p = row.payload
+        name, mut, typ = p[0], p[1], p[2]
+        value = self._literal_or_ref(typ, " ".join(p[3:]), builder, sym) if len(p) > 3 else None
+        if mut == "mutable":
+            slot = builder.alloca(self.ir_type(typ), name=name)
+            if value is not None:
+                builder.store(value, slot)
+            sym[name] = ("ptr", slot, typ)
+        else:
+            sym[name] = ("val", value)
+
+    def _literal_or_ref(self, type_name: str, tok: str, builder, sym):
+        if tok in sym:
+            return self._load(sym[tok], builder)
+        resolved = self.resolve_type_name(type_name)
+        if resolved == "String":
+            return self.global_string(_decode_string_literal(tok))
+        if resolved == "Bool":
+            return ir.Constant(ir.IntType(1), 1 if tok in ("true", "1", "yes") else 0)
+        if resolved in _FLOAT_TYPE_NAMES:
+            return ir.Constant(self.ir_type(type_name), float(tok))
+        return ir.Constant(self.ir_type(type_name), _parse_int_literal_value(tok))
+
+    def _load(self, entry, builder):
+        if entry[0] == "val":
+            return entry[1]
+        return builder.load(entry[1])
+
+    def _resolve(self, tok, type_name, builder, sym):
+        if tok in sym:
+            return self._load(sym[tok], builder)
+        return self._literal_or_ref(type_name, tok, builder, sym)
+
+    def _emit_step(self, op, fn, row, builder, sym, let_mut, label_blocks):
+        pred = row.predicate
+        p = row.payload
+        if pred == "do":
+            call = self.program.entities.get(p[0]) if p else None
+            if call is None or call.kind not in ("call", "task"):
+                raise EavError(f"`do {p[0] if p else ''}` is not a call (README ss15)", row.line)
+            if call.kind == "task":
+                raise EavError(
+                    f"`do {p[0]}` activates a task; tasks use start/join "
+                    "(README ss34.4)",
+                    row.line,
+                )
+            self._emit_call(call, builder, sym, let_mut)
+            return builder
+        if pred == "goto":
+            builder.branch(label_blocks[p[0]])
+            return builder
+        if pred == "return":
+            return self._emit_return(op, fn, row, builder, sym)
+        if pred == "branch":
+            return self._emit_branch(fn, row, builder, sym, label_blocks)
         raise EavError(
-            f"step `{pred}` is not modeled by the console lowering slice "
+            f"step `{pred}` is not modeled by the LLVM console code generator "
             "(todos WS1-106/WS1-107)",
             row.line,
         )
-    raise EavError(f"unsupported step predicate {pred!r}", row.line)
 
+    def _emit_return(self, op, fn, row, builder, sym):
+        p = row.payload
+        ret_ty = fn.function_type.return_type
+        if not p or (len(p) == 1 and p[0] == "void"):
+            builder.ret_void()
+            return builder
+        out_row = op.fact("out")
+        type_hint = "Int64"
+        if out_row and out_row.payload:
+            type_hint = out_row.payload[0] if out_row.payload[0] != "Result" else out_row.payload[1]
+        token = p[0] if p[0] not in ("nil",) else (p[1] if len(p) > 1 else p[0])
+        builder.ret(self._resolve(token, type_hint, builder, sym))
+        return builder
 
-def _lower_call(call: Entity, out: list[str], let_mut: dict[str, str]) -> None:
-    invokes_row = call.fact("invokes")
-    if not invokes_row or not invokes_row.payload:
-        raise EavError(f"call {call.name!r} missing `invokes` (README ss15)", call.line)
-    target = invokes_row.payload[0]
-    out.append(f"call {call.name} {target}")
-    for arg in call.facts("arg"):
-        # arg SLOT TYPE VALUE
-        if len(arg.payload) < 3:
-            raise EavError(
-                f"`arg` row needs SLOT TYPE VALUE, got {arg.payload!r}", arg.line
-            )
-        slot, typ = arg.payload[0], _norm_type(arg.payload[1])
-        value = " ".join(arg.payload[2:])
-        out.append(f"argument {call.name} {slot} {typ} {value}")
-    out.append(f"run {call.name}")
-
-    out_row = call.fact("out")
-    catch_row = call.fact("catch")
-    has_out = out_row is not None and bool(out_row.payload)
-    has_catch = catch_row is not None and bool(catch_row.payload)
-
-    # An `out` to a `let mutable` name is a rebind (README ss12): bind to a fresh
-    # temp, then `set storage` the mutable binding. An `out` to a `let immutable`
-    # is a hard error (README ss12, ss17 #28). Otherwise it is a fresh bind.
-    out_name = out_row.payload[0] if has_out else None
-    out_type = (
-        _norm_type(out_row.payload[1])
-        if has_out and len(out_row.payload) >= 2
-        else None
-    )
-    if has_out and let_mut.get(out_name) == "immutable":
+    def _emit_branch(self, fn, row, builder, sym, label_blocks):
+        p = row.payload
+        guard = p[0]
+        if guard == "ifError":
+            info = self._call_info.get(p[1])
+            err = info[1] if info and info[1] is not None else ir.Constant(ir.IntType(1), 0)
+            cont = self._new_cont(fn)
+            builder.cbranch(err, label_blocks[p[3]], cont)
+            return ir.IRBuilder(cont)
+        if guard == "if":
+            cond = self._resolve(p[1], "Bool", builder, sym)
+            cont = self._new_cont(fn)
+            builder.cbranch(cond, label_blocks[p[3]], cont)
+            return ir.IRBuilder(cont)
+        if guard == "ifFalse":
+            cond = self._resolve(p[1], "Bool", builder, sym)
+            cont = self._new_cont(fn)
+            builder.cbranch(cond, cont, label_blocks[p[3]])
+            return ir.IRBuilder(cont)
         raise EavError(
-            f"call {call.name!r} rebinds immutable `let {out_name}` via out "
-            "(README ss12, ss17 #28); declare it `let mutable`",
-            call.line,
+            f"branch guard {guard!r} is not modeled by the LLVM console code "
+            "generator (todos WS1-062..066)",
+            row.line,
         )
-    is_rebind = has_out and let_mut.get(out_name) == "mutable"
-    bind_target = f"{out_name}Rebind{call.line}" if is_rebind else out_name
 
-    if has_out and has_catch:
-        out.append(f"bind ok {bind_target} {out_type} {call.name}")
-        out.append(
-            f"bind error {catch_row.payload[0]} {catch_row.payload[1]} {call.name}"
-        )
-    elif has_out:
-        out.append(f"bind value {bind_target} {out_type} {call.name}")
-    elif has_catch:
-        out.append(f"ignore void source {call.name}")
-        out.append(
-            f"bind error {catch_row.payload[0]} {catch_row.payload[1]} {call.name}"
-        )
-    else:
-        out.append(f"ignore void source {call.name}")
+    def _new_cont(self, fn) -> ir.Block:
+        self._cont_count += 1
+        return fn.append_basic_block(f"cont{self._cont_count}")
 
-    if is_rebind:
-        out.append(f"set storage {out_name} {bind_target}")
+    def _emit_call(self, call, builder, sym, let_mut) -> None:
+        target_row = call.fact("invokes")
+        if not target_row or not target_row.payload:
+            raise EavError(f"call {call.name!r} missing `invokes` (README ss15)", call.line)
+        target = target_row.payload[0]
+        args = {a.payload[0]: a for a in call.facts("arg")}
 
+        def arg(slot, default_type):
+            a = args.get(slot)
+            if a is None:
+                raise EavError(f"call {call.name!r} missing arg {slot!r}", call.line)
+            return self._resolve(a.payload[2], a.payload[1], builder, sym)
 
-def _lower_branch(row: Row, out: list[str]) -> None:
-    p = row.payload
-    if not p:
-        raise EavError("`branch` needs a guard (README ss13)", row.line)
-    guard = p[0]
-    if guard == "ifError":
-        # branch ifError CALL goto LABEL
-        if len(p) != 4 or p[2] != "goto":
-            raise EavError(
-                "expected `branch ifError CALL goto LABEL` (README ss13)", row.line
+        result = None
+        err = None
+        if target == "console.writeLine":
+            res = builder.call(self.runtime("puts"), [arg("text", "String")])
+            err = builder.icmp_signed("<", res, ir.Constant(ir.IntType(32), 0))
+            result = res
+        elif target == "console.writeIntegerLine":
+            fmt = self.global_string(b"%lld\n\x00")
+            val = arg("value", "Int64")
+            result = builder.call(self.runtime("printf"), [fmt, val])
+        elif target == "console.writeFloatLine":
+            fmt = self.global_string(b"%g\n\x00")
+            val = arg("value", "Float64")
+            result = builder.call(self.runtime("printf"), [fmt, val])
+        elif target in _INT_BINOPS:
+            method = getattr(builder, _INT_BINOPS[target])
+            result = method(arg("left", "Int64"), arg("right", "Int64"))
+        elif target in _FLOAT_BINOPS:
+            method = getattr(builder, _FLOAT_BINOPS[target])
+            result = method(arg("left", "Float64"), arg("right", "Float64"))
+        elif target in _INT_CMP:
+            result = builder.icmp_signed(
+                _INT_CMP[target], arg("left", "Int64"), arg("right", "Int64")
             )
-        out.append(f"branch error source {p[1]} target {p[3]}")
-        return
-    if guard == "if":
-        # branch if COND goto LABEL
-        if len(p) != 4 or p[2] != "goto":
-            raise EavError(
-                "expected `branch if COND goto LABEL` (README ss13)", row.line
-            )
-        out.append(f"branch if condition {p[1]} target {p[3]}")
-        return
-    if guard == "ifFalse":
-        # branch ifFalse COND goto LABEL — jump to LABEL when COND is false.
-        # v0.1 has only "branch if condition ... target" (true-taken), so invert
-        # via a deterministic skip label: take the goto only on the false path.
-        if len(p) != 4 or p[2] != "goto":
-            raise EavError(
-                "expected `branch ifFalse COND goto LABEL` (README ss13)", row.line
-            )
-        cond, label = p[1], p[3]
-        skip = f"ifFalseSkip{row.line}"
-        out.append(f"branch if condition {cond} target {skip}")
-        out.append(f"jump target {label}")
-        out.append(f"label {skip}")
-        return
-    raise EavError(
-        f"branch guard {guard!r} is not modeled by the console lowering slice "
-        "(todos WS1-062..066)",
-        row.line,
-    )
-
-
-def _lower_return(op: Entity, row: Row, out: list[str]) -> None:
-    p = row.payload
-    out_row = op.fact("out")
-    is_result = bool(out_row and out_row.payload and out_row.payload[0] == "Result")
-    if not p:
-        out.append("return void")
-        return
-    if is_result:
-        # return OK nil | return nil ERR
-        if len(p) == 2 and p[1] == "nil":
-            out.append(f"return ok {p[0]}")
-        elif len(p) == 2 and p[0] == "nil":
-            out.append(f"return error {p[1]}")
+        elif target in self.functions:
+            callee = self.program.entities[target]
+            vals = []
+            for in_row in callee.facts("in"):
+                a = args.get(in_row.payload[0])
+                if a is None:
+                    raise EavError(
+                        f"call {call.name!r} missing arg {in_row.payload[0]!r} for "
+                        f"{target!r}",
+                        call.line,
+                    )
+                vals.append(self._resolve(a.payload[2], a.payload[1], builder, sym))
+            result = builder.call(self.functions[target], vals)
         else:
-            # single token but Result-typed: treat as ok value
-            out.append(f"return ok {p[0]}")
-        return
-    out.append(f"return value {p[0]}")
+            raise EavError(
+                f"call target {target!r} is not modeled by the LLVM console code "
+                "generator (todos WS3 stdlib)",
+                call.line,
+            )
+
+        self._call_info[call.name] = (result, err)
+
+        out_row = call.fact("out")
+        if out_row and out_row.payload and result is not None:
+            name = out_row.payload[0]
+            if let_mut.get(name) == "immutable":
+                raise EavError(
+                    f"call {call.name!r} rebinds immutable `let {name}` via out "
+                    "(README ss12, ss17 #28); declare it `let mutable`",
+                    call.line,
+                )
+            if let_mut.get(name) == "mutable":
+                builder.store(result, sym[name][1])
+            else:
+                sym[name] = ("val", result)
+
+
+def lower_to_llvm(program: Program) -> ir.Module:
+    """Lower a parsed EAV Program to an llvmlite ir.Module (console model)."""
+    return EavCodegen(program).generate()
+
+
+_NATIVE_INIT_DONE = False
+
+
+def _ensure_native_init() -> None:
+    global _NATIVE_INIT_DONE
+    if not _NATIVE_INIT_DONE:
+        llvm.initialize_native_target()
+        llvm.initialize_native_asmprinter()
+        _NATIVE_INIT_DONE = True
+
+
+def jit_run(program: Program) -> int:
+    """JIT-compile and execute the program's entry operation; return its exit
+    code. stdout is the C runtime's, flushed when this process exits."""
+    import ctypes
+
+    module = lower_to_llvm(program)
+    _ensure_native_init()
+    mod = llvm.parse_assembly(str(module))
+    mod.verify()
+    tm = llvm.Target.from_default_triple().create_target_machine()
+    engine = llvm.create_mcjit_compiler(mod, tm)
+    engine.finalize_object()
+    engine.run_static_constructors()
+    addr = engine.get_function_address(_entry_name(program))
+    cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
+    return cmain()
+
+
+def _entry_name(program: Program) -> str:
+    projects = program.of_kind("project")
+    if projects:
+        row = projects[0].fact("entry")
+        if row and row.payload:
+            return row.payload[0]
+    return "main"
 
 
 # --------------------------------------------------------------------------
 # 4. CLI
 # --------------------------------------------------------------------------
-
-
-def _repo_root() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    return os.path.abspath(os.path.join(here, "..", ".."))
-
-
-def _semsc_path() -> str:
-    return os.path.join(_repo_root(), "SemanticScript", "compiler", "semsc.py")
 
 
 def cmd_lex(args) -> int:
@@ -1106,31 +1217,17 @@ def cmd_parse(args) -> int:
 
 
 def cmd_lower(args) -> int:
+    """Emit textual LLVM IR for the program."""
     program = parse(_read_source(args.path))
-    sys.stdout.write(lower_to_v01(program))
+    sys.stdout.write(str(lower_to_llvm(program)))
     return 0
 
 
 def cmd_run(args) -> int:
+    """JIT-compile and execute the program; return its process exit code."""
     program = parse(_read_source(args.path))
-    v01 = lower_to_v01(program)
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".sscript", delete=False, encoding="utf-8"
-    ) as tf:
-        tf.write(v01)
-        tmp = tf.name
-    try:
-        proc = subprocess.run(
-            [sys.executable, _semsc_path(), tmp, "--run"],
-            capture_output=True,
-            text=True,
-        )
-        sys.stdout.write(proc.stdout)
-        if proc.stderr:
-            sys.stderr.write(proc.stderr)
-        return proc.returncode
-    finally:
-        os.unlink(tmp)
+    sys.stdout.flush()
+    return jit_run(program)
 
 
 def _read_source(path: str) -> str:

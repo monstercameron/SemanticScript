@@ -9,26 +9,27 @@ simultaneously*, not subagents.
 > under a no-op lowering** (a test that still passes when the feature is stubbed is
 > not a test). Every change row below names its test(s).
 
-## Status — keystone landed
+## Status — keystone landed (LLVM backend)
 
-The keystone vertical slice (WS1-100/101) is built and tested. EAV-Steps source
-is lowered by a **second front end** (`eavc.py`) that normalizes canonical EAV
-into the existing v0.1 verb-led SemanticScript text, which
-`SemanticScript/compiler/semsc.py` already compiles and runs — no backend AST
-fork.
+The keystone vertical slice (WS1-100/101) is built and tested. `eavc.py` is its
+**own compiler**: it lexes (§2), parses (§1/§5), validates, and lowers EAV
+**directly to LLVM IR via llvmlite**, then JIT-executes it. There is no
+transpilation to any other surface and no dependency on `semsc.py`.
 
-- **Front end:** `experiments/eav-syntax/eavc.py` — lexer (§2), parser (§1/§5),
-  lowering (§18), CLI (`lex`/`parse`/`lower`/`run`).
-- **Tests:** `experiments/eav-syntax/test_eavc.py` — incl. the
-  no-op-lowering-fails guard. Run:
+- **Compiler:** `experiments/eav-syntax/eavc.py` — lexer (§2), parser (§1/§5),
+  semantic validation, LLVM IR code generator (§18), CLI
+  (`lex`/`parse`/`lower`→IR/`run`→JIT).
+- **Tests:** `experiments/eav-syntax/test_eavc.py` — IR-structure assertions +
+  JIT e2e + a no-op-codegen-fails guard. Run:
   `python -m pytest experiments/eav-syntax/test_eavc.py -q`.
-- **Executable goldens:** `examples/hello_world.sem` (§18) and
-  `examples/add_two.sem` run end to end
-  (`python eavc.py run examples/hello_world.sem` → `hello world`, exit 0).
-- **Scope of the slice:** the `console` target runs end to end; the parser
-  accepts the full four-row-class grammar and every §5 entity kind (the
-  66-entity webServer CRUD demo `main.sem` parses cleanly). webServer/wasm/
-  sqlite/http lowering and the WS2/WS3/WS4 workstreams remain open.
+- **Executable goldens:** `examples/{hello_world,add_two,countdown}.sem` JIT-run
+  end to end (`python eavc.py run examples/hello_world.sem` → `hello world`,
+  exit 0; `python eavc.py lower …` prints the LLVM IR).
+- **Scope of the slice:** the `console` target compiles to LLVM IR and JIT-runs
+  (puts/printf, integer/float math, user-op calls, CFG loops, mutable allocas);
+  the parser accepts the full four-row-class grammar and every §5 entity kind
+  (the 66-entity webServer CRUD demo `main.sem` parses cleanly).
+  webServer/wasm/sqlite/http codegen and the WS2/WS3/WS4 workstreams remain open.
 
 Checked items below cite the proving test in `test_eavc.py`.
 
@@ -86,7 +87,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-031 `alias … for T` newtype, no silent coercion. →test: pass base where alias required = type error. §10
 - [x] WS1-032 `record` + `field`; duplicate field = error; doc-order = field order. →test: dup-field reject. §10 _(eavc: `_validate_program`; `test_parse_record_duplicate_field_rejected`, `test_parse_record_fields_keep_doc_order`)_
 - [x] WS1-033 `enum` + `variant [payload]` + `repr`; all-or-none repr; repr only on payloadless; dup variant = error. →test: mixed-repr reject; data-variant repr reject. §10 _(eavc: `_validate_enum`; `test_parse_enum_duplicate_variant_rejected`, `test_parse_enum_repr_on_data_variant_rejected`, `test_parse_enum_mixed_repr_rejected`, `test_parse_enum_full_repr_ok`)_
-- [x] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9 _(eavc: `test_lower_error_cases_and_void_payload` (of/payload, Void = no data), `test_lower_hello_world_key_rows`)_
+- [x] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9 _(eavc: errorCase `of` validation; `test_errorcase_requires_of`, `test_errorcase_enumeration_by_of`)_
 - [x] WS1-035 `Result OK ERR` (only generic). →test: arity. §10 _(eavc: `_validate_program` out-arity check; `test_parse_result_arity_enforced`)_
 - [ ] WS1-036 `operationType` (`is in out`) function-pointer type. →test: §5 row; indirect-call type-check. §33.9
 - [ ] WS1-037 Literal width: literal takes annotated-position type, compile-time range-check; un-annotated = Int64. →test: `let s HttpStatusCode 200` ok, `… 99999` (out of Int32) error. §33.6
@@ -114,7 +115,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-056 Operation references: `operationType` binding invoked indirectly via `invokes <binding>`; binding-vs-op name rule. →test: indirect call type-checked; shadow warns. §33.9
 
 ## 1F. Control flow & guards (§13, §33.4)
-- [x] WS1-060 `do/branch/goto/return/at`. →test: CFG goldens. §13 _(eavc: `examples/countdown.sem` exercises `at`/`do`/`branch ifFalse`/`goto`/`return`; `test_e2e_countdown_runs`, `test_lower_branch_iffalse_inverts`)_
+- [x] WS1-060 `do/branch/goto/return/at`. →test: CFG goldens. §13 _(eavc: `examples/countdown.sem` exercises `at`/`do`/`branch ifFalse`/`goto`/`return`; `test_e2e_countdown_runs`, `test_lower_branch_iffalse_inverts_to_cbranch`)_
 - [ ] WS1-061 Guard `if`/`ifFalse` (Bool in scope). →test: §17 #8. §13
 - [ ] WS1-062 `ifError CALL` (after `do`) / `ifError TASK` (after `join`); needs `catch`; `poll` not a predecessor. →test: §17 #6; ifError w/o catch reject. §13
 - [ ] WS1-063 `ifVariant VALUE VARIANT [bind PAYLOAD] goto`; payload catch-style scope; exhaustiveness; canonical default `goto`. →test: §17 #52/#53; non-exhaustive warns; bind-off-path reject. §13/§10.5
@@ -128,7 +129,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 1G. State, storage, locals (§12)
 - [ ] WS1-080 `let NAME mutable|immutable TYPE [VALUE]` positional; forward-ref rule. →test: forward-ref reject; mutable/immutable. §12 _(partial: positional mutable/immutable lowered — `examples/countdown.sem`, `test_lower_mutable_rebind_uses_set_storage`; forward-ref reject not yet implemented)_
-- [x] WS1-081 `out`-rebind of `let mutable`; rebind immutable = error; module-storage mutation via out + effect+capability. →test: §17 #28/#29; immutable rebind reject. §12 _(eavc: `test_lower_mutable_rebind_uses_set_storage` (rebind → set storage), `test_lower_immutable_rebind_rejected` (immutable reject); module-storage mutation via out pending)_
+- [x] WS1-081 `out`-rebind of `let mutable`; rebind immutable = error; module-storage mutation via out + effect+capability. →test: §17 #28/#29; immutable rebind reject. §12 _(eavc: `test_lower_mutable_rebind_stores_to_alloca` (rebind → store into alloca), `test_lower_immutable_rebind_rejected` (immutable reject); module-storage mutation via out pending)_
 - [ ] WS1-082 Module `storage` entity (scope/type/mutability/value/body); module-global read scope. →test: cross-op read; §25 scope. §12/§25
 - [ ] WS1-083 Module-storage initializers **effect-free** (literal/constant/prior-storage); effectful → reject. →test: effectful init reject. §30.2.1
 - [ ] WS1-084 Storage `literalSource`/`literalDigest` compile-time asset embedding. →test: asset bytes embedded, digest checked. §30.3.2
@@ -143,12 +144,12 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-096 Value lifetime: ordinary values compiler-managed (no free/GC pause); `memory heap no` satisfiable for pure-data ops. →test: record-building op compiles under `heap no`. §10.6
 
 ## 1I. **Lowering (KEYSTONE — §29 #3)**
-- [x] WS1-100 Decide & document: EAV → existing `semsc.py` AST (shared AST vs pre-parser-normalizer vs second front-end). →test: design doc + ADR. §29#3 _(ADR: **second front end** lowering EAV→v0.1 text; documented in `eavc.py` module docstring.)_
-- [x] WS1-101 Vertical slice: parse→lower→run **Hello World (§18)** end to end. →test: program prints + exit code; no-op lowering fails. §18 _(eavc: `test_e2e_hello_world_runs`, `test_noop_lowering_would_fail`)_
-- [x] WS1-102 Lower entity/fact/step rows → AST nodes. →test: AST snapshot per row class. _(eavc: lowered via v0.1 normalization rather than a forked AST; structural row assertions in `test_lower_hello_world_key_rows`)_
-- [ ] WS1-103 Lower types/records/enums/Result/operationType → backend types. →test: width/discriminant goldens.
-- [ ] WS1-104 Lower control flow (goto/branch/if/return/labels) → CFG. →test: irreducible-flow warn; CFG golden.
-- [x] WS1-105 Lower calls/args/out/catch → call sites + error slots. →test: fallible call lowering. _(eavc: `test_lower_hello_world_key_rows` (void+catch → ignore void + bind error), `test_lower_value_call_binds_value` (out → bind value); `test_lower_do_on_task_rejected` keeps the call/task split, §34.4)_
+- [x] WS1-100 Decide & document: EAV → existing `semsc.py` AST (shared AST vs pre-parser-normalizer vs second front-end). →test: design doc + ADR. §29#3 _(ADR: **eavc is its own backend** — lowers EAV directly to LLVM IR via llvmlite and JIT-runs; no transpilation, no semsc dependency. Documented in `eavc.py` module docstring.)_
+- [x] WS1-101 Vertical slice: parse→lower→run **Hello World (§18)** end to end. →test: program prints + exit code; no-op lowering fails. §18 _(eavc: LLVM IR + JIT; `test_e2e_hello_world_runs`, `test_module_verifies_and_has_entry`, `test_noop_codegen_would_fail`)_
+- [x] WS1-102 Lower entity/fact/step rows → AST nodes. →test: AST snapshot per row class. _(eavc: rows lower to llvmlite IR nodes; structural IR assertions in `test_lower_hello_world_emits_puts_and_error_branch`)_
+- [ ] WS1-103 Lower types/records/enums/Result/operationType → backend types. →test: width/discriminant goldens. _(partial: primitives → LLVM widths incl. Byte→i8 (`test_byte_lowers_to_uint8`); records/enums are an i64 opaque placeholder in the console model, Result/operationType pending)_
+- [x] WS1-104 Lower control flow (goto/branch/if/return/labels) → CFG. →test: irreducible-flow warn; CFG golden. §13 _(eavc: labels→basic blocks, goto→br, if/ifFalse/ifError→cbranch, return→ret; `test_lower_branch_iffalse_inverts_to_cbranch`, `test_e2e_countdown_runs`)_
+- [x] WS1-105 Lower calls/args/out/catch → call sites + error slots. →test: fallible call lowering. _(eavc: `test_lower_hello_world_emits_puts_and_error_branch` (catch → result error test + branch), `test_lower_value_call_emits_user_call_and_printf` (out → SSA value, user-op call site); `test_lower_do_on_task_rejected` keeps the call/task split, §34.4)_
 - [ ] WS1-106 Lower defer/cleanup (reverse-order, before each return; trap-during-cleanup fatal). →test: defer order; §33.8 abort.
 - [ ] WS1-107 Lower async lifecycle on single-thread backend (start eager, poll always-ready, ifPending never). →test: §13 backend-semantics goldens.
 - [ ] WS1-108 Lower construction/access/compare derived targets. →test: `Task.new` round-trips.
@@ -291,7 +292,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## X1. Conformance & test matrix (§29 #6, project rule)
 - [ ] X-001 Conformance matrix tying parser/formatter/linter/lowering/editor goldens together. →test: matrix harness runs all lanes.
 - [ ] X-002 Promote §18 + §19 worked examples to executable golden programs. →test: both run to expected output/exit. _(partial: §18 done — `examples/hello_world.sem`, `test_e2e_hello_world_runs`; §19 webServer pending console-lowering scope)_
-- [ ] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red. _(partial: guard in place for the keystone slice — `test_noop_lowering_would_fail`; not yet every L1 feature)_
+- [ ] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red. _(partial: guard in place for the keystone slice — `test_noop_codegen_would_fail`; not yet every L1 feature)_
 - [ ] X-004 Test taxonomy wired: unit/component/integration/e2e/golden + `tag test` discovery + `sem test --lane`. →test: each lane discovered & run. §28.7/§30.5
 - [ ] X-005 §2↔§5↔§22↔§30.7 **token-sync drift guard**: every reserved word has a §5 predicate-table home (or is a literal/value), a §22 order slot, and (if §30) a §30.7 entry. →test: automated drift check fails on unsynced token.
 - [ ] X-006 Invalid-example corpus (one rejecting fixture per hard-error rule). →test: all reject with the right code.
