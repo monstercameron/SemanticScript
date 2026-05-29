@@ -3155,6 +3155,94 @@ def test_http_server_links_into_exe(tmp_path):
     assert os.path.exists(out)
 
 
+_SET_STEP_SRC = """
+SetDemo is project
+SetDemo module examplesSetDemo
+SetDemo target console
+SetDemo entry main
+
+examplesSetDemo is module
+examplesSetDemo path examples.setDemo
+examplesSetDemo exports main
+examplesSetDemo purpose "Assign a mutable local to literals across a branch"
+examplesSetDemo invariant "Prints 42 — the value set on the taken branch"
+
+ExitCode is alias
+ExitCode for Int32
+
+answerSlot is storage
+answerSlot scope module
+answerSlot type Int64
+answerSlot mutability mutable
+answerSlot purpose "A module-mutable slot assigned by set"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+slotWriter is capability
+slotWriter grants write storage.answerSlot
+slotWriter purpose "Allow mutation of answerSlot"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main effect write storage.answerSlot
+main uses stdoutWriter
+main uses slotWriter
+main memory heap no
+main async no
+main purpose "set a mutable local to a literal, branch, set it again, print it"
+main invariant "Prints 42"
+main let chosen mutable Int64 0
+main let useBig immutable Bool true
+main let okCode immutable ExitCode 0
+main set chosen 7
+main branch if useBig goto bigValue
+main do printChosen
+main return okCode
+main at bigValue set chosen 42
+main set answerSlot chosen
+main do printSlot
+main return okCode
+
+printChosen is call
+printChosen in main
+printChosen invokes console.writeIntegerLine
+printChosen arg value Int64 chosen
+
+printSlot is call
+printSlot in main
+printSlot invokes console.writeIntegerLine
+printSlot arg value Int64 answerSlot
+"""
+
+
+def test_set_step_assigns_mutable_and_runs():
+    # §12 set step (user-chosen language feature): `set NAME VALUE` assigns a
+    # mutable local or module storage to a literal/binding (no producing call).
+    # Prints 42 — a no-op `set` would leave `chosen` at 0 and print 0.
+    prog = eavc.parse(_SET_STEP_SRC)
+    assert not [d.render() for d in eavc.lint(prog) if d.severity == "error"]
+    ir = str(eavc.lower_to_llvm(prog))
+    assert "store" in ir
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_SET_STEP_SRC, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "42"
+
+
+def test_set_step_on_immutable_rejected():
+    # §12: `set` on an immutable let (or unknown name) is SS1087.
+    src = _SET_STEP_SRC.replace("main let chosen mutable Int64 0",
+                                "main let chosen immutable Int64 0")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1087"
+
+
 def test_html_render_full_document():
     # X-011: html.render renders the full htmlTemplate document, auto-escaping
     # text holes (not a single string.concat line).

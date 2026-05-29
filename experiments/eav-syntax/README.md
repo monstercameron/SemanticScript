@@ -211,7 +211,7 @@ is at
 
 **Step predicates and guards:**
 ```
-do defer start join poll cancel detach branch return goto
+do defer start join poll cancel detach branch return goto set
 if ifFalse ifOut ifValue ifVariant ifError ifReady ifPending ifCanceled else onFailure
 equals notEquals greaterThan lessThan bind
 propagate logAndSuppress because
@@ -1302,11 +1302,14 @@ schemaReady mutability mutable
 schemaReady value false
 ```
 
-### Module-level storage mutation
+### Mutating a mutable binding
 
-To mutate a module-level `storage` entity at runtime, call a function whose
-`out` names the storage entity. The call's `out` row uses the storage entity
-name as the binding target:
+A mutable binding — a local `let NAME mutable …` or a module-level `storage`
+entity declared `mutability mutable` — is reassigned in one of two ways:
+
+**1. From a call result (out-rebind).** A call whose `out` names the binding
+rebinds it to the call's result. This is the form to use when the new value is
+*computed* by an operation:
 
 ```sem
 setSchemaReady is call
@@ -1316,9 +1319,22 @@ setSchemaReady arg db SqliteDatabase openedDb
 setSchemaReady out schemaReady Bool         # rebinds the module storage entity
 ```
 
-The specific invocation target depends on the operation that produces the new
-storage value. There is no built-in constant-setter; the call must be a real
-operation that computes or produces the new value.
+**2. From a literal/constant/binding (`set` step).** When the new value is a
+literal, a constant, a parameter, or another in-scope binding — i.e. there is no
+operation that *produces* it — use the `set` step:
+
+```sem
+counterOp set screenMode EditMode      # mutable local <- enum variant
+counterOp set selectedIndex zeroValue  # mutable local <- another binding
+startupHandler set schemaReady true    # module storage <- literal
+```
+
+`set NAME VALUE` assigns `VALUE` (a literal, a bare enum variant in the binding's
+type, a constant, a parameter, or an in-scope binding) to the mutable binding
+`NAME`. `set` is the imperative-assignment escape hatch the out-rebind form does
+not cover; the out-rebind form remains preferred when the value comes from a
+real call. Targeting an immutable `let` or immutable module storage — or an
+unknown name — is a hard error (SS1087).
 
 **Effect and capability requirement.** Mutation of module-level storage is a
 visible side effect. The owning operation must declare an `effect` row covering
@@ -1350,7 +1366,9 @@ hard error regardless of effects.
 | `storage local mutable NAME TYPE` | `OP let NAME mutable TYPE` |
 | `storage module immutable NAME TYPE VAL` | `NAME is storage` + scope/type/mutability/value rows |
 | `storage module mutable NAME TYPE` | same, `mutability mutable`, no `value` row |
-| `set storage NAME VALUE` | call whose `out` targets the mutable storage entity |
+| `set storage NAME VALUE` (value from a call) | call whose `out` targets the mutable entity |
+| `set storage NAME VALUE` (literal/binding) | `OP set NAME VALUE` step |
+| `set local NAME VALUE` | `OP set NAME VALUE` step |
 
 ---
 
@@ -1361,7 +1379,8 @@ rows (including `let` and metadata rows) are unordered and do not participate
 in execution order.
 
 Step predicates: `do`, `defer`, `start`, `join`, `poll`, `cancel`, `detach`,
-`branch`, `return`, `goto`, `at`.
+`branch`, `return`, `goto`, `set`, `at`. (`set NAME VALUE` assigns a mutable
+local or module-storage binding from a literal/constant/binding — see §12.)
 
 ### `do` — invoke a synchronous call
 

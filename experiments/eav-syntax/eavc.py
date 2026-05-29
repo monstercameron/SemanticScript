@@ -333,6 +333,9 @@ DIAGNOSTICS.update({
     "SS1086": {"tier": "T3", "summary": "Module-storage mutation without a storage effect.",
                "found": "An out rebinds module storage but the op declares no `effect write storage.<name>`.",
                "suggested": "Add `effect write storage.<name>` + a covering capability (README §12)."},
+    "SS1087": {"tier": "T1", "summary": "`set` targets a non-mutable.",
+               "found": "A `set NAME VALUE` whose NAME is an immutable let, an unknown name, or non-mutable module storage.",
+               "suggested": "Declare the target `let NAME mutable …` or `mutability mutable` (README §12)."},
     "SS1028": {"tier": "T1", "summary": "Bare variant outside a type-directed position.",
                "found": "An enum variant name used where the type is not statically known.",
                "suggested": "Use variants only in arg/let/return positions (README §10)."},
@@ -564,6 +567,7 @@ STEP_PREDICATES = {
     "branch",
     "return",
     "goto",
+    "set",
 }
 
 # Island-introducing predicate: indentation after `body <kind>` is semantic
@@ -1006,7 +1010,7 @@ RESERVED_WORDS = {
     "is", "at",
     # step predicates and guards
     "do", "defer", "start", "join", "poll", "cancel", "detach", "branch",
-    "return", "goto", "if", "ifFalse", "ifOut", "ifValue", "ifVariant",
+    "return", "goto", "set", "if", "ifFalse", "ifOut", "ifValue", "ifVariant",
     "ifError", "ifReady", "ifPending", "ifCanceled", "else", "onFailure",
     "equals", "notEquals", "greaterThan", "lessThan", "bind",
     "propagate", "logAndSuppress", "because",
@@ -1067,13 +1071,13 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
-        "branch", "return", "goto",
+        "branch", "return", "goto", "set",
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
-        "branch", "return", "goto",
+        "branch", "return", "goto", "set",
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -2894,6 +2898,7 @@ def _validate_program(program: Program) -> None:
     _validate_variant_positions(program)
     _validate_return_exactness(program)
     _validate_storage_mutation(program)
+    _validate_set_targets(program)
     _validate_reserved_targets(program)
     _validate_webserver_abi(program)
     _validate_islands(program)
@@ -3876,6 +3881,54 @@ def _validate_storage_mutation(program: Program) -> None:
                 f"{out.payload[0]!r} via out; declare it `mutability mutable` "
                 f"(README ss12, ss17 #29, WS1-085)",
                 call.line, code="SS1085",
+            )
+
+
+def _validate_set_targets(program: Program) -> None:
+    """README ss12: a `set NAME VALUE` step assigns to a mutable binding. NAME must
+    be a mutable local (`let NAME mutable …`) of the owning op or a mutable module
+    `storage` entity; an immutable target, or an unknown name, is a hard error."""
+    storages = _storage_entities(program)
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        local_mut = {
+            r.payload[0]: r.payload[1]
+            for r in op.facts("let")
+            if len(r.payload) >= 2 and r.payload[1] in ("mutable", "immutable")
+        }
+        for row in op.rows:
+            if row.predicate != "set" or not row.payload:
+                continue
+            name = row.payload[0]
+            if len(row.payload) < 2:
+                raise EavError(
+                    f"`set {name}` needs a value (README ss12)",
+                    row.line, code="SS1087",
+                )
+            if name in local_mut:
+                if local_mut[name] == "immutable":
+                    raise EavError(
+                        f"`set {name}` targets immutable `let {name}`; declare it "
+                        f"`let {name} mutable …` (README ss12)",
+                        row.line, code="SS1087",
+                    )
+                continue
+            st = storages.get(name)
+            if st is not None and _is_module_storage(st):
+                mut = st.fact("mutability")
+                if mut and mut.payload and mut.payload[0] == "immutable":
+                    raise EavError(
+                        f"`set {name}` targets immutable module storage {name!r}; "
+                        f"declare it `mutability mutable` (README ss12)",
+                        row.line, code="SS1087",
+                    )
+                continue
+            raise EavError(
+                f"`set {name}` targets {name!r}, which is not a mutable local of "
+                f"{op.name!r} or a mutable module storage entity (README ss12)",
+                row.line, code="SS1087",
             )
 
 
@@ -4909,6 +4962,27 @@ class EavCodegen:
         if pred == "goto":
             builder.branch(label_blocks[p[0]])
             return builder
+        if pred == "set":
+            # README ss12: `set NAME VALUE` assigns VALUE to a mutable local
+            # (`let NAME mutable …`) or a mutable module-storage entity. Unlike an
+            # out-rebind, the value may be a literal/const/binding — there is no
+            # producing call. Lowered to a store into the alloca / global.
+            name = p[0]
+            value_tok = " ".join(p[1:])
+            binding = sym.get(name)
+            if binding is not None and binding[0] == "ptr":
+                typ = binding[2]
+                builder.store(self._resolve(value_tok, typ, builder, sym), binding[1])
+                return builder
+            ms = getattr(self, "module_storage", {}).get(name)
+            if ms is not None and isinstance(ms[0], ir.GlobalVariable):
+                builder.store(self._resolve(value_tok, ms[1], builder, sym), ms[0])
+                return builder
+            raise EavError(
+                f"`set {name}` targets {name!r}, which is not a mutable local "
+                f"(`let {name} mutable …`) or mutable module storage (README ss12)",
+                row.line, code="SS1087",
+            )
         if pred == "defer":
             # README ss15.6: register the cleanup; its worker runs (in reverse
             # registration order) before each return. Nothing emitted here.
