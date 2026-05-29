@@ -160,6 +160,26 @@ def test_sha256_digest_verify_and_mismatch():
     assert exc.value.code == "SS2804"
 
 
+def test_native_link_merge_and_dedup():
+    # WS3-037: per-platform output + ordered/deduped native-link flags.
+    prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
+    merged = eavc.merge_native_links(prog, "linuxX64")
+    assert merged["output"] == "bin/taskapp"
+    assert merged["libraries"] == ["sqlite3"]
+    assert merged["linkFlags"] == ["-lpthread"]
+
+
+def test_native_link_dedup_project_and_platform():
+    src = (
+        'A is project\nA nativeLibrary "sqlite3"\nA nativeLinkFlag "-lm"\n'
+        'p is platform\np os linux\np arch x64\np output "bin/x"\n'
+        'p nativeLibrary "sqlite3"\np nativeLinkFlag "-lpthread"\n'  # sqlite3 dup
+    )
+    merged = eavc.merge_native_links(eavc.parse(src), "p")
+    assert merged["libraries"] == ["sqlite3"]                  # deduped
+    assert merged["linkFlags"] == ["-lm", "-lpthread"]          # order preserved
+
+
 def test_build_sem_full_grammar_parses():
     # WS3-030: the full build.sem manifest grammar parses.
     prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())

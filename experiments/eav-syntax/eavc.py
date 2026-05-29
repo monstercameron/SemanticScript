@@ -485,6 +485,35 @@ def resolve_semsig(target: str, sigs: list):
     return None
 
 
+def merge_native_links(program: Program, platform_name: str) -> dict:
+    """Merge native-link rows for a platform (README ss28.1): project-level then
+    platform-level `nativeLibrary`/`nativeHeader`/`nativeLinkFlag`, in order with
+    duplicates removed (first occurrence wins); plus the platform `output`."""
+    plat = program.entities.get(platform_name)
+    if plat is None or plat.kind != "platform":
+        raise EavError(f"{platform_name!r} is not a platform entity")
+    projects = program.of_kind("project")
+
+    def unq(t):
+        return t[1:-1] if len(t) >= 2 and t[0] == '"' and t[-1] == '"' else t
+
+    def collect(pred):
+        seen: list = []
+        for src in projects + [plat]:
+            for r in src.facts(pred):
+                if r.payload and unq(r.payload[0]) not in seen:
+                    seen.append(unq(r.payload[0]))
+        return seen
+
+    out = plat.fact("output")
+    return {
+        "output": unq(out.payload[0]) if out and out.payload else None,
+        "libraries": collect("nativeLibrary"),
+        "headers": collect("nativeHeader"),
+        "linkFlags": collect("nativeLinkFlag"),
+    }
+
+
 def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
     """Supply-chain allowlist (README ss28.5): every effect in the resolved
     `effectSurface` (lock) must be permitted by an `allowEffect` row (build.sem).
