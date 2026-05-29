@@ -159,6 +159,15 @@ DIAGNOSTICS.update({
     "SS2804": {"tier": "T0", "summary": "Dependency sha256 digest mismatch.",
                "found": "A resolved dependency's content hash != its lock digest.",
                "suggested": "Re-fetch the dependency; a mismatch is a tamper signal (§28.4)."},
+    "SS1320": {"tier": "T0", "summary": "Started task never resolved.",
+               "found": "A `start TASK` with no join/poll/cancel/detach.",
+               "suggested": "Resolve the task before return (README §17 #20)."},
+    "SS1321": {"tier": "T0", "summary": "`cancel` without a prior `start`.",
+               "found": "A `cancel TASK` where TASK was never started.",
+               "suggested": "Start the task before canceling it (README §17 #21)."},
+    "SS1322": {"tier": "T0", "summary": "`ifCanceled` without a `cancel`.",
+               "found": "A `branch ifCanceled TASK` where TASK is never canceled.",
+               "suggested": "Add a `cancel TASK` (README §17 #22)."},
     "SS1190": {"tier": "T1", "summary": "console entry has `in` parameters.",
                "found": "A console entry operation that declares `in` rows.",
                "suggested": "Console entries take no params; use capabilities (README §11)."},
@@ -2030,6 +2039,39 @@ def _validate_async(op: Entity) -> None:
             f"(README ss11)",
             op.line,
             code="SS1140",
+        )
+    _validate_async_lifecycle(op)
+
+
+def _validate_async_lifecycle(op: Entity) -> None:
+    """Task lifecycle (README ss13, ss17 #20/#21/#22): every started task is
+    resolved (join/poll/cancel/detach); `cancel` needs a prior `start`;
+    `ifCanceled` needs the task to be `cancel`-ed."""
+    started = {r.payload[0] for r in op.rows if r.predicate == "start" and r.payload}
+    resolved = {
+        r.payload[0]
+        for r in op.rows
+        if r.predicate in ("join", "poll", "cancel", "detach") and r.payload
+    }
+    canceled = {r.payload[0] for r in op.rows if r.predicate == "cancel" and r.payload}
+    for r in op.rows:
+        if r.predicate == "cancel" and r.payload and r.payload[0] not in started:
+            raise EavError(
+                f"`cancel {r.payload[0]}` has no prior `start` (README ss17 #21)",
+                r.line, code="SS1321",
+            )
+        if (r.predicate == "branch" and len(r.payload) >= 2
+                and r.payload[0] == "ifCanceled" and r.payload[1] not in canceled):
+            raise EavError(
+                f"`branch ifCanceled {r.payload[1]}` needs the task to be "
+                f"`cancel`-ed (README ss17 #22)",
+                r.line, code="SS1322",
+            )
+    for task in started - resolved:
+        raise EavError(
+            f"started task {task!r} is never resolved (join/poll/cancel/detach) "
+            f"before return (README ss17 #20)",
+            op.line, code="SS1320",
         )
 
 

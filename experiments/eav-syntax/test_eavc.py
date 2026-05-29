@@ -1682,7 +1682,8 @@ def test_split_start_on_call_rejected():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(
             "fetchThing is call\nfetchThing invokes some.thing\n"
-            "main is operation\nmain out ExitCode\nmain async yes\nmain start fetchThing\n"
+            "main is operation\nmain out ExitCode\nmain async yes\n"
+            "main start fetchThing\nmain join fetchThing\n"  # resolved; split is the issue
         )
     assert "requires a task" in exc.value.message
 
@@ -1833,6 +1834,37 @@ def test_e2e_async_single_thread():
     proc = _eavc_run("async_demo.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
+
+
+def test_started_task_must_be_resolved():
+    # README §17 #20: a started task must be resolved before return.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain async yes\nmain start t\n"
+            "t is task\nt in main\nt invokes x.y\n"
+        )
+    assert exc.value.code == "SS1320"
+
+
+def test_cancel_needs_start():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain async yes\nmain cancel t\n"
+            "t is task\nt in main\nt invokes x.y\n"
+        )
+    assert exc.value.code == "SS1321"
+
+
+def test_ifcanceled_needs_cancel():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain async yes\n"
+            "main start t\nmain join t\nmain branch ifCanceled t goto done\n"
+            "main return okCode\nmain let okCode immutable ExitCode 0\n"
+            "main at done return okCode\n"
+            "t is task\nt in main\nt invokes x.y\n"
+        )
+    assert exc.value.code == "SS1322"
 
 
 def test_start_in_async_no_operation_rejected():

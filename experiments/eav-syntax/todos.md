@@ -173,7 +173,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS2-013 #10 return arity · #11 goto target one `at` · #12 unique label · #13 dead label. _(eavc: `_validate_return_arity`, `_validate_labels`; `test_return_arity_*`, `test_label_undefined_target_rejected`, `test_label_duplicate_rejected`, `test_label_dead_warns`)_
 - [ ] WS2-014 #14 loop/while/each/break/continue reject · #15 irreducible-flow warn · #16 owned-resource cleaned on all paths.
 - [ ] WS2-015 #17 defers reverse-order · #18 onFailure propagate (catch + Result) · #19 logAndSuppress needs because.
-- [ ] WS2-016 #20 started task resolved before return · #21 cancel needs start · #22 ifCanceled needs cancel+join.
+- [x] WS2-016 #20 started task resolved before return · #21 cancel needs start · #22 ifCanceled needs cancel+join. _(eavc: `_validate_async_lifecycle` — started task must be resolved SS1320 (#20), cancel needs start SS1321 (#21), ifCanceled needs cancel SS1322 (#22); `test_started_task_must_be_resolved`, `test_cancel_needs_start`, `test_ifcanceled_needs_cancel`)_
 - [ ] WS2-017 #23 sqlite column consumed before next read · #24 multi-write needs txn · #25 non-void no out/catch/discards = error.
 - [x] WS2-018 #26 no dotted internal refs · #27 declaration reorderable, steps not · #28 immutable-rebind reject / mutable rebind ok. _(eavc: dotted internal-ref reject SS1326 (#26, `test_dotted_internal_reference_rejected`), reorder-stable decls (#27, `test_operation_decl_rows_reorder_stable`), immutable-rebind reject + mutable rebind (#28, `test_lower_immutable_rebind_rejected`, `test_lower_mutable_rebind_stores_to_alloca`))_
 - [ ] WS2-019 #29 dup field/variant · #30/#31 branch-else default-only-after-guard formatter warn · #32 dup route reject.
