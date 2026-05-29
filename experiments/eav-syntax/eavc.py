@@ -8594,13 +8594,59 @@ def cmd_fix(args) -> int:
 
 
 def cmd_patch(args) -> int:
-    """Apply a repair plan (sem.patch.v1). eavc plans are suggestions-only, so
-    patch reports that no machine-applicable edits are available rather than
-    mutating source blindly."""
+    """Apply a repair plan (sem.patch.v1). R-016: load and validate the plan JSON
+    named on the command line and honor `--dry-run`/`--apply`, instead of
+    emitting a canned suggestions-only payload regardless of input. A missing or
+    corrupt plan is now a distinct, reportable error — indistinguishable before
+    from a valid plan. eavc `fix` plans are suggestions-only today
+    (`planUsable:false`), so there is nothing machine-applicable to apply; that
+    is reported faithfully only after a valid plan is actually read."""
+    import json
+    import os
+    plan_path = getattr(args, "plan", None)
+    dry_run = getattr(args, "dry_run", False)
+    if not plan_path:
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="no-plan", applied=0, dryRun=dry_run,
+            note="no plan file given; pass the saved `fix --json` plan "
+                 "(sem.fixPlan.v1) to patch") + "\n")
+        return 2
+    if not os.path.isfile(plan_path):
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="missing-plan", applied=0,
+            dryRun=dry_run, plan=plan_path,
+            note="plan file does not exist") + "\n")
+        return 2
+    try:
+        plan = json.loads(open(plan_path, encoding="utf-8").read())
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="corrupt-plan", applied=0,
+            dryRun=dry_run, plan=plan_path,
+            note=f"plan is not valid JSON: {exc}") + "\n")
+        return 2
+    if not isinstance(plan, dict) or plan.get("surface") != "sem.fixPlan.v1":
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="invalid-plan", applied=0,
+            dryRun=dry_run, plan=plan_path,
+            note="plan is not a sem.fixPlan.v1 envelope (run `fix --json`)") + "\n")
+        return 2
+    if not bool(plan.get("planUsable")):
+        # a suggestions-only plan has no machine-applicable edits — report that
+        # honestly whether the caller asked for --dry-run or --apply.
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=True, status="suggestions-only", applied=0,
+            dryRun=dry_run, plan=plan_path,
+            suggestions=len(plan.get("diagnostics", []) or []),
+            note="plan is suggestions-only; apply the suggested repairs manually") + "\n")
+        return 0
+    # planUsable plans would be applied/dry-run here once eavc emits
+    # machine-applicable edits; until then an actionable plan is unexpected input.
     sys.stdout.write(_json_envelope(
-        "sem.patch.v1", status="suggestions-only", applied=0,
-        note="plan is suggestions-only; apply the suggested repairs manually") + "\n")
-    return 0
+        "sem.patch.v1", ok=False, status="unsupported-plan", applied=0,
+        dryRun=dry_run, plan=plan_path,
+        note="machine-applicable plan edits are not implemented yet") + "\n")
+    return 2
 
 
 def cmd_query(args) -> int:

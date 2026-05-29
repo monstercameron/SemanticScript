@@ -626,6 +626,75 @@ def test_captured_output_replay_requires_mode():
         eavc.captured_output_replay(src)
 
 
+def test_patch_missing_plan_reports_error(tmp_path, capsys):
+    """R-016: a plan path that does not exist is a distinct nonzero error, not a
+    canned suggestions-only success. The old cmd_patch ignored its plan arg and
+    always returned 0/suggestions-only, so every assertion here failed."""
+    import json
+    rc = eavc.main(["patch", str(tmp_path / "nope.json")])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "missing-plan"
+
+
+def test_patch_no_plan_argument_reports_error(capsys):
+    """R-016: invoking patch with no plan file is a structured no-plan error."""
+    import json
+    rc = eavc.main(["patch"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["status"] == "no-plan"
+
+
+def test_patch_corrupt_plan_reports_error(tmp_path, capsys):
+    """R-016: a plan file that is not valid JSON is rejected, not silently
+    treated as a valid suggestions-only plan."""
+    import json
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    rc = eavc.main(["patch", str(bad)])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["status"] == "corrupt-plan"
+
+
+def test_patch_valid_suggestions_only_plan_honored(tmp_path, capsys):
+    """R-016: a real sem.fixPlan.v1 suggestions-only plan is read and honored —
+    status suggestions-only, applied 0, dryRun reflected, suggestion count
+    surfaced. The dryRun/suggestions keys are new, so this fails on the old
+    fixed payload too."""
+    import json
+    plan = {
+        "surface": "sem.fixPlan.v1", "version": "v1", "ok": True,
+        "status": "suggestions-only", "planUsable": False,
+        "diagnostics": [{"code": "SS1503", "severity": "error", "line": 3,
+                         "message": "x", "found": None, "suggested": None}],
+    }
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    rc = eavc.main(["patch", str(plan_path), "--dry-run"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["status"] == "suggestions-only"
+    assert payload["applied"] == 0
+    assert payload["dryRun"] is True
+    assert payload["suggestions"] == 1
+
+
+def test_patch_rejects_non_fixplan_json(tmp_path, capsys):
+    """R-016: well-formed JSON that is not a sem.fixPlan.v1 envelope is rejected
+    rather than accepted as a plan."""
+    import json
+    other = tmp_path / "other.json"
+    other.write_text(json.dumps({"surface": "sem.check.v1", "version": "v1"}),
+                     encoding="utf-8")
+    rc = eavc.main(["patch", str(other)])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["status"] == "invalid-plan"
+
+
 def test_compact_is_not_valid_raw_eav():
     # The strict EAV parser rejects compact bare rows (no subject) — proving the
     # compact expander does real work and is not a no-op (WS4-004).
