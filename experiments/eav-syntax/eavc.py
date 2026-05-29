@@ -219,6 +219,9 @@ DIAGNOSTICS.update({
     "SS3501": {"tier": "T3", "summary": "Fallible call with no error path.",
                "found": "A call with a `catch` but no `branch ifError` for it.",
                "suggested": "Add a `branch ifError CALL goto …`, or `discards` (README §17 #35)."},
+    "SS3710": {"tier": "T1", "summary": "Silent newtype coercion across an alias.",
+               "found": "An arg type differs from the callee input but resolves to the same base.",
+               "suggested": "Pass the alias newtype itself; aliases do not coerce (README §10)."},
     "SS3700": {"tier": "T1", "summary": "Dotted type outside an alias `for`.",
                "found": "A dotted type name in a let/arg/in/out/catch/field position.",
                "suggested": "Use a bare type, or a local alias `for importAlias.Type` (§7)."},
@@ -2705,6 +2708,12 @@ def _validate_calls(program: Program) -> None:
         for name in program.order
         if program.entities[name].kind in ("operation", "function")
     }
+    alias_map = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
+    newtypes = set(alias_map)
     for name in program.order:
         ent = program.entities[name]
         if ent.kind not in ("call", "task"):
@@ -2755,6 +2764,30 @@ def _validate_calls(program: Program) -> None:
                     f"call {ent.name!r} is missing arg {inn!r} required by "
                     f"{target!r} (README ss15)",
                     ent.line,
+                )
+        # README ss10 / WS1-031: an `alias … for T` is a newtype. An arg whose
+        # declared type differs from the callee's input type but resolves to the
+        # same base is a silent coercion across a newtype boundary — rejected.
+        in_types = {
+            r.payload[0]: r.payload[1]
+            for r in callee.facts("in") if len(r.payload) >= 2
+        }
+        for arg in ent.facts("arg"):
+            if len(arg.payload) < 2:
+                continue
+            slot, arg_type = arg.payload[0], arg.payload[1]
+            in_type = in_types.get(slot)
+            if in_type is None or arg_type == in_type:
+                continue
+            if (arg_type in newtypes or in_type in newtypes) and (
+                _resolve_alias(arg_type, alias_map)
+                == _resolve_alias(in_type, alias_map)
+            ):
+                raise EavError(
+                    f"call {ent.name!r} arg {slot!r} passes {arg_type!r} where "
+                    f"{target!r} requires {in_type!r}; an alias is a distinct "
+                    f"newtype and does not silently coerce (README ss10, WS1-031)",
+                    arg.line, code="SS3710",
                 )
 
 

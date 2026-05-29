@@ -1710,6 +1710,37 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
+def test_alias_newtype_no_silent_coercion():
+    # README §10 / WS1-031: passing the base type where an alias newtype is
+    # required is a hard type error (no silent coercion).
+    src = (
+        "Acc is alias\nAcc for Int64\n"
+        "addOne is operation\naddOne in n Acc\naddOne out Int64\n"
+        "addOne let r immutable Int64 0\naddOne return r\n"
+        "main is operation\nmain out ExitCode\nmain let base immutable Int64 5\n"
+        'main do callIt\nmain let okCode immutable ExitCode 0\nmain return okCode\n'
+        "callIt is call\ncallIt in main\ncallIt invokes addOne\n"
+        'callIt discards "demo"\ncallIt arg n Int64 base\n'
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3710"
+
+
+def test_alias_newtype_matching_type_ok():
+    # Passing the alias newtype itself is accepted.
+    src = (
+        "Acc is alias\nAcc for Int64\n"
+        "addOne is operation\naddOne in n Acc\naddOne out Int64\n"
+        "addOne let r immutable Int64 0\naddOne return r\n"
+        "main is operation\nmain out ExitCode\nmain let base immutable Acc 5\n"
+        'main do callIt\nmain let okCode immutable ExitCode 0\nmain return okCode\n'
+        "callIt is call\ncallIt in main\ncallIt invokes addOne\n"
+        'callIt discards "demo"\ncallIt arg n Acc base\n'
+    )
+    eavc.parse(src)  # no raise
+
+
 def test_loop_keyword_rejected():
     # README §17 #14: loop/while/each/break/continue are not predicates.
     for kw in ("loop", "while", "each", "break", "continue"):
