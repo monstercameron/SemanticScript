@@ -901,6 +901,31 @@ def test_div_by_zero_emits_trap_guard():
     assert "sdiv i64" in ir_text
 
 
+def test_compare_primitive_lowers_to_icmp():
+    src = (
+        "P is project\nP module m\nP target console\nP entry cmp\nm is module\nm path a.b\n"
+        "cmp is operation\ncmp in a Int64\ncmp in b Int64\ncmp out Bool\n"
+        "cmp do cmpCall\ncmp return r\n"
+        "cmpCall is call\ncmpCall in cmp\ncmpCall invokes compare.lessThanInt64\n"
+        "cmpCall arg left Int64 a\ncmpCall arg right Int64 b\ncmpCall out r Bool\n"
+    )
+    assert "icmp slt i64" in _ir_for_source(src)
+
+
+def test_compare_ordering_on_bool_rejected():
+    # README §17 #45: Bool/enum are equals-only.
+    src = (
+        "P is project\nP module m\nP target console\nP entry cmp\nm is module\nm path a.b\n"
+        "cmp is operation\ncmp in a Bool\ncmp in b Bool\ncmp out Bool\n"
+        "cmp do cmpCall\ncmp return r\n"
+        "cmpCall is call\ncmpCall in cmp\ncmpCall invokes compare.greaterThanBool\n"
+        "cmpCall arg left Bool a\ncmpCall arg right Bool b\ncmpCall out r Bool\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(src))
+    assert exc.value.code == "SS1345"
+
+
 def test_ieee_float_compare_nan_semantics():
     # README ss10.6: NaN != NaN is true (unordered une); NaN == NaN is false
     # (ordered oeq). The comparator choice in IR encodes IEEE-754 semantics.

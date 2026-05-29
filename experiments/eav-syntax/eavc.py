@@ -138,6 +138,9 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS1345": {"tier": "T1", "summary": "Ordering comparison on Bool/enum.",
+               "found": "A compare.lessThan/greaterThan on a Bool or enum operand.",
+               "suggested": "Bool/enum are equals-only; use equal/notEqual (README §17 #45)."},
     "SS3010": {"tier": "T1", "summary": "forTarget names an undeclared target.",
                "found": "A `forTarget X` where X is not a project target.",
                "suggested": "Use a target declared by the project (README §30.3.1)."},
@@ -1576,7 +1579,7 @@ def _target_is_nonvoid(target: str, program: Program):
     """Whether a call target yields a value eavc can statically judge: True for
     math.* (arith/compare), False for console.* (void), the callee's `out`
     presence for a bare user op, and None (unknown) for other external targets."""
-    if target.startswith("math."):
+    if target.startswith("math.") or target.startswith("compare."):
         return True
     if target.startswith("console."):
         return False
@@ -2305,6 +2308,8 @@ class EavCodegen:
             result = builder.fcmp_unordered(
                 _FLOAT_CMP_UNORDERED[target], arg("left", "Float64"), arg("right", "Float64")
             )
+        elif target.startswith("compare."):
+            result = self._emit_compare(target, args, builder, sym, call)
         elif target in self.functions:
             callee = self.program.entities[target]
             vals = []
@@ -2338,6 +2343,42 @@ class EavCodegen:
             else:
                 sym[name] = ("val", result)
 
+
+    _CMP_OPS = {
+        "equal": "==", "notEqual": "!=", "lessThanOrEqual": "<=",
+        "greaterThanOrEqual": ">=", "lessThan": "<", "greaterThan": ">",
+    }
+
+    def _emit_compare(self, target, args, builder, sym, call):
+        """Compiler-derived `compare.<op><Type>` primitive (README ss13). Ordering
+        on Bool/enum operands is rejected (Bool/enum are equals-only, ss17 #45)."""
+        suffix = target[len("compare."):]
+        op = typ = None
+        for cand in sorted(self._CMP_OPS, key=len, reverse=True):
+            if suffix.startswith(cand):
+                op, typ = cand, suffix[len(cand):]
+                break
+        if op is None or not typ:
+            raise EavError(f"unrecognized compare target {target!r}", call.line)
+        ordering = op in ("lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual")
+        ent = self.program.entities.get(self.resolve_type_name(typ))
+        is_enum = ent is not None and ent.kind == "enum"
+        if ordering and (self.resolve_type_name(typ) == "Bool" or is_enum):
+            raise EavError(
+                f"{target!r}: Bool and enum support equals/notEquals only, not "
+                f"ordering (README ss13, ss17 #45)",
+                call.line,
+                code="SS1345",
+            )
+        left = self._resolve(args["left"].payload[2], typ, builder, sym) if "left" in args else None
+        right = self._resolve(args["right"].payload[2], typ, builder, sym) if "right" in args else None
+        if left is None or right is None:
+            raise EavError(f"{target!r} needs left and right args", call.line)
+        if self.is_float_type(typ):
+            if op == "notEqual":
+                return builder.fcmp_unordered("!=", left, right)
+            return builder.fcmp_ordered(self._CMP_OPS[op], left, right)
+        return builder.icmp_signed(self._CMP_OPS[op], left, right)
 
     def _guard_div_zero(self, builder, divisor) -> None:
         """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a
