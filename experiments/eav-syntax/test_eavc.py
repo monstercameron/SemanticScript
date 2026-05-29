@@ -2994,6 +2994,53 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def _async_guard_program(resolve, guard_rows):
+    return (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async yes\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let one immutable Int64 1\nmain let two immutable Int64 2\n"
+        "main let okCode immutable ExitCode 0\n"
+        f"main start sumTask\nmain {resolve} sumTask\n" + guard_rows +
+        "main return okCode\n"
+        "main at ready return okCode\nmain at other return okCode\n"
+        "sumTask is task\nsumTask in main\nsumTask invokes math.addInt64\n"
+        "sumTask arg left Int64 one\nsumTask arg right Int64 two\nsumTask out sumResult Int64\n"
+    )
+
+
+def test_async_branch_guard_codegen():
+    # X-063: ifReady (always-taken), ifPending (fall-through), ifCanceled
+    # (fall-through after cancel) all lower + JIT-run on the single-thread backend.
+    ready = _async_guard_program(
+        "poll", "main branch ifReady sumTask goto ready\nmain branch ifPending sumTask goto other\n")
+    for src in (ready,
+                _async_guard_program("cancel", "main branch ifCanceled sumTask goto other\n")):
+        assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+        proc = subprocess.run(
+            [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+            input=src, capture_output=True, text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+    # ifError on a call with no catch is rejected (SS1041)
+    bad = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        'main let okText immutable String "x"\n'
+        "main do w\nmain branch ifError w goto failed\nmain return okCode\n"
+        "main at failed return okCode\n"
+        "w is call\nw in main\nw invokes console.writeLine\nw arg text String okText\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(bad))
+    assert getattr(exc.value, "code", None) == "SS1041"
+
+
 def _compare_ir(target, atype, va, vb):
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
