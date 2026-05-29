@@ -138,6 +138,9 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS1702": {"tier": "T0", "summary": "Call activated more than once.",
+               "found": "A call reached by two `do`s, or `do`-activated and used as a cleanup worker.",
+               "suggested": "Activate a call exactly once (README §17 #2/#43)."},
     "SS5400": {"tier": "T1", "summary": "`suppress` needs a `because` rationale.",
                "found": "A `suppress CODE` row with no `because`.",
                "suggested": "Write `suppress CODE because \"…\"` (README §30.6.2, §17 #54)."},
@@ -947,7 +950,44 @@ def _validate_program(program: Program) -> None:
     _validate_calls(program)
     _validate_cleanup(program)
     _validate_step_split(program)
+    _validate_activation_count(program)
     _validate_effect_coverage(program)
+
+
+def _validate_activation_count(program: Program) -> None:
+    """A call is activated exactly once (README ss17 #2): by one `do` step or as
+    one cleanup's worker. More than one activation is a hard error (this also
+    catches a cleanup worker that is separately `do`-activated, ss17 #43); zero
+    activations is an unused-call warning."""
+    do_count: dict[str, int] = {}
+    cleanup_count: dict[str, int] = {}
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind in ("operation", "function"):
+            for row in ent.rows:
+                if row.predicate == "do" and row.payload:
+                    do_count[row.payload[0]] = do_count.get(row.payload[0], 0) + 1
+        elif ent.kind == "cleanup":
+            cr = ent.fact("call")
+            if cr and cr.payload:
+                cleanup_count[cr.payload[0]] = cleanup_count.get(cr.payload[0], 0) + 1
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind != "call":
+            continue
+        total = do_count.get(name, 0) + cleanup_count.get(name, 0)
+        if total > 1:
+            raise EavError(
+                f"call {name!r} is activated {total} times; a call is activated "
+                f"exactly once (by one `do` or one cleanup worker, README ss17 "
+                f"#2/#43)",
+                ent.line,
+                code="SS1702",
+            )
+        if total == 0:
+            program.warnings.append(
+                f"{name}: call is never activated (unused, README ss17 #2)"
+            )
 
 
 def _validate_effect_coverage(program: Program) -> None:

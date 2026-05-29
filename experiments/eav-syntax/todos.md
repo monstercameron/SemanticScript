@@ -167,7 +167,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS2-005 Error recovery: report multiple errors, not bail-on-first. →test: multi-error file yields N diagnostics. _(eavc: `lint(program)` collects a diagnostic list without bailing; `eavc.py lint`; `test_lint_collects_multiple_not_bail_on_first`. Parse hard-errors still fail fast by design.)_
 
 ## 2B. Structural invariants — one check + test each (§17 #1–#55)
-- [ ] WS2-010 #1 single `is` first row · #2 call activated once (do | cleanup defer) · #3 step-target restrictions.
+- [x] WS2-010 #1 single `is` first row · #2 call activated once (do | cleanup defer) · #3 step-target restrictions. _(eavc: is-first/duplicate (#1, parser), `_validate_activation_count` (#2 + #43 fallout), `_validate_step_split` step-target kinds (#3); `test_parse_first_row_must_be_is`, `test_call_activated_more_than_once_rejected`, `test_cleanup_worker_also_do_activated_rejected`, `test_split_*`)_
 - [x] WS2-011 #4 do/start/defer reference in-op entity · #5 effect covered by uses (warn) · #6 ifError predecessor + catch. _(eavc: `_validate_step_split` owner-match (#4), `_validate_effect_coverage` warning (#5), ifError-catch (#6); `test_activate_entity_not_owned_rejected`, `test_uncovered_effect_warns`, `test_covered_effect_no_warning`, `test_iferror_requires_catch`)_
 - [ ] WS2-012 #7 `do TASK` reject · #8 if/ifFalse Bool · #9 catch var in scope at ifError target.
 - [x] WS2-013 #10 return arity · #11 goto target one `at` · #12 unique label · #13 dead label. _(eavc: `_validate_return_arity`, `_validate_labels`; `test_return_arity_*`, `test_label_undefined_target_rejected`, `test_label_duplicate_rejected`, `test_label_dead_warns`)_

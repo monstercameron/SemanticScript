@@ -553,7 +553,7 @@ def test_async_on_call_parses_with_deprecation_note():
 
 def test_no_spurious_async_deprecation_for_plain_call():
     prog = eavc.parse("fetchThing is call\nfetchThing invokes net.fetch\n")
-    assert prog.warnings == []
+    assert not any("deprecated" in w for w in prog.warnings)
 
 
 def test_parse_island_body_strips_common_indent():
@@ -889,6 +889,32 @@ _CLEANUP_BASE = (
     "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
     "closeDb arg database Int64 db\n"
 )
+
+
+def test_call_activated_more_than_once_rejected():
+    # README ss17 #2: a call is activated exactly once.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\n"
+            'main let t immutable String "hi"\nmain do w\nmain do w\nmain return okCode\n'
+            "main let okCode immutable ExitCode 0\n"
+            "w is call\nw in main\nw invokes console.writeLine\nw arg text String t\n"
+        )
+    assert exc.value.code == "SS1702"
+
+
+def test_cleanup_worker_also_do_activated_rejected():
+    # README ss17 #43: a cleanup worker is not separately `do`-activated.
+    src = _CLEANUP_BASE + (
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        'closeCleanup because "x"\ncloseCleanup onFailure logAndSuppress\n'
+        "closeCleanup cleans db\n"
+        "main is operation\nmain out ExitCode\nmain do closeDb\nmain return okCode\n"
+        "main let okCode immutable ExitCode 0\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS1702"
 
 
 def test_cleanup_logandsuppress_requires_because():
