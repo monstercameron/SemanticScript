@@ -8915,3 +8915,54 @@ def test_r017_unknown_platform_exits_structured_json(tmp_path, capsys):
     assert payload["ok"] is False
     assert payload["status"] == "unknown-platform"
     assert "linuxX64" in payload["declared"] and "windowsX64" in payload["declared"]
+
+
+# === R-021: runtime build cache keyed by platform/compiler/ABI ===
+
+def test_r021_cache_path_distinct_per_platform_and_compiler():
+    """R-021: the runtime-library cache path is keyed by target platform and
+    compiler identity, so two platform builds (or two compilers) of the same
+    library land on distinct cache paths and never reuse an incompatible
+    artifact. Under the old `<name><suffix>` naming all of these collided."""
+    lib = _manifest_library("eav_runtime")
+    windows = eavc._runtime_lib_cache_path(lib, "windows", "clang|v1")
+    linux = eavc._runtime_lib_cache_path(lib, "linux", "clang|v1")
+    zig_windows = eavc._runtime_lib_cache_path(lib, "windows", "zig|v2")
+    assert windows != linux            # distinct per platform
+    assert windows != zig_windows      # distinct per compiler identity
+    # all live under the writable cache _build dir (R-015), not the bundle
+    cache_build = os.path.join(eavc._runtime_cache_dir(), "_build")
+    for path in (windows, linux, zig_windows):
+        assert os.path.realpath(os.path.dirname(path)) == os.path.realpath(cache_build)
+
+
+def test_r021_cache_key_invalidated_by_define_change():
+    """R-021: changing a define (or any include/lib) yields a new cache key, while
+    identical inputs are stable — so a define change rebuilds rather than reusing
+    a stale library."""
+    rt = eavc._runtime_dir()
+    base = {"defines": ["SQLITE_THREADSAFE=2"], "include": [], "libs": [], "sources": []}
+    changed = {"defines": ["SQLITE_THREADSAFE=0"], "include": [], "libs": [], "sources": []}
+    key_base = eavc._runtime_cache_key(base, "linux", "clang|v1", rt)
+    key_changed = eavc._runtime_cache_key(changed, "linux", "clang|v1", rt)
+    key_base_again = eavc._runtime_cache_key(base, "linux", "clang|v1", rt)
+    assert key_base != key_changed
+    assert key_base == key_base_again
+    # platform and compiler are part of the key too
+    assert eavc._runtime_cache_key(base, "windows", "clang|v1", rt) != key_base
+    assert eavc._runtime_cache_key(base, "linux", "zig|v2", rt) != key_base
+
+
+def test_r021_built_runtime_lib_uses_keyed_path():
+    """R-021: a really-built runtime library is written to its keyed cache path
+    (name-<key>), matching the pure _runtime_lib_cache_path resolver."""
+    if eavc._find_c_compiler() is None:
+        pytest.skip("no C compiler available to build the runtime library")
+    lib = _manifest_library("eav_runtime")
+    built = eavc._ensure_runtime_lib(lib)
+    assert built and os.path.exists(built)
+    expected = eavc._runtime_lib_cache_path(lib)
+    assert os.path.realpath(built) == os.path.realpath(expected)
+    # the keyed name carries a 16-hex-char digest suffix
+    import re
+    assert re.search(r"eav_runtime-[0-9a-f]{16}", os.path.basename(built))

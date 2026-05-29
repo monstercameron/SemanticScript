@@ -7955,6 +7955,67 @@ def _resolve_runtime_links(library: dict, platform: str,
     }
 
 
+def _compiler_identity(cc) -> str:
+    """A stable identity for the C compiler command (R-021): the command plus its
+    reported version line, so switching clang->zig or bumping the compiler version
+    keys a different runtime cache. `None` (no compiler) is its own identity."""
+    if not cc:
+        return "none"
+    import subprocess
+    version = ""
+    try:
+        probe = subprocess.run(list(cc) + ["--version"],
+                               capture_output=True, text=True, timeout=15)
+        lines = (probe.stdout or probe.stderr or "").splitlines()
+        version = lines[0].strip() if lines else ""
+    except (OSError, subprocess.SubprocessError):
+        version = ""
+    return " ".join(cc) + "|" + version
+
+
+def _runtime_cache_key(resolved: dict, platform: str, compiler_id: str,
+                       runtime_dir: str) -> str:
+    """A digest keying a cached runtime library (R-021) by everything that makes
+    the compiled artifact ABI-incompatible if it changes: the target platform,
+    the compiler identity, the resolved defines/includes/libs, and the byte
+    content of every source file. Two platform builds, a changed define, or a
+    different compiler therefore land on distinct cache paths and can never load
+    a stale incompatible library."""
+    import hashlib
+    import os
+    digest = hashlib.sha256()
+    for part in (platform, compiler_id):
+        digest.update(part.encode("utf-8"))
+        digest.update(b"\0")
+    for field in ("defines", "include", "libs"):
+        for value in resolved.get(field, []):
+            digest.update(f"{field}={value}".encode("utf-8"))
+            digest.update(b"\0")
+    for source in resolved.get("sources", []):
+        path = os.path.normpath(os.path.join(runtime_dir, source))
+        try:
+            with open(path, "rb") as handle:
+                digest.update(hashlib.sha256(handle.read()).digest())
+        except OSError:
+            digest.update(source.encode("utf-8"))
+    return digest.hexdigest()[:16]
+
+
+def _runtime_lib_cache_path(lib: dict, platform: Optional[str] = None,
+                            compiler_id: Optional[str] = None) -> str:
+    """The cache file path for a runtime library, keyed per R-021. Pure: computes
+    the path without compiling, so tests can assert that two platforms (or a
+    changed define) resolve to distinct paths."""
+    import os
+    rt = _runtime_dir()
+    plat = platform or _host_platform_name()
+    resolved = _resolve_runtime_links(lib, plat)
+    cid = compiler_id if compiler_id is not None else _compiler_identity(_find_c_compiler())
+    key = _runtime_cache_key(resolved, plat, cid, rt)
+    build_dir = os.path.join(_runtime_cache_dir(), "_build")
+    return os.path.join(build_dir, f"{lib['name']}-{key}{_shared_lib_suffix()}")
+
+
 def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     """Build (cached) one native runtime library described by runtime/manifest.json
     and return its path, or None if no C compiler is available. The compiler is
@@ -7963,26 +8024,26 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
 
     R-018/R-013: link inputs are resolved through `_resolve_runtime_links` for
     the given `platform` (host platform by default) so Windows-only libs such as
-    ws2_32 are appended on Windows but never on a resolved POSIX plan."""
+    ws2_32 are appended on Windows but never on a resolved POSIX plan. R-021: the
+    cache path is keyed by platform + compiler identity + defines/includes/libs +
+    source content, so an incompatible cached artifact is never reused."""
     import os
     import subprocess
     rt = _runtime_dir()
-    resolved = _resolve_runtime_links(lib, platform or _host_platform_name())
-    # R-015: the compiled shared library lands in the user-writable cache, not
-    # under the (possibly read-only/shared) runtime bundle. Sources are still
-    # read from `rt`; only the build output moves.
-    build_dir = os.path.join(_runtime_cache_dir(), "_build")
-    out = os.path.join(build_dir, lib["name"] + _shared_lib_suffix())
-    sources = [os.path.normpath(os.path.join(rt, s)) for s in resolved["sources"]]
-    manifest = os.path.join(rt, "manifest.json")
-    inputs = [p for p in (sources + [manifest]) if os.path.exists(p)]
-    if os.path.exists(out) and all(
-        os.path.getmtime(out) >= os.path.getmtime(p) for p in inputs
-    ):
-        return out  # cached and fresh
+    plat = platform or _host_platform_name()
+    resolved = _resolve_runtime_links(lib, plat)
     cc = _find_c_compiler()
+    # R-015: the compiled shared library lands in the user-writable cache, not
+    # under the (possibly read-only/shared) runtime bundle. R-021: keyed by the
+    # full ABI-relevant input set, so existence of the keyed file means it was
+    # built from exactly these inputs (no stale reuse, no mtime guessing).
+    build_dir = os.path.join(_runtime_cache_dir(), "_build")
+    out = _runtime_lib_cache_path(lib, plat, _compiler_identity(cc))
+    if os.path.exists(out):
+        return out  # cached: the key already encodes platform/compiler/sources
     if cc is None:
         return None
+    sources = [os.path.normpath(os.path.join(rt, s)) for s in resolved["sources"]]
     os.makedirs(build_dir, exist_ok=True)
     cmd = list(cc) + ["-O2", "-shared", "-o", out] + sources
     for inc in resolved["include"]:
