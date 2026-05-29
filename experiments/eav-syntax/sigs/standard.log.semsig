@@ -1,0 +1,28 @@
+# standard.log.semsig — DEFERRED structured-logging contract (README ss26/ss27,
+# X-043). The append-only JSON-per-line audit log runtime is not lowered in
+# v0.3; this records the typed surface the ported apps/taskforge-web invokes
+# (server start, auth, todo-mutation audit records). No log.* symbol is lowered
+# in v0.3.
+
+logSig is semsig
+logSig version "1.0"
+logSig generatedBy "eavc 0.1"
+logSig describes standard.log
+
+openLogFile is intrinsic
+openLogFile target log.openLogFile
+openLogFile arg filePath String
+openLogFile out status Int32
+openLogFile purpose "Open (append-mode) the structured-log file at a path; returns 0 on success (deferred runtime)"
+
+logInfo is intrinsic
+logInfo target log.logInfo
+logInfo arg messageText String
+logInfo out status Int32
+logInfo purpose "Append one INFO-level structured-log record (deferred runtime)"
+
+logWarn is intrinsic
+logWarn target log.logWarn
+logWarn arg messageText String
+logWarn out status Int32
+logWarn purpose "Append one WARN-level structured-log record (deferred runtime)"

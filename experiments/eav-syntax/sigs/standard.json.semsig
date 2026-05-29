@@ -68,3 +68,143 @@ jsonRelease target json.release
 jsonRelease arg value JsonValue
 jsonRelease out released Int32
 jsonRelease purpose "Release a parsed JSON value tree"
+
+# ---- document-cursor API (X-043), DEFERRED ----
+# The DOM-style bounded-arena parse/build surface the ported apps/taskforge-web
+# uses: request parsing (createDocument/objectFieldAt/cursorString/cursorInt64)
+# and response building (createEmptyDocument/setObjectField*/appendArrayElement*/
+# serializeDocument), reusing JsonText + JsonAccessError above.
+
+JsonDocument is alias
+JsonDocument for OpaquePointer
+JsonDocument purpose "An opaque bounded JSON document arena (parsed or built)"
+
+JsonCursor is alias
+JsonCursor for OpaquePointer
+JsonCursor purpose "A cursor into a JSON document node (object/array/value)"
+
+JsonCapacityBytes is alias
+JsonCapacityBytes for Int64
+JsonCapacityBytes purpose "The byte capacity of a JSON document arena"
+
+createDocument is intrinsic
+createDocument target json.createDocument
+createDocument arg jsonText String
+createDocument arg capacityBytes JsonCapacityBytes
+createDocument out document JsonDocument
+createDocument catch JsonAccessError
+createDocument owns document cleanedBy json.destroyDocument
+createDocument purpose "Parse JSON text into a bounded document arena (deferred runtime)"
+
+createEmptyDocument is intrinsic
+createEmptyDocument target json.createEmptyDocument
+createEmptyDocument arg capacityBytes JsonCapacityBytes
+createEmptyDocument arg rootKind JsonValueKind
+createEmptyDocument out document JsonDocument
+createEmptyDocument catch JsonAccessError
+createEmptyDocument owns document cleanedBy json.destroyDocument
+createEmptyDocument purpose "Create an empty object/array document arena for response building (deferred runtime)"
+
+destroyDocument is intrinsic
+destroyDocument target json.destroyDocument
+destroyDocument arg document JsonDocument
+destroyDocument out released Int32
+destroyDocument purpose "Release a JSON document arena (deferred runtime)"
+
+documentRoot is intrinsic
+documentRoot target json.documentRoot
+documentRoot arg document JsonDocument
+documentRoot out cursor JsonCursor
+documentRoot purpose "Return a cursor at the document's root node (deferred runtime)"
+
+objectFieldAt is intrinsic
+objectFieldAt target json.objectFieldAt
+objectFieldAt arg document JsonDocument
+objectFieldAt arg cursor JsonCursor
+objectFieldAt arg fieldName String
+objectFieldAt out field JsonCursor
+objectFieldAt catch JsonAccessError
+objectFieldAt purpose "Return a cursor at the named field of an object node, or fail if absent (deferred runtime)"
+
+cursorString is intrinsic
+cursorString target json.cursorString
+cursorString arg document JsonDocument
+cursorString arg cursor JsonCursor
+cursorString arg scratch OpaquePointer
+cursorString arg scratchCapacity JsonCapacityBytes
+cursorString out text String
+cursorString catch JsonAccessError
+cursorString purpose "Copy a string node's value into a caller scratch buffer (deferred runtime)"
+
+cursorInt64 is intrinsic
+cursorInt64 target json.cursorInt64
+cursorInt64 arg document JsonDocument
+cursorInt64 arg cursor JsonCursor
+cursorInt64 arg missingDefault Int64
+cursorInt64 out value Int64
+cursorInt64 purpose "Read an integer node's value, falling back to a default when absent (deferred runtime)"
+
+setObjectFieldString is intrinsic
+setObjectFieldString target json.setObjectFieldString
+setObjectFieldString arg document JsonDocument
+setObjectFieldString arg cursor JsonCursor
+setObjectFieldString arg fieldName String
+setObjectFieldString arg value String
+setObjectFieldString out set Int32
+setObjectFieldString catch JsonAccessError
+setObjectFieldString purpose "Set a string field on an object node (deferred runtime)"
+
+setObjectFieldInt64 is intrinsic
+setObjectFieldInt64 target json.setObjectFieldInt64
+setObjectFieldInt64 arg document JsonDocument
+setObjectFieldInt64 arg cursor JsonCursor
+setObjectFieldInt64 arg fieldName String
+setObjectFieldInt64 arg value Int64
+setObjectFieldInt64 out set Int32
+setObjectFieldInt64 catch JsonAccessError
+setObjectFieldInt64 purpose "Set an integer field on an object node (deferred runtime)"
+
+setObjectFieldBool is intrinsic
+setObjectFieldBool target json.setObjectFieldBool
+setObjectFieldBool arg document JsonDocument
+setObjectFieldBool arg cursor JsonCursor
+setObjectFieldBool arg fieldName String
+setObjectFieldBool arg value Bool
+setObjectFieldBool out set Int32
+setObjectFieldBool catch JsonAccessError
+setObjectFieldBool purpose "Set a boolean field on an object node (deferred runtime)"
+
+setObjectFieldObject is intrinsic
+setObjectFieldObject target json.setObjectFieldObject
+setObjectFieldObject arg document JsonDocument
+setObjectFieldObject arg cursor JsonCursor
+setObjectFieldObject arg fieldName String
+setObjectFieldObject out objectCursor JsonCursor
+setObjectFieldObject catch JsonAccessError
+setObjectFieldObject purpose "Create a nested object field and return a cursor at it (deferred runtime)"
+
+setObjectFieldArray is intrinsic
+setObjectFieldArray target json.setObjectFieldArray
+setObjectFieldArray arg document JsonDocument
+setObjectFieldArray arg cursor JsonCursor
+setObjectFieldArray arg fieldName String
+setObjectFieldArray out arrayCursor JsonCursor
+setObjectFieldArray catch JsonAccessError
+setObjectFieldArray purpose "Create a nested array field and return a cursor at it (deferred runtime)"
+
+appendArrayElementObject is intrinsic
+appendArrayElementObject target json.appendArrayElementObject
+appendArrayElementObject arg document JsonDocument
+appendArrayElementObject arg cursor JsonCursor
+appendArrayElementObject out elementCursor JsonCursor
+appendArrayElementObject catch JsonAccessError
+appendArrayElementObject purpose "Append an object element to an array node and return a cursor at it (deferred runtime)"
+
+serializeDocument is intrinsic
+serializeDocument target json.serializeDocument
+serializeDocument arg document JsonDocument
+serializeDocument arg scratch OpaquePointer
+serializeDocument arg scratchCapacity JsonCapacityBytes
+serializeDocument out text JsonText
+serializeDocument catch JsonAccessError
+serializeDocument purpose "Serialize a document arena to JSON text in a caller scratch buffer (deferred runtime)"
