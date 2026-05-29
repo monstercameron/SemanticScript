@@ -218,6 +218,28 @@ def is_duration_literal(tok: str) -> bool:
     return bool(_DURATION_RE.match(tok))
 
 
+# Manifest-only token classes (README ss2/ss28): valid only in build.sem/
+# build.sem.lock positions and a module's imports path; never as names.
+_REPO_PATH_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)+\Z")
+_SEMVER_RE = re.compile(
+    r"v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?\Z"
+)
+_SHA256_HEX_RE = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def is_repo_path(tok: str) -> bool:
+    return bool(_REPO_PATH_RE.match(tok))
+
+
+def is_semver(tok: str) -> bool:
+    return bool(_SEMVER_RE.match(tok))
+
+
+def is_sha256_digest(tok: str) -> bool:
+    """True for the 64-lowercase-hex body of a `sha256 <hex>` digest token."""
+    return bool(_SHA256_HEX_RE.match(tok))
+
+
 def _validate_int_literal(tok: str, line: int) -> None:
     """Validate an integer literal token (README ss2/ss33.1). Caller has already
     decided `tok` is a literal attempt (digit-led, no `.`, no sign)."""

@@ -314,6 +314,25 @@ def test_int_literal_rejects(bad):
         eavc.parse(f"main is operation\nmain let n immutable Int64 {bad}\n")
 
 
+def test_manifest_token_classes_recognized():
+    # README ss2/ss28: repo path, semver (with pre-release/build), sha256 body.
+    assert eavc.is_repo_path("github.com/ss-lang/sqlite")
+    assert not eavc.is_repo_path("plainname")
+    assert eavc.is_semver("v2.1.0")
+    assert eavc.is_semver("v2.1.0-rc.1")
+    assert eavc.is_semver("v2.1.0+build.5")
+    assert not eavc.is_semver("2.1.0")  # leading v required
+    assert eavc.is_sha256_digest("a" * 64)
+    assert not eavc.is_sha256_digest("a" * 63)
+
+
+@pytest.mark.parametrize("name", ["v2.1.0", "github.com/x/y"])
+def test_manifest_tokens_rejected_as_entity_names(name):
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(f"{name} is module\n")
+    assert "invalid entity name" in exc.value.message
+
+
 @pytest.mark.parametrize("dur", ["50ms", "30s", "1h", "100ns", "5us", "2m"])
 def test_duration_literal_recognized(dur):
     assert eavc.is_duration_literal(dur)
