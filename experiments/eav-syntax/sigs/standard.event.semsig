@@ -1,42 +1,122 @@
 # standard.event.semsig — DEFERRED event-stream contract (README ss27, X-046).
 # The async event stream + subscription runtime (one-emitter-to-many-listeners,
-# wasm-DOM event surface) is not specified in v0.3. This file records the
-# conversion target so event targets type-resolve; the runtime lands later.
+# wasm-DOM event surface) is not specified in v0.3. This file records the FULL
+# conversion target for the ported apps/event-stream-smoke source: every event.*
+# intrinsic it invokes and the handle/name/id types they reference, so the app
+# type-resolves and lints clean. The runtime (the event.* bodies) lands later;
+# no event.* symbol is lowered in v0.3.
 
 eventSig is semsig
 eventSig version "1.0"
 eventSig generatedBy "eavc 0.1"
 eventSig describes standard.event
 
-EventStream is alias
-EventStream for OpaquePointer
-EventStream purpose "An opaque event stream handle (deferred runtime)"
+EventStreamHandle is alias
+EventStreamHandle for OpaquePointer
+EventStreamHandle purpose "An opaque event stream handle (deferred runtime)"
 
-EventSubscription is alias
-EventSubscription for OpaquePointer
-EventSubscription purpose "An opaque subscription handle (deferred runtime)"
+EventSubscriptionHandle is alias
+EventSubscriptionHandle for OpaquePointer
+EventSubscriptionHandle purpose "An opaque subscription handle (deferred runtime)"
+
+EventOutputBuffer is alias
+EventOutputBuffer for OpaquePointer
+EventOutputBuffer purpose "A caller-owned output buffer for received event fields (may be null)"
+
+EventStreamName is alias
+EventStreamName for String
+EventStreamName purpose "A process-stream name, e.g. app.event-stream-smoke"
 
 EventTypeName is alias
 EventTypeName for String
 EventTypeName purpose "An event type name, e.g. smoke.event.created"
 
-streamOpen is intrinsic
-streamOpen target event.streamOpen
-streamOpen out stream EventStream
-streamOpen owns stream cleanedBy event.streamClose
-streamOpen purpose "Open an event stream (deferred runtime)"
+EventKey is alias
+EventKey for String
+EventKey purpose "An event partition key"
 
-streamAppend is intrinsic
-streamAppend target event.streamAppend
-streamAppend arg stream EventStream
-streamAppend arg eventType EventTypeName
-streamAppend out appended Int64
-streamAppend async yes
-streamAppend purpose "Append (emit) an event to the stream (deferred runtime)"
+EventPayloadJson is alias
+EventPayloadJson for String
+EventPayloadJson purpose "An event payload encoded as JSON text"
 
-subscriptionReceive is intrinsic
-subscriptionReceive target event.subscriptionReceive
-subscriptionReceive arg subscription EventSubscription
-subscriptionReceive out eventId Int64
-subscriptionReceive async yes
-subscriptionReceive purpose "Await the next event on a subscription (deferred runtime)"
+EventId is alias
+EventId for Int64
+EventId purpose "A monotonically increasing event id (0 = none)"
+
+EventQueueCapacity is alias
+EventQueueCapacity for Int64
+EventQueueCapacity purpose "The bounded queue depth of a stream or subscription"
+
+EventBufferCapacity is alias
+EventBufferCapacity for Int64
+EventBufferCapacity purpose "The byte capacity of an output buffer (0 for a null buffer)"
+
+EventStatusCode is alias
+EventStatusCode for Int64
+EventStatusCode purpose "A status code returned by acknowledge/close operations"
+
+openProcessStream is intrinsic
+openProcessStream target event.openProcessStream
+openProcessStream arg streamName EventStreamName
+openProcessStream arg queueCapacity EventQueueCapacity
+openProcessStream out stream EventStreamHandle
+openProcessStream owns stream cleanedBy event.closeStream
+openProcessStream async yes
+openProcessStream purpose "Open a process-local event stream (deferred runtime)"
+
+subscribeStream is intrinsic
+subscribeStream target event.subscribeStream
+subscribeStream arg stream EventStreamHandle
+subscribeStream arg eventType EventTypeName
+subscribeStream arg eventKey EventKey
+subscribeStream arg afterEventId EventId
+subscribeStream arg queueCapacity EventQueueCapacity
+subscribeStream out subscription EventSubscriptionHandle
+subscribeStream owns subscription cleanedBy event.closeSubscription
+subscribeStream async yes
+subscribeStream purpose "Create a subscription on a stream for an event type/key (deferred runtime)"
+
+receiveEvent is intrinsic
+receiveEvent target event.receiveEvent
+receiveEvent arg subscription EventSubscriptionHandle
+receiveEvent arg outEventType EventOutputBuffer
+receiveEvent arg outEventTypeCapacity EventBufferCapacity
+receiveEvent arg outEventKey EventOutputBuffer
+receiveEvent arg outEventKeyCapacity EventBufferCapacity
+receiveEvent arg outPayloadJson EventOutputBuffer
+receiveEvent arg outPayloadCapacity EventBufferCapacity
+receiveEvent out eventId EventId
+receiveEvent async yes
+receiveEvent purpose "Await the next event on a subscription, copying fields into output buffers (deferred runtime)"
+
+appendEvent is intrinsic
+appendEvent target event.appendEvent
+appendEvent arg stream EventStreamHandle
+appendEvent arg eventType EventTypeName
+appendEvent arg eventKey EventKey
+appendEvent arg payloadJson EventPayloadJson
+appendEvent out appendedEventId EventId
+appendEvent async yes
+appendEvent purpose "Append (emit) one event to the stream, fanning out to all subscriptions (deferred runtime)"
+
+acknowledgeEvent is intrinsic
+acknowledgeEvent target event.acknowledgeEvent
+acknowledgeEvent arg subscription EventSubscriptionHandle
+acknowledgeEvent arg eventId EventId
+acknowledgeEvent out status EventStatusCode
+acknowledgeEvent async yes
+acknowledgeEvent purpose "Acknowledge a received event on a subscription (deferred runtime)"
+
+closeSubscription is intrinsic
+closeSubscription target event.closeSubscription
+closeSubscription arg subscription EventSubscriptionHandle
+closeSubscription out status EventStatusCode
+closeSubscription async yes
+closeSubscription purpose "Close a subscription and release its handle (deferred runtime)"
+
+closeStream is intrinsic
+closeStream target event.closeStream
+closeStream arg stream EventStreamHandle
+closeStream out status EventStatusCode
+closeStream async yes
+closeStream purpose "Close an event stream and release its handle (deferred runtime)"

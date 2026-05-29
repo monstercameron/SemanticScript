@@ -4601,20 +4601,36 @@ def test_app_taskforge_api_client_console_core_runs():
     assert proc.stdout.count("response:") == 3
 
 
-def test_app_event_stream_smoke_console_scaffolding_runs():
-    # X-046: console scaffolding JIT-runs; event targets resolve against the stub.
-    src = open(os.path.join(APPS, "event-stream-smoke", "main.sem"), encoding="utf-8").read()
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
-    proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=src, capture_output=True, text=True,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "listener-one handled" in proc.stdout and "listener-two handled" in proc.stdout
-    # the deferred event surface type-resolves against its .semsig stub
+def test_app_event_stream_smoke_full_port():
+    # X-046: the standard.event smoke app is FULLY ported (all 4 ops, every
+    # event.* call as a task) against sigs/standard.event.semsig and lints clean
+    # as `target console`; event *execution* stays deferred (no event.* lowering).
     ev = eavc.load_semsig(open(os.path.join(SIGS, "standard.event.semsig"),
                                encoding="utf-8").read())
-    assert any(l.startswith("event.streamAppend(") for l in eavc.docs(ev))
+    ev_targets = [l.split("(")[0] for l in eavc.docs(ev)]
+    for t in ("event.openProcessStream", "event.subscribeStream",
+              "event.receiveEvent", "event.appendEvent", "event.acknowledgeEvent",
+              "event.closeSubscription", "event.closeStream"):
+        assert t in ev_targets, f"{t} missing from standard.event.semsig"
+
+    src = open(os.path.join(APPS, "event-stream-smoke", "main.sem"),
+               encoding="utf-8").read()
+    prog = eavc.parse(src)
+    # op-count parity with the original v0.1 app (4 ops)
+    ops = [o.name for o in prog.of_kind("operation")]
+    assert ops == ["eventIdGreaterThan", "listenerOneHandleSmokeEvent",
+                   "listenerTwoHandleSmokeEvent", "main"]
+    assert len(prog.of_kind("capability")) == 12   # capability parity
+    # every event.* call is a started+joined task (EAV async, the §20 split)
+    tasks = prog.of_kind("task")
+    assert len(tasks) == 17
+    event_tasks = [t for t in tasks
+                   if (t.fact("invokes") and t.fact("invokes").payload
+                       and t.fact("invokes").payload[0].startswith("event."))]
+    assert len(event_tasks) == 11   # open/2 subscribe/2 receive/append/2 ack/2 close + stream close
+    # the full port lints clean (event.* deferred as external targets)
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
 
 
 # X-047: app-port coverage matrix — every original app has an EAV port whose
@@ -4626,7 +4642,7 @@ _APP_PORT_MATRIX = {
     "taskforge-tui": ("runs", []),
     "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
     "http-runtime-gauntlet": ("runs", []),
-    "event-stream-smoke": ("runs", []),
+    "event-stream-smoke": ("deferred", []),
     "desktop-window-smoke": ("deferred", []),
 }
 

@@ -1,10 +1,24 @@
-# event-stream-smoke — EAV port (apps/event-stream-smoke, originally semsc v0.1).
+# event-stream-smoke — EAV port (apps/event-stream-smoke, semsc v0.1).
 #
-# The async one-emitter-to-many-listeners event runtime (standard.event) is
-# DEFERRED in v0.3 (its contract is sigs/standard.event.semsig). Per X-046 this
-# ports the console-observable scaffolding: the two listeners' output lines, so
-# the app JIT-runs and builds to an exe today; the event stream/subscription flow
-# is gated behind the deferred runtime.
+# FULL 1:1 port of the 4-operation standard.event smoke app: the
+# one-emitter-to-many-listeners async flow (open a stream, create two
+# subscriptions, start both receives, append one event, observe both
+# subscriptions complete, run two named listeners, acknowledge + close), plus
+# the eventIdGreaterThan comparison and the two listener operations themselves.
+# Every event.* call is a `task` (EAV async = start/join, README §13) converted
+# against sigs/standard.event.semsig. The original's resource-first inline
+# `capability NAME RES ACTION` rows become EAV `capability`/`grants ACTION RES`
+# + `uses` pairs (§8).
+#
+# Event *execution* is deferred: the event stream/subscription runtime is not
+# specified in v0.3 (§27), so the event.* targets stay external (unlowered) and
+# the listeners never receive a real event. The whole app parses + lints clean
+# as `target console`; when the event runtime lands, the event.* intrinsics gain
+# bodies and this source runs unchanged. (X-046)
+#
+# Per-task `timeout`/`cancelOn` and the v0.1 console.writeLine error path are
+# dropped: EAV tasks carry no per-task timeout/cancel token and console.writeLine
+# is infallible (void) — language differences, not feature reductions.
 
 EventStreamSmoke is project
 EventStreamSmoke module appEventStreamSmoke
@@ -14,37 +28,435 @@ EventStreamSmoke entry main
 appEventStreamSmoke is module
 appEventStreamSmoke path apps.eventStreamSmoke
 appEventStreamSmoke exports main
-appEventStreamSmoke purpose "Print the two listeners' console output (event runtime deferred)"
-appEventStreamSmoke invariant "Both listener lines are written in order"
+appEventStreamSmoke purpose "Drive standard.event one-emitter-to-many-listeners async flow"
+appEventStreamSmoke invariant "Every standard.event operation is started and joined; only listeners write console"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
-stdoutWriter is capability
-stdoutWriter grants write console.stdout
-stdoutWriter purpose "Allow controlled writes to standard output"
+EventStreamHandle is alias
+EventStreamHandle for OpaquePointer
+EventStreamHandle purpose "An opaque event stream handle (deferred runtime)"
+
+EventSubscriptionHandle is alias
+EventSubscriptionHandle for OpaquePointer
+EventSubscriptionHandle purpose "An opaque subscription handle (deferred runtime)"
+
+EventOutputBuffer is alias
+EventOutputBuffer for OpaquePointer
+EventOutputBuffer purpose "A caller-owned output buffer for received event fields (may be null)"
+
+EventStreamName is alias
+EventStreamName for String
+EventStreamName purpose "A process-stream name"
+
+EventTypeName is alias
+EventTypeName for String
+EventTypeName purpose "An event type name"
+
+EventKey is alias
+EventKey for String
+EventKey purpose "An event partition key"
+
+EventPayloadJson is alias
+EventPayloadJson for String
+EventPayloadJson purpose "An event payload encoded as JSON text"
+
+EventId is alias
+EventId for Int64
+EventId purpose "A monotonically increasing event id (0 = none)"
+
+EventQueueCapacity is alias
+EventQueueCapacity for Int64
+EventQueueCapacity purpose "The bounded queue depth of a stream or subscription"
+
+EventBufferCapacity is alias
+EventBufferCapacity for Int64
+EventBufferCapacity purpose "The byte capacity of an output buffer (0 for a null buffer)"
+
+EventStatusCode is alias
+EventStatusCode for Int64
+EventStatusCode purpose "A status code returned by acknowledge/close operations"
+
+appEventStreamReader is capability
+appEventStreamReader grants read event.stream
+appEventStreamReader purpose "Authority to subscribe to the smoke app event stream"
+
+appEventStreamWriter is capability
+appEventStreamWriter grants write event.stream
+appEventStreamWriter purpose "Authority to append the smoke app event"
+
+appEventStreamOpener is capability
+appEventStreamOpener grants open event.stream
+appEventStreamOpener purpose "Authority to open the smoke app event stream"
+
+appEventStreamCloser is capability
+appEventStreamCloser grants close event.stream
+appEventStreamCloser purpose "Authority to close the smoke app event stream"
+
+appEventSubscriptionReader is capability
+appEventSubscriptionReader grants read event.subscription
+appEventSubscriptionReader purpose "Authority to receive smoke events from subscriptions"
+
+appEventSubscriptionOpener is capability
+appEventSubscriptionOpener grants open event.subscription
+appEventSubscriptionOpener purpose "Authority to open smoke event subscriptions"
+
+appEventSubscriptionWriter is capability
+appEventSubscriptionWriter grants write event.subscription
+appEventSubscriptionWriter purpose "Authority to acknowledge smoke event subscriptions"
+
+appEventSubscriptionCloser is capability
+appEventSubscriptionCloser grants close event.subscription
+appEventSubscriptionCloser purpose "Authority to close smoke event subscriptions"
+
+appEventHeapAllocator is capability
+appEventHeapAllocator grants allocate heap
+appEventHeapAllocator purpose "Authority for standard.event calls that allocate runtime handles"
+
+appEventHeapFree is capability
+appEventHeapFree grants free heap
+appEventHeapFree purpose "Authority for standard.event calls that release runtime handles"
+
+appEventOutputBufferWriter is capability
+appEventOutputBufferWriter grants write memory.buffer
+appEventOutputBufferWriter purpose "Authority for receiveEvent output buffer writes, even when null buffers are passed"
+
+appConsoleStdoutWriter is capability
+appConsoleStdoutWriter grants write console.stdout
+appConsoleStdoutWriter purpose "Authority for listener operations to print proof that they ran"
+
+smokeStreamName is storage
+smokeStreamName scope module
+smokeStreamName type EventStreamName
+smokeStreamName mutability immutable
+smokeStreamName value "app.event-stream-smoke"
+
+smokeEventType is storage
+smokeEventType scope module
+smokeEventType type EventTypeName
+smokeEventType mutability immutable
+smokeEventType value "smoke.event.created"
+
+smokeEventKey is storage
+smokeEventKey scope module
+smokeEventKey type EventKey
+smokeEventKey mutability immutable
+smokeEventKey value "demo"
+
+smokePayloadJson is storage
+smokePayloadJson scope module
+smokePayloadJson type EventPayloadJson
+smokePayloadJson mutability immutable
+smokePayloadJson value "{\"message\":\"hello event\"}"
+
+smokeQueueCapacity is storage
+smokeQueueCapacity scope module
+smokeQueueCapacity type EventQueueCapacity
+smokeQueueCapacity mutability immutable
+smokeQueueCapacity value 16
+
+zeroEventId is storage
+zeroEventId scope module
+zeroEventId type EventId
+zeroEventId mutability immutable
+zeroEventId value 0
+
+nullEventOutputBuffer is storage
+nullEventOutputBuffer scope module
+nullEventOutputBuffer type EventOutputBuffer
+nullEventOutputBuffer mutability immutable
+nullEventOutputBuffer value 0
+
+nullEventOutputCapacity is storage
+nullEventOutputCapacity scope module
+nullEventOutputCapacity type EventBufferCapacity
+nullEventOutputCapacity mutability immutable
+nullEventOutputCapacity value 0
+
+successExitCode is storage
+successExitCode scope module
+successExitCode type ExitCode
+successExitCode mutability immutable
+successExitCode value 0
+
+failedExitCode is storage
+failedExitCode scope module
+failedExitCode type ExitCode
+failedExitCode mutability immutable
+failedExitCode value 1
+
+firstListenerText is storage
+firstListenerText scope module
+firstListenerText type String
+firstListenerText mutability immutable
+firstListenerText value "listener-one handled smoke.event.created"
+
+secondListenerText is storage
+secondListenerText scope module
+secondListenerText type String
+secondListenerText mutability immutable
+secondListenerText value "listener-two handled smoke.event.created"
+
+eventIdGreaterThan is operation
+eventIdGreaterThan in left EventId
+eventIdGreaterThan in right EventId
+eventIdGreaterThan out Bool
+eventIdGreaterThan memory heap no
+eventIdGreaterThan async no
+eventIdGreaterThan purpose "Compare two event ids and report whether left is greater"
+eventIdGreaterThan invariant "Turns EventId receive results into explicit Bool branch conditions"
+eventIdGreaterThan do compareEventIdsCall
+eventIdGreaterThan return eventIdIsGreater
+
+compareEventIdsCall is call
+compareEventIdsCall in eventIdGreaterThan
+compareEventIdsCall invokes compare.greaterThanInt64
+compareEventIdsCall arg left EventId left
+compareEventIdsCall arg right EventId right
+compareEventIdsCall out eventIdIsGreater Bool
+
+listenerOneHandleSmokeEvent is operation
+listenerOneHandleSmokeEvent in receivedEventId EventId
+listenerOneHandleSmokeEvent out Int32
+listenerOneHandleSmokeEvent effect write console.stdout
+listenerOneHandleSmokeEvent uses appConsoleStdoutWriter
+listenerOneHandleSmokeEvent memory heap no
+listenerOneHandleSmokeEvent async yes
+listenerOneHandleSmokeEvent purpose "Execute listener-one code after the first subscription receives the smoke event"
+listenerOneHandleSmokeEvent invariant "The first named listener; no hidden callback closure"
+listenerOneHandleSmokeEvent let listenerOneNoEventStatus immutable Int32 1
+listenerOneHandleSmokeEvent let listenerOneSuccessStatus immutable Int32 0
+listenerOneHandleSmokeEvent start listenerOneHasEventTask
+listenerOneHandleSmokeEvent join listenerOneHasEventTask
+listenerOneHandleSmokeEvent branch if listenerOneHasEvent goto listenerOneReceivedEvent
+listenerOneHandleSmokeEvent return listenerOneNoEventStatus
+listenerOneHandleSmokeEvent at listenerOneReceivedEvent do listenerOneWriteCall
+listenerOneHandleSmokeEvent return listenerOneSuccessStatus
+
+listenerOneHasEventTask is task
+listenerOneHasEventTask in listenerOneHandleSmokeEvent
+listenerOneHasEventTask invokes eventIdGreaterThan
+listenerOneHasEventTask arg left EventId receivedEventId
+listenerOneHasEventTask arg right EventId zeroEventId
+listenerOneHasEventTask out listenerOneHasEvent Bool
+
+listenerOneWriteCall is call
+listenerOneWriteCall in listenerOneHandleSmokeEvent
+listenerOneWriteCall invokes console.writeLine
+listenerOneWriteCall arg text String firstListenerText
+
+listenerTwoHandleSmokeEvent is operation
+listenerTwoHandleSmokeEvent in receivedEventId EventId
+listenerTwoHandleSmokeEvent out Int32
+listenerTwoHandleSmokeEvent effect write console.stdout
+listenerTwoHandleSmokeEvent uses appConsoleStdoutWriter
+listenerTwoHandleSmokeEvent memory heap no
+listenerTwoHandleSmokeEvent async yes
+listenerTwoHandleSmokeEvent purpose "Execute listener-two code after the second subscription receives the same event"
+listenerTwoHandleSmokeEvent invariant "The second named listener; proves one event fans out to multiple handlers"
+listenerTwoHandleSmokeEvent let listenerTwoNoEventStatus immutable Int32 1
+listenerTwoHandleSmokeEvent let listenerTwoSuccessStatus immutable Int32 0
+listenerTwoHandleSmokeEvent start listenerTwoHasEventTask
+listenerTwoHandleSmokeEvent join listenerTwoHasEventTask
+listenerTwoHandleSmokeEvent branch if listenerTwoHasEvent goto listenerTwoReceivedEvent
+listenerTwoHandleSmokeEvent return listenerTwoNoEventStatus
+listenerTwoHandleSmokeEvent at listenerTwoReceivedEvent do listenerTwoWriteCall
+listenerTwoHandleSmokeEvent return listenerTwoSuccessStatus
+
+listenerTwoHasEventTask is task
+listenerTwoHasEventTask in listenerTwoHandleSmokeEvent
+listenerTwoHasEventTask invokes eventIdGreaterThan
+listenerTwoHasEventTask arg left EventId receivedEventId
+listenerTwoHasEventTask arg right EventId zeroEventId
+listenerTwoHasEventTask out listenerTwoHasEvent Bool
+
+listenerTwoWriteCall is call
+listenerTwoWriteCall in listenerTwoHandleSmokeEvent
+listenerTwoWriteCall invokes console.writeLine
+listenerTwoWriteCall arg text String secondListenerText
 
 main is operation
 main out ExitCode
+main effect open event.stream
+main effect read event.stream
+main effect write event.stream
+main effect close event.stream
+main effect open event.subscription
+main effect read event.subscription
+main effect write event.subscription
+main effect close event.subscription
+main effect allocate heap
+main effect free heap
+main effect write memory.buffer
 main effect write console.stdout
-main uses stdoutWriter
-main async no
-main memory heap no
-main purpose "Write the console output both event listeners would produce"
-main invariant "Writes listener-one then listener-two"
-main let firstListenerText immutable String "listener-one handled smoke.event.created"
-main let secondListenerText immutable String "listener-two handled smoke.event.created"
-main let okCode immutable ExitCode 0
-main do writeFirst
-main do writeSecond
-main return okCode
+main uses appEventStreamOpener
+main uses appEventStreamReader
+main uses appEventStreamWriter
+main uses appEventStreamCloser
+main uses appEventSubscriptionOpener
+main uses appEventSubscriptionReader
+main uses appEventSubscriptionWriter
+main uses appEventSubscriptionCloser
+main uses appEventHeapAllocator
+main uses appEventHeapFree
+main uses appEventOutputBufferWriter
+main uses appConsoleStdoutWriter
+main memory heap yes
+main async yes
+main purpose "Start two receives, append one event, observe both subscriptions complete, run two listeners"
+main invariant "All standard.event operations are started and joined; only listeners write console"
+main start openSmokeStreamTask
+main join openSmokeStreamTask
+main start firstSubscribeTask
+main join firstSubscribeTask
+main start secondSubscribeTask
+main join secondSubscribeTask
+main start firstReceiveTask
+main start secondReceiveTask
+main start appendSmokeEventTask
+main join appendSmokeEventTask
+main join firstReceiveTask
+main join secondReceiveTask
+main start firstReceivePositiveTask
+main join firstReceivePositiveTask
+main branch if firstReceivePositive goto firstReceiveSucceeded
+main return failedExitCode
+main at firstReceiveSucceeded start secondReceivePositiveTask
+main join secondReceivePositiveTask
+main branch if secondReceivePositive goto secondReceiveSucceeded
+main return failedExitCode
+main at secondReceiveSucceeded start firstListenerTask
+main start secondListenerTask
+main join firstListenerTask
+main join secondListenerTask
+main start acknowledgeFirstTask
+main join acknowledgeFirstTask
+main start acknowledgeSecondTask
+main join acknowledgeSecondTask
+main start closeFirstSubscriptionTask
+main join closeFirstSubscriptionTask
+main start closeSecondSubscriptionTask
+main join closeSecondSubscriptionTask
+main start closeSmokeStreamTask
+main join closeSmokeStreamTask
+main return successExitCode
 
-writeFirst is call
-writeFirst in main
-writeFirst invokes console.writeLine
-writeFirst arg text String firstListenerText
+openSmokeStreamTask is task
+openSmokeStreamTask in main
+openSmokeStreamTask invokes event.openProcessStream
+openSmokeStreamTask arg streamName EventStreamName smokeStreamName
+openSmokeStreamTask arg queueCapacity EventQueueCapacity smokeQueueCapacity
+openSmokeStreamTask out smokeStream EventStreamHandle
 
-writeSecond is call
-writeSecond in main
-writeSecond invokes console.writeLine
-writeSecond arg text String secondListenerText
+firstSubscribeTask is task
+firstSubscribeTask in main
+firstSubscribeTask invokes event.subscribeStream
+firstSubscribeTask arg stream EventStreamHandle smokeStream
+firstSubscribeTask arg eventType EventTypeName smokeEventType
+firstSubscribeTask arg eventKey EventKey smokeEventKey
+firstSubscribeTask arg afterEventId EventId zeroEventId
+firstSubscribeTask arg queueCapacity EventQueueCapacity smokeQueueCapacity
+firstSubscribeTask out firstSubscription EventSubscriptionHandle
+
+secondSubscribeTask is task
+secondSubscribeTask in main
+secondSubscribeTask invokes event.subscribeStream
+secondSubscribeTask arg stream EventStreamHandle smokeStream
+secondSubscribeTask arg eventType EventTypeName smokeEventType
+secondSubscribeTask arg eventKey EventKey smokeEventKey
+secondSubscribeTask arg afterEventId EventId zeroEventId
+secondSubscribeTask arg queueCapacity EventQueueCapacity smokeQueueCapacity
+secondSubscribeTask out secondSubscription EventSubscriptionHandle
+
+firstReceiveTask is task
+firstReceiveTask in main
+firstReceiveTask invokes event.receiveEvent
+firstReceiveTask arg subscription EventSubscriptionHandle firstSubscription
+firstReceiveTask arg outEventType EventOutputBuffer nullEventOutputBuffer
+firstReceiveTask arg outEventTypeCapacity EventBufferCapacity nullEventOutputCapacity
+firstReceiveTask arg outEventKey EventOutputBuffer nullEventOutputBuffer
+firstReceiveTask arg outEventKeyCapacity EventBufferCapacity nullEventOutputCapacity
+firstReceiveTask arg outPayloadJson EventOutputBuffer nullEventOutputBuffer
+firstReceiveTask arg outPayloadCapacity EventBufferCapacity nullEventOutputCapacity
+firstReceiveTask out firstReceivedEventId EventId
+
+secondReceiveTask is task
+secondReceiveTask in main
+secondReceiveTask invokes event.receiveEvent
+secondReceiveTask arg subscription EventSubscriptionHandle secondSubscription
+secondReceiveTask arg outEventType EventOutputBuffer nullEventOutputBuffer
+secondReceiveTask arg outEventTypeCapacity EventBufferCapacity nullEventOutputCapacity
+secondReceiveTask arg outEventKey EventOutputBuffer nullEventOutputBuffer
+secondReceiveTask arg outEventKeyCapacity EventBufferCapacity nullEventOutputCapacity
+secondReceiveTask arg outPayloadJson EventOutputBuffer nullEventOutputBuffer
+secondReceiveTask arg outPayloadCapacity EventBufferCapacity nullEventOutputCapacity
+secondReceiveTask out secondReceivedEventId EventId
+
+appendSmokeEventTask is task
+appendSmokeEventTask in main
+appendSmokeEventTask invokes event.appendEvent
+appendSmokeEventTask arg stream EventStreamHandle smokeStream
+appendSmokeEventTask arg eventType EventTypeName smokeEventType
+appendSmokeEventTask arg eventKey EventKey smokeEventKey
+appendSmokeEventTask arg payloadJson EventPayloadJson smokePayloadJson
+appendSmokeEventTask discards "the emitted event id is not needed by the smoke"
+
+firstReceivePositiveTask is task
+firstReceivePositiveTask in main
+firstReceivePositiveTask invokes eventIdGreaterThan
+firstReceivePositiveTask arg left EventId firstReceivedEventId
+firstReceivePositiveTask arg right EventId zeroEventId
+firstReceivePositiveTask out firstReceivePositive Bool
+
+secondReceivePositiveTask is task
+secondReceivePositiveTask in main
+secondReceivePositiveTask invokes eventIdGreaterThan
+secondReceivePositiveTask arg left EventId secondReceivedEventId
+secondReceivePositiveTask arg right EventId zeroEventId
+secondReceivePositiveTask out secondReceivePositive Bool
+
+firstListenerTask is task
+firstListenerTask in main
+firstListenerTask invokes listenerOneHandleSmokeEvent
+firstListenerTask arg receivedEventId EventId firstReceivedEventId
+firstListenerTask discards "listener status is observed by the smoke, not the exit code"
+
+secondListenerTask is task
+secondListenerTask in main
+secondListenerTask invokes listenerTwoHandleSmokeEvent
+secondListenerTask arg receivedEventId EventId secondReceivedEventId
+secondListenerTask discards "listener status is observed by the smoke, not the exit code"
+
+acknowledgeFirstTask is task
+acknowledgeFirstTask in main
+acknowledgeFirstTask invokes event.acknowledgeEvent
+acknowledgeFirstTask arg subscription EventSubscriptionHandle firstSubscription
+acknowledgeFirstTask arg eventId EventId firstReceivedEventId
+acknowledgeFirstTask discards "acknowledge status is not part of the exit code"
+
+acknowledgeSecondTask is task
+acknowledgeSecondTask in main
+acknowledgeSecondTask invokes event.acknowledgeEvent
+acknowledgeSecondTask arg subscription EventSubscriptionHandle secondSubscription
+acknowledgeSecondTask arg eventId EventId secondReceivedEventId
+acknowledgeSecondTask discards "acknowledge status is not part of the exit code"
+
+closeFirstSubscriptionTask is task
+closeFirstSubscriptionTask in main
+closeFirstSubscriptionTask invokes event.closeSubscription
+closeFirstSubscriptionTask arg subscription EventSubscriptionHandle firstSubscription
+closeFirstSubscriptionTask discards "close status is not part of the exit code"
+
+closeSecondSubscriptionTask is task
+closeSecondSubscriptionTask in main
+closeSecondSubscriptionTask invokes event.closeSubscription
+closeSecondSubscriptionTask arg subscription EventSubscriptionHandle secondSubscription
+closeSecondSubscriptionTask discards "close status is not part of the exit code"
+
+closeSmokeStreamTask is task
+closeSmokeStreamTask in main
+closeSmokeStreamTask invokes event.closeStream
+closeSmokeStreamTask arg stream EventStreamHandle smokeStream
+closeSmokeStreamTask discards "close status is not part of the exit code"
