@@ -170,7 +170,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS2-010 #1 single `is` first row · #2 call activated once (do | cleanup defer) · #3 step-target restrictions.
 - [ ] WS2-011 #4 do/start/defer reference in-op entity · #5 effect covered by uses (warn) · #6 ifError predecessor + catch.
 - [ ] WS2-012 #7 `do TASK` reject · #8 if/ifFalse Bool · #9 catch var in scope at ifError target.
-- [ ] WS2-013 #10 return arity · #11 goto target one `at` · #12 unique label · #13 dead label.
+- [x] WS2-013 #10 return arity · #11 goto target one `at` · #12 unique label · #13 dead label. _(eavc: `_validate_return_arity`, `_validate_labels`; `test_return_arity_*`, `test_label_undefined_target_rejected`, `test_label_duplicate_rejected`, `test_label_dead_warns`)_
 - [ ] WS2-014 #14 loop/while/each/break/continue reject · #15 irreducible-flow warn · #16 owned-resource cleaned on all paths.
 - [ ] WS2-015 #17 defers reverse-order · #18 onFailure propagate (catch + Result) · #19 logAndSuppress needs because.
 - [ ] WS2-016 #20 started task resolved before return · #21 cancel needs start · #22 ifCanceled needs cancel+join.
