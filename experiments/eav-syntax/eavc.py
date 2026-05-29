@@ -1376,6 +1376,22 @@ def slice_entity(program: Program, name: str, with_calls: bool = True) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+def pack(program: Program, entity: str, budget: int = 4000) -> str:
+    """A budgeted agent context bundle for editing one entity (README ss24
+    `pack`): a cached-prefix slice + entity diagnostics + an edit-contract,
+    truncated to `budget` characters."""
+    parts = ["== slice ==", slice_entity(program, entity).rstrip()]
+    rel = [d for d in lint(program) if d.entity in (entity, None)]
+    parts.append("== diagnostics ==")
+    parts.extend(d.render() for d in rel[:20]) if rel else parts.append("(none)")
+    parts.append("== edit-contract ==")
+    parts.append("- every binding referenced has a definition in this slice")
+    parts.append("- preserve the call/task/cleanup split (do/start/defer)")
+    parts.append("- fallible calls keep their catch + error branch")
+    text = "\n".join(parts)
+    return text[:budget]
+
+
 def semantic_tokens(line: str) -> list:
     """Classify a row's tokens for editor highlighting (README ss29 #7): column 1
     is always the subject, column 2 the predicate — the subject-anchored
@@ -3116,6 +3132,17 @@ def cmd_add(args) -> int:
         return 2
 
 
+def cmd_pack(args) -> int:
+    """Print a budgeted context bundle for editing an entity."""
+    program = parse(_read_source(args.path))
+    try:
+        sys.stdout.write(pack(program, args.entity, args.budget) + "\n")
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_slice(args) -> int:
     """Print the semantic slice of an entity."""
     program = parse(_read_source(args.path))
@@ -3259,6 +3286,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_slice.add_argument("path", help="EAV source file, or - for stdin")
     sp_slice.add_argument("entity", help="entity name")
     sp_slice.set_defaults(func=cmd_slice)
+
+    sp_pack = sub.add_parser("pack", help="budgeted context bundle for an entity")
+    sp_pack.add_argument("path", help="EAV source file, or - for stdin")
+    sp_pack.add_argument("entity", help="entity name")
+    sp_pack.add_argument("--budget", type=int, default=4000)
+    sp_pack.set_defaults(func=cmd_pack)
 
     sp_describe = sub.add_parser("describe", help="summarize an entity's contract")
     sp_describe.add_argument("path", help="EAV source file, or - for stdin")

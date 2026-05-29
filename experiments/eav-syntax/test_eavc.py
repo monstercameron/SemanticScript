@@ -438,6 +438,16 @@ def test_add_operation_appends_valid_op():
     assert prog.entities["helperOp"].fact("out").payload == ["Int64"]
 
 
+def test_pack_respects_budget_and_has_sections():
+    # WS4-019: pack bundles slice + diagnostics + edit-contract within budget.
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    full = eavc.pack(prog, "main", budget=10000)
+    assert "== slice ==" in full and "== edit-contract ==" in full
+    assert "answerCall is call" in full
+    clipped = eavc.pack(prog, "main", budget=80)
+    assert len(clipped) <= 80
+
+
 def test_slice_includes_activated_calls():
     # WS4-010: a slice of an op includes the calls it activates (with defs).
     prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
