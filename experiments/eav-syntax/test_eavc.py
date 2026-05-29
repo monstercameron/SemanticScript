@@ -3057,6 +3057,28 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_golden_match_infra(tmp_path):
+    # X-007: matchesGolden compares to a committed golden + verifies sha256;
+    # mismatch fails (no implicit update); --update-golden re-pins.
+    import hashlib
+    g = tmp_path / "out.golden"
+    # create the golden via update, capture its pinned digest
+    created = eavc.golden_match("expected\n", str(g), update=True)
+    assert created["ok"] is True
+    digest = created["digest"]
+    assert digest == hashlib.sha256(b"expected\n").hexdigest()
+    # matching output + correct digest passes
+    assert eavc.golden_match("expected\n", str(g), expected_digest=digest)["ok"]
+    # tampered output fails (content mismatch), golden not rewritten
+    bad = eavc.golden_match("tampered\n", str(g), expected_digest=digest)
+    assert bad["ok"] is False and bad["contentMatch"] is False
+    assert g.read_text(encoding="utf-8") == "expected\n"
+    # a wrong expected digest fails even with matching content
+    assert eavc.golden_match("expected\n", str(g), expected_digest="deadbeef")["ok"] is False
+    # missing golden fails cleanly
+    assert eavc.golden_match("x", str(tmp_path / "nope.golden"))["reason"] == "missing-golden"
+
+
 def test_capability_injection_seam():
     # WS3-006: the capability is the test-double seam — an op declares `uses CAP`,
     # and a substitute capability granting the same effect keeps it covered;

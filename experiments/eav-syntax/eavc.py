@@ -663,6 +663,27 @@ def load_project(root: str) -> str:
     return "\n".join(open(f, encoding="utf-8").read() for f in files)
 
 
+def golden_match(produced: str, golden_path: str, expected_digest: str = None,
+                 update: bool = False) -> dict:
+    """README §30.5.1 / §29 #6: compare produced output to a committed golden and
+    verify its sha256. A mismatch fails (never updates implicitly); `update=True`
+    rewrites the golden and re-pins the digest (opt-in `--update-golden`)."""
+    import hashlib
+    import os
+    if update:
+        os.makedirs(os.path.dirname(os.path.abspath(golden_path)), exist_ok=True)
+        with open(golden_path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(produced)
+    if not os.path.exists(golden_path):
+        return {"ok": False, "reason": "missing-golden", "digest": None}
+    committed = open(golden_path, encoding="utf-8").read()
+    digest = hashlib.sha256(committed.encode("utf-8")).hexdigest()
+    content_match = produced == committed
+    digest_match = expected_digest is None or digest == expected_digest
+    return {"ok": content_match and digest_match, "digest": digest,
+            "contentMatch": content_match, "digestMatch": digest_match}
+
+
 def discover_project_tests(root: str) -> dict:
     """Locate tests by layout (README §28.7): co-located `src/*.test.sem` (unit/
     semantic) and `tests/` suites (integration/e2e), plus `tests/golden/` assets."""
