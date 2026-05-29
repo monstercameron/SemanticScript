@@ -5636,7 +5636,8 @@ SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
-    "sem.size.v1", "sem.dev.v1", "sem.slice.v1",
+    "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
+    "sem.docsIndex.v1", "sem.docsSearch.v1",
 )
 
 EAV_AGENT_RULES = (
@@ -5775,6 +5776,42 @@ def cmd_symbols(args) -> int:
         for n in program.order
     ]
     sys.stdout.write(_json_envelope("sem.symbols.v1", symbols=symbols) + "\n")
+    return 0
+
+
+def _doc_entries(program: Program) -> list:
+    out = []
+    for n in program.order:
+        e = program.entities[n]
+        purpose = e.fact("purpose")
+        ptext = (purpose.payload[-1].strip('"') if purpose and purpose.payload else "")
+        out.append({"name": e.name, "kind": e.kind, "purpose": ptext})
+    return out
+
+
+def cmd_docs(args) -> int:
+    """Docs catalog over program entities (no third-party dep): list / get / a
+    keyword-ranked `--search` (sem.docsIndex.v1 / sem.docs.v1 / sem.docsSearch.v1)."""
+    entries = _doc_entries(parse_compact(_read_source(args.path)))
+    if getattr(args, "search", None):
+        terms = [t for t in args.search.lower().split() if t]
+        scored = []
+        for e in entries:
+            hay = (e["name"] + " " + e["purpose"]).lower()
+            score = sum(hay.count(t) for t in terms)
+            if score:
+                scored.append({**e, "score": score})
+        scored.sort(key=lambda x: (-x["score"], x["name"]))
+        sys.stdout.write(_json_envelope(
+            "sem.docsSearch.v1", query=args.search, results=scored[:10]) + "\n")
+    elif getattr(args, "get", None):
+        match = next((e for e in entries if e["name"] == args.get), None)
+        sys.stdout.write(_json_envelope(
+            "sem.docs.v1", ok=(match is not None), entity=match) + "\n")
+    else:
+        sys.stdout.write(_json_envelope(
+            "sem.docsIndex.v1", count=len(entries),
+            entries=[{"name": e["name"], "kind": e["kind"]} for e in entries]) + "\n")
     return 0
 
 
@@ -6179,6 +6216,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp.add_argument("path", help="EAV/compact source file, or - for stdin")
         sp.add_argument("--json", action="store_true")
         sp.set_defaults(func=cfn)
+
+    sp_docs = sub.add_parser("docs", help="docs catalog (list/get/search)")
+    sp_docs.add_argument("path", help="EAV/compact source file, or - for stdin")
+    sp_docs.add_argument("--search", help="keyword-ranked search query")
+    sp_docs.add_argument("--get", help="entity name to fetch")
+    sp_docs.add_argument("--json", action="store_true")
+    sp_docs.set_defaults(func=cmd_docs)
 
     sp_eval = sub.add_parser("eval", help="JIT-run a snippet (auto-wrapped)")
     sp_eval.add_argument("path", help="EAV snippet/program file, or - for stdin")

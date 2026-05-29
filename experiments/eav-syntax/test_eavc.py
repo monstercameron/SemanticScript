@@ -3057,6 +3057,22 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_docs_index_get_search(capsys):
+    # WS4-117: docs list / get / keyword-ranked search.
+    import json
+    path = os.path.join(EXAMPLES, "hello_world.sem")
+    eavc.main(["docs", path])
+    idx = json.loads(capsys.readouterr().out)
+    assert idx["surface"] == "sem.docsIndex.v1" and idx["count"] >= 5
+    eavc.main(["docs", path, "--get", "main"])
+    got = json.loads(capsys.readouterr().out)
+    assert got["surface"] == "sem.docs.v1" and got["entity"]["name"] == "main"
+    eavc.main(["docs", path, "--search", "hello world greeting"])
+    res = json.loads(capsys.readouterr().out)
+    assert res["surface"] == "sem.docsSearch.v1"
+    assert any(r["name"] == "main" for r in res["results"])
+
+
 def test_dev_surface(capsys):
     # WS4-120: dev reports one check+runnability tick (sem.dev.v1).
     import json
