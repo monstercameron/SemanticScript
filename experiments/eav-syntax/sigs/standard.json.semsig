@@ -1,0 +1,70 @@
+# standard.json.semsig — generated signature sidecar (README ss16, ss27).
+# DEFERRED codec: JSON is an application pattern over this module, not core syntax
+# (§16); the encode/decode runtime ties to the record-codec gap. Parity now is
+# this contract — the value-kind enum, access errors, and access targets. (WS3-106)
+
+jsonSig is semsig
+jsonSig version "1.0"
+jsonSig generatedBy "eavc 0.1"
+jsonSig describes standard.json
+
+JsonValue is alias
+JsonValue for OpaquePointer
+JsonValue purpose "An opaque parsed-JSON node, released by jsonRelease"
+
+JsonText is alias
+JsonText for String
+JsonText purpose "UTF-8 JSON source text"
+
+JsonValueKind is enum
+JsonValueKind variant nullJson
+JsonValueKind variant boolJson
+JsonValueKind variant numberJson
+JsonValueKind variant stringJson
+JsonValueKind variant arrayJson
+JsonValueKind variant objectJson
+JsonValueKind repr nullJson 0
+JsonValueKind repr boolJson 1
+JsonValueKind repr numberJson 2
+JsonValueKind repr stringJson 3
+JsonValueKind repr arrayJson 4
+JsonValueKind repr objectJson 5
+JsonValueKind purpose "The JSON value class returned by jsonKind"
+
+JsonAccessError is error
+JsonAccessError purpose "Represent parse / wrong-kind / missing-field access failures"
+
+jsonParse is intrinsic
+jsonParse target json.parse
+jsonParse arg text JsonText
+jsonParse out value JsonValue
+jsonParse catch JsonAccessError
+jsonParse owns value cleanedBy json.release
+jsonParse purpose "Parse JSON text into an opaque value tree"
+
+jsonKind is intrinsic
+jsonKind target json.kind
+jsonKind arg value JsonValue
+jsonKind out kind Int32
+jsonKind purpose "The JsonValueKind discriminant of a value"
+
+jsonField is intrinsic
+jsonField target json.field
+jsonField arg value JsonValue
+jsonField arg name String
+jsonField out child JsonValue
+jsonField catch JsonAccessError
+jsonField purpose "Read an object field by name"
+
+jsonAsInt is intrinsic
+jsonAsInt target json.asInt
+jsonAsInt arg value JsonValue
+jsonAsInt out number Int64
+jsonAsInt catch JsonAccessError
+jsonAsInt purpose "Read a number value as Int64"
+
+jsonRelease is intrinsic
+jsonRelease target json.release
+jsonRelease arg value JsonValue
+jsonRelease out released Int32
+jsonRelease purpose "Release a parsed JSON value tree"

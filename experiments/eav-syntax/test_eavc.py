@@ -3240,6 +3240,36 @@ def test_list_pure_length_predicate_jit_runs():
     assert proc.stdout.strip() == "1"  # length 0 -> isEmpty true
 
 
+def test_json_semsig_contract_and_enum_discriminant():
+    # WS3-106 (deferred codec): the json contract loads, and its value-kind enum
+    # round-trips its discriminant in a type-directed position.
+    prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.json.semsig"),
+                                 encoding="utf-8").read())
+    lines = eavc.docs(prog)
+    assert any(l.startswith("json.parse(") and "throws JsonAccessError" in l for l in lines)
+    # JsonValueKind.numberJson has repr 2; a bare variant in a let lowers to it
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "JsonValueKind is enum\nJsonValueKind variant nullJson\n"
+        "JsonValueKind variant numberJson\nJsonValueKind repr nullJson 0\n"
+        "JsonValueKind repr numberJson 2\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let kind immutable JsonValueKind numberJson\n"
+        "main let okCode immutable ExitCode 0\nmain do show\nmain return okCode\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 kind\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "2"
+
+
 def test_net_semsig_contract_loads():
     # WS3-104 (deferred runtime): the net contract loads and documents its surface.
     prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.net.semsig"),
