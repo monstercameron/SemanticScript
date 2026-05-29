@@ -42,7 +42,7 @@ def test_diagnostics_registry_round_trip():
     # Every registry entry has a tier + repair fields (single source of truth).
     assert eavc.DIAGNOSTICS
     for code, entry in eavc.DIAGNOSTICS.items():
-        assert code.startswith("SS")
+        assert code[:2] in ("SS", "MD")
         assert entry["tier"] in ("T0", "T1", "T3", "T4")
         for field in ("summary", "found", "suggested"):
             assert entry[field]
@@ -59,6 +59,48 @@ def test_format_repair_has_found_and_suggested():
     assert "SS1502 (T0)" in text
     assert "Found:" in text
     assert "Suggested fix:" in text
+
+
+def test_lint_module_metadata_required():
+    # README §6: modules require purpose + invariant (MD1001/MD1002).
+    prog = eavc.parse("m is module\nm path a.b\n")
+    diags = eavc.lint(prog)
+    codes = {d.code for d in diags}
+    assert "MD1001" in codes and "MD1002" in codes
+    assert all(d.severity == "error" for d in diags if d.code in ("MD1001", "MD1002"))
+
+
+def test_lint_exported_op_metadata_required():
+    # README §6: an exported operation needs purpose + invariant (MD1011/1012).
+    src = (
+        "m is module\nm path a.b\nm purpose \"x\"\nm invariant \"y\"\nm exports run\n"
+        "run is operation\nrun out Int64\n"
+    )
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "MD1011" in codes and "MD1012" in codes
+
+
+def test_lint_private_op_missing_purpose_is_warning_not_error():
+    src = (
+        "m is module\nm path a.b\nm purpose \"x\"\nm invariant \"y\"\n"
+        "helper is operation\nhelper out Int64\n"  # private, no purpose
+    )
+    diags = eavc.lint(eavc.parse(src))
+    md = [d for d in diags if d.code == "MD1021"]
+    assert md and md[0].severity == "warning"
+
+
+def test_lint_collects_multiple_not_bail_on_first():
+    # README §29: error recovery — report N diagnostics, not just the first.
+    src = "m is module\nm path a.b\n"  # missing purpose AND invariant
+    diags = eavc.lint(eavc.parse(src))
+    assert len([d for d in diags if d.severity == "error"]) >= 2
+
+
+def test_lint_at_most_one_purpose():
+    src = "thing is capability\nthing purpose \"a\"\nthing purpose \"b\"\n"
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "MD1046" in codes
 
 
 def test_emitted_diagnostics_carry_codes():

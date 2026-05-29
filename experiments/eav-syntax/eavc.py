@@ -115,11 +115,49 @@ DIAGNOSTICS: dict[str, dict] = {
 }
 
 
+# Metadata rules (README ss6) — collected by the linter, not raised at parse.
+DIAGNOSTICS.update({
+    "MD1001": {"tier": "T1", "summary": "Module is missing a `purpose`.",
+               "found": "A module with no purpose row.",
+               "suggested": "Add `<module> purpose \"…\"` (README §6)."},
+    "MD1002": {"tier": "T1", "summary": "Module is missing an `invariant`.",
+               "found": "A module with no invariant row.",
+               "suggested": "Add `<module> invariant \"…\"` (README §6)."},
+    "MD1011": {"tier": "T1", "summary": "Exported/entry operation missing `purpose`.",
+               "found": "A public operation with no purpose.",
+               "suggested": "Add a `purpose` row (README §6 tiers)."},
+    "MD1012": {"tier": "T1", "summary": "Exported/entry operation missing `invariant`.",
+               "found": "A public operation with no invariant.",
+               "suggested": "Add an `invariant` row (README §6 tiers)."},
+    "MD1021": {"tier": "T3", "summary": "Private operation has no `purpose` (recommended).",
+               "found": "A module-private operation with no purpose.",
+               "suggested": "Add a `purpose` row, or leave it (warning only)."},
+    "MD1046": {"tier": "T1", "summary": "At most one `purpose` row per entity.",
+               "found": "An entity with two or more purpose rows.",
+               "suggested": "Keep a single `purpose` row (README §6)."},
+    "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
+               "found": "A design/usage caution accumulated during parsing.",
+               "suggested": "See the message text (effect coverage, dead label, …)."},
+})
+
+
 def explain(code: str) -> dict:
     """Return the registry entry for a diagnostic code (README §29 #12)."""
     if code not in DIAGNOSTICS:
         raise EavError(f"unknown diagnostic code {code!r}")
     return DIAGNOSTICS[code]
+
+
+@dataclass
+class Diagnostic:
+    code: str
+    severity: str  # "error" | "warning" | "info"
+    message: str
+    line: Optional[int] = None
+
+    def render(self) -> str:
+        loc = f"line {self.line}: " if self.line is not None else ""
+        return f"{self.severity.upper()} {self.code}: {loc}{self.message}"
 
 
 def format_repair(code: str) -> str:
@@ -736,6 +774,63 @@ def parse(source_text: str) -> Program:
 
     _validate_program(program)
     return program
+
+
+def _exported_names(program: Program) -> set:
+    """Names that are exported or named as the project entry (README ss7)."""
+    names: set = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "module":
+            for ex in ent.facts("exports"):
+                if ex.payload:
+                    names.add(ex.payload[0])
+        if ent.kind == "project":
+            entry = ent.fact("entry")
+            if entry and entry.payload:
+                names.add(entry.payload[0])
+    return names
+
+
+def lint(program: Program) -> list:
+    """Collect metadata/lint diagnostics without bailing on the first (README
+    ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
+    layer reports the softer MD/lint tiers and the warnings parse accumulated."""
+    diags: list[Diagnostic] = []
+    exported = _exported_names(program)
+    for name in program.order:
+        ent = program.entities[name]
+        if len(ent.facts("purpose")) > 1:
+            diags.append(Diagnostic("MD1046", "error",
+                                    f"{ent.kind} {ent.name!r} has multiple purpose rows",
+                                    ent.line))
+        if ent.kind == "module":
+            if ent.fact("purpose") is None:
+                diags.append(Diagnostic("MD1001", "error",
+                                        f"module {ent.name!r} is missing a purpose", ent.line))
+            if ent.fact("invariant") is None:
+                diags.append(Diagnostic("MD1002", "error",
+                                        f"module {ent.name!r} is missing an invariant", ent.line))
+        elif ent.kind in ("operation", "function"):
+            if _op_body_kind(ent) in ("runtimeBinding", "intrinsic"):
+                continue  # MD1031/1032: generated/runtimeBinding metadata off
+            public = ent.name in exported
+            if ent.fact("purpose") is None:
+                if public:
+                    diags.append(Diagnostic("MD1011", "error",
+                                            f"exported/entry operation {ent.name!r} is missing a purpose",
+                                            ent.line))
+                else:
+                    diags.append(Diagnostic("MD1021", "warning",
+                                            f"operation {ent.name!r} has no purpose (recommended)",
+                                            ent.line))
+            if public and ent.fact("invariant") is None:
+                diags.append(Diagnostic("MD1012", "error",
+                                        f"exported/entry operation {ent.name!r} is missing an invariant",
+                                        ent.line))
+    for w in program.warnings:
+        diags.append(Diagnostic("SS0900", "warning", w))
+    return diags
 
 
 def _validate_program(program: Program) -> None:
@@ -1857,6 +1952,17 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_lint(args) -> int:
+    """Lint a program: print all MD/lint diagnostics; exit 1 if any are errors."""
+    program = parse(_read_source(args.path))
+    diags = lint(program)
+    for d in diags:
+        sys.stdout.write(d.render() + "\n")
+    if not diags:
+        sys.stdout.write("no lint diagnostics\n")
+    return 1 if any(d.severity == "error" for d in diags) else 0
+
+
 def cmd_explain(args) -> int:
     """Print the registry entry + repair for a diagnostic code."""
     try:
@@ -1885,6 +1991,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("parse", cmd_parse),
         ("lower", cmd_lower),
         ("run", cmd_run),
+        ("lint", cmd_lint),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")

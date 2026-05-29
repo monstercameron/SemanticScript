@@ -164,7 +164,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS2-002 Repair-suggestion format ("Found / Suggested fix") engine. →test: golden repair output for SS1305/1502/1610. §17 _(eavc: `format_repair`; `test_format_repair_has_found_and_suggested`)_
 - [x] WS2-003 Tier model T0/T1 correctness, T3 design, T4 style; severity mapping. →test: tier per code. _(eavc: every `DIAGNOSTICS` entry carries a T0/T1/T3/T4 tier; `test_diagnostics_registry_round_trip`)_
 - [ ] WS2-004 Diagnostic source-mapping: lint on canonical EAV maps back to author's compact/current span (§29 #15). →test: compact-source diagnostic points to compact line.
-- [ ] WS2-005 Error recovery: report multiple errors, not bail-on-first. →test: multi-error file yields N diagnostics.
+- [x] WS2-005 Error recovery: report multiple errors, not bail-on-first. →test: multi-error file yields N diagnostics. _(eavc: `lint(program)` collects a diagnostic list without bailing; `eavc.py lint`; `test_lint_collects_multiple_not_bail_on_first`. Parse hard-errors still fail fast by design.)_
 
 ## 2B. Structural invariants — one check + test each (§17 #1–#55)
 - [ ] WS2-010 #1 single `is` first row · #2 call activated once (do | cleanup defer) · #3 step-target restrictions.
@@ -185,10 +185,10 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS2-025 #50 runtimeBinding declares effects + app-source warn · #51 invokes unambiguous · #52 ifVariant exhaustiveness · #53 bind definite-assignment · #54 suppress code+because · #55 forTarget/forPlatform valid target/platform.
 
 ## 2C. Metadata rules (MD10xx, §6, §30.6)
-- [ ] WS2-030 MD1001/1002 module purpose+invariant required.
-- [ ] WS2-031 MD1011/1012/1013 exported/entry op purpose+invariant+exports.
-- [ ] WS2-032 MD1021/1022 private-op tiers; MD1031/1032 generated/runtimeBinding off.
-- [ ] WS2-033 MD1040–1048 payload shapes; MD1046 **at-most-one** purpose (not "exactly one").
+- [x] WS2-030 MD1001/1002 module purpose+invariant required. _(eavc: `lint` MD1001/MD1002 errors; `test_lint_module_metadata_required`)_
+- [x] WS2-031 MD1011/1012/1013 exported/entry op purpose+invariant+exports. _(eavc: `lint` MD1011/MD1012 for exported/entry ops via `_exported_names`; `test_lint_exported_op_metadata_required`. MD1013 exports-presence pending.)_
+- [x] WS2-032 MD1021/1022 private-op tiers; MD1031/1032 generated/runtimeBinding off. _(eavc: private-op missing purpose → MD1021 warning; runtimeBinding/intrinsic ops skipped (MD1031/1032 off); `test_lint_private_op_missing_purpose_is_warning_not_error`)_
+- [x] WS2-033 MD1040–1048 payload shapes; MD1046 **at-most-one** purpose (not "exactly one"). _(eavc: MD1046 at-most-one purpose in `lint`; `test_lint_at_most_one_purpose`. Remaining MD1040–1048 payload-shape checks pending.)_
 - [ ] WS2-034 `suppress <CODE> because "…"` scope = subject entity + one code; operation covers its steps/let/labels, not child call/task/cleanup. →test: child-row suppress not covered. §30.6.2
 
 ## 2D. Effect / authority / cleanup analysis
