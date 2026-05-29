@@ -729,6 +729,46 @@ def test_cleanup_well_formed_accepts():
     assert prog.entities["closeCleanup"].kind == "cleanup"
 
 
+def test_dropped_nonvoid_result_rejected():
+    # README ss17 #25: a dropped non-void result needs out/catch/discards.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let a immutable Int64 1\nmain let b immutable Int64 2\n"
+        "main do sumCall\nmain return a\n"
+        "sumCall is call\nsumCall in main\nsumCall invokes math.addInt64\n"
+        "sumCall arg left Int64 a\nsumCall arg right Int64 b\n"  # no out/catch/discards
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert "drops the non-void result" in exc.value.message
+
+
+def test_dropped_result_with_discards_ok():
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let a immutable Int64 1\nmain let b immutable Int64 2\n"
+        "main do sumCall\nmain return a\n"
+        "sumCall is call\nsumCall in main\nsumCall invokes math.addInt64\n"
+        "sumCall arg left Int64 a\nsumCall arg right Int64 b\n"
+        'sumCall discards "computed only for its (absent) side effect in this test"\n'
+    )
+    prog = eavc.parse(src)
+    assert prog.entities["sumCall"].fact("discards") is not None
+
+
+def test_void_console_write_needs_no_discards():
+    # console.writeLine is void -> dropping its result is fine.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        'main let t immutable String "hi"\nmain do w\nmain return t\n'
+        "w is call\nw in main\nw invokes console.writeLine\nw arg text String t\n"
+    )
+    # return arity: main out ExitCode but returns t (String) — len 1, fine for
+    # arity (type-check is separate); the point is no discards error is raised.
+    prog = eavc.parse(src)
+    assert prog.entities["w"].fact("discards") is None
+
+
 def test_split_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
     with pytest.raises(eavc.EavError) as exc:

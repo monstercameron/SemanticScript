@@ -103,7 +103,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-045 Task entity (async counterpart) + lifecycle state machine (RUNNING/COMPLETED/CONSUMED/CANCELED/…); illegal transitions reject. →test: lifecycle table goldens; `ifError` before `join` reject. §13/§15.5
 - [x] WS1-046 Cleanup entity (`call/cleans/onFailure/because`); `cleans`↔`owns` cross-check; exactly one `cleans`+`call`; `onFailure` iff worker `catch`; worker not also `do`-activated. →test: §17 #41–#44. §15.6 _(eavc: `_validate_cleanup` — one call+one cleans, logAndSuppress needs because, cleans must be owned; `test_cleanup_logandsuppress_requires_because`, `test_cleanup_cleans_must_be_owned`, `test_cleanup_well_formed_accepts`. onFailure-iff-catch / worker-not-do-activated pending.)_
 - [x] WS1-047 `cleanedBy` on producer points to cleanup ENTITY; ownership triangle. →test: dangling cleanedBy reject. §15 _(eavc: `_validate_cleanup` rejects dangling `cleanedBy`; `test_dangling_cleanedby_rejected`)_
-- [ ] WS1-048 `discards "reason"` required for dropped non-void non-catch result. →test: §17 #25. §15
+- [x] WS1-048 `discards "reason"` required for dropped non-void non-catch result. →test: §17 #25. §15 _(eavc: `_target_is_nonvoid` + drop check in `_validate_calls`; `test_dropped_nonvoid_result_rejected`, `test_dropped_result_with_discards_ok`, `test_void_console_write_needs_no_discards`)_
 
 ## 1E. Invocation & dataflow (§3, §15, §10.5)
 - [x] WS1-050 `invokes` resolution order: bare in-module op / alias.op / compiler-derived target / intrinsic. →test: each form resolves; unresolved bare = error. §15/§3 _(eavc: `_validate_calls`; bare → in-module op or hard error; dotted = external; `test_invokes_unresolved_bare_target_rejected`)_

@@ -776,6 +776,21 @@ def _validate_cleanup(program: Program) -> None:
                 )
 
 
+def _target_is_nonvoid(target: str, program: Program):
+    """Whether a call target yields a value eavc can statically judge: True for
+    math.* (arith/compare), False for console.* (void), the callee's `out`
+    presence for a bare user op, and None (unknown) for other external targets."""
+    if target.startswith("math."):
+        return True
+    if target.startswith("console."):
+        return False
+    if "." not in target:
+        callee = program.entities.get(target)
+        if callee is not None and callee.kind in ("operation", "function"):
+            return callee.fact("out") is not None
+    return None
+
+
 def _validate_calls(program: Program) -> None:
     """Resolve `invokes` and match arg slots (README ss15, ss17 #48/#49).
 
@@ -796,6 +811,17 @@ def _validate_calls(program: Program) -> None:
         if not inv or not inv.payload:
             continue
         target = inv.payload[0]
+        # README ss17 #25: a non-void result that is neither bound (`out`),
+        # caught (`catch`), nor explicitly `discards`-ed is an error.
+        nonvoid = _target_is_nonvoid(target, program)
+        if nonvoid and not (
+            ent.fact("out") or ent.fact("catch") or ent.fact("discards")
+        ):
+            raise EavError(
+                f"call {ent.name!r} drops the non-void result of {target!r}; add "
+                f"`out`, `catch`, or `discards \"reason\"` (README ss17 #25)",
+                ent.line,
+            )
         if "." in target:
             continue  # imported / compiler-derived / intrinsic — external
         if target not in ops:
