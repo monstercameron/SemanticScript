@@ -3057,6 +3057,29 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_capability_injection_seam():
+    # WS3-006: the capability is the test-double seam — an op declares `uses CAP`,
+    # and a substitute capability granting the same effect keeps it covered;
+    # nondeterministic inputs (clock/random) are modeled as capabilities.
+    def prog(cap_name):
+        return (
+            f"{cap_name} is capability\n{cap_name} grants write console.stdout\n"
+            f'{cap_name} purpose "writer"\n'
+            "emit is operation\nemit out ExitCode\nemit effect write console.stdout\n"
+            f"emit uses {cap_name}\nemit async no\n"
+            'emit purpose "p"\nemit invariant "i"\nemit let okCode immutable ExitCode 0\n'
+            "emit return okCode\nExitCode is alias\nExitCode for Int32\n"
+        )
+    # real and test-double capabilities are interchangeable at the `uses` seam
+    for cap in ("realStdout", "fakeStdoutForTests"):
+        assert not any(w for w in eavc.parse(prog(cap)).warnings if "not covered" in w)
+    # nondeterministic inputs are capability-mediated (clock read needs authority)
+    clock = open(os.path.join(STD, "standard.clock.sem"), encoding="utf-8").read()
+    cprog = eavc.parse(clock)
+    now = cprog.entities["nowMillis"]
+    assert now.fact("effect") is not None and now.fact("uses") is not None
+
+
 def test_project_test_discovery_by_layout(tmp_path, capsys):
     # WS3-048: tests discovered by location — co-located src/*.test.sem + tests/.
     root = tmp_path / "proj"
