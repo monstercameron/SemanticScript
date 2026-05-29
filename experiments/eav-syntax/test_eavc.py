@@ -4184,6 +4184,69 @@ def test_walltime_local_arithmetic_rejected():
     assert getattr(exc.value, "code", None) == "SS3095"
 
 
+def test_decimal_op_with_float_operand_rejected():
+    # X-093 / §10.6: exact decimal/money math has no Float operand. No-op-failing:
+    # decimal.* is an external target, so the normal arg-type check skips it — the
+    # dedicated precision rule is what catches the Float.
+    src = (
+        "Decimal is alias\nDecimal for Int64\n"
+        "addPrice is operation\naddPrice out Decimal\naddPrice async no\n"
+        'addPrice purpose "p"\naddPrice invariant "i"\n'
+        "addPrice in base Decimal\naddPrice let bump immutable Float64 1.5\n"
+        "addPrice do combine\naddPrice return total\n"
+        "combine is call\ncombine in addPrice\ncombine invokes decimal.add\n"
+        "combine arg left Decimal base\ncombine arg right Float64 bump\ncombine out total Decimal\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3093"
+
+
+def test_money_operand_in_float_math_rejected():
+    # X-093: an exact Money value routed through Float arithmetic is rejected.
+    src = (
+        "Money is alias\nMoney for Int64\n"
+        "scale is operation\nscale out Money\nscale async no\n"
+        'scale purpose "p"\nscale invariant "i"\n'
+        "scale in amount Money\nscale let factor immutable Float64 1.1\n"
+        "scale do mul\nscale return scaled\n"
+        "mul is call\nmul in scale\nmul invokes math.multiplyFloat64\n"
+        "mul arg left Money amount\nmul arg right Float64 factor\nmul out scaled Money\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3093"
+
+
+def test_decimal_math_with_decimal_operands_accepted():
+    # X-093: exact math through Decimal operands is the accepted form.
+    src = (
+        "Decimal is alias\nDecimal for Int64\n"
+        "addPrice is operation\naddPrice out Decimal\naddPrice async no\n"
+        'addPrice purpose "p"\naddPrice invariant "i"\n'
+        "addPrice in base Decimal\naddPrice in bump Decimal\n"
+        "addPrice do combine\naddPrice return total\n"
+        "combine is call\ncombine in addPrice\ncombine invokes decimal.add\n"
+        "combine arg left Decimal base\ncombine arg right Decimal bump\ncombine out total Decimal\n"
+    )
+    prog = eavc.parse(src)
+    assert "addPrice" in prog.entities
+    assert "SS3093" not in {d.code for d in eavc.lint(prog)}
+
+
+def test_float_equality_warns():
+    # X-093: exact equality on Float operands is a NaN/epsilon footgun -> warn.
+    src = (
+        "near is operation\nnear out Bool\nnear async no\n"
+        'near purpose "p"\nnear invariant "i"\n'
+        "near in left Float64\nnear in right Float64\n"
+        "near do cmp\nnear return same\n"
+        "cmp is call\ncmp in near\ncmp invokes math.equalFloat64\n"
+        "cmp arg left Float64 left\ncmp arg right Float64 right\ncmp out same Bool\n"
+    )
+    assert "SS3094" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

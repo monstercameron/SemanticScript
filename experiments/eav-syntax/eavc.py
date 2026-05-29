@@ -156,6 +156,12 @@ DIAGNOSTICS.update({
     "SS3095": {"tier": "T1", "summary": "Arithmetic on wall-clock time.",
                "found": "A math.* call with a `WallTime` operand (elapsed/duration or local-time arithmetic).",
                "suggested": "Use a `MonotonicInstant` for durations, or an explicit timezone conversion for calendar math; `WallTime` has no arithmetic (README §30.5.3/§27)."},
+    "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
+               "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
+               "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
+    "SS3094": {"tier": "T3", "summary": "Equality on Float operands.",
+               "found": "A math.equal/notEqual on Float32/Float64 operands (NaN/epsilon footgun).",
+               "suggested": "Compare floats within a tolerance, or use `Decimal`/`decimal.equal` for exact values (README §10.6)."},
     "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
                "found": "An app operation with a runtimeBinding/intrinsic body.",
                "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
@@ -2741,6 +2747,23 @@ def lint(program: Program) -> list:
     diags.extend(_lint_variant_exhaustiveness(program))
     diags.extend(_lint_sqlite_usage(program))
     diags.extend(_lint_loop_no_progress(program))
+    # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
+    # footgun — steer to a tolerance compare (or Decimal for exact values).
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target in ("math.equalFloat64", "math.notEqualFloat64",
+                      "math.equalFloat32", "math.notEqualFloat32"):
+            diags.append(Diagnostic(
+                "SS3094", "warning",
+                f"call {ent.name!r} compares Float operands with {target!r}; exact "
+                f"Float equality is a NaN/epsilon footgun — compare within a "
+                f"tolerance, or use Decimal/`decimal.equal` for exact values "
+                f"(README §10.6)",
+                ent.line, ent.name))
     # README ss6 / WS2-035: metadata payload-shape checks. Free-text metadata
     # (purpose/invariant/deprecated) carries a quoted string; identifier metadata
     # (tag/owner) carries a bare identifier.
@@ -3128,6 +3151,7 @@ def _validate_program(program: Program) -> None:
     _validate_ownership_edges(program)
     _validate_html_trust(program)
     _validate_time_safety(program)
+    _validate_numeric_precision(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4092,6 +4116,42 @@ def _validate_islands(program: Program) -> None:
                         f"{len(params)} parameter arg(s) (README ss16, WS3-024)",
                         call.line, code="SS3024Q",
                     )
+
+
+_EXACT_NUMERIC_TYPES = ("Decimal", "Money")
+_FLOAT_TYPES = ("Float32", "Float64")
+
+
+def _validate_numeric_precision(program: Program) -> None:
+    """X-093 / README §10.6: keep exact money/decimal values out of binary Float
+    arithmetic. A `decimal.*` op given a Float operand, or a Float `math.*` op
+    given a `Decimal`/`Money` operand, is a hard error (SS3093) — the two number
+    worlds must not be silently mixed (0.1 is not exact in Float). (The Float
+    equality footgun is a separate warning, SS3094, in `lint`.)"""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        arg_types = [(a.payload[0], a.payload[1]) for a in ent.facts("arg")
+                     if len(a.payload) >= 2]
+        if target.startswith("decimal."):
+            for slot, typ in arg_types:
+                if typ in _FLOAT_TYPES:
+                    raise EavError(
+                        f"call {ent.name!r} passes a {typ} operand {slot!r} to "
+                        f"exact {target!r}; decimal/money math has no Float operand "
+                        f"(README §10.6)",
+                        ent.line, code="SS3093")
+        elif target.startswith("math.") and "Float" in target:
+            for slot, typ in arg_types:
+                if typ in _EXACT_NUMERIC_TYPES:
+                    raise EavError(
+                        f"call {ent.name!r} routes an exact {typ} operand {slot!r} "
+                        f"through Float arithmetic {target!r}; compute money/decimal "
+                        f"values with `decimal.*` (README §10.6)",
+                        ent.line, code="SS3093")
 
 
 def _validate_time_safety(program: Program) -> None:
