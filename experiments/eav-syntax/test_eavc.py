@@ -1422,6 +1422,26 @@ def test_cleanup_worker_also_do_activated_rejected():
     assert exc.value.code == "SS1702"
 
 
+def test_onfailure_propagate_needs_result():
+    # README §15.6 / §29 #2: a propagating cleanup needs a Result-returning op.
+    base = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\nopenDb cleanedBy closeCleanup\n"
+        "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
+        "closeDb arg database Int64 db\ncloseDb catch e SqliteCloseError\n"
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        "closeCleanup onFailure propagate\ncloseCleanup cleans db\n"
+    )
+    # main returns a plain ExitCode -> nowhere to propagate
+    bad = base + "main is operation\nmain out ExitCode\n"
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(bad)
+    assert exc.value.code == "SS1518"
+    # main returns Result -> ok
+    good = base + "main is operation\nmain out Result ExitCode SomeError\n"
+    assert "main" in eavc.parse(good).entities
+
+
 def test_cleanup_logandsuppress_requires_because():
     # README ss15.6 / ss17 #19.
     src = _CLEANUP_BASE + (

@@ -200,7 +200,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 2E. Semantics-derived lints (§25, §29 #2)
 - [ ] WS2-050 Scope checks: out before do/join unbound; catch off ifError-path; join before start. →test: each unbound case. §25
 - [ ] WS2-051 Shared catch/err variable tracking + type-compat warn. →test: incompatible shared err warns. §25
-- [ ] WS2-052 Error chaining for `onFailure propagate` (currently punted — spec + lint). →test: propagate without Result reject. §29#2
+- [x] WS2-052 Error chaining for `onFailure propagate` (currently punted — spec + lint). →test: propagate without Result reject. §29#2 _(eavc: `_validate_cleanup` rejects `onFailure propagate` SS1518 when the owning operation doesn't return a Result; `test_onfailure_propagate_needs_result`)_
 
 ---
 

@@ -171,6 +171,9 @@ DIAGNOSTICS.update({
     "SS1326": {"tier": "T1", "summary": "Dotted name in an internal reference.",
                "found": "A `do`/`start`/`defer` (etc.) target containing a dot.",
                "suggested": "Internal refs are bare; dots are external-path only (§3)."},
+    "SS1518": {"tier": "T1", "summary": "`onFailure propagate` with no Result to chain.",
+               "found": "A propagating cleanup whose operation doesn't return Result.",
+               "suggested": "Make the operation `out Result …`, or use logAndSuppress (§15.6)."},
     "SS1345": {"tier": "T1", "summary": "Ordering comparison on Bool/enum.",
                "found": "A compare.lessThan/greaterThan on a Bool or enum operand.",
                "suggested": "Bool/enum are equals-only; use equal/notEqual (README §17 #45)."},
@@ -1757,6 +1760,20 @@ def _validate_cleanup(program: Program) -> None:
                         f"cleanup {ent.name!r} uses `logAndSuppress` but has no "
                         f"`because` rationale (README ss15.6, ss17 #19)",
                         ent.line,
+                    )
+            if onfail and onfail.payload and onfail.payload[0] == "propagate":
+                # README ss29 #2 / ss15.6: a propagating cleanup can only chain its
+                # error out of an operation that itself returns a Result.
+                owner_row = ent.fact("in")
+                owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+                out = owner.fact("out") if owner else None
+                if not (out and out.payload and out.payload[0] == "Result"):
+                    raise EavError(
+                        f"cleanup {ent.name!r} uses `onFailure propagate` but its "
+                        f"operation does not return a Result (nowhere to chain the "
+                        f"error, README ss15.6, ss29 #2)",
+                        ent.line,
+                        code="SS1518",
                     )
             resource = cleans[0].payload[0] if cleans[0].payload else None
             if resource is not None and resource not in owned:
