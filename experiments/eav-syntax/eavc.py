@@ -807,6 +807,35 @@ def _validate_program(program: Program) -> None:
     _validate_calls(program)
     _validate_cleanup(program)
     _validate_step_split(program)
+    _validate_effect_coverage(program)
+
+
+def _validate_effect_coverage(program: Program) -> None:
+    """Every declared `effect` should be covered by a `uses` capability whose
+    `grants` matches action+resource; uncovered is a warning (README ss8, ss17 #5)."""
+    cap_grants: dict[str, set] = {}
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind == "capability":
+            cap_grants[ent.name] = {
+                (g.payload[0], g.payload[1])
+                for g in ent.facts("grants")
+                if len(g.payload) >= 2
+            }
+    for name in program.order:
+        op = program.entities[name]
+        if op.kind not in ("operation", "function"):
+            continue
+        covered: set = set()
+        for u in op.facts("uses"):
+            if u.payload:
+                covered |= cap_grants.get(u.payload[0], set())
+        for eff in op.facts("effect"):
+            if len(eff.payload) >= 2 and (eff.payload[0], eff.payload[1]) not in covered:
+                program.warnings.append(
+                    f"{op.name}: effect `{eff.payload[0]} {eff.payload[1]}` is not "
+                    f"covered by a `uses` capability (README ss8, ss17 #5)"
+                )
 
 
 # Activation step -> the entity kind it must reference (README ss13/ss34.4).
@@ -845,6 +874,13 @@ def _validate_step_split(program: Program) -> None:
                     f"`{row.predicate} {ref.name}` targets a {ref.kind}; "
                     f"`{row.predicate}` requires a {expected} "
                     f"(call/task/cleanup split, README ss34.4)",
+                    row.line,
+                )
+            owner = ref.fact("in")
+            if owner and owner.payload and owner.payload[0] != op.name:
+                raise EavError(
+                    f"`{row.predicate} {ref.name}` activates an entity owned by "
+                    f"{owner.payload[0]!r}, not {op.name!r} (README ss17 #4)",
                     row.line,
                 )
 

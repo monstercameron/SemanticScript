@@ -868,6 +868,36 @@ def test_void_console_write_needs_no_discards():
     assert prog.entities["w"].fact("discards") is None
 
 
+def test_activate_entity_not_owned_rejected():
+    # README ss17 #4: do/start/defer must reference an in-op entity.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "other is operation\nother out ExitCode\n"
+            "main is operation\nmain out ExitCode\nmain do helper\n"
+            "helper is call\nhelper in other\nhelper invokes console.writeLine\n"
+            "helper arg text String okText\n"
+        )
+    assert "owned by" in exc.value.message
+
+
+def test_uncovered_effect_warns():
+    # README ss8 / ss17 #5: a declared effect with no covering `uses` warns.
+    prog = eavc.parse(
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+    )
+    assert any("not\n  covered" not in w and "not covered by a `uses`" in w
+               for w in prog.warnings)
+
+
+def test_covered_effect_no_warning():
+    prog = eavc.parse(
+        "writer is capability\nwriter grants write console.stdout\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses writer\n"
+    )
+    assert not any("not covered by a `uses`" in w for w in prog.warnings)
+
+
 def test_split_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
     with pytest.raises(eavc.EavError) as exc:
