@@ -2948,6 +2948,23 @@ def test_windows_gui_target_reserved_error():
     assert getattr(exc.value, "code", None) == "SS0744"
 
 
+def test_lexer_edge_cases():
+    # X-067: tokenize_line escapes, banned escapes, comments-in-strings, errors.
+    tl = eavc.tokenize_line
+    # supported escapes preserved verbatim in the single string token
+    assert tl(r'x "a\nb\tc\"d\\e"') == ["x", r'"a\nb\tc\"d\\e"']
+    assert tl(r'x "\x41"') == ["x", r'"\x41"']
+    # `#` inside a string is literal; outside it starts a comment
+    assert tl('x "a#b"') == ["x", '"a#b"']
+    assert tl("foo bar # trailing comment") == ["foo", "bar"]
+    assert tl("# whole-line comment") == []
+    # banned / deferred escapes and malformed strings raise
+    for bad in (r'x "a\rb"', r'x "a\0b"', r'x "\u{41}"', r'x "\q"',
+                r'x "\x4"', r'x "\xZZ"', 'x "unterminated', r'x "trailing\\'):
+        with pytest.raises(eavc.EavError):
+            tl(bad)
+
+
 def test_function_normalizes_to_operation():
     # WS1-027 / README §11: `is function` normalizes to an operation at parse and
     # reuses operation checks; legacy bare `function NAME` is rejected.
