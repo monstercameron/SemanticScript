@@ -243,6 +243,18 @@ DIAGNOSTICS.update({
     "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
                "found": "A `branch else` that doesn't follow a guard branch.",
                "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
+    "SS1354": {"tier": "T1", "summary": "`bind` on a payloadless variant.",
+               "found": "A `branch ifVariant … bind` on a variant that carries no payload.",
+               "suggested": "Drop `bind`, or match a data-carrying variant (README §17 #53)."},
+    "SS1551": {"tier": "T1", "summary": "Import alias collides with a type name.",
+               "found": "An `imports ALIAS …` where ALIAS equals a declared type name.",
+               "suggested": "Rename the import alias (README §17 #51)."},
+    "SS1552": {"tier": "T1", "summary": "Operation name collides with a builtin namespace.",
+               "found": "An operation named compare/console/math.",
+               "suggested": "Rename the operation (README §17 #51)."},
+    "SS1353": {"tier": "T3", "summary": "Non-exhaustive ifVariant match.",
+               "found": "A closed enum matched on a subset of variants with no default arm.",
+               "suggested": "Cover every variant or end the series in a default transfer (README §17 #52)."},
     "SS1352": {"tier": "T1", "summary": "ifVariant names an unknown/ambiguous variant.",
                "found": "A `branch ifVariant … VARIANT` not resolvable to one enum.",
                "suggested": "Use a variant that belongs to exactly one enum (§10.5)."},
@@ -1538,6 +1550,70 @@ def _is_reducible(cfg: dict, entry: str = "entry") -> bool:
     return len(nodes) == 1
 
 
+def _lint_variant_exhaustiveness(program: Program) -> list:
+    """README ss13 / ss17 #52: a contiguous series of `branch ifVariant VALUE
+    VARIANT …` rows over one value is the match. If a closed enum value is
+    matched but not every variant is covered, the series must end in a default
+    transfer (`goto`/`return`/`branch else`) or fall through to a default arm;
+    a series that instead falls straight into a labeled arm — leaving the
+    unmatched variants unhandled — warns SS1353."""
+    diags: list = []
+    enum_variants: dict = {
+        e.name: [v.payload[0] for v in e.facts("variant") if v.payload]
+        for e in program.of_kind("enum")
+    }
+    # variant-name -> set of enums declaring it (for resolution)
+    owner: dict = {}
+    for ename, vs in enum_variants.items():
+        for v in vs:
+            owner.setdefault(v, set()).add(ename)
+
+    def is_ifvariant(row) -> bool:
+        return row.predicate == "branch" and row.payload and row.payload[0] == "ifVariant"
+
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        rows = op.rows
+        i = 0
+        while i < len(rows):
+            if not is_ifvariant(rows[i]) or len(rows[i].payload) < 3:
+                i += 1
+                continue
+            value = rows[i].payload[1]
+            j = i
+            covered: list = []
+            while (j < len(rows) and is_ifvariant(rows[j])
+                   and len(rows[j].payload) >= 3 and rows[j].payload[1] == value):
+                covered.append(rows[j].payload[2])
+                j += 1
+            # resolve the enum from the matched variants (all must share one enum)
+            enums = set.intersection(*(owner.get(v, set()) for v in covered)) if covered else set()
+            if len(enums) == 1:
+                ename = next(iter(enums))
+                all_vs = set(enum_variants[ename])
+                if not all_vs.issubset(set(covered)):
+                    nxt = rows[j] if j < len(rows) else None
+                    has_default = (
+                        nxt is not None
+                        and nxt.label is None
+                        and not (nxt.predicate == "branch" and nxt.payload
+                                 and nxt.payload[0] == "ifVariant"
+                                 and len(nxt.payload) >= 2 and nxt.payload[1] == value)
+                    )
+                    if not has_default:
+                        missing = sorted(all_vs - set(covered))
+                        diags.append(Diagnostic(
+                            "SS1353", "warning",
+                            f"`ifVariant` series over {value!r} in {op.name!r} does "
+                            f"not cover {ename} variant(s) {missing} and has no "
+                            f"default transfer/arm (README ss17 #52)",
+                            rows[i].line, op.name))
+            i = j
+    return diags
+
+
 def _control_edges(program: Program) -> list:
     """(op, fromLabel|entry, toLabel) control-flow edges from goto/branch."""
     edges: list = []
@@ -1944,6 +2020,7 @@ def lint(program: Program) -> list:
                 f"operation {op.name!r} has irreducible control flow "
                 f"(a multi-entry loop); prefer structured goto (README ss17 #15)",
                 op.line, op.name))
+    diags.extend(_lint_variant_exhaustiveness(program))
     # README ss17 #30/#31: `branch else` is the default only after a guard branch.
     for n in program.order:
         op = program.entities[n]
@@ -2243,6 +2320,8 @@ def _validate_program(program: Program) -> None:
                 )
     _validate_calls(program)
     _validate_binding_consistency(program)
+    _validate_invoke_ambiguity(program)
+    _validate_variant_payload_bind(program)
     _validate_module_init_order(program)
     _validate_configure(program)
 
@@ -2793,6 +2872,69 @@ def _validate_calls(program: Program) -> None:
                     f"newtype and does not silently coerce (README ss10, WS1-031)",
                     arg.line, code="SS3710",
                 )
+
+
+BUILTIN_NAMESPACES = {"compare", "console", "math"}
+
+
+def _validate_invoke_ambiguity(program: Program) -> None:
+    """README ss17 #51: `invokes` target resolution must be unambiguous. An
+    import alias may not equal a declared type name, and a bare operation name
+    may not collide with a built-in lowercase namespace (compare/console/math)."""
+    type_names = {
+        program.entities[n].name
+        for n in program.order
+        if program.entities[n].kind in ("record", "enum", "alias")
+    }
+    for n in program.order:
+        ent = program.entities[n]
+        for r in ent.facts("imports"):
+            if r.payload and r.payload[0] in type_names:
+                raise EavError(
+                    f"import alias {r.payload[0]!r} collides with a declared type "
+                    f"name; `invokes`/type resolution would be ambiguous "
+                    f"(README ss17 #51)",
+                    r.line, code="SS1551",
+                )
+        if ent.kind in ("operation", "function") and ent.name in BUILTIN_NAMESPACES:
+            raise EavError(
+                f"operation {ent.name!r} collides with the built-in namespace "
+                f"{ent.name!r}; a bare `invokes {ent.name}` would be ambiguous "
+                f"(README ss17 #51)",
+                ent.line, code="SS1552",
+            )
+
+
+def _validate_variant_payload_bind(program: Program) -> None:
+    """README ss17 #53: `bind PAYLOAD` on a `branch ifVariant` row is valid only
+    when the matched variant declares a payload. Binding a payloadless variant is
+    a hard error."""
+    has_payload: dict = {}
+    var_owner: dict = {}
+    for e in program.of_kind("enum"):
+        for v in e.facts("variant"):
+            if v.payload:
+                has_payload[(e.name, v.payload[0])] = len(v.payload) >= 2
+                var_owner.setdefault(v.payload[0], set()).add(e.name)
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for row in op.rows:
+            p = row.payload
+            if (row.predicate == "branch" and p and p[0] == "ifVariant"
+                    and "bind" in p and len(p) >= 3):
+                variant = p[2]
+                enums = var_owner.get(variant, set())
+                if len(enums) == 1:
+                    ename = next(iter(enums))
+                    if not has_payload.get((ename, variant), False):
+                        raise EavError(
+                            f"`branch ifVariant … {variant} bind …`: variant "
+                            f"{variant!r} of {ename} is payloadless; `bind` requires "
+                            f"a data-carrying variant (README ss17 #53)",
+                            row.line, code="SS1354",
+                        )
 
 
 def _validate_binding_consistency(program: Program) -> None:

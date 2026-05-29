@@ -1710,6 +1710,82 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
+def test_invoke_ambiguity_builtin_namespace_rejected():
+    # README §17 #51: an operation named for a built-in namespace is ambiguous.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("console is operation\nconsole out Int64\nconsole return one\n")
+    assert getattr(exc.value, "code", None) == "SS1552"
+
+
+def test_import_alias_collides_with_type_rejected():
+    # README §17 #51: an import alias equal to a declared type name is ambiguous.
+    src = (
+        "Json is alias\nJson for String\n"
+        "app is module\napp path demo.app\napp purpose \"p\"\napp invariant \"i\"\n"
+        "app imports Json standard.json\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1551"
+
+
+def test_ifvariant_bind_payloadless_rejected():
+    # README §17 #53: `bind` on a payloadless variant is a hard error.
+    src = (
+        "Status is enum\nStatus variant open\nStatus variant done\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do makeStatus\n"
+        "main branch ifVariant currentStatus done bind p goto isDone\n"
+        "main at isDone return okCode\n"
+        "makeStatus is call\nmakeStatus in main\n"
+        "makeStatus invokes Status.done\nmakeStatus out currentStatus Status\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1354"
+
+
+def test_variant_match_golden_is_exhaustive_no_warning():
+    # variant_match matches `done` and falls through to a default arm
+    # (writeOpen; return) for `open` -> exhaustive-by-default, no SS1353.
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "variant_match.sem"), encoding="utf-8").read())
+    assert "SS1353" not in {d.code for d in eavc.lint(prog)}
+
+
+def test_non_exhaustive_ifvariant_warns():
+    # README §17 #52: matching a subset of variants then falling straight into a
+    # labeled arm (no default for the unmatched variant) warns SS1353.
+    src = (
+        "Status is enum\nStatus variant open\nStatus variant done\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do makeStatus\n"
+        "main branch ifVariant currentStatus done goto isDone\n"
+        "main at isDone return okCode\n"
+        "makeStatus is call\nmakeStatus in main\n"
+        "makeStatus invokes Status.done\nmakeStatus out currentStatus Status\n"
+    )
+    assert "SS1353" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_exhaustive_ifvariant_no_warning():
+    # Covering every variant needs no default arm.
+    src = (
+        "Status is enum\nStatus variant open\nStatus variant done\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do makeStatus\n"
+        "main branch ifVariant currentStatus done goto isDone\n"
+        "main branch ifVariant currentStatus open goto isOpen\n"
+        "main at isDone return okCode\n"
+        "main at isOpen return okCode\n"
+        "makeStatus is call\nmakeStatus in main\n"
+        "makeStatus invokes Status.done\nmakeStatus out currentStatus Status\n"
+    )
+    assert "SS1353" not in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_mixed_predecessor_bind_rejected():
     # README §13 / WS1-064: a name bound to two different types on two branches
     # that merge at a shared label is a definite-assignment error.
