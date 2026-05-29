@@ -210,6 +210,12 @@ DIAGNOSTICS.update({
     "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
                "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
                "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
+    "SS3083": {"tier": "T1", "summary": "Unguarded shared-state access.",
+               "found": "A `readShared`/`setShared` with no `protectedBy`, or a token that isn't the state's declared `guard`.",
+               "suggested": "Access shared state only while holding its guard token: `… protectedBy <the sharedState's guard>` (README §8/§27)."},
+    "SS3084": {"tier": "T1", "summary": "Unsupported shared-state scope.",
+               "found": "A `sharedState` whose `scope` is not `process` or `module`.",
+               "suggested": "A sharedState scope must be `process` or `module` (README §8)."},
     "SS3110": {"tier": "T1", "summary": "Integer operand width drift.",
                "found": "A math.* op whose two operands have different declared integer widths.",
                "suggested": "Convert one operand explicitly (e.g. math.convert*) so both operands share a width; EAV has no implicit integer widening (README §10.6)."},
@@ -611,6 +617,7 @@ ENTITY_KINDS = {
     "project",
     "module",
     "capability",
+    "sharedState",  # WS2-083 guarded cross-task mutable state
     "error",
     "errorCase",
     "record",
@@ -643,6 +650,8 @@ STEP_PREDICATES = {
     "return",
     "goto",
     "set",
+    "readShared",
+    "setShared",
 }
 
 # Island-introducing predicate: indentation after `body <kind>` is semantic
@@ -1258,6 +1267,7 @@ RESERVED_WORDS = {
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
+    "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
@@ -1297,6 +1307,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     },
     "module": {"path", "imports", "exports"},
     "capability": {"grants"},
+    "sharedState": {"scope", "type", "mutability", "value", "guard", "owner"},
     "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
     "record": {"field", "typeTrust"},
@@ -1307,13 +1318,14 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
-        "optOut",
+        "optOut", "readShared", "setShared",
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "errorBoundary", "optOut",
+        "readShared", "setShared",
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -1502,6 +1514,7 @@ def token_sync_drift() -> set:
         "greaterThan", "lessThan", "bind", "propagate", "logAndSuppress",
         "because", "immutable", "mutable",
         "consumes",  # WS1-113 ownership-transfer sub-keyword on an `arg` row tail
+        "guard", "protectedBy",  # WS2-083 sharedState guard sub-keywords
     }
     interop = {"export", "c"}
     homed = set()
@@ -3403,6 +3416,7 @@ def _validate_program(program: Program) -> None:
     _validate_error_disclosure(program)
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
+    _validate_shared_state(program)
     _validate_numeric_ub(program)
     _validate_constants(program)
     _validate_overrides(program)
@@ -4996,6 +5010,49 @@ _INT_WIDTHS = {"Int8": 8, "UInt8": 8, "Byte": 8, "Int16": 16, "UInt16": 16,
                "Int32": 32, "UInt32": 32, "ExitCode": 32, "Int64": 64, "UInt64": 64}
 
 
+def _validate_shared_state(program: Program) -> None:
+    """WS2-083 / README §8/§27: guarded cross-task mutable state. A `sharedState`
+    entity declares a `guard <token>`; every `readShared`/`setShared` of it must be
+    `protectedBy` that exact token (holding the guard) — an unguarded or
+    wrong-token access is a hard error (SS3083). The `scope` must be `process` or
+    `module` (SS3084)."""
+    guard_of = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind != "sharedState":
+            continue
+        scope = ent.fact("scope")
+        if scope and scope.payload and scope.payload[0] not in ("process", "module"):
+            raise EavError(
+                f"sharedState {ent.name!r} has scope {scope.payload[0]!r}; a shared "
+                f"state must be `process` or `module` scope (README §8)",
+                scope.line, code="SS3084")
+        g = ent.fact("guard")
+        guard_of[ent.name] = g.payload[0] if g and g.payload else None
+    if not guard_of:
+        return
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for row in op.rows:
+            if row.predicate not in ("readShared", "setShared") or not row.payload:
+                continue
+            # readShared <var> <Type> <state> protectedBy <token>
+            # setShared  <state> <value> protectedBy <token>
+            state = row.payload[2] if row.predicate == "readShared" else row.payload[0]
+            if state not in guard_of:
+                continue
+            token = row.payload[row.payload.index("protectedBy") + 1] \
+                if "protectedBy" in row.payload else None
+            if token != guard_of[state]:
+                raise EavError(
+                    f"{op.name!r} accesses shared state {state!r} "
+                    f"{'without holding' if token is None else 'with the wrong'} its guard "
+                    f"token (expected `protectedBy {guard_of[state]}`) (README §8/§27)",
+                    row.line, code="SS3083")
+
+
 def _validate_numeric_ub(program: Program) -> None:
     """WS2-085 / README §10.6/§33.5: numeric undefined-behavior parity. A `math.*`
     op whose two operands have different declared integer widths is rejected
@@ -6156,6 +6213,10 @@ class EavCodegen:
             scope = st.fact("scope")
             if scope and scope.payload and scope.payload[0] == "module":
                 self._make_module_storage(st)
+        # WS2-083: a sharedState lowers to a process/module global (single-thread
+        # backend — the guard token is a no-op; readShared/setShared are load/store).
+        for ss in self.program.of_kind("sharedState"):
+            self._make_module_storage(ss)
         # README ss30.3.2: a `configure` op runs at build time and is excluded
         # from the runtime build — it is not lowered into the program module.
         configure_ops = {
@@ -6381,6 +6442,21 @@ class EavCodegen:
                 f"(`let {name} mutable …`) or mutable module storage (README ss12)",
                 row.line, code="SS1087",
             )
+        if pred == "readShared":
+            # WS2-083: `readShared <var> <Type> <state> protectedBy <token>` loads
+            # the shared-state global into a fresh immutable local (guard is a
+            # single-thread no-op).
+            var, state = p[0], p[2]
+            gv, typ = self.module_storage[state]
+            sym[var] = ("val", builder.load(gv))
+            return builder
+        if pred == "setShared":
+            # WS2-083: `setShared <state> <value> protectedBy <token>` stores into
+            # the shared-state global.
+            state, value_tok = p[0], p[1]
+            gv, typ = self.module_storage[state]
+            builder.store(self._resolve(value_tok, typ, builder, sym), gv)
+            return builder
         if pred == "defer":
             # README ss15.6: register the cleanup; its worker runs (in reverse
             # registration order) before each return. Nothing emitted here.

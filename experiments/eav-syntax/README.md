@@ -2247,6 +2247,30 @@ Once a handle is consumed (moved), reusing it — as a later call argument or a
 tail) is a borrow and the handle stays caller-owned. The check is linear over the
 operation's step order and stays conservative across labels.
 
+### Guarded shared state (WS2-083, §8/§27)
+
+Cross-task mutable state is a `sharedState` entity that names the guard token
+protecting it; every access holds that token:
+
+```sem
+hitCount is sharedState
+hitCount scope process            # process | module
+hitCount type Int64
+hitCount mutability mutable
+hitCount value 0
+hitCount guard hitCountLock        # the token that must be held to touch it
+
+# inside an operation:
+recordHit setShared hitCount nextValue protectedBy hitCountLock
+recordHit readShared currentHits Int64 hitCount protectedBy hitCountLock
+```
+
+A `readShared`/`setShared` with no `protectedBy`, or one naming a token other than
+the state's declared `guard`, is a hard error (**SS3083**); the `scope` must be
+`process` or `module` (**SS3084**). On the single-thread backend the state lowers
+to a global and the guard is a no-op (`setShared`→store, `readShared`→load), so it
+JIT-runs; the guard contract is what a concurrent backend will enforce.
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

@@ -4981,6 +4981,66 @@ def test_same_width_nonzero_division_accepted():
     assert "calc" in prog.entities
 
 
+def _shared_state_src(guard_decl="hitCount guard hitCountLock\n",
+                      set_row="main setShared hitCount seven protectedBy hitCountLock\n",
+                      read_row="main readShared currentHits Int64 hitCount protectedBy hitCountLock\n",
+                      scope="module"):
+    return (
+        "Counter is project\nCounter module appCounter\n"
+        "Counter target console\nCounter entry main\n"
+        "appCounter is module\nappCounter path a.b\n"
+        'appCounter purpose "p"\nappCounter invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "hitCount is sharedState\n" + f"hitCount scope {scope}\n" +
+        "hitCount type Int64\nhitCount mutability mutable\nhitCount value 0\n"
+        + guard_decl +
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\nmain let seven immutable Int64 7\n"
+        + set_row + read_row + "main do show\nmain return okCode\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 currentHits\n"
+    )
+
+
+def test_shared_state_guarded_access_jit_runs():
+    # WS2-083: a sharedState read/write held under its guard token JIT-runs (the
+    # global is set to 7 and read back). No-op-failing: a checker that ignored the
+    # construct could not lower readShared/setShared to a real load/store.
+    src = _shared_state_src()
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "7"
+
+
+def test_shared_state_unguarded_access_rejected():
+    # WS2-083: accessing shared state without holding its guard token -> SS3083.
+    src = _shared_state_src(set_row="main setShared hitCount seven\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3083"
+
+
+def test_shared_state_wrong_guard_rejected():
+    # WS2-083: holding the wrong token is still unguarded -> SS3083.
+    src = _shared_state_src(
+        set_row="main setShared hitCount seven protectedBy someOtherLock\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3083"
+
+
+def test_shared_state_bad_scope_rejected():
+    # WS2-083: a sharedState scope must be process or module -> SS3084.
+    src = _shared_state_src(scope="thread")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3084"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
