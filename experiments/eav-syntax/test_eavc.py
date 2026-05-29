@@ -2635,6 +2635,39 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def _propagate_program(worker_err):
+    return (
+        "LookupError is error\nLookupError purpose \"p\"\n"
+        "LookupFailed is errorCase\nLookupFailed of LookupError\n"
+        "OtherError is error\nOtherError purpose \"p\"\n"
+        "OtherFailed is errorCase\nOtherFailed of OtherError\n"
+        "doLookup is operation\ndoLookup out Result Int64 LookupError\n"
+        'doLookup async no\ndoLookup purpose "p"\ndoLookup invariant "i"\n'
+        "doLookup let okVal immutable Int64 0\n"
+        "doLookup do openH\ndoLookup defer hCleanup\ndoLookup return okVal nil\n"
+        "openH is call\nopenH in doLookup\nopenH invokes res.open\n"
+        "openH out handle Int64\nopenH owns handle\nopenH cleanedBy hCleanup\n"
+        "closeH is call\ncloseH in doLookup\ncloseH invokes res.close\n"
+        f"closeH arg h Int64 handle\ncloseH catch closeErr {worker_err}\n"
+        "hCleanup is cleanup\nhCleanup in doLookup\nhCleanup call closeH\n"
+        'hCleanup onFailure propagate\nhCleanup because "release"\nhCleanup cleans handle\n'
+    )
+
+
+def test_propagate_matching_error_type_ok():
+    # WS2-053: under replace semantics, a propagated error matching the op's
+    # Result error slot is accepted.
+    eavc.parse(_propagate_program("LookupError"))
+
+
+def test_propagate_error_type_mismatch_rejected():
+    # WS2-053: a propagated error that doesn't fit the Result error slot is
+    # rejected (replace semantics — the propagated error becomes the op's error).
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_propagate_program("OtherError"))
+    assert getattr(exc.value, "code", None) == "SS1519"
+
+
 def _owned_program(violation="", ret="main return okCode\n", out_type="ExitCode"):
     return (
         "P is project\nP module m\nP target console\nP entry main\n"
@@ -3172,8 +3205,9 @@ def test_onfailure_propagate_needs_result():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(bad)
     assert exc.value.code == "SS1518"
-    # main returns Result -> ok
-    good = base + "main is operation\nmain out Result ExitCode SomeError\n" + main_body + "main return okCode nil\n"
+    # main returns Result -> ok (Result error slot matches the propagated worker
+    # error type, per the WS2-053 replace rule)
+    good = base + "main is operation\nmain out Result ExitCode SqliteCloseError\n" + main_body + "main return okCode nil\n"
     assert "main" in eavc.parse(good).entities
 
 

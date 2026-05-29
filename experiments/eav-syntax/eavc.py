@@ -372,6 +372,9 @@ DIAGNOSTICS.update({
     "SS1326": {"tier": "T1", "summary": "Dotted name in an internal reference.",
                "found": "A `do`/`start`/`defer` (etc.) target containing a dot.",
                "suggested": "Internal refs are bare; dots are external-path only (§3)."},
+    "SS1519": {"tier": "T1", "summary": "Propagated error type mismatches the Result slot.",
+               "found": "A propagating cleanup whose error type differs from the op's Result error.",
+               "suggested": "Match the operation's Result error type (replace semantics, README §29 #2d)."},
     "SS1518": {"tier": "T1", "summary": "`onFailure propagate` with no Result to chain.",
                "found": "A propagating cleanup whose operation doesn't return Result.",
                "suggested": "Make the operation `out Result …`, or use logAndSuppress (§15.6)."},
@@ -3144,6 +3147,22 @@ def _validate_cleanup(program: Program) -> None:
                         f"error, README ss15.6, ss29 #2)",
                         ent.line,
                         code="SS1518",
+                    )
+                # README ss29 #2d / WS2-053: conflict resolution is **REPLACE** —
+                # a propagating cleanup error *replaces* the in-flight error and
+                # becomes the operation's error result (causedBy provenance
+                # wrapping is deferred). Under replace, the propagated worker error
+                # must fit the operation's Result error slot.
+                worker_c = program.entities.get(calls[0].payload[0]) if calls[0].payload else None
+                catch_row = worker_c.fact("catch") if worker_c else None
+                if (catch_row and len(catch_row.payload) >= 2 and len(out.payload) >= 3
+                        and catch_row.payload[1] != out.payload[2]):
+                    raise EavError(
+                        f"cleanup {ent.name!r} propagates {catch_row.payload[1]!r} but "
+                        f"{owner.name!r} returns Result error {out.payload[2]!r}; under "
+                        f"replace semantics the propagated error must match the "
+                        f"operation's error slot (README ss29 #2d, WS2-053)",
+                        ent.line, code="SS1519",
                     )
             # README ss17 #42: onFailure is meaningful only if the worker can
             # fail — it requires the worker call to have a `catch`.
