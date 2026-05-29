@@ -3029,6 +3029,16 @@ def test_test_runner_executes_tag_test_ops():
     assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
 
 
+def test_dev_surface(capsys):
+    # WS4-120: dev reports one check+runnability tick (sem.dev.v1).
+    import json
+    eavc.main(["dev", os.path.join(EXAMPLES, "hello_world.sem")])
+    env = json.loads(capsys.readouterr().out)
+    assert env["surface"] == "sem.dev.v1"
+    assert env["runnable"] is True and env["target"] == "console"
+    assert any(c["argv"][0] in ("run", "build") for c in env["nextCommands"])
+
+
 def test_check_next_commands(tmp_path, capsys):
     # WS4-112: check carries machine-facing nextCommands with argv + replayable.
     import json

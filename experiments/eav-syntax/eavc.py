@@ -5636,7 +5636,7 @@ SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
-    "sem.size.v1",
+    "sem.size.v1", "sem.dev.v1", "sem.slice.v1",
 )
 
 EAV_AGENT_RULES = (
@@ -5775,6 +5775,27 @@ def cmd_symbols(args) -> int:
         for n in program.order
     ]
     sys.stdout.write(_json_envelope("sem.symbols.v1", symbols=symbols) + "\n")
+    return 0
+
+
+def cmd_dev(args) -> int:
+    """Dev contract (sem.dev.v1): one check+runnability cycle reporting whether
+    the surface is close to runnable (a single tick of the watch/restart loop)."""
+    program = parse_compact(_read_source(args.path))
+    diags = lint(program)
+    errors = [d for d in diags if d.severity == "error"]
+    projects = program.of_kind("project")
+    target = (projects[0].fact("target").payload[0]
+              if projects and projects[0].fact("target") and projects[0].fact("target").payload
+              else None)
+    runnable = not errors and target == "console"
+    nxt = ([_next_command(["run", args.path], "JIT-run"),
+            _next_command(["build", args.path], "compile to a native exe")]
+           if runnable else
+           [_next_command(["check", args.path], "resolve source diagnostics first")])
+    sys.stdout.write(_json_envelope(
+        "sem.dev.v1", checkStatus=("lint-diagnostics" if errors else "ok"),
+        runnable=runnable, target=target, nextCommands=nxt) + "\n")
     return 0
 
 
@@ -6145,6 +6166,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("context", cmd_context, "project envelope"),
         ("symbols", cmd_symbols, "full entity graph"),
         ("size", cmd_size, "cheap footprint probe"),
+        ("dev", cmd_dev, "one dev check+runnability tick"),
     ):
         sp = sub.add_parser(cname, help=chelp)
         sp.add_argument("path", help="EAV/compact source file, or - for stdin")
