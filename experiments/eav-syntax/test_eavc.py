@@ -3273,6 +3273,45 @@ def test_runtime_links_compiler_overlay_merges_after_platform():
     assert no_overlay["defines"] == ["BASE_DEFINE", "WIN_DEFINE"]
 
 
+def test_http_runtime_ws2_32_is_windows_only(tmp_path):
+    """R-013: the concrete `ws2_32` instance of R-018. A program that references
+    an eav_http_* runtime symbol must resolve ws2_32 ONLY on Windows. The old
+    `runtime/manifest.json` carried a flat `"libs": ["ws2_32"]` on eav_http and
+    `_ensure_runtime_lib`/`build_executable` appended it on every platform, so a
+    resolved Linux/macOS plan would still have contained ws2_32 and a real Linux
+    build would fail with `-lws2_32`. Tests pass an explicit `platform=` so the
+    POSIX plan is asserted on this Windows host without a Linux machine.
+
+    The actual compile on this host stays bound to the real platform, so the
+    Windows native build path (verified by test_build_native_executable_runs /
+    test_build_lands_in_ignored_dist) still links ws2_32."""
+    http_program = eavc.parse(
+        "standardHttp is module\nstandardHttp path standard.http\n"
+        'standardHttp purpose "p"\nstandardHttp invariant "i"\n'
+        "htmlEscape is operation\nhtmlEscape in OpaquePointer\n"
+        "htmlEscape out OpaquePointer\n"
+        "htmlEscape body runtimeBinding eav_http_html_escape\n"
+        'htmlEscape purpose "escape"\n'
+    )
+    # the eav_http_* symbol selects the eav_http runtime library
+    assert [lib["name"] for lib in eavc._runtime_libs_for(http_program)] == ["eav_http"]
+
+    # dry-run link plan: Windows includes ws2_32, POSIX omits it (R-013)
+    win_plan = eavc.build_link_plan(http_program, platform="windows")
+    assert "ws2_32" in win_plan["libraries"][0]["libs"]
+    for posix_platform in ("linux", "macos"):
+        plan = eavc.build_link_plan(http_program, platform=posix_platform)
+        assert plan["platform"] == posix_platform
+        assert "ws2_32" not in plan["libraries"][0]["libs"], posix_platform
+
+    # the HTTP helper sources/includes still resolve on POSIX so the helper can
+    # be linked when its other dependencies are present (ws2_32 was the only
+    # Windows-specific input).
+    linux_lib = eavc.build_link_plan(http_program, platform="linux")["libraries"][0]
+    assert linux_lib["sources"]
+    assert linux_lib["include"]
+
+
 def test_host_platform_name_maps_sys_platform():
     """R-018: the host platform mapping the real build uses. Asserting the
     current host keeps the actual compile path bound to the real platform (so
