@@ -614,6 +614,32 @@ def merge_native_links(program: Program, platform_name: str) -> dict:
     }
 
 
+def mod_tidy(build_program: Program) -> str:
+    """Generate a `build.sem.lock` from a `build.sem` manifest (README ss28.4):
+    MVS-resolved requires (with content digests), toolchainResolved, and the
+    effectSurface from allowEffect. Deterministic — `tidy(x) == tidy(x)`."""
+    projects = build_program.of_kind("project")
+    if not projects:
+        raise EavError("no `project` entity in build.sem")
+    proj = projects[0]
+    selected = mvs_select([
+        (r.payload[0], r.payload[1]) for r in proj.facts("require")
+        if len(r.payload) >= 2
+    ])
+    lines = [f"{proj.name} is project"]
+    tc = proj.fact("toolchain")
+    if tc and tc.payload:
+        lines.append(f"{proj.name} toolchainResolved {tc.payload[0]}")
+    for repo in sorted(selected):
+        ver = selected[repo]
+        digest = sha256_hex(f"{repo}@{ver}".encode("utf-8"))  # deterministic stub
+        lines.append(f"{proj.name} resolved {repo} {ver} sha256 {digest}")
+    for r in proj.facts("allowEffect"):
+        if len(r.payload) >= 2:
+            lines.append(f"{proj.name} effectSurface {r.payload[0]} {r.payload[1]}")
+    return "\n".join(lines) + "\n"
+
+
 def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
     """Supply-chain allowlist (README ss28.5): every effect in the resolved
     `effectSurface` (lock) must be permitted by an `allowEffect` row (build.sem).

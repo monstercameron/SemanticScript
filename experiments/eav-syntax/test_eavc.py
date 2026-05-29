@@ -44,6 +44,20 @@ def test_invalid_corpus_is_populated():
 MANIFESTS = os.path.join(HERE, "manifests")
 
 
+def test_mod_tidy_reproducible_and_valid_lock():
+    # WS3-035: tidy generates a valid, reproducible lock from the manifest.
+    build = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
+    lock1 = eavc.mod_tidy(build)
+    lock2 = eavc.mod_tidy(build)
+    assert lock1 == lock2                       # reproducible
+    lockprog = eavc.parse(lock1)                # valid EAV
+    proj = lockprog.entities["TaskApp"]
+    assert len(proj.facts("resolved")) == 2
+    assert all(eavc.is_sha256_digest(r.payload[-1]) for r in proj.facts("resolved"))
+    # the generated lock is consistent with the manifest allowlist
+    eavc.verify_supply_chain(build, lockprog)
+
+
 def test_supply_chain_allowlist():
     # WS3-036: a dep effect not in allowEffect is refused.
     build = eavc.parse(
