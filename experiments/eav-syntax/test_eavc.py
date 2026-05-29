@@ -2177,6 +2177,59 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+_OPTYPE_BASE = (
+    "Int64Endo is operationType\nInt64Endo in Int64\nInt64Endo out Int64\n"
+    "double is operation\ndouble in n Int64\ndouble out Int64\n"
+    "double let two immutable Int64 2\n"
+    "double do mulCall\ndouble return doubled\n"
+    "mulCall is call\nmulCall in double\nmulCall invokes math.multiplyInt64\n"
+    "mulCall arg left Int64 n\nmulCall arg right Int64 two\nmulCall out doubled Int64\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    "main let seed immutable Int64 21\n"
+    "main let fn immutable Int64Endo double\n"
+    "main let okCode immutable ExitCode 0\n"
+    "main do applyFn\nmain return okCode\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+)
+
+
+def test_indirect_call_arity_mismatch_rejected():
+    # WS1-057 / §33.10: an indirect call must match its operationType arity.
+    src = _OPTYPE_BASE + (
+        "applyFn is call\napplyFn in main\napplyFn invokes fn\n"
+        "applyFn arg a Int64 seed\napplyFn arg b Int64 seed\napplyFn out answer Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3390"
+
+
+def test_indirect_call_type_mismatch_rejected():
+    src = _OPTYPE_BASE + (
+        "applyFn is call\napplyFn in main\napplyFn invokes fn\n"
+        "applyFn arg a Bool seed\napplyFn out answer Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3391"
+
+
+def test_operation_reference_shadow_warns():
+    # WS1-057: a binding named like a module operation warns to rename.
+    src = (
+        "Int64Endo is operationType\nInt64Endo in Int64\nInt64Endo out Int64\n"
+        "double is operation\ndouble in n Int64\ndouble out Int64\n"
+        "double let r immutable Int64 0\ndouble return r\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let double immutable Int64Endo double\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+    )
+    assert "SS3392" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_alias_annotation_at_written_let_position_ok():
     # WS1-029 / §10: a written `let` type may annotate a base-typed binding to an
     # alias — visible, not silent coercion.

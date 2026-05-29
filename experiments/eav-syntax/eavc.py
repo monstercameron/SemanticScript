@@ -252,6 +252,15 @@ DIAGNOSTICS.update({
     "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
                "found": "A call result used before its `do`, or a catch var on the success path.",
                "suggested": "Reference the binding only after it is produced (README §25)."},
+    "SS3390": {"tier": "T1", "summary": "Indirect-call arity mismatch.",
+               "found": "An `invokes <binding>` with the wrong number of args for its operationType.",
+               "suggested": "Pass exactly the operationType's input count (README §33.10)."},
+    "SS3391": {"tier": "T1", "summary": "Indirect-call type mismatch.",
+               "found": "An indirect call arg/out type that does not match its operationType.",
+               "suggested": "Match the operationType input/output types (README §33.10)."},
+    "SS3392": {"tier": "T3", "summary": "Operation-reference binding shadows an operation.",
+               "found": "A local operationType binding whose name is also a module operation.",
+               "suggested": "Rename the binding so `invokes` is unambiguous (README §33.10)."},
     "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
                "found": "A return of a base/sibling type where the out is an alias newtype.",
                "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
@@ -2316,6 +2325,29 @@ def lint(program: Program) -> list:
                 op.line, op.name))
     diags.extend(_lint_variant_exhaustiveness(program))
     diags.extend(_lint_sqlite_usage(program))
+    # README ss33.10 / WS1-057: a local operationType binding whose name is also a
+    # module operation resolves to the binding — warn to rename.
+    op_names = {
+        program.entities[n].name for n in program.order
+        if program.entities[n].kind in ("operation", "function")
+    }
+    optype_names = {
+        program.entities[n].name for n in program.order
+        if program.entities[n].kind == "operationType"
+    }
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for r in op.facts("let"):
+            if (len(r.payload) >= 3 and r.payload[2] in optype_names
+                    and r.payload[0] in op_names):
+                diags.append(Diagnostic(
+                    "SS3392", "warning",
+                    f"operation-reference binding {r.payload[0]!r} in {op.name!r} "
+                    f"shadows module operation {r.payload[0]!r}; `invokes` resolves "
+                    f"to the binding — rename to disambiguate (README ss33.10)",
+                    r.line, op.name))
     # README ss17 #30/#31: `branch else` is the default only after a guard branch.
     for n in program.order:
         op = program.entities[n]
@@ -3123,6 +3155,45 @@ def _validate_calls(program: Program) -> None:
             owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
             owner_lets = {r.payload[0] for r in owner.facts("let") if r.payload} if owner else set()
             if target in owner_lets:
+                # README ss33.10 / WS1-057: an indirect call must match the
+                # binding's operationType signature (positional arity + types).
+                let_type = next(
+                    (r.payload[2] for r in owner.facts("let")
+                     if r.payload and r.payload[0] == target and len(r.payload) >= 3),
+                    None,
+                )
+                ot = program.entities.get(let_type) if let_type else None
+                if ot is not None and ot.kind == "operationType":
+                    sig_ins = [r.payload[0] for r in ot.facts("in") if r.payload]
+                    call_args = [a for a in ent.facts("arg") if len(a.payload) >= 2]
+                    if len(call_args) != len(sig_ins):
+                        raise EavError(
+                            f"indirect call {ent.name!r} through {target!r} passes "
+                            f"{len(call_args)} arg(s) but operationType {let_type!r} "
+                            f"takes {len(sig_ins)} (README ss33.10, WS1-057)",
+                            ent.line, code="SS3390",
+                        )
+                    for i, a in enumerate(call_args):
+                        if a.payload[1] != sig_ins[i]:
+                            raise EavError(
+                                f"indirect call {ent.name!r} arg {i} type "
+                                f"{a.payload[1]!r} does not match operationType "
+                                f"{let_type!r} input {sig_ins[i]!r} (README ss33.10, "
+                                f"WS1-057)",
+                                ent.line, code="SS3391",
+                            )
+                    sig_out = ot.fact("out")
+                    out_row = ent.fact("out")
+                    if (sig_out and sig_out.payload and out_row
+                            and len(out_row.payload) >= 2
+                            and out_row.payload[1] != sig_out.payload[0]):
+                        raise EavError(
+                            f"indirect call {ent.name!r} out type "
+                            f"{out_row.payload[1]!r} does not match operationType "
+                            f"{let_type!r} output {sig_out.payload[0]!r} "
+                            f"(README ss33.10, WS1-057)",
+                            ent.line, code="SS3391",
+                        )
                 continue
             raise EavError(
                 f"call {ent.name!r} invokes {target!r}, which is not an in-module "
