@@ -8750,3 +8750,89 @@ def test_x118_bad_args_exit_nonzero(tmp_path, capsys):
     # a structured runtime error (missing patch plan) returns nonzero, not raise
     assert eavc.main(["patch", str(tmp_path / "nope.json")]) == 2
     capsys.readouterr()
+
+
+# === X-114: island + SQL-lint coverage ===
+
+def test_x114_sql_first_verb_classification():
+    """X-114: _sql_first_verb returns the leading keyword, skipping line/block
+    comments and whitespace, and None for empty/non-keyword text."""
+    assert eavc._sql_first_verb("  -- note\n  /* x */ \n SELECT 1") == "SELECT"
+    assert eavc._sql_first_verb("INSERT INTO t VALUES (1)") == "INSERT"
+    assert eavc._sql_first_verb("/* only a comment */") is None
+    assert eavc._sql_first_verb("   ") is None
+    assert eavc._sql_first_verb("123 not a verb") is None
+
+
+def test_x114_sqlite_kind_classification():
+    """X-114: _sqlite_kind classifies sqlite.* targets as read / write / txn, and
+    returns None for non-sqlite or unknown targets."""
+    assert eavc._sqlite_kind("sqlite.columnText") == "read"
+    assert eavc._sqlite_kind("sqlite.step") == "read"
+    assert eavc._sqlite_kind("sqlite.exec") == "write"
+    assert eavc._sqlite_kind("sqlite.insert") == "write"
+    assert eavc._sqlite_kind("sqlite.beginTransaction") == "txn"
+    assert eavc._sqlite_kind("sqlite.unknownThing") is None
+    assert eavc._sqlite_kind("math.addInt64") is None
+
+
+_ISLAND_HEAD = (
+    "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+    'main let nameValue immutable String "x"\n'
+    "main do runQuery\nmain return okCode\n"
+)
+
+
+def _island_code(src):
+    try:
+        eavc.parse(src)
+        return None
+    except eavc.EavError as exc:
+        return getattr(exc, "code", None)
+
+
+def test_x114_island_body_kind_must_match_declared_type():
+    """X-114: a `body <kind>` island must match the entity's declared type;
+    SqlText+body json is SS3024, and the matching kind parses."""
+    mismatch = (_ISLAND_HEAD
+                + 'q is storage\nq type SqlText\nq mutability immutable\nq body json\n  {"a":1}\n'
+                + "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.exec\n"
+                  "runQuery arg sql SqlText q\nrunQuery arg name String nameValue\n")
+    assert _island_code(mismatch) == "SS3024"
+
+
+def test_x114_json_island_must_be_valid_json():
+    """X-114: a `body json` island must parse as JSON (SS3024J); valid JSON is
+    accepted."""
+    bad = ("P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+           'q is storage\nq type JsonText\nq mutability immutable\nq body json\n  {not json}\n')
+    assert _island_code(bad) == "SS3024J"
+    good = ("P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+            'q is storage\nq type JsonText\nq mutability immutable\nq body json\n  {"a": 1}\n')
+    assert _island_code(good) is None
+
+
+def test_x114_sql_placeholder_count_matches_call_params():
+    """X-114: a sql island's `?` placeholder count must equal the executing
+    call's inline parameter-arg count (SS3024Q); a matching count parses; a
+    prepareStatement that binds via separate calls (no inline params) is exempt."""
+    sql = ("insertSql is storage\ninsertSql type SqlText\ninsertSql mutability immutable\n"
+           "insertSql body sql\n  INSERT INTO t VALUES (?)\n\n")
+    # 1 placeholder, 0 inline params -> mismatch
+    mismatch = (_ISLAND_HEAD + sql
+                + "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.exec\n"
+                  "runQuery arg sql SqlText insertSql\n")
+    assert _island_code(mismatch) == "SS3024Q"
+    # 1 placeholder, 1 inline param -> ok
+    match = (_ISLAND_HEAD + sql
+             + "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.exec\n"
+               "runQuery arg sql SqlText insertSql\nrunQuery arg name String nameValue\n")
+    assert _island_code(match) is None
+    # prepareStatement with no inline params -> exempt
+    prepared = (_ISLAND_HEAD + sql
+                + "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.prepareStatement\n"
+                  "runQuery arg sql SqlText insertSql\n")
+    assert _island_code(prepared) is None
