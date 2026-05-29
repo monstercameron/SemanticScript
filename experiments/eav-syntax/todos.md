@@ -111,7 +111,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-052 Namespace collision rules (alias≠type name; bare op≠reserved/built-in ns; field≠`new`). →test: §17 #51. §15
 - [ ] WS1-053 Construction targets `<Record>.new` / `<Enum>.<variant>` / `<Error>.<case>`; arg/field/case match. →test: §17 #49; missing field reject. §10.5
 - [ ] WS1-054 Access target `<Record>.<field>` read. →test: field read binds field type. §10.5
-- [ ] WS1-055 Built-in derived targets need no import (like compare/console/math). →test: `Task.new` without import ok. §10.5
+- [x] WS1-055 Built-in derived targets need no import (like compare/console/math). →test: `Task.new` without import ok. §10.5 _(eavc: math.*/console.* resolve with no `imports` row; `test_builtin_targets_need_no_import`. Record/enum `.new`/`.field` derived targets pending WS1-108/WS3-022.)_
 - [ ] WS1-056 Operation references: `operationType` binding invoked indirectly via `invokes <binding>`; binding-vs-op name rule. →test: indirect call type-checked; shadow warns. §33.9
 
 ## 1F. Control flow & guards (§13, §33.4)
@@ -125,7 +125,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-067 Comparator-lowering table → `compare.<cmp><Type>`; Bool/enum equals/notEquals only. →test: §17 #45; `greaterThan Bool` reject. §13
 - [ ] WS1-068 Compound conditions = sequential guards (no and/or). →test: A∧B / A∨B goldens. §33.4
 - [x] WS1-069 Label lint: every goto/branch target has one `at`; unique; referenced; dead-label warn. →test: §17 #11/#12/#13. §13 _(eavc: `_validate_labels`; `test_label_undefined_target_rejected`, `test_label_duplicate_rejected`, `test_label_dead_warns`)_
-- [ ] WS1-070 Recursion permitted (direct/mutual); unbounded → trap; `memory stack` bound. →test: recursion lowers; deep-recursion traps. §33.3
+- [x] WS1-070 Recursion permitted (direct/mutual); unbounded → trap; `memory stack` bound. →test: recursion lowers; deep-recursion traps. §33.3 _(eavc: ops declared before bodies defined, so self/mutual calls resolve; `examples/factorial.sem`, `test_e2e_factorial_recursion`, `test_recursive_self_call_lowers`. Stack-bound trap pending runtime checks.)_
 
 ## 1G. State, storage, locals (§12)
 - [ ] WS1-080 `let NAME mutable|immutable TYPE [VALUE]` positional; forward-ref rule. →test: forward-ref reject; mutable/immutable. §12 _(partial: positional mutable/immutable lowered — `examples/countdown.sem`, `test_lower_mutable_rebind_uses_set_storage`; forward-ref reject not yet implemented)_

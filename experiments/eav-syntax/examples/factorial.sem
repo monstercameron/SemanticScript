@@ -1,0 +1,90 @@
+# factorial — direct recursion (README ss33.3). factorial(5) = 120.
+# Proves a user operation can invoke itself: all ops are declared before any
+# body is defined, so the self-call resolves. (todos WS1-070)
+
+Factorial is project
+Factorial module examplesFactorial
+Factorial target console
+Factorial entry main
+
+examplesFactorial is module
+examplesFactorial path examples.factorial
+examplesFactorial exports main
+examplesFactorial purpose "Compute a factorial with direct recursion"
+examplesFactorial invariant "factorial(n) terminates at n <= 1"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+factorial is operation
+factorial in n Int64
+factorial out Int64
+factorial memory heap no
+factorial async no
+factorial purpose "Return n! for non-negative n via recursion"
+factorial invariant "Recurses on n-1 until the n <= 1 base case"
+factorial let one immutable Int64 1
+factorial do baseCheck
+factorial branch if isBase goto base
+factorial do decCall
+factorial do recCall
+factorial do mulCall
+factorial return product
+factorial at base return one
+
+baseCheck is call
+baseCheck in factorial
+baseCheck invokes math.lessThanOrEqualInt64
+baseCheck arg left Int64 n
+baseCheck arg right Int64 one
+baseCheck out isBase Bool
+
+decCall is call
+decCall in factorial
+decCall invokes math.subtractInt64
+decCall arg left Int64 n
+decCall arg right Int64 one
+decCall out nMinusOne Int64
+
+recCall is call
+recCall in factorial
+recCall invokes factorial
+recCall arg n Int64 nMinusOne
+recCall out subFactorial Int64
+
+mulCall is call
+mulCall in factorial
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 subFactorial
+mulCall out product Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print factorial(5)"
+main invariant "Writes exactly one integer line: 120"
+main let five immutable Int64 5
+main let okCode immutable ExitCode 0
+main do computeFactorial
+main do writeResult
+main return okCode
+
+computeFactorial is call
+computeFactorial in main
+computeFactorial invokes factorial
+computeFactorial arg n Int64 five
+computeFactorial out answer Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes console.writeIntegerLine
+writeResult arg value Int64 answer

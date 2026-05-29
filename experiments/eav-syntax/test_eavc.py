@@ -684,6 +684,38 @@ def test_e2e_add_two_runs():
     assert "42" in proc.stdout
 
 
+def test_e2e_factorial_recursion():
+    # README ss33.3: direct recursion is permitted. factorial(5) == 120.
+    proc = _eavc_run("factorial.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "120" in proc.stdout
+
+
+def test_recursive_self_call_lowers():
+    ir_text = _ir_for("factorial.sem")
+    # the recursive call site targets the function itself
+    assert 'call i64 @"factorial"' in ir_text
+
+
+def test_builtin_targets_need_no_import():
+    # README ss10.5: math/console/compare derived targets need no `imports` row.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"  # note: no imports rows at all
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main let a immutable Int64 2\nmain let b immutable Int64 3\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do sumCall\nmain do writeIt\nmain return okCode\n"
+        "sumCall is call\nsumCall in main\nsumCall invokes math.addInt64\n"
+        "sumCall arg left Int64 a\nsumCall arg right Int64 b\nsumCall out s Int64\n"
+        "writeIt is call\nwriteIt in main\nwriteIt invokes console.writeIntegerLine\n"
+        "writeIt arg value Int64 s\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert "add i64" in ir_text
+    assert 'call i32 (i8*, ...) @"printf"' in ir_text
+
+
 def test_e2e_overflow_wraps_twos_complement():
     # README ss10.6: signed Int64 addition wraps. INT64_MAX + 1 == INT64_MIN.
     proc = _eavc_run("overflow.sem")
