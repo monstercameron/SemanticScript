@@ -4548,16 +4548,30 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
-def test_app_http_runtime_gauntlet_handler_runs():
-    # X-044: handler ABIs lint clean (WS2-026) and a handler runs directly.
-    src = open(os.path.join(APPS, "http-runtime-gauntlet", "main.sem"), encoding="utf-8").read()
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
-    proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=src, capture_output=True, text=True,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "200"
+def test_app_http_runtime_gauntlet_full_port():
+    # X-044: the 27-op native-HTTP conformance harness is FULLY ported to the EAV
+    # webServer entity (24 routes + 23 middleware), all handler ABIs validated,
+    # routes exact-match-checked. Server *execution* (target webServer lowering)
+    # is deferred (§27): the harness parses + lints clean but is not codegen'd.
+    src = open(os.path.join(APPS, "http-runtime-gauntlet", "main.sem"),
+               encoding="utf-8").read()
+    prog = eavc.parse(src)
+    # op-count parity with the original v0.1 app (27 ops)
+    assert len(prog.of_kind("operation")) == 27
+    ws = prog.of_kind("webServer")
+    assert len(ws) == 1
+    server = ws[0]
+    assert len(server.facts("route")) == 24       # route parity
+    assert len(server.facts("middleware")) == 23   # middleware parity
+    assert len(prog.of_kind("capability")) == 2    # capability parity
+    # the full port lints clean — handler ABIs (SS2603) + route methods (SS2601)
+    # + exact-match routes (SS2602) + effect coverage all pass, zero warnings
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
+    assert not [d.render() for d in diags if d.severity != "error"]
+    # the deferred server is gated at codegen, not lint
+    with pytest.raises(eavc.EavError):
+        eavc.lower_to_llvm(prog)
 
 
 def test_app_taskforge_web_content_core_runs():
@@ -4664,7 +4678,7 @@ _APP_PORT_MATRIX = {
     "taskforge-api-client": ("deferred", []),
     "taskforge-tui": ("runs", []),
     "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
-    "http-runtime-gauntlet": ("runs", []),
+    "http-runtime-gauntlet": ("deferred", []),
     "event-stream-smoke": ("deferred", []),
     "desktop-window-smoke": ("deferred", []),
 }
