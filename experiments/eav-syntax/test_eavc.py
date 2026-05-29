@@ -5406,6 +5406,37 @@ def test_memory_safety_model_spec_and_version():
         assert r["todo"] is not None and r["todo"].startswith("WS1-1"), r
 
 
+def _toctou_src(act_row):
+    return (
+        "counter is sharedState\ncounter scope process\ncounter type Int64\n"
+        "counter mutability mutable\ncounter value 0\ncounter guard counterLock\n"
+        "bump is operation\nbump out ExitCode\nbump async no\n"
+        'bump purpose "p"\nbump invariant "i"\n'
+        "bump let okCode immutable ExitCode 0\nbump let one immutable Int64 1\n"
+        "bump readShared current Int64 counter protectedBy counterLock\n"  # check
+        + act_row + "bump return okCode\n"
+    )
+
+
+def test_toctou_unguarded_check_then_act_rejected():
+    # X-082 / §17 #24: a check-then-act on a guarded resource must hold the guard
+    # for the *act* too; an unguarded mutation after a guarded read is the TOCTOU
+    # window -> SS3083.
+    src = _toctou_src("bump setShared counter one\n")  # act with no protectedBy
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3083"
+
+
+def test_toctou_guarded_check_then_act_accepted():
+    # X-082: holding the guard across both the check and the act closes the window.
+    src = _toctou_src("bump setShared counter one protectedBy counterLock\n")
+    prog = eavc.parse(src)
+    assert "bump" in prog.entities
+    # and the external multi-write form is covered by SS1902 (transaction required)
+    assert "SS1902" in eavc.DIAGNOSTICS
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
