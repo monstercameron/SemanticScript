@@ -217,6 +217,62 @@ def test_native_link_dedup_project_and_platform():
     assert merged["linkFlags"] == ["-lm", "-lpthread"]          # order preserved
 
 
+def test_html_holes_extracted_and_url_flagged():
+    # WS3-018: {{name}} / {{rec.field}} extraction; URL-attribute holes flagged.
+    holes = eavc.html_holes('<a href="{{link}}">{{label}}</a> {{user.name}}')
+    by = dict(holes)
+    assert by["link"] is True       # inside href -> URL hole
+    assert by["label"] is False
+    assert "user.name" in by
+
+
+def test_html_legacy_single_brace_rejected():
+    # README §16: legacy single-brace holes are a breaking error.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.html_holes("<h1>Hello {name}</h1>")
+    assert exc.value.code == "SS1633"
+
+
+def test_html_render_template_well_formed_parses():
+    prog = eavc.parse(open(os.path.join(MANIFESTS, "page.sem"), encoding="utf-8").read())
+    assert prog.entities["greetingPage"].kind == "htmlTemplate"
+
+
+def test_html_render_url_hole_must_be_htmlsafeurl():
+    # README §17 #34: a URL-attribute hole filled with String is rejected.
+    src = (
+        "p is htmlTemplate\np body html\n    <a href=\"{{link}}\">x</a>\n"
+        "r is call\nr in show\nr invokes html.render\n"
+        "r arg template HtmlTemplate p\nr arg link String someUrl\nr out frag HtmlFragment\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS1634"
+
+
+def test_html_render_args_must_match_holes():
+    src = (
+        "p is htmlTemplate\np body html\n    <h1>{{name}}</h1>\n"
+        "r is call\nr in show\nr invokes html.render\n"
+        "r arg template HtmlTemplate p\nr arg wrongHole String x\nr out frag HtmlFragment\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS1635"
+
+
+def test_fallible_call_without_error_path_warns():
+    # README §17 #35: a fallible call with no ifError warns (cleanup worker exempt).
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        'main let t immutable String "hi"\nmain do w\nmain return okCode\n'
+        "main let okCode immutable ExitCode 0\n"
+        "w is call\nw in main\nw invokes console.writeLine\nw arg text String t\n"
+        "w catch e ConsoleWriteError\n"   # fallible, but no branch ifError w
+    )
+    assert "SS3501" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_build_sem_full_grammar_parses():
     # WS3-030: the full build.sem manifest grammar parses.
     prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())

@@ -188,6 +188,18 @@ DIAGNOSTICS.update({
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
+    "SS1633": {"tier": "T0", "summary": "Legacy single-brace HTML hole.",
+               "found": "A `{name}` hole in an HTML body.",
+               "suggested": "Use double braces `{{name}}` (README §16)."},
+    "SS1634": {"tier": "T0", "summary": "URL-attribute hole not HtmlSafeUrl.",
+               "found": "A `{{hole}}` in href/src/... filled with a plain String.",
+               "suggested": "Type the hole HtmlSafeUrl (README §16, §17 #34)."},
+    "SS1635": {"tier": "T1", "summary": "render args do not match template holes.",
+               "found": "An html.render whose hole args differ from the `{{holes}}`.",
+               "suggested": "Provide exactly one arg per hole (README §17 #33)."},
+    "SS3501": {"tier": "T3", "summary": "Fallible call with no error path.",
+               "found": "A call with a `catch` but no `branch ifError` for it.",
+               "suggested": "Add a `branch ifError CALL goto …`, or `discards` (README §17 #35)."},
     "SS1340": {"tier": "T4", "summary": "ifValue/ifOut is comparison sugar.",
                "found": "A `branch ifValue`/`ifOut` guard.",
                "suggested": "Informational; fmt canonicalizes to compare + branch if (§13)."},
@@ -853,6 +865,32 @@ def token_sync_drift() -> set:
     for preds in ALLOWED_PREDICATES.values():
         homed |= preds
     return RESERVED_WORDS - homed - RESERVED_FUTURE
+
+
+# HTML hole analysis (README ss16). URL-bearing attributes require HtmlSafeUrl.
+_HTML_URL_ATTRS = ("href", "src", "action", "formaction", "poster")
+_HTML_HOLE_RE = re.compile(r"\{\{\s*([A-Za-z_][\w.]*)\s*\}\}")
+_HTML_LEGACY_RE = re.compile(r"(?<!\{)\{[A-Za-z_][\w.]*\}(?!\})")
+
+
+def html_holes(text: str) -> list:
+    """Extract `{{name}}` / `{{rec.field}}` holes from an HTML body, flagging
+    those inside a URL-bearing attribute (README ss16). Raises on a legacy
+    single-brace hole (a breaking error, not a migration warning)."""
+    if _HTML_LEGACY_RE.search(text):
+        m = _HTML_LEGACY_RE.search(text)
+        raise EavError(
+            f"legacy single-brace hole {m.group(0)!r}; use double braces "
+            f"{{{{{m.group(0)[1:-1]}}}}} (README ss16)",
+            code="SS1633",
+        )
+    holes = []
+    for m in _HTML_HOLE_RE.finditer(text):
+        before = text[max(0, m.start() - 60):m.start()]
+        am = re.search(r'(\w+)\s*=\s*["\'][^"\']*$', before)
+        is_url = bool(am and am.group(1).lower() in _HTML_URL_ATTRS)
+        holes.append((m.group(1), is_url))
+    return holes
 
 
 def _predicate_allowed(kind: str, predicate: str) -> bool:
@@ -1597,6 +1635,32 @@ def lint(program: Program) -> list:
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
+    # README ss17 #35: a fallible call (has `catch`) activated by `do` should have
+    # an error path (`branch ifError`); a cleanup worker is exempt.
+    cleanup_workers = {
+        program.entities[n].fact("call").payload[0]
+        for n in program.order
+        if program.entities[n].kind == "cleanup" and program.entities[n].fact("call")
+        and program.entities[n].fact("call").payload
+    }
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        iferror = {
+            r.payload[1] for r in op.rows
+            if r.predicate == "branch" and len(r.payload) >= 2 and r.payload[0] == "ifError"
+        }
+        for r in op.rows:
+            if r.predicate == "do" and r.payload:
+                call = program.entities.get(r.payload[0])
+                if (call and call.kind == "call" and call.fact("catch") is not None
+                        and call.name not in iferror and call.name not in cleanup_workers):
+                    diags.append(Diagnostic(
+                        "SS3501", "warning",
+                        f"fallible call {call.name!r} has a catch but no "
+                        f"`branch ifError` error path (README ss17 #35)",
+                        r.line, op.name))
     for name in program.order:
         ent = program.entities[name]
         if ent.kind in ("operation", "function"):
@@ -1789,7 +1853,52 @@ def _validate_program(program: Program) -> None:
                 )
     _validate_calls(program)
     _validate_configure(program)
+    _validate_html(program)
     _validate_cleanup(program)
+
+
+def _validate_html(program: Program) -> None:
+    """HTML template contracts (README ss16, ss17 #33/#34): legacy single-brace
+    holes are a breaking error; an `html.render` call's hole args must match the
+    template's `{{holes}}`; a hole in a URL-bearing attribute needs HtmlSafeUrl."""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "htmlTemplate":
+            island = program.islands.get((ent.name, "html"))
+            if island is not None:
+                html_holes("\n".join(island))  # raises on legacy single-brace
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind != "call":
+            continue
+        inv = call.fact("invokes")
+        if not inv or inv.payload[:1] != ["html.render"]:
+            continue
+        args = {a.payload[0]: a for a in call.facts("arg")}
+        tmpl_arg = args.get("template")
+        tmpl = program.entities.get(tmpl_arg.payload[2]) if tmpl_arg and len(tmpl_arg.payload) >= 3 else None
+        if tmpl is None or tmpl.kind != "htmlTemplate":
+            continue
+        island = program.islands.get((tmpl.name, "html"))
+        holes = html_holes("\n".join(island)) if island else []
+        hole_names = {h for h, _ in holes}
+        provided = {name for name in args if name != "template"}
+        if provided != hole_names:
+            raise EavError(
+                f"render {call.name!r} args {sorted(provided)} do not match template "
+                f"holes {sorted(hole_names)} (README ss17 #33)",
+                call.line, code="SS1635",
+            )
+        for hole, is_url in holes:
+            if is_url:
+                a = args.get(hole)
+                atype = a.payload[1] if a and len(a.payload) >= 2 else None
+                if atype != "HtmlSafeUrl":
+                    raise EavError(
+                        f"render {call.name!r} hole {hole!r} fills a URL attribute "
+                        f"and must be HtmlSafeUrl, got {atype!r} (README ss16, ss17 #34)",
+                        call.line, code="SS1634",
+                    )
 
 
 def _validate_configure(program: Program) -> None:

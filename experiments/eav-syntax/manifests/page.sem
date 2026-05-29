@@ -1,0 +1,18 @@
+# page.sem — an HTML template + render call (README ss16). Compile-time only:
+# {{holes}} match the render args; the href hole is typed HtmlSafeUrl. (Not a
+# console program — kept out of examples/ so the conformance matrix won't lower
+# it.) (todos WS3-018, WS2-020)
+
+greetingPage is htmlTemplate
+greetingPage purpose "Greet a user with a profile link"
+greetingPage body html
+    <h1>Hello {{name}}</h1>
+    <a href="{{profileUrl}}">profile</a>
+
+renderGreeting is call
+renderGreeting in showGreeting
+renderGreeting invokes html.render
+renderGreeting arg template HtmlTemplate greetingPage
+renderGreeting arg name String userName
+renderGreeting arg profileUrl HtmlSafeUrl userProfileUrl
+renderGreeting out page HtmlFragment
