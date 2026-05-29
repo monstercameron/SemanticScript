@@ -2398,6 +2398,29 @@ above and reconciled with §10.6 (values), §29 #14 (memory), and §32.1 #9
 The **C-bug → EAV-defense coverage table** is generated from `DEFECT_LEDGER`
 (X-101, `docs/defect-ledger.md`); every memory row maps to a WS1-110…120 item.
 
+### Typestate protocols (X-091, §13/§15.6)
+
+A `typestate <T>` declares a state machine over a type — its `state`s, the
+`initial` state, and `allows <from> <target> <to>` transitions — so resource
+open→use→close and the task RUNNING→…→CONSUMED lifecycle are one mechanism:
+
+```sem
+FileState is typestate
+FileState for FileHandle
+FileState state closed
+FileState state open
+FileState initial closed
+FileState allows closed file.open  open     # file.open: closed -> open
+FileState allows open   file.read  open     # file.read: only from open
+FileState allows open   file.close closed   # file.close: open -> closed
+```
+
+A transition op invoked on a value not in its required `from` state is a hard
+error (**SS3091**) — e.g. reading a `FileHandle` after `file.close` is rejected.
+The check is flow-sensitive but linear: a value's state is tracked once known
+(produced in-op, or after a prior transition), and an input's state is not
+pre-judged until first transitioned (no false positives).
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

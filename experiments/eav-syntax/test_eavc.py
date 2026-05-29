@@ -5510,6 +5510,52 @@ def test_canonical_encoding_into_sign_sink_accepted():
     assert "main" in prog.entities
 
 
+_FILE_TYPESTATE = (
+    "FileHandle is alias\nFileHandle for OpaquePointer\n"
+    "FileState is typestate\nFileState for FileHandle\n"
+    "FileState state closed\nFileState state open\nFileState initial closed\n"
+    "FileState allows closed file.open open\n"
+    "FileState allows open file.read open\n"
+    "FileState allows open file.close closed\n"
+)
+
+
+def _file_use_src(steps, calls):
+    return (
+        _FILE_TYPESTATE +
+        "use is operation\nuse out ExitCode\nuse async no\n"
+        'use purpose "p"\nuse invariant "i"\n'
+        "use let okCode immutable ExitCode 0\n" + steps + "use return okCode\n" + calls
+    )
+
+
+def test_typestate_use_after_close_rejected():
+    # X-091 / §13: reading a handle after it is closed violates the protocol
+    # (file.read is only allowed from `open`) -> SS3091.
+    src = _file_use_src(
+        "use do openIt\nuse do readIt\nuse do closeIt\nuse do readAgain\n",
+        "openIt is call\nopenIt in use\nopenIt invokes file.open\nopenIt out fh FileHandle\n"
+        "readIt is call\nreadIt in use\nreadIt invokes file.read\nreadIt arg handle FileHandle fh\nreadIt discards \"x\"\n"
+        "closeIt is call\ncloseIt in use\ncloseIt invokes file.close\ncloseIt arg handle FileHandle fh\ncloseIt discards \"x\"\n"
+        "readAgain is call\nreadAgain in use\nreadAgain invokes file.read\nreadAgain arg handle FileHandle fh\nreadAgain discards \"x\"\n",
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3091"
+
+
+def test_typestate_legal_sequence_accepted():
+    # X-091: open -> read -> close is a legal protocol sequence.
+    src = _file_use_src(
+        "use do openIt\nuse do readIt\nuse do closeIt\n",
+        "openIt is call\nopenIt in use\nopenIt invokes file.open\nopenIt out fh FileHandle\n"
+        "readIt is call\nreadIt in use\nreadIt invokes file.read\nreadIt arg handle FileHandle fh\nreadIt discards \"x\"\n"
+        "closeIt is call\ncloseIt in use\ncloseIt invokes file.close\ncloseIt arg handle FileHandle fh\ncloseIt discards \"x\"\n",
+    )
+    prog = eavc.parse(src)
+    assert "use" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

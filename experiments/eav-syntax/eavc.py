@@ -234,6 +234,9 @@ DIAGNOSTICS.update({
     "SS1563": {"tier": "T1", "summary": "Allocation without an allocator capability.",
                "found": "An op that `allocateIn` a region has no `uses` capability granting `allocate heap.<region>` (or `allocate heap`).",
                "suggested": "Grant + `uses` an allocator capability (`grants allocate heap.<region>`) for the region (README §8/§29 #14)."},
+    "SS3091": {"tier": "T1", "summary": "Operation called in a disallowed typestate.",
+               "found": "A transition op invoked on a value not in the required `from` state (e.g. a closed handle reused).",
+               "suggested": "Follow the type's `typestate` protocol — the op is only allowed from the declared state (README §13/§15.6)."},
     "SS3085": {"tier": "T1", "summary": "Out-of-order guard acquisition (deadlock risk).",
                "found": "An op accesses a lower-rank guarded resource after a higher-rank one.",
                "suggested": "Acquire guards in non-decreasing `guardRank` order so a fixed total order prevents deadlock (README §27/§17)."},
@@ -646,6 +649,7 @@ ENTITY_KINDS = {
     "capability",
     "sharedState",  # WS2-083 guarded cross-task mutable state
     "region",       # WS1-112 allocation region (arena/fixedBuffer/general)
+    "typestate",    # X-091 protocol/state-machine over a type
     "error",
     "errorCase",
     "record",
@@ -1301,6 +1305,7 @@ RESERVED_WORDS = {
     "guardRank",                           # X-090 lock-acquisition order
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
     "unsafe", "wrapsAs", "allocator",      # WS1-116 FFI allocation wrapping
+    "typestate", "state", "initial", "allows",  # X-091 typestate
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
@@ -1343,6 +1348,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "sharedState": {"scope", "type", "mutability", "value", "guard", "owner",
                     "guardRank"},
     "region": {"strategy", "scope", "capacity"},
+    "typestate": {"for", "state", "initial", "allows"},
     "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
     "record": {"field", "typeTrust"},
@@ -3456,6 +3462,7 @@ def _validate_program(program: Program) -> None:
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
     _validate_shared_state(program)
+    _validate_typestate(program)
     _validate_lock_ordering(program)
     _validate_regions(program)
     _validate_buffer_access(program)
@@ -5100,6 +5107,68 @@ def _validate_buffer_access(program: Program) -> None:
                 f"for its BufferBoundsError; a bounds-checked read is fallible and its "
                 f"out-of-bounds error must be handled (README §10.6)",
                 ent.line, code="SS1568")
+
+
+def _validate_typestate(program: Program) -> None:
+    """X-091 / README §13/§15.6: a `typestate <T>` declares a protocol over a type
+    — `state`s, an `initial` state, and `allows <from> <target> <to>` transitions.
+    A transition op invoked on a value not in its required `from` state is a hard
+    error (SS3091): the resource open→use→close contract and the task lifecycle are
+    one mechanism. Flow-sensitive but linear — a value's state is tracked once
+    known (produced in-op or after a prior transition); an input's state is unknown
+    until first transitioned, so it is not pre-judged (no false positives)."""
+    ts = {}  # governed type -> {target: (from, to)}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind != "typestate":
+            continue
+        gov = ent.fact("for")
+        if not (gov and gov.payload):
+            continue
+        trans = {a.payload[1]: (a.payload[0], a.payload[2])
+                 for a in ent.facts("allows") if len(a.payload) >= 3}
+        if trans:
+            ts[gov.payload[0]] = trans
+    if not ts:
+        return
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        calls = {program.entities[c].name: program.entities[c]
+                 for c in program.order
+                 if program.entities[c].kind in ("call", "task")
+                 and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]}
+        value_state = {}  # value name -> known current state
+        for row in op.rows:
+            if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
+                continue
+            call = calls.get(row.payload[0])
+            if call is None:
+                continue
+            inv = call.fact("invokes")
+            target = inv.payload[0] if inv and inv.payload else ""
+            for gtype, trans in ts.items():
+                tr = trans.get(target)
+                if tr is None:
+                    continue
+                frm, to = tr
+                out = call.fact("out")
+                if out and len(out.payload) >= 2 and out.payload[1] == gtype:
+                    value_state[out.payload[0]] = to  # producer: fresh value in `to`
+                else:
+                    for a in call.facts("arg"):
+                        if len(a.payload) >= 3 and a.payload[1] == gtype:
+                            v = a.payload[2]
+                            cur = value_state.get(v)
+                            if cur is not None and cur != frm:
+                                raise EavError(
+                                    f"{op.name!r} calls {target!r} on {v!r} in state "
+                                    f"{cur!r}, but it is only allowed from {frm!r} "
+                                    f"(typestate protocol, README §13)",
+                                    row.line, code="SS3091")
+                            value_state[v] = to
+                            break
 
 
 def _validate_lock_ordering(program: Program) -> None:
