@@ -1,0 +1,29 @@
+# build.sem — project manifest (README ss28.1). Exercises the full manifest
+# predicate grammar: module/target/entry/mode/languageVersion/toolchain/
+# require/replace/allowEffect/constant + a platform entity with native rows.
+# (todos WS3-030)
+
+TaskApp is project
+TaskApp module taskApp
+TaskApp target console
+TaskApp target wasm
+TaskApp entry main
+TaskApp mode capturedOutputReplay
+TaskApp languageVersion "1.0"
+TaskApp toolchain "sem1.0"
+TaskApp require github.com/ss-lang/sqlite v2.1.0
+TaskApp require github.com/ss-lang/http v1.4.0-rc.1
+TaskApp replace github.com/ss-lang/sqlite "../sqlite"
+TaskApp allowEffect read database
+TaskApp allowEffect write console.stdout
+TaskApp constant buildTag "release"
+TaskApp purpose "Build manifest for the task application"
+
+linuxX64 is platform
+linuxX64 os linux
+linuxX64 arch x64
+linuxX64 targetRuntime native
+linuxX64 output "bin/taskapp"
+linuxX64 nativeLibrary "sqlite3"
+linuxX64 nativeLinkFlag "-lpthread"
+linuxX64 purpose "Linux x86-64 native build target"

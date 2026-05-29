@@ -41,6 +41,32 @@ def test_invalid_corpus_is_populated():
     assert len(_corpus_files()) >= 15
 
 
+MANIFESTS = os.path.join(HERE, "manifests")
+
+
+def test_build_sem_full_grammar_parses():
+    # WS3-030: the full build.sem manifest grammar parses.
+    prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
+    proj = prog.entities["TaskApp"]
+    assert [r.payload for r in proj.facts("target")] == [["console"], ["wasm"]]
+    assert proj.fact("languageVersion").payload == ['"1.0"']
+    assert len(proj.facts("require")) == 2
+    assert proj.fact("require").payload == ["github.com/ss-lang/sqlite", "v2.1.0"]
+    assert prog.entities["linuxX64"].kind == "platform"
+
+
+def test_build_sem_lock_parses_with_lock_predicates():
+    # WS3-031: the generated lock uses resolved/toolchainResolved/effectSurface.
+    prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem.lock"), encoding="utf-8").read())
+    proj = prog.entities["TaskApp"]
+    assert proj.fact("toolchainResolved").payload == ['"sem1.0"']
+    assert len(proj.facts("resolved")) == 2
+    # sha256 digest body is recognized as a manifest token
+    res = proj.fact("resolved")
+    assert eavc.is_sha256_digest(res.payload[-1])
+    assert len(proj.facts("effectSurface")) == 2
+
+
 def _example_files():
     import glob
     return sorted(glob.glob(os.path.join(EXAMPLES, "*.sem")))

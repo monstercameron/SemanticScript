@@ -1,0 +1,10 @@
+# build.sem.lock — generated lock file (README ss28.1). DO NOT HAND-EDIT.
+# Uses the lock-only project predicates resolved/toolchainResolved/effectSurface.
+# (todos WS3-031)
+
+TaskApp is project
+TaskApp toolchainResolved "sem1.0"
+TaskApp resolved github.com/ss-lang/sqlite v2.1.0 sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+TaskApp resolved github.com/ss-lang/http v1.4.0-rc.1 sha256 fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+TaskApp effectSurface read database
+TaskApp effectSurface write console.stdout
