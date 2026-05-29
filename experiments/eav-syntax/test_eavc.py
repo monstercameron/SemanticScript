@@ -2177,6 +2177,53 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+def _storage_program(mutability, with_effect):
+    cap = ""
+    eff = ""
+    if with_effect:
+        cap = (
+            "counterWriter is capability\ncounterWriter grants write storage.counter\n"
+            'counterWriter purpose "Authority to mutate the counter global"\n'
+        )
+        eff = "main effect write storage.counter\nmain uses counterWriter\n"
+    return (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        + cap +
+        "counter is storage\ncounter scope module\ncounter type Int64\n"
+        f"counter mutability {mutability}\ncounter value 0\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n' + eff +
+        "main let step immutable Int64 1\nmain let okCode immutable ExitCode 0\n"
+        "main do bump\nmain return okCode\n"
+        "bump is call\nbump in main\nbump invokes math.addInt64\n"
+        "bump arg left Int64 counter\nbump arg right Int64 step\nbump out counter Int64\n"
+    )
+
+
+def test_out_rebinds_immutable_storage_rejected():
+    # WS1-085: out targeting an immutable module storage entity is a hard error.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_storage_program("immutable", with_effect=False))
+    assert getattr(exc.value, "code", None) == "SS1085"
+
+
+def test_out_mutable_storage_missing_effect_warns():
+    # WS1-085: rebinding mutable storage without a storage effect warns SS1086.
+    prog = eavc.parse(_storage_program("mutable", with_effect=False))
+    assert "SS1086" in {d.code for d in eavc.lint(prog)}
+
+
+def test_out_mutable_storage_with_effect_lowers():
+    # WS1-085: with the storage effect + capability, the rebind is clean and the
+    # codegen stores the call result into the module global.
+    prog = eavc.parse(_storage_program("mutable", with_effect=True))
+    assert "SS1086" not in {d.code for d in eavc.lint(prog)}
+    ir_text = str(eavc.lower_to_llvm(prog))
+    assert 'store' in ir_text and '@"counter"' in ir_text
+
+
 _OPTYPE_BASE = (
     "Int64Endo is operationType\nInt64Endo in Int64\nInt64Endo out Int64\n"
     "double is operation\ndouble in n Int64\ndouble out Int64\n"

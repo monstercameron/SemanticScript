@@ -264,6 +264,12 @@ DIAGNOSTICS.update({
     "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
                "found": "A return of a base/sibling type where the out is an alias newtype.",
                "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
+    "SS1085": {"tier": "T1", "summary": "out rebinds immutable module storage.",
+               "found": "A call `out` targeting an `immutable` module storage entity.",
+               "suggested": "Declare the storage `mutability mutable` (README §12)."},
+    "SS1086": {"tier": "T3", "summary": "Module-storage mutation without a storage effect.",
+               "found": "An out rebinds module storage but the op declares no `effect write storage.<name>`.",
+               "suggested": "Add `effect write storage.<name>` + a covering capability (README §12)."},
     "SS1028": {"tier": "T1", "summary": "Bare variant outside a type-directed position.",
                "found": "An enum variant name used where the type is not statically known.",
                "suggested": "Use variants only in arg/let/return positions (README §10)."},
@@ -2325,6 +2331,35 @@ def lint(program: Program) -> list:
                 op.line, op.name))
     diags.extend(_lint_variant_exhaustiveness(program))
     diags.extend(_lint_sqlite_usage(program))
+    # README ss12 / WS1-085: an out that rebinds module storage should declare a
+    # matching `effect write storage.<name>` on the owning op.
+    _storages = _storage_entities(program)
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        out = call.fact("out")
+        owner = call.fact("in")
+        if not (out and out.payload and owner and owner.payload):
+            continue
+        st = _storages.get(out.payload[0])
+        if st is None or not _is_module_storage(st):
+            continue
+        mut = st.fact("mutability")
+        if not (mut and mut.payload and mut.payload[0] == "mutable"):
+            continue
+        op = program.entities.get(owner.payload[0])
+        want = ["write", f"storage.{out.payload[0]}"]
+        has_effect = op is not None and any(
+            e.payload[:2] == want for e in op.facts("effect")
+        )
+        if not has_effect:
+            diags.append(Diagnostic(
+                "SS1086", "warning",
+                f"call {call.name!r} rebinds module storage {out.payload[0]!r} but "
+                f"{owner.payload[0]!r} declares no `effect write "
+                f"storage.{out.payload[0]}` (README ss12, WS1-085)",
+                call.line, owner.payload[0]))
     # README ss33.10 / WS1-057: a local operationType binding whose name is also a
     # module operation resolves to the binding — warn to rename.
     op_names = {
@@ -2651,6 +2686,7 @@ def _validate_program(program: Program) -> None:
     _validate_variant_payload_bind(program)
     _validate_variant_positions(program)
     _validate_return_exactness(program)
+    _validate_storage_mutation(program)
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
@@ -3274,6 +3310,42 @@ def _validate_invoke_ambiguity(program: Program) -> None:
             )
 
 
+def _storage_entities(program: Program) -> dict:
+    return {
+        program.entities[n].name: program.entities[n]
+        for n in program.order if program.entities[n].kind == "storage"
+    }
+
+
+def _is_module_storage(st: Entity) -> bool:
+    scope = st.fact("scope")
+    return bool(scope and scope.payload and scope.payload[0] == "module")
+
+
+def _validate_storage_mutation(program: Program) -> None:
+    """README ss12 / ss17 #29 / WS1-085: a call `out` targeting a module `storage`
+    entity rebinds it; targeting an `immutable` storage entity is a hard error."""
+    storages = _storage_entities(program)
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        out = call.fact("out")
+        if not (out and out.payload):
+            continue
+        st = storages.get(out.payload[0])
+        if st is None or not _is_module_storage(st):
+            continue
+        mut = st.fact("mutability")
+        if mut and mut.payload and mut.payload[0] == "immutable":
+            raise EavError(
+                f"call {call.name!r} rebinds immutable module storage "
+                f"{out.payload[0]!r} via out; declare it `mutability mutable` "
+                f"(README ss12, ss17 #29, WS1-085)",
+                call.line, code="SS1085",
+            )
+
+
 def _validate_return_exactness(program: Program) -> None:
     """README ss10 / WS1-029: an explicitly-written `arg`/`let` type position may
     annotate a base-typed binding to an alias (visible, not silent). But a `return`
@@ -3431,13 +3503,22 @@ def _validate_entry_scope(program: Program) -> None:
             r.payload[0] for r in prefix
             if r.predicate in ("do", "start", "join", "poll") and r.payload
         }
+        # An out naming a module storage entity *rebinds* a pre-existing global
+        # (WS1-085), not a fresh call-result binding — it is in scope before the
+        # call, so it is not subject to the produced-before-use rule.
+        module_storage_names = {
+            program.entities[s].name for s in program.order
+            if program.entities[s].kind == "storage"
+            and (program.entities[s].fact("scope") or Row("", "", [], 0)).payload[:1] == ["module"]
+        }
         live_out: set = set()
         live_catch: set = set()
         for c in owned:
             if c.name not in activated:
                 continue
             o = c.fact("out")
-            if o and o.payload and o.payload[0] != "Result":
+            if (o and o.payload and o.payload[0] != "Result"
+                    and o.payload[0] not in module_storage_names):
                 live_out.add(o.payload[0])
             ct = c.fact("catch")
             if ct and ct.payload:
@@ -4522,6 +4603,14 @@ class EavCodegen:
                 )
             if let_mut.get(name) == "mutable":
                 builder.store(result, sym[name][1])
+            elif name in getattr(self, "module_storage", {}):
+                # README ss12 / WS1-085: out naming a (mutable) module storage
+                # entity rebinds the global in place.
+                ref = self.module_storage[name][0]
+                if isinstance(ref, ir.GlobalVariable):
+                    builder.store(result, ref)
+                else:
+                    sym[name] = ("val", result)
             else:
                 sym[name] = ("val", result)
 
