@@ -304,7 +304,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] X-013 comparators + ifOut/ifValue → `compare.*` + `branch if` (already fmt-lowered). →test: no comparator keyword needed.
 - [ ] X-014 §6 metadata → typed comments. →test: docs still generated from comments.
 - [ ] X-015 §28 manifest → build record + `standard.build` (project/target/.../platform/forTarget/forPlatform demoted). →test: build from record.
-- [ ] X-016 intrinsic/semsig/trustConstraint → `.semsig` sidecar only. →test: no app-source intrinsic.
+- [x] X-016 intrinsic/semsig/trustConstraint → `.semsig` sidecar only. →test: no app-source intrinsic. _(eavc: `.semsig` is the sidecar home (`load_semsig`/`semsig_targets`); an app-source `runtimeBinding`/`intrinsic` body warns SS5000 (§17 #50); `test_app_source_intrinsic_body_warns`, `test_semsig_loads_and_indexes_targets`)_
 - [x] X-017 **Preserve verbatim** (do NOT migrate): call/task/cleanup split (§34.4), effect/capability boundary (§34.1b), tape/control/type primitives. →test: split cross-use still hard-errors post-migration. _(eavc: the call/task/cleanup split stays a hard error (`_validate_step_split`, `test_split_do_on_task_rejected`/`test_split_start_on_call_rejected`/`test_split_defer_on_call_rejected`); the effect/capability boundary (`uses`+`grants`+`effect`) and tape/control/type primitives are unchanged by every migration step.)_
 - [ ] X-018 Shrink §2 reserved set to minimal-core as each section migrates; keep §2↔§5 in sync (X-005). →test: drift guard green after each migration.
 
