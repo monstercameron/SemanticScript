@@ -5430,9 +5430,18 @@ def _ensure_native_init() -> None:
         _NATIVE_INIT_DONE = True
 
 
+def _bundle_dir() -> str:
+    """Directory holding bundled data (std/, sigs/, runtime/). When frozen by
+    PyInstaller (X-025), data lives under sys._MEIPASS; otherwise alongside
+    eavc.py."""
+    import os
+    base = getattr(sys, "_MEIPASS", None)
+    return base or os.path.dirname(os.path.abspath(__file__))
+
+
 def _runtime_dir() -> str:
     import os
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "runtime")
+    return os.path.join(_bundle_dir(), "runtime")
 
 
 def _find_c_compiler():

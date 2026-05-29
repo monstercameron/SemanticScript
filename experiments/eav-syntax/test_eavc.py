@@ -3057,6 +3057,21 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_frozen_executable_packaging():
+    # X-025: the packager exists and eavc is frozen-path-aware; if a built exe is
+    # present (dist/eavc[.exe] from `python package.py`), it runs standalone.
+    assert os.path.exists(os.path.join(HERE, "package.py"))
+    assert hasattr(eavc, "_bundle_dir")
+    exe = os.path.join(HERE, "dist", "eavc" + (".exe" if sys.platform == "win32" else ""))
+    if not os.path.exists(exe):
+        pytest.skip("standalone exe not built (run `python package.py`)")
+    ver = subprocess.run([exe, "version", "--json"], capture_output=True, text=True)
+    assert ver.returncode == 0 and eavc.CONTRACT_VERSION in ver.stdout
+    run = subprocess.run([exe, "run", os.path.join(EXAMPLES, "hello_world.sem")],
+                         capture_output=True, text=True)
+    assert run.returncode == 0 and "hello world" in run.stdout
+
+
 def test_golden_match_infra(tmp_path):
     # X-007: matchesGolden compares to a committed golden + verifies sha256;
     # mismatch fails (no implicit update); --update-golden re-pins.

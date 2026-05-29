@@ -180,6 +180,9 @@ experiments/kilo-port/**/build/
 experiments/eav-syntax/**/__pycache__/
 experiments/eav-syntax/**/*.pyc
 experiments/eav-syntax/runtime/_build/
+experiments/eav-syntax/dist/
+experiments/eav-syntax/_pyi_build/
+experiments/eav-syntax/_build/
 !experiments/realtime-auction-arena/
 !experiments/realtime-auction-arena/**
 experiments/realtime-auction-arena/**/__pycache__/
