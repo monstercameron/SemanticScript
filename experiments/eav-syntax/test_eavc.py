@@ -5340,6 +5340,56 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_stdlib_view_contract_enforced_at_call_site():
+    # WS1-122: the seam — a stdlib op's `.semsig` publishes the lifetime annotation
+    # (memory.allocateIn returns a borrowed `mayEscape no` View) and the LANGUAGE
+    # enforces it at a user call site without the caller re-declaring the rows:
+    # returning the borrowed view out of the op is rejected (SS1560).
+    src = (
+        "Region is alias\nRegion for OpaquePointer\n"
+        "View is alias\nView for OpaquePointer\nAllocationFailure is error\n"
+        "memoryAllocateIn is intrinsic\nmemoryAllocateIn target memory.allocateIn\n"
+        "memoryAllocateIn arg region Region\nmemoryAllocateIn arg bytes Int64\n"
+        "memoryAllocateIn out view View\nmemoryAllocateIn catch AllocationFailure\n"
+        "memoryAllocateIn borrows region\nmemoryAllocateIn lifetime region\n"
+        "memoryAllocateIn mayEscape no\n"
+        "leak is operation\nleak out View\nleak async no\n"
+        'leak purpose "p"\nleak invariant "i"\n'
+        "leak in region Region\nleak let n immutable Int64 16\n"
+        "leak do alloc\nleak branch ifError alloc goto bad\nleak return scratch\n"
+        "leak at bad return scratch\n"
+        "alloc is call\nalloc in leak\nalloc invokes memory.allocateIn\n"
+        "alloc arg region Region region\nalloc arg bytes Int64 n\n"
+        "alloc out scratch View\nalloc catch e AllocationFailure\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1560"
+
+
+def test_stdlib_memory_semsig_publishes_lifetime_annotations():
+    # WS1-122: the contract side of the seam — the .semsig op carries the
+    # ownership/lifetime annotations the linter checks.
+    prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.memory.semsig"),
+                                 encoding="utf-8").read())
+    alloc = prog.entities["memoryAllocateIn"]
+    assert alloc.fact("borrows") and alloc.fact("lifetime")
+    assert alloc.fact("mayEscape").payload[0] == "no"
+    opn = prog.entities["memoryOpenRegion"]
+    assert opn.fact("owns") and opn.fact("cleanedBy")  # the region is an owned resource
+
+
+def test_app_source_raw_allocation_rejected():
+    # WS1-122: hand-rolled allocation in app source (a raw runtimeBinding body) is
+    # rejected — agents allocate only through standard.memory (SS5000).
+    src = (
+        "rawAlloc is operation\nrawAlloc out OpaquePointer\nrawAlloc async no\n"
+        'rawAlloc purpose "p"\nrawAlloc invariant "i"\n'
+        "rawAlloc in size Int64\nrawAlloc body runtimeBinding c.malloc\n"
+    )
+    assert "SS5000" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

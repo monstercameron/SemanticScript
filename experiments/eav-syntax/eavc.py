@@ -5374,6 +5374,42 @@ def _validate_view_lifetimes(program: Program) -> None:
                     f"borrowed source (README §32.1 #9)",
                     row.line, code="SS1560")
 
+    # WS1-122 seam: a call to a view-producing intrinsic INHERITS the intrinsic's
+    # `mayEscape no` view-ness. The stdlib `.semsig` publishes the lifetime
+    # annotation (e.g. `memory.allocateIn`/`buffer.slice` declare a borrowed view)
+    # and the language enforces it at every call site — neither hard-codes the
+    # other. So returning a borrowed View/Slice out of an op is rejected (SS1560)
+    # without the caller re-declaring the rows.
+    intrinsic_view_noescape = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "intrinsic" and ent.fact("borrows") is not None:
+            t, me = ent.fact("target"), ent.fact("mayEscape")
+            if t and t.payload and me and me.payload and me.payload[0] == "no":
+                intrinsic_view_noescape.add(t.payload[0])
+    if intrinsic_view_noescape:
+        for n in program.order:
+            ent = program.entities[n]
+            if ent.kind not in ("call", "task") or ent.fact("borrows") is not None:
+                continue  # calls with their own `borrows` row are handled above
+            inv = ent.fact("invokes")
+            target = inv.payload[0] if inv and inv.payload else ""
+            if target not in intrinsic_view_noescape:
+                continue
+            out = ent.fact("out")
+            view_value = out.payload[0] if out and out.payload else None
+            op = program.entities.get(owner_of.get(ent.name))
+            if view_value is None or op is None:
+                continue
+            for row in op.rows:
+                if row.predicate == "return" and view_value in row.payload:
+                    raise EavError(
+                        f"view {view_value!r} from {target!r} is a borrowed view "
+                        f"(`mayEscape no` in its contract) but is returned out of "
+                        f"{op.name!r}; it would outlive its borrowed source "
+                        f"(README §32.1 #9)",
+                        row.line, code="SS1560")
+
 
 def _validate_transfer_moves(program: Program) -> None:
     """WS1-113 / README §32.1 #9: ownership transfer is source data. Passing an

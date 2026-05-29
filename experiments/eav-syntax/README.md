@@ -2339,6 +2339,34 @@ An `unsafe yes` allocating binding missing any of `wrapsAs`/`cleanedBy`/
 program as an `owns`-tracked resource, and `OpaquePointer` stays opaque (no
 arithmetic in app source).
 
+### Memory model: the language ↔ stdlib seam (WS1-122, §8/§26/§32.1)
+
+The **language** owns the checked ownership/lifetime *vocabulary* —
+`owns`/`cleanedBy`/`cleans`/`defer`, `borrows`/`lifetime`/`mayEscape`,
+`consumes`/`takesOwnership`, `region`/`allocateIn`/`releaseRegion`,
+`sharedState`/`guard` — and the checker that enforces it (SS1560–SS1571, SS3083).
+The **stdlib** (`standard.memory`/`standard.buffer`) owns the *operations, types,
+and the allocator capabilities*; raw `c.malloc`/`c.free` is a stdlib-internal
+`unsafe` binding (WS1-116) and never app source (SS5000).
+
+**They meet at the `.semsig`.** Each stdlib op publishes the annotations the
+linter checks at *every* call site, with no hard-coding either way:
+
+| stdlib op (`.semsig`) | published annotation | enforced at call sites by |
+| --- | --- | --- |
+| `memory.openRegion` | `owns region cleanedBy memory.releaseRegion` | SS1503 (cleanup), SS1564 (move) |
+| `memory.allocateIn` | `out View`, `borrows region`, `mayEscape no` | **SS1560** (view-escape) |
+| `buffer.slice` | `out Slice`, `borrows buffer`, `mayEscape no` | SS1560, SS1571 |
+| `buffer.get` | `out Byte`, `catch BufferBoundsError` | SS1568 (must handle OOB) |
+| allocating FFI leaf | `unsafe`/`wrapsAs`/`cleanedBy`/`allocator` | SS1569 |
+
+So a value returned from `memory.allocateIn` is a borrowed `View` even though the
+caller wrote no lifetime rows — the contract's `mayEscape no` propagates, and
+returning the view out of the operation is rejected (SS1560). The stdlib declares
+the contract; the language enforces it; agents `import`/`call` these modules and
+learn the rules via `sem docs`/`.semsig`. Hand-rolled allocation or a raw pointer
+in app source is rejected — the safe path is the only path.
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

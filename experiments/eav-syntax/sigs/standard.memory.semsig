@@ -40,7 +40,8 @@ memoryOpenRegion arg strategy String
 memoryOpenRegion arg capacity ByteCount
 memoryOpenRegion out region Region
 memoryOpenRegion catch AllocationFailure
-memoryOpenRegion owns region cleanedBy memory.releaseRegion
+memoryOpenRegion owns region
+memoryOpenRegion cleanedBy memory.releaseRegion
 memoryOpenRegion purpose "Open an allocation region (arena|fixedBuffer|general); released by memory.releaseRegion (deferred runtime — the `region` construct is the in-language form)"
 
 memoryAllocateIn is intrinsic
