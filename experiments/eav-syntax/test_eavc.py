@@ -1791,6 +1791,32 @@ def test_void_console_write_needs_no_discards():
     assert prog.entities["w"].fact("discards") is None
 
 
+def test_dotted_type_only_in_alias_for():
+    # README §7/§17 #37: dotted type only valid in an alias `for` row.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("main is operation\nmain let x immutable api.Thing 0\n")
+    assert exc.value.code == "SS3700"
+    # alias `for` may be dotted (import-alias disambiguation, WS1-038)
+    prog = eavc.parse("MyErr is alias\nMyErr for api.RequestError\n")
+    assert prog.entities["MyErr"].fact("for").payload == ["api.RequestError"]
+
+
+def test_owns_without_cleanedby_warns():
+    src = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\n"  # owns, no cleanedBy
+    )
+    assert "SS3900" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
+def test_entry_not_exported_warns():
+    prog = eavc.parse(
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "main is operation\nmain out ExitCode\n"  # m does not export main
+    )
+    assert "MD1013" in {d.code for d in eavc.lint(prog)}
+
+
 def test_dotted_internal_reference_rejected():
     # README §3 / §17 #26: internal references are bare; dots are external-only.
     with pytest.raises(eavc.EavError) as exc:

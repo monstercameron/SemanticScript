@@ -200,6 +200,18 @@ DIAGNOSTICS.update({
     "SS3501": {"tier": "T3", "summary": "Fallible call with no error path.",
                "found": "A call with a `catch` but no `branch ifError` for it.",
                "suggested": "Add a `branch ifError CALL goto …`, or `discards` (README §17 #35)."},
+    "SS3700": {"tier": "T1", "summary": "Dotted type outside an alias `for`.",
+               "found": "A dotted type name in a let/arg/in/out/catch/field position.",
+               "suggested": "Use a bare type, or a local alias `for importAlias.Type` (§7)."},
+    "SS3900": {"tier": "T3", "summary": "owns without cleanedBy.",
+               "found": "A call that owns a resource but declares no cleanedBy.",
+               "suggested": "Add `cleanedBy <cleanup>` so the resource is released (§15)."},
+    "SS3600": {"tier": "T3", "summary": "ifOut on a fallible call before its error.",
+               "found": "An `ifOut` inspecting a call that has a catch.",
+               "suggested": "Handle the error (branch ifError) before inspecting the out (§17 #36)."},
+    "MD1013": {"tier": "T3", "summary": "Project entry is not exported.",
+               "found": "An `entry` entity with no `exports` row.",
+               "suggested": "Export the entry entity (README §7)."},
     "SS1340": {"tier": "T4", "summary": "ifValue/ifOut is comparison sugar.",
                "found": "A `branch ifValue`/`ifOut` guard.",
                "suggested": "Informational; fmt canonicalizes to compare + branch if (§13)."},
@@ -1635,6 +1647,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
+    diags.extend(_lint_ownership_and_entry_export(program))
     # README ss17 #35: a fallible call (has `catch`) activated by `do` should have
     # an error path (`branch ifError`); a cleanup worker is exempt.
     cleanup_workers = {
@@ -1707,6 +1720,43 @@ def _lint_c_exports(program: Program) -> list:
                                       f"{seen[sym]!r} (must be unique)", r.line, ent.name))
             else:
                 seen[sym] = ent.name
+    return out
+
+
+def _lint_ownership_and_entry_export(program: Program) -> list:
+    """WS2-021 lint warnings: #39 a call that `owns` a resource without a
+    `cleanedBy` cleanup; #38 the project entry should be exported (MD1013); #36 an
+    `ifOut` on a fallible call before its error is handled."""
+    out: list[Diagnostic] = []
+    exported = _exported_names(program)
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("call", "task"):
+            if ent.fact("owns") is not None and ent.fact("cleanedBy") is None:
+                out.append(Diagnostic("SS3900", "warning",
+                                      f"{ent.kind} {ent.name!r} owns a resource but has "
+                                      f"no `cleanedBy` cleanup", ent.line, ent.name))
+        if ent.kind in ("operation", "function"):
+            for row in ent.rows:
+                if (row.predicate == "branch" and row.payload and row.payload[0] == "ifOut"):
+                    callee = program.entities.get(row.payload[1]) if len(row.payload) > 1 else None
+                    if callee and callee.fact("catch") is not None:
+                        out.append(Diagnostic("SS3600", "warning",
+                                              f"`ifOut {callee.name}` inspects a fallible "
+                                              f"call's out before handling its error "
+                                              f"(README §17 #36)", row.line, ent.name))
+    module_exports = {
+        ex.payload[0]
+        for n in program.order if program.entities[n].kind == "module"
+        for ex in program.entities[n].facts("exports") if ex.payload
+    }
+    for proj in program.of_kind("project"):
+        entry = proj.fact("entry")
+        if entry and entry.payload and entry.payload[0] not in module_exports:
+            if program.entities.get(entry.payload[0]) is not None:
+                out.append(Diagnostic("MD1013", "warning",
+                                      f"project entry {entry.payload[0]!r} has no `exports` "
+                                      f"row in its module (README §7)", proj.line, entry.payload[0]))
     return out
 
 
@@ -1821,6 +1871,7 @@ def _validate_program(program: Program) -> None:
                 f"errorCase {ent.name!r} needs an `of <Error>` row (README ss9)",
                 ent.line,
             )
+        _check_dotted_types(ent)
         if ent.kind in ("operation", "function"):
             _validate_body_kind(ent)
             _validate_labels(ent, program)
@@ -1899,6 +1950,30 @@ def _validate_html(program: Program) -> None:
                         f"and must be HtmlSafeUrl, got {atype!r} (README ss16, ss17 #34)",
                         call.line, code="SS1634",
                     )
+
+
+def _check_dotted_types(ent: Entity) -> None:
+    """A dotted type reference is valid only in an alias `for` row (README ss3,
+    ss7, ss17 #37). Elsewhere — let/arg/in/out/catch/field type positions — a
+    dotted type name is a hard error."""
+    def check(tok, line):
+        if "." in tok:
+            raise EavError(
+                f"dotted type {tok!r} is only valid in an alias `for` row; "
+                f"type references are otherwise bare (README ss3, ss17 #37)",
+                line, code="SS3700",
+            )
+    for r in ent.facts("let"):
+        if len(r.payload) >= 3:
+            check(r.payload[2], r.line)
+    for pred, idx in (("arg", 1), ("in", 1), ("catch", 1), ("field", 1)):
+        for r in ent.facts(pred):
+            if len(r.payload) > idx:
+                check(r.payload[idx], r.line)
+    for r in ent.facts("out"):
+        for t in r.payload:
+            if t not in ("Result", "nil"):
+                check(t, r.line)
 
 
 def _validate_configure(program: Program) -> None:
