@@ -3733,6 +3733,18 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")
+def test_build_native_executable_runs(tmp_path):
+    # The `build` command compiles a program to a native exe that runs standalone.
+    out = str(tmp_path / ("hello" + (".exe" if sys.platform == "win32" else "")))
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
+    eavc.build_executable(prog, out)
+    assert os.path.exists(out)
+    proc = subprocess.run([out], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "hello world" in proc.stdout
+
+
 def test_e2e_runtime_binding_calls_libc_symbol():
     # README §11/§26: a `body runtimeBinding abs` op lowers to an extern named
     # after the bound symbol and is called directly; the JIT resolves libc `abs`

@@ -5383,6 +5383,35 @@ def _ensure_runtime_lib(lib: dict):
     return out
 
 
+def _referenced_runtime_symbols(program: Program) -> set:
+    """The ABI symbols a program's `body runtimeBinding` operations reference."""
+    out: set = set()
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("operation", "function"):
+            body = ent.fact("body")
+            if (body and body.payload and body.payload[0] == "runtimeBinding"
+                    and len(body.payload) >= 2):
+                out.add(body.payload[1])
+    return out
+
+
+def _runtime_libs_for(program: Program) -> list:
+    """Native runtime libraries (from runtime/manifest.json) whose `provides`
+    prefixes match a runtimeBinding symbol the program references."""
+    import json
+    import os
+    referenced = _referenced_runtime_symbols(program)
+    manifest_path = os.path.join(_runtime_dir(), "manifest.json")
+    if not referenced or not os.path.exists(manifest_path):
+        return []
+    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
+    return [
+        lib for lib in manifest.get("libraries", [])
+        if any(s.startswith(p) for s in referenced for p in lib.get("provides", []))
+    ]
+
+
 def _register_runtime_symbols(program: Program) -> None:
     """Resolve the program's `runtimeBinding` symbols that a native runtime
     library provides, building and loading that library and registering each
@@ -5392,26 +5421,13 @@ def _register_runtime_symbols(program: Program) -> None:
     import ctypes
     import json
     import os
-    referenced = set()
-    for n in program.order:
-        ent = program.entities[n]
-        if ent.kind in ("operation", "function"):
-            body = ent.fact("body")
-            if (body and body.payload and body.payload[0] == "runtimeBinding"
-                    and len(body.payload) >= 2):
-                referenced.add(body.payload[1])
+    referenced = _referenced_runtime_symbols(program)
     if not referenced:
         return
-    manifest_path = os.path.join(_runtime_dir(), "manifest.json")
-    if not os.path.exists(manifest_path):
-        return
-    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
-    for lib in manifest.get("libraries", []):
+    for lib in _runtime_libs_for(program):
+        path = _ensure_runtime_lib(lib)
         prefixes = lib.get("provides", [])
         needed = {s for s in referenced if any(s.startswith(p) for p in prefixes)}
-        if not needed:
-            continue
-        path = _ensure_runtime_lib(lib)
         if path is None:
             raise EavError(
                 f"program uses runtime symbols {sorted(needed)} provided by "
@@ -5539,6 +5555,60 @@ def cmd_run(args) -> int:
     program = parse(_read_source(args.path))
     sys.stdout.flush()
     return jit_run(program)
+
+
+def build_executable(program: Program, out_path: str) -> str:
+    """Compile a program to a native executable: lower to LLVM IR, then drive a C
+    compiler over the IR plus any native runtime sources the program's
+    runtimeBinding symbols need (manifest-driven). Returns the exe path."""
+    import os
+    import subprocess
+    import tempfile
+    module = lower_to_llvm(program)
+    cc = _find_c_compiler()
+    if cc is None:
+        raise EavError("no C compiler found to build an executable "
+                       "(set EAVC_CC, or install clang/zig)")
+    rt = _runtime_dir()
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    os.makedirs(out_dir, exist_ok=True)
+    ll_fd, ll_path = tempfile.mkstemp(suffix=".ll", dir=rt)
+    with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
+        fh.write(str(module))
+    cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
+    for lib in _runtime_libs_for(program):
+        for s in lib["sources"]:
+            cmd.append(os.path.normpath(os.path.join(rt, s)))
+        for inc in lib.get("include", []):
+            cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
+        for d in lib.get("defines", []):
+            cmd.append("-D" + d)
+        for libname in lib.get("libs", []):
+            cmd.append("-l" + libname)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+    finally:
+        try:
+            os.unlink(ll_path)
+        except OSError:
+            pass
+    if proc.returncode != 0:
+        raise EavError(f"native build failed: {proc.stderr.strip()}")
+    return out_path
+
+
+def cmd_build(args) -> int:
+    """Compile a program to a native executable (IR -> clang -> exe)."""
+    import os
+    program = parse_compact(_read_source(args.path))
+    default = os.path.splitext(args.path)[0] if args.path != "-" else "a"
+    out_path = args.output or (default + (".exe" if sys.platform == "win32" else ""))
+    try:
+        sys.stdout.write(build_executable(program, out_path) + "\n")
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
 
 
 def cmd_trace(args) -> int:
@@ -5779,6 +5849,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_build = sub.add_parser("build", help="compile a program to a native exe")
+    sp_build.add_argument("path", help="EAV/compact source file, or - for stdin")
+    sp_build.add_argument("--output", "-o", help="output executable path")
+    sp_build.set_defaults(func=cmd_build)
 
     sp_fmt = sub.add_parser("fmt", help="format a program to a surface")
     sp_fmt.add_argument("path", help="EAV/compact source file, or - for stdin")

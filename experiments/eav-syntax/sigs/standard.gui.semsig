@@ -1,0 +1,40 @@
+# standard.gui.semsig — DEFERRED GUI contract (README ss27, WS3-044/X-045).
+# GUI is not specified in v0.3 and `target windowsGui` is a hard compile error
+# (SS0744). This file only RECORDS the conversion target for the desktop GUI
+# apps (gui entities -> standard.gui calls) so the port lands when a GUI module
+# is specified. No app source is ported in v0.3.
+
+guiSig is semsig
+guiSig version "1.0"
+guiSig generatedBy "eavc 0.1"
+guiSig describes standard.gui
+
+GuiApplication is alias
+GuiApplication for OpaquePointer
+GuiApplication purpose "An opaque GUI application handle (deferred runtime)"
+
+GuiWindow is alias
+GuiWindow for OpaquePointer
+GuiWindow purpose "An opaque GUI window handle (deferred runtime)"
+
+GuiText is alias
+GuiText for String
+GuiText purpose "GUI display text"
+
+applicationCreate is intrinsic
+applicationCreate target gui.applicationCreate
+applicationCreate arg title GuiText
+applicationCreate out application GuiApplication
+applicationCreate purpose "Create a GUI application (deferred — windowsGui is reserved)"
+
+windowCreate is intrinsic
+windowCreate target gui.windowCreate
+windowCreate arg title GuiText
+windowCreate out window GuiWindow
+windowCreate purpose "Create a top-level window (deferred — windowsGui is reserved)"
+
+applicationRun is intrinsic
+applicationRun target gui.applicationRun
+applicationRun arg application GuiApplication
+applicationRun out exit ExitCode
+applicationRun purpose "Run the GUI event loop (deferred — windowsGui is reserved)"
