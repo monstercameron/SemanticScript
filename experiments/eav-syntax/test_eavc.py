@@ -5556,6 +5556,64 @@ def test_typestate_legal_sequence_accepted():
     assert "use" in prog.entities
 
 
+_CHARGE_OP = (
+    "charge is operation\ncharge in amount Int64\ncharge out ExitCode\ncharge async no\n"
+    'charge purpose "p"\ncharge invariant "i"\ncharge requires positive amount\n'
+    "charge let ok immutable ExitCode 0\ncharge return ok\n"
+)
+
+
+def _charge_program(prelude, call_arg):
+    return (
+        "Chg is project\nChg module appChg\nChg target console\nChg entry main\n"
+        "appChg is module\nappChg path a.b\n"
+        'appChg purpose "p"\nappChg invariant "i"\nExitCode is alias\nExitCode for Int32\n'
+        + _CHARGE_OP +
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n" + prelude +
+        "main do chargeCall\nmain return okCode\n"
+        "chargeCall is call\nchargeCall in main\nchargeCall invokes charge\n"
+        + call_arg + "chargeCall out st ExitCode\n"
+    )
+
+
+def test_contract_static_violation_rejected():
+    # X-092 / §6: a literal arg violating `requires positive` is rejected (SS3092).
+    src = _charge_program("main let bad immutable Int64 -5\n",
+                          "chargeCall arg amount Int64 bad\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3092"
+
+
+def test_contract_satisfying_literal_discharged_no_check():
+    # X-092: a provably-satisfying literal arg is discharged — no runtime check in IR.
+    src = _charge_program("", "chargeCall arg amount Int64 7\n")
+    ir = str(eavc.lower_to_llvm(eavc.parse(src)))
+    assert "requireViolated" not in ir
+
+
+def test_contract_runtime_value_emits_check():
+    # X-092: an unknown (runtime) arg gets a runtime assert — the check is in IR.
+    src = _charge_program(
+        "main let zero immutable Int64 0\nmain let five immutable Int64 5\nmain do neg\n",
+        "chargeCall arg amount Int64 negAmount\n").replace(
+        "chargeCall is call\nchargeCall in main\nchargeCall invokes charge\n",
+        "neg is call\nneg in main\nneg invokes math.subtractInt64\n"
+        "neg arg left Int64 zero\nneg arg right Int64 five\nneg out negAmount Int64\n"
+        "chargeCall is call\nchargeCall in main\nchargeCall invokes charge\n")
+    ir = str(eavc.lower_to_llvm(eavc.parse(src)))
+    assert "requireViolated" in ir  # runtime assert emitted
+    # and it traps at runtime on the violating (-5) value
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src.replace("Chg target console\nChg entry main\n",
+                          "Chg target console\nChg entry main\n"),
+        capture_output=True, text=True)
+    assert proc.returncode != 0  # the precondition trap fired
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

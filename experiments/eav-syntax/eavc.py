@@ -234,6 +234,9 @@ DIAGNOSTICS.update({
     "SS1563": {"tier": "T1", "summary": "Allocation without an allocator capability.",
                "found": "An op that `allocateIn` a region has no `uses` capability granting `allocate heap.<region>` (or `allocate heap`).",
                "suggested": "Grant + `uses` an allocator capability (`grants allocate heap.<region>`) for the region (README §8/§29 #14)."},
+    "SS3092": {"tier": "T1", "summary": "Precondition statically violated at a call.",
+               "found": "A call passes a literal that violates the callee's `requires <cond> <param>`.",
+               "suggested": "Pass a value satisfying the precondition; a satisfying literal is discharged (no runtime check), an unknown value gets a runtime assert (README §6/§10.6)."},
     "SS3091": {"tier": "T1", "summary": "Operation called in a disallowed typestate.",
                "found": "A transition op invoked on a value not in the required `from` state (e.g. a closed handle reused).",
                "suggested": "Follow the type's `typestate` protocol — the op is only allowed from the declared state (README §13/§15.6)."},
@@ -1306,6 +1309,7 @@ RESERVED_WORDS = {
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
     "unsafe", "wrapsAs", "allocator",      # WS1-116 FFI allocation wrapping
     "typestate", "state", "initial", "allows",  # X-091 typestate
+    "requires", "ensures",                 # X-092 checked contracts
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
@@ -1361,6 +1365,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
         "optOut", "readShared", "setShared", "allocateIn", "releaseRegion",
         "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
+        "requires", "ensures",  # X-092 checked contracts
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
@@ -1369,6 +1374,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "branch", "return", "goto", "set", "errorBoundary", "optOut",
         "readShared", "setShared", "allocateIn", "releaseRegion",
         "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
+        "requires", "ensures",  # X-092 checked contracts
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -3462,6 +3468,7 @@ def _validate_program(program: Program) -> None:
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
     _validate_shared_state(program)
+    _validate_contracts(program)
     _validate_typestate(program)
     _validate_lock_ordering(program)
     _validate_regions(program)
@@ -5107,6 +5114,64 @@ def _validate_buffer_access(program: Program) -> None:
                 f"for its BufferBoundsError; a bounds-checked read is fallible and its "
                 f"out-of-bounds error must be handled (README §10.6)",
                 ent.line, code="SS1568")
+
+
+_CONTRACT_CONDS = ("nonNegative", "positive", "nonZero")
+
+
+def _contract_holds(cond: str, value: int):
+    """Evaluate a numeric precondition on a literal. Returns True/False, or None
+    if `cond` is unknown (not statically decidable here)."""
+    if cond == "nonNegative":
+        return value >= 0
+    if cond == "positive":
+        return value > 0
+    if cond == "nonZero":
+        return value != 0
+    return None
+
+
+def _validate_contracts(program: Program) -> None:
+    """X-092 / README §6/§10.6: a `requires <cond> <param>` precondition on an op
+    is checked at each call site — a literal arg violating it is a hard error
+    (SS3092), a satisfying literal is statically discharged (no runtime check,
+    handled in codegen), and an unknown arg gets a runtime assert (codegen). Only
+    numeric conditions (nonNegative/positive/nonZero) are statically evaluated."""
+    int_const = {}  # binding -> int (module + per-op lets)
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if tr and vr and vr.payload and vr.payload[0].lstrip("-").isdigit():
+                int_const[ent.name] = int(vr.payload[0])
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if len(r.payload) >= 4 and r.payload[3].lstrip("-").isdigit():
+                    int_const[r.payload[0]] = int(r.payload[3])
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        inv = call.fact("invokes")
+        callee = program.entities.get(inv.payload[0]) if inv and inv.payload else None
+        if callee is None or callee.kind not in ("operation", "function"):
+            continue
+        args = {a.payload[0]: a.payload[2] for a in call.facts("arg") if len(a.payload) >= 3}
+        for req in callee.facts("requires"):
+            if len(req.payload) < 2:
+                continue
+            cond, param = req.payload[0], req.payload[1]
+            val = args.get(param)
+            if val is None:
+                continue
+            lit = int(val) if val.lstrip("-").isdigit() else int_const.get(val)
+            if lit is None:
+                continue  # runtime value -> codegen asserts it
+            if _contract_holds(cond, lit) is False:
+                raise EavError(
+                    f"call {call.name!r} passes {val} for {param!r}, violating "
+                    f"{callee.name!r}'s precondition `requires {cond} {param}` "
+                    f"(README §6)", call.line, code="SS3092")
 
 
 def _validate_typestate(program: Program) -> None:
@@ -7191,6 +7256,11 @@ class EavCodegen:
             result = builder.call(fnptr, vals)
         elif target in self.functions:
             callee = self.program.entities[target]
+            # X-092: enforce the callee's `requires` preconditions at the call site.
+            # A provably-good literal arg is discharged (no check emitted); any other
+            # value gets a runtime assert that traps on violation.
+            reqs = {r.payload[1]: r.payload[0] for r in callee.facts("requires")
+                    if len(r.payload) >= 2}
             vals = []
             for in_row in callee.facts("in"):
                 a = args.get(in_row.payload[0])
@@ -7200,7 +7270,15 @@ class EavCodegen:
                         f"{target!r}",
                         call.line,
                     )
-                vals.append(self._resolve(a.payload[2], a.payload[1], builder, sym))
+                v = self._resolve(a.payload[2], a.payload[1], builder, sym)
+                cond = reqs.get(in_row.payload[0])
+                if cond is not None:
+                    tok = a.payload[2]
+                    discharged = tok.lstrip("-").isdigit() and \
+                        _contract_holds(cond, int(tok)) is True
+                    if not discharged:
+                        self._emit_contract_check(builder, cond, v)
+                vals.append(v)
             result = builder.call(self.functions[target], vals)
         else:
             result = self._emit_derived_target(target, call, args, builder, sym)
@@ -7327,6 +7405,27 @@ class EavCodegen:
         if dst.width < src.width:
             return builder.trunc(val, dst)
         return val
+
+    def _emit_contract_check(self, builder, cond, value) -> None:
+        """X-092: trap if a numeric precondition is violated at runtime (a runtime
+        assert that traps, not UB). Discharged literals never reach here."""
+        z = ir.Constant(value.type, 0)
+        if cond == "nonNegative":
+            bad = builder.icmp_signed("<", value, z)
+        elif cond == "positive":
+            bad = builder.icmp_signed("<=", value, z)
+        elif cond == "nonZero":
+            bad = builder.icmp_signed("==", value, z)
+        else:
+            return
+        fn = builder.function
+        trap_bb = fn.append_basic_block("requireViolated")
+        cont_bb = fn.append_basic_block("requireOk")
+        builder.cbranch(bad, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        tb.call(self.runtime("trap"), [])
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
 
     def _guard_div_zero(self, builder, divisor) -> None:
         """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a

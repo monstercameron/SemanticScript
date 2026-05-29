@@ -2421,6 +2421,23 @@ The check is flow-sensitive but linear: a value's state is tracked once known
 (produced in-op, or after a prior transition), and an input's state is not
 pre-judged until first transitioned (no false positives).
 
+### Checked contracts (X-092, §6/§10.6)
+
+`requires`/`ensures` promote `invariant`/`guarantee` to *checked* pre/post­
+conditions on an operation, with numeric conditions `positive`/`nonNegative`/
+`nonZero`:
+
+```sem
+charge requires positive amount      # precondition on the `amount` input
+```
+
+A `requires` is checked **at each call site**: a literal arg that violates it is a
+hard error (**SS3092**); a literal that satisfies it is *statically discharged*
+(no runtime check emitted); an unknown (runtime) arg gets a runtime assert that
+**traps** on violation (never UB). So `charge` called with `-5` is a compile
+error, with `7` compiles to a plain call, and with a runtime value compiles to a
+checked call. (`ensures` is the symmetric postcondition row.)
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the
