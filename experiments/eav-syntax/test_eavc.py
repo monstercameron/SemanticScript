@@ -103,6 +103,28 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+def test_verify_patch_ok_on_scaffold():
+    report = eavc.verify_patch(eavc.scaffold("console-program"))
+    assert report["ok"] is True
+    assert report["parsed"] and report["lowerable"]
+    assert report["lintErrors"] == []
+
+
+def test_verify_patch_fails_on_parse_error():
+    report = eavc.verify_patch("main do nowhere\n")  # first row not `is`
+    assert report["ok"] is False
+    assert report["parsed"] is False
+    assert report["error"]
+
+
+def test_verify_patch_fails_on_lint_error():
+    # exported op missing purpose/invariant -> MD lint errors
+    src = "m is module\nm path a.b\nm purpose \"x\"\nm invariant \"y\"\nm exports run\nrun is operation\nrun out Int64\n"
+    report = eavc.verify_patch(src)
+    assert report["ok"] is False
+    assert report["lintErrors"]
+
+
 def test_semantic_diff_detects_changes():
     old = eavc.parse(
         "a is operation\na out Int64\n"

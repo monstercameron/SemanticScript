@@ -858,6 +858,31 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+def verify_patch(source: str) -> dict:
+    """Verify an (edited) program is sound (README ss24 `verify-patch`): it must
+    parse (structural hard-errors), lint without error-severity diagnostics, and
+    — for a console target — lower to LLVM IR. Returns a structured report."""
+    report = {"ok": False, "parsed": False, "lintErrors": [], "lowerable": None,
+              "error": None}
+    try:
+        program = parse(source)
+    except EavError as exc:
+        report["error"] = str(exc)
+        return report
+    report["parsed"] = True
+    diags = lint(program)
+    report["lintErrors"] = [d.render() for d in diags if d.severity == "error"]
+    try:
+        lower_to_llvm(program)
+        report["lowerable"] = True
+    except EavError as exc:
+        # Non-console targets are intentionally out of scope, not a patch failure.
+        report["lowerable"] = False
+        report["lowerNote"] = str(exc)
+    report["ok"] = not report["lintErrors"]
+    return report
+
+
 def semantic_diff(old: Program, new: Program) -> list:
     """Semantic (not line) diff between two programs: entities added/removed and
     per-operation effect/out changes (README ss24 `diff`)."""
@@ -2396,6 +2421,18 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_verify_patch(args) -> int:
+    """Verify a program is sound; exit 1 if not."""
+    report = verify_patch(_read_source(args.path))
+    if report["error"]:
+        sys.stdout.write(f"FAIL (parse): {report['error']}\n")
+        return 1
+    for e in report["lintErrors"]:
+        sys.stdout.write(f"FAIL (lint): {e}\n")
+    sys.stdout.write("OK\n" if report["ok"] else "FAIL\n")
+    return 0 if report["ok"] else 1
+
+
 def cmd_diff(args) -> int:
     """Print the semantic diff between two programs."""
     old = parse(_read_source(args.old))
@@ -2527,6 +2564,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
     sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
     sp_scaffold.set_defaults(func=cmd_scaffold)
+
+    sp_verify = sub.add_parser("verify-patch", help="verify a program is sound")
+    sp_verify.add_argument("path", help="EAV source file, or - for stdin")
+    sp_verify.set_defaults(func=cmd_verify_patch)
 
     sp_diff = sub.add_parser("diff", help="semantic diff between two programs")
     sp_diff.add_argument("old", help="old EAV source file")
