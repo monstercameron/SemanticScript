@@ -797,6 +797,16 @@ _SEMSIG_LEGAL_KINDS = {
 }
 
 
+def is_project_root(root: str) -> bool:
+    """True when a directory is an app/project root (README §28.2): it carries a
+    `build.sem` manifest or a `src/` module tree. R-003: only such directories
+    compose into a single runtime program; a bare directory of unrelated fixtures
+    (the experiment workspace) is not a project and must not be composed."""
+    import os
+    return (os.path.isfile(os.path.join(root, "build.sem"))
+            or os.path.isdir(os.path.join(root, "src")))
+
+
 def load_project(root: str) -> str:
     """Project driver (README §28.2/§28.3): compose the runtime program of a
     project directory. The `project` entity lives in `build.sem` (the manifest,
@@ -804,7 +814,14 @@ def load_project(root: str) -> str:
     `src/**/*.sem` (recursively, so each submodule directory's root `main.sem`
     is included) that is not a `*.test.sem`. `build.sem.lock` and tests are not
     part of the runtime program. A flat `<root>/*.sem` layout (no `src/`, no
-    `build.sem`) is still accepted for single-file demos."""
+    `build.sem`) is still accepted for single-file demos.
+
+    R-003: composition fails closed for a non-project directory. When there is no
+    `src/` module tree the flat fallback scans only the *top level* (non-recursive)
+    — never the whole subtree — so a workspace directory of unrelated fixtures
+    (`apps/`, `examples/`, `std/`, `invalid_corpus/`, …) cannot be silently glued
+    into one program and report a misleading compiler error from a negative
+    fixture. The recursive `**` scan is reserved for a real `src/` tree."""
     import glob
     import os
     parts: list[str] = []
@@ -812,15 +829,60 @@ def load_project(root: str) -> str:
     if os.path.isfile(build):
         parts.append(open(build, encoding="utf-8").read())
     src_dir = os.path.join(root, "src")
-    scan = src_dir if os.path.isdir(src_dir) else root
-    files = sorted(
-        f for f in glob.glob(os.path.join(scan, "**", "*.sem"), recursive=True)
-        if classify_sem_file(f) == "source"
-    )
+    if os.path.isdir(src_dir):
+        # a real module tree may nest submodules, so recurse under `src/` only.
+        candidates = glob.glob(os.path.join(src_dir, "**", "*.sem"), recursive=True)
+    else:
+        # flat single-file-demo fallback: top-level files only (R-003). A bare
+        # workspace root is not a project, so we never recurse into its children.
+        candidates = glob.glob(os.path.join(root, "*.sem"))
+    files = sorted(f for f in candidates if classify_sem_file(f) == "source")
     if not files and not parts:
-        raise EavError(f"no source .sem files found under {scan!r} (README ss28.2)")
+        raise EavError(f"no source .sem files found under {root!r} (README ss28.2)")
     parts.extend(open(f, encoding="utf-8").read() for f in files)
     return "\n".join(parts)
+
+
+# R-003: directories that hold build/cache/asset output, not checkable source.
+# The negative-fixture corpus is excluded by design — those files are meant to
+# fail and are only exercised by the dedicated negative-corpus test.
+_WORKSPACE_SKIP_DIRS = frozenset({
+    "invalid_corpus", "dist", "build", "_build", "_pyi_build", "__pycache__",
+    "assets", "runtime", "docs", ".git",
+})
+
+
+def discover_workspace(root: str) -> list:
+    """R-003: enumerate the independently-checkable children of a *workspace*
+    directory (one that is not itself a project root). The experiment root holds
+    unrelated fixtures — apps, examples, std modules, signatures, manifests — that
+    must each be checked on their own, never composed into one program.
+
+    Returns an ordered list of `{"path", "kind", "name"}` children:
+      * a subdirectory that `is_project_root` -> kind "project" (checked as a unit;
+        the walk does not descend into it);
+      * any other `.sem`/`.semsig` file -> kind "file";
+    Excludes `_WORKSPACE_SKIP_DIRS` (notably `invalid_corpus/`, whose negative
+    fixtures are intentionally malformed) so they never leak into normal checks."""
+    import os
+    children: list = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # prune skip dirs in place so os.walk does not descend into them.
+        dirnames[:] = [d for d in dirnames if d not in _WORKSPACE_SKIP_DIRS]
+        # a project root is checked as one unit; do not walk its internals.
+        project_dirs = [d for d in dirnames if is_project_root(os.path.join(dirpath, d))]
+        for d in project_dirs:
+            full = os.path.join(dirpath, d)
+            children.append({"path": full, "kind": "project",
+                             "name": os.path.relpath(full, root)})
+        dirnames[:] = [d for d in dirnames if d not in project_dirs]
+        for f in filenames:
+            if classify_sem_file(f) in ("source", "semsig", "build"):
+                full = os.path.join(dirpath, f)
+                children.append({"path": full, "kind": "file",
+                                 "name": os.path.relpath(full, root)})
+    children.sort(key=lambda c: c["name"].replace("\\", "/"))
+    return children
 
 
 def golden_match(produced: str, golden_path: str, expected_digest: str = None,
@@ -868,6 +930,48 @@ def discover_project_tests(root: str) -> dict:
         "testsDir": [os.path.relpath(f, root) for f in tests_dir],
         "golden": [os.path.relpath(f, root) for f in golden if os.path.isfile(f)],
     }
+
+
+def load_test_project(root: str) -> Program:
+    """R-007: compose a project's *runtime* program with its companion test
+    sources into one `Program`, so `tag test` operations that live in
+    `src/**/*.test.sem` are actually executable.
+
+    `load_project` deliberately excludes `*.test.sem` (tests are not part of the
+    shipped runtime program), so `cmd_test` on a project directory previously ran
+    zero generated tests — a scaffold's `checkGreetingLength` was discovered by
+    layout but never composed in, so the test runner saw an empty program.
+
+    The composition runs `load_project` for the runtime program, then merges each
+    co-located test file (discovered via `discover_project_tests`, which recurses
+    per R-006) at the Program level. A test file is its own standalone program —
+    it carries a throwaway `project` entity (so it can be checked alone) and may
+    redeclare shared types like `ExitCode`. Those would collide on a flat text
+    concat (duplicate `is` row, two `project` entities), so the merge:
+      * drops the test file's `project` entity (the runtime project from
+        `build.sem` is authoritative); and
+      * skips any entity whose name already exists in the runtime program
+        (runtime declarations win — e.g. the shared `ExitCode` alias).
+    The remaining test-only entities (the `tag test` operations and any test
+    helper types/modules) are appended, along with their indentation islands."""
+    runtime = parse_compact(load_project(root))
+    discovered = discover_project_tests(root)
+    for rel in discovered["coLocated"]:
+        import os
+        test_source = open(os.path.join(root, rel), encoding="utf-8").read()
+        test_program = parse_compact(test_source)
+        for name in test_program.order:
+            entity = test_program.entities[name]
+            # the runtime project (build.sem) is authoritative; a test file's own
+            # project/duplicate entity is throwaway scaffolding for standalone runs.
+            if entity.kind == "project" or name in runtime.entities:
+                continue
+            runtime.add(entity)
+            # carry the merged entity's indentation islands (body sql/html/...).
+            for island_key, island_lines in test_program.islands.items():
+                if island_key[0] == name:
+                    runtime.islands[island_key] = island_lines
+    return runtime
 
 
 def app_layout_plan(app_dir: str) -> dict:
@@ -7904,13 +8008,18 @@ def jit_run(program: Program, entry: Optional[str] = None) -> int:
     return cmain()
 
 
-def run_tests(program: Program) -> dict:
+def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     """Execute every `tag test` operation by JIT-running it as an entry and
     treating a 0 exit as a pass (sem.test.v1; WS3-026/WS4-119). Project semantic
-    preflight (lint errors) runs first and blocks the runtime lane."""
+    preflight (lint errors) runs first and blocks the runtime lane.
+
+    R-007: an optional `lane` restricts execution to one discovered lane (the
+    `--lane` flag), so `eavc test <root> --lane unit` runs only the unit lane."""
     diags = lint(program)
     preflight_ok = not any(d.severity == "error" for d in diags)
     lanes = discover_tests(program)
+    if lane is not None:
+        lanes = {lane: lanes.get(lane, [])}
     tests: list = []
     if preflight_ok:
         for lane in sorted(lanes):
@@ -8585,9 +8694,62 @@ def cmd_size(args) -> int:
     return 0
 
 
+def _check_program_status(path: str) -> dict:
+    """R-003: classify one checkable surface (a single file or a composed project
+    directory) into the source-lane status used by `check`. Shared by the
+    single-program path and the per-child workspace summaries so the two cannot
+    drift. A parse failure is `compiler-error`; otherwise the lint severity picks
+    `lint-diagnostics` / `ok-with-warnings` / `ok`."""
+    try:
+        program = parse_compact(_read_program_source(path))
+    except EavError as exc:
+        return {"status": "compiler-error", "ok": False, "diagnostics": [str(exc)]}
+    diags = lint(program)
+    errors = [d for d in diags if d.severity == "error"]
+    warnings = [d for d in diags if d.severity == "warning"]
+    status = ("lint-diagnostics" if errors
+              else "ok-with-warnings" if warnings else "ok")
+    return {"status": status, "ok": status in ("ok", "ok-with-warnings"),
+            "diagnostics": [d.render() for d in diags]}
+
+
+def check_workspace(root: str) -> dict:
+    """R-003: check a *workspace* directory (not itself a project root) by checking
+    each child independently and never composing unrelated fixtures into one
+    program. Each app/example/std/signature/manifest child gets its own source
+    lane status; `invalid_corpus/` and build/cache/asset dirs are excluded. The
+    top-level status is `workspace`; `ok` is true only when every child is clean.
+    This replaces the old behavior where the bare experiment root was glued into
+    one program and reported a misleading `compiler-error` from a negative
+    fixture's `=` token."""
+    children = discover_workspace(root)
+    summaries = []
+    all_ok = True
+    for child in children:
+        result = _check_program_status(child["path"])
+        all_ok = all_ok and result["ok"]
+        summaries.append({"name": child["name"].replace("\\", "/"),
+                          "kind": child["kind"], "status": result["status"],
+                          "ok": result["ok"],
+                          "diagnostics": result["diagnostics"]})
+    return {"status": "workspace", "ok": all_ok,
+            "childCount": len(summaries), "children": summaries}
+
+
 def cmd_check(args) -> int:
     """Source lane (sem.check.v1): parse + lint, classify ok / ok-with-warnings /
-    lint-diagnostics / compiler-error (README check/readiness split)."""
+    lint-diagnostics / compiler-error (README check/readiness split).
+
+    R-003: a directory that is not itself a project root is treated as a workspace
+    — each child app/example/std/signature is checked independently and reported
+    with per-child summaries, instead of composing every unrelated fixture into one
+    program and surfacing a misleading compiler error from a negative fixture."""
+    import os
+    if (args.path != "-" and os.path.isdir(args.path)
+            and not is_project_root(args.path)):
+        report = check_workspace(args.path)
+        sys.stdout.write(_json_envelope("sem.check.v1", **report) + "\n")
+        return 0 if report["ok"] else 1
     try:
         program = parse_compact(_read_program_source(args.path))
     except EavError as exc:
@@ -8901,8 +9063,25 @@ def cmd_slice(args) -> int:
 
 
 def cmd_test(args) -> int:
-    """Discover (--discover) or execute `tag test` operations (sem.test.v1)."""
-    program = parse_compact(_read_program_source(args.path))
+    """Discover (--discover) or execute `tag test` operations (sem.test.v1).
+
+    R-007: when the path is a project directory, compose the runtime program with
+    its companion `*.test.sem` sources (`load_test_project`) so co-located test
+    operations are actually executed — `load_project` alone excludes test files,
+    so a scaffold's `checkGreetingLength` would otherwise never run."""
+    import os
+    try:
+        if (args.path != "-" and os.path.isdir(args.path)
+                and is_project_root(args.path)):
+            program = load_test_project(args.path)
+        else:
+            program = parse_compact(_read_program_source(args.path))
+    except EavError as exc:
+        sys.stdout.write(_json_envelope(
+            "sem.test.v1", ok=False, status="compiler-error",
+            preflightStatus="compiler-error", runtimeHarnessStatus="not-run",
+            compositeStatus="blocked", tests=[], diagnostics=[str(exc)]) + "\n")
+        return 1
     if getattr(args, "discover", False):
         lanes = discover_tests(program)
         selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
@@ -8913,7 +9092,7 @@ def cmd_test(args) -> int:
                 total += 1
         sys.stdout.write(f"{total} test operation(s)\n")
         return 0
-    report = run_tests(program)
+    report = run_tests(program, lane=getattr(args, "lane", None))
     sys.stdout.write(_json_envelope(
         "sem.test.v1", ok=(report["compositeStatus"] in ("pass", "blocked")),
         **report) + "\n")
