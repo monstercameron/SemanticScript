@@ -2047,6 +2047,19 @@ def test_enum_variant_discriminant_lowers():
     assert "ret i32 2" in ir_text  # readWrite's repr discriminant
 
 
+def test_e2e_operation_reference_indirect_call():
+    # WS1-036/056: operationType binding invoked indirectly -> 42.
+    proc = _eavc_run("operation_ref.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "42"
+
+
+def test_operationtype_indirect_call_lowers():
+    ir_text = _ir_for("operation_ref.sem")
+    assert 'define i64 @"double"' in ir_text
+    assert 'call i64 @"double"' in ir_text  # invoked through the Int64Endo binding
+
+
 def test_e2e_factorial_recursion():
     # README ss33.3: direct recursion is permitted. factorial(5) == 120.
     proc = _eavc_run("factorial.sem")

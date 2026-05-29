@@ -2331,6 +2331,13 @@ def _validate_calls(program: Program) -> None:
         if "." in target:
             continue  # imported / compiler-derived / intrinsic — external
         if target not in ops:
+            # README ss33.9: a bare target may be an `operationType` binding of
+            # the owning operation — an indirect call through a function pointer.
+            owner_row = ent.fact("in")
+            owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+            owner_lets = {r.payload[0] for r in owner.facts("let") if r.payload} if owner else set()
+            if target in owner_lets:
+                continue
             raise EavError(
                 f"call {ent.name!r} invokes {target!r}, which is not an in-module "
                 f"operation (unresolved bare target, README ss15)",
@@ -2711,6 +2718,11 @@ class EavCodegen:
             return self._record_layout(ent)[0]
         if ent is not None and ent.kind in ("enum", "error"):
             return ir.IntType(32)  # discriminant (errors are enum-equivalent, §9)
+        if ent is not None and ent.kind == "operationType":
+            orow = ent.fact("out")
+            ret = self.ir_type(orow.payload[0]) if orow and orow.payload else ir.VoidType()
+            params = [self.ir_type(r.payload[0]) for r in ent.facts("in") if r.payload]
+            return ir.FunctionType(ret, params).as_pointer()  # function pointer (§33.9)
         # other named types: opaque i64 handle in the console model.
         return ir.IntType(64)
 
@@ -2933,6 +2945,11 @@ class EavCodegen:
         if tok in sym:
             return self._load(sym[tok], builder)
         resolved = self.resolve_type_name(type_name)
+        # README ss33.9: an operationType-typed value referencing an operation is
+        # that operation's function pointer (a first-class operation reference).
+        ote = self.program.entities.get(resolved)
+        if ote is not None and ote.kind == "operationType" and tok in self.functions:
+            return self.functions[tok]
         # Not a binding -> must be a well-formed literal of the expected type.
         # An unbound identifier here is an out-of-scope reference (README ss25).
         if resolved == "String":
@@ -3192,6 +3209,14 @@ class EavCodegen:
             builder.call(self.runtime("strcpy"), [buf, left])
             builder.call(self.runtime("strcat"), [buf, right])
             result = buf
+        elif target in sym:
+            # README ss33.9: indirect call through an operationType binding.
+            fnptr = self._load(sym[target], builder)
+            vals = [
+                self._resolve(a.payload[2], a.payload[1], builder, sym)
+                for a in call.facts("arg")
+            ]
+            result = builder.call(fnptr, vals)
         elif target in self.functions:
             callee = self.program.entities[target]
             vals = []
