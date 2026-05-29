@@ -150,6 +150,9 @@ DIAGNOSTICS.update({
     "SS3043": {"tier": "T1", "summary": "Duplicate `export c` symbol.",
                "found": "Two operations exporting the same C symbol.",
                "suggested": "Export symbols must be unique (README §30.4.2)."},
+    "SS3002": {"tier": "T0", "summary": "configure op declares a runtime effect.",
+               "found": "A build-time `configure` op with a non-build.* effect.",
+               "suggested": "configure is build-time; use only build.* (README §30.3.2)."},
     "SS2601": {"tier": "T1", "summary": "Unknown .semsig schema version.",
                "found": "A `semsig` header with an unsupported version.",
                "suggested": "Regenerate with a supported toolchain (README §26)."},
@@ -1713,7 +1716,33 @@ def _validate_program(program: Program) -> None:
                     row.line,
                 )
     _validate_calls(program)
+    _validate_configure(program)
     _validate_cleanup(program)
+
+
+def _validate_configure(program: Program) -> None:
+    """A `configure` op is build-time (README ss30.3.2): it may use only
+    build-time (`build.*`) capabilities — a runtime effect is an error."""
+    configure_ops = {
+        p.payload[0]
+        for proj in program.of_kind("project")
+        for p in proj.facts("configure")
+        if p.payload
+    }
+    for name in configure_ops:
+        op = program.entities.get(name)
+        if op is None:
+            continue
+        for eff in op.facts("effect"):
+            resource = eff.payload[1] if len(eff.payload) >= 2 else ""
+            if not resource.startswith("build."):
+                raise EavError(
+                    f"configure op {name!r} declares the runtime effect "
+                    f"`{' '.join(eff.payload)}`; configure is build-time and may "
+                    f"use only build.* capabilities (README ss30.3.2)",
+                    eff.line,
+                    code="SS3002",
+                )
     _validate_step_split(program)
     _validate_activation_count(program)
     _validate_effect_coverage(program)
@@ -2523,7 +2552,15 @@ class EavCodegen:
             scope = st.fact("scope")
             if scope and scope.payload and scope.payload[0] == "module":
                 self._make_module_storage(st)
-        ops = self.program.of_kind("operation")
+        # README ss30.3.2: a `configure` op runs at build time and is excluded
+        # from the runtime build — it is not lowered into the program module.
+        configure_ops = {
+            p.payload[0]
+            for proj in self.program.of_kind("project")
+            for p in proj.facts("configure")
+            if p.payload
+        }
+        ops = [o for o in self.program.of_kind("operation") if o.name not in configure_ops]
         for op in ops:
             self.functions[op.name] = self._declare_function(op)
         for op in ops:

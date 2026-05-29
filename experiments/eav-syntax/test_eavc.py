@@ -160,6 +160,34 @@ def test_sha256_digest_verify_and_mismatch():
     assert exc.value.code == "SS2804"
 
 
+def test_configure_op_excluded_from_runtime_build():
+    # WS3-038: a configure op is not lowered into the runtime module.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\nP configure setup\n"
+        "m is module\nm path a.b\n"
+        "setup is operation\nsetup out ExitCode\n"
+        "setup let s immutable ExitCode 0\nsetup return s\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert '@"main"' in ir_text
+    assert '@"setup"' not in ir_text  # build-time, excluded
+
+
+def test_configure_runtime_effect_rejected():
+    # WS3-005: a configure op with a runtime effect is rejected.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\nP configure setup\n"
+        "m is module\nm path a.b\n"
+        "setup is operation\nsetup out ExitCode\nsetup effect write console.stdout\n"
+        "main is operation\nmain out ExitCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS3002"
+
+
 def test_native_link_merge_and_dedup():
     # WS3-037: per-platform output + ordered/deduped native-link flags.
     prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
