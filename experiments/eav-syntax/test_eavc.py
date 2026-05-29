@@ -3742,6 +3742,18 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+def test_app_http_runtime_gauntlet_handler_runs():
+    # X-044: handler ABIs lint clean (WS2-026) and a handler runs directly.
+    src = open(os.path.join(APPS, "http-runtime-gauntlet", "main.sem"), encoding="utf-8").read()
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "200"
+
+
 def test_app_taskforge_web_content_core_runs():
     # X-043: the web app's content core (sqlite query -> html render) runs,
     # integrating the real sqlite + html runtimes; the server loop is deferred.

@@ -1,0 +1,95 @@
+# http-runtime-gauntlet — EAV port core (apps/http-runtime-gauntlet, webServer).
+#
+# The HTTP server loop is DEFERRED (README §34/WS3-017, gated behind
+# sigs/standard.http.semsig). Per X-044 this ports the conformance scaffolding so
+# it parses + lints clean: an `HttpServer`-style `webServer` entity whose route /
+# notFound / methodNotAllowed handler ABIs are validated by WS2-026. The harness
+# also RUNS each handler directly (server-free) through a console driver that
+# invokes the health handler with a stub request/response and prints its status,
+# so the handler logic JIT-runs and builds to an exe today.
+
+HttpRuntimeGauntlet is project
+HttpRuntimeGauntlet module appHttpGauntlet
+HttpRuntimeGauntlet target console
+HttpRuntimeGauntlet entry main
+
+appHttpGauntlet is module
+appHttpGauntlet path apps.httpRuntimeGauntlet
+appHttpGauntlet exports main
+appHttpGauntlet purpose "Validate handler ABIs and run a handler directly (server loop deferred)"
+appHttpGauntlet invariant "Handlers conform to the §14 ABI; the health handler returns 200"
+
+ExitCode is alias
+ExitCode for Int32
+HttpRequest is alias
+HttpRequest for OpaquePointer
+HttpResponse is alias
+HttpResponse for OpaquePointer
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+gauntletServer is webServer
+gauntletServer host home
+gauntletServer port 8080
+gauntletServer route GET /health healthHandler
+gauntletServer notFound notFoundHandler
+gauntletServer methodNotAllowed methodNotAllowedHandler
+
+healthHandler is operation
+healthHandler in request HttpRequest
+healthHandler in response HttpResponse
+healthHandler out Int32
+healthHandler async no
+healthHandler purpose "Return 200 for a health probe"
+healthHandler invariant "Always returns the OK status"
+healthHandler let okStatus immutable Int32 200
+healthHandler return okStatus
+
+notFoundHandler is operation
+notFoundHandler in request HttpRequest
+notFoundHandler in response HttpResponse
+notFoundHandler out Int32
+notFoundHandler async no
+notFoundHandler purpose "Return 404 for an unmatched route"
+notFoundHandler invariant "Always returns the not-found status"
+notFoundHandler let notFoundStatus immutable Int32 404
+notFoundHandler return notFoundStatus
+
+methodNotAllowedHandler is operation
+methodNotAllowedHandler in request HttpRequest
+methodNotAllowedHandler in response HttpResponse
+methodNotAllowedHandler out Int32
+methodNotAllowedHandler async no
+methodNotAllowedHandler purpose "Return 405 for a disallowed method"
+methodNotAllowedHandler invariant "Always returns the method-not-allowed status"
+methodNotAllowedHandler let methodStatus immutable Int32 405
+methodNotAllowedHandler return methodStatus
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main memory heap no
+main purpose "Invoke the health handler directly (server-free) and print its status"
+main invariant "Prints the health handler's 200 status"
+main let stubRequest immutable HttpRequest 0
+main let stubResponse immutable HttpResponse 0
+main let okCode immutable ExitCode 0
+main do callHealth
+main do showStatus
+main return okCode
+
+callHealth is call
+callHealth in main
+callHealth invokes healthHandler
+callHealth arg request HttpRequest stubRequest
+callHealth arg response HttpResponse stubResponse
+callHealth out status Int32
+
+showStatus is call
+showStatus in main
+showStatus invokes console.writeIntegerLine
+showStatus arg value Int64 status
