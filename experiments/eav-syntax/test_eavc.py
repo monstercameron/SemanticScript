@@ -4560,6 +4560,35 @@ def test_every_diagnostic_code_is_tier_classified():
         assert meta.get("tier") in ("T0", "T1", "T2", "T3", "T4"), code
 
 
+def _decode_src(limit_row=""):
+    return (
+        "RawJson is alias\nRawJson for String\nRawJson typeTrust rawExternal\n"
+        "JsonDoc is alias\nJsonDoc for OpaquePointer\n"
+        "parseReq is operation\nparseReq out ExitCode\nparseReq async no\n"
+        'parseReq purpose "p"\nparseReq invariant "i"\n'
+        "parseReq in body RawJson\nparseReq let okCode immutable ExitCode 0\n"
+        "parseReq do decode\nparseReq return okCode\n"
+        "decode is call\ndecode in parseReq\ndecode invokes json.parse\n"
+        "decode arg text RawJson body\n" + limit_row +
+        "decode out value JsonDoc\ndecode catch e JsonError\n"
+        "JsonError is error\n"
+    )
+
+
+def test_untrusted_decode_without_limit_rejected():
+    # X-077 / §16: decoding a rawExternal input with no `limit maximumBytes` is a
+    # deserialization-DoS hole -> SS3077.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_decode_src())
+    assert getattr(exc.value, "code", None) == "SS3077"
+
+
+def test_untrusted_decode_with_limit_accepted():
+    # X-077: the same decode with a `limit maximumBytes` cap is accepted.
+    prog = eavc.parse(_decode_src("decode limit maximumBytes 65536\n"))
+    assert "parseReq" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

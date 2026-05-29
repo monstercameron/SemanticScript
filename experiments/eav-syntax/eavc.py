@@ -186,6 +186,9 @@ DIAGNOSTICS.update({
     "SS3074": {"tier": "T1", "summary": "Non-constant-time comparison of a secret.",
                "found": "A `math.*`/`compare.*` equality on a `typeTrust secret` operand (timing side-channel).",
                "suggested": "Compare secrets only with `crypto.equalConstantTime` (README §13)."},
+    "SS3077": {"tier": "T1", "summary": "Untrusted decode without a size limit.",
+               "found": "A decode (json.parse/decode/createDocument/codec.decode) of a `rawExternal` input with no `limit maximumBytes` row.",
+               "suggested": "Bound untrusted decoding: add `limit maximumBytes <n>` (and depth/element caps) so malformed input cannot exhaust memory (README §16)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -1084,6 +1087,7 @@ RESERVED_WORDS = {
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "typeTrust",                           # X-070 trust label on a type
+    "limit",                               # X-077 decode-limit row
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1140,12 +1144,14 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "cleanedBy", "effect", "async",  # async = tolerated-deprecated (ss5)
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
         "takesOwnership",                     # WS1-113 ownership transfer
+        "limit",                              # X-077 decode limits
     },
     "task": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
         "cleanedBy", "effect",
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
         "takesOwnership",                     # WS1-113 ownership transfer
+        "limit",                              # X-077 decode limits
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
     "storage": {
@@ -3209,6 +3215,7 @@ def _validate_program(program: Program) -> None:
     _validate_trust_flow(program)
     _validate_sink_typing(program)
     _validate_secret_flow(program)
+    _validate_decode_limits(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4420,6 +4427,44 @@ def _validate_secret_flow(program: Program) -> None:
                             f"{target!r}; secrets compare only via "
                             f"`crypto.equalConstantTime` (timing side-channel, README §13)",
                             ent.line, code="SS3074")
+
+
+_DECODE_TARGETS = (
+    "json.parse", "json.decode", "json.createDocument", "codec.decode",
+)
+
+
+def _validate_decode_limits(program: Program) -> None:
+    """X-077 / README §16: decoding untrusted input must be bounded. A decode
+    call (`json.parse`/`json.decode`/`json.createDocument`/`codec.decode`) whose
+    input is a `rawExternal`-typed value must carry a `limit maximumBytes <n>` row
+    so malformed/hostile input cannot exhaust memory (deserialization-DoS). Missing
+    the limit is a hard error (SS3077)."""
+    raw_types = {program.entities[n].name for n in program.order
+                 for r in program.entities[n].facts("typeTrust")
+                 if r.payload and r.payload[0] == "rawExternal"}
+    if not raw_types:
+        return
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target not in _DECODE_TARGETS:
+            continue
+        feeds_untrusted = any(len(a.payload) >= 2 and a.payload[1] in raw_types
+                              for a in ent.facts("arg"))
+        if not feeds_untrusted:
+            continue
+        has_byte_limit = any(l.payload and l.payload[0] == "maximumBytes"
+                             for l in ent.facts("limit"))
+        if not has_byte_limit:
+            raise EavError(
+                f"call {ent.name!r} decodes untrusted input with {target!r} but "
+                f"declares no `limit maximumBytes <n>`; bound untrusted decoding so "
+                f"hostile input cannot exhaust memory (README §16)",
+                ent.line, code="SS3077")
 
 
 def _validate_time_safety(program: Program) -> None:

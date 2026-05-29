@@ -4165,6 +4165,18 @@ transcript: the compile-time block is stronger than runtime redaction.
 `math.*`/`compare.*` equality leaks via timing — a hard error (**SS3074**).
 Secrets compare only through `crypto.equalConstantTime`.
 
+**Bounded untrusted decoding (X-077).** A decode of a `rawExternal` input
+(`json.parse`/`json.decode`/`json.createDocument`/`codec.decode`) must carry a
+`limit maximumBytes <n>` row so malformed/hostile input cannot exhaust memory; an
+unbounded untrusted decode is a hard error (**SS3077**, deserialization-DoS
+defense):
+
+```sem
+decode invokes json.parse
+decode arg text RawJson body          # body is typeTrust rawExternal
+decode limit maximumBytes 65536       # required for untrusted input
+```
+
 ### Async intrinsics
 
 ```sem
