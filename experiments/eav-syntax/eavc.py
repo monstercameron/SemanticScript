@@ -403,11 +403,32 @@ class Program:
         return out
 
 
-def _validate_value_literal(tok: str, line: int) -> None:
+# Inclusive integer ranges per primitive width (README ss10/ss33.6).
+_INT_RANGES = {
+    "Int8": (-128, 127), "UInt8": (0, 255),
+    "Int16": (-32768, 32767), "UInt16": (0, 65535),
+    "Int32": (-2147483648, 2147483647), "UInt32": (0, 4294967295),
+    "ExitCode": (-2147483648, 2147483647),
+    "Int64": (-(2 ** 63), 2 ** 63 - 1), "UInt64": (0, 2 ** 64 - 1),
+}
+
+
+def _resolve_alias(type_name: str, alias_map: dict) -> str:
+    seen: set = set()
+    while type_name in alias_map and type_name not in seen:
+        seen.add(type_name)
+        type_name = alias_map[type_name]
+    return _norm_type(type_name)
+
+
+def _validate_value_literal(
+    tok: str, line: int, type_name: str = None, alias_map: dict = None
+) -> None:
     """Validate a `let`/`arg` value token if it is a numeric literal attempt.
 
     Identifiers (binding refs), strings, bool/enum tokens are skipped. A token
-    led by a digit is an integer literal (README ss2/ss33.1)."""
+    led by a digit is an integer literal (README ss2/ss33.1); when the annotated
+    type is an integer primitive, the literal is range-checked (README ss33.6)."""
     if not tok:
         return
     core = tok
@@ -437,6 +458,17 @@ def _validate_value_literal(tok: str, line: int) -> None:
                 )
         else:
             _validate_int_literal(core, line)
+            if type_name is not None:
+                resolved = _resolve_alias(type_name, alias_map or {})
+                rng = _INT_RANGES.get(resolved)
+                if rng is not None:
+                    value = _parse_int_literal_value(tok)
+                    if not (rng[0] <= value <= rng[1]):
+                        raise EavError(
+                            f"integer literal {tok!r} is out of range for {resolved} "
+                            f"[{rng[0]}, {rng[1]}] (README ss33.6)",
+                            line,
+                        )
     elif core[0] == ".":
         raise EavError(
             f"malformed float literal {tok!r}: no leading dot (README ss2)", line
@@ -633,6 +665,11 @@ def _validate_program(program: Program) -> None:
     Lint-tier checks live in eavlint.py; this pass enforces only rules the spec
     marks as a *hard error* during parsing.
     """
+    alias_map = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
     for ent in (program.entities[name] for name in program.order):
         if ent.kind == "call" and ent.fact("async") is not None:
             # README ss5/ss15.5: `async` on a call is tolerated-deprecated; it
@@ -672,11 +709,15 @@ def _validate_program(program: Program) -> None:
                         row.line,
                     )
                 if len(row.payload) > 3:
-                    _validate_value_literal(row.payload[3], row.line)
+                    _validate_value_literal(
+                        row.payload[3], row.line, row.payload[2], alias_map
+                    )
         if ent.kind in ("call", "task"):
             for row in ent.facts("arg"):
                 if len(row.payload) > 2:
-                    _validate_value_literal(row.payload[2], row.line)
+                    _validate_value_literal(
+                        row.payload[2], row.line, row.payload[1], alias_map
+                    )
         for row in ent.facts("out"):
             if row.payload and row.payload[0] == "Result" and len(row.payload) != 3:
                 raise EavError(

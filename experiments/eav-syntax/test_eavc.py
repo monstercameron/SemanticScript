@@ -337,6 +337,21 @@ def test_parse_record_fields_keep_doc_order():
     assert fields == ["id", "title", "done"]
 
 
+def test_literal_width_range_checked():
+    # README ss33.6: a literal must fit its annotated type's range.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("main is operation\nmain let b immutable UInt8 300\n")
+    assert "out of range for UInt8" in exc.value.message
+    with pytest.raises(eavc.EavError):
+        eavc.parse("main is operation\nmain let i immutable Int8 200\n")
+    # in range is fine; ExitCode (alias for Int32) accepts 200
+    prog = eavc.parse(
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain let s immutable ExitCode 200\n"
+    )
+    assert "main" in prog.entities
+
+
 @pytest.mark.parametrize("good", ["0", "42", "1_000", "0xFF", "0xFF_FF", "0b1010"])
 def test_int_literal_accepts(good):
     prog = eavc.parse(

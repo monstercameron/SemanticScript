@@ -90,7 +90,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9 _(eavc: errorCase `of` validation; `test_errorcase_requires_of`, `test_errorcase_enumeration_by_of`)_
 - [x] WS1-035 `Result OK ERR` (only generic). →test: arity. §10 _(eavc: `_validate_program` out-arity check; `test_parse_result_arity_enforced`)_
 - [ ] WS1-036 `operationType` (`is in out`) function-pointer type. →test: §5 row; indirect-call type-check. §33.9
-- [ ] WS1-037 Literal width: literal takes annotated-position type, compile-time range-check; un-annotated = Int64. →test: `let s HttpStatusCode 200` ok, `… 99999` (out of Int32) error. §33.6
+- [x] WS1-037 Literal width: literal takes annotated-position type, compile-time range-check; un-annotated = Int64. →test: `let s HttpStatusCode 200` ok, `… 99999` (out of Int32) error. §33.6 _(eavc: `_INT_RANGES` range-check in `_validate_value_literal` (alias-resolved); `test_literal_width_range_checked`)_
 - [ ] WS1-038 Type resolution for imported types by bare name; ambiguous-bare = error; alias `for importAlias.Type` disambiguates. →test: two imports same type → error → alias fixes. §7
 - [ ] WS1-039 Record fieldwise equality; ordering on records invalid; layout compiler-chosen. →test: record `equals` deep; `greaterThan` reject. §33.7
 
