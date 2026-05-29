@@ -2994,6 +2994,28 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_deps_context_symbols_surfaces(capsys):
+    # WS4-116: deps / context / symbols inspection surfaces.
+    import json
+    path = os.path.join(EXAMPLES, "hello_world.sem")
+    eavc.main(["deps", path])
+    deps = json.loads(capsys.readouterr().out)
+    assert deps["surface"] == "sem.deps.v1" and "imports" in deps and "requires" in deps
+    eavc.main(["context", path])
+    ctx = json.loads(capsys.readouterr().out)
+    assert ctx["surface"] == "sem.context.v1"
+    assert ctx["entry"] == "main" and ctx["targets"] == ["console"]
+    eavc.main(["symbols", path])
+    sym = json.loads(capsys.readouterr().out)
+    assert sym["surface"] == "sem.symbols.v1"
+    names = {s["name"] for s in sym["symbols"]}
+    assert {"main", "HelloWorld", "ExitCode"}.issubset(names)
+    eavc.main(["size", path])
+    sz = json.loads(capsys.readouterr().out)
+    assert sz["surface"] == "sem.size.v1"
+    assert sz["entities"] >= 5 and sz["rows"] > sz["entities"]
+
+
 def test_eval_snippet_jit(tmp_path):
     # WS4-118: eval auto-wraps a snippet (no project) and JIT-runs it.
     snippet = (

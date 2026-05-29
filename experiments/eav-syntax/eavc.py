@@ -5601,6 +5601,8 @@ def build_executable(program: Program, out_path: str) -> str:
 SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
+    "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
+    "sem.size.v1",
 )
 
 EAV_AGENT_RULES = (
@@ -5678,6 +5680,75 @@ def cmd_eval(args) -> int:
     sys.stdout.write(_json_envelope(
         "sem.eval.v1", ok=(code == 0), exitCode=code,
         stdout=out, stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n")) + "\n")
+    return 0
+
+
+def cmd_deps(args) -> int:
+    """Dependency graph (sem.deps.v1): module `imports` + project `require` rows."""
+    program = parse_compact(_read_source(args.path))
+    imports, requires = [], []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "module":
+            for r in ent.facts("imports"):
+                if r.payload:
+                    imports.append({"alias": r.payload[0],
+                                    "path": r.payload[1] if len(r.payload) > 1 else None})
+        if ent.kind == "project":
+            for r in ent.facts("require"):
+                if r.payload:
+                    requires.append({"path": r.payload[0],
+                                     "version": r.payload[1] if len(r.payload) > 1 else None})
+    sys.stdout.write(_json_envelope("sem.deps.v1", imports=imports, requires=requires) + "\n")
+    return 0
+
+
+def cmd_context(args) -> int:
+    """Project envelope (sem.context.v1): target(s), entry, mode, modules."""
+    program = parse_compact(_read_source(args.path))
+    projects = program.of_kind("project")
+    proj = projects[0] if projects else None
+
+    def vals(ent, pred):
+        return [r.payload[0] for r in ent.facts(pred) if r.payload]
+
+    ctx = {
+        "project": proj.name if proj else None,
+        "targets": vals(proj, "target") if proj else [],
+        "entry": (proj.fact("entry").payload[0]
+                  if proj and proj.fact("entry") and proj.fact("entry").payload else None),
+        "mode": (proj.fact("mode").payload[0]
+                 if proj and proj.fact("mode") and proj.fact("mode").payload else None),
+        "modules": [program.entities[n].name for n in program.order
+                    if program.entities[n].kind == "module"],
+    }
+    sys.stdout.write(_json_envelope("sem.context.v1", **ctx) + "\n")
+    return 0
+
+
+def cmd_symbols(args) -> int:
+    """Full source graph (sem.symbols.v1): every entity with kind + row count."""
+    program = parse_compact(_read_source(args.path))
+    symbols = [
+        {"name": program.entities[n].name, "kind": program.entities[n].kind,
+         "rows": len(program.entities[n].rows), "line": program.entities[n].line}
+        for n in program.order
+    ]
+    sys.stdout.write(_json_envelope("sem.symbols.v1", symbols=symbols) + "\n")
+    return 0
+
+
+def cmd_size(args) -> int:
+    """Cheap footprint probe (sem.size.v1): entity + row counts by kind."""
+    program = parse_compact(_read_source(args.path))
+    by_kind: dict = {}
+    rows = 0
+    for n in program.order:
+        ent = program.entities[n]
+        by_kind[ent.kind] = by_kind.get(ent.kind, 0) + 1
+        rows += 1 + len(ent.rows)
+    sys.stdout.write(_json_envelope(
+        "sem.size.v1", entities=len(program.order), rows=rows, byKind=by_kind) + "\n")
     return 0
 
 
@@ -5971,6 +6042,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    for cname, cfn, chelp in (
+        ("deps", cmd_deps, "dependency graph (imports + require)"),
+        ("context", cmd_context, "project envelope"),
+        ("symbols", cmd_symbols, "full entity graph"),
+        ("size", cmd_size, "cheap footprint probe"),
+    ):
+        sp = sub.add_parser(cname, help=chelp)
+        sp.add_argument("path", help="EAV/compact source file, or - for stdin")
+        sp.add_argument("--json", action="store_true")
+        sp.set_defaults(func=cfn)
 
     sp_eval = sub.add_parser("eval", help="JIT-run a snippet (auto-wrapped)")
     sp_eval.add_argument("path", help="EAV snippet/program file, or - for stdin")
