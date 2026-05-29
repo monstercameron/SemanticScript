@@ -103,6 +103,23 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+def test_normalize_preview_round_trip_preserved():
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    p = eavc.normalize_preview(src)
+    assert p["roundTripPreserved"] is True
+    assert p["rowCount"] > 0
+    # a metadata-before-structural source is reported as "changed"
+    unsorted_src = (
+        "main is operation\nmain purpose \"p\"\nmain out ExitCode\n"
+    )
+    assert eavc.normalize_preview(unsorted_src)["changed"] is True
+
+
+def test_normalize_preview_already_canonical_unchanged():
+    canonical = eavc.format_program(eavc.parse(eavc.scaffold("console-program")))
+    assert eavc.normalize_preview(canonical)["changed"] is False
+
+
 def test_verify_patch_ok_on_scaffold():
     report = eavc.verify_patch(eavc.scaffold("console-program"))
     assert report["ok"] is True

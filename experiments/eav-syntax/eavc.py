@@ -858,6 +858,36 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+def _logical_row_count(program: Program) -> int:
+    """Total EAV rows (one `is` row + each fact/step row per entity)."""
+    return sum(1 + len(program.entities[n].rows) for n in program.order)
+
+
+def normalize_preview(source: str) -> dict:
+    """Preview normalizing a program to canonical EAV (README ss21/ss24): row
+    count, whether formatting would change the bytes, and the gate-0 round-trip
+    check (entity set + per-entity row counts preserved through fmt)."""
+    program = parse(source)
+    formatted = format_program(program)
+    reparsed = parse(formatted)
+    # fmt reorders entities by kind, so compare the entity *set* and per-entity
+    # row counts, not the document order.
+    preserved = (
+        set(program.order) == set(reparsed.order)
+        and all(
+            len(program.entities[n].rows) == len(reparsed.entities[n].rows)
+            for n in program.order
+        )
+    )
+    return {
+        "rowCount": _logical_row_count(program),
+        "formattedRowCount": _logical_row_count(reparsed),
+        "rowDelta": _logical_row_count(reparsed) - _logical_row_count(program),
+        "changed": formatted.strip() != source.strip(),
+        "roundTripPreserved": preserved,
+    }
+
+
 def verify_patch(source: str) -> dict:
     """Verify an (edited) program is sound (README ss24 `verify-patch`): it must
     parse (structural hard-errors), lint without error-severity diagnostics, and
@@ -2421,6 +2451,17 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_normalize(args) -> int:
+    """Preview normalizing a program (row delta + round-trip gate)."""
+    p = normalize_preview(_read_source(args.path))
+    sys.stdout.write(
+        f"rows {p['rowCount']} -> {p['formattedRowCount']} (delta {p['rowDelta']:+d})\n"
+        f"changed: {p['changed']}\n"
+        f"round-trip preserved (gate-0): {p['roundTripPreserved']}\n"
+    )
+    return 0
+
+
 def cmd_verify_patch(args) -> int:
     """Verify a program is sound; exit 1 if not."""
     report = verify_patch(_read_source(args.path))
@@ -2568,6 +2609,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_verify = sub.add_parser("verify-patch", help="verify a program is sound")
     sp_verify.add_argument("path", help="EAV source file, or - for stdin")
     sp_verify.set_defaults(func=cmd_verify_patch)
+
+    sp_norm = sub.add_parser("normalize", help="preview normalizing to canonical EAV")
+    sp_norm.add_argument("path", help="EAV source file, or - for stdin")
+    sp_norm.add_argument("--preview", action="store_true", help="(default) preview only")
+    sp_norm.set_defaults(func=cmd_normalize)
 
     sp_diff = sub.add_parser("diff", help="semantic diff between two programs")
     sp_diff.add_argument("old", help="old EAV source file")
