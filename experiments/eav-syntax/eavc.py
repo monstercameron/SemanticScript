@@ -858,6 +858,28 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+def describe(program: Program, name: str) -> str:
+    """A human/agent summary of an entity's contract (README ss24 `explain`)."""
+    ent = program.entities.get(name)
+    if ent is None:
+        raise EavError(f"no entity named {name!r}")
+    lines = [f"{ent.name} : {ent.kind}"]
+    purpose = ent.fact("purpose")
+    if purpose and purpose.payload:
+        lines.append(f"  purpose  {' '.join(purpose.payload)}")
+    for inv in ent.facts("invariant"):
+        lines.append(f"  invariant {' '.join(inv.payload)}")
+    for pred in ("in", "out", "effect", "uses", "invokes", "arg", "catch", "owns",
+                 "cleanedBy", "grants", "field", "variant", "of", "for"):
+        for r in ent.facts(pred):
+            lines.append(f"  {pred} {' '.join(r.payload)}".rstrip())
+    if ent.kind in ("operation", "function"):
+        steps = [r for r in ent.rows if r.label is not None or r.predicate in STEP_PREDICATES]
+        labels = [r.label for r in ent.rows if r.label is not None]
+        lines.append(f"  steps {len(steps)}; labels {labels}")
+    return "\n".join(lines)
+
+
 GRAPH_KINDS = ("calls", "control")
 
 
@@ -2341,6 +2363,17 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_describe(args) -> int:
+    """Summarize an entity's contract."""
+    program = parse(_read_source(args.path))
+    try:
+        sys.stdout.write(describe(program, args.entity) + "\n")
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_graph(args) -> int:
     """Emit a calls/control graph as DOT or mermaid."""
     program = parse(_read_source(args.path))
@@ -2452,6 +2485,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
     sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
     sp_scaffold.set_defaults(func=cmd_scaffold)
+
+    sp_describe = sub.add_parser("describe", help="summarize an entity's contract")
+    sp_describe.add_argument("path", help="EAV source file, or - for stdin")
+    sp_describe.add_argument("entity", help="entity name")
+    sp_describe.set_defaults(func=cmd_describe)
 
     sp_graph = sub.add_parser("graph", help="emit a calls/control graph")
     sp_graph.add_argument("path", help="EAV source file, or - for stdin")

@@ -103,6 +103,21 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+def test_describe_entity_summary():
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    text = eavc.describe(prog, "addTwoValues")
+    assert "addTwoValues : operation" in text
+    assert "in leftValue Int64" in text
+    assert "out Int64" in text
+    assert "steps" in text
+
+
+def test_describe_unknown_entity_errors():
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    with pytest.raises(eavc.EavError):
+        eavc.describe(prog, "nope")
+
+
 def test_graph_calls_dot():
     ir = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
     dot = eavc.graph(ir, "calls", "dot")

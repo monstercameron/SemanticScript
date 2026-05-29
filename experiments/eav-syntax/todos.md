@@ -262,7 +262,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 4B. Agent tools (§24) — bind to existing `sem.*.v1` JSON surfaces
 - [ ] WS4-010 `sem slice <entity>` (default + --with-calls/cleanup/tasks/--path/--refs/--for-edit; prompt/json/eav modes; 7-point agent contract; stable sections). →test: slice completeness contract (every binding has def, every label def, etc.). §24
-- [ ] WS4-011 `sem explain` (entity summary) + map current `explain <CODE>`. →test: failure-path summary golden. §24
+- [x] WS4-011 `sem explain` (entity summary) + map current `explain <CODE>`. →test: failure-path summary golden. §24 _(eavc: `describe(program, entity)` contract summary + `eavc.py describe`; code-explain via `explain`/`eavc.py explain`; `test_describe_entity_summary`, `test_describe_unknown_entity_errors`)_
 - [x] WS4-012 `sem query` (entity/kind/effects/uses/labels/cleanup/async-unresolved/refs/types-ambiguous/ownership-leaked). →test: each query. §24 _(eavc: `query(program, dimension)` over effects/uses/labels/calls/types/ownership-leaked + `eavc.py query`; `test_query_dimensions`, `test_query_ownership_leaked`. async-unresolved/types-ambiguous dimensions pending those features.)_
 - [ ] WS4-013 `sem doctor` (severity-grouped + suggested `sem add`). →test: SS1502/SS1610 surfaced + fix cmds. §24
 - [ ] WS4-014 `sem add` / `sem rename` (structured edits; arg-type validation; semantic rename). →test: add validates signature; rename updates refs, rejects ambiguous. §24
