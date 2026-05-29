@@ -5151,6 +5151,22 @@ def test_buffer_slice_view_cannot_escape():
     assert getattr(exc.value, "code", None) == "SS1560"
 
 
+def test_memory_concurrency_vocab_fully_absorbed():
+    # WS1-117: the §1J memory + concurrency vocabulary is absorbed into the
+    # language — the new entity kinds are registered, every new token is reserved,
+    # and the token-sync drift guard is green (every token has a §5/§22 home).
+    for kind in ("region", "sharedState"):
+        assert kind in eavc.ENTITY_KINDS, kind
+        assert kind in eavc.ALLOWED_PREDICATES, kind
+    for tok in ("borrows", "lifetime", "mayEscape", "consumes", "takesOwnership",
+                "region", "strategy", "capacity", "allocateIn", "releaseRegion",
+                "sharedState", "guard", "protectedBy", "readShared", "setShared"):
+        assert tok in eavc.RESERVED_WORDS, tok
+    for step in ("readShared", "setShared", "allocateIn", "releaseRegion"):
+        assert step in eavc.STEP_PREDICATES, step
+    assert eavc.token_sync_drift() == set()  # all homed in §5/§22, no orphans
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

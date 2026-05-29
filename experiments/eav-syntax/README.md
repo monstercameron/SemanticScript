@@ -373,20 +373,22 @@ predicates (§6) are available on every entity kind and listed separately.
 | `project` | `is module target entry mode languageVersion toolchain require replace allowEffect platform constant configure nativeLibrary nativeHeader nativeLinkFlag` + `.sem.lock`-only `resolved toolchainResolved effectSurface` | — |
 | `module` | `is path imports exports` | — |
 | `capability` | `is grants` | — |
-| `error` | `is` | — |
+| `error` | `is typeTrust` | — |
 | `errorCase` | `is of payload` | — |
-| `record` | `is field` | — |
-| `enum` | `is variant repr` | — |
-| `alias` | `is for` | — |
-| `operation` | `is in out effect uses memory async label let body export` | `do defer start join poll cancel detach branch return goto at` |
-| `call` | `is in invokes arg out catch discards owns cleanedBy effect` | — |
-| `task` | `is in invokes arg out catch discards owns cleanedBy effect` | — |
+| `record` | `is field typeTrust` | — |
+| `enum` | `is variant repr typeTrust` | — |
+| `alias` | `is for typeTrust` | — |
+| `sharedState` | `is scope type mutability value guard owner` (WS2-083) | — |
+| `region` | `is strategy scope capacity` (WS1-112) | — |
+| `operation` | `is in out effect uses memory async label let body export trustConstraint errorBoundary optOut` | `do defer start join poll cancel detach branch return goto set at readShared setShared allocateIn releaseRegion` |
+| `call` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
+| `task` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
 | `cleanup` | `is in call onFailure because cleans` | — |
 | `storage` | `is scope type mutability value body literalSource literalDigest` | — |
 | `htmlTemplate` | `is body` | — |
-| `webServer` | `is host port startup shutdown notFound methodNotAllowed route middleware` | — |
+| `webServer` | `is host port startup shutdown notFound methodNotAllowed route middleware optOut` | — |
 | `platform` | `is os arch targetRuntime output override nativeLibrary nativeHeader nativeLinkFlag` (build.sem, §28.1) | — |
-| `intrinsic` | `is target arg out catch async owns trustConstraint` | — |
+| `intrinsic` | `is target arg out catch async owns trustConstraint clientResponse borrows lifetime mayEscape` | — |
 | `semsig` | `is version generatedBy describes` (.semsig header, §26) | — |
 | `operationType` | `is in out` (typed operation-reference signature, §33.9) | — |
 
