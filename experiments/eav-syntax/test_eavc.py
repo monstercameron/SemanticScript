@@ -4731,6 +4731,33 @@ def test_ssrf_external_host_accepted():
     assert "fetchIt" in prog.entities
 
 
+def _untrusted_fetch_src(bound_row=""):
+    return (
+        "RawUrl is alias\nRawUrl for String\nRawUrl typeTrust rawExternal\n"
+        "proxy is operation\nproxy out ExitCode\nproxy async no\n"
+        'proxy purpose "p"\nproxy invariant "i"\n'
+        "proxy in userUrl RawUrl\nproxy let okCode immutable ExitCode 0\n"
+        "proxy do fetch\nproxy return okCode\n"
+        "fetch is call\nfetch in proxy\nfetch invokes net.fetchText\n"
+        "fetch arg url RawUrl userUrl\n" + bound_row +
+        "fetch out body String\nfetch catch e NetError\nNetError is error\n"
+    )
+
+
+def test_unbounded_untrusted_external_call_rejected():
+    # X-078 / §27: external I/O over untrusted input without a timeout/budget is a
+    # DoS hole -> SS3078.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_untrusted_fetch_src())
+    assert getattr(exc.value, "code", None) == "SS3078"
+
+
+def test_bounded_untrusted_external_call_accepted():
+    # X-078: a `timeout` row bounds the call.
+    prog = eavc.parse(_untrusted_fetch_src("fetch timeout 5000ms\n"))
+    assert "proxy" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

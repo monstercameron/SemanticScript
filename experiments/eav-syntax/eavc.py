@@ -198,6 +198,9 @@ DIAGNOSTICS.update({
     "SS3075": {"tier": "T1", "summary": "Outbound request to an internal/loopback address (SSRF).",
                "found": "A `net.*`/`http.*` URL literal targets localhost / a private / link-local / cloud-metadata address.",
                "suggested": "Outbound requests go to allowlisted external hosts via an `HttpSafeUrl`; never hardcode an internal address (SSRF defense, README §8/§27)."},
+    "SS3078": {"tier": "T1", "summary": "Unbounded external call over untrusted input.",
+               "found": "A `net.*`/`http.*`/`sqlite.*`/`db.*`/`fs.*` call with a `rawExternal` arg and no `timeout`/`budget` row.",
+               "suggested": "Bound external I/O over untrusted input with a `timeout <budget>` (or `budget …`) row so a slow/hostile peer cannot stall the process (README §27)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -1097,6 +1100,7 @@ RESERVED_WORDS = {
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
+    "timeout", "budget",                   # X-078 DoS-bound rows
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1154,6 +1158,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
         "takesOwnership",                     # WS1-113 ownership transfer
         "limit",                              # X-077 decode limits
+        "timeout", "budget",                  # X-078 DoS bounds
     },
     "task": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -1161,6 +1166,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
         "takesOwnership",                     # WS1-113 ownership transfer
         "limit",                              # X-077 decode limits
+        "timeout", "budget",                  # X-078 DoS bounds
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
     "storage": {
@@ -3229,6 +3235,7 @@ def _validate_program(program: Program) -> None:
     _validate_nonce_affinity(program)
     _validate_path_traversal(program)
     _validate_ssrf(program)
+    _validate_dos_bounds(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4676,6 +4683,40 @@ def _validate_ssrf(program: Program) -> None:
                     f"address {lit!r} via {target!r}; outbound requests go to "
                     f"allowlisted external hosts only (SSRF, README §8)",
                     ent.line, code="SS3075")
+
+
+_EXTERNAL_IO_PREFIXES = ("net.", "http.", "sqlite.", "db.", "database.", "fs.",
+                         "filesystem.")
+
+
+def _validate_dos_bounds(program: Program) -> None:
+    """X-078 / README §27: an effectful external call over untrusted input must be
+    bounded. A `net.*`/`http.*`/`sqlite.*`/`db.*`/`fs.*` call that takes a
+    `rawExternal`-typed argument must carry a `timeout` or `budget` row so a slow
+    or hostile peer cannot stall the process; missing it is a hard error
+    (SS3078)."""
+    raw_types = {program.entities[n].name for n in program.order
+                 for r in program.entities[n].facts("typeTrust")
+                 if r.payload and r.payload[0] == "rawExternal"}
+    if not raw_types:
+        return
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not any(target.startswith(p) for p in _EXTERNAL_IO_PREFIXES):
+            continue
+        if not any(len(a.payload) >= 2 and a.payload[1] in raw_types
+                   for a in ent.facts("arg")):
+            continue
+        if ent.fact("timeout") is None and ent.fact("budget") is None:
+            raise EavError(
+                f"call {ent.name!r} performs external I/O ({target!r}) over untrusted "
+                f"input but declares no `timeout`/`budget`; bound it so a slow or "
+                f"hostile peer cannot stall the process (README §27)",
+                ent.line, code="SS3078")
 
 
 def _validate_time_safety(program: Program) -> None:

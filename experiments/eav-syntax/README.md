@@ -4198,6 +4198,12 @@ address (`169.254.169.254`) is a hard error (**SS3075**); requests go to
 allowlisted external hosts via an `HttpSafeUrl` (raw-String URLs are caught by
 sink-typing). The per-host allowlist rides the net capability at runtime.
 
+**DoS bounds (X-078).** An effectful external call
+(`net.*`/`http.*`/`sqlite.*`/`db.*`/`fs.*`) that takes a `rawExternal` argument
+must carry a `timeout` or `budget` row, so a slow/hostile peer cannot stall the
+process; an unbounded untrusted external call is a hard error (**SS3078**). (The
+untrusted-decode size cap is X-077's `limit maximumBytes`.)
+
 ### Async intrinsics
 
 ```sem
