@@ -278,7 +278,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS4-024 Mark/align proposed vs shipping shapes (entity-scoped vs path/code-scoped); MCP tool mappings. →test: --json schema conformance. §24
 
 ## 4C. Editor / LSP (§29 #7)
-- [ ] WS4-030 Semantic tokens (subject-anchored col1=subject/col2=predicate advantage). →test: token classification golden.
+- [x] WS4-030 Semantic tokens (subject-anchored col1=subject/col2=predicate advantage). →test: token classification golden. _(eavc: `semantic_tokens(line)` — col1=subject, col2=predicate/keyword, payload classified type/string/number/keyword/name; `test_semantic_tokens_subject_predicate`. Full LSP server pending.)_
 - [ ] WS4-031 Hovers (entity contract from signature/metadata) + inlay (call signature at `do` site — read-locality mitigation). →test: hover content.
 - [ ] WS4-032 Completions (per-kind predicates; targets from `.semsig`/docs). →test: predicate completion in each kind.
 - [ ] WS4-033 Rename, code actions (apply repair suggestions), symbol index. →test: rename across refs; quick-fix applies SS1502 repair.

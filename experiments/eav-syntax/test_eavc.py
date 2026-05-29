@@ -456,6 +456,20 @@ def test_slice_reparses():
     assert "main" in re.entities and "checkContinue" in re.entities
 
 
+def test_semantic_tokens_subject_predicate():
+    # WS4-030: column 1 = subject, column 2 = predicate; payload classified.
+    toks = eavc.semantic_tokens('main let helloText immutable String "hi"')
+    assert toks[0] == ("main", "subject")
+    assert toks[1] == ("let", "predicate")
+    assert ("immutable", "keyword") in toks
+    assert ("String", "type") in toks
+    assert ('"hi"', "string") in toks
+    # `is` row: predicate is the `is` keyword, kind is a type
+    isrow = eavc.semantic_tokens("Task is record")
+    assert isrow[0] == ("Task", "subject")
+    assert isrow[1] == ("is", "keyword")
+
+
 def test_doctor_groups_by_severity():
     # WS4-013: doctor groups diagnostics by severity.
     prog = eavc.parse("m is module\nm path a.b\n")  # missing purpose + invariant

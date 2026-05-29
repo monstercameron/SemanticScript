@@ -1376,6 +1376,31 @@ def slice_entity(program: Program, name: str, with_calls: bool = True) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+def semantic_tokens(line: str) -> list:
+    """Classify a row's tokens for editor highlighting (README ss29 #7): column 1
+    is always the subject, column 2 the predicate — the subject-anchored
+    advantage. Returns [(token, role)]."""
+    toks = tokenize_line(line)
+    if not toks:
+        return []
+    out = [(toks[0], "subject")]
+    if len(toks) > 1:
+        out.append((toks[1], "keyword" if toks[1] in ("at", "is") else "predicate"))
+    for t in toks[2:]:
+        if t.startswith('"'):
+            role = "string"
+        elif t in RESERVED_WORDS and t[0:1].islower():
+            role = "keyword"
+        elif t in PRIMITIVE_TYPES or (t[:1].isupper() and _IDENT_RE.match(t)):
+            role = "type"
+        elif t[:1].isdigit() or (t[:1] == "-" and t[1:2].isdigit()):
+            role = "number"
+        else:
+            role = "name"
+        out.append((t, role))
+    return out
+
+
 def doctor(program: Program) -> dict:
     """Severity-grouped lint report with per-code suggested fixes (README ss24)."""
     groups: dict = {"error": [], "warning": [], "info": []}
