@@ -2948,7 +2948,24 @@ def test_windows_gui_target_reserved_error():
     assert getattr(exc.value, "code", None) == "SS0744"
 
 
-def test_diagnostic_emission_guard():
+def test_cli_subcommands_in_process(tmp_path, capsys):
+    # X-060: drive each cmd_* through main() in-process (not just subprocess), so
+    # the CLI dispatch surface is covered. Each invocation returns 0.
+    src_path = os.path.join(EXAMPLES, "hello_world.sem")
+    exe = str(tmp_path / ("h" + (".exe" if sys.platform == "win32" else "")))
+    invocations = [
+        ["lex", src_path], ["parse", src_path], ["lower", src_path],
+        ["run", src_path], ["fmt", src_path], ["fmt", "--surface", "compact", src_path],
+        ["lint", src_path], ["normalize", src_path], ["inventory", src_path],
+        ["verify-patch", src_path], ["explain", "SS1502"],
+        ["query", "effects", src_path], ["trace", src_path, "main"],
+        ["scaffold", "console-program"], ["graph", src_path],
+        ["slice", src_path, "main"], ["describe", src_path, "main"],
+        ["build", src_path, "-o", exe],
+    ]
+    for argv in invocations:
+        rc = eavc.main(argv)
+        assert rc == 0, (argv, capsys.readouterr())
     # X-062: every diagnostic code in the registry is actually emitted somewhere
     # (a literal "CODE" appears beyond its registry definition), not merely
     # defined. Catches drift where a new code is registered without being wired.
