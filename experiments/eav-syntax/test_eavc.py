@@ -533,6 +533,21 @@ def test_lower_mutable_rebind_stores_to_alloca():
     assert 'sub i64' in ir_text             # decrementCounter
 
 
+def test_div_by_zero_emits_trap_guard():
+    # README ss10.6: integer divide/modulo by zero traps (no UB).
+    src = (
+        "P is project\nP module m\nP target console\nP entry divide\nm is module\nm path a.b\n"
+        "divide is operation\ndivide in a Int64\ndivide in b Int64\ndivide out Int64\n"
+        "divide do q\ndivide return r\n"
+        "q is call\nq in divide\nq invokes math.divideInt64\n"
+        "q arg left Int64 a\nq arg right Int64 b\nq out r Int64\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert "divByZero:" in ir_text
+    assert 'call void @"llvm.trap"()' in ir_text
+    assert "sdiv i64" in ir_text
+
+
 def test_ieee_float_compare_nan_semantics():
     # README ss10.6: NaN != NaN is true (unordered une); NaN == NaN is false
     # (ordered oeq). The comparator choice in IR encodes IEEE-754 semantics.

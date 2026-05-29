@@ -1245,6 +1245,10 @@ class EavCodegen:
             fn = ir.Function(
                 self.module, ir.FunctionType(i32, [i8p], var_arg=True), name="printf"
             )
+        elif name == "trap":
+            fn = ir.Function(
+                self.module, ir.FunctionType(ir.VoidType(), []), name="llvm.trap"
+            )
         else:
             raise EavError(f"no runtime declaration for {name!r}")
         self._runtime[name] = fn
@@ -1508,6 +1512,12 @@ class EavCodegen:
             fmt = self.global_string(b"%g\n\x00")
             val = arg("value", "Float64")
             result = builder.call(self.runtime("printf"), [fmt, val])
+        elif target in ("math.divideInt64", "math.moduloInt64"):
+            left = arg("left", "Int64")
+            right = arg("right", "Int64")
+            self._guard_div_zero(builder, right)
+            method = builder.sdiv if target == "math.divideInt64" else builder.srem
+            result = method(left, right)
         elif target in _INT_BINOPS:
             method = getattr(builder, _INT_BINOPS[target])
             result = method(arg("left", "Int64"), arg("right", "Int64"))
@@ -1558,6 +1568,20 @@ class EavCodegen:
             else:
                 sym[name] = ("val", result)
 
+
+    def _guard_div_zero(self, builder, divisor) -> None:
+        """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a
+        zero-check that branches to `llvm.trap`; the builder continues on the
+        nonzero path."""
+        fn = builder.function
+        iszero = builder.icmp_signed("==", divisor, ir.Constant(divisor.type, 0))
+        trap_bb = fn.append_basic_block("divByZero")
+        cont_bb = fn.append_basic_block("divCont")
+        builder.cbranch(iszero, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        tb.call(self.runtime("trap"), [])
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
 
     def _emit_derived_target(self, target, call, args, builder, sym):
         """Compiler-derived construction/access targets (README ss10.5): a record
