@@ -2177,6 +2177,60 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+_PROCESS_EXIT_MAIN = """
+ProcExit is project
+ProcExit module appProc
+ProcExit target console
+ProcExit entry main
+
+appProc is module
+appProc path examples.procExit
+appProc exports main
+appProc purpose "Exit with a chosen process code"
+appProc invariant "Returns the requested exit code"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Call process exit with code 3"
+main invariant "Terminates with code 3"
+{cap}main let code immutable Int32 3
+main let okCode immutable ExitCode 0
+main do callExit
+main return okCode
+
+callExit is call
+callExit in main
+callExit invokes exitProcess
+callExit arg code Int32 code
+"""
+
+
+def test_process_exit_returns_code_through_runtime():
+    # WS3-101: a program calling process exit returns the given code (libc exit).
+    stdlib = open(os.path.join(STD, "standard.process.sem"), encoding="utf-8").read()
+    cap = "main effect terminate process.self\nmain uses processTerminator\n"
+    composed = stdlib + "\n" + _PROCESS_EXIT_MAIN.format(cap=cap)
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 3
+
+
+def test_process_exit_requires_covering_capability():
+    # WS3-101: termination is capability-mediated — without a covering capability
+    # the effective `terminate process.self` effect is flagged.
+    stdlib = open(os.path.join(STD, "standard.process.sem"), encoding="utf-8").read()
+    composed = stdlib + "\n" + _PROCESS_EXIT_MAIN.format(cap="")
+    prog = eavc.parse(composed)
+    assert any("terminate process.self" in w and "not covered" in w
+               for w in prog.warnings)
+
+
 def test_math_int_ops_jit_run():
     # WS3-100: extended pure Int64 math targets JIT-run to their expected values.
     src = (

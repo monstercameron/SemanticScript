@@ -1,0 +1,30 @@
+# standard.process — EAV-native process-control binding (§27 planned namespace).
+#
+# Parity with semsc's `std/process` surface, the EAV-clean way: process control
+# is a capability-mediated effect (§8/§11), never ambient. `exitProcess` and
+# `abortProcess` are `body runtimeBinding` ops over the libc `exit`/`abort` ABI
+# symbols (resolved in-process by the JIT); the compiler carries no process
+# knowledge (README ss11/ss26). A caller that activates either inherits the
+# `terminate process.self` effect and must cover it with a capability.
+
+standardProcess is module
+standardProcess path standard.process
+standardProcess purpose "Capability-gated process termination over the libc exit/abort ABI"
+standardProcess invariant "Termination is a capability-mediated effect, not ambient authority"
+
+processTerminator is capability
+processTerminator grants terminate process.self
+processTerminator purpose "Authority to terminate the current process"
+
+exitProcess is operation
+exitProcess in code Int32
+exitProcess effect terminate process.self
+exitProcess uses processTerminator
+exitProcess body runtimeBinding exit
+exitProcess purpose "Terminate the process with the given exit code (libc exit)"
+
+abortProcess is operation
+abortProcess effect terminate process.self
+abortProcess uses processTerminator
+abortProcess body runtimeBinding abort
+abortProcess purpose "Abort the process immediately (libc abort)"
