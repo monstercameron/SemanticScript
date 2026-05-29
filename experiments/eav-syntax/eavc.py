@@ -792,6 +792,15 @@ def parse(source_text: str) -> Program:
     return program
 
 
+def summarize(program: Program) -> dict:
+    """Inventory of a program: entity counts by kind (README ss24 `inventory`)."""
+    counts: dict[str, int] = {}
+    for name in program.order:
+        kind = program.entities[name].kind
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
 def _exported_names(program: Program) -> set:
     """Names that are exported or named as the project entry (README ss7)."""
     names: set = set()
@@ -2118,6 +2127,16 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_inventory(args) -> int:
+    """Print entity counts by kind."""
+    program = parse(_read_source(args.path))
+    counts = summarize(program)
+    for kind in sorted(counts):
+        sys.stdout.write(f"{counts[kind]:4d}  {kind}\n")
+    sys.stdout.write(f"{sum(counts.values()):4d}  total\n")
+    return 0
+
+
 def cmd_lint(args) -> int:
     """Lint a program: print all MD/lint diagnostics; exit 1 if any are errors."""
     program = parse(_read_source(args.path))
@@ -2158,6 +2177,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("lower", cmd_lower),
         ("run", cmd_run),
         ("lint", cmd_lint),
+        ("inventory", cmd_inventory),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")

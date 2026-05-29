@@ -38,6 +38,27 @@ def _ir_for_source(src: str) -> str:
 # --------------------------------------------------------------------------
 
 
+def test_summarize_counts_by_kind():
+    prog = eavc.parse(_ir_helper_program())
+    counts = eavc.summarize(prog)
+    assert counts["operation"] == 2
+    assert counts["call"] == 1
+    assert counts["project"] == 1
+    assert counts["module"] == 1
+
+
+def _ir_helper_program():
+    return (
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "addTwo is operation\naddTwo in a Int64\naddTwo in b Int64\naddTwo out Int64\n"
+        "addTwo do s\naddTwo return r\n"
+        "s is call\ns in addTwo\ns invokes math.addInt64\n"
+        "s arg left Int64 a\ns arg right Int64 b\ns out r Int64\n"
+        "main is operation\nmain out ExitCode\nmain let okCode immutable ExitCode 0\n"
+        "main return okCode\n"
+    )
+
+
 def test_diagnostics_registry_round_trip():
     # Every registry entry has a tier + repair fields (single source of truth).
     assert eavc.DIAGNOSTICS

@@ -273,7 +273,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS4-019 `sem pack` (cached-prefix + task-slice + diagnostics + edit-contract; budget). →test: budget respected; prefix stable. §24
 - [ ] WS4-020 `sem diff` (semantic: cleanup/control/effect/route changes). →test: semantic-vs-line diff. §24
 - [ ] WS4-021 `sem scaffold` (handler/cleanup/task/sqlite-query/html-template canonical patterns). →test: scaffold output parses+lints clean. §24
-- [ ] WS4-022 `sem summarize` / `sem inventory`. →test: counts correct. §24
+- [x] WS4-022 `sem summarize` / `sem inventory`. →test: counts correct. §24 _(eavc: `summarize(program)` entity counts by kind + `eavc.py inventory`; `test_summarize_counts_by_kind`)_
 - [ ] WS4-023 `sem lint --explain <CODE>` (rationale + required pattern). →test: registry-backed. §24
 - [ ] WS4-024 Mark/align proposed vs shipping shapes (entity-scoped vs path/code-scoped); MCP tool mappings. →test: --json schema conformance. §24
 
