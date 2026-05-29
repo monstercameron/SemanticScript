@@ -1710,6 +1710,56 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
+def test_out_referenced_before_do_rejected():
+    # README §25 / WS2-050: a call result used before the `do` that produces it.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main let a immutable Int64 1\nmain let b immutable Int64 2\n"
+        "main do useIt\nmain do produceIt\nmain return okCode\n"
+        "useIt is call\nuseIt in main\nuseIt invokes console.writeIntegerLine\n"
+        "useIt arg value Int64 produced\n"
+        "produceIt is call\nproduceIt in main\nproduceIt invokes math.addInt64\n"
+        "produceIt arg left Int64 a\nproduceIt arg right Int64 b\n"
+        "produceIt out produced Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS2502"
+
+
+def test_catch_var_off_error_path_rejected():
+    # README §25 / WS2-050: a catch variable used on the straight-line success
+    # path (not the ifError path) is unbound.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main effect write console.stdout\nmain uses w\n"
+        "main let okCode immutable ExitCode 0\nmain let msg immutable String \"x\"\n"
+        "main do riskyCall\nmain do useErr\nmain return okCode\n"
+        "w is capability\nw grants write console.stdout\nw purpose \"p\"\n"
+        "riskyCall is call\nriskyCall in main\nriskyCall invokes console.writeLine\n"
+        "riskyCall arg text String msg\nriskyCall catch writeErr ConsoleWriteError\n"
+        "riskyCall discards \"demo\"\n"
+        "useErr is call\nuseErr in main\nuseErr invokes console.writeLine\n"
+        "useErr arg text String writeErr\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS2502"
+
+
+def test_join_before_start_rejected():
+    # README §13 / WS2-050: joining a task before it is started.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async yes\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main join fetchTask\nmain return okCode\n"
+        "fetchTask is task\nfetchTask in main\nfetchTask invokes x.fetch\n"
+    )
+    with pytest.raises(eavc.EavError):
+        eavc.parse(src)
+
+
 def test_invoke_ambiguity_builtin_namespace_rejected():
     # README §17 #51: an operation named for a built-in namespace is ambiguous.
     with pytest.raises(eavc.EavError) as exc:

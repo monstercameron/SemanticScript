@@ -243,6 +243,9 @@ DIAGNOSTICS.update({
     "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
                "found": "A `branch else` that doesn't follow a guard branch.",
                "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
+    "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
+               "found": "A call result used before its `do`, or a catch var on the success path.",
+               "suggested": "Reference the binding only after it is produced (README §25)."},
     "SS1354": {"tier": "T1", "summary": "`bind` on a payloadless variant.",
                "found": "A `branch ifVariant … bind` on a variant that carries no payload.",
                "suggested": "Drop `bind`, or match a data-carrying variant (README §17 #53)."},
@@ -2322,6 +2325,7 @@ def _validate_program(program: Program) -> None:
     _validate_binding_consistency(program)
     _validate_invoke_ambiguity(program)
     _validate_variant_payload_bind(program)
+    _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
 
@@ -2935,6 +2939,93 @@ def _validate_variant_payload_bind(program: Program) -> None:
                             f"a data-carrying variant (README ss17 #53)",
                             row.line, code="SS1354",
                         )
+
+
+def _validate_entry_scope(program: Program) -> None:
+    """README ss25 / WS2-050: a binding is in scope only after it is produced.
+    Checked over each operation's *entry prefix* (the rows before the first
+    label), where textual order equals execution order so there are no false
+    positives from jumps:
+
+    - a call's `out` binding is in scope only after the `do`/`join`/`poll` that
+      runs it (`out` referenced before its `do` is unbound), and
+    - a `catch` variable is in scope only on the matching `ifError` label path,
+      so referencing it on the straight-line success path is unbound.
+
+    (`join` before `start` is enforced separately in `_validate_async_lifecycle`.)"""
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        owned = [
+            program.entities[c] for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        ]
+        # WS2-050 is about call-result (`out`) and `catch` scope specifically;
+        # plain `let` ordering is governed by `_validate_let_forward_refs`.
+        # Only consider a binding whose producing `do`/`join`/`poll` actually
+        # appears in the entry prefix — a *missing* producer is a different rule
+        # (e.g. cleanup-worker / unactivated-call) and must not be preempted.
+        prefix = []
+        for row in op.rows:
+            if row.label is not None:
+                break
+            prefix.append(row)
+        activated = {
+            r.payload[0] for r in prefix
+            if r.predicate in ("do", "start", "join", "poll") and r.payload
+        }
+        live_out: set = set()
+        live_catch: set = set()
+        for c in owned:
+            if c.name not in activated:
+                continue
+            o = c.fact("out")
+            if o and o.payload and o.payload[0] != "Result":
+                live_out.add(o.payload[0])
+            ct = c.fact("catch")
+            if ct and ct.payload:
+                live_catch.add(ct.payload[0])
+        universe = live_out | live_catch
+        bound = {r.payload[0] for r in op.facts("in") if r.payload}
+        args_of = {
+            call.name: [a.payload[2] for a in call.facts("arg") if len(a.payload) >= 3]
+            for call in owned
+        }
+        for row in prefix:
+            p = row.payload
+            refs: list = []
+            if row.predicate in ("do", "start", "join", "poll") and p:
+                refs += args_of.get(p[0], [])
+            elif row.predicate == "return":
+                refs += [t for t in p if t not in ("value", "ok", "error", "nil", "void")]
+            elif row.predicate == "branch" and p:
+                g = p[0]
+                if g in ("if", "ifFalse", "ifVariant") and len(p) >= 2:
+                    refs.append(p[1])
+                elif g in ("ifValue", "ifOut") and len(p) >= 4:
+                    refs += [p[1], p[3]]
+            elif row.predicate == "let" and len(p) >= 4:
+                refs.append(p[3])
+            for r in refs:
+                if r in universe and r not in bound:
+                    why = ("a `catch` variable in scope only on the `ifError` path"
+                           if r in live_catch else
+                           "a call result in scope only after its `do`/`join`")
+                    raise EavError(
+                        f"{r!r} is used before it is bound in {op.name!r}: it is {why} "
+                        f"(README ss25, WS2-050)",
+                        row.line, code="SS2502",
+                    )
+            # produce bindings for the next rows
+            if row.predicate in ("do", "start", "join", "poll") and p:
+                call = program.entities.get(p[0])
+                o = call.fact("out") if call else None
+                if o and o.payload and o.payload[0] != "Result":
+                    bound.add(o.payload[0])
+            elif row.predicate == "let" and p:
+                bound.add(p[0])
 
 
 def _validate_binding_consistency(program: Program) -> None:
