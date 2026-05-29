@@ -2994,6 +2994,41 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def _test_program(test_ops):
+    base = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        "main return okCode\n"
+    )
+    return base + test_ops
+
+
+def test_test_runner_executes_tag_test_ops():
+    # WS3-026/WS4-119: each `tag test` op is JIT-run; exit 0 = pass.
+    passing = (
+        "checkAddsUp is operation\ncheckAddsUp out ExitCode\ncheckAddsUp async no\n"
+        'checkAddsUp tag test\ncheckAddsUp purpose "p"\ncheckAddsUp invariant "i"\n'
+        "checkAddsUp let pass immutable ExitCode 0\ncheckAddsUp return pass\n"
+    )
+    report = eavc.run_tests(eavc.parse(_test_program(passing)))
+    assert report["preflightStatus"] == "ok"
+    assert report["compositeStatus"] == "pass"
+    assert [t["name"] for t in report["tests"]] == ["checkAddsUp"]
+    assert report["tests"][0]["status"] == "pass"
+    # a failing test (nonzero exit) flips composite to fail
+    failing = passing + (
+        "checkFails is operation\ncheckFails out ExitCode\ncheckFails async no\n"
+        'checkFails tag test\ncheckFails purpose "p"\ncheckFails invariant "i"\n'
+        "checkFails let fail immutable ExitCode 1\ncheckFails return fail\n"
+    )
+    rep2 = eavc.run_tests(eavc.parse(_test_program(failing)))
+    assert rep2["compositeStatus"] == "fail"
+    assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
+
+
 def test_versioned_json_envelopes(capsys):
     # WS4-111: every JSON surface emits a consistent versioned envelope
     # {surface, version, ok}, and each surface is declared in SEM_SURFACES.

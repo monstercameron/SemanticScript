@@ -5443,9 +5443,10 @@ def _register_runtime_symbols(program: Program) -> None:
             llvm.add_symbol(sym, addr)
 
 
-def jit_run(program: Program) -> int:
-    """JIT-compile and execute the program's entry operation; return its exit
-    code. stdout is the C runtime's, flushed when this process exits."""
+def jit_run(program: Program, entry: Optional[str] = None) -> int:
+    """JIT-compile and execute an operation; return its exit code. With `entry`
+    set, run that operation instead of the project entry (used by the test
+    runner). stdout is the C runtime's, flushed when this process exits."""
     import ctypes
 
     module = lower_to_llvm(program)
@@ -5457,9 +5458,42 @@ def jit_run(program: Program) -> int:
     engine = llvm.create_mcjit_compiler(mod, tm)
     engine.finalize_object()
     engine.run_static_constructors()
-    addr = engine.get_function_address(_entry_name(program))
+    addr = engine.get_function_address(entry or _entry_name(program))
     cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
     return cmain()
+
+
+def run_tests(program: Program) -> dict:
+    """Execute every `tag test` operation by JIT-running it as an entry and
+    treating a 0 exit as a pass (sem.test.v1; WS3-026/WS4-119). Project semantic
+    preflight (lint errors) runs first and blocks the runtime lane."""
+    diags = lint(program)
+    preflight_ok = not any(d.severity == "error" for d in diags)
+    lanes = discover_tests(program)
+    tests: list = []
+    if preflight_ok:
+        for lane in sorted(lanes):
+            for op in lanes[lane]:
+                try:
+                    code = jit_run(program, entry=op)
+                    status = "pass" if code == 0 else "fail"
+                except EavError as exc:
+                    status, code = "error", None
+                    tests.append({"name": op, "lane": lane, "status": status,
+                                  "error": str(exc)})
+                    continue
+                tests.append({"name": op, "lane": lane, "status": status, "exitCode": code})
+    runtime_status = ("not-run" if not preflight_ok
+                      else "pass" if all(t["status"] == "pass" for t in tests)
+                      else "fail")
+    composite = ("blocked" if not preflight_ok
+                 else "pass" if runtime_status == "pass" else "fail")
+    return {
+        "preflightStatus": "ok" if preflight_ok else "lint-diagnostics",
+        "runtimeHarnessStatus": runtime_status,
+        "compositeStatus": composite,
+        "tests": tests,
+    }
 
 
 def _record_run(source: str):
@@ -5989,16 +6023,23 @@ def cmd_slice(args) -> int:
 
 
 def cmd_test(args) -> int:
-    """Discover `tag test` operations, optionally filtered by --lane."""
-    lanes = discover_tests(parse(_read_source(args.path)))
-    selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
-    total = 0
-    for lane in sorted(selected):
-        for op in selected[lane]:
-            sys.stdout.write(f"{lane}: {op}\n")
-            total += 1
-    sys.stdout.write(f"{total} test operation(s)\n")
-    return 0
+    """Discover (--discover) or execute `tag test` operations (sem.test.v1)."""
+    program = parse_compact(_read_source(args.path))
+    if getattr(args, "discover", False):
+        lanes = discover_tests(program)
+        selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
+        total = 0
+        for lane in sorted(selected):
+            for op in selected[lane]:
+                sys.stdout.write(f"{lane}: {op}\n")
+                total += 1
+        sys.stdout.write(f"{total} test operation(s)\n")
+        return 0
+    report = run_tests(program)
+    sys.stdout.write(_json_envelope(
+        "sem.test.v1", ok=(report["compositeStatus"] in ("pass", "blocked")),
+        **report) + "\n")
+    return 0 if report["compositeStatus"] == "pass" else 1
 
 
 def cmd_doctor(args) -> int:
@@ -6162,6 +6203,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_test = sub.add_parser("test", help="discover `tag test` ops (by lane)")
     sp_test.add_argument("path", help="EAV source file, or - for stdin")
     sp_test.add_argument("--lane", choices=TEST_LANES, default=None)
+    sp_test.add_argument("--discover", action="store_true",
+                         help="list test ops instead of executing them")
+    sp_test.add_argument("--json", action="store_true")
     sp_test.set_defaults(func=cmd_test)
 
     sp_query = sub.add_parser("query", help="structural query over a program")
