@@ -210,6 +210,9 @@ DIAGNOSTICS.update({
     "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
                "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
                "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
+    "SS1568": {"tier": "T1", "summary": "Bounds-checked buffer read with no error path.",
+               "found": "A `buffer.get`/`buffer.at`/`buffer.read` call with no `catch` for its BufferBoundsError.",
+               "suggested": "A bounds-checked read is fallible — bind `catch <e> BufferBoundsError` and branch on the out-of-bounds error (README §10.6)."},
     "SS1562": {"tier": "T1", "summary": "Region free/allocate mismatch.",
                "found": "An `allocateIn`/`releaseRegion` names an undeclared region, or an op releases a region it never allocated into.",
                "suggested": "Allocate and release the same declared `region`; wrong-region free is unrepresentable when both name the same region (README §29 #14)."},
@@ -1369,7 +1372,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "nativeLibrary", "nativeHeader", "nativeLinkFlag",
     },
     "intrinsic": {"target", "arg", "out", "catch", "async", "owns",
-                  "trustConstraint", "clientResponse"},
+                  "trustConstraint", "clientResponse",
+                  "borrows", "lifetime", "mayEscape"},  # WS1-111 view rows on a sig
     "semsig": {"version", "generatedBy", "describes"},
     "operationType": {"in", "out"},
 }
@@ -3429,6 +3433,7 @@ def _validate_program(program: Program) -> None:
     _validate_protection_optout(program)
     _validate_shared_state(program)
     _validate_regions(program)
+    _validate_buffer_access(program)
     _validate_numeric_ub(program)
     _validate_constants(program)
     _validate_overrides(program)
@@ -5023,6 +5028,29 @@ _INT_WIDTHS = {"Int8": 8, "UInt8": 8, "Byte": 8, "Int16": 16, "UInt16": 16,
 
 
 _REGION_STRATEGIES = ("arena", "fixedBuffer", "general")
+
+
+_BUFFER_FALLIBLE_READS = ("buffer.get", "buffer.at", "buffer.read", "buffer.byteAt")
+
+
+def _validate_buffer_access(program: Program) -> None:
+    """WS1-115 / README §10.6: a bounds-checked buffer read is fallible — an
+    out-of-bounds index is a `BufferBoundsError`, never UB. A `buffer.get`/`at`/
+    `read` call must bind a `catch` for that error (and branch on it); a read with
+    no error path silently drops the bounds failure and is a hard error (SS1568).
+    (App source has no indexing/offset syntax, so this is the only access path.)"""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target in _BUFFER_FALLIBLE_READS and ent.fact("catch") is None:
+            raise EavError(
+                f"call {ent.name!r} reads a buffer with {target!r} but has no `catch` "
+                f"for its BufferBoundsError; a bounds-checked read is fallible and its "
+                f"out-of-bounds error must be handled (README §10.6)",
+                ent.line, code="SS1568")
 
 
 def _validate_regions(program: Program) -> None:

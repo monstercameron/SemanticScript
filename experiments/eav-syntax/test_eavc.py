@@ -5094,6 +5094,63 @@ def test_region_free_mismatch_rejected():
     assert getattr(exc.value, "code", None) == "SS1562"
 
 
+def test_buffer_get_without_error_path_rejected():
+    # WS1-115 / §10.6: a bounds-checked buffer read with no `catch` drops the
+    # out-of-bounds error -> SS1568.
+    src = (
+        "Buffer is alias\nBuffer for OpaquePointer\n"
+        "readByte is operation\nreadByte out ExitCode\nreadByte async no\n"
+        'readByte purpose "p"\nreadByte invariant "i"\n'
+        "readByte in buf Buffer\nreadByte let idx immutable Int64 0\n"
+        "readByte let okCode immutable ExitCode 0\nreadByte do get\nreadByte return okCode\n"
+        "get is call\nget in readByte\nget invokes buffer.get\n"
+        "get arg buffer Buffer buf\nget arg index Int64 idx\nget out value Byte\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1568"
+
+
+def test_buffer_get_with_error_path_accepted():
+    # WS1-115: binding `catch BufferBoundsError` handles the bounds failure.
+    src = (
+        "Buffer is alias\nBuffer for OpaquePointer\n"
+        "BufferBoundsError is error\n"
+        "readByte is operation\nreadByte out ExitCode\nreadByte async no\n"
+        'readByte purpose "p"\nreadByte invariant "i"\n'
+        "readByte in buf Buffer\nreadByte let idx immutable Int64 0\n"
+        "readByte let okCode immutable ExitCode 0\nreadByte do get\n"
+        "readByte branch ifError get goto oob\nreadByte return okCode\n"
+        "readByte at oob return okCode\n"
+        "get is call\nget in readByte\nget invokes buffer.get\n"
+        "get arg buffer Buffer buf\nget arg index Int64 idx\nget out value Byte\n"
+        "get catch boundsErr BufferBoundsError\n"
+    )
+    prog = eavc.parse(src)
+    assert "readByte" in prog.entities
+
+
+def test_buffer_slice_view_cannot_escape():
+    # WS1-115 + WS1-111: a buffer.slice returns a Slice that borrows the buffer
+    # (mayEscape no); returning it past the buffer's lifetime is rejected (SS1560).
+    src = (
+        "Buffer is alias\nBuffer for OpaquePointer\nSlice is alias\nSlice for OpaquePointer\n"
+        "BufferBoundsError is error\n"
+        "window is operation\nwindow out Slice\nwindow async no\n"
+        'window purpose "p"\nwindow invariant "i"\n'
+        "window in buf Buffer\nwindow let beginAt immutable Int64 0\nwindow let spanLen immutable Int64 4\n"
+        "window do sliceIt\nwindow branch ifError sliceIt goto bad\nwindow return theSlice\n"
+        "window at bad return theSlice\n"
+        "sliceIt is call\nsliceIt in window\nsliceIt invokes buffer.slice\n"
+        "sliceIt arg buffer Buffer buf\nsliceIt arg start Int64 beginAt\nsliceIt arg length Int64 spanLen\n"
+        "sliceIt out theSlice Slice\nsliceIt catch e BufferBoundsError\n"
+        "sliceIt borrows buf\nsliceIt lifetime buf\nsliceIt mayEscape no\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1560"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

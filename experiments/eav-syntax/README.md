@@ -2296,6 +2296,26 @@ releasing a region the op never allocated into, is a hard error (**SS1562**) —
 wrong-region free is unrepresentable. The arena lowers to real `malloc`/`free`
 (one `free` per slab at `releaseRegion`) and JIT-runs.
 
+### Bounds-checked buffers (WS1-115, §10.6)
+
+A `Buffer` carries its length; there is **no indexing/offset syntax** in app
+source. Element access goes through `standard.buffer` (`buffer.get`/`set`/
+`length`/`slice`), and a read is **fallible** — an out-of-bounds index is a
+`BufferBoundsError`, never UB:
+
+```sem
+readFirst invokes buffer.get
+readFirst arg buffer Buffer payload
+readFirst arg index ByteCount zeroIndex
+readFirst out value Byte
+readFirst catch boundsErr BufferBoundsError   # required — the OOB error path
+```
+
+A `buffer.get`/`at`/`read` with no `catch` for its `BufferBoundsError` is a hard
+error (**SS1568**). `buffer.slice` returns a `Slice` that *borrows* the buffer (a
+WS1-111 view: `mayEscape no`), so a slice that outlives its buffer is rejected
+(SS1560). The bounds-check runtime lives in `standard.buffer` (WS1-119).
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the
