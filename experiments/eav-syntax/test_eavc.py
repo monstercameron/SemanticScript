@@ -3811,6 +3811,37 @@ def test_app_event_stream_smoke_console_scaffolding_runs():
     assert any(l.startswith("event.streamAppend(") for l in eavc.docs(ev))
 
 
+# X-047: app-port coverage matrix — every original app has an EAV port whose
+# console-observable/README-sanctioned core runs (or is deferred per spec), the
+# port lints clean, and the original v0.1 source coexists untouched.
+_APP_PORT_MATRIX = {
+    "html-template-lab": ("runs", ["standard.html.sem"]),
+    "taskforge-api-client": ("runs", []),
+    "taskforge-tui": ("runs", []),
+    "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
+    "http-runtime-gauntlet": ("runs", []),
+    "event-stream-smoke": ("runs", []),
+    "desktop-window-smoke": ("deferred", []),
+}
+
+
+def test_app_port_coverage_and_coexistence_guard():
+    originals = os.path.normpath(os.path.join(HERE, "..", "..", "apps"))
+    for app, (status, stdlibs) in _APP_PORT_MATRIX.items():
+        port_dir = os.path.join(APPS, app)
+        assert os.path.isdir(port_dir), f"no EAV port for {app}"
+        # coexistence: the original v0.1 app still exists, untouched
+        assert os.path.isdir(os.path.join(originals, app)), f"original {app} missing"
+        if status == "deferred":
+            assert os.path.exists(os.path.join(port_dir, "README.md")), \
+                f"{app} deferral not recorded"
+            continue
+        composed = _app_program(app, *stdlibs)
+        diags = eavc.lint(eavc.parse(composed))
+        errs = [d.render() for d in diags if d.severity == "error"]
+        assert not errs, f"{app} port regressed lint-clean: {errs}"
+
+
 def test_app_desktop_window_smoke_deferred():
     # X-045: desktop GUI is deferred — its `standard.gui` contract loads, app
     # source is not ported, and a windowsGui project hard-errors (reserved).
