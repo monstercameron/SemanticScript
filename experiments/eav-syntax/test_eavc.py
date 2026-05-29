@@ -8081,11 +8081,12 @@ _X113_INTRINSIC_SQL_SINK = (
 )
 
 
-def test_trustedinternal_type_at_sink_accepted():
-    # X-113: a type whose typeTrust label is `trustedInternal` satisfies a
-    # sink constraint even when its name differs from the required type name.
-    # No-op-failing: a validator that only accepts the exact declared type
-    # name would incorrectly reject a trustedInternal-labelled variant.
+def test_trustedinternal_wrong_type_at_sink_rejected():
+    # R-071 supersedes the earlier X-113 behavior: a `trustedInternal` label is
+    # NOT a universal sink credential. A trustedInternal value whose type differs
+    # from the sink's required safe type (SqlText) is a cross-context bypass and
+    # is now rejected (SS3071) — the exact safe type (test_trusted_type_into_sink_
+    # accepted) is the only thing that passes.
     src = (
         _X113_INTRINSIC_SQL_SINK
         + "TrustedSqlParam is alias\nTrustedSqlParam for String\n"
@@ -8099,8 +8100,68 @@ def test_trustedinternal_type_at_sink_accepted():
         "runQuery arg sql TrustedSqlParam safeSql\n"
         "runQuery out rows Int64\n"
     )
-    prog = eavc.parse(src)
-    assert "main" in prog.entities   # no SS3071 raised
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+
+_R071_HTML_AND_SQL_SINKS = (
+    "SqlText is alias\nSqlText for String\n"
+    "HtmlSafeText is alias\nHtmlSafeText for String\n"
+    "HtmlSafeText typeTrust validated\nSqlText typeTrust validated\n"
+    "sqlExec is intrinsic\nsqlExec target sql.exec\nsqlExec arg sql SqlText\n"
+    "sqlExec out rows Int64\nsqlExec trustConstraint arg sql SqlText\n"
+    "htmlWrite is intrinsic\nhtmlWrite target html.write\nhtmlWrite arg markup HtmlSafeText\n"
+    "htmlWrite out written Int64\nhtmlWrite trustConstraint arg markup HtmlSafeText\n"
+)
+
+
+def _r071_sink_program(value_type, sink_call):
+    return (
+        _R071_HTML_AND_SQL_SINKS
+        + "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        f'main let payload immutable {value_type} "x"\n'
+        "main do runSink\nmain return okCode\n"
+        + sink_call
+    )
+
+
+def test_r071_cross_context_safe_type_rejected():
+    """R-071: a value safe for one context cannot satisfy a different-context sink
+    — SqlText into an HTML sink, and HtmlSafeText into a SQL sink, both reject
+    (SS3071), even though both carry a `validated` label."""
+    sql_into_html = _r071_sink_program(
+        "SqlText",
+        "runSink is call\nrunSink in main\nrunSink invokes html.write\n"
+        "runSink arg markup SqlText payload\nrunSink out written Int64\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(sql_into_html)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+    html_into_sql = _r071_sink_program(
+        "HtmlSafeText",
+        "runSink is call\nrunSink in main\nrunSink invokes sql.exec\n"
+        "runSink arg sql HtmlSafeText payload\nrunSink out rows Int64\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(html_into_sql)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+
+def test_r071_exact_safe_type_accepted():
+    """R-071: the exact required safe type for each sink is accepted."""
+    html_ok = _r071_sink_program(
+        "HtmlSafeText",
+        "runSink is call\nrunSink in main\nrunSink invokes html.write\n"
+        "runSink arg markup HtmlSafeText payload\nrunSink out written Int64\n")
+    assert "main" in eavc.parse(html_ok).entities
+    sql_ok = _r071_sink_program(
+        "SqlText",
+        "runSink is call\nrunSink in main\nrunSink invokes sql.exec\n"
+        "runSink arg sql SqlText payload\nrunSink out rows Int64\n")
+    assert "main" in eavc.parse(sql_ok).entities
 
 
 def test_string_concat_into_user_function_sink_rejected():

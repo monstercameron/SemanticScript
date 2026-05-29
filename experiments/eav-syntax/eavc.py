@@ -177,9 +177,9 @@ DIAGNOSTICS.update({
     "SS3070": {"tier": "T1", "summary": "Untrusted value reaches a trust-sensitive sink.",
                "found": "An arg whose type is `typeTrust rawExternal` (or secret) is passed to a `trustConstraint` sink slot.",
                "suggested": "Cross a `trustBoundary` validator first so the value becomes `validated`/`trustedInternal` (README §16/§26)."},
-    "SS3071": {"tier": "T1", "summary": "Untyped or string-built value into a typed sink.",
-               "found": "A plain String (or a `string.concat` result) passed to a `trustConstraint arg <slot> <TrustedType>` sink.",
-               "suggested": "Build the required trusted type (e.g. SqlText/HtmlSafeUrl/SafePath) via a constructor or trust boundary; never assemble interpreter input by string concatenation (README §16/§30.2.2)."},
+    "SS3071": {"tier": "T1", "summary": "Wrong-type, untyped, or string-built value into a typed sink.",
+               "found": "A `trustConstraint arg <slot> <TrustedType>` sink received a value that is not exactly that type — a plain String, a `string.concat` result, or a value safe for another context (R-071: a `validated`/`trustedInternal` label is not a cross-context credential).",
+               "suggested": "Build the EXACT required trusted type (e.g. SqlText/HtmlSafeUrl/SafePath) via a constructor or trust boundary; never assemble interpreter input by string concatenation, and never route a value validated for one context into another (README §16/§30.2.2, R-071)."},
     "SS3072": {"tier": "T1", "summary": "Secret value observed, or hardcoded.",
                "found": "A `typeTrust secret` value reaches an observable sink (console/log), or a secret-typed binding is initialized from a literal.",
                "suggested": "A secret is usable (verify/sign) but never observable — don't print/log it; load it from a capability-gated source, never a source literal (README §30.1.1/§8)."},
@@ -4739,16 +4739,13 @@ def _validate_trust_flow(program: Program) -> None:
 def _validate_sink_typing(program: Program) -> None:
     """X-071 / README §16/§30.2.2: every interpreting sink (SQL/HTML/path/URL/…)
     declares the trusted type it requires with `trustConstraint arg <slot>
-    <TrustedType>`. The arg must then BE that trusted type (or a
-    `validated`/`trustedInternal`-labeled type) — a plain `String` is rejected,
-    and a value assembled by `string.concat` may never reach a sink (no
-    string-built queries/markup). Hard error SS3071. (`rawExternal`/`secret` into
-    a sink is SS3070, X-070.)"""
-    label_of = {}
-    for n in program.order:
-        for r in program.entities[n].facts("typeTrust"):
-            if r.payload and r.payload[0] in _TRUST_LABELS:
-                label_of[program.entities[n].name] = r.payload[0]
+    <TrustedType>`. R-071: the arg must then BE EXACTLY that trusted type — a
+    `validated`/`trustedInternal` label is no longer a universal sink credential,
+    so a value safe for one context (e.g. `SqlText`) cannot satisfy a different
+    sink (e.g. an `HtmlSafeUrl` slot); a plain `String` is rejected, and a value
+    assembled by `string.concat` may never reach a sink (no string-built
+    queries/markup). Hard error SS3071. (`rawExternal`/`secret` into a sink is
+    SS3070, X-070.)"""
     string_built = set()
     for n in program.order:
         ent = program.entities[n]
@@ -4791,13 +4788,13 @@ def _validate_sink_typing(program: Program) -> None:
                     f"trusted type, never concatenate interpreter input "
                     f"(README §16/§30.2.2)",
                     call.line, code="SS3071")
-            if argtype != required and label_of.get(argtype) not in (
-                    "validated", "trustedInternal"):
+            if argtype != required:
                 raise EavError(
                     f"call {call.name!r} passes {value!r} (type {argtype!r}) into the "
-                    f"{required} sink slot {slot!r} of {callee!r}; a raw/untyped value "
-                    f"must become a {required} at a trust boundary first "
-                    f"(README §16)",
+                    f"{required} sink slot {slot!r} of {callee!r}: a trust-sensitive "
+                    f"sink requires exactly its safe type — a validated/trustedInternal "
+                    f"value of another type is a cross-context bypass. Convert {value!r} "
+                    f"to {required} at a trust boundary first (README §16, R-071)",
                     call.line, code="SS3071")
 
 
