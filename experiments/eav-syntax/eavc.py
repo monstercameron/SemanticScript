@@ -2109,6 +2109,7 @@ class EavCodegen:
 
         self._call_info: dict[str, tuple] = {}
         self._cont_count = 0
+        self._defers: list = []  # cleanup entities, in registration order
 
         for row in op.rows:
             if row.label is not None:
@@ -2127,6 +2128,7 @@ class EavCodegen:
                 )
 
         if not builder.block.is_terminated:
+            self._emit_defers(builder, sym)
             ret = fn.function_type.return_type
             if isinstance(ret, ir.VoidType):
                 builder.ret_void()
@@ -2197,19 +2199,36 @@ class EavCodegen:
         if pred == "goto":
             builder.branch(label_blocks[p[0]])
             return builder
+        if pred == "defer":
+            # README ss15.6: register the cleanup; its worker runs (in reverse
+            # registration order) before each return. Nothing emitted here.
+            cleanup = self.program.entities.get(p[0]) if p else None
+            if cleanup is not None:
+                self._defers.append(cleanup)
+            return builder
         if pred == "return":
             return self._emit_return(op, fn, row, builder, sym)
         if pred == "branch":
             return self._emit_branch(fn, row, builder, sym, label_blocks)
         raise EavError(
             f"step `{pred}` is not modeled by the LLVM console code generator "
-            "(todos WS1-106/WS1-107)",
+            "(todos WS1-107 async)",
             row.line,
         )
+
+    def _emit_defers(self, builder, sym) -> None:
+        """Run registered defers' worker calls in reverse order (README ss15.6,
+        ss33.8). Called immediately before each return / fallthrough exit."""
+        for cleanup in reversed(self._defers):
+            cr = cleanup.fact("call")
+            worker = self.program.entities.get(cr.payload[0]) if cr and cr.payload else None
+            if worker is not None and worker.kind in ("call", "task"):
+                self._emit_call(worker, builder, sym, {})
 
     def _emit_return(self, op, fn, row, builder, sym):
         p = row.payload
         ret_ty = fn.function_type.return_type
+        self._emit_defers(builder, sym)
         if not p or (len(p) == 1 and p[0] == "void"):
             builder.ret_void()
             return builder

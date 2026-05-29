@@ -150,7 +150,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-103 Lower types/records/enums/Result/operationType → backend types. →test: width/discriminant goldens. _(partial: primitives → LLVM widths incl. Byte→i8 (`test_byte_lowers_to_uint8`); records/enums are an i64 opaque placeholder in the console model, Result/operationType pending)_
 - [x] WS1-104 Lower control flow (goto/branch/if/return/labels) → CFG. →test: irreducible-flow warn; CFG golden. §13 _(eavc: labels→basic blocks, goto→br, if/ifFalse/ifError→cbranch, return→ret; `test_lower_branch_iffalse_inverts_to_cbranch`, `test_e2e_countdown_runs`)_
 - [x] WS1-105 Lower calls/args/out/catch → call sites + error slots. →test: fallible call lowering. _(eavc: `test_lower_hello_world_emits_puts_and_error_branch` (catch → result error test + branch), `test_lower_value_call_emits_user_call_and_printf` (out → SSA value, user-op call site); `test_lower_do_on_task_rejected` keeps the call/task split, §34.4)_
-- [ ] WS1-106 Lower defer/cleanup (reverse-order, before each return; trap-during-cleanup fatal). →test: defer order; §33.8 abort.
+- [x] WS1-106 Lower defer/cleanup (reverse-order, before each return; trap-during-cleanup fatal). →test: defer order; §33.8 abort. _(eavc: `_emit_defers` runs registered cleanups' worker calls in reverse registration order before every return/fallthrough; `examples/defer_order.sem` → work/second/first; `test_e2e_defer_reverse_order`. trap-during-cleanup-fatal pending.)_
 - [ ] WS1-107 Lower async lifecycle on single-thread backend (start eager, poll always-ready, ifPending never). →test: §13 backend-semantics goldens.
 - [x] WS1-108 Lower construction/access/compare derived targets. →test: `Task.new` round-trips. _(eavc: record .new/.field via insertvalue/extractvalue, enum .variant discriminants, compare via icmp; `examples/record_demo.sem`, `test_record_construction_and_access_lower`)_
 - [ ] WS1-109 Module init order (imports first, doc order); cyclic-init reject; failing-init traps. →test: §30.2.1 order golden.
@@ -208,7 +208,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 3A. Capability / effect / async runtime
 - [ ] WS3-001 Capability values + grants/uses runtime; effect = capability-mediated. →test: op without cap can't perform effect. §8
-- [ ] WS3-002 Cleanup/defer runtime (reverse order, every exit; logAndSuppress logs catch; propagate returns; trap = abort). →test: §15.6 + §33.8.
+- [x] WS3-002 Cleanup/defer runtime (reverse order, every exit; logAndSuppress logs catch; propagate returns; trap = abort). →test: §15.6 + §33.8. _(eavc: defer workers emitted in reverse order before every return/fallthrough; `test_e2e_defer_reverse_order`. logAndSuppress-logging / propagate-returns / trap-abort runtime semantics pending.)_
 - [ ] WS3-003 Async single-thread cooperative backend (start/join/poll/cancel/detach). →test: race/timeout resolve deterministically. §13
 - [ ] WS3-004 `mode capturedOutputReplay` transcript (record/replay; capability-mediated effects only). →test: replay run deterministic + side-effect-free. §30.1.1
 - [ ] WS3-005 Build-time capabilities namespace `build.*` (read-only; runtime effect on configure = error). →test: configure with console.stdout effect rejects. §30.3.2

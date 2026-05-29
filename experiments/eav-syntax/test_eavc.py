@@ -1470,6 +1470,14 @@ def test_builtin_targets_need_no_import():
     assert 'call i32 (i8*, ...) @"printf"' in ir_text
 
 
+def test_e2e_defer_reverse_order():
+    # README §15.6/§33.8: defers run last-registered-first, after the body.
+    proc = _eavc_run("defer_order.sem")
+    assert proc.returncode == 0, proc.stderr
+    lines = [l for l in proc.stdout.splitlines() if l.strip()]
+    assert lines == ["work", "second", "first"]
+
+
 def test_e2e_convert_widen_runs():
     # WS1-095/WS3-014: convert.toInt64 widens Int32 -> Int64 (sext).
     proc = _eavc_run("convert_demo.sem")

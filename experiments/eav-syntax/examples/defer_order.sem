@@ -1,0 +1,89 @@
+# defer_order — defers run in reverse registration order before the return
+# (README ss15.6, ss33.8). Prints: work, then second, then first.
+# (todos WS1-106, WS3-002)
+
+DeferOrder is project
+DeferOrder module examplesDeferOrder
+DeferOrder target console
+DeferOrder entry main
+
+examplesDeferOrder is module
+examplesDeferOrder path examples.deferOrder
+examplesDeferOrder exports main
+examplesDeferOrder purpose "Show reverse-order defer cleanup before return"
+examplesDeferOrder invariant "Cleanups run last-registered-first, after the body"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Acquire two resources, defer their cleanups, do work, return"
+main invariant "Cleanups print in reverse: second then first"
+main let okCode immutable ExitCode 0
+main let workText immutable String "work"
+main let firstText immutable String "first"
+main let secondText immutable String "second"
+main do acquireFirst
+main defer cleanupFirst
+main do acquireSecond
+main defer cleanupSecond
+main do doWork
+main return okCode
+
+acquireFirst is call
+acquireFirst in main
+acquireFirst invokes acquireHandle
+acquireFirst out firstHandle Int64
+acquireFirst owns firstHandle
+acquireFirst cleanedBy cleanupFirst
+
+acquireSecond is call
+acquireSecond in main
+acquireSecond invokes acquireHandle
+acquireSecond out secondHandle Int64
+acquireSecond owns secondHandle
+acquireSecond cleanedBy cleanupSecond
+
+doWork is call
+doWork in main
+doWork invokes console.writeLine
+doWork arg text String workText
+
+cleanupFirst is cleanup
+cleanupFirst in main
+cleanupFirst call closeFirst
+cleanupFirst cleans firstHandle
+
+cleanupSecond is cleanup
+cleanupSecond in main
+cleanupSecond call closeSecond
+cleanupSecond cleans secondHandle
+
+closeFirst is call
+closeFirst in main
+closeFirst invokes console.writeLine
+closeFirst arg text String firstText
+
+closeSecond is call
+closeSecond in main
+closeSecond invokes console.writeLine
+closeSecond arg text String secondText
+
+acquireHandle is operation
+acquireHandle out Int64
+acquireHandle memory heap no
+acquireHandle async no
+acquireHandle purpose "Return a placeholder resource handle"
+acquireHandle invariant "Returns a non-negative handle id"
+acquireHandle let handleId immutable Int64 1
+acquireHandle return handleId
