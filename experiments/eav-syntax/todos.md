@@ -135,7 +135,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-084 Storage `literalSource`/`literalDigest` compile-time asset embedding. →test: asset bytes embedded, digest checked. §30.3.2
 
 ## 1H. Value & runtime semantics (§10.6, §33.5)
-- [ ] WS1-090 Integer overflow wraps two's-complement; checked `math.*` → Result. →test: wrap golden; checked overflow → err. §10.6
+- [x] WS1-090 Integer overflow wraps two's-complement; checked `math.*` → Result. →test: wrap golden; checked overflow → err. §10.6 _(eavc: `add i64` wraps; `examples/overflow.sem` prints INT64_MIN; `test_e2e_overflow_wraps_twos_complement`. Checked `math.*`→Result variants pending stdlib WS3-013.)_
 - [ ] WS1-091 Int/mod div-by-zero traps. →test: traps, no UB. §10.6
 - [ ] WS1-092 IEEE-754 floats (NaN≠NaN, ±inf). →test: `NaN notEquals NaN` true. §10.6
 - [ ] WS1-093 String equality bytewise UTF-8 (no normalization). →test: byte-equal vs canon-equal distinguished. §10.6

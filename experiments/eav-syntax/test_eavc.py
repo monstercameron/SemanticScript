@@ -606,6 +606,13 @@ def test_e2e_add_two_runs():
     assert "42" in proc.stdout
 
 
+def test_e2e_overflow_wraps_twos_complement():
+    # README ss10.6: signed Int64 addition wraps. INT64_MAX + 1 == INT64_MIN.
+    proc = _eavc_run("overflow.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "-9223372036854775808" in proc.stdout
+
+
 def test_e2e_countdown_runs():
     proc = _eavc_run("countdown.sem")
     assert proc.returncode == 0, proc.stderr
