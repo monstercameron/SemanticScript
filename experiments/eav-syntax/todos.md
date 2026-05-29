@@ -189,7 +189,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS2-031 MD1011/1012/1013 exported/entry op purpose+invariant+exports. _(eavc: `lint` MD1011/MD1012 for exported/entry ops via `_exported_names`; `test_lint_exported_op_metadata_required`. MD1013 exports-presence pending.)_
 - [x] WS2-032 MD1021/1022 private-op tiers; MD1031/1032 generated/runtimeBinding off. _(eavc: private-op missing purpose → MD1021 warning; runtimeBinding/intrinsic ops skipped (MD1031/1032 off); `test_lint_private_op_missing_purpose_is_warning_not_error`)_
 - [x] WS2-033 MD1040–1048 payload shapes; MD1046 **at-most-one** purpose (not "exactly one"). _(eavc: MD1046 at-most-one purpose in `lint`; `test_lint_at_most_one_purpose`. Remaining MD1040–1048 payload-shape checks pending.)_
-- [ ] WS2-034 `suppress <CODE> because "…"` scope = subject entity + one code; operation covers its steps/let/labels, not child call/task/cleanup. →test: child-row suppress not covered. §30.6.2
+- [x] WS2-034 `suppress <CODE> because "…"` scope = subject entity + one code; operation covers its steps/let/labels, not child call/task/cleanup. →test: child-row suppress not covered. §30.6.2 _(eavc: `_apply_suppressions`/`_suppress_diagnostics` — suppress needs because (SS5400) + real code (SS5401), scoped to the subject entity; `test_suppress_removes_diagnostic_on_same_entity`, `test_suppress_without_because_errors`, `test_suppress_unknown_code_errors`, `test_suppress_scoped_to_entity_not_children`)_
 
 ## 2D. Effect / authority / cleanup analysis
 - [ ] WS2-040 Effect-union: op effective effects = own + activated call/task/cleanup effects; uses covers union; both-direction check. →test: capability gap on call-level effect reported on op. §15

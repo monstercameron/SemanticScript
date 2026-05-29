@@ -103,6 +103,40 @@ def test_lint_at_most_one_purpose():
     assert "MD1046" in codes
 
 
+_MOD = "m is module\nm path a.b\nm purpose \"x\"\nm invariant \"y\"\n"
+
+
+def test_suppress_removes_diagnostic_on_same_entity():
+    src = _MOD + (
+        "helper is operation\nhelper out Int64\n"
+        'helper suppress MD1021 because "trivial private helper"\n'
+    )
+    diags = eavc.lint(eavc.parse(src))
+    assert not any(d.code == "MD1021" for d in diags)
+
+
+def test_suppress_without_because_errors():
+    src = _MOD + "helper is operation\nhelper out Int64\nhelper suppress MD1021\n"
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "SS5400" in codes
+
+
+def test_suppress_unknown_code_errors():
+    src = _MOD + 'helper is operation\nhelper out Int64\nhelper suppress SS9999 because "x"\n'
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "SS5401" in codes
+
+
+def test_suppress_scoped_to_entity_not_children():
+    # A suppress on the module does not cover the helper op's own diagnostic.
+    src = _MOD + (
+        'm suppress MD1021 because "module-level suppress should not reach ops"\n'
+        "helper is operation\nhelper out Int64\n"
+    )
+    diags = eavc.lint(eavc.parse(src))
+    assert any(d.code == "MD1021" and d.entity == "helper" for d in diags)
+
+
 def test_emitted_diagnostics_carry_codes():
     # Tagged diagnostics expose their registry code on the exception.
     with pytest.raises(eavc.EavError) as exc:

@@ -138,6 +138,12 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS5400": {"tier": "T1", "summary": "`suppress` needs a `because` rationale.",
+               "found": "A `suppress CODE` row with no `because`.",
+               "suggested": "Write `suppress CODE because \"…\"` (README §30.6.2, §17 #54)."},
+    "SS5401": {"tier": "T1", "summary": "`suppress` names an unknown diagnostic code.",
+               "found": "A `suppress CODE` where CODE is not in the registry.",
+               "suggested": "Use a real code from `sem explain` (README §30.6.2)."},
 })
 
 
@@ -154,6 +160,7 @@ class Diagnostic:
     severity: str  # "error" | "warning" | "info"
     message: str
     line: Optional[int] = None
+    entity: Optional[str] = None
 
     def render(self) -> str:
         loc = f"line {self.line}: " if self.line is not None else ""
@@ -803,14 +810,16 @@ def lint(program: Program) -> list:
         if len(ent.facts("purpose")) > 1:
             diags.append(Diagnostic("MD1046", "error",
                                     f"{ent.kind} {ent.name!r} has multiple purpose rows",
-                                    ent.line))
+                                    ent.line, ent.name))
         if ent.kind == "module":
             if ent.fact("purpose") is None:
                 diags.append(Diagnostic("MD1001", "error",
-                                        f"module {ent.name!r} is missing a purpose", ent.line))
+                                        f"module {ent.name!r} is missing a purpose",
+                                        ent.line, ent.name))
             if ent.fact("invariant") is None:
                 diags.append(Diagnostic("MD1002", "error",
-                                        f"module {ent.name!r} is missing an invariant", ent.line))
+                                        f"module {ent.name!r} is missing an invariant",
+                                        ent.line, ent.name))
         elif ent.kind in ("operation", "function"):
             if _op_body_kind(ent) in ("runtimeBinding", "intrinsic"):
                 continue  # MD1031/1032: generated/runtimeBinding metadata off
@@ -819,18 +828,53 @@ def lint(program: Program) -> list:
                 if public:
                     diags.append(Diagnostic("MD1011", "error",
                                             f"exported/entry operation {ent.name!r} is missing a purpose",
-                                            ent.line))
+                                            ent.line, ent.name))
                 else:
                     diags.append(Diagnostic("MD1021", "warning",
                                             f"operation {ent.name!r} has no purpose (recommended)",
-                                            ent.line))
+                                            ent.line, ent.name))
             if public and ent.fact("invariant") is None:
                 diags.append(Diagnostic("MD1012", "error",
                                         f"exported/entry operation {ent.name!r} is missing an invariant",
-                                        ent.line))
+                                        ent.line, ent.name))
     for w in program.warnings:
         diags.append(Diagnostic("SS0900", "warning", w))
-    return diags
+    diags.extend(_suppress_diagnostics(program, diags))
+    return _apply_suppressions(program, diags)
+
+
+def _apply_suppressions(program: Program, diags: list) -> list:
+    """Drop diagnostics suppressed by a `suppress CODE because "…"` row on the
+    *same* entity (README ss30.6.2, ss17 #54). An operation's suppress covers its
+    own rows, not its child call/task/cleanup entities (each is its own subject)."""
+    suppressed: set = set()  # (entity, code)
+    for name in program.order:
+        ent = program.entities[name]
+        for row in ent.facts("suppress"):
+            if row.payload and "because" in row.payload:
+                suppressed.add((ent.name, row.payload[0]))
+    return [d for d in diags if (d.entity, d.code) not in suppressed]
+
+
+def _suppress_diagnostics(program: Program, diags: list) -> list:
+    """A `suppress CODE` row must carry a real code and a `because` (README
+    ss17 #54)."""
+    extra: list[Diagnostic] = []
+    for name in program.order:
+        ent = program.entities[name]
+        for row in ent.facts("suppress"):
+            if not row.payload:
+                continue
+            code = row.payload[0]
+            if "because" not in row.payload:
+                extra.append(Diagnostic("SS5400", "error",
+                                        f"`suppress {code}` needs a `because` rationale",
+                                        row.line, ent.name))
+            elif code not in DIAGNOSTICS:
+                extra.append(Diagnostic("SS5401", "error",
+                                        f"`suppress {code}` names an unknown diagnostic code",
+                                        row.line, ent.name))
+    return extra
 
 
 def _validate_program(program: Program) -> None:
