@@ -234,6 +234,9 @@ DIAGNOSTICS.update({
     "SS1563": {"tier": "T1", "summary": "Allocation without an allocator capability.",
                "found": "An op that `allocateIn` a region has no `uses` capability granting `allocate heap.<region>` (or `allocate heap`).",
                "suggested": "Grant + `uses` an allocator capability (`grants allocate heap.<region>`) for the region (README §8/§29 #14)."},
+    "SS3085": {"tier": "T1", "summary": "Out-of-order guard acquisition (deadlock risk).",
+               "found": "An op accesses a lower-rank guarded resource after a higher-rank one.",
+               "suggested": "Acquire guards in non-decreasing `guardRank` order so a fixed total order prevents deadlock (README §27/§17)."},
     "SS3083": {"tier": "T1", "summary": "Unguarded shared-state access.",
                "found": "A `readShared`/`setShared` with no `protectedBy`, or a token that isn't the state's declared `guard`.",
                "suggested": "Access shared state only while holding its guard token: `… protectedBy <the sharedState's guard>` (README §8/§27)."},
@@ -1295,6 +1298,7 @@ RESERVED_WORDS = {
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
+    "guardRank",                           # X-090 lock-acquisition order
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
     "unsafe", "wrapsAs", "allocator",      # WS1-116 FFI allocation wrapping
     "typeTrust",                           # X-070 trust label on a type
@@ -1336,7 +1340,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     },
     "module": {"path", "imports", "exports"},
     "capability": {"grants"},
-    "sharedState": {"scope", "type", "mutability", "value", "guard", "owner"},
+    "sharedState": {"scope", "type", "mutability", "value", "guard", "owner",
+                    "guardRank"},
     "region": {"strategy", "scope", "capacity"},
     "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
@@ -3451,6 +3456,7 @@ def _validate_program(program: Program) -> None:
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
     _validate_shared_state(program)
+    _validate_lock_ordering(program)
     _validate_regions(program)
     _validate_buffer_access(program)
     _validate_ffi_wrapping(program)
@@ -5094,6 +5100,44 @@ def _validate_buffer_access(program: Program) -> None:
                 f"for its BufferBoundsError; a bounds-checked read is fallible and its "
                 f"out-of-bounds error must be handled (README §10.6)",
                 ent.line, code="SS1568")
+
+
+def _validate_lock_ordering(program: Program) -> None:
+    """X-090 / README §27: deadlock-free acquisition ordering. A guarded
+    `sharedState` may declare a `guardRank N`; within an op, guarded resources
+    must be accessed in non-decreasing rank order (a fixed total order over locks
+    prevents deadlock). Accessing a lower-rank guard after a higher-rank one is a
+    hard error (SS3085). The single-thread backend is trivially deadlock-free, so
+    this gates the concurrent backend."""
+    rank = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "sharedState":
+            r = ent.fact("guardRank")
+            if r and r.payload and r.payload[0].lstrip("-").isdigit():
+                rank[ent.name] = int(r.payload[0])
+    if not rank:
+        return
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        max_rank, max_state = None, None
+        for row in op.rows:
+            if row.predicate not in ("readShared", "setShared") or not row.payload:
+                continue
+            state = row.payload[2] if row.predicate == "readShared" else row.payload[0]
+            if state not in rank:
+                continue
+            r = rank[state]
+            if max_rank is not None and r < max_rank and state != max_state:
+                raise EavError(
+                    f"{op.name!r} acquires guard {state!r} (rank {r}) after "
+                    f"{max_state!r} (rank {max_rank}); acquire guards in non-decreasing "
+                    f"rank order to stay deadlock-free (README §27)",
+                    row.line, code="SS3085")
+            if max_rank is None or r > max_rank:
+                max_rank, max_state = r, state
 
 
 def _validate_regions(program: Program) -> None:

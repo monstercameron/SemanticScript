@@ -5437,6 +5437,38 @@ def test_toctou_guarded_check_then_act_accepted():
     assert "SS1902" in eavc.DIAGNOSTICS
 
 
+def _ranked_guards_src(access_order):
+    return (
+        "alpha is sharedState\nalpha scope process\nalpha type Int64\n"
+        "alpha mutability mutable\nalpha value 0\nalpha guard alphaLock\nalpha guardRank 1\n"
+        "beta is sharedState\nbeta scope process\nbeta type Int64\n"
+        "beta mutability mutable\nbeta value 0\nbeta guard betaLock\nbeta guardRank 2\n"
+        "work is operation\nwork out ExitCode\nwork async no\n"
+        'work purpose "p"\nwork invariant "i"\n'
+        "work let okCode immutable ExitCode 0\n" + access_order + "work return okCode\n"
+    )
+
+
+def test_out_of_order_guard_acquisition_rejected():
+    # X-090 / §27: accessing a lower-rank guard after a higher-rank one is a
+    # deadlock risk -> SS3085 (beta rank 2 then alpha rank 1).
+    src = _ranked_guards_src(
+        "work readShared b Int64 beta protectedBy betaLock\n"
+        "work readShared a Int64 alpha protectedBy alphaLock\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3085"
+
+
+def test_in_order_guard_acquisition_accepted():
+    # X-090: non-decreasing rank order (alpha rank 1 then beta rank 2) is fine.
+    src = _ranked_guards_src(
+        "work readShared a Int64 alpha protectedBy alphaLock\n"
+        "work readShared b Int64 beta protectedBy betaLock\n")
+    prog = eavc.parse(src)
+    assert "work" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
