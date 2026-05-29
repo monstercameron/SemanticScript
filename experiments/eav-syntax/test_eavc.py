@@ -2209,6 +2209,18 @@ def test_record_construction_and_access_lower():
     assert "extractvalue {i64, i64}" in ir_text
 
 
+def test_module_storage_effectful_init_rejected():
+    # README §30.2.1: a module-storage initializer must be effect-free.
+    src = (
+        "compute is operation\ncompute out Int64\n"
+        "bad is storage\nbad scope module\nbad type Int64\n"
+        "bad mutability immutable\nbad value compute\n"  # references an operation
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS3021"
+
+
 def test_module_storage_lowers_to_global():
     ir_text = _ir_for("module_storage.sem")
     assert '@"answerConstant" = internal constant i64 7' in ir_text

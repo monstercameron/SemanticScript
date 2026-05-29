@@ -159,6 +159,9 @@ DIAGNOSTICS.update({
     "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
                "found": "A platform targetRuntime other than native/wasm.",
                "suggested": "Use `native` or `wasm` (README §7)."},
+    "SS3021": {"tier": "T1", "summary": "Effectful module-storage initializer.",
+               "found": "A module storage `value` referencing a call/operation.",
+               "suggested": "Use a literal/constant/prior-storage initializer (§30.2.1)."},
     "SS3002": {"tier": "T0", "summary": "configure op declares a runtime effect.",
                "found": "A build-time `configure` op with a non-build.* effect.",
                "suggested": "configure is build-time; use only build.* (README §30.3.2)."},
@@ -2052,6 +2055,19 @@ def _validate_program(program: Program) -> None:
                             r.line, code="SS3201",
                         )
                     seen_routes.add(key)
+        elif ent.kind == "storage":
+            scope = ent.fact("scope")
+            value = ent.fact("value")
+            if (scope and scope.payload and scope.payload[0] == "module"
+                    and value and value.payload):
+                ref = program.entities.get(value.payload[0])
+                if ref is not None and ref.kind in ("operation", "function", "call", "task"):
+                    raise EavError(
+                        f"module storage {ent.name!r} initializer references "
+                        f"{ref.kind} {ref.name!r}; module-storage init must be "
+                        f"effect-free (literal/constant/prior-storage, README ss30.2.1)",
+                        ent.line, code="SS3021",
+                    )
         elif ent.kind == "platform":
             tr = ent.fact("targetRuntime")
             if tr and tr.payload and tr.payload[0] not in ("native", "wasm"):
