@@ -270,6 +270,12 @@ DIAGNOSTICS.update({
     "SS3041D": {"tier": "T1", "summary": "Local binding shadows a project constant.",
                 "found": "A `let` whose name matches a project constant.",
                 "suggested": "Rename the local binding (no shadow, README §28.1)."},
+    "SS3042A": {"tier": "T1", "summary": "Override names an undeclared constant.",
+                "found": "A platform `override` whose name is not a project constant.",
+                "suggested": "Override only declared project constants (README §28.1)."},
+    "SS3042B": {"tier": "T1", "summary": "Override value type mismatch.",
+                "found": "A platform override value that does not match the constant's type.",
+                "suggested": "Match the constant's declared type (README §28.1)."},
     "SS0744": {"tier": "T1", "summary": "Reserved target windowsGui is unspecified.",
                "found": "A project targeting `windowsGui` (GUI module not defined in v0.3).",
                "suggested": "Remove the windowsGui target until the GUI spec lands (README §27)."},
@@ -2698,6 +2704,7 @@ def _validate_program(program: Program) -> None:
     _validate_storage_mutation(program)
     _validate_reserved_targets(program)
     _validate_constants(program)
+    _validate_overrides(program)
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
@@ -3362,6 +3369,54 @@ def _validate_constants(program: Program) -> None:
                     f"project constant {r.payload[0]!r} (no shadow, README ss28.1, "
                     f"WS3-041)",
                     r.line, code="SS3041D",
+                )
+
+
+def _override_value_matches(value: str, resolved: str) -> bool:
+    """Whether a build override literal is well-typed for a resolved primitive."""
+    if resolved == "String":
+        return value.startswith('"')
+    if resolved == "Bool":
+        return value in ("true", "false", "yes", "no", "1", "0")
+    if resolved in _FLOAT_TYPE_NAMES:
+        return value[:1].isdigit() or value[:1] in "-."
+    if resolved in _INT_RANGES:
+        return value[:1].isdigit() or (value[:1] == "-" and value[1:2].isdigit())
+    return True  # unknown/non-primitive type: not statically checkable here
+
+
+def _validate_overrides(program: Program) -> None:
+    """README ss28.1 / WS3-042: a platform `override <name> <value>` must name a
+    declared `PROJECT constant` and its value must match the constant's type."""
+    consts = {
+        c.payload[0]: c.payload[1]
+        for proj in program.of_kind("project")
+        for c in proj.facts("constant")
+        if len(c.payload) >= 2
+    }
+    alias_map = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
+    for plat in program.of_kind("platform"):
+        for o in plat.facts("override"):
+            if len(o.payload) < 2:
+                continue
+            name, value = o.payload[0], o.payload[1]
+            if name not in consts:
+                raise EavError(
+                    f"platform {plat.name!r} override names {name!r}, which is not a "
+                    f"declared project constant (README ss28.1, WS3-042)",
+                    o.line, code="SS3042A",
+                )
+            resolved = _resolve_alias(consts[name], alias_map)
+            if not _override_value_matches(value, resolved):
+                raise EavError(
+                    f"platform {plat.name!r} override {name!r} value {value!r} does "
+                    f"not match the constant's type {consts[name]!r} (README ss28.1, "
+                    f"WS3-042)",
+                    o.line, code="SS3042B",
                 )
 
 

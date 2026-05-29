@@ -2635,6 +2635,37 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def _platform_override_program(name="maxRetries", value="9"):
+    return (
+        "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
+        "Demo constant maxRetries Int64 5\nDemo platform linuxX64\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "linuxX64 is platform\nlinuxX64 os linux\nlinuxX64 arch x64\n"
+        "linuxX64 targetRuntime native\n"
+        f"linuxX64 override {name} {value}\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        "main return okCode\n"
+    )
+
+
+def test_platform_override_valid_applies():
+    eavc.parse(_platform_override_program())  # no raise
+
+
+def test_platform_override_unknown_constant_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_platform_override_program(name="nope"))
+    assert getattr(exc.value, "code", None) == "SS3042A"
+
+
+def test_platform_override_type_mismatch_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_platform_override_program(value="true"))
+    assert getattr(exc.value, "code", None) == "SS3042B"
+
+
 def test_windows_gui_target_reserved_error():
     # WS3-044 / X-045: `target windowsGui` is a hard reserved-target error.
     src = (
