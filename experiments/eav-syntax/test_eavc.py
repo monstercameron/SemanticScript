@@ -375,6 +375,20 @@ def test_float_literal_rejects(bad):
         eavc.parse(f"main is operation\nmain let r immutable Float64 {bad}\n")
 
 
+def test_async_on_call_parses_with_deprecation_note():
+    # README ss5/ss15.5: `call ... async yes` is tolerated-deprecated.
+    prog = eavc.parse(
+        "fetchThing is call\nfetchThing invokes net.fetch\nfetchThing async yes\n"
+    )
+    assert "fetchThing" in prog.entities
+    assert any("deprecated" in w and "fetchThing" in w for w in prog.warnings)
+
+
+def test_no_spurious_async_deprecation_for_plain_call():
+    prog = eavc.parse("fetchThing is call\nfetchThing invokes net.fetch\n")
+    assert prog.warnings == []
+
+
 def test_parse_island_body_strips_common_indent():
     src = (
         "q is storage\n"

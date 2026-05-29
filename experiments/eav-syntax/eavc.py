@@ -391,6 +391,7 @@ class Program:
     entities: dict[str, Entity] = field(default_factory=dict)
     order: list[str] = field(default_factory=list)
     islands: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
 
     def add(self, entity: Entity) -> None:
         self.entities[entity.name] = entity
@@ -638,6 +639,13 @@ def _validate_program(program: Program) -> None:
     marks as a *hard error* during parsing.
     """
     for ent in (program.entities[name] for name in program.order):
+        if ent.kind == "call" and ent.fact("async") is not None:
+            # README ss5/ss15.5: `async` on a call is tolerated-deprecated; it
+            # promotes to a `task` on fmt. Parse it, but record the deprecation.
+            program.warnings.append(
+                f"{ent.name}: `async` on a call is deprecated; use `is task` "
+                f"(README ss5/ss15.5)"
+            )
         if ent.kind == "record":
             _check_unique_labels(
                 ent, "field", "field name", "README ss10/ss17 #29"

@@ -78,7 +78,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-022 Per-kind predicate dispatch from §5 table; unknown predicate for kind = hard parse error. →test: each kind's legal set; one illegal each. §5 _(eavc: `ALLOWED_PREDICATES`/`UNIVERSAL_PREDICATES`; `test_parse_unknown_predicate_for_kind_rejected`, `test_parse_unknown_predicate_name_rejected`, `test_parse_at_only_on_operations`, `test_parse_universal_metadata_on_any_kind`, `test_parse_legal_predicate_sets_accepted`)_
 - [x] WS1-023 Reserved-word table (§2) enforced for entity/var/type names; **exempt** arg-slot/field/variant labels. →test: `arg path …` ok, `path is record` errors. §2 _(eavc: `RESERVED_WORDS`; `test_parse_reserved_word_as_entity_name_rejected`, `test_parse_reserved_word_as_variable_rejected`, `test_parse_reserved_word_ok_as_arg_slot_label`)_
 - [x] WS1-024 `at LABEL <stepPred> …` labeled-step (one model, §1 row-class 4); label col 3, step col 4+. →test: labeled step parses; `at` not usable as bare predicate. §1/§13 _(eavc: `test_parse_labeled_step_row`)_
-- [ ] WS1-025 `async`-on-`call` tolerated-deprecated exception (promotes to task on fmt). →test: `call … async yes` parses with deprecation note. §5
+- [x] WS1-025 `async`-on-`call` tolerated-deprecated exception (promotes to task on fmt). →test: `call … async yes` parses with deprecation note. §5 _(eavc: `Program.warnings`; `test_async_on_call_parses_with_deprecation_note`, `test_no_spurious_async_deprecation_for_plain_call`)_
 - [ ] WS1-026 EBNF grammar doc + invalid-example corpus (§29 #1). →test: corpus all-reject. §29#1
 
 ## 1C. Types (§10, §33.6–33.7)
