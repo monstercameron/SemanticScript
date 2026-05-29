@@ -290,7 +290,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 # Cross-cutting
 
 ## X1. Conformance & test matrix (§29 #6, project rule)
-- [ ] X-001 Conformance matrix tying parser/formatter/linter/lowering/editor goldens together. →test: matrix harness runs all lanes.
+- [x] X-001 Conformance matrix tying parser/formatter/linter/lowering/editor goldens together. →test: matrix harness runs all lanes. _(eavc: `test_conformance_matrix_all_lanes` runs every `examples/*.sem` through parser → lowering (IR verifies) → formatter (idempotent) → linter (no errors). Editor lane pending LSP.)_
 - [ ] X-002 Promote §18 + §19 worked examples to executable golden programs. →test: both run to expected output/exit. _(partial: §18 done — `examples/hello_world.sem`, `test_e2e_hello_world_runs`; §19 webServer pending console-lowering scope)_
 - [x] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red. _(eavc: `test_noop_codegen_would_fail` (empty module lacks main / no puts) plus 13 behavioral e2e goldens that assert exact stdout/exit — each fails under a no-op/stub codegen)_
 - [ ] X-004 Test taxonomy wired: unit/component/integration/e2e/golden + `tag test` discovery + `sem test --lane`. →test: each lane discovered & run. §28.7/§30.5

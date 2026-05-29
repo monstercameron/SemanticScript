@@ -41,6 +41,27 @@ def test_invalid_corpus_is_populated():
     assert len(_corpus_files()) >= 15
 
 
+def _example_files():
+    import glob
+    return sorted(glob.glob(os.path.join(EXAMPLES, "*.sem")))
+
+
+@pytest.mark.parametrize("path", _example_files())
+def test_conformance_matrix_all_lanes(path):
+    # X-001: every example golden passes parser + lowering + formatter(idempotent)
+    # + linter (no error-severity) lanes together.
+    import llvmlite.binding as llvm
+    eavc._ensure_native_init()
+    src = open(path, encoding="utf-8").read()
+    prog = eavc.parse(src)                                   # parser lane
+    ir_text = str(eavc.lower_to_llvm(prog))                  # lowering lane
+    llvm.parse_assembly(ir_text).verify()                    # IR verifies
+    once = eavc.format_program(prog)                         # formatter lane
+    assert eavc.format_program(eavc.parse(once)) == once     # idempotent
+    diags = eavc.lint(prog)                                  # linter lane
+    assert not any(d.severity == "error" for d in diags), [d.render() for d in diags]
+
+
 def _ir_for(name: str) -> str:
     """Parse an example and return its generated LLVM IR as text."""
     program = eavc.parse(open(os.path.join(EXAMPLES, name), encoding="utf-8").read())
