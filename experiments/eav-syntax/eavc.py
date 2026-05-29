@@ -279,6 +279,15 @@ DIAGNOSTICS.update({
     "SS3042B": {"tier": "T1", "summary": "Override value type mismatch.",
                 "found": "A platform override value that does not match the constant's type.",
                 "suggested": "Match the constant's declared type (README §28.1)."},
+    "SS3044A": {"tier": "T1", "summary": "Owned handle aliased into a second binding.",
+                "found": "A `let` initialized from an owned handle.",
+                "suggested": "Keep one binding per owned handle (README §15.6)."},
+    "SS3044B": {"tier": "T1", "summary": "Cleanup registered twice.",
+                "found": "The same cleanup deferred more than once.",
+                "suggested": "Defer each cleanup once (README §15.6)."},
+    "SS3044C": {"tier": "T1", "summary": "Owned handle escapes via return.",
+                "found": "A `return` of an owned handle.",
+                "suggested": "Do not return owned handles in v0.3 (README §15.6)."},
     "SS3024": {"tier": "T1", "summary": "Island body kind/type mismatch.",
                "found": "A `body <kind>` that doesn't match the entity's declared type.",
                "suggested": "Match SqlText→sql, JsonText→json, HtmlTemplate→html (README §16)."},
@@ -2768,6 +2777,7 @@ def _validate_program(program: Program) -> None:
     _validate_reserved_targets(program)
     _validate_webserver_abi(program)
     _validate_islands(program)
+    _validate_ownership_edges(program)
     _validate_html_trust(program)
     _validate_constants(program)
     _validate_overrides(program)
@@ -3554,6 +3564,59 @@ def _validate_webserver_abi(program: Program) -> None:
             for row in ws.facts(pred):
                 if row.payload:
                     check_abi(row.payload[0], abi, row.line, f"{pred} handler")
+
+
+def _validate_ownership_edges(program: Program) -> None:
+    """README ss15.6 / ss29 #26 / WS2-044: ownership edge discipline. An owned
+    handle may not be aliased into a second binding; its cleanup may not be
+    registered twice; and it may not escape via `return` (v0.3 has no
+    obligation-carrying out type)."""
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        owned: dict = {}  # owned-handle name -> producing call line
+        for cn in program.order:
+            call = program.entities[cn]
+            owner = call.fact("in")
+            if (call.kind in ("call", "task") and owner and owner.payload
+                    and owner.payload[0] == op.name):
+                for o in call.facts("owns"):
+                    if o.payload:
+                        owned[o.payload[0]] = call.line
+        if not owned:
+            continue
+        # alias: a `let` initialized from an owned handle aliases it
+        for r in op.facts("let"):
+            if len(r.payload) >= 4 and r.payload[3] in owned:
+                raise EavError(
+                    f"binding {r.payload[0]!r} in {op.name!r} aliases owned handle "
+                    f"{r.payload[3]!r}; an owned handle has a single binding "
+                    f"(README ss15.6, WS2-044)",
+                    r.line, code="SS3044A",
+                )
+        # double-cleanup: the same cleanup deferred twice
+        seen_defers: set = set()
+        for row in op.rows:
+            if row.predicate == "defer" and row.payload:
+                if row.payload[0] in seen_defers:
+                    raise EavError(
+                        f"cleanup {row.payload[0]!r} is deferred twice in {op.name!r} "
+                        f"(double-cleanup, README ss15.6, WS2-044)",
+                        row.line, code="SS3044B",
+                    )
+                seen_defers.add(row.payload[0])
+        # escape: returning an owned handle
+        for row in op.rows:
+            if row.predicate == "return":
+                for t in row.payload:
+                    if t in owned:
+                        raise EavError(
+                            f"owned handle {t!r} escapes via `return` in {op.name!r}; "
+                            f"v0.3 has no obligation-carrying out type (README ss15.6, "
+                            f"WS2-044)",
+                            row.line, code="SS3044C",
+                        )
 
 
 def _validate_islands(program: Program) -> None:

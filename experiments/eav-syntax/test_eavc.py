@@ -2635,6 +2635,47 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def _owned_program(violation="", ret="main return okCode\n", out_type="ExitCode"):
+    return (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "Handle is alias\nHandle for OpaquePointer\n"
+        f"main is operation\nmain out {out_type}\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do openH\nmain defer hCleanup\n" + violation + ret +
+        "openH is call\nopenH in main\nopenH invokes res.open\n"
+        "openH out handle Handle\nopenH owns handle\nopenH cleanedBy hCleanup\n"
+        "closeH is call\ncloseH in main\ncloseH invokes res.close\n"
+        'closeH arg h Handle handle\ncloseH discards "close"\n'
+        "hCleanup is cleanup\nhCleanup in main\nhCleanup call closeH\n"
+        'hCleanup because "release"\nhCleanup cleans handle\n'
+    )
+
+
+def test_owned_handle_valid_ownership_ok():
+    eavc.parse(_owned_program())  # no raise
+
+
+def test_owned_handle_alias_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_owned_program(violation="main let aliasHandle immutable Handle handle\n"))
+    assert getattr(exc.value, "code", None) == "SS3044A"
+
+
+def test_owned_handle_double_cleanup_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_owned_program(violation="main defer hCleanup\n"))
+    assert getattr(exc.value, "code", None) == "SS3044B"
+
+
+def test_owned_handle_escape_via_return_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_owned_program(ret="main return handle\n", out_type="Handle"))
+    assert getattr(exc.value, "code", None) == "SS3044C"
+
+
 def test_island_body_kind_type_mismatch_rejected():
     # WS3-024: a body kind must match the entity's declared type.
     src = "q is storage\nq type SqlText\nq body json\n    {\"a\": 1}\n"
