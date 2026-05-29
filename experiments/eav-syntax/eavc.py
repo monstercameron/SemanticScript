@@ -174,6 +174,9 @@ DIAGNOSTICS.update({
     "SS3095": {"tier": "T1", "summary": "Arithmetic on wall-clock time.",
                "found": "A math.* call with a `WallTime` operand (elapsed/duration or local-time arithmetic).",
                "suggested": "Use a `MonotonicInstant` for durations, or an explicit timezone conversion for calendar math; `WallTime` has no arithmetic (README §30.5.3/§27)."},
+    "SS3070": {"tier": "T1", "summary": "Untrusted value reaches a trust-sensitive sink.",
+               "found": "An arg whose type is `typeTrust rawExternal` (or secret) is passed to a `trustConstraint` sink slot.",
+               "suggested": "Cross a `trustBoundary` validator first so the value becomes `validated`/`trustedInternal` (README §16/§26)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -1068,6 +1071,7 @@ RESERVED_WORDS = {
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
+    "typeTrust",                           # X-070 trust label on a type
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1102,16 +1106,16 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     },
     "module": {"path", "imports", "exports"},
     "capability": {"grants"},
-    "error": set(),
+    "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
-    "record": {"field"},
-    "enum": {"variant", "repr"},
-    "alias": {"for"},
+    "record": {"field", "typeTrust"},
+    "enum": {"variant", "repr", "typeTrust"},
+    "alias": {"for", "typeTrust"},
     "operation": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
-        "branch", "return", "goto", "set",
+        "branch", "return", "goto", "set", "trustConstraint",
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
@@ -3179,6 +3183,7 @@ def _validate_program(program: Program) -> None:
     _validate_html_trust(program)
     _validate_time_safety(program)
     _validate_numeric_precision(program)
+    _validate_trust_flow(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4179,6 +4184,66 @@ def _validate_numeric_precision(program: Program) -> None:
                         f"through Float arithmetic {target!r}; compute money/decimal "
                         f"values with `decimal.*` (README §10.6)",
                         ent.line, code="SS3093")
+
+
+_TRUST_LABELS = ("rawExternal", "validated", "trustedInternal", "secret")
+_UNTRUSTED_AT_SINK = ("rawExternal", "secret")
+
+
+def _validate_trust_flow(program: Program) -> None:
+    """X-070 / README §16/§26: typed trust/taint flow. A type carries a trust
+    label (`typeTrust <T> rawExternal|validated|trustedInternal|secret`).
+    Untrusted input enters as `rawExternal` and becomes trusted only by crossing a
+    declared trust boundary (a validator whose output type is `validated`/
+    `trustedInternal`). An operation marks a trust-sensitive sink parameter with
+    `trustConstraint arg <slot>`; passing a value whose type is `rawExternal` (or
+    `secret`) to that slot without a boundary is a hard error (SS3070). Trust is a
+    property of the value's declared type, so it propagates over the explicit
+    out→arg dataflow without aliasing."""
+    label_of = {}
+    for n in program.order:
+        ent = program.entities[n]
+        for r in ent.facts("typeTrust"):
+            if r.payload and r.payload[0] in _TRUST_LABELS:
+                label_of[ent.name] = r.payload[0]
+            elif r.payload:
+                raise EavError(
+                    f"typeTrust on {ent.name!r} has unknown label {r.payload[0]!r}; "
+                    f"expected one of {', '.join(_TRUST_LABELS)} (README §16)",
+                    r.line, code="SS3070")
+    if not label_of:
+        return
+    # which arg slots of each operation are trust-sensitive sinks
+    sink_slots = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function", "intrinsic"):
+            continue
+        slots = {r.payload[1] for r in ent.facts("trustConstraint")
+                 if len(r.payload) >= 2 and r.payload[0] == "arg"}
+        if slots:
+            sink_slots[ent.name] = slots
+    if not sink_slots:
+        return
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        inv = call.fact("invokes")
+        callee = inv.payload[0] if inv and inv.payload else ""
+        slots = sink_slots.get(callee)
+        if not slots:
+            continue
+        for a in call.facts("arg"):
+            if len(a.payload) >= 3 and a.payload[0] in slots:
+                lbl = label_of.get(a.payload[1])
+                if lbl in _UNTRUSTED_AT_SINK:
+                    raise EavError(
+                        f"call {call.name!r} passes {a.payload[2]!r} (type "
+                        f"{a.payload[1]!r}, trust `{lbl}`) into the trust-sensitive "
+                        f"slot {a.payload[0]!r} of {callee!r} without a validation "
+                        f"boundary (README §16/§26)",
+                        call.line, code="SS3070")
 
 
 def _validate_time_safety(program: Program) -> None:

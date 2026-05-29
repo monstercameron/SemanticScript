@@ -4106,6 +4106,38 @@ Here `trustConstraint sanitizedInput` records that the `String` passed to
 a type the linter can prove — so for this stdlib intrinsic the linter surfaces
 the constraint, but it cannot statically verify that the input was sanitized.
 
+### Typed trust/taint flow (X-070, §16/§26)
+
+A type carries a **trust label** with `typeTrust`:
+
+```sem
+RawBody is alias
+RawBody for String
+RawBody typeTrust rawExternal        # untrusted input (e.g. an HTTP body)
+
+SafeSql is alias
+SafeSql for String
+SafeSql typeTrust validated          # trusted only after a validation boundary
+```
+
+The labels are `rawExternal | validated | trustedInternal | secret`. Untrusted
+input enters as `rawExternal` and becomes trusted only by crossing a declared
+trust boundary — a validator whose **output** type is `validated`/
+`trustedInternal`. An operation marks a trust-sensitive **sink** parameter with
+`trustConstraint arg <slot>`; passing a value whose declared type is
+`rawExternal` (or `secret`) into that slot is a hard error (**SS3070**):
+
+```sem
+runQuery is operation
+runQuery in sql SafeSql
+runQuery trustConstraint arg sql     # this slot must receive trusted input
+```
+
+Because trust is a property of the value's declared type, it propagates over the
+explicit `out`→`arg` dataflow with no aliasing — so the check is exact, not
+heuristic. (This promotes `trustConstraint` from advisory to enforced when the
+arg type carries a trust label.)
+
 ### Async intrinsics
 
 ```sem

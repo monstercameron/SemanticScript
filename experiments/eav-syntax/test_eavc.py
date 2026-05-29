@@ -4345,6 +4345,53 @@ def test_borrow_consumes_no_keeps_owner():
     assert "main" in prog.entities  # no SS1564 raised
 
 
+def test_rawexternal_value_at_sink_rejected():
+    # X-070 / §16: a `rawExternal`-typed value reaching a `trustConstraint`
+    # sink slot without a validation boundary is a hard error (SS3070).
+    src = (
+        "RawSql is alias\nRawSql for String\nRawSql typeTrust rawExternal\n"
+        "runQuery is operation\nrunQuery in sql RawSql\nrunQuery out ExitCode\n"
+        'runQuery async no\nrunQuery purpose "p"\nrunQuery invariant "i"\n'
+        "runQuery trustConstraint arg sql\n"
+        "runQuery let okCode immutable ExitCode 0\nrunQuery return okCode\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let rawInput immutable RawSql "DROP TABLE users"\n'
+        "main let okCode immutable ExitCode 0\nmain do callQuery\nmain return okCode\n"
+        "callQuery is call\ncallQuery in main\ncallQuery invokes runQuery\n"
+        "callQuery arg sql RawSql rawInput\ncallQuery out queryStatus ExitCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3070"
+
+
+def test_validated_value_at_sink_accepted():
+    # X-070: a `validated`-typed value (post trust-boundary) passes the sink.
+    src = (
+        "SafeSql is alias\nSafeSql for String\nSafeSql typeTrust validated\n"
+        "runQuery is operation\nrunQuery in sql SafeSql\nrunQuery out ExitCode\n"
+        'runQuery async no\nrunQuery purpose "p"\nrunQuery invariant "i"\n'
+        "runQuery trustConstraint arg sql\n"
+        "runQuery let okCode immutable ExitCode 0\nrunQuery return okCode\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let safeInput immutable SafeSql "SELECT 1"\n'
+        "main let okCode immutable ExitCode 0\nmain do callQuery\nmain return okCode\n"
+        "callQuery is call\ncallQuery in main\ncallQuery invokes runQuery\n"
+        "callQuery arg sql SafeSql safeInput\ncallQuery out queryStatus ExitCode\n"
+    )
+    prog = eavc.parse(src)
+    assert "main" in prog.entities  # no SS3070 raised
+
+
+def test_typetrust_unknown_label_rejected():
+    # X-070: a typeTrust with an unknown label is rejected.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("Token is alias\nToken for String\nToken typeTrust bogusLabel\n")
+    assert getattr(exc.value, "code", None) == "SS3070"
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
