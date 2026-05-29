@@ -2730,7 +2730,16 @@ def _lint_loop_no_progress(program: Program) -> list:
                 if rj.predicate == "goto" and j != gi and rj.payload:
                     t2 = (rj.payload[0], None)
                 elif rj.predicate == "branch" and len(rj.payload) >= 4 and rj.payload[2] == "goto":
-                    guard = rj.payload[1] if rj.payload[0] == "if" else None
+                    # X-115: the guard value lives at payload[1] for every
+                    # guarded branch form, not only bare `if`. The canonical loop
+                    # exit is `branch ifFalse <guard> goto <label>` (countdown.sem
+                    # and most loops), so restricting to "if" treated every
+                    # ifFalse/ifVariant exit as unconditional and silently missed
+                    # non-progressing loops. Mirror the guard set used elsewhere
+                    # (cf. the §13 return/branch-condition extraction).
+                    guard = (rj.payload[1]
+                             if rj.payload[0] in ("if", "ifFalse", "ifVariant")
+                             else None)
                     t2 = (rj.payload[3], guard)
                 if t2 is not None:
                     ti = labels.get(t2[0])

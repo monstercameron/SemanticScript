@@ -8281,3 +8281,229 @@ def test_secret_arithmetic_add_not_flagged_as_timing_leak():
     )
     prog = eavc.parse(src)   # no SS3074 raised
     assert "computeOp" in prog.entities
+
+
+# === X-115 / X-116 coverage backfill ===
+
+_CODEGEN_PROGRAM_HEAD = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path a.b\nm exports main\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+)
+
+
+def _run_codegen_program(body_rows, call_defs):
+    """JIT-run a minimal console program built from main-body rows + call
+    definitions; return its trimmed stdout. Asserts a clean exit, so a no-op
+    lowering (which would crash or print nothing) fails the caller."""
+    src = (_CODEGEN_PROGRAM_HEAD
+           + "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+             "main uses stdoutWriter\nmain async no\n"
+             'main purpose "compute and print one line"\n'
+             'main invariant "prints exactly the computed value"\n'
+           + body_rows + call_defs)
+    out, code = eavc._record_run(src)
+    assert code == 0, f"program exited {code}; stdout={out!r}"
+    return out.strip()
+
+
+def _math_unary_int_stdout(target, value):
+    body = (f"main let inputValue immutable Int64 {value}\n"
+            "main let okCode immutable ExitCode 0\n"
+            "main do compute\nmain do printResult\nmain return okCode\n")
+    calls = (f"compute is call\ncompute in main\ncompute invokes {target}\n"
+             "compute arg value Int64 inputValue\ncompute out computed Int64\n"
+             "printResult is call\nprintResult in main\nprintResult invokes console.writeIntegerLine\n"
+             "printResult arg value Int64 computed\n")
+    return _run_codegen_program(body, calls)
+
+
+def _math_binary_int_stdout(target, left, right):
+    body = (f"main let leftValue immutable Int64 {left}\nmain let rightValue immutable Int64 {right}\n"
+            "main let okCode immutable ExitCode 0\n"
+            "main do compute\nmain do printResult\nmain return okCode\n")
+    calls = (f"compute is call\ncompute in main\ncompute invokes {target}\n"
+             "compute arg left Int64 leftValue\ncompute arg right Int64 rightValue\ncompute out computed Int64\n"
+             "printResult is call\nprintResult in main\nprintResult invokes console.writeIntegerLine\n"
+             "printResult arg value Int64 computed\n")
+    return _run_codegen_program(body, calls)
+
+
+def _math_unary_bool_stdout(target, value):
+    """Branch on the Bool result and print 1/0 — exercises the bool-returning
+    _emit_math_computed path plus the actual value on both branches."""
+    body = (f"main let inputValue immutable Int64 {value}\n"
+            "main let okCode immutable ExitCode 0\n"
+            "main let oneValue immutable Int64 1\nmain let zeroValue immutable Int64 0\n"
+            "main do compute\nmain branch ifFalse flagValue goto falseLabel\n"
+            "main do printTrue\nmain goto endLabel\n"
+            "main at falseLabel do printFalse\nmain at endLabel return okCode\n")
+    calls = (f"compute is call\ncompute in main\ncompute invokes {target}\n"
+             "compute arg value Int64 inputValue\ncompute out flagValue Bool\n"
+             "printTrue is call\nprintTrue in main\nprintTrue invokes console.writeIntegerLine\n"
+             "printTrue arg value Int64 oneValue\n"
+             "printFalse is call\nprintFalse in main\nprintFalse invokes console.writeIntegerLine\n"
+             "printFalse arg value Int64 zeroValue\n")
+    return _run_codegen_program(body, calls)
+
+
+def test_x116_math_computed_unary_int_targets():
+    """X-116: each unary Int64 computed-math target (_emit_math_computed) JIT-runs
+    to the exact value. A no-op lowering returning 0/garbage fails these."""
+    assert _math_unary_int_stdout("math.negateInt64", 5) == "-5"
+    assert _math_unary_int_stdout("math.negateInt64", -4) == "4"
+    assert _math_unary_int_stdout("math.absInt64", -7) == "7"
+    assert _math_unary_int_stdout("math.absInt64", 7) == "7"
+    assert _math_unary_int_stdout("math.squareInt64", 6) == "36"
+    assert _math_unary_int_stdout("math.signInt64", -3) == "-1"
+    assert _math_unary_int_stdout("math.signInt64", 3) == "1"
+    assert _math_unary_int_stdout("math.signInt64", 0) == "0"
+
+
+def test_x116_math_computed_binary_int_targets():
+    """X-116: min/max/absDiff Int64 computed-math targets JIT-run exactly."""
+    assert _math_binary_int_stdout("math.minInt64", 8, 3) == "3"
+    assert _math_binary_int_stdout("math.minInt64", -8, 3) == "-8"
+    assert _math_binary_int_stdout("math.maxInt64", 8, 3) == "8"
+    assert _math_binary_int_stdout("math.absDiffInt64", 3, 8) == "5"
+    assert _math_binary_int_stdout("math.absDiffInt64", 8, 3) == "5"
+
+
+def test_x116_math_computed_bool_targets():
+    """X-116: isEven/isOdd/isPowerOfTwo Int64 predicates lower correctly
+    (1=true, 0=false) on both branches."""
+    assert _math_unary_bool_stdout("math.isEvenInt64", 4) == "1"
+    assert _math_unary_bool_stdout("math.isEvenInt64", 5) == "0"
+    assert _math_unary_bool_stdout("math.isOddInt64", 7) == "1"
+    assert _math_unary_bool_stdout("math.isOddInt64", 8) == "0"
+    assert _math_unary_bool_stdout("math.isPowerOfTwoInt64", 8) == "1"
+    assert _math_unary_bool_stdout("math.isPowerOfTwoInt64", 6) == "0"
+    assert _math_unary_bool_stdout("math.isPowerOfTwoInt64", 0) == "0"
+
+
+def test_x116_convert_int_paths():
+    """X-116: _emit_convert integer widen (sext) and narrow (trunc) JIT-run to
+    the exact value."""
+    sext = _run_codegen_program(
+        "main let smallValue immutable Int32 200\nmain let okCode immutable ExitCode 0\n"
+        "main do widen\nmain do show\nmain return okCode\n",
+        "widen is call\nwiden in main\nwiden invokes convert.toInt64\n"
+        "widen arg v Int32 smallValue\nwiden out wideValue Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 wideValue\n")
+    assert sext == "200"
+    # trunc Int64 -> Int32: low 32 bits of 4294967303 == 7, widened back to print
+    trunc = _run_codegen_program(
+        "main let bigValue immutable Int64 4294967303\nmain let okCode immutable ExitCode 0\n"
+        "main do narrow\nmain do rewiden\nmain do show\nmain return okCode\n",
+        "narrow is call\nnarrow in main\nnarrow invokes convert.toInt32\n"
+        "narrow arg v Int64 bigValue\nnarrow out narrowValue Int32\n"
+        "rewiden is call\nrewiden in main\nrewiden invokes convert.toInt64\n"
+        "rewiden arg v Int32 narrowValue\nrewiden out wideValue Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 wideValue\n")
+    assert trunc == "7"
+
+
+def test_x116_convert_float_paths():
+    """X-116: _emit_convert int<->float (sitofp/fptosi) and float widen/narrow
+    (fpext/fptrunc) JIT-run to the exact value."""
+    sitofp = _run_codegen_program(
+        "main let intValue immutable Int64 7\nmain let okCode immutable ExitCode 0\n"
+        "main do toFloat\nmain do show\nmain return okCode\n",
+        "toFloat is call\ntoFloat in main\ntoFloat invokes convert.toFloat64\n"
+        "toFloat arg v Int64 intValue\ntoFloat out floatValue Float64\n"
+        "show is call\nshow in main\nshow invokes console.writeFloatLine\nshow arg value Float64 floatValue\n")
+    assert sitofp == "7"
+    # fptosi Float64 -> Int64 truncates toward zero
+    fptosi = _run_codegen_program(
+        "main let floatValue immutable Float64 3.9\nmain let okCode immutable ExitCode 0\n"
+        "main do toInt\nmain do show\nmain return okCode\n",
+        "toInt is call\ntoInt in main\ntoInt invokes convert.toInt64\n"
+        "toInt arg v Float64 floatValue\ntoInt out intValue Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 intValue\n")
+    assert fptosi == "3"
+    # fpext Float32 -> Float64
+    fpext = _run_codegen_program(
+        "main let smallFloat immutable Float32 1.5\nmain let okCode immutable ExitCode 0\n"
+        "main do widen\nmain do show\nmain return okCode\n",
+        "widen is call\nwiden in main\nwiden invokes convert.toFloat64\n"
+        "widen arg v Float32 smallFloat\nwiden out wideFloat Float64\n"
+        "show is call\nshow in main\nshow invokes console.writeFloatLine\nshow arg value Float64 wideFloat\n")
+    assert fpext == "1.5"
+    # fptrunc Float64 -> Float32 (2.5 exactly representable), widened back to print
+    fptrunc = _run_codegen_program(
+        "main let bigFloat immutable Float64 2.5\nmain let okCode immutable ExitCode 0\n"
+        "main do narrow\nmain do rewiden\nmain do show\nmain return okCode\n",
+        "narrow is call\nnarrow in main\nnarrow invokes convert.toFloat32\n"
+        "narrow arg v Float64 bigFloat\nnarrow out narrowFloat Float32\n"
+        "rewiden is call\nrewiden in main\nrewiden invokes convert.toFloat64\n"
+        "rewiden arg v Float32 narrowFloat\nrewiden out wideFloat Float64\n"
+        "show is call\nshow in main\nshow invokes console.writeFloatLine\nshow arg value Float64 wideFloat\n")
+    assert fptrunc == "2.5"
+
+
+_LOOP_PROGRAM_HEAD = (
+    "P is project\nP module m\nP target console\nP entry spin\n"
+    "m is module\nm path a.b\nm exports spin\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+)
+
+
+def test_x115_loop_no_progress_invariant_guard_warns():
+    """X-115: a back-edge loop whose `ifFalse` exit guard is computed before the
+    loop and never recomputed inside makes no progress -> SS0950. This is the
+    canonical loop form (countdown.sem uses `ifFalse`); before the fix the lint
+    only honored bare `if`, treated the ifFalse exit as unconditional, and so
+    silently missed this — no SS0950 fired."""
+    src = _LOOP_PROGRAM_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "spin forever"\nspin invariant "guard never changes"\n'
+        "spin let counterValue immutable Int64 0\nspin let limitValue immutable Int64 10\n"
+        "spin let okCode immutable ExitCode 0\n"
+        "spin do checkDone\n"
+        "spin at loopHead branch ifFalse keepGoing goto loopExit\n"
+        "spin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "checkDone is call\ncheckDone in spin\ncheckDone invokes math.lessThanInt64\n"
+        "checkDone arg left Int64 counterValue\ncheckDone arg right Int64 limitValue\n"
+        "checkDone out keepGoing Bool\n"
+    )
+    codes = [d.code for d in eavc.lint(eavc.parse(src))]
+    assert "SS0950" in codes
+
+
+def test_x115_progressing_counting_loop_does_not_warn():
+    """X-115: a counting loop whose `ifFalse` guard IS recomputed each iteration
+    must NOT warn — guards the fix against over-warning on real loops."""
+    src = _LOOP_PROGRAM_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "count down"\nspin invariant "counter decreases each turn"\n'
+        "spin let counterValue mutable Int64 3\nspin let lowerBound immutable Int64 1\n"
+        "spin let oneStep immutable Int64 1\nspin let okCode immutable ExitCode 0\n"
+        "spin at loopHead do checkContinue\n"
+        "spin branch ifFalse keepGoing goto loopExit\n"
+        "spin do stepDown\nspin goto loopHead\n"
+        "spin at loopExit return okCode\n"
+        "checkContinue is call\ncheckContinue in spin\ncheckContinue invokes math.greaterThanOrEqualInt64\n"
+        "checkContinue arg left Int64 counterValue\ncheckContinue arg right Int64 lowerBound\n"
+        "checkContinue out keepGoing Bool\n"
+        "stepDown is call\nstepDown in spin\nstepDown invokes math.subtractInt64\n"
+        "stepDown arg left Int64 counterValue\nstepDown arg right Int64 oneStep\nstepDown out counterValue Int64\n"
+    )
+    codes = [d.code for d in eavc.lint(eavc.parse(src))]
+    assert "SS0950" not in codes
+
+
+def test_x115_loop_with_no_exit_path_warns():
+    """X-115: a back-edge loop with no return and no exit branch warns SS0950
+    (no exit path) — covers the other SS0950 branch."""
+    src = _LOOP_PROGRAM_HEAD + (
+        "spin is operation\nspin out ExitCode\nspin async no\n"
+        'spin purpose "no exit"\nspin invariant "never returns"\n'
+        "spin let leftValue immutable Int64 1\nspin let rightValue immutable Int64 2\n"
+        "spin at loopHead do addStep\nspin goto loopHead\n"
+        "addStep is call\naddStep in spin\naddStep invokes math.addInt64\n"
+        "addStep arg left Int64 leftValue\naddStep arg right Int64 rightValue\naddStep out sumValue Int64\n"
+    )
+    codes = [d.code for d in eavc.lint(eavc.parse(src))]
+    assert "SS0950" in codes
