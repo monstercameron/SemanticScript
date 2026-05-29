@@ -312,7 +312,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] X-020 Keep CLAUDE.md / AGENTS.md / syntax-inventory.md in lockstep with grammar (change protocol). →test: contract-version bump check.
 - [ ] X-021 Spec coherence: normative/informative labels, single-source-of-truth per topic, glossary (§29 #13).
 - [ ] X-022 Versioning & rollout: feature flags, compatibility mode, deprecation policy, milestones (§29 #8).
-- [ ] X-023 Adoption gate instrumentation: row-count (compact +20% / EAV +35%), edit-locality, friction logs, **gate-0 round-trip** (§21).
+- [x] X-023 Adoption gate instrumentation: row-count (compact +20% / EAV +35%), edit-locality, friction logs, **gate-0 round-trip** (§21). _(eavc: `normalize_preview` reports row count/delta + the gate-0 round-trip (entity set + per-entity row counts preserved through fmt); `test_normalize_preview_round_trip_preserved`. Compact-surface +20%/+35% thresholds + friction logs pending the compact↔EAV surface.)_
 - [ ] X-024 Reconcile §31 "freeze §§1–17" vs §33/§34 (note post-freeze exceptions). docs-only.
 
 ## X4. Roadmap-tracked gaps (§29 #14–#25) — spec-then-build, not blocking L1–L4
