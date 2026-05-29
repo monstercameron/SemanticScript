@@ -9331,3 +9331,127 @@ def test_r072_html_render_template_arg_not_flagged():
     )
     prog = eavc.parse(src)
     assert "renderOp" in prog.entities   # no SS3072
+
+
+# === R-080: fail-closed island indentation + typed-comment retention ===
+
+def test_r080_mixed_island_indentation_rejected():
+    """R-080 clause 1: an island whose later non-blank line dedents below the
+    first body line (the anchor) is a visually ambiguous paste and a hard error
+    (SS3024I) — the old common-prefix strip silently re-anchored it to column 1
+    and corrupted the island. No-op-failing: pre-R-080 `parse` accepted this and
+    produced a one-line island, so it raised nothing."""
+    mixed = (
+        "q is storage\nq scope module\nq type SqlText\nq mutability immutable\n"
+        "q body sql\n"
+        "    SELECT id\n"      # anchor: 4 spaces
+        "  FROM tasks\n"        # dedents to 2 spaces, still indented -> ambiguous
+        "next is operation\n"
+    )
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(mixed)
+    assert getattr(excinfo.value, "code", None) == "SS3024I"
+
+
+def test_r080_wellformed_nested_island_still_parses():
+    """R-080 clause 1 (app-safety guard): a well-formed island that only ever
+    nests *deeper* than its anchor (the real shape of the apps' HTML templates,
+    2/4/6/8 spaces) must still parse, and the relative nesting is preserved
+    verbatim after the common anchor is stripped."""
+    nested = (
+        "T is htmlTemplate\nT body html\n"
+        "  <section>\n"
+        "    <ol>\n"
+        "      <li>{{itemTitle}}</li>\n"
+        "    </ol>\n"
+        "  </section>\n"
+        "next is operation\n"
+    )
+    prog = eavc.parse(nested)
+    assert prog.islands[("T", "html")] == [
+        "<section>", "  <ol>", "    <li>{{itemTitle}}</li>", "  </ol>", "</section>"
+    ]
+
+
+def test_r080_tab_island_indentation_still_rejected_with_code():
+    """R-080 clause 1: a tab in island indentation is still a hard error, now
+    carrying the SS3024I code. No-op-failing: pre-R-080 the tab error was raised
+    *without* a diagnostic code (code was None), so this code assertion fails on
+    the old behavior."""
+    src = "q is storage\nq body sql\n\tSELECT 1\nnext is operation\n"
+    with pytest.raises(eavc.EavError) as excinfo:
+        eavc.parse(src)
+    assert getattr(excinfo.value, "code", None) == "SS3024I"
+
+
+def test_r080_typed_comments_retained_on_program():
+    """R-080 clause 2: typed comments (`# <tag>: text`) are retained as structured
+    metadata on the parsed Program with their source line, both full-line and
+    trailing. No-op-failing: pre-R-080 `parse` populated nothing, so
+    `program.typed_comments` was empty."""
+    src = (
+        "# security: validate the auth token before writing\n"
+        "main is operation\n"
+        "main out ExitCode  # failure: nonzero exit on a write error\n"
+        "main async no\n"
+    )
+    prog = eavc.parse(src)
+    by_tag = {tag: text for (tag, text, _ln) in prog.typed_comments}
+    assert by_tag["security"] == "validate the auth token before writing"
+    assert by_tag["failure"] == "nonzero exit on a write error"
+    # line numbers are retained (1-based)
+    lines = {tag: ln for (tag, _text, ln) in prog.typed_comments}
+    assert lines["security"] == 1 and lines["failure"] == 3
+
+
+def test_r080_typed_comment_inside_string_is_not_harvested():
+    """R-080 clause 2 (string-aware guard): a `# security:` sequence inside a
+    quoted string literal is source data, not a comment, and must NOT be harvested
+    as metadata. No-op-failing: a naive `.search` over the raw line (the shape of
+    the old `typed_comments` helper) would wrongly capture it."""
+    src = 'noteText is storage module immutable String "see # security: literal"\n'
+    prog = eavc.parse(src)
+    assert prog.typed_comments == []
+
+
+def test_r080_describe_surfaces_typed_comments():
+    """R-080 clause 2: `describe` (a reviewable contract/doc surface) renders the
+    typed comments attributed to the entity — the preamble note above its `is`
+    row and a trailing note on one of its rows. No-op-failing: pre-R-080
+    `describe` had no comment lines at all."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "# security: validate the auth token before writing\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0  # failure: nonzero exit on error\n"
+        "main return okCode\n"
+    )
+    prog = eavc.parse(src)
+    text = eavc.describe(prog, "main")
+    assert "# security: validate the auth token before writing" in text
+    assert "# failure: nonzero exit on error" in text
+
+
+def test_r080_check_json_surfaces_typed_comments(tmp_path):
+    """R-080 clause 2: the machine-facing `check --json` envelope carries the
+    retained typed comments under `typedComments` so they stay reviewable in
+    downstream tooling. No-op-failing: pre-R-080 the envelope had no such key."""
+    import json
+    src = (
+        "# security: top-level note\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0  # failure: nonzero on error\n"
+        "main return okCode\nExitCode is alias\nExitCode for Int32\n"
+    )
+    path = tmp_path / "r080.sem"
+    path.write_text(src, encoding="utf-8")
+    out = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "check", "--json", str(path)],
+        capture_output=True, text=True,
+    )
+    payload = json.loads(out.stdout)
+    tags = {c["tag"] for c in payload.get("typedComments", [])}
+    assert "security" in tags and "failure" in tags
