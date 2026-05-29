@@ -204,6 +204,9 @@ DIAGNOSTICS.update({
     "SS3079": {"tier": "T1", "summary": "Internal error disclosed to a client.",
                "found": "A `typeTrust trustedInternal` error reaches a `clientResponse` sink slot with no `errorBoundary` mapping.",
                "suggested": "Map the internal error to a client-safe error with `errorBoundary <InternalError> <ClientError>` before it reaches the response (information-disclosure defense, README §16/§25)."},
+    "SS3096": {"tier": "T1", "summary": "Unvalidated bytes-to-text conversion.",
+               "found": "A bytes->text decode of a `rawExternal` source whose `out` type is not a `validated`/`trustedInternal` text type.",
+               "suggested": "Decode untrusted bytes through a trust boundary that handles invalid UTF-8 explicitly and yields a `validated` text type (README §10.6/§16)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3242,6 +3245,7 @@ def _validate_program(program: Program) -> None:
     _validate_ssrf(program)
     _validate_dos_bounds(program)
     _validate_error_disclosure(program)
+    _validate_utf8_boundary(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4769,6 +4773,46 @@ def _validate_error_disclosure(program: Program) -> None:
                     f"client-response slot {a.payload[0]!r} of {callee!r}; map it with "
                     f"`errorBoundary {a.payload[1]} <ClientError>` first (README §16/§25)",
                     call.line, code="SS3079")
+
+
+_UTF8_DECODE_TARGETS = (
+    "bytes.toText", "string.fromBytes", "text.fromUtf8", "text.decodeUtf8",
+    "utf8.decode",
+)
+
+
+def _validate_utf8_boundary(program: Program) -> None:
+    """X-096 / README §10.6/§16: bytes crossing an input boundary become text only
+    through a validator that handles invalid UTF-8 explicitly. A bytes->text decode
+    (`bytes.toText`/`string.fromBytes`/`text.fromUtf8`/…) of a `rawExternal` source
+    must bind its result to a `validated`/`trustedInternal` text type — otherwise
+    invalid UTF-8 could silently corrupt an internal `String` (SS3096)."""
+    label_of = {program.entities[n].name: r.payload[0]
+                for n in program.order
+                for r in program.entities[n].facts("typeTrust")
+                if r.payload and r.payload[0] in _TRUST_LABELS}
+    raw_types = {t for t, l in label_of.items() if l == "rawExternal"}
+    if not raw_types:
+        return
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target not in _UTF8_DECODE_TARGETS:
+            continue
+        if not any(len(a.payload) >= 2 and a.payload[1] in raw_types
+                   for a in ent.facts("arg")):
+            continue
+        out = ent.fact("out")
+        out_type = out.payload[1] if out and len(out.payload) >= 2 else None
+        if label_of.get(out_type) not in ("validated", "trustedInternal"):
+            raise EavError(
+                f"call {ent.name!r} decodes untrusted bytes with {target!r} into "
+                f"{out_type!r}, which is not a validated text type; cross a UTF-8 "
+                f"validation boundary that yields a `validated` type (README §10.6)",
+                ent.line, code="SS3096")
 
 
 def _validate_time_safety(program: Program) -> None:

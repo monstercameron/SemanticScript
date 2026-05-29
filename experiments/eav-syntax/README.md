@@ -4211,6 +4211,13 @@ sink (a `clientResponse arg <slot>` parameter) without an explicit
 returning a raw internal error to a client is an information-disclosure hard
 error (**SS3079**).
 
+**UTF-8 boundary validation (X-096).** Bytes become text only through a
+validator. A bytes→text decode (`bytes.toText`/`string.fromBytes`/
+`text.fromUtf8`/…) of a `rawExternal` source must bind its result to a
+`validated`/`trustedInternal` text type — decoding untrusted bytes straight into a
+plain `String` is a hard error (**SS3096**), so invalid UTF-8 cannot silently
+corrupt an internal string.
+
 ### Async intrinsics
 
 ```sem

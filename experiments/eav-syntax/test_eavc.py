@@ -4788,6 +4788,34 @@ def test_internal_error_with_boundary_accepted():
     assert "handler" in prog.entities
 
 
+def _utf8_decode_src(out_type):
+    return (
+        "RawBytes is alias\nRawBytes for OpaquePointer\nRawBytes typeTrust rawExternal\n"
+        + ("ValidText is alias\nValidText for String\nValidText typeTrust validated\n"
+           if out_type == "ValidText" else "") +
+        "ingest is operation\ningest out ExitCode\ningest async no\n"
+        'ingest purpose "p"\ningest invariant "i"\n'
+        "ingest in raw RawBytes\ningest let okCode immutable ExitCode 0\n"
+        "ingest do decode\ningest return okCode\n"
+        "decode is call\ndecode in ingest\ndecode invokes bytes.toText\n"
+        f"decode arg bytes RawBytes raw\ndecode out text {out_type}\n"
+    )
+
+
+def test_unvalidated_bytes_to_text_rejected():
+    # X-096 / §10.6: decoding untrusted bytes into a plain String (no validation
+    # boundary) is rejected.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_utf8_decode_src("String"))
+    assert getattr(exc.value, "code", None) == "SS3096"
+
+
+def test_validated_bytes_to_text_accepted():
+    # X-096: decoding into a `validated` text type (a UTF-8 boundary) is accepted.
+    prog = eavc.parse(_utf8_decode_src("ValidText"))
+    assert "ingest" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
