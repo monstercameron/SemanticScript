@@ -2994,6 +2994,23 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_bootstrap_surfaces(capsys):
+    # WS4-115: version / agent-docs / skills JSON surfaces.
+    import json
+    eavc.main(["version", "--json"])
+    v = json.loads(capsys.readouterr().out)
+    assert v["surface"] == "sem.version.v1" and v["contractVersion"] == eavc.CONTRACT_VERSION
+    eavc.main(["agent-docs", "--json"])
+    d = json.loads(capsys.readouterr().out)
+    assert d["surface"] == "sem.agentDocs.v1" and "EAV-Steps" in d["rules"]
+    eavc.main(["skills"])
+    s = json.loads(capsys.readouterr().out)
+    assert s["surface"] == "sem.skills.v1" and len(s["skills"]) >= 3
+    eavc.main(["skills", "eav-run"])
+    one = json.loads(capsys.readouterr().out)
+    assert [k["name"] for k in one["skills"]] == ["eav-run"]
+
+
 def test_coverage_floor_probe():
     # X-068: a stdlib-`trace`-style line-coverage probe over eavc.py (no third-party
     # dep) with a floor that fails on a big regression. Parsing + linting + lowering

@@ -5597,6 +5597,66 @@ def build_executable(program: Program, out_path: str) -> str:
     return out_path
 
 
+# Versioned JSON surfaces eavc exposes (the sem.*.v1 contract, WS4-111).
+SEM_SURFACES = (
+    "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
+    "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
+)
+
+EAV_AGENT_RULES = (
+    "EAV-Steps: flat semantic tape, one row = one record, column-1 subject, "
+    "column-2 predicate. No expressions/infix/parens/commas/braces. Calls are "
+    "multi-row (is call / in OP / invokes TARGET / arg / out|catch|discards). "
+    "Effects need a covering capability. Use the stable loop: check -> "
+    "fix --plan -> patch -> fmt --check -> test. Build/run with `eavc build` / "
+    "`eavc run`."
+)
+
+EAV_SKILLS = {
+    "eav-start": "Load version-matched rules, then inspect with check/graph/slice.",
+    "eav-syntax": "Subject-first rows; runtimeBinding for native ABIs; §26 .semsig.",
+    "eav-run": "JIT with `eavc run`; native exe with `eavc build`.",
+}
+
+
+def _json_envelope(surface: str, **payload) -> str:
+    import json
+    body = {"surface": surface, "version": "v1", "ok": True}
+    body.update(payload)
+    return json.dumps(body, indent=2)
+
+
+def cmd_version(args) -> int:
+    """Emit the eavc contract version surface (sem.version.v1)."""
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.version.v1", contractVersion=CONTRACT_VERSION, compiler="eavc",
+            surfaces=list(SEM_SURFACES)) + "\n")
+    else:
+        sys.stdout.write(f"eavc {CONTRACT_VERSION}\n")
+    return 0
+
+
+def cmd_agent_docs(args) -> int:
+    """Emit the version-matched EAV agent rules (sem.agentDocs.v1)."""
+    sys.stdout.write(_json_envelope(
+        "sem.agentDocs.v1", contractVersion=CONTRACT_VERSION,
+        rules=EAV_AGENT_RULES) + "\n")
+    return 0
+
+
+def cmd_skills(args) -> int:
+    """List or get EAV agent skills (sem.skills.v1)."""
+    names = getattr(args, "names", None)
+    items = [
+        {"name": k, "summary": v}
+        for k, v in EAV_SKILLS.items()
+        if not names or k in names
+    ]
+    sys.stdout.write(_json_envelope("sem.skills.v1", skills=items) + "\n")
+    return 0
+
+
 def cmd_build(args) -> int:
     """Compile a program to a native executable (IR -> clang -> exe)."""
     import os
@@ -5849,6 +5909,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_version = sub.add_parser("version", help="emit the contract version surface")
+    sp_version.add_argument("--json", action="store_true", help="emit JSON envelope")
+    sp_version.set_defaults(func=cmd_version)
+
+    sp_agentdocs = sub.add_parser("agent-docs", help="emit version-matched agent rules")
+    sp_agentdocs.add_argument("--json", action="store_true")
+    sp_agentdocs.set_defaults(func=cmd_agent_docs)
+
+    sp_skills = sub.add_parser("skills", help="list or get EAV agent skills")
+    sp_skills.add_argument("names", nargs="*", help="optional skill names to filter")
+    sp_skills.add_argument("--json", action="store_true")
+    sp_skills.set_defaults(func=cmd_skills)
 
     sp_build = sub.add_parser("build", help="compile a program to a native exe")
     sp_build.add_argument("path", help="EAV/compact source file, or - for stdin")
