@@ -2177,6 +2177,35 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+def test_alias_annotation_at_written_let_position_ok():
+    # WS1-029 / §10: a written `let` type may annotate a base-typed binding to an
+    # alias — visible, not silent coercion.
+    src = (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let rawCount immutable Int32 0\n"
+        "main let annotated immutable ExitCode rawCount\n"
+        "main return annotated\n"
+    )
+    eavc.parse(src)  # no raise; the written ExitCode annotates the Int32 value
+
+
+def test_bare_return_into_alias_requires_exact_match():
+    # WS1-029: returning a base-typed binding into an alias `out` (no written type
+    # at the return) is rejected.
+    src = (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let rawCount immutable Int32 0\n"
+        "main return rawCount\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1029"
+
+
 def test_bare_variant_resolves_in_type_directed_position():
     # WS1-028 / §10: a bare variant in a let initializer (type-directed) lowers to
     # its discriminant; printing it yields the repr value.

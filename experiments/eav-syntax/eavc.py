@@ -252,6 +252,9 @@ DIAGNOSTICS.update({
     "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
                "found": "A call result used before its `do`, or a catch var on the success path.",
                "suggested": "Reference the binding only after it is produced (README §25)."},
+    "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
+               "found": "A return of a base/sibling type where the out is an alias newtype.",
+               "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
     "SS1028": {"tier": "T1", "summary": "Bare variant outside a type-directed position.",
                "found": "An enum variant name used where the type is not statically known.",
                "suggested": "Use variants only in arg/let/return positions (README §10)."},
@@ -2615,6 +2618,7 @@ def _validate_program(program: Program) -> None:
     _validate_invoke_ambiguity(program)
     _validate_variant_payload_bind(program)
     _validate_variant_positions(program)
+    _validate_return_exactness(program)
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
@@ -3197,6 +3201,59 @@ def _validate_invoke_ambiguity(program: Program) -> None:
                 f"(README ss17 #51)",
                 ent.line, code="SS1552",
             )
+
+
+def _validate_return_exactness(program: Program) -> None:
+    """README ss10 / WS1-029: an explicitly-written `arg`/`let` type position may
+    annotate a base-typed binding to an alias (visible, not silent). But a `return`
+    writes no type, so a bare return into an alias `out` requires an *exact* type
+    match — returning the base type (or a sibling alias of the same base) where the
+    `out` is the alias newtype is rejected (the alias does not coerce here)."""
+    alias_map = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
+    if not alias_map:
+        return
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        out_row = op.fact("out")
+        if not (out_row and out_row.payload) or out_row.payload[0] == "Result":
+            continue
+        out_type = out_row.payload[0]
+        btypes: dict = {}
+        for r in op.facts("in"):
+            if len(r.payload) >= 2:
+                btypes[r.payload[0]] = r.payload[1]
+        for r in op.facts("let"):
+            if len(r.payload) >= 3:
+                btypes[r.payload[0]] = r.payload[2]
+        for cn in program.order:
+            call = program.entities[cn]
+            owner = call.fact("in")
+            if (call.kind in ("call", "task") and owner and owner.payload
+                    and owner.payload[0] == op.name):
+                o = call.fact("out")
+                if o and len(o.payload) >= 2 and o.payload[0] != "Result":
+                    btypes[o.payload[0]] = o.payload[1]
+        for row in op.rows:
+            if row.predicate != "return":
+                continue
+            for v in (t for t in row.payload
+                      if t not in ("value", "ok", "error", "nil", "void")):
+                bt = btypes.get(v)
+                if bt is None or bt == out_type:
+                    continue
+                if _resolve_alias(bt, alias_map) == _resolve_alias(out_type, alias_map):
+                    raise EavError(
+                        f"bare `return {v}` (type {bt!r}) into {op.name!r} out "
+                        f"{out_type!r}: a return writes no type, so it must match "
+                        f"exactly; an alias does not coerce here (README ss10, WS1-029)",
+                        row.line, code="SS1029",
+                    )
 
 
 def _validate_variant_positions(program: Program) -> None:
