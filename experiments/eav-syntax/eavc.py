@@ -279,6 +279,15 @@ DIAGNOSTICS.update({
     "SS3042B": {"tier": "T1", "summary": "Override value type mismatch.",
                 "found": "A platform override value that does not match the constant's type.",
                 "suggested": "Match the constant's declared type (README §28.1)."},
+    "SS3024": {"tier": "T1", "summary": "Island body kind/type mismatch.",
+               "found": "A `body <kind>` that doesn't match the entity's declared type.",
+               "suggested": "Match SqlText→sql, JsonText→json, HtmlTemplate→html (README §16)."},
+    "SS3024J": {"tier": "T1", "summary": "Malformed json island.",
+                "found": "A `body json` island whose content is not valid JSON.",
+                "suggested": "Fix the JSON syntax (README §16)."},
+    "SS3024Q": {"tier": "T1", "summary": "sql placeholder/arg-count mismatch.",
+                "found": "A sql island whose `?` count differs from the call's param args.",
+                "suggested": "One `?` per parameter arg (README §16)."},
     "SS3025": {"tier": "T1", "summary": "Trusted fragment minted off-boundary.",
                "found": "An HtmlTrustedFragment produced by a call other than html.trustFragment.",
                "suggested": "Mint trusted fragments only at html.trustFragment (README §16)."},
@@ -2758,6 +2767,7 @@ def _validate_program(program: Program) -> None:
     _validate_storage_mutation(program)
     _validate_reserved_targets(program)
     _validate_webserver_abi(program)
+    _validate_islands(program)
     _validate_html_trust(program)
     _validate_constants(program)
     _validate_overrides(program)
@@ -3544,6 +3554,68 @@ def _validate_webserver_abi(program: Program) -> None:
             for row in ws.facts(pred):
                 if row.payload:
                     check_abi(row.payload[0], abi, row.line, f"{pred} handler")
+
+
+def _validate_islands(program: Program) -> None:
+    """README ss16 / WS3-024: an island `body <kind>` must match the entity's
+    declared type (SqlText→sql, JsonText→json, HtmlTemplate→html); a `json` island
+    must be valid JSON; a `sql` island's `?` placeholder count must equal the
+    executing call's parameter-arg count."""
+    import json as _json
+    kind_for_type = {"SqlText": "sql", "JsonText": "json", "HtmlTemplate": "html"}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("storage", "htmlTemplate"):
+            continue
+        body = ent.fact("body")
+        if not body or not body.payload:
+            continue
+        kind = body.payload[0]
+        type_row = ent.fact("type")
+        declared = (type_row.payload[0] if type_row and type_row.payload
+                    else ("HtmlTemplate" if ent.kind == "htmlTemplate" else None))
+        expected = kind_for_type.get(declared)
+        if expected is not None and kind != expected:
+            raise EavError(
+                f"{ent.name!r} body kind {kind!r} does not match declared type "
+                f"{declared!r} (expected {expected!r}, README ss16, WS3-024)",
+                body.line, code="SS3024",
+            )
+        content = "\n".join(program.islands.get((ent.name, kind), []))
+        if kind == "json" and content.strip():
+            try:
+                _json.loads(content)
+            except ValueError:
+                raise EavError(
+                    f"{ent.name!r} json island is not valid JSON (README ss16, "
+                    f"WS3-024)",
+                    body.line, code="SS3024J",
+                )
+        if kind == "sql":
+            placeholders = content.count("?")
+            for cn in program.order:
+                call = program.entities[cn]
+                if call.kind not in ("call", "task"):
+                    continue
+                passes = any(
+                    len(a.payload) >= 3 and a.payload[2] == ent.name
+                    and a.payload[0] in ("sql", "query")
+                    for a in call.facts("arg")
+                )
+                if not passes:
+                    continue
+                params = [
+                    a for a in call.facts("arg")
+                    if a.payload and a.payload[0] not in
+                    ("sql", "query", "database", "db", "statement")
+                ]
+                if len(params) != placeholders:
+                    raise EavError(
+                        f"sql island {ent.name!r} has {placeholders} `?` "
+                        f"placeholder(s) but call {call.name!r} passes "
+                        f"{len(params)} parameter arg(s) (README ss16, WS3-024)",
+                        call.line, code="SS3024Q",
+                    )
 
 
 def _validate_html_trust(program: Program) -> None:

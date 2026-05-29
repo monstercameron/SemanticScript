@@ -2635,6 +2635,44 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def test_island_body_kind_type_mismatch_rejected():
+    # WS3-024: a body kind must match the entity's declared type.
+    src = "q is storage\nq type SqlText\nq body json\n    {\"a\": 1}\n"
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3024"
+
+
+def test_island_malformed_json_rejected():
+    # WS3-024: a json island must be valid JSON.
+    src = "cfg is storage\ncfg type JsonText\ncfg body json\n    {oops not json\n"
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3024J"
+
+
+def test_island_sql_placeholder_count_mismatch_rejected():
+    # WS3-024: a sql island's `?` count must equal the call's parameter args.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "lookupSql is storage\nlookupSql scope module\nlookupSql type SqlText\n"
+        "lookupSql mutability immutable\nlookupSql body sql\n"
+        "    SELECT x FROM t WHERE a = ? AND b = ?\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let db immutable Int64 0\nmain let firstParam immutable Int64 1\n"
+        "main let okCode immutable ExitCode 0\nmain do runQuery\nmain return okCode\n"
+        "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.prepareStatement\n"
+        "runQuery arg database Int64 db\nrunQuery arg sql SqlText lookupSql\n"
+        "runQuery arg firstParam Int64 firstParam\nrunQuery out stmt Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3024Q"
+
+
 _HTML_TRUST_BASE = (
     "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
     'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
