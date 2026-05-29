@@ -3632,6 +3632,39 @@ def test_new_project_scaffold(tmp_path, capsys):
     eavc.parse((root / "build.sem").read_text(encoding="utf-8"))
 
 
+def test_new_project_refuses_to_clobber_without_force(tmp_path, capsys):
+    """R-005: `eavc new` must not destroy existing source. A mistyped path that
+    already holds `src/main.sem` returns nonzero with a collision list and leaves
+    the file byte-for-byte unchanged; `--force` overwrites explicitly and reports
+    what it replaced. Under the old unconditional `"w"` open this clobbered
+    silently and always returned 0."""
+    import json
+    root = tmp_path / "demoapp"
+    (root / "src").mkdir(parents=True)
+    sentinel = root / "src" / "main.sem"
+    sentinel.write_text("PRECIOUS USER SOURCE\n", encoding="utf-8")
+
+    rc = eavc.main(["new", str(root)])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["status"] == "collision"
+    assert "src/main.sem" in payload["collisions"]
+    assert payload["created"] == []
+    # the pre-existing file is untouched
+    assert sentinel.read_text(encoding="utf-8") == "PRECIOUS USER SOURCE\n"
+
+    rc2 = eavc.main(["new", str(root), "--force"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert rc2 == 0
+    assert payload2["ok"] is True
+    assert "src/main.sem" in payload2["overwritten"]
+    # --force replaced the sentinel with the real scaffold
+    replaced = sentinel.read_text(encoding="utf-8")
+    assert replaced != "PRECIOUS USER SOURCE\n"
+    assert "is module" in replaced
+
+
 def test_semsig_legal_entity_set():
     # WS4-006: a .semsig holds only intrinsic + referenced types (+ header).
     import glob

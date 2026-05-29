@@ -8159,10 +8159,24 @@ def _new_project_files(name: str) -> dict:
 
 
 def cmd_new(args) -> int:
-    """Scaffold a canonical EAV project tree (§28.2)."""
+    """Scaffold a canonical EAV project tree (§28.2). R-005: refuse to clobber
+    existing scaffold files unless `--force` — a mistyped path must not destroy
+    an existing `build.sem`/`src/main.sem`. The collision list is reported in
+    `sem.new.v1` so the failure is machine-readable, mirroring the §32.3 #20
+    stale-file protection used by the patch loop."""
     import os
     root = args.path
     files = _new_project_files(os.path.basename(os.path.normpath(root)))
+    collisions = sorted(
+        rel for rel in files
+        if os.path.exists(os.path.join(root, rel))
+    )
+    if collisions and not getattr(args, "force", False):
+        sys.stdout.write(_json_envelope(
+            "sem.new.v1", ok=False, status="collision", root=root,
+            collisions=collisions, created=[],
+            hint="pass --force to overwrite the listed files") + "\n")
+        return 2
     created = []
     for rel, content in files.items():
         dest = os.path.join(root, rel)
@@ -8170,7 +8184,9 @@ def cmd_new(args) -> int:
         with open(dest, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(content)
         created.append(rel)
-    sys.stdout.write(_json_envelope("sem.new.v1", root=root, created=sorted(created)) + "\n")
+    sys.stdout.write(_json_envelope(
+        "sem.new.v1", ok=True, status="created", root=root,
+        created=sorted(created), overwritten=collisions) + "\n")
     return 0
 
 
@@ -8779,6 +8795,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_new = sub.add_parser("new", help="scaffold a canonical EAV project tree")
     sp_new.add_argument("path", help="project root directory to create")
     sp_new.add_argument("--enable-docs-index", action="store_true")
+    sp_new.add_argument("--force", action="store_true",
+                        help="overwrite existing scaffold files (default: refuse)")
     sp_new.set_defaults(func=cmd_new)
 
     sp_task = sub.add_parser("task", help="emit an agent workflow checklist")
