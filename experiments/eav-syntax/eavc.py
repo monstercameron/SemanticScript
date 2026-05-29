@@ -2923,16 +2923,6 @@ def discover_tests(program: Program) -> dict:
 
 
 # CLI subcommand -> MCP tool name (README ss24; proposed vs shipping shapes).
-MCP_TOOL_MAP = {
-    "lint": "check", "doctor": "doctor", "fmt": "fmt", "explain": "explain",
-    "slice": "slice", "query": "query", "inventory": "inventory",
-    "verify-patch": "verify_patch", "graph": "graph", "pack": "pack",
-    "describe": "explain", "diff": "diff", "trace": "trace",
-    "normalize": "normalize", "rename": "rename", "add": "add",
-    "scaffold": "scaffold", "run": "eval", "lower": "lower", "test": "test",
-}
-
-
 def diagnostics_json(diags: list) -> str:
     """JSON surface for diagnostics (README ss24 `--json`)."""
     return json.dumps(
@@ -8090,7 +8080,16 @@ def mcp_handle(request: dict) -> dict:
             for name, (_argv, desc) in EAV_MCP_TOOLS.items()]}}
     if method == "tools/call":
         params = request.get("params", {})
-        text = _mcp_dispatch(params.get("name", ""), params.get("arguments", {}))
+        name = params.get("name", "")
+        if name not in EAV_MCP_TOOLS:
+            # R-011: an unknown or missing tool is a JSON-RPC error (invalid
+            # params), not a text-content "success" that masks the failure.
+            return {**base, "error": {
+                "code": -32602,
+                "message": (f"unknown tool: {name!r}" if name
+                            else "missing tool name"),
+                "data": {"available": sorted(EAV_MCP_TOOLS)}}}
+        text = _mcp_dispatch(name, params.get("arguments", {}))
         return {**base, "result": {"content": [{"type": "text", "text": text}]}}
     return {**base, "error": {"code": -32601, "message": f"method not found: {method}"}}
 
@@ -8244,6 +8243,12 @@ def cmd_mcp(args) -> int:
         try:
             request = json.loads(line)
         except ValueError:
+            # R-011: surface a JSON-RPC parse error instead of silently dropping
+            # the line, so a malformed request is observable to the client.
+            sys.stdout.write(json.dumps({
+                "jsonrpc": "2.0", "id": None,
+                "error": {"code": -32700, "message": "parse error"}}) + "\n")
+            sys.stdout.flush()
             continue
         sys.stdout.write(json.dumps(mcp_handle(request)) + "\n")
         sys.stdout.flush()

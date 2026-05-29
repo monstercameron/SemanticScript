@@ -1200,15 +1200,47 @@ def test_token_sync_guard_detects_unsynced(monkeypatch):
 
 
 def test_json_surface_and_mcp_map():
-    # WS4-024: --json diagnostics surface + MCP tool mappings.
+    # WS4-024 / R-011: --json diagnostics surface + the single authoritative MCP
+    # registry (EAV_MCP_TOOLS) that drives tools/list.
     import json as _json
     prog = eavc.parse("m is module\nm path a.b\n")
     payload = _json.loads(eavc.diagnostics_json(eavc.lint(prog)))
     assert any(d["code"] == "MD1001" and d["severity"] == "error" for d in payload)
     assert all({"code", "severity", "line", "entity", "message"} <= set(d) for d in payload)
-    # MCP map covers the agent-tool commands
-    assert eavc.MCP_TOOL_MAP["lint"] == "check"
-    assert "verify-patch" in eavc.MCP_TOOL_MAP and "slice" in eavc.MCP_TOOL_MAP
+    # the authoritative MCP registry covers the core agent-tool commands
+    assert "check" in eavc.EAV_MCP_TOOLS and "fix_plan" in eavc.EAV_MCP_TOOLS
+
+
+def test_mcp_registry_is_authoritative_and_errors_are_protocol_errors():
+    """R-011: one authoritative MCP registry. tools/list equals EAV_MCP_TOOLS,
+    every listed tool round-trips to a JSON `sem.*` envelope, an unknown tool
+    yields a JSON-RPC error (not a text-content success), and a missing name
+    errors too. The vestigial MCP_TOOL_MAP that advertised unexposed tools is
+    gone."""
+    import json as _json
+    assert not hasattr(eavc, "MCP_TOOL_MAP")
+    listed = [t["name"] for t in eavc.mcp_handle(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]]
+    assert sorted(listed) == sorted(eavc.EAV_MCP_TOOLS)
+    # every listed tool round-trips to its subcommand envelope
+    no_path = {"version", "readiness", "agent_docs"}
+    hello = os.path.join(EXAMPLES, "hello_world.sem")
+    for tool in eavc.EAV_MCP_TOOLS:
+        args = {} if tool in no_path else {"path": hello}
+        resp = eavc.mcp_handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                                "params": {"name": tool, "arguments": args}})
+        assert "result" in resp, tool
+        text = resp["result"]["content"][0]["text"]
+        assert _json.loads(text)["surface"].startswith("sem."), tool
+    # an unknown tool is a JSON-RPC error, not a text-content "success"
+    bad = eavc.mcp_handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                           "params": {"name": "definitely-not-a-tool", "arguments": {}}})
+    assert "error" in bad and "result" not in bad
+    assert bad["error"]["code"] == -32602
+    # a missing tool name errors too
+    missing = eavc.mcp_handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                               "params": {"arguments": {}}})
+    assert "error" in missing and "result" not in missing
 
 
 def test_lint_json_cli():
