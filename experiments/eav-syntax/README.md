@@ -2318,6 +2318,27 @@ error (**SS1568**). `buffer.slice` returns a `Slice` that *borrows* the buffer (
 WS1-111 view: `mayEscape no`), so a slice that outlives its buffer is rejected
 (SS1560). The bounds-check runtime lives in `standard.buffer` (WS1-119).
 
+### FFI allocation wrapping (WS1-116, §26/§30.4)
+
+A `runtimeBinding`/`intrinsic` that allocates foreign memory is `unsafe yes`, and
+the raw foreign pointer is **never** exposed to app source — it re-enters as an
+owned resource at the `.semsig` line:
+
+```sem
+allocBuffer is intrinsic
+allocBuffer target c.malloc
+allocBuffer out handle OwnedBuffer
+allocBuffer unsafe yes
+allocBuffer wrapsAs OwnedBuffer        # the opaque owned wrapper, not the raw ptr
+allocBuffer cleanedBy c.free           # how it is released
+allocBuffer allocator c.heap           # which allocator (region | c.heap)
+```
+
+An `unsafe yes` allocating binding missing any of `wrapsAs`/`cleanedBy`/
+`allocator` is a hard error (**SS1569**) — a foreign allocation can only enter the
+program as an `owns`-tracked resource, and `OpaquePointer` stays opaque (no
+arithmetic in app source).
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

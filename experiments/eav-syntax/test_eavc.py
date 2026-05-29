@@ -5167,6 +5167,33 @@ def test_memory_concurrency_vocab_fully_absorbed():
     assert eavc.token_sync_drift() == set()  # all homed in §5/§22, no orphans
 
 
+def test_ffi_allocator_missing_wrap_rejected():
+    # WS1-116 / §26: an `unsafe yes` foreign allocator without wrapsAs/cleanedBy/
+    # allocator is rejected (SS1569) — the raw pointer must re-enter as owned.
+    src = (
+        "rawMalloc is intrinsic\nrawMalloc target c.malloc\n"
+        "rawMalloc arg size Int64\nrawMalloc out ptr OpaquePointer\n"
+        "rawMalloc unsafe yes\nrawMalloc allocator c.heap\n"  # missing wrapsAs + cleanedBy
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1569"
+
+
+def test_ffi_allocator_fully_wrapped_accepted():
+    # WS1-116: a fully-wrapped foreign allocator (wrapsAs+cleanedBy+allocator) is
+    # accepted — its result re-enters as an owned resource type.
+    src = (
+        "OwnedBuffer is alias\nOwnedBuffer for OpaquePointer\n"
+        "allocBuffer is intrinsic\nallocBuffer target c.malloc\n"
+        "allocBuffer arg size Int64\nallocBuffer out handle OwnedBuffer\n"
+        "allocBuffer unsafe yes\nallocBuffer wrapsAs OwnedBuffer\n"
+        "allocBuffer cleanedBy c.free\nallocBuffer allocator c.heap\n"
+    )
+    prog = eavc.parse(src)
+    assert "allocBuffer" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

@@ -210,6 +210,9 @@ DIAGNOSTICS.update({
     "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
                "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
                "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
+    "SS1569": {"tier": "T1", "summary": "Unsafe FFI allocator missing its wrapping rows.",
+               "found": "An `unsafe yes` binding without all of `wrapsAs`/`cleanedBy`/`allocator`.",
+               "suggested": "A foreign allocator must re-enter as an owned resource: declare `wrapsAs <OwnedType>` + `cleanedBy <freeTarget>` + `allocator <region|c.heap>` (README §26/§30.4)."},
     "SS1568": {"tier": "T1", "summary": "Bounds-checked buffer read with no error path.",
                "found": "A `buffer.get`/`buffer.at`/`buffer.read` call with no `catch` for its BufferBoundsError.",
                "suggested": "A bounds-checked read is fallible — bind `catch <e> BufferBoundsError` and branch on the out-of-bounds error (README §10.6)."},
@@ -1281,6 +1284,7 @@ RESERVED_WORDS = {
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
+    "unsafe", "wrapsAs", "allocator",      # WS1-116 FFI allocation wrapping
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
@@ -1333,6 +1337,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
         "optOut", "readShared", "setShared", "allocateIn", "releaseRegion",
+        "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
@@ -1340,6 +1345,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "errorBoundary", "optOut",
         "readShared", "setShared", "allocateIn", "releaseRegion",
+        "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -1373,7 +1379,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     },
     "intrinsic": {"target", "arg", "out", "catch", "async", "owns",
                   "trustConstraint", "clientResponse",
-                  "borrows", "lifetime", "mayEscape"},  # WS1-111 view rows on a sig
+                  "borrows", "lifetime", "mayEscape",  # WS1-111 view rows on a sig
+                  "unsafe", "wrapsAs", "allocator", "cleanedBy"},  # WS1-116 FFI
     "semsig": {"version", "generatedBy", "describes"},
     "operationType": {"in", "out"},
 }
@@ -3434,6 +3441,7 @@ def _validate_program(program: Program) -> None:
     _validate_shared_state(program)
     _validate_regions(program)
     _validate_buffer_access(program)
+    _validate_ffi_wrapping(program)
     _validate_numeric_ub(program)
     _validate_constants(program)
     _validate_overrides(program)
@@ -5028,6 +5036,29 @@ _INT_WIDTHS = {"Int8": 8, "UInt8": 8, "Byte": 8, "Int16": 16, "UInt16": 16,
 
 
 _REGION_STRATEGIES = ("arena", "fixedBuffer", "general")
+
+
+def _validate_ffi_wrapping(program: Program) -> None:
+    """WS1-116 / README §26/§30.4: a `runtimeBinding`/`intrinsic` that allocates
+    foreign memory is `unsafe yes` and must re-enter app source as an owned
+    resource — declaring `wrapsAs <OwnedType>` (the opaque wrapper, never the raw
+    pointer), `cleanedBy <freeTarget>`, and `allocator <region|c.heap>`. Missing
+    any of those rows on an unsafe allocating binding is a hard error (SS1569)."""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("intrinsic", "operation", "function"):
+            continue
+        u = ent.fact("unsafe")
+        if not (u and u.payload and u.payload[0] in ("yes", "true", "1")):
+            continue
+        missing = [r for r in ("wrapsAs", "cleanedBy", "allocator")
+                   if ent.fact(r) is None]
+        if missing:
+            raise EavError(
+                f"{ent.kind} {ent.name!r} is an `unsafe yes` foreign allocator but is "
+                f"missing {', '.join(missing)}; a foreign allocation must re-enter as an "
+                f"owned resource (`wrapsAs`+`cleanedBy`+`allocator`) (README §26/§30.4)",
+                ent.line, code="SS1569")
 
 
 _BUFFER_FALLIBLE_READS = ("buffer.get", "buffer.at", "buffer.read", "buffer.byteAt")
