@@ -1872,8 +1872,8 @@ def test_cleanup_worker_also_do_activated_rejected():
         "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
         'closeCleanup because "x"\ncloseCleanup onFailure logAndSuppress\n'
         "closeCleanup cleans db\n"
-        "main is operation\nmain out ExitCode\nmain do closeDb\nmain return okCode\n"
-        "main let okCode immutable ExitCode 0\n"
+        "main is operation\nmain out ExitCode\nmain let okCode immutable ExitCode 0\n"
+        "main defer closeCleanup\nmain do closeDb\nmain return okCode\n"  # worker also do-activated
     )
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(src)
@@ -1890,13 +1890,17 @@ def test_onfailure_propagate_needs_result():
         "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
         "closeCleanup onFailure propagate\ncloseCleanup cleans db\n"
     )
+    main_body = (
+        "main let okCode immutable ExitCode 0\n"
+        "main do openDb\nmain defer closeCleanup\n"
+    )
     # main returns a plain ExitCode -> nowhere to propagate
-    bad = base + "main is operation\nmain out ExitCode\n"
+    bad = base + "main is operation\nmain out ExitCode\n" + main_body + "main return okCode\n"
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(bad)
     assert exc.value.code == "SS1518"
     # main returns Result -> ok
-    good = base + "main is operation\nmain out Result ExitCode SomeError\n"
+    good = base + "main is operation\nmain out Result ExitCode SomeError\n" + main_body + "main return okCode nil\n"
     assert "main" in eavc.parse(good).entities
 
 
@@ -1957,6 +1961,23 @@ def test_cleanup_cleans_must_be_owned():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(src)
     assert "no call `owns`" in exc.value.message
+
+
+def test_owned_cleanup_must_be_deferred():
+    # README §17 #16 (SS1502): an owned resource's cleanup must be deferred.
+    src = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\nopenDb cleanedBy closeCleanup\n"
+        "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
+        "closeDb arg database Int64 db\ncloseDb catch e SqliteCloseError\n"
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        "closeCleanup cleans db\n"
+        "main is operation\nmain out ExitCode\nmain let okCode immutable ExitCode 0\n"
+        "main do openDb\nmain return okCode\n"  # never defers closeCleanup
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert exc.value.code == "SS1503"
 
 
 def test_dangling_cleanedby_rejected():

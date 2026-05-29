@@ -118,6 +118,12 @@ DIAGNOSTICS: dict[str, dict] = {
         "found": "A call `out` writing a name declared `let immutable`.",
         "suggested": "Declare the binding `let mutable`, or bind a fresh name (README §12, §17 #28).",
     },
+    "SS1503": {
+        "tier": "T0",
+        "summary": "Owned resource's cleanup not deferred.",
+        "found": "A call owns a cleanedBy resource whose cleanup is never `defer`-ed.",
+        "suggested": "Add `defer <cleanup>` so it runs on every path (README §15.6, §17 #16).",
+    },
 }
 
 
@@ -2518,12 +2524,29 @@ def _validate_cleanup(program: Program) -> None:
                 )
         if ent.kind in ("call", "task"):
             cb = ent.fact("cleanedBy")
-            if cb and cb.payload and cb.payload[0] not in cleanups:
-                raise EavError(
-                    f"{ent.kind} {ent.name!r} cleanedBy {cb.payload[0]!r}, which is "
-                    f"not a cleanup entity (dangling cleanedBy, README ss15)",
-                    ent.line,
+            if cb and cb.payload:
+                if cb.payload[0] not in cleanups:
+                    raise EavError(
+                        f"{ent.kind} {ent.name!r} cleanedBy {cb.payload[0]!r}, which is "
+                        f"not a cleanup entity (dangling cleanedBy, README ss15)",
+                        ent.line,
+                    )
+                # README ss17 #16 (SS1502): the cleanup must be `defer`-ed in the
+                # owning operation so the resource is released on every path.
+                owner_row = ent.fact("in")
+                owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+                deferred = owner is not None and any(
+                    r.predicate == "defer" and r.payload and r.payload[0] == cb.payload[0]
+                    for r in owner.rows
                 )
+                if owner is not None and not deferred:
+                    raise EavError(
+                        f"{ent.kind} {ent.name!r} owns a resource cleaned by "
+                        f"{cb.payload[0]!r}, but that cleanup is never `defer`-ed in "
+                        f"{owner.name!r} — it would not run on every path (README "
+                        f"ss15.6, ss17 #16)",
+                        ent.line, code="SS1503",
+                    )
 
 
 def _target_is_nonvoid(target: str, program: Program):
