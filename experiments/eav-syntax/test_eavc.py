@@ -24,6 +24,15 @@ EXAMPLES = os.path.join(HERE, "examples")
 INVALID_CORPUS = os.path.join(HERE, "invalid_corpus")
 SIGS = os.path.join(HERE, "sigs")
 STD = os.path.join(HERE, "std")
+APPS = os.path.join(HERE, "apps")
+
+
+def _app_program(app, *stdlibs):
+    """Compose an app's main.sem with the stdlib modules it imports (eavc has no
+    cross-file import resolution, so tests assemble what an importer would)."""
+    parts = [open(os.path.join(STD, s), encoding="utf-8").read() for s in stdlibs]
+    parts.append(open(os.path.join(APPS, app, "main.sem"), encoding="utf-8").read())
+    return "\n".join(parts)
 
 
 def _have_c_compiler():
@@ -3731,6 +3740,29 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "eav"
+
+
+def test_app_html_template_lab_jit_runs():
+    # X-040: the html-template-lab port escapes a dynamic title and renders it.
+    composed = _app_program("html-template-lab", "standard.html.sem")
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(composed)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == '<li class="task">Buy &lt;milk&gt; &amp; eggs</li>'
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")
+def test_app_html_template_lab_builds_exe(tmp_path):
+    # X-040: the port also compiles to a native exe that runs.
+    composed = _app_program("html-template-lab", "standard.html.sem")
+    out = str(tmp_path / ("htmllab" + (".exe" if sys.platform == "win32" else "")))
+    eavc.build_executable(eavc.parse(composed), out)
+    proc = subprocess.run([out], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "&lt;milk&gt;" in proc.stdout
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build an exe")
