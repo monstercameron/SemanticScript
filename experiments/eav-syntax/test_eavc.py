@@ -601,6 +601,43 @@ def test_slice_reparses():
     assert "main" in re.entities and "checkContinue" in re.entities
 
 
+def test_lsp_completions_per_kind():
+    # WS4-032: completions are the kind's §5 predicates + universal metadata.
+    op = eavc.completions("operation")
+    assert {"do", "branch", "effect", "let", "purpose", "invariant"} <= set(op)
+    rec = eavc.completions("record")
+    assert "field" in rec and "purpose" in rec and "do" not in rec
+
+
+def test_lsp_hover_is_entity_contract():
+    # WS4-031: hover content = the entity contract (describe).
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    hover = eavc.describe(prog, "addTwoValues")
+    assert "addTwoValues : operation" in hover and "out Int64" in hover
+
+
+def test_lsp_diagnostics_carry_source_spans():
+    # WS4-034: linter diagnostics carry a source line (squiggle target).
+    prog = eavc.parse("m is module\nm path a.b\n")
+    md = [d for d in eavc.lint(prog) if d.code == "MD1001"]
+    assert md and md[0].line is not None
+
+
+def test_lsp_rename_and_repair_actions_available():
+    # WS4-033: rename (code action) + repair suggestion (quick-fix) exist.
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    assert "addTwo is operation" in eavc.rename_entity(src, "addTwoValues", "addTwo")
+    assert "Suggested fix:" in eavc.format_repair("SS1502")
+
+
+def test_editor_tokens_move_with_parser():
+    # WS4-035: keyword classification derives from the parser's reserved set —
+    # a token classified `keyword` in an `is` row is the reserved `is`.
+    toks = eavc.semantic_tokens("Foo is record")
+    keyword_toks = {t for t, role in toks if role == "keyword"}
+    assert keyword_toks <= eavc.RESERVED_WORDS
+
+
 def test_semantic_tokens_subject_predicate():
     # WS4-030: column 1 = subject, column 2 = predicate; payload classified.
     toks = eavc.semantic_tokens('main let helloText immutable String "hi"')

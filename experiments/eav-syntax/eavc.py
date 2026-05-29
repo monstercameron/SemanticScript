@@ -1535,6 +1535,15 @@ def pack(program: Program, entity: str, budget: int = 4000) -> str:
     return text[:budget]
 
 
+def completions(kind: str) -> list:
+    """Editor completion (README ss29 #7): the predicates valid for an entity
+    kind — its §5 structural/step set plus the universal metadata predicates.
+    Derived from the same tables the parser dispatches on (editor moves with the
+    parser, never highlight-only)."""
+    preds = set(ALLOWED_PREDICATES.get(kind, set())) | UNIVERSAL_PREDICATES
+    return sorted(preds)
+
+
 def semantic_tokens(line: str) -> list:
     """Classify a row's tokens for editor highlighting (README ss29 #7): column 1
     is always the subject, column 2 the predicate — the subject-anchored
