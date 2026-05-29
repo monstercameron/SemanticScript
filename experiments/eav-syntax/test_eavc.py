@@ -147,6 +147,13 @@ def test_semsig_catalogs_load_and_doc():
     lines = eavc.docs(console)
     assert any("console.writeLine(String)" in l and "throws ConsoleWriteError" in l
                for l in lines)
+    # the http catalog documents the §34-migration surface (route/serve/callNext)
+    http = eavc.load_semsig(open(os.path.join(SIGS, "standard.http.semsig"),
+                                 encoding="utf-8").read())
+    http_lines = eavc.docs(http)
+    assert any(l.startswith("http.route(") for l in http_lines)
+    assert any("http.serve(" in l and "throws HttpError" in l for l in http_lines)
+    assert any(l.startswith("http.callNext(") for l in http_lines)
 
 
 def test_semsig_loads_and_indexes_targets():

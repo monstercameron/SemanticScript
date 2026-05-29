@@ -1,0 +1,61 @@
+# standard.http.semsig — generated signature sidecar (README ss26, ss34.3).
+# The §34 minimal-core direction models the web server as an `HttpServer` record
+# plus `http.route`/`http.serve`/`http.callNext` stdlib calls checked by this
+# signature file, rather than as `webServer` keywords. Runtime (sockets, the
+# middleware dispatch loop) is external surface (ss27) and not in the compiler.
+# (todos WS3-017 contract surface; X-010 migration target)
+
+httpSig is semsig
+httpSig version "1.0"
+httpSig generatedBy "eavc 0.1"
+httpSig describes standard.http
+
+HttpSafeUrl is alias
+HttpSafeUrl for String
+HttpSafeUrl purpose "A URL validated safe for URL-bearing attributes (href/src/action)"
+
+HttpRequest is record
+HttpRequest field method String
+HttpRequest field path String
+HttpRequest field body String
+HttpRequest purpose "An inbound HTTP request passed to a handler"
+
+HttpResponse is record
+HttpResponse field status Int32
+HttpResponse field body String
+HttpResponse purpose "A handler's HTTP response"
+
+HttpServer is record
+HttpServer field host String
+HttpServer field port Int32
+HttpServer purpose "Server configuration (replaces the §14 webServer keyword surface)"
+
+HttpError is error
+HttpError purpose "Represent routing, serving, and middleware failures"
+
+NextMiddleware is alias
+NextMiddleware for OpaquePointer
+NextMiddleware purpose "Continuation handle for the downstream middleware chain"
+
+route is intrinsic
+route target http.route
+route arg server HttpServer
+route arg method String
+route arg path String
+route arg handler OpaquePointer
+route out registered Bool
+route purpose "Register a handler for a method+path on a server"
+
+serve is intrinsic
+serve target http.serve
+serve arg server HttpServer
+serve out exit ExitCode
+serve catch HttpError
+serve async yes
+serve purpose "Run the server's request loop until shutdown"
+
+callNext is intrinsic
+callNext target http.callNext
+callNext arg next NextMiddleware
+callNext out continued Bool
+callNext purpose "Invoke the downstream middleware chain and return whether it continued"
