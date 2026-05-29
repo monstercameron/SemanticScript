@@ -4588,17 +4588,40 @@ def test_app_taskforge_tui_render_core_runs():
     assert "Up/Down select" in proc.stdout
 
 
-def test_app_taskforge_api_client_console_core_runs():
-    # X-041: the client's console scaffolding JIT-runs; net is deferred (§27).
-    src = open(os.path.join(APPS, "taskforge-api-client", "main.sem"), encoding="utf-8").read()
-    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
-    proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
-        input=src, capture_output=True, text=True,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert "started TaskForge fetches" in proc.stdout
-    assert proc.stdout.count("response:") == 3
+def test_app_taskforge_api_client_full_port():
+    # X-041: the async outbound client is FULLY ported (the single main op, all
+    # three net.fetchText fetches as tasks, record build + body read + release)
+    # against sigs/standard.net.semsig and lints clean as `target console`;
+    # network *execution* stays deferred (no net.* lowering).
+    netsig = eavc.load_semsig(open(os.path.join(SIGS, "standard.net.semsig"),
+                                   encoding="utf-8").read())
+    net_targets = [l.split("(")[0] for l in eavc.docs(netsig)]
+    assert "net.fetchText" in net_targets and "net.freeTextBody" in net_targets
+
+    src = open(os.path.join(APPS, "taskforge-api-client", "main.sem"),
+               encoding="utf-8").read()
+    prog = eavc.parse(src)
+    # op-count parity with the original v0.1 app (1 op)
+    assert [o.name for o in prog.of_kind("operation")] == ["main"]
+    assert len(prog.of_kind("capability")) == 3   # capability parity
+    # all three outbound fetches are started+joined tasks (the §20 async split)
+    fetch_tasks = [t for t in prog.of_kind("task")
+                   if (t.fact("invokes") and t.fact("invokes").payload
+                       and t.fact("invokes").payload[0] == "net.fetchText")]
+    assert len(fetch_tasks) == 3
+    main = prog.entities["main"]
+    fetch_names = {t.name for t in fetch_tasks}
+    last_fetch_start = max(i for i, r in enumerate(main.rows)
+                           if r.predicate == "start" and r.payload
+                           and r.payload[0] in fetch_names)
+    first_fetch_join = min(i for i, r in enumerate(main.rows)
+                           if r.predicate == "join" and r.payload
+                           and r.payload[0] in fetch_names)
+    # every fetch is started before the first response is joined (async shape)
+    assert last_fetch_start < first_fetch_join
+    # the full port lints clean (net.* deferred as external targets)
+    diags = eavc.lint(prog)
+    assert not [d.render() for d in diags if d.severity == "error"]
 
 
 def test_app_event_stream_smoke_full_port():
@@ -4638,7 +4661,7 @@ def test_app_event_stream_smoke_full_port():
 # port lints clean, and the original v0.1 source coexists untouched.
 _APP_PORT_MATRIX = {
     "html-template-lab": ("runs", []),
-    "taskforge-api-client": ("runs", []),
+    "taskforge-api-client": ("deferred", []),
     "taskforge-tui": ("runs", []),
     "taskforge-web": ("runs", ["standard.sqlite.sem", "standard.html.sem"]),
     "http-runtime-gauntlet": ("runs", []),

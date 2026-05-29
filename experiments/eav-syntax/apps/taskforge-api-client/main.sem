@@ -1,11 +1,27 @@
 # taskforge-api-client — EAV port (apps/taskforge-api-client, semsc v0.1).
 #
-# The original probes a running TaskForge server over standard.net. Per README
-# §27 the network client is DEFERRED (its contract is sigs/standard.net.semsig),
-# so this ports the console-observable scaffolding: the startup line and the
-# three response section labels the client prints. It JIT-runs and builds to an
-# exe today; the net.fetchText flow (and its capability-gated network effect)
-# lands with the standard.net runtime. (X-041)
+# FULL 1:1 port of the single-operation async outbound client: build three
+# HttpGetRequest values (a shared HttpRequestPolicy + each URL), START all three
+# net.fetchText calls before awaiting any (the original's async-shape invariant),
+# print the "started" line, then for each fetch join the result, read its body
+# (HttpTextResponse.body), print the section label + body, and release the body
+# copy (net.freeTextBody). Every fetch is a `task` (EAV async = start/join,
+# README §13) converted against sigs/standard.net.semsig.
+#
+# Network *execution* is deferred: the standard.net client runtime is not in v0.3
+# (§27), so the net.* targets stay external (unlowered). The record construction
+# (HttpRequestPolicy.new / HttpGetRequest.new) and field access
+# (HttpTextResponse.body) are real EAV record ops. The whole app parses + lints
+# clean as `target console`; when the net runtime lands, net.fetchText /
+# net.freeTextBody gain bodies and this source runs unchanged. (X-041)
+#
+# Conversions / language differences: the original's `new` + `fieldSet` builder
+# becomes immutable `Record.new` construction; the wait-set
+# `await … case … done` (await-any in completion order) becomes start-all then
+# join-each in document order (EAV has no select/wait-set); per-call
+# `timeout`/`cancelOn`, the Result/MainError return, and the console.writeLine
+# error path are dropped (EAV tasks carry no cancel token, a console entry
+# returns ExitCode, and console.writeLine is void).
 
 TaskforgeApiClient is project
 TaskforgeApiClient module appTaskforgeApiClient
@@ -15,51 +31,277 @@ TaskforgeApiClient entry main
 appTaskforgeApiClient is module
 appTaskforgeApiClient path apps.taskforgeApiClient
 appTaskforgeApiClient exports main
-appTaskforgeApiClient purpose "Print the client's console scaffolding (net fetch deferred)"
-appTaskforgeApiClient invariant "Writes the startup line and the three response labels in order"
+appTaskforgeApiClient purpose "Call the running TaskForge server through standard.net and print the responses"
+appTaskforgeApiClient invariant "Every outbound fetch is started before the first response is awaited"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
-stdoutWriter is capability
-stdoutWriter grants write console.stdout
-stdoutWriter purpose "Allow controlled writes to standard output"
+Url is alias
+Url for String
+Url purpose "An absolute http(s) URL to fetch"
+
+HttpClientBodyText is alias
+HttpClientBodyText for String
+HttpClientBodyText purpose "A heap-owned response body copy, released by net.freeTextBody"
+
+NetworkTimeoutMilliseconds is alias
+NetworkTimeoutMilliseconds for Int64
+NetworkTimeoutMilliseconds purpose "A per-request timeout budget in milliseconds"
+
+ResponseBodyLimitBytes is alias
+ResponseBodyLimitBytes for Int64
+ResponseBodyLimitBytes purpose "The maximum response body size accepted, in bytes"
+
+HttpRedirectLimit is alias
+HttpRedirectLimit for Int64
+HttpRedirectLimit purpose "The maximum number of redirects followed"
+
+HttpRequestPolicy is record
+HttpRequestPolicy field timeoutMillis NetworkTimeoutMilliseconds
+HttpRequestPolicy field maxBodyBytes ResponseBodyLimitBytes
+HttpRequestPolicy field redirectLimit HttpRedirectLimit
+HttpRequestPolicy purpose "Per-request transport policy (timeout, body limit, redirect limit)"
+
+HttpGetRequest is record
+HttpGetRequest field url Url
+HttpGetRequest field policy HttpRequestPolicy
+HttpGetRequest purpose "An outbound GET request: a URL plus its transport policy"
+
+HttpTextResponse is record
+HttpTextResponse field body HttpClientBodyText
+HttpTextResponse purpose "A fetched text response carrying the heap-owned body copy"
+
+outboundFetch is capability
+outboundFetch grants write network.http.client
+outboundFetch purpose "Authority to perform outbound HTTP client work through standard.net"
+
+consoleStdoutWriteCapability is capability
+consoleStdoutWriteCapability grants write console.stdout
+consoleStdoutWriteCapability purpose "Authority to print probe progress and response bodies to stdout"
+
+fetchBodyHeapRelease is capability
+fetchBodyHeapRelease grants free heap
+fetchBodyHeapRelease purpose "Authority to release HttpTextResponse body copies returned by net.fetchText"
+
+taskForgeHealthUrl is storage
+taskForgeHealthUrl scope module
+taskForgeHealthUrl type Url
+taskForgeHealthUrl mutability immutable
+taskForgeHealthUrl value "http://127.0.0.1:18090/health"
+
+taskForgeVersionUrl is storage
+taskForgeVersionUrl scope module
+taskForgeVersionUrl type Url
+taskForgeVersionUrl mutability immutable
+taskForgeVersionUrl value "http://127.0.0.1:18090/api/version"
+
+taskForgeTodosUrl is storage
+taskForgeTodosUrl scope module
+taskForgeTodosUrl type Url
+taskForgeTodosUrl mutability immutable
+taskForgeTodosUrl value "http://127.0.0.1:18090/api/todos"
+
+timeoutMillis is storage
+timeoutMillis scope module
+timeoutMillis type NetworkTimeoutMilliseconds
+timeoutMillis mutability immutable
+timeoutMillis value 3000
+
+maxBodyBytes is storage
+maxBodyBytes scope module
+maxBodyBytes type ResponseBodyLimitBytes
+maxBodyBytes mutability immutable
+maxBodyBytes value 1048576
+
+redirectLimit is storage
+redirectLimit scope module
+redirectLimit type HttpRedirectLimit
+redirectLimit mutability immutable
+redirectLimit value 5
+
+successfulExitCode is storage
+successfulExitCode scope module
+successfulExitCode type ExitCode
+successfulExitCode mutability immutable
+successfulExitCode value 0
+
+startedText is storage
+startedText scope module
+startedText type String
+startedText mutability immutable
+startedText value "started TaskForge fetches before awaiting"
+
+healthLabelText is storage
+healthLabelText scope module
+healthLabelText type String
+healthLabelText mutability immutable
+healthLabelText value "TaskForge /health response:"
+
+versionLabelText is storage
+versionLabelText scope module
+versionLabelText type String
+versionLabelText mutability immutable
+versionLabelText value "TaskForge /api/version response:"
+
+todosLabelText is storage
+todosLabelText scope module
+todosLabelText type String
+todosLabelText mutability immutable
+todosLabelText value "TaskForge /api/todos unauthenticated response:"
 
 main is operation
 main out ExitCode
+main effect write network.http.client
 main effect write console.stdout
-main uses stdoutWriter
-main async no
-main memory heap no
-main purpose "Announce the fetches and print the response section labels"
-main invariant "Console scaffolding only; net fetches are deferred"
-main let startedText immutable String "started TaskForge fetches before awaiting"
-main let healthLabelText immutable String "TaskForge /health response:"
-main let versionLabelText immutable String "TaskForge /api/version response:"
-main let todosLabelText immutable String "TaskForge /api/todos unauthenticated response:"
-main let okCode immutable ExitCode 0
-main do writeStarted
+main effect free heap
+main uses outboundFetch
+main uses consoleStdoutWriteCapability
+main uses fetchBodyHeapRelease
+main memory heap yes
+main async yes
+main purpose "Start three outbound GETs against the TaskForge server, then print responses in order"
+main invariant "All three fetches are started before the first await (the async client shape)"
+main do buildRequestPolicy
+main do buildHealthRequest
+main do buildVersionRequest
+main do buildTodosRequest
+main start healthFetchTask
+main start versionFetchTask
+main start todosFetchTask
+main do writeStartedLine
+main join healthFetchTask
+main do readHealthBody
 main do writeHealthLabel
+main do writeHealthBody
+main do releaseHealthBody
+main join versionFetchTask
+main do readVersionBody
 main do writeVersionLabel
+main do writeVersionBody
+main do releaseVersionBody
+main join todosFetchTask
+main do readTodosBody
 main do writeTodosLabel
-main return okCode
+main do writeTodosBody
+main do releaseTodosBody
+main return successfulExitCode
 
-writeStarted is call
-writeStarted in main
-writeStarted invokes console.writeLine
-writeStarted arg text String startedText
+buildRequestPolicy is call
+buildRequestPolicy in main
+buildRequestPolicy invokes HttpRequestPolicy.new
+buildRequestPolicy arg timeoutMillis NetworkTimeoutMilliseconds timeoutMillis
+buildRequestPolicy arg maxBodyBytes ResponseBodyLimitBytes maxBodyBytes
+buildRequestPolicy arg redirectLimit HttpRedirectLimit redirectLimit
+buildRequestPolicy out requestPolicy HttpRequestPolicy
+
+buildHealthRequest is call
+buildHealthRequest in main
+buildHealthRequest invokes HttpGetRequest.new
+buildHealthRequest arg url Url taskForgeHealthUrl
+buildHealthRequest arg policy HttpRequestPolicy requestPolicy
+buildHealthRequest out healthRequest HttpGetRequest
+
+buildVersionRequest is call
+buildVersionRequest in main
+buildVersionRequest invokes HttpGetRequest.new
+buildVersionRequest arg url Url taskForgeVersionUrl
+buildVersionRequest arg policy HttpRequestPolicy requestPolicy
+buildVersionRequest out versionRequest HttpGetRequest
+
+buildTodosRequest is call
+buildTodosRequest in main
+buildTodosRequest invokes HttpGetRequest.new
+buildTodosRequest arg url Url taskForgeTodosUrl
+buildTodosRequest arg policy HttpRequestPolicy requestPolicy
+buildTodosRequest out todosRequest HttpGetRequest
+
+healthFetchTask is task
+healthFetchTask in main
+healthFetchTask invokes net.fetchText
+healthFetchTask arg request HttpGetRequest healthRequest
+healthFetchTask out healthResponse HttpTextResponse
+
+versionFetchTask is task
+versionFetchTask in main
+versionFetchTask invokes net.fetchText
+versionFetchTask arg request HttpGetRequest versionRequest
+versionFetchTask out versionResponse HttpTextResponse
+
+todosFetchTask is task
+todosFetchTask in main
+todosFetchTask invokes net.fetchText
+todosFetchTask arg request HttpGetRequest todosRequest
+todosFetchTask out todosResponse HttpTextResponse
+
+writeStartedLine is call
+writeStartedLine in main
+writeStartedLine invokes console.writeLine
+writeStartedLine arg text String startedText
+
+readHealthBody is call
+readHealthBody in main
+readHealthBody invokes HttpTextResponse.body
+readHealthBody arg record HttpTextResponse healthResponse
+readHealthBody out healthBody HttpClientBodyText
 
 writeHealthLabel is call
 writeHealthLabel in main
 writeHealthLabel invokes console.writeLine
 writeHealthLabel arg text String healthLabelText
 
+writeHealthBody is call
+writeHealthBody in main
+writeHealthBody invokes console.writeLine
+writeHealthBody arg text String healthBody
+
+releaseHealthBody is call
+releaseHealthBody in main
+releaseHealthBody invokes net.freeTextBody
+releaseHealthBody arg body HttpClientBodyText healthBody
+releaseHealthBody discards "the free status is not part of the exit code"
+
+readVersionBody is call
+readVersionBody in main
+readVersionBody invokes HttpTextResponse.body
+readVersionBody arg record HttpTextResponse versionResponse
+readVersionBody out versionBody HttpClientBodyText
+
 writeVersionLabel is call
 writeVersionLabel in main
 writeVersionLabel invokes console.writeLine
 writeVersionLabel arg text String versionLabelText
 
+writeVersionBody is call
+writeVersionBody in main
+writeVersionBody invokes console.writeLine
+writeVersionBody arg text String versionBody
+
+releaseVersionBody is call
+releaseVersionBody in main
+releaseVersionBody invokes net.freeTextBody
+releaseVersionBody arg body HttpClientBodyText versionBody
+releaseVersionBody discards "the free status is not part of the exit code"
+
+readTodosBody is call
+readTodosBody in main
+readTodosBody invokes HttpTextResponse.body
+readTodosBody arg record HttpTextResponse todosResponse
+readTodosBody out todosBody HttpClientBodyText
+
 writeTodosLabel is call
 writeTodosLabel in main
 writeTodosLabel invokes console.writeLine
 writeTodosLabel arg text String todosLabelText
+
+writeTodosBody is call
+writeTodosBody in main
+writeTodosBody invokes console.writeLine
+writeTodosBody arg text String todosBody
+
+releaseTodosBody is call
+releaseTodosBody in main
+releaseTodosBody invokes net.freeTextBody
+releaseTodosBody arg body HttpClientBodyText todosBody
+releaseTodosBody discards "the free status is not part of the exit code"

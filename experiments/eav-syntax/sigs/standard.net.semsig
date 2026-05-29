@@ -50,3 +50,56 @@ netClose target net.close
 netClose arg socket NetSocket
 netClose out closed Int32
 netClose purpose "Close a connected socket"
+
+# ---- high-level HTTP client surface (net.fetchText), DEFERRED ----
+# The async outbound text-fetch client the ported apps/taskforge-api-client
+# uses. Like the socket surface it is deferred (no lowering in v0.3); this
+# records the typed request/response shape app code converts against.
+
+Url is alias
+Url for String
+Url purpose "An absolute http(s) URL to fetch"
+
+HttpClientBodyText is alias
+HttpClientBodyText for String
+HttpClientBodyText purpose "A heap-owned response body copy, released by net.freeTextBody"
+
+NetworkTimeoutMilliseconds is alias
+NetworkTimeoutMilliseconds for Int64
+NetworkTimeoutMilliseconds purpose "A per-request timeout budget in milliseconds"
+
+ResponseBodyLimitBytes is alias
+ResponseBodyLimitBytes for Int64
+ResponseBodyLimitBytes purpose "The maximum response body size accepted, in bytes"
+
+HttpRedirectLimit is alias
+HttpRedirectLimit for Int64
+HttpRedirectLimit purpose "The maximum number of redirects followed"
+
+HttpRequestPolicy is record
+HttpRequestPolicy field timeoutMillis NetworkTimeoutMilliseconds
+HttpRequestPolicy field maxBodyBytes ResponseBodyLimitBytes
+HttpRequestPolicy field redirectLimit HttpRedirectLimit
+HttpRequestPolicy purpose "Per-request transport policy (timeout, body limit, redirect limit)"
+
+HttpGetRequest is record
+HttpGetRequest field url Url
+HttpGetRequest field policy HttpRequestPolicy
+HttpGetRequest purpose "An outbound GET request: a URL plus its transport policy"
+
+HttpTextResponse is record
+HttpTextResponse field body HttpClientBodyText
+HttpTextResponse purpose "A fetched text response carrying the heap-owned body copy"
+
+fetchText is intrinsic
+fetchText target net.fetchText
+fetchText arg request HttpGetRequest
+fetchText out response HttpTextResponse
+fetchText async yes
+fetchText purpose "Fetch a URL and return its text response (deferred network client)"
+
+freeTextBody is intrinsic
+freeTextBody target net.freeTextBody
+freeTextBody arg body HttpClientBodyText
+freeTextBody out freed Int32
+freeTextBody purpose "Release a response body copy returned by net.fetchText (deferred)"
