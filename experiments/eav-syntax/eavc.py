@@ -124,6 +124,18 @@ DIAGNOSTICS: dict[str, dict] = {
         "found": "A call owns a cleanedBy resource whose cleanup is never `defer`-ed.",
         "suggested": "Add `defer <cleanup>` so it runs on every path (README §15.6, §17 #16).",
     },
+    "SS1560": {
+        "tier": "T0",
+        "summary": "Borrowed view escapes its lifetime.",
+        "found": "A `mayEscape no` view's out value is returned out of its operation.",
+        "suggested": "Return an owned value, or mark the view `mayEscape yes` only if the borrowed source truly outlives the call (README §32.1 #9).",
+    },
+    "SS1566": {
+        "tier": "T0",
+        "summary": "Borrowed view declares cleanup.",
+        "found": "A call that `borrows` a resource also declares `owns`/`cleanedBy`.",
+        "suggested": "Views borrow and never clean up — drop `owns`/`cleanedBy`; only the owning resource cleans (README §32.1 #9).",
+    },
 }
 
 
@@ -1048,6 +1060,7 @@ RESERVED_WORDS = {
     "literalDigest", "grants", "invokes", "arg", "discards", "catch",
     "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
+    "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1102,10 +1115,12 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
         "cleanedBy", "effect", "async",  # async = tolerated-deprecated (ss5)
+        "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     },
     "task": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
         "cleanedBy", "effect",
+        "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
     "storage": {
@@ -3149,6 +3164,7 @@ def _validate_program(program: Program) -> None:
     _validate_webserver_abi(program)
     _validate_islands(program)
     _validate_ownership_edges(program)
+    _validate_view_lifetimes(program)
     _validate_html_trust(program)
     _validate_time_safety(program)
     _validate_numeric_precision(program)
@@ -4177,6 +4193,49 @@ def _validate_time_safety(program: Program) -> None:
                     f"conversion for calendar math (README §30.5.3)",
                     ent.line, code="SS3095",
                 )
+
+
+def _validate_view_lifetimes(program: Program) -> None:
+    """WS1-111 / README §32.1 #9: resources clean up; **views** borrow and never
+    clean. A call/task whose `out` carries a `borrows <resource>` row is a view:
+    - it may not also `owns`/`cleanedBy` (a view does not clean) — SS1566;
+    - a `mayEscape no` view may not be returned out of its operation (it would
+      outlive the borrowed source) — SS1560.
+    This is a lifetime/escape checker over the explicit out→return dataflow, not a
+    borrow checker. (A *resource* without cleanup is already SS1503/SS3900.)"""
+    # which op owns each call/task
+    owner_of = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("call", "task"):
+            owner = ent.fact("in")
+            if owner and owner.payload:
+                owner_of[ent.name] = owner.payload[0]
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task") or ent.fact("borrows") is None:
+            continue  # only views (a `borrows` row) are checked here
+        if ent.fact("owns") is not None or ent.fact("cleanedBy") is not None:
+            raise EavError(
+                f"{ent.kind} {ent.name!r} borrows a resource but also declares "
+                f"{'owns' if ent.fact('owns') else 'cleanedBy'} — a view does not "
+                f"clean up (README §32.1 #9)",
+                ent.line, code="SS1566")
+        me = ent.fact("mayEscape")
+        if not (me and me.payload and me.payload[0] == "no"):
+            continue
+        out = ent.fact("out")
+        view_value = out.payload[0] if out and out.payload else None
+        op = program.entities.get(owner_of.get(ent.name))
+        if view_value is None or op is None:
+            continue
+        for row in op.rows:
+            if row.predicate == "return" and view_value in row.payload:
+                raise EavError(
+                    f"view {view_value!r} (borrowed by {ent.name!r}) is `mayEscape no` "
+                    f"but is returned out of {op.name!r}; it would outlive its "
+                    f"borrowed source (README §32.1 #9)",
+                    row.line, code="SS1560")
 
 
 def _validate_html_trust(program: Program) -> None:

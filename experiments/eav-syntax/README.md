@@ -2202,6 +2202,32 @@ openDb cleanedBy closeDbCleanup      # the closeDbCleanup ENTITY (§15.6) is res
 cleanup is registered. `cleanedBy` without a matching `cleanup` entity declaration
 is a hard error.
 
+### Borrowed-view rows (WS1-111, §32.1 #9)
+
+**Resources clean up; views do not.** A call/task whose `out` borrows another
+resource/region — rather than acquiring its own — declares it with `borrows`,
+names what it borrows from with `lifetime`, and states whether it may outlive the
+call with `mayEscape`:
+
+```sem
+sliceRow is call
+sliceRow invokes buffer.slice
+sliceRow arg source Buffer buffer
+sliceRow out window Slice
+sliceRow borrows buffer               # a view into `buffer`, not a new resource
+sliceRow lifetime buffer              # valid only while `buffer` is live
+sliceRow mayEscape no                 # must not be returned past that lifetime
+```
+
+This is a lifetime/escape checker, not a borrow checker:
+
+- A view (`borrows` present) may not also `owns`/`cleanedBy` — a view never
+  cleans up (**SS1566**).
+- A `mayEscape no` view may not be returned out of its operation; it would
+  outlive its borrowed source (**SS1560**).
+
+A *resource* without cleanup is already SS1503/SS3900 (above).
+
 ### Call-level effect rows
 
 `effect` on a `call` entity documents a side-effect the call produces at the

@@ -4247,6 +4247,57 @@ def test_float_equality_warns():
     assert "SS3094" in {d.code for d in eavc.lint(eavc.parse(src))}
 
 
+def test_view_escapes_lifetime_rejected():
+    # WS1-111 / §32.1 #9: a `mayEscape no` borrowed view returned out of its op
+    # would outlive the borrowed source -> SS1560.
+    src = (
+        "makeView is operation\nmakeView out Slice\nmakeView async no\n"
+        'makeView purpose "p"\nmakeView invariant "i"\n'
+        "makeView in source Buffer\nmakeView do sliceBuf\nmakeView return theSlice\n"
+        "sliceBuf is call\nsliceBuf in makeView\nsliceBuf invokes buffer.slice\n"
+        "sliceBuf arg source Buffer source\nsliceBuf out theSlice Slice\n"
+        "sliceBuf borrows source\nsliceBuf lifetime source\nsliceBuf mayEscape no\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1560"
+
+
+def test_view_declaring_cleanup_rejected():
+    # WS1-111: a view borrows and never cleans — declaring `owns` on it is SS1566.
+    src = (
+        "makeView is operation\nmakeView out ExitCode\nmakeView async no\n"
+        'makeView purpose "p"\nmakeView invariant "i"\n'
+        "makeView in source Buffer\nmakeView let okCode immutable ExitCode 0\n"
+        "makeView do sliceBuf\nmakeView return okCode\n"
+        "sliceBuf is call\nsliceBuf in makeView\nsliceBuf invokes buffer.slice\n"
+        "sliceBuf arg source Buffer source\nsliceBuf out theSlice Slice\n"
+        "sliceBuf borrows source\nsliceBuf owns theSlice\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1566"
+
+
+def test_view_used_within_lifetime_accepted():
+    # WS1-111: a `mayEscape no` view consumed inside its op (not returned) is fine.
+    src = (
+        "useView is operation\nuseView out ExitCode\nuseView async no\n"
+        'useView purpose "p"\nuseView invariant "i"\n'
+        "useView in source Buffer\nuseView let okCode immutable ExitCode 0\n"
+        "useView do sliceBuf\nuseView do consume\nuseView return okCode\n"
+        "sliceBuf is call\nsliceBuf in useView\nsliceBuf invokes buffer.slice\n"
+        "sliceBuf arg source Buffer source\nsliceBuf out theSlice Slice\n"
+        "sliceBuf borrows source\nsliceBuf lifetime source\nsliceBuf mayEscape no\n"
+        "consume is call\nconsume in useView\nconsume invokes buffer.length\n"
+        "consume arg view Slice theSlice\nconsume out n Int64\n"
+    )
+    prog = eavc.parse(src)
+    assert "useView" in prog.entities
+    codes = {d.code for d in eavc.lint(prog)}
+    assert "SS1560" not in codes and "SS1566" not in codes
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
