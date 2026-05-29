@@ -303,6 +303,28 @@ def test_fmt_is_idempotent(name):
     assert once == twice
 
 
+def test_fmt_sugar_async_call_promotes_to_task():
+    # WS4-003: `call ... async yes` promotes to `is task` on fmt (async dropped).
+    src = "fetchThing is call\nfetchThing invokes net.fetch\nfetchThing async yes\n"
+    out = eavc.format_program(eavc.parse(src))
+    assert "fetchThing is task" in out
+    assert "async" not in out
+    assert eavc.format_program(eavc.parse(out)) == out  # idempotent
+
+
+def test_fmt_sugar_branch_else_to_goto():
+    # WS4-003: `branch else ... target L` canonicalizes to `goto L`.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main branch else target done\nmain at done return okCode\n"
+    )
+    out = eavc.format_program(eavc.parse(src))
+    assert "main goto done" in out
+    assert "branch else" not in out
+    assert eavc.format_program(eavc.parse(out)) == out
+
+
 def test_fmt_metadata_sorts_after_structural():
     # WS4-001 / README §22: metadata rows sort after structural rows.
     src = (

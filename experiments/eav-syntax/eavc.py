@@ -1035,12 +1035,17 @@ _KIND_ORDER = [
 
 def _emit_rows(ent: Entity, row: Row, program: Program) -> list:
     """Render one row to source line(s), preserving island bodies indented
-    (README ss22; never de-indent an island — the known fmt bug, WS4-005)."""
+    (README ss22; never de-indent an island — the known fmt bug, WS4-005).
+    Sugar lowering (WS4-003): `branch else … target L` canonicalizes to `goto L`."""
+    pred, payload = row.predicate, row.payload
+    if pred == "branch" and payload and payload[0] == "else":
+        target = payload[payload.index("target") + 1] if "target" in payload else payload[-1]
+        pred, payload = "goto", [target]
     if row.label is not None:
-        return [f"{ent.name} at {row.label} {row.predicate} {' '.join(row.payload)}".rstrip()]
-    line = f"{ent.name} {row.predicate} {' '.join(row.payload)}".rstrip()
-    if row.predicate == "body" and ent.kind in ("storage", "htmlTemplate"):
-        island_kind = row.payload[0] if row.payload else ""
+        return [f"{ent.name} at {row.label} {pred} {' '.join(payload)}".rstrip()]
+    line = f"{ent.name} {pred} {' '.join(payload)}".rstrip()
+    if pred == "body" and ent.kind in ("storage", "htmlTemplate"):
+        island_kind = payload[0] if payload else ""
         island = program.islands.get((ent.name, island_kind))
         if island is not None:
             return [line] + [("    " + b if b else "") for b in island]
@@ -1049,8 +1054,13 @@ def _emit_rows(ent: Entity, row: Row, program: Program) -> list:
 
 def format_entity(ent: Entity, program: Program) -> str:
     is_op = ent.kind in ("operation", "function")
+    # WS4-003 sugar: a `call` with an `async` row promotes to `task` on fmt.
+    promote_task = ent.kind == "call" and ent.fact("async") is not None
+    emit_kind = "task" if promote_task else ent.kind
     meta, gate, body, decl = [], [], [], []
     for r in ent.rows:
+        if promote_task and r.predicate == "async":
+            continue  # dropped on promotion to task
         if r.label is not None or (is_op and r.predicate in STEP_PREDICATES) or (
             is_op and r.predicate == "let"
         ):
@@ -1062,7 +1072,7 @@ def format_entity(ent: Entity, program: Program) -> str:
         else:
             decl.append(r)
     meta.sort(key=lambda r: (_META_PREDS.index(r.predicate),))  # stable within
-    lines = [f"{ent.name} is {ent.kind}"]
+    lines = [f"{ent.name} is {emit_kind}"]
     for group in (decl, meta, body, gate):
         for r in group:
             lines.extend(_emit_rows(ent, r, program))
