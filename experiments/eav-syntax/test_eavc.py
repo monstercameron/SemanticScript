@@ -2635,6 +2635,56 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def _webserver_program(route_row, handler_block):
+    return (
+        "Demo is project\nDemo module m\nDemo target webServer\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "NextMiddleware is alias\nNextMiddleware for OpaquePointer\n"
+        "api is webServer\napi host home\napi port 8080\n" + route_row +
+        handler_block
+    )
+
+
+_OK_HANDLER = (
+    "healthHandler is operation\nhealthHandler in request HttpRequest\n"
+    "healthHandler in response HttpResponse\nhealthHandler out Int32\n"
+    'healthHandler async no\nhealthHandler purpose "p"\nhealthHandler invariant "i"\n'
+    "healthHandler let okStatus immutable Int32 200\nhealthHandler return okStatus\n"
+)
+
+
+def test_webserver_valid_handler_abi_ok():
+    eavc.parse(_webserver_program("api route GET /health healthHandler\n", _OK_HANDLER))
+
+
+def test_webserver_bad_method_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_webserver_program("api route FETCH /health healthHandler\n", _OK_HANDLER))
+    assert getattr(exc.value, "code", None) == "SS2601"
+
+
+def test_webserver_dynamic_route_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_webserver_program("api route GET /users/:id healthHandler\n", _OK_HANDLER))
+    assert getattr(exc.value, "code", None) == "SS2602"
+
+
+def test_webserver_handler_abi_mismatch_rejected():
+    # out Bool instead of Int32 for a route handler
+    bad = (
+        "healthHandler is operation\nhealthHandler in request HttpRequest\n"
+        "healthHandler in response HttpResponse\nhealthHandler out Bool\n"
+        'healthHandler async no\nhealthHandler purpose "p"\nhealthHandler invariant "i"\n'
+        "healthHandler let okFlag immutable Bool true\nhealthHandler return okFlag\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_webserver_program("api route GET /health healthHandler\n", bad))
+    assert getattr(exc.value, "code", None) == "SS2603"
+
+
 def test_metadata_payload_shapes():
     # WS2-035 / §6: free-text metadata is quoted; identifier metadata is bare.
     def codes(extra):

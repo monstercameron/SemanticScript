@@ -279,6 +279,15 @@ DIAGNOSTICS.update({
     "SS3042B": {"tier": "T1", "summary": "Override value type mismatch.",
                 "found": "A platform override value that does not match the constant's type.",
                 "suggested": "Match the constant's declared type (README §28.1)."},
+    "SS2601": {"tier": "T1", "summary": "Invalid webServer route method.",
+               "found": "A route method outside GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS.",
+               "suggested": "Use a bare standard HTTP method (README §14)."},
+    "SS2602": {"tier": "T1", "summary": "Dynamic webServer route token.",
+               "found": "A route path with a `:param` or `*` wildcard.",
+               "suggested": "Use exact-match static routes in v0.3 (README §14)."},
+    "SS2603": {"tier": "T1", "summary": "webServer handler ABI mismatch.",
+               "found": "A handler whose inputs/output don't match its role ABI.",
+               "suggested": "Match the §14 handler ABI for its role (README §14)."},
     "MD1042": {"tier": "T1", "summary": "purpose payload must be a quoted string.",
                "found": "A `purpose` whose payload is not a quoted string.",
                "suggested": "Write `purpose \"…\"` (README §6)."},
@@ -2745,6 +2754,7 @@ def _validate_program(program: Program) -> None:
     _validate_return_exactness(program)
     _validate_storage_mutation(program)
     _validate_reserved_targets(program)
+    _validate_webserver_abi(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -3470,6 +3480,66 @@ def _validate_overrides(program: Program) -> None:
                     f"WS3-042)",
                     o.line, code="SS3042B",
                 )
+
+
+_HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+_HANDLER_ABI = ({"request": "HttpRequest", "response": "HttpResponse"}, "Int32")
+_MIDDLEWARE_ABI = (
+    {"request": "HttpRequest", "response": "HttpResponse", "next": "NextMiddleware"},
+    "Bool",
+)
+_LIFECYCLE_ABI = ({"serverContext": "ServerContext"}, "ExitCode")
+
+
+def _validate_webserver_abi(program: Program) -> None:
+    """README ss14 / WS2-026: webServer handler ABIs. Route/notFound/
+    methodNotAllowed handlers take (request, response) -> Int32; startup/shutdown
+    take (serverContext) -> ExitCode; middleware takes (request, response, next)
+    -> Bool. Route methods are a fixed bare set; routes are exact-match static
+    (no `:param` / `*` wildcards)."""
+
+    def check_abi(opname, abi, line, role):
+        want_ins, want_out = abi
+        op = program.entities.get(opname)
+        if op is None or op.kind not in ("operation", "function"):
+            return  # unresolved handler is reported elsewhere
+        ins = {r.payload[0]: r.payload[1] for r in op.facts("in") if len(r.payload) >= 2}
+        out_row = op.fact("out")
+        out_type = out_row.payload[0] if out_row and out_row.payload else None
+        if ins != want_ins or out_type != want_out:
+            raise EavError(
+                f"{role} {opname!r} has the wrong ABI: expected inputs {want_ins} "
+                f"-> out {want_out}, got inputs {ins} -> out {out_type} "
+                f"(README ss14, WS2-026)",
+                line, code="SS2603",
+            )
+
+    for ws in program.of_kind("webServer"):
+        for r in ws.facts("route"):
+            if not r.payload:
+                continue
+            method = r.payload[0]
+            path = r.payload[1] if len(r.payload) >= 2 else ""
+            if method not in _HTTP_METHODS:
+                raise EavError(
+                    f"webServer {ws.name!r} route method {method!r} is not one of "
+                    f"{sorted(_HTTP_METHODS)} (README ss14, WS2-026)",
+                    r.line, code="SS2601",
+                )
+            if ":" in path or "*" in path:
+                raise EavError(
+                    f"webServer {ws.name!r} route {path!r} uses a dynamic token; only "
+                    f"exact-match static routes are allowed (README ss14, WS2-026)",
+                    r.line, code="SS2602",
+                )
+            if len(r.payload) >= 3:
+                check_abi(r.payload[2], _HANDLER_ABI, r.line, "route handler")
+        for pred, abi in (("notFound", _HANDLER_ABI), ("methodNotAllowed", _HANDLER_ABI),
+                          ("startup", _LIFECYCLE_ABI), ("shutdown", _LIFECYCLE_ABI),
+                          ("middleware", _MIDDLEWARE_ABI)):
+            for row in ws.facts(pred):
+                if row.payload:
+                    check_abi(row.payload[0], abi, row.line, f"{pred} handler")
 
 
 def _validate_reserved_targets(program: Program) -> None:
