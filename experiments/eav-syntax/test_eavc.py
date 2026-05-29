@@ -5469,6 +5469,47 @@ def test_in_order_guard_acquisition_accepted():
     assert "work" in prog.entities
 
 
+_SIGN_SINK = (
+    "CanonicalBytes is alias\nCanonicalBytes for OpaquePointer\n"
+    "RawBytes is alias\nRawBytes for OpaquePointer\n"
+    "signData is intrinsic\nsignData target crypto.sign\n"
+    "signData arg message CanonicalBytes\nsignData out signature OpaquePointer\n"
+    "signData trustConstraint arg message CanonicalBytes\n"
+)
+
+
+def _sign_call_src(arg_row, extra=""):
+    return (
+        _SIGN_SINK +
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n" + extra +
+        "main do sign\nmain return okCode\n"
+        "sign is call\nsign in main\nsign invokes crypto.sign\n"
+        + arg_row + "sign out sig OpaquePointer\n"
+    )
+
+
+def test_noncanonical_encoding_into_sign_sink_rejected():
+    # X-098 / §33.7: feeding a non-canonical encoding to a signature/hash sink is a
+    # canonicalization-bypass — rejected via sink-typing (SS3071).
+    src = _sign_call_src(
+        "sign arg message RawBytes blob\n",
+        extra="main let blob immutable RawBytes 0\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3071"
+
+
+def test_canonical_encoding_into_sign_sink_accepted():
+    # X-098: the canonical byte encoding type is accepted at the integrity sink.
+    src = _sign_call_src(
+        "sign arg message CanonicalBytes canon\n",
+        extra="main let canon immutable CanonicalBytes 0\n")
+    prog = eavc.parse(src)
+    assert "main" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
