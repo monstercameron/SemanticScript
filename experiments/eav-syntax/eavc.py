@@ -1179,6 +1179,39 @@ class EavCodegen:
         # errors and other named types: opaque i64 handle in the console model.
         return ir.IntType(64)
 
+    def _const_value(self, resolved: str, tokens: list):
+        """A module-storage initializer constant (README ss12, ss30.2.1):
+        effect-free literal of a primitive type."""
+        tok = tokens[0] if tokens else "0"
+        if resolved == "String":
+            return self.global_string(_decode_string_literal(tok))
+        if resolved == "Bool":
+            return ir.Constant(ir.IntType(1), 1 if tok == "true" else 0)
+        if resolved in _FLOAT_TYPE_NAMES:
+            return ir.Constant(_PRIMITIVE_IR[resolved], float(tok))
+        return ir.Constant(_PRIMITIVE_IR.get(resolved, ir.IntType(64)),
+                           _parse_int_literal_value(tok))
+
+    def _make_module_storage(self, st: Entity) -> None:
+        type_row = st.fact("type")
+        if not type_row or not type_row.payload:
+            return
+        resolved = self.resolve_type_name(type_row.payload[0])
+        if resolved not in _PRIMITIVE_IR:
+            return  # non-primitive module storage (e.g. SqlText) not modeled here
+        gv = ir.GlobalVariable(self.module, _PRIMITIVE_IR[resolved], name=st.name)
+        gv.linkage = "internal"
+        mut = st.fact("mutability")
+        gv.global_constant = bool(
+            mut and mut.payload and mut.payload[0] == "immutable"
+        )
+        value_row = st.fact("value")
+        if value_row and value_row.payload:
+            gv.initializer = self._const_value(resolved, value_row.payload)
+        else:
+            gv.initializer = ir.Constant(_PRIMITIVE_IR[resolved], 0)
+        self.module_storage[st.name] = (gv, type_row.payload[0])
+
     def _record_layout(self, rec: Entity):
         """(LLVM struct type, ordered field names) for a record, cached."""
         if rec.name in self._record_layouts:
@@ -1235,6 +1268,11 @@ class EavCodegen:
         entry_row = project.fact("entry")
         if entry_row and entry_row.payload:
             self.entry_name = entry_row.payload[0]
+        self.module_storage: dict[str, tuple] = {}
+        for st in self.program.of_kind("storage"):
+            scope = st.fact("scope")
+            if scope and scope.payload and scope.payload[0] == "module":
+                self._make_module_storage(st)
         ops = self.program.of_kind("operation")
         for op in ops:
             self.functions[op.name] = self._declare_function(op)
@@ -1353,6 +1391,8 @@ class EavCodegen:
     def _resolve(self, tok, type_name, builder, sym):
         if tok in sym:
             return self._load(sym[tok], builder)
+        if tok in getattr(self, "module_storage", {}):
+            return builder.load(self.module_storage[tok][0])
         return self._literal_or_ref(type_name, tok, builder, sym)
 
     def _emit_step(self, op, fn, row, builder, sym, let_mut, label_blocks):

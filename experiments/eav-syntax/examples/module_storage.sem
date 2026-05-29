@@ -1,0 +1,46 @@
+# module_storage — a module-scope `storage` entity lowered to an LLVM global,
+# read from an operation by bare name (README ss12/ss25). Prints 7.
+# (todos WS1-082)
+
+ModuleStorage is project
+ModuleStorage module examplesModuleStorage
+ModuleStorage target console
+ModuleStorage entry main
+
+examplesModuleStorage is module
+examplesModuleStorage path examples.moduleStorage
+examplesModuleStorage exports main
+examplesModuleStorage purpose "Read a module-scope constant and print it"
+examplesModuleStorage invariant "The constant is visible to main as a global"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+answerConstant is storage
+answerConstant scope module
+answerConstant type Int64
+answerConstant mutability immutable
+answerConstant value 7
+answerConstant purpose "A module-global constant read across operations"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print the module-scope answerConstant"
+main invariant "Writes exactly one integer line: 7"
+main let okCode immutable ExitCode 0
+main do writeIt
+main return okCode
+
+writeIt is call
+writeIt in main
+writeIt invokes console.writeIntegerLine
+writeIt arg value Int64 answerConstant

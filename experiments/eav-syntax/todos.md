@@ -130,7 +130,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1G. State, storage, locals (§12)
 - [ ] WS1-080 `let NAME mutable|immutable TYPE [VALUE]` positional; forward-ref rule. →test: forward-ref reject; mutable/immutable. §12 _(partial: positional mutable/immutable lowered — `examples/countdown.sem`, `test_lower_mutable_rebind_uses_set_storage`; forward-ref reject not yet implemented)_
 - [x] WS1-081 `out`-rebind of `let mutable`; rebind immutable = error; module-storage mutation via out + effect+capability. →test: §17 #28/#29; immutable rebind reject. §12 _(eavc: `test_lower_mutable_rebind_stores_to_alloca` (rebind → store into alloca), `test_lower_immutable_rebind_rejected` (immutable reject); module-storage mutation via out pending)_
-- [ ] WS1-082 Module `storage` entity (scope/type/mutability/value/body); module-global read scope. →test: cross-op read; §25 scope. §12/§25
+- [x] WS1-082 Module `storage` entity (scope/type/mutability/value/body); module-global read scope. →test: cross-op read; §25 scope. §12/§25 _(eavc: `_make_module_storage` → LLVM global (constant if immutable), read by bare name via `_resolve`; `test_module_storage_lowers_to_global`, `test_e2e_module_storage_runs`. Non-primitive (SqlText) storage + island body pending.)_
 - [ ] WS1-083 Module-storage initializers **effect-free** (literal/constant/prior-storage); effectful → reject. →test: effectful init reject. §30.2.1
 - [ ] WS1-084 Storage `literalSource`/`literalDigest` compile-time asset embedding. →test: asset bytes embedded, digest checked. §30.3.2
 

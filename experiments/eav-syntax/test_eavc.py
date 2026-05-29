@@ -879,6 +879,18 @@ def test_record_construction_and_access_lower():
     assert "extractvalue {i64, i64}" in ir_text
 
 
+def test_module_storage_lowers_to_global():
+    ir_text = _ir_for("module_storage.sem")
+    assert '@"answerConstant" = internal constant i64 7' in ir_text
+    assert 'load i64, i64* @"answerConstant"' in ir_text
+
+
+def test_e2e_module_storage_runs():
+    proc = _eavc_run("module_storage.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "7" in proc.stdout
+
+
 def test_e2e_record_demo_runs():
     proc = _eavc_run("record_demo.sem")
     assert proc.returncode == 0, proc.stderr
