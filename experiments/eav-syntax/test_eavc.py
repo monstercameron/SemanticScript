@@ -3057,6 +3057,21 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+def test_task_templates(capsys):
+    # WS4-025: each `task` template emits its checklist sections.
+    import json
+    for name in ("add-route", "add-db-query", "add-cleanup", "add-async-fanout",
+                 "convert-to-eav"):
+        eavc.main(["task", name])
+        env = json.loads(capsys.readouterr().out)
+        assert env["surface"] == "sem.task.v1" and env["template"] == name
+        assert env["rowsToAdd"] and env["rowsToVerify"] and env["lintRules"]
+    # an unknown template lists the available ones
+    rc = eavc.main(["task", "nope"])
+    bad = json.loads(capsys.readouterr().out)
+    assert rc == 2 and "add-route" in bad["available"]
+
+
 def test_mcp_server_handler():
     # WS4-110: MCP initialize / tools/list / tools/call over the cmd surfaces.
     import json

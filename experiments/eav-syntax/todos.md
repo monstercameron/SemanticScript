@@ -327,7 +327,7 @@ semsc ships ~43 `standard.*` modules (`SemanticScript/std/<mod>/main.sem`), most
 - [x] WS4-023 `sem lint --explain <CODE>` (rationale + required pattern). →test: registry-backed. §24 _(eavc: `eavc.py lint --explain CODE` prints the registry-backed `format_repair`; `test_lint_explain_cli_registry_backed`)_
 - [x] WS4-024 Mark/align proposed vs shipping shapes (entity-scoped vs path/code-scoped); MCP tool mappings. →test: --json schema conformance. §24 _(eavc: `MCP_TOOL_MAP` maps CLI subcommands → MCP tool names; `diagnostics_json` + `lint --json` emit a conformant `{code,severity,line,entity,message}` JSON surface; `test_json_surface_and_mcp_map`, `test_lint_json_cli`)_
 
-- [ ] WS4-025 `sem task` agent workflow templates (§24): `add-route` / `add-db-query` / `add-cleanup` / `add-async-fanout` / `convert-to-eav OP`, each emitting a checklist of rows-to-add, rows-to-verify, and lint rules to check. →test: each template emits its expected checklist sections. §24 _(gap: no `sem task` command exists; WS4-021 `scaffold` emits patterns, not task checklists.)_
+- [x] WS4-025 `sem task` agent workflow templates (§24): `add-route` / `add-db-query` / `add-cleanup` / `add-async-fanout` / `convert-to-eav OP`, each emitting a checklist of rows-to-add, rows-to-verify, and lint rules to check. →test: each template emits its expected checklist sections. §24 _(eavc: `cmd_task <template>` emits sem.task.v1 with `rowsToAdd`/`rowsToVerify`/`lintRules` for add-route/add-db-query/add-cleanup/add-async-fanout/convert-to-eav; unknown template lists the available set. `test_task_templates`.)_
 
 ## 4B+. Reimplement the `sem` agent toolchain for EAV — parity + README enhancements (§24/§32.3)
 

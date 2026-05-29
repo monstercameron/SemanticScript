@@ -5637,7 +5637,7 @@ SEM_SURFACES = (
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
-    "sem.docsIndex.v1", "sem.docsSearch.v1",
+    "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1",
 )
 
 EAV_AGENT_RULES = (
@@ -5727,6 +5727,60 @@ def mcp_handle(request: dict) -> dict:
         text = _mcp_dispatch(params.get("name", ""), params.get("arguments", {}))
         return {**base, "result": {"content": [{"type": "text", "text": text}]}}
     return {**base, "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+EAV_TASK_TEMPLATES = {
+    "add-route": {
+        "rowsToAdd": ["<server> route <METHOD> <path> <handler>",
+                      "<handler> is operation", "<handler> in request HttpRequest",
+                      "<handler> in response HttpResponse", "<handler> out Int32"],
+        "rowsToVerify": ["route method is a bare GET/POST/... verb",
+                         "path is exact-match static (no :param / *)"],
+        "lintRules": ["SS2601", "SS2602", "SS2603"],
+    },
+    "add-db-query": {
+        "rowsToAdd": ["openDb invokes openInMemory / out db SqliteDatabase / owns db",
+                      "prepare invokes prepareStatement", "step invokes stepStatement",
+                      "read invokes columnText / out value",
+                      "finalize invokes finalizeStatement", "close invokes closeDatabase"],
+        "rowsToVerify": ["column result consumed before the next read/step",
+                         "db handle owns + cleanedBy + defer on every path"],
+        "lintRules": ["SS1901", "SS1902", "SS1503"],
+    },
+    "add-cleanup": {
+        "rowsToAdd": ["<producer> owns <handle>", "<producer> cleanedBy <cleanup>",
+                      "<cleanup> is cleanup / in <op> / call <worker> / cleans <handle> / because \"…\"",
+                      "<op> defer <cleanup>"],
+        "rowsToVerify": ["cleanup deferred on every path the handle is live",
+                         "worker has a catch if onFailure is declared"],
+        "lintRules": ["SS1503", "SS1542", "SS1544", "SS3044B"],
+    },
+    "add-async-fanout": {
+        "rowsToAdd": ["<op> async yes", "<op> start <task>", "<op> join <task>",
+                      "<task> is task / in <op> / invokes <target>"],
+        "rowsToVerify": ["every started task is resolved (join/poll/cancel/detach)",
+                         "ifError on a task comes after join"],
+        "lintRules": ["SS1140", "SS1320"],
+    },
+    "convert-to-eav": {
+        "rowsToAdd": ["<name> is <kind> as the first row of every entity",
+                      "subject-first rows; `call` becomes is/in/invokes + arg + out"],
+        "rowsToVerify": ["no expressions/infix/parens/commas; effects covered by uses"],
+        "lintRules": ["run `check` — zero error-severity diagnostics"],
+    },
+}
+
+
+def cmd_task(args) -> int:
+    """Emit an agent workflow checklist for a template (sem.task.v1)."""
+    tmpl = EAV_TASK_TEMPLATES.get(args.template)
+    if tmpl is None:
+        sys.stdout.write(_json_envelope(
+            "sem.task.v1", ok=False,
+            available=sorted(EAV_TASK_TEMPLATES)) + "\n")
+        return 2
+    sys.stdout.write(_json_envelope("sem.task.v1", template=args.template, **tmpl) + "\n")
+    return 0
 
 
 def cmd_mcp(args) -> int:
@@ -6316,6 +6370,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sp_mcp = sub.add_parser("mcp", help="run the MCP stdio JSON-RPC server")
     sp_mcp.set_defaults(func=cmd_mcp)
+
+    sp_task = sub.add_parser("task", help="emit an agent workflow checklist")
+    sp_task.add_argument("template", help="one of: " + ", ".join(sorted(EAV_TASK_TEMPLATES)))
+    sp_task.add_argument("--json", action="store_true")
+    sp_task.set_defaults(func=cmd_task)
 
     sp_version = sub.add_parser("version", help="emit the contract version surface")
     sp_version.add_argument("--json", action="store_true", help="emit JSON envelope")
