@@ -1134,6 +1134,26 @@ def test_compare_ordering_on_bool_rejected():
     assert exc.value.code == "SS1345"
 
 
+def test_heap_no_record_build_compiles():
+    # README §10.6: ordinary values are compiler-managed; a record-building op
+    # satisfies `memory heap no` (no allocator, no free).
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "record_demo.sem"), encoding="utf-8").read())
+    assert prog.entities["main"].fact("memory").payload == ["heap", "no"]
+    ir_text = str(eavc.lower_to_llvm(prog))
+    assert "insertvalue" in ir_text  # record built in registers, no heap
+
+
+def test_core_primitives_available_without_import():
+    # WS3-010: primitive types are built-in; usable with no `imports` row.
+    src = (
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "widths is operation\nwidths in a Int8\nwidths in b UInt64\n"
+        "widths in c Float32\nwidths in d Bool\nwidths out Bool\nwidths return d\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert 'define i1 @"widths"(i8 %"a", i64 %"b", float %"c", i1 %"d")' in ir_text
+
+
 def test_arg_document_order_preserved():
     # README §10.6: a call's args bind in document order (left then right), so
     # subtractInt64(a, b) lowers to `sub a, b`, not `sub b, a`.
