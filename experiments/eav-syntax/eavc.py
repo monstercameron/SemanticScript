@@ -3486,6 +3486,13 @@ class EavCodegen:
 
         self._call_info[call.name] = (result, err)
 
+        # README ss17 #9: bind the catch variable so the error value is in scope
+        # at the ifError target (the catch dominates the branch). Modeled as the
+        # error discriminant (i32) in the console subset.
+        catch_row = call.fact("catch")
+        if catch_row and catch_row.payload:
+            sym[catch_row.payload[0]] = ("val", ir.Constant(ir.IntType(32), 0))
+
         out_row = call.fact("out")
         if out_row and out_row.payload and result is not None:
             name = out_row.payload[0]

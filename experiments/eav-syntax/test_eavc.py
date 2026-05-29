@@ -1737,6 +1737,23 @@ def test_label_dead_warns():
     assert any("dead label" in w and "unused" in w for w in prog.warnings)
 
 
+def test_catch_var_in_scope_at_iferror_target():
+    # README §17 #9: the catch var is in scope at the ifError target.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\nm is module\nm path a.b\n"
+        "main is operation\nmain out Int32\nmain effect write console.stdout\n"
+        'main let t immutable String "hi"\nmain let zero immutable Int32 0\n'
+        "main do w\nmain branch ifError w goto failed\nmain return zero\n"
+        "main at failed do reportErr\nmain return zero\n"
+        "w is call\nw in main\nw invokes console.writeLine\nw arg text String t\n"
+        "w catch writeError ConsoleWriteError\n"
+        "reportErr is call\nreportErr in main\nreportErr invokes console.writeIntegerLine\n"
+        "reportErr arg value Int64 writeError\n"  # uses the catch var at the failed target
+    )
+    ir_text = _ir_for_source(src)  # lowers without an out-of-scope error
+    assert "failed:" in ir_text
+
+
 def test_iferror_requires_catch():
     # README ss13/ss17 #6: ifError needs a fallible call with a catch row.
     src = (
