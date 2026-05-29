@@ -1128,6 +1128,16 @@ def test_primitive_types_complete():
         assert t in eavc.PRIMITIVE_TYPES
 
 
+def test_opaquepointer_ffi_interim_is_uint64():
+    # WS3-053 / README §30.4.1: OpaquePointer/FileHandle carried as UInt64 (i64).
+    src = (
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "useHandle is operation\nuseHandle in h OpaquePointer\nuseHandle out OpaquePointer\n"
+        "useHandle return h\n"
+    )
+    assert 'define i64 @"useHandle"(i64 %"h")' in _ir_for_source(src)
+
+
 def test_byte_lowers_to_uint8():
     # README ss10: Byte is a primitive synonym for UInt8 -> i8 in LLVM.
     src = (

@@ -2734,6 +2734,9 @@ _PRIMITIVE_IR = {
     "Bool": ir.IntType(1),
     "String": ir.IntType(8).as_pointer(),
     "Void": ir.VoidType(),
+    # FFI interim (README ss30.4.1): opaque handles are carried as UInt64.
+    "OpaquePointer": ir.IntType(64),
+    "FileHandle": ir.IntType(64),
 }
 
 _FLOAT_TYPE_NAMES = {"Float32", "Float64"}
