@@ -252,6 +252,9 @@ DIAGNOSTICS.update({
     "SS1203": {"tier": "T1", "summary": "`let` forward-references a later binding.",
                "found": "A `let` initializer naming a `let` declared later.",
                "suggested": "Reorder so the referenced binding comes first (§12)."},
+    "SS1315": {"tier": "T3", "summary": "Irreducible control flow.",
+               "found": "A multi-entry loop (CFG not T1-T2 reducible).",
+               "suggested": "Restructure to a single-entry loop (README §17 #15)."},
     "SS1326": {"tier": "T1", "summary": "Dotted name in an internal reference.",
                "found": "A `do`/`start`/`defer` (etc.) target containing a dot.",
                "suggested": "Internal refs are bare; dots are external-path only (§3)."},
@@ -1467,6 +1470,65 @@ def _call_graph_edges(program: Program) -> list:
     return edges
 
 
+def _op_cfg(op: Entity) -> dict:
+    """Build the control-flow graph of an operation: nodes are `entry` + each
+    label; edges from goto/branch targets and fallthrough."""
+    blocks: list = [["entry", []]]
+    for row in op.rows:
+        if row.label is not None:
+            blocks.append([row.label, []])
+        if row.label is not None or row.predicate in STEP_PREDICATES:
+            blocks[-1][1].append(row)
+    cfg: dict = {}
+    for i, (name, steps) in enumerate(blocks):
+        succ: set = set()
+        terminated = False
+        for s in steps:
+            if s.predicate == "goto" and s.payload:
+                succ.add(s.payload[0]); terminated = True; break
+            if s.predicate == "return":
+                terminated = True; break
+            if s.predicate == "branch" and "goto" in s.payload:
+                gi = s.payload.index("goto")
+                if gi + 1 < len(s.payload):
+                    succ.add(s.payload[gi + 1])
+        if not terminated and i + 1 < len(blocks):
+            succ.add(blocks[i + 1][0])
+        cfg[name] = succ
+    return cfg
+
+
+def _is_reducible(cfg: dict, entry: str = "entry") -> bool:
+    """T1-T2 interval reduction (README ss13): a CFG is reducible iff it collapses
+    to a single node by removing self-loops and merging single-predecessor nodes."""
+    known = set(cfg)
+    succ = {n: set(cfg[n]) & known for n in cfg}
+    nodes = set(succ)
+    changed = True
+    while changed and len(nodes) > 1:
+        changed = False
+        for n in nodes:
+            if n in succ[n]:
+                succ[n].discard(n); changed = True
+        preds = {n: set() for n in nodes}
+        for n in nodes:
+            for s in succ[n]:
+                if s in preds:
+                    preds[s].add(n)
+        for n in list(nodes):
+            if n == entry or n not in nodes:
+                continue
+            if len(preds[n]) == 1:
+                p = next(iter(preds[n]))
+                if p == n:
+                    continue
+                succ[p].discard(n)
+                succ[p] |= (succ[n] - {n})
+                del succ[n]; nodes.discard(n); changed = True
+                break
+    return len(nodes) == 1
+
+
 def _control_edges(program: Program) -> list:
     """(op, fromLabel|entry, toLabel) control-flow edges from goto/branch."""
     edges: list = []
@@ -1842,6 +1904,15 @@ def lint(program: Program) -> list:
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_ownership_and_entry_export(program))
+    # README ss17 #15: warn on irreducible control flow (multi-entry loops).
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind in ("operation", "function") and not _is_reducible(_op_cfg(op)):
+            diags.append(Diagnostic(
+                "SS1315", "warning",
+                f"operation {op.name!r} has irreducible control flow "
+                f"(a multi-entry loop); prefer structured goto (README ss17 #15)",
+                op.line, op.name))
     # README ss17 #30/#31: `branch else` is the default only after a guard branch.
     for n in program.order:
         op = program.entities[n]

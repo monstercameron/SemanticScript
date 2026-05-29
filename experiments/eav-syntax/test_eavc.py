@@ -1710,6 +1710,36 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
+def test_loop_keyword_rejected():
+    # README §17 #14: loop/while/each/break/continue are not predicates.
+    for kw in ("loop", "while", "each", "break", "continue"):
+        with pytest.raises(eavc.EavError):
+            eavc.parse(f"main is operation\nmain out ExitCode\nmain {kw} x\n")
+
+
+def test_reducible_cfg_no_warning():
+    # countdown's single-entry loop is reducible -> no irreducible warning.
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "countdown.sem"), encoding="utf-8").read())
+    assert "SS1315" not in {d.code for d in eavc.lint(prog)}
+
+
+def test_irreducible_cfg_warns():
+    # README §17 #15: a multi-entry loop (entry branches into both A and B,
+    # which jump to each other) is irreducible.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\nmain let flag immutable Bool true\n"
+        "main branch if flag goto blockB\n"
+        "main at blockA do noopA\nmain goto blockB\n"
+        "main at blockB do noopB\nmain goto blockA\n"
+        "main return okCode\n"
+        "noopA is call\nnoopA in main\nnoopA invokes console.writeLine\nnoopA arg text String t\n"
+        "noopB is call\nnoopB in main\nnoopB invokes console.writeLine\nnoopB arg text String t\n"
+        'main let t immutable String "x"\n'
+    )
+    assert "SS1315" in {d.code for d in eavc.lint(eavc.parse(src))}
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
