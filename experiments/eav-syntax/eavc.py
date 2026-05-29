@@ -1331,6 +1331,169 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+# README ss23: the compact authoring profile. Within an operation block the
+# subject token is omitted; `operation`/`call`/`task` headers re-anchor it.
+COMPACT_HEADERS = {"operation", "function", "call", "task"}
+COMPACT_GUARDS = {
+    "if", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
+    "ifPending", "ifCanceled", "else",
+}
+
+
+def _expand_compact_row(subj: str, toks: list) -> list:
+    """Expand one compact bare row (subject elided) to canonical EAV row(s)
+    (README ss23 equivalence table)."""
+    pred, rest = toks[0], toks[1:]
+    if pred in COMPACT_GUARDS:
+        # `ifError CALL goto L` -> `SUBJ branch ifError CALL goto L`, etc.
+        return [f"{subj} branch {pred} {' '.join(rest)}".rstrip()]
+    if pred == "effect" and "using" in rest:
+        # `effect ACT RES using CAP` -> effect row + uses row.
+        ui = rest.index("using")
+        out = [f"{subj} effect {' '.join(rest[:ui])}".rstrip()]
+        cap = rest[ui + 1:]
+        if cap:
+            out.append(f"{subj} uses {' '.join(cap)}")
+        return out
+    return [f"{subj} {pred} {' '.join(rest)}".rstrip()]
+
+
+def expand_compact_to_eav(source: str):
+    """Expand the compact authoring profile to canonical EAV text (README ss23).
+
+    Returns ``(eav_text, line_map)`` where ``line_map[k]`` is the original
+    (1-based) compact line number that produced canonical line ``k`` — the
+    source map used to point lint diagnostics back at the author's line
+    (WS2-004)."""
+    src = source.replace("\r\n", "\n").replace("\r", "\n")
+    if src.startswith("﻿"):
+        src = src[1:]
+    lines = src.split("\n")
+    out: list = []
+    origin: list = []
+    declared: dict = {}
+    implicit_op = None
+    implicit_subj = None
+    in_island = False
+
+    def emit(text: str, ln: int) -> None:
+        out.append(text)
+        origin.append(ln)
+
+    for idx, raw in enumerate(lines):
+        ln = idx + 1
+        stripped = raw.strip()
+        if in_island and raw[:1] in (" ", "\t"):
+            emit(raw, ln)
+            continue
+        if not stripped or stripped.startswith("#"):
+            emit(stripped, ln)
+            continue
+        in_island = False
+        toks = tokenize_line(raw)
+        if len(toks) >= 2 and toks[1] == "is":
+            kind = toks[2] if len(toks) > 2 else ""
+            declared[toks[0]] = kind
+            implicit_subj = toks[0]
+            if kind in ("operation", "function"):
+                implicit_op = toks[0]
+            emit(stripped, ln)
+            continue
+        head = toks[0]
+        if head in COMPACT_HEADERS and len(toks) >= 2:
+            name = toks[1]
+            kind = "operation" if head == "function" else head
+            declared[name] = kind
+            emit(f"{name} is {head}", ln)
+            if head in ("operation", "function"):
+                implicit_op = name
+            else:
+                if implicit_op:
+                    emit(f"{name} in {implicit_op}", ln)
+                if len(toks) > 2:
+                    emit(f"{name} invokes {toks[2]}", ln)
+            implicit_subj = name
+            continue
+        if head in declared:
+            emit(stripped, ln)
+            if len(toks) >= 2 and toks[1] == "body":
+                in_island = True
+            continue
+        if implicit_subj is None:
+            emit(stripped, ln)  # nothing to anchor — let the parser report it
+            continue
+        for line in _expand_compact_row(implicit_subj, toks):
+            emit(line, ln)
+    return "\n".join(out), origin
+
+
+def parse_compact(source: str) -> "Program":
+    """Parse compact-profile source by expanding to canonical EAV first."""
+    return parse(expand_compact_to_eav(source)[0])
+
+
+def lint_compact(source: str) -> list:
+    """Lint compact-profile source, remapping each diagnostic's line back to the
+    author's original compact line via the expansion source map (WS2-004)."""
+    eav_text, line_map = expand_compact_to_eav(source)
+    program = parse(eav_text)
+    diags = lint(program)
+    for d in diags:
+        if d.line is not None and 1 <= d.line <= len(line_map):
+            d.line = line_map[d.line - 1]
+    return diags
+
+
+def _compact_op_block(op: "Entity", program: "Program", children: dict) -> str:
+    """Emit one operation as a compact block (subject elided, child call/task
+    entities folded in after the steps)."""
+    header = "function" if op.kind == "function" else "operation"
+    lines = [f"{header} {op.name}"]
+    for raw in format_entity(op, program).split("\n")[1:]:
+        # drop the leading `NAME ` subject from each canonical row
+        lines.append(raw[len(op.name) + 1:] if raw.startswith(op.name + " ") else raw)
+    for cn in children.get(op.name, []):
+        call = program.entities[cn]
+        inv = call.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        kind = "task" if call.kind == "task" else "call"
+        lines.append("")
+        lines.append(f"{kind} {call.name} {target}".rstrip())
+        for raw in format_entity(call, program).split("\n")[1:]:
+            body = raw[len(call.name) + 1:] if raw.startswith(call.name + " ") else raw
+            if body.startswith("in ") or body.startswith("invokes "):
+                continue  # folded into the header
+            lines.append(body)
+    return "\n".join(lines)
+
+
+def format_compact(program: "Program") -> str:
+    """Emit a program in the compact authoring profile (README ss23). Non-op
+    entities stay canonical (compact elides only op/call/task subjects)."""
+    children: dict = {}
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind in ("call", "task"):
+            owner = e.fact("in")
+            if owner and owner.payload:
+                children.setdefault(owner.payload[0], []).append(n)
+    ordered = sorted(
+        program.order,
+        key=lambda n: (_kind_rank(program.entities[n].kind), program.order.index(n)),
+    )
+    folded = {c for kids in children.values() for c in kids}
+    blocks: list = []
+    for n in ordered:
+        e = program.entities[n]
+        if e.name in folded:
+            continue
+        if e.kind in ("operation", "function"):
+            blocks.append(_compact_op_block(e, program, children))
+        else:
+            blocks.append(format_entity(e, program))
+    return "\n\n".join(blocks).rstrip() + "\n"
+
+
 def trace(program: Program, op_name: str) -> list:
     """Simulate the primary (document-order) path through an operation, tracking
     live bindings and defers up to the first return (README ss24 `trace`)."""
@@ -4480,9 +4643,15 @@ def cmd_scaffold(args) -> int:
 
 
 def cmd_fmt(args) -> int:
-    """Print the canonical EAV formatting of a program."""
-    program = parse(_read_source(args.path))
-    sys.stdout.write(format_program(program))
+    """Print a program in the requested surface (canonical EAV or compact).
+
+    Input may be either canonical EAV or compact-profile source; compact is
+    expanded first, so `fmt --surface eav` canonicalizes compact and
+    `fmt --surface compact` round-trips it (README ss23/ss24)."""
+    program = parse_compact(_read_source(args.path))
+    surface = getattr(args, "surface", "eav")
+    sys.stdout.write(format_compact(program) if surface == "compact"
+                     else format_program(program))
     return 0
 
 
@@ -4630,12 +4799,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("lower", cmd_lower),
         ("run", cmd_run),
         ("inventory", cmd_inventory),
-        ("fmt", cmd_fmt),
         ("doctor", cmd_doctor),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_fmt = sub.add_parser("fmt", help="format a program to a surface")
+    sp_fmt.add_argument("path", help="EAV/compact source file, or - for stdin")
+    sp_fmt.add_argument(
+        "--surface", choices=("eav", "compact"), default="eav",
+        help="output surface: canonical EAV (default) or compact profile",
+    )
+    sp_fmt.set_defaults(func=cmd_fmt)
 
     sp_lint = sub.add_parser("lint", help="lint a program (or --explain a code)")
     sp_lint.add_argument("path", nargs="?", help="EAV source file, or - for stdin")

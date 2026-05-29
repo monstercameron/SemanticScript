@@ -368,6 +368,120 @@ def test_conformance_matrix_all_lanes(path):
     assert not any(d.severity == "error" for d in diags), [d.render() for d in diags]
 
 
+_COMPACT_HELLO = """\
+HelloWorld is project
+HelloWorld module examplesHello
+HelloWorld target console
+HelloWorld entry main
+
+examplesHello is module
+examplesHello path examples.hello
+examplesHello exports main
+examplesHello purpose "Print a greeting"
+examplesHello invariant "Writes the greeting once"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled stdout writes"
+
+operation main
+out ExitCode
+effect write console.stdout using stdoutWriter
+memory heap no
+async no
+purpose "Print hi and exit zero"
+invariant "Writes hi"
+let hi immutable String "hi"
+let okCode immutable ExitCode 0
+do writeHi
+return okCode
+
+call writeHi console.writeLine
+arg text String hi
+"""
+
+
+def test_compact_is_not_valid_raw_eav():
+    # The strict EAV parser rejects compact bare rows (no subject) — proving the
+    # compact expander does real work and is not a no-op (WS4-004).
+    with pytest.raises(eavc.EavError):
+        eavc.parse(_COMPACT_HELLO)
+
+
+def test_compact_expands_parses_and_runs(tmp_path):
+    # Compact -> EAV expansion parses and JIT-runs to the expected output.
+    prog = eavc.parse_compact(_COMPACT_HELLO)
+    assert prog.entities["writeHi"].kind == "call"
+    assert prog.entities["writeHi"].fact("invokes").payload == ["console.writeLine"]
+    assert prog.entities["writeHi"].fact("in").payload == ["main"]
+    # `effect … using` expanded into an effect row + a uses row on main
+    assert [r.payload for r in prog.entities["main"].facts("effect")] == [["write", "console.stdout"]]
+    assert prog.entities["main"].fact("uses").payload == ["stdoutWriter"]
+    src_file = tmp_path / "compact_hello.sem"
+    eav_text, _ = eavc.expand_compact_to_eav(_COMPACT_HELLO)
+    src_file.write_bytes(eav_text.encode("utf-8"))
+    out = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", str(src_file)],
+        capture_output=True, text=True,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "hi"
+
+
+def test_compact_eav_roundtrip_semantics_preserved():
+    # compact -> EAV -> compact -> EAV preserves the entity set and per-entity
+    # row counts (gate-0 round-trip, WS4-004).
+    a = eavc.parse_compact(_COMPACT_HELLO)
+    b = eavc.parse_compact(eavc.format_compact(a))
+    assert set(a.order) == set(b.order)
+    assert {n: len(a.entities[n].rows) for n in a.order} == {
+        n: len(b.entities[n].rows) for n in b.order
+    }
+
+
+def test_fmt_surface_eav_idempotent_on_canonical():
+    # parse_compact is idempotent on already-canonical EAV: formatting a golden
+    # through the compact front end equals formatting it directly.
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    assert eavc.format_program(eavc.parse_compact(src)) == eavc.format_program(eavc.parse(src))
+
+
+def test_compact_diagnostic_maps_to_compact_line():
+    # WS2-004: a lint diagnostic on the canonical EAV maps back to the author's
+    # original compact line through the expansion source map.
+    compact = (
+        "Demo is project\nDemo module demoMod\nDemo target console\nDemo entry main\n"
+        "demoMod is module\ndemoMod path demo.mod\n"
+        "demoMod exports main\ndemoMod exports needsInv\n"
+        'demoMod purpose "p"\ndemoMod invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "operation main\nout ExitCode\n"
+        "effect write console.stdout using stdoutWriter\n"
+        'purpose "p"\ninvariant "i"\n'
+        'let hi immutable String "hi"\nlet okCode immutable ExitCode 0\n'
+        "do writeHi\nreturn okCode\n"
+        "call writeHi console.writeLine\narg text String hi\n"
+        # second op, exported, missing invariant -> MD1012; appears AFTER the
+        # call header (+2 lines) and effect-using (+1 line) expansions
+        "operation needsInv\nout ExitCode\n"
+        'purpose "p"\nlet okCode2 immutable ExitCode 0\nreturn okCode2\n'
+    )
+    compact_lines = compact.split("\n")
+    mapped = [d for d in eavc.lint_compact(compact) if d.code == "MD1012"]
+    assert mapped, "expected MD1012 (missing invariant) on needsInv"
+    line = mapped[0].line
+    assert compact_lines[line - 1].strip() == "operation needsInv"
+    # the source map did real work: the canonical line differs from the compact line
+    eav_text, _ = eavc.expand_compact_to_eav(compact)
+    raw = [d for d in eavc.lint(eavc.parse(eav_text)) if d.code == "MD1012"][0]
+    assert raw.line != line
+
+
 def _ir_for(name: str) -> str:
     """Parse an example and return its generated LLVM IR as text."""
     program = eavc.parse(open(os.path.join(EXAMPLES, name), encoding="utf-8").read())
