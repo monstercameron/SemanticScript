@@ -210,6 +210,12 @@ _INT_HEX_RE = re.compile(r"0x[0-9a-fA-F](_?[0-9a-fA-F])*\Z")
 _INT_BIN_RE = re.compile(r"0b[01](_?[01])*\Z")
 # Float literal (README ss2): decimal float only; no leading/trailing dot.
 _FLOAT_RE = re.compile(r"[0-9]+\.[0-9]+\Z")
+# Duration literal (README ss2/ss30.1.2): reserved lexical class, no v0.3 use.
+_DURATION_RE = re.compile(r"[0-9]+(ns|us|ms|s|m|h)\Z")
+
+
+def is_duration_literal(tok: str) -> bool:
+    return bool(_DURATION_RE.match(tok))
 
 
 def _validate_int_literal(tok: str, line: int) -> None:
@@ -397,6 +403,12 @@ def _validate_value_literal(tok: str, line: int) -> None:
                 f"space after `-` and digits after the sign (README ss2)",
                 line,
             )
+    if is_duration_literal(core):
+        raise EavError(
+            f"duration literal {tok!r} is a reserved lexical class with no v0.3 "
+            f"use (README ss2/ss30.1.2)",
+            line,
+        )
     if core[0].isdigit():
         if "." in core:
             if not _FLOAT_RE.match(core):

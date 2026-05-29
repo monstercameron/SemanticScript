@@ -314,6 +314,18 @@ def test_int_literal_rejects(bad):
         eavc.parse(f"main is operation\nmain let n immutable Int64 {bad}\n")
 
 
+@pytest.mark.parametrize("dur", ["50ms", "30s", "1h", "100ns", "5us", "2m"])
+def test_duration_literal_recognized(dur):
+    assert eavc.is_duration_literal(dur)
+
+
+def test_duration_literal_flagged_unused_in_value():
+    # README ss2/ss30.1.2: duration literals are reserved with no v0.3 use.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("main is operation\nmain let d immutable Duration 50ms\n")
+    assert "reserved" in exc.value.message
+
+
 @pytest.mark.parametrize("good", ["-42", "-1.5"])
 def test_negative_literal_accepts(good):
     prog = eavc.parse(f"main is operation\nmain let n immutable Int64 {good}\n")
