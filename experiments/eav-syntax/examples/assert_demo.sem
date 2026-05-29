@@ -1,0 +1,65 @@
+# assert_demo — standard.assert + standard.test as pure-logic stdlib (no C
+# runtime): assert.equalInt64 -> Bool, test.and folds them. Prints 1 (all pass).
+# (todos WS3-019, WS3-020)
+
+AssertDemo is project
+AssertDemo module examplesAssertDemo
+AssertDemo target console
+AssertDemo entry main
+
+examplesAssertDemo is module
+examplesAssertDemo path examples.assertDemo
+examplesAssertDemo exports main
+examplesAssertDemo purpose "Run two assertions and print the combined result"
+examplesAssertDemo invariant "Prints 1 only when every assertion passes"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Assert 4==4 and 2==2, fold with test.and, print the result"
+main invariant "Output is 1 when both assertions pass"
+main let four immutable Int64 4
+main let two immutable Int64 2
+main let okCode immutable ExitCode 0
+main do checkFour
+main do checkTwo
+main do combine
+main do writeResult
+main return okCode
+
+checkFour is call
+checkFour in main
+checkFour invokes assert.equalInt64
+checkFour arg left Int64 four
+checkFour arg right Int64 four
+checkFour out fourOk Bool
+
+checkTwo is call
+checkTwo in main
+checkTwo invokes assert.equalInt64
+checkTwo arg left Int64 two
+checkTwo arg right Int64 two
+checkTwo out twoOk Bool
+
+combine is call
+combine in main
+combine invokes test.and
+combine arg left Bool fourOk
+combine arg right Bool twoOk
+combine out bothOk Bool
+
+writeResult is call
+writeResult in main
+writeResult invokes console.writeIntegerLine
+writeResult arg value Int64 bothOk

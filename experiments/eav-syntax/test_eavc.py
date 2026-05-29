@@ -1942,6 +1942,19 @@ def test_builtin_targets_need_no_import():
     assert 'call i32 (i8*, ...) @"printf"' in ir_text
 
 
+def test_e2e_assert_and_test_and():
+    # WS3-019/020: assert.equalInt64 -> Bool, folded by test.and; prints 1.
+    proc = _eavc_run("assert_demo.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "1"
+
+
+def test_assert_lowers_to_icmp_and_test_and():
+    ir_text = _ir_for("assert_demo.sem")
+    assert "icmp eq i64" in ir_text   # assert.equalInt64
+    assert "and i1" in ir_text        # test.and
+
+
 def test_e2e_string_concat():
     # WS3-015: string.concat via libc malloc/strlen/strcpy/strcat.
     proc = _eavc_run("string_concat.sem")

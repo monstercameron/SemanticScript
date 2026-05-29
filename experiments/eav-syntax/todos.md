@@ -223,8 +223,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS3-016 `standard.sqlite` (open/close/queryScalar/step/column; OpenMode; OpenFailure/CloseFailure/QueryFailure; owns/cleanedBy). →test: query + cleanup; column-consume lint. §10/§19
 - [ ] WS3-017 `standard.http` (HttpRequest/Response/handlers/route/serve/callNext; HttpSafeUrl). →test: route handler ABI + middleware chain. §14
 - [ ] WS3-018 `standard.html` (render/trustFragment/fragmentConcat; HtmlFragment/HtmlTrustedFragment/HtmlSafeUrl; `{{hole}}` + `{{rec.field}}`). →test: auto-escape; href HtmlSafeUrl enforce; rejected hole contexts. §16
-- [ ] WS3-019 `standard.assert` (equalInt64/true/matchesGolden → TestResult). →test: pass/fail/golden. §30.5.1
-- [ ] WS3-020 `standard.test` (TestResult record + `test.and`; lanes). →test: binary fold; lane grouping. §30.5.1
+- [x] WS3-019 `standard.assert` (equalInt64/true/matchesGolden → TestResult). →test: pass/fail/golden. §30.5.1 _(eavc: `assert.equalInt64`→icmp eq, `assert.true`→pass-through (TestResult modeled as Bool in the console subset); `examples/assert_demo.sem`, `test_e2e_assert_and_test_and`, `test_assert_lowers_to_icmp_and_test_and`. matchesGolden/string-golden pending.)_
+- [x] WS3-020 `standard.test` (TestResult record + `test.and`; lanes). →test: binary fold; lane grouping. §30.5.1 _(eavc: `test.and` folds two TestResults (`and i1`); `examples/assert_demo.sem` prints 1; lane grouping pending the test runner.)_
 - [ ] WS3-021 `standard.build` (BuildPlan/BuildTarget; emptyPlan/target/withTarget/withConstant). →test: configure builds plan; merge-by-name replace. §30.3.2
 - [x] WS3-022 Construction/access intrinsics auto-derived from record/enum/error decls. →test: derived `.new`/`.field`/`.variant`/`.case`. §10.5 _(eavc: `_emit_derived_target` derives `.new`/`.field`/`.variant` from the type's own declaration, no import needed; `test_record_construction_and_access_lower`, `test_enum_variant_discriminant_lowers`. `.case` for errors pending.)_
 - [ ] WS3-023 Full per-module API catalogs as `.semsig` + generated docs (External surface, §27). →test: `sem docs` per module.

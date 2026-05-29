@@ -2041,7 +2041,8 @@ def _target_is_nonvoid(target: str, program: Program):
     math.* (arith/compare), False for console.* (void), the callee's `out`
     presence for a bare user op, and None (unknown) for other external targets."""
     if (target.startswith("math.") or target.startswith("compare.")
-            or target.startswith("convert.to") or target == "string.concat"):
+            or target.startswith("convert.to") or target == "string.concat"
+            or target.startswith("assert.") or target == "test.and"):
         return True
     if target.startswith("console."):
         return False
@@ -2886,7 +2887,15 @@ class EavCodegen:
         elif target == "console.writeIntegerLine":
             fmt = self.global_string(b"%lld\n\x00")
             val = arg("value", "Int64")
+            if isinstance(val.type, ir.IntType) and val.type.width < 64:
+                val = builder.zext(val, ir.IntType(64))  # Bool/narrow -> i64 for %lld
             result = builder.call(self.runtime("printf"), [fmt, val])
+        elif target == "assert.equalInt64":
+            result = builder.icmp_signed("==", arg("left", "Int64"), arg("right", "Int64"))
+        elif target == "assert.true":
+            result = arg("value", "Bool")
+        elif target == "test.and":
+            result = builder.and_(arg("left", "Bool"), arg("right", "Bool"))
         elif target == "console.writeFloatLine":
             fmt = self.global_string(b"%g\n\x00")
             val = arg("value", "Float64")
