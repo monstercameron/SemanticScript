@@ -333,6 +333,34 @@ def test_mvs_release_beats_prerelease():
     assert eavc.mvs_select([("a", "v1.0.0-rc.1"), ("a", "v1.0.0")]) == {"a": "v1.0.0"}
 
 
+def test_mvs_select_semver_prerelease_precedence():
+    """R-010: pre-release identifiers follow SemVer §11.4, not a lexicographic
+    string compare. Each assertion below is wrong under the old
+    `pre_key = (0, pre)` whole-string key (e.g. it ranked "alpha.10" < "alpha.2"
+    and "beta.11" < "beta.2")."""
+    # numeric identifiers compare numerically: alpha.10 > alpha.2
+    assert eavc.mvs_select([
+        ("pkg", "v1.0.0-alpha.2"),
+        ("pkg", "v1.0.0-alpha.10"),
+    ]) == {"pkg": "v1.0.0-alpha.10"}
+    # an alphanumeric identifier outranks a numeric one: alpha.beta > alpha.1
+    assert eavc._parse_semver("v1.0.0-alpha.beta") > eavc._parse_semver("v1.0.0-alpha.1")
+    # a release outranks a pre-release of the same core: v1.0.0 > v1.0.0-rc.1
+    assert eavc._parse_semver("v1.0.0") > eavc._parse_semver("v1.0.0-rc.1")
+    # build metadata does not affect ordering
+    assert eavc._parse_semver("v1.0.0+build.5") == eavc._parse_semver("v1.0.0")
+    # the canonical SemVer §11.4 precedence chain is strictly increasing
+    chain = [
+        "v1.0.0-alpha", "v1.0.0-alpha.1", "v1.0.0-alpha.beta",
+        "v1.0.0-beta", "v1.0.0-beta.2", "v1.0.0-beta.11",
+        "v1.0.0-rc.1", "v1.0.0",
+    ]
+    keys = [eavc._parse_semver(v) for v in chain]
+    assert keys == sorted(keys)
+    # MVS picks the highest of the chain regardless of input order
+    assert eavc.mvs_select([("pkg", v) for v in reversed(chain)]) == {"pkg": "v1.0.0"}
+
+
 def test_sha256_digest_verify_and_mismatch():
     # WS3-034: content-addressed integrity; tampered content rejects.
     data = b"dependency bytes"

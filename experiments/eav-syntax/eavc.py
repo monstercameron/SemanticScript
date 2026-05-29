@@ -745,9 +745,24 @@ def is_sha256_digest(tok: str) -> bool:
     return bool(_SHA256_HEX_RE.match(tok))
 
 
+def _semver_identifier_key(identifier: str) -> tuple:
+    """SemVer §11.4 per-identifier precedence (R-010): a numeric identifier
+    compares numerically and ranks *below* any alphanumeric identifier, which
+    compares in ASCII order. The leading `0`/`1` discriminant encodes that
+    numeric-below-alphanumeric rule; the trailing slots keep the two cases
+    shape-comparable so list comparison never mixes an int with a str."""
+    if identifier.isdigit():
+        return (0, int(identifier), "")
+    return (1, 0, identifier)
+
+
 def _parse_semver(v: str) -> tuple:
-    """Sort key for a `v`-prefixed semver (README ss28.4). Release sorts above an
-    otherwise-equal pre-release; build metadata is ignored for ordering."""
+    """Sort key for a `v`-prefixed semver (README ss28.4 / SemVer §11). Release
+    sorts above an otherwise-equal pre-release; pre-release precedence follows
+    SemVer §11.4 (R-010) — each dot-separated identifier is compared by
+    `_semver_identifier_key`, and a longer identifier list outranks an
+    equal-prefix shorter one (Python list comparison gives this for free). Build
+    metadata (after `+`) is ignored for ordering."""
     if not v.startswith("v"):
         raise EavError(f"version {v!r} must be v-prefixed (README ss2)")
     core = v[1:].split("+", 1)[0]
@@ -756,7 +771,10 @@ def _parse_semver(v: str) -> tuple:
     if len(parts) != 3 or not all(p.isdigit() for p in parts):
         raise EavError(f"malformed semver {v!r} (README ss2)")
     major, minor, patch = (int(p) for p in parts)
-    pre_key = (1,) if pre == "" else (0, pre)  # release > pre-release
+    if pre == "":
+        pre_key = (1,)  # release outranks any pre-release of the same core
+    else:
+        pre_key = (0, [_semver_identifier_key(i) for i in pre.split(".")])
     return (major, minor, patch) + pre_key
 
 
