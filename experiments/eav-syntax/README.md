@@ -4192,6 +4192,12 @@ absolute root is a hard error (**SS3076**); confine paths with `fs.resolveWithin
 <root>` (which yields a `SafePath`), and raw-String paths into a `SafePath` sink
 are caught by sink-typing (SS3071).
 
+**Host-scoped network / SSRF (X-075).** An outbound `net.*`/`http.*` request URL
+literal that targets localhost, a private/link-local range, or the cloud-metadata
+address (`169.254.169.254`) is a hard error (**SS3075**); requests go to
+allowlisted external hosts via an `HttpSafeUrl` (raw-String URLs are caught by
+sink-typing). The per-host allowlist rides the net capability at runtime.
+
 ### Async intrinsics
 
 ```sem

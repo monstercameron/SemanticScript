@@ -195,6 +195,9 @@ DIAGNOSTICS.update({
     "SS3076": {"tier": "T1", "summary": "Path traversal / absolute-escape literal at a filesystem op.",
                "found": "An `fs.*` path argument is a literal containing a `..` segment or an absolute root.",
                "suggested": "Confine paths under a root with `fs.resolveWithin <root>` (producing a SafePath); never pass a `..`/absolute path literal to a filesystem op (README §8/§27)."},
+    "SS3075": {"tier": "T1", "summary": "Outbound request to an internal/loopback address (SSRF).",
+               "found": "A `net.*`/`http.*` URL literal targets localhost / a private / link-local / cloud-metadata address.",
+               "suggested": "Outbound requests go to allowlisted external hosts via an `HttpSafeUrl`; never hardcode an internal address (SSRF defense, README §8/§27)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3225,6 +3228,7 @@ def _validate_program(program: Program) -> None:
     _validate_random_source(program)
     _validate_nonce_affinity(program)
     _validate_path_traversal(program)
+    _validate_ssrf(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4605,6 +4609,73 @@ def _validate_path_traversal(program: Program) -> None:
                     f"absolute path escapes its root — confine it with "
                     f"`fs.resolveWithin <root>` (README §8)",
                     ent.line, code="SS3076")
+
+
+_NET_REQUEST_PREFIXES = ("net.", "http.")
+_INTERNAL_HOST_MARKERS = (
+    "localhost", "127.", "0.0.0.0", "169.254.", "[::1]", "::1",
+    "10.", "192.168.", "metadata.google", "169.254.169.254",
+)
+
+
+def _url_host(url: str) -> str:
+    s = url
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    s = s.split("/", 1)[0]
+    return s.lower()
+
+
+def _is_internal_host(host: str) -> bool:
+    if any(host == m or host.startswith(m) for m in _INTERNAL_HOST_MARKERS):
+        return True
+    # 172.16.0.0/12 private range
+    if host.startswith("172."):
+        parts = host.split(".")
+        if len(parts) >= 2 and parts[1].isdigit() and 16 <= int(parts[1]) <= 31:
+            return True
+    return False
+
+
+def _validate_ssrf(program: Program) -> None:
+    """X-075 / README §8/§27: an outbound request must go to an allowlisted
+    external host. A `net.*`/`http.*` URL literal that targets localhost, a
+    private/link-local range, or the cloud-metadata address is a hard error
+    (SS3075, SSRF defense). (Raw-String URLs into an `HttpSafeUrl` sink are caught
+    by sink-typing, X-071/SS3071; the runtime allowlist rides the net capability.)"""
+    literals = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if (tr and tr.payload and vr and vr.payload
+                    and vr.payload[0].startswith('"')):
+                literals[ent.name] = vr.payload[0].strip('"')
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if len(r.payload) >= 4 and r.payload[3].startswith('"'):
+                    literals[r.payload[0]] = r.payload[3].strip('"')
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not any(target.startswith(p) for p in _NET_REQUEST_PREFIXES):
+            continue
+        for a in ent.facts("arg"):
+            if len(a.payload) < 3:
+                continue
+            val = a.payload[2]
+            lit = val.strip('"') if val.startswith('"') else literals.get(val)
+            if lit is None or "://" not in lit and "." not in lit:
+                continue
+            if _is_internal_host(_url_host(lit)):
+                raise EavError(
+                    f"call {ent.name!r} sends an outbound request to the internal "
+                    f"address {lit!r} via {target!r}; outbound requests go to "
+                    f"allowlisted external hosts only (SSRF, README §8)",
+                    ent.line, code="SS3075")
 
 
 def _validate_time_safety(program: Program) -> None:

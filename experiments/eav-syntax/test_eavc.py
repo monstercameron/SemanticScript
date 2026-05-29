@@ -4699,6 +4699,38 @@ def test_confined_relative_path_accepted():
     assert "readIt" in prog.entities
 
 
+def _fetch_src(url):
+    return (
+        "fetchIt is operation\nfetchIt out ExitCode\nfetchIt async no\n"
+        'fetchIt purpose "p"\nfetchIt invariant "i"\n'
+        f'fetchIt let endpoint immutable String "{url}"\n'
+        "fetchIt let okCode immutable ExitCode 0\nfetchIt do fetch\nfetchIt return okCode\n"
+        "fetch is call\nfetch in fetchIt\nfetch invokes net.fetchText\n"
+        "fetch arg url String endpoint\nfetch out body String\nfetch catch e NetError\n"
+        "NetError is error\n"
+    )
+
+
+def test_ssrf_internal_address_rejected():
+    # X-075 / §8: an outbound request to a loopback/metadata address is SSRF.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_fetch_src("http://169.254.169.254/latest/meta-data/"))
+    assert getattr(exc.value, "code", None) == "SS3075"
+
+
+def test_ssrf_localhost_rejected():
+    # X-075: localhost is internal.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_fetch_src("http://localhost:8080/admin"))
+    assert getattr(exc.value, "code", None) == "SS3075"
+
+
+def test_ssrf_external_host_accepted():
+    # X-075: an external host is fine (the runtime allowlist refines this further).
+    prog = eavc.parse(_fetch_src("https://api.example.com/v1/users"))
+    assert "fetchIt" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
