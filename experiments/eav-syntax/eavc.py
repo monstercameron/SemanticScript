@@ -279,6 +279,21 @@ DIAGNOSTICS.update({
     "SS3042B": {"tier": "T1", "summary": "Override value type mismatch.",
                 "found": "A platform override value that does not match the constant's type.",
                 "suggested": "Match the constant's declared type (README §28.1)."},
+    "MD1042": {"tier": "T1", "summary": "purpose payload must be a quoted string.",
+               "found": "A `purpose` whose payload is not a quoted string.",
+               "suggested": "Write `purpose \"…\"` (README §6)."},
+    "MD1043": {"tier": "T1", "summary": "invariant payload must be a quoted string.",
+               "found": "An `invariant` whose payload is not a quoted string.",
+               "suggested": "Write `invariant \"…\"` (README §6)."},
+    "MD1045": {"tier": "T1", "summary": "deprecated payload must be a quoted string.",
+               "found": "A `deprecated` whose payload is not a quoted string.",
+               "suggested": "Write `deprecated \"…\"` (README §6)."},
+    "MD1044": {"tier": "T1", "summary": "tag payload must be a bare identifier.",
+               "found": "A `tag` whose payload is quoted or not an identifier.",
+               "suggested": "Write `tag someIdentifier` (README §6)."},
+    "MD1047": {"tier": "T1", "summary": "owner payload must be a bare identifier.",
+               "found": "An `owner` whose payload is quoted or not an identifier.",
+               "suggested": "Write `owner someIdentifier` (README §6)."},
     "SS0744": {"tier": "T1", "summary": "Reserved target windowsGui is unspecified.",
                "found": "A project targeting `windowsGui` (GUI module not defined in v0.3).",
                "suggested": "Remove the windowsGui target until the GUI spec lands (README §27)."},
@@ -2349,6 +2364,30 @@ def lint(program: Program) -> list:
                 op.line, op.name))
     diags.extend(_lint_variant_exhaustiveness(program))
     diags.extend(_lint_sqlite_usage(program))
+    # README ss6 / WS2-035: metadata payload-shape checks. Free-text metadata
+    # (purpose/invariant/deprecated) carries a quoted string; identifier metadata
+    # (tag/owner) carries a bare identifier.
+    _QUOTED_META = {"purpose": "MD1042", "invariant": "MD1043", "deprecated": "MD1045"}
+    _IDENT_META = {"tag": "MD1044", "owner": "MD1047"}
+    for n in program.order:
+        ent = program.entities[n]
+        for pred, code in _QUOTED_META.items():
+            for r in ent.facts(pred):
+                if r.payload and not r.payload[-1].startswith('"'):
+                    diags.append(Diagnostic(
+                        code, "error",
+                        f"{pred} on {ent.name!r} must be a quoted string, got "
+                        f"{r.payload[-1]!r} (README ss6)",
+                        r.line, ent.name))
+        for pred, code in _IDENT_META.items():
+            for r in ent.facts(pred):
+                if r.payload and (r.payload[0].startswith('"')
+                                  or not _IDENT_RE.match(r.payload[0])):
+                    diags.append(Diagnostic(
+                        code, "error",
+                        f"{pred} on {ent.name!r} must be a bare identifier, got "
+                        f"{r.payload[0]!r} (README ss6)",
+                        r.line, ent.name))
     # README ss12 / WS1-085: an out that rebinds module storage should declare a
     # matching `effect write storage.<name>` on the owning op.
     _storages = _storage_entities(program)

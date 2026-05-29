@@ -2635,6 +2635,23 @@ def test_project_constant_collision_rejected():
     assert getattr(exc.value, "code", None) == "SS3041C"
 
 
+def test_metadata_payload_shapes():
+    # WS2-035 / §6: free-text metadata is quoted; identifier metadata is bare.
+    def codes(extra):
+        src = (
+            "Thing is record\nThing field a Int64\n" + extra
+        )
+        return {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "MD1042" in codes("Thing purpose bare\n")        # purpose unquoted
+    assert "MD1043" in codes('Thing purpose "ok"\nThing invariant bare\n')
+    assert "MD1045" in codes('Thing purpose "ok"\nThing deprecated bare\n')
+    assert "MD1044" in codes('Thing purpose "ok"\nThing tag "quoted"\n')
+    assert "MD1047" in codes('Thing purpose "ok"\nThing owner "quoted"\n')
+    # well-formed metadata produces none of these
+    ok = codes('Thing purpose "ok"\nThing invariant "ok"\nThing tag fast\nThing owner team\n')
+    assert not ({"MD1042", "MD1043", "MD1044", "MD1045", "MD1047"} & ok)
+
+
 def _configure_program(gate=""):
     return (
         "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
