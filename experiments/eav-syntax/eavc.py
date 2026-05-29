@@ -1151,6 +1151,11 @@ def parse(source_text: str) -> Program:
             kind = payload[0]
             if kind not in ENTITY_KINDS:
                 raise EavError(f"unknown entity kind {kind!r} (README ss5)", lineno)
+            # README ss11 / WS1-027: `function` is an alias for `operation`.
+            # Normalize at parse so downstream sees a single kind and reuses the
+            # operation predicate set, metadata table, and lints.
+            if kind == "function":
+                kind = "operation"
             if subject in RESERVED_WORDS:
                 raise EavError(
                     f"reserved word {subject!r} may not be an entity name "
@@ -1333,7 +1338,7 @@ def _kind_rank(kind: str) -> int:
 
 # README ss23: the compact authoring profile. Within an operation block the
 # subject token is omitted; `operation`/`call`/`task` headers re-anchor it.
-COMPACT_HEADERS = {"operation", "function", "call", "task"}
+COMPACT_HEADERS = {"operation", "call", "task"}
 COMPACT_GUARDS = {
     "if", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
     "ifPending", "ifCanceled", "else",

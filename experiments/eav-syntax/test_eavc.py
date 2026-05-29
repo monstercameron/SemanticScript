@@ -2177,6 +2177,22 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+def test_function_normalizes_to_operation():
+    # WS1-027 / README §11: `is function` normalizes to an operation at parse and
+    # reuses operation checks; legacy bare `function NAME` is rejected.
+    prog = eavc.parse(
+        "addOne is function\naddOne in n Int64\naddOne out Int64\n"
+        "addOne let r immutable Int64 0\naddOne return r\n"
+    )
+    assert prog.entities["addOne"].kind == "operation"
+    # reuses operation return-arity checks (void op returning a value is rejected)
+    with pytest.raises(eavc.EavError):
+        eavc.parse("get is function\nget let x immutable Int64 1\nget return x\n")
+    # legacy verb-led `function NAME` is not an EAV row
+    with pytest.raises(eavc.EavError):
+        eavc.parse("function addOne\naddOne out Int64\n")
+
+
 def test_alias_newtype_no_silent_coercion():
     # README §10 / WS1-031: passing the base type where an alias newtype is
     # required is a hard type error (no silent coercion).
