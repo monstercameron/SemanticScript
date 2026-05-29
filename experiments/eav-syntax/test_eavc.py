@@ -3029,6 +3029,24 @@ def test_test_runner_executes_tag_test_ops():
     assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
 
 
+def test_agent_operating_loop(tmp_path, capsys):
+    # WS4-122: the documented loop — check, then follow its replayable
+    # nextCommands (test/build) to a runnable artifact.
+    import json
+    path = os.path.join(EXAMPLES, "hello_world.sem")
+    eavc.main(["check", path])
+    chk = json.loads(capsys.readouterr().out)
+    assert chk["status"] in ("ok", "ok-with-warnings")
+    for nc in chk["nextCommands"]:
+        assert nc["replayable"] is True
+        argv = list(nc["argv"])
+        if argv[0] == "build":
+            argv = ["build", path, "-o", str(tmp_path / ("h" + (".exe" if sys.platform == "win32" else "")))]
+        rc = eavc.main(argv)
+        capsys.readouterr()
+        assert rc == 0, argv
+
+
 def test_entity_scoped_slice_json(capsys):
     # WS4-121: entity-scoped slice as a first-class sem.slice.v1 envelope.
     import json
