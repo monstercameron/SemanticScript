@@ -1091,6 +1091,14 @@ _INT_CMP = {
     "math.lessThanInt64": "<", "math.lessThanOrEqualInt64": "<=",
     "math.greaterThanInt64": ">", "math.greaterThanOrEqualInt64": ">=",
 }
+# Float comparison targets. Ordered comparisons are false when either operand is
+# NaN; `notEquals` is unordered so NaN != NaN is true (IEEE-754, README ss10.6).
+_FLOAT_CMP_ORDERED = {
+    "math.equalFloat64": "==",
+    "math.lessThanFloat64": "<", "math.lessThanOrEqualFloat64": "<=",
+    "math.greaterThanFloat64": ">", "math.greaterThanOrEqualFloat64": ">=",
+}
+_FLOAT_CMP_UNORDERED = {"math.notEqualFloat64": "!="}
 
 
 def _norm_type(tok: str) -> str:
@@ -1509,6 +1517,14 @@ class EavCodegen:
         elif target in _INT_CMP:
             result = builder.icmp_signed(
                 _INT_CMP[target], arg("left", "Int64"), arg("right", "Int64")
+            )
+        elif target in _FLOAT_CMP_ORDERED:
+            result = builder.fcmp_ordered(
+                _FLOAT_CMP_ORDERED[target], arg("left", "Float64"), arg("right", "Float64")
+            )
+        elif target in _FLOAT_CMP_UNORDERED:
+            result = builder.fcmp_unordered(
+                _FLOAT_CMP_UNORDERED[target], arg("left", "Float64"), arg("right", "Float64")
             )
         elif target in self.functions:
             callee = self.program.entities[target]

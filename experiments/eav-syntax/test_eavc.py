@@ -533,6 +533,23 @@ def test_lower_mutable_rebind_stores_to_alloca():
     assert 'sub i64' in ir_text             # decrementCounter
 
 
+def test_ieee_float_compare_nan_semantics():
+    # README ss10.6: NaN != NaN is true (unordered une); NaN == NaN is false
+    # (ordered oeq). The comparator choice in IR encodes IEEE-754 semantics.
+    src = (
+        "P is project\nP module m\nP target console\nP entry cmp\nm is module\nm path a.b\n"
+        "cmp is operation\ncmp in a Float64\ncmp in b Float64\ncmp out Bool\n"
+        "cmp do ne\ncmp do eq\ncmp return neResult\n"
+        "ne is call\nne in cmp\nne invokes math.notEqualFloat64\n"
+        "ne arg left Float64 a\nne arg right Float64 b\nne out neResult Bool\n"
+        "eq is call\neq in cmp\neq invokes math.equalFloat64\n"
+        "eq arg left Float64 a\neq arg right Float64 b\neq out eqResult Bool\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert "fcmp une double" in ir_text  # notEquals -> unordered (NaN != NaN true)
+    assert "fcmp oeq double" in ir_text  # equals -> ordered (NaN == NaN false)
+
+
 def test_lower_immutable_rebind_rejected():
     # README ss12 / ss17 #28: `out` to a `let immutable` is a hard error.
     src = (

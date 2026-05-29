@@ -137,7 +137,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1H. Value & runtime semantics (§10.6, §33.5)
 - [x] WS1-090 Integer overflow wraps two's-complement; checked `math.*` → Result. →test: wrap golden; checked overflow → err. §10.6 _(eavc: `add i64` wraps; `examples/overflow.sem` prints INT64_MIN; `test_e2e_overflow_wraps_twos_complement`. Checked `math.*`→Result variants pending stdlib WS3-013.)_
 - [ ] WS1-091 Int/mod div-by-zero traps. →test: traps, no UB. §10.6
-- [ ] WS1-092 IEEE-754 floats (NaN≠NaN, ±inf). →test: `NaN notEquals NaN` true. §10.6
+- [x] WS1-092 IEEE-754 floats (NaN≠NaN, ±inf). →test: `NaN notEquals NaN` true. §10.6 _(eavc: float compares lower to `fcmp` — notEquals→unordered `une` (NaN≠NaN true), equals→ordered `oeq` (NaN==NaN false); `test_ieee_float_compare_nan_semantics`)_
 - [ ] WS1-093 String equality bytewise UTF-8 (no normalization). →test: byte-equal vs canon-equal distinguished. §10.6
 - [ ] WS1-094 Eval order: args in document order; effects at activation step. →test: ordered-effect golden. §10.6
 - [ ] WS1-095 Numeric conversions explicit; float→int trunc/trap, narrowing trap, int→float round-even; Wrapping/Saturating variants. →test: each conversion + trap. §33.5
