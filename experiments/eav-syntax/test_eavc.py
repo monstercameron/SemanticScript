@@ -2994,6 +2994,51 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_stdlib_modules_coverage_guard():
+    # WS3-107: every std/*.sem module lints clean and every operation is bodied
+    # (a runtimeBinding/intrinsic body, or step rows) — no stub operations.
+    import glob
+    mods = sorted(glob.glob(os.path.join(STD, "*.sem")))
+    assert len(mods) >= 5
+    for path in mods:
+        prog = eavc.parse(open(path, encoding="utf-8").read())
+        assert not any(d.severity == "error" for d in eavc.lint(prog)), path
+        for n in prog.order:
+            op = prog.entities[n]
+            if op.kind not in ("operation", "function"):
+                continue
+            has_body_row = op.fact("body") is not None
+            has_steps = any(
+                r.label is not None or r.predicate in eavc.STEP_PREDICATES
+                for r in op.rows
+            )
+            assert has_body_row or has_steps, f"{os.path.basename(path)}:{op.name} has no body"
+
+
+def test_stdlib_clock_minutes_to_seconds_pure_op():
+    # WS3-107: a pure stdlib step-body op unit-tested directly.
+    stdlib = open(os.path.join(STD, "standard.clock.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let mins immutable Int64 3\nmain let okCode immutable ExitCode 0\n"
+        "main do conv\nmain do show\nmain return okCode\n"
+        "conv is call\nconv in main\nconv invokes minutesToSeconds\n"
+        "conv arg minutes Int64 mins\nconv out secs Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 secs\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=stdlib + "\n" + main, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "180"  # 3 min -> 180 s
+
+
 def test_captured_output_replay_multiline_transcript():
     # X-066: a multi-line transcript is captured in order, deterministic across
     # record runs, and replayed side-effect-free.
