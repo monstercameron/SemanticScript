@@ -252,6 +252,9 @@ DIAGNOSTICS.update({
     "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
                "found": "A call result used before its `do`, or a catch var on the success path.",
                "suggested": "Reference the binding only after it is produced (README §25)."},
+    "SS1028": {"tier": "T1", "summary": "Bare variant outside a type-directed position.",
+               "found": "An enum variant name used where the type is not statically known.",
+               "suggested": "Use variants only in arg/let/return positions (README §10)."},
     "SS1354": {"tier": "T1", "summary": "`bind` on a payloadless variant.",
                "found": "A `branch ifVariant … bind` on a variant that carries no payload.",
                "suggested": "Drop `bind`, or match a data-carrying variant (README §17 #53)."},
@@ -2611,6 +2614,7 @@ def _validate_program(program: Program) -> None:
     _validate_binding_consistency(program)
     _validate_invoke_ambiguity(program)
     _validate_variant_payload_bind(program)
+    _validate_variant_positions(program)
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
@@ -3193,6 +3197,43 @@ def _validate_invoke_ambiguity(program: Program) -> None:
                 f"(README ss17 #51)",
                 ent.line, code="SS1552",
             )
+
+
+def _validate_variant_positions(program: Program) -> None:
+    """README ss10 / WS1-028: a bare enum variant is valid only in a
+    type-directed position (arg value, let initializer, return value). A branch
+    condition is a Bool / comparison position, never type-directed, so a bare
+    variant name there is a hard error."""
+    variants: set = set()
+    for e in program.of_kind("enum"):
+        for v in e.facts("variant"):
+            if v.payload:
+                variants.add(v.payload[0])
+    if not variants:
+        return
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        local = {r.payload[0] for r in op.facts("in") if r.payload}
+        local |= {r.payload[0] for r in op.facts("let") if r.payload}
+        for row in op.rows:
+            if row.predicate != "branch" or not row.payload:
+                continue
+            guard = row.payload[0]
+            operands: list = []
+            if guard in ("if", "ifFalse") and len(row.payload) >= 2:
+                operands.append(row.payload[1])
+            elif guard in ("ifValue", "ifOut") and len(row.payload) >= 4:
+                operands += [row.payload[1], row.payload[3]]
+            for tok in operands:
+                if tok in variants and tok not in local:
+                    raise EavError(
+                        f"bare variant {tok!r} used in a branch condition — a "
+                        f"variant is valid only in a type-directed position "
+                        f"(arg/let/return, README ss10, WS1-028)",
+                        row.line, code="SS1028",
+                    )
 
 
 def _validate_variant_payload_bind(program: Program) -> None:
@@ -4006,6 +4047,17 @@ class EavCodegen:
         ote = self.program.entities.get(resolved)
         if ote is not None and ote.kind == "operationType" and tok in self.functions:
             return self.functions[tok]
+        # README ss10 / WS1-028: a bare enum variant is valid in a type-directed
+        # position (the resolved type is that enum); it lowers to its discriminant.
+        if ote is not None and ote.kind == "enum":
+            variants = [v.payload[0] for v in ote.facts("variant") if v.payload]
+            if tok in variants:
+                repr_map = {
+                    r.payload[0]: int(r.payload[1])
+                    for r in ote.facts("repr") if len(r.payload) >= 2
+                }
+                disc = repr_map.get(tok, variants.index(tok))
+                return ir.Constant(ir.IntType(32), disc)
         # Not a binding -> must be a well-formed literal of the expected type.
         # An unbound identifier here is an out-of-scope reference (README ss25).
         if resolved == "String":

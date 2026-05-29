@@ -2177,6 +2177,43 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+def test_bare_variant_resolves_in_type_directed_position():
+    # WS1-028 / §10: a bare variant in a let initializer (type-directed) lowers to
+    # its discriminant; printing it yields the repr value.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "Status is enum\nStatus variant openState\nStatus variant doneState\n"
+        "Status repr openState 0\nStatus repr doneState 1\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let chosen immutable Status doneState\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do showIt\nmain return okCode\n"
+        "showIt is call\nshowIt in main\nshowIt invokes console.writeIntegerLine\n"
+        "showIt arg value Int64 chosen\n"
+    )
+    prog = eavc.parse(src)
+    assert not any(d.severity == "error" for d in eavc.lint(prog))
+    ir_text = str(eavc.lower_to_llvm(prog))
+    assert ir_text  # lowered without an out-of-scope error
+
+
+def test_bare_variant_outside_type_directed_position_rejected():
+    # WS1-028: a variant in a branch condition (a Bool position) is a hard error.
+    src = (
+        "Status is enum\nStatus variant openState\nStatus variant doneState\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main branch if doneState goto skip\n"
+        "main at skip return okCode\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1028"
+
+
 def test_function_normalizes_to_operation():
     # WS1-027 / README §11: `is function` normalizes to an operation at parse and
     # reuses operation checks; legacy bare `function NAME` is rejected.
