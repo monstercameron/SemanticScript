@@ -1,0 +1,50 @@
+# standard.map.semsig — generated signature sidecar (README ss26, ss27).
+# DEFERRED collections: Map is an opaque stdlib handle; storage + iteration land
+# with the collections gap. Parity now is this contract. (todos WS3-105)
+
+mapSig is semsig
+mapSig version "1.0"
+mapSig generatedBy "eavc 0.1"
+mapSig describes standard.map
+
+MapHandle is alias
+MapHandle for OpaquePointer
+MapHandle purpose "An opaque map handle (planned form: Map of K V), released by mapRelease"
+
+MapError is error
+MapError purpose "Represent allocation / missing-key map failures"
+
+mapCreate is intrinsic
+mapCreate target map.create
+mapCreate out map MapHandle
+mapCreate catch MapError
+mapCreate owns map cleanedBy map.release
+mapCreate purpose "Create an empty map handle"
+
+mapPut is intrinsic
+mapPut target map.put
+mapPut arg map MapHandle
+mapPut arg key String
+mapPut arg value Int64
+mapPut out replaced Int32
+mapPut purpose "Insert or update a key's value"
+
+mapGet is intrinsic
+mapGet target map.get
+mapGet arg map MapHandle
+mapGet arg key String
+mapGet out value Int64
+mapGet catch MapError
+mapGet purpose "Read a key's value"
+
+mapSize is intrinsic
+mapSize target map.size
+mapSize arg map MapHandle
+mapSize out size Int64
+mapSize purpose "Number of entries in the map"
+
+mapRelease is intrinsic
+mapRelease target map.release
+mapRelease arg map MapHandle
+mapRelease out released Int32
+mapRelease purpose "Release a map handle"

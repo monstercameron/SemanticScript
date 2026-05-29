@@ -3205,6 +3205,41 @@ showIt arg text String decoded
 """
 
 
+def test_listmap_semsig_contracts_load():
+    # WS3-105 (deferred collections): the opaque-handle list/map contracts load.
+    for mod, want in (("standard.list", "list.append("), ("standard.map", "map.size(")):
+        prog = eavc.load_semsig(open(os.path.join(SIGS, mod + ".semsig"),
+                                     encoding="utf-8").read())
+        lines = eavc.docs(prog)
+        assert any(l.startswith(want) for l in lines), (mod, want)
+
+
+def test_list_pure_length_predicate_jit_runs():
+    # WS3-105: the pure length predicate (no element storage) lowers + JIT-runs.
+    stdlib = open(os.path.join(STD, "standard.list.sem"), encoding="utf-8").read()
+    main = (
+        "ListPred is project\nListPred module appListPred\n"
+        "ListPred target console\nListPred entry main\n"
+        "appListPred is module\nappListPred path examples.listPred\n"
+        'appListPred exports main\nappListPred purpose "p"\nappListPred invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let len immutable Int64 0\nmain let okCode immutable ExitCode 0\n"
+        "main do checkEmpty\nmain do show\nmain return okCode\n"
+        "checkEmpty is call\ncheckEmpty in main\ncheckEmpty invokes listIsEmpty\n"
+        "checkEmpty arg length Int64 len\ncheckEmpty out empty Bool\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 empty\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=stdlib + "\n" + main, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "1"  # length 0 -> isEmpty true
+
+
 def test_net_semsig_contract_loads():
     # WS3-104 (deferred runtime): the net contract loads and documents its surface.
     prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.net.semsig"),
