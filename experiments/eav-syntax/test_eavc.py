@@ -1337,6 +1337,27 @@ def test_compare_primitive_lowers_to_icmp():
     assert "icmp slt i64" in _ir_for_source(src)
 
 
+def test_record_fieldwise_equality_and_ordering_rejected():
+    # README §33.7: records compare by deep fieldwise equality; ordering invalid.
+    base = (
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "Point is record\nPoint field x Int64\nPoint field y Int64\n"
+        "eqOp is operation\neqOp in a Point\neqOp in b Point\neqOp out Bool\n"
+        "eqOp do cmpCall\neqOp return r\n"
+        "cmpCall is call\ncmpCall in eqOp\ncmpCall invokes compare.equalPoint\n"
+        "cmpCall arg left Point a\ncmpCall arg right Point b\ncmpCall out r Bool\n"
+    )
+    ir_text = _ir_for_source(base)
+    assert "extractvalue" in ir_text
+    assert "icmp eq i64" in ir_text
+    assert "and i1" in ir_text
+    # ordering on a record is rejected
+    ordering = base.replace("compare.equalPoint", "compare.greaterThanPoint")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_llvm(eavc.parse(ordering))
+    assert exc.value.code == "SS1345"
+
+
 def test_compare_string_equality_bytewise():
     # README §10.6: String equality is bytewise via strcmp.
     src = (

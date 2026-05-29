@@ -3246,10 +3246,11 @@ class EavCodegen:
         resolved = self.resolve_type_name(typ)
         ent = self.program.entities.get(resolved)
         is_enum = ent is not None and ent.kind == "enum"
-        if ordering and (resolved in ("Bool", "String") or is_enum):
+        is_record = ent is not None and ent.kind == "record"
+        if ordering and (resolved in ("Bool", "String") or is_enum or is_record):
             raise EavError(
-                f"{target!r}: Bool, String, and enum support equals/notEquals "
-                f"only, not ordering (README ss10.6, ss17 #45)",
+                f"{target!r}: Bool, String, enum, and record support "
+                f"equals/notEquals only, not ordering (README ss10.6/ss33.7, ss17 #45)",
                 call.line,
                 code="SS1345",
             )
@@ -3257,6 +3258,22 @@ class EavCodegen:
         right = self._resolve(args["right"].payload[2], typ, builder, sym) if "right" in args else None
         if left is None or right is None:
             raise EavError(f"{target!r} needs left and right args", call.line)
+        if is_record:
+            # README ss33.7: records compare by deep fieldwise equality.
+            _struct_t, field_names = self._record_layout(ent)
+            field_rows = [f for f in ent.facts("field") if len(f.payload) >= 2]
+            acc = None
+            for i, frow in enumerate(field_rows):
+                fl = builder.extract_value(left, i)
+                fr = builder.extract_value(right, i)
+                if self.is_float_type(frow.payload[1]):
+                    feq = builder.fcmp_ordered("==", fl, fr)
+                else:
+                    feq = builder.icmp_signed("==", fl, fr)
+                acc = feq if acc is None else builder.and_(acc, feq)
+            if acc is None:
+                acc = ir.Constant(ir.IntType(1), 1)
+            return acc if op == "equal" else builder.not_(acc)
         if resolved == "String":
             # README ss10.6: String equality is bytewise (strcmp), no normalization.
             cmp = builder.call(self.runtime("strcmp"), [left, right])
