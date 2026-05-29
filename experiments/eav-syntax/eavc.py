@@ -6050,14 +6050,21 @@ def cmd_pack(args) -> int:
 
 
 def cmd_slice(args) -> int:
-    """Print the semantic slice of an entity."""
+    """Print the semantic slice of an entity (sem.slice.v1 with --json)."""
     program = parse(_read_source(args.path))
     try:
-        sys.stdout.write(slice_entity(program, args.entity))
-        return 0
+        text = slice_entity(program, args.entity)
     except EavError as exc:
         sys.stderr.write(f"eavc: {exc}\n")
         return 2
+    if getattr(args, "json", False):
+        ent = program.entities.get(args.entity)
+        sys.stdout.write(_json_envelope(
+            "sem.slice.v1", entity=args.entity,
+            kind=ent.kind if ent else None, slice=text) + "\n")
+    else:
+        sys.stdout.write(text)
+    return 0
 
 
 def cmd_test(args) -> int:
@@ -6290,6 +6297,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_slice = sub.add_parser("slice", help="semantic slice of an entity")
     sp_slice.add_argument("path", help="EAV source file, or - for stdin")
     sp_slice.add_argument("entity", help="entity name")
+    sp_slice.add_argument("--json", action="store_true")
     sp_slice.set_defaults(func=cmd_slice)
 
     sp_pack = sub.add_parser("pack", help="budgeted context bundle for an entity")

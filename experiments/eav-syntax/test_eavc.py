@@ -3029,6 +3029,16 @@ def test_test_runner_executes_tag_test_ops():
     assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
 
 
+def test_entity_scoped_slice_json(capsys):
+    # WS4-121: entity-scoped slice as a first-class sem.slice.v1 envelope.
+    import json
+    eavc.main(["slice", os.path.join(EXAMPLES, "hello_world.sem"), "main", "--json"])
+    env = json.loads(capsys.readouterr().out)
+    assert env["surface"] == "sem.slice.v1"
+    assert env["entity"] == "main" and env["kind"] == "operation"
+    assert env["slice"]
+
+
 def test_dev_surface(capsys):
     # WS4-120: dev reports one check+runnability tick (sem.dev.v1).
     import json
