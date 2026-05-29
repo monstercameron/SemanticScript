@@ -2994,6 +2994,33 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_validator_reject_paths():
+    # X-065: rejecting fixtures for the heavily-branched validators.
+    rejects = [
+        # _validate_enum: duplicate variant
+        "E is enum\nE variant openState\nE variant openState\n",
+        # _validate_enum: repr on a payload-carrying variant
+        "E is enum\nE variant openState Int64\nE repr openState 1\n",
+        # _validate_enum: repr names an unknown variant
+        "E is enum\nE variant openState\nE repr doneState 1\n",
+        # _validate_enum: all-or-none repr (partial repr)
+        "E is enum\nE variant openState\nE variant doneState\nE repr openState 0\n",
+        # _validate_async: `start` in a synchronous operation
+        ("main is operation\nmain out ExitCode\nmain async no\n"
+         'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+         "main start t\nmain join t\nmain return okCode\n"
+         "t is task\nt in main\nt invokes x.run\nExitCode is alias\nExitCode for Int32\n"),
+        # _validate_labels: duplicate label
+        ("main is operation\nmain out ExitCode\nmain async no\n"
+         'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+         "main goto dup\nmain at dup return okCode\nmain at dup return okCode\n"
+         "ExitCode is alias\nExitCode for Int32\n"),
+    ]
+    for src in rejects:
+        with pytest.raises(eavc.EavError):
+            eavc.parse(src)
+
+
 def _async_guard_program(resolve, guard_rows):
     return (
         "P is project\nP module m\nP target console\nP entry main\n"
