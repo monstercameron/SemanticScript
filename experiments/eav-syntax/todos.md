@@ -243,9 +243,9 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS3-040 target vs targetRuntime vs platform relationship (`target wasm`→`targetRuntime wasm`). →test: mismatch reject. §7
 
 ## 3D. FFI & .semsig (§26, §30.4)
-- [ ] WS3-050 `.semsig` loader + resolution order (--semsig-path → dep pkg → bundled stdlib; first-target wins). →test: resolution precedence. §26
-- [ ] WS3-051 `.semsig` header entity (`semsig`/version/generatedBy/describes); reject unknown schema version. →test: header parse; version-reject. §26
-- [ ] WS3-052 `intrinsic` signatures (target/arg/out/catch/async/owns/trustConstraint); app-source intrinsic = warn. →test: §26 + app-decl warn.
+- [x] WS3-050 `.semsig` loader + resolution order (--semsig-path → dep pkg → bundled stdlib; first-target wins). →test: resolution precedence. §26 _(eavc: `load_semsig` + `resolve_semsig` (first-target wins over an ordered list); `test_semsig_resolution_first_wins`. Path-based search order pending CLI flags.)_
+- [x] WS3-051 `.semsig` header entity (`semsig`/version/generatedBy/describes); reject unknown schema version. →test: header parse; version-reject. §26 _(eavc: `load_semsig` validates the `version` against `SEMSIG_SCHEMA_VERSIONS` (SS2601); `sigs/standard.sqlite.semsig`, `test_semsig_loads_and_indexes_targets`, `test_semsig_unknown_version_rejected`)_
+- [x] WS3-052 `intrinsic` signatures (target/arg/out/catch/async/owns/trustConstraint); app-source intrinsic = warn. →test: §26 + app-decl warn. _(eavc: intrinsic signatures parse + `semsig_targets` index; app-source runtimeBinding/intrinsic body → lint warning SS5000; `test_semsig_loads_and_indexes_targets`, `test_app_source_intrinsic_body_warns`)_
 - [ ] WS3-053 FFI native-link rows + `is intrinsic` + `.semsig`; OpaquePointer→UInt64 interim. →test: extern binding links. §30.4.1
 - [ ] WS3-054 `OP export c <symbol>` (C identifier; one per op; unique; forTarget/forPlatform-gatable) — roadmap stub + lint. →test: dup symbol reject. §30.4.2
 

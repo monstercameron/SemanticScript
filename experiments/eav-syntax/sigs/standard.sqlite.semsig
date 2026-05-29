@@ -1,0 +1,24 @@
+# standard.sqlite.semsig — generated signature sidecar (README ss26).
+# Header entity + intrinsic signatures (target/arg/out/catch/async/owns).
+# (todos WS3-050/051/052)
+
+sqliteSig is semsig
+sqliteSig version "1.0"
+sqliteSig generatedBy "eavc 0.1"
+sqliteSig describes standard.sqlite
+
+openDatabase is intrinsic
+openDatabase target sqlite.openDatabase
+openDatabase arg path String
+openDatabase arg mode SqliteOpenMode
+openDatabase out SqliteDatabase
+openDatabase catch SqliteDatabaseOpenFailure
+openDatabase async no
+openDatabase owns SqliteDatabase
+openDatabase purpose "Open (or create) a sqlite database handle"
+
+closeDatabase is intrinsic
+closeDatabase target sqlite.closeDatabase
+closeDatabase arg database SqliteDatabase
+closeDatabase catch SqliteDatabaseCloseFailure
+closeDatabase async no

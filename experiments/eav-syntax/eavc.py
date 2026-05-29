@@ -138,6 +138,12 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
+               "found": "An app operation with a runtimeBinding/intrinsic body.",
+               "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
+    "SS2601": {"tier": "T1", "summary": "Unknown .semsig schema version.",
+               "found": "A `semsig` header with an unsupported version.",
+               "suggested": "Regenerate with a supported toolchain (README §26)."},
     "SS2805": {"tier": "T0", "summary": "Dependency requests an un-allowed effect.",
                "found": "A lock effectSurface effect with no matching build.sem allowEffect.",
                "suggested": "Add an `allowEffect`, or drop the dependency (§28.5)."},
@@ -404,6 +410,49 @@ def mvs_select(requirements: list) -> dict:
         if name not in best or key > best[name][0]:
             best[name] = (key, ver)
     return {name: ver for name, (key, ver) in best.items()}
+
+
+SEMSIG_SCHEMA_VERSIONS = {"1.0"}
+
+
+def load_semsig(source: str) -> Program:
+    """Parse a `.semsig` sidecar and validate its header (README ss26). An
+    unknown schema `version` is rejected (SS2601)."""
+    program = parse(source)
+    headers = program.of_kind("semsig")
+    if not headers:
+        raise EavError("a .semsig file needs a `semsig` header entity (README ss26)")
+    for sig in headers:
+        ver = sig.fact("version")
+        v = ver.payload[0].strip('"') if ver and ver.payload else None
+        if v not in SEMSIG_SCHEMA_VERSIONS:
+            raise EavError(
+                f"semsig {sig.name!r} has unknown schema version {v!r}; supported: "
+                f"{sorted(SEMSIG_SCHEMA_VERSIONS)} (README ss26)",
+                code="SS2601",
+            )
+    return program
+
+
+def semsig_targets(program: Program) -> dict:
+    """Map intrinsic `target` -> intrinsic entity for a loaded .semsig."""
+    out: dict = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "intrinsic":
+            t = ent.fact("target")
+            if t and t.payload:
+                out[t.payload[0]] = ent
+    return out
+
+
+def resolve_semsig(target: str, sigs: list):
+    """Resolution order (README ss26): scan loaded .semsig Programs in order;
+    the first that defines an intrinsic for `target` wins (first-target wins)."""
+    for prog in sigs:
+        if target in semsig_targets(prog):
+            return prog
+    return None
 
 
 def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
@@ -1296,6 +1345,19 @@ def lint(program: Program) -> list:
                 diags.append(Diagnostic("MD1012", "error",
                                         f"exported/entry operation {ent.name!r} is missing an invariant",
                                         ent.line, ent.name))
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind in ("operation", "function") and _op_body_kind(ent) in (
+            "runtimeBinding", "intrinsic"
+        ):
+            # README ss17 #50: primitive bodies belong in a stdlib/.semsig-backed
+            # module, not application source.
+            diags.append(Diagnostic(
+                "SS5000", "warning",
+                f"operation {ent.name!r} has a `{_op_body_kind(ent)}` body in "
+                f"application source; primitive bodies belong in a .semsig-backed "
+                f"stdlib module (README ss17 #50)",
+                ent.line, ent.name))
     diags.extend(_lint_gates(program))
     for w in program.warnings:
         diags.append(Diagnostic("SS0900", "warning", w))

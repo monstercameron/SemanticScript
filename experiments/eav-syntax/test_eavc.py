@@ -63,6 +63,41 @@ def test_supply_chain_manifest_goldens_consistent():
     eavc.verify_supply_chain(build, lock)  # the goldens are consistent
 
 
+SIGS = os.path.join(HERE, "sigs")
+
+
+def test_semsig_loads_and_indexes_targets():
+    # WS3-050/051/052: load a .semsig, validate header, index intrinsic targets.
+    prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.sqlite.semsig"),
+                                 encoding="utf-8").read())
+    targets = eavc.semsig_targets(prog)
+    assert "sqlite.openDatabase" in targets
+    assert targets["sqlite.openDatabase"].fact("owns").payload == ["SqliteDatabase"]
+
+
+def test_semsig_unknown_version_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.load_semsig('s is semsig\ns version "9.9"\ns describes x.y\n')
+    assert exc.value.code == "SS2601"
+
+
+def test_semsig_resolution_first_wins():
+    a = eavc.parse("s is semsig\ns version \"1.0\"\ni is intrinsic\ni target foo.bar\n")
+    b = eavc.parse("s is semsig\ns version \"1.0\"\nj is intrinsic\nj target foo.bar\n")
+    assert eavc.resolve_semsig("foo.bar", [a, b]) is a
+    assert eavc.resolve_semsig("nope.thing", [a, b]) is None
+
+
+def test_app_source_intrinsic_body_warns():
+    # WS3-052 / §17 #50: a primitive body in app source is a lint warning.
+    prog = eavc.parse(
+        "doThing is operation\ndoThing out Int64\n"
+        "doThing body intrinsic arithmetic.addInt64\n"
+    )
+    codes = {d.code for d in eavc.lint(prog)}
+    assert "SS5000" in codes
+
+
 def test_mvs_selects_highest():
     # WS3-033: minimal version selection picks the highest required version.
     reqs = [("a", "v1.2.0"), ("a", "v1.3.0"), ("a", "v1.2.9"), ("b", "v2.0.0")]
