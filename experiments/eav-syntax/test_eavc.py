@@ -2227,6 +2227,22 @@ def test_module_storage_lowers_to_global():
     assert 'load i64, i64* @"answerConstant"' in ir_text
 
 
+def test_embed_literal_source_and_digest():
+    # WS1-084: literalSource reads asset bytes; literalDigest verifies the hash.
+    asset = os.path.join(HERE, "assets", "banner.txt")
+    data = eavc.embed_literal_source(asset)
+    assert data == b"EAV banner asset"
+    eavc.embed_literal_source(asset, eavc.sha256_hex(data))  # matching digest ok
+    with pytest.raises(eavc.EavError):
+        eavc.embed_literal_source(asset, eavc.sha256_hex(b"tampered"))
+
+
+def test_e2e_asset_embed_runs():
+    proc = _eavc_run("asset_embed.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "EAV banner asset" in proc.stdout
+
+
 def test_e2e_module_storage_runs():
     proc = _eavc_run("module_storage.sem")
     assert proc.returncode == 0, proc.stderr

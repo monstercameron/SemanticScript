@@ -707,6 +707,16 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def embed_literal_source(path: str, expected_digest: str = None) -> bytes:
+    """Compile-time asset embedding (README ss30.3.2): read the file's bytes and,
+    if a `literalDigest` is given, verify its sha256 (a mismatch is a hard error)."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    if expected_digest is not None:
+        verify_digest(data, expected_digest)
+    return data
+
+
 def verify_digest(data: bytes, expected_hex: str) -> None:
     """Content-addressed integrity (README ss28.4): a digest mismatch is a hard
     error (tampered dependency)."""
@@ -2993,6 +3003,15 @@ class EavCodegen:
         if not type_row or not type_row.payload:
             return
         resolved = self.resolve_type_name(type_row.payload[0])
+        # README ss30.3.2: `literalSource` embeds a file's bytes at compile time;
+        # `literalDigest sha256 <hex>` verifies the asset hash.
+        src_row = st.fact("literalSource")
+        if src_row and src_row.payload:
+            dig = st.fact("literalDigest")
+            expected = dig.payload[-1] if dig and dig.payload else None
+            data = embed_literal_source(src_row.payload[0].strip('"'), expected)
+            self.module_storage[st.name] = (self.global_string(data + b"\x00"), "String")
+            return
         if resolved not in _PRIMITIVE_IR:
             return  # non-primitive module storage (e.g. SqlText) not modeled here
         gv = ir.GlobalVariable(self.module, _PRIMITIVE_IR[resolved], name=st.name)
@@ -3214,11 +3233,17 @@ class EavCodegen:
             return entry[1]
         return builder.load(entry[1])
 
+    def _read_module_storage(self, tok, builder):
+        ref = self.module_storage[tok][0]
+        # A GlobalVariable holds a value to load; a literalSource embeds an i8*
+        # pointer directly (no load).
+        return builder.load(ref) if isinstance(ref, ir.GlobalVariable) else ref
+
     def _resolve(self, tok, type_name, builder, sym):
         if tok in sym:
             return self._load(sym[tok], builder)
         if tok in getattr(self, "module_storage", {}):
-            return builder.load(self.module_storage[tok][0])
+            return self._read_module_storage(tok, builder)
         return self._literal_or_ref(type_name, tok, builder, sym)
 
     def _resolve_as(self, tok, llvm_type, builder, sym):
@@ -3227,7 +3252,7 @@ class EavCodegen:
         if tok in sym:
             return self._load(sym[tok], builder)
         if tok in getattr(self, "module_storage", {}):
-            return builder.load(self.module_storage[tok][0])
+            return self._read_module_storage(tok, builder)
         if isinstance(llvm_type, (ir.FloatType, ir.DoubleType)):
             return ir.Constant(llvm_type, float(tok))
         return ir.Constant(llvm_type, _parse_int_literal_value(tok))
