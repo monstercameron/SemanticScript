@@ -5657,6 +5657,30 @@ def cmd_skills(args) -> int:
     return 0
 
 
+_EVAL_SCAFFOLD = (
+    "EvalProgram is project\nEvalProgram module evalModule\n"
+    "EvalProgram target console\nEvalProgram entry main\n"
+    "evalModule is module\nevalModule path eval.program\n"
+    "evalModule exports main\nevalModule purpose \"Eval snippet\"\n"
+    "evalModule invariant \"Runs the evaluated snippet\"\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+)
+
+
+def cmd_eval(args) -> int:
+    """Run a snippet through the JIT without scaffolding (sem.eval.v1): if the
+    source has no `project`, wrap it in a minimal console program, then JIT-run
+    and return captured stdout + exit code."""
+    src = _read_source(args.path)
+    if "is project" not in src:
+        src = _EVAL_SCAFFOLD + src
+    out, code = _record_run(src)
+    sys.stdout.write(_json_envelope(
+        "sem.eval.v1", ok=(code == 0), exitCode=code,
+        stdout=out, stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n")) + "\n")
+    return 0
+
+
 def cmd_check(args) -> int:
     """Source lane (sem.check.v1): parse + lint, classify ok / ok-with-warnings /
     lint-diagnostics / compiler-error (README check/readiness split)."""
@@ -5947,6 +5971,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_eval = sub.add_parser("eval", help="JIT-run a snippet (auto-wrapped)")
+    sp_eval.add_argument("path", help="EAV snippet/program file, or - for stdin")
+    sp_eval.add_argument("--json", action="store_true")
+    sp_eval.set_defaults(func=cmd_eval)
 
     sp_check = sub.add_parser("check", help="source lane: parse + lint status")
     sp_check.add_argument("path", help="EAV/compact source file, or - for stdin")

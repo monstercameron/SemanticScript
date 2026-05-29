@@ -2994,6 +2994,28 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_eval_snippet_jit(tmp_path):
+    # WS4-118: eval auto-wraps a snippet (no project) and JIT-runs it.
+    snippet = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let n immutable Int64 42\nmain let okCode immutable ExitCode 0\n"
+        "main do show\nmain return okCode\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 n\n"
+    )
+    snip = tmp_path / "snip.sem"
+    snip.write_text(snippet, encoding="utf-8")
+    import json
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "eval", str(snip)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["surface"] == "sem.eval.v1"
+    assert payload["ok"] is True and payload["stdoutLines"] == ["42"]
+
+
 def test_check_and_readiness_lanes(capsys):
     # WS4-113: check (source lane) classifies status; readiness (environment lane).
     import json
