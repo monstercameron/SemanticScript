@@ -1303,6 +1303,48 @@ def query(program: Program, dimension: str) -> list:
     return rows
 
 
+def rename_entity(source: str, old: str, new: str) -> str:
+    """Semantic rename (README ss24 `rename`): rename an entity and every bare
+    reference to it, returning canonical EAV. Rejects an unknown source or a
+    collision with an existing name."""
+    if not _IDENT_RE.match(new) or new in RESERVED_WORDS:
+        raise EavError(f"invalid new name {new!r} (README ss2)")
+    program = parse(source)
+    if old not in program.entities:
+        raise EavError(f"no entity named {old!r} to rename")
+    if new in program.entities:
+        raise EavError(f"rename target {new!r} already exists (collision)")
+    for n in program.order:
+        ent = program.entities[n]
+        for row in ent.rows:
+            row.payload = [new if t == old else t for t in row.payload]
+            if row.label == old:
+                row.label = new
+    ent = program.entities.pop(old)
+    ent.name = new
+    program.entities[new] = ent
+    program.order = [new if n == old else n for n in program.order]
+    out = format_program(program)
+    parse(out)  # the rename must still parse (validity preserved)
+    return out
+
+
+def add_operation(source: str, name: str, out_type: str = "ExitCode") -> str:
+    """Structured edit (README ss24 `add`): append a minimal, valid operation
+    with a validated signature, returning canonical EAV."""
+    if not _IDENT_RE.match(name) or name in RESERVED_WORDS:
+        raise EavError(f"invalid operation name {name!r} (README ss2)")
+    program = parse(source)
+    if name in program.entities:
+        raise EavError(f"entity {name!r} already exists")
+    stub = (
+        f"\n{name} is operation\n{name} out {out_type}\n"
+        f'{name} purpose "TODO: describe {name}"\n'
+    )
+    out = format_program(parse(source + stub))
+    return out
+
+
 def slice_entity(program: Program, name: str, with_calls: bool = True) -> str:
     """The semantic neighborhood of an entity (README ss24 `slice`): the entity
     plus the calls/tasks/cleanups it activates (and cleanup workers), formatted in
@@ -3029,6 +3071,26 @@ def cmd_query(args) -> int:
     return 0
 
 
+def cmd_rename(args) -> int:
+    """Rename an entity and all references; print the updated source."""
+    try:
+        sys.stdout.write(rename_entity(_read_source(args.path), args.old, args.new))
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
+def cmd_add(args) -> int:
+    """Append a scaffolded operation; print the updated source."""
+    try:
+        sys.stdout.write(add_operation(_read_source(args.path), args.name, args.out))
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_slice(args) -> int:
     """Print the semantic slice of an entity."""
     program = parse(_read_source(args.path))
@@ -3155,6 +3217,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_diff.add_argument("old", help="old EAV source file")
     sp_diff.add_argument("new", help="new EAV source file")
     sp_diff.set_defaults(func=cmd_diff)
+
+    sp_rename = sub.add_parser("rename", help="rename an entity and its references")
+    sp_rename.add_argument("path", help="EAV source file, or - for stdin")
+    sp_rename.add_argument("old")
+    sp_rename.add_argument("new")
+    sp_rename.set_defaults(func=cmd_rename)
+
+    sp_add = sub.add_parser("add", help="append a scaffolded operation")
+    sp_add.add_argument("path", help="EAV source file, or - for stdin")
+    sp_add.add_argument("name")
+    sp_add.add_argument("--out", default="ExitCode")
+    sp_add.set_defaults(func=cmd_add)
 
     sp_slice = sub.add_parser("slice", help="semantic slice of an entity")
     sp_slice.add_argument("path", help="EAV source file, or - for stdin")

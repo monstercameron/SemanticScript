@@ -414,6 +414,30 @@ def test_scaffold_console_program_runs():
     assert 'call i32 @"puts"' in ir_text
 
 
+def test_rename_updates_references():
+    # WS4-014: rename updates the entity and every bare reference.
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    out = eavc.rename_entity(src, "addTwoValues", "addTwo")
+    assert "addTwo is operation" in out
+    assert "addTwoValues" not in out
+    assert "answerCall invokes addTwo" in out
+    # the renamed program still lowers
+    assert 'call i64 @"addTwo"' in str(eavc.lower_to_llvm(eavc.parse(out)))
+
+
+def test_rename_collision_rejected():
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    with pytest.raises(eavc.EavError):
+        eavc.rename_entity(src, "addTwoValues", "main")  # main already exists
+
+
+def test_add_operation_appends_valid_op():
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    out = eavc.add_operation(src, "helperOp", "Int64")
+    prog = eavc.parse(out)  # still valid
+    assert prog.entities["helperOp"].fact("out").payload == ["Int64"]
+
+
 def test_slice_includes_activated_calls():
     # WS4-010: a slice of an op includes the calls it activates (with defs).
     prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
