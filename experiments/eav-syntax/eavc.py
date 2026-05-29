@@ -8384,6 +8384,15 @@ SEM_SURFACES = (
     "sem.build.v1",
 )
 
+# R-053: standard.* catalogs that ship a `.semsig` contract but whose runtime is
+# deferred. They are explicitly *experimental* — owned and parked here, distinct
+# from the semsc-only libc mirrors — and are NOT part of the sanctioned v0.3
+# surface (not advertised as ready). Promotion to sanctioned requires a real
+# runtime plus a runtime smoke test; until then app ports may reference them but
+# execution stays deferred. (bcrypt -> R-066, event -> R-064, gui -> R-042,
+# log -> R-065.)
+EXPERIMENTAL_STDLIB_MODULES = frozenset({"bcrypt", "event", "gui", "log"})
+
 EAV_AGENT_RULES = (
     "EAV-Steps: flat semantic tape, one row = one record, column-1 subject, "
     "column-2 predicate. No expressions/infix/parens/commas/braces. Calls are "

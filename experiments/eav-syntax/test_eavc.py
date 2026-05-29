@@ -6948,10 +6948,13 @@ def test_stdlib_parity_coverage_guard():
     }
     semsc_only = {
         "bit", "bool", "bytes", "ctype", "numeric", "sort", "inttypes", "stdlib",
-        "stdio", "log", "memory", "iso646", "errno", "constants", "limits",
+        "stdio", "memory", "iso646", "errno", "constants", "limits",
         "stddef", "char", "buffer", "slice", "small_list", "array", "signal",
-        "jwt", "bcrypt", "event", "document", "gui",
+        "jwt", "document",
     }
+    # R-053: bcrypt/event/gui/log ship a .semsig but their runtime is deferred —
+    # they are experimental, not libc mirrors and not sanctioned.
+    experimental = set(eavc.EXPERIMENTAL_STDLIB_MODULES)
 
     def has_catalog(module):
         return (os.path.exists(os.path.join(SIGS, f"standard.{module}.semsig"))
@@ -6959,8 +6962,32 @@ def test_stdlib_parity_coverage_guard():
 
     missing = sorted(m for m in sanctioned if not has_catalog(m))
     assert not missing, f"sanctioned standard.* modules lacking a catalog: {missing}"
-    # the two surfaces are disjoint — a module is sanctioned xor semsc-only
+    # the three surfaces are pairwise disjoint
     assert not (sanctioned & semsc_only)
+    assert not (sanctioned & experimental)
+    assert not (semsc_only & experimental)
+
+
+def test_r053_experimental_catalogs_shipped_but_not_advertised():
+    """R-053: the deferred catalogs (bcrypt/event/gui/log) ship a `.semsig`
+    contract but are owned as *experimental* — each has a signature, none is in
+    the sanctioned/advertised v0.3 surface, and none is silently lumped with the
+    semsc-only libc mirrors. This is the ownership record the audit said was
+    missing; promotion to sanctioned requires a runtime + smoke."""
+    sanctioned = {
+        "console", "math", "compare", "convert", "string", "assert", "test",
+        "build", "html", "sqlite", "http",
+        "process", "clock", "random", "net", "list", "map", "json",
+    }
+    experimental = eavc.EXPERIMENTAL_STDLIB_MODULES
+    assert experimental == {"bcrypt", "event", "gui", "log"}
+    for module in experimental:
+        # each ships a contract (the parity guard's reason to track it)...
+        assert os.path.exists(os.path.join(SIGS, f"standard.{module}.semsig")), module
+        # ...but is NOT advertised as a ready/sanctioned module
+        assert module not in sanctioned, module
+        # ...and has no executable .sem stdlib yet (runtime deferred)
+        assert not os.path.exists(os.path.join(STD, f"standard.{module}.sem")), module
 
 
 def test_json_semsig_contract_and_enum_discriminant():
