@@ -1,0 +1,42 @@
+# standard.event.semsig — DEFERRED event-stream contract (README ss27, X-046).
+# The async event stream + subscription runtime (one-emitter-to-many-listeners,
+# wasm-DOM event surface) is not specified in v0.3. This file records the
+# conversion target so event targets type-resolve; the runtime lands later.
+
+eventSig is semsig
+eventSig version "1.0"
+eventSig generatedBy "eavc 0.1"
+eventSig describes standard.event
+
+EventStream is alias
+EventStream for OpaquePointer
+EventStream purpose "An opaque event stream handle (deferred runtime)"
+
+EventSubscription is alias
+EventSubscription for OpaquePointer
+EventSubscription purpose "An opaque subscription handle (deferred runtime)"
+
+EventTypeName is alias
+EventTypeName for String
+EventTypeName purpose "An event type name, e.g. smoke.event.created"
+
+streamOpen is intrinsic
+streamOpen target event.streamOpen
+streamOpen out stream EventStream
+streamOpen owns stream cleanedBy event.streamClose
+streamOpen purpose "Open an event stream (deferred runtime)"
+
+streamAppend is intrinsic
+streamAppend target event.streamAppend
+streamAppend arg stream EventStream
+streamAppend arg eventType EventTypeName
+streamAppend out appended Int64
+streamAppend async yes
+streamAppend purpose "Append (emit) an event to the stream (deferred runtime)"
+
+subscriptionReceive is intrinsic
+subscriptionReceive target event.subscriptionReceive
+subscriptionReceive arg subscription EventSubscription
+subscriptionReceive out eventId Int64
+subscriptionReceive async yes
+subscriptionReceive purpose "Await the next event on a subscription (deferred runtime)"

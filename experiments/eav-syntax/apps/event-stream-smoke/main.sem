@@ -1,0 +1,50 @@
+# event-stream-smoke — EAV port (apps/event-stream-smoke, originally semsc v0.1).
+#
+# The async one-emitter-to-many-listeners event runtime (standard.event) is
+# DEFERRED in v0.3 (its contract is sigs/standard.event.semsig). Per X-046 this
+# ports the console-observable scaffolding: the two listeners' output lines, so
+# the app JIT-runs and builds to an exe today; the event stream/subscription flow
+# is gated behind the deferred runtime.
+
+EventStreamSmoke is project
+EventStreamSmoke module appEventStreamSmoke
+EventStreamSmoke target console
+EventStreamSmoke entry main
+
+appEventStreamSmoke is module
+appEventStreamSmoke path apps.eventStreamSmoke
+appEventStreamSmoke exports main
+appEventStreamSmoke purpose "Print the two listeners' console output (event runtime deferred)"
+appEventStreamSmoke invariant "Both listener lines are written in order"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main memory heap no
+main purpose "Write the console output both event listeners would produce"
+main invariant "Writes listener-one then listener-two"
+main let firstListenerText immutable String "listener-one handled smoke.event.created"
+main let secondListenerText immutable String "listener-two handled smoke.event.created"
+main let okCode immutable ExitCode 0
+main do writeFirst
+main do writeSecond
+main return okCode
+
+writeFirst is call
+writeFirst in main
+writeFirst invokes console.writeLine
+writeFirst arg text String firstListenerText
+
+writeSecond is call
+writeSecond in main
+writeSecond invokes console.writeLine
+writeSecond arg text String secondListenerText

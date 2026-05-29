@@ -3742,6 +3742,22 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+def test_app_event_stream_smoke_console_scaffolding_runs():
+    # X-046: console scaffolding JIT-runs; event targets resolve against the stub.
+    src = open(os.path.join(APPS, "event-stream-smoke", "main.sem"), encoding="utf-8").read()
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "listener-one handled" in proc.stdout and "listener-two handled" in proc.stdout
+    # the deferred event surface type-resolves against its .semsig stub
+    ev = eavc.load_semsig(open(os.path.join(SIGS, "standard.event.semsig"),
+                               encoding="utf-8").read())
+    assert any(l.startswith("event.streamAppend(") for l in eavc.docs(ev))
+
+
 def test_app_desktop_window_smoke_deferred():
     # X-045: desktop GUI is deferred — its `standard.gui` contract loads, app
     # source is not ported, and a windowsGui project hard-errors (reserved).
