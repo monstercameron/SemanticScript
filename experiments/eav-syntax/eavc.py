@@ -1247,14 +1247,14 @@ def parse(source_text: str) -> Program:
                 raise EavError(
                     f"reserved word {subject!r} may not be an entity name "
                     f"(README ss2); arg-slot/field/variant labels are exempt",
-                    lineno,
+                    lineno, code="SS0003",
                 )
             if not _IDENT_RE.match(subject):
                 raise EavError(
                     f"invalid entity name {subject!r}: names are "
                     f"[a-zA-Z][a-zA-Z0-9]* — no underscores, hyphens, or leading "
                     f"digits (README ss2)",
-                    lineno,
+                    lineno, code="SS0002",
                 )
             if subject in program.entities:
                 raise EavError(
@@ -2751,7 +2751,7 @@ def _validate_program(program: Program) -> None:
                     raise EavError(
                         f"reserved word {row.payload[0]!r} may not be a variable "
                         f"name (README ss2)",
-                        row.line,
+                        row.line, code="SS0003",
                     )
                 if len(row.payload) > 3:
                     _validate_value_literal(
@@ -2768,7 +2768,7 @@ def _validate_program(program: Program) -> None:
                 raise EavError(
                     "`out Result` needs exactly an OK type and an ERR type "
                     f"(README ss10), got {row.payload!r}",
-                    row.line,
+                    row.line, code="SS1010",
                 )
     _validate_calls(program)
     _validate_binding_consistency(program)
@@ -3085,7 +3085,7 @@ def _validate_step_split(program: Program) -> None:
                     f"`{row.predicate} {ref.name}` targets a {ref.kind}; "
                     f"`{row.predicate}` requires a {expected} "
                     f"(call/task/cleanup split, README ss34.4)",
-                    row.line,
+                    row.line, code="SS1044",
                 )
             owner = ref.fact("in")
             if owner and owner.payload and owner.payload[0] != op.name:
@@ -4168,7 +4168,7 @@ def _validate_return_arity(op: Entity) -> None:
                 raise EavError(
                     f"{op.name!r} returns void but `return` carries a value "
                     f"(README ss17 #10)",
-                    row.line,
+                    row.line, code="SS1060",
                 )
         elif is_result:
             nils = p.count("nil")
@@ -4176,14 +4176,14 @@ def _validate_return_arity(op: Entity) -> None:
                 raise EavError(
                     f"{op.name!r} returns Result: `return` needs exactly one value "
                     f"and one `nil` (README ss13, ss17 #10), got {row.payload!r}",
-                    row.line,
+                    row.line, code="SS1060",
                 )
         else:
             if len(p) != 1 or "nil" in p:
                 raise EavError(
                     f"{op.name!r} returns a single value: `return` needs exactly "
                     f"one value (README ss17 #10), got {row.payload!r}",
-                    row.line,
+                    row.line, code="SS1060",
                 )
 
 

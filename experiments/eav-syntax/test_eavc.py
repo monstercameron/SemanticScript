@@ -2948,6 +2948,25 @@ def test_windows_gui_target_reserved_error():
     assert getattr(exc.value, "code", None) == "SS0744"
 
 
+def test_diagnostic_emission_guard():
+    # X-062: every diagnostic code in the registry is actually emitted somewhere
+    # (a literal "CODE" appears beyond its registry definition), not merely
+    # defined. Catches drift where a new code is registered without being wired.
+    src = open(eavc.__file__, encoding="utf-8").read()
+    unemitted = [c for c in eavc.DIAGNOSTICS if src.count(f'"{c}"') <= 1]
+    assert not unemitted, f"codes defined but never emitted: {unemitted}"
+    # probe the newly-wired codes to confirm they flow through to EavError.code
+    probes = {
+        "SS0002": "bad_name is record\n",                       # invalid identifier
+        "SS0003": "error is record\n",                          # reserved word name
+        "SS1010": "look is operation\nlook out Result Int64\n",  # out Result arity
+    }
+    for code, src_text in probes.items():
+        with pytest.raises(eavc.EavError) as exc:
+            eavc.parse(src_text)
+        assert getattr(exc.value, "code", None) == code, (code, exc.value)
+
+
 def test_lexer_edge_cases():
     # X-067: tokenize_line escapes, banned escapes, comments-in-strings, errors.
     tl = eavc.tokenize_line
