@@ -308,6 +308,20 @@ def test_parse_enum_full_repr_ok():
     assert len(prog.entities["E"].facts("repr")) == 2
 
 
+def test_record_field_named_new_rejected():
+    # README ss10.5/ss17 #51: `new` is the constructor target segment.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("T is record\nT field new Int64\n")
+    assert "field named `new`" in exc.value.message
+
+
+def test_alias_shadowing_primitive_rejected():
+    # README ss17 #51: a primitive name can't be an alias (reserved-word rule).
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("Int64 is alias\nInt64 for Int32\n")
+    assert "reserved word" in exc.value.message
+
+
 def test_parse_record_duplicate_field_rejected():
     # README ss10: duplicate field names within one record are a hard error.
     with pytest.raises(eavc.EavError) as exc:

@@ -108,7 +108,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1E. Invocation & dataflow (§3, §15, §10.5)
 - [x] WS1-050 `invokes` resolution order: bare in-module op / alias.op / compiler-derived target / intrinsic. →test: each form resolves; unresolved bare = error. §15/§3 _(eavc: `_validate_calls`; bare → in-module op or hard error; dotted = external; `test_invokes_unresolved_bare_target_rejected`)_
 - [x] WS1-051 Arg-slot↔`in`-name match + type; `out`/`catch` ← op `out`/Result. →test: arg-name mismatch reject; Result→out+catch binding. §15 _(eavc: `_validate_calls` matches arg slots to callee `in` names one-to-one; `test_invokes_arg_name_mismatch_rejected`. Per-arg type checking pending.)_
-- [ ] WS1-052 Namespace collision rules (alias≠type name; bare op≠reserved/built-in ns; field≠`new`). →test: §17 #51. §15
+- [x] WS1-052 Namespace collision rules (alias≠type name; bare op≠reserved/built-in ns; field≠`new`). →test: §17 #51. §15 _(eavc: record field `new` rejected; alias/op/ns collisions covered by reserved-words + entity-name uniqueness; `test_record_field_named_new_rejected`, `test_alias_shadowing_primitive_rejected`)_
 - [ ] WS1-053 Construction targets `<Record>.new` / `<Enum>.<variant>` / `<Error>.<case>`; arg/field/case match. →test: §17 #49; missing field reject. §10.5
 - [ ] WS1-054 Access target `<Record>.<field>` read. →test: field read binds field type. §10.5
 - [x] WS1-055 Built-in derived targets need no import (like compare/console/math). →test: `Task.new` without import ok. §10.5 _(eavc: math.*/console.* resolve with no `imports` row; `test_builtin_targets_need_no_import`. Record/enum `.new`/`.field` derived targets pending WS1-108/WS3-022.)_

@@ -645,6 +645,14 @@ def _validate_program(program: Program) -> None:
             _check_unique_labels(
                 ent, "field", "field name", "README ss10/ss17 #29"
             )
+            for fr in ent.facts("field"):
+                if fr.payload and fr.payload[0] == "new":
+                    raise EavError(
+                        f"record {ent.name!r} may not declare a field named `new`; "
+                        f"that segment is the constructor target (README ss10.5, "
+                        f"ss17 #51)",
+                        fr.line,
+                    )
         elif ent.kind == "enum":
             _validate_enum(ent)
         elif ent.kind == "errorCase" and ent.fact("of") is None:
