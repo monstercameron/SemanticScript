@@ -725,6 +725,20 @@ def test_governance_covers_versioning_glossary_freeze():
     assert "freeze" in gov and "§34" in gov
 
 
+def test_typed_comments_extracted_for_docs():
+    # X-014: §6 metadata can migrate to typed comments; docs come from comments.
+    src = (
+        "main is operation\n"
+        "# purpose: write the greeting and exit\n"
+        "# rationale: stdout is the only effect\n"
+        "main out ExitCode  # invariant: always returns a status\n"
+    )
+    tc = dict(eavc.typed_comments(src))
+    assert tc["purpose"] == "write the greeting and exit"
+    assert tc["rationale"] == "stdout is the only effect"
+    assert tc["invariant"] == "always returns a status"
+
+
 def test_roadmap_registers_all_gaps():
     # X-030..X-037: every §29 roadmap gap #14–#25 has a register entry.
     roadmap = open(os.path.join(HERE, "ROADMAP.md"), encoding="utf-8").read()

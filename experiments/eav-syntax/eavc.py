@@ -517,6 +517,24 @@ def semsig_targets(program: Program) -> dict:
     return out
 
 
+_TYPED_COMMENT_RE = re.compile(
+    r"#\s*(rationale|warning|agent|memory|concurrency|timing|failure|security|"
+    r"dependency|observability|test|todo|purpose|invariant|note|risk|example):\s*(.*)"
+)
+
+
+def typed_comments(source: str) -> list:
+    """Extract typed comments `# tag: text` (README ss2). This is the §34
+    direction for §6 metadata — metadata can migrate to typed comments and docs
+    are still generated from them (X-014)."""
+    out: list = []
+    for line in source.replace("\r\n", "\n").split("\n"):
+        m = _TYPED_COMMENT_RE.search(line)
+        if m:
+            out.append((m.group(1), m.group(2).strip()))
+    return out
+
+
 def docs(semsig_program: Program) -> list:
     """Generate an API catalog from a loaded .semsig (README ss27 `sem docs`):
     one line per intrinsic — `target(arg:Type, …) -> Out [throws Err]` + purpose."""
