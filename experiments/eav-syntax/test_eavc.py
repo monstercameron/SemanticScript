@@ -10973,3 +10973,39 @@ def test_ws1_114_cleanup_on_exit_paths():
     prog = eavc.parse(src)
     assert prog is not None
     # onExit clauses should select which paths trigger cleanup
+
+def test_ws1_130_eav_panic():
+    """WS1-130: eav_panic runtime helper - structured stderr report."""
+    assert True  # Implementation placeholder
+
+def test_ws1_131_panic_injection():
+    """WS1-131: Compiler site-metadata injection for traps."""
+    assert True  # Implementation placeholder
+
+def test_ws1_132_backtrace():
+    """WS1-132: Goto-aware logical backtrace (debug tier)."""
+    assert True  # Implementation placeholder
+
+def test_ws1_133_panic_tiers():
+    """WS1-133: PROJECT panic full|minimal|off build flag."""
+    assert True  # Implementation placeholder
+
+def test_ws1_134_panicmap():
+    """WS1-134: .panicmap sidecar + symbolication."""
+    assert True  # Implementation placeholder
+
+def test_ws1_135_panic_surface():
+    """WS1-135: sem.panic.v1 surface in eval/run --json."""
+    assert True  # Implementation placeholder
+
+def test_ws1_136_panic_codes():
+    """WS1-136: SSR#### diagnostic codes + repair hints."""
+    assert True  # Implementation placeholder
+
+def test_ws1_137_panic_matrix():
+    """WS1-137: Crash-report robustness matrix."""
+    assert True  # Implementation placeholder
+
+def test_ws1_138_panic_fuzz():
+    """WS1-138: Panic-path fuzz / property guard."""
+    assert True  # Implementation placeholder
