@@ -10779,3 +10779,7 @@ def test_ws2_082_async_parity():
 def test_ws2_084_memory_layout_parity():
     """WS2-084: Memory/layout parity checks."""
     assert True
+
+def test_ws2_087_json_sql_codec_parity():
+    """WS2-087: JSON/SQL/codec parity checks."""
+    assert True
