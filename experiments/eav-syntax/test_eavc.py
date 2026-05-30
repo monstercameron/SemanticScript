@@ -10129,3 +10129,11 @@ def test_e2e_compare_integers():
     proc = _eavc_run("compare_integers.sem")
     assert proc.returncode == 0, proc.stderr
     assert "1" in proc.stdout
+
+
+def test_e2e_int_arithmetic_all():
+    """X-201: intArithAll — all basic integer arithmetic operations.
+    Tests ((10 + 5) - 3) * 2 / 2 = 12."""
+    proc = _eavc_run("int_arithmetic_all.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "12" in proc.stdout
