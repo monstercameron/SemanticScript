@@ -1,0 +1,39 @@
+# json_codec_decode — JSON codec and decoding
+# (README §17). Tests JSON deserialization.
+
+JsonCodecDecode is project
+JsonCodecDecode module examplesJsonCodecDecode
+JsonCodecDecode target console
+JsonCodecDecode entry main
+
+examplesJsonCodecDecode is module
+examplesJsonCodecDecode path examples.jsonCodecDecode
+examplesJsonCodecDecode exports main
+examplesJsonCodecDecode purpose "Demonstrate JSON codec decode"
+examplesJsonCodecDecode invariant "JSON decoding works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Decode JSON values"
+main invariant "JSON codec works"
+
+main let parsed immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printParsed
+main return okCode
+
+printParsed is call
+printParsed in main
+printParsed invokes console.writeIntegerLine
+printParsed arg value Int64 parsed

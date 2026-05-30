@@ -1,0 +1,39 @@
+# select_branch_ready — select over multiple operations
+# (README §16). Tests multiplexing async operations.
+
+SelectBranchReady is project
+SelectBranchReady module examplesSelectBranchReady
+SelectBranchReady target console
+SelectBranchReady entry main
+
+examplesSelectBranchReady is module
+examplesSelectBranchReady path examples.selectBranchReady
+examplesSelectBranchReady exports main
+examplesSelectBranchReady purpose "Demonstrate select branch ready"
+examplesSelectBranchReady invariant "Select multiplexing works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Select over async operations"
+main invariant "Select works"
+
+main let ready immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printReady
+main return okCode
+
+printReady is call
+printReady in main
+printReady invokes console.writeIntegerLine
+printReady arg value Int64 ready

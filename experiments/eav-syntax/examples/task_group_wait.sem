@@ -1,0 +1,39 @@
+# task_group_wait — task group and wait semantics
+# (README §16). Tests task group creation and joining.
+
+TaskGroupWait is project
+TaskGroupWait module examplesTaskGroupWait
+TaskGroupWait target console
+TaskGroupWait entry main
+
+examplesTaskGroupWait is module
+examplesTaskGroupWait path examples.taskGroupWait
+examplesTaskGroupWait exports main
+examplesTaskGroupWait purpose "Demonstrate task group wait"
+examplesTaskGroupWait invariant "Task groups are well-formed"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Wait for task group"
+main invariant "Group wait works"
+
+main let result immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

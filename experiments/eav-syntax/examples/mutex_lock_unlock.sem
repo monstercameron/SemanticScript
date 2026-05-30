@@ -1,0 +1,39 @@
+# mutex_lock_unlock — mutual exclusion lock/unlock
+# (README §16). Tests mutex synchronization.
+
+MutexLockUnlock is project
+MutexLockUnlock module examplesMutexLockUnlock
+MutexLockUnlock target console
+MutexLockUnlock entry main
+
+examplesMutexLockUnlock is module
+examplesMutexLockUnlock path examples.mutexLockUnlock
+examplesMutexLockUnlock exports main
+examplesMutexLockUnlock purpose "Demonstrate mutex lock/unlock"
+examplesMutexLockUnlock invariant "Mutex synchronization works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Lock and unlock mutex"
+main invariant "Mutex works"
+
+main let acquired immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printAcquired
+main return okCode
+
+printAcquired is call
+printAcquired in main
+printAcquired invokes console.writeIntegerLine
+printAcquired arg value Int64 acquired

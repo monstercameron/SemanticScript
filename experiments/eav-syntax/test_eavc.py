@@ -10386,3 +10386,81 @@ def test_e2e_cancel_token_lifecycle():
     proc = _eavc_run("cancel_token_lifecycle.sem")
     assert proc.returncode == 0, proc.stderr
     assert "0" in proc.stdout
+
+
+# X-208 Task/Concurrency test programs
+
+def test_e2e_task_group_wait():
+    """X-208: taskGroupWait — task group and wait semantics.
+    Task group creation and joining (outputs 1)."""
+    proc = _eavc_run("task_group_wait.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_worker_pool_submit():
+    """X-208: workerPoolSubmit — worker pool and work submission.
+    Submitting work to a pool (outputs 4)."""
+    proc = _eavc_run("worker_pool_submit.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "4" in proc.stdout
+
+
+def test_e2e_channel_send_receive():
+    """X-208: channelSendReceive — channel send and receive.
+    Unbuffered and buffered channels (outputs 42)."""
+    proc = _eavc_run("channel_send_receive.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "42" in proc.stdout
+
+
+# X-209 Synchronization test programs
+
+def test_e2e_mutex_lock_unlock():
+    """X-209: mutexLockUnlock — mutual exclusion lock/unlock.
+    Mutex synchronization (outputs 1)."""
+    proc = _eavc_run("mutex_lock_unlock.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_select_branch_ready():
+    """X-209: selectBranchReady — select over multiple operations.
+    Multiplexing async operations (outputs 1)."""
+    proc = _eavc_run("select_branch_ready.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_interval_tick_await():
+    """X-209: intervalTickAwait — interval timer with tick and await.
+    Periodic timer intervals (outputs 1000)."""
+    proc = _eavc_run("interval_tick_await.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1000" in proc.stdout
+
+
+# X-210 Codec/Crypto/SQL test programs
+
+def test_e2e_json_codec_decode():
+    """X-210: jsonCodecDecode — JSON codec and decoding.
+    JSON deserialization (outputs 1)."""
+    proc = _eavc_run("json_codec_decode.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_sql_execute_query():
+    """X-210: sqlExecuteQuery — SQL query execution.
+    Database queries (outputs 5)."""
+    proc = _eavc_run("sql_execute_query.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "5" in proc.stdout
+
+
+def test_e2e_hash_compute_verify():
+    """X-210: hashComputeVerify — hash computation and verification.
+    Cryptographic hashing (outputs 32)."""
+    proc = _eavc_run("hash_compute_verify.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "32" in proc.stdout

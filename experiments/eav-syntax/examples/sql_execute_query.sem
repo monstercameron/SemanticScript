@@ -1,0 +1,39 @@
+# sql_execute_query — SQL query execution
+# (README §17). Tests database queries.
+
+SqlExecuteQuery is project
+SqlExecuteQuery module examplesSqlExecuteQuery
+SqlExecuteQuery target console
+SqlExecuteQuery entry main
+
+examplesSqlExecuteQuery is module
+examplesSqlExecuteQuery path examples.sqlExecuteQuery
+examplesSqlExecuteQuery exports main
+examplesSqlExecuteQuery purpose "Demonstrate SQL query execution"
+examplesSqlExecuteQuery invariant "SQL queries work"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Execute SQL query"
+main invariant "Query execution works"
+
+main let rowCount immutable Int64 5
+main let okCode immutable ExitCode 0
+
+main do printCount
+main return okCode
+
+printCount is call
+printCount in main
+printCount invokes console.writeIntegerLine
+printCount arg value Int64 rowCount

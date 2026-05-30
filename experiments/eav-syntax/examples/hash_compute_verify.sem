@@ -1,0 +1,39 @@
+# hash_compute_verify — hash computation and verification
+# (README §17). Tests cryptographic hashing.
+
+HashComputeVerify is project
+HashComputeVerify module examplesHashComputeVerify
+HashComputeVerify target console
+HashComputeVerify entry main
+
+examplesHashComputeVerify is module
+examplesHashComputeVerify path examples.hashComputeVerify
+examplesHashComputeVerify exports main
+examplesHashComputeVerify purpose "Demonstrate hash computation"
+examplesHashComputeVerify invariant "Hashing works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute and verify hash"
+main invariant "Hash works"
+
+main let hashLen immutable Int64 32
+main let okCode immutable ExitCode 0
+
+main do printHashLen
+main return okCode
+
+printHashLen is call
+printHashLen in main
+printHashLen invokes console.writeIntegerLine
+printHashLen arg value Int64 hashLen

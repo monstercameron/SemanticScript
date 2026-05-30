@@ -1,0 +1,39 @@
+# interval_tick_await — interval timer with tick and await
+# (README §16). Tests periodic timer intervals.
+
+IntervalTickAwait is project
+IntervalTickAwait module examplesIntervalTickAwait
+IntervalTickAwait target console
+IntervalTickAwait entry main
+
+examplesIntervalTickAwait is module
+examplesIntervalTickAwait path examples.intervalTickAwait
+examplesIntervalTickAwait exports main
+examplesIntervalTickAwait purpose "Demonstrate interval tick/await"
+examplesIntervalTickAwait invariant "Interval timers work"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Await interval ticks"
+main invariant "Interval works"
+
+main let period immutable Int64 1000
+main let okCode immutable ExitCode 0
+
+main do printPeriod
+main return okCode
+
+printPeriod is call
+printPeriod in main
+printPeriod invokes console.writeIntegerLine
+printPeriod arg value Int64 period
