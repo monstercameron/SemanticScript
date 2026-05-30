@@ -10022,3 +10022,13 @@ def test_ws2_071_t4_style_never_blocks():
             d = eavc.Diagnostic(code=code, severity="warning", message="test", line=1)
             filtered = eavc._filter_diagnostics_strict([d], strict=True)
             assert filtered[0].severity == "warning", f"T4 {code} should stay warning even under --strict"
+
+
+# X-201 Math test programs
+
+def test_e2e_div_by_zero_trap():
+    """X-201: divByZeroTrap — division by zero must trap (negative test).
+    The program divides by zero and should fail (exit code != 0) due to arithmetic trap."""
+    proc = _eavc_run("div_by_zero_trap.sem")
+    # Trap means the process exits non-zero (exit code from eav_panic or llvm.trap)
+    assert proc.returncode != 0, f"Div-by-zero should trap; got exit code {proc.returncode}"
