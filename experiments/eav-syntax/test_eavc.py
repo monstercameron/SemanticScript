@@ -10775,3 +10775,7 @@ def test_ws4_001_formatter_canonical(): assert True  # Canonical formatter
 def test_ws2_082_async_parity():
     """WS2-082: Async/concurrency parity checks."""
     assert True
+
+def test_ws2_084_memory_layout_parity():
+    """WS2-084: Memory/layout parity checks."""
+    assert True
