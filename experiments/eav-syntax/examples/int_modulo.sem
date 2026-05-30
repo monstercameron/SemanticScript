@@ -1,0 +1,47 @@
+# int_modulo — integer modulo operation
+# (README §10.6 / §33.5). Tests the modulo (remainder) operation on Int64.
+
+IntModulo is project
+IntModulo module examplesIntModulo
+IntModulo target console
+IntModulo entry main
+
+examplesIntModulo is module
+examplesIntModulo path examples.intModulo
+examplesIntModulo exports main
+examplesIntModulo purpose "Demonstrate integer modulo operation"
+examplesIntModulo invariant "main computes remainder and prints it"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute 17 modulo 5 and print the remainder"
+main invariant "17 % 5 = 2"
+
+main let dividend immutable Int64 17
+main let divisor immutable Int64 5
+main let zeroCode immutable ExitCode 0
+main do computeModulo
+main do printResult
+main return zeroCode
+
+computeModulo is call
+computeModulo in main
+computeModulo invokes math.moduloInt64
+computeModulo arg left Int64 dividend
+computeModulo arg right Int64 divisor
+computeModulo out remainder Int64
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 remainder

@@ -10041,3 +10041,11 @@ def test_e2e_overflow_wrap_minmax():
     assert proc.returncode == 0, proc.stderr
     # Int64.max (9223372036854775807) + 1 wraps to Int64.min (-9223372036854775808)
     assert "-9223372036854775808" in proc.stdout
+
+
+def test_e2e_int_modulo():
+    """X-201: intModulo — integer modulo (remainder) operation.
+    Computes 17 % 5 and prints the remainder (2)."""
+    proc = _eavc_run("int_modulo.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "2" in proc.stdout
