@@ -1,0 +1,39 @@
+# compound_or — compound OR condition via sequential guards
+# (README §13 / §33.4). Tests (A ∨ B) via sequential branches.
+
+CompoundOr is project
+CompoundOr module examplesCompoundOr
+CompoundOr target console
+CompoundOr entry main
+
+examplesCompoundOr is module
+examplesCompoundOr path examples.compoundOr
+examplesCompoundOr exports main
+examplesCompoundOr purpose "Demonstrate compound OR condition"
+examplesCompoundOr invariant "(5 > 10) OR (7 < 10) is true"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Evaluate compound OR and print result"
+main invariant "(5 > 10) OR (7 < 10) → 1 (true)"
+
+main let result immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

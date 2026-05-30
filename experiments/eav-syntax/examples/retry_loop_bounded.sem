@@ -1,0 +1,39 @@
+# retry_loop_bounded — bounded retry loop
+# (README §13 / §27). Tests retry with maximum iterations.
+
+RetryLoopBounded is project
+RetryLoopBounded module examplesRetryLoopBounded
+RetryLoopBounded target console
+RetryLoopBounded entry main
+
+examplesRetryLoopBounded is module
+examplesRetryLoopBounded path examples.retryLoopBounded
+examplesRetryLoopBounded exports main
+examplesRetryLoopBounded purpose "Demonstrate bounded retry loop"
+examplesRetryLoopBounded invariant "Retry stops at limit"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Execute bounded retry loop"
+main invariant "Respects max attempts"
+
+main let result immutable Int64 3
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

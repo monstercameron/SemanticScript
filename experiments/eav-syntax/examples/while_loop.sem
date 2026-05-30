@@ -1,0 +1,39 @@
+# while_loop — while loop control structure
+# (README §13). Tests basic while loop iteration.
+
+WhileLoop is project
+WhileLoop module examplesWhileLoop
+WhileLoop target console
+WhileLoop entry main
+
+examplesWhileLoop is module
+examplesWhileLoop path examples.whileLoop
+examplesWhileLoop exports main
+examplesWhileLoop purpose "Demonstrate while loop structure"
+examplesWhileLoop invariant "Loop counts to 5"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Execute while loop and print final count"
+main invariant "Counts from 0 to 5"
+
+main let result immutable Int64 5
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

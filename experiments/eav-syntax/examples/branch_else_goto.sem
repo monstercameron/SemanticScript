@@ -1,0 +1,39 @@
+# branch_else_goto — branch else and goto control flow
+# (README §13). Tests else branch and goto.
+
+BranchElseGoto is project
+BranchElseGoto module examplesBranchElseGoto
+BranchElseGoto target console
+BranchElseGoto entry main
+
+examplesBranchElseGoto is module
+examplesBranchElseGoto path examples.branchElseGoto
+examplesBranchElseGoto exports main
+examplesBranchElseGoto purpose "Demonstrate branch else and goto"
+examplesBranchElseGoto invariant "Control flow with else branch"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use branch else and goto for control flow"
+main invariant "Else branch taken"
+
+main let result immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

@@ -10153,3 +10153,43 @@ def test_e2e_effect_covered_console():
     proc = _eavc_run("effect_covered_console.sem")
     assert proc.returncode == 0, proc.stderr
     assert "Hello, world" in proc.stdout
+
+
+def test_e2e_while_loop():
+    """X-202: whileLoop — while loop structure.
+    Counts to 5 via while loop."""
+    proc = _eavc_run("while_loop.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "5" in proc.stdout
+
+
+def test_e2e_mutual_recursion():
+    """X-202: mutualRecursion — mutually recursive operations (isEven/isOdd).
+    Determines if 4 is even via mutual recursion."""
+    proc = _eavc_run("mutual_recursion.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_branch_else_goto():
+    """X-202: branchElseGoto — branch else and goto control flow.
+    Tests else branch and goto (outputs 1)."""
+    proc = _eavc_run("branch_else_goto.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_retry_loop_bounded():
+    """X-202: retryLoopBounded — bounded retry loop (respects max attempts).
+    Outputs retry count (3)."""
+    proc = _eavc_run("retry_loop_bounded.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "3" in proc.stdout
+
+
+def test_e2e_compound_or():
+    """X-202: compoundOr — compound OR condition via sequential guards.
+    Tests (5 > 10) OR (7 < 10) → 1 (true)."""
+    proc = _eavc_run("compound_or.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout

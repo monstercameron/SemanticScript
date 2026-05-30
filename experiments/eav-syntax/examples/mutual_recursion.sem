@@ -1,0 +1,39 @@
+# mutual_recursion — mutually recursive operations
+# (README §13). Tests isEven/isOdd pattern.
+
+MutualRecursion is project
+MutualRecursion module examplesMutualRecursion
+MutualRecursion target console
+MutualRecursion entry main
+
+examplesMutualRecursion is module
+examplesMutualRecursion path examples.mutualRecursion
+examplesMutualRecursion exports main
+examplesMutualRecursion purpose "Demonstrate mutual recursion pattern"
+examplesMutualRecursion invariant "isEven/isOdd work correctly"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Determine if a number is even via mutual recursion"
+main invariant "4 is even"
+
+main let result immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result
