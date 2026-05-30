@@ -1,0 +1,15 @@
+# X-202 countdown
+Countdown is project
+Countdown module m
+Countdown target console
+Countdown entry main
+m is module
+m path examples.countdown
+m exports main
+m purpose "Countdown test"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

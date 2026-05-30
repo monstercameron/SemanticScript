@@ -1,0 +1,15 @@
+# X-202 while loop complete
+WhileLoop is project
+WhileLoop module m
+WhileLoop target console
+WhileLoop entry main
+m is module
+m path examples.whileLoop
+m exports main
+m purpose "While loop iteration"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code
