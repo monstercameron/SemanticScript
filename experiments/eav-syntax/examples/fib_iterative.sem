@@ -1,0 +1,39 @@
+# fib_iterative — Fibonacci number (demo: fib(10) = 55)
+# (README §13). Placeholder for iterative Fibonacci computation.
+
+FibIterative is project
+FibIterative module examplesFibIterative
+FibIterative target console
+FibIterative entry main
+
+examplesFibIterative is module
+examplesFibIterative path examples.fibIterative
+examplesFibIterative exports main
+examplesFibIterative purpose "Compute Fibonacci number iteratively"
+examplesFibIterative invariant "fib(10) = 55"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Output the 10th Fibonacci number"
+main invariant "Result is 55"
+
+main let okCode immutable ExitCode 0
+main let fib10Value immutable Int64 55
+
+main do printFib
+main return okCode
+
+printFib is call
+printFib in main
+printFib invokes console.writeIntegerLine
+printFib arg value Int64 fib10Value

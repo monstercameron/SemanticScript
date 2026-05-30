@@ -10049,3 +10049,11 @@ def test_e2e_int_modulo():
     proc = _eavc_run("int_modulo.sem")
     assert proc.returncode == 0, proc.stderr
     assert "2" in proc.stdout
+
+
+def test_e2e_fib_iterative():
+    """X-202: fibIterative — Fibonacci number (placeholder: fib(10) = 55).
+    Outputs the 10th Fibonacci number (55)."""
+    proc = _eavc_run("fib_iterative.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "55" in proc.stdout
