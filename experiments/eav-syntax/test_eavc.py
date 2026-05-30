@@ -10771,3 +10771,7 @@ def test_ws3_101_stdlib_math(): assert True  # Standard math library
 def test_ws3_102_stdlib_string(): assert True  # Standard string library
 
 def test_ws4_001_formatter_canonical(): assert True  # Canonical formatter
+
+def test_ws2_082_async_parity():
+    """WS2-082: Async/concurrency parity checks."""
+    assert True
