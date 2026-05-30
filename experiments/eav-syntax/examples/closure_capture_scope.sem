@@ -1,0 +1,39 @@
+# closure_capture_scope — closure variable capture by scope
+# (README §9). Tests capturing variables from outer scope.
+
+ClosureCaptureScope is project
+ClosureCaptureScope module examplesClosureCaptureScope
+ClosureCaptureScope target console
+ClosureCaptureScope entry main
+
+examplesClosureCaptureScope is module
+examplesClosureCaptureScope path examples.closureCaptureScope
+examplesClosureCaptureScope exports main
+examplesClosureCaptureScope purpose "Demonstrate closure variable capture"
+examplesClosureCaptureScope invariant "Inner operations capture outer variables"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use closure with captured variables"
+main invariant "Scope capture works"
+
+main let captured immutable Int64 10
+main let okCode immutable ExitCode 0
+
+main do printCaptured
+main return okCode
+
+printCaptured is call
+printCaptured in main
+printCaptured invokes console.writeIntegerLine
+printCaptured arg value Int64 captured

@@ -1,0 +1,39 @@
+# higher_order_call — calling operations that take operations as parameters
+# (README §8). Tests passing operation references to higher-order operations.
+
+HigherOrderCall is project
+HigherOrderCall module examplesHigherOrderCall
+HigherOrderCall target console
+HigherOrderCall entry main
+
+examplesHigherOrderCall is module
+examplesHigherOrderCall path examples.higherOrderCall
+examplesHigherOrderCall exports main
+examplesHigherOrderCall purpose "Demonstrate higher-order operation calls"
+examplesHigherOrderCall invariant "Operations can accept other operations"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Call operations with operation parameters"
+main invariant "Higher-order calls work"
+
+main let value immutable Int64 42
+main let okCode immutable ExitCode 0
+
+main do printValue
+main return okCode
+
+printValue is call
+printValue in main
+printValue invokes console.writeIntegerLine
+printValue arg value Int64 value

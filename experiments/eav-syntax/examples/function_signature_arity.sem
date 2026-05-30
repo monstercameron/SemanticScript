@@ -1,0 +1,67 @@
+# function_signature_arity — function signature with multiple parameters
+# (README §8). Tests operation with multiple input/output parameters.
+
+FunctionSignatureArity is project
+FunctionSignatureArity module examplesFunctionSignatureArity
+FunctionSignatureArity target console
+FunctionSignatureArity entry main
+
+examplesFunctionSignatureArity is module
+examplesFunctionSignatureArity path examples.functionSignatureArity
+examplesFunctionSignatureArity exports main
+examplesFunctionSignatureArity purpose "Demonstrate function signature with arity"
+examplesFunctionSignatureArity invariant "Operations support multiple parameters"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+add is operation
+add in left Int64
+add in right Int64
+add out Int64
+add purpose "Add two integers"
+add invariant "Result is left + right"
+add async no
+
+add let sum immutable Int64 0
+add do addCall
+add return sum
+
+addCall is call
+addCall in add
+addCall invokes math.addInt64
+addCall arg left Int64 left
+addCall arg right Int64 right
+addCall out sum Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Call an operation with multiple parameters"
+main invariant "Function arity is well-formed"
+
+main let leftVal immutable Int64 3
+main let rightVal immutable Int64 5
+main let okCode immutable ExitCode 0
+
+main do computeCall
+main do printResult
+main return okCode
+
+computeCall is call
+computeCall in main
+computeCall invokes add
+computeCall arg left Int64 leftVal
+computeCall arg right Int64 rightVal
+computeCall out result Int64
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

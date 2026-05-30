@@ -10235,3 +10235,37 @@ def test_e2e_generic_container_arity():
     proc = _eavc_run("generic_container_arity.sem")
     assert proc.returncode == 0, proc.stderr
     assert "2" in proc.stdout
+
+
+# X-204 Function Signature test programs
+
+def test_e2e_function_signature_arity():
+    """X-204: functionSignatureArity — function signature with multiple parameters.
+    Operation with multiple input/output parameters (outputs 8)."""
+    proc = _eavc_run("function_signature_arity.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "8" in proc.stdout
+
+
+def test_e2e_higher_order_call():
+    """X-204: higherOrderCall — calling operations with operation parameters.
+    Tests passing operation references (outputs 42)."""
+    proc = _eavc_run("higher_order_call.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "42" in proc.stdout
+
+
+def test_e2e_closure_capture_scope():
+    """X-204: closureCaptureScope — closure variable capture by scope.
+    Inner operations capture outer variables (outputs 10)."""
+    proc = _eavc_run("closure_capture_scope.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "10" in proc.stdout
+
+
+def test_e2e_polymorphic_dispatch():
+    """X-204: polymorphicDispatch — polymorphic function dispatch.
+    Type-based dispatch (outputs 7)."""
+    proc = _eavc_run("polymorphic_dispatch.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "7" in proc.stdout
