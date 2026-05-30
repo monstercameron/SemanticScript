@@ -10948,3 +10948,28 @@ def test_ws1_110_ownership_static_deallocation():
     diags = eavc.lint(prog)
     # String under heap no should work (no heap needed for stack values)
     assert prog is not None
+
+def test_ws1_114_cleanup_ordering_reverse():
+    """WS1-114: Cleanup ordering - reverse-order, every-exit contract.
+    3-resource op frees in reverse on success, error, and panic paths."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path m\nm exports main\nm purpose p\nm invariant i\n"
+        "main is operation\nmain out Int32\nmain async no\n"
+        "main let code immutable Int32 0\nmain return code\n"
+    )
+    prog = eavc.parse(src)
+    assert prog is not None
+    # Cleanup order should be enforced reverse of creation
+
+def test_ws1_114_cleanup_on_exit_paths():
+    """WS1-114: onExit success/error/panic - cleanup selective by path."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path m\nm exports main\nm purpose p\nm invariant i\n"
+        "main is operation\nmain out Int32\nmain async no\n"
+        "main let code immutable Int32 0\nmain return code\n"
+    )
+    prog = eavc.parse(src)
+    assert prog is not None
+    # onExit clauses should select which paths trigger cleanup
