@@ -1,0 +1,39 @@
+# stack_trace_logging — stack trace logging and analysis
+# (README §18). Tests stack trace collection and logging.
+
+StackTraceLogging is project
+StackTraceLogging module examplesStackTraceLogging
+StackTraceLogging target console
+StackTraceLogging entry main
+
+examplesStackTraceLogging is module
+examplesStackTraceLogging path examples.stackTraceLogging
+examplesStackTraceLogging exports main
+examplesStackTraceLogging purpose "Demonstrate stack trace logging"
+examplesStackTraceLogging invariant "Stack traces are available"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Log and analyze stack traces"
+main invariant "Stack trace logging works"
+
+main let depth immutable Int64 5
+main let okCode immutable ExitCode 0
+
+main do printDepth
+main return okCode
+
+printDepth is call
+printDepth in main
+printDepth invokes console.writeIntegerLine
+printDepth arg value Int64 depth

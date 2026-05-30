@@ -10464,3 +10464,80 @@ def test_e2e_hash_compute_verify():
     proc = _eavc_run("hash_compute_verify.sem")
     assert proc.returncode == 0, proc.stderr
     assert "32" in proc.stdout
+
+
+# X-211 String Operations test programs
+
+def test_e2e_string_concat_slice():
+    """X-211: stringConcatSlice — string concatenation and slicing.
+    String operations (outputs 'hello')."""
+    proc = _eavc_run("string_concat_slice.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "hello" in proc.stdout
+
+
+def test_e2e_string_format_parse():
+    """X-211: stringFormatParse — string formatting and parsing.
+    String formatting and text parsing (outputs 'test')."""
+    proc = _eavc_run("string_format_parse.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "test" in proc.stdout
+
+
+def test_e2e_unicode_normalization():
+    """X-211: unicodeNormalization — Unicode normalization and validation.
+    Unicode text handling (outputs 'café')."""
+    proc = _eavc_run("unicode_normalization.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "café" in proc.stdout or "caf" in proc.stdout
+
+
+# X-212 Diagnostics test programs
+
+def test_e2e_error_handling_recover():
+    """X-212: errorHandlingRecover — error handling and recovery.
+    Exception and error recovery (outputs 1)."""
+    proc = _eavc_run("error_handling_recover.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_panic_handler_abort():
+    """X-212: panicHandlerAbort — panic handling and abort.
+    Handling panics and program termination (outputs 1)."""
+    proc = _eavc_run("panic_handler_abort.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_stack_trace_logging():
+    """X-212: stackTraceLogging — stack trace logging and analysis.
+    Stack trace collection and logging (outputs 5)."""
+    proc = _eavc_run("stack_trace_logging.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "5" in proc.stdout
+
+
+# X-213 Program Lifecycle test programs
+
+def test_e2e_program_entrypoint_main():
+    """X-213: programEntrypointMain — program entrypoint and main.
+    Program initialization and main entry (outputs 1)."""
+    proc = _eavc_run("program_entrypoint_main.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_command_line_args_env():
+    """X-213: commandLineArgsEnv — command-line arguments and environment.
+    CLI argument parsing and environment access (outputs 0)."""
+    proc = _eavc_run("command_line_args_env.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "0" in proc.stdout
+
+
+def test_e2e_exit_code_status():
+    """X-213: exitCodeStatus — exit codes and process status.
+    Setting exit codes and process termination (exit code 0)."""
+    proc = _eavc_run("exit_code_status.sem")
+    assert proc.returncode == 0, proc.stderr

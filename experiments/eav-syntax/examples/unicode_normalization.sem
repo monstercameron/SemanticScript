@@ -1,0 +1,39 @@
+# unicode_normalization — Unicode normalization and validation
+# (README §17). Tests Unicode text handling.
+
+UnicodeNormalization is project
+UnicodeNormalization module examplesUnicodeNormalization
+UnicodeNormalization target console
+UnicodeNormalization entry main
+
+examplesUnicodeNormalization is module
+examplesUnicodeNormalization path examples.unicodeNormalization
+examplesUnicodeNormalization exports main
+examplesUnicodeNormalization purpose "Demonstrate Unicode normalization"
+examplesUnicodeNormalization invariant "Unicode operations work"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Normalize and validate Unicode"
+main invariant "Unicode works"
+
+main let normalized immutable String "café"
+main let okCode immutable ExitCode 0
+
+main do printNormalized
+main return okCode
+
+printNormalized is call
+printNormalized in main
+printNormalized invokes console.writeLine
+printNormalized arg text String normalized

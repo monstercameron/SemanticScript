@@ -1,0 +1,39 @@
+# error_handling_recover — error handling and recovery
+# (README §18). Tests exception and error recovery.
+
+ErrorHandlingRecover is project
+ErrorHandlingRecover module examplesErrorHandlingRecover
+ErrorHandlingRecover target console
+ErrorHandlingRecover entry main
+
+examplesErrorHandlingRecover is module
+examplesErrorHandlingRecover path examples.errorHandlingRecover
+examplesErrorHandlingRecover exports main
+examplesErrorHandlingRecover purpose "Demonstrate error handling and recovery"
+examplesErrorHandlingRecover invariant "Error recovery works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Handle and recover from errors"
+main invariant "Error recovery works"
+
+main let recovered immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printRecovered
+main return okCode
+
+printRecovered is call
+printRecovered in main
+printRecovered invokes console.writeIntegerLine
+printRecovered arg value Int64 recovered

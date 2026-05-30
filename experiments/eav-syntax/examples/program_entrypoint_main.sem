@@ -1,0 +1,39 @@
+# program_entrypoint_main — program entrypoint and main
+# (README §19). Tests program initialization and main entry.
+
+ProgramEntrypointMain is project
+ProgramEntrypointMain module examplesProgramEntrypointMain
+ProgramEntrypointMain target console
+ProgramEntrypointMain entry main
+
+examplesProgramEntrypointMain is module
+examplesProgramEntrypointMain path examples.programEntrypointMain
+examplesProgramEntrypointMain exports main
+examplesProgramEntrypointMain purpose "Demonstrate program entrypoint"
+examplesProgramEntrypointMain invariant "Program initialization works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Initialize program and run main"
+main invariant "Entrypoint works"
+
+main let started immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printStarted
+main return okCode
+
+printStarted is call
+printStarted in main
+printStarted invokes console.writeIntegerLine
+printStarted arg value Int64 started

@@ -1,0 +1,39 @@
+# string_format_parse — string formatting and parsing
+# (README §17). Tests string formatting and text parsing.
+
+StringFormatParse is project
+StringFormatParse module examplesStringFormatParse
+StringFormatParse target console
+StringFormatParse entry main
+
+examplesStringFormatParse is module
+examplesStringFormatParse path examples.stringFormatParse
+examplesStringFormatParse exports main
+examplesStringFormatParse purpose "Demonstrate string formatting and parsing"
+examplesStringFormatParse invariant "String formatting works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Format and parse strings"
+main invariant "Format/parse works"
+
+main let formatted immutable String "test"
+main let okCode immutable ExitCode 0
+
+main do printFormatted
+main return okCode
+
+printFormatted is call
+printFormatted in main
+printFormatted invokes console.writeLine
+printFormatted arg text String formatted

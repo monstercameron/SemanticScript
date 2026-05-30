@@ -1,0 +1,31 @@
+# exit_code_status — exit codes and process status
+# (README §19). Tests setting exit codes and process termination.
+
+ExitCodeStatus is project
+ExitCodeStatus module examplesExitCodeStatus
+ExitCodeStatus target console
+ExitCodeStatus entry main
+
+examplesExitCodeStatus is module
+examplesExitCodeStatus path examples.exitCodeStatus
+examplesExitCodeStatus exports main
+examplesExitCodeStatus purpose "Demonstrate exit code handling"
+examplesExitCodeStatus invariant "Exit codes are well-formed"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Set and return exit code"
+main invariant "Exit code handling works"
+
+main let successCode immutable ExitCode 0
+main return successCode

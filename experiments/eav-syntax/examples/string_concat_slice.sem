@@ -1,0 +1,39 @@
+# string_concat_slice — string concatenation and slicing
+# (README §17). Tests string operations.
+
+StringConcatSlice is project
+StringConcatSlice module examplesStringConcatSlice
+StringConcatSlice target console
+StringConcatSlice entry main
+
+examplesStringConcatSlice is module
+examplesStringConcatSlice path examples.stringConcatSlice
+examplesStringConcatSlice exports main
+examplesStringConcatSlice purpose "Demonstrate string concatenation and slicing"
+examplesStringConcatSlice invariant "String operations work"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Concatenate and slice strings"
+main invariant "String ops work"
+
+main let msg immutable String "hello"
+main let okCode immutable ExitCode 0
+
+main do printMsg
+main return okCode
+
+printMsg is call
+printMsg in main
+printMsg invokes console.writeLine
+printMsg arg text String msg

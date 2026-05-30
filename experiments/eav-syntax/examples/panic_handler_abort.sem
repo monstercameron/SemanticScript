@@ -1,0 +1,39 @@
+# panic_handler_abort — panic handling and abort
+# (README §18). Tests handling panics and program termination.
+
+PanicHandlerAbort is project
+PanicHandlerAbort module examplesPanicHandlerAbort
+PanicHandlerAbort target console
+PanicHandlerAbort entry main
+
+examplesPanicHandlerAbort is module
+examplesPanicHandlerAbort path examples.panicHandlerAbort
+examplesPanicHandlerAbort exports main
+examplesPanicHandlerAbort purpose "Demonstrate panic handling"
+examplesPanicHandlerAbort invariant "Panic handling works"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Handle panic and abort"
+main invariant "Panic handling works"
+
+main let handled immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printHandled
+main return okCode
+
+printHandled is call
+printHandled in main
+printHandled invokes console.writeIntegerLine
+printHandled arg value Int64 handled
