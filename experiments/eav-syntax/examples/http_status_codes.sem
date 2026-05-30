@@ -1,0 +1,15 @@
+﻿# http_status_codes
+httpstatuscodes is project
+httpstatuscodes module m
+httpstatuscodes target console
+httpstatuscodes entry main
+m is module
+m path examples.http_status_codes
+m exports main
+m purpose "http_status_codes"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

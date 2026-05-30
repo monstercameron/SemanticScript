@@ -1,0 +1,15 @@
+﻿# file_lock_unlock
+filelockunlock is project
+filelockunlock module m
+filelockunlock target console
+filelockunlock entry main
+m is module
+m path examples.file_lock_unlock
+m exports main
+m purpose "file_lock_unlock"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

@@ -1,0 +1,15 @@
+﻿# database_prepared_statement
+databasepreparedstatement is project
+databasepreparedstatement module m
+databasepreparedstatement target console
+databasepreparedstatement entry main
+m is module
+m path examples.database_prepared_statement
+m exports main
+m purpose "database_prepared_statement"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

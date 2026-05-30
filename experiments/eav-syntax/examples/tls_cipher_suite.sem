@@ -1,0 +1,15 @@
+﻿# tls_cipher_suite
+tlsciphersuite is project
+tlsciphersuite module m
+tlsciphersuite target console
+tlsciphersuite entry main
+m is module
+m path examples.tls_cipher_suite
+m exports main
+m purpose "tls_cipher_suite"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

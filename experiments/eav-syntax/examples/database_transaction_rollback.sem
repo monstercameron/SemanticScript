@@ -1,0 +1,15 @@
+﻿# database_transaction_rollback
+databasetransactionrollback is project
+databasetransactionrollback module m
+databasetransactionrollback target console
+databasetransactionrollback entry main
+m is module
+m path examples.database_transaction_rollback
+m exports main
+m purpose "database_transaction_rollback"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

@@ -1,0 +1,15 @@
+﻿# tls_renegotiation
+tlsrenegotiation is project
+tlsrenegotiation module m
+tlsrenegotiation target console
+tlsrenegotiation entry main
+m is module
+m path examples.tls_renegotiation
+m exports main
+m purpose "tls_renegotiation"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

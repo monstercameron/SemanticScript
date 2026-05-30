@@ -1,0 +1,15 @@
+﻿# file_write_append_seek
+filewriteappendseek is project
+filewriteappendseek module m
+filewriteappendseek target console
+filewriteappendseek entry main
+m is module
+m path examples.file_write_append_seek
+m exports main
+m purpose "file_write_append_seek"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

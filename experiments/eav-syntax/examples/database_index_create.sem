@@ -1,0 +1,15 @@
+﻿# database_index_create
+databaseindexcreate is project
+databaseindexcreate module m
+databaseindexcreate target console
+databaseindexcreate entry main
+m is module
+m path examples.database_index_create
+m exports main
+m purpose "database_index_create"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

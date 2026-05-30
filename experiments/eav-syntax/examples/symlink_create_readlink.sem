@@ -1,0 +1,15 @@
+﻿# symlink_create_readlink
+symlinkcreatereadlink is project
+symlinkcreatereadlink module m
+symlinkcreatereadlink target console
+symlinkcreatereadlink entry main
+m is module
+m path examples.symlink_create_readlink
+m exports main
+m purpose "symlink_create_readlink"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

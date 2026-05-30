@@ -1,0 +1,15 @@
+﻿# file_permissions_chmod
+filepermissionschmod is project
+filepermissionschmod module m
+filepermissionschmod target console
+filepermissionschmod entry main
+m is module
+m path examples.file_permissions_chmod
+m exports main
+m purpose "file_permissions_chmod"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

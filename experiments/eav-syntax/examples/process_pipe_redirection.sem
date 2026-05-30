@@ -1,0 +1,15 @@
+﻿# process_pipe_redirection
+processpiperedirection is project
+processpiperedirection module m
+processpiperedirection target console
+processpiperedirection entry main
+m is module
+m path examples.process_pipe_redirection
+m exports main
+m purpose "process_pipe_redirection"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

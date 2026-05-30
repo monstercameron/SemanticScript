@@ -1,0 +1,15 @@
+﻿# process_spawn_wait
+processspawnwait is project
+processspawnwait module m
+processspawnwait target console
+processspawnwait entry main
+m is module
+m path examples.process_spawn_wait
+m exports main
+m purpose "process_spawn_wait"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

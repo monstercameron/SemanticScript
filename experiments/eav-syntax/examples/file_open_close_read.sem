@@ -1,0 +1,15 @@
+﻿# file_open_close_read
+fileopencloseread is project
+fileopencloseread module m
+fileopencloseread target console
+fileopencloseread entry main
+m is module
+m path examples.file_open_close_read
+m exports main
+m purpose "file_open_close_read"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code
