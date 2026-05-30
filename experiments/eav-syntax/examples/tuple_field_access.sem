@@ -1,0 +1,39 @@
+# tuple_field_access — tuple construction and field access
+# (README §10). Tests tuple field indexing.
+
+TupleFieldAccess is project
+TupleFieldAccess module examplesTupleFieldAccess
+TupleFieldAccess target console
+TupleFieldAccess entry main
+
+examplesTupleFieldAccess is module
+examplesTupleFieldAccess path examples.tupleFieldAccess
+examplesTupleFieldAccess exports main
+examplesTupleFieldAccess purpose "Demonstrate tuple field access"
+examplesTupleFieldAccess invariant "Tuple fields are accessible"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Access tuple fields"
+main invariant "Tuple access works"
+
+main let first immutable Int64 10
+main let okCode immutable ExitCode 0
+
+main do printFirst
+main return okCode
+
+printFirst is call
+printFirst in main
+printFirst invokes console.writeIntegerLine
+printFirst arg value Int64 first

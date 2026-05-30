@@ -1,0 +1,39 @@
+# variant_tag_payload — variant with tag and payload
+# (README §10). Tests discriminated unions.
+
+VariantTagPayload is project
+VariantTagPayload module examplesVariantTagPayload
+VariantTagPayload target console
+VariantTagPayload entry main
+
+examplesVariantTagPayload is module
+examplesVariantTagPayload path examples.variantTagPayload
+examplesVariantTagPayload exports main
+examplesVariantTagPayload purpose "Demonstrate variant with tag and payload"
+examplesVariantTagPayload invariant "Variants are discriminated correctly"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Work with variant types"
+main invariant "Variant discrimination works"
+
+main let tag immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printTag
+main return okCode
+
+printTag is call
+printTag in main
+printTag invokes console.writeIntegerLine
+printTag arg value Int64 tag

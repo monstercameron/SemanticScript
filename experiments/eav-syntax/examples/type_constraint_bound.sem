@@ -1,0 +1,39 @@
+# type_constraint_bound — type constraints and bounds
+# (README §11). Tests type parameter constraints.
+
+TypeConstraintBound is project
+TypeConstraintBound module examplesTypeConstraintBound
+TypeConstraintBound target console
+TypeConstraintBound entry main
+
+examplesTypeConstraintBound is module
+examplesTypeConstraintBound path examples.typeConstraintBound
+examplesTypeConstraintBound exports main
+examplesTypeConstraintBound purpose "Demonstrate type constraint bounds"
+examplesTypeConstraintBound invariant "Type constraints are enforced"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Apply type constraints"
+main invariant "Type constraints work"
+
+main let bounded immutable Int64 42
+main let okCode immutable ExitCode 0
+
+main do printBounded
+main return okCode
+
+printBounded is call
+printBounded in main
+printBounded invokes console.writeIntegerLine
+printBounded arg value Int64 bounded

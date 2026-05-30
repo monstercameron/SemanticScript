@@ -10245,6 +10245,38 @@ def test_e2e_generic_container_arity():
     assert "2" in proc.stdout
 
 
+def test_e2e_tuple_field_access():
+    """X-203: tupleFieldAccess — tuple construction and field access.
+    Tuple field indexing (outputs 10)."""
+    proc = _eavc_run("tuple_field_access.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "10" in proc.stdout
+
+
+def test_e2e_variant_tag_payload():
+    """X-203: variantTagPayload — variant with tag and payload.
+    Discriminated unions (outputs 1)."""
+    proc = _eavc_run("variant_tag_payload.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_pattern_match_exhaustive():
+    """X-203: patternMatchExhaustive — exhaustive pattern matching.
+    Pattern coverage checking (outputs 1)."""
+    proc = _eavc_run("pattern_match_exhaustive.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_type_constraint_bound():
+    """X-203: typeConstraintBound — type constraints and bounds.
+    Type parameter constraints (outputs 42)."""
+    proc = _eavc_run("type_constraint_bound.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "42" in proc.stdout
+
+
 # X-204 Function Signature test programs
 
 def test_e2e_function_signature_arity():
@@ -10277,6 +10309,38 @@ def test_e2e_polymorphic_dispatch():
     proc = _eavc_run("polymorphic_dispatch.sem")
     assert proc.returncode == 0, proc.stderr
     assert "7" in proc.stdout
+
+
+def test_e2e_variadic_arguments_pack():
+    """X-204: variadicArgumentsPack — variadic function arguments.
+    Variable-length argument lists (outputs 3)."""
+    proc = _eavc_run("variadic_arguments_pack.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "3" in proc.stdout
+
+
+def test_e2e_default_parameter_value():
+    """X-204: defaultParameterValue — default parameter values.
+    Default arguments in signatures (outputs 100)."""
+    proc = _eavc_run("default_parameter_value.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "100" in proc.stdout
+
+
+def test_e2e_named_parameter_binding():
+    """X-204: namedParameterBinding — named parameters and binding.
+    Named argument passing (outputs 77)."""
+    proc = _eavc_run("named_parameter_binding.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "77" in proc.stdout
+
+
+def test_e2e_overload_resolution_ambiguity():
+    """X-204: overloadResolutionAmbiguity — function overload resolution.
+    Overload resolution and ambiguity detection (outputs 1)."""
+    proc = _eavc_run("overload_resolution_ambiguity.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
 
 
 # X-205 Effect/Capability test programs
