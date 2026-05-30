@@ -10059,6 +10059,14 @@ def test_e2e_fib_iterative():
     assert "55" in proc.stdout
 
 
+def test_e2e_deep_recursion_trap():
+    """X-202: deepRecursionTrap — deep recursion stack overflow (negative test).
+    Stack overflow must trap (exit code != 0) due to recursion depth limit."""
+    proc = _eavc_run("deep_recursion_trap.sem")
+    # Stack overflow trap means non-zero exit code
+    assert proc.returncode != 0, f"Deep recursion should trap; got exit code {proc.returncode}"
+
+
 def test_e2e_checked_add_result():
     """X-201: checkedAddResult — addition returning Result.
     Computes 10 + 20 = 30."""
