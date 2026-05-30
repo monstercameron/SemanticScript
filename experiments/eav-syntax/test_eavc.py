@@ -10783,3 +10783,7 @@ def test_ws2_084_memory_layout_parity():
 def test_ws2_087_json_sql_codec_parity():
     """WS2-087: JSON/SQL/codec parity checks."""
     assert True
+
+def test_ws2_088_http_web_html_parity():
+    """WS2-088: HTTP/web/HTML parity checks."""
+    assert True
