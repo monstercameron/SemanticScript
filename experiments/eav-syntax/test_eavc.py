@@ -9943,3 +9943,82 @@ def test_ws2_091_over_declared_effect_warns_t3_and_runs():
     out, code = eavc._record_run(src)
     assert code == 0, out
     assert out.strip() == "42"  # 41 + 1
+
+
+# WS2-071 §24 --strict gate level tests
+
+def test_ws2_071_t3_warning_runs_by_default():
+    """A program with a T3 opinionated warning runs by default (no --strict).
+    This uses a private op with no `purpose` (MD1021 = T3 advisory)."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path examples.strict\nm purpose "m"\nm invariant "i"\n'
+        'm exports main\n'
+        "main is operation\n"  # no purpose → MD1021 (T3)
+        "main out ExitCode\nmain async no\n"
+        "main let code immutable ExitCode 0\nmain return code\n"
+    )
+    prog = eavc.parse(src)
+    diags = eavc.lint(prog)
+    t3_diags = [d for d in diags if d.code == "MD1021"]
+    assert len(t3_diags) == 1, "MD1021 should be present (private op, no purpose)"
+    assert eavc.DIAGNOSTICS["MD1021"]["tier"] == "T3"
+    # Default (no --strict): T3 is a warning, program runs
+    out, code = eavc._record_run(src)
+    assert code == 0, f"Program should run by default (no --strict); got: {out}"
+
+
+def test_ws2_071_t3_warning_blocked_under_strict():
+    """The same T3 program fails when --strict is enabled (blocks T3 opinionated warnings)."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path examples.strict\nm purpose "m"\nm invariant "i"\n'
+        'm exports main\n'
+        "main is operation\n"  # no purpose → MD1021 (T3)
+        "main out ExitCode\nmain async no\n"
+        "main let code immutable ExitCode 0\nmain return code\n"
+    )
+    prog = eavc.parse(src)
+    diags = eavc.lint(prog)
+    # Apply strict filter: T3 warnings should become errors
+    filtered = eavc._filter_diagnostics_strict(diags, strict=True)
+    errors = [d for d in filtered if d.severity == "error"]
+    # MD1021 should be in the errors after filtering
+    assert any(d.code == "MD1021" for d in errors), \
+        f"MD1021 should be promoted to error under --strict; got errors: {[d.code for d in errors]}"
+
+
+def test_ws2_071_t0_t1_t2_always_block():
+    """T0/T1/T2 diagnostics block both with and without --strict."""
+    # Use a parse error (T0) as a blocker that always fails
+    src = "invalid syntax 123"
+    try:
+        prog = eavc.parse(src)
+        assert False, "Parse should fail"
+    except eavc.EavError:
+        pass  # Expected
+    # Filtering T0/T1/T2 severity should not change
+    src_with_t1 = (
+        "P is project\nP module m\nP target console\n"
+        "m is module\nm path m\n"
+        "main is operation\nmain invokes unknown.target\n"  # T1 unresolved target
+    )
+    prog = eavc.parse(src_with_t1)
+    diags = eavc.lint(prog)
+    t1_errors = [d for d in diags if d.severity == "error" and "T1" in eavc.DIAGNOSTICS.get(d.code, {}).get("tier", "")]
+    assert len(t1_errors) > 0, "Should have T1 errors"
+    # Filtering should not remove T1 errors
+    filtered = eavc._filter_diagnostics_strict(diags, strict=False)
+    filtered_t1 = [d for d in filtered if d.severity == "error"]
+    assert len(filtered_t1) > 0, "T1 errors should remain"
+
+
+def test_ws2_071_t4_style_never_blocks():
+    """T4 style diagnostics never block (formatter normalizes them)."""
+    # T4 style lint is soft guidance; verify it's never promoted to error
+    for code, entry in eavc.DIAGNOSTICS.items():
+        if entry.get("tier") == "T4":
+            # Create a dummy T4 diagnostic
+            d = eavc.Diagnostic(code=code, severity="warning", message="test", line=1)
+            filtered = eavc._filter_diagnostics_strict([d], strict=True)
+            assert filtered[0].severity == "warning", f"T4 {code} should stay warning even under --strict"

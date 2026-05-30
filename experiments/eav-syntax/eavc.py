@@ -581,6 +581,36 @@ def format_repair(code: str) -> str:
     )
 
 
+def _filter_diagnostics_strict(diags: list[Diagnostic], strict: bool) -> list[Diagnostic]:
+    """Filter diagnostics by tier when --strict is enabled. WS2-071.
+
+    Rules:
+    - Default (strict=False): deny-tier (T0/T1/T2) are errors; T3/T4 are warnings
+    - Strict (strict=True): additionally block T3 (opinionated tier)
+    - T4 (style) never blocks
+
+    When strict=True, diagnostics with tier T3 have their severity promoted to error.
+    """
+    if not strict:
+        return diags
+    result = []
+    for d in diags:
+        entry = explain(d.code)
+        tier = entry.get("tier", "T4")
+        if tier == "T3" and d.severity == "warning":
+            # Promote T3 warnings to errors in strict mode (SS2071)
+            result.append(Diagnostic(
+                code=d.code,
+                severity="error",
+                message=d.message,
+                line=d.line,
+                entity=d.entity,
+            ))
+        else:
+            result.append(d)
+    return result
+
+
 # --------------------------------------------------------------------------
 # 1. Lexer  (README ss2 — parse rules / lexical rules)
 # --------------------------------------------------------------------------
@@ -8965,6 +8995,15 @@ def cmd_lower(args) -> int:
 def cmd_run(args) -> int:
     """JIT-compile and execute the program; return its process exit code."""
     program = parse(_read_program_source(args.path))
+    # WS2-071: --strict blocks T3 warnings
+    if getattr(args, "strict", False):
+        diags = lint(program)
+        diags = _filter_diagnostics_strict(diags, True)
+        errors = [d for d in diags if d.severity == "error"]
+        if errors:
+            for d in errors:
+                sys.stderr.write(d.render() + "\n")
+            return 1
     sys.stdout.flush()
     return jit_run(program)
 
@@ -9368,11 +9407,31 @@ def cmd_eval(args) -> int:
     R-008: project detection is lexical (not a substring), so a snippet whose
     comment or string text mentions `is project` still wraps and runs; and the
     payload carries stderr + a `status` so a compile failure is actionable
-    instead of a bare `ok:false` with the diagnostic dropped."""
+    instead of a bare `ok:false` with the diagnostic dropped.
+
+    WS2-071: --strict blocks T3 warnings before running."""
     src = _read_source(args.path)
     wrapped = not _source_declares_project(src)
     if wrapped:
         src = _EVAL_SCAFFOLD + src
+    # WS2-071: --strict blocks T3 warnings
+    if getattr(args, "strict", False):
+        try:
+            program = parse(src)
+            diags = lint(program)
+            diags = _filter_diagnostics_strict(diags, True)
+            errors = [d for d in diags if d.severity == "error"]
+            if errors:
+                out, err = "", "\n".join(d.render() for d in errors)
+                code = 1
+                status = "lint-error"
+                sys.stdout.write(_json_envelope(
+                    "sem.eval.v1", ok=False, status=status, exitCode=code, wrapped=wrapped,
+                    stdout=out, stderr=err,
+                    stdoutLines=[]) + "\n")
+                return 0
+        except EavError:
+            pass  # Fall through to _record_run_full which will catch the error
     out, err, code = _record_run_full(src)
     if code == 0:
         status = "ok"
@@ -9578,6 +9637,7 @@ def cmd_check(args) -> int:
             diagnostics=[str(exc)]) + "\n")
         return 0
     diags = lint(program)
+    diags = _filter_diagnostics_strict(diags, getattr(args, "strict", False))
     errors = [d for d in diags if d.severity == "error"]
     warnings = [d for d in diags if d.severity == "warning"]
     status = ("lint-diagnostics" if errors
@@ -9916,7 +9976,9 @@ def cmd_test(args) -> int:
     R-007: when the path is a project directory, compose the runtime program with
     its companion `*.test.sem` sources (`load_test_project`) so co-located test
     operations are actually executed — `load_project` alone excludes test files,
-    so a scaffold's `checkGreetingLength` would otherwise never run."""
+    so a scaffold's `checkGreetingLength` would otherwise never run.
+
+    WS2-071: --strict blocks T3 warnings before running tests."""
     import os
     try:
         if (args.path != "-" and os.path.isdir(args.path)
@@ -9930,6 +9992,18 @@ def cmd_test(args) -> int:
             preflightStatus="compiler-error", runtimeHarnessStatus="not-run",
             compositeStatus="blocked", tests=[], diagnostics=[str(exc)]) + "\n")
         return 1
+    # WS2-071: --strict blocks T3 warnings
+    if getattr(args, "strict", False):
+        diags = lint(program)
+        diags = _filter_diagnostics_strict(diags, True)
+        errors = [d for d in diags if d.severity == "error"]
+        if errors:
+            sys.stdout.write(_json_envelope(
+                "sem.test.v1", ok=False, status="lint-error",
+                preflightStatus="lint-error", runtimeHarnessStatus="not-run",
+                compositeStatus="blocked", tests=[],
+                diagnostics=[d.render() for d in errors]) + "\n")
+            return 1
     if getattr(args, "discover", False):
         lanes = discover_tests(program)
         selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
@@ -10031,13 +10105,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("lex", cmd_lex),
         ("parse", cmd_parse),
         ("lower", cmd_lower),
-        ("run", cmd_run),
         ("inventory", cmd_inventory),
         ("doctor", cmd_doctor),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    # run needs --strict flag (WS2-071)
+    sp_run = sub.add_parser("run", help="JIT-compile and execute")
+    sp_run.add_argument("path", help="EAV source file, or - for stdin")
+    sp_run.add_argument("--strict", action="store_true",
+                        help="block T3 opinionated warnings (in addition to T0/T1/T2)")
+    sp_run.add_argument("--json", action="store_true")
+    sp_run.set_defaults(func=cmd_run)
 
     for cname, cfn, chelp in (
         ("deps", cmd_deps, "dependency graph (imports + require)"),
@@ -10060,12 +10141,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sp_eval = sub.add_parser("eval", help="JIT-run a snippet (auto-wrapped)")
     sp_eval.add_argument("path", help="EAV snippet/program file, or - for stdin")
+    sp_eval.add_argument("--strict", action="store_true",
+                         help="block T3 opinionated warnings (in addition to T0/T1/T2)")
     sp_eval.add_argument("--json", action="store_true")
     sp_eval.set_defaults(func=cmd_eval)
 
     sp_check = sub.add_parser("check", help="source lane: parse + lint status")
     sp_check.add_argument("path", help="EAV/compact source file, or - for stdin")
     sp_check.add_argument("--json", action="store_true")
+    sp_check.add_argument("--strict", action="store_true",
+                          help="block T3 opinionated warnings (in addition to T0/T1/T2)")
     sp_check.set_defaults(func=cmd_check)
 
     sp_readiness = sub.add_parser("readiness", help="environment lane: toolchain status")
@@ -10146,6 +10231,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_test.add_argument("--lane", choices=TEST_LANES, default=None)
     sp_test.add_argument("--discover", action="store_true",
                          help="list test ops instead of executing them")
+    sp_test.add_argument("--strict", action="store_true",
+                         help="block T3 opinionated warnings (in addition to T0/T1/T2)")
     sp_test.add_argument("--json", action="store_true")
     sp_test.set_defaults(func=cmd_test)
 
