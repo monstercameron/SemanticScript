@@ -1,0 +1,15 @@
+﻿# task_pool_reuse
+taskpoolreuse is project
+taskpoolreuse module m
+taskpoolreuse target console
+taskpoolreuse entry main
+m is module
+m path examples.task_pool_reuse
+m exports main
+m purpose "Task pool reuse"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

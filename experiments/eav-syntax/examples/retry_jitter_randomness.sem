@@ -1,0 +1,15 @@
+﻿# retry_jitter_randomness
+retryjitterrandomness is project
+retryjitterrandomness module m
+retryjitterrandomness target console
+retryjitterrandomness entry main
+m is module
+m path examples.retry_jitter_randomness
+m exports main
+m purpose "Jitter randomness"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

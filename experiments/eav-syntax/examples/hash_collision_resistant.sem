@@ -1,0 +1,15 @@
+﻿# hash_collision_resistant
+hashcollisionresistant is project
+hashcollisionresistant module m
+hashcollisionresistant target console
+hashcollisionresistant entry main
+m is module
+m path examples.hash_collision_resistant
+m exports main
+m purpose "Hash collision resistance"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

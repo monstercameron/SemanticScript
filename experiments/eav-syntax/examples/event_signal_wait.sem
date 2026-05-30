@@ -1,0 +1,15 @@
+﻿# event_signal_wait
+eventsignalwait is project
+eventsignalwait module m
+eventsignalwait target console
+eventsignalwait entry main
+m is module
+m path examples.event_signal_wait
+m exports main
+m purpose "Event signal/wait"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

@@ -1,0 +1,15 @@
+﻿# codec_streaming_parse
+codecstreamingparse is project
+codecstreamingparse module m
+codecstreamingparse target console
+codecstreamingparse entry main
+m is module
+m path examples.codec_streaming_parse
+m exports main
+m purpose "Streaming codec"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

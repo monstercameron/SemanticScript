@@ -1,0 +1,15 @@
+﻿# rwlock_reader_writer
+rwlockreaderwriter is project
+rwlockreaderwriter module m
+rwlockreaderwriter target console
+rwlockreaderwriter entry main
+m is module
+m path examples.rwlock_reader_writer
+m exports main
+m purpose "RW lock"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

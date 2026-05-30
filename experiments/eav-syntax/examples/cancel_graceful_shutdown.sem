@@ -1,0 +1,15 @@
+﻿# cancel_graceful_shutdown
+cancelgracefulshutdown is project
+cancelgracefulshutdown module m
+cancelgracefulshutdown target console
+cancelgracefulshutdown entry main
+m is module
+m path examples.cancel_graceful_shutdown
+m exports main
+m purpose "Graceful cancellation"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

@@ -1,0 +1,15 @@
+﻿# regex_match_replace
+regexmatchreplace is project
+regexmatchreplace module m
+regexmatchreplace target console
+regexmatchreplace entry main
+m is module
+m path examples.regex_match_replace
+m exports main
+m purpose "Regex match/replace"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

@@ -1,0 +1,15 @@
+﻿# cipher_encrypt_decrypt
+cipherencryptdecrypt is project
+cipherencryptdecrypt module m
+cipherencryptdecrypt target console
+cipherencryptdecrypt entry main
+m is module
+m path examples.cipher_encrypt_decrypt
+m exports main
+m purpose "Cipher encrypt/decrypt"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

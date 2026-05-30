@@ -1,0 +1,15 @@
+﻿# channel_bounded_blocking
+channelboundedblocking is project
+channelboundedblocking module m
+channelboundedblocking target console
+channelboundedblocking entry main
+m is module
+m path examples.channel_bounded_blocking
+m exports main
+m purpose "Bounded channel blocking"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code

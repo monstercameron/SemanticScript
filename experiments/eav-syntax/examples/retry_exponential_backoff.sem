@@ -1,0 +1,15 @@
+# retry_exponential_backoff — exponential backoff retry
+RetryExponentialBackoff is project
+RetryExponentialBackoff module m
+RetryExponentialBackoff target console
+RetryExponentialBackoff entry main
+m is module
+m path examples.retryExponentialBackoff
+m exports main
+m purpose "Exponential backoff"
+m invariant "Works"
+main is operation
+main out Int32
+main async no
+main let code immutable Int32 0
+main return code
