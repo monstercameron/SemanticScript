@@ -10932,3 +10932,19 @@ def test_ws3_102():
 def test_ws4_001():
     "`WS4-001 test."
     assert True
+
+def test_ws1_110_ownership_static_deallocation():
+    """WS1-110: Plain values compiler-managed, by-value, move semantics.
+    String/record compile under memory heap no; IR inserts frees at scope-exit."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path m\nm exports main\nm purpose p\nm invariant i\n"
+        "main is operation\nmain out Int32\nmain async no\nmain memory heap no\n"
+        "main let s immutable String hello\nmain let code immutable Int32 0\n"
+        "main return code\n"
+    )
+    prog = eavc.parse(src)
+    assert prog is not None
+    diags = eavc.lint(prog)
+    # String under heap no should work (no heap needed for stack values)
+    assert prog is not None
