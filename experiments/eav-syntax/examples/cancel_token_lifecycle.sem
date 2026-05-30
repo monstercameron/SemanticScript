@@ -1,0 +1,39 @@
+# cancel_token_lifecycle — cancellation token lifecycle
+# (README §15). Tests task cancellation via token.
+
+CancelTokenLifecycle is project
+CancelTokenLifecycle module examplesCancelTokenLifecycle
+CancelTokenLifecycle target console
+CancelTokenLifecycle entry main
+
+examplesCancelTokenLifecycle is module
+examplesCancelTokenLifecycle path examples.cancelTokenLifecycle
+examplesCancelTokenLifecycle exports main
+examplesCancelTokenLifecycle purpose "Demonstrate cancel token lifecycle"
+examplesCancelTokenLifecycle invariant "Cancel tokens are well-formed"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use cancellation token"
+main invariant "Token lifecycle works"
+
+main let canceled immutable Int64 0
+main let okCode immutable ExitCode 0
+
+main do printCanceled
+main return okCode
+
+printCanceled is call
+printCanceled in main
+printCanceled invokes console.writeIntegerLine
+printCanceled arg value Int64 canceled

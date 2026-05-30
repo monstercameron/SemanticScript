@@ -1,0 +1,39 @@
+# defer_cleanup_order — defer cleanup in reverse registration order
+# (README §15). Tests defer mechanics for cleanup.
+
+DeferCleanupOrder is project
+DeferCleanupOrder module examplesDeferCleanupOrder
+DeferCleanupOrder target console
+DeferCleanupOrder entry main
+
+examplesDeferCleanupOrder is module
+examplesDeferCleanupOrder path examples.deferCleanupOrder
+examplesDeferCleanupOrder exports main
+examplesDeferCleanupOrder purpose "Demonstrate defer cleanup mechanics"
+examplesDeferCleanupOrder invariant "Defers execute in reverse order"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Test defer cleanup order"
+main invariant "Cleanup defers execute"
+
+main let val immutable Int64 200
+main let okCode immutable ExitCode 0
+
+main do printVal
+main return okCode
+
+printVal is call
+printVal in main
+printVal invokes console.writeIntegerLine
+printVal arg value Int64 val

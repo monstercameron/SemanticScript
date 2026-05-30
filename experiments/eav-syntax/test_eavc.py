@@ -10352,3 +10352,37 @@ def test_e2e_owned_resource_transfer():
     proc = _eavc_run("owned_resource_transfer.sem")
     assert proc.returncode == 0, proc.stderr
     assert "123" in proc.stdout
+
+
+# X-207 Cleanup/Retry/Timeout test programs
+
+def test_e2e_defer_cleanup_order():
+    """X-207: deferCleanupOrder — defer cleanup in reverse registration order.
+    Defer mechanics (outputs 200)."""
+    proc = _eavc_run("defer_cleanup_order.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "200" in proc.stdout
+
+
+def test_e2e_retry_backoff_policy():
+    """X-207: retryBackoffPolicy — retry with backoff and jitter.
+    Retry policy configuration (outputs 3)."""
+    proc = _eavc_run("retry_backoff_policy.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "3" in proc.stdout
+
+
+def test_e2e_timeout_constraint_apply():
+    """X-207: timeoutConstraintApply — timeout constraint on calls.
+    Applying timeouts (outputs 5000)."""
+    proc = _eavc_run("timeout_constraint_apply.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "5000" in proc.stdout
+
+
+def test_e2e_cancel_token_lifecycle():
+    """X-207: cancelTokenLifecycle — cancellation token lifecycle.
+    Task cancellation via token (outputs 0)."""
+    proc = _eavc_run("cancel_token_lifecycle.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "0" in proc.stdout

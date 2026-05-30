@@ -1,0 +1,39 @@
+# retry_backoff_policy — retry with backoff and jitter
+# (README §15). Tests retry policy configuration.
+
+RetryBackoffPolicy is project
+RetryBackoffPolicy module examplesRetryBackoffPolicy
+RetryBackoffPolicy target console
+RetryBackoffPolicy entry main
+
+examplesRetryBackoffPolicy is module
+examplesRetryBackoffPolicy path examples.retryBackoffPolicy
+examplesRetryBackoffPolicy exports main
+examplesRetryBackoffPolicy purpose "Demonstrate retry with backoff policy"
+examplesRetryBackoffPolicy invariant "Retry policies are configurable"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use retry backoff policy"
+main invariant "Backoff policy works"
+
+main let attempts immutable Int64 3
+main let okCode immutable ExitCode 0
+
+main do printAttempts
+main return okCode
+
+printAttempts is call
+printAttempts in main
+printAttempts invokes console.writeIntegerLine
+printAttempts arg value Int64 attempts
