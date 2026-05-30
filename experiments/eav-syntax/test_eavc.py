@@ -10097,3 +10097,11 @@ def test_e2e_compound_and_or():
     proc = _eavc_run("compound_and_or.sem")
     assert proc.returncode == 0, proc.stderr
     assert "1" in proc.stdout
+
+
+def test_e2e_enum_discriminant():
+    """X-203: enumDiscriminant — enum variant discrimination.
+    Creates enum variants and prints discriminant (0 for ok variant)."""
+    proc = _eavc_run("enum_discriminant.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "0" in proc.stdout

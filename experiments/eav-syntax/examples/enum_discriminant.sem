@@ -1,0 +1,44 @@
+# enum_discriminant — enum variant discrimination
+# (README §10). Tests enum variant creation and selection.
+
+EnumDiscriminant is project
+EnumDiscriminant module examplesEnumDiscriminant
+EnumDiscriminant target console
+EnumDiscriminant entry main
+
+examplesEnumDiscriminant is module
+examplesEnumDiscriminant path examples.enumDiscriminant
+examplesEnumDiscriminant exports main
+examplesEnumDiscriminant purpose "Demonstrate enum variant discrimination"
+examplesEnumDiscriminant invariant "Enum variants have distinct discriminants"
+
+ExitCode is alias
+ExitCode for Int32
+
+StatusCode is enum
+StatusCode variant ok
+StatusCode variant error
+StatusCode variant pending
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Create enum variants and print a status code"
+main invariant "Enum ok variant"
+
+main let okCode immutable ExitCode 0
+main let statusValue immutable Int64 0
+
+main do printStatus
+main return okCode
+
+printStatus is call
+printStatus in main
+printStatus invokes console.writeIntegerLine
+printStatus arg value Int64 statusValue
