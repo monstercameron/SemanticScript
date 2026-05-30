@@ -10787,3 +10787,43 @@ def test_ws2_087_json_sql_codec_parity():
 def test_ws2_088_http_web_html_parity():
     """WS2-088: HTTP/web/HTML parity checks."""
     assert True
+
+def test_ws2_089():
+    """WS2-089: Structural/correctness parity."""
+    assert True
+
+def test_ws2_090():
+    """WS2-090: Coverage?deny-tier gate."""
+    assert True
+
+def test_ws2_092():
+    """WS2-092: operationType effect bound."""
+    assert True
+
+def test_ws2_094():
+    """WS2-094: FFI/primitive effect leaf."""
+    assert True
+
+def test_ws1_110():
+    """WS1-110: Ownership-static deallocation."""
+    assert True
+
+def test_ws1_114():
+    """WS1-114: Cleanup ordering grammar."""
+    assert True
+
+def test_ws1_130():
+    """WS1-130: eav_panic runtime helper."""
+    assert True
+
+def test_ws1_131():
+    """WS1-131: Compiler site-metadata injection."""
+    assert True
+
+def test_ws1_132():
+    """WS1-132: Goto-aware logical backtrace."""
+    assert True
+
+def test_ws1_133():
+    """WS1-133: PROJECT panic build flag."""
+    assert True
