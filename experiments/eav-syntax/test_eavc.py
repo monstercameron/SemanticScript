@@ -10343,6 +10343,22 @@ def test_e2e_overload_resolution_ambiguity():
     assert "1" in proc.stdout
 
 
+def test_e2e_operator_overload_custom():
+    """X-204: operatorOverloadCustom — custom operator overloading.
+    Defining custom operators (outputs 13)."""
+    proc = _eavc_run("operator_overload_custom.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "13" in proc.stdout
+
+
+def test_e2e_infix_notation_associativity():
+    """X-204: infixNotationAssociativity — infix notation and associativity.
+    Infix operator associativity (outputs 24)."""
+    proc = _eavc_run("infix_notation_associativity.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "24" in proc.stdout
+
+
 # X-205 Effect/Capability test programs
 
 def test_e2e_capability_grant_use():

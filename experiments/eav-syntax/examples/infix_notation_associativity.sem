@@ -1,0 +1,39 @@
+# infix_notation_associativity — infix notation and associativity
+# (README §8). Tests infix operator associativity.
+
+InfixNotationAssociativity is project
+InfixNotationAssociativity module examplesInfixNotationAssociativity
+InfixNotationAssociativity target console
+InfixNotationAssociativity entry main
+
+examplesInfixNotationAssociativity is module
+examplesInfixNotationAssociativity path examples.infixNotationAssociativity
+examplesInfixNotationAssociativity exports main
+examplesInfixNotationAssociativity purpose "Demonstrate infix notation and associativity"
+examplesInfixNotationAssociativity invariant "Infix associativity is well-defined"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Test infix notation associativity"
+main invariant "Associativity works"
+
+main let expr immutable Int64 24
+main let okCode immutable ExitCode 0
+
+main do printExpr
+main return okCode
+
+printExpr is call
+printExpr in main
+printExpr invokes console.writeIntegerLine
+printExpr arg value Int64 expr
