@@ -1,0 +1,39 @@
+# generic_container_arity — generic container type with arity
+# (README §11). Tests generic container parameters.
+
+GenericContainerArity is project
+GenericContainerArity module examplesGenericContainerArity
+GenericContainerArity target console
+GenericContainerArity entry main
+
+examplesGenericContainerArity is module
+examplesGenericContainerArity path examples.genericContainerArity
+examplesGenericContainerArity exports main
+examplesGenericContainerArity purpose "Demonstrate generic container arity"
+examplesGenericContainerArity invariant "Generic types work with multiple parameters"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use generic container with type parameters"
+main invariant "Generic arity is well-formed"
+
+main let count immutable Int64 2
+main let okCode immutable ExitCode 0
+
+main do printCount
+main return okCode
+
+printCount is call
+printCount in main
+printCount invokes console.writeIntegerLine
+printCount arg value Int64 count

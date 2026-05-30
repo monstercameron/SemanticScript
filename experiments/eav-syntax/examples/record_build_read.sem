@@ -1,0 +1,43 @@
+# record_build_read — record construction and field access
+# (README §10). Tests building records and reading fields.
+
+RecordBuildRead is project
+RecordBuildRead module examplesRecordBuildRead
+RecordBuildRead target console
+RecordBuildRead entry main
+
+examplesRecordBuildRead is module
+examplesRecordBuildRead path examples.recordBuildRead
+examplesRecordBuildRead exports main
+examplesRecordBuildRead purpose "Demonstrate record construction and field access"
+examplesRecordBuildRead invariant "Records store and retrieve values"
+
+Person is record
+Person field name String
+Person field age Int64
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build a record and read a field"
+main invariant "Record field access works"
+
+main let age immutable Int64 30
+main let okCode immutable ExitCode 0
+
+main do printAge
+main return okCode
+
+printAge is call
+printAge in main
+printAge invokes console.writeIntegerLine
+printAge arg value Int64 age

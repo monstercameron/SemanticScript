@@ -1,0 +1,44 @@
+# repr_enum_flags — enum with explicit representation (flags)
+# (README §10). Tests enum repr for bit flags.
+
+ReprEnumFlags is project
+ReprEnumFlags module examplesReprEnumFlags
+ReprEnumFlags target console
+ReprEnumFlags entry main
+
+examplesReprEnumFlags is module
+examplesReprEnumFlags path examples.reprEnumFlags
+examplesReprEnumFlags exports main
+examplesReprEnumFlags purpose "Demonstrate enum repr for flags"
+examplesReprEnumFlags invariant "Enum values can have explicit repr"
+
+Permissions is enum
+Permissions variant read repr 1
+Permissions variant write repr 2
+Permissions variant execute repr 4
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use enum with explicit repr values"
+main invariant "Enum repr works for flags"
+
+main let readPerm immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printPerm
+main return okCode
+
+printPerm is call
+printPerm in main
+printPerm invokes console.writeIntegerLine
+printPerm arg value Int64 readPerm

@@ -1,0 +1,39 @@
+# result_arity_ok_err — Result type with ok and error values
+# (README §10). Tests Result<OK, ERR> arity.
+
+ResultArityOkErr is project
+ResultArityOkErr module examplesResultArityOkErr
+ResultArityOkErr target console
+ResultArityOkErr entry main
+
+examplesResultArityOkErr is module
+examplesResultArityOkErr path examples.resultArityOkErr
+examplesResultArityOkErr exports main
+examplesResultArityOkErr purpose "Demonstrate Result type arity"
+examplesResultArityOkErr invariant "Result can hold two different types"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Work with Result type arity"
+main invariant "Result<ok_type, err_type> works"
+
+main let result immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

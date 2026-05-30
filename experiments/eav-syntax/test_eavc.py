@@ -10193,3 +10193,45 @@ def test_e2e_compound_or():
     proc = _eavc_run("compound_or.sem")
     assert proc.returncode == 0, proc.stderr
     assert "1" in proc.stdout
+
+
+# X-203 Type/Record/Enum test programs
+
+def test_e2e_record_build_read():
+    """X-203: recordBuildRead — record construction and field access.
+    Builds a record and reads a field (outputs 30)."""
+    proc = _eavc_run("record_build_read.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "30" in proc.stdout
+
+
+def test_e2e_error_case_return():
+    """X-203: errorCaseReturn — error variant creation and return.
+    Creates and returns an error value (outputs 1)."""
+    proc = _eavc_run("error_case_return.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_result_arity_ok_err():
+    """X-203: resultArityOkErr — Result type with ok and error values.
+    Tests Result<OK, ERR> arity (outputs 1)."""
+    proc = _eavc_run("result_arity_ok_err.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_repr_enum_flags():
+    """X-203: reprEnumFlags — enum with explicit representation (flags).
+    Uses enum repr for bit flags (outputs 1 for read permission)."""
+    proc = _eavc_run("repr_enum_flags.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_generic_container_arity():
+    """X-203: genericContainerArity — generic container type with arity.
+    Tests generic container type parameters (outputs 2)."""
+    proc = _eavc_run("generic_container_arity.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "2" in proc.stdout

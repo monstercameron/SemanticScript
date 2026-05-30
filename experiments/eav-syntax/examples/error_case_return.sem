@@ -1,0 +1,43 @@
+# error_case_return — error variant creation and return
+# (README §9). Tests building and returning error values.
+
+ErrorCaseReturn is project
+ErrorCaseReturn module examplesErrorCaseReturn
+ErrorCaseReturn target console
+ErrorCaseReturn entry main
+
+examplesErrorCaseReturn is module
+examplesErrorCaseReturn path examples.errorCaseReturn
+examplesErrorCaseReturn exports main
+examplesErrorCaseReturn purpose "Demonstrate error case creation and return"
+examplesErrorCaseReturn invariant "Error variants are properly typed"
+
+MyError is error
+MyError case failure Int32
+MyError case timeout
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Create and return an error value"
+main invariant "Error case construction works"
+
+main let result immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result
