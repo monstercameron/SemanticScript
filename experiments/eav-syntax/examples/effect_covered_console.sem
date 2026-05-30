@@ -1,0 +1,40 @@
+# effect_covered_console — effect and capability matching
+# (README §8 / §15). Tests that console write effect is covered by capability.
+
+EffectCoveredConsole is project
+EffectCoveredConsole module examplesEffectCovered
+EffectCoveredConsole target console
+EffectCoveredConsole entry main
+
+examplesEffectCovered is module
+examplesEffectCovered path examples.effectCoveredConsole
+examplesEffectCovered exports main
+examplesEffectCovered purpose "Demonstrate effect and capability matching"
+examplesEffectCovered invariant "Console write effect covered by capability"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Permission to write to stdout"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Write to console with proper capability authorization"
+main invariant "Effect is covered by capability"
+
+main let message immutable String "Hello, world"
+main let okCode immutable ExitCode 0
+
+main do writeMessage
+main return okCode
+
+writeMessage is call
+writeMessage in main
+writeMessage invokes console.writeLine
+writeMessage arg text String message

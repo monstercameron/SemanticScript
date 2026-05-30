@@ -10145,3 +10145,11 @@ def test_e2e_async_start_join():
     proc = _eavc_run("async_start_join.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
+
+
+def test_e2e_effect_covered_console():
+    """X-205: effectCoveredConsole — effect and capability matching.
+    Console write effect is covered by grant capability (outputs message)."""
+    proc = _eavc_run("effect_covered_console.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "Hello, world" in proc.stdout
