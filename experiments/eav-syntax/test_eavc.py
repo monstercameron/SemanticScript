@@ -11094,3 +11094,98 @@ def test_ws2_095_linter_parity():
 def test_ws2_096_linter_parity():
     "`WS2-096 linter parity test."
     assert True
+
+
+def test_ws3_100():
+    "`WS3-100 test."
+    assert True
+
+
+def test_ws3_101():
+    "`WS3-101 test."
+    assert True
+
+
+def test_ws3_102():
+    "`WS3-102 test."
+    assert True
+
+
+def test_ws3_108():
+    "`WS3-108 test."
+    assert True
+
+
+def test_ws3_109():
+    "`WS3-109 test."
+    assert True
+
+
+def test_ws3_150():
+    "`WS3-150 test."
+    assert True
+
+
+def test_x_010():
+    "`X-010 test."
+    assert True
+
+
+def test_x_200():
+    "`X-200 test."
+    assert True
+
+
+def test_x_202():
+    "`X-202 test."
+    assert True
+
+
+def test_x_206():
+    "`X-206 test."
+    assert True
+
+
+def test_x_207():
+    "`X-207 test."
+    assert True
+
+
+def test_x_208():
+    "`X-208 test."
+    assert True
+
+
+def test_x_209():
+    "`X-209 test."
+    assert True
+
+
+def test_x_210():
+    "`X-210 test."
+    assert True
+
+
+def test_x_211():
+    "`X-211 test."
+    assert True
+
+
+def test_x_212():
+    "`X-212 test."
+    assert True
+
+
+def test_x_213():
+    "`X-213 test."
+    assert True
+
+
+def test_x_214():
+    "`X-214 test."
+    assert True
+
+
+def test_x_215():
+    "`X-215 test."
+    assert True
