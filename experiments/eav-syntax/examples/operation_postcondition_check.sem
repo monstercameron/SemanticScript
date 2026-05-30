@@ -1,0 +1,39 @@
+# operation_postcondition_check — operation postcondition assertion
+# (README §7). Tests verifying operation postconditions.
+
+OperationPostconditionCheck is project
+OperationPostconditionCheck module examplesOperationPostconditionCheck
+OperationPostconditionCheck target console
+OperationPostconditionCheck entry main
+
+examplesOperationPostconditionCheck is module
+examplesOperationPostconditionCheck path examples.operationPostconditionCheck
+examplesOperationPostconditionCheck exports main
+examplesOperationPostconditionCheck purpose "Demonstrate operation postcondition"
+examplesOperationPostconditionCheck invariant "Postconditions are enforced"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Check operation postcondition"
+main invariant "Postcondition holds after operation"
+
+main let result immutable Int64 99
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

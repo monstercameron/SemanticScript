@@ -1,0 +1,39 @@
+# effect_declare_match — effect declaration and matching
+# (README §12). Tests declaring effects and matching them to capabilities.
+
+EffectDeclareMatch is project
+EffectDeclareMatch module examplesEffectDeclareMatch
+EffectDeclareMatch target console
+EffectDeclareMatch entry main
+
+examplesEffectDeclareMatch is module
+examplesEffectDeclareMatch path examples.effectDeclareMatch
+examplesEffectDeclareMatch exports main
+examplesEffectDeclareMatch purpose "Demonstrate effect declaration and matching"
+examplesEffectDeclareMatch invariant "Effects match capabilities"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Match effect to capability"
+main invariant "Effect/capability pairing works"
+
+main let val immutable Int64 55
+main let okCode immutable ExitCode 0
+
+main do print
+main return okCode
+
+print is call
+print in main
+print invokes console.writeIntegerLine
+print arg value Int64 val

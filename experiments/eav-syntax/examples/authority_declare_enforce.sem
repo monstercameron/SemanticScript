@@ -1,0 +1,27 @@
+# authority_declare_enforce — authority declaration and enforcement
+# (README §12). Tests effect authority declaration.
+
+AuthorityDeclareEnforce is project
+AuthorityDeclareEnforce module examplesAuthorityDeclareEnforce
+AuthorityDeclareEnforce target console
+AuthorityDeclareEnforce entry main
+
+examplesAuthorityDeclareEnforce is module
+examplesAuthorityDeclareEnforce path examples.authorityDeclareEnforce
+examplesAuthorityDeclareEnforce exports main
+examplesAuthorityDeclareEnforce purpose "Demonstrate authority declaration"
+examplesAuthorityDeclareEnforce invariant "Authority covers declared effects"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main memory heap no
+main async no
+main purpose "Declare and enforce authority"
+main invariant "Authority is well-formed"
+
+main let code immutable ExitCode 0
+main return code

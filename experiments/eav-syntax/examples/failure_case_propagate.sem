@@ -1,0 +1,39 @@
+# failure_case_propagate — failure case propagation
+# (README §13). Tests propagating failures through operation returns.
+
+FailureCasePropagate is project
+FailureCasePropagate module examplesFailureCasePropagate
+FailureCasePropagate target console
+FailureCasePropagate entry main
+
+examplesFailureCasePropagate is module
+examplesFailureCasePropagate path examples.failureCasePropagate
+examplesFailureCasePropagate exports main
+examplesFailureCasePropagate purpose "Demonstrate failure case propagation"
+examplesFailureCasePropagate invariant "Failures propagate correctly"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Propagate failures from callees"
+main invariant "Failure propagation works"
+
+main let val immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do print
+main return okCode
+
+print is call
+print in main
+print invokes console.writeIntegerLine
+print arg value Int64 val

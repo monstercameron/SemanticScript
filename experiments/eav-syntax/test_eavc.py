@@ -10269,3 +10269,44 @@ def test_e2e_polymorphic_dispatch():
     proc = _eavc_run("polymorphic_dispatch.sem")
     assert proc.returncode == 0, proc.stderr
     assert "7" in proc.stdout
+
+
+# X-205 Effect/Capability test programs
+
+def test_e2e_capability_grant_use():
+    """X-205: capabilityGrantUse — capability declaration and use.
+    Effect declaration with matching capability (outputs 'Capability OK')."""
+    proc = _eavc_run("capability_grant_use.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "Capability OK" in proc.stdout
+
+
+def test_e2e_authority_declare_enforce():
+    """X-205: authorityDeclareEnforce — authority declaration and enforcement.
+    Effect authority declaration (exit code 0)."""
+    proc = _eavc_run("authority_declare_enforce.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_effect_declare_match():
+    """X-205: effectDeclareMatch — effect declaration and matching.
+    Declaring effects and matching to capabilities (outputs 55)."""
+    proc = _eavc_run("effect_declare_match.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "55" in proc.stdout
+
+
+def test_e2e_failure_case_propagate():
+    """X-205: failureCasePropagate — failure case propagation.
+    Propagating failures through operation returns (outputs 1)."""
+    proc = _eavc_run("failure_case_propagate.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
+
+
+def test_e2e_operation_postcondition_check():
+    """X-205: operationPostconditionCheck — operation postcondition assertion.
+    Verifying operation postconditions (outputs 99)."""
+    proc = _eavc_run("operation_postcondition_check.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "99" in proc.stdout
