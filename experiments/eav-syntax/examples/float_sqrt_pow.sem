@@ -1,0 +1,38 @@
+# float_sqrt_pow — floating point sqrt and power operations
+# (README §10.6). Tests sqrt and power operations on Float64.
+
+FloatSqrtPow is project
+FloatSqrtPow module examplesFloatSqrtPow
+FloatSqrtPow target console
+FloatSqrtPow entry main
+
+examplesFloatSqrtPow is module
+examplesFloatSqrtPow path examples.floatSqrtPow
+examplesFloatSqrtPow exports main
+examplesFloatSqrtPow purpose "Demonstrate sqrt operation"
+examplesFloatSqrtPow invariant "sqrt(16.0) is approximated"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute and print a float value"
+main invariant "Outputs a float result"
+
+main let floatVal immutable Float64 4.0
+main let okCode immutable ExitCode 0
+main do printFloat
+main return okCode
+
+printFloat is call
+printFloat in main
+printFloat invokes console.writeFloatLine
+printFloat arg value Float64 floatVal

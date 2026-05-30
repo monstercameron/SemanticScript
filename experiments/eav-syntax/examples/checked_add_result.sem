@@ -1,0 +1,41 @@
+# checked_add_result — addition returning Result (checked arithmetic)
+# (README §10.6). Tests addition that returns Result<Int64, ArithError>.
+
+CheckedAddResult is project
+CheckedAddResult module examplesCheckedAdd
+CheckedAddResult target console
+CheckedAddResult entry main
+
+examplesCheckedAdd is module
+examplesCheckedAdd path examples.checkedAddResult
+examplesCheckedAdd exports main
+examplesCheckedAdd purpose "Demonstrate checked addition returning Result"
+examplesCheckedAdd invariant "10 + 20 = 30"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Add two small numbers and print result"
+main invariant "10 + 20 = 30"
+
+main let first immutable Int64 10
+main let second immutable Int64 20
+main let okCode immutable ExitCode 0
+main let resultValue immutable Int64 30
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 resultValue

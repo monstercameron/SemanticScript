@@ -10057,3 +10057,27 @@ def test_e2e_fib_iterative():
     proc = _eavc_run("fib_iterative.sem")
     assert proc.returncode == 0, proc.stderr
     assert "55" in proc.stdout
+
+
+def test_e2e_checked_add_result():
+    """X-201: checkedAddResult — addition returning Result.
+    Computes 10 + 20 = 30."""
+    proc = _eavc_run("checked_add_result.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "30" in proc.stdout
+
+
+def test_e2e_float_sqrt_pow():
+    """X-201: floatSqrtPow — floating point sqrt and power.
+    Outputs a Float64 value."""
+    proc = _eavc_run("float_sqrt_pow.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "4" in proc.stdout
+
+
+def test_e2e_convert_int_float():
+    """X-201: convertIntFloat — Int64 to Float64 conversion.
+    Converts 42 to 42.0 and prints it."""
+    proc = _eavc_run("convert_int_float.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "42" in proc.stdout
