@@ -1,0 +1,47 @@
+# overflow_wrap_minmax — integer overflow wraps to minimum value (two's complement)
+# (README §10.6 / §33.5). Tests that Int64 arithmetic wraps on overflow.
+
+OverflowWrapMinMax is project
+OverflowWrapMinMax module examplesOverflowWrap
+OverflowWrapMinMax target console
+OverflowWrapMinMax entry main
+
+examplesOverflowWrap is module
+examplesOverflowWrap path examples.overflowWrapMinMax
+examplesOverflowWrap exports main
+examplesOverflowWrap purpose "Demonstrate that overflow wraps in two's complement"
+examplesOverflowWrap invariant "Int64 arithmetic wraps on overflow"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Add to Int64.max and verify wrap to negative"
+main invariant "max + 1 wraps to min"
+
+main let maxInt immutable Int64 9223372036854775807
+main let oneValue immutable Int64 1
+main let zeroCode immutable ExitCode 0
+main do computeOverflow
+main do printResult
+main return zeroCode
+
+computeOverflow is call
+computeOverflow in main
+computeOverflow invokes math.addInt64
+computeOverflow arg left Int64 maxInt
+computeOverflow arg right Int64 oneValue
+computeOverflow out wrappedValue Int64
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 wrappedValue

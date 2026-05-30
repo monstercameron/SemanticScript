@@ -10032,3 +10032,12 @@ def test_e2e_div_by_zero_trap():
     proc = _eavc_run("div_by_zero_trap.sem")
     # Trap means the process exits non-zero (exit code from eav_panic or llvm.trap)
     assert proc.returncode != 0, f"Div-by-zero should trap; got exit code {proc.returncode}"
+
+
+def test_e2e_overflow_wrap_minmax():
+    """X-201: overflowWrapMinMax — Int64 overflow wraps in two's complement.
+    Adding 1 to Int64.max wraps to Int64.min (negative)."""
+    proc = _eavc_run("overflow_wrap_minmax.sem")
+    assert proc.returncode == 0, proc.stderr
+    # Int64.max (9223372036854775807) + 1 wraps to Int64.min (-9223372036854775808)
+    assert "-9223372036854775808" in proc.stdout
