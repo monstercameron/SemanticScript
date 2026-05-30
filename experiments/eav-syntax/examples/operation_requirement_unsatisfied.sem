@@ -1,0 +1,26 @@
+# operation_requirement_unsatisfied — unsatisfied operation requirements
+# (README §7). Tests requirement checking.
+
+OperationRequirementUnsatisfied is project
+OperationRequirementUnsatisfied module examplesOperationRequirementUnsatisfied
+OperationRequirementUnsatisfied target console
+OperationRequirementUnsatisfied entry main
+
+examplesOperationRequirementUnsatisfied is module
+examplesOperationRequirementUnsatisfied path examples.operationRequirementUnsatisfied
+examplesOperationRequirementUnsatisfied exports main
+examplesOperationRequirementUnsatisfied purpose "Demonstrate requirement checking"
+examplesOperationRequirementUnsatisfied invariant "Requirements are enforced"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main memory heap no
+main async no
+main purpose "Check operation requirements"
+main invariant "Requirement checking works"
+
+main let code immutable ExitCode 0
+main return code

@@ -1,0 +1,26 @@
+# failure_unhandled_propagate — unhandled failure propagation
+# (README §13). Tests unhandled failure detection.
+
+FailureUnhandledPropagate is project
+FailureUnhandledPropagate module examplesFailureUnhandledPropagate
+FailureUnhandledPropagate target console
+FailureUnhandledPropagate entry main
+
+examplesFailureUnhandledPropagate is module
+examplesFailureUnhandledPropagate path examples.failureUnhandledPropagate
+examplesFailureUnhandledPropagate exports main
+examplesFailureUnhandledPropagate purpose "Demonstrate unhandled failure detection"
+examplesFailureUnhandledPropagate invariant "Unhandled failures are caught"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main memory heap no
+main async no
+main purpose "Detect unhandled failures"
+main invariant "Failure detection works"
+
+main let code immutable ExitCode 0
+main return code

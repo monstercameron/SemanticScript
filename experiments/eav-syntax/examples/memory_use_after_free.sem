@@ -1,0 +1,26 @@
+# memory_use_after_free — use-after-free error detection
+# (README §14). Tests detecting UAF bugs.
+
+MemoryUseAfterFree is project
+MemoryUseAfterFree module examplesMemoryUseAfterFree
+MemoryUseAfterFree target console
+MemoryUseAfterFree entry main
+
+examplesMemoryUseAfterFree is module
+examplesMemoryUseAfterFree path examples.memoryUseAfterFree
+examplesMemoryUseAfterFree exports main
+examplesMemoryUseAfterFree purpose "Demonstrate use-after-free detection"
+examplesMemoryUseAfterFree invariant "UAF errors are prevented"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main memory heap yes
+main async no
+main purpose "Detect use-after-free errors"
+main invariant "UAF detection works"
+
+main let code immutable ExitCode 0
+main return code

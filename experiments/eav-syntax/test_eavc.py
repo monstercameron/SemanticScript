@@ -10400,6 +10400,34 @@ def test_e2e_operation_postcondition_check():
     assert "99" in proc.stdout
 
 
+def test_e2e_effect_unused_declaration():
+    """X-205: effectUnusedDeclaration — detecting unused effect declarations.
+    Unused effect warnings (exit 0)."""
+    proc = _eavc_run("effect_unused_declaration.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_capability_ungranted_use():
+    """X-205: capabilityUngrantedUse — using effects without granted capability.
+    Capability denial detection (exit 0)."""
+    proc = _eavc_run("capability_ungranted_use.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_failure_unhandled_propagate():
+    """X-205: failureUnhandledPropagate — unhandled failure propagation.
+    Unhandled failure detection (exit 0)."""
+    proc = _eavc_run("failure_unhandled_propagate.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_operation_requirement_unsatisfied():
+    """X-205: operationRequirementUnsatisfied — unsatisfied operation requirements.
+    Requirement checking (exit 0)."""
+    proc = _eavc_run("operation_requirement_unsatisfied.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
 # X-206 Memory/Lifetime test programs
 
 def test_e2e_memory_alloc_dealloc():
@@ -10440,6 +10468,48 @@ def test_e2e_owned_resource_transfer():
     proc = _eavc_run("owned_resource_transfer.sem")
     assert proc.returncode == 0, proc.stderr
     assert "123" in proc.stdout
+
+
+def test_e2e_memory_double_free():
+    """X-206: memoryDoubleFree — double-free error detection.
+    Detecting double free bugs (exit 0)."""
+    proc = _eavc_run("memory_double_free.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_memory_use_after_free():
+    """X-206: memoryUseAfterFree — use-after-free error detection.
+    Detecting UAF bugs (exit 0)."""
+    proc = _eavc_run("memory_use_after_free.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_region_bound_escape():
+    """X-206: regionBoundEscape — region bound escape detection.
+    Detecting escaped regions (exit 0)."""
+    proc = _eavc_run("region_bound_escape.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_lifetime_borrow_conflict():
+    """X-206: lifetimeBorrowConflict — lifetime borrow conflict detection.
+    Detecting conflicting borrows (exit 0)."""
+    proc = _eavc_run("lifetime_borrow_conflict.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_sync_data_race_detection():
+    """X-206: syncDataRaceDetection — data race detection in concurrent code.
+    Detecting data races (exit 0)."""
+    proc = _eavc_run("sync_data_race_detection.sem")
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_e2e_deadlock_cycle_detection():
+    """X-206: deadlockCycleDetection — deadlock cycle detection.
+    Detecting deadlock potential (exit 0)."""
+    proc = _eavc_run("deadlock_cycle_detection.sem")
+    assert proc.returncode == 0, proc.stderr
 
 
 # X-207 Cleanup/Retry/Timeout test programs

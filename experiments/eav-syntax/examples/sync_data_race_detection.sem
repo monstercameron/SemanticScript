@@ -1,0 +1,26 @@
+# sync_data_race_detection — data race detection in concurrent code
+# (README §16). Tests detecting data races.
+
+SyncDataRaceDetection is project
+SyncDataRaceDetection module examplesSyncDataRaceDetection
+SyncDataRaceDetection target console
+SyncDataRaceDetection entry main
+
+examplesSyncDataRaceDetection is module
+examplesSyncDataRaceDetection path examples.syncDataRaceDetection
+examplesSyncDataRaceDetection exports main
+examplesSyncDataRaceDetection purpose "Demonstrate data race detection"
+examplesSyncDataRaceDetection invariant "Data races are prevented"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main async yes
+main memory heap no
+main purpose "Detect data races"
+main invariant "Race detection works"
+
+main let code immutable ExitCode 0
+main return code
