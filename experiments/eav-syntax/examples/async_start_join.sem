@@ -1,0 +1,39 @@
+# async_start_join — basic async task lifecycle (start/join)
+# (README §13 / §15.5). Tests task creation and awaiting result.
+
+AsyncStartJoin is project
+AsyncStartJoin module examplesAsyncStartJoin
+AsyncStartJoin target console
+AsyncStartJoin entry main
+
+examplesAsyncStartJoin is module
+examplesAsyncStartJoin path examples.asyncStartJoin
+examplesAsyncStartJoin exports main
+examplesAsyncStartJoin purpose "Demonstrate async task start and join"
+examplesAsyncStartJoin invariant "Task starts and completes"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Start a task and join on it"
+main invariant "Task result is available after join"
+
+main let result immutable Int64 42
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

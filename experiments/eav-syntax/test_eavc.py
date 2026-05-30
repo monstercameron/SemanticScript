@@ -10137,3 +10137,11 @@ def test_e2e_int_arithmetic_all():
     proc = _eavc_run("int_arithmetic_all.sem")
     assert proc.returncode == 0, proc.stderr
     assert "12" in proc.stdout
+
+
+def test_e2e_async_start_join():
+    """X-204: asyncStartJoin — basic async task lifecycle (start/join).
+    Task starts and result is available after join (outputs 42)."""
+    proc = _eavc_run("async_start_join.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "42" in proc.stdout
