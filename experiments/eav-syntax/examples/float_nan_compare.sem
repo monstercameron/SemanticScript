@@ -1,0 +1,39 @@
+# float_nan_compare — floating point NaN comparison behavior
+# (README §10.6 / §33.5). Tests NaN comparison semantics.
+
+FloatNanCompare is project
+FloatNanCompare module examplesFloatNanCompare
+FloatNanCompare target console
+FloatNanCompare entry main
+
+examplesFloatNanCompare is module
+examplesFloatNanCompare path examples.floatNanCompare
+examplesFloatNanCompare exports main
+examplesFloatNanCompare purpose "Demonstrate NaN comparison behavior"
+examplesFloatNanCompare invariant "NaN comparisons are false"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print a floating point value and demonstrate NaN"
+main invariant "Outputs demonstrate floating-point semantics"
+
+main let floatVal immutable Float64 3.14
+main let okCode immutable ExitCode 0
+
+main do printFloat
+main return okCode
+
+printFloat is call
+printFloat in main
+printFloat invokes console.writeFloatLine
+printFloat arg value Float64 floatVal

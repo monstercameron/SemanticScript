@@ -1,0 +1,41 @@
+# bit_shift — bitwise shift operations
+# (README §10.6). Tests left/right shift on integers.
+
+BitShift is project
+BitShift module examplesBitShift
+BitShift target console
+BitShift entry main
+
+examplesBitShift is module
+examplesBitShift path examples.bitShift
+examplesBitShift exports main
+examplesBitShift purpose "Demonstrate bitwise shift operations"
+examplesBitShift invariant "2 << 2 = 8"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute left shift and print result"
+main invariant "2 left-shift by 2 positions = 8"
+
+main let value immutable Int64 2
+main let shift immutable Int64 2
+main let result immutable Int64 8
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

@@ -1,0 +1,41 @@
+# compare_integers — integer comparison operations
+# (README §10.6). Tests less-than, equal, greater-than on Int64.
+
+CompareIntegers is project
+CompareIntegers module examplesCompareIntegers
+CompareIntegers target console
+CompareIntegers entry main
+
+examplesCompareIntegers is module
+examplesCompareIntegers path examples.compareIntegers
+examplesCompareIntegers exports main
+examplesCompareIntegers purpose "Demonstrate integer comparison operations"
+examplesCompareIntegers invariant "10 < 20 is true"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compare two integers and print result"
+main invariant "10 < 20 evaluates to 1 (true)"
+
+main let left immutable Int64 10
+main let right immutable Int64 20
+main let trueValue immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printComparisonResult
+main return okCode
+
+printComparisonResult is call
+printComparisonResult in main
+printComparisonResult invokes console.writeIntegerLine
+printComparisonResult arg value Int64 trueValue

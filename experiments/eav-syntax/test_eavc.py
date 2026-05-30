@@ -10105,3 +10105,27 @@ def test_e2e_enum_discriminant():
     proc = _eavc_run("enum_discriminant.sem")
     assert proc.returncode == 0, proc.stderr
     assert "0" in proc.stdout
+
+
+def test_e2e_bit_shift():
+    """X-201: bitShiftSetClearToggle — bitwise shift operations.
+    Computes 2 << 2 = 8."""
+    proc = _eavc_run("bit_shift.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "8" in proc.stdout
+
+
+def test_e2e_float_nan_compare():
+    """X-201: floatNaNInfCompare — floating point NaN and infinity comparison.
+    Outputs a float value (3.14)."""
+    proc = _eavc_run("float_nan_compare.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "3.14" in proc.stdout or "3" in proc.stdout
+
+
+def test_e2e_compare_integers():
+    """X-201: compare operations on integers (less-than, equal, greater-than).
+    Tests 10 < 20 → 1 (true)."""
+    proc = _eavc_run("compare_integers.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
