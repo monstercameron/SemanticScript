@@ -10310,3 +10310,45 @@ def test_e2e_operation_postcondition_check():
     proc = _eavc_run("operation_postcondition_check.sem")
     assert proc.returncode == 0, proc.stderr
     assert "99" in proc.stdout
+
+
+# X-206 Memory/Lifetime test programs
+
+def test_e2e_memory_alloc_dealloc():
+    """X-206: memoryAllocDealloc — memory allocation and deallocation.
+    Heap allocation with cleanup (outputs 100)."""
+    proc = _eavc_run("memory_alloc_dealloc.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "100" in proc.stdout
+
+
+def test_e2e_memory_lifetime_scope():
+    """X-206: memoryLifetimeScope — memory lifetime within scope.
+    Variable lifetime scope bounds (outputs 50)."""
+    proc = _eavc_run("memory_lifetime_scope.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "50" in proc.stdout
+
+
+def test_e2e_region_escape_analysis():
+    """X-206: regionEscapeAnalysis — escape analysis for regions.
+    Detecting escaped regions (outputs 77)."""
+    proc = _eavc_run("region_escape_analysis.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "77" in proc.stdout
+
+
+def test_e2e_view_borrow_readonly():
+    """X-206: viewBorrowReadonly — read-only view/borrow.
+    Borrowing for read-only access (outputs 88)."""
+    proc = _eavc_run("view_borrow_readonly.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "88" in proc.stdout
+
+
+def test_e2e_owned_resource_transfer():
+    """X-206: ownedResourceTransfer — transfer of owned resources.
+    Moving ownership of resources (outputs 123)."""
+    proc = _eavc_run("owned_resource_transfer.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "123" in proc.stdout

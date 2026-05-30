@@ -1,0 +1,39 @@
+# view_borrow_readonly — read-only view/borrow
+# (README §14). Tests borrowing for read-only access.
+
+ViewBorrowReadonly is project
+ViewBorrowReadonly module examplesViewBorrowReadonly
+ViewBorrowReadonly target console
+ViewBorrowReadonly entry main
+
+examplesViewBorrowReadonly is module
+examplesViewBorrowReadonly path examples.viewBorrowReadonly
+examplesViewBorrowReadonly exports main
+examplesViewBorrowReadonly purpose "Demonstrate read-only view/borrow"
+examplesViewBorrowReadonly invariant "Read-only borrows are well-formed"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use read-only view"
+main invariant "Readonly borrow works"
+
+main let shared immutable Int64 88
+main let okCode immutable ExitCode 0
+
+main do printShared
+main return okCode
+
+printShared is call
+printShared in main
+printShared invokes console.writeIntegerLine
+printShared arg value Int64 shared

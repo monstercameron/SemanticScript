@@ -1,0 +1,40 @@
+# memory_alloc_dealloc — memory allocation and deallocation
+# (README §14). Tests heap allocation and cleanup.
+
+MemoryAllocDealloc is project
+MemoryAllocDealloc module examplesMemoryAllocDealloc
+MemoryAllocDealloc target console
+MemoryAllocDealloc entry main
+
+examplesMemoryAllocDealloc is module
+examplesMemoryAllocDealloc path examples.memoryAllocDealloc
+examplesMemoryAllocDealloc exports main
+examplesMemoryAllocDealloc purpose "Demonstrate memory allocation and deallocation"
+examplesMemoryAllocDealloc invariant "Allocation is paired with cleanup"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap yes
+main async no
+main purpose "Allocate and deallocate memory"
+main invariant "Memory management is correct"
+
+main let size immutable Int64 100
+main let okCode immutable ExitCode 0
+main let result immutable Int64 100
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

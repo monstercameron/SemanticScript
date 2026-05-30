@@ -1,0 +1,39 @@
+# memory_lifetime_scope — memory lifetime within scope
+# (README §14). Tests variable lifetime scope bounds.
+
+MemoryLifetimeScope is project
+MemoryLifetimeScope module examplesMemoryLifetimeScope
+MemoryLifetimeScope target console
+MemoryLifetimeScope entry main
+
+examplesMemoryLifetimeScope is module
+examplesMemoryLifetimeScope path examples.memoryLifetimeScope
+examplesMemoryLifetimeScope exports main
+examplesMemoryLifetimeScope purpose "Demonstrate memory lifetime within scope"
+examplesMemoryLifetimeScope invariant "Lifetimes are scoped correctly"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Test variable lifetime scope"
+main invariant "Scope bounds lifetimes"
+
+main let scoped immutable Int64 50
+main let okCode immutable ExitCode 0
+
+main do printVal
+main return okCode
+
+printVal is call
+printVal in main
+printVal invokes console.writeIntegerLine
+printVal arg value Int64 scoped
