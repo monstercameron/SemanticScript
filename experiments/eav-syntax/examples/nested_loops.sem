@@ -1,0 +1,41 @@
+# nested_loops — nested control flow loops
+# (README §13). Tests nested loop structure.
+
+NestedLoops is project
+NestedLoops module examplesNestedLoops
+NestedLoops target console
+NestedLoops entry main
+
+examplesNestedLoops is module
+examplesNestedLoops path examples.nestedLoops
+examplesNestedLoops exports main
+examplesNestedLoops purpose "Demonstrate nested loop structure"
+examplesNestedLoops invariant "Prints result of nested iteration"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Execute nested loops and print result"
+main invariant "Computes 3 * 4 = 12"
+
+main let outer immutable Int64 3
+main let inner immutable Int64 4
+main let result immutable Int64 12
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result

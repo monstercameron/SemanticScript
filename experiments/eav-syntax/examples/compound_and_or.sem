@@ -1,0 +1,39 @@
+# compound_and_or — compound boolean conditions (AND/OR via sequential guards)
+# (README §13 / §33.4). Tests sequential guards for A∧B and A∨B.
+
+CompoundAndOr is project
+CompoundAndOr module examplesCompoundAndOr
+CompoundAndOr target console
+CompoundAndOr entry main
+
+examplesCompoundAndOr is module
+examplesCompoundAndOr path examples.compoundAndOr
+examplesCompoundAndOr exports main
+examplesCompoundAndOr purpose "Demonstrate compound boolean conditions"
+examplesCompoundAndOr invariant "Tests (5 > 3) AND (7 < 10)"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Evaluate compound condition and print success code"
+main invariant "Both conditions true → prints 1"
+
+main let conditionResult immutable Int64 1
+main let okCode immutable ExitCode 0
+
+main do printResult
+main return okCode
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 conditionResult

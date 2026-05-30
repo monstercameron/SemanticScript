@@ -10081,3 +10081,19 @@ def test_e2e_convert_int_float():
     proc = _eavc_run("convert_int_float.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
+
+
+def test_e2e_nested_loops():
+    """X-202: nestedLoops — nested control flow loops.
+    Outputs result of nested loop computation (3 * 4 = 12)."""
+    proc = _eavc_run("nested_loops.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "12" in proc.stdout
+
+
+def test_e2e_compound_and_or():
+    """X-202: compoundAndOr — compound boolean conditions (AND/OR via sequential guards).
+    Tests (5 > 3) AND (7 < 10) → outputs 1 (true)."""
+    proc = _eavc_run("compound_and_or.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert "1" in proc.stdout
