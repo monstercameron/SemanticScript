@@ -9213,6 +9213,17 @@ class EavCodegen:
             return builder.trunc(f, i32)  # exit code = number of failures
         raise EavError(f"unknown test target {target!r}")
 
+    def _runtime_extern(self, name, ret_ty, arg_types):
+        """Get-or-declare a cached extern `name` with the given signature. The
+        runtime-intrinsic families (net/event/gui/http/sqlite/json/bcrypt/log/c)
+        all bind their native/shim symbols through this."""
+        fn = self._runtime.get(name)
+        if fn is None:
+            fn = ir.Function(self.module,
+                             ir.FunctionType(ret_ty, list(arg_types)), name=name)
+            self._runtime[name] = fn
+        return fn
+
     def _emit_call(self, call, builder, sym, let_mut) -> None:
         target_row = call.fact("invokes")
         if not target_row or not target_row.payload:
@@ -9681,12 +9692,7 @@ class EavCodegen:
                 ret_ty = ir.IntType(8).as_pointer()
             else:
                 ret_ty = ir.IntType(32)
-            fn = self._runtime.get(sym_name)
-            if fn is None:
-                fn = ir.Function(self.module,
-                                 ir.FunctionType(ret_ty, [v.type for v in vals]),
-                                 name=sym_name)
-                self._runtime[sym_name] = fn
+            fn = self._runtime_extern(sym_name, ret_ty, [v.type for v in vals])
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
                 result = r
@@ -9707,12 +9713,7 @@ class EavCodegen:
                 ret_ty = ir.IntType(32)                       # status ints
             else:
                 ret_ty = ir.IntType(8).as_pointer()           # request*/multipart* getters
-            fn = self._runtime.get(sym_name)
-            if fn is None:
-                fn = ir.Function(self.module,
-                                 ir.FunctionType(ret_ty, [v.type for v in vals]),
-                                 name=sym_name)
-                self._runtime[sym_name] = fn
+            fn = self._runtime_extern(sym_name, ret_ty, [v.type for v in vals])
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
                 result = r
@@ -9735,12 +9736,7 @@ class EavCodegen:
                     for a in arg_rows]
             ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32),
                       "s": ir.IntType(8).as_pointer(), "v": ir.VoidType()}[retkind]
-            fn = self._runtime.get(symbol)
-            if fn is None:
-                fn = ir.Function(self.module,
-                                 ir.FunctionType(ret_ty, [v.type for v in vals]),
-                                 name=symbol)
-                self._runtime[symbol] = fn
+            fn = self._runtime_extern(symbol, ret_ty, [v.type for v in vals])
             r = builder.call(fn, vals)
             if retkind != "v" and call.fact("out") is not None:
                 result = r
@@ -9778,12 +9774,7 @@ class EavCodegen:
             else:
                 sym_name = "ss_c_" + libc
                 ret_ty = out_ty if out_ty is not None else ir.VoidType()
-                fn = self._runtime.get(sym_name)
-                if fn is None:
-                    fn = ir.Function(self.module,
-                                     ir.FunctionType(ret_ty, [v.type for v in vals]),
-                                     name=sym_name)
-                    self._runtime[sym_name] = fn
+                fn = self._runtime_extern(sym_name, ret_ty, [v.type for v in vals])
                 r = builder.call(fn, vals)
                 if out_ty is not None and out_row is not None:
                     result = r
