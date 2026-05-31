@@ -22,6 +22,10 @@ standardAsync exports runOnce
 standardAsync exports withTimeout
 standardAsync exports awaitResult
 standardAsync exports cancel
+standardAsync exports channelCreate
+standardAsync exports channelProduce
+standardAsync exports channelReceive
+standardAsync exports channelClose
 standardAsync purpose "Typed EAV contract over the libuv event-loop async runtime via the eav_async_* ABI"
 standardAsync invariant "Every operation is a runtimeBinding to an eav_async_* symbol; no async logic lives in the compiler"
 
@@ -85,3 +89,38 @@ cancel out Int32
 cancel body runtimeBinding eav_async_cancel
 cancel purpose "Cancel a not-yet-ready future; a later awaitResult resolves it as cancelled"
 cancel suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+AsyncChannel is alias
+AsyncChannel for OpaquePointer
+AsyncChannel purpose "An opaque bounded async channel handle (FIFO), drained by channelReceive"
+
+channelCreate is operation
+channelCreate out AsyncChannel
+channelCreate body runtimeBinding eav_async_channel_create
+channelCreate purpose "Create an empty bounded async channel"
+channelCreate suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+channelProduce is operation
+channelProduce in channel AsyncChannel
+channelProduce in delayMs AsyncMillis
+channelProduce in value Int64
+channelProduce out Int32
+channelProduce async yes
+channelProduce body runtimeBinding eav_async_channel_produce
+channelProduce purpose "Schedule a send of value to the channel after delayMs on the loop"
+channelProduce suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+channelReceive is operation
+channelReceive in channel AsyncChannel
+channelReceive out Int64
+channelReceive async yes
+channelReceive body runtimeBinding eav_async_channel_receive
+channelReceive purpose "Receive the next value, driving the loop until one is available (FIFO)"
+channelReceive suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+channelClose is operation
+channelClose in channel AsyncChannel
+channelClose out Int32
+channelClose body runtimeBinding eav_async_channel_close
+channelClose purpose "Release the channel handle"
+channelClose suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"

@@ -136,3 +136,73 @@ EAV_EXPORT int32_t eav_async_await_result(void *handle, int64_t *out) {
 EAV_EXPORT int32_t eav_async_run_once(void) {
     return ss_async_loop_run_once(eav_async_get_loop());
 }
+
+/* ---- async channel: a bounded FIFO with loop-scheduled producers ----
+ * A producer is a libuv timer that pushes a value after a delay; a consumer
+ * `receive` drives the loop until an item is available, then pops it. So values
+ * arrive in completion order on the single-threaded loop — a real async channel.
+ */
+#define EAV_CHAN_CAP 64
+
+typedef struct {
+    int64_t buf[EAV_CHAN_CAP];
+    int head;
+    int tail;
+    int count;
+} eav_channel;
+
+typedef struct {
+    eav_channel *chan;
+    int64_t value;
+    SSAsyncTimer *timer;
+} eav_chan_producer;
+
+EAV_EXPORT void *eav_async_channel_create(void) {
+    eav_channel *c = (eav_channel *)calloc(1, sizeof(eav_channel));
+    return c;
+}
+
+static void eav_chan_produce_cb(void *ud) {
+    eav_chan_producer *p = (eav_chan_producer *)ud;
+    eav_channel *c = p->chan;
+    if (c->count < EAV_CHAN_CAP) {
+        c->buf[c->tail] = p->value;
+        c->tail = (c->tail + 1) % EAV_CHAN_CAP;
+        c->count++;
+    }
+    free(p);
+}
+
+/* Schedule a send of `value` to the channel after `delay_ms` on the loop. */
+EAV_EXPORT int32_t eav_async_channel_produce(void *chan, int64_t delay_ms,
+                                             int64_t value) {
+    eav_channel *c = (eav_channel *)chan;
+    if (!c) return -1;
+    eav_chan_producer *p = (eav_chan_producer *)malloc(sizeof(eav_chan_producer));
+    if (!p) return -1;
+    p->chan = c;
+    p->value = value;
+    p->timer = NULL;
+    unsigned long long ms = delay_ms < 0 ? 0ULL : (unsigned long long)delay_ms;
+    ss_async_timer_start(eav_async_get_loop(), ms, eav_chan_produce_cb, p,
+                         &p->timer);
+    return 0;
+}
+
+/* Receive the next value, driving the loop until one is available (FIFO). */
+EAV_EXPORT int64_t eav_async_channel_receive(void *chan) {
+    eav_channel *c = (eav_channel *)chan;
+    if (!c) return 0;
+    while (c->count == 0) {
+        ss_async_loop_run_once(eav_async_get_loop());
+    }
+    int64_t v = c->buf[c->head];
+    c->head = (c->head + 1) % EAV_CHAN_CAP;
+    c->count--;
+    return v;
+}
+
+EAV_EXPORT int32_t eav_async_channel_close(void *chan) {
+    free(chan);
+    return 0;
+}
