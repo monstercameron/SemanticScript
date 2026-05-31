@@ -1,0 +1,56 @@
+# standard.async — EAV-native binding to the libuv event-loop async runtime.
+#
+# This is the *libuv* concurrency model — a single-threaded event loop, NOT OS
+# threads. There is NO async knowledge in the compiler: each operation is a
+# `body runtimeBinding <symbol>` over the eav_async_* C ABI (runtime/eav_async.c,
+# a thin shim on SemanticScript/runtime/native_async built with
+# SEM_ASYNC_WITH_LIBUV against third_party/libuv). The compiler lowers each op to
+# an extern call to that symbol; this module owns the typed contract
+# (README ss11/ss26/ss34), exactly as standard.sqlite does for the SQLite engine.
+#
+# An AsyncFuture is OpaquePointer (a handle scheduled on the process-wide loop);
+# on x86-64 the pointer and an i64 share the ABI register, so the lowering is
+# exact. A future is created and armed by `delay`; nothing runs until the loop is
+# driven by `await` (which blocks the calling fiber, cooperatively, until ready)
+# or `runOnce` (which turns the loop one step without blocking).
+
+standardAsync is module
+standardAsync path standard.async
+standardAsync exports delay
+standardAsync exports await
+standardAsync exports runOnce
+standardAsync purpose "Typed EAV contract over the libuv event-loop async runtime via the eav_async_* ABI"
+standardAsync invariant "Every operation is a runtimeBinding to an eav_async_* symbol; no async logic lives in the compiler"
+
+AsyncFuture is alias
+AsyncFuture for OpaquePointer
+AsyncFuture purpose "An opaque future handle armed on the libuv loop, resolved by await"
+
+AsyncMillis is alias
+AsyncMillis for Int64
+AsyncMillis purpose "A non-negative delay in milliseconds, scheduled as a libuv timer"
+
+delay is operation
+delay in delayMs AsyncMillis
+delay in value Int64
+delay out AsyncFuture
+delay async yes
+delay body runtimeBinding eav_async_delay_start
+delay purpose "Arm a future that completes with `value` after `delayMs` on the event loop"
+delay invariant "Returns immediately; the timer fires only once the loop is driven by await/runOnce"
+delay suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+await is operation
+await in future AsyncFuture
+await out Int64
+await async yes
+await body runtimeBinding eav_async_await
+await purpose "Drive the event loop until the future is ready, then return its resolved value"
+await invariant "Cooperatively runs the loop; the value is the one the timer callback completed the future with"
+await suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+runOnce is operation
+runOnce out Int32
+runOnce body runtimeBinding eav_async_run_once
+runOnce purpose "Run one turn of the event loop without blocking (cooperative progress / poll)"
+runOnce suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"

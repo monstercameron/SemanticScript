@@ -1,0 +1,133 @@
+# async_event_loop — the libuv event-loop async runtime (R-040). This is the
+# libuv concurrency model — a single-threaded event loop, NOT threads. The native
+# async runtime (SemanticScript/runtime/native_async built with
+# SEM_ASYNC_WITH_LIBUV against third_party/libuv) is compiled + loaded by the JIT
+# and bound through `body runtimeBinding eav_async_*`. The typed home for these
+# ops is the std/standard.async.sem stdlib; they are inlined here so the example
+# is self-contained and runnable (parity with how sqlite_query.sem inlines the
+# eav_sqlite_* seam).
+#
+# `delay(ms, value)` arms a libuv timer that completes a future with `value`
+# after `ms`; `await(future)` drives the loop until it is ready and returns the
+# value. So the value is produced asynchronously, scheduled on and driven by the
+# real libuv loop. This exercises:
+#   * async round-trip: await(delay(0, 42)) == 42 via the event loop;
+#   * a timer delay: await(delay(2, 99)) == 99 after a 2ms libuv timer;
+#   * real values, not constants: the two results differ.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+AsyncEventLoop is project
+AsyncEventLoop module examplesAsyncEventLoop
+AsyncEventLoop target console
+AsyncEventLoop entry main
+
+examplesAsyncEventLoop is module
+examplesAsyncEventLoop path examples.asyncEventLoop
+examplesAsyncEventLoop exports main
+examplesAsyncEventLoop purpose "Schedule async futures on the libuv loop and assert their awaited values"
+examplesAsyncEventLoop invariant "Values are delivered asynchronously by the event loop, then awaited"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+AsyncFuture is alias
+AsyncFuture for OpaquePointer
+AsyncFuture purpose "An opaque future handle armed on the libuv loop"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+asyncDelay is operation
+asyncDelay in delayMs Int64
+asyncDelay in value Int64
+asyncDelay out AsyncFuture
+asyncDelay async yes
+asyncDelay body runtimeBinding eav_async_delay_start
+asyncDelay purpose "Arm a future completing with value after delayMs on the libuv loop"
+asyncDelay suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; typed home is std/standard.async.sem"
+
+asyncAwait is operation
+asyncAwait in future AsyncFuture
+asyncAwait out Int64
+asyncAwait async yes
+asyncAwait body runtimeBinding eav_async_await
+asyncAwait purpose "Drive the libuv loop until the future is ready and return its value"
+asyncAwait suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; typed home is std/standard.async.sem"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Await two async futures off the event loop and assert their values"
+main invariant "All three assertions hold"
+main let immediate immutable Int64 0
+main let shortDelay immutable Int64 2
+main let valueA immutable Int64 42
+main let valueB immutable Int64 99
+main let tnA immutable String "await(delay(0, 42)) resolves to 42 via the event loop"
+main let tnB immutable String "await(delay(2, 99)) resolves to 99 after a 2ms libuv timer"
+main let tnReal immutable String "the two awaited values differ (real async results, not a constant)"
+main do startA
+main do awaitA
+main do startB
+main do awaitB
+main do checkA
+main do checkB
+main do checkReal
+main do harnessReport
+main return harnessSummaryCode
+
+startA is call
+startA in main
+startA invokes asyncDelay
+startA arg delayMs Int64 immediate
+startA arg value Int64 valueA
+startA out futureA AsyncFuture
+
+awaitA is call
+awaitA in main
+awaitA invokes asyncAwait
+awaitA arg future AsyncFuture futureA
+awaitA out resultA Int64
+
+startB is call
+startB in main
+startB invokes asyncDelay
+startB arg delayMs Int64 shortDelay
+startB arg value Int64 valueB
+startB out futureB AsyncFuture
+
+awaitB is call
+awaitB in main
+awaitB invokes asyncAwait
+awaitB arg future AsyncFuture futureB
+awaitB out resultB Int64
+
+checkA is call
+checkA in main
+checkA invokes test.assertEqualInt64
+checkA arg name String tnA
+checkA arg expected Int64 valueA
+checkA arg actual Int64 resultA
+
+checkB is call
+checkB in main
+checkB invokes test.assertEqualInt64
+checkB arg name String tnB
+checkB arg expected Int64 valueB
+checkB arg actual Int64 resultB
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 resultA
+checkReal arg actual Int64 resultB
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

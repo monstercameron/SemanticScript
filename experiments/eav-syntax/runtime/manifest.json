@@ -1,10 +1,12 @@
 {
   "schema": 2,
-  "comment": "Native runtime libraries linked into JIT/native builds. eavc reads this data — it carries no per-library knowledge in the compiler. A library is built (cached) and loaded only when a program references a runtimeBinding symbol matching one of its `provides` prefixes. R-018: link inputs are platform-scoped. Top-level `sources`/`include`/`defines`/`libs` are the cross-platform base; `platforms.<name>` (windows|linux|macos|wasi) adds host-specific entries, and `compiler.<driver>` (gnu|clang|msvc|zig) adds driver-specific overlays. The resolver `_resolve_runtime_links(library, platform)` merges base + platform + compiler WITHOUT compiling, so non-Windows builds never see Windows-only libs like ws2_32 (R-013).",
+  "comment": "Native runtime libraries linked into JIT/native builds. eavc reads this data \u2014 it carries no per-library knowledge in the compiler. A library is built (cached) and loaded only when a program references a runtimeBinding symbol matching one of its `provides` prefixes. R-018: link inputs are platform-scoped. Top-level `sources`/`include`/`defines`/`libs` are the cross-platform base; `platforms.<name>` (windows|linux|macos|wasi) adds host-specific entries, and `compiler.<driver>` (gnu|clang|msvc|zig) adds driver-specific overlays. The resolver `_resolve_runtime_links(library, platform)` merges base + platform + compiler WITHOUT compiling, so non-Windows builds never see Windows-only libs like ws2_32 (R-013).",
   "libraries": [
     {
       "name": "eav_runtime",
-      "provides": ["eav_sqlite_"],
+      "provides": [
+        "eav_sqlite_"
+      ],
       "sources": [
         "eav_sqlite.c",
         "../../../SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c",
@@ -14,21 +16,34 @@
         "../../../SemanticScript/runtime/native_sqlite",
         "../../../third_party/sqlite"
       ],
-      "defines": ["SQLITE_THREADSAFE=0", "SQLITE_OMIT_LOAD_EXTENSION"],
+      "defines": [
+        "SQLITE_THREADSAFE=0",
+        "SQLITE_OMIT_LOAD_EXTENSION"
+      ],
       "platforms": {
         "linux": {
           "comment": "R-018: SQLite on Unix links pthread/dl/math; expressed here so the resolver can surface Unix-only link inputs that a Windows build must never see.",
-          "libs": ["pthread", "dl", "m"]
+          "libs": [
+            "pthread",
+            "dl",
+            "m"
+          ]
         },
         "macos": {
           "comment": "R-018: macOS SQLite links the math + dynamic-loader libs; pthread is provided by libSystem but kept explicit for parity with the Linux profile.",
-          "libs": ["pthread", "dl", "m"]
+          "libs": [
+            "pthread",
+            "dl",
+            "m"
+          ]
         }
       }
     },
     {
       "name": "eav_http",
-      "provides": ["eav_http_"],
+      "provides": [
+        "eav_http_"
+      ],
       "sources": [
         "eav_http.c",
         "../../../SemanticScript/runtime/native_http/sem_http_runtime.c"
@@ -36,11 +51,102 @@
       "include": [
         "../../../SemanticScript/runtime/native_http"
       ],
-      "defines": ["_CRT_SECURE_NO_WARNINGS"],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
+      ],
       "platforms": {
         "windows": {
           "comment": "R-013: Winsock (ws2_32) is required for sockets on Windows only; POSIX hosts must NOT receive -lws2_32 or the link fails.",
-          "libs": ["ws2_32"]
+          "libs": [
+            "ws2_32"
+          ]
+        }
+      }
+    },
+    {
+      "name": "eav_async",
+      "comment": "R-040 async runtime backed by libuv (third_party/libuv): the SemanticScript event-loop async runtime built with SEM_ASYNC_WITH_LIBUV, wrapped for the runtimeBinding seam. Single-threaded event loop, real libuv backend.",
+      "provides": [
+        "eav_async_"
+      ],
+      "sources": [
+        "eav_async.c",
+        "../../../SemanticScript/runtime/native_async/sem_async_runtime.c",
+        "../../../third_party/libuv/src/fs-poll.c",
+        "../../../third_party/libuv/src/idna.c",
+        "../../../third_party/libuv/src/inet.c",
+        "../../../third_party/libuv/src/random.c",
+        "../../../third_party/libuv/src/strscpy.c",
+        "../../../third_party/libuv/src/strtok.c",
+        "../../../third_party/libuv/src/thread-common.c",
+        "../../../third_party/libuv/src/threadpool.c",
+        "../../../third_party/libuv/src/timer.c",
+        "../../../third_party/libuv/src/uv-common.c",
+        "../../../third_party/libuv/src/uv-data-getter-setters.c",
+        "../../../third_party/libuv/src/version.c",
+        "../../../third_party/libuv/src/win/async.c",
+        "../../../third_party/libuv/src/win/core.c",
+        "../../../third_party/libuv/src/win/detect-wakeup.c",
+        "../../../third_party/libuv/src/win/dl.c",
+        "../../../third_party/libuv/src/win/error.c",
+        "../../../third_party/libuv/src/win/fs.c",
+        "../../../third_party/libuv/src/win/fs-event.c",
+        "../../../third_party/libuv/src/win/getaddrinfo.c",
+        "../../../third_party/libuv/src/win/getnameinfo.c",
+        "../../../third_party/libuv/src/win/handle.c",
+        "../../../third_party/libuv/src/win/loop-watcher.c",
+        "../../../third_party/libuv/src/win/pipe.c",
+        "../../../third_party/libuv/src/win/thread.c",
+        "../../../third_party/libuv/src/win/poll.c",
+        "../../../third_party/libuv/src/win/process.c",
+        "../../../third_party/libuv/src/win/process-stdio.c",
+        "../../../third_party/libuv/src/win/signal.c",
+        "../../../third_party/libuv/src/win/snprintf.c",
+        "../../../third_party/libuv/src/win/stream.c",
+        "../../../third_party/libuv/src/win/tcp.c",
+        "../../../third_party/libuv/src/win/tty.c",
+        "../../../third_party/libuv/src/win/udp.c",
+        "../../../third_party/libuv/src/win/util.c",
+        "../../../third_party/libuv/src/win/winapi.c",
+        "../../../third_party/libuv/src/win/winsock.c"
+      ],
+      "include": [
+        "../../../third_party/libuv/include",
+        "../../../third_party/libuv/src",
+        "../../../SemanticScript/runtime/native_async"
+      ],
+      "defines": [
+        "SEM_ASYNC_WITH_LIBUV",
+        "WIN32_LEAN_AND_MEAN",
+        "_WIN32_WINNT=0x0A00",
+        "_CRT_SECURE_NO_WARNINGS"
+      ],
+      "platforms": {
+        "windows": {
+          "libs": [
+            "psapi",
+            "advapi32",
+            "iphlpapi",
+            "userenv",
+            "ws2_32",
+            "dbghelp",
+            "ole32",
+            "shell32",
+            "user32",
+            "gdi32"
+          ]
+        },
+        "linux": {
+          "libs": [
+            "pthread",
+            "dl",
+            "rt"
+          ]
+        },
+        "macos": {
+          "libs": [
+            "pthread"
+          ]
         }
       }
     }
