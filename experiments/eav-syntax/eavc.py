@@ -1694,6 +1694,7 @@ RESERVED_WORDS = {
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
+    "outParam",                           # WS3-016 FFI out-param ABI marker
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
     "guardRank",                           # X-090 lock-acquisition order
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
@@ -1761,6 +1762,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
         "requires", "ensures",  # X-092 checked contracts
         "maxIterations",  # R-082 loop iteration bound for untrusted-size loops
+        "outParam",  # WS3-016 FFI out-param ABI on a runtimeBinding op
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
@@ -1771,6 +1773,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "unsafe", "wrapsAs", "allocator", "cleanedBy",  # WS1-116 FFI allocator op
         "requires", "ensures",  # X-092 checked contracts
         "maxIterations",  # R-082 loop iteration bound for untrusted-size loops
+        "outParam",  # WS3-016 FFI out-param ABI on a runtimeBinding op
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -8331,9 +8334,16 @@ class EavCodegen:
             existing = self.module.globals.get(symbol)
             if isinstance(existing, ir.Function):
                 return existing
-            return ir.Function(
-                self.module, ir.FunctionType(ret, params), name=symbol
-            )
+            if op.fact("outParam") is not None:
+                # WS3-016 FFI out-param ABI: the C symbol writes the result
+                # through a trailing pointer and returns an i32 status (0 = ok).
+                # `int symbol(in..., T* out)` instead of `T symbol(in...)`. This
+                # is the seam C APIs that return through out-params (sqlite/http/
+                # …) bind through — the value never crosses by-value.
+                sig = ir.FunctionType(ir.IntType(32), params + [ret.as_pointer()])
+            else:
+                sig = ir.FunctionType(ret, params)
+            return ir.Function(self.module, sig, name=symbol)
         fn = ir.Function(self.module, ir.FunctionType(ret, params), name=op.name)
         for param, in_row in zip(fn.args, op.facts("in")):
             param.name = in_row.payload[0]
@@ -9362,7 +9372,21 @@ class EavCodegen:
                     if not discharged:
                         self._emit_contract_check(builder, cond, v, call)
                 vals.append(v)
-            result = builder.call(self.functions[target], vals)
+            if (callee.fact("outParam") is not None
+                    and _op_body_kind(callee) == "runtimeBinding"):
+                # WS3-016 FFI out-param ABI: allocate the result slot, pass its
+                # address as the trailing arg, call (returns an i32 status), then
+                # load the written value. A non-zero status is the fallible error.
+                out_row = callee.fact("out")
+                out_ty = self.ir_type(out_row.payload[0]) if out_row and out_row.payload \
+                    else ir.IntType(64)
+                slot = builder.alloca(out_ty)
+                status = builder.call(self.functions[target], vals + [slot])
+                result = builder.load(slot)
+                err = builder.icmp_signed(
+                    "!=", status, ir.Constant(ir.IntType(32), 0))
+            else:
+                result = builder.call(self.functions[target], vals)
         else:
             result = self._emit_derived_target(target, call, args, builder, sym)
 
@@ -10042,19 +10066,42 @@ def _eav_panic_py(code, kind, op, row, reason, left, right) -> None:
     os._exit(134)
 
 
+_EAV_FFI_ADD_CFUNC = None  # kept alive so the JIT-registered callback survives GC
+
+
+def _eav_ffi_add_py(a, b, out_ptr) -> int:
+    """In-process implementation of the WS3-016 FFI out-param ABI demo symbol
+    `int eav_ffi_add(int64_t a, int64_t b, int64_t *out)`: writes a+b through the
+    out-pointer and returns 0 (ok), or returns a non-zero status (1) for a
+    negative `a` without writing — exercising the status->error seam (the shape
+    sqlite/http C APIs use). Proves the out-param ABI end-to-end in the JIT (the
+    native build links the C `eav_ffi_add`)."""
+    if a < 0:
+        return 1
+    out_ptr[0] = a + b
+    return 0
+
+
 def _register_panic_symbol() -> None:
-    """Register the in-process `eav_panic` callback with the JIT. The symbol is
-    compiler-injected at guard sites (not a program `runtimeBinding`), so it is
-    registered unconditionally before every JIT run."""
+    """Register the in-process `eav_panic` callback (compiler-injected at guard
+    sites) and the `eav_ffi_add` out-param-ABI demo symbol with the JIT, before
+    every JIT run."""
     import ctypes
-    global _EAV_PANIC_CFUNC
+    global _EAV_PANIC_CFUNC, _EAV_FFI_ADD_CFUNC
     if _EAV_PANIC_CFUNC is None:
         cft = ctypes.CFUNCTYPE(
             None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
             ctypes.c_int32, ctypes.c_char_p, ctypes.c_int64, ctypes.c_int64)
         _EAV_PANIC_CFUNC = cft(_eav_panic_py)
-    addr = ctypes.cast(_EAV_PANIC_CFUNC, ctypes.c_void_p).value
-    llvm.add_symbol("eav_panic", addr)
+    llvm.add_symbol(
+        "eav_panic", ctypes.cast(_EAV_PANIC_CFUNC, ctypes.c_void_p).value)
+    if _EAV_FFI_ADD_CFUNC is None:
+        cft2 = ctypes.CFUNCTYPE(
+            ctypes.c_int32, ctypes.c_int64, ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_int64))
+        _EAV_FFI_ADD_CFUNC = cft2(_eav_ffi_add_py)
+    llvm.add_symbol(
+        "eav_ffi_add", ctypes.cast(_EAV_FFI_ADD_CFUNC, ctypes.c_void_p).value)
 
 
 def _register_runtime_symbols(program: Program) -> None:
@@ -10353,9 +10400,12 @@ def build_executable(program: Program, out_path: str,
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
     # WS1-130: the structured-trap helper `eav_panic` is compiler-injected at
     # guard sites (not a program runtimeBinding), so it is always linked in.
-    _panic_src = os.path.normpath(os.path.join(rt, "eav_panic.c"))
-    if os.path.exists(_panic_src):
-        cmd.append(_panic_src)
+    # WS3-016: `eav_ffi_add` is the FFI out-param ABI demo symbol — always linked
+    # so a program binding it builds natively (the JIT registers it in-process).
+    for _always in ("eav_panic.c", "eav_ffi.c"):
+        _src = os.path.normpath(os.path.join(rt, _always))
+        if os.path.exists(_src):
+            cmd.append(_src)
     # R-018/R-013: resolve each runtime library's link inputs for the host
     # platform so Windows-only libs (ws2_32) are appended on Windows and
     # POSIX-only libs (pthread/dl/m) are appended on Unix — never both.

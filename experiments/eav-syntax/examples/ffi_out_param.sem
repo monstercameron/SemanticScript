@@ -1,0 +1,132 @@
+# ffi_out_param — the FFI out-param ABI (WS3-016, the seam sqlite/http C APIs
+# bind through). `ffiAdd` binds the C symbol `int eav_ffi_add(int64_t a,
+# int64_t b, int64_t *out)`: the result is returned through a trailing pointer
+# and the function returns an i32 status (0 = ok). The `outParam` marker tells
+# the compiler to allocate the result slot, pass its address, call, and load the
+# written value back — the value never crosses the FFI boundary by-value, and a
+# non-zero status becomes the call's fallible error. This exercises:
+#   * value-via-out-param: add(40,2) == 42 read back from *out;
+#   * a second input pair: add(100,23) == 123 (not a constant);
+#   * status->error: a negative input returns status 1, caught as FfiError.
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+FfiOutParam is project
+FfiOutParam module examplesFfiOutParam
+FfiOutParam target console
+FfiOutParam entry main
+
+examplesFfiOutParam is module
+examplesFfiOutParam path examples.ffiOutParam
+examplesFfiOutParam exports main
+examplesFfiOutParam purpose "Call a C out-param symbol and assert its value and error seams"
+examplesFfiOutParam invariant "The result arrives via the out-pointer; a bad input is a caught error"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+FfiError is error
+FfiError purpose "A non-zero status returned by the FFI out-param symbol"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+ffiAdd is operation
+ffiAdd in a Int64
+ffiAdd in b Int64
+ffiAdd out Int64
+ffiAdd body runtimeBinding eav_ffi_add
+ffiAdd outParam
+ffiAdd purpose "Add two Int64s through the C out-param ABI (eav_ffi_add)"
+ffiAdd invariant "Writes a+b through the out-pointer; returns non-zero for a negative a"
+ffiAdd suppress SS5000 because "demonstration of the FFI out-param seam; the real home is a .semsig-backed stdlib module"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Add via the out-param ABI twice, then probe the error status"
+main invariant "All four assertions hold"
+main let x1 immutable Int64 40
+main let y1 immutable Int64 2
+main let x2 immutable Int64 100
+main let y2 immutable Int64 23
+main let negA immutable Int64 -1
+main let exp42 immutable Int64 42
+main let exp123 immutable Int64 123
+main let zeroGuard immutable Int64 0
+main let oneMark immutable Int64 1
+main let errFlag mutable Int64 0
+main let tnAdd immutable String "ffi out-param add(40, 2) returns 42 via the out-pointer"
+main let tnAdd2 immutable String "ffi out-param add(100, 23) returns 123 (real, not a constant)"
+main let tnNonZero immutable String "the out-param result is real (not the initial 0)"
+main let tnErr immutable String "a negative input returns a non-zero status, caught as FfiError"
+main do addOne
+main do addTwo
+main do addErr
+main branch ifError addErr goto errCaught
+main goto afterErr
+main at errCaught set errFlag oneMark
+main at afterErr do checkAdd
+main do checkAdd2
+main do checkNonZero
+main do checkErr
+main do harnessReport
+main return harnessSummaryCode
+
+addOne is call
+addOne in main
+addOne invokes ffiAdd
+addOne arg a Int64 x1
+addOne arg b Int64 y1
+addOne out sum1 Int64
+
+addTwo is call
+addTwo in main
+addTwo invokes ffiAdd
+addTwo arg a Int64 x2
+addTwo arg b Int64 y2
+addTwo out sum2 Int64
+
+addErr is call
+addErr in main
+addErr invokes ffiAdd
+addErr arg a Int64 negA
+addErr arg b Int64 y1
+addErr out errSum Int64
+addErr catch ffiErr FfiError
+
+checkAdd is call
+checkAdd in main
+checkAdd invokes test.assertEqualInt64
+checkAdd arg name String tnAdd
+checkAdd arg expected Int64 exp42
+checkAdd arg actual Int64 sum1
+
+checkAdd2 is call
+checkAdd2 in main
+checkAdd2 invokes test.assertEqualInt64
+checkAdd2 arg name String tnAdd2
+checkAdd2 arg expected Int64 exp123
+checkAdd2 arg actual Int64 sum2
+
+checkNonZero is call
+checkNonZero in main
+checkNonZero invokes test.assertNotEqualInt64
+checkNonZero arg name String tnNonZero
+checkNonZero arg expected Int64 zeroGuard
+checkNonZero arg actual Int64 sum1
+
+checkErr is call
+checkErr in main
+checkErr invokes test.assertEqualInt64
+checkErr arg name String tnErr
+checkErr arg expected Int64 oneMark
+checkErr arg actual Int64 errFlag
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
