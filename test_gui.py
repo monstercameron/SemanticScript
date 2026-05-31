@@ -13,12 +13,12 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EAVC = os.path.join(HERE, "eavc.py")
+SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
 DEMO = os.path.join(HERE, "gui_health_demo.sem")
 
 
 def main():
-    proc = subprocess.run([sys.executable, EAVC, "run", DEMO],
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", DEMO],
                           capture_output=True, text=True)
     ok = proc.returncode == 0
     detail = (proc.stdout or proc.stderr or "").strip()[:200]

@@ -7,7 +7,7 @@
 
 bcryptSig is semsig
 bcryptSig version "1.0"
-bcryptSig generatedBy "eavc 0.1"
+bcryptSig generatedBy "semanticscript 0.1"
 bcryptSig describes standard.bcrypt
 
 BcryptCost is alias

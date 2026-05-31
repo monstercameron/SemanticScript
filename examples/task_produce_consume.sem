@@ -1,4 +1,4 @@
-# task_produce_consume — (repurposed from channel_bounded_blocking: eavc has no
+# task_produce_consume — (repurposed from channel_bounded_blocking: semanticscript has no
 # channel primitive). A producer task computes a value; main joins and consumes
 # it. Joining is the real synchronization/handoff point (README §13/§15.5).
 #

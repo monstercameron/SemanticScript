@@ -14,7 +14,7 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EAVC = os.path.join(HERE, "eavc.py")
+SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
 SERVER = os.path.join(HERE, "http_server_demo.sem")
 HOST, PORT = "127.0.0.1", 18080
 EXPECT = "EAV HTTP OK 42"
@@ -32,7 +32,7 @@ def _wait_for_port(deadline):
 
 def main():
     # First run compiles the native HTTP runtime (slow); allow plenty of time.
-    proc = subprocess.Popen([sys.executable, EAVC, "run", SERVER])
+    proc = subprocess.Popen([sys.executable, SEMANTICSCRIPT, "run", SERVER])
     try:
         if not _wait_for_port(time.time() + 240):
             print("FAIL: server did not bind 127.0.0.1:%d" % PORT)

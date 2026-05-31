@@ -4,7 +4,7 @@
 
 sqliteSig is semsig
 sqliteSig version "1.0"
-sqliteSig generatedBy "eavc 0.1"
+sqliteSig generatedBy "semanticscript 0.1"
 sqliteSig describes standard.sqlite
 
 openDatabase is intrinsic

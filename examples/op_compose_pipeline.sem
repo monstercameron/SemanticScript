@@ -1,4 +1,4 @@
-# op_compose_pipeline — (repurposed from channel_send_receive: eavc has no
+# op_compose_pipeline — (repurposed from channel_send_receive: semanticscript has no
 # channel primitive). Compose two user operations as a pipeline: g(f(x)). Each
 # stage is a real call; the final value flows through both, not a constant.
 #

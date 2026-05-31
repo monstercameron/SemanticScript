@@ -1,4 +1,4 @@
-# string_concat_basic — (repurposed from string_concat_slice: eavc has no string
+# string_concat_basic — (repurposed from string_concat_slice: semanticscript has no string
 # slice builtin). Concatenate two strings with string.concat (README §30.2.2).
 #
 # Correctness observation: concat("abc", "def").

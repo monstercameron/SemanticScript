@@ -1,4 +1,4 @@
-# float_floor -- (repurposed from hash_compute_verify: eavc has no matching runtime). Real Float64
+# float_floor -- (repurposed from hash_compute_verify: semanticscript has no matching runtime). Real Float64
 # intrinsic math.floorFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: floor(3.7) = 3.

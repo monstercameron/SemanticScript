@@ -1,6 +1,6 @@
 # EAV-Steps — EBNF grammar (v0.3)
 
-Normative reference for the `eavc` front end. The four row classes (§1) and the
+Normative reference for the `semanticscript` front end. The four row classes (§1) and the
 lexical rules (§2) below are what `tokenize_line` and `parse` implement; the
 `invalid_corpus/` fixtures (one per hard-error rule) are the negative tests
 (`test_invalid_corpus_all_reject`).

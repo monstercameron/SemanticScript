@@ -1,5 +1,5 @@
 # bit_popcount — population count (set-bit count) via math.popcountInt64
-# (README §10.6). eavc has no shift/and/or builtins; popcount/clz/ctz ARE the
+# (README §10.6). semanticscript has no shift/and/or builtins; popcount/clz/ctz ARE the
 # real bit intrinsics, so this replaces the former bit_shift stub. The result is
 # computed by a real intrinsic call, not a constant.
 #

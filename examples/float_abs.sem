@@ -1,4 +1,4 @@
-# float_abs -- (repurposed from http_redirect_follow: eavc has no matching runtime). Real Float64
+# float_abs -- (repurposed from http_redirect_follow: semanticscript has no matching runtime). Real Float64
 # intrinsic math.absFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: abs(-5.0) = 5.

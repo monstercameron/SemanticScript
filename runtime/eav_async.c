@@ -1,6 +1,6 @@
 /* eav_async.c — async runtime shim exposing the SemanticScript libuv-backed
  * event-loop async runtime (SemanticScript/runtime/native_async/, built with
- * SEM_ASYNC_WITH_LIBUV against third_party/libuv) to the EAV front end (eavc),
+ * SEM_ASYNC_WITH_LIBUV against third_party/libuv) to the EAV front end (semanticscript),
  * the home of the `standard.async` stdlib.
  *
  * libuv event-loop concurrency — NOT threads. A future is created on the single

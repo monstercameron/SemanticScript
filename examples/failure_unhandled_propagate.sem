@@ -3,7 +3,7 @@
 # (README §17 #35). The linter must flag this — a hidden failure is exactly what
 # the language forbids. This is a load-bearing test of the unhandled-error check.
 #
-# Correctness observation (verified): `eavc check` reports
+# Correctness observation (verified): `semanticscript check` reports
 #   WARNING SS3501: fallible call 'writeLine' has a catch but no `branch ifError`
 # (advisory tier, so it still runs by default; `run --strict` promotes it to a
 # blocking error). Proves the hidden-failure checker fires.

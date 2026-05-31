@@ -1,4 +1,4 @@
-# min_of_three — (repurposed from database_index_create: eavc has no index
+# min_of_three — (repurposed from database_index_create: semanticscript has no index
 # runtime). Pick the minimum of three integers with nested math.minInt64 calls
 # (README §10.6). The result is computed, not a constant.
 #

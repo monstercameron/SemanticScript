@@ -4,7 +4,7 @@
 
 mapSig is semsig
 mapSig version "1.0"
-mapSig generatedBy "eavc 0.1"
+mapSig generatedBy "semanticscript 0.1"
 mapSig describes standard.map
 
 MapHandle is alias

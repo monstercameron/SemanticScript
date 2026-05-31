@@ -11,7 +11,7 @@
 
 decimalSig is semsig
 decimalSig version "1.0"
-decimalSig generatedBy "eavc 0.1"
+decimalSig generatedBy "semanticscript 0.1"
 decimalSig describes standard.decimal
 
 Decimal is alias

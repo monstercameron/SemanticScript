@@ -1,7 +1,7 @@
 # standard.string.semsig — string namespace (README ss26, ss30.2.2).
 stringSig is semsig
 stringSig version "1.0"
-stringSig generatedBy "eavc 0.1"
+stringSig generatedBy "semanticscript 0.1"
 stringSig describes standard.string
 stringConcat is intrinsic
 stringConcat target string.concat

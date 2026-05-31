@@ -34,7 +34,7 @@ clean (0 errors / 0 warnings) and JIT-runs:
 - The todo-domain row classes are initialized by **aliasing** the shared row
   classes (cross-module storage initializer, README §12).
 
-### eavc features this port exercised (each with a no-op-failing test)
+### semanticscript features this port exercised (each with a no-op-failing test)
 
 - `html.render` nests `HtmlFragment`/`HtmlTrustedFragment` holes raw (escaping
   only plain-text holes) — `test_html_render_fragment_hole_inserted_raw`.

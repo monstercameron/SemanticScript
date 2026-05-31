@@ -1,4 +1,4 @@
-# float_log2 -- (repurposed from http_headers_cookies: eavc has no matching runtime). Real Float64
+# float_log2 -- (repurposed from http_headers_cookies: semanticscript has no matching runtime). Real Float64
 # intrinsic math.log2Float64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: log2(8.0) = 3.

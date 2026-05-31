@@ -8,7 +8,7 @@
 
 eventSig is semsig
 eventSig version "1.0"
-eventSig generatedBy "eavc 0.1"
+eventSig generatedBy "semanticscript 0.1"
 eventSig describes standard.event
 
 EventStreamHandle is alias

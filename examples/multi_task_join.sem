@@ -1,6 +1,6 @@
 # multi_task_join — synchronize on MULTIPLE async tasks: start two tasks, join
-# each, then combine their results (README §13/§15.5). This is the eavc-real
-# stand-in for a "barrier" (eavc has no barrier primitive): joining is the
+# each, then combine their results (README §13/§15.5). This is the semanticscript-real
+# stand-in for a "barrier" (semanticscript has no barrier primitive): joining is the
 # synchronization point. On the single-thread backend both tasks resolve at
 # start; the printed total is computed from both task outputs, not a constant.
 #

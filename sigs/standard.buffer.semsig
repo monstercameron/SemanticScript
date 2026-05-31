@@ -8,7 +8,7 @@
 
 bufferSig is semsig
 bufferSig version "1.0"
-bufferSig generatedBy "eavc 0.1"
+bufferSig generatedBy "semanticscript 0.1"
 bufferSig describes standard.buffer
 
 Buffer is alias

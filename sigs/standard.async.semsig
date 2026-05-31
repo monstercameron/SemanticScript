@@ -5,7 +5,7 @@
 # single-threaded event loop, not threads. The lowered module is std/standard.async.sem.
 asyncSig is semsig
 asyncSig version "1.0"
-asyncSig generatedBy "eavc 0.1"
+asyncSig generatedBy "semanticscript 0.1"
 asyncSig describes standard.async
 
 AsyncFuture is alias

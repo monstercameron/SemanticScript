@@ -2,7 +2,7 @@
 
 consoleSig is semsig
 consoleSig version "1.0"
-consoleSig generatedBy "eavc 0.1"
+consoleSig generatedBy "semanticscript 0.1"
 consoleSig describes standard.console
 
 writeLine is intrinsic

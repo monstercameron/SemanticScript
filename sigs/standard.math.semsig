@@ -2,7 +2,7 @@
 
 mathSig is semsig
 mathSig version "1.0"
-mathSig generatedBy "eavc 0.1"
+mathSig generatedBy "semanticscript 0.1"
 mathSig describes standard.math
 
 addInt64 is intrinsic

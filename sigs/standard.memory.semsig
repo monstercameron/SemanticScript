@@ -8,7 +8,7 @@
 
 memorySig is semsig
 memorySig version "1.0"
-memorySig generatedBy "eavc 0.1"
+memorySig generatedBy "semanticscript 0.1"
 memorySig describes standard.memory
 
 Region is alias

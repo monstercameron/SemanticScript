@@ -1,4 +1,4 @@
-# checksum_xor_fold — (repurposed from crypto_hmac_verify: eavc has no crypto
+# checksum_xor_fold — (repurposed from crypto_hmac_verify: semanticscript has no crypto
 # runtime). A real integrity-checksum analog: fold values 1..5 with XOR using the
 # newly wired math.bitXorInt64. The fold result is computed in a loop, not a
 # constant, so it fails under a no-op lowering.

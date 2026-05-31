@@ -7,7 +7,7 @@
 
 httpSig is semsig
 httpSig version "1.0"
-httpSig generatedBy "eavc 0.1"
+httpSig generatedBy "semanticscript 0.1"
 httpSig describes standard.http
 
 HttpSafeUrl is alias

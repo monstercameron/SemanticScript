@@ -1,4 +1,4 @@
-# float_min -- (repurposed from hash_collision_resistant: eavc has no matching runtime). Real Float64
+# float_min -- (repurposed from hash_collision_resistant: semanticscript has no matching runtime). Real Float64
 # intrinsic math.minFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: min(3.0,8.0) = 3.

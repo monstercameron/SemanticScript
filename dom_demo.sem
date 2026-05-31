@@ -2,7 +2,7 @@
 # (std/document) compiles to wasm whose ss_dom_* operations are host functions
 # the JS/browser side supplies. This demo binds three such host operations
 # (dom_create_node / dom_set_value / dom_get_value) as runtimeBindings: under
-# `eavc wasm` they become wasm IMPORTS (the linker's --allow-undefined), and the
+# `semanticscript wasm` they become wasm IMPORTS (the linker's --allow-undefined), and the
 # node host provides them backed by a JS-side node map — exactly the wasm<->JS
 # seam the real browser DOM adapter (ss_dom_runtime.js) uses, with a map standing
 # in for `document`. main creates a node, sets its value to 42 through JS, reads

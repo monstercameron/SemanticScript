@@ -1,4 +1,4 @@
-# float_ceil -- (repurposed from http_status_codes: eavc has no matching runtime). Real Float64
+# float_ceil -- (repurposed from http_status_codes: semanticscript has no matching runtime). Real Float64
 # intrinsic math.ceilFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: ceil(3.2) = 4.

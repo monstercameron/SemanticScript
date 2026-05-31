@@ -1,4 +1,4 @@
-# xor_cipher_roundtrip — (repurposed from cipher_encrypt_decrypt: eavc has no
+# xor_cipher_roundtrip — (repurposed from cipher_encrypt_decrypt: semanticscript has no
 # crypto runtime). A real XOR stream cipher round-trip using the newly wired
 # math.bitXorInt64: cipher = plain XOR key, recovered = cipher XOR key == plain.
 # Exercises the bitwise XOR op end to end.

@@ -1,4 +1,4 @@
-# float_round -- (repurposed from locale_number_format: eavc has no matching runtime). Real Float64
+# float_round -- (repurposed from locale_number_format: semanticscript has no matching runtime). Real Float64
 # intrinsic math.roundFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: round(3.7) = 4.

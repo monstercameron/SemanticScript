@@ -1,5 +1,5 @@
 /*
- * eav_http.c — return-value shim over the SemanticScript HTTP runtime for eavc.
+ * eav_http.c — return-value shim over the SemanticScript HTTP runtime for semanticscript.
  *
  * SemanticScript/runtime/native_http/sem_http_runtime.c is a self-contained HTTP
  * runtime (its h2o binding is optional and OFF here) providing both a socket

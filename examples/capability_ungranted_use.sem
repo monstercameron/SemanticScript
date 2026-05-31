@@ -3,10 +3,10 @@
 # (an uncovered effect, README §8/§12/§17 #5).
 #
 # Correctness observation (verified):
-#   * default `eavc check` -> WARNING SS0900 (effect not covered by a capability);
-#     T3 advisory, so it still runs (`eavc run` prints the line).
-#   * `eavc run --strict`  -> REJECTED, non-zero exit (the gate promotes the T3).
-#   * `eavc check --strict --json` -> "ok": false, "status": "lint-diagnostics".
+#   * default `semanticscript check` -> WARNING SS0900 (effect not covered by a capability);
+#     T3 advisory, so it still runs (`semanticscript run` prints the line).
+#   * `semanticscript run --strict`  -> REJECTED, non-zero exit (the gate promotes the T3).
+#   * `semanticscript check --strict --json` -> "ok": false, "status": "lint-diagnostics".
 # This proves the authority model flags the gap and --strict enforces it.
 
 CapabilityUngrantedUse is project

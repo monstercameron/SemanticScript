@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""eavc — EAV-Steps compiler front end and LLVM backend (lexer, parser, codegen, CLI).
+"""semanticscript — EAV-Steps compiler front end and LLVM backend (lexer, parser, codegen, CLI).
 
 This is the keystone vertical slice for the EAV-Steps v0.3 spec (README.md). It
 implements WS1-100 (the lowering ADR) and WS1-101 (parse -> lower -> run Hello
 World) from todos.md.
 
-ADR (WS1-100): eavc is **its own backend**. A parsed EAV Program is lowered
+ADR (WS1-100): semanticscript is **its own backend**. A parsed EAV Program is lowered
 *directly to LLVM IR* with ``llvmlite`` and JIT-executed in process. There is no
 transpilation to any other surface syntax and no dependency on the reference
-compiler — eavc owns lexing, parsing, semantic validation, and code generation.
+compiler — semanticscript owns lexing, parsing, semantic validation, and code generation.
 The no-op-lowering-fails guarantee is concrete: a stubbed code generator emits a
 module that fails ``verify()`` or prints nothing.
 
@@ -4767,7 +4767,7 @@ def _validate_cleanup(program: Program) -> None:
 
 
 def _target_is_nonvoid(target: str, program: Program):
-    """Whether a call target yields a value eavc can statically judge: True for
+    """Whether a call target yields a value semanticscript can statically judge: True for
     math.* (arith/compare), False for console.* (void), the callee's `out`
     presence for a bare user op, and None (unknown) for other external targets."""
     if (target.startswith("math.") or target.startswith("compare.")
@@ -7922,7 +7922,7 @@ def _validate_enum(ent: Entity) -> None:
 # 3. Lowering to LLVM IR  (README ss18 — EAV -> LLVM IR via llvmlite)
 # --------------------------------------------------------------------------
 #
-# eavc is its own backend. A parsed EAV Program is lowered *directly* to an
+# semanticscript is its own backend. A parsed EAV Program is lowered *directly* to an
 # llvmlite ir.Module and JIT-executed (or emitted as textual IR). There is no
 # transpilation to any other surface syntax. The console program model runs end
 # to end here; webServer/wasm/sqlite/http targets are rejected with a clear
@@ -9920,7 +9920,7 @@ def _ensure_native_init() -> None:
 def _bundle_dir() -> str:
     """Directory holding bundled data (std/, sigs/, runtime/). When frozen by
     PyInstaller (X-025), data lives under sys._MEIPASS; otherwise alongside
-    eavc.py."""
+    semanticscript.py."""
     import os
     base = getattr(sys, "_MEIPASS", None)
     return base or os.path.dirname(os.path.abspath(__file__))
@@ -9936,22 +9936,22 @@ def _runtime_cache_dir() -> str:
     runtime bundle (`_runtime_dir`) can be read-only — a packaged install or a
     PyInstaller `_MEIPASS` extraction — and is shared, so compiled runtime
     libraries and scratch IR must NOT be written beside the bundled sources.
-    They live here instead. Override with `EAVC_CACHE_DIR`."""
+    They live here instead. Override with `SEMANTICSCRIPT_CACHE_DIR`."""
     import os
     import tempfile
-    base = os.environ.get("EAVC_CACHE_DIR") or os.path.join(
-        tempfile.gettempdir(), "eavc-cache")
+    base = os.environ.get("SEMANTICSCRIPT_CACHE_DIR") or os.path.join(
+        tempfile.gettempdir(), "semanticscript-cache")
     os.makedirs(base, exist_ok=True)
     return base
 
 
 def _find_c_compiler():
     """Locate a C compiler for building native runtime libraries, mirroring the
-    reference toolchain: EAVC_CC, then clang on PATH / the common Windows LLVM
+    reference toolchain: SEMANTICSCRIPT_CC, then clang on PATH / the common Windows LLVM
     install, then `zig cc`. Returns a command prefix list or None."""
     import os
     from shutil import which
-    env = os.environ.get("EAVC_CC")
+    env = os.environ.get("SEMANTICSCRIPT_CC")
     if env:
         return [env] if os.path.exists(env) else env.split()
     clang = which("clang") or (
@@ -10367,7 +10367,7 @@ def _register_runtime_symbols(program: Program) -> None:
             raise EavError(
                 f"program uses runtime symbols {sorted(needed)} provided by "
                 f"{lib['name']!r}, but no C compiler was found to build it "
-                f"(set EAVC_CC, or install clang/zig)"
+                f"(set SEMANTICSCRIPT_CC, or install clang/zig)"
             )
         cdll = ctypes.CDLL(path)
         for sym in needed:
@@ -10405,7 +10405,7 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     preflight (lint errors) runs first and blocks the runtime lane.
 
     R-007: an optional `lane` restricts execution to one discovered lane (the
-    `--lane` flag), so `eavc test <root> --lane unit` runs only the unit lane."""
+    `--lane` flag), so `semanticscript test <root> --lane unit` runs only the unit lane."""
     diags = lint(program)
     preflight_ok = not any(d.severity == "error" for d in diags)
     lanes = discover_tests(program)
@@ -10454,7 +10454,7 @@ def _record_run(source: str):
 def _record_run_full(source: str):
     """Like `_record_run`, but also returns stderr. `eval` needs the compiler/
     runtime diagnostics, not only stdout (R-008): a parse/compile failure surfaces
-    on stderr (`eavc: …`) and must reach the caller, not be dropped."""
+    on stderr (`semanticscript: …`) and must reach the caller, not be dropped."""
     import os
     import subprocess
     # EAV source/output is UTF-8 (README §33.2); the child reconfigures its
@@ -10589,7 +10589,7 @@ def cmd_run(args) -> int:
     def _trap_report(detail: str) -> None:
         sys.stdout.flush()
         sys.stderr.write(
-            "eavc: SSR0001: program trapped at runtime (guard trap / illegal "
+            "semanticscript: SSR0001: program trapped at runtime (guard trap / illegal "
             "instruction — e.g. divide-by-zero, out-of-bounds, overflow, or deep "
             f"recursion); {detail}\n")
 
@@ -10630,7 +10630,7 @@ def build_executable(program: Program, out_path: str,
     cc = _find_c_compiler()
     if cc is None:
         raise EavError("no C compiler found to build an executable "
-                       "(set EAVC_CC, or install clang/zig)")
+                       "(set SEMANTICSCRIPT_CC, or install clang/zig)")
     rt = _runtime_dir()
     out_dir = os.path.dirname(os.path.abspath(out_path))
     os.makedirs(out_dir, exist_ok=True)
@@ -10675,7 +10675,7 @@ def build_executable(program: Program, out_path: str,
 
 
 _WASM_RUNNER = """\
-// Generated by `eavc wasm`. Run with: node <this file>
+// Generated by `semanticscript wasm`. Run with: node <this file>
 const fs = require('fs');
 const path = require('path');
 const bytes = fs.readFileSync(path.join(__dirname, %(wasm)r));
@@ -10705,7 +10705,7 @@ def build_wasm(program: Program, out_path: str):
     entry = _entry_name(program)
     cc = _find_c_compiler()
     if cc is None:
-        raise EavError("no clang found to build wasm (set EAVC_CC, or install LLVM)")
+        raise EavError("no clang found to build wasm (set SEMANTICSCRIPT_CC, or install LLVM)")
     out_dir = os.path.dirname(os.path.abspath(out_path)) or "."
     os.makedirs(out_dir, exist_ok=True)
     ll_fd, ll_path = tempfile.mkstemp(suffix=".ll", dir=out_dir)
@@ -10743,7 +10743,7 @@ def cmd_wasm(args) -> int:
     return 0
 
 
-# Versioned JSON surfaces eavc exposes (the sem.*.v1 contract, WS4-111).
+# Versioned JSON surfaces semanticscript exposes (the sem.*.v1 contract, WS4-111).
 SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
@@ -10767,20 +10767,20 @@ EAV_AGENT_RULES = (
     "column-2 predicate. No expressions/infix/parens/commas/braces. Calls are "
     "multi-row (is call / in OP / invokes TARGET / arg / out|catch|discards). "
     "Effects need a covering capability. Use the stable loop: check -> "
-    "fix --plan -> patch -> fmt --check -> test. Build/run with `eavc build` / "
-    "`eavc run`."
+    "fix --plan -> patch -> fmt --check -> test. Build/run with `semanticscript build` / "
+    "`semanticscript run`."
 )
 
 EAV_SKILLS = {
     "eav-start": "Load version-matched rules, then inspect with check/graph/slice.",
     "eav-syntax": "Subject-first rows; runtimeBinding for native ABIs; §26 .semsig.",
-    "eav-run": "JIT with `eavc run`; native exe with `eavc build`.",
+    "eav-run": "JIT with `semanticscript run`; native exe with `semanticscript build`.",
 }
 
 
 def _next_command(argv: list, description: str, replayable: bool = True) -> dict:
     """A machine-facing next-step descriptor (README §24/§32.3 #20)."""
-    return {"argv": argv, "command": "eavc " + " ".join(argv),
+    return {"argv": argv, "command": "semanticscript " + " ".join(argv),
             "replayable": replayable, "description": description}
 
 
@@ -10837,7 +10837,7 @@ def mcp_handle(request: dict) -> dict:
     if method == "initialize":
         return {**base, "result": {
             "protocolVersion": "2024-11-05",
-            "serverInfo": {"name": "eavc", "version": CONTRACT_VERSION},
+            "serverInfo": {"name": "semanticscript", "version": CONTRACT_VERSION},
             "capabilities": {"tools": {}}}}
     if method == "tools/list":
         return {**base, "result": {"tools": [
@@ -10903,7 +10903,7 @@ EAV_TASK_TEMPLATES = {
 
 
 def _new_project_files(name: str) -> dict:
-    """The canonical `eavc new` skeleton (§28.2) as a {relpath: content} map."""
+    """The canonical `semanticscript new` skeleton (§28.2) as a {relpath: content} map."""
     pas = "".join(p[:1].upper() + p[1:] for p in __import__("re").split(r"[^A-Za-z0-9]+", name) if p) or "App"
     mod = pas[:1].lower() + pas[1:]
     main = (
@@ -10933,7 +10933,7 @@ def _new_project_files(name: str) -> dict:
     )
     build = (
         f"{pas} is project\n{pas} module {mod}\n{pas} target console\n{pas} entry main\n"
-        f'{pas} languageVersion "1.0"\n{pas} toolchain "eavc"\n'
+        f'{pas} languageVersion "1.0"\n{pas} toolchain "semanticscript"\n'
     )
     return {
         "build.sem": build,
@@ -11022,13 +11022,13 @@ def cmd_mcp(args) -> int:
 
 
 def cmd_version(args) -> int:
-    """Emit the eavc contract version surface (sem.version.v1)."""
+    """Emit the semanticscript contract version surface (sem.version.v1)."""
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope(
-            "sem.version.v1", contractVersion=CONTRACT_VERSION, compiler="eavc",
+            "sem.version.v1", contractVersion=CONTRACT_VERSION, compiler="semanticscript",
             surfaces=list(SEM_SURFACES)) + "\n")
     else:
-        sys.stdout.write(f"eavc {CONTRACT_VERSION}\n")
+        sys.stdout.write(f"semanticscript {CONTRACT_VERSION}\n")
     return 0
 
 
@@ -11153,7 +11153,7 @@ def cmd_eval(args) -> int:
         status = "ok"
     elif panic is not None:
         status = "crashed"
-    elif err.startswith("eavc:") or "\neavc:" in err:
+    elif err.startswith("semanticscript:") or "\nsemanticscript:" in err:
         # parse/compile failure surfaces through main's EavError handler
         status = "compile-failed"
     else:
@@ -11450,7 +11450,7 @@ def cmd_build(args) -> int:
         sys.stdout.write(build_executable(program, out_path, platform) + "\n")
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11462,7 +11462,7 @@ def cmd_trace(args) -> int:
             sys.stdout.write(line + "\n")
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11505,7 +11505,7 @@ def cmd_describe(args) -> int:
         sys.stdout.write(describe(program, args.entity) + "\n")
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11521,9 +11521,9 @@ def cmd_graph(args) -> int:
         if want_json:
             sys.stdout.write(_json_envelope(
                 "sem.graph.v1", status="compiler-error", ok=False,
-                diagnostics=[f"eavc: {exc}"]) + "\n")
+                diagnostics=[f"semanticscript: {exc}"]) + "\n")
             return 1
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
     if want_json:
         sys.stdout.write(_json_envelope(
@@ -11540,7 +11540,7 @@ def cmd_scaffold(args) -> int:
         sys.stdout.write(scaffold(args.pattern))
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11559,7 +11559,7 @@ def cmd_fmt(args) -> int:
         # README §24: drift check — exit nonzero if the source is not already
         # canonically formatted (keeps diffs/patch landings stable).
         if formatted.strip() != src.strip():
-            sys.stderr.write("eavc: fmt drift — run `eavc fmt` to canonicalize\n")
+            sys.stderr.write("semanticscript: fmt drift — run `semanticscript fmt` to canonicalize\n")
             return 1
         return 0
     sys.stdout.write(formatted)
@@ -11591,7 +11591,7 @@ def cmd_patch(args) -> int:
     named on the command line and honor `--dry-run`/`--apply`, instead of
     emitting a canned suggestions-only payload regardless of input. A missing or
     corrupt plan is now a distinct, reportable error — indistinguishable before
-    from a valid plan. eavc `fix` plans are suggestions-only today
+    from a valid plan. semanticscript `fix` plans are suggestions-only today
     (`planUsable:false`), so there is nothing machine-applicable to apply; that
     is reported faithfully only after a valid plan is actually read."""
     import json
@@ -11633,7 +11633,7 @@ def cmd_patch(args) -> int:
             suggestions=len(plan.get("diagnostics", []) or []),
             note="plan is suggestions-only; apply the suggested repairs manually") + "\n")
         return 0
-    # planUsable plans would be applied/dry-run here once eavc emits
+    # planUsable plans would be applied/dry-run here once semanticscript emits
     # machine-applicable edits; until then an actionable plan is unexpected input.
     sys.stdout.write(_json_envelope(
         "sem.patch.v1", ok=False, status="unsupported-plan", applied=0,
@@ -11651,9 +11651,9 @@ def cmd_query(args) -> int:
         if want_json:
             sys.stdout.write(_json_envelope(
                 "sem.query.v1", status="compiler-error", ok=False,
-                diagnostics=[f"eavc: {exc}"]) + "\n")
+                diagnostics=[f"semanticscript: {exc}"]) + "\n")
             return 1
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
     if args.dimension not in QUERY_DIMENSIONS:
         if want_json:
@@ -11663,7 +11663,7 @@ def cmd_query(args) -> int:
                 dimensions=sorted(QUERY_DIMENSIONS)) + "\n")
             return 2
         sys.stderr.write(
-            f"eavc: unknown query dimension {args.dimension!r}; choose from "
+            f"semanticscript: unknown query dimension {args.dimension!r}; choose from "
             f"{', '.join(QUERY_DIMENSIONS)}\n"
         )
         return 2
@@ -11684,7 +11684,7 @@ def cmd_rename(args) -> int:
         sys.stdout.write(rename_entity(_read_source(args.path), args.old, args.new))
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11694,7 +11694,7 @@ def cmd_add(args) -> int:
         sys.stdout.write(add_operation(_read_source(args.path), args.name, args.out))
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11705,7 +11705,7 @@ def cmd_pack(args) -> int:
         sys.stdout.write(pack(program, args.entity, args.budget) + "\n")
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11715,7 +11715,7 @@ def cmd_slice(args) -> int:
     try:
         text = slice_entity(program, args.entity)
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
     if getattr(args, "json", False):
         ent = program.entities.get(args.entity)
@@ -11810,7 +11810,7 @@ def cmd_lint(args) -> int:
             sys.stdout.write(format_repair(args.explain) + "\n")
             return 0
         except EavError as exc:
-            sys.stderr.write(f"eavc: {exc}\n")
+            sys.stderr.write(f"semanticscript: {exc}\n")
             return 2
     want_json = getattr(args, "json", False)
     try:
@@ -11824,9 +11824,9 @@ def cmd_lint(args) -> int:
                 "sem.lint.v1", status="compiler-error", ok=False,
                 diagnostics=[{"code": exc.code, "severity": "error",
                               "line": exc.line, "entity": None,
-                              "message": exc.message, "rendered": f"eavc: {exc}"}]) + "\n")
+                              "message": exc.message, "rendered": f"semanticscript: {exc}"}]) + "\n")
             return 1
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
     diags = lint(program)
     errors = [d for d in diags if d.severity == "error"]
@@ -11854,7 +11854,7 @@ def cmd_explain(args) -> int:
         sys.stdout.write(format_repair(args.code) + "\n")
         return 0
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
@@ -11867,7 +11867,7 @@ def _read_source(path: str) -> str:
     except OSError as exc:
         # R-001: turn a directory/unreadable-path OSError (e.g. PermissionError or
         # IsADirectoryError on a project dir) into an EavError so `main` reports a
-        # stable `eavc: …` message and exit 2 instead of a raw Python traceback.
+        # stable `semanticscript: …` message and exit 2 instead of a raw Python traceback.
         import os
         if os.path.isdir(path):
             raise EavError(
@@ -11888,7 +11888,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         except (AttributeError, ValueError):
             pass
     parser = argparse.ArgumentParser(
-        prog="eavc", description="EAV-Steps front end (lex/parse/lower/run)"
+        prog="semanticscript", description="EAV-Steps front end (lex/parse/lower/run)"
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -12106,7 +12106,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         return args.func(args)
     except EavError as exc:
-        sys.stderr.write(f"eavc: {exc}\n")
+        sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 

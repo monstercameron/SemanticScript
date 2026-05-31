@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""standard.test example runner — runs every examples/*.sem through eavc and
+"""standard.test example runner — runs every examples/*.sem through semanticscript and
 aggregates the per-program harness summaries into one report.
 
 Each positive example is a self-checking test built on the `standard.test`
@@ -21,7 +21,7 @@ import os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXAMPLES = os.path.join(HERE, "examples")
-EAVC = os.path.join(HERE, "eavc.py")
+SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
 
 MIN_APPS = 150                                       # X-214 corpus coverage floor
 HARD_NEG = {"div_by_zero_trap"}                      # rejected at compile time
@@ -40,7 +40,7 @@ _UTF8 = dict(capture_output=True, text=True, encoding="utf-8")
 
 
 def run(path, strict=False):
-    argv = [sys.executable, EAVC, "run"] + (["--strict"] if strict else []) + [path]
+    argv = [sys.executable, SEMANTICSCRIPT, "run"] + (["--strict"] if strict else []) + [path]
     p = subprocess.run(argv, **_UTF8)
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
@@ -49,10 +49,10 @@ def fmt_idempotent(path):
     """fmt(src) must equal fmt(fmt(src)) — the formatter is a fixed point
     (README §22; guards the WS4-005 de-indent class of bugs). Returns
     (ok, detail)."""
-    a = subprocess.run([sys.executable, EAVC, "fmt", path], **_UTF8)
+    a = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt", path], **_UTF8)
     if a.returncode != 0:
         return False, "fmt failed: " + (a.stderr or "").strip()[:60]
-    b = subprocess.run([sys.executable, EAVC, "fmt", "-"], input=a.stdout, **_UTF8)
+    b = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt", "-"], input=a.stdout, **_UTF8)
     if b.returncode != 0:
         return False, "second fmt failed: " + (b.stderr or "").strip()[:60]
     if a.stdout != b.stdout:

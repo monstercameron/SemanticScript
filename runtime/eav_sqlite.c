@@ -1,6 +1,6 @@
 /*
  * eav_sqlite.c — return-value shim exposing the SemanticScript sqlite runtime
- * to the EAV front end (eavc), at parity with the original semsc.py
+ * to the EAV front end (semanticscript), at parity with the original semsc.py
  * `standard.sqlite` surface.
  *
  * The vendored engine (third_party/sqlite/sqlite3.c) is wrapped by

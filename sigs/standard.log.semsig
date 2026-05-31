@@ -6,7 +6,7 @@
 
 logSig is semsig
 logSig version "1.0"
-logSig generatedBy "eavc 0.1"
+logSig generatedBy "semanticscript 0.1"
 logSig describes standard.log
 
 openLogFile is intrinsic

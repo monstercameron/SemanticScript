@@ -1,4 +1,4 @@
-# wasm_demo — a WebAssembly target (WS3-161). `eavc wasm` lowers this to LLVM IR
+# wasm_demo — a WebAssembly target (WS3-161). `semanticscript wasm` lowers this to LLVM IR
 # with the wasm32 triple and drives clang --target=wasm32 + wasm-ld to a .wasm
 # that exports `main`; node instantiates it and calls main(). This is the
 # pure-compute subset: no console/heap runtime (compiled -nostdlib), and no

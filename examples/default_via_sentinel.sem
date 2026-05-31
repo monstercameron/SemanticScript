@@ -1,5 +1,5 @@
-# default_via_sentinel — (repurposed from default_parameter_value: eavc has no
-# default parameters). The eavc-real way to get a default: a sentinel check. The
+# default_via_sentinel — (repurposed from default_parameter_value: semanticscript has no
+# default parameters). The semanticscript-real way to get a default: a sentinel check. The
 # op substitutes a default when the argument is the sentinel 0, else passes it
 # through (README §13). The chosen value comes from a real branch.
 #

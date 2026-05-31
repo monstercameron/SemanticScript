@@ -1,7 +1,7 @@
 # standard.html.semsig — HTML render/trust namespace (README ss16, ss26).
 htmlSig is semsig
 htmlSig version "1.0"
-htmlSig generatedBy "eavc 0.1"
+htmlSig generatedBy "semanticscript 0.1"
 htmlSig describes standard.html
 HtmlFragment is alias
 HtmlFragment for String

@@ -1,4 +1,4 @@
-# record_file_stat — (repurposed from file_stat_metadata: eavc has no filesystem
+# record_file_stat — (repurposed from file_stat_metadata: semanticscript has no filesystem
 # runtime). Model file metadata as a record and read a field back (README §10).
 # The printed value is read from the record, not a constant.
 #

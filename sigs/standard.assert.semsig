@@ -1,7 +1,7 @@
 # standard.assert.semsig — test-assertion namespace (README ss26, ss30.5).
 assertSig is semsig
 assertSig version "1.0"
-assertSig generatedBy "eavc 0.1"
+assertSig generatedBy "semanticscript 0.1"
 assertSig describes standard.assert
 assertEqualInt64 is intrinsic
 assertEqualInt64 target assert.equalInt64

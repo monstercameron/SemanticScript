@@ -1,4 +1,4 @@
-# abs_difference — (repurposed from string_compare: eavc has no string-compare
+# abs_difference — (repurposed from string_compare: semanticscript has no string-compare
 # builtin). Absolute difference of two integers via math.absDiffInt64 (README
 # §10.6). Result computed, not a constant.
 #

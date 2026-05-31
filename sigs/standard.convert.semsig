@@ -1,7 +1,7 @@
 # standard.convert.semsig — compiler-built-in conversion namespace (README ss26).
 convertSig is semsig
 convertSig version "1.0"
-convertSig generatedBy "eavc 0.1"
+convertSig generatedBy "semanticscript 0.1"
 convertSig describes standard.convert
 convertToFloat64 is intrinsic
 convertToFloat64 target convert.toFloat64

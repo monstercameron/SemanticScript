@@ -5,7 +5,7 @@
 
 jsonSig is semsig
 jsonSig version "1.0"
-jsonSig generatedBy "eavc 0.1"
+jsonSig generatedBy "semanticscript 0.1"
 jsonSig describes standard.json
 
 JsonValue is alias

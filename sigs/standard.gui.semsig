@@ -9,7 +9,7 @@
 
 guiSig is semsig
 guiSig version "1.0"
-guiSig generatedBy "eavc 0.1"
+guiSig generatedBy "semanticscript 0.1"
 guiSig describes standard.gui
 
 GuiApplication is alias

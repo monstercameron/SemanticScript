@@ -1,4 +1,4 @@
-# max_of_three — (repurposed from fifo_queue_unlink: eavc has no queue runtime).
+# max_of_three — (repurposed from fifo_queue_unlink: semanticscript has no queue runtime).
 # Pick the maximum of three integers with nested math.maxInt64 calls (README
 # §10.6). The result is computed, not a constant.
 #

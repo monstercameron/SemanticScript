@@ -1,7 +1,7 @@
 # standard.build.semsig — build-time capability namespace (README ss26, ss30.3.2).
 buildSig is semsig
 buildSig version "1.0"
-buildSig generatedBy "eavc 0.1"
+buildSig generatedBy "semanticscript 0.1"
 buildSig describes standard.build
 buildReadConstant is intrinsic
 buildReadConstant target build.readConstant

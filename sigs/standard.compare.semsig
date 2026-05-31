@@ -1,7 +1,7 @@
 # standard.compare.semsig — compiler-built-in comparison namespace (README ss26).
 compareSig is semsig
 compareSig version "1.0"
-compareSig generatedBy "eavc 0.1"
+compareSig generatedBy "semanticscript 0.1"
 compareSig describes standard.compare
 compareEqualInt64 is intrinsic
 compareEqualInt64 target compare.equalInt64

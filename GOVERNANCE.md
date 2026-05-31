@@ -1,6 +1,6 @@
 # EAV-Steps — governance, versioning, glossary
 
-Contract version: **eav-0.3.1** (must equal `eavc.CONTRACT_VERSION`; the
+Contract version: **eav-0.3.1** (must equal `semanticscript.CONTRACT_VERSION`; the
 `test_contract_version_lockstep` check fails if they drift — X-020).
 
 > **eav-0.3.1** adds the §1J memory-safety model (WS1-110…122): the `region` and
@@ -12,7 +12,7 @@ Contract version: **eav-0.3.1** (must equal `eavc.CONTRACT_VERSION`; the
 ## Change protocol / docs lockstep (X-020)
 
 A grammar change moves these together: `README.md` (§1–§34 spec), `GRAMMAR.md`
-(EBNF), `eavc.py` (lexer/parser/validation/codegen), `test_eavc.py` (tests +
+(EBNF), `semanticscript.py` (lexer/parser/validation/codegen), `test_semanticscript.py` (tests +
 invalid corpus), and this file's contract version. The token-sync drift guard
 (X-005, `token_sync_drift`) enforces §2↔§5↔§22 consistency automatically.
 

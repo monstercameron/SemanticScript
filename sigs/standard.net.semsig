@@ -6,7 +6,7 @@
 
 netSig is semsig
 netSig version "1.0"
-netSig generatedBy "eavc 0.1"
+netSig generatedBy "semanticscript 0.1"
 netSig describes standard.net
 
 NetEndpoint is alias

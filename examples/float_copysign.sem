@@ -1,4 +1,4 @@
-# float_copysign -- (repurposed from http_request_response: eavc has no matching runtime). Real Float64
+# float_copysign -- (repurposed from http_request_response: semanticscript has no matching runtime). Real Float64
 # intrinsic math.copysignFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
 #
 # Correctness observation: copysign(3.0,-1.0) = -3.

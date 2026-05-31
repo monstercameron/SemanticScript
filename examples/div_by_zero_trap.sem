@@ -1,9 +1,9 @@
 # div_by_zero_trap — NEGATIVE test. Dividing by the CONSTANT 0 is undefined, so
-# eavc rejects it at COMPILE time with SS3111 (README §10.6/§33.5) — it never
+# semanticscript rejects it at COMPILE time with SS3111 (README §10.6/§33.5) — it never
 # reaches codegen or execution. This is a load-bearing test of the constant
 # divide-by-zero guard, not a runtime program.
 #
-# Correctness observation (verified): `eavc check`/`run` reject with SS3111;
+# Correctness observation (verified): `semanticscript check`/`run` reject with SS3111;
 # the program does not compile or print anything.
 # Expected: rejected at compile time with code SS3111.
 

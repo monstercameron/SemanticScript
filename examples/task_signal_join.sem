@@ -1,5 +1,5 @@
-# task_signal_join — (repurposed from event_signal_wait: eavc has no event/signal
-# runtime). The eavc-real "wait for a signal" is joining a task: start it, join,
+# task_signal_join — (repurposed from event_signal_wait: semanticscript has no event/signal
+# runtime). The semanticscript-real "wait for a signal" is joining a task: start it, join,
 # read its computed output (README §13/§15.5). Value is the task's real result.
 #
 # Correctness observation: a task computes 9 * 9 = 81; main joins and prints it.

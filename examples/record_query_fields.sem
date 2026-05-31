@@ -1,4 +1,4 @@
-# record_query_fields — (repurposed from database_prepared_statement: eavc has no
+# record_query_fields — (repurposed from database_prepared_statement: semanticscript has no
 # SQL runtime). Build a record with two fields and read one back (README §10).
 # The printed value is read from the record, not a constant.
 #

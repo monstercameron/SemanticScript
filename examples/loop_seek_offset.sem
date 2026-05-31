@@ -1,4 +1,4 @@
-# loop_seek_offset — (repurposed from file_write_append_seek: eavc has no
+# loop_seek_offset — (repurposed from file_write_append_seek: semanticscript has no
 # filesystem runtime). Advance an offset in a loop (each "seek" adds a block
 # size), README §13. The final offset is accumulated by the loop, not a constant.
 #

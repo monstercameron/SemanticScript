@@ -5,7 +5,7 @@
 
 listSig is semsig
 listSig version "1.0"
-listSig generatedBy "eavc 0.1"
+listSig generatedBy "semanticscript 0.1"
 listSig describes standard.list
 
 ListHandle is alias

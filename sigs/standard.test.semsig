@@ -6,7 +6,7 @@
 # passed). Companion to standard.assert (which only computes a Bool).
 testSig is semsig
 testSig version "1.0"
-testSig generatedBy "eavc 0.1"
+testSig generatedBy "semanticscript 0.1"
 testSig describes standard.test
 testAnd is intrinsic
 testAnd target test.and

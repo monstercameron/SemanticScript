@@ -1,4 +1,4 @@
-# operation_value_apply — (repurposed from higher_order_call). eavc supports
+# operation_value_apply — (repurposed from higher_order_call). semanticscript supports
 # operation VALUES as local operationType bindings and invokes them indirectly
 # (README §33.9), but does NOT yet support passing a function value as a callable
 # operation PARAMETER (a pre-alpha gap). So this binds `double` as an Int64Endo

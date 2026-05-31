@@ -1,4 +1,4 @@
-# running_sum_fold — (repurposed from codec_streaming_parse: eavc has no codec
+# running_sum_fold — (repurposed from codec_streaming_parse: semanticscript has no codec
 # runtime). A real fold/accumulate loop: sum 1..5 with a mutable accumulator and
 # a decrement-driven loop (README §13). The total comes from the loop, not a
 # constant, so it fails under a no-op lowering.

@@ -1,5 +1,5 @@
-# module_config_constant — (repurposed from command_line_args_env: eavc has no
-# argv/env runtime). The real eavc way to hold configuration: a module-scope
+# module_config_constant — (repurposed from command_line_args_env: semanticscript has no
+# argv/env runtime). The real semanticscript way to hold configuration: a module-scope
 # storage global, read at use sites (README §12/§25). Prints the config value.
 #
 # Correctness observation: the printed value is the module-global serverPort.

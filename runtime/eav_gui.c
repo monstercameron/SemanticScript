@@ -1,6 +1,6 @@
 /* eav_gui.c — GUI runtime shim exposing the SemanticScript Win32 GUI runtime
  * (SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c) to the EAV
- * front end (eavc), through the `body runtimeBinding <symbol>` seam.
+ * front end (semanticscript), through the `body runtimeBinding <symbol>` seam.
  *
  * `eav_gui_health_check()` stands up a real Win32 window with an auto-close
  * handler: when the window is shown the handler closes it, so ss_gui_application_run

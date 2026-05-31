@@ -1,5 +1,5 @@
-# module_scope_capture — (repurposed from closure_capture_scope: eavc has no
-# closures). The eavc-real analog of lexical capture: a module-scope storage
+# module_scope_capture — (repurposed from closure_capture_scope: semanticscript has no
+# closures). The semanticscript-real analog of lexical capture: a module-scope storage
 # global is read by name from inside an operation (README §12/§25), so the op
 # "captures" enclosing module scope. The result uses the captured global.
 #
