@@ -1,0 +1,38 @@
+# wasm_demo — a WebAssembly target (WS3-161). `eavc wasm` lowers this to LLVM IR
+# with the wasm32 triple and drives clang --target=wasm32 + wasm-ld to a .wasm
+# that exports `main`; node instantiates it and calls main(). This is the
+# pure-compute subset: no console/heap runtime (compiled -nostdlib), and no
+# guard sites (div/modulo/narrowing inject eav_panic, which is undefined under
+# -nostdlib). It still exercises real control flow — a comparison and a branch —
+# returning 42 when 7 == 7, so node sees main() == 42.
+
+WasmDemo is project
+WasmDemo module fix
+WasmDemo target console
+WasmDemo entry main
+
+fix is module
+fix path fix.mod
+fix exports main
+fix purpose "Host the wasm demo entry"
+fix invariant "Exposes main, a pure-compute entry returning 42"
+
+main is operation
+main out Int32
+main async no
+main purpose "Return 42 via a comparison-driven branch (wasm-safe: no I/O, no guards)"
+main invariant "Returns 42 when 7 == 7"
+main let seven immutable Int64 7
+main let answer immutable Int32 42
+main let zero immutable Int32 0
+main do compareSevens
+main branch if equalSevens goto matched
+main return zero
+main at matched return answer
+
+compareSevens is call
+compareSevens in main
+compareSevens invokes math.equalInt64
+compareSevens arg left Int64 seven
+compareSevens arg right Int64 seven
+compareSevens out equalSevens Bool
