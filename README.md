@@ -1,4 +1,4 @@
-# SemanticScript — EAV-Steps v0.3
+# SemanticScript v0.3
 
 A complete proposal for SemanticScript refined syntax. It keeps the flat
 semantic-tape model, but normalizes rows around entity/predicate/payload shape
@@ -16,8 +16,8 @@ full web-server handler ABIs, type/record/enum entities, mutable rebinding via
 call output, and lexical rules. Worked examples are fully updated.
 
 > **Prototype status (this repo).** A keystone front end now exists at
-> `experiments/eav-syntax/semanticscript.py`: it lexes (§2), parses (§1/§5), and *lowers*
-> canonical EAV into the existing v0.1 verb-led source the reference compiler
+> `semanticscript/compiler/semanticscript.py`: it lexes (§2), parses (§1/§5), and *lowers*
+> canonical SemanticScript into the existing v0.1 verb-led source the reference compiler
 > already runs — a second front end, not a backend fork. Hello World (§18),
 > an arithmetic program, and a control-flow loop run end to end (e.g.
 > `python semanticscript.py run examples/hello_world.sem` → `hello world`). The parser
@@ -29,32 +29,32 @@ call output, and lexical rules. Worked examples are fully updated.
 
 ### Adoption framing
 
-EAV-Steps is the **canonical normalized representation** of SemanticScript
+SemanticScript is the **canonical normalized representation** of SemanticScript
 source — the form the formatter canonicalizes to, the form agents patch, and
 the form the linter checks against. It is not yet the mandatory primary
 authoring syntax.
 
 Current/compact verb-led syntax remains acceptable at the source level. The
-toolchain maps both surfaces to the same canonical EAV form:
+toolchain maps both surfaces to the same canonical SemanticScript form:
 
 ```
 sem fmt --surface current    # emit current verb-led form        (proposed; §24)
-sem fmt --surface eav        # emit canonical EAV form            (proposed; §24)
-sem lower --to eav           # normalize an entire codebase to EAV (proposed; §24)
-sem codemod --to-eav OP      # incrementally convert one operation (proposed; §24)
+sem fmt --surface canonical        # emit canonical SemanticScript form            (proposed; §24)
+sem lower --to canonical           # normalize an entire codebase to SemanticScript (proposed; §24)
+sem codemod --to-canonical OP      # incrementally convert one operation (proposed; §24)
 ```
 
 These four surfaces are **proposed**, not yet implemented (§24). Today the
 closest existing surface is `sem migrate-syntax`; `sem fmt` exists but does not
 yet take `--surface`, and `sem lower`/`sem codemod` do not exist.
 
-EAV becomes the mandatory authoring surface only after conversion metrics on a
+SemanticScript becomes the mandatory authoring surface only after conversion metrics on a
 real app show:
 - row count does not exceed the adoption gate (§21)
 - edit-locality improves or stays neutral
 - agent friction logs confirm the structural wins outweigh the row cost
 
-Until then: EAV is how tools think; current syntax is how humans write.
+Until then: SemanticScript is how tools think; current syntax is how humans write.
 
 **Direction (v0.4).** The keyword surface narrows to a **minimal core** (§34):
 domain contracts — web server, HTML, the build manifest, metadata, comparators —
@@ -403,7 +403,7 @@ metadata (§22).
 **One tolerated exception:** `async` on a `call` entity. It is not part of the
 canonical `call` predicate set above, but the compact/legacy surface accepts
 `call ... async yes` as a deprecated predicate whose only effect is to promote
-the call to a `task` on `sem fmt` (§15.5). Canonical EAV rejects `async` on a
+the call to a `task` on `sem fmt` (§15.5). Canonical SemanticScript rejects `async` on a
 `call`; `sem lint --strict` reports it as "deprecated; use `is task`."
 
 The `label` declaration predicate on `operation` is used for label metadata —
@@ -611,16 +611,16 @@ root entity for that target:
 | `wasm` | the exported operation | `operation` |
 | `webServer` | the server entity | `webServer` |
 
-**Canonical EAV requires an explicit `exports` row for the entry entity.**
-There is no implicit export in canonical EAV — visibility must always be
+**Canonical SemanticScript requires an explicit `exports` row for the entry entity.**
+There is no implicit export in canonical SemanticScript — visibility must always be
 declared:
 
 ```sem
 HelloWorld entry main
-examplesHelloWorld exports main     # required in canonical EAV
+examplesHelloWorld exports main     # required in canonical SemanticScript
 
 TaskApp entry appServer
-taskWeb exports appServer           # required in canonical EAV
+taskWeb exports appServer           # required in canonical SemanticScript
 ```
 
 Compact syntax may omit the exports row; `sem fmt` inserts it. The implicit
@@ -1148,7 +1148,7 @@ Integer byte values use the negative-free literal grammar (`[0-9]+`). Omitting
 a dimension means the runtime default applies.
 
 **`async` predicate — only valid on `operation` and `intrinsic`.** In canonical
-EAV, `async` is not valid on `call` entities. Use a `task` entity for async
+SemanticScript, `async` is not valid on `call` entities. Use a `task` entity for async
 invocations:
 
 | Subject kind | `async no` | `async yes` |
@@ -1159,7 +1159,7 @@ invocations:
 
 For operations, `async` describes the operation's own scheduling contract. For
 intrinsics, `async` describes the required activation discipline for callers.
-For `call` entities, `async yes` is deprecated sugar; canonical EAV uses `task`
+For `call` entities, `async yes` is deprecated sugar; canonical SemanticScript uses `task`
 entities.
 
 All declaration rows are order-independent. The one exception: multiple `in`
@@ -1554,7 +1554,7 @@ data-carrying inspection that earlier drafts deferred to a future `match`
 #### Non-canonical branch sugar
 
 `ifOut`, `ifValue`, and `else` are accepted in source but are **not** canonical
-guards. `sem fmt` lowers each, so **canonical EAV never emits `ifOut`,
+guards. `sem fmt` lowers each, so **canonical SemanticScript never emits `ifOut`,
 `ifValue`, or `else`** — it emits an explicit comparison call + `branch if`, or
 a plain `goto`. They exist only to make hand-authoring terser; the canonical
 guards above are the real control vocabulary.
@@ -1625,7 +1625,7 @@ type. `VALUE` must match the type of the left-hand operand.
 
 **`else` guard.** `branch else goto LABEL` fires unconditionally when reached.
 Its runtime behavior is identical to `goto LABEL`. `branch else` is
-non-canonical sugar: the formatter lowers it to `goto LABEL` in canonical EAV
+non-canonical sugar: the formatter lowers it to `goto LABEL` in canonical SemanticScript
 output. It must appear after at least one `branch <guard>` row in the same
 operation with no intervening step rows between it and its nearest preceding
 guard branch. Only step rows break adjacency — declaration rows (`let`, `label`
@@ -1744,7 +1744,7 @@ primitive set. The formatter lowers each to its canonical equivalent on
 
 `branch else` signals author intent but conveys no distinct runtime semantics
 beyond `goto`. `ifOut`/`ifValue` are comparison-then-branch expressed in one
-row; canonical EAV makes the comparison call explicit so the result binding is
+row; canonical SemanticScript makes the comparison call explicit so the result binding is
 named and the lint surface is uniform.
 
 **Deterministic generated names.** Lowering must produce stable names so a
@@ -2369,7 +2369,7 @@ in app source is rejected — the safe path is the only path.
 
 #### Memory-safety model — Normative (§1J, WS1-121)
 
-EAV is memory-safe by construction: there is no GC and no manual `free` in app
+SemanticScript is memory-safe by construction: there is no GC and no manual `free` in app
 source, yet use-after-free, double-free, leaks, out-of-bounds, and data races are
 unrepresentable or statically rejected. The model has six pillars, each enforced
 above and reconciled with §10.6 (values), §29 #14 (memory), and §32.1 #9
@@ -2395,7 +2395,7 @@ above and reconciled with §10.6 (values), §29 #14 (memory), and §32.1 #9
    (`unsafe`/`wrapsAs`/`cleanedBy`/`allocator`, SS1569); cross-task state is a
    guarded `sharedState` (SS3083/SS3084).
 
-The **C-bug → EAV-defense coverage table** is generated from `DEFECT_LEDGER`
+The **C-bug → SemanticScript-defense coverage table** is generated from `DEFECT_LEDGER`
 (X-101, `docs/defect-ledger.md`); every memory row maps to a WS1-110…120 item.
 
 ### Typestate protocols (X-091, §13/§15.6)
@@ -3012,11 +3012,11 @@ lint error (e.g., passing `String` where `HtmlSafeUrl` is required for an
     that path (establishing the non-error path). Using `ifOut` before the error
     case is handled may compare an output value that is invalid in the error
     state. The warning: "ifOut on fallible call before error branch." In
-    canonical EAV, `ifOut` is non-canonical sugar; `sem fmt` lowers it to a
+    canonical SemanticScript, `ifOut` is non-canonical sugar; `sem fmt` lowers it to a
     comparison call + `branch if`.
 37. `alias for` target may use `<importAlias>.<typeName>` form (§7) only in
     `for` rows. All other type positions must use bare names.
-38. A project `entry` operation in canonical EAV must have an explicit `MODULE
+38. A project `entry` operation in canonical SemanticScript must have an explicit `MODULE
     exports NAME` row for each `entry` in that module. Missing export is a hard
     error (MD1013).
 39. `CALL owns VAR` without a corresponding `CALL cleanedBy CLEANUPNAME` on the
@@ -3095,7 +3095,7 @@ MD1002: Every `module` must have at least one `invariant` row. [error]
 **Exported and entry operation metadata (required):**
 MD1011: Exported operation or project `entry` operation missing `purpose`. [error]
 MD1012: Exported operation or project `entry` operation missing `invariant`. [error]
-MD1013: Project `entry` operation in canonical EAV has no corresponding `MODULE exports NAME` row. [error]
+MD1013: Project `entry` operation in canonical SemanticScript has no corresponding `MODULE exports NAME` row. [error]
 
 **Private operation metadata (recommended):**
 MD1021: Private (non-exported, non-entry) operation missing `purpose`. [warning]
@@ -3497,7 +3497,7 @@ row_increase = (v0.3_rows - v0.1_rows) / v0.1_rows × 100
 ```
 
 A single module with +30% is a gate failure even if the overall codebase
-averages +15%. Use `sem lower --to eav` (proposed; §24 — today use the closest
+averages +15%. Use `sem lower --to canonical` (proposed; §24 — today use the closest
 existing surface, `sem migrate-syntax`) to get the canonical row count; count
 the output with:
 
@@ -3512,7 +3512,7 @@ rows with trailing comments (the row itself is content).
 meets all of:
 
 0. **Round-trip safety (precondition).** `sem fmt` must be semantics-preserving
-   and idempotent across surfaces: compact → EAV → compact and current → EAV →
+   and idempotent across surfaces: compact → SemanticScript → compact and current → SemanticScript →
    current must round-trip without changing program meaning, proven by a feature
    test that fails under a no-op lowering. Given the known `htmlBody`
    de-indentation hazard in the current formatter, this gate is mandatory before
@@ -3520,7 +3520,7 @@ meets all of:
 1. Row count, measured **after canonicalization**, by surface:
    - **Compact / current authoring surface:** +20% max over the converted
      application's current form.
-   - **Canonical primitive EAV surface:** +35% max. Strict primitive EAV is
+   - **Canonical primitive SemanticScript surface:** +35% max. Strict primitive SemanticScript is
      intentionally more verbose; the extra budget pays for the
      `call`/`task`/`cleanup` split, ownership rows, explicit comparison calls
      (lowered `ifOut`/`ifValue`), and explicit exports. Row increase is weighed
@@ -3544,7 +3544,7 @@ without structural value.
 |---|---|
 | Insert call between existing steps | 1 `do` row + 1 call entity block |
 | Insert cleanup after owned handle | 1 `defer` row + 1 cleanup call block |
-| Add branch guard for status check | 1 `branch ifOut`/`ifValue` row authored (canonical EAV expands it to a comparison call + `branch if`) |
+| Add branch guard for status check | 1 `branch ifOut`/`ifValue` row authored (canonical SemanticScript expands it to a comparison call + `branch if`) |
 | Add async fan-out | 1 `start` row per call; 1 `join` + `branch ifError` per result |
 
 If any of these cost more than shown, activation wiring or type coupling has
@@ -3554,7 +3554,7 @@ accumulated extra cost — stop and assess before converting the rest.
 
 ## 22. Canonical block ordering
 
-The formatter enforces a single canonical ordering. Agents producing EAV source
+The formatter enforces a single canonical ordering. Agents producing SemanticScript source
 must emit rows in this order to guarantee stable diffs.
 
 ### File-level entity order
@@ -3695,8 +3695,8 @@ Agents can produce minimal diffs by knowing exactly which row slot to target.
 ## 23. Compact authoring profile
 
 The compact profile is a first-class authoring syntax — not legacy syntax, not
-informal shorthand. The formatter lowers it to canonical EAV on `sem fmt`.
-Agents and humans may write either; canonical EAV is what the linter, query,
+informal shorthand. The formatter lowers it to canonical SemanticScript on `sem fmt`.
+Agents and humans may write either; canonical SemanticScript is what the linter, query,
 and explain tools operate on.
 
 ### Compact syntax rules
@@ -3752,9 +3752,9 @@ does not exist, the linter reports an unknown entity.
 `branch ifError CALL goto LABEL`. The subject and `branch` keyword are
 inferred by context.
 
-### Compact ↔ EAV equivalence
+### Compact ↔ SemanticScript equivalence
 
-| Compact | Canonical EAV |
+| Compact | Canonical SemanticScript |
 |---|---|
 | `operation NAME` | `NAME is operation` |
 | `call NAME TARGET` | `NAME is call` + `NAME in OP` + `NAME invokes TARGET` |
@@ -3767,7 +3767,7 @@ inferred by context.
 | `ifError CALL goto LABEL` | `OP branch ifError CALL goto LABEL` |
 | `ifFalse VAR goto LABEL` | `OP branch ifFalse VAR goto LABEL` |
 
-All other compact rows are identical to EAV rows with the subject omitted.
+All other compact rows are identical to SemanticScript rows with the subject omitted.
 
 ### What compact does not allow
 
@@ -3779,12 +3779,12 @@ All other compact rows are identical to EAV rows with the subject omitted.
   TARGET` are the compact forms of the entity declaration, not the `is
   operation` / `is call` / `is task` rows.
 
-### When to use compact vs EAV
+### When to use compact vs SemanticScript
 
 Use **compact** when authoring by hand or when the operation is short and
-self-contained. Use **EAV** when patching programmatically or when grep/diff
+self-contained. Use **SemanticScript** when patching programmatically or when grep/diff
 stability matters. `sem fmt --surface compact` emits compact; `sem fmt` emits
-EAV.
+SemanticScript.
 
 ---
 
@@ -3795,7 +3795,7 @@ EAV.
 > what is currently implemented. The current `sem` CLI **already implements**
 > `fmt`, `check`, `lint`, `slice`, `graph`, `doctor`, `deps`, `test`, `explain`,
 > `fix`, and `patch` — but with **code- and path-scoped argument shapes**, not the
-> entity-scoped EAV forms shown here (today `explain` takes a diagnostic code,
+> entity-scoped SemanticScript forms shown here (today `explain` takes a diagnostic code,
 > `graph`/`slice` take a path, `doctor` takes no `--op`). What is genuinely
 > **proposed** (not yet implemented) is: the entity-scoped / `--for-edit`
 > argument shapes; `fmt --surface`; and the new commands `query`, `trace`, `add`,
@@ -3818,12 +3818,12 @@ highest-leverage loop is `sem doctor` → `sem slice --for-edit` → `sem add` �
 context bundle for one edit or analysis instead of sending a whole file. (The
 shipping CLI has a `sem slice`, but **path/operation-name-scoped with different
 flags**; the entity-scoped `--for-edit`/`--with-cleanup`/`--path`/`--refs` surface
-below is the **proposed** EAV evolution — spec-status banner above. Likewise
+below is the **proposed** SemanticScript evolution — spec-status banner above. Likewise
 `sem test --lane` is proposed, §28.7.) Because
-EAV is row-heavy and `call`/`task`/`cleanup` are explicit entities, the slicer
+SemanticScript is row-heavy and `call`/`task`/`cleanup` are explicit entities, the slicer
 includes exactly the operation, bindings, types, capabilities, cleanup graph,
 task graph, and errors an edit needs — and nothing else. The model is: canonical
-EAV on disk → small semantic slices in prompts → stable cached spec/stdlib prefix
+SemanticScript on disk → small semantic slices in prompts → stable cached spec/stdlib prefix
 → latest task at the prompt tail.
 
 ```bash
@@ -3833,7 +3833,7 @@ sem slice healthHandler --with-tasks           # + async lifecycle
 sem slice healthHandler --path failed          # only rows on one control-flow path
 sem slice healthHandler --refs db              # only rows defining/using/cleaning `db`
 sem slice healthHandler --for-edit add-cleanup --producer openDb
-sem slice healthHandler --format prompt|json|eav
+sem slice healthHandler --format prompt|json|canonical
 ```
 
 **Output modes.** `--format prompt` emits stable, headed sections (below) for
@@ -3864,7 +3864,7 @@ need. Flags widen or narrow it:
 db`, the existing cleanup state, the `branch ifError` row, the correct `defer`
 insertion point, and the canonical cleanup-entity pattern to emit. `add-guard
 --after writeOk` returns the call output being guarded, in-scope comparison
-values, and the canonical comparison-call + `branch if` pattern (canonical EAV
+values, and the canonical comparison-call + `branch if` pattern (canonical SemanticScript
 lowers `ifOut`, §13).
 
 **Stable output sections** (prompt mode) — repeated headers act as prompt-cache
@@ -3907,7 +3907,7 @@ sem query ownership --leaked            # owned bindings with no cleanup on some
 > `--kind summary|routes` (`sem graph PATH --kind summary`), and `sem doctor`
 > takes no `--op`. The entity-scoped forms here (`sem explain healthHandler`,
 > `sem graph healthHandler --kind control`, `sem doctor --op healthHandler`) are
-> the **proposed** EAV surface, not the current one (§24 spec-status banner).
+> the **proposed** SemanticScript surface, not the current one (§24 spec-status banner).
 
 ### `sem explain` — human/agent-readable operation summary
 
@@ -4025,7 +4025,7 @@ add a call whose arg types do not match declared bindings.
 ### `sem normalize` — preview conversion
 
 ```bash
-sem normalize --to eav --preview healthHandler
+sem normalize --to canonical --preview healthHandler
 ```
 
 Output:
@@ -4034,7 +4034,7 @@ Output:
 healthHandler
   Rows:
     current (compact): 42
-    canonical (EAV):   54
+    canonical (SemanticScript):   54
     delta:             +12 (+28.6%)
 
   Edit-locality:
@@ -4050,7 +4050,7 @@ sem task add-route          # checklist for adding a webServer route + handler
 sem task add-db-query       # checklist for a new sqlite query call
 sem task add-cleanup        # checklist for deferring cleanup after an owned resource
 sem task add-async-fanout   # checklist for start/join parallel calls
-sem task convert-to-eav OP  # step-by-step codemod for one operation
+sem task convert-to-canonical OP  # step-by-step codemod for one operation
 ```
 
 Each emits a checklist of rows to add, rows to verify, and lint rules to check.
@@ -4133,7 +4133,7 @@ sem explain healthHandler                      # 5. confirm the new shape
 Suggested build priority: `slice`, `explain`, `query`, `doctor`, `add`,
 `normalize --preview`, `trace`, `graph`, `verify-patch`, `pack`; the rest layer
 on once those exist. Several already ship (`slice`/`graph`/`doctor`/`explain`/
-`deps`/`test`) in code-/path-scoped form — the work here is the entity-scoped EAV
+`deps`/`test`) in code-/path-scoped form — the work here is the entity-scoped SemanticScript
 shapes and the brand-new commands (spec-status banner above).
 
 ---
@@ -4440,7 +4440,7 @@ themselves. An `is intrinsic` row in an application module is a lint warning
 cannot silence a missing-signature lint by hand-declaring a fake signature.
 
 Stdlib signatures are compiled into the toolchain. Third-party libraries ship a
-`.semsig` sidecar declaring their signatures in the same EAV format:
+`.semsig` sidecar declaring their signatures in the same SemanticScript format:
 
 ```sem
 # file: company.api.semsig
@@ -4462,7 +4462,7 @@ for a given `target` wins. Within a `.semsig` file, intrinsic entities are
 ordered by `target` path (§22).
 
 **Versioning.** A `.semsig` begins with a `semsig` **header entity**, so the file
-stays pure EAV (entity + facts, no bare rows):
+stays pure SemanticScript (entity + facts, no bare rows):
 
 ```sem
 companyApiSig is semsig
@@ -4498,7 +4498,7 @@ and a **planned shape** (the direction, so v0.3 does not box it in):
   section (e.g. build/deps → §28, value construction → §10.5, data inspection →
   §13 `ifVariant`). A few deferred items (`staticRoute` static-file serving,
   `standard.document`/wasm DOM, pointer-backed `OpaquePointer`/`FileHandle`) are
-  **implemented in the current toolchain today** and EAV defers them — existing
+  **implemented in the current toolchain today** and SemanticScript defers them — existing
   code using them is a corpus-migration concern (§29 #17), not fresh design.
 
 **v0.3 scope note.** This feature set is sufficient for the worked-example class
@@ -4660,11 +4660,11 @@ record JSON metadata (`jsonName`/`omitWhen`) lands with that module's spec.
 forms in v0.3:
 - `call NAME TARGET` + `NAME async yes` → `NAME is task` entity. `sem fmt`
   promotes the call to a task entity automatically. The `async` predicate is
-  not valid on a `call` entity in canonical EAV.
+  not valid on a `call` entity in canonical SemanticScript.
 - `OP defer CALL onFailure POLICY because "..."` (compound inline defer) →
   `CLEANUP is cleanup` entity + `OP defer CLEANUP`. `sem fmt` generates the
   cleanup entity. The compound form is non-canonical sugar only; it does not
-  appear in strict canonical EAV output.
+  appear in strict canonical SemanticScript output.
 
 **MiddlewareControl enum vs Bool.** v0.3 uses `out Bool` for middleware (§14).
 If the current project uses a `MiddlewareControl` enum, map `continue` →
@@ -4816,8 +4816,8 @@ PROJECT toolchainResolved "<id>"                     # the locked toolchain
 PROJECT effectSurface <path> <action> <resource>     # aggregated capability surface
 ```
 
-Like every build row, lock rows are subject-anchored EAV — predicates on the
-`project` entity, not verb-led records. The lock is parsed as ordinary EAV
+Like every build row, lock rows are subject-anchored SemanticScript — predicates on the
+`project` entity, not verb-led records. The lock is parsed as ordinary SemanticScript
 (typed, lintable, queryable), but `sem` refuses hand edits and regenerates it
 (`sem mod tidy`, proposed — §28.4).
 
@@ -5025,7 +5025,7 @@ add manifest dependency/allowlist rows, and run `sem mod tidy`.
 ## 29. Open gaps and specification roadmap
 
 This section is **informative** — a planning surface, not normative spec. It
-tracks what v0.3 already specifies versus what remains before EAV can become the
+tracks what v0.3 already specifies versus what remains before SemanticScript can become the
 mandatory authoring surface (see "Adoption framing" and §21). The point is to
 distinguish *genuinely unspecified* work from *present-but-informal* rules that
 only need formalization, so effort is not spent re-deriving what already exists.
@@ -5044,7 +5044,7 @@ They are contract requirements, not optional polish.
 
 | # | Gap | Status | Wave | Primary refs |
 |---|---|---|---|---|
-| 3 | **Lowering plan** — EAV → existing `semsc.py` AST / compiler / backend; shared-AST claim made never specified | Absent | 1 | Adoption framing |
+| 3 | **Lowering plan** — SemanticScript → existing `semsc.py` AST / compiler / backend; shared-AST claim made never specified | Absent | 1 | Adoption framing |
 | 11 | **`sem fmt` determinism** — total + idempotent + order-stable (`fmt(fmt(x)) == fmt(x)`) | Absent | 1 | §22 |
 | 6 | **Conformance test matrix** — parser/formatter/linter/lowering/editor goldens | Absent | 2 | §17, §18, §19 |
 | 12 | **Diagnostic-code registry** — code → meaning → tier → repair, one canonical table | Absent | 2 | §17, §24 |
@@ -5058,10 +5058,10 @@ They are contract requirements, not optional polish.
 | 8 | **Versioning & rollout** — feature flags, compatibility mode, milestones, deprecation policy | Partial | 6 | §21, Adoption framing |
 | 13 | **Spec coherence** — normative/informative labeling, single source of truth, glossary | Absent | all | (cross-cutting) |
 | 14 | **Runtime value semantics** — numeric overflow/trap, IEEE float, equality/ordering, eval order, value lifetime/memory model | Thin (source contract §10.6; backend mechanism open) | 3 | §10.6, §13 |
-| 15 | **Agent edit loop + diagnostic source-mapping** — check→fix→patch→verify on EAV; lints on canonical EAV mapped back to the author's compact/current line | Absent | 4 | §17, §23, §24 |
+| 15 | **Agent edit loop + diagnostic source-mapping** — check→fix→patch→verify on SemanticScript; lints on canonical SemanticScript mapped back to the author's compact/current line | Absent | 4 | §17, §23, §24 |
 | 16 | **Human-authoring validation** — learnability of the reserved-word/predicate surface, reviewability of large handlers, compact-profile ergonomics | Absent | 6 | §0, §23 |
-| 17 | **Existing-corpus migration** — whether stdlib + apps convert to EAV, codemod correctness, permanent coexistence | Thin | 6 | §20, §28 |
-| 18 | **Runtime observability & debugging** — logging/metrics/spans/correlation IDs; breakpoints, stepping, stack traces under goto control flow, trap/panic formatting, and mapping a runtime failure back to its EAV/current source span; how `sem trace` relates to live debugging | Absent | 5 | §24, §30.1.1 |
+| 17 | **Existing-corpus migration** — whether stdlib + apps convert to SemanticScript, codemod correctness, permanent coexistence | Thin | 6 | §20, §28 |
+| 18 | **Runtime observability & debugging** — logging/metrics/spans/correlation IDs; breakpoints, stepping, stack traces under goto control flow, trap/panic formatting, and mapping a runtime failure back to its SemanticScript/current source span; how `sem trace` relates to live debugging | Absent | 5 | §24, §30.1.1 |
 | 19 | **Security threat model** — assets/adversaries (authority, trust, supply chain), distinct from the #10 enforcement algorithm | Thin | 5 | §8, §16, §28.5 |
 | 20 | **Strategic success criteria** — win condition vs. hardening current syntax and vs. competitors; multi-surface maintenance cost | Absent | all | §21, Adoption framing |
 | 21 | **Performance & profiling** — resource budgets beyond `memory`, allocation/hot-path reporting, optimization controls, perf diagnostics | Absent | 5 | §10.6, §11 |
@@ -5080,11 +5080,11 @@ bytewise-UTF-8 `String` equality, enum-by-variant, arg eval order, no-free value
 lifetime); the open part is the backend *mechanism* (region / arena / refcount).
 #15 *agent loop + diagnostic mapping*: the "agent-safe IR" payoff needs the
 check→fix→patch→verify loop specified against the `sem.*.v1` surfaces, plus a
-rule that a diagnostic computed on canonical EAV maps back to the author's
+rule that a diagnostic computed on canonical SemanticScript maps back to the author's
 compact/current source span. #16 *human-authoring validation* and #20 *success
 criteria* are evidence gaps — run a real human-authoring session and define the
 win condition (vs. hardening current syntax; vs. the competitor framing) before
-EAV is made mandatory (§21). #17 *existing-corpus migration*: decide whether the
+SemanticScript is made mandatory (§21). #17 *existing-corpus migration*: decide whether the
 stdlib and apps convert, prove the codemod, or commit to permanent coexistence.
 #18 *runtime observability* and #19 *security threat model* (§8) round out the
 operational and security surfaces. #21 performance, #22 text/i18n, #23 publishing,
@@ -5092,12 +5092,12 @@ operational and security surfaces. #21 performance, #22 text/i18n, #23 publishin
 subsystems §32 decomposes — mostly stdlib/runtime work beyond the core language.
 
 **#3 Lowering plan (keystone).** The Adoption framing claims both surfaces "map
-to the same canonical EAV form," implying a shared AST with current syntax — but
-nothing states whether EAV parses into the same `semsc.py` AST, which compiler
-structures change, or whether EAV is a pre-parser normalization vs. a second
+to the same canonical SemanticScript form," implying a shared AST with current syntax — but
+nothing states whether SemanticScript parses into the same `semsc.py` AST, which compiler
+structures change, or whether SemanticScript is a pre-parser normalization vs. a second
 front-end. Until pinned, tooling, tests, and editor work have no anchor.
 
-**#11 `sem fmt` determinism.** The whole "tools operate on canonical EAV" thesis
+**#11 `sem fmt` determinism.** The whole "tools operate on canonical SemanticScript" thesis
 rests on `fmt` being total, idempotent, and order-stable under §22 ordering.
 State it as a guaranteed invariant and test it; it underlies #4 and #6.
 
@@ -5147,14 +5147,14 @@ conflict behavior. Missing: a formal field schema, `.semsig` versioning, and a
 docs-generation path. **Specify `.semsig` versioning once**, unified with the
 packaging story (§28.4/§28.6), to avoid divergence.
 
-**#4 Migration guarantees.** §20 (14-step procedure) and §23 (compact↔EAV) cover
-the mapping. Missing: round-trip guarantees (is current→EAV→current lossy, and
+**#4 Migration guarantees.** §20 (14-step procedure) and §23 (compact↔SemanticScript) cover
+the mapping. Missing: round-trip guarantees (is current→SemanticScript→current lossy, and
 where?), codemod acceptance criteria about *semantic equivalence* (the §21 gate
 measures rows/locality, not correctness), and an enumerated unsupported-edge
 list.
 
 **#8 Versioning & rollout.** §21 + Adoption framing already define the *adoption
-gate* (the "when does EAV become mandatory" answer). Distinct and missing: the
+gate* (the "when does SemanticScript become mandatory" answer). Distinct and missing: the
 *engineering rollout* — feature flags, compatibility-mode definition,
 milestones, deprecation timeline.
 
@@ -5697,7 +5697,7 @@ Implement in order; each layer is runnable before the next begins.
 (unknown predicate, arity, unresolved reference). *Goal: programs compile and
 run.*
 
-**Layer 2 — formatter + codemod.** current→EAV lowering; canonical ordering
+**Layer 2 — formatter + codemod.** current→SemanticScript lowering; canonical ordering
 (§22); non-canonical sugar lowering (§13 `else`/`ifOut`/`ifValue`, compound
 `defer`, `call async yes`); deterministic generated names (§13/§15.6);
 idempotency (`fmt(fmt(x)) == fmt(x)`, §29 #11); row-count measurement (§21).
@@ -5729,7 +5729,7 @@ the worked-example class.
 ### 31.4 DevX is mandatory, not optional
 
 The language is row-heavy and semantically rich; it only *feels* good if agents
-operate through **semantic commands** and inspect EAV slices only when needed.
+operate through **semantic commands** and inspect SemanticScript slices only when needed.
 The target loop:
 
 ```bash
@@ -5742,14 +5742,14 @@ sem explain OP                         # read back control/effect/cleanup summar
 
 So `sem slice`/`sem explain`/`sem doctor`/`sem add` (§24, proposed) move from
 nice-to-have to **required at Layer 1+** — a human or agent should rarely hand-edit
-raw canonical EAV. This is the bet that makes verbosity acceptable: the rows are
+raw canonical SemanticScript. This is the bet that makes verbosity acceptable: the rows are
 the compile target and the diff format, while the *authoring and editing* surface
 is semantic commands and the compact profile (§23).
 
 ### 31.5 Validation milestone
 
 The single most informative next step is not more spec: take one real handler
-(e.g. `healthHandler`, §19), run the current→EAV conversion (§20), implement
+(e.g. `healthHandler`, §19), run the current→SemanticScript conversion (§20), implement
 Layer 2 canonical formatting for just that subset, and measure whether an agent
 can patch it (add a route, add a cleanup, add an `ifVariant` arm) using
 `sem slice`/`sem doctor`. That answers the §21 adoption gate and the §29 #16
@@ -5770,8 +5770,8 @@ ownership edges (item 9) and semantic diff (item 23), are now register gaps **§
 
 ### 32.1 Language semantics
 
-1. **Lowering model** — §29 #3 (keystone). Pin: whether EAV shares the current
-   `semsc.py` AST; which compiler structures change; EAV-as-prenormalization vs a
+1. **Lowering model** — §29 #3 (keystone). Pin: whether SemanticScript shares the current
+   `semsc.py` AST; which compiler structures change; SemanticScript-as-prenormalization vs a
    second front-end. Everything else here depends on this.
 2. **Canonical formatter semantics** — §29 #11. Hard contract: total, idempotent
    (`fmt(fmt(x)) == fmt(x)`), order-stable (§22), stable generated names
@@ -5830,12 +5830,12 @@ ownership edges (item 9) and semantic diff (item 23), are now register gaps **§
 14. **Normative vs informative split** — §29 #13. Label every section
     *Normative* / *Informative* / *Roadmap*. As a baseline: §§1–17, 22–23, 30 are
     normative; §§24, 28(resolver), 29, 31, 32 are informative/roadmap.
-15. **Migration correctness contract** — §29 #4. The current→EAV→current
+15. **Migration correctness contract** — §29 #4. The current→SemanticScript→current
     round-trip guarantee, an enumerated list of lossy cases and unsupported edges,
     and codemod acceptance criteria stated as *semantic equivalence* (not row
     count, which is §21).
 16. **Version / rollout contract** — §29 #8. Feature flags, compatibility mode,
-    deprecation timeline, and the exact gate (beyond §21's metrics) at which EAV
+    deprecation timeline, and the exact gate (beyond §21's metrics) at which SemanticScript
     becomes the mandatory authoring surface.
 
 ### 32.3 Tooling
@@ -5856,7 +5856,7 @@ ownership edges (item 9) and semantic diff (item 23), are now register gaps **§
     stale-file behavior = refuse to apply against a changed mtime/digest (the same
     protection that guards in-place edits to this very document).
 21. **Diagnostic source mapping** — §29 #15. A diagnostic computed on canonical
-    EAV must map back to the author's compact/current source span; the lowering
+    SemanticScript must map back to the author's compact/current source span; the lowering
     (§29 #3) carries a row↔row map so the user sees the line they wrote.
 22. **Editor / LSP plan** — §29 #7. Semantic tokens (the col-1-subject /
     col-2-predicate shape is a tokenization advantage), hovers (from §6 metadata),
@@ -5865,7 +5865,7 @@ ownership edges (item 9) and semantic diff (item 23), are now register gaps **§
     actions that apply `sem add`/fix.
 23. **Semantic diff** — §29 #27. A row-aware diff reporting
     *typed* deltas instead of text: "operation X added effect Y", "cleanup Z
-    removed", "route changed", "capability added", "return arity changed". The EAV
+    removed", "route changed", "capability added", "return arity changed". The SemanticScript
     row model makes this natural — each row is a typed fact, so a diff is a set of
     fact changes. Feeds code review and the §28.5 supply-chain
     capability-change surface (a dependency that newly requests an effect is a

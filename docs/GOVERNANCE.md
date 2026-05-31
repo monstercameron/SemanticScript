@@ -1,4 +1,4 @@
-# EAV-Steps — governance, versioning, glossary
+# SemanticScript — governance, versioning, glossary
 
 Contract version: **eav-0.3.1** (must equal `semanticscript.CONTRACT_VERSION`; the
 `test_contract_version_lockstep` check fails if they drift — X-020).
@@ -20,8 +20,8 @@ invalid corpus), and this file's contract version. The token-sync drift guard
 
 - **Versioning:** `CONTRACT_VERSION` is bumped on any grammar/contract change.
 - **Compatibility mode:** the current/compact verb-led surface remains
-  acceptable at the source level; EAV is the canonical normalized form (§ adoption
-  framing). The compact↔EAV round-trip is the gate-0 guarantee.
+  acceptable at the source level; SemanticScript is the canonical normalized form (§ adoption
+  framing). The compact↔SemanticScript round-trip is the gate-0 guarantee.
 - **Deprecation policy:** deprecated constructs (e.g. `async` on a `call`) parse
   but warn, and `sem fmt` promotes them to the canonical form.
 - **Milestones:** L1 core → L2 lint → L3 stdlib/build → L4 tooling → L5 migration
@@ -44,7 +44,7 @@ invalid corpus), and this file's contract version. The token-sync drift guard
   hard error (§34.4, preserved verbatim).
 - **effective effects** — an operation's own effects ∪ those of the calls/
   tasks/cleanups it (transitively) activates; must be covered by `uses` (§8).
-- **gate-0** — the compact↔EAV (and EAV↔canonical-EAV) round-trip preserves
+- **gate-0** — the compact↔SemanticScript (and SemanticScript↔canonical-SemanticScript) round-trip preserves
   semantics and the entity/row set (§21).
 
 ## §31 freeze vs §33/§34 reconciliation (X-024)

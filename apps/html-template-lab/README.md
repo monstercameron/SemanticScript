@@ -1,6 +1,6 @@
-# html-template-lab (EAV port) — COMPLETE (X-040 / X-047)
+# html-template-lab (SemanticScript port) — COMPLETE (X-040 / X-047)
 
-Full multi-module EAV-Steps port of `apps/html-template-lab` (the v0.1
+Full multi-module SemanticScript port of `apps/html-template-lab` (the v0.1
 first-class HTML/SSX showcase), in the §28.2 project layout. It **JIT-runs and
 builds to a native exe**, printing the complete server-rendered todo dashboard.
 

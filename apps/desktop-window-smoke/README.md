@@ -1,6 +1,6 @@
-# desktop-window-smoke (EAV port)
+# desktop-window-smoke (SemanticScript port)
 
-Full 1:1 EAV-Steps port of `apps/desktop-window-smoke` (the v0.1 SemanticScript
+Full 1:1 SemanticScript port of `apps/desktop-window-smoke` (the v0.1 SemanticScript
 Windows GUI smoke app).
 
 ## Parity
@@ -16,7 +16,7 @@ Windows GUI smoke app).
 ## Conversions
 
 - The original's inline `authority ACTION RESOURCE` rows become covering
-  `capability`/`grants` + `uses` pairs (EAV's effect model, §8): one authority
+  `capability`/`grants` + `uses` pairs (SemanticScript's effect model, §8): one authority
   capability for the composition op and one per event handler.
 - `set storage HANDLE VALUE` becomes a create call whose `out` rebinds the
   mutable module-storage handle (`createTaskInputCall out greetingInputHandle …`),

@@ -1,4 +1,4 @@
-# EAV-Steps — roadmap register (§29 gaps #14–#25)
+# SemanticScript — roadmap register (§29 gaps #14–#25)
 
 Each gap is **spec → stub → defer**: the direction is recorded here and a stub
 exists where one is cheap, but the full build is deferred past L1–L4. The test
@@ -10,7 +10,7 @@ free/GC) — backend mechanism is region/arena/refcount, TBD. Stub: the source
 contract is fixed (§10.6, WS1-096); `memory heap no` already satisfiable.
 
 ## #15 — Agent edit loop + diagnostic source-mapping (X-031)
-Status: deferred. Direction: lint on canonical EAV maps back to the author's
+Status: deferred. Direction: lint on canonical SemanticScript maps back to the author's
 compact/current span. Stub: diagnostics carry a line + code (`Diagnostic`),
 which is the anchor a source-map would extend (WS2-004).
 

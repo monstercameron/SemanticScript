@@ -1,6 +1,6 @@
-# taskforge-tui (EAV port)
+# taskforge-tui (SemanticScript port)
 
-Full 1:1 EAV-Steps port of `apps/taskforge-tui` (the v0.1 SemanticScript
+Full 1:1 SemanticScript port of `apps/taskforge-tui` (the v0.1 SemanticScript
 heap-array keyboard todo app with JSON persistence).
 
 ## Parity
@@ -21,7 +21,7 @@ heap-array keyboard todo app with JSON persistence).
   rebinds whose value is a call result use the call's `out` instead. Module
   constants use the **single-line storage form** (`NAME is storage module
   immutable Int32 27`).
-- `EnumName.equal` domain method → `compare.equalInt32` (EAV enums are i32
+- `EnumName.equal` domain method → `compare.equalInt32` (SemanticScript enums are i32
   discriminants); the `SaveTodosStatus`/`ScreenMode` enums keep their cases.
 - `authority ACTION PATH` → covering `capability`/`grants` + `uses` (§8).
 - `branch if condition C target L` → `branch if C goto L`; `branch else target L`
@@ -31,7 +31,7 @@ heap-array keyboard todo app with JSON persistence).
   failure is detected with `pointer.isNull` (uniform with the file open the app
   already null-checks). `CAllocationError`/`MainError` are dropped.
 - The handle-less `defer … showCursor (deferRunOn all)` becomes a targeted
-  `showCursor` on the quit path (the only path that hid the cursor); EAV cleanups
+  `showCursor` on the quit path (the only path that hid the cursor); SemanticScript cleanups
   are handle-scoped (`cleans <handle>` required).
 
 ## Deferred execution

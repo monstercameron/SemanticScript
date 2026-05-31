@@ -1,4 +1,4 @@
-# EAV-Steps — EBNF grammar (v0.3)
+# SemanticScript — EBNF grammar (v0.3)
 
 Normative reference for the `semanticscript` front end. The four row classes (§1) and the
 lexical rules (§2) below are what `tokenize_line` and `parse` implement; the

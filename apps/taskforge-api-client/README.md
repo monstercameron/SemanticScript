@@ -1,6 +1,6 @@
-# taskforge-api-client (EAV port)
+# taskforge-api-client (SemanticScript port)
 
-Full 1:1 EAV-Steps port of `apps/taskforge-api-client` (the v0.1 SemanticScript
+Full 1:1 SemanticScript port of `apps/taskforge-api-client` (the v0.1 SemanticScript
 async outbound HTTP client that probes a running `apps/taskforge-web` server).
 
 ## Parity
@@ -21,18 +21,18 @@ async outbound HTTP client that probes a running `apps/taskforge-web` server).
   immutable `HttpRequestPolicy.new` / `HttpGetRequest.new` construction, and
   `fieldGet … body` becomes `HttpTextResponse.body` field access.
 - The wait-set `await … case … done` (await-any in completion order) becomes
-  start-all-then-join-each in document order — EAV has no select/wait-set, so
+  start-all-then-join-each in document order — SemanticScript has no select/wait-set, so
   the dynamic dispatch becomes a deterministic join order.
 - Dropped (language differences, not feature reductions): per-call
-  `timeout`/`cancelOn` (EAV tasks carry no cancel token; `requestCancellationToken`
+  `timeout`/`cancelOn` (SemanticScript tasks carry no cancel token; `requestCancellationToken`
   storage drops, 12→11), the `Result ExitCode MainError` return + `makeError`
   (a console entry returns `ExitCode`), and the `console.writeLine` error path
-  (console.writeLine is void in EAV).
+  (console.writeLine is void in SemanticScript).
 
 ## Deferred execution
 
 The `standard.net` client runtime is not specified in v0.3 (§27), so the `net.*`
 targets stay external (unlowered). The record construction/access ops are real
-EAV record lowering, but the program cannot run until the net runtime lands.
+SemanticScript record lowering, but the program cannot run until the net runtime lands.
 The whole app parses + lints clean as `target console`; when `net.fetchText` /
 `net.freeTextBody` gain bodies, this source runs unchanged — no source changes.

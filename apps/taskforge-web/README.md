@@ -1,6 +1,6 @@
-# taskforge-web (EAV port) — COMPLETE (X-043)
+# taskforge-web (SemanticScript port) — COMPLETE (X-043)
 
-Full multi-module EAV-Steps port of `apps/taskforge-web` (the v0.1 SemanticScript
+Full multi-module SemanticScript port of `apps/taskforge-web` (the v0.1 SemanticScript
 multi-user todo web app), in the §28.2 project layout.
 
 ## Layout (README §28.2)
@@ -35,9 +35,9 @@ The whole composed project parses + lints clean (0 errors, 0 warnings):
   (document-cursor API), log, and html surfaces are contract-backed by
   `sigs/standard.{http,sqlite,json,bcrypt,log,html}.semsig`.
 
-### Porting notes (semsc → EAV)
+### Porting notes (semsc → SemanticScript)
 
-- `authority OP action resource` rows have no EAV equivalent (EAV has only
+- `authority OP action resource` rows have no SemanticScript equivalent (SemanticScript has only
   capabilities, and effect coverage is **transitive** — every op on a call path
   must hold a covering `uses` of its own). They are converted to synthesized
   capabilities, and each handler that transitively opens the database is granted
@@ -47,7 +47,7 @@ The whole composed project parses + lints clean (0 errors, 0 warnings):
   single-line storage; `literal`+`literalSource` → storage+`literalSource`;
   `sql body`/`jsonBody` → `body sql`/`body json` islands; `set storage` → `set`;
   resource defers → `cleanup` entities (owns/cleanedBy); transaction-rollback
-  action defers are dropped (EAV `defer` is handle-scoped; the explicit
+  action defers are dropped (SemanticScript `defer` is handle-scoped; the explicit
   BEGIN/COMMIT carry the transaction boundary).
 
 ## Deferred execution

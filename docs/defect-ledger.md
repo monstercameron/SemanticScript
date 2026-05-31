@@ -1,6 +1,6 @@
-# EAV defect-class coverage ledger (X-101)
+# SemanticScript defect-class coverage ledger (X-101)
 
-| Defect class | Asset | EAV defense | Status | Owning todo |
+| Defect class | Asset | SemanticScript defense | Status | Owning todo |
 | --- | --- | --- | --- | --- |
 | SQL/HTML/path/URL injection | trust | SS3071 | ✅ | X-070/X-071 |
 | Untrusted value at a trust-sensitive sink | trust | SS3070 | ✅ | X-070 |

@@ -1,6 +1,6 @@
-# http-runtime-gauntlet (EAV port)
+# http-runtime-gauntlet (SemanticScript port)
 
-Full 1:1 EAV-Steps port of `apps/http-runtime-gauntlet` (the v0.1 SemanticScript
+Full 1:1 SemanticScript port of `apps/http-runtime-gauntlet` (the v0.1 SemanticScript
 native-HTTP/1.1 conformance harness).
 
 ## Parity
@@ -19,20 +19,20 @@ native-HTTP/1.1 conformance harness).
 ## Conversions / language differences
 
 - The v0.1 `webServer`/`serverHost`/`serverPort`/`route`/`routeMiddleware`
-  keywords become the subject-anchored EAV `webServer` entity (`X is webServer`,
+  keywords become the subject-anchored SemanticScript `webServer` entity (`X is webServer`,
   `X host`, `X port`, `X route`, `X middleware`, §14).
-- **Middleware** uses EAV's §14 ABI `(request, response, next NextMiddleware)
+- **Middleware** uses SemanticScript's §14 ABI `(request, response, next NextMiddleware)
   -> Bool` instead of the v0.1 `MiddlewareControl` enum:
   `continueMiddlewareControl` → `Bool true` (continue),
   `shortCircuitMiddlewareControl` → `Bool false` (short-circuit). The
   `MiddlewareControl` enum and its constants disappear.
-- **Effect coverage**: EAV `grants` are exact-match (no hierarchical path
+- **Effect coverage**: SemanticScript `grants` are exact-match (no hierarchical path
   coverage), so `httpRequestReader` enumerates each narrower read sub-path
   (`http.request.method`/`.path`/`.header`/`.query`/`.body`/`.multipart`) that
   the v0.1 source covered via a single hierarchical `http.request read` grant.
 - `warning` → the universal `risk` metadata predicate; the semsc-specific
   linter-contract verbs (`pinsNullBodyFailurePath`, `responseBodyForwarder`,
-  `routeTimeoutOptOut`) become `rationale` rows (EAV has no SS3603/SS3602/route-
+  `routeTimeoutOptOut`) become `rationale` rows (SemanticScript has no SS3603/SS3602/route-
   timeout equivalents).
 - `bind value`/`ignore value source` → `out NAME TYPE` / `discards "reason"`.
 
