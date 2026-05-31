@@ -9101,6 +9101,126 @@ class EavCodegen:
                 result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
+        elif target.startswith("map."):
+            # R-061 collections runtime: a String->Int64 map. Same stable-handle
+            # header as the list (i64[3] = [count, capacity, dataPtrBits]) but each
+            # entry is a pair [keyPtrBits, value] (16 bytes). Lookup is a linear
+            # strcmp scan in **insertion order** (deterministic, X-094) — fine for
+            # the demo scale, and the insertion-order layout is what `each` will
+            # iterate. map.get of a missing key sets the fallible MapError (`err`).
+            i64 = ir.IntType(64)
+            i32 = ir.IntType(32)
+            i8p = ir.IntType(8).as_pointer()
+            i64p = i64.as_pointer()
+            c1, c2 = ir.Constant(i64, 1), ir.Constant(i64, 2)
+            _INIT_CAP = 4
+
+            def _slot(b, h, n):
+                return b.gep(b.bitcast(h, i64p), [ir.Constant(i64, n)])
+
+            def _map_find(h, key):
+                # Returns (found:i1, idx:i64, data:i64*); builder ends at `done`.
+                # On a hit idx is the entry index; on a miss idx == count.
+                fn = builder.function
+                found_p = builder.alloca(ir.IntType(1))
+                idx_p = builder.alloca(i64)
+                builder.store(ir.Constant(ir.IntType(1), 0), found_p)
+                builder.store(ir.Constant(i64, 0), idx_p)
+                count = builder.load(_slot(builder, h, 0))
+                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i64p)
+                cond = fn.append_basic_block("mapCond")
+                body = fn.append_basic_block("mapBody")
+                matchb = fn.append_basic_block("mapMatch")
+                nextb = fn.append_basic_block("mapNext")
+                done = fn.append_basic_block("mapDone")
+                builder.branch(cond)
+                cb = ir.IRBuilder(cond)
+                i = cb.load(idx_p)
+                cb.cbranch(cb.icmp_signed(">=", i, count), done, body)
+                bb = ir.IRBuilder(body)
+                kp = bb.inttoptr(
+                    bb.load(bb.gep(data, [bb.mul(i, c2)])), i8p)
+                cmp = bb.call(self.runtime("strcmp"), [key, kp])
+                bb.cbranch(bb.icmp_signed("==", cmp, ir.Constant(i32, 0)),
+                           matchb, nextb)
+                mb = ir.IRBuilder(matchb)
+                mb.store(ir.Constant(ir.IntType(1), 1), found_p)
+                mb.branch(done)
+                nb = ir.IRBuilder(nextb)
+                nb.store(nb.add(i, c1), idx_p)
+                nb.branch(cond)
+                builder.position_at_end(done)
+                return builder.load(found_p), builder.load(idx_p), data
+
+            if target == "map.create":
+                hdr = builder.call(self.runtime("malloc"), [ir.Constant(i64, 24)])
+                builder.store(ir.Constant(i64, 0), _slot(builder, hdr, 0))
+                builder.store(ir.Constant(i64, _INIT_CAP), _slot(builder, hdr, 1))
+                data = builder.call(self.runtime("malloc"),
+                                    [ir.Constant(i64, _INIT_CAP * 16)])
+                builder.store(builder.ptrtoint(data, i64), _slot(builder, hdr, 2))
+                err = builder.icmp_unsigned(
+                    "==", builder.ptrtoint(hdr, i64), ir.Constant(i64, 0))
+                result = hdr
+            elif target == "map.size":
+                h = arg("map", "OpaquePointer")
+                result = builder.load(_slot(builder, h, 0))
+            elif target == "map.get":
+                h = arg("map", "OpaquePointer")
+                key = arg("key", "String")
+                found, idx, data = _map_find(h, key)
+                safe = builder.select(found, idx, ir.Constant(i64, 0))
+                result = builder.load(
+                    builder.gep(data, [builder.add(builder.mul(safe, c2), c1)]))
+                err = builder.xor(found, ir.Constant(ir.IntType(1), 1))
+            elif target == "map.put":
+                h = arg("map", "OpaquePointer")
+                key = arg("key", "String")
+                value = arg("value", "Int64")
+                found, idx, data = _map_find(h, key)
+                fn = builder.function
+                rep_p = builder.alloca(i32)
+                upd = fn.append_basic_block("mapPutUpdate")
+                ins = fn.append_basic_block("mapPutInsert")
+                pdone = fn.append_basic_block("mapPutDone")
+                builder.cbranch(found, upd, ins)
+                ub = ir.IRBuilder(upd)
+                ub.store(value,
+                         ub.gep(data, [ub.add(ub.mul(idx, c2), c1)]))
+                ub.store(ir.Constant(i32, 1), rep_p)
+                ub.branch(pdone)
+                ib = ir.IRBuilder(ins)
+                count = ib.load(_slot(ib, h, 0))
+                cap = ib.load(_slot(ib, h, 1))
+                grow = fn.append_basic_block("mapGrow")
+                afterg = fn.append_basic_block("mapAfterGrow")
+                ib.cbranch(ib.icmp_signed("==", count, cap), grow, afterg)
+                gb = ir.IRBuilder(grow)
+                newcap = gb.mul(cap, c2)
+                olddata = gb.inttoptr(gb.load(_slot(gb, h, 2)), i8p)
+                newdata = gb.call(self.runtime("realloc"),
+                                  [olddata, gb.mul(newcap, ir.Constant(i64, 16))])
+                gb.store(newcap, _slot(gb, h, 1))
+                gb.store(gb.ptrtoint(newdata, i64), _slot(gb, h, 2))
+                gb.branch(afterg)
+                ab = ir.IRBuilder(afterg)
+                data2 = ab.inttoptr(ab.load(_slot(ab, h, 2)), i64p)
+                base = ab.mul(count, c2)
+                ab.store(ab.ptrtoint(key, i64), ab.gep(data2, [base]))
+                ab.store(value, ab.gep(data2, [ab.add(base, c1)]))
+                ab.store(ab.add(count, c1), _slot(ab, h, 0))
+                ab.store(ir.Constant(i32, 0), rep_p)
+                ab.branch(pdone)
+                builder.position_at_end(pdone)
+                result = builder.load(rep_p)
+            elif target == "map.release":
+                h = arg("map", "OpaquePointer")
+                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i8p)
+                builder.call(self.runtime("free"), [data])
+                builder.call(self.runtime("free"), [h])
+                result = ir.Constant(ir.IntType(32), 0)
+            else:
+                result = ir.Constant(ir.IntType(32), 0)
         elif target in ("math.divideInt64", "math.moduloInt64"):
             left = arg("left", "Int64")
             right = arg("right", "Int64")
