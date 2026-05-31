@@ -1,0 +1,98 @@
+# retry_bounded — bounded retry of a fallible call (R-041). `useRetry 3` on a
+# call wraps it in a retry loop: the fallible out-param call is re-invoked until
+# it returns ok (status 0) or the attempt budget is spent. The demo symbol
+# `eav_ffi_count` increments a counter, writes it through the out-pointer, and
+# ALWAYS returns an error status — so with `useRetry 3` it is invoked exactly 3
+# times and the written value is 3, proving the retry re-invoked the call. When
+# the budget is exhausted the last error surfaces normally (catch / branch
+# ifError). This exercises:
+#   * retry count: the call runs 3 times (out == 3), not once;
+#   * exhaustion: after 3 failed attempts the error is delivered, not swallowed.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+RetryBounded is project
+RetryBounded module examplesRetryBounded
+RetryBounded target console
+RetryBounded entry main
+
+examplesRetryBounded is module
+examplesRetryBounded path examples.retryBounded
+examplesRetryBounded exports main
+examplesRetryBounded purpose "Retry a flaky call a bounded number of times and assert the count"
+examplesRetryBounded invariant "The call runs exactly the retry budget; the final error surfaces"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+RetryError is error
+RetryError purpose "The flaky call's error status after the retry budget is spent"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+ffiCount is operation
+ffiCount out Int64
+ffiCount body runtimeBinding eav_ffi_count
+ffiCount outParam
+ffiCount purpose "Increment and return a per-process call counter; always fails"
+ffiCount invariant "Writes the attempt number through the out-pointer; returns non-zero"
+ffiCount suppress SS5000 because "retry demo; the real home is a .semsig-backed stdlib module"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Retry a flaky call three times and assert it ran three times"
+main invariant "All three assertions hold"
+main let three immutable Int64 3
+main let oneGuard immutable Int64 1
+main let oneMark immutable Int64 1
+main let errFlag mutable Int64 0
+main let tnCount immutable String "useRetry 3 invokes the flaky call exactly 3 times"
+main let tnRetried immutable String "the call retried beyond the first attempt (not 1)"
+main let tnExhausted immutable String "after the budget is spent the error surfaces (caught)"
+main do retryCall
+main branch ifError retryCall goto errCaught
+main goto afterErr
+main at errCaught set errFlag oneMark
+main at afterErr do checkCount
+main do checkRetried
+main do checkExhausted
+main do harnessReport
+main return harnessSummaryCode
+
+retryCall is call
+retryCall in main
+retryCall invokes ffiCount
+retryCall out attempts Int64
+retryCall catch retryErr RetryError
+retryCall useRetry 3
+
+checkCount is call
+checkCount in main
+checkCount invokes test.assertEqualInt64
+checkCount arg name String tnCount
+checkCount arg expected Int64 three
+checkCount arg actual Int64 attempts
+
+checkRetried is call
+checkRetried in main
+checkRetried invokes test.assertNotEqualInt64
+checkRetried arg name String tnRetried
+checkRetried arg expected Int64 oneGuard
+checkRetried arg actual Int64 attempts
+
+checkExhausted is call
+checkExhausted in main
+checkExhausted invokes test.assertEqualInt64
+checkExhausted arg name String tnExhausted
+checkExhausted arg expected Int64 oneMark
+checkExhausted arg actual Int64 errFlag
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

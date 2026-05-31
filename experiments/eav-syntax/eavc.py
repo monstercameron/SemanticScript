@@ -1695,6 +1695,7 @@ RESERVED_WORDS = {
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "outParam",                           # WS3-016 FFI out-param ABI marker
+    "useRetry",                           # R-041 bounded-retry call row
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
     "guardRank",                           # X-090 lock-acquisition order
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
@@ -1782,6 +1783,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "takesOwnership",                     # WS1-113 ownership transfer
         "limit",                              # X-077 decode limits
         "timeout", "budget",                  # X-078 DoS bounds
+        "useRetry",                           # R-041 bounded retry of a fallible call
     },
     "task": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -9381,10 +9383,38 @@ class EavCodegen:
                 out_ty = self.ir_type(out_row.payload[0]) if out_row and out_row.payload \
                     else ir.IntType(64)
                 slot = builder.alloca(out_ty)
-                status = builder.call(self.functions[target], vals + [slot])
+                i32 = ir.IntType(32)
+                retry_row = call.fact("useRetry")
+                max_attempts = 1
+                if retry_row and retry_row.payload:
+                    try:
+                        max_attempts = max(1, int(str(retry_row.payload[0]).replace("_", "")))
+                    except ValueError:
+                        max_attempts = 1
+                if max_attempts > 1:
+                    # R-041 bounded retry: re-invoke the fallible out-param call up
+                    # to `max_attempts` times, stopping on the first ok (status 0).
+                    fn = builder.function
+                    attempts_p = builder.alloca(i32)
+                    status_p = builder.alloca(i32)
+                    builder.store(ir.Constant(i32, 1), attempts_p)
+                    rhead = fn.append_basic_block("retryHead")
+                    rdone = fn.append_basic_block("retryDone")
+                    builder.branch(rhead)
+                    builder.position_at_end(rhead)
+                    st = builder.call(self.functions[target], vals + [slot])
+                    builder.store(st, status_p)
+                    att = builder.load(attempts_p)
+                    builder.store(builder.add(att, ir.Constant(i32, 1)), attempts_p)
+                    not_ok = builder.icmp_signed("!=", st, ir.Constant(i32, 0))
+                    more = builder.icmp_signed("<", att, ir.Constant(i32, max_attempts))
+                    builder.cbranch(builder.and_(not_ok, more), rhead, rdone)
+                    builder.position_at_end(rdone)
+                    status = builder.load(status_p)
+                else:
+                    status = builder.call(self.functions[target], vals + [slot])
                 result = builder.load(slot)
-                err = builder.icmp_signed(
-                    "!=", status, ir.Constant(ir.IntType(32), 0))
+                err = builder.icmp_signed("!=", status, ir.Constant(i32, 0))
             else:
                 result = builder.call(self.functions[target], vals)
         else:
@@ -10067,6 +10097,19 @@ def _eav_panic_py(code, kind, op, row, reason, left, right) -> None:
 
 
 _EAV_FFI_ADD_CFUNC = None  # kept alive so the JIT-registered callback survives GC
+_EAV_FFI_COUNT_CFUNC = None
+_EAV_FFI_COUNT_N = [0]  # per-process invocation counter for the retry demo
+
+
+def _eav_ffi_count_py(out_ptr) -> int:
+    """In-process impl of the R-041 retry demo symbol
+    `int eav_ffi_count(int64_t *out)`: increments a per-process counter, writes
+    it through the out-pointer, and ALWAYS returns a non-zero (error) status — so
+    a `useRetry N` call invokes it exactly N times and the written value ends at
+    N, proving the bounded retry re-invoked the call."""
+    _EAV_FFI_COUNT_N[0] += 1
+    out_ptr[0] = _EAV_FFI_COUNT_N[0]
+    return 1
 
 
 def _eav_ffi_add_py(a, b, out_ptr) -> int:
@@ -10087,7 +10130,7 @@ def _register_panic_symbol() -> None:
     sites) and the `eav_ffi_add` out-param-ABI demo symbol with the JIT, before
     every JIT run."""
     import ctypes
-    global _EAV_PANIC_CFUNC, _EAV_FFI_ADD_CFUNC
+    global _EAV_PANIC_CFUNC, _EAV_FFI_ADD_CFUNC, _EAV_FFI_COUNT_CFUNC
     if _EAV_PANIC_CFUNC is None:
         cft = ctypes.CFUNCTYPE(
             None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
@@ -10102,6 +10145,11 @@ def _register_panic_symbol() -> None:
         _EAV_FFI_ADD_CFUNC = cft2(_eav_ffi_add_py)
     llvm.add_symbol(
         "eav_ffi_add", ctypes.cast(_EAV_FFI_ADD_CFUNC, ctypes.c_void_p).value)
+    if _EAV_FFI_COUNT_CFUNC is None:
+        cft3 = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.POINTER(ctypes.c_int64))
+        _EAV_FFI_COUNT_CFUNC = cft3(_eav_ffi_count_py)
+    llvm.add_symbol(
+        "eav_ffi_count", ctypes.cast(_EAV_FFI_COUNT_CFUNC, ctypes.c_void_p).value)
 
 
 def _register_runtime_symbols(program: Program) -> None:

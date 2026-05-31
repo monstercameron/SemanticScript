@@ -23,3 +23,13 @@ EAV_EXPORT int32_t eav_ffi_add(int64_t a, int64_t b, int64_t *out) {
     *out = a + b;
     return 0;  /* ok */
 }
+
+/* R-041 bounded-retry demo: increments a per-process counter, writes it through
+ * the out-pointer, and ALWAYS returns a non-zero (error) status — so a
+ * `useRetry N` call invokes it exactly N times and *out ends at N. */
+EAV_EXPORT int32_t eav_ffi_count(int64_t *out) {
+    static int64_t n = 0;
+    n += 1;
+    *out = n;
+    return 1;
+}
