@@ -15,6 +15,10 @@ cleanup registration, universal metadata attachment, HTML hydration/binding,
 full web-server handler ABIs, type/record/enum entities, mutable rebinding via
 call output, and lexical rules. Worked examples are fully updated.
 
+> **New here?** This file is the language specification. To install the
+> toolchain and run your first program, start with
+> [docs/getting-started.md](docs/getting-started.md).
+
 > **Prototype status (this repo).** A keystone front end now exists at
 > `semanticscript/compiler/semanticscript.py`: it lexes (§2), parses (§1/§5), and *lowers*
 > canonical SemanticScript into the existing v0.1 verb-led source the reference compiler
