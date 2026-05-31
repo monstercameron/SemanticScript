@@ -2988,7 +2988,9 @@ def _lint_loop_no_progress(program: Program) -> list:
             elif r.predicate == "branch":
                 tgt = _branch_goto_target_and_guards(r, owned)[0]
             li = labels.get(tgt) if tgt is not None else None
-            if li is None or li >= gi:
+            # R-089: `li == gi` is a self-loop (`at L goto L`) — a back-edge, not
+            # a forward edge. Only a strictly-later target (`li > gi`) is forward.
+            if li is None or li > gi:
                 continue  # forward edge or unknown target -> not a loop back-edge
             has_return = False
             exit_guards: list = []     # set of guard names per exit (empty = unconditional)
@@ -3328,13 +3330,18 @@ def discover_tests(program: Program) -> dict:
 
 
 # CLI subcommand -> MCP tool name (README ss24; proposed vs shipping shapes).
+def _structured_diags(diags: list) -> list:
+    """Structured diagnostic objects for every `--json` surface (R-090): a
+    machine-readable {code,severity,line,entity,message} carrying the rendered
+    text as a separate field, so consumers never have to regex-parse a string."""
+    return [{"code": d.code, "severity": d.severity, "line": d.line,
+             "entity": d.entity, "message": d.message, "rendered": d.render()}
+            for d in diags]
+
+
 def diagnostics_json(diags: list) -> str:
     """JSON surface for diagnostics (README ss24 `--json`)."""
-    return json.dumps(
-        [{"code": d.code, "severity": d.severity, "line": d.line,
-          "entity": d.entity, "message": d.message} for d in diags],
-        indent=2,
-    )
+    return json.dumps(_structured_diags(diags), indent=2)
 
 
 def doctor(program: Program) -> dict:
@@ -9113,8 +9120,23 @@ def cmd_lower(args) -> int:
     return 0
 
 
+def _is_trap_returncode(rc: int) -> bool:
+    """True if a subprocess return code indicates a hardware/guard trap — a POSIX
+    fatal signal or a Windows NTSTATUS exception code — rather than a normal
+    nonzero exit (R-088)."""
+    if rc < 0:
+        return True  # POSIX: killed by a signal (SIGILL/SIGSEGV/SIGFPE/SIGABRT)
+    return (rc & 0xFFFFFFFF) >= 0xC0000000  # Windows NTSTATUS exception band
+
+
 def cmd_run(args) -> int:
-    """JIT-compile and execute the program; return its process exit code."""
+    """JIT-compile and execute the program; return its process exit code.
+
+    R-088: by default the JIT'd entry runs in an isolated subprocess, so a
+    runtime trap (div0 / out-of-bounds / overflow / deep recursion, lowered to
+    `llvm.trap`/`ud2`) surfaces as the child's exit code/signal and is reported
+    here as a clean, stable trap status — never an uncaught Python traceback. The
+    full op/row panic object is the eventual `eav_panic` path (WS1-130)."""
     program = parse(_read_program_source(args.path))
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
@@ -9125,8 +9147,35 @@ def cmd_run(args) -> int:
             for d in errors:
                 sys.stderr.write(d.render() + "\n")
             return 1
+    import os
+
+    def _trap_report(detail: str) -> None:
+        sys.stdout.flush()
+        sys.stderr.write(
+            "eavc: SSR0001: program trapped at runtime (guard trap / illegal "
+            "instruction — e.g. divide-by-zero, out-of-bounds, overflow, or deep "
+            f"recursion); {detail}\n")
+
+    # Windows surfaces a JIT guard trap as a catchable in-process OSError, so it
+    # needs no subprocess; a stdin program and the isolated POSIX child also run
+    # in-process. POSIX delegates to an isolated child (below) because a trap
+    # there is an uncatchable fatal signal.
+    if getattr(args, "jit_child", False) or args.path == "-" or os.name == "nt":
+        sys.stdout.flush()
+        try:
+            return jit_run(program)
+        except OSError as exc:
+            _trap_report(str(exc))
+            return 134  # stable "aborted" exit (128 + SIGABRT)
+    import subprocess
     sys.stdout.flush()
-    return jit_run(program)
+    child = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), "run", "--_jit-child", args.path])
+    rc = child.returncode
+    if _is_trap_returncode(rc):
+        _trap_report(f"isolated child terminated with {rc & 0xFFFFFFFF:#010x}")
+        return 134
+    return rc
 
 
 def build_executable(program: Program, out_path: str,
@@ -9781,7 +9830,7 @@ def cmd_check(args) -> int:
              for (t, txt, ln) in program.typed_comments]
     sys.stdout.write(_json_envelope(
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
-        diagnostics=[d.render() for d in diags], typedComments=typed,
+        diagnostics=_structured_diags(diags), typedComments=typed,
         nextCommands=nxt) + "\n")
     return 0
 
@@ -9910,14 +9959,28 @@ def cmd_describe(args) -> int:
 
 
 def cmd_graph(args) -> int:
-    """Emit a calls/control graph as DOT or mermaid."""
-    program = parse(_read_source(args.path))
+    """Emit a calls/control graph as DOT or mermaid. R-087: `--json` wraps the
+    rendered graph in a versioned sem.graph.v1 envelope (and a parse/render
+    error becomes a compiler-error envelope, never an argparse/plaintext error)."""
+    want_json = getattr(args, "json", False)
     try:
-        sys.stdout.write(graph(program, args.kind, args.format))
-        return 0
+        program = parse(_read_source(args.path))
+        text = graph(program, args.kind, args.format)
     except EavError as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.graph.v1", status="compiler-error", ok=False,
+                diagnostics=[f"eavc: {exc}"]) + "\n")
+            return 1
         sys.stderr.write(f"eavc: {exc}\n")
         return 2
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.graph.v1", status="ok", kind=args.kind,
+            format=args.format, graph=text) + "\n")
+    else:
+        sys.stdout.write(text)
+    return 0
 
 
 def cmd_scaffold(args) -> int:
@@ -10030,15 +10093,37 @@ def cmd_patch(args) -> int:
 
 def cmd_query(args) -> int:
     """Print the result of a structural query (`--dimension`)."""
-    program = parse(_read_source(args.path))
+    want_json = getattr(args, "json", False)
+    try:
+        program = parse(_read_source(args.path))
+    except EavError as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.query.v1", status="compiler-error", ok=False,
+                diagnostics=[f"eavc: {exc}"]) + "\n")
+            return 1
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
     if args.dimension not in QUERY_DIMENSIONS:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.query.v1", status="tool-error", ok=False,
+                message=f"unknown query dimension {args.dimension!r}",
+                dimensions=sorted(QUERY_DIMENSIONS)) + "\n")
+            return 2
         sys.stderr.write(
             f"eavc: unknown query dimension {args.dimension!r}; choose from "
             f"{', '.join(QUERY_DIMENSIONS)}\n"
         )
         return 2
-    for line in query(program, args.dimension):
-        sys.stdout.write(line + "\n")
+    results = list(query(program, args.dimension))
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.query.v1", status="ok", dimension=args.dimension,
+            results=results) + "\n")
+    else:
+        for line in results:
+            sys.stdout.write(line + "\n")
     return 0
 
 
@@ -10176,16 +10261,40 @@ def cmd_lint(args) -> int:
         except EavError as exc:
             sys.stderr.write(f"eavc: {exc}\n")
             return 2
-    program = parse(_read_source(args.path))
+    want_json = getattr(args, "json", False)
+    try:
+        program = parse(_read_source(args.path))
+    except EavError as exc:
+        # R-085: a parse error on `lint --json` must still be a versioned
+        # `sem.lint.v1` envelope (never plaintext), so MCP/agent consumers can
+        # distinguish compiler-error from lint-diagnostics.
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.lint.v1", status="compiler-error", ok=False,
+                diagnostics=[{"code": exc.code, "severity": "error",
+                              "line": exc.line, "entity": None,
+                              "message": exc.message, "rendered": f"eavc: {exc}"}]) + "\n")
+            return 1
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
     diags = lint(program)
-    if getattr(args, "json", False):
-        sys.stdout.write(diagnostics_json(diags) + "\n")
+    errors = [d for d in diags if d.severity == "error"]
+    warnings = [d for d in diags if d.severity == "warning"]
+    if want_json:
+        # R-085: success is a `sem.*.v1` envelope with structured diagnostics,
+        # not the legacy bare array.
+        status = ("lint-diagnostics" if errors
+                  else "ok-with-warnings" if warnings else "ok")
+        sys.stdout.write(_json_envelope(
+            "sem.lint.v1", status=status,
+            ok=(status in ("ok", "ok-with-warnings")),
+            diagnostics=_structured_diags(diags)) + "\n")
     else:
         for d in diags:
             sys.stdout.write(d.render() + "\n")
         if not diags:
             sys.stdout.write("no lint diagnostics\n")
-    return 1 if any(d.severity == "error" for d in diags) else 0
+    return 1 if errors else 0
 
 
 def cmd_explain(args) -> int:
@@ -10239,6 +10348,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_run.add_argument("--strict", action="store_true",
                         help="block T3 opinionated warnings (in addition to T0/T1/T2)")
     sp_run.add_argument("--json", action="store_true")
+    sp_run.add_argument("--_jit-child", dest="jit_child", action="store_true",
+                        help=argparse.SUPPRESS)  # R-088: internal isolated JIT child
     sp_run.set_defaults(func=cmd_run)
 
     for cname, cfn, chelp in (
@@ -10360,6 +10471,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_query = sub.add_parser("query", help="structural query over a program")
     sp_query.add_argument("dimension", help=f"one of: {', '.join(QUERY_DIMENSIONS)}")
     sp_query.add_argument("path", help="EAV source file, or - for stdin")
+    sp_query.add_argument("--json", action="store_true",
+                          help="emit a sem.query.v1 envelope (R-087)")
     sp_query.set_defaults(func=cmd_query)
 
     sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
@@ -10418,6 +10531,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_graph.add_argument("path", help="EAV source file, or - for stdin")
     sp_graph.add_argument("--kind", default="calls", choices=GRAPH_KINDS)
     sp_graph.add_argument("--format", default="dot", choices=("dot", "mermaid"))
+    sp_graph.add_argument("--json", action="store_true",
+                          help="emit a sem.graph.v1 envelope (R-087)")
     sp_graph.set_defaults(func=cmd_graph)
 
     args = parser.parse_args(argv)
