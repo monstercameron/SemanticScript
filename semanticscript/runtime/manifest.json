@@ -13,11 +13,11 @@
       ],
       "sources": [
         "ss_sqlite.c",
-        "../../legacy/SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c",
+        "native_sqlite/sem_sqlite_runtime.c",
         "../../third_party/sqlite/sqlite3.c"
       ],
       "include": [
-        "../../legacy/SemanticScript/runtime/native_sqlite",
+        "native_sqlite",
         "../../third_party/sqlite"
       ],
       "defines": [
@@ -81,10 +81,10 @@
       ],
       "sources": [
         "ss_json.c",
-        "../../legacy/SemanticScript/runtime/native_json/sem_json_runtime.c"
+        "native_json/sem_json_runtime.c"
       ],
       "include": [
-        "../../legacy/SemanticScript/runtime/native_json"
+        "native_json"
       ]
     },
     {
@@ -102,10 +102,15 @@
         "ss_base64url_encode"
       ],
       "sources": [
-        "../../legacy/SemanticScript/runtime/native_bcrypt/sem_bcrypt_runtime.c"
+        "native_bcrypt/sem_bcrypt_runtime.c",
+        "../../third_party/bcrypt/crypt_blowfish.c",
+        "../../third_party/bcrypt/crypt_gensalt.c"
       ],
       "include": [
-        "../../legacy/SemanticScript/runtime/native_bcrypt"
+        "native_bcrypt"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
       ]
     },
     {
@@ -120,10 +125,10 @@
         "ss_log_set_path"
       ],
       "sources": [
-        "../../legacy/SemanticScript/runtime/native_log/sem_log_runtime.c"
+        "native_log/sem_log_runtime.c"
       ],
       "include": [
-        "../../legacy/SemanticScript/runtime/native_log"
+        "native_log"
       ]
     },
     {
@@ -177,10 +182,10 @@
       ],
       "sources": [
         "ss_http.c",
-        "../../legacy/SemanticScript/runtime/native_http/sem_http_runtime.c"
+        "native_http/sem_http_runtime.c"
       ],
       "include": [
-        "../../legacy/SemanticScript/runtime/native_http"
+        "native_http"
       ],
       "defines": [
         "_CRT_SECURE_NO_WARNINGS"
@@ -202,7 +207,7 @@
       ],
       "sources": [
         "ss_async.c",
-        "../../legacy/SemanticScript/runtime/native_async/sem_async_runtime.c",
+        "native_async/sem_async_runtime.c",
         "../../third_party/libuv/src/fs-poll.c",
         "../../third_party/libuv/src/idna.c",
         "../../third_party/libuv/src/inet.c",
@@ -244,7 +249,7 @@
       "include": [
         "../../third_party/libuv/include",
         "../../third_party/libuv/src",
-        "../../legacy/SemanticScript/runtime/native_async"
+        "native_async"
       ],
       "defines": [
         "SEM_ASYNC_WITH_LIBUV",
@@ -289,10 +294,10 @@
       ],
       "sources": [
         "ss_gui.c",
-        "../../legacy/SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c"
+        "native_win32_gui/sem_win32_gui_runtime.c"
       ],
       "include": [
-        "../../legacy/SemanticScript/runtime/native_win32_gui"
+        "native_win32_gui"
       ],
       "platforms": {
         "windows": {

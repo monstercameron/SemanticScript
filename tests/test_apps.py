@@ -149,6 +149,92 @@ WEBSERVER_APPS = [
 ]
 
 
+def _run_webserver_crud(app, port):
+    """Start the TaskForge Web JSON REST API (target webServer) and drive a full
+    register -> login -> create-todo -> list round-trip against the live sqlite +
+    bcrypt + json runtime, asserting the persisted state at each step. Runs with
+    cwd=the app dir so the `sql/` schema islands and the sqlite db file resolve
+    relative to the project (README §28/§30)."""
+    import json
+    appdir = os.path.join(ROOT, "apps", app)
+    db = os.path.join(appdir, "taskforge_web.db")
+
+    def _rmdb():
+        if os.path.exists(db):
+            try:
+                os.remove(db)
+            except OSError:
+                pass
+
+    _rmdb()
+    proc = subprocess.Popen(
+        [sys.executable, SEMANTICSCRIPT, "run", "."],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=appdir)
+    base = "http://127.0.0.1:%d" % port
+
+    def call(method, path, body=None, cookie=None):
+        headers, data = {}, None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        if cookie:
+            headers["Cookie"] = cookie
+        req = urllib.request.Request(base + path, data=data, headers=headers,
+                                     method=method)
+        try:
+            r = urllib.request.urlopen(req, timeout=8)
+            return r.status, r.headers.get("Set-Cookie"), r.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Set-Cookie"), e.read().decode()
+
+    try:
+        up = False
+        for _ in range(90):  # first-time native-lib build (sqlite/bcrypt/json) + bind
+            if proc.poll() is not None:
+                return False, "server exited early (rc=%s)" % proc.returncode
+            time.sleep(1)
+            try:
+                urllib.request.urlopen(base + "/health", timeout=5)
+                up = True
+                break
+            except Exception:
+                pass
+        if not up:
+            return False, "server never bound on :%d" % port
+        st, _, body = call("GET", "/health")
+        if st != 200 or '"status":"ok"' not in body:
+            return False, "health bad: %s %r" % (st, body[:80])
+        st, _, body = call("POST", "/api/auth/register",
+                           {"username": "e2euser", "password": "hunter2pass"})
+        if st != 201 or '"username":"e2euser"' not in body:
+            return False, "register bad: %s %r" % (st, body[:90])
+        st, cookie, body = call("POST", "/api/auth/login",
+                                {"username": "e2euser", "password": "hunter2pass"})
+        if st != 200 or not cookie:
+            return False, "login bad: %s cookie=%r" % (st, cookie)
+        sess = cookie.split(";")[0]
+        st, _, body = call("POST", "/api/todos", {"title": "first todo"}, cookie=sess)
+        if st != 201 or '"title":"first todo"' not in body:
+            return False, "create bad: %s %r" % (st, body[:90])
+        st, _, body = call("GET", "/api/todos", cookie=sess)
+        if st != 200 or '"count":1' not in body or "first todo" not in body:
+            return False, "list bad: %s %r" % (st, body[:90])
+        return True, "register->login->create->list round-trip persisted"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+        _rmdb()
+
+
+# webServer apps driven by a stateful CRUD round-trip: (name, port).
+WEB_CRUD_APPS = [
+    ("taskforge-web", 18090),
+]
+
+
 def main():
     failures = 0
     total = 0
@@ -167,6 +253,12 @@ def main():
     for name, port, probes in WEBSERVER_APPS:
         total += 1
         ok, detail = _run_webserver(name, port, probes)
+        print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
+        if not ok:
+            failures += 1
+    for name, port in WEB_CRUD_APPS:
+        total += 1
+        ok, detail = _run_webserver_crud(name, port)
         print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
         if not ok:
             failures += 1

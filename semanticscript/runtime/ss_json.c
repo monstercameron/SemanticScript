@@ -56,8 +56,11 @@ SS_EXPORT int ss_json_set_field_int64(long long document, long long cursor,
 }
 
 SS_EXPORT int ss_json_set_field_bool(long long document, long long cursor,
-                                     const char *field_name, int value) {
-    return ss_json_set_object_field_bool(DOC(document), cursor, field_name, value);
+                                     const char *field_name, long long value) {
+    /* Truthiness arrives as Int64 from both call sites (a Bool literal or a
+     * sqlite 0/1 column), normalized here to the native int contract. */
+    return ss_json_set_object_field_bool(DOC(document), cursor, field_name,
+                                         value != 0);
 }
 
 SS_EXPORT long long ss_json_set_field_object(long long document, long long cursor,
@@ -94,7 +97,14 @@ SS_EXPORT long long ss_json_read_int64(long long document, long long cursor,
 
 SS_EXPORT const char *ss_json_read_string(long long document, long long cursor,
                                           char *scratch, long long scratch_capacity) {
+    /* Default to an empty string, never NULL: a missing/non-string field leaves
+     * the value absent, and callers treat the read as a String default (e.g. an
+     * optional `displayName` that lowers to a NOT NULL '' column). Returning NULL
+     * here would propagate a null String into binds and crash/violate schema. */
     const char *out = scratch;
+    if (scratch != NULL && scratch_capacity > 0) {
+        scratch[0] = '\0';
+    }
     ss_json_cursor_string(DOC(document), cursor, scratch, scratch_capacity, &out);
-    return out;
+    return out != NULL ? out : (scratch != NULL ? scratch : "");
 }

@@ -3607,7 +3607,7 @@ setCreateTodoDoneCall invokes json.setObjectFieldBool
 setCreateTodoDoneCall arg document JsonDocument createResponseDocument
 setCreateTodoDoneCall arg cursor JsonCursor createResponseTodoCursor
 setCreateTodoDoneCall arg fieldName String fieldDone
-setCreateTodoDoneCall arg value Bool boolFalse
+setCreateTodoDoneCall arg value Int64 0
 setCreateTodoDoneCall discards "result intentionally ignored"
 setCreateTodoDoneCall catch setCreateTodoDoneError JsonAccessError
 

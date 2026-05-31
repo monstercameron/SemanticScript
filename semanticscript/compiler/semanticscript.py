@@ -8192,6 +8192,19 @@ class EavCodegen:
             data = embed_literal_source(src_row.payload[0].strip('"'), expected)
             self.module_storage[st.name] = (self.global_string(data + b"\x00"), "String")
             return
+        # README §2: a `body <kind>` island (json/sql/html/...) embeds its indented
+        # text as a String constant — e.g. a JsonText storage holding a static JSON
+        # response body. The island lines are captured by the parser into
+        # `program.islands`; join them verbatim and embed as a NUL-terminated blob.
+        body_row = st.fact("body")
+        if body_row and body_row.payload:
+            island = getattr(self.program, "islands", {}).get(
+                (st.name, body_row.payload[0]))
+            if island is not None:
+                text = "\n".join(island).strip()
+                self.module_storage[st.name] = (
+                    self.global_string(text.encode("utf-8") + b"\x00"), "String")
+                return
         if resolved not in _PRIMITIVE_IR:
             return  # non-primitive module storage (e.g. SqlText) not modeled here
         gv = ir.GlobalVariable(self.module, _PRIMITIVE_IR[resolved], name=st.name)
@@ -8771,6 +8784,24 @@ class EavCodegen:
             return entry[1]
         return builder.load(entry[1])
 
+    def _entry_alloca(self, builder, ir_ty, name):
+        """Allocate a zero-initialized slot at the top of the function's entry
+        block — which dominates every other block. Required for an owned handle
+        whose deferred cleanup is re-emitted at multiple return points (README
+        §15.6): the creation-block SSA value need not dominate those returns, but
+        a load from an entry slot always does. The zero init makes a cleanup that
+        runs before creation (any path) release a null handle harmlessly."""
+        entry = builder.function.blocks[0]
+        tmp = ir.IRBuilder()
+        if entry.instructions:
+            tmp.position_before(entry.instructions[0])
+        else:
+            tmp.position_at_end(entry)
+        slot = tmp.alloca(ir_ty, name=name)
+        tmp.store(ir.Constant(
+            ir_ty, None if isinstance(ir_ty, ir.PointerType) else 0), slot)
+        return slot
+
     def _read_module_storage(self, tok, builder):
         ref = self.module_storage[tok][0]
         # A GlobalVariable holds a value to load; a literalSource embeds an i8*
@@ -8920,8 +8951,15 @@ class EavCodegen:
         type_hint = "Int64"
         if out_row and out_row.payload:
             type_hint = out_row.payload[0] if out_row.payload[0] != "Result" else out_row.payload[1]
-        token = p[0] if p[0] not in ("nil",) else (p[1] if len(p) > 1 else p[0])
-        builder.ret(self._resolve(token, type_hint, builder, sym))
+        # `return nil [<err>]` on a Result/handle op: the function's IR result is
+        # its OK type, so yield that type's null/zero sentinel. (Returning the Err
+        # value would be a different IR type than the result; the error is
+        # detected out-of-band — the caller null-checks the handle.)
+        if p[0] == "nil":
+            builder.ret(ir.Constant(
+                ret_ty, None if isinstance(ret_ty, ir.PointerType) else 0))
+            return builder
+        builder.ret(self._resolve(p[0], type_hint, builder, sym))
         return builder
 
     def _emit_branch(self, fn, row, builder, sym, label_blocks):
@@ -9748,11 +9786,11 @@ class EavCodegen:
             code = 101 if target.endswith("Done") else 100
             result = builder.icmp_signed("==", v, ir.Constant(v.type, code))
         elif target.startswith("c."):
-            # APP-RUN-6: libc access. `c.snprintf` is the libc variadic; the rest
-            # go through ss_c_* shims (ss_libc.c) declared to take/return Int64
-            # for OpaquePointer handles and const char* for String, so the app's
-            # declared arg/out types match the symbol exactly — no coercion. The
-            # explicit pointer<->String reinterpret is `c.cString` (ss_c_cstring).
+            # APP-RUN-6: libc access. `c.snprintf` is the variadic formatter; the
+            # rest go through ss_c_* shims (ss_libc.c) declared to take/return
+            # Int64 for OpaquePointer handles and const char* for String, so the
+            # app's declared arg/out types match the symbol exactly — no coercion.
+            # The explicit pointer<->String reinterpret is `c.cString` (ss_c_cString).
             libc = target[len("c."):]
             vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
                     for a in call.facts("arg")]
@@ -9760,14 +9798,18 @@ class EavCodegen:
             out_ty = (self.ir_type(out_row.payload[1])
                       if out_row and len(out_row.payload) >= 2 else None)
             if libc == "snprintf":
-                fn = self.module.globals.get("snprintf")
+                # Bind to the ss_c_snprintf shim, not raw libc `snprintf`: on
+                # Windows the UCRT `snprintf` is a header inline with no exported
+                # symbol, so an MCJIT relocation to it cannot resolve. The shim
+                # (ss_libc.c) forwards to vsnprintf and is a real exported symbol.
+                fn = self.module.globals.get("ss_c_snprintf")
                 if not isinstance(fn, ir.Function):
                     nfixed = min(3, len(vals))
                     fn = ir.Function(self.module,
                                      ir.FunctionType(ir.IntType(32),
                                                      [v.type for v in vals[:nfixed]],
                                                      var_arg=True),
-                                     name="snprintf")
+                                     name="ss_c_snprintf")
                 r = builder.call(fn, vals)
                 if out_ty is not None:
                     result = r
@@ -9901,6 +9943,22 @@ class EavCodegen:
                     builder.store(result, ref)
                 else:
                     sym[name] = ("val", result)
+            elif any(o.payload and o.payload[0] == name
+                     for o in call.facts("owns")) and isinstance(
+                         result.type, (ir.IntType, ir.PointerType)):
+                # README §15.6: this call owns `name`, whose cleanup is re-emitted
+                # at every return by _emit_defers. The creation-block SSA value may
+                # not dominate those returns, so back the handle with an entry-block
+                # slot; all later reads (including the defer worker) load from it.
+                # Inserting at the entry top shifts the builder's index-based anchor
+                # in the current block, so re-anchor to its end before storing.
+                cur_block = builder.block
+                slot = self._entry_alloca(builder, result.type, name + ".own")
+                builder.position_at_end(cur_block)
+                builder.store(result, slot)
+                typ_tok = (out_row.payload[1]
+                           if len(out_row.payload) > 1 else name)
+                sym[name] = ("ptr", slot, typ_tok)
             else:
                 sym[name] = ("val", result)
 
@@ -10505,8 +10563,8 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add("ss_http_" + _camel_to_snake(target[len("http."):]))
                 elif _family_intrinsic(target) is not None:  # APP-RUN-6 families
                     out.add(_family_intrinsic(target)[0])
-                elif target.startswith("c.") and target != "c.snprintf":
-                    out.add("ss_c_" + target[len("c."):])  # libc shims
+                elif target.startswith("c."):
+                    out.add("ss_c_" + target[len("c."):])  # libc shims (incl. snprintf)
     # APP-RUN-5: the webServer entry calls the multi-route server runtime.
     if program.of_kind("webServer"):
         out.add("ss_http_serve_routes")
@@ -10747,6 +10805,9 @@ def _register_panic_symbol() -> None:
         "ss_ffi_count", ctypes.cast(_EAV_FFI_COUNT_CFUNC, ctypes.c_void_p).value)
 
 
+_LOADED_RUNTIME_DLLS: list = []
+
+
 def _register_runtime_symbols(program: Program) -> None:
     """Resolve the program's `runtimeBinding` symbols that a native runtime
     library provides, building and loading that library and registering each
@@ -10769,7 +10830,14 @@ def _register_runtime_symbols(program: Program) -> None:
                 f"{lib['name']!r}, but no C compiler was found to build it "
                 f"(set SEMANTICSCRIPT_CC, or install clang/zig)"
             )
+        # Keep the loaded library alive for the process lifetime. The addresses
+        # registered with the JIT below point into this DLL; if the CDLL handle
+        # were dropped here, CPython would FreeLibrary it on return and Windows
+        # could unmap it before `finalize_object` bakes the addresses into the
+        # call sites — leaving a runtime symbol resolved to a null/stale pointer
+        # that faults when first called (observed as a call to 0x0).
         cdll = ctypes.CDLL(path)
+        _LOADED_RUNTIME_DLLS.append(cdll)
         for sym in needed:
             try:
                 addr = ctypes.cast(getattr(cdll, sym), ctypes.c_void_p).value

@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #ifdef _WIN32
 #define SS_EXPORT __declspec(dllexport)
@@ -40,7 +42,22 @@ SS_EXPORT long long ss_c_atoll(const char *text) {
     return atoll(text);
 }
 
-/* Explicit reinterpret: an OpaquePointer byte buffer viewed as a String. */
-SS_EXPORT const char *ss_c_cstring(long long pointer) {
+/* Variadic formatter backing `c.snprintf`. The buffer crosses as an
+ * OpaquePointer (Int64); forward to the UCRT's C99-correct vsnprintf. Exists
+ * because the bare `snprintf` symbol is not exported on Windows (header inline),
+ * so the JIT cannot relocate a direct call to it. */
+SS_EXPORT int ss_c_snprintf(long long buffer, long long size,
+                            const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf((char *)(intptr_t)buffer, (size_t)size, format, args);
+    va_end(args);
+    return result;
+}
+
+/* Explicit reinterpret: an OpaquePointer byte buffer viewed as a String. The
+ * `c.cString` intrinsic maps to the method name verbatim (ss_c_ + "cString"),
+ * so the exported symbol must keep the camelCase tail. */
+SS_EXPORT const char *ss_c_cString(long long pointer) {
     return (const char *)(intptr_t)pointer;
 }
