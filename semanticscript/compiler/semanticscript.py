@@ -11337,19 +11337,23 @@ def _json_envelope(surface: str, **payload) -> str:
     return json.dumps(body, indent=2)
 
 
+# name -> (argv-prefix, description, requires_path). `requires_path` drives the
+# tools/list inputSchema (a tool whose CLI takes a positional `path` must mark it
+# `required`, else an agent calling it bare hits an argparse error). The `docs`
+# tool also accepts optional `search`/`get` (handled in _mcp_dispatch).
 EAV_MCP_TOOLS = {
-    "version": (["version", "--json"], "Contract version surface"),
-    "agent_docs": (["agent-docs"], "Version-matched EAV agent rules"),
-    "check": (["check"], "Source lane: parse + lint status"),
-    "readiness": (["readiness", "--json"], "Environment lane status"),
-    "deps": (["deps"], "Dependency graph"),
-    "context": (["context"], "Project envelope"),
-    "symbols": (["symbols"], "Full entity graph"),
-    "size": (["size"], "Footprint probe"),
-    "eval": (["eval"], "JIT-run a snippet"),
-    "fix_plan": (["fix", "--plan"], "Repair plan from diagnostics"),
-    "docs": (["docs"], "Docs catalog (list/get/search)"),
-    "test": (["test"], "Run tag-test operations"),
+    "version": (["version", "--json"], "Contract version surface", False),
+    "agent_docs": (["agent-docs"], "Version-matched EAV agent rules", False),
+    "check": (["check"], "Source lane: parse + lint status", True),
+    "readiness": (["readiness", "--json"], "Environment lane status", False),
+    "deps": (["deps"], "Dependency graph", True),
+    "context": (["context"], "Project envelope", True),
+    "symbols": (["symbols"], "Full entity graph", True),
+    "size": (["size"], "Footprint probe", True),
+    "eval": (["eval"], "JIT-run a snippet", True),
+    "fix_plan": (["fix", "--plan"], "Repair plan from diagnostics", True),
+    "docs": (["docs"], "Per-file entity docs (list/get/search)", True),
+    "test": (["test"], "Run tag-test operations", True),
 }
 
 
@@ -11386,10 +11390,22 @@ def mcp_handle(request: dict) -> dict:
             "serverInfo": {"name": "semanticscript", "version": CONTRACT_VERSION},
             "capabilities": {"tools": {}}}}
     if method == "tools/list":
-        return {**base, "result": {"tools": [
-            {"name": name, "description": desc,
-             "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}
-            for name, (_argv, desc) in EAV_MCP_TOOLS.items()]}}
+        tools = []
+        for name, spec in EAV_MCP_TOOLS.items():
+            desc, requires_path = spec[1], spec[2]
+            props, required = {}, []
+            if requires_path:
+                props["path"] = {"type": "string",
+                                 "description": "EAV/compact source file or project path"}
+                required.append("path")
+            if name == "docs":
+                props["search"] = {"type": "string", "description": "keyword-ranked search query"}
+                props["get"] = {"type": "string", "description": "entity name to fetch"}
+            schema = {"type": "object", "properties": props}
+            if required:
+                schema["required"] = required
+            tools.append({"name": name, "description": desc, "inputSchema": schema})
+        return {**base, "result": {"tools": tools}}
     if method == "tools/call":
         params = request.get("params", {})
         name = params.get("name", "")

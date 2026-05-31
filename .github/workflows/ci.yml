@@ -59,11 +59,11 @@ jobs:
       - name: Run the example suite (188 programs — the canonical green gate)
         run: python tests/run_examples.py
 
-      - name: Run the integration tests (http server, gui, wasm, dom)
+      - name: Run the integration tests (http server, gui, wasm, dom, apps, mcp)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          foreach ($t in "test_http_server", "test_gui", "test_wasm", "test_dom", "test_apps") {
+          foreach ($t in "test_http_server", "test_gui", "test_wasm", "test_dom", "test_apps", "test_mcp") {
             python "tests/$t.py"
             if ($LASTEXITCODE -ne 0) { throw "$t failed with exit $LASTEXITCODE" }
           }
