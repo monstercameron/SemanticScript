@@ -201,6 +201,36 @@ DIAGNOSTICS.update({
     "SS0812": {"tier": "T4", "summary": "Immutable const duplicated across operations.",
                "found": "The same `let … immutable T V` declared in two or more operations.",
                "suggested": "Hoist it to a module `storage` constant (README §17/WS2-080)."},
+    "SS0820": {"tier": "T3", "summary": "Embedded literal lacks a content digest.",
+               "found": "A `storage` with a `literalSource` embed but no `literalDigest` row.",
+               "suggested": "Add `literalDigest <name> sha256 <hex>` so the embed is tamper-evident (README §30.3.2/WS1-084)."},
+    "SS0821": {"tier": "T1", "summary": "Heap allocation under `memory heap no`.",
+               "found": "An operation declares `memory heap no` yet activates a heap allocation.",
+               "suggested": "Drop `heap no`, or remove the heap allocation (README §1J/WS2-084)."},
+    "SS0822": {"tier": "T1", "summary": "Record alignment is not a power of two.",
+               "found": "A `record … align N` (or field `align N`) where N is not a positive power of two.",
+               "suggested": "Use a power-of-two alignment: 1, 2, 4, 8, 16, … (README §10.6/WS2-084)."},
+    "SS0823": {"tier": "T2", "summary": "Array type declared with zero length.",
+               "found": "An `array … length 0` declaration — a zero-length array can hold no elements.",
+               "suggested": "Give the array a positive length, or model emptiness differently (README §10.6/WS2-084)."},
+    "SS0824": {"tier": "T3", "summary": "Inline type memory exceeds its inline capacity.",
+               "found": "A type pinned `memory inline` whose byte size exceeds its declared `inlineCapacity`.",
+               "suggested": "Raise the inline capacity, or move the type to heap/spill memory (README §10.6/WS2-084)."},
+    "SS0825": {"tier": "T3", "summary": "Embedded literal lacks an explicit encoding.",
+               "found": "A `storage` with `literalSource` but no `literalEncoding` row to pin the byte interpretation.",
+               "suggested": "Add `literalEncoding <name> <utf8|ascii|binary|…>` (README §30.3.2/WS2-084)."},
+    "SS0826": {"tier": "T3", "summary": "Large static string inlined as a local literal.",
+               "found": "A `let … immutable String \"…\"` whose literal exceeds the inline-literal threshold.",
+               "suggested": "Move the payload to a `storage` with `literalSource`/`literalDigest` so it is an audited embed (README §30.3.2/WS2-084)."},
+    "SS0827": {"tier": "T4", "summary": "Magic printable-ASCII byte literal.",
+               "found": "A `let … immutable Byte N` where N is a printable-ASCII code (32–126) written as a bare number.",
+               "suggested": "Name the constant or use a documented character code so the intent is legible (README §10.6/WS2-084)."},
+    "SS0828": {"tier": "T3", "summary": "Inline-capacity type has no spill allocator.",
+               "found": "An alias pinned `memory inline` with an `inlineCapacity` but no `allocator` row for the overflow path.",
+               "suggested": "Declare an `allocator` for values that exceed the inline capacity, or drop the cap (README §10.6/WS2-084)."},
+    "SS0829": {"tier": "T1", "summary": "Local frame exceeds the declared stack budget.",
+               "found": "An operation declares `memory stack N` yet its locals' estimated size exceeds N bytes.",
+               "suggested": "Raise the stack budget, or move large locals to heap/embedded storage (README §1J/WS2-084)."},
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
@@ -1635,7 +1665,9 @@ RESERVED_WORDS = {
     "in", "out", "effect", "uses", "memory", "async", "let", "label",
     "field", "variant", "repr", "for", "of", "path", "imports", "exports",
     "scope", "type", "mutability", "value", "body", "literalSource",
-    "literalDigest", "grants", "invokes", "arg", "discards", "catch",
+    "literalDigest", "literalEncoding",  # WS2-084 embed encoding/digest rows
+    "align", "layout", "inlineCapacity", "arrayLength",  # WS2-084 layout rows
+    "grants", "invokes", "arg", "discards", "catch",
     "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
@@ -1692,9 +1724,12 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "typestate": {"for", "state", "initial", "allows"},
     "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
-    "record": {"field", "typeTrust"},
+    "record": {"field", "typeTrust", "align", "layout"},  # WS2-084 layout rows
     "enum": {"variant", "repr", "typeTrust"},
-    "alias": {"for", "typeTrust"},
+    # WS2-084: aliases carry the type-memory parity rows — `memory <inline|heap|
+    # spill|region>`, `inlineCapacity N`, `layout`, `arrayLength N`, `allocator`.
+    "alias": {"for", "typeTrust", "memory", "inlineCapacity", "layout",
+              "arrayLength", "allocator"},
     "operation": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
@@ -1734,7 +1769,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
     "storage": {
         "scope", "type", "mutability", "value", "body", "literalSource",
-        "literalDigest",
+        "literalDigest", "literalEncoding",  # WS2-084 embed encoding row
     },
     "htmlTemplate": {"body"},
     "webServer": {
@@ -3536,6 +3571,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
+    diags.extend(_lint_memory_layout(program))
     diags.extend(_lint_ownership_and_entry_export(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
     # incompatible error types warns.
@@ -4942,6 +4978,173 @@ def _lint_dead_unused(program: Program) -> list:
                 f"immutable const {_name!r} ({_ty} {_val}) is declared identically "
                 f"in operations {ops} — consider hoisting to module storage "
                 f"(README §17/WS2-080)", sites[0][1].line, sites[0][0]))
+    return out
+
+
+_HEAP_ALLOC_TARGETS = (
+    "c.malloc", "c.calloc", "c.realloc", "memory.allocateMemoryBytes",
+    "buffer.create",
+)
+
+# Estimated byte size of a primitive type, for stack-budget and inline-capacity
+# checks (README §6 lowering table). Aggregates/Strings are pointer-width.
+_PRIM_BYTES = {
+    "Bool": 1, "Byte": 1, "Int8": 1, "UInt8": 1,
+    "Int16": 2, "UInt16": 2, "Int32": 4, "UInt32": 4, "ExitCode": 4,
+    "Float32": 4, "Int64": 8, "UInt64": 8, "Float64": 8,
+    "String": 8, "OpaquePointer": 8, "FileHandle": 8,
+}
+_LARGE_LITERAL_BYTES = 256  # WS2-084: inline String literals above this should embed
+
+
+def _layout_int(tok: str):
+    """Parse an EAV integer payload token (underscores allowed), else None."""
+    try:
+        return int(str(tok).replace("_", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_power_of_two(n: int) -> bool:
+    return n > 0 and (n & (n - 1)) == 0
+
+
+def _lint_memory_layout(program: Program) -> list:
+    """WS2-084 memory/layout parity (README §1J/§10.6/§30.3.2). All nine parity
+    checks, on the EAV layout grammar (`align`/`layout` on records, `memory`/
+    `inlineCapacity`/`arrayLength`/`allocator` on aliases, `literalEncoding` on
+    storage, `memory stack N` on operations):
+      SS0820 literal-without-digest        SS0825 literal-encoding-missing
+      SS0821 memory-heap-contradiction     SS0826 large-local-static-literal
+      SS0822 record-align-power-of-two     SS0827 magic-ascii-byte-literal
+      SS0823 array-length-zero             SS0828 inline-capacity-without-spill
+      SS0824 inline-capacity-overrun       SS0829 stack-limit-overrun"""
+    out: list[Diagnostic] = []
+    for n in program.order:
+        st = program.entities[n]
+        if st.kind == "storage" and st.fact("literalSource") is not None:
+            if st.fact("literalDigest") is None:
+                out.append(Diagnostic(
+                    "SS0820", "warning",
+                    f"embedded literal {st.name!r} has a `literalSource` but no "
+                    f"`literalDigest` — the embed is not tamper-evident (README "
+                    f"§30.3.2/WS1-084)", st.line, st.name))
+            if st.fact("literalEncoding") is None:
+                out.append(Diagnostic(
+                    "SS0825", "warning",
+                    f"embedded literal {st.name!r} has a `literalSource` but no "
+                    f"`literalEncoding` — its byte interpretation is unpinned "
+                    f"(README §30.3.2/WS2-084)", st.line, st.name))
+
+    # SS0822 record-align-power-of-two.
+    for rec in program.of_kind("record"):
+        ar = rec.fact("align")
+        if ar and ar.payload:
+            n = _layout_int(ar.payload[0])
+            if n is not None and not _is_power_of_two(n):
+                out.append(Diagnostic(
+                    "SS0822", "warning",
+                    f"record {rec.name!r} declares `align {ar.payload[0]}` — "
+                    f"alignment must be a positive power of two (README "
+                    f"§10.6/WS2-084)", rec.line, rec.name))
+
+    # Alias type-memory parity: SS0823, SS0824, SS0828.
+    for al in program.of_kind("alias"):
+        lr = al.fact("arrayLength")
+        if lr and lr.payload:
+            n = _layout_int(lr.payload[0])
+            if n == 0:
+                out.append(Diagnostic(
+                    "SS0823", "warning",
+                    f"array alias {al.name!r} declares `arrayLength 0` — a "
+                    f"zero-length array holds no elements (README §10.6/WS2-084)",
+                    al.line, al.name))
+        mr = al.fact("memory")
+        is_inline = bool(mr and "inline" in mr.payload)
+        cap_row = al.fact("inlineCapacity")
+        if is_inline and cap_row and cap_row.payload:
+            cap = _layout_int(cap_row.payload[0])
+            forr = al.fact("for")
+            elem = forr.payload[0] if forr and forr.payload else None
+            size = _PRIM_BYTES.get(elem)
+            if cap is not None and size is not None and size > cap:
+                out.append(Diagnostic(
+                    "SS0824", "warning",
+                    f"alias {al.name!r} is `memory inline` with `inlineCapacity "
+                    f"{cap}` but its {elem} value needs {size} bytes — it cannot "
+                    f"fit inline (README §10.6/WS2-084)", al.line, al.name))
+            if al.fact("allocator") is None:
+                out.append(Diagnostic(
+                    "SS0828", "warning",
+                    f"alias {al.name!r} is `memory inline` with an "
+                    f"`inlineCapacity` but declares no `allocator` for the spill "
+                    f"path — over-capacity values have nowhere to go (README "
+                    f"§10.6/WS2-084)", al.line, al.name))
+
+    owned_by: dict = {}
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind in ("call", "task", "cleanup"):
+            inr = e.fact("in")
+            if inr and inr.payload:
+                owned_by.setdefault(inr.payload[0], []).append(e)
+
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        mrow = op.fact("memory")
+        mpay = mrow.payload if mrow else []
+        # SS0821 memory-heap-contradiction.
+        if mrow and "heap" in mpay and "no" in mpay[mpay.index("heap"):]:
+            for w in owned_by.get(op.name, []):
+                inv = w.fact("invokes")
+                tgt = inv.payload[0] if inv and inv.payload else None
+                if tgt in _HEAP_ALLOC_TARGETS:
+                    out.append(Diagnostic(
+                        "SS0821", "warning",
+                        f"operation {op.name!r} declares `memory heap no` but "
+                        f"activates a heap allocation ({tgt}) — contradiction "
+                        f"(README §1J/WS2-084)", op.line, op.name))
+                    break
+        # Per-op local literal checks: SS0826, SS0827.
+        for lr in op.facts("let"):
+            p = lr.payload
+            if len(p) < 4:
+                continue
+            typ, val = p[2], p[3]
+            if typ == "String" and val.startswith('"') and val.endswith('"'):
+                if len(val) - 2 > _LARGE_LITERAL_BYTES:
+                    out.append(Diagnostic(
+                        "SS0826", "warning",
+                        f"local {p[0]!r} inlines a {len(val) - 2}-byte String "
+                        f"literal (> {_LARGE_LITERAL_BYTES}) — move it to an "
+                        f"audited `literalSource` embed (README §30.3.2/WS2-084)",
+                        lr.line, op.name))
+            if typ in ("Byte", "Int8", "UInt8"):
+                bval = _layout_int(val)
+                if bval is not None and 32 <= bval <= 126:
+                    out.append(Diagnostic(
+                        "SS0827", "warning",
+                        f"local {p[0]!r} is `{typ} {val}`, the printable-ASCII "
+                        f"code for {chr(bval)!r} — name the constant so the intent "
+                        f"is legible (README §10.6/WS2-084)", lr.line, op.name))
+        # SS0829 stack-limit-overrun.
+        if mrow and "stack" in mpay:
+            si = mpay.index("stack")
+            budget = _layout_int(mpay[si + 1]) if si + 1 < len(mpay) else None
+            if budget is not None:
+                used = 0
+                for lr in op.facts("let"):
+                    if len(lr.payload) >= 3:
+                        used += _PRIM_BYTES.get(lr.payload[2], 8)
+                if used > budget:
+                    out.append(Diagnostic(
+                        "SS0829", "warning",
+                        f"operation {op.name!r} declares `memory stack {budget}` "
+                        f"but its locals need about {used} bytes — the frame "
+                        f"overruns its budget (README §1J/WS2-084)",
+                        op.line, op.name))
     return out
 
 
