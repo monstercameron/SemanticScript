@@ -9764,6 +9764,31 @@ class EavCodegen:
                 result = builder.icmp_unsigned("==", v, ir.Constant(v.type, None))
             else:
                 result = builder.icmp_signed("==", v, ir.Constant(v.type, 0))
+        elif target in ("pointer.offset", "pointer.loadByte", "pointer.storeByte"):
+            # APP-RUN-2: explicit byte-addressed pointer ops over an OpaquePointer
+            # (an Int64 address). `offset` returns base+n; `loadByte`/`storeByte`
+            # reinterpret base+n as a byte address and load (zero-extended to Int32)
+            # or store (the low byte of value). The reinterpret is the intrinsic's
+            # defined semantics, not an implicit coercion of mismatched types.
+            a = list(call.facts("arg"))
+            i8ptr = ir.IntType(8).as_pointer()
+
+            def _as_i64(val):
+                if isinstance(val.type, ir.PointerType):
+                    return builder.ptrtoint(val, ir.IntType(64))
+                return val
+            base = _as_i64(self._resolve(a[0].payload[2], a[0].payload[1], builder, sym))
+            off = self._resolve(a[1].payload[2], a[1].payload[1], builder, sym)
+            addr = builder.add(base, off)
+            if target == "pointer.offset":
+                result = addr
+            elif target == "pointer.loadByte":
+                byte = builder.load(builder.inttoptr(addr, i8ptr))
+                result = builder.zext(byte, ir.IntType(32))
+            else:  # pointer.storeByte
+                value = self._resolve(a[2].payload[2], a[2].payload[1], builder, sym)
+                builder.store(builder.trunc(value, ir.IntType(8)),
+                              builder.inttoptr(addr, i8ptr))
         elif _family_intrinsic(target) is not None:
             # APP-RUN-6: sqlite/json/bcrypt/log intrinsic -> a native/shim symbol.
             symbol, retkind, arg_idx = _family_intrinsic(target)
@@ -9797,28 +9822,33 @@ class EavCodegen:
             out_row = call.fact("out")
             out_ty = (self.ir_type(out_row.payload[1])
                       if out_row and len(out_row.payload) >= 2 else None)
-            if libc == "snprintf":
-                # Bind to the ss_c_snprintf shim, not raw libc `snprintf`: on
-                # Windows the UCRT `snprintf` is a header inline with no exported
-                # symbol, so an MCJIT relocation to it cannot resolve. The shim
-                # (ss_libc.c) forwards to vsnprintf and is a real exported symbol.
-                fn = self.module.globals.get("ss_c_snprintf")
+            if libc in _VARIADIC_LIBC:
+                # Variadic formatters bind to exported ss_c_* shims (ss_libc.c
+                # forwards each to its v*-counterpart), never the raw libc symbol:
+                # on Windows the UCRT `snprintf`/`printf`/`fprintf` are header
+                # inlines with no exported symbol, so an MCJIT relocation cannot
+                # resolve them. The extern is var_arg so each call site supplies
+                # its own argument list past the fixed prefix.
+                sym_name = "ss_c_" + libc
+                fn = self.module.globals.get(sym_name)
                 if not isinstance(fn, ir.Function):
-                    nfixed = min(3, len(vals))
+                    nfixed = min(_VARIADIC_LIBC[libc], len(vals))
                     fn = ir.Function(self.module,
                                      ir.FunctionType(ir.IntType(32),
                                                      [v.type for v in vals[:nfixed]],
                                                      var_arg=True),
-                                     name="ss_c_snprintf")
+                                     name=sym_name)
                 r = builder.call(fn, vals)
                 if out_ty is not None:
                     result = r
             else:
                 sym_name = "ss_c_" + libc
-                ret_ty = out_ty if out_ty is not None else ir.VoidType()
+                ret_ty = _libc_ret_types().get(
+                    libc, out_ty if out_ty is not None else ir.VoidType())
                 fn = self._runtime_extern(sym_name, ret_ty, [v.type for v in vals])
                 r = builder.call(fn, vals)
-                if out_ty is not None and out_row is not None:
+                if (out_ty is not None and out_row is not None
+                        and not isinstance(ret_ty, ir.VoidType)):
                     result = r
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
@@ -9991,8 +10021,15 @@ class EavCodegen:
                 call.line,
                 code="SS1345",
             )
-        left = self._resolve(args["left"].payload[2], typ, builder, sym) if "left" in args else None
-        right = self._resolve(args["right"].payload[2], typ, builder, sym) if "right" in args else None
+        # Resolve each operand by its own *declared* type, not the compare
+        # suffix: an enum operand (e.g. `right ScreenMode EditMode`) compared via
+        # `compare.equalInt32` must resolve the bare variant `EditMode` through its
+        # enum (-> i32 discriminant), which a fixed `Int32` hint can't do. In the
+        # common case the declared type already equals the suffix.
+        left = (self._resolve(args["left"].payload[2], args["left"].payload[1],
+                              builder, sym) if "left" in args else None)
+        right = (self._resolve(args["right"].payload[2], args["right"].payload[1],
+                               builder, sym) if "right" in args else None)
         if left is None or right is None:
             raise EavError(f"{target!r} needs left and right args", call.line)
         if is_record:
@@ -10650,6 +10687,28 @@ _EVENT_RUNTIME_SYMBOLS = {
     "event.closeSubscription": "ss_event_close_subscription",
     "event.closeStream": "ss_event_close_stream",
 }
+
+# Variadic libc formatters (`c.*`) → count of fixed (non-variadic) leading args.
+# These bind to exported ss_c_* shims (ss_libc.c) rather than the raw libc symbol
+# because the UCRT versions are header inlines with no exported symbol on Windows.
+_VARIADIC_LIBC = {"snprintf": 3, "printf": 1, "fprintf": 2}
+
+# Fixed return type per non-variadic libc seam (`c.*` → ss_c_*). Pinned here (not
+# derived from a call's `out`/`discards`) so the one cached extern per symbol is
+# stable across call sites — a value-returning libc fn called as `discards` at one
+# site and `out` at another must still agree on a single IR signature. Matches the
+# ss_libc.c shim return types exactly.
+def _libc_ret_types():
+    i32, i64 = ir.IntType(32), ir.IntType(64)
+    void, i8p = ir.VoidType(), ir.IntType(8).as_pointer()
+    return {
+        "putchar": i32, "puts": i32, "fflush": i32, "fclose": i32,
+        "strcmp": i32, "terminalReadKey": i32,
+        "malloc": i64, "fopen": i64, "fgets": i64, "memmove": i64,
+        "strlen": i64, "atoll": i64,
+        "free": void, "memset": void,
+        "cString": i8p, "cstring": i8p,
+    }
 
 
 def _runtime_libs_for(program: Program) -> list:

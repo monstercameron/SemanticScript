@@ -235,6 +235,50 @@ WEB_CRUD_APPS = [
 ]
 
 
+def _run_tui(app, stdin, must_contain):
+    """Drive an interactive console TUI (target console) with a scripted
+    keystroke stream on stdin and assert it renders + exits cleanly. `c.terminalReadKey`
+    reads one byte per call and reports Esc on EOF, so the stream runs the state
+    machine to completion without a real terminal. Runs in the app dir (the app
+    loads/saves todos.json relative to cwd) and restores that file."""
+    appdir = os.path.join(ROOT, "apps", app)
+    saved = os.path.join(appdir, "todos.json")
+    pre_existing = os.path.exists(saved)
+    backup = None
+    if pre_existing:
+        with open(saved, "rb") as fh:
+            backup = fh.read()
+    try:
+        proc = subprocess.run(
+            [sys.executable, SEMANTICSCRIPT, "run", "."],
+            capture_output=True, text=True, cwd=appdir, input=stdin, timeout=120)
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if proc.returncode != 0:
+            return False, "exit=%d: %s" % (proc.returncode, out.strip()[-160:])
+        missing = [s for s in must_contain if s not in out]
+        if missing:
+            return False, "render missing %r" % missing[:3]
+        return True, "rendered + clean exit (%d markers)" % len(must_contain)
+    finally:
+        if backup is not None:
+            with open(saved, "wb") as fh:
+                fh.write(backup)
+        elif os.path.exists(saved):
+            try:
+                os.remove(saved)
+            except OSError:
+                pass
+
+
+# Interactive TUI apps: (name, scripted stdin, [render markers]).
+TUI_APPS = [
+    ("taskforge-tui", " ", [   # one Space (toggle) then EOF -> Esc -> quit
+        "TODO TUI", "Sel", "Done", "Note",
+        "Up/Down select", "session saved",
+    ]),
+]
+
+
 def main():
     failures = 0
     total = 0
@@ -259,6 +303,12 @@ def main():
     for name, port in WEB_CRUD_APPS:
         total += 1
         ok, detail = _run_webserver_crud(name, port)
+        print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
+        if not ok:
+            failures += 1
+    for name, stdin, markers in TUI_APPS:
+        total += 1
+        ok, detail = _run_tui(name, stdin, markers)
         print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
         if not ok:
             failures += 1

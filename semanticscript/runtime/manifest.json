@@ -65,12 +65,15 @@
     },
     {
       "name": "ss_libc",
-      "comment": "APP-RUN-6 libc shims (c.*) with Int64/const char* signatures so the app's declared types match exactly (no compiler coercion).",
+      "comment": "APP-RUN-6/APP-RUN-2 libc shims (c.*) with Int64/const char* signatures so the app's declared types match exactly (no compiler coercion). Variadic printf/fprintf/snprintf forward to their v*-counterparts; terminalReadKey reads stdin headlessly.",
       "provides": [
         "ss_c_"
       ],
       "sources": [
         "ss_libc.c"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
       ]
     },
     {
