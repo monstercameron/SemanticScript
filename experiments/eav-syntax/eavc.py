@@ -168,6 +168,12 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS0802": {"tier": "T3", "summary": "Capability declared but never used.",
+               "found": "A `capability` entity whose name appears in no operation's `uses` row.",
+               "suggested": "Remove the unused capability, or `uses` it from the op that needs the effect (README §17/WS2-080)."},
+    "SS0810": {"tier": "T3", "summary": "Unreachable operation step.",
+               "found": "A step that follows an unconditional `return`/`goto`/`jump` with no intervening `at` label.",
+               "suggested": "Remove the dead step, or guard it behind a reachable label/branch (README §13/WS2-080)."},
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
@@ -3502,6 +3508,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
+    diags.extend(_lint_dead_unused(program))
     diags.extend(_lint_ownership_and_entry_export(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
     # incompatible error types warns.
@@ -4705,6 +4712,48 @@ def _lint_entry_abi(program: Program) -> list:
             out.append(Diagnostic("SS1191", "error",
                                   f"console entry {ent.name!r} must return ExitCode/"
                                   f"Int32, got {otype!r} (README ss11)", ent.line, ent.name))
+    return out
+
+
+def _lint_dead_unused(program: Program) -> list:
+    """WS2-080 dead/unused parity (README §17). Advisory (T3) checks ported from
+    the semsc linter:
+      * SS0802 — a `capability` declared but never named by any `uses`.
+      * SS0810 — a step that is unreachable because it follows an unconditional
+        control-flow exit (`return`/`goto`/`jump`) with no intervening label.
+    (unused-call already warns via _validate_activation_count; dead labels via
+    the label validator.)"""
+    out: list[Diagnostic] = []
+    used_caps: set = set()
+    for n in program.order:
+        for r in program.entities[n].facts("uses"):
+            if r.payload:
+                used_caps.add(r.payload[0])
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "capability" and ent.name not in used_caps:
+            out.append(Diagnostic(
+                "SS0802", "warning",
+                f"capability {ent.name!r} is declared but never used by any "
+                f"operation's `uses` (README §17/WS2-080)",
+                ent.line, ent.name))
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        terminated = False
+        for r in op.rows:
+            if r.label is not None:
+                terminated = False  # a labeled row is a jump target -> reachable
+            elif terminated and r.predicate in STEP_PREDICATES:
+                out.append(Diagnostic(
+                    "SS0810", "warning",
+                    f"step {r.predicate!r} in {op.name!r} is unreachable: it "
+                    f"follows an unconditional control-flow exit with no "
+                    f"intervening label (README §13/WS2-080)",
+                    r.line, op.name))
+            if r.predicate in ("return", "goto", "jump"):
+                terminated = True
     return out
 
 
