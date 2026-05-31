@@ -26,6 +26,9 @@ EAVC = os.path.join(HERE, "eavc.py")
 MIN_APPS = 150                                       # X-214 corpus coverage floor
 HARD_NEG = {"div_by_zero_trap"}                      # rejected at compile time
 STRICT_NEG = {"capability_ungranted_use", "failure_unhandled_propagate"}  # blocked under --strict
+# WS1-130: compiles + runs, then traps at runtime via eav_panic — must exit 134
+# with the named SSR#### structured report on stderr.
+TRAP_NEG = {"panic_div0_report": "SSR0010"}
 SUMMARY_RE = re.compile(r"----\s*(\d+) passed,\s*(\d+) failed\s*----")
 
 
@@ -100,6 +103,18 @@ def main():
             suite_ok &= ok
             rows.append(("NEG-OK" if ok else "NEG-BAD", name,
                          "runs by default, blocked under --strict" if ok else "strict gate did not block"))
+            continue
+
+        if name in TRAP_NEG:
+            neg_total += 1
+            want = TRAP_NEG[name]
+            code, out = run(path)
+            ok = (code == 134 and ("EAV PANIC " + want) in out)
+            neg_ok += ok
+            suite_ok &= ok
+            rows.append(("NEG-OK" if ok else "NEG-BAD", name,
+                         f"runtime panic {want}, exit 134" if ok
+                         else f"expected panic {want}/exit 134, got exit {code}"))
             continue
 
         code, out = run(path)

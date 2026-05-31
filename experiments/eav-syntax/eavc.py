@@ -8210,6 +8210,15 @@ class EavCodegen:
         elif name == "eav_http_html_escape":
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
                              name="eav_http_html_escape")
+        elif name == "eav_panic":
+            # WS1-130 structured-trap helper: prints a crash report
+            # (code · kind · op · row · reason · operands) to stderr and exits.
+            i64 = ir.IntType(64)
+            fn = ir.Function(
+                self.module,
+                ir.FunctionType(ir.VoidType(), [i8p, i8p, i8p, i32, i8p, i64, i64]),
+                name="eav_panic")
+            fn.attributes.add("noreturn")
         else:
             raise EavError(f"no runtime declaration for {name!r}")
         self._runtime[name] = fn
@@ -8938,7 +8947,12 @@ class EavCodegen:
         elif target in ("math.divideInt64", "math.moduloInt64"):
             left = arg("left", "Int64")
             right = arg("right", "Int64")
-            self._guard_div_zero(builder, right)
+            kind_label = ("divide-by-zero" if target == "math.divideInt64"
+                          else "modulo-by-zero")
+            owner_row = call.fact("in")
+            op_name = (owner_row.payload[0] if owner_row and owner_row.payload
+                       else call.name)
+            self._guard_div_zero(builder, right, left, kind_label, op_name, call.line)
             method = builder.sdiv if target == "math.divideInt64" else builder.srem
             result = method(left, right)
         elif target in _INT_BINOPS:
@@ -9069,7 +9083,7 @@ class EavCodegen:
                     discharged = tok.lstrip("-").isdigit() and \
                         _contract_holds(cond, int(tok)) is True
                     if not discharged:
-                        self._emit_contract_check(builder, cond, v)
+                        self._emit_contract_check(builder, cond, v, call)
                 vals.append(v)
             result = builder.call(self.functions[target], vals)
         else:
@@ -9198,9 +9212,10 @@ class EavCodegen:
             return builder.trunc(val, dst)
         return val
 
-    def _emit_contract_check(self, builder, cond, value) -> None:
+    def _emit_contract_check(self, builder, cond, value, call) -> None:
         """X-092: trap if a numeric precondition is violated at runtime (a runtime
-        assert that traps, not UB). Discharged literals never reach here."""
+        assert that traps, not UB). Discharged literals never reach here. On
+        violation it raises a structured `eav_panic` (WS1-130/WS1-131)."""
         z = ir.Constant(value.type, 0)
         if cond == "nonNegative":
             bad = builder.icmp_signed("<", value, z)
@@ -9210,12 +9225,18 @@ class EavCodegen:
             bad = builder.icmp_signed("==", value, z)
         else:
             return
+        owner_row = call.fact("in")
+        op_name = (owner_row.payload[0] if owner_row and owner_row.payload
+                   else call.name)
         fn = builder.function
         trap_bb = fn.append_basic_block("requireViolated")
         cont_bb = fn.append_basic_block("requireOk")
         builder.cbranch(bad, trap_bb, cont_bb)
         tb = ir.IRBuilder(trap_bb)
-        tb.call(self.runtime("trap"), [])
+        self._emit_panic(
+            tb, "SSR0011", "contract-violation",
+            f"precondition {cond!r} violated on a call to {call.name!r}",
+            op_name, call.line, value, None)
         tb.unreachable()
         builder.position_at_end(cont_bb)
 
@@ -9233,17 +9254,42 @@ class EavCodegen:
         aggregate = builder.call(fn, [left, right])
         return builder.extract_value(aggregate, 0), builder.extract_value(aggregate, 1)
 
-    def _guard_div_zero(self, builder, divisor) -> None:
+    def _emit_panic(self, b, code, kind, reason, op_name, line, left, right) -> None:
+        """WS1-130/WS1-131: emit a structured `eav_panic(...)` call at a guard
+        site — the no-UB trap reports `code · kind · op · row · reason · operands`
+        to stderr and terminates, instead of a bare `llvm.trap` (silent SIGILL).
+        `left`/`right` are the i64 operands at the site (0 for the absent one)."""
+        i32, i64 = ir.IntType(32), ir.IntType(64)
+
+        def s(text):
+            return self.global_string(text.encode("utf-8") + b"\x00")
+
+        def w(v):
+            if v is None:
+                return ir.Constant(i64, 0)
+            if v.type == i64:
+                return v
+            return b.sext(v, i64) if v.type.width < 64 else b.trunc(v, i64)
+
+        b.call(self.runtime("eav_panic"),
+               [s(code), s(kind), s(op_name), ir.Constant(i32, int(line)),
+                s(reason), w(left), w(right)])
+
+    def _guard_div_zero(self, builder, divisor, dividend, kind_label,
+                        op_name, line) -> None:
         """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a
-        zero-check that branches to `llvm.trap`; the builder continues on the
-        nonzero path."""
+        zero-check that branches to a structured `eav_panic` (WS1-130); the
+        builder continues on the nonzero path."""
         fn = builder.function
         iszero = builder.icmp_signed("==", divisor, ir.Constant(divisor.type, 0))
         trap_bb = fn.append_basic_block("divByZero")
         cont_bb = fn.append_basic_block("divCont")
         builder.cbranch(iszero, trap_bb, cont_bb)
         tb = ir.IRBuilder(trap_bb)
-        tb.call(self.runtime("trap"), [])
+        self._emit_panic(
+            tb, "SSR0010", kind_label,
+            "integer divide/modulo by zero is undefined (README ss10.6/ss33.5)",
+            op_name, line, dividend, divisor)
         tb.unreachable()
         builder.position_at_end(cont_bb)
 
@@ -9633,6 +9679,69 @@ def build_link_plan(program: Program, platform: Optional[str] = None,
     }
 
 
+# WS1-130/WS1-136: the runtime trap-code band. Mirrors the compile-time
+# DIAGNOSTICS registry but for guard sites that fire during execution; each maps
+# a structured `eav_panic` kind to a code + summary + repair hint. (Seed set —
+# WS1-131 routes the remaining trap kinds — OOB / narrowing / recursion — through
+# eav_panic with their own SSR#### codes.)
+RUNTIME_DIAGNOSTICS = {
+    "SSR0010": {"kind": "divide-by-zero",
+                "summary": "Integer divide/modulo by zero at runtime.",
+                "repair": "Guard the divisor (`branch if`) or prove it non-zero before dividing."},
+    "SSR0011": {"kind": "contract-violation",
+                "summary": "A numeric precondition (nonNegative/positive/nonZero) failed at runtime.",
+                "repair": "Validate or clamp the value before the call, or relax the operation's `requires`."},
+}
+
+_EAV_PANIC_CFUNC = None  # kept alive so the JIT-registered callback survives GC
+
+
+def _eav_panic_py(code, kind, op, row, reason, left, right) -> None:
+    """In-process implementation of the WS1-130 `eav_panic` ABI for the JIT (the
+    native build links the C `eav_panic` instead). Prints the structured crash
+    report to stderr and terminates the process with code 134 (the conventional
+    abort/trap status), so a trapping program reports *why* it died rather than
+    dying on a silent SIGILL."""
+    import os
+    import sys
+
+    def d(p):
+        return p.decode("utf-8", "replace") if p else ""
+
+    report = (
+        f"\nEAV PANIC {d(code)} {d(kind)}\n"
+        f"  op:       {d(op)}\n"
+        f"  at line:  {row}\n"
+        f"  reason:   {d(reason)}\n"
+        f"  operands: left={left} right={right}\n"
+    )
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    try:
+        sys.stderr.write(report)
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(134)
+
+
+def _register_panic_symbol() -> None:
+    """Register the in-process `eav_panic` callback with the JIT. The symbol is
+    compiler-injected at guard sites (not a program `runtimeBinding`), so it is
+    registered unconditionally before every JIT run."""
+    import ctypes
+    global _EAV_PANIC_CFUNC
+    if _EAV_PANIC_CFUNC is None:
+        cft = ctypes.CFUNCTYPE(
+            None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_int32, ctypes.c_char_p, ctypes.c_int64, ctypes.c_int64)
+        _EAV_PANIC_CFUNC = cft(_eav_panic_py)
+    addr = ctypes.cast(_EAV_PANIC_CFUNC, ctypes.c_void_p).value
+    llvm.add_symbol("eav_panic", addr)
+
+
 def _register_runtime_symbols(program: Program) -> None:
     """Resolve the program's `runtimeBinding` symbols that a native runtime
     library provides, building and loading that library and registering each
@@ -9672,6 +9781,7 @@ def jit_run(program: Program, entry: Optional[str] = None) -> int:
 
     module = lower_to_llvm(program)
     _ensure_native_init()
+    _register_panic_symbol()
     _register_runtime_symbols(program)
     mod = llvm.parse_assembly(str(module))
     mod.verify()
@@ -9848,10 +9958,12 @@ def cmd_run(args) -> int:
     """JIT-compile and execute the program; return its process exit code.
 
     R-088: by default the JIT'd entry runs in an isolated subprocess, so a
-    runtime trap (div0 / out-of-bounds / overflow / deep recursion, lowered to
-    `llvm.trap`/`ud2`) surfaces as the child's exit code/signal and is reported
-    here as a clean, stable trap status — never an uncaught Python traceback. The
-    full op/row panic object is the eventual `eav_panic` path (WS1-130)."""
+    runtime trap surfaces as the child's exit code/signal and is reported here as
+    a clean, stable trap status — never an uncaught Python traceback. WS1-130:
+    guard sites (divide/modulo by zero, violated numeric preconditions) now lower
+    to a structured `eav_panic` that prints `code · kind · op · row · reason ·
+    operands` to stderr and exits 134; a residual bare trap (overflow / deep
+    recursion, not yet routed through eav_panic) still surfaces as SSR0001."""
     program = parse(_read_program_source(args.path))
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
@@ -9919,6 +10031,11 @@ def build_executable(program: Program, out_path: str,
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
+    # WS1-130: the structured-trap helper `eav_panic` is compiler-injected at
+    # guard sites (not a program runtimeBinding), so it is always linked in.
+    _panic_src = os.path.normpath(os.path.join(rt, "eav_panic.c"))
+    if os.path.exists(_panic_src):
+        cmd.append(_panic_src)
     # R-018/R-013: resolve each runtime library's link inputs for the host
     # platform so Windows-only libs (ws2_32) are appended on Windows and
     # POSIX-only libs (pthread/dl/m) are appended on Unix — never both.
