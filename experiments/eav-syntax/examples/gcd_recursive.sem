@@ -1,0 +1,125 @@
+# gcd_recursive — Euclid's GCD by recursion (README §33.3), stress-tested with
+# positive AND negative assertions via the standard.test harness: gcd(48,18)==6,
+# gcd(17,5)==1 (coprime edge case), and the two results differ.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+GcdRecursive is project
+GcdRecursive module examplesGcdRecursive
+GcdRecursive target console
+GcdRecursive entry main
+
+examplesGcdRecursive is module
+examplesGcdRecursive path examples.gcdRecursive
+examplesGcdRecursive exports main
+examplesGcdRecursive purpose "Compute GCDs by recursion and assert them"
+examplesGcdRecursive invariant "Recurses until the remainder is zero"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+gcd is operation
+gcd in a Int64
+gcd in b Int64
+gcd out Int64
+gcd memory heap no
+gcd async no
+gcd purpose "Return gcd(a, b) via the Euclidean algorithm"
+gcd invariant "Terminates when b reaches 0"
+gcd let zero immutable Int64 0
+gcd do baseCheck
+gcd branch if isZero goto base
+gcd do modCall
+gcd do recCall
+gcd return sub
+gcd at base return a
+
+baseCheck is call
+baseCheck in gcd
+baseCheck invokes math.equalInt64
+baseCheck arg left Int64 b
+baseCheck arg right Int64 zero
+baseCheck out isZero Bool
+
+modCall is call
+modCall in gcd
+modCall invokes math.moduloInt64
+modCall arg left Int64 a
+modCall arg right Int64 b
+modCall out rem Int64
+
+recCall is call
+recCall in gcd
+recCall invokes gcd
+recCall arg a Int64 b
+recCall arg b Int64 rem
+recCall out sub Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Assert gcd(48,18), gcd(17,5), and that they differ"
+main invariant "All assertions hold"
+main let fortyEight immutable Int64 48
+main let eighteen immutable Int64 18
+main let seventeen immutable Int64 17
+main let five immutable Int64 5
+main let expSix immutable Int64 6
+main let expOne immutable Int64 1
+main let tn1 immutable String "gcd(48, 18) == 6"
+main let tn2 immutable String "gcd(17, 5) == 1 (coprime)"
+main let tn3 immutable String "gcd(48,18) differs from gcd(17,5)"
+main do gcdOne
+main do gcdTwo
+main do check1
+main do check2
+main do check3
+main do harnessReport
+main return harnessSummaryCode
+
+gcdOne is call
+gcdOne in main
+gcdOne invokes gcd
+gcdOne arg a Int64 fortyEight
+gcdOne arg b Int64 eighteen
+gcdOne out g1 Int64
+
+gcdTwo is call
+gcdTwo in main
+gcdTwo invokes gcd
+gcdTwo arg a Int64 seventeen
+gcdTwo arg b Int64 five
+gcdTwo out g2 Int64
+
+check1 is call
+check1 in main
+check1 invokes test.assertEqualInt64
+check1 arg name String tn1
+check1 arg expected Int64 expSix
+check1 arg actual Int64 g1
+
+check2 is call
+check2 in main
+check2 invokes test.assertEqualInt64
+check2 arg name String tn2
+check2 arg expected Int64 expOne
+check2 arg actual Int64 g2
+
+check3 is call
+check3 in main
+check3 invokes test.assertNotEqualInt64
+check3 arg name String tn3
+check3 arg expected Int64 g1
+check3 arg actual Int64 g2
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

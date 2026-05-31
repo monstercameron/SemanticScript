@@ -1,4 +1,5 @@
 # assert_demo — standard.assert + standard.test as pure-logic stdlib (no C
+# Expected output: 1
 # runtime): assert.equalInt64 -> Bool, test.and folds them. Prints 1 (all pass).
 # (todos WS3-019, WS3-020)
 
@@ -32,11 +33,17 @@ main invariant "Output is 1 when both assertions pass"
 main let four immutable Int64 4
 main let two immutable Int64 2
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "assert_demo"
+main let harnessExpected immutable Int64 1
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "assert_demo: real result (not the no-op 0)"
 main do checkFour
 main do checkTwo
 main do combine
 main do writeResult
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 checkFour is call
 checkFour in main
@@ -61,5 +68,20 @@ combine out bothOk Bool
 
 writeResult is call
 writeResult in main
-writeResult invokes console.writeIntegerLine
-writeResult arg value Int64 bothOk
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 bothOk
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 bothOk
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

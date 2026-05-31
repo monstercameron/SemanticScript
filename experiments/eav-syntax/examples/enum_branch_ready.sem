@@ -1,0 +1,81 @@
+# enum_branch_ready -- (repurposed from select_branch_ready (no select runtime)) construct an enum value and discriminate it with branch ifVariant
+# (README s10.5/s13), converging both arms to a single asserted outcome. Uses
+# the standard.test harness: prints a PASS/FAIL line and a summary, exit 0 iff
+# the assertion holds.
+#
+# Correctness observation: build Readiness.ready; the matched arm sets outcome=1.
+# Expected output:
+#   PASS  enum_branch_ready  (expected 1, actual 1)
+#   ---- 1 passed, 0 failed ----
+
+EnumBranchReady is project
+EnumBranchReady module examplesEnumBranchReady
+EnumBranchReady target console
+EnumBranchReady entry main
+
+examplesEnumBranchReady is module
+examplesEnumBranchReady path examples.enumBranchReady
+examplesEnumBranchReady exports main
+examplesEnumBranchReady purpose "Discriminate a Readiness enum value and assert the outcome"
+examplesEnumBranchReady invariant "Takes the matched arm only for the ready variant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Readiness is enum
+Readiness variant pending
+Readiness variant ready
+Readiness variant failed
+Readiness purpose "An enum for variant discrimination"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Readiness.ready, discriminate it, and assert the outcome"
+main invariant "Asserts the matched-arm outcome via the test harness"
+main let outcome mutable Int64 0
+main let chosenMark immutable Int64 1
+main let harnessName immutable String "enum_branch_ready"
+main let harnessExpected immutable Int64 1
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "enum_branch_ready: real result (not the no-op 0)"
+main do makeValue
+main branch ifVariant currentValue ready goto isChosen
+main goto afterMatch
+main at isChosen set outcome chosenMark
+main at afterMatch do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+makeValue is call
+makeValue in main
+makeValue invokes Readiness.ready
+makeValue out currentValue Readiness
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

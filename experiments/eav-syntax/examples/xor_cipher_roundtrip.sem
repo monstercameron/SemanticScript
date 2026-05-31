@@ -1,0 +1,82 @@
+# xor_cipher_roundtrip — (repurposed from cipher_encrypt_decrypt: eavc has no
+# crypto runtime). A real XOR stream cipher round-trip using the newly wired
+# math.bitXorInt64: cipher = plain XOR key, recovered = cipher XOR key == plain.
+# Exercises the bitwise XOR op end to end.
+#
+# Correctness observation: (42 XOR 99) XOR 99 == 42 (XOR is self-inverse).
+# Expected output: 42
+
+XorCipherRoundtrip is project
+XorCipherRoundtrip module examplesXorCipherRoundtrip
+XorCipherRoundtrip target console
+XorCipherRoundtrip entry main
+
+examplesXorCipherRoundtrip is module
+examplesXorCipherRoundtrip path examples.xorCipherRoundtrip
+examplesXorCipherRoundtrip exports main
+examplesXorCipherRoundtrip purpose "XOR-encrypt then XOR-decrypt and recover the plaintext"
+examplesXorCipherRoundtrip invariant "XOR with the same key twice is the identity"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Round-trip 42 through an XOR cipher and print the recovered value"
+main invariant "Writes exactly one integer line: 42"
+main let plain immutable Int64 42
+main let key immutable Int64 99
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "xor_cipher_roundtrip"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "xor_cipher_roundtrip: real result (not the no-op 0)"
+main do encryptCall
+main do decryptCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+encryptCall is call
+encryptCall in main
+encryptCall invokes math.bitXorInt64
+encryptCall arg left Int64 plain
+encryptCall arg right Int64 key
+encryptCall out cipher Int64
+
+decryptCall is call
+decryptCall in main
+decryptCall invokes math.bitXorInt64
+decryptCall arg left Int64 cipher
+decryptCall arg right Int64 key
+decryptCall out recovered Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 recovered
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 recovered
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

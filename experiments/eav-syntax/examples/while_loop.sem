@@ -1,5 +1,9 @@
-# while_loop — while loop control structure
-# (README §13). Tests basic while loop iteration.
+# while_loop — a real while loop: increment a counter until it reaches the
+# bound, then print the final value (README §13). The counter is rebound via the
+# call output each iteration; the result comes from the loop, not a constant.
+#
+# Correctness observation: count 0 up to 5; print the final counter.
+# Expected output: 5
 
 WhileLoop is project
 WhileLoop module examplesWhileLoop
@@ -9,14 +13,16 @@ WhileLoop entry main
 examplesWhileLoop is module
 examplesWhileLoop path examples.whileLoop
 examplesWhileLoop exports main
-examplesWhileLoop purpose "Demonstrate while loop structure"
-examplesWhileLoop invariant "Loop counts to 5"
+examplesWhileLoop purpose "Count up to a bound with a while loop and print it"
+examplesWhileLoop invariant "Loop terminates when the counter reaches the bound"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +30,55 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Execute while loop and print final count"
-main invariant "Counts from 0 to 5"
-
-main let result immutable Int64 5
+main purpose "Increment a counter to 5 and print it"
+main invariant "Writes exactly one integer line: 5"
+main let counter mutable Int64 0
+main let bound immutable Int64 5
+main let oneStep immutable Int64 1
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "while_loop"
+main let harnessExpected immutable Int64 5
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "while_loop: real result (not the no-op 0)"
+main at loopHead do checkGoing
+main branch ifFalse stillGoing goto loopExit
+main do increment
+main goto loopHead
+main at loopExit do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printResult
-main return okCode
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.lessThanInt64
+checkGoing arg left Int64 counter
+checkGoing arg right Int64 bound
+checkGoing out stillGoing Bool
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+increment is call
+increment in main
+increment invokes math.addInt64
+increment arg left Int64 counter
+increment arg right Int64 oneStep
+increment out counter Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 counter
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 counter
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

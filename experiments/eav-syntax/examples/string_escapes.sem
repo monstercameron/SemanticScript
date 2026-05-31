@@ -1,15 +1,60 @@
-# X-200 test program
-Prog is project
-Prog module m
-Prog target console
-Prog entry main
-m is module
-m path examples.prog
-m exports main
-m purpose "String operation"
-m invariant "Works"
+# string_escapes -- builds a string and asserts it via the test harness (README s35).
+# Expected output:
+#   PASS  string_escapes  (expected "col1\tcol2\nrow2", actual "col1\tcol2\nrow2")
+#   ---- 1 passed, 0 failed ----
+
+StringEscapes is project
+StringEscapes module examplesStringEscapes
+StringEscapes target console
+StringEscapes entry main
+
+examplesStringEscapes is module
+examplesStringEscapes path examples.stringEscapes
+examplesStringEscapes exports main
+examplesStringEscapes purpose "decode tab/newline escapes"
+examplesStringEscapes invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
 main is operation
-main out Int32
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
 main async no
-main let code immutable Int32 0
-main return code
+main purpose "decode tab/newline escapes and assert the result"
+main invariant "Asserts the string via the harness"
+main let actualText immutable String "col1\tcol2\nrow2"
+main let harnessName immutable String "string_escapes"
+main let harnessExpected immutable String "col1\tcol2\nrow2"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_escapes: real result (not the empty string)"
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualText
+checkResult arg name String harnessName
+checkResult arg expected String harnessExpected
+checkResult arg actual String actualText
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String actualText
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

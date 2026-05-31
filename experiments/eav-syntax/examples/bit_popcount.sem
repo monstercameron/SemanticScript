@@ -1,0 +1,72 @@
+# bit_popcount — population count (set-bit count) via math.popcountInt64
+# (README §10.6). eavc has no shift/and/or builtins; popcount/clz/ctz ARE the
+# real bit intrinsics, so this replaces the former bit_shift stub. The result is
+# computed by a real intrinsic call, not a constant.
+#
+# Correctness observation: popcount(11) where 11 = 0b1011 has three set bits.
+# Expected output: 3
+
+BitPopcount is project
+BitPopcount module examplesBitPopcount
+BitPopcount target console
+BitPopcount entry main
+
+examplesBitPopcount is module
+examplesBitPopcount path examples.bitPopcount
+examplesBitPopcount exports main
+examplesBitPopcount purpose "Count the set bits of an integer"
+examplesBitPopcount invariant "popcount(0b1011) is 3"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute popcount(11) and print it"
+main invariant "Writes exactly one integer line: 3"
+main let bits immutable Int64 11
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "bit_popcount"
+main let harnessExpected immutable Int64 3
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "bit_popcount: real result (not the no-op 0)"
+main do countCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+countCall is call
+countCall in main
+countCall invokes math.popcountInt64
+countCall arg value Int64 bits
+countCall out setBits Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 setBits
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 setBits
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

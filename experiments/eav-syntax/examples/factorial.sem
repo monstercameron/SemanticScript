@@ -1,6 +1,7 @@
-# factorial — direct recursion (README ss33.3). factorial(5) = 120.
-# Proves a user operation can invoke itself: all ops are declared before any
-# body is defined, so the self-call resolves. (todos WS1-070)
+# factorial — direct recursion (README ss33.3), stress-tested with positive AND
+# negative assertions via the standard.test harness: factorial(5)==120,
+# factorial(4)==24 (a second input, not a constant), and factorial(5) != factorial(4).
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
 
 Factorial is project
 Factorial module examplesFactorial
@@ -10,7 +11,7 @@ Factorial entry main
 examplesFactorial is module
 examplesFactorial path examples.factorial
 examplesFactorial exports main
-examplesFactorial purpose "Compute a factorial with direct recursion"
+examplesFactorial purpose "Compute factorials by recursion and assert them"
 examplesFactorial invariant "factorial(n) terminates at n <= 1"
 
 ExitCode is alias
@@ -70,21 +71,57 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Print factorial(5)"
-main invariant "Writes exactly one integer line: 120"
+main purpose "Assert factorial(5), factorial(4), and that they differ"
+main invariant "All assertions hold"
 main let five immutable Int64 5
-main let okCode immutable ExitCode 0
-main do computeFactorial
-main do writeResult
-main return okCode
+main let four immutable Int64 4
+main let exp120 immutable Int64 120
+main let exp24 immutable Int64 24
+main let tn1 immutable String "factorial(5) == 120"
+main let tn2 immutable String "factorial(4) == 24"
+main let tn3 immutable String "factorial(5) differs from factorial(4)"
+main do call5
+main do call4
+main do check1
+main do check2
+main do check3
+main do harnessReport
+main return harnessSummaryCode
 
-computeFactorial is call
-computeFactorial in main
-computeFactorial invokes factorial
-computeFactorial arg n Int64 five
-computeFactorial out answer Int64
+call5 is call
+call5 in main
+call5 invokes factorial
+call5 arg n Int64 five
+call5 out ans5 Int64
 
-writeResult is call
-writeResult in main
-writeResult invokes console.writeIntegerLine
-writeResult arg value Int64 answer
+call4 is call
+call4 in main
+call4 invokes factorial
+call4 arg n Int64 four
+call4 out ans4 Int64
+
+check1 is call
+check1 in main
+check1 invokes test.assertEqualInt64
+check1 arg name String tn1
+check1 arg expected Int64 exp120
+check1 arg actual Int64 ans5
+
+check2 is call
+check2 in main
+check2 invokes test.assertEqualInt64
+check2 arg name String tn2
+check2 arg expected Int64 exp24
+check2 arg actual Int64 ans4
+
+check3 is call
+check3 in main
+check3 invokes test.assertNotEqualInt64
+check3 arg name String tn3
+check3 arg expected Int64 ans5
+check3 arg actual Int64 ans4
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

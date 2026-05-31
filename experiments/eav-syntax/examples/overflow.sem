@@ -1,4 +1,5 @@
 # overflow — signed Int64 addition wraps two's-complement (README ss10.6).
+# Expected output: -9223372036854775808
 # INT64_MAX + 1 == INT64_MIN (-9223372036854775808). Proves the backend `add`
 # wraps rather than saturating or trapping. (todos WS1-090)
 
@@ -32,9 +33,15 @@ main invariant "Output is INT64_MIN, demonstrating wraparound"
 main let intMax immutable Int64 9223372036854775807
 main let one immutable Int64 1
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "overflow"
+main let harnessExpected immutable Int64 -9223372036854775808
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "overflow: real result (not the no-op 0)"
 main do wrapCall
 main do writeWrapped
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 wrapCall is call
 wrapCall in main
@@ -45,5 +52,20 @@ wrapCall out wrapped Int64
 
 writeWrapped is call
 writeWrapped in main
-writeWrapped invokes console.writeIntegerLine
-writeWrapped arg value Int64 wrapped
+writeWrapped invokes test.assertEqualInt64
+writeWrapped arg name String harnessName
+writeWrapped arg expected Int64 harnessExpected
+writeWrapped arg actual Int64 wrapped
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 wrapped
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

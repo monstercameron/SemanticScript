@@ -1,5 +1,10 @@
-# mutual_recursion — mutually recursive operations
-# (README §13). Tests isEven/isOdd pattern.
+# mutual_recursion — two operations that call each other (README §13/§33.3):
+# isEven(n) = (n==0) or isOdd(n-1); isOdd(n) = (n!=0) and isEven(n-1). All ops
+# are declared before any body, so the mutual references resolve. The answer
+# comes from the recursion, not a constant.
+#
+# Correctness observation: isEven(4) = 1 (true).
+# Expected output: 1
 
 MutualRecursion is project
 MutualRecursion module examplesMutualRecursion
@@ -9,14 +14,88 @@ MutualRecursion entry main
 examplesMutualRecursion is module
 examplesMutualRecursion path examples.mutualRecursion
 examplesMutualRecursion exports main
-examplesMutualRecursion purpose "Demonstrate mutual recursion pattern"
-examplesMutualRecursion invariant "isEven/isOdd work correctly"
+examplesMutualRecursion purpose "Decide parity via mutually recursive operations"
+examplesMutualRecursion invariant "isEven and isOdd terminate at n == 0"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+isEven is operation
+isEven in n Int64
+isEven out Int64
+isEven memory heap no
+isEven async no
+isEven purpose "Return 1 if n is even, else 0"
+isEven invariant "Base case: 0 is even"
+isEven let zero immutable Int64 0
+isEven let one immutable Int64 1
+isEven do evenBase
+isEven branch if atZero goto evenTrue
+isEven do evenDec
+isEven do callOdd
+isEven return oddResult
+isEven at evenTrue return one
+
+evenBase is call
+evenBase in isEven
+evenBase invokes math.equalInt64
+evenBase arg left Int64 n
+evenBase arg right Int64 zero
+evenBase out atZero Bool
+
+evenDec is call
+evenDec in isEven
+evenDec invokes math.subtractInt64
+evenDec arg left Int64 n
+evenDec arg right Int64 one
+evenDec out nLess Int64
+
+callOdd is call
+callOdd in isEven
+callOdd invokes isOdd
+callOdd arg n Int64 nLess
+callOdd out oddResult Int64
+
+isOdd is operation
+isOdd in n Int64
+isOdd out Int64
+isOdd memory heap no
+isOdd async no
+isOdd purpose "Return 1 if n is odd, else 0"
+isOdd invariant "Base case: 0 is not odd"
+isOdd let zero immutable Int64 0
+isOdd let one immutable Int64 1
+isOdd do oddBase
+isOdd branch if atZero goto oddFalse
+isOdd do oddDec
+isOdd do callEven
+isOdd return evenResult
+isOdd at oddFalse return zero
+
+oddBase is call
+oddBase in isOdd
+oddBase invokes math.equalInt64
+oddBase arg left Int64 n
+oddBase arg right Int64 zero
+oddBase out atZero Bool
+
+oddDec is call
+oddDec in isOdd
+oddDec invokes math.subtractInt64
+oddDec arg left Int64 n
+oddDec arg right Int64 one
+oddDec out nLess Int64
+
+callEven is call
+callEven in isOdd
+callEven invokes isEven
+callEven arg n Int64 nLess
+callEven out evenResult Int64
 
 main is operation
 main out ExitCode
@@ -24,16 +103,42 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Determine if a number is even via mutual recursion"
-main invariant "4 is even"
-
-main let result immutable Int64 1
+main purpose "Print isEven(4)"
+main invariant "Writes exactly one integer line: 1"
+main let four immutable Int64 4
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "mutual_recursion"
+main let harnessExpected immutable Int64 1
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "mutual_recursion: real result (not the no-op 0)"
+main do compute
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printResult
-main return okCode
+compute is call
+compute in main
+compute invokes isEven
+compute arg n Int64 four
+compute out parity Int64
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 parity
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 parity
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

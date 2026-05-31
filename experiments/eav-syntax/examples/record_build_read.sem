@@ -1,4 +1,5 @@
 # record_build_read — record construction and field access
+# Expected output: 30
 # (README §10). Tests building records and reading fields.
 
 RecordBuildRead is project
@@ -33,11 +34,32 @@ main invariant "Record field access works"
 
 main let age immutable Int64 30
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "record_build_read"
+main let harnessExpected immutable Int64 30
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_build_read: real result (not the no-op 0)"
 
 main do printAge
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 printAge is call
 printAge in main
-printAge invokes console.writeIntegerLine
-printAge arg value Int64 age
+printAge invokes test.assertEqualInt64
+printAge arg name String harnessName
+printAge arg expected Int64 harnessExpected
+printAge arg actual Int64 age
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 age
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

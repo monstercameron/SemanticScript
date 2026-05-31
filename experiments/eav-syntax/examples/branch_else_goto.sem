@@ -1,5 +1,9 @@
-# branch_else_goto — branch else and goto control flow
-# (README §13). Tests else branch and goto.
+# branch_else_goto -- branch on a computed parity with an else and a goto join, converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  branch_else_goto  (expected 222, actual 222)
+#   ---- 1 passed, 0 failed ----
 
 BranchElseGoto is project
 BranchElseGoto module examplesBranchElseGoto
@@ -9,14 +13,16 @@ BranchElseGoto entry main
 examplesBranchElseGoto is module
 examplesBranchElseGoto path examples.branchElseGoto
 examplesBranchElseGoto exports main
-examplesBranchElseGoto purpose "Demonstrate branch else and goto"
-examplesBranchElseGoto invariant "Control flow with else branch"
+examplesBranchElseGoto purpose "branch on a computed parity with an else and a goto join"
+examplesBranchElseGoto invariant "Self-checking via the test harness"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +30,44 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Use branch else and goto for control flow"
-main invariant "Else branch taken"
+main purpose "branch on a computed parity with an else and a goto join and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "branch_else_goto"
+main let harnessExpected immutable Int64 222
+main let outcome mutable Int64 333
+main let evenMark immutable Int64 222
+main let inputValue immutable Int64 10
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "branch_else_goto: real result (not the no-op 0)"
+main do parity
+main branch ifFalse isEven goto afterCheck
+main set outcome evenMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main let result immutable Int64 1
-main let okCode immutable ExitCode 0
+parity is call
+parity in main
+parity invokes math.isEvenInt64
+parity arg value Int64 inputValue
+parity out isEven Bool
 
-main do printResult
-main return okCode
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

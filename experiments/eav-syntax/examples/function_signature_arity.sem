@@ -1,5 +1,9 @@
-# function_signature_arity — function signature with multiple parameters
-# (README §8). Tests operation with multiple input/output parameters.
+# function_signature_arity — an operation with a three-parameter signature
+# (README §8). add3(a,b,c) sums its inputs through real calls; the result flows
+# from the calls, not a constant.
+#
+# Correctness observation: add3(1, 2, 3) = 6.
+# Expected output: 6
 
 FunctionSignatureArity is project
 FunctionSignatureArity module examplesFunctionSignatureArity
@@ -9,33 +13,43 @@ FunctionSignatureArity entry main
 examplesFunctionSignatureArity is module
 examplesFunctionSignatureArity path examples.functionSignatureArity
 examplesFunctionSignatureArity exports main
-examplesFunctionSignatureArity purpose "Demonstrate function signature with arity"
+examplesFunctionSignatureArity purpose "Call a three-parameter operation and print the result"
 examplesFunctionSignatureArity invariant "Operations support multiple parameters"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
-add is operation
-add in left Int64
-add in right Int64
-add out Int64
-add purpose "Add two integers"
-add invariant "Result is left + right"
-add async no
+add3 is operation
+add3 in a Int64
+add3 in b Int64
+add3 in c Int64
+add3 out Int64
+add3 memory heap no
+add3 async no
+add3 purpose "Return a + b + c"
+add3 invariant "Result is the sum of all three inputs"
+add3 do firstAdd
+add3 do secondAdd
+add3 return total
 
-add let sum immutable Int64 0
-add do addCall
-add return sum
+firstAdd is call
+firstAdd in add3
+firstAdd invokes math.addInt64
+firstAdd arg left Int64 a
+firstAdd arg right Int64 b
+firstAdd out partial Int64
 
-addCall is call
-addCall in add
-addCall invokes math.addInt64
-addCall arg left Int64 left
-addCall arg right Int64 right
-addCall out sum Int64
+secondAdd is call
+secondAdd in add3
+secondAdd invokes math.addInt64
+secondAdd arg left Int64 partial
+secondAdd arg right Int64 c
+secondAdd out total Int64
 
 main is operation
 main out ExitCode
@@ -43,25 +57,46 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Call an operation with multiple parameters"
-main invariant "Function arity is well-formed"
-
-main let leftVal immutable Int64 3
-main let rightVal immutable Int64 5
+main purpose "Call add3(1,2,3) and print the result"
+main invariant "Writes exactly one integer line: 6"
+main let oneVal immutable Int64 1
+main let twoVal immutable Int64 2
+main let threeVal immutable Int64 3
 main let okCode immutable ExitCode 0
-
+main let harnessName immutable String "function_signature_arity"
+main let harnessExpected immutable Int64 6
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "function_signature_arity: real result (not the no-op 0)"
 main do computeCall
 main do printResult
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 computeCall is call
 computeCall in main
-computeCall invokes add
-computeCall arg left Int64 leftVal
-computeCall arg right Int64 rightVal
+computeCall invokes add3
+computeCall arg a Int64 oneVal
+computeCall arg b Int64 twoVal
+computeCall arg c Int64 threeVal
 computeCall out result Int64
 
 printResult is call
 printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+printResult invokes test.assertEqualInt64
+printResult arg name String harnessName
+printResult arg expected Int64 harnessExpected
+printResult arg actual Int64 result
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 result
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

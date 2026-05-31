@@ -1,5 +1,9 @@
-# tuple_field_access — tuple construction and field access
-# (README §10). Tests tuple field indexing.
+# tuple_field_access -- build a record and read a field back (Record.new / Record.field,
+# lowered to LLVM insert/extractvalue, README s10). The printed value is read
+# from the constructed record, not a constant.
+#
+# Correctness observation: build Pair{first=11, second=22}; read first.
+# Expected output: 11
 
 TupleFieldAccess is project
 TupleFieldAccess module examplesTupleFieldAccess
@@ -9,14 +13,21 @@ TupleFieldAccess entry main
 examplesTupleFieldAccess is module
 examplesTupleFieldAccess path examples.tupleFieldAccess
 examplesTupleFieldAccess exports main
-examplesTupleFieldAccess purpose "Demonstrate tuple field access"
-examplesTupleFieldAccess invariant "Tuple fields are accessible"
+examplesTupleFieldAccess purpose "Build a Pair record and read its first field"
+examplesTupleFieldAccess invariant "Prints the first field of the built record"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Pair is record
+Pair field first Int64
+Pair field second Int64
+Pair purpose "A two-field record"
 
 main is operation
 main out ExitCode
@@ -24,16 +35,51 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Access tuple fields"
-main invariant "Tuple access works"
-
-main let first immutable Int64 10
+main purpose "Build Pair and print its first field"
+main invariant "Writes exactly one integer line: 11"
+main let firstInput immutable Int64 11
+main let secondInput immutable Int64 22
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "tuple_field_access"
+main let harnessExpected immutable Int64 11
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "tuple_field_access: real result (not the no-op 0)"
+main do buildRec
+main do readField
+main do writeField
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printFirst
-main return okCode
+buildRec is call
+buildRec in main
+buildRec invokes Pair.new
+buildRec arg first Int64 firstInput
+buildRec arg second Int64 secondInput
+buildRec out built Pair
 
-printFirst is call
-printFirst in main
-printFirst invokes console.writeIntegerLine
-printFirst arg value Int64 first
+readField is call
+readField in main
+readField invokes Pair.first
+readField arg record Pair built
+readField out fieldOut Int64
+
+writeField is call
+writeField in main
+writeField invokes test.assertEqualInt64
+writeField arg name String harnessName
+writeField arg expected Int64 harnessExpected
+writeField arg actual Int64 fieldOut
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 fieldOut
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

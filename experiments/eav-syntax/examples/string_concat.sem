@@ -1,15 +1,72 @@
-# X-200 test program
-Prog is project
-Prog module m
-Prog target console
-Prog entry main
-m is module
-m path examples.prog
-m exports main
-m purpose "String operation"
-m invariant "Works"
+# string_concat — concatenate two strings with the real string.concat builtin
+# (README §30.2.2). The output is built at runtime, not an inline literal.
+#
+# Correctness observation: concat("string ", "concat").
+# Expected output: string concat
+
+StringConcat is project
+StringConcat module examplesStringConcat
+StringConcat target console
+StringConcat entry main
+
+examplesStringConcat is module
+examplesStringConcat path examples.stringConcat
+examplesStringConcat exports main
+examplesStringConcat purpose "Concatenate two strings and print"
+examplesStringConcat invariant "Output is built by string.concat"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
 main is operation
-main out Int32
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
 main async no
-main let code immutable Int32 0
-main return code
+main purpose "Concatenate two pieces and print the result"
+main invariant "Writes exactly one line: string concat"
+main let head immutable String "string "
+main let tail immutable String "concat"
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "string_concat"
+main let harnessExpected immutable String "string concat"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_concat: real result (not the empty string)"
+main do concatCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+concatCall is call
+concatCall in main
+concatCall invokes string.concat
+concatCall arg left String head
+concatCall arg right String tail
+concatCall out joined String
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualText
+writeResult arg name String harnessName
+writeResult arg expected String harnessExpected
+writeResult arg actual String joined
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String joined
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

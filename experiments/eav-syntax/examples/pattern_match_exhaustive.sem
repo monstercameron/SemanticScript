@@ -1,5 +1,12 @@
-# pattern_match_exhaustive — exhaustive pattern matching
-# (README §10). Tests pattern coverage checking.
+# pattern_match_exhaustive -- construct an enum value and discriminate it with branch ifVariant
+# (README s10.5/s13), converging both arms to a single asserted outcome. Uses
+# the standard.test harness: prints a PASS/FAIL line and a summary, exit 0 iff
+# the assertion holds.
+#
+# Correctness observation: build Shape.square; the matched arm sets outcome=2.
+# Expected output:
+#   PASS  pattern_match_exhaustive  (expected 2, actual 2)
+#   ---- 1 passed, 0 failed ----
 
 PatternMatchExhaustive is project
 PatternMatchExhaustive module examplesPatternMatchExhaustive
@@ -9,14 +16,22 @@ PatternMatchExhaustive entry main
 examplesPatternMatchExhaustive is module
 examplesPatternMatchExhaustive path examples.patternMatchExhaustive
 examplesPatternMatchExhaustive exports main
-examplesPatternMatchExhaustive purpose "Demonstrate exhaustive pattern matching"
-examplesPatternMatchExhaustive invariant "Pattern coverage is complete"
+examplesPatternMatchExhaustive purpose "Discriminate a Shape enum value and assert the outcome"
+examplesPatternMatchExhaustive invariant "Takes the matched arm only for the square variant"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Shape is enum
+Shape variant circle
+Shape variant square
+Shape variant triangle
+Shape purpose "An enum for variant discrimination"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +39,43 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Match patterns exhaustively"
-main invariant "Pattern matching is complete"
+main purpose "Build Shape.square, discriminate it, and assert the outcome"
+main invariant "Asserts the matched-arm outcome via the test harness"
+main let outcome mutable Int64 0
+main let chosenMark immutable Int64 2
+main let harnessName immutable String "pattern_match_exhaustive"
+main let harnessExpected immutable Int64 2
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "pattern_match_exhaustive: real result (not the no-op 0)"
+main do makeValue
+main branch ifVariant currentValue square goto isChosen
+main goto afterMatch
+main at isChosen set outcome chosenMark
+main at afterMatch do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main let matched immutable Int64 1
-main let okCode immutable ExitCode 0
+makeValue is call
+makeValue in main
+makeValue invokes Shape.square
+makeValue out currentValue Shape
 
-main do printMatched
-main return okCode
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
 
-printMatched is call
-printMatched in main
-printMatched invokes console.writeIntegerLine
-printMatched arg value Int64 matched
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

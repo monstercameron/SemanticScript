@@ -1,5 +1,13 @@
-# capability_ungranted_use — using effects without granted capability
-# (README §12). Tests capability denial detection.
+# capability_ungranted_use — NEGATIVE test. main declares `effect write
+# console.stdout` and performs a write, but `uses` NO capability granting it
+# (an uncovered effect, README §8/§12/§17 #5).
+#
+# Correctness observation (verified):
+#   * default `eavc check` -> WARNING SS0900 (effect not covered by a capability);
+#     T3 advisory, so it still runs (`eavc run` prints the line).
+#   * `eavc run --strict`  -> REJECTED, non-zero exit (the gate promotes the T3).
+#   * `eavc check --strict --json` -> "ok": false, "status": "lint-diagnostics".
+# This proves the authority model flags the gap and --strict enforces it.
 
 CapabilityUngrantedUse is project
 CapabilityUngrantedUse module examplesCapabilityUngrantedUse
@@ -9,18 +17,26 @@ CapabilityUngrantedUse entry main
 examplesCapabilityUngrantedUse is module
 examplesCapabilityUngrantedUse path examples.capabilityUngrantedUse
 examplesCapabilityUngrantedUse exports main
-examplesCapabilityUngrantedUse purpose "Demonstrate ungranted capability detection"
-examplesCapabilityUngrantedUse invariant "Ungranted capabilities are denied"
+examplesCapabilityUngrantedUse purpose "Write without granting the write capability"
+examplesCapabilityUngrantedUse invariant "The write effect is intentionally uncovered"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 main is operation
 main out ExitCode
+main effect write console.stdout
 main memory heap no
 main async no
-main purpose "Detect ungranted capability use"
-main invariant "Capability denial works"
+main purpose "Attempt a write with no capability backing the declared effect"
+main invariant "Gate rejects the uncovered write effect"
+main let message immutable String "should never print"
+main let okCode immutable ExitCode 0
+main do writeMsg
+main return okCode
 
-main let code immutable ExitCode 0
-main return code
+writeMsg is call
+writeMsg in main
+writeMsg invokes console.writeLine
+writeMsg arg text String message

@@ -1,0 +1,70 @@
+# module_config_constant — (repurposed from command_line_args_env: eavc has no
+# argv/env runtime). The real eavc way to hold configuration: a module-scope
+# storage global, read at use sites (README §12/§25). Prints the config value.
+#
+# Correctness observation: the printed value is the module-global serverPort.
+# Expected output: 8080
+
+ModuleConfigConstant is project
+ModuleConfigConstant module examplesModuleConfigConstant
+ModuleConfigConstant target console
+ModuleConfigConstant entry main
+
+examplesModuleConfigConstant is module
+examplesModuleConfigConstant path examples.moduleConfigConstant
+examplesModuleConfigConstant exports main
+examplesModuleConfigConstant purpose "Read a module-scope configuration constant and print it"
+examplesModuleConfigConstant invariant "serverPort is visible to main as a global"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+serverPort is storage
+serverPort scope module
+serverPort type Int64
+serverPort mutability immutable
+serverPort value 8080
+serverPort purpose "Configured server port read across operations"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print the configured serverPort"
+main invariant "Writes exactly one integer line: 8080"
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "module_config_constant"
+main let harnessExpected immutable Int64 8080
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "module_config_constant: real result (not the no-op 0)"
+main do writePort
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+writePort is call
+writePort in main
+writePort invokes test.assertEqualInt64
+writePort arg name String harnessName
+writePort arg expected Int64 harnessExpected
+writePort arg actual Int64 serverPort
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 serverPort
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

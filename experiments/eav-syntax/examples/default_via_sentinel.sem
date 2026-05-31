@@ -1,0 +1,93 @@
+# default_via_sentinel — (repurposed from default_parameter_value: eavc has no
+# default parameters). The eavc-real way to get a default: a sentinel check. The
+# op substitutes a default when the argument is the sentinel 0, else passes it
+# through (README §13). The chosen value comes from a real branch.
+#
+# Correctness observation: withDefault(0) -> default 42 (sentinel hit).
+# Expected output: 42
+
+DefaultViaSentinel is project
+DefaultViaSentinel module examplesDefaultViaSentinel
+DefaultViaSentinel target console
+DefaultViaSentinel entry main
+
+examplesDefaultViaSentinel is module
+examplesDefaultViaSentinel path examples.defaultViaSentinel
+examplesDefaultViaSentinel exports main
+examplesDefaultViaSentinel purpose "Apply a default value when an argument is the sentinel"
+examplesDefaultViaSentinel invariant "Returns the default only for the sentinel input"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+withDefault is operation
+withDefault in given Int64
+withDefault out Int64
+withDefault memory heap no
+withDefault async no
+withDefault purpose "Return given, or the default 42 when given is 0"
+withDefault invariant "Sentinel 0 selects the default"
+withDefault let sentinel immutable Int64 0
+withDefault let defaultValue immutable Int64 42
+withDefault do isSentinel
+withDefault branch if usesDefault goto useDefault
+withDefault return given
+withDefault at useDefault return defaultValue
+
+isSentinel is call
+isSentinel in withDefault
+isSentinel invokes math.equalInt64
+isSentinel arg left Int64 given
+isSentinel arg right Int64 sentinel
+isSentinel out usesDefault Bool
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Call withDefault(0) and print the resolved value"
+main invariant "Writes exactly one integer line: 42"
+main let sentinelInput immutable Int64 0
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "default_via_sentinel"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "default_via_sentinel: real result (not the no-op 0)"
+main do resolve
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+resolve is call
+resolve in main
+resolve invokes withDefault
+resolve arg given Int64 sentinelInput
+resolve out resolved Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 resolved
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 resolved
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

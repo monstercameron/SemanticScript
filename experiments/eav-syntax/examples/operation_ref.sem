@@ -1,4 +1,5 @@
 # operation_ref — operationType (function-pointer type) + indirect call
+# Expected output: 42
 # (README ss33.9). Binds `double` as an Int64->Int64 operation reference and
 # invokes it indirectly to compute 21 -> 42. (todos WS1-036, WS1-056)
 
@@ -55,9 +56,15 @@ main invariant "Writes 42"
 main let seed immutable Int64 21
 main let fn immutable Int64Endo double
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "operation_ref"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "operation_ref: real result (not the no-op 0)"
 main do applyFn
 main do writeResult
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 applyFn is call
 applyFn in main
@@ -67,5 +74,20 @@ applyFn out answer Int64
 
 writeResult is call
 writeResult in main
-writeResult invokes console.writeIntegerLine
-writeResult arg value Int64 answer
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

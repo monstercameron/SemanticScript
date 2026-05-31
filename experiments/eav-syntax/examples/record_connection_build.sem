@@ -1,0 +1,86 @@
+# record_connection_build — (repurposed from database_connection_pool: eavc has
+# no database runtime). Build a record and read one of its fields (Record.new /
+# Record.field, lowered to LLVM insertvalue/extractvalue, README §10). The
+# printed value is read from the constructed record, not a constant.
+#
+# Correctness observation: build Connection{host, port=5432}; read and print port.
+# Expected output: 5432
+
+RecordConnectionBuild is project
+RecordConnectionBuild module examplesRecordConnectionBuild
+RecordConnectionBuild target console
+RecordConnectionBuild entry main
+
+examplesRecordConnectionBuild is module
+examplesRecordConnectionBuild path examples.recordConnectionBuild
+examplesRecordConnectionBuild exports main
+examplesRecordConnectionBuild purpose "Construct a Connection record and read its port field"
+examplesRecordConnectionBuild invariant "Prints the port field of the built record"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Connection is record
+Connection field host Int64
+Connection field port Int64
+Connection purpose "A host/port connection descriptor"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Connection{10, 5432} and print its port"
+main invariant "Writes exactly one integer line: 5432"
+main let hostId immutable Int64 10
+main let portNumber immutable Int64 5432
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "record_connection_build"
+main let harnessExpected immutable Int64 5432
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_connection_build: real result (not the no-op 0)"
+main do buildConn
+main do readPort
+main do writePort
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildConn is call
+buildConn in main
+buildConn invokes Connection.new
+buildConn arg host Int64 hostId
+buildConn arg port Int64 portNumber
+buildConn out conn Connection
+
+readPort is call
+readPort in main
+readPort invokes Connection.port
+readPort arg record Connection conn
+readPort out portValue Int64
+
+writePort is call
+writePort in main
+writePort invokes test.assertEqualInt64
+writePort arg name String harnessName
+writePort arg expected Int64 harnessExpected
+writePort arg actual Int64 portValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 portValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

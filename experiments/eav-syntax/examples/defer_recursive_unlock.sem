@@ -1,0 +1,139 @@
+# defer_recursive_unlock -- a deferred cleanup runs after the body, before return (README s15.6),
+# proven via the standard.test harness. A module-global `phase` records order:
+# the body sets it to 1, then the deferred cleanup overwrites it with 2. main
+# calls the helper (whose defer fires at its return) and asserts phase == 2 --
+# so the assertion fails if the cleanup did not run after the body.
+#
+# Expected output:
+#   PASS  defer_recursive_unlock  (expected 2, actual 2)
+#   ---- 1 passed, 0 failed ----
+
+DeferRecursiveUnlock is project
+DeferRecursiveUnlock module examplesDeferRecursiveUnlock
+DeferRecursiveUnlock target console
+DeferRecursiveUnlock entry main
+
+examplesDeferRecursiveUnlock is module
+examplesDeferRecursiveUnlock path examples.deferRecursiveUnlock
+examplesDeferRecursiveUnlock exports main
+examplesDeferRecursiveUnlock purpose "Assert a deferred cleanup runs after the body"
+examplesDeferRecursiveUnlock invariant "phase ends at 2 (body=1 then cleanup=2)"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+phase is storage
+phase scope module
+phase type Int64
+phase mutability mutable
+phase value 0
+phase purpose "Records body-then-cleanup execution order"
+
+markBody is operation
+markBody out Int64
+markBody memory heap no
+markBody async no
+markBody purpose "Record that the body ran (phase = 1)"
+markBody let bodyMark immutable Int64 1
+markBody let zeroRet immutable Int64 0
+markBody set phase bodyMark
+markBody return zeroRet
+
+markCleanup is operation
+markCleanup out Int64
+markCleanup memory heap no
+markCleanup async no
+markCleanup purpose "Record that the deferred cleanup ran (phase = 2)"
+markCleanup let cleanupMark immutable Int64 2
+markCleanup let zeroRet immutable Int64 0
+markCleanup set phase cleanupMark
+markCleanup return zeroRet
+
+runWithCleanup is operation
+runWithCleanup out Int64
+runWithCleanup memory heap no
+runWithCleanup async no
+runWithCleanup purpose "Run a body with a deferred cleanup"
+runWithCleanup let zeroRet immutable Int64 0
+runWithCleanup do acquire
+runWithCleanup defer cleanupStep
+runWithCleanup do runBody
+runWithCleanup return zeroRet
+
+acquire is call
+acquire in runWithCleanup
+acquire invokes acquireHandle
+acquire out resourceHandle Int64
+acquire owns resourceHandle
+acquire cleanedBy cleanupStep
+
+runBody is call
+runBody in runWithCleanup
+runBody invokes markBody
+runBody out bodyRet Int64
+
+cleanupStep is cleanup
+cleanupStep in runWithCleanup
+cleanupStep call cleanupCall
+cleanupStep cleans resourceHandle
+
+cleanupCall is call
+cleanupCall in runWithCleanup
+cleanupCall invokes markCleanup
+cleanupCall discards "the cleanup-worker result is intentionally unused"
+
+acquireHandle is operation
+acquireHandle out Int64
+acquireHandle memory heap no
+acquireHandle async no
+acquireHandle purpose "Return a placeholder resource handle"
+acquireHandle invariant "Non-negative handle id"
+acquireHandle let handleId immutable Int64 1
+acquireHandle return handleId
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Run the deferred body and assert the cleanup ran after it"
+main invariant "Asserts phase == 2 via the test harness"
+main let harnessName immutable String "defer_recursive_unlock"
+main let harnessExpected immutable Int64 2
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "defer_recursive_unlock: real result (not the no-op 0)"
+main do callHelper
+main do checkOrder
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+callHelper is call
+callHelper in main
+callHelper invokes runWithCleanup
+callHelper out helperRet Int64
+
+checkOrder is call
+checkOrder in main
+checkOrder invokes test.assertEqualInt64
+checkOrder arg name String harnessName
+checkOrder arg expected Int64 harnessExpected
+checkOrder arg actual Int64 phase
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 phase
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,5 +1,9 @@
-# compound_or — compound OR condition via sequential guards
-# (README §13 / §33.4). Tests (A ∨ B) via sequential branches.
+# compound_or -- (5>10) OR (7<10) via sequential guards, converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  compound_or  (expected 1, actual 1)
+#   ---- 1 passed, 0 failed ----
 
 CompoundOr is project
 CompoundOr module examplesCompoundOr
@@ -9,14 +13,16 @@ CompoundOr entry main
 examplesCompoundOr is module
 examplesCompoundOr path examples.compoundOr
 examplesCompoundOr exports main
-examplesCompoundOr purpose "Demonstrate compound OR condition"
-examplesCompoundOr invariant "(5 > 10) OR (7 < 10) is true"
+examplesCompoundOr purpose "(5>10) OR (7<10) via sequential guards"
+examplesCompoundOr invariant "Self-checking via the test harness"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +30,57 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Evaluate compound OR and print result"
-main invariant "(5 > 10) OR (7 < 10) → 1 (true)"
+main purpose "(5>10) OR (7<10) via sequential guards and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "compound_or"
+main let harnessExpected immutable Int64 1
+main let outcome mutable Int64 0
+main let oneMark immutable Int64 1
+main let five immutable Int64 5
+main let seven immutable Int64 7
+main let ten immutable Int64 10
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "compound_or: real result (not the no-op 0)"
+main do checkFirst
+main branch if firstHolds goto setTrue
+main do checkSecond
+main branch if secondHolds goto setTrue
+main goto afterCheck
+main at setTrue set outcome oneMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main let result immutable Int64 1
-main let okCode immutable ExitCode 0
+checkFirst is call
+checkFirst in main
+checkFirst invokes math.greaterThanInt64
+checkFirst arg left Int64 five
+checkFirst arg right Int64 ten
+checkFirst out firstHolds Bool
 
-main do printResult
-main return okCode
+checkSecond is call
+checkSecond in main
+checkSecond invokes math.lessThanInt64
+checkSecond arg left Int64 seven
+checkSecond arg right Int64 ten
+checkSecond out secondHolds Bool
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

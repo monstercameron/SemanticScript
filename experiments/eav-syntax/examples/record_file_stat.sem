@@ -1,0 +1,85 @@
+# record_file_stat — (repurposed from file_stat_metadata: eavc has no filesystem
+# runtime). Model file metadata as a record and read a field back (README §10).
+# The printed value is read from the record, not a constant.
+#
+# Correctness observation: build Stat{sizeBytes=1024, modifiedAt=...}; print size.
+# Expected output: 1024
+
+RecordFileStat is project
+RecordFileStat module examplesRecordFileStat
+RecordFileStat target console
+RecordFileStat entry main
+
+examplesRecordFileStat is module
+examplesRecordFileStat path examples.recordFileStat
+examplesRecordFileStat exports main
+examplesRecordFileStat purpose "Build a file-stat record and read its size field"
+examplesRecordFileStat invariant "Prints the sizeBytes field of the built record"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Stat is record
+Stat field sizeBytes Int64
+Stat field modifiedAt Int64
+Stat purpose "File metadata: size and modification time"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Stat{1024, 1700000000} and print its size"
+main invariant "Writes exactly one integer line: 1024"
+main let sizeValue immutable Int64 1024
+main let mtimeValue immutable Int64 1700000000
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "record_file_stat"
+main let harnessExpected immutable Int64 1024
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_file_stat: real result (not the no-op 0)"
+main do buildStat
+main do readSize
+main do writeSize
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildStat is call
+buildStat in main
+buildStat invokes Stat.new
+buildStat arg sizeBytes Int64 sizeValue
+buildStat arg modifiedAt Int64 mtimeValue
+buildStat out fileStat Stat
+
+readSize is call
+readSize in main
+readSize invokes Stat.sizeBytes
+readSize arg record Stat fileStat
+readSize out sizeOut Int64
+
+writeSize is call
+writeSize in main
+writeSize invokes test.assertEqualInt64
+writeSize arg name String harnessName
+writeSize arg expected Int64 harnessExpected
+writeSize arg actual Int64 sizeOut
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 sizeOut
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

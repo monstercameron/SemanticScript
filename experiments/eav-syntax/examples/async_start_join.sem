@@ -1,5 +1,10 @@
-# async_start_join — basic async task lifecycle (start/join)
-# (README §13 / §15.5). Tests task creation and awaiting result.
+# async_start_join — async task lifecycle: `start` a task, `join` it, read its
+# output (README §13 / §15.5). On the single-thread backend `start` runs the
+# task eagerly and `join` resolves it; the printed value is the task's REAL
+# computed result, not a constant — so this fails under a no-op task lowering.
+#
+# Correctness observation: a task computing 20 + 22 is started and joined.
+# Expected output: 42
 
 AsyncStartJoin is project
 AsyncStartJoin module examplesAsyncStartJoin
@@ -9,31 +14,80 @@ AsyncStartJoin entry main
 examplesAsyncStartJoin is module
 examplesAsyncStartJoin path examples.asyncStartJoin
 examplesAsyncStartJoin exports main
-examplesAsyncStartJoin purpose "Demonstrate async task start and join"
-examplesAsyncStartJoin invariant "Task starts and completes"
+examplesAsyncStartJoin purpose "Start a task, join it, and print its result"
+examplesAsyncStartJoin invariant "join makes the task result available before the print"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+addPair is operation
+addPair in left Int64
+addPair in right Int64
+addPair out Int64
+addPair memory heap no
+addPair async no
+addPair purpose "Return the sum of two integers"
+addPair invariant "Result is exactly left + right"
+addPair do sumCall
+addPair return sum
+
+sumCall is call
+sumCall in addPair
+sumCall invokes math.addInt64
+sumCall arg left Int64 left
+sumCall arg right Int64 right
+sumCall out sum Int64
 
 main is operation
 main out ExitCode
 main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
-main async no
-main purpose "Start a task and join on it"
-main invariant "Task result is available after join"
-
-main let result immutable Int64 42
+main async yes
+main purpose "Start an addPair task, join it, print the joined result"
+main invariant "Writes exactly one integer line: 42"
+main let leftSeed immutable Int64 20
+main let rightSeed immutable Int64 22
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "async_start_join"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "async_start_join: real result (not the no-op 0)"
+main start computeTask
+main join computeTask
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printResult
-main return okCode
+computeTask is task
+computeTask in main
+computeTask invokes addPair
+computeTask arg left Int64 leftSeed
+computeTask arg right Int64 rightSeed
+computeTask out answer Int64
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

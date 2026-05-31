@@ -1,15 +1,72 @@
-# X-200 test program
-Prog is project
-Prog module m
-Prog target console
-Prog entry main
-m is module
-m path examples.prog
-m exports main
-m purpose "String operation"
-m invariant "Works"
+# string_build_greeting — build a greeting at runtime with string.concat
+# (README §30.2.2). The greeting is concatenated, not an inline literal.
+#
+# Correctness observation: concat("Hello, ", "SemanticScript").
+# Expected output: Hello, SemanticScript
+
+StringBuildGreeting is project
+StringBuildGreeting module examplesStringBuildGreeting
+StringBuildGreeting target console
+StringBuildGreeting entry main
+
+examplesStringBuildGreeting is module
+examplesStringBuildGreeting path examples.stringBuildGreeting
+examplesStringBuildGreeting exports main
+examplesStringBuildGreeting purpose "Concatenate a greeting and a name"
+examplesStringBuildGreeting invariant "The greeting is built by string.concat"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
 main is operation
-main out Int32
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
 main async no
-main let code immutable Int32 0
-main return code
+main purpose "Build and print a greeting"
+main invariant "Writes exactly one line: Hello, SemanticScript"
+main let salutation immutable String "Hello, "
+main let subjectName immutable String "SemanticScript"
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "string_build_greeting"
+main let harnessExpected immutable String "Hello, SemanticScript"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_build_greeting: real result (not the empty string)"
+main do buildGreeting
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildGreeting is call
+buildGreeting in main
+buildGreeting invokes string.concat
+buildGreeting arg left String salutation
+buildGreeting arg right String subjectName
+buildGreeting out greeting String
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualText
+writeResult arg name String harnessName
+writeResult arg expected String harnessExpected
+writeResult arg actual String greeting
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String greeting
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

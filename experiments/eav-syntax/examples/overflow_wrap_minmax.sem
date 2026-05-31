@@ -1,22 +1,26 @@
-# overflow_wrap_minmax — integer overflow wraps to minimum value (two's complement)
-# (README §10.6 / §33.5). Tests that Int64 arithmetic wraps on overflow.
+# overflow_wrap_minmax -- two's-complement overflow wraps max+1 to min. Load-bearing: POSITIVE and NEGATIVE assertions (false-cases,
+# inequalities, edge cases) stress the language in both directions via the
+# standard.test harness. Exit 0 iff every assertion holds.
+# Expected output: 2 PASS lines then  ---- 2 passed, 0 failed ----
 
-OverflowWrapMinMax is project
-OverflowWrapMinMax module examplesOverflowWrap
-OverflowWrapMinMax target console
-OverflowWrapMinMax entry main
+OverflowWrapMinmax is project
+OverflowWrapMinmax module examplesOverflowWrapMinmax
+OverflowWrapMinmax target console
+OverflowWrapMinmax entry main
 
-examplesOverflowWrap is module
-examplesOverflowWrap path examples.overflowWrapMinMax
-examplesOverflowWrap exports main
-examplesOverflowWrap purpose "Demonstrate that overflow wraps in two's complement"
-examplesOverflowWrap invariant "Int64 arithmetic wraps on overflow"
+examplesOverflowWrapMinmax is module
+examplesOverflowWrapMinmax path examples.overflowWrapMinmax
+examplesOverflowWrapMinmax exports main
+examplesOverflowWrapMinmax purpose "two's-complement overflow wraps max+1 to min"
+examplesOverflowWrapMinmax invariant "Positive and negative assertions both hold"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,24 +28,41 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Add to Int64.max and verify wrap to negative"
-main invariant "max + 1 wraps to min"
+main purpose "two's-complement overflow wraps max+1 to min"
+main invariant "All assertions hold"
+main let maxI immutable Int64 9223372036854775807
+main let oneV immutable Int64 1
+main let expMin immutable Int64 -9223372036854775808
+main let tn0 immutable String "max+1 wraps to min"
+main let tn1 immutable String "wrapped value differs from max"
+main do ov
+main do check0
+main do check1
+main do harnessReport
+main return harnessSummaryCode
 
-main let maxInt immutable Int64 9223372036854775807
-main let oneValue immutable Int64 1
-main let zeroCode immutable ExitCode 0
-main do computeOverflow
-main do printResult
-main return zeroCode
+ov is call
+ov in main
+ov invokes math.addInt64
+ov arg left Int64 maxI
+ov arg right Int64 oneV
+ov out wrapped Int64
 
-computeOverflow is call
-computeOverflow in main
-computeOverflow invokes math.addInt64
-computeOverflow arg left Int64 maxInt
-computeOverflow arg right Int64 oneValue
-computeOverflow out wrappedValue Int64
+check0 is call
+check0 in main
+check0 invokes test.assertEqualInt64
+check0 arg name String tn0
+check0 arg expected Int64 expMin
+check0 arg actual Int64 wrapped
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 wrappedValue
+check1 is call
+check1 in main
+check1 invokes test.assertNotEqualInt64
+check1 arg name String tn1
+check1 arg expected Int64 maxI
+check1 arg actual Int64 wrapped
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

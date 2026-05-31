@@ -1,5 +1,9 @@
-# operation_postcondition_check — operation postcondition assertion
-# (README §7). Tests verifying operation postconditions.
+# operation_postcondition_check -- verify a postcondition (result > 0) on a computed value, converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  operation_postcondition_check  (expected 64, actual 64)
+#   ---- 1 passed, 0 failed ----
 
 OperationPostconditionCheck is project
 OperationPostconditionCheck module examplesOperationPostconditionCheck
@@ -9,14 +13,16 @@ OperationPostconditionCheck entry main
 examplesOperationPostconditionCheck is module
 examplesOperationPostconditionCheck path examples.operationPostconditionCheck
 examplesOperationPostconditionCheck exports main
-examplesOperationPostconditionCheck purpose "Demonstrate operation postcondition"
-examplesOperationPostconditionCheck invariant "Postconditions are enforced"
+examplesOperationPostconditionCheck purpose "verify a postcondition (result > 0) on a computed value"
+examplesOperationPostconditionCheck invariant "Self-checking via the test harness"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +30,52 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Check operation postcondition"
-main invariant "Postcondition holds after operation"
+main purpose "verify a postcondition (result > 0) on a computed value and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "operation_postcondition_check"
+main let harnessExpected immutable Int64 64
+main let outcome mutable Int64 -1
+main let baseValue immutable Int64 8
+main let zero immutable Int64 0
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "operation_postcondition_check: real result (not the no-op 0)"
+main do squareCall
+main do postCheck
+main branch ifFalse holds goto afterCheck
+main set outcome squared
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main let result immutable Int64 99
-main let okCode immutable ExitCode 0
+squareCall is call
+squareCall in main
+squareCall invokes math.squareInt64
+squareCall arg value Int64 baseValue
+squareCall out squared Int64
 
-main do printResult
-main return okCode
+postCheck is call
+postCheck in main
+postCheck invokes math.greaterThanInt64
+postCheck arg left Int64 squared
+postCheck arg right Int64 zero
+postCheck out holds Bool
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

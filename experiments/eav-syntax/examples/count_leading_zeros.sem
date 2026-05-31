@@ -1,0 +1,70 @@
+# count_leading_zeros — (repurposed from string_find_substring). clz of an Int64
+# via math.countLeadingZerosInt64 (llvm.ctlz, README §10.6). Computed, not const.
+#
+# Correctness observation: clz(1) on a 64-bit value = 63 leading zeros.
+# Expected output: 63
+
+CountLeadingZeros is project
+CountLeadingZeros module examplesCountLeadingZeros
+CountLeadingZeros target console
+CountLeadingZeros entry main
+
+examplesCountLeadingZeros is module
+examplesCountLeadingZeros path examples.countLeadingZeros
+examplesCountLeadingZeros exports main
+examplesCountLeadingZeros purpose "Count leading zero bits of an integer"
+examplesCountLeadingZeros invariant "clz(1) is 63 on Int64"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute clz(1) and print it"
+main invariant "Writes exactly one integer line: 63"
+main let oneBit immutable Int64 1
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "count_leading_zeros"
+main let harnessExpected immutable Int64 63
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "count_leading_zeros: real result (not the no-op 0)"
+main do clzCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+clzCall is call
+clzCall in main
+clzCall invokes math.countLeadingZerosInt64
+clzCall arg value Int64 oneBit
+clzCall out leadingZeros Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 leadingZeros
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 leadingZeros
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

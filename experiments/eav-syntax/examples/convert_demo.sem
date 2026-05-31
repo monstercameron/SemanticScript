@@ -1,4 +1,5 @@
 # convert_demo — explicit numeric conversion (README ss33.5). Widen an Int32 to
+# Expected output: 200
 # Int64 (sext) and print it. (todos WS1-095, WS3-014)
 
 ConvertDemo is project
@@ -30,9 +31,15 @@ main purpose "Widen 200 (Int32) to Int64 and print it"
 main invariant "Writes exactly one integer line: 200"
 main let smallValue immutable Int32 200
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "convert_demo"
+main let harnessExpected immutable Int64 200
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "convert_demo: real result (not the no-op 0)"
 main do widen
 main do writeWide
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 widen is call
 widen in main
@@ -42,5 +49,20 @@ widen out wideValue Int64
 
 writeWide is call
 writeWide in main
-writeWide invokes console.writeIntegerLine
-writeWide arg value Int64 wideValue
+writeWide invokes test.assertEqualInt64
+writeWide arg name String harnessName
+writeWide arg expected Int64 harnessExpected
+writeWide arg actual Int64 wideValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 wideValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

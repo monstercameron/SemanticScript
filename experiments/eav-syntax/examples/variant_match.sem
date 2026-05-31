@@ -1,6 +1,12 @@
-# variant_match — `branch ifVariant VALUE VARIANT goto L` narrows a payloadless
-# enum by discriminant (README ss10.5/ss13). Builds Status.done and matches it,
-# printing "is done". (todos WS1-063)
+# variant_match -- construct an enum value and discriminate it with branch ifVariant
+# (README s10.5/s13), converging both arms to a single asserted outcome. Uses
+# the standard.test harness: prints a PASS/FAIL line and a summary, exit 0 iff
+# the assertion holds.
+#
+# Correctness observation: build Status.done; the matched arm sets outcome=1.
+# Expected output:
+#   PASS  variant_match  (expected 1, actual 1)
+#   ---- 1 passed, 0 failed ----
 
 VariantMatch is project
 VariantMatch module examplesVariantMatch
@@ -10,21 +16,21 @@ VariantMatch entry main
 examplesVariantMatch is module
 examplesVariantMatch path examples.variantMatch
 examplesVariantMatch exports main
-examplesVariantMatch purpose "Match an enum value with ifVariant"
-examplesVariantMatch invariant "Takes the done path only when the value is the done variant"
+examplesVariantMatch purpose "Discriminate a Status enum value and assert the outcome"
+examplesVariantMatch invariant "Takes the matched arm only for the done variant"
 
 ExitCode is alias
 ExitCode for Int32
 ExitCode purpose "Process exit status"
 
-stdoutWriter is capability
-stdoutWriter grants write console.stdout
-stdoutWriter purpose "Allow controlled writes to standard output"
-
 Status is enum
 Status variant open
 Status variant done
-Status purpose "Lifecycle state of a task"
+Status purpose "An enum for variant discrimination"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -32,29 +38,43 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Build a done Status and branch on it with ifVariant"
-main invariant "Prints 'is done' when the value matches the done variant"
-main let doneText immutable String "is done"
-main let openText immutable String "still open"
-main let okCode immutable ExitCode 0
-main do makeStatus
-main branch ifVariant currentStatus done goto isDone
-main do writeOpen
-main return okCode
-main at isDone do writeDone
-main return okCode
+main purpose "Build Status.done, discriminate it, and assert the outcome"
+main invariant "Asserts the matched-arm outcome via the test harness"
+main let outcome mutable Int64 0
+main let chosenMark immutable Int64 1
+main let harnessName immutable String "variant_match"
+main let harnessExpected immutable Int64 1
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "variant_match: real result (not the no-op 0)"
+main do makeValue
+main branch ifVariant currentValue done goto isChosen
+main goto afterMatch
+main at isChosen set outcome chosenMark
+main at afterMatch do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-makeStatus is call
-makeStatus in main
-makeStatus invokes Status.done
-makeStatus out currentStatus Status
+makeValue is call
+makeValue in main
+makeValue invokes Status.done
+makeValue out currentValue Status
 
-writeDone is call
-writeDone in main
-writeDone invokes console.writeLine
-writeDone arg text String doneText
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
 
-writeOpen is call
-writeOpen in main
-writeOpen invokes console.writeLine
-writeOpen arg text String openText
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

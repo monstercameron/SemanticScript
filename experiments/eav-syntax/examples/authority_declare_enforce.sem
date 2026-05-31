@@ -1,5 +1,11 @@
-# authority_declare_enforce — authority declaration and enforcement
-# (README §12). Tests effect authority declaration.
+# authority_declare_enforce — a declared effect (write console.stdout) is only
+# permitted because the operation `uses` a capability that `grants` it
+# (README §8/§12). Remove the capability and the effect is uncovered → the gate
+# rejects the program; with it, the write runs. The printed value is computed by
+# a real math.maxInt64 call so it also fails under a no-op lowering.
+#
+# Correctness observation: max(7, 3) printed through a capability-covered effect.
+# Expected output: 7
 
 AuthorityDeclareEnforce is project
 AuthorityDeclareEnforce module examplesAuthorityDeclareEnforce
@@ -9,19 +15,61 @@ AuthorityDeclareEnforce entry main
 examplesAuthorityDeclareEnforce is module
 examplesAuthorityDeclareEnforce path examples.authorityDeclareEnforce
 examplesAuthorityDeclareEnforce exports main
-examplesAuthorityDeclareEnforce purpose "Demonstrate authority declaration"
-examplesAuthorityDeclareEnforce invariant "Authority covers declared effects"
+examplesAuthorityDeclareEnforce purpose "Write through a capability-covered effect"
+examplesAuthorityDeclareEnforce invariant "The write effect is granted by a used capability"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
 main effect write console.stdout
+main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Declare and enforce authority"
-main invariant "Authority is well-formed"
+main purpose "Compute max(7,3) and print it through the granted write effect"
+main invariant "Writes exactly one integer line: 7"
+main let bigger immutable Int64 7
+main let smaller immutable Int64 3
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "authority_declare_enforce"
+main let harnessExpected immutable Int64 7
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "authority_declare_enforce: real result (not the no-op 0)"
+main do maxCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main let code immutable ExitCode 0
-main return code
+maxCall is call
+maxCall in main
+maxCall invokes math.maxInt64
+maxCall arg left Int64 bigger
+maxCall arg right Int64 smaller
+maxCall out chosen Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 chosen
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 chosen
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,5 +1,9 @@
-# checked_add_result — addition returning Result (checked arithmetic)
-# (README §10.6). Tests addition that returns Result<Int64, ArithError>.
+# checked_add_result — checked addition. The sum is produced by a real
+# math.addInt64 call (README §10.6), not a hardcoded constant, so the program
+# fails under a no-op lowering.
+#
+# Correctness observation: 10 + 20 computed by the adder.
+# Expected output: 30
 
 CheckedAddResult is project
 CheckedAddResult module examplesCheckedAdd
@@ -9,14 +13,16 @@ CheckedAddResult entry main
 examplesCheckedAdd is module
 examplesCheckedAdd path examples.checkedAddResult
 examplesCheckedAdd exports main
-examplesCheckedAdd purpose "Demonstrate checked addition returning Result"
-examplesCheckedAdd invariant "10 + 20 = 30"
+examplesCheckedAdd purpose "Add two integers with a real adder and print the sum"
+examplesCheckedAdd invariant "Writes exactly one integer line: 30"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,18 +30,44 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Add two small numbers and print result"
-main invariant "10 + 20 = 30"
-
+main purpose "Compute 10 + 20 and print the sum"
+main invariant "Writes exactly one integer line: 30"
 main let first immutable Int64 10
 main let second immutable Int64 20
 main let okCode immutable ExitCode 0
-main let resultValue immutable Int64 30
-
+main let harnessName immutable String "checked_add_result"
+main let harnessExpected immutable Int64 30
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "checked_add_result: real result (not the no-op 0)"
+main do addCall
 main do printResult
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+addCall is call
+addCall in main
+addCall invokes math.addInt64
+addCall arg left Int64 first
+addCall arg right Int64 second
+addCall out sumValue Int64
 
 printResult is call
 printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 resultValue
+printResult invokes test.assertEqualInt64
+printResult arg name String harnessName
+printResult arg expected Int64 harnessExpected
+printResult arg actual Int64 sumValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 sumValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

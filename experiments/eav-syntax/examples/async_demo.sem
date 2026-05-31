@@ -1,4 +1,5 @@
 # async_demo — async task on the single-thread backend (README ss13):
+# Expected output: 42
 # `start` runs eagerly, `ifReady` is always taken, the pending path never runs.
 # Doubles 21 -> 42 in a task and prints it. (todos WS1-107, WS1-065, WS3-003)
 
@@ -49,12 +50,18 @@ main purpose "Start the double task, await readiness, print the result"
 main invariant "Prints 42; the pending branch is unreachable on single-thread"
 main let seed immutable Int64 21
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "async_demo"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "async_demo: real result (not the no-op 0)"
 main start computeTask
 main poll computeTask
 main branch ifReady computeTask goto useResult
 main return okCode
 main at useResult do writeResult
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 computeTask is task
 computeTask in main
@@ -64,5 +71,20 @@ computeTask out answer Int64
 
 writeResult is call
 writeResult in main
-writeResult invokes console.writeIntegerLine
-writeResult arg value Int64 answer
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,5 +1,9 @@
-# convert_int_float — conversions between Int64 and Float64
-# (README §10.6 / §33.5). Tests type conversion operations.
+# convert_int_float — explicit Int64 -> Float64 conversion via convert.toFloat64
+# (README §10.6/§33.5). The float is produced by a real conversion instruction
+# (sitofp), not a Float64 literal, so it fails under a no-op lowering.
+#
+# Correctness observation: Int64 42 converted to Float64 prints as 42.
+# Expected output: 42
 
 ConvertIntFloat is project
 ConvertIntFloat module examplesConvertIntFloat
@@ -9,14 +13,16 @@ ConvertIntFloat entry main
 examplesConvertIntFloat is module
 examplesConvertIntFloat path examples.convertIntFloat
 examplesConvertIntFloat exports main
-examplesConvertIntFloat purpose "Demonstrate Int64 to Float64 conversion"
-examplesConvertIntFloat invariant "42 converts to 42.0"
+examplesConvertIntFloat purpose "Convert an Int64 to Float64 and print it"
+examplesConvertIntFloat invariant "42 (Int64) converts to 42.0 (Float64)"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,17 +30,49 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Convert Int64 to Float64 and print"
-main invariant "42 as Float64"
-
+main purpose "Convert Int64 42 to Float64 and print it"
+main invariant "Writes exactly one float line: 42"
 main let intVal immutable Int64 42
 main let okCode immutable ExitCode 0
-main let floatResult immutable Float64 42.0
-
+main let harnessName immutable String "convert_int_float"
+main let harnessExpected immutable Float64 42.0
+main let zeroFloatGuard immutable Float64 0.0
+main let noopName immutable String "convert_int_float: real result (not the no-op 0.0)"
+main do widenToFloat
 main do printFloat
-main return okCode
+main do noopZeroCmp
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+widenToFloat is call
+widenToFloat in main
+widenToFloat invokes convert.toFloat64
+widenToFloat arg inputValue Int64 intVal
+widenToFloat out floatVal Float64
 
 printFloat is call
 printFloat in main
-printFloat invokes console.writeFloatLine
-printFloat arg value Float64 floatResult
+printFloat invokes test.assertEqualFloat64
+printFloat arg name String harnessName
+printFloat arg expected Float64 harnessExpected
+printFloat arg actual Float64 floatVal
+
+
+noopZeroCmp is call
+noopZeroCmp in main
+noopZeroCmp invokes math.equalFloat64
+noopZeroCmp arg left Float64 floatVal
+noopZeroCmp arg right Float64 zeroFloatGuard
+noopZeroCmp out noopIsZero Bool
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertFalse
+noopCheck arg name String noopName
+noopCheck arg value Bool noopIsZero
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

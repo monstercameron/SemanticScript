@@ -1,7 +1,8 @@
-# countdown — loop with control flow + mutable rebinding.
-# Counts 3, 2, 1, printing each. Exercises: `let mutable` + out-rebind (§12),
-# `at LABEL` loop head, `branch ifFalse ... goto`, and `goto` back-edge (§13).
-# (todos WS1-060, WS1-080, WS1-081)
+# countdown -- a real loop accumulates a running total, asserted via the test
+# harness (README s13/s35). Prints PASS/FAIL + a summary; exit 0 iff it holds.
+# Expected output:
+#   PASS  countdown  (expected 6, actual 6)
+#   ---- 1 passed, 0 failed ----
 
 Countdown is project
 Countdown module examplesCountdown
@@ -11,8 +12,8 @@ Countdown entry main
 examplesCountdown is module
 examplesCountdown path examples.countdown
 examplesCountdown exports main
-examplesCountdown purpose "Count down from 3 to 1, one integer per line"
-examplesCountdown invariant "main is the only project entry operation"
+examplesCountdown purpose "sum a 3..1 countdown"
+examplesCountdown invariant "Self-checking via the test harness"
 
 ExitCode is alias
 ExitCode for Int32
@@ -28,34 +29,62 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Print 3, 2, 1 using a decrement loop"
-main invariant "Loop terminates when the counter falls below the lower bound"
+main purpose "sum a 3..1 countdown and assert the total"
+main invariant "Asserts the accumulated total via the harness"
+main let total mutable Int64 0
 main let counter mutable Int64 3
-main let lowerBound immutable Int64 1
+main let bound immutable Int64 1
 main let oneStep immutable Int64 1
-main let successExitCode immutable ExitCode 0
-main at loopHead do checkContinue
-main branch ifFalse shouldContinue goto loopExit
-main do printCounter
-main do decrementCounter
+main let harnessName immutable String "countdown"
+main let harnessExpected immutable Int64 6
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "countdown: real result (not the no-op 0)"
+main at loopHead do checkGoing
+main branch ifFalse stillGoing goto loopExit
+main do addToTotal
+main do stepCounter
 main goto loopHead
-main at loopExit return successExitCode
+main at loopExit do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-checkContinue is call
-checkContinue in main
-checkContinue invokes math.greaterThanOrEqualInt64
-checkContinue arg left Int64 counter
-checkContinue arg right Int64 lowerBound
-checkContinue out shouldContinue Bool
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.greaterThanOrEqualInt64
+checkGoing arg left Int64 counter
+checkGoing arg right Int64 bound
+checkGoing out stillGoing Bool
 
-printCounter is call
-printCounter in main
-printCounter invokes console.writeIntegerLine
-printCounter arg value Int64 counter
+addToTotal is call
+addToTotal in main
+addToTotal invokes math.addInt64
+addToTotal arg left Int64 total
+addToTotal arg right Int64 counter
+addToTotal out total Int64
 
-decrementCounter is call
-decrementCounter in main
-decrementCounter invokes math.subtractInt64
-decrementCounter arg left Int64 counter
-decrementCounter arg right Int64 oneStep
-decrementCounter out counter Int64
+stepCounter is call
+stepCounter in main
+stepCounter invokes math.subtractInt64
+stepCounter arg left Int64 counter
+stepCounter arg right Int64 oneStep
+stepCounter out counter Int64
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 total
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

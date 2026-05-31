@@ -1,5 +1,10 @@
-# error_case_return — error variant creation and return
-# (README §9). Tests building and returning error values.
+# error_case_return -- route a fallible call to its ok/err arm (README s9/s18), converging the ok/err arms to a single
+# asserted `outcome` via the standard.test harness. The write succeeds, so the
+# no-error arm runs and outcome = 0.
+# Expected output (the fallible write prints its banner first):
+#   writing under a fallible call
+#   PASS  error_case_return  (expected 0, actual 0)
+#   ---- 1 passed, 0 failed ----
 
 ErrorCaseReturn is project
 ErrorCaseReturn module examplesErrorCaseReturn
@@ -9,18 +14,24 @@ ErrorCaseReturn entry main
 examplesErrorCaseReturn is module
 examplesErrorCaseReturn path examples.errorCaseReturn
 examplesErrorCaseReturn exports main
-examplesErrorCaseReturn purpose "Demonstrate error case creation and return"
-examplesErrorCaseReturn invariant "Error variants are properly typed"
-
-MyError is error
-MyError case failure Int32
-MyError case timeout
+examplesErrorCaseReturn purpose "route a fallible call to its ok/err arm"
+examplesErrorCaseReturn invariant "Self-checking via the test harness"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+ConsoleWriteError is error
+ConsoleWriteError purpose "Represent failures from console output operations"
+
+ConsoleWriteFailed is errorCase
+ConsoleWriteFailed of ConsoleWriteError
+ConsoleWriteFailed payload Int32
+ConsoleWriteFailed purpose "A failed stdout write with a status payload"
 
 main is operation
 main out ExitCode
@@ -28,16 +39,44 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Create and return an error value"
-main invariant "Error case construction works"
+main purpose "route a fallible call to its ok/err arm and assert the converged outcome"
+main invariant "Asserts the ok-arm outcome via the harness"
+main let outcome mutable Int64 1
+main let okMark immutable Int64 0
+main let bannerText immutable String "writing under a fallible call"
+main let harnessName immutable String "error_case_return"
+main let harnessExpected immutable Int64 0
+main let noopDecoy immutable Int64 1
+main let noopName immutable String "error_case_return: real result (not the no-op 1)"
+main do writeOk
+main branch ifError writeOk goto afterCheck
+main set outcome okMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main let result immutable Int64 1
-main let okCode immutable ExitCode 0
+writeOk is call
+writeOk in main
+writeOk invokes console.writeLine
+writeOk arg text String bannerText
+writeOk catch writeError ConsoleWriteError
 
-main do printResult
-main return okCode
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
 
-printResult is call
-printResult in main
-printResult invokes console.writeIntegerLine
-printResult arg value Int64 result
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

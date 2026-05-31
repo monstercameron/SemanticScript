@@ -1,4 +1,5 @@
 # Hello World — canonical EAV-Steps v0.3 (README ss18).
+# Expected output: hello world
 # This is the keystone vertical slice: parse -> lower -> run (todos WS1-101).
 
 HelloWorld is project
@@ -42,17 +43,38 @@ main invariant "Returns writeFailedExitCode on any write failure"
 main let helloText immutable String "hello world"
 main let successExitCode immutable ExitCode 0
 main let writeFailedExitCode immutable ExitCode 1
+main let harnessName immutable String "hello_world"
+main let harnessExpected immutable String "hello world"
+main let emptyGuard immutable String ""
+main let noopName immutable String "hello_world: real result (not the empty string)"
 
 main do writeHello
+main do noopCheck
+main do harnessReport
 main branch ifError writeHello goto failed
-main return successExitCode
+main return harnessSummaryCode
 
-main at failed return writeFailedExitCode
+main at failed return harnessSummaryCode
 
 writeHello is call
 writeHello in main
-writeHello invokes console.writeLine
-writeHello arg text String helloText
+writeHello invokes test.assertEqualText
+writeHello arg name String harnessName
+writeHello arg expected String harnessExpected
+writeHello arg actual String helloText
 writeHello catch writeError ConsoleWriteError
 writeHello purpose "Write the greeting text to stdout"
 writeHello risk "May fail if stdout is closed or unavailable"
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String helloText
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

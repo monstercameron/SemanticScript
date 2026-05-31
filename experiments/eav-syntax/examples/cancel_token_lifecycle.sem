@@ -1,5 +1,10 @@
-# cancel_token_lifecycle — cancellation token lifecycle
-# (README §15). Tests task cancellation via token.
+# cancel_token_lifecycle — task cancellation lifecycle: `start` a task, `poll`
+# it, then `cancel` it (README §15). On the single-thread backend the task
+# resolves at start, so cancel after completion is a no-op and the already-
+# computed result stays readable; the printed value is the task's REAL output.
+#
+# Correctness observation: a task computes 6 * 7 = 42; start/poll/cancel run.
+# Expected output: 42
 
 CancelTokenLifecycle is project
 CancelTokenLifecycle module examplesCancelTokenLifecycle
@@ -9,31 +14,81 @@ CancelTokenLifecycle entry main
 examplesCancelTokenLifecycle is module
 examplesCancelTokenLifecycle path examples.cancelTokenLifecycle
 examplesCancelTokenLifecycle exports main
-examplesCancelTokenLifecycle purpose "Demonstrate cancel token lifecycle"
-examplesCancelTokenLifecycle invariant "Cancel tokens are well-formed"
+examplesCancelTokenLifecycle purpose "Start, poll, and cancel a task; print its result"
+examplesCancelTokenLifecycle invariant "Cancel after completion does not change the result"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+multiply is operation
+multiply in left Int64
+multiply in right Int64
+multiply out Int64
+multiply memory heap no
+multiply async no
+multiply purpose "Return left * right"
+multiply invariant "Result is exactly left * right"
+multiply do mulCall
+multiply return product
+
+mulCall is call
+mulCall in multiply
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 left
+mulCall arg right Int64 right
+mulCall out product Int64
 
 main is operation
 main out ExitCode
 main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
-main async no
-main purpose "Use cancellation token"
-main invariant "Token lifecycle works"
-
-main let canceled immutable Int64 0
+main async yes
+main purpose "Run a task through start/poll/cancel and print its result"
+main invariant "Writes exactly one integer line: 42"
+main let leftSeed immutable Int64 6
+main let rightSeed immutable Int64 7
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "cancel_token_lifecycle"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "cancel_token_lifecycle: real result (not the no-op 0)"
+main start workTask
+main poll workTask
+main cancel workTask
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printCanceled
-main return okCode
+workTask is task
+workTask in main
+workTask invokes multiply
+workTask arg left Int64 leftSeed
+workTask arg right Int64 rightSeed
+workTask out answer Int64
 
-printCanceled is call
-printCanceled in main
-printCanceled invokes console.writeIntegerLine
-printCanceled arg value Int64 canceled
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

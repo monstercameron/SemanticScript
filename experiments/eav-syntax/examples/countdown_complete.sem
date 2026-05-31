@@ -1,15 +1,90 @@
-# X-202 countdown
-Countdown is project
-Countdown module m
-Countdown target console
-Countdown entry main
-m is module
-m path examples.countdown
-m exports main
-m purpose "Countdown test"
-m invariant "Works"
+# countdown_complete -- a real loop accumulates a running total, asserted via the test
+# harness (README s13/s35). Prints PASS/FAIL + a summary; exit 0 iff it holds.
+# Expected output:
+#   PASS  countdown_complete  (expected 15, actual 15)
+#   ---- 1 passed, 0 failed ----
+
+CountdownComplete is project
+CountdownComplete module examplesCountdownComplete
+CountdownComplete target console
+CountdownComplete entry main
+
+examplesCountdownComplete is module
+examplesCountdownComplete path examples.countdownComplete
+examplesCountdownComplete exports main
+examplesCountdownComplete purpose "sum a 5..1 countdown"
+examplesCountdownComplete invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
 main is operation
-main out Int32
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
 main async no
-main let code immutable Int32 0
-main return code
+main purpose "sum a 5..1 countdown and assert the total"
+main invariant "Asserts the accumulated total via the harness"
+main let total mutable Int64 0
+main let counter mutable Int64 5
+main let bound immutable Int64 1
+main let oneStep immutable Int64 1
+main let harnessName immutable String "countdown_complete"
+main let harnessExpected immutable Int64 15
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "countdown_complete: real result (not the no-op 0)"
+main at loopHead do checkGoing
+main branch ifFalse stillGoing goto loopExit
+main do addToTotal
+main do stepCounter
+main goto loopHead
+main at loopExit do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.greaterThanOrEqualInt64
+checkGoing arg left Int64 counter
+checkGoing arg right Int64 bound
+checkGoing out stillGoing Bool
+
+addToTotal is call
+addToTotal in main
+addToTotal invokes math.addInt64
+addToTotal arg left Int64 total
+addToTotal arg right Int64 counter
+addToTotal out total Int64
+
+stepCounter is call
+stepCounter in main
+stepCounter invokes math.subtractInt64
+stepCounter arg left Int64 counter
+stepCounter arg right Int64 oneStep
+stepCounter out counter Int64
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 total
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

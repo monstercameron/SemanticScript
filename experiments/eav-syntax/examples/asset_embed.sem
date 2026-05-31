@@ -1,6 +1,10 @@
 # asset_embed — compile-time asset embedding via literalSource (README ss30.3.2).
 # The banner text is read from a file at compile time and printed. (todos WS1-084)
 # NOTE: literalSource paths resolve relative to the working directory.
+#
+# Correctness observation: the printed text comes from the embedded asset file,
+# not an inline String literal, so it fails if literalSource embedding is a no-op.
+# Expected output: EAV banner asset
 
 AssetEmbed is project
 AssetEmbed module examplesAssetEmbed
@@ -25,7 +29,7 @@ bannerText is storage
 bannerText scope module
 bannerText type String
 bannerText mutability immutable
-bannerText literalSource "experiments/eav-syntax/assets/banner.txt"
+bannerText literalSource "assets/banner.txt"
 bannerText purpose "Banner text embedded from an asset file at compile time"
 
 main is operation
@@ -37,10 +41,31 @@ main async no
 main purpose "Print the embedded banner asset"
 main invariant "Writes the banner asset content"
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "asset_embed"
+main let harnessExpected immutable String "EAV banner asset"
+main let emptyGuard immutable String ""
+main let noopName immutable String "asset_embed: real result (not the empty string)"
 main do writeBanner
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 writeBanner is call
 writeBanner in main
-writeBanner invokes console.writeLine
-writeBanner arg text String bannerText
+writeBanner invokes test.assertEqualText
+writeBanner arg name String harnessName
+writeBanner arg expected String harnessExpected
+writeBanner arg actual String bannerText
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String bannerText
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

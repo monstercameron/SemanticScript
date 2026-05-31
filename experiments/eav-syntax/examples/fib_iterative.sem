@@ -1,5 +1,10 @@
-# fib_iterative — Fibonacci number (demo: fib(10) = 55)
-# (README §13). Placeholder for iterative Fibonacci computation.
+# fib_iterative — iterative Fibonacci with a real loop (README §13). Two mutable
+# accumulators advance through fib via repeated addition; `+ 0` calls copy values
+# (mutable rebind via call output), and a counter drives the loop. The result
+# comes from the loop, not a constant.
+#
+# Correctness observation: fib(10) = 55 (fib(0)=0, fib(1)=1).
+# Expected output: 55
 
 FibIterative is project
 FibIterative module examplesFibIterative
@@ -9,14 +14,16 @@ FibIterative entry main
 examplesFibIterative is module
 examplesFibIterative path examples.fibIterative
 examplesFibIterative exports main
-examplesFibIterative purpose "Compute Fibonacci number iteratively"
-examplesFibIterative invariant "fib(10) = 55"
+examplesFibIterative purpose "Compute the 10th Fibonacci number iteratively"
+examplesFibIterative invariant "Loop runs until the counter reaches the targetIndex index"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +31,82 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Output the 10th Fibonacci number"
-main invariant "Result is 55"
-
+main purpose "Iteratively compute and print fib(10)"
+main invariant "Writes exactly one integer line: 55"
+main let prev mutable Int64 0
+main let cur mutable Int64 1
+main let count mutable Int64 1
+main let zero immutable Int64 0
+main let targetIndex immutable Int64 10
+main let oneStep immutable Int64 1
 main let okCode immutable ExitCode 0
-main let fib10Value immutable Int64 55
+main let harnessName immutable String "fib_iterative"
+main let harnessExpected immutable Int64 55
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "fib_iterative: real result (not the no-op 0)"
+main at loopHead do checkDone
+main branch ifFalse stillGoing goto loopExit
+main do nextFib
+main do copyPrev
+main do copyCur
+main do bump
+main goto loopHead
+main at loopExit do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printFib
-main return okCode
+checkDone is call
+checkDone in main
+checkDone invokes math.lessThanInt64
+checkDone arg left Int64 count
+checkDone arg right Int64 targetIndex
+checkDone out stillGoing Bool
 
-printFib is call
-printFib in main
-printFib invokes console.writeIntegerLine
-printFib arg value Int64 fib10Value
+nextFib is call
+nextFib in main
+nextFib invokes math.addInt64
+nextFib arg left Int64 prev
+nextFib arg right Int64 cur
+nextFib out nextValue Int64
+
+copyPrev is call
+copyPrev in main
+copyPrev invokes math.addInt64
+copyPrev arg left Int64 cur
+copyPrev arg right Int64 zero
+copyPrev out prev Int64
+
+copyCur is call
+copyCur in main
+copyCur invokes math.addInt64
+copyCur arg left Int64 nextValue
+copyCur arg right Int64 zero
+copyCur out cur Int64
+
+bump is call
+bump in main
+bump invokes math.addInt64
+bump arg left Int64 count
+bump arg right Int64 oneStep
+bump out count Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 cur
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 cur
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

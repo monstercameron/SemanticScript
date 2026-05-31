@@ -1,0 +1,86 @@
+# xor_self_zero -- XOR self-inverse and identity. Load-bearing: POSITIVE and NEGATIVE assertions (false-cases,
+# inequalities, edge cases) stress the language in both directions via the
+# standard.test harness. Exit 0 iff every assertion holds.
+# Expected output: 2 PASS lines then  ---- 2 passed, 0 failed ----
+
+XorSelfZero is project
+XorSelfZero module examplesXorSelfZero
+XorSelfZero target console
+XorSelfZero entry main
+
+examplesXorSelfZero is module
+examplesXorSelfZero path examples.xorSelfZero
+examplesXorSelfZero exports main
+examplesXorSelfZero purpose "XOR self-inverse and identity"
+examplesXorSelfZero invariant "Positive and negative assertions both hold"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "XOR self-inverse and identity"
+main invariant "All assertions hold"
+main let xVal immutable Int64 123
+main let zeroV immutable Int64 0
+main let expZero immutable Int64 0
+main let tn0 immutable String "x ^ x == 0"
+main let tn1 immutable String "x ^ 0 == x"
+main let noopDecoy immutable Int64 1
+main let noopName immutable String "xor_self_zero: real result (not the no-op 1)"
+main do selfCall
+main do idCall
+main do check0
+main do check1
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+selfCall is call
+selfCall in main
+selfCall invokes math.bitXorInt64
+selfCall arg left Int64 xVal
+selfCall arg right Int64 xVal
+selfCall out selfXor Int64
+
+idCall is call
+idCall in main
+idCall invokes math.bitXorInt64
+idCall arg left Int64 xVal
+idCall arg right Int64 zeroV
+idCall out idXor Int64
+
+check0 is call
+check0 in main
+check0 invokes test.assertEqualInt64
+check0 arg name String tn0
+check0 arg expected Int64 expZero
+check0 arg actual Int64 selfXor
+
+check1 is call
+check1 in main
+check1 invokes test.assertEqualInt64
+check1 arg name String tn1
+check1 arg expected Int64 xVal
+check1 arg actual Int64 idXor
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 selfXor
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

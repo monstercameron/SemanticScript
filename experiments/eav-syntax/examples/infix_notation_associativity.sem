@@ -1,5 +1,10 @@
-# infix_notation_associativity — infix notation and associativity
-# (README §8). Tests infix operator associativity.
+# infix_notation_associativity — EAV has no infix operators; evaluation order is
+# explicit via separate calls (README §1/§33.4). This shows left-associative
+# subtraction: ((20 - 5) - 3) = 12, which differs from right-grouping
+# 20 - (5 - 3) = 18. The result flows through two real calls, not a constant.
+#
+# Correctness observation: ((20 - 5) - 3) = 12 (left-associative).
+# Expected output: 12
 
 InfixNotationAssociativity is project
 InfixNotationAssociativity module examplesInfixNotationAssociativity
@@ -9,14 +14,16 @@ InfixNotationAssociativity entry main
 examplesInfixNotationAssociativity is module
 examplesInfixNotationAssociativity path examples.infixNotationAssociativity
 examplesInfixNotationAssociativity exports main
-examplesInfixNotationAssociativity purpose "Demonstrate infix notation and associativity"
-examplesInfixNotationAssociativity invariant "Infix associativity is well-defined"
+examplesInfixNotationAssociativity purpose "Evaluate a left-associative subtraction chain"
+examplesInfixNotationAssociativity invariant "Order is explicit, not inferred from precedence"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +31,53 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Test infix notation associativity"
-main invariant "Associativity works"
-
-main let expr immutable Int64 24
+main purpose "Compute ((20-5)-3) and print it"
+main invariant "Writes exactly one integer line: 12"
+main let twenty immutable Int64 20
+main let five immutable Int64 5
+main let three immutable Int64 3
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "infix_notation_associativity"
+main let harnessExpected immutable Int64 12
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "infix_notation_associativity: real result (not the no-op 0)"
+main do firstSub
+main do secondSub
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printExpr
-main return okCode
+firstSub is call
+firstSub in main
+firstSub invokes math.subtractInt64
+firstSub arg left Int64 twenty
+firstSub arg right Int64 five
+firstSub out partial Int64
 
-printExpr is call
-printExpr in main
-printExpr invokes console.writeIntegerLine
-printExpr arg value Int64 expr
+secondSub is call
+secondSub in main
+secondSub invokes math.subtractInt64
+secondSub arg left Int64 partial
+secondSub arg right Int64 three
+secondSub out final Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 final
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 final
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,5 +1,13 @@
-# failure_unhandled_propagate — unhandled failure propagation
-# (README §13). Tests unhandled failure detection.
+# failure_unhandled_propagate — NEGATIVE test. A fallible call declares `catch`
+# but main never `branch ifError`s on it, so the error case is unhandled
+# (README §17 #35). The linter must flag this — a hidden failure is exactly what
+# the language forbids. This is a load-bearing test of the unhandled-error check.
+#
+# Correctness observation (verified): `eavc check` reports
+#   WARNING SS3501: fallible call 'writeLine' has a catch but no `branch ifError`
+# (advisory tier, so it still runs by default; `run --strict` promotes it to a
+# blocking error). Proves the hidden-failure checker fires.
+# Expected: flagged with SS3501.
 
 FailureUnhandledPropagate is project
 FailureUnhandledPropagate module examplesFailureUnhandledPropagate
@@ -9,18 +17,40 @@ FailureUnhandledPropagate entry main
 examplesFailureUnhandledPropagate is module
 examplesFailureUnhandledPropagate path examples.failureUnhandledPropagate
 examplesFailureUnhandledPropagate exports main
-examplesFailureUnhandledPropagate purpose "Demonstrate unhandled failure detection"
-examplesFailureUnhandledPropagate invariant "Unhandled failures are caught"
+examplesFailureUnhandledPropagate purpose "Leave a fallible call's error case unhandled"
+examplesFailureUnhandledPropagate invariant "The catch has no matching ifError on purpose"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+ConsoleWriteError is error
+ConsoleWriteError purpose "Represent failures from console output operations"
+
+ConsoleWriteFailed is errorCase
+ConsoleWriteFailed of ConsoleWriteError
+ConsoleWriteFailed payload Int32
+ConsoleWriteFailed purpose "A failed stdout write with a status payload"
 
 main is operation
 main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Detect unhandled failures"
-main invariant "Failure detection works"
+main purpose "Perform a fallible write but never handle its error case"
+main invariant "Deliberately omits branch ifError to trip the checker"
+main let lineText immutable String "unhandled fallible write"
+main let okCode immutable ExitCode 0
+main do writeLine
+main return okCode
 
-main let code immutable ExitCode 0
-main return code
+writeLine is call
+writeLine in main
+writeLine invokes console.writeLine
+writeLine arg text String lineText
+writeLine catch writeError ConsoleWriteError

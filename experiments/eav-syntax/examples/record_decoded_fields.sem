@@ -1,0 +1,85 @@
+# record_decoded_fields -- (repurposed from json_codec_decode (no JSON runtime)) build a record and read a field back (Record.new / Record.field,
+# lowered to LLVM insert/extractvalue, README s10). The printed value is read
+# from the constructed record, not a constant.
+#
+# Correctness observation: build Decoded{idField=7, scoreField=88}; read scoreField.
+# Expected output: 88
+
+RecordDecodedFields is project
+RecordDecodedFields module examplesRecordDecodedFields
+RecordDecodedFields target console
+RecordDecodedFields entry main
+
+examplesRecordDecodedFields is module
+examplesRecordDecodedFields path examples.recordDecodedFields
+examplesRecordDecodedFields exports main
+examplesRecordDecodedFields purpose "Build a Decoded record and read its scoreField field"
+examplesRecordDecodedFields invariant "Prints the scoreField field of the built record"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Decoded is record
+Decoded field idField Int64
+Decoded field scoreField Int64
+Decoded purpose "A two-field record"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Decoded and print its scoreField field"
+main invariant "Writes exactly one integer line: 88"
+main let firstInput immutable Int64 7
+main let secondInput immutable Int64 88
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "record_decoded_fields"
+main let harnessExpected immutable Int64 88
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_decoded_fields: real result (not the no-op 0)"
+main do buildRec
+main do readField
+main do writeField
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildRec is call
+buildRec in main
+buildRec invokes Decoded.new
+buildRec arg idField Int64 firstInput
+buildRec arg scoreField Int64 secondInput
+buildRec out built Decoded
+
+readField is call
+readField in main
+readField invokes Decoded.scoreField
+readField arg record Decoded built
+readField out fieldOut Int64
+
+writeField is call
+writeField in main
+writeField invokes test.assertEqualInt64
+writeField arg name String harnessName
+writeField arg expected Int64 harnessExpected
+writeField arg actual Int64 fieldOut
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 fieldOut
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

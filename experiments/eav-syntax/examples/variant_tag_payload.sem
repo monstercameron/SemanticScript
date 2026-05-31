@@ -1,5 +1,9 @@
-# variant_tag_payload — variant with tag and payload
-# (README §10). Tests discriminated unions.
+# variant_tag_payload -- build a record and read a field back (Record.new / Record.field,
+# lowered to LLVM insert/extractvalue, README s10). The printed value is read
+# from the constructed record, not a constant.
+#
+# Correctness observation: build Tagged{tag=5, payload=99}; read payload.
+# Expected output: 99
 
 VariantTagPayload is project
 VariantTagPayload module examplesVariantTagPayload
@@ -9,14 +13,21 @@ VariantTagPayload entry main
 examplesVariantTagPayload is module
 examplesVariantTagPayload path examples.variantTagPayload
 examplesVariantTagPayload exports main
-examplesVariantTagPayload purpose "Demonstrate variant with tag and payload"
-examplesVariantTagPayload invariant "Variants are discriminated correctly"
+examplesVariantTagPayload purpose "Build a Tagged record and read its payload field"
+examplesVariantTagPayload invariant "Prints the payload field of the built record"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Tagged is record
+Tagged field tag Int64
+Tagged field payload Int64
+Tagged purpose "A two-field record"
 
 main is operation
 main out ExitCode
@@ -24,16 +35,51 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Work with variant types"
-main invariant "Variant discrimination works"
-
-main let tag immutable Int64 1
+main purpose "Build Tagged and print its payload field"
+main invariant "Writes exactly one integer line: 99"
+main let firstInput immutable Int64 5
+main let secondInput immutable Int64 99
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "variant_tag_payload"
+main let harnessExpected immutable Int64 99
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "variant_tag_payload: real result (not the no-op 0)"
+main do buildRec
+main do readField
+main do writeField
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printTag
-main return okCode
+buildRec is call
+buildRec in main
+buildRec invokes Tagged.new
+buildRec arg tag Int64 firstInput
+buildRec arg payload Int64 secondInput
+buildRec out built Tagged
 
-printTag is call
-printTag in main
-printTag invokes console.writeIntegerLine
-printTag arg value Int64 tag
+readField is call
+readField in main
+readField invokes Tagged.payload
+readField arg record Tagged built
+readField out fieldOut Int64
+
+writeField is call
+writeField in main
+writeField invokes test.assertEqualInt64
+writeField arg name String harnessName
+writeField arg expected Int64 harnessExpected
+writeField arg actual Int64 fieldOut
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 fieldOut
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

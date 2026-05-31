@@ -1,5 +1,9 @@
-# float_sqrt_pow — floating point sqrt and power operations
-# (README §10.6). Tests sqrt and power operations on Float64.
+# float_sqrt_pow — Float64 sqrt and power via real LLVM math intrinsics
+# (math.sqrtFloat64 = llvm.sqrt, math.powFloat64 = llvm.pow; README §10.6). Both
+# results are computed by intrinsics, not Float64 literals.
+#
+# Correctness observation: sqrt(16.0) = 4.0, then pow(4.0, 3.0) = 64.0.
+# Expected output: 64
 
 FloatSqrtPow is project
 FloatSqrtPow module examplesFloatSqrtPow
@@ -9,14 +13,16 @@ FloatSqrtPow entry main
 examplesFloatSqrtPow is module
 examplesFloatSqrtPow path examples.floatSqrtPow
 examplesFloatSqrtPow exports main
-examplesFloatSqrtPow purpose "Demonstrate sqrt operation"
-examplesFloatSqrtPow invariant "sqrt(16.0) is approximated"
+examplesFloatSqrtPow purpose "Compute sqrt then pow on Float64 and print the result"
+examplesFloatSqrtPow invariant "pow(sqrt(16.0), 3.0) = 64.0"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,15 +30,58 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Compute and print a float value"
-main invariant "Outputs a float result"
-
-main let floatVal immutable Float64 4.0
+main purpose "Compute pow(sqrt(16.0), 3.0) and print it"
+main invariant "Writes exactly one float line: 64"
+main let sixteen immutable Float64 16.0
+main let exponent immutable Float64 3.0
 main let okCode immutable ExitCode 0
-main do printFloat
-main return okCode
+main let harnessName immutable String "float_sqrt_pow"
+main let harnessExpected immutable Float64 64.0
+main let zeroFloatGuard immutable Float64 0.0
+main let noopName immutable String "float_sqrt_pow: real result (not the no-op 0.0)"
+main do sqrtCall
+main do powCall
+main do writeResult
+main do noopZeroCmp
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-printFloat is call
-printFloat in main
-printFloat invokes console.writeFloatLine
-printFloat arg value Float64 floatVal
+sqrtCall is call
+sqrtCall in main
+sqrtCall invokes math.sqrtFloat64
+sqrtCall arg value Float64 sixteen
+sqrtCall out root Float64
+
+powCall is call
+powCall in main
+powCall invokes math.powFloat64
+powCall arg left Float64 root
+powCall arg right Float64 exponent
+powCall out powered Float64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualFloat64
+writeResult arg name String harnessName
+writeResult arg expected Float64 harnessExpected
+writeResult arg actual Float64 powered
+
+
+noopZeroCmp is call
+noopZeroCmp in main
+noopZeroCmp invokes math.equalFloat64
+noopZeroCmp arg left Float64 powered
+noopZeroCmp arg right Float64 zeroFloatGuard
+noopZeroCmp out noopIsZero Bool
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertFalse
+noopCheck arg name String noopName
+noopCheck arg value Bool noopIsZero
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

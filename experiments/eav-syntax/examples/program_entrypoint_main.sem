@@ -1,5 +1,9 @@
-# program_entrypoint_main — program entrypoint and main
-# (README §19). Tests program initialization and main entry.
+# program_entrypoint_main — the project declares `entry console main`, so main is
+# the executable entrypoint (README §19). To prove the entry actually runs (not a
+# no-op), it computes 6 + 7 via a real call and prints it, then returns exit 0.
+#
+# Correctness observation: the entry runs and prints 6 + 7.
+# Expected output: 13
 
 ProgramEntrypointMain is project
 ProgramEntrypointMain module examplesProgramEntrypointMain
@@ -9,14 +13,16 @@ ProgramEntrypointMain entry main
 examplesProgramEntrypointMain is module
 examplesProgramEntrypointMain path examples.programEntrypointMain
 examplesProgramEntrypointMain exports main
-examplesProgramEntrypointMain purpose "Demonstrate program entrypoint"
-examplesProgramEntrypointMain invariant "Program initialization works"
+examplesProgramEntrypointMain purpose "Run the declared entrypoint and print a computed value"
+examplesProgramEntrypointMain invariant "main is the only project entry operation"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +30,44 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Initialize program and run main"
-main invariant "Entrypoint works"
-
-main let started immutable Int64 1
+main purpose "Compute 6+7 at the entrypoint and print it"
+main invariant "Writes exactly one integer line: 13"
+main let six immutable Int64 6
+main let seven immutable Int64 7
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "program_entrypoint_main"
+main let harnessExpected immutable Int64 13
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "program_entrypoint_main: real result (not the no-op 0)"
+main do sumCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do printStarted
-main return okCode
+sumCall is call
+sumCall in main
+sumCall invokes math.addInt64
+sumCall arg left Int64 six
+sumCall arg right Int64 seven
+sumCall out total Int64
 
-printStarted is call
-printStarted in main
-printStarted invokes console.writeIntegerLine
-printStarted arg value Int64 started
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

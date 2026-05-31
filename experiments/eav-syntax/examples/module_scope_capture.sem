@@ -1,0 +1,96 @@
+# module_scope_capture — (repurposed from closure_capture_scope: eavc has no
+# closures). The eavc-real analog of lexical capture: a module-scope storage
+# global is read by name from inside an operation (README §12/§25), so the op
+# "captures" enclosing module scope. The result uses the captured global.
+#
+# Correctness observation: op adds its arg 12 to the captured module const 30.
+# Expected output: 42
+
+ModuleScopeCapture is project
+ModuleScopeCapture module examplesModuleScopeCapture
+ModuleScopeCapture target console
+ModuleScopeCapture entry main
+
+examplesModuleScopeCapture is module
+examplesModuleScopeCapture path examples.moduleScopeCapture
+examplesModuleScopeCapture exports main
+examplesModuleScopeCapture purpose "Read a module-scope global from inside an operation"
+examplesModuleScopeCapture invariant "The operation captures the module global by name"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+capturedBase is storage
+capturedBase scope module
+capturedBase type Int64
+capturedBase mutability immutable
+capturedBase value 30
+capturedBase purpose "A module-global base captured by addCaptured"
+
+addCaptured is operation
+addCaptured in delta Int64
+addCaptured out Int64
+addCaptured memory heap no
+addCaptured async no
+addCaptured purpose "Return delta + the captured module-scope base"
+addCaptured invariant "Reads capturedBase from enclosing module scope"
+addCaptured do addCall
+addCaptured return total
+
+addCall is call
+addCall in addCaptured
+addCall invokes math.addInt64
+addCall arg left Int64 delta
+addCall arg right Int64 capturedBase
+addCall out total Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Call addCaptured(12) and print the captured-scope result"
+main invariant "Writes exactly one integer line: 42"
+main let delta immutable Int64 12
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "module_scope_capture"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "module_scope_capture: real result (not the no-op 0)"
+main do computeCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+computeCall is call
+computeCall in main
+computeCall invokes addCaptured
+computeCall arg delta Int64 delta
+computeCall out captured Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 captured
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 captured
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

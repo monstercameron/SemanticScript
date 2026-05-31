@@ -1,0 +1,70 @@
+# count_trailing_zeros — (repurposed from string_unicode_bytes). ctz of an Int64
+# via math.countTrailingZerosInt64 (llvm.cttz, README §10.6). Computed, not const.
+#
+# Correctness observation: ctz(8) = 3 (8 = 0b1000 has three trailing zeros).
+# Expected output: 3
+
+CountTrailingZeros is project
+CountTrailingZeros module examplesCountTrailingZeros
+CountTrailingZeros target console
+CountTrailingZeros entry main
+
+examplesCountTrailingZeros is module
+examplesCountTrailingZeros path examples.countTrailingZeros
+examplesCountTrailingZeros exports main
+examplesCountTrailingZeros purpose "Count trailing zero bits of an integer"
+examplesCountTrailingZeros invariant "ctz(8) is 3"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute ctz(8) and print it"
+main invariant "Writes exactly one integer line: 3"
+main let eightValue immutable Int64 8
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "count_trailing_zeros"
+main let harnessExpected immutable Int64 3
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "count_trailing_zeros: real result (not the no-op 0)"
+main do ctzCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+ctzCall is call
+ctzCall in main
+ctzCall invokes math.countTrailingZerosInt64
+ctzCall arg value Int64 eightValue
+ctzCall out trailingZeros Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 trailingZeros
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 trailingZeros
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

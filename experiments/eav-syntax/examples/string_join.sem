@@ -1,15 +1,82 @@
-# X-200 test program
-Prog is project
-Prog module m
-Prog target console
-Prog entry main
-m is module
-m path examples.prog
-m exports main
-m purpose "String operation"
-m invariant "Works"
+# string_join — join several strings with the real string.concat builtin
+# (README §30.2.2). Each piece is concatenated at runtime, so the output is
+# built, not an inline literal.
+#
+# Correctness observation: concat("foo","bar") then concat(.,"baz").
+# Expected output: foobarbaz
+
+StringJoin is project
+StringJoin module examplesStringJoin
+StringJoin target console
+StringJoin entry main
+
+examplesStringJoin is module
+examplesStringJoin path examples.stringJoin
+examplesStringJoin exports main
+examplesStringJoin purpose "Concatenate three string pieces into one"
+examplesStringJoin invariant "The joined string is built by string.concat"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
 main is operation
-main out Int32
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
 main async no
-main let code immutable Int32 0
-main return code
+main purpose "Join foo, bar, baz and print the result"
+main invariant "Writes exactly one line: foobarbaz"
+main let pieceOne immutable String "foo"
+main let pieceTwo immutable String "bar"
+main let pieceThree immutable String "baz"
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "string_join"
+main let harnessExpected immutable String "foobarbaz"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_join: real result (not the empty string)"
+main do joinFirst
+main do joinSecond
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+joinFirst is call
+joinFirst in main
+joinFirst invokes string.concat
+joinFirst arg left String pieceOne
+joinFirst arg right String pieceTwo
+joinFirst out partial String
+
+joinSecond is call
+joinSecond in main
+joinSecond invokes string.concat
+joinSecond arg left String partial
+joinSecond arg right String pieceThree
+joinSecond out joined String
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualText
+writeResult arg name String harnessName
+writeResult arg expected String harnessExpected
+writeResult arg actual String joined
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String joined
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

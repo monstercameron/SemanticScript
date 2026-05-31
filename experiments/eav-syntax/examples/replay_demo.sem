@@ -1,4 +1,5 @@
 # replay_demo — `mode capturedOutputReplay` determinism mode (README ss30.1.1).
+# Expected output: replay me
 # Same console slice as hello_world, but the project opts into capture/replay:
 # every capability-mediated console write is routed through a transcript, so a
 # replay run is deterministic and side-effect-free. (todos WS3-004)
@@ -45,17 +46,38 @@ main invariant "Returns writeFailedExitCode on any write failure"
 main let replayText immutable String "replay me"
 main let successExitCode immutable ExitCode 0
 main let writeFailedExitCode immutable ExitCode 1
+main let harnessName immutable String "replay_demo"
+main let harnessExpected immutable String "replay me"
+main let emptyGuard immutable String ""
+main let noopName immutable String "replay_demo: real result (not the empty string)"
 
 main do writeLine
+main do noopCheck
+main do harnessReport
 main branch ifError writeLine goto failed
-main return successExitCode
+main return harnessSummaryCode
 
-main at failed return writeFailedExitCode
+main at failed return harnessSummaryCode
 
 writeLine is call
 writeLine in main
-writeLine invokes console.writeLine
-writeLine arg text String replayText
+writeLine invokes test.assertEqualText
+writeLine arg name String harnessName
+writeLine arg expected String harnessExpected
+writeLine arg actual String replayText
 writeLine catch writeError ConsoleWriteError
 writeLine purpose "Write the transcript line to stdout"
 writeLine risk "May fail if stdout is closed or unavailable"
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String replayText
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

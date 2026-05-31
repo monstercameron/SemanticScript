@@ -1,6 +1,10 @@
 # add_two — user operation + value-returning call + integer output.
 # Exercises: user-op invocation, `out VALUE` binding (bind value), a second
 # operation, and console.writeIntegerLine. (todos WS1-040, WS1-050/051, WS1-105)
+#
+# Correctness observation: the sum is computed by a real math.addInt64 call
+# (NOT a hardcoded constant), so the program fails under a no-op lowering.
+# Expected output: 42
 
 AddTwo is project
 AddTwo module examplesAddTwo
@@ -42,9 +46,15 @@ main invariant "Writes exactly one integer line"
 main let leftInput immutable Int64 40
 main let rightInput immutable Int64 2
 main let successExitCode immutable ExitCode 0
+main let harnessName immutable String "add_two"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "add_two: real result (not the no-op 0)"
 main do answerCall
 main do writeAnswer
-main return successExitCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 answerCall is call
 answerCall in main
@@ -55,8 +65,10 @@ answerCall out answerValue Int64
 
 writeAnswer is call
 writeAnswer in main
-writeAnswer invokes console.writeIntegerLine
-writeAnswer arg value Int64 answerValue
+writeAnswer invokes test.assertEqualInt64
+writeAnswer arg name String harnessName
+writeAnswer arg expected Int64 harnessExpected
+writeAnswer arg actual Int64 answerValue
 
 ExitCode is alias
 ExitCode for Int32
@@ -65,3 +77,16 @@ ExitCode purpose "Process exit status"
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
 stdoutWriter purpose "Allow controlled writes to standard output"
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answerValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

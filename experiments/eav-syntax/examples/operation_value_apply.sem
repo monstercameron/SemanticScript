@@ -1,0 +1,104 @@
+# operation_value_apply — (repurposed from higher_order_call). eavc supports
+# operation VALUES as local operationType bindings and invokes them indirectly
+# (README §33.9), but does NOT yet support passing a function value as a callable
+# operation PARAMETER (a pre-alpha gap). So this binds `double` as an Int64Endo
+# local and applies it twice via indirect calls.
+#
+# Correctness observation: double(double(5)) = 20 via two indirect calls.
+# Expected output: 20
+
+OperationValueApply is project
+OperationValueApply module examplesOperationValueApply
+OperationValueApply target console
+OperationValueApply entry main
+
+examplesOperationValueApply is module
+examplesOperationValueApply path examples.operationValueApply
+examplesOperationValueApply exports main
+examplesOperationValueApply purpose "Bind an operation as a value and apply it twice"
+examplesOperationValueApply invariant "Both calls dispatch through the operationType binding"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Int64Endo is operationType
+Int64Endo in Int64
+Int64Endo out Int64
+Int64Endo purpose "A function from Int64 to Int64"
+
+double is operation
+double in n Int64
+double out Int64
+double memory heap no
+double async no
+double purpose "Return n doubled"
+double invariant "Result is 2*n"
+double let two immutable Int64 2
+double do mulCall
+double return doubled
+
+mulCall is call
+mulCall in double
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 two
+mulCall out doubled Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Apply the double operation-value twice to 5 and print the result"
+main invariant "Writes exactly one integer line: 20"
+main let fn immutable Int64Endo double
+main let seed immutable Int64 5
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "operation_value_apply"
+main let harnessExpected immutable Int64 20
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "operation_value_apply: real result (not the no-op 0)"
+main do firstApply
+main do secondApply
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+firstApply is call
+firstApply in main
+firstApply invokes fn
+firstApply arg n Int64 seed
+firstApply out once Int64
+
+secondApply is call
+secondApply in main
+secondApply invokes fn
+secondApply arg n Int64 once
+secondApply out twice Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 twice
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 twice
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

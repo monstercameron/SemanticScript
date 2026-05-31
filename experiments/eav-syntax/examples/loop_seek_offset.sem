@@ -1,0 +1,94 @@
+# loop_seek_offset — (repurposed from file_write_append_seek: eavc has no
+# filesystem runtime). Advance an offset in a loop (each "seek" adds a block
+# size), README §13. The final offset is accumulated by the loop, not a constant.
+#
+# Correctness observation: start 0, add 10 three times -> 30.
+# Expected output: 30
+
+LoopSeekOffset is project
+LoopSeekOffset module examplesLoopSeekOffset
+LoopSeekOffset target console
+LoopSeekOffset entry main
+
+examplesLoopSeekOffset is module
+examplesLoopSeekOffset path examples.loopSeekOffset
+examplesLoopSeekOffset exports main
+examplesLoopSeekOffset purpose "Accumulate an offset over three seeks"
+examplesLoopSeekOffset invariant "Loop stops after three iterations"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Advance an offset by 10 three times and print it"
+main invariant "Writes exactly one integer line: 30"
+main let offset mutable Int64 0
+main let iterations mutable Int64 0
+main let blockSize immutable Int64 10
+main let seekLimit immutable Int64 3
+main let oneStep immutable Int64 1
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "loop_seek_offset"
+main let harnessExpected immutable Int64 30
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "loop_seek_offset: real result (not the no-op 0)"
+main at loopHead do checkDone
+main branch ifFalse stillGoing goto loopExit
+main do advanceOffset
+main do bump
+main goto loopHead
+main at loopExit do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkDone is call
+checkDone in main
+checkDone invokes math.lessThanInt64
+checkDone arg left Int64 iterations
+checkDone arg right Int64 seekLimit
+checkDone out stillGoing Bool
+
+advanceOffset is call
+advanceOffset in main
+advanceOffset invokes math.addInt64
+advanceOffset arg left Int64 offset
+advanceOffset arg right Int64 blockSize
+advanceOffset out offset Int64
+
+bump is call
+bump in main
+bump invokes math.addInt64
+bump arg left Int64 iterations
+bump arg right Int64 oneStep
+bump out iterations Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 offset
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 offset
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

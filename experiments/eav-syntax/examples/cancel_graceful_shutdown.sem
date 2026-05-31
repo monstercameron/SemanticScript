@@ -1,15 +1,93 @@
-﻿# cancel_graceful_shutdown
-cancelgracefulshutdown is project
-cancelgracefulshutdown module m
-cancelgracefulshutdown target console
-cancelgracefulshutdown entry main
-m is module
-m path examples.cancel_graceful_shutdown
-m exports main
-m purpose "Graceful cancellation"
-m invariant "Works"
+# cancel_graceful_shutdown — start a task, request cancellation, then drain its
+# result (README §15). On the single-thread backend the task completes at start,
+# so a graceful shutdown still observes the real computed value.
+#
+# Correctness observation: a task computes 7 + 8 = 15; start/cancel/poll run.
+# Expected output: 15
+
+CancelGracefulShutdown is project
+CancelGracefulShutdown module examplesCancelGracefulShutdown
+CancelGracefulShutdown target console
+CancelGracefulShutdown entry main
+
+examplesCancelGracefulShutdown is module
+examplesCancelGracefulShutdown path examples.cancelGracefulShutdown
+examplesCancelGracefulShutdown exports main
+examplesCancelGracefulShutdown purpose "Start a task, cancel it, drain its result"
+examplesCancelGracefulShutdown invariant "Writes exactly one integer line: 15"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+addPair is operation
+addPair in left Int64
+addPair in right Int64
+addPair out Int64
+addPair memory heap no
+addPair async no
+addPair purpose "Return left + right"
+addPair invariant "Result is exactly left + right"
+addPair do sumCall
+addPair return sum
+
+sumCall is call
+sumCall in addPair
+sumCall invokes math.addInt64
+sumCall arg left Int64 left
+sumCall arg right Int64 right
+sumCall out sum Int64
+
 main is operation
-main out Int32
-main async no
-main let code immutable Int32 0
-main return code
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Start an addPair task, cancel it, then print its drained result"
+main invariant "Writes exactly one integer line: 15"
+main let leftSeed immutable Int64 7
+main let rightSeed immutable Int64 8
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "cancel_graceful_shutdown"
+main let harnessExpected immutable Int64 15
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "cancel_graceful_shutdown: real result (not the no-op 0)"
+main start drainTask
+main cancel drainTask
+main poll drainTask
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+drainTask is task
+drainTask in main
+drainTask invokes addPair
+drainTask arg left Int64 leftSeed
+drainTask arg right Int64 rightSeed
+drainTask out answer Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

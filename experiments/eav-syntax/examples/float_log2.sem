@@ -1,0 +1,77 @@
+# float_log2 -- (repurposed from http_headers_cookies: eavc has no matching runtime). Real Float64
+# intrinsic math.log2Float64 (README s10.6). Result computed by the intrinsic, not a constant.
+#
+# Correctness observation: log2(8.0) = 3.
+# Expected output: 3
+
+FloatLog2 is project
+FloatLog2 module examplesFloatLog2
+FloatLog2 target console
+FloatLog2 entry main
+
+examplesFloatLog2 is module
+examplesFloatLog2 path examples.floatLog2
+examplesFloatLog2 exports main
+examplesFloatLog2 purpose "Compute log2(8.0) with a real float intrinsic"
+examplesFloatLog2 invariant "Result is 3"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute log2(8.0) and print it"
+main invariant "Writes exactly one float line: 3"
+main let inputA immutable Float64 8.0
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "float_log2"
+main let harnessExpected immutable Float64 3.0
+main let zeroFloatGuard immutable Float64 0.0
+main let noopName immutable String "float_log2: real result (not the no-op 0.0)"
+main do calcCall
+main do writeResult
+main do noopZeroCmp
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calcCall is call
+calcCall in main
+calcCall invokes math.log2Float64
+calcCall arg value Float64 inputA
+calcCall out outValue Float64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualFloat64
+writeResult arg name String harnessName
+writeResult arg expected Float64 harnessExpected
+writeResult arg actual Float64 outValue
+
+
+noopZeroCmp is call
+noopZeroCmp in main
+noopZeroCmp invokes math.equalFloat64
+noopZeroCmp arg left Float64 outValue
+noopZeroCmp arg right Float64 zeroFloatGuard
+noopZeroCmp out noopIsZero Bool
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertFalse
+noopCheck arg name String noopName
+noopCheck arg value Bool noopIsZero
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

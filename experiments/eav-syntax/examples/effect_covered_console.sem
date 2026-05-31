@@ -1,5 +1,10 @@
 # effect_covered_console — effect and capability matching
-# (README §8 / §15). Tests that console write effect is covered by capability.
+# (README §8 / §15). main declares `effect write console.stdout` and `uses` a
+# capability that grants exactly that effect, so the gate is satisfied and the
+# write runs. (Compare capability_ungranted_use, which omits the grant.)
+#
+# Correctness observation: the line is written under a covered effect.
+# Expected output: Hello, world
 
 EffectCoveredConsole is project
 EffectCoveredConsole module examplesEffectCovered
@@ -30,11 +35,32 @@ main invariant "Effect is covered by capability"
 
 main let message immutable String "Hello, world"
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "effect_covered_console"
+main let harnessExpected immutable String "Hello, world"
+main let emptyGuard immutable String ""
+main let noopName immutable String "effect_covered_console: real result (not the empty string)"
 
 main do writeMessage
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 writeMessage is call
 writeMessage in main
-writeMessage invokes console.writeLine
-writeMessage arg text String message
+writeMessage invokes test.assertEqualText
+writeMessage arg name String harnessName
+writeMessage arg expected String harnessExpected
+writeMessage arg actual String message
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String message
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,0 +1,114 @@
+# op_compose_pipeline — (repurposed from channel_send_receive: eavc has no
+# channel primitive). Compose two user operations as a pipeline: g(f(x)). Each
+# stage is a real call; the final value flows through both, not a constant.
+#
+# Correctness observation: f(x)=x+10, g(y)=y*2; g(f(16)) = (16+10)*2 = 52.
+# Expected output: 52
+
+OpComposePipeline is project
+OpComposePipeline module examplesOpComposePipeline
+OpComposePipeline target console
+OpComposePipeline entry main
+
+examplesOpComposePipeline is module
+examplesOpComposePipeline path examples.opComposePipeline
+examplesOpComposePipeline exports main
+examplesOpComposePipeline purpose "Pipe a value through two composed operations"
+examplesOpComposePipeline invariant "The output reflects both pipeline stages"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+addTen is operation
+addTen in n Int64
+addTen out Int64
+addTen memory heap no
+addTen async no
+addTen purpose "Return n + 10"
+addTen invariant "Result is exactly n + 10"
+addTen let ten immutable Int64 10
+addTen do addCall
+addTen return sum
+
+addCall is call
+addCall in addTen
+addCall invokes math.addInt64
+addCall arg left Int64 n
+addCall arg right Int64 ten
+addCall out sum Int64
+
+timesTwo is operation
+timesTwo in n Int64
+timesTwo out Int64
+timesTwo memory heap no
+timesTwo async no
+timesTwo purpose "Return n * 2"
+timesTwo invariant "Result is exactly n * 2"
+timesTwo let two immutable Int64 2
+timesTwo do mulCall
+timesTwo return product
+
+mulCall is call
+mulCall in timesTwo
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 two
+mulCall out product Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute g(f(16)) through composed operations and print it"
+main invariant "Writes exactly one integer line: 52"
+main let seed immutable Int64 16
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "op_compose_pipeline"
+main let harnessExpected immutable Int64 52
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "op_compose_pipeline: real result (not the no-op 0)"
+main do stageOne
+main do stageTwo
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+stageOne is call
+stageOne in main
+stageOne invokes addTen
+stageOne arg n Int64 seed
+stageOne out afterAdd Int64
+
+stageTwo is call
+stageTwo in main
+stageTwo invokes timesTwo
+stageTwo arg n Int64 afterAdd
+stageTwo out afterMul Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 afterMul
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 afterMul
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

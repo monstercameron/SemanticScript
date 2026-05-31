@@ -1,0 +1,69 @@
+# varargs_concat -- (repurposed: variadic_arguments_pack (packs args via concat)). Real string.concat (README s30.2.2).
+# Expected output: abc
+
+VarargsConcat is project
+VarargsConcat module examplesVarargsConcat
+VarargsConcat target console
+VarargsConcat entry main
+
+examplesVarargsConcat is module
+examplesVarargsConcat path examples.varargsConcat
+examplesVarargsConcat exports main
+examplesVarargsConcat purpose "Compute varargsConcat at runtime"
+examplesVarargsConcat invariant "Result is computed at runtime"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Concatenate two strings and print"
+main invariant "Writes exactly one line: abc"
+main let partOne immutable String "a"
+main let partTwo immutable String "bc"
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "varargs_concat"
+main let harnessExpected immutable String "abc"
+main let emptyGuard immutable String ""
+main let noopName immutable String "varargs_concat: real result (not the empty string)"
+main do calc
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calc is call
+calc in main
+calc invokes string.concat
+calc arg left String partOne
+calc arg right String partTwo
+calc out outValue String
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualText
+writeResult arg name String harnessName
+writeResult arg expected String harnessExpected
+writeResult arg actual String outValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String outValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

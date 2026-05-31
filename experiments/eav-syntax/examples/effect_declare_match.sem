@@ -1,5 +1,9 @@
-# effect_declare_match — effect declaration and matching
-# (README §12). Tests declaring effects and matching them to capabilities.
+# effect_declare_match — a declared `effect write console.stdout` is matched to a
+# `uses` capability that grants it (README §8/§12). The printed value is computed
+# by a real math.multiplyInt64 call, so it fails under a no-op lowering.
+#
+# Correctness observation: 5 * 11 = 55, written under a matched effect.
+# Expected output: 55
 
 EffectDeclareMatch is project
 EffectDeclareMatch module examplesEffectDeclareMatch
@@ -9,14 +13,16 @@ EffectDeclareMatch entry main
 examplesEffectDeclareMatch is module
 examplesEffectDeclareMatch path examples.effectDeclareMatch
 examplesEffectDeclareMatch exports main
-examplesEffectDeclareMatch purpose "Demonstrate effect declaration and matching"
-examplesEffectDeclareMatch invariant "Effects match capabilities"
+examplesEffectDeclareMatch purpose "Match a declared write effect to its capability and print a result"
+examplesEffectDeclareMatch invariant "The write effect is granted by the used capability"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -24,16 +30,44 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Match effect to capability"
-main invariant "Effect/capability pairing works"
-
-main let val immutable Int64 55
+main purpose "Compute 5*11 and print it under a matched write effect"
+main invariant "Writes exactly one integer line: 55"
+main let fiveVal immutable Int64 5
+main let eleven immutable Int64 11
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "effect_declare_match"
+main let harnessExpected immutable Int64 55
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "effect_declare_match: real result (not the no-op 0)"
+main do productCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-main do print
-main return okCode
+productCall is call
+productCall in main
+productCall invokes math.multiplyInt64
+productCall arg left Int64 fiveVal
+productCall arg right Int64 eleven
+productCall out product Int64
 
-print is call
-print in main
-print invokes console.writeIntegerLine
-print arg value Int64 val
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 product
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 product
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

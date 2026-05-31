@@ -1,6 +1,11 @@
-# div_by_zero_trap — division by zero must trap (negative test)
-# (README §10.6 / §33.5). A program that divides by zero should fail with exit code != 0.
-# This is a negative test case (X-201) for the math exception handling.
+# div_by_zero_trap — NEGATIVE test. Dividing by the CONSTANT 0 is undefined, so
+# eavc rejects it at COMPILE time with SS3111 (README §10.6/§33.5) — it never
+# reaches codegen or execution. This is a load-bearing test of the constant
+# divide-by-zero guard, not a runtime program.
+#
+# Correctness observation (verified): `eavc check`/`run` reject with SS3111;
+# the program does not compile or print anything.
+# Expected: rejected at compile time with code SS3111.
 
 DivByZeroTrap is project
 DivByZeroTrap module examplesDivByZeroTrap
@@ -10,14 +15,16 @@ DivByZeroTrap entry main
 examplesDivByZeroTrap is module
 examplesDivByZeroTrap path examples.divByZeroTrap
 examplesDivByZeroTrap exports main
-examplesDivByZeroTrap purpose "Demonstrate that division by zero traps"
-examplesDivByZeroTrap invariant "main performs a div-by-zero trap"
+examplesDivByZeroTrap purpose "Divide by the constant zero to trip the SS3111 guard"
+examplesDivByZeroTrap invariant "Constant division by zero is a compile error"
 
 ExitCode is alias
 ExitCode for Int32
+ExitCode purpose "Process exit status"
 
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
 
 main is operation
 main out ExitCode
@@ -25,20 +32,23 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Perform a division by zero, which should trap"
-main invariant "This operation should never complete normally"
-
+main purpose "Attempt 42 / 0 (constant) and trip the compile-time guard"
+main invariant "Never completes: rejected at compile time"
 main let dividend immutable Int64 42
 main let divisor immutable Int64 0
+main let okCode immutable ExitCode 0
 main do divideCall
-main return failureCode
+main do writeResult
+main return okCode
 
 divideCall is call
 divideCall in main
 divideCall invokes math.divideInt64
 divideCall arg left Int64 dividend
 divideCall arg right Int64 divisor
-divideCall out result Int64
+divideCall out quotient Int64
 
-failureCode is let
-failureCode immutable ExitCode 1
+writeResult is call
+writeResult in main
+writeResult invokes console.writeIntegerLine
+writeResult arg value Int64 quotient

@@ -1,0 +1,113 @@
+# multi_task_join — synchronize on MULTIPLE async tasks: start two tasks, join
+# each, then combine their results (README §13/§15.5). This is the eavc-real
+# stand-in for a "barrier" (eavc has no barrier primitive): joining is the
+# synchronization point. On the single-thread backend both tasks resolve at
+# start; the printed total is computed from both task outputs, not a constant.
+#
+# Correctness observation: task A = 10+5 = 15, task B = 20+2 = 22; 15+22 printed.
+# Expected output: 37
+
+MultiTaskJoin is project
+MultiTaskJoin module examplesMultiTaskJoin
+MultiTaskJoin target console
+MultiTaskJoin entry main
+
+examplesMultiTaskJoin is module
+examplesMultiTaskJoin path examples.multiTaskJoin
+examplesMultiTaskJoin exports main
+examplesMultiTaskJoin purpose "Start two tasks, join both, combine their results"
+examplesMultiTaskJoin invariant "The total reflects both joined task results"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+addPair is operation
+addPair in left Int64
+addPair in right Int64
+addPair out Int64
+addPair memory heap no
+addPair async no
+addPair purpose "Return left + right"
+addPair invariant "Result is exactly left + right"
+addPair do sumCall
+addPair return sum
+
+sumCall is call
+sumCall in addPair
+sumCall invokes math.addInt64
+sumCall arg left Int64 left
+sumCall arg right Int64 right
+sumCall out sum Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Join two addPair tasks and print the combined total"
+main invariant "Writes exactly one integer line: 37"
+main let aLeft immutable Int64 10
+main let aRight immutable Int64 5
+main let bLeft immutable Int64 20
+main let bRight immutable Int64 2
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "multi_task_join"
+main let harnessExpected immutable Int64 37
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "multi_task_join: real result (not the no-op 0)"
+main start taskA
+main start taskB
+main join taskA
+main join taskB
+main do combine
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+taskA is task
+taskA in main
+taskA invokes addPair
+taskA arg left Int64 aLeft
+taskA arg right Int64 aRight
+taskA out resultA Int64
+
+taskB is task
+taskB in main
+taskB invokes addPair
+taskB arg left Int64 bLeft
+taskB arg right Int64 bRight
+taskB out resultB Int64
+
+combine is call
+combine in main
+combine invokes math.addInt64
+combine arg left Int64 resultA
+combine arg right Int64 resultB
+combine out total Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

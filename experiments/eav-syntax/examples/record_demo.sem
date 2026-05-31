@@ -1,4 +1,5 @@
 # record_demo — record construction (<Record>.new) + field access
+# Expected output: 11
 # (<Record>.<field>) lowered to LLVM struct insertvalue/extractvalue.
 # Builds a Point{x,y} and prints x. (todos WS1-053/054/108, WS3-022)
 
@@ -37,10 +38,16 @@ main invariant "Writes exactly one integer line: 11"
 main let px immutable Int64 11
 main let py immutable Int64 22
 main let okCode immutable ExitCode 0
+main let harnessName immutable String "record_demo"
+main let harnessExpected immutable Int64 11
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_demo: real result (not the no-op 0)"
 main do buildPoint
 main do readX
 main do writeX
-main return okCode
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
 buildPoint is call
 buildPoint in main
@@ -57,5 +64,20 @@ readX out xValue Int64
 
 writeX is call
 writeX in main
-writeX invokes console.writeIntegerLine
-writeX arg value Int64 xValue
+writeX invokes test.assertEqualInt64
+writeX arg name String harnessName
+writeX arg expected Int64 harnessExpected
+writeX arg actual Int64 xValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 xValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

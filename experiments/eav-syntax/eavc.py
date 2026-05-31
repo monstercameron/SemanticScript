@@ -4582,8 +4582,10 @@ def _target_is_nonvoid(target: str, program: Program):
             or target.startswith("convert.to") or target == "string.concat"
             or target.startswith("assert.") or target == "test.and"):
         return True
-    if target.startswith("console."):
-        return False
+    if target == "test.summary":  # returns the failure count as an ExitCode
+        return True
+    if target.startswith("console.") or target.startswith("test.assert"):
+        return False  # the test.assert* harness calls are void (report + tally)
     if "." not in target:
         callee = program.entities.get(target)
         if callee is not None and callee.kind in ("operation", "function"):
@@ -7207,10 +7209,17 @@ _PRIMITIVE_IR = {
 _FLOAT_TYPE_NAMES = {"Float32", "Float64"}
 
 # Integer math targets -> llvmlite IRBuilder binary-op method names.
+# Bitwise ops (shift/and/or/xor) round out the integer ALU: the linter already
+# guards over-wide constant shifts (SS3111), so these complete a feature whose
+# validation predated its codegen. shiftRight is arithmetic (sign-preserving)
+# because Int64 is signed (README §10.6).
 _INT_BINOPS = {
     "math.addInt64": "add", "math.subtractInt64": "sub",
     "math.multiplyInt64": "mul", "math.divideInt64": "sdiv",
     "math.moduloInt64": "srem",
+    "math.shiftLeftInt64": "shl", "math.shiftRightInt64": "ashr",
+    "math.bitAndInt64": "and_", "math.bitOrInt64": "or_",
+    "math.bitXorInt64": "xor",
 }
 # Float math targets -> IRBuilder fp binary-op method names.
 _FLOAT_BINOPS = {
@@ -8021,6 +8030,100 @@ class EavCodegen:
             result = piece if result is None else self._concat(builder, result, piece)
         return result if result is not None else self.global_string(b"\x00")
 
+    # --- standard.test harness (README §35; std/standard.test.sem) ---------
+    # A built-in assertion + reporting surface backing the `test.*` namespace.
+    # Two internal module globals tally pass/fail across a program run; each
+    # assertion prints a PASS/FAIL line and `test.summary` prints the totals and
+    # returns the failure count as a process ExitCode.
+    def _test_counter(self, which):
+        key = "__test_" + which
+        g = self.module.globals.get(key)
+        if g is None:
+            g = ir.GlobalVariable(self.module, ir.IntType(64), key)
+            g.linkage = "internal"
+            g.initializer = ir.Constant(ir.IntType(64), 0)
+        return g
+
+    def _test_tally(self, builder, eq):
+        """`eq` is an i1: bump the passed/failed counters and return the
+        PASS/FAIL status string (i8*) for the report line."""
+        i64 = ir.IntType(64)
+        passG, failG = self._test_counter("passed"), self._test_counter("failed")
+        builder.store(builder.add(builder.load(passG), builder.zext(eq, i64)), passG)
+        not_eq = builder.xor(eq, ir.Constant(ir.IntType(1), 1))
+        builder.store(builder.add(builder.load(failG), builder.zext(not_eq, i64)), failG)
+        return builder.select(eq, self.global_string(b"PASS\x00"),
+                              self.global_string(b"FAIL\x00"))
+
+    def _emit_test_call(self, target, builder, arg):
+        """Lower a `test.*` harness call; returns the call result value."""
+        i32 = ir.IntType(32)
+        if target == "test.assertEqualInt64":
+            i64 = ir.IntType(64)
+            exp, act = arg("expected", "Int64"), arg("actual", "Int64")
+            # a Bool/narrow integer (e.g. a comparison result) widens to i64 so it
+            # compares and prints the same way console.writeIntegerLine shows it.
+            if isinstance(exp.type, ir.IntType) and exp.type.width < 64:
+                exp = builder.zext(exp, i64)
+            if isinstance(act.type, ir.IntType) and act.type.width < 64:
+                act = builder.zext(act, i64)
+            status = self._test_tally(builder, builder.icmp_signed("==", exp, act))
+            fmt = self.global_string(b"%s  %s  (expected %lld, actual %lld)\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.assertEqualFloat64":
+            exp, act = arg("expected", "Float64"), arg("actual", "Float64")
+            status = self._test_tally(builder, builder.fcmp_ordered("==", exp, act))
+            fmt = self.global_string(b"%s  %s  (expected %g, actual %g)\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.assertTrue":
+            status = self._test_tally(builder, arg("value", "Bool"))
+            fmt = self.global_string(b"%s  %s\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String")])
+        if target == "test.assertFalse":
+            cond = arg("value", "Bool")
+            not_cond = builder.xor(cond, ir.Constant(ir.IntType(1), 1))
+            status = self._test_tally(builder, not_cond)  # passes iff cond is false
+            fmt = self.global_string(b"%s  %s  (expected false)\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String")])
+        if target == "test.assertNotEqualInt64":
+            i64 = ir.IntType(64)
+            exp, act = arg("expected", "Int64"), arg("actual", "Int64")
+            if isinstance(exp.type, ir.IntType) and exp.type.width < 64:
+                exp = builder.zext(exp, i64)
+            if isinstance(act.type, ir.IntType) and act.type.width < 64:
+                act = builder.zext(act, i64)
+            status = self._test_tally(builder, builder.icmp_signed("!=", exp, act))
+            fmt = self.global_string(b"%s  %s  (expected != %lld, actual %lld)\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.assertEqualText":
+            exp, act = arg("expected", "String"), arg("actual", "String")
+            cmp = builder.call(self.runtime("strcmp"), [exp, act])
+            status = self._test_tally(builder, builder.icmp_signed("==", cmp,
+                                                                   ir.Constant(i32, 0)))
+            fmt = self.global_string(b'%s  %s  (expected "%s", actual "%s")\n\x00')
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.assertNotEqualText":
+            exp, act = arg("expected", "String"), arg("actual", "String")
+            cmp = builder.call(self.runtime("strcmp"), [exp, act])
+            status = self._test_tally(builder, builder.icmp_signed("!=", cmp,
+                                                                   ir.Constant(i32, 0)))
+            fmt = self.global_string(b'%s  %s  (expected != "%s", actual "%s")\n\x00')
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.summary":
+            passG, failG = self._test_counter("passed"), self._test_counter("failed")
+            p, f = builder.load(passG), builder.load(failG)
+            fmt = self.global_string(b"---- %lld passed, %lld failed ----\n\x00")
+            builder.call(self.runtime("printf"), [fmt, p, f])
+            return builder.trunc(f, i32)  # exit code = number of failures
+        raise EavError(f"unknown test target {target!r}")
+
     def _emit_call(self, call, builder, sym, let_mut) -> None:
         target_row = call.fact("invokes")
         if not target_row or not target_row.payload:
@@ -8052,6 +8155,8 @@ class EavCodegen:
             result = arg("value", "Bool")
         elif target == "test.and":
             result = builder.and_(arg("left", "Bool"), arg("right", "Bool"))
+        elif target.startswith("test.assert") or target == "test.summary":
+            result = self._emit_test_call(target, builder, arg)
         elif target == "console.writeFloatLine":
             fmt = self.global_string(b"%g\n\x00")
             val = arg("value", "Float64")
@@ -8136,15 +8241,31 @@ class EavCodegen:
             fn = self.module.declare_intrinsic(_FLOAT_UNARY_INTRIN[target], [ir.DoubleType()])
             result = builder.call(fn, [arg("value", "Float64")])
         elif target in _FLOAT_BINARY_INTRIN:
-            fn = self.module.declare_intrinsic(_FLOAT_BINARY_INTRIN[target], [ir.DoubleType()])
+            # These are binary: double (double, double). Declare with the full
+            # signature so minnum/maxnum/copysign don't get a 1-arg declaration
+            # that LLVM rejects as an incompatible intrinsic signature.
+            dbl = ir.DoubleType()
+            fn = self.module.declare_intrinsic(
+                _FLOAT_BINARY_INTRIN[target], [dbl],
+                ir.FunctionType(dbl, [dbl, dbl]))
             result = builder.call(fn, [arg("left", "Float64"), arg("right", "Float64")])
         elif target in _INT_UNARY_INTRIN:
             i64 = ir.IntType(64)
-            fn = self.module.declare_intrinsic(_INT_UNARY_INTRIN[target], [i64])
             if target == "math.popcountInt64":
+                # llvm.ctpop.i64 : i64 (i64)
+                fn = self.module.declare_intrinsic(
+                    _INT_UNARY_INTRIN[target], [i64],
+                    ir.FunctionType(i64, [i64]))
                 result = builder.call(fn, [arg("value", "Int64")])
-            else:  # cttz/ctlz take (value, is_zero_poison:i1)
-                result = builder.call(fn, [arg("value", "Int64"), ir.Constant(ir.IntType(1), 0)])
+            else:
+                # llvm.ctlz/cttz.i64 : i64 (i64, i1 is_zero_poison) — the second
+                # operand is part of the intrinsic signature, so the declaration
+                # must include it or LLVM asserts on an arg-count mismatch.
+                i1 = ir.IntType(1)
+                fn = self.module.declare_intrinsic(
+                    _INT_UNARY_INTRIN[target], [i64],
+                    ir.FunctionType(i64, [i64, i1]))
+                result = builder.call(fn, [arg("value", "Int64"), ir.Constant(i1, 0)])
         elif target in _MATH_COMPUTED:
             result = self._emit_math_computed(target, arg, builder)
         elif target.startswith("compare."):

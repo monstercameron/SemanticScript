@@ -1,16 +1,20 @@
-# ifvalue — `branch ifValue X <cmp> Y goto L` comparison sugar (README ss13).
-# Prints "equal" because 5 equals 5. (todos WS1-066)
+# ifvalue -- branch on a value comparison with ifValue, converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  ifvalue  (expected 1, actual 1)
+#   ---- 1 passed, 0 failed ----
 
-IfValue is project
-IfValue module examplesIfValue
-IfValue target console
-IfValue entry main
+Ifvalue is project
+Ifvalue module examplesIfvalue
+Ifvalue target console
+Ifvalue entry main
 
-examplesIfValue is module
-examplesIfValue path examples.ifValue
-examplesIfValue exports main
-examplesIfValue purpose "Branch on a value comparison with ifValue"
-examplesIfValue invariant "Reaches the equal path only when the operands compare equal"
+examplesIfvalue is module
+examplesIfvalue path examples.ifvalue
+examplesIfvalue exports main
+examplesIfvalue purpose "branch on a value comparison with ifValue"
+examplesIfvalue invariant "Self-checking via the test harness"
 
 ExitCode is alias
 ExitCode for Int32
@@ -26,25 +30,41 @@ main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "Compare two values with ifValue and print which path is taken"
-main invariant "Prints equal iff the two operands compare equal"
-main let left immutable Int64 5
-main let right immutable Int64 5
-main let equalText immutable String "equal"
-main let differentText immutable String "different"
-main let okCode immutable ExitCode 0
-main branch ifValue left equals right goto bothEqual
-main do writeDifferent
-main return okCode
-main at bothEqual do writeEqual
-main return okCode
+main purpose "branch on a value comparison with ifValue and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "ifvalue"
+main let harnessExpected immutable Int64 1
+main let outcome mutable Int64 0
+main let oneMark immutable Int64 1
+main let leftVal immutable Int64 5
+main let rightVal immutable Int64 5
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "ifvalue: real result (not the no-op 0)"
+main branch ifValue leftVal equals rightVal goto bothEqual
+main goto afterCheck
+main at bothEqual set outcome oneMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
 
-writeEqual is call
-writeEqual in main
-writeEqual invokes console.writeLine
-writeEqual arg text String equalText
 
-writeDifferent is call
-writeDifferent in main
-writeDifferent invokes console.writeLine
-writeDifferent arg text String differentText
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

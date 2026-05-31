@@ -1,0 +1,72 @@
+# string_concat_basic — (repurposed from string_concat_slice: eavc has no string
+# slice builtin). Concatenate two strings with string.concat (README §30.2.2).
+#
+# Correctness observation: concat("abc", "def").
+# Expected output: abcdef
+
+StringConcatBasic is project
+StringConcatBasic module examplesStringConcatBasic
+StringConcatBasic target console
+StringConcatBasic entry main
+
+examplesStringConcatBasic is module
+examplesStringConcatBasic path examples.stringConcatBasic
+examplesStringConcatBasic exports main
+examplesStringConcatBasic purpose "Concatenate two string literals"
+examplesStringConcatBasic invariant "Output is built by string.concat"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Concatenate abc and def and print"
+main invariant "Writes exactly one line: abcdef"
+main let head immutable String "abc"
+main let tail immutable String "def"
+main let okCode immutable ExitCode 0
+main let harnessName immutable String "string_concat_basic"
+main let harnessExpected immutable String "abcdef"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_concat_basic: real result (not the empty string)"
+main do concatCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+concatCall is call
+concatCall in main
+concatCall invokes string.concat
+concatCall arg left String head
+concatCall arg right String tail
+concatCall out joined String
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualText
+writeResult arg name String harnessName
+writeResult arg expected String harnessExpected
+writeResult arg actual String joined
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String joined
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
