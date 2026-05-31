@@ -2,6 +2,6 @@
 # Install with: python -m pip install -r requirements-dev.txt
 -r requirements-mcp.txt
 
-ruff>=0.8
+ruff>=0.15.15
 mypy>=1.10
 pre-commit>=3.5
