@@ -189,6 +189,18 @@ DIAGNOSTICS.update({
     "SS0807": {"tier": "T3", "summary": "Call binding never used.",
                "found": "A call/task `out` binding whose name is never read.",
                "suggested": "Read the binding, `discards \"…\"` the result, or drop the `out` (README §17/WS2-080)."},
+    "SS0808": {"tier": "T3", "summary": "Dead store.",
+               "found": "A `set X` whose value is overwritten by a later `set X` before any read.",
+               "suggested": "Remove the dead store, or read X between the writes (README §17/WS2-080)."},
+    "SS0809": {"tier": "T3", "summary": "Dead storage initializer.",
+               "found": "A mutable `storage` written but whose value is never read.",
+               "suggested": "Read the storage, or remove it if the writes are pointless (README §17/WS2-080)."},
+    "SS0811": {"tier": "T3", "summary": "Duplicate single-valued declaration.",
+               "found": "Two rows of a single-valued predicate (purpose/path/out/…) on one entity.",
+               "suggested": "Keep one declaration row (README §17/WS2-080)."},
+    "SS0812": {"tier": "T4", "summary": "Immutable const duplicated across operations.",
+               "found": "The same `let … immutable T V` declared in two or more operations.",
+               "suggested": "Hoist it to a module `storage` constant (README §17/WS2-080)."},
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
@@ -4847,6 +4859,89 @@ def _lint_dead_unused(program: Program) -> list:
                         f"call binding {r.payload[0]!r} in {op.name!r} is bound but "
                         f"never used — discard it or drop the `out` (README §17/WS2-080)",
                         r.line, op.name))
+        # SS0808 dead store: two consecutive `set X` with no read of X between
+        # (conservative: straight-line within the op + its owned-call arg reads).
+        member_rows = [r for m in [op] + owned_by.get(op.name, []) for r in m.rows]
+        pending: dict = {}  # name -> the row of an as-yet-unread `set`
+        for r in op.rows:
+            if r.label is not None or r.predicate in ("branch", "goto", "jump", "return"):
+                pending.clear()  # control flow: stop tracking (stay conservative)
+                continue
+            reads = set(r.payload[1:]) if r.predicate == "set" else set(r.payload)
+            for tok in reads:
+                pending.pop(tok, None)
+            if r.predicate == "set" and r.payload:
+                tgt = r.payload[0]
+                if tgt in pending:
+                    out.append(Diagnostic(
+                        "SS0808", "warning",
+                        f"dead store: {tgt!r} in {op.name!r} is set again before the "
+                        f"earlier value is read (README §17/WS2-080)",
+                        pending[tgt].line, op.name))
+                pending[tgt] = r
+    # SS0809 dead storage initializer: a mutable storage written but never read.
+    for n in program.order:
+        st = program.entities[n]
+        if st.kind != "storage":
+            continue
+        if (st.fact("mutability") and st.fact("mutability").payload
+                and st.fact("mutability").payload[0] != "mutable"):
+            continue
+        written = read = False
+        for m in program.order:
+            owner = program.entities[m]
+            if owner.name == st.name:
+                continue
+            for r in owner.rows:
+                if r.predicate == "set" and r.payload and r.payload[0] == st.name:
+                    written = True
+                    if st.name in r.payload[1:]:
+                        read = True
+                elif st.name in r.payload:
+                    read = True
+        if written and not read:
+            out.append(Diagnostic(
+                "SS0809", "warning",
+                f"module storage {st.name!r} is written but its value is never read "
+                f"— the initializer and stores are dead (README §17/WS2-080)",
+                st.line, st.name))
+    # SS0811 duplicate single-valued declaration row on one entity.
+    single_valued = {"purpose", "path", "for", "scope", "mutability", "type",
+                     "value", "memory", "async", "out"}
+    for n in program.order:
+        ent = program.entities[n]
+        seen_pred: set = set()
+        for r in ent.rows:
+            if r.label is not None or r.predicate not in single_valued:
+                continue
+            if r.predicate in seen_pred:
+                out.append(Diagnostic(
+                    "SS0811", "warning",
+                    f"{ent.kind} {ent.name!r} has a duplicate {r.predicate!r} row "
+                    f"(single-valued declaration, README §17/WS2-080)",
+                    r.line, ent.name))
+            seen_pred.add(r.predicate)
+    # SS0812 the same immutable const declared identically in two+ operations
+    # (a hoist-to-module-storage candidate).
+    const_sites: dict = {}
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for r in op.rows:
+            if (r.predicate == "let" and len(r.payload) >= 4
+                    and r.payload[1] == "immutable"):
+                key = (r.payload[0], r.payload[2], r.payload[3])
+                const_sites.setdefault(key, []).append((op.name, r))
+    for key, sites in const_sites.items():
+        if len({s[0] for s in sites}) >= 2:
+            _name, _ty, _val = key
+            ops = sorted({s[0] for s in sites})
+            out.append(Diagnostic(
+                "SS0812", "warning",
+                f"immutable const {_name!r} ({_ty} {_val}) is declared identically "
+                f"in operations {ops} — consider hoisting to module storage "
+                f"(README §17/WS2-080)", sites[0][1].line, sites[0][0]))
     return out
 
 
