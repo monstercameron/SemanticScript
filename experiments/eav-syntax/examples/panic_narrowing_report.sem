@@ -1,0 +1,42 @@
+# panic_narrowing_report — RUNTIME trap test (WS1-131, §1K, R-076). A narrowing
+# numeric conversion (Int64 -> Int8) is CHECKED, not a silent truncation: the
+# value 300 does not fit a signed 8-bit type (range -128..127), so at runtime the
+# narrowing guard fires `eav_panic` with SSR0012 and exits 134 instead of quietly
+# dropping the high bits to 44. This is the load-bearing test that narrowing
+# conversions never silently lose data.
+#
+# Correctness observation (verified): the program compiles and runs, then traps
+# with `EAV PANIC SSR0012 narrowing-overflow` naming the op, row, target type,
+# and operands (value=300, target width=8); the process exits 134.
+# Expected: runtime panic SSR0012 (narrowing-overflow), exit 134.
+
+PanicNarrowingReport is project
+PanicNarrowingReport module examplesPanicNarrowingReport
+PanicNarrowingReport target console
+PanicNarrowingReport entry main
+
+examplesPanicNarrowingReport is module
+examplesPanicNarrowingReport path examples.panicNarrowingReport
+examplesPanicNarrowingReport exports main
+examplesPanicNarrowingReport purpose "Trip the checked-narrowing guard and report it"
+examplesPanicNarrowingReport invariant "Traps via eav_panic; never truncates silently"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Narrow 300 to Int8 and trip the eav_panic narrowing guard"
+main invariant "Never completes: panics at runtime with SSR0012"
+main let big immutable Int64 300
+main let okCode immutable ExitCode 0
+main do narrowCall
+main return okCode
+
+narrowCall is call
+narrowCall in main
+narrowCall invokes convert.toInt8
+narrowCall arg value Int64 big
+narrowCall out small Int8

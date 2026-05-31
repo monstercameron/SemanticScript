@@ -9209,7 +9209,28 @@ class EavCodegen:
         if dst.width > src.width:
             return builder.sext(val, dst)
         if dst.width < src.width:
-            return builder.trunc(val, dst)
+            # WS1-131/R-076: narrowing is checked, not a silent truncation. If
+            # the value does not round-trip through the destination width it does
+            # not fit, so trap with a structured panic instead of dropping bits.
+            narrowed = builder.trunc(val, dst)
+            roundtrip = builder.sext(narrowed, src)
+            overflow = builder.icmp_signed("!=", roundtrip, val)
+            fn = builder.function
+            bad_bb = fn.append_basic_block("narrowOverflow")
+            ok_bb = fn.append_basic_block("narrowOk")
+            builder.cbranch(overflow, bad_bb, ok_bb)
+            tb = ir.IRBuilder(bad_bb)
+            owner_row = call.fact("in")
+            op_name = (owner_row.payload[0] if owner_row and owner_row.payload
+                       else call.name)
+            self._emit_panic(
+                tb, "SSR0012", "narrowing-overflow",
+                f"value does not fit the target type {dst_name!r} "
+                f"({dst.width}-bit)", op_name, call.line, val,
+                ir.Constant(ir.IntType(64), dst.width))
+            tb.unreachable()
+            builder.position_at_end(ok_bb)
+            return narrowed
         return val
 
     def _emit_contract_check(self, builder, cond, value, call) -> None:
@@ -9691,6 +9712,9 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0011": {"kind": "contract-violation",
                 "summary": "A numeric precondition (nonNegative/positive/nonZero) failed at runtime.",
                 "repair": "Validate or clamp the value before the call, or relax the operation's `requires`."},
+    "SSR0012": {"kind": "narrowing-overflow",
+                "summary": "A narrowing numeric conversion lost data at runtime (value out of target range).",
+                "repair": "Range-check the value before converting, or keep the wider type."},
 }
 
 _EAV_PANIC_CFUNC = None  # kept alive so the JIT-registered callback survives GC

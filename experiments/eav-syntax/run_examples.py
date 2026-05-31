@@ -28,7 +28,8 @@ HARD_NEG = {"div_by_zero_trap"}                      # rejected at compile time
 STRICT_NEG = {"capability_ungranted_use", "failure_unhandled_propagate"}  # blocked under --strict
 # WS1-130: compiles + runs, then traps at runtime via eav_panic — must exit 134
 # with the named SSR#### structured report on stderr.
-TRAP_NEG = {"panic_div0_report": "SSR0010"}
+TRAP_NEG = {"panic_div0_report": "SSR0010",
+            "panic_narrowing_report": "SSR0012"}
 SUMMARY_RE = re.compile(r"----\s*(\d+) passed,\s*(\d+) failed\s*----")
 
 
