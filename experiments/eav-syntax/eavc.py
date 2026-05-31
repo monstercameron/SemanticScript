@@ -88,6 +88,12 @@ DIAGNOSTICS: dict[str, dict] = {
         "found": "`out Result` with the wrong number of type arguments.",
         "suggested": "Write `out Result <OkType> <ErrType>` (README §10).",
     },
+    "SS1011": {
+        "tier": "T1",
+        "summary": "Type alias chain is circular.",
+        "found": "An `alias … for …` chain that cycles back on itself.",
+        "suggested": "Break the cycle so the alias resolves to a concrete type (README §10/§17/WS2-089).",
+    },
     "SS1041": {
         "tier": "T0",
         "summary": "`ifError` needs a fallible call with a `catch` row.",
@@ -3572,6 +3578,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
     diags.extend(_lint_memory_layout(program))
+    diags.extend(_lint_circular_type_alias(program))
     diags.extend(_lint_ownership_and_entry_export(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
     # incompatible error types warns.
@@ -5145,6 +5152,40 @@ def _lint_memory_layout(program: Program) -> list:
                         f"but its locals need about {used} bytes — the frame "
                         f"overruns its budget (README §1J/WS2-084)",
                         op.line, op.name))
+    return out
+
+
+def _lint_circular_type_alias(program: Program) -> list:
+    """WS2-089 (§10/§17): an `alias … for …` chain that cycles back on itself
+    never resolves to a concrete type — `_resolve_alias` bails out on the
+    revisit and silently yields an unresolved alias name, so flag the cycle
+    explicitly. Aliases that terminate at a primitive/record/enum are fine."""
+    out: list[Diagnostic] = []
+    targets = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
+    reported: set = set()
+    for start in targets:
+        path: list[str] = []
+        cur = start
+        while cur in targets:
+            if cur in path:
+                cycle = path[path.index(cur):]
+                key = frozenset(cycle)
+                if key not in reported:
+                    reported.add(key)
+                    ent = program.entities[cur]
+                    chain = " → ".join(cycle + [cur])
+                    out.append(Diagnostic(
+                        "SS1011", "error",
+                        f"type alias {cur!r} is circular: {chain} — it never "
+                        f"resolves to a concrete type (README §10/§17/WS2-089)",
+                        ent.line, cur))
+                break
+            path.append(cur)
+            cur = targets[cur]
     return out
 
 
