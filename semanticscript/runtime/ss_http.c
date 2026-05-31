@@ -127,3 +127,31 @@ SS_EXPORT int ss_http_serve_static(const char *host, int port, const char *path)
 SS_EXPORT int ss_http_server_shutting_down(void) {
     return ss_http_server_is_shutting_down();
 }
+
+/* APP-RUN-5: multi-route server entry for the `webServer` codegen target. The
+ * lowered webServer entity passes parallel method/path/handler arrays (handlers
+ * are the JIT-lowered `int(request,response)` functions reinterpreted as
+ * SSHttpHandler); this assembles the route table + SSHttpServerConfig and blocks
+ * in ss_http_server_run until SIGINT/SIGTERM. */
+SS_EXPORT int ss_http_serve_routes(const char *host, int port, int count,
+                                   const char **methods, const char **paths,
+                                   void **handlers) {
+    if (count <= 0) return -1;
+    SSHttpRoute *routes = (SSHttpRoute *)malloc((size_t)count * sizeof(SSHttpRoute));
+    if (!routes) return -1;
+    for (int i = 0; i < count; i++) {
+        routes[i].method = methods[i];
+        routes[i].path = paths[i];
+        routes[i].handler = (SSHttpHandler)handlers[i];
+        routes[i].middleware = 0;
+    }
+    SSHttpServerConfig config;
+    memset(&config, 0, sizeof(config));
+    config.host = host;
+    config.port = (unsigned short)port;
+    config.routes = routes;
+    config.route_count = (size_t)count;
+    int r = ss_http_server_run(&config);  /* blocks until SIGINT/SIGTERM */
+    free(routes);
+    return r;
+}

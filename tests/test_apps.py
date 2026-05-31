@@ -15,6 +15,8 @@ import socketserver
 import subprocess
 import sys
 import threading
+import time
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
 ROOT = os.path.dirname(HERE)                               # repo root
@@ -101,6 +103,52 @@ SERVER_BACKED_APPS = [
 ]
 
 
+def _run_webserver(app, port, probes):
+    """Start a `target webServer` app, wait for it to bind, probe each route, and
+    assert the response contains the expected text, then tear it down."""
+    proc = subprocess.Popen(
+        [sys.executable, SEMANTICSCRIPT, "run", os.path.join("apps", app)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=ROOT)
+
+    def get(path):
+        return urllib.request.urlopen("http://127.0.0.1:%d%s" % (port, path),
+                                      timeout=5).read().decode()
+    try:
+        up = False
+        for _ in range(90):  # allow first-time native-lib build + server start
+            if proc.poll() is not None:
+                return False, "server exited early (rc=%s)" % proc.returncode
+            time.sleep(1)
+            try:
+                get(probes[0][0]); up = True; break
+            except Exception:
+                pass
+        if not up:
+            return False, "server never bound on :%d" % port
+        for path, needle in probes:
+            body = get(path)
+            if needle not in body:
+                return False, "GET %s missing %r (got %r)" % (path, needle, body[:60])
+        return True, "%d routes probed, all matched" % len(probes)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+
+
+# webServer apps: (name, port, [(path, expected substring)]).
+WEBSERVER_APPS = [
+    ("http-runtime-gauntlet", 18082, [
+        ("/health", "ok"),
+        ("/reflect/method", "GET"),
+        ("/reflect/path", "/reflect/path"),
+        ("/", "gauntlet"),
+    ]),
+]
+
+
 def main():
     failures = 0
     total = 0
@@ -113,6 +161,12 @@ def main():
     for name, port, routes, markers in SERVER_BACKED_APPS:
         total += 1
         ok, detail = _run_server_backed(name, port, routes, markers)
+        print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
+        if not ok:
+            failures += 1
+    for name, port, probes in WEBSERVER_APPS:
+        total += 1
+        ok, detail = _run_webserver(name, port, probes)
         print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
         if not ok:
             failures += 1

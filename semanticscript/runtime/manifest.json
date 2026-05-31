@@ -92,7 +92,22 @@
         "ss_http_now_millis",
         "ss_http_request_path",
         "ss_http_session_expires_at",
-        "ss_http_session_is_expired"
+        "ss_http_session_is_expired",
+        "ss_http_request_method",
+        "ss_http_request_header",
+        "ss_http_request_query_param",
+        "ss_http_request_body_text",
+        "ss_http_request_body_bytes",
+        "ss_http_request_body_length",
+        "ss_http_response_text",
+        "ss_http_response_header",
+        "ss_http_response_bytes",
+        "ss_http_response_sse_event",
+        "ss_http_multipart_part_text",
+        "ss_http_multipart_part_bytes",
+        "ss_http_multipart_part_length",
+        "ss_http_multipart_part_filename",
+        "ss_http_multipart_part_content_type"
       ],
       "sources": [
         "ss_http.c",

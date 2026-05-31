@@ -8297,6 +8297,14 @@ class EavCodegen:
         elif name == "ss_http_html_escape_str":
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
                              name="ss_http_html_escape_str")
+        elif name == "ss_http_serve_routes":
+            # APP-RUN-5 webServer entry: int(host, port, count, methods**,
+            # paths**, handlers**) -> blocks in the server loop.
+            i32 = ir.IntType(32)
+            i8pp = i8p.as_pointer()
+            fn = ir.Function(self.module,
+                             ir.FunctionType(i32, [i8p, i32, i32, i8pp, i8pp, i8pp]),
+                             name="ss_http_serve_routes")
         elif name == "ss_net_fetch_text":
             # APP-RUN-1: HTTP-GET client — char *ss_net_fetch_text(const char *url).
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
@@ -8355,10 +8363,11 @@ class EavCodegen:
         project = projects[0]
         target_row = project.fact("target")
         target = target_row.payload[0] if target_row and target_row.payload else "console"
-        if target != "console":
+        if target not in ("console", "webServer"):
             raise EavError(
-                "the LLVM console code generator only supports `target console`, "
-                f"got {target!r}; webServer/wasm lowering is out of scope (todos WS3)"
+                "the LLVM code generator supports `target console` and "
+                f"`target webServer`, got {target!r}; wasm lowering is out of scope "
+                "(todos WS3)"
             )
         entry_row = project.fact("entry")
         if entry_row and entry_row.payload:
@@ -8422,7 +8431,55 @@ class EavCodegen:
             # full FFI symbol binding is WS3-052/053. Only `body steps` defines.
             if _op_body_kind(op) == "steps":
                 self._define_function(op)
+        if target == "webServer":
+            self._emit_webserver_entry()
         return self.module
+
+    def _emit_webserver_entry(self) -> None:
+        """APP-RUN-5: synthesize the `webServer` entry as an i32() function named
+        after the project entry (jit_run/build_executable call it). It builds the
+        route table (parallel method/path/handler arrays — handlers are the
+        lowered `int(request,response)` ops) and calls ss_http_serve_routes, which
+        assembles the SSHttpServerConfig and blocks in the server loop."""
+        servers = self.program.of_kind("webServer")
+        ws = next((s for s in servers if s.name == self.entry_name),
+                  servers[0] if servers else None)
+        if ws is None:
+            raise EavError("webServer target has no webServer entity (README §14)")
+        i8p = ir.IntType(8).as_pointer()
+        i8pp = i8p.as_pointer()
+        i32 = ir.IntType(32)
+        def _unquote(tok):
+            return tok[1:-1] if len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"' else tok
+        host_row, port_row = ws.fact("host"), ws.fact("port")
+        host = _unquote(host_row.payload[0]) if host_row and host_row.payload else "127.0.0.1"
+        port = int(port_row.payload[0]) if port_row and port_row.payload else 8080
+        routes = [r.payload for r in ws.facts("route") if len(r.payload) >= 3]
+        n = len(routes)
+        fn = ir.Function(self.module, ir.FunctionType(i32, []), name=self.entry_name)
+        b = ir.IRBuilder(fn.append_basic_block("entry"))
+        methods = b.alloca(ir.ArrayType(i8p, n))
+        paths = b.alloca(ir.ArrayType(i8p, n))
+        handlers = b.alloca(ir.ArrayType(i8p, n))
+        for i, payload in enumerate(routes):
+            method, path, handler_name = payload[0], _unquote(payload[1]), payload[2]
+            hfn = self.functions.get(handler_name)
+            if hfn is None:
+                raise EavError(
+                    f"webServer {ws.name!r} route handler {handler_name!r} is not a "
+                    "defined operation (README §14)", ws.line)
+            idx = [i32(0), i32(i)]
+            b.store(self.global_string(method.encode("utf-8") + b"\x00"),
+                    b.gep(methods, idx))
+            b.store(self.global_string(path.encode("utf-8") + b"\x00"),
+                    b.gep(paths, idx))
+            b.store(b.bitcast(hfn, i8p), b.gep(handlers, idx))
+        r = b.call(self.runtime("ss_http_serve_routes"),
+                   [self.global_string(host.encode("utf-8") + b"\x00"),
+                    i32(port), i32(n),
+                    b.bitcast(methods, i8pp), b.bitcast(paths, i8pp),
+                    b.bitcast(handlers, i8pp)])
+        b.ret(r)
 
     def _signature(self, op: Entity):
         out_row = op.fact("out")
@@ -9617,6 +9674,40 @@ class EavCodegen:
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
                 result = r
+        elif target.startswith("http.") and target not in ("html.render",):
+            # APP-RUN-5: request/response/multipart accessors over the legacy
+            # ss_http_* runtime. Resolve args in order (handles are i64, names/
+            # bodies i8*, status i32); fixed return type per family (getters ->
+            # i8* String/bytes, *Length -> i64, response* -> i32 status) so the
+            # extern signature is consistent across discard/capture call sites.
+            name = target[len("http."):]
+            sym_name = "ss_http_" + _camel_to_snake(name)
+            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
+                    for a in call.facts("arg")]
+            if name.endswith("Length"):
+                ret_ty = ir.IntType(64)
+            elif name.startswith("response"):
+                ret_ty = ir.IntType(32)
+            else:
+                ret_ty = ir.IntType(8).as_pointer()
+            fn = self._runtime.get(sym_name)
+            if fn is None:
+                fn = ir.Function(self.module,
+                                 ir.FunctionType(ret_ty, [v.type for v in vals]),
+                                 name=sym_name)
+                self._runtime[sym_name] = fn
+            r = builder.call(fn, vals)
+            if call.fact("out") is not None:
+                result = r
+        elif target == "pointer.isNull":
+            # APP-RUN-5/6: null-guard a nullable runtime read (a missing header /
+            # query param / body comes back as a null pointer). True iff null.
+            a0 = next(iter(call.facts("arg")), None)
+            v = self._resolve(a0.payload[2], a0.payload[1], builder, sym)
+            if isinstance(v.type, ir.PointerType):
+                result = builder.icmp_unsigned("==", v, ir.Constant(v.type, None))
+            else:
+                result = builder.icmp_signed("==", v, ir.Constant(v.type, 0))
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -10334,16 +10425,24 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add(_EVENT_RUNTIME_SYMBOLS[target])
                 elif target.startswith("gui."):         # APP-RUN-4 widgets
                     out.add(_gui_runtime_symbol(target))
+                elif target.startswith("http.") and target != "html.render":
+                    out.add("ss_http_" + _camel_to_snake(target[len("http."):]))
+    # APP-RUN-5: the webServer entry calls the multi-route server runtime.
+    if program.of_kind("webServer"):
+        out.add("ss_http_serve_routes")
     return out
+
+
+def _camel_to_snake(name: str) -> str:
+    """`requestQueryParam` -> `request_query_param`."""
+    import re
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
 def _gui_runtime_symbol(target: str) -> str:
     """`gui.applicationCreate` -> `ss_widget_application_create` (the headless
     widget runtime; ss_widget_ avoids the real Win32 ss_gui_* symbols)."""
-    import re
-    name = target[len("gui."):]
-    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
-    return "ss_widget_" + snake
+    return "ss_widget_" + _camel_to_snake(target[len("gui."):])
 
 
 _EVENT_RUNTIME_SYMBOLS = {
