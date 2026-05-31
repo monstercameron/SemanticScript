@@ -1754,7 +1754,9 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     # named monomorphic instantiation (`instantiates Base <TypeArgs…>`).
     "record": {"field", "typeTrust", "align", "layout", "typeParam",
                "instantiates"},  # WS2-084 layout rows
-    "enum": {"variant", "repr", "typeTrust"},
+    # R-039/R-054: an enum may be generic (`typeParam T`, variants typed `T`) or
+    # a named monomorphic instantiation (`instantiates Base <TypeArgs…>`).
+    "enum": {"variant", "repr", "typeTrust", "typeParam", "instantiates"},
     # WS2-084: aliases carry the type-memory parity rows — `memory <inline|heap|
     # spill|region>`, `inlineCapacity N`, `layout`, `arrayLength N`, `allocator`.
     "alias": {"for", "typeTrust", "memory", "inlineCapacity", "layout",
@@ -8530,6 +8532,25 @@ class EavCodegen:
         for param, in_row in zip(fn.args, op.facts("in")):
             sym[in_row.payload[0]] = ("val", param)
 
+        # Per-op binding → declared-type-name map (in / let / owned-call out), so
+        # `ifVariant` can resolve a value's exact enum type (e.g. a generic-enum
+        # instantiation) rather than guessing from the variant name.
+        self._binding_types = {}
+        for r in op.facts("in"):
+            if len(r.payload) >= 2:
+                self._binding_types[r.payload[0]] = r.payload[1]
+        for r in op.facts("let"):
+            if len(r.payload) >= 3:
+                self._binding_types[r.payload[0]] = r.payload[2]
+        for cn in self.program.order:
+            c = self.program.entities[cn]
+            if c.kind in ("call", "task"):
+                owner = c.fact("in")
+                o = c.fact("out")
+                if (owner and owner.payload and owner.payload[0] == op.name
+                        and o and len(o.payload) >= 2):
+                    self._binding_types[o.payload[0]] = o.payload[1]
+
         entry = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry)
 
@@ -8850,7 +8871,12 @@ class EavCodegen:
                     f"ambiguous across enums (README ss10.5)",
                     row.line, code="SS1352",
                 )
-            enum_ent = matches[0]
+            # Prefer the value's declared enum type (so a generic-enum
+            # instantiation resolves to its concrete payload type); fall back to
+            # the variant-name match for a plain enum.
+            vtype = getattr(self, "_binding_types", {}).get(value_tok)
+            vent = self.program.entities.get(vtype) if vtype else None
+            enum_ent = vent if (vent is not None and vent.kind == "enum") else matches[0]
             variants = self._enum_variant_names(enum_ent)
             disc = self._enum_repr_map(enum_ent).get(variant, variants.index(variant))
             pt = self._enum_payload_type(enum_ent)
