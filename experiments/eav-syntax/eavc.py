@@ -1697,6 +1697,7 @@ RESERVED_WORDS = {
     "outParam",                           # WS3-016 FFI out-param ABI marker
     "useRetry",                           # R-041 bounded-retry call row
     "typeParam",                          # R-039 generic type parameter
+    "instantiates",                       # R-039 named generic-record instantiation
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
     "guardRank",                           # X-090 lock-acquisition order
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
@@ -1749,7 +1750,10 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "typestate": {"for", "state", "initial", "allows"},
     "error": {"typeTrust"},
     "errorCase": {"of", "payload"},
-    "record": {"field", "typeTrust", "align", "layout"},  # WS2-084 layout rows
+    # R-039: a record may be generic (`typeParam T` + fields typed `T`) or a
+    # named monomorphic instantiation (`instantiates Base <TypeArgs…>`).
+    "record": {"field", "typeTrust", "align", "layout", "typeParam",
+               "instantiates"},  # WS2-084 layout rows
     "enum": {"variant", "repr", "typeTrust"},
     # WS2-084: aliases carry the type-memory parity rows — `memory <inline|heap|
     # spill|region>`, `inlineCapacity N`, `layout`, `arrayLength N`, `allocator`.
@@ -8187,11 +8191,22 @@ class EavCodegen:
         self.module_storage[st.name] = (gv, type_row.payload[0])
 
     def _record_layout(self, rec: Entity):
-        """(LLVM struct type, ordered field names) for a record, cached."""
+        """(LLVM struct type, ordered field names) for a record, cached. R-039: a
+        named instantiation `R instantiates Base T…` takes Base's fields with the
+        generic `typeParam`s substituted by the concrete type args."""
         if rec.name in self._record_layouts:
             return self._record_layouts[rec.name]
-        fields = [f for f in rec.facts("field") if len(f.payload) >= 2]
-        struct_t = ir.LiteralStructType([self.ir_type(f.payload[1]) for f in fields])
+        inst = rec.fact("instantiates")
+        if inst and inst.payload:
+            base = self.program.entities[inst.payload[0]]
+            tps = [r.payload[0] for r in base.facts("typeParam") if r.payload]
+            sub = dict(zip(tps, inst.payload[1:]))
+            fields = [f for f in base.facts("field") if len(f.payload) >= 2]
+            field_types = [sub.get(f.payload[1], f.payload[1]) for f in fields]
+        else:
+            fields = [f for f in rec.facts("field") if len(f.payload) >= 2]
+            field_types = [f.payload[1] for f in fields]
+        struct_t = ir.LiteralStructType([self.ir_type(t) for t in field_types])
         names = [f.payload[0] for f in fields]
         self._record_layouts[rec.name] = (struct_t, names)
         return self._record_layouts[rec.name]
