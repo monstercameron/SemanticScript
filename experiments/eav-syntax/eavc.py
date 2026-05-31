@@ -174,6 +174,9 @@ DIAGNOSTICS.update({
     "SS0810": {"tier": "T3", "summary": "Unreachable operation step.",
                "found": "A step that follows an unconditional `return`/`goto`/`jump` with no intervening `at` label.",
                "suggested": "Remove the dead step, or guard it behind a reachable label/branch (README §13/WS2-080)."},
+    "SS0806": {"tier": "T3", "summary": "Module storage declared but never used.",
+               "found": "A `storage` entity whose name is never referenced by any operation (no read or `set`).",
+               "suggested": "Remove the unused storage, or read/`set` it where intended (README §17/WS2-080)."},
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
@@ -4736,6 +4739,24 @@ def _lint_dead_unused(program: Program) -> list:
                 "SS0802", "warning",
                 f"capability {ent.name!r} is declared but never used by any "
                 f"operation's `uses` (README §17/WS2-080)",
+                ent.line, ent.name))
+    # SS0806: a module `storage` whose name never appears in another entity's row
+    # (never read or written by any operation).
+    referenced: set = set()
+    for n in program.order:
+        sub = program.entities[n].name
+        for r in program.entities[n].rows:
+            for tok in r.payload:
+                referenced.add((sub, tok))
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind != "storage":
+            continue
+        if not any(tok == ent.name and sub != ent.name for (sub, tok) in referenced):
+            out.append(Diagnostic(
+                "SS0806", "warning",
+                f"module storage {ent.name!r} is declared but never read or "
+                f"written by any operation (README §17/WS2-080)",
                 ent.line, ent.name))
     for n in program.order:
         op = program.entities[n]
