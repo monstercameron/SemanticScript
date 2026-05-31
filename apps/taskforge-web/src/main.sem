@@ -290,7 +290,7 @@ schemaSqlSource scope module
 schemaSqlSource type SqlText
 schemaSqlSource mutability immutable
 schemaSqlSource literalSource "sql/schema.sql"
-schemaSqlSource literalDigest sha256 7be6b231400defe17895a69ecad2aec2aad4c31cd6025805848819464dabf725
+schemaSqlSource literalDigest sha256 1dbdc9f90b18d8f5a588505e93492c4e00df747a3d1b851164c9f06c9a51a454
 
 
 devSeedSqlSource is storage
@@ -298,7 +298,7 @@ devSeedSqlSource scope module
 devSeedSqlSource type SqlText
 devSeedSqlSource mutability immutable
 devSeedSqlSource literalSource "sql/dev-seed.sql"
-devSeedSqlSource literalDigest sha256 d8a462c8ae355891b0453883ec8a034c3689f0fe6ff81f514455d5e7b9bc6d72
+devSeedSqlSource literalDigest sha256 9101c6c9c2e3fefa63377263aa9f184b93637ae796a155e9be3ff49303844f27
 
 
 applyDevSeedEnabledSentinel is storage module immutable String "yes"

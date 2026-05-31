@@ -7970,6 +7970,11 @@ _INT_BINOPS = {
     "math.shiftLeftInt64": "shl", "math.shiftRightInt64": "ashr",
     "math.bitAndInt64": "and_", "math.bitOrInt64": "or_",
     "math.bitXorInt64": "xor",
+    # Int32 width variants (operands resolve to their declared i32; the op is
+    # width-agnostic). APP-RUN-6 taskforge-web mixes Int32 and Int64 arithmetic.
+    "math.addInt32": "add", "math.subtractInt32": "sub",
+    "math.multiplyInt32": "mul", "math.divideInt32": "sdiv",
+    "math.moduloInt32": "srem",
 }
 # Float math targets -> IRBuilder fp binary-op method names.
 _FLOAT_BINOPS = {
@@ -7982,6 +7987,9 @@ _INT_CMP = {
     "math.equalInt64": "==", "math.notEqualInt64": "!=",
     "math.lessThanInt64": "<", "math.lessThanOrEqualInt64": "<=",
     "math.greaterThanInt64": ">", "math.greaterThanOrEqualInt64": ">=",
+    "math.equalInt32": "==", "math.notEqualInt32": "!=",
+    "math.lessThanInt32": "<", "math.lessThanOrEqualInt32": "<=",
+    "math.greaterThanInt32": ">", "math.greaterThanOrEqualInt32": ">=",
 }
 # Float comparison targets. Ordered comparisons are false when either operand is
 # NaN; `notEquals` is unordered so NaN != NaN is true (IEEE-754, README ss10.6).
