@@ -2,7 +2,7 @@
 #
 # This is the *libuv* concurrency model — a single-threaded event loop, NOT OS
 # threads. There is NO async knowledge in the compiler: each operation is a
-# `body runtimeBinding <symbol>` over the eav_async_* C ABI (runtime/eav_async.c,
+# `body runtimeBinding <symbol>` over the ss_async_* C ABI (runtime/ss_async.c,
 # a thin shim on SemanticScript/runtime/native_async built with
 # SEM_ASYNC_WITH_LIBUV against third_party/libuv). The compiler lowers each op to
 # an extern call to that symbol; this module owns the typed contract
@@ -29,8 +29,8 @@ standardAsync exports channelClose
 standardAsync exports intervalCreate
 standardAsync exports intervalTick
 standardAsync exports intervalClose
-standardAsync purpose "Typed EAV contract over the libuv event-loop async runtime via the eav_async_* ABI"
-standardAsync invariant "Every operation is a runtimeBinding to an eav_async_* symbol; no async logic lives in the compiler"
+standardAsync purpose "Typed EAV contract over the libuv event-loop async runtime via the ss_async_* ABI"
+standardAsync invariant "Every operation is a runtimeBinding to an ss_async_* symbol; no async logic lives in the compiler"
 
 AsyncFuture is alias
 AsyncFuture for OpaquePointer
@@ -45,25 +45,25 @@ delay in delayMs AsyncMillis
 delay in value Int64
 delay out AsyncFuture
 delay async yes
-delay body runtimeBinding eav_async_delay_start
+delay body runtimeBinding ss_async_delay_start
 delay purpose "Arm a future that completes with `value` after `delayMs` on the event loop"
 delay invariant "Returns immediately; the timer fires only once the loop is driven by await/runOnce"
-delay suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+delay suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 await is operation
 await in future AsyncFuture
 await out Int64
 await async yes
-await body runtimeBinding eav_async_await
+await body runtimeBinding ss_async_await
 await purpose "Drive the event loop until the future is ready, then return its resolved value"
 await invariant "Cooperatively runs the loop; the value is the one the timer callback completed the future with"
-await suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+await suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 runOnce is operation
 runOnce out Int32
-runOnce body runtimeBinding eav_async_run_once
+runOnce body runtimeBinding ss_async_run_once
 runOnce purpose "Run one turn of the event loop without blocking (cooperative progress / poll)"
-runOnce suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+runOnce suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 withTimeout is operation
 withTimeout in delayMs AsyncMillis
@@ -71,27 +71,27 @@ withTimeout in value Int64
 withTimeout in timeoutMs AsyncMillis
 withTimeout out AsyncFuture
 withTimeout async yes
-withTimeout body runtimeBinding eav_async_timeout_start
+withTimeout body runtimeBinding ss_async_timeout_start
 withTimeout purpose "Arm a future like delay, but resolved as timed-out if timeoutMs elapses first"
 withTimeout invariant "A second libuv timer races the value timer; whichever fires first wins"
-withTimeout suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+withTimeout suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 awaitResult is operation
 awaitResult in future AsyncFuture
 awaitResult out Int64
 awaitResult async yes
-awaitResult body runtimeBinding eav_async_await_result
+awaitResult body runtimeBinding ss_async_await_result
 awaitResult outParam
 awaitResult purpose "Drive the loop until ready; bind the value and surface timeout/cancel as a fallible error"
 awaitResult invariant "Returns the value with ok status, or a non-zero status (timeout/cancelled) as the call's error"
-awaitResult suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+awaitResult suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 cancel is operation
 cancel in future AsyncFuture
 cancel out Int32
-cancel body runtimeBinding eav_async_cancel
+cancel body runtimeBinding ss_async_cancel
 cancel purpose "Cancel a not-yet-ready future; a later awaitResult resolves it as cancelled"
-cancel suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+cancel suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 AsyncChannel is alias
 AsyncChannel for OpaquePointer
@@ -99,9 +99,9 @@ AsyncChannel purpose "An opaque bounded async channel handle (FIFO), drained by 
 
 channelCreate is operation
 channelCreate out AsyncChannel
-channelCreate body runtimeBinding eav_async_channel_create
+channelCreate body runtimeBinding ss_async_channel_create
 channelCreate purpose "Create an empty bounded async channel"
-channelCreate suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+channelCreate suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 channelProduce is operation
 channelProduce in channel AsyncChannel
@@ -109,24 +109,24 @@ channelProduce in delayMs AsyncMillis
 channelProduce in value Int64
 channelProduce out Int32
 channelProduce async yes
-channelProduce body runtimeBinding eav_async_channel_produce
+channelProduce body runtimeBinding ss_async_channel_produce
 channelProduce purpose "Schedule a send of value to the channel after delayMs on the loop"
-channelProduce suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+channelProduce suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 channelReceive is operation
 channelReceive in channel AsyncChannel
 channelReceive out Int64
 channelReceive async yes
-channelReceive body runtimeBinding eav_async_channel_receive
+channelReceive body runtimeBinding ss_async_channel_receive
 channelReceive purpose "Receive the next value, driving the loop until one is available (FIFO)"
-channelReceive suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+channelReceive suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 channelClose is operation
 channelClose in channel AsyncChannel
 channelClose out Int32
-channelClose body runtimeBinding eav_async_channel_close
+channelClose body runtimeBinding ss_async_channel_close
 channelClose purpose "Release the channel handle"
-channelClose suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+channelClose suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 AsyncInterval is alias
 AsyncInterval for OpaquePointer
@@ -135,21 +135,21 @@ AsyncInterval purpose "An opaque periodic-interval handle, advanced by intervalT
 intervalCreate is operation
 intervalCreate in periodMs AsyncMillis
 intervalCreate out AsyncInterval
-intervalCreate body runtimeBinding eav_async_interval_create
+intervalCreate body runtimeBinding ss_async_interval_create
 intervalCreate purpose "Create a periodic interval of periodMs milliseconds"
-intervalCreate suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+intervalCreate suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 intervalTick is operation
 intervalTick in interval AsyncInterval
 intervalTick out Int64
 intervalTick async yes
-intervalTick body runtimeBinding eav_async_interval_tick
+intervalTick body runtimeBinding ss_async_interval_tick
 intervalTick purpose "Wait one period on the loop and return the running tick count"
-intervalTick suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+intervalTick suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 intervalClose is operation
 intervalClose in interval AsyncInterval
 intervalClose out Int32
-intervalClose body runtimeBinding eav_async_interval_close
+intervalClose body runtimeBinding ss_async_interval_close
 intervalClose purpose "Release the interval handle"
-intervalClose suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+intervalClose suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"

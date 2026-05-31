@@ -40,7 +40,7 @@ nowMonotonic is operation
 nowMonotonic out MonotonicInstant
 nowMonotonic effect read clock.monotonic
 nowMonotonic uses monotonicClock
-nowMonotonic body runtimeBinding eav_http_now_millis
+nowMonotonic body runtimeBinding ss_http_now_millis
 nowMonotonic purpose "Current monotonic clock reading for measuring elapsed time (capability-gated)"
 
 elapsedMillis is operation
@@ -63,7 +63,7 @@ nowMillis is operation
 nowMillis out Int64
 nowMillis effect read clock.wall
 nowMillis uses wallClock
-nowMillis body runtimeBinding eav_http_now_millis
+nowMillis body runtimeBinding ss_http_now_millis
 nowMillis purpose "Current wall-clock time in milliseconds since the Unix epoch (capability-gated)"
 
 secondsToMinutes is operation

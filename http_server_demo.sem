@@ -1,7 +1,7 @@
 # http_server_demo — a real HTTP server (WS3-017). Binds a socket on
 # 127.0.0.1:18080 and serves `GET /` with a 200 text/plain body via the
 # self-contained SemanticScript HTTP runtime (sem_http_runtime.c, h2o optional/off)
-# behind the eav_http_serve_static seam. `ss_http_server_run` blocks until a
+# behind the ss_http_serve_static seam. `ss_http_server_run` blocks until a
 # signal, so this is NOT a run_examples harness example — test_http_server.py
 # starts it, probes it with an HTTP client, and tears it down.
 
@@ -21,7 +21,7 @@ httpServeStatic in host String
 httpServeStatic in port Int32
 httpServeStatic in path String
 httpServeStatic out Int32
-httpServeStatic body runtimeBinding eav_http_serve_static
+httpServeStatic body runtimeBinding ss_http_serve_static
 httpServeStatic purpose "Serve GET <path> on host:port with a fixed 200 body; blocks until signal"
 httpServeStatic suppress SS5000 because "http server seam; the typed home is std/standard.http.sem"
 

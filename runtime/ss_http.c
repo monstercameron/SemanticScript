@@ -1,19 +1,21 @@
 /*
- * eav_http.c — return-value shim over the SemanticScript HTTP runtime for semanticscript.
+ * ss_http.c — return-value shim over the SemanticScript HTTP runtime.
  *
- * SemanticScript/runtime/native_http/sem_http_runtime.c is a self-contained HTTP
- * runtime (its h2o binding is optional and OFF here) providing both a socket
- * server and a family of pure request/response/url/session helpers. semsc.py
- * reaches it through compiler-owned `http.*` intrinsics; eav keeps it out of the
- * compiler (README ss26/ss34) and binds it through the generic
+ * legacy/SemanticScript/runtime/native_http/sem_http_runtime.c is a self-contained
+ * HTTP runtime (its h2o binding is optional and OFF here) providing both a socket
+ * server and a family of pure request/response/url/session helpers. The legacy
+ * semsc.py reached it through compiler-owned `http.*` intrinsics; semanticscript
+ * keeps it out of the compiler (README ss26/ss34) and binds it through the generic
  * `body runtimeBinding <symbol>` seam, with `std/standard.http.sem` owning the
  * typed contract.
  *
- * This shim exposes the pure, side-effect-light helpers (URL/HTML codec, session
- * expiry math, value probes) as plain `args -> single return` functions. The
- * `ss_http_url_*`/`html_escape` entry points take a caller scratch buffer; the
- * shim allocates a right-sized buffer so the EAV side just receives a String.
- * (The buffer is owned by the returned String; demo programs are short-lived.)
+ * Only the helpers that need ADAPTING live here. The pure same-signature
+ * helpers (now_millis, session expiry math) and the request-path accessor are
+ * bound straight to their legacy `ss_http_*` entry points by the stdlib, so they
+ * are not re-shimmed. The URL/HTML codecs DO need a shim: the legacy entry points
+ * take a caller scratch buffer, so the `*_str` adapters here allocate a
+ * right-sized buffer and hand the EAV side a plain String. (The buffer is owned
+ * by the returned String; demo programs are short-lived.)
  */
 
 #include "sem_http_runtime.h"
@@ -21,12 +23,16 @@
 #include <string.h>
 
 #ifdef _WIN32
-#define EAV_EXPORT __declspec(dllexport)
+#define SS_EXPORT __declspec(dllexport)
 #else
-#define EAV_EXPORT __attribute__((visibility("default")))
+#define SS_EXPORT __attribute__((visibility("default")))
 #endif
 
-EAV_EXPORT const char *eav_http_url_encode(const char *input) {
+/* ---- URL / HTML codecs: buffer-managing String adapters over the
+ * caller-scratch-buffer legacy entry points (distinct `_str` names so they do
+ * not collide with the same-named `ss_http_*` they wrap). ---- */
+
+SS_EXPORT const char *ss_http_url_encode_str(const char *input) {
     size_t n = input ? strlen(input) : 0;
     size_t capacity = n * 3 + 1;  /* worst case every byte -> %XX */
     char *buffer = (char *)malloc(capacity);
@@ -36,7 +42,7 @@ EAV_EXPORT const char *eav_http_url_encode(const char *input) {
     return buffer;
 }
 
-EAV_EXPORT const char *eav_http_url_decode(const char *input) {
+SS_EXPORT const char *ss_http_url_decode_str(const char *input) {
     size_t n = input ? strlen(input) : 0;
     size_t capacity = n + 1;  /* decode never grows */
     char *buffer = (char *)malloc(capacity);
@@ -46,7 +52,7 @@ EAV_EXPORT const char *eav_http_url_decode(const char *input) {
     return buffer;
 }
 
-EAV_EXPORT const char *eav_http_html_escape(const char *input) {
+SS_EXPORT const char *ss_http_html_escape_str(const char *input) {
     size_t n = input ? strlen(input) : 0;
     int capacity = (int)(n * 6 + 1);  /* worst case ' -> &#39; */
     char *buffer = (char *)malloc((size_t)capacity);
@@ -56,27 +62,17 @@ EAV_EXPORT const char *eav_http_html_escape(const char *input) {
     return buffer;
 }
 
-EAV_EXPORT long long eav_http_now_millis(void) {
-    return ss_http_now_millis();
-}
+/* ---- request-value probes (renamed off the legacy `request_value_*`) ---- */
 
-EAV_EXPORT long long eav_http_session_expires_at(long long now_millis, long long ttl_millis) {
-    return ss_http_session_expires_at(now_millis, ttl_millis);
-}
-
-EAV_EXPORT int eav_http_session_is_expired(long long now_millis, long long expires_at_millis) {
-    return ss_http_session_is_expired(now_millis, expires_at_millis) ? 1 : 0;
-}
-
-EAV_EXPORT long long eav_http_value_length(const char *value) {
+SS_EXPORT long long ss_http_value_length(const char *value) {
     return ss_http_request_value_length(value);
 }
 
-EAV_EXPORT int eav_http_value_is_empty(const char *value) {
+SS_EXPORT int ss_http_value_is_empty(const char *value) {
     return ss_http_request_value_is_empty(value);
 }
 
-EAV_EXPORT int eav_http_ensure_directory(const char *directory_path) {
+SS_EXPORT int ss_http_ensure_directory(const char *directory_path) {
     return ss_http_filesystem_ensure_directory(directory_path);
 }
 
@@ -84,8 +80,8 @@ EAV_EXPORT int eav_http_ensure_directory(const char *directory_path) {
 
 /* A handler is an EAV operation lowered as int(request, response) — its JIT/
  * native function pointer is passed straight through as an SSHttpHandler. */
-EAV_EXPORT int eav_http_serve(const char *host, int port, const char *method,
-                              const char *path, SSHttpHandler handler) {
+SS_EXPORT int ss_http_serve(const char *host, int port, const char *method,
+                            const char *path, SSHttpHandler handler) {
     SSHttpRoute route;
     route.method = method;
     route.path = path;
@@ -100,7 +96,7 @@ EAV_EXPORT int eav_http_serve(const char *host, int port, const char *method,
     return ss_http_server_run(&config);  /* blocks until SIGINT/SIGTERM */
 }
 
-EAV_EXPORT int eav_http_respond(void *response, int status, const char *body) {
+SS_EXPORT int ss_http_respond(void *response, int status, const char *body) {
     return ss_http_response_text((SSHttpResponse *)response, status, body, "text/plain");
 }
 
@@ -108,16 +104,16 @@ EAV_EXPORT int eav_http_respond(void *response, int status, const char *body) {
  * server without passing an EAV operation as a C function pointer: GET <path>
  * replies 200 text/plain with a recognizable body. Proves the socket server,
  * routing, and request/response path end-to-end (WS3-017). Blocks until signal. */
-static int eav_http_ok_handler(SSHttpRequest *request, SSHttpResponse *response) {
+static int ss_http_ok_handler(SSHttpRequest *request, SSHttpResponse *response) {
     (void)request;
     return ss_http_response_text(response, 200, "EAV HTTP OK 42", "text/plain");
 }
 
-EAV_EXPORT int eav_http_serve_static(const char *host, int port, const char *path) {
+SS_EXPORT int ss_http_serve_static(const char *host, int port, const char *path) {
     SSHttpRoute route;
     route.method = "GET";
     route.path = path;
-    route.handler = eav_http_ok_handler;
+    route.handler = ss_http_ok_handler;
     route.middleware = 0;
     SSHttpServerConfig config;
     memset(&config, 0, sizeof(config));
@@ -128,11 +124,6 @@ EAV_EXPORT int eav_http_serve_static(const char *host, int port, const char *pat
     return ss_http_server_run(&config);  /* blocks until SIGINT/SIGTERM */
 }
 
-EAV_EXPORT int eav_http_server_shutting_down(void) {
+SS_EXPORT int ss_http_server_shutting_down(void) {
     return ss_http_server_is_shutting_down();
-}
-
-EAV_EXPORT const char *eav_http_request_path(void *request) {
-    return ss_http_request_method((const SSHttpRequest *)request)
-        ? ss_http_request_path((const SSHttpRequest *)request) : "";
 }

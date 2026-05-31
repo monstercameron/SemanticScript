@@ -1,7 +1,7 @@
 # panic_div0_report — RUNTIME trap test (WS1-130, §1K crash reporting). Unlike
 # div_by_zero_trap (a CONSTANT 0, rejected at compile time by SS3111), here the
 # divisor is computed at runtime (5 - 5), so it escapes the compile-time guard
-# and reaches codegen. At runtime the divide-by-zero guard fires `eav_panic`,
+# and reaches codegen. At runtime the divide-by-zero guard fires `ss_panic`,
 # which prints a structured crash report to stderr and exits 134 — instead of a
 # silent SIGILL. This is the load-bearing test that a no-UB trap explains itself.
 #
@@ -19,7 +19,7 @@ examplesPanicDiv0Report is module
 examplesPanicDiv0Report path examples.panicDiv0Report
 examplesPanicDiv0Report exports main
 examplesPanicDiv0Report purpose "Trip the runtime divide-by-zero guard and report it"
-examplesPanicDiv0Report invariant "Traps via eav_panic before printing the quotient"
+examplesPanicDiv0Report invariant "Traps via ss_panic before printing the quotient"
 
 ExitCode is alias
 ExitCode for Int32
@@ -34,7 +34,7 @@ main out ExitCode
 main effect write console.stdout
 main uses stdoutWriter
 main async no
-main purpose "Divide 10 by a runtime-computed 0 and trip the eav_panic guard"
+main purpose "Divide 10 by a runtime-computed 0 and trip the ss_panic guard"
 main invariant "Never completes: panics at runtime with SSR0010"
 main let dividend immutable Int64 10
 main let five immutable Int64 5

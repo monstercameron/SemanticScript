@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Win32 GUI runtime test (WS3-044). Runs gui_health_demo.sem, which binds the
-SemanticScript Win32 GUI runtime via eav_gui_health_check: it creates a real
+SemanticScript Win32 GUI runtime via ss_gui_health_check: it creates a real
 window with an auto-close handler, runs the Win32 message loop, and tears down,
 returning 0. On a desktop the window flashes briefly; with no interactive
 desktop the runtime reports unavailable, which the check maps to 0.

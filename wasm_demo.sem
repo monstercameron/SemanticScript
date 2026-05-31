@@ -2,7 +2,7 @@
 # with the wasm32 triple and drives clang --target=wasm32 + wasm-ld to a .wasm
 # that exports `main`; node instantiates it and calls main(). This is the
 # pure-compute subset: no console/heap runtime (compiled -nostdlib), and no
-# guard sites (div/modulo/narrowing inject eav_panic, which is undefined under
+# guard sites (div/modulo/narrowing inject ss_panic, which is undefined under
 # -nostdlib). It still exercises real control flow — a comparison and a branch —
 # returning 42 when 7 == 7, so node sees main() == 42.
 

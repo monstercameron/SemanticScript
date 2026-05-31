@@ -20,7 +20,7 @@ seedFromEntropy is operation
 seedFromEntropy out Int64
 seedFromEntropy effect read random.entropy
 seedFromEntropy uses entropySource
-seedFromEntropy body runtimeBinding eav_http_now_millis
+seedFromEntropy body runtimeBinding ss_http_now_millis
 seedFromEntropy purpose "Draw a non-deterministic seed (capability-gated); inject a fixed seed for determinism"
 
 nextRandom is operation

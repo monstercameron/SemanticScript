@@ -722,7 +722,7 @@ def test_compact_expands_parses_and_runs(tmp_path):
     assert out.stdout.strip() == "hi"
 
 
-def test_compact_eav_roundtrip_semantics_preserved():
+def test_compact_ss_roundtrip_semantics_preserved():
     # compact -> EAV -> compact -> EAV preserves the entity set and per-entity
     # row counts (gate-0 round-trip, WS4-004).
     a = semanticscript.parse_compact(_COMPACT_HELLO)
@@ -733,7 +733,7 @@ def test_compact_eav_roundtrip_semantics_preserved():
     }
 
 
-def test_fmt_surface_eav_idempotent_on_canonical():
+def test_fmt_surface_ss_idempotent_on_canonical():
     # parse_compact is idempotent on already-canonical EAV: formatting a golden
     # through the compact front end equals formatting it directly.
     src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
@@ -3177,13 +3177,13 @@ def test_runtime_native_symbol_lane():
         "standardSqlite is module\nstandardSqlite path standard.sqlite\n"
         'standardSqlite purpose "p"\nstandardSqlite invariant "i"\n'
         "openInMemory is operation\nopenInMemory out OpaquePointer\n"
-        "openInMemory body runtimeBinding eav_sqlite_open_memory\n"
+        "openInMemory body runtimeBinding ss_sqlite_open_memory\n"
         'openInMemory purpose "open"\n'
     )
     prog = semanticscript.parse(sqlite_stub)
-    assert semanticscript._referenced_runtime_symbols(prog) == {"eav_sqlite_open_memory"}
+    assert semanticscript._referenced_runtime_symbols(prog) == {"ss_sqlite_open_memory"}
     libs = semanticscript._runtime_libs_for(prog)
-    assert [lib["name"] for lib in libs] == ["eav_runtime"]
+    assert [lib["name"] for lib in libs] == ["ss_runtime"]
     path = semanticscript._ensure_runtime_lib(libs[0])
     assert path and os.path.exists(path)
     # registration resolves the symbol into the JIT without raising
@@ -3208,11 +3208,11 @@ def _manifest_library(name):
 def test_runtime_links_resolve_per_platform_without_compiling():
     """R-018: the pure resolver returns a platform-scoped link set without
     compiling. The old code had no resolver and the manifest carried a flat
-    `libs: ["ws2_32"]` on eav_http that every platform inherited, so there was no
+    `libs: ["ws2_32"]` on ss_http that every platform inherited, so there was no
     way to ask for the Linux/macOS link set at all — this test could not even be
     written against the old surface (no `_resolve_runtime_links`, no `platforms`
     sections)."""
-    http = _manifest_library("eav_http")
+    http = _manifest_library("ss_http")
     # Windows keeps the cross-platform base plus the Winsock library (R-013).
     win = semanticscript._resolve_runtime_links(http, "windows")
     assert "ws2_32" in win["libs"]
@@ -3229,7 +3229,7 @@ def test_runtime_links_sqlite_unix_thread_dl_math():
     """R-018: SQLite's Unix link inputs (pthread/dl/m) resolve only on Unix
     platforms, never on Windows. Under the old flat-manifest code these libs
     could not be expressed per platform at all."""
-    sqlite = _manifest_library("eav_runtime")
+    sqlite = _manifest_library("ss_runtime")
     for unix_platform in ("linux", "macos"):
         resolved = semanticscript._resolve_runtime_links(sqlite, unix_platform)
         assert set(["pthread", "dl", "m"]).issubset(set(resolved["libs"])), unix_platform
@@ -3245,18 +3245,18 @@ def test_runtime_links_reject_unknown_platform_keys():
     old code had no validation and no platform sections, so an unknown key was
     simply impossible to detect."""
     bogus_section = {
-        "name": "eav_bogus", "provides": ["eav_bogus_"],
+        "name": "ss_bogus", "provides": ["ss_bogus_"],
         "sources": ["x.c"], "platforms": {"win": {"libs": ["ws2_32"]}},
     }
     with pytest.raises(semanticscript.EavError):
         semanticscript._resolve_runtime_links(bogus_section, "windows")
     # an unknown *target* platform argument is also rejected
-    good = {"name": "eav_ok", "provides": ["eav_ok_"], "sources": ["x.c"]}
+    good = {"name": "ss_ok", "provides": ["ss_ok_"], "sources": ["x.c"]}
     with pytest.raises(semanticscript.EavError):
         semanticscript._resolve_runtime_links(good, "solaris")
     # an unknown compiler overlay key is rejected too
     bad_cc = {
-        "name": "eav_cc", "provides": ["eav_cc_"], "sources": ["x.c"],
+        "name": "ss_cc", "provides": ["ss_cc_"], "sources": ["x.c"],
         "compiler": {"borland": {"libs": ["weird"]}},
     }
     with pytest.raises(semanticscript.EavError):
@@ -3268,7 +3268,7 @@ def test_runtime_links_compiler_overlay_merges_after_platform():
     layer with first-occurrence-wins de-duplication. The old surface had no
     compiler overlays at all."""
     lib = {
-        "name": "eav_overlay", "provides": ["eav_overlay_"],
+        "name": "ss_overlay", "provides": ["ss_overlay_"],
         "sources": ["base.c"],
         "defines": ["BASE_DEFINE"],
         "platforms": {"windows": {"defines": ["WIN_DEFINE"], "libs": ["ws2_32"]}},
@@ -3284,8 +3284,8 @@ def test_runtime_links_compiler_overlay_merges_after_platform():
 
 def test_http_runtime_ws2_32_is_windows_only(tmp_path):
     """R-013: the concrete `ws2_32` instance of R-018. A program that references
-    an eav_http_* runtime symbol must resolve ws2_32 ONLY on Windows. The old
-    `runtime/manifest.json` carried a flat `"libs": ["ws2_32"]` on eav_http and
+    an ss_http_* runtime symbol must resolve ws2_32 ONLY on Windows. The old
+    `runtime/manifest.json` carried a flat `"libs": ["ws2_32"]` on ss_http and
     `_ensure_runtime_lib`/`build_executable` appended it on every platform, so a
     resolved Linux/macOS plan would still have contained ws2_32 and a real Linux
     build would fail with `-lws2_32`. Tests pass an explicit `platform=` so the
@@ -3299,11 +3299,11 @@ def test_http_runtime_ws2_32_is_windows_only(tmp_path):
         'standardHttp purpose "p"\nstandardHttp invariant "i"\n'
         "htmlEscape is operation\nhtmlEscape in OpaquePointer\n"
         "htmlEscape out OpaquePointer\n"
-        "htmlEscape body runtimeBinding eav_http_html_escape\n"
+        "htmlEscape body runtimeBinding ss_http_html_escape_str\n"
         'htmlEscape purpose "escape"\n'
     )
-    # the eav_http_* symbol selects the eav_http runtime library
-    assert [lib["name"] for lib in semanticscript._runtime_libs_for(http_program)] == ["eav_http"]
+    # the ss_http_* symbol selects the ss_http runtime library
+    assert [lib["name"] for lib in semanticscript._runtime_libs_for(http_program)] == ["ss_http"]
 
     # dry-run link plan: Windows includes ws2_32, POSIX omits it (R-013)
     win_plan = semanticscript.build_link_plan(http_program, platform="windows")
@@ -3506,7 +3506,7 @@ def test_http_server_links_into_exe(tmp_path):
     program = semanticscript.parse(stdlib + "\n" + _HTTP_SERVER_MAIN)
     assert not any(d.severity == "error" for d in semanticscript.lint(program))
     ir = str(semanticscript.lower_to_llvm(program))
-    assert "eav_http_serve" in ir and "eav_http_respond" in ir
+    assert "ss_http_serve" in ir and "ss_http_respond" in ir
     out = str(tmp_path / ("server" + (".exe" if sys.platform == "win32" else "")))
     semanticscript.build_executable(program, out)
     assert os.path.exists(out)
@@ -3664,7 +3664,7 @@ def test_html_render_full_document():
     # text holes (not a single string.concat line).
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_HTML_RENDER_SRC)))
     ir = str(semanticscript.lower_to_llvm(semanticscript.parse(_HTML_RENDER_SRC)))
-    assert "eav_http_html_escape" in ir  # holes are auto-escaped
+    assert "ss_http_html_escape_str" in ir  # holes are auto-escaped
     proc = subprocess.run(
         [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
         input=_HTML_RENDER_SRC, capture_output=True, text=True)
@@ -4509,11 +4509,11 @@ def test_coverage_floor_probe():
     # dep) with a floor that fails on a big regression. Parsing + linting + lowering
     # + formatting every example covers a substantial slice of the compiler.
     import glob
-    eav_file = semanticscript.__file__
+    ss_file = semanticscript.__file__
     hit = set()
 
     def tracer(frame, event, arg):
-        if event == "line" and frame.f_code.co_filename == eav_file:
+        if event == "line" and frame.f_code.co_filename == ss_file:
             hit.add(frame.f_lineno)
         return tracer
 
@@ -7049,7 +7049,7 @@ def test_net_semsig_contract_loads():
 
 def test_http_stdlib_parses_lints_and_has_surface():
     # WS3-017: standard.http is an EAV-native runtimeBinding wrapper over the
-    # eav_http_* runtime ABI (pure request/codec/session helpers).
+    # ss_http_* runtime ABI (pure request/codec/session helpers).
     src = open(os.path.join(STD, "standard.http.sem"), encoding="utf-8").read()
     prog = semanticscript.parse(src)
     assert not any(d.severity == "error" for d in semanticscript.lint(prog))
@@ -7063,7 +7063,7 @@ def test_http_stdlib_parses_lints_and_has_surface():
     for n in ops:
         body = prog.entities[n].fact("body")
         assert body and body.payload[0] == "runtimeBinding"
-        assert body.payload[1].startswith("eav_http_")
+        assert body.payload[1].startswith("ss_http_")
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the http runtime")
@@ -7084,7 +7084,7 @@ def test_e2e_http_url_codec_roundtrip_through_real_runtime():
 
 def test_sqlite_stdlib_parses_lints_and_has_parity_surface():
     # WS3-016: standard.sqlite is an EAV-native runtimeBinding wrapper over the
-    # eav_sqlite_* runtime ABI; it parses, lints clean, and covers the original
+    # ss_sqlite_* runtime ABI; it parses, lints clean, and covers the original
     # semsc.py surface (open/close/exec/prepare/step/bind/column/transactions).
     src = open(os.path.join(STD, "standard.sqlite.sem"), encoding="utf-8").read()
     prog = semanticscript.parse(src)
@@ -7100,18 +7100,18 @@ def test_sqlite_stdlib_parses_lints_and_has_parity_surface():
         "enableWalMode", "errorMessage", "libraryVersion",
     }
     assert parity.issubset(ops), parity - ops
-    # every operation binds an eav_sqlite_* runtime symbol (no compiler-owned sqlite)
+    # every operation binds an ss_sqlite_* runtime symbol (no compiler-owned sqlite)
     for n in ops:
         body = prog.entities[n].fact("body")
         assert body and body.payload[0] == "runtimeBinding"
-        assert body.payload[1].startswith("eav_sqlite_")
+        assert body.payload[1].startswith("ss_sqlite_")
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the sqlite runtime")
 def test_e2e_sqlite_roundtrip_through_real_engine():
     # WS3-016 parity: compose the standard.sqlite stdlib with a driver main and
     # JIT-run a full round-trip against the vendored SQLite engine (built from
-    # third_party/sqlite via the eav_sqlite shim). Open in-memory -> create ->
+    # third_party/sqlite via the ss_sqlite shim). Open in-memory -> create ->
     # insert -> prepare -> step -> columnText -> print -> finalize -> close.
     # A no-op lowering (or an unlinked runtime) cannot produce "eav".
     stdlib = open(os.path.join(STD, "standard.sqlite.sem"), encoding="utf-8").read()
@@ -7443,15 +7443,15 @@ def test_app_port_coverage_and_coexistence_guard():
         assert os.path.isdir(os.path.join(V1_APPS, app)), f"original {app} missing"
         prog = semanticscript.parse(semanticscript.load_project(port_dir))
         # op-count parity with the v0.1 source (operations never split, §20)
-        eav_ops = len(prog.of_kind("operation"))
+        ss_ops = len(prog.of_kind("operation"))
         v1_ops = _v1_module_op_count(app)
-        assert eav_ops == v1_ops, \
-            f"{app}: op-count {eav_ops} != v0.1 {v1_ops} (stub / dropped ops?)"
+        assert ss_ops == v1_ops, \
+            f"{app}: op-count {ss_ops} != v0.1 {v1_ops} (stub / dropped ops?)"
         # route-count parity for webServer apps
-        eav_routes = sum(len([r for r in ws.rows if r.predicate == "route"])
+        ss_routes = sum(len([r for r in ws.rows if r.predicate == "route"])
                          for ws in prog.of_kind("webServer"))
-        assert eav_routes == _v1_route_count(app), \
-            f"{app}: route-count {eav_routes} != v0.1 {_v1_route_count(app)}"
+        assert ss_routes == _v1_route_count(app), \
+            f"{app}: route-count {ss_routes} != v0.1 {_v1_route_count(app)}"
         # the composed project lints clean
         errs = [d.render() for d in semanticscript.lint(prog) if d.severity == "error"]
         assert not errs, f"{app} port regressed lint-clean: {errs}"
@@ -8660,7 +8660,7 @@ def test_runtime_lib_cache_lives_in_cache_dir(tmp_path, monkeypatch):
     if semanticscript._find_c_compiler() is None:
         pytest.skip("no C compiler available to build the runtime library")
     monkeypatch.setenv("SEMANTICSCRIPT_CACHE_DIR", str(tmp_path / "cache"))
-    lib = _manifest_library("eav_runtime")
+    lib = _manifest_library("ss_runtime")
     path = semanticscript._ensure_runtime_lib(lib)
     assert path and os.path.exists(path)
     cache = os.path.realpath(semanticscript._runtime_cache_dir())
@@ -9028,7 +9028,7 @@ def test_r021_cache_path_distinct_per_platform_and_compiler():
     compiler identity, so two platform builds (or two compilers) of the same
     library land on distinct cache paths and never reuse an incompatible
     artifact. Under the old `<name><suffix>` naming all of these collided."""
-    lib = _manifest_library("eav_runtime")
+    lib = _manifest_library("ss_runtime")
     windows = semanticscript._runtime_lib_cache_path(lib, "windows", "clang|v1")
     linux = semanticscript._runtime_lib_cache_path(lib, "linux", "clang|v1")
     zig_windows = semanticscript._runtime_lib_cache_path(lib, "windows", "zig|v2")
@@ -9062,14 +9062,14 @@ def test_r021_built_runtime_lib_uses_keyed_path():
     (name-<key>), matching the pure _runtime_lib_cache_path resolver."""
     if semanticscript._find_c_compiler() is None:
         pytest.skip("no C compiler available to build the runtime library")
-    lib = _manifest_library("eav_runtime")
+    lib = _manifest_library("ss_runtime")
     built = semanticscript._ensure_runtime_lib(lib)
     assert built and os.path.exists(built)
     expected = semanticscript._runtime_lib_cache_path(lib)
     assert os.path.realpath(built) == os.path.realpath(expected)
     # the keyed name carries a 16-hex-char digest suffix
     import re
-    assert re.search(r"eav_runtime-[0-9a-f]{16}", os.path.basename(built))
+    assert re.search(r"ss_runtime-[0-9a-f]{16}", os.path.basename(built))
 
 
 # === R-067: decimal arithmetic lowering (scale 2, truncate) ===
@@ -10030,7 +10030,7 @@ def test_e2e_div_by_zero_trap():
     """X-201: divByZeroTrap — division by zero must trap (negative test).
     The program divides by zero and should fail (exit code != 0) due to arithmetic trap."""
     proc = _semanticscript_run("div_by_zero_trap.sem")
-    # Trap means the process exits non-zero (exit code from eav_panic or llvm.trap)
+    # Trap means the process exits non-zero (exit code from ss_panic or llvm.trap)
     assert proc.returncode != 0, f"Div-by-zero should trap; got exit code {proc.returncode}"
 
 
@@ -10813,7 +10813,7 @@ def test_ws1_114():
     assert True
 
 def test_ws1_130():
-    """WS1-130: eav_panic runtime helper."""
+    """WS1-130: ss_panic runtime helper."""
     assert True
 
 def test_ws1_131():
@@ -10974,8 +10974,8 @@ def test_ws1_114_cleanup_on_exit_paths():
     assert prog is not None
     # onExit clauses should select which paths trigger cleanup
 
-def test_ws1_130_eav_panic():
-    """WS1-130: eav_panic runtime helper - structured stderr report."""
+def test_ws1_130_ss_panic():
+    """WS1-130: ss_panic runtime helper - structured stderr report."""
     assert True  # Implementation placeholder
 
 def test_ws1_131_panic_injection():
@@ -11192,6 +11192,6 @@ def test_x_215():
 # Auto-generated test stubs for remaining 69 open todos
 
 def test_remaining_todos_complete():
-    \"\"\"Comprehensive test coverage for all remaining workstream features.\"\"\"
+    """Comprehensive test coverage for all remaining workstream features."""
     assert True
 

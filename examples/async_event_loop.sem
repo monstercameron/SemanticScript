@@ -2,10 +2,10 @@
 # libuv concurrency model — a single-threaded event loop, NOT threads. The native
 # async runtime (SemanticScript/runtime/native_async built with
 # SEM_ASYNC_WITH_LIBUV against third_party/libuv) is compiled + loaded by the JIT
-# and bound through `body runtimeBinding eav_async_*`. The typed home for these
+# and bound through `body runtimeBinding ss_async_*`. The typed home for these
 # ops is the std/standard.async.sem stdlib; they are inlined here so the example
 # is self-contained and runnable (parity with how sqlite_query.sem inlines the
-# eav_sqlite_* seam).
+# ss_sqlite_* seam).
 #
 # `delay(ms, value)` arms a libuv timer that completes a future with `value`
 # after `ms`; `await(future)` drives the loop until it is ready and returns the
@@ -44,17 +44,17 @@ asyncDelay in delayMs Int64
 asyncDelay in value Int64
 asyncDelay out AsyncFuture
 asyncDelay async yes
-asyncDelay body runtimeBinding eav_async_delay_start
+asyncDelay body runtimeBinding ss_async_delay_start
 asyncDelay purpose "Arm a future completing with value after delayMs on the libuv loop"
-asyncDelay suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; typed home is std/standard.async.sem"
+asyncDelay suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; typed home is std/standard.async.sem"
 
 asyncAwait is operation
 asyncAwait in future AsyncFuture
 asyncAwait out Int64
 asyncAwait async yes
-asyncAwait body runtimeBinding eav_async_await
+asyncAwait body runtimeBinding ss_async_await
 asyncAwait purpose "Drive the libuv loop until the future is ready and return its value"
-asyncAwait suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; typed home is std/standard.async.sem"
+asyncAwait suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; typed home is std/standard.async.sem"
 
 main is operation
 main out ExitCode

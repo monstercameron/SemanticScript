@@ -1,5 +1,5 @@
 # http_escaping — the http runtime's safety helpers (WS3-017). The native http
-# runtime (eav_http.c + sem_http_runtime.c) is compiled + loaded by the JIT and
+# runtime (ss_http.c + sem_http_runtime.c) is compiled + loaded by the JIT and
 # its pure string helpers bind through the `body runtimeBinding <symbol>` seam.
 # These are the load-bearing output-safety functions web apps use: HTML escaping
 # (XSS-safe rendering) and URL percent-encoding/decoding. This exercises:
@@ -31,21 +31,21 @@ stdoutWriter purpose "Allow controlled writes to standard output"
 httpHtmlEscape is operation
 httpHtmlEscape in raw String
 httpHtmlEscape out String
-httpHtmlEscape body runtimeBinding eav_http_html_escape
+httpHtmlEscape body runtimeBinding ss_http_html_escape_str
 httpHtmlEscape purpose "HTML-escape a string for safe rendering"
 httpHtmlEscape suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
 
 httpUrlEncode is operation
 httpUrlEncode in raw String
 httpUrlEncode out String
-httpUrlEncode body runtimeBinding eav_http_url_encode
+httpUrlEncode body runtimeBinding ss_http_url_encode_str
 httpUrlEncode purpose "Percent-encode a string for use in a URL"
 httpUrlEncode suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
 
 httpUrlDecode is operation
 httpUrlDecode in encoded String
 httpUrlDecode out String
-httpUrlDecode body runtimeBinding eav_http_url_decode
+httpUrlDecode body runtimeBinding ss_http_url_decode_str
 httpUrlDecode purpose "Percent-decode a URL-encoded string"
 httpUrlDecode suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
 

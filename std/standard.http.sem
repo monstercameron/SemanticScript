@@ -2,7 +2,7 @@
 #
 # Parity with the original semsc.py `standard.http` helper surface, expressed the
 # EAV way: no http knowledge in the compiler. Each operation is a
-# `body runtimeBinding eav_http_*` over the runtime shim (runtime/eav_http.c on
+# `body runtimeBinding ss_http_*` over the runtime shim (runtime/ss_http.c on
 # SemanticScript/runtime/native_http/sem_http_runtime.c, whose optional h2o
 # binding is off). The compiler lowers each op to an extern call; this module
 # owns the typed contract (README ss11/ss26/ss34).
@@ -14,8 +14,8 @@
 
 standardHttp is module
 standardHttp path standard.http
-standardHttp purpose "Typed EAV contract over the SemanticScript HTTP runtime via the eav_http_* ABI"
-standardHttp invariant "Every operation is a runtimeBinding to an eav_http_* symbol; no http logic lives in the compiler"
+standardHttp purpose "Typed EAV contract over the SemanticScript HTTP runtime via the ss_http_* ABI"
+standardHttp invariant "Every operation is a runtimeBinding to an ss_http_* symbol; no http logic lives in the compiler"
 
 HttpSafeUrl is alias
 HttpSafeUrl for String
@@ -28,56 +28,56 @@ EpochMillis purpose "A wall-clock timestamp in milliseconds since the Unix epoch
 urlEncode is operation
 urlEncode in component String
 urlEncode out String
-urlEncode body runtimeBinding eav_http_url_encode
+urlEncode body runtimeBinding ss_http_url_encode_str
 urlEncode purpose "Percent-encode one URL component (RFC 3986 unreserved pass through, space -> %20)"
 
 urlDecode is operation
 urlDecode in component String
 urlDecode out String
-urlDecode body runtimeBinding eav_http_url_decode
+urlDecode body runtimeBinding ss_http_url_decode_str
 urlDecode purpose "Decode one URL component (+ -> space, %XX -> byte); inverse of urlEncode"
 
 htmlEscape is operation
 htmlEscape in text String
 htmlEscape out String
-htmlEscape body runtimeBinding eav_http_html_escape
+htmlEscape body runtimeBinding ss_http_html_escape_str
 htmlEscape purpose "Escape text for safe interpolation into HTML element/attribute content"
 
 nowMillis is operation
 nowMillis out EpochMillis
-nowMillis body runtimeBinding eav_http_now_millis
+nowMillis body runtimeBinding ss_http_now_millis
 nowMillis purpose "Current wall-clock time in milliseconds since the Unix epoch"
 
 sessionExpiresAt is operation
 sessionExpiresAt in nowMillis EpochMillis
 sessionExpiresAt in ttlMillis Int64
 sessionExpiresAt out EpochMillis
-sessionExpiresAt body runtimeBinding eav_http_session_expires_at
+sessionExpiresAt body runtimeBinding ss_http_session_expires_at
 sessionExpiresAt purpose "Compute a session expiry timestamp from the current time and a TTL"
 
 sessionIsExpired is operation
 sessionIsExpired in nowMillis EpochMillis
 sessionIsExpired in expiresAtMillis EpochMillis
 sessionIsExpired out Bool
-sessionIsExpired body runtimeBinding eav_http_session_is_expired
+sessionIsExpired body runtimeBinding ss_http_session_is_expired
 sessionIsExpired purpose "Whether a session expiry timestamp has passed (1) or not (0)"
 
 requestValueLength is operation
 requestValueLength in value String
 requestValueLength out Int64
-requestValueLength body runtimeBinding eav_http_value_length
+requestValueLength body runtimeBinding ss_http_value_length
 requestValueLength purpose "Byte length of a request value, treating a null pointer as length 0"
 
 requestValueIsEmpty is operation
 requestValueIsEmpty in value String
 requestValueIsEmpty out Bool
-requestValueIsEmpty body runtimeBinding eav_http_value_is_empty
+requestValueIsEmpty body runtimeBinding ss_http_value_is_empty
 requestValueIsEmpty purpose "Whether a request value is null or the empty string"
 
 ensureDirectory is operation
 ensureDirectory in directoryPath String
 ensureDirectory out Int32
-ensureDirectory body runtimeBinding eav_http_ensure_directory
+ensureDirectory body runtimeBinding ss_http_ensure_directory
 ensureDirectory purpose "Create a directory if missing (parent must exist); returns 0 on success"
 
 # --- server loop + request/response handler ABI (WS3-017) ---
@@ -96,13 +96,13 @@ respond in response OpaquePointer
 respond in status Int32
 respond in body String
 respond out Int32
-respond body runtimeBinding eav_http_respond
+respond body runtimeBinding ss_http_respond
 respond purpose "Write a plaintext response body + status; returns the runtime status"
 
 requestPath is operation
 requestPath in request OpaquePointer
 requestPath out String
-requestPath body runtimeBinding eav_http_request_path
+requestPath body runtimeBinding ss_http_request_path
 requestPath purpose "Read the request path from a live request"
 
 serve is operation
@@ -112,5 +112,5 @@ serve in method String
 serve in path String
 serve in handler HttpHandler
 serve out Int32
-serve body runtimeBinding eav_http_serve
+serve body runtimeBinding ss_http_serve
 serve purpose "Run the blocking HTTP server for one route+handler (until SIGINT)"

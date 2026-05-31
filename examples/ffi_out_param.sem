@@ -1,5 +1,5 @@
 # ffi_out_param — the FFI out-param ABI (WS3-016, the seam sqlite/http C APIs
-# bind through). `ffiAdd` binds the C symbol `int eav_ffi_add(int64_t a,
+# bind through). `ffiAdd` binds the C symbol `int ss_ffi_add(int64_t a,
 # int64_t b, int64_t *out)`: the result is returned through a trailing pointer
 # and the function returns an i32 status (0 = ok). The `outParam` marker tells
 # the compiler to allocate the result slot, pass its address, call, and load the
@@ -36,9 +36,9 @@ ffiAdd is operation
 ffiAdd in a Int64
 ffiAdd in b Int64
 ffiAdd out Int64
-ffiAdd body runtimeBinding eav_ffi_add
+ffiAdd body runtimeBinding ss_ffi_add
 ffiAdd outParam
-ffiAdd purpose "Add two Int64s through the C out-param ABI (eav_ffi_add)"
+ffiAdd purpose "Add two Int64s through the C out-param ABI (ss_ffi_add)"
 ffiAdd invariant "Writes a+b through the out-pointer; returns non-zero for a negative a"
 ffiAdd suppress SS5000 because "demonstration of the FFI out-param seam; the real home is a .semsig-backed stdlib module"
 

@@ -1,4 +1,4 @@
-/* eav_panic — WS1-130 structured trap report (the native build's copy; the JIT
+/* ss_panic — WS1-130 structured trap report (the native build's copy; the JIT
  * registers an in-process Python implementation of the same ABI).
  *
  * The compiler injects a call to this helper at every no-UB guard site (integer
@@ -14,12 +14,12 @@
 #include <stdint.h>
 
 #ifdef _WIN32
-#define EAV_NORETURN __declspec(noreturn)
+#define SS_NORETURN __declspec(noreturn)
 #else
-#define EAV_NORETURN __attribute__((noreturn))
+#define SS_NORETURN __attribute__((noreturn))
 #endif
 
-EAV_NORETURN void eav_panic(const char *code, const char *kind, const char *op,
+SS_NORETURN void ss_panic(const char *code, const char *kind, const char *op,
                             int32_t row, const char *reason,
                             int64_t left, int64_t right) {
     fflush(stdout);

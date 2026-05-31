@@ -34,8 +34,8 @@ stdoutWriter purpose "Allow controlled writes to standard output"
 
 chanCreate is operation
 chanCreate out AsyncChannelHandle
-chanCreate body runtimeBinding eav_async_channel_create
-chanCreate suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+chanCreate body runtimeBinding ss_async_channel_create
+chanCreate suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 chanProduce is operation
 chanProduce in channel AsyncChannelHandle
@@ -43,21 +43,21 @@ chanProduce in delayMs Int64
 chanProduce in value Int64
 chanProduce out Int32
 chanProduce async yes
-chanProduce body runtimeBinding eav_async_channel_produce
-chanProduce suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+chanProduce body runtimeBinding ss_async_channel_produce
+chanProduce suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 chanReceive is operation
 chanReceive in channel AsyncChannelHandle
 chanReceive out Int64
 chanReceive async yes
-chanReceive body runtimeBinding eav_async_channel_receive
-chanReceive suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+chanReceive body runtimeBinding ss_async_channel_receive
+chanReceive suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 chanClose is operation
 chanClose in channel AsyncChannelHandle
 chanClose out Int32
-chanClose body runtimeBinding eav_async_channel_close
-chanClose suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+chanClose body runtimeBinding ss_async_channel_close
+chanClose suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 main is operation
 main out ExitCode

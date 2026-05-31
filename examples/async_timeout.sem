@@ -42,30 +42,30 @@ asyncWithTimeout in value Int64
 asyncWithTimeout in timeoutMs Int64
 asyncWithTimeout out AsyncFuture
 asyncWithTimeout async yes
-asyncWithTimeout body runtimeBinding eav_async_timeout_start
-asyncWithTimeout suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+asyncWithTimeout body runtimeBinding ss_async_timeout_start
+asyncWithTimeout suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncDelay is operation
 asyncDelay in delayMs Int64
 asyncDelay in value Int64
 asyncDelay out AsyncFuture
 asyncDelay async yes
-asyncDelay body runtimeBinding eav_async_delay_start
-asyncDelay suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+asyncDelay body runtimeBinding ss_async_delay_start
+asyncDelay suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncAwaitResult is operation
 asyncAwaitResult in future AsyncFuture
 asyncAwaitResult out Int64
 asyncAwaitResult async yes
 asyncAwaitResult outParam
-asyncAwaitResult body runtimeBinding eav_async_await_result
-asyncAwaitResult suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+asyncAwaitResult body runtimeBinding ss_async_await_result
+asyncAwaitResult suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncCancel is operation
 asyncCancel in future AsyncFuture
 asyncCancel out Int32
-asyncCancel body runtimeBinding eav_async_cancel
-asyncCancel suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+asyncCancel body runtimeBinding ss_async_cancel
+asyncCancel suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 main is operation
 main out ExitCode

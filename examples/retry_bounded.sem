@@ -1,7 +1,7 @@
 # retry_bounded — bounded retry of a fallible call (R-041). `useRetry 3` on a
 # call wraps it in a retry loop: the fallible out-param call is re-invoked until
 # it returns ok (status 0) or the attempt budget is spent. The demo symbol
-# `eav_ffi_count` increments a counter, writes it through the out-pointer, and
+# `ss_ffi_count` increments a counter, writes it through the out-pointer, and
 # ALWAYS returns an error status — so with `useRetry 3` it is invoked exactly 3
 # times and the written value is 3, proving the retry re-invoked the call. When
 # the budget is exhausted the last error surfaces normally (catch / branch
@@ -34,7 +34,7 @@ stdoutWriter purpose "Allow controlled writes to standard output"
 
 ffiCount is operation
 ffiCount out Int64
-ffiCount body runtimeBinding eav_ffi_count
+ffiCount body runtimeBinding ss_ffi_count
 ffiCount outParam
 ffiCount purpose "Increment and return a per-process call counter; always fails"
 ffiCount invariant "Writes the attempt number through the out-pointer; returns non-zero"

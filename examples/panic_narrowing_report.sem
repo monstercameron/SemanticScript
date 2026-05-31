@@ -1,7 +1,7 @@
 # panic_narrowing_report — RUNTIME trap test (WS1-131, §1K, R-076). A narrowing
 # numeric conversion (Int64 -> Int8) is CHECKED, not a silent truncation: the
 # value 300 does not fit a signed 8-bit type (range -128..127), so at runtime the
-# narrowing guard fires `eav_panic` with SSR0012 and exits 134 instead of quietly
+# narrowing guard fires `ss_panic` with SSR0012 and exits 134 instead of quietly
 # dropping the high bits to 44. This is the load-bearing test that narrowing
 # conversions never silently lose data.
 #
@@ -19,7 +19,7 @@ examplesPanicNarrowingReport is module
 examplesPanicNarrowingReport path examples.panicNarrowingReport
 examplesPanicNarrowingReport exports main
 examplesPanicNarrowingReport purpose "Trip the checked-narrowing guard and report it"
-examplesPanicNarrowingReport invariant "Traps via eav_panic; never truncates silently"
+examplesPanicNarrowingReport invariant "Traps via ss_panic; never truncates silently"
 
 ExitCode is alias
 ExitCode for Int32
@@ -28,7 +28,7 @@ ExitCode purpose "Process exit status"
 main is operation
 main out ExitCode
 main async no
-main purpose "Narrow 300 to Int8 and trip the eav_panic narrowing guard"
+main purpose "Narrow 300 to Int8 and trip the ss_panic narrowing guard"
 main invariant "Never completes: panics at runtime with SSR0012"
 main let big immutable Int64 300
 main let okCode immutable ExitCode 0

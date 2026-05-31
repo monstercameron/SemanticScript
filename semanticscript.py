@@ -8294,17 +8294,17 @@ class EavCodegen:
         elif name == "strcmp":
             fn = ir.Function(self.module, ir.FunctionType(ir.IntType(32), [i8p, i8p]),
                              name="strcmp")
-        elif name == "eav_http_html_escape":
+        elif name == "ss_http_html_escape_str":
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
-                             name="eav_http_html_escape")
-        elif name == "eav_panic":
+                             name="ss_http_html_escape_str")
+        elif name == "ss_panic":
             # WS1-130 structured-trap helper: prints a crash report
             # (code · kind · op · row · reason · operands) to stderr and exits.
             i64 = ir.IntType(64)
             fn = ir.Function(
                 self.module,
                 ir.FunctionType(ir.VoidType(), [i8p, i8p, i8p, i32, i8p, i64, i64]),
-                name="eav_panic")
+                name="ss_panic")
             fn.attributes.add("noreturn")
         else:
             raise EavError(f"no runtime declaration for {name!r}")
@@ -8471,10 +8471,10 @@ class EavCodegen:
         return recursive
 
     def _depth_counter(self):
-        """The shared `__eav_call_depth` global backing the recursion guard."""
+        """The shared `__ss_call_depth` global backing the recursion guard."""
         if getattr(self, "_depth_gv_cache", None) is None:
             i64 = ir.IntType(64)
-            gv = ir.GlobalVariable(self.module, i64, name="__eav_call_depth")
+            gv = ir.GlobalVariable(self.module, i64, name="__ss_call_depth")
             gv.linkage = "internal"
             gv.initializer = ir.Constant(i64, 0)
             self._depth_gv_cache = gv
@@ -9015,7 +9015,7 @@ class EavCodegen:
                 # into an outer template (escaping it again would corrupt the
                 # already-escaped markup). README ss16 §10 fragment newtypes.
                 if a.payload[1] not in ("HtmlSafeUrl", "HtmlFragment", "HtmlTrustedFragment"):
-                    val = builder.call(self.runtime("eav_http_html_escape"), [val])
+                    val = builder.call(self.runtime("ss_http_html_escape_str"), [val])
                 piece = val
             result = piece if result is None else self._concat(builder, result, piece)
         return result if result is not None else self.global_string(b"\x00")
@@ -9738,7 +9738,7 @@ class EavCodegen:
     def _emit_contract_check(self, builder, cond, value, call) -> None:
         """X-092: trap if a numeric precondition is violated at runtime (a runtime
         assert that traps, not UB). Discharged literals never reach here. On
-        violation it raises a structured `eav_panic` (WS1-130/WS1-131)."""
+        violation it raises a structured `ss_panic` (WS1-130/WS1-131)."""
         z = ir.Constant(value.type, 0)
         if cond == "nonNegative":
             bad = builder.icmp_signed("<", value, z)
@@ -9778,7 +9778,7 @@ class EavCodegen:
         return builder.extract_value(aggregate, 0), builder.extract_value(aggregate, 1)
 
     def _emit_panic(self, b, code, kind, reason, op_name, line, left, right) -> None:
-        """WS1-130/WS1-131: emit a structured `eav_panic(...)` call at a guard
+        """WS1-130/WS1-131: emit a structured `ss_panic(...)` call at a guard
         site — the no-UB trap reports `code · kind · op · row · reason · operands`
         to stderr and terminates, instead of a bare `llvm.trap` (silent SIGILL).
         `left`/`right` are the i64 operands at the site (0 for the absent one)."""
@@ -9798,14 +9798,14 @@ class EavCodegen:
                 return v
             return b.sext(v, i64) if v.type.width < 64 else b.trunc(v, i64)
 
-        b.call(self.runtime("eav_panic"),
+        b.call(self.runtime("ss_panic"),
                [s(code), s(kind), s(op_name), ir.Constant(i32, int(line)),
                 s(reason), w(left), w(right)])
 
     def _guard_div_zero(self, builder, divisor, dividend, kind_label,
                         op_name, line) -> None:
         """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a
-        zero-check that branches to a structured `eav_panic` (WS1-130); the
+        zero-check that branches to a structured `ss_panic` (WS1-130); the
         builder continues on the nonzero path."""
         fn = builder.function
         iszero = builder.icmp_signed("==", divisor, ir.Constant(divisor.type, 0))
@@ -10056,6 +10056,12 @@ def _resolve_runtime_links(library: dict, platform: str,
         "include": merged("include"),
         "defines": merged("defines"),
         "libs": merged("libs"),
+        # Symbols the library binds straight to a legacy `ss_*` runtime function
+        # (no shim). On a Windows/MSVC-style link only `dllexport`/`/EXPORT:`
+        # symbols enter the DLL export table that ctypes (the JIT symbol
+        # resolver) reads, so these must be force-exported. Empty on POSIX,
+        # where shared-object default visibility already exports them.
+        "exports": merged("exports"),
     }
 
 
@@ -10091,7 +10097,7 @@ def _runtime_cache_key(resolved: dict, platform: str, compiler_id: str,
     for part in (platform, compiler_id):
         digest.update(part.encode("utf-8"))
         digest.update(b"\0")
-    for field in ("defines", "include", "libs"):
+    for field in ("defines", "include", "libs", "exports"):
         for value in resolved.get(field, []):
             digest.update(f"{field}={value}".encode("utf-8"))
             digest.update(b"\0")
@@ -10155,8 +10161,9 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     # x64-emulated (JIT triple x86_64-pc-windows-msvc) while clang defaults to
     # ARM64 — loading the native DLL fails WinError 193. Pin clang to the JIT
     # triple so the architectures agree (a no-op when they already match).
+    jit_triple = ""
     try:
-        jit_triple = llvm.get_default_triple()
+        jit_triple = llvm.get_default_triple() or ""
         if jit_triple:
             cmd.append("--target=" + jit_triple)
     except Exception:
@@ -10168,6 +10175,16 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
         cmd.append("-D" + d)
     for libname in resolved["libs"]:
         cmd.append("-l" + libname)
+    # Force-export the legacy symbols this library binds directly (no shim).
+    # MSVC-style links (lld-link, used for the x86_64-pc-windows-msvc JIT
+    # triple) export nothing unless dllexport/`/EXPORT:`-named, so a directly
+    # bound legacy symbol would be absent from the export table the JIT resolver
+    # reads — its address would resolve to null and the call would fault. POSIX
+    # shared objects export default-visibility symbols already, so this is a
+    # Windows-only concern (`/EXPORT:` is lld-link/MSVC syntax).
+    if "msvc" in jit_triple:
+        for sym in resolved.get("exports", []):
+            cmd.append("-Wl,/EXPORT:" + sym)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise EavError(
@@ -10178,7 +10195,7 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
 
 def _referenced_runtime_symbols(program: Program) -> set:
     """The ABI symbols a program needs: every `body runtimeBinding` symbol, plus
-    `eav_http_html_escape` when any call lowers `html.render` (auto-escape)."""
+    `ss_http_html_escape_str` when any call lowers `html.render` (auto-escape)."""
     out: set = set()
     for n in program.order:
         ent = program.entities[n]
@@ -10190,7 +10207,7 @@ def _referenced_runtime_symbols(program: Program) -> set:
         if ent.kind in ("call", "task"):
             inv = ent.fact("invokes")
             if inv and inv.payload and inv.payload[0] == "html.render":
-                out.add("eav_http_html_escape")
+                out.add("ss_http_html_escape_str")
     return out
 
 
@@ -10232,9 +10249,9 @@ def build_link_plan(program: Program, platform: Optional[str] = None,
 
 # WS1-130/WS1-136: the runtime trap-code band. Mirrors the compile-time
 # DIAGNOSTICS registry but for guard sites that fire during execution; each maps
-# a structured `eav_panic` kind to a code + summary + repair hint. (Seed set —
+# a structured `ss_panic` kind to a code + summary + repair hint. (Seed set —
 # WS1-131 routes the remaining trap kinds — OOB / narrowing / recursion — through
-# eav_panic with their own SSR#### codes.)
+# ss_panic with their own SSR#### codes.)
 RUNTIME_DIAGNOSTICS = {
     "SSR0010": {"kind": "divide-by-zero",
                 "summary": "Integer divide/modulo by zero at runtime.",
@@ -10252,7 +10269,7 @@ RUNTIME_DIAGNOSTICS = {
 
 # WS1-131: logical recursion-depth bound. A statically-recursive operation
 # increments a shared depth counter on entry and traps with a structured
-# `eav_panic` (SSR0013) past this limit — a runaway-recursion signal that fires
+# `ss_panic` (SSR0013) past this limit — a runaway-recursion signal that fires
 # (for typical small frames) before the native stack guard would, and is well
 # above any legitimate recursion depth in practice.
 EAV_RECURSION_LIMIT = 10000
@@ -10260,9 +10277,9 @@ EAV_RECURSION_LIMIT = 10000
 _EAV_PANIC_CFUNC = None  # kept alive so the JIT-registered callback survives GC
 
 
-def _eav_panic_py(code, kind, op, row, reason, left, right) -> None:
-    """In-process implementation of the WS1-130 `eav_panic` ABI for the JIT (the
-    native build links the C `eav_panic` instead). Prints the structured crash
+def _ss_panic_py(code, kind, op, row, reason, left, right) -> None:
+    """In-process implementation of the WS1-130 `ss_panic` ABI for the JIT (the
+    native build links the C `ss_panic` instead). Prints the structured crash
     report to stderr and terminates the process with code 134 (the conventional
     abort/trap status), so a trapping program reports *why* it died rather than
     dying on a silent SIGILL."""
@@ -10296,9 +10313,9 @@ _EAV_FFI_COUNT_CFUNC = None
 _EAV_FFI_COUNT_N = [0]  # per-process invocation counter for the retry demo
 
 
-def _eav_ffi_count_py(out_ptr) -> int:
+def _ss_ffi_count_py(out_ptr) -> int:
     """In-process impl of the R-041 retry demo symbol
-    `int eav_ffi_count(int64_t *out)`: increments a per-process counter, writes
+    `int ss_ffi_count(int64_t *out)`: increments a per-process counter, writes
     it through the out-pointer, and ALWAYS returns a non-zero (error) status — so
     a `useRetry N` call invokes it exactly N times and the written value ends at
     N, proving the bounded retry re-invoked the call."""
@@ -10307,13 +10324,13 @@ def _eav_ffi_count_py(out_ptr) -> int:
     return 1
 
 
-def _eav_ffi_add_py(a, b, out_ptr) -> int:
+def _ss_ffi_add_py(a, b, out_ptr) -> int:
     """In-process implementation of the WS3-016 FFI out-param ABI demo symbol
-    `int eav_ffi_add(int64_t a, int64_t b, int64_t *out)`: writes a+b through the
+    `int ss_ffi_add(int64_t a, int64_t b, int64_t *out)`: writes a+b through the
     out-pointer and returns 0 (ok), or returns a non-zero status (1) for a
     negative `a` without writing — exercising the status->error seam (the shape
     sqlite/http C APIs use). Proves the out-param ABI end-to-end in the JIT (the
-    native build links the C `eav_ffi_add`)."""
+    native build links the C `ss_ffi_add`)."""
     if a < 0:
         return 1
     out_ptr[0] = a + b
@@ -10321,8 +10338,8 @@ def _eav_ffi_add_py(a, b, out_ptr) -> int:
 
 
 def _register_panic_symbol() -> None:
-    """Register the in-process `eav_panic` callback (compiler-injected at guard
-    sites) and the `eav_ffi_add` out-param-ABI demo symbol with the JIT, before
+    """Register the in-process `ss_panic` callback (compiler-injected at guard
+    sites) and the `ss_ffi_add` out-param-ABI demo symbol with the JIT, before
     every JIT run."""
     import ctypes
     global _EAV_PANIC_CFUNC, _EAV_FFI_ADD_CFUNC, _EAV_FFI_COUNT_CFUNC
@@ -10330,21 +10347,21 @@ def _register_panic_symbol() -> None:
         cft = ctypes.CFUNCTYPE(
             None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
             ctypes.c_int32, ctypes.c_char_p, ctypes.c_int64, ctypes.c_int64)
-        _EAV_PANIC_CFUNC = cft(_eav_panic_py)
+        _EAV_PANIC_CFUNC = cft(_ss_panic_py)
     llvm.add_symbol(
-        "eav_panic", ctypes.cast(_EAV_PANIC_CFUNC, ctypes.c_void_p).value)
+        "ss_panic", ctypes.cast(_EAV_PANIC_CFUNC, ctypes.c_void_p).value)
     if _EAV_FFI_ADD_CFUNC is None:
         cft2 = ctypes.CFUNCTYPE(
             ctypes.c_int32, ctypes.c_int64, ctypes.c_int64,
             ctypes.POINTER(ctypes.c_int64))
-        _EAV_FFI_ADD_CFUNC = cft2(_eav_ffi_add_py)
+        _EAV_FFI_ADD_CFUNC = cft2(_ss_ffi_add_py)
     llvm.add_symbol(
-        "eav_ffi_add", ctypes.cast(_EAV_FFI_ADD_CFUNC, ctypes.c_void_p).value)
+        "ss_ffi_add", ctypes.cast(_EAV_FFI_ADD_CFUNC, ctypes.c_void_p).value)
     if _EAV_FFI_COUNT_CFUNC is None:
         cft3 = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.POINTER(ctypes.c_int64))
-        _EAV_FFI_COUNT_CFUNC = cft3(_eav_ffi_count_py)
+        _EAV_FFI_COUNT_CFUNC = cft3(_ss_ffi_count_py)
     llvm.add_symbol(
-        "eav_ffi_count", ctypes.cast(_EAV_FFI_COUNT_CFUNC, ctypes.c_void_p).value)
+        "ss_ffi_count", ctypes.cast(_EAV_FFI_COUNT_CFUNC, ctypes.c_void_p).value)
 
 
 def _register_runtime_symbols(program: Program) -> None:
@@ -10571,9 +10588,9 @@ def cmd_run(args) -> int:
     runtime trap surfaces as the child's exit code/signal and is reported here as
     a clean, stable trap status — never an uncaught Python traceback. WS1-130:
     guard sites (divide/modulo by zero, violated numeric preconditions) now lower
-    to a structured `eav_panic` that prints `code · kind · op · row · reason ·
+    to a structured `ss_panic` that prints `code · kind · op · row · reason ·
     operands` to stderr and exits 134; a residual bare trap (overflow / deep
-    recursion, not yet routed through eav_panic) still surfaces as SSR0001."""
+    recursion, not yet routed through ss_panic) still surfaces as SSR0001."""
     program = parse(_read_program_source(args.path))
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
@@ -10641,11 +10658,11 @@ def build_executable(program: Program, out_path: str,
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
-    # WS1-130: the structured-trap helper `eav_panic` is compiler-injected at
+    # WS1-130: the structured-trap helper `ss_panic` is compiler-injected at
     # guard sites (not a program runtimeBinding), so it is always linked in.
-    # WS3-016: `eav_ffi_add` is the FFI out-param ABI demo symbol — always linked
+    # WS3-016: `ss_ffi_add` is the FFI out-param ABI demo symbol — always linked
     # so a program binding it builds natively (the JIT registers it in-process).
-    for _always in ("eav_panic.c", "eav_ffi.c"):
+    for _always in ("ss_panic.c", "ss_ffi.c"):
         _src = os.path.normpath(os.path.join(rt, _always))
         if os.path.exists(_src):
             cmd.append(_src)
@@ -11084,9 +11101,9 @@ def _source_declares_project(source_text: str) -> bool:
 
 
 def _parse_panic(stderr: str) -> Optional[dict]:
-    """WS1-135: parse an `eav_panic` crash block out of captured stderr into a
+    """WS1-135: parse an `ss_panic` crash block out of captured stderr into a
     structured `panic` object for the sem.eval.v1 / run --json envelope. Returns
-    None when the program did not trap through eav_panic."""
+    None when the program did not trap through ss_panic."""
     import re
     m = re.search(r"EAV PANIC (SSR\d+) (\S+)", stderr)
     if not m:

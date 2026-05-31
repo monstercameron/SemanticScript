@@ -3,7 +3,7 @@
 # §16's htmlTemplate `{{hole}}` rendering needs a named-data model EAV does not
 # yet have (deferred), so the running form (X-011 migration direction) renders by
 # composing escaped values with string.concat. `escapeText` binds the runtime's
-# context-aware HTML escaper (eav_http_html_escape) through the runtimeBinding
+# context-aware HTML escaper (ss_http_html_escape_str) through the runtimeBinding
 # seam — the compiler stays domain-agnostic.
 
 standardHtmlRender is module
@@ -14,5 +14,5 @@ standardHtmlRender invariant "Dynamic values are escaped before composition; ass
 escapeText is operation
 escapeText in text String
 escapeText out String
-escapeText body runtimeBinding eav_http_html_escape
+escapeText body runtimeBinding ss_http_html_escape_str
 escapeText purpose "Escape text for safe interpolation into HTML element/attribute content"

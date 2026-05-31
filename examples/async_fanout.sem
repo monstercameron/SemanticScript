@@ -38,15 +38,15 @@ asyncDelay in delayMs Int64
 asyncDelay in value Int64
 asyncDelay out AsyncFuture
 asyncDelay async yes
-asyncDelay body runtimeBinding eav_async_delay_start
-asyncDelay suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+asyncDelay body runtimeBinding ss_async_delay_start
+asyncDelay suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncAwait is operation
 asyncAwait in future AsyncFuture
 asyncAwait out Int64
 asyncAwait async yes
-asyncAwait body runtimeBinding eav_async_await
-asyncAwait suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+asyncAwait body runtimeBinding ss_async_await
+asyncAwait suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 main is operation
 main out ExitCode

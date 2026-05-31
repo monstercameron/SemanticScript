@@ -1,8 +1,8 @@
-/* eav_gui.c — GUI runtime shim exposing the SemanticScript Win32 GUI runtime
+/* ss_gui.c — GUI runtime shim exposing the SemanticScript Win32 GUI runtime
  * (SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c) to the EAV
  * front end (semanticscript), through the `body runtimeBinding <symbol>` seam.
  *
- * `eav_gui_health_check()` stands up a real Win32 window with an auto-close
+ * `ss_gui_health_check()` stands up a real Win32 window with an auto-close
  * handler: when the window is shown the handler closes it, so ss_gui_application_run
  * returns without user interaction (the same non-interactive pattern as the
  * runtime's health_demo.c). It returns SS_GUI_OK on a desktop session, and
@@ -14,34 +14,34 @@
 #include "sem_win32_gui_runtime.h"
 
 #ifdef _WIN32
-#define EAV_EXPORT __declspec(dllexport)
+#define SS_EXPORT __declspec(dllexport)
 #else
-#define EAV_EXPORT __attribute__((visibility("default")))
+#define SS_EXPORT __attribute__((visibility("default")))
 #endif
 
 /* The GUI runtime source ships an (unguarded) WinMain that references `main` for
  * standalone GUI-exe builds. We build it as a shared library and never call
  * WinMain, so provide a dead stub to satisfy the link; the EAV program's own
  * entry is JIT-compiled separately and is what actually runs. */
-EAV_EXPORT int main(void) { return 0; }
+SS_EXPORT int main(void) { return 0; }
 
-enum { EAV_GUI_WINDOW = 1 };
+enum { SS_GUI_WINDOW = 1 };
 
-static int32_t eav_gui_on_shown(SSGuiSession *session, SSGuiEvent *event) {
+static int32_t ss_gui_on_shown(SSGuiSession *session, SSGuiEvent *event) {
     (void)event;
-    return ss_gui_window_close(session, EAV_GUI_WINDOW);
+    return ss_gui_window_close(session, SS_GUI_WINDOW);
 }
 
-EAV_EXPORT int32_t eav_gui_health_check(void) {
+SS_EXPORT int32_t ss_gui_health_check(void) {
     const SSGuiWindowConfig windows[] = {
-        {EAV_GUI_WINDOW, "EAV GUI Health", 320, 200, 200, 120,
+        {SS_GUI_WINDOW, "EAV GUI Health", 320, 200, 200, 120,
          SS_GUI_WINDOW_LAYOUT_VERTICAL_STACK, 1}
     };
     const SSGuiEventConfig events[] = {
-        {SS_GUI_TARGET_WINDOW, EAV_GUI_WINDOW, SS_GUI_EVENT_SHOWN, eav_gui_on_shown}
+        {SS_GUI_TARGET_WINDOW, SS_GUI_WINDOW, SS_GUI_EVENT_SHOWN, ss_gui_on_shown}
     };
     const SSGuiApplicationConfig app = {
-        "eavGuiHealth", "EAV GUI Health", EAV_GUI_WINDOW,
+        "eavGuiHealth", "EAV GUI Health", SS_GUI_WINDOW,
         windows, 1, (const SSGuiControlConfig *)0, 0, events, 1,
         (SSGuiHandler)0, (void *)0
     };

@@ -1,6 +1,6 @@
 # gui_health_demo — a real Win32 GUI runtime check (WS3-044). Binds the
 # SemanticScript Win32 GUI runtime (sem_win32_gui_runtime.c) through the
-# eav_gui_health_check seam: it creates a real window with an auto-close handler,
+# ss_gui_health_check seam: it creates a real window with an auto-close handler,
 # runs the Win32 message loop, and tears down — returning 0. (On a desktop the
 # window flashes briefly; with no interactive desktop the runtime reports
 # unavailable, which the check maps to 0.) Kept out of examples/ so run_examples
@@ -19,7 +19,7 @@ fix invariant "Exposes main, which runs the Win32 GUI health check and returns i
 
 guiHealthCheck is operation
 guiHealthCheck out Int32
-guiHealthCheck body runtimeBinding eav_gui_health_check
+guiHealthCheck body runtimeBinding ss_gui_health_check
 guiHealthCheck purpose "Create a window, auto-close it, and return the GUI runtime status (0 = ok)"
 guiHealthCheck suppress SS5000 because "GUI runtime seam; the typed home is std/standard.gui.sem"
 

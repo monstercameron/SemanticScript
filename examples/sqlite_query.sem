@@ -1,5 +1,5 @@
 # sqlite_query — the real sqlite runtime (WS3-016). The vendored sqlite engine
-# (third_party/sqlite/sqlite3.c) is wrapped by eav_sqlite.c into a plain
+# (third_party/sqlite/sqlite3.c) is wrapped by ss_sqlite.c into a plain
 # `args -> single return` ABI that binds through the compiler's generic
 # `body runtimeBinding <symbol>` seam; the JIT compiles + loads that native
 # library (arch-matched to the JIT triple) and runs actual SQL. This opens an
@@ -33,7 +33,7 @@ stdoutWriter purpose "Allow controlled writes to standard output"
 
 sqliteOpenMemory is operation
 sqliteOpenMemory out OpaquePointer
-sqliteOpenMemory body runtimeBinding eav_sqlite_open_memory
+sqliteOpenMemory body runtimeBinding ss_sqlite_open_memory
 sqliteOpenMemory purpose "Open a fresh in-memory sqlite database"
 sqliteOpenMemory suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
@@ -41,7 +41,7 @@ sqliteExec is operation
 sqliteExec in db OpaquePointer
 sqliteExec in sql String
 sqliteExec out Int32
-sqliteExec body runtimeBinding eav_sqlite_exec
+sqliteExec body runtimeBinding ss_sqlite_exec
 sqliteExec purpose "Execute a one-shot SQL statement"
 sqliteExec suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
@@ -49,14 +49,14 @@ sqliteQueryScalar is operation
 sqliteQueryScalar in db OpaquePointer
 sqliteQueryScalar in sql String
 sqliteQueryScalar out Int64
-sqliteQueryScalar body runtimeBinding eav_sqlite_query_scalar
+sqliteQueryScalar body runtimeBinding ss_sqlite_query_scalar
 sqliteQueryScalar purpose "Run a query and read the first column of the first row as Int64"
 sqliteQueryScalar suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
 sqliteClose is operation
 sqliteClose in db OpaquePointer
 sqliteClose out Int32
-sqliteClose body runtimeBinding eav_sqlite_close
+sqliteClose body runtimeBinding ss_sqlite_close
 sqliteClose purpose "Close the database handle"
 sqliteClose suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 

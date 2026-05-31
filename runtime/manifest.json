@@ -3,12 +3,16 @@
   "comment": "Native runtime libraries linked into JIT/native builds. semanticscript reads this data \u2014 it carries no per-library knowledge in the compiler. A library is built (cached) and loaded only when a program references a runtimeBinding symbol matching one of its `provides` prefixes. R-018: link inputs are platform-scoped. Top-level `sources`/`include`/`defines`/`libs` are the cross-platform base; `platforms.<name>` (windows|linux|macos|wasi) adds host-specific entries, and `compiler.<driver>` (gnu|clang|msvc|zig) adds driver-specific overlays. The resolver `_resolve_runtime_links(library, platform)` merges base + platform + compiler WITHOUT compiling, so non-Windows builds never see Windows-only libs like ws2_32 (R-013).",
   "libraries": [
     {
-      "name": "eav_runtime",
+      "name": "ss_runtime",
       "provides": [
-        "eav_sqlite_"
+        "ss_sqlite_"
+      ],
+      "exports": [
+        "ss_sqlite_exec",
+        "ss_sqlite_library_version"
       ],
       "sources": [
-        "eav_sqlite.c",
+        "ss_sqlite.c",
         "../legacy/SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c",
         "../third_party/sqlite/sqlite3.c"
       ],
@@ -40,12 +44,18 @@
       }
     },
     {
-      "name": "eav_http",
+      "name": "ss_http",
       "provides": [
-        "eav_http_"
+        "ss_http_"
+      ],
+      "exports": [
+        "ss_http_now_millis",
+        "ss_http_request_path",
+        "ss_http_session_expires_at",
+        "ss_http_session_is_expired"
       ],
       "sources": [
-        "eav_http.c",
+        "ss_http.c",
         "../legacy/SemanticScript/runtime/native_http/sem_http_runtime.c"
       ],
       "include": [
@@ -64,13 +74,13 @@
       }
     },
     {
-      "name": "eav_async",
+      "name": "ss_async",
       "comment": "R-040 async runtime backed by libuv (third_party/libuv): the SemanticScript event-loop async runtime built with SEM_ASYNC_WITH_LIBUV, wrapped for the runtimeBinding seam. Single-threaded event loop, real libuv backend.",
       "provides": [
-        "eav_async_"
+        "ss_async_"
       ],
       "sources": [
-        "eav_async.c",
+        "ss_async.c",
         "../legacy/SemanticScript/runtime/native_async/sem_async_runtime.c",
         "../third_party/libuv/src/fs-poll.c",
         "../third_party/libuv/src/idna.c",
@@ -151,13 +161,13 @@
       }
     },
     {
-      "name": "eav_gui",
+      "name": "ss_gui",
       "comment": "WS3-044 GUI runtime: the SemanticScript Win32 GUI runtime wrapped for the runtimeBinding seam. A non-interactive health check (create window -> auto-close on shown -> return).",
       "provides": [
-        "eav_gui_"
+        "ss_gui_"
       ],
       "sources": [
-        "eav_gui.c",
+        "ss_gui.c",
         "../legacy/SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c"
       ],
       "include": [

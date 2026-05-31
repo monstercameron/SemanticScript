@@ -1,6 +1,6 @@
 # standard.async.semsig — generated signature sidecar (README ss26, ss27).
-# Typed contract over the libuv event-loop async runtime (the eav_async_* ABI,
-# runtime/eav_async.c on SemanticScript/runtime/native_async built with
+# Typed contract over the libuv event-loop async runtime (the ss_async_* ABI,
+# runtime/ss_async.c on SemanticScript/runtime/native_async built with
 # SEM_ASYNC_WITH_LIBUV against third_party/libuv). libuv concurrency model — a
 # single-threaded event loop, not threads. The lowered module is std/standard.async.sem.
 asyncSig is semsig
@@ -13,19 +13,19 @@ AsyncFuture for OpaquePointer
 AsyncFuture purpose "An opaque future handle armed on the libuv loop, resolved by await"
 
 delay is intrinsic
-delay target eav_async_delay_start
+delay target ss_async_delay_start
 delay arg delayMs Int64
 delay arg value Int64
 delay out AsyncFuture
 delay purpose "Arm a future that completes with `value` after `delayMs` on the event loop"
 
 await is intrinsic
-await target eav_async_await
+await target ss_async_await
 await arg future AsyncFuture
 await out Int64
 await purpose "Drive the event loop until the future is ready, then return its resolved value"
 
 runOnce is intrinsic
-runOnce target eav_async_run_once
+runOnce target ss_async_run_once
 runOnce out Int32
 runOnce purpose "Run one turn of the event loop without blocking (cooperative progress)"

@@ -1,7 +1,7 @@
 # panic_recursion_report — RUNTIME trap test (WS1-131, §1K). `loopRec` recurses
 # with no base case. A statically-recursive operation is instrumented with a
 # depth guard: each entry bumps a shared counter, and past the limit (10000) the
-# guard fires `eav_panic` with SSR0013 and exits 134 — a structured runaway-
+# guard fires `ss_panic` with SSR0013 and exits 134 — a structured runaway-
 # recursion report that fires (for small frames) before the native stack guard
 # would, instead of an opaque stack-overflow crash. Legitimate bounded recursion
 # (e.g. factorial, depth 5) is far under the limit and unaffected.
@@ -20,7 +20,7 @@ examplesPanicRecursionReport is module
 examplesPanicRecursionReport path examples.panicRecursionReport
 examplesPanicRecursionReport exports main
 examplesPanicRecursionReport purpose "Trip the recursion-depth guard and report it"
-examplesPanicRecursionReport invariant "Traps via eav_panic before overflowing the stack"
+examplesPanicRecursionReport invariant "Traps via ss_panic before overflowing the stack"
 
 ExitCode is alias
 ExitCode for Int32
@@ -29,7 +29,7 @@ ExitCode purpose "Process exit status"
 main is operation
 main out ExitCode
 main async no
-main purpose "Start an unbounded recursion and trip the eav_panic depth guard"
+main purpose "Start an unbounded recursion and trip the ss_panic depth guard"
 main invariant "Never completes: panics at runtime with SSR0013"
 main let seed immutable Int64 0
 main let okCode immutable ExitCode 0
