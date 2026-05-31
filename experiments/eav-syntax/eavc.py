@@ -10958,8 +10958,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     # EAV source and output are UTF-8 (README §33.2). On Windows the default
     # console encoding is cp1252, which cannot encode characters that legitimately
     # appear in source (em-dashes in comments, Unicode string literals) and would
-    # crash `fmt`/`run` output; force UTF-8 so every surface round-trips.
-    for _stream in (sys.stdout, sys.stderr):
+    # crash `fmt`/`run` output or corrupt a `fmt -` stdin pipe; force UTF-8 on
+    # every standard stream so source round-trips through pipes intact.
+    for _stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
             _stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):

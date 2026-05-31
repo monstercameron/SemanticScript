@@ -23,15 +23,36 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 EXAMPLES = os.path.join(HERE, "examples")
 EAVC = os.path.join(HERE, "eavc.py")
 
+MIN_APPS = 150                                       # X-214 corpus coverage floor
 HARD_NEG = {"div_by_zero_trap"}                      # rejected at compile time
 STRICT_NEG = {"capability_ungranted_use", "failure_unhandled_propagate"}  # blocked under --strict
 SUMMARY_RE = re.compile(r"----\s*(\d+) passed,\s*(\d+) failed\s*----")
 
 
+# EAV source/output is UTF-8 (README §33.2); decode child pipes as UTF-8 so
+# non-ASCII comments (em-dash, →, ✓) survive the round-trip on Windows cp1252.
+_UTF8 = dict(capture_output=True, text=True, encoding="utf-8")
+
+
 def run(path, strict=False):
     argv = [sys.executable, EAVC, "run"] + (["--strict"] if strict else []) + [path]
-    p = subprocess.run(argv, capture_output=True, text=True)
+    p = subprocess.run(argv, **_UTF8)
     return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def fmt_idempotent(path):
+    """fmt(src) must equal fmt(fmt(src)) — the formatter is a fixed point
+    (README §22; guards the WS4-005 de-indent class of bugs). Returns
+    (ok, detail)."""
+    a = subprocess.run([sys.executable, EAVC, "fmt", path], **_UTF8)
+    if a.returncode != 0:
+        return False, "fmt failed: " + (a.stderr or "").strip()[:60]
+    b = subprocess.run([sys.executable, EAVC, "fmt", "-"], input=a.stdout, **_UTF8)
+    if b.returncode != 0:
+        return False, "second fmt failed: " + (b.stderr or "").strip()[:60]
+    if a.stdout != b.stdout:
+        return False, "fmt not idempotent (fmt(x) != fmt(fmt(x)))"
+    return True, ""
 
 
 def main():
@@ -41,11 +62,24 @@ def main():
     rows = []                  # (status, name, detail)
     tests = passed = failed = 0
     neg_ok = neg_total = 0
+    fmt_ok = fmt_total = 0
     suite_ok = True
 
     for fn in files:
         name = fn[:-4]
         path = os.path.join(EXAMPLES, fn)
+
+        # Every example that parses must be a fixed point of fmt. HARD_NEG
+        # programs are intentionally rejected at parse/validate time (e.g.
+        # div-by-constant-zero, SS3111), so they have no canonical formatting
+        # and are exempt from the idempotence guard.
+        if name not in HARD_NEG:
+            fmt_total += 1
+            fi_ok, fi_detail = fmt_idempotent(path)
+            fmt_ok += fi_ok
+            suite_ok &= fi_ok
+            if not fi_ok:
+                rows.append(("FMT-BAD", name, fi_detail))
 
         if name in HARD_NEG:
             neg_total += 1
@@ -95,8 +129,12 @@ def main():
         print(f"{status:<7} {name:<{width}}  {detail}")
     print("=" * 60)
     examples_passed = sum(1 for s, _, _ in rows if s in ("PASS", "NEG-OK"))
-    print(f"Examples : {len(files)}   ok: {examples_passed}   not-ok: {len(files)-examples_passed}")
+    count_ok = len(files) >= MIN_APPS
+    suite_ok &= count_ok
+    print(f"Examples : {len(files)}   ok: {examples_passed}   not-ok: {len(files)-examples_passed}"
+          + ("" if count_ok else f"   COVERAGE-FAIL: < {MIN_APPS} apps"))
     print(f"Negatives: {neg_ok}/{neg_total} behaved as expected")
+    print(f"Fmt      : {fmt_ok}/{fmt_total} idempotent (fmt(x) == fmt(fmt(x)))")
     print(f"Assertions across all harness tests: {passed} passed, {failed} failed")
     print("RESULT   : " + ("ALL GREEN" if suite_ok else "FAILURES PRESENT"))
     return 0 if suite_ok else 1
