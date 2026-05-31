@@ -64,6 +64,69 @@
       ]
     },
     {
+      "name": "ss_libc",
+      "comment": "APP-RUN-6 libc shims (c.*) with Int64/const char* signatures so the app's declared types match exactly (no compiler coercion).",
+      "provides": [
+        "ss_c_"
+      ],
+      "sources": [
+        "ss_libc.c"
+      ]
+    },
+    {
+      "name": "ss_json",
+      "comment": "APP-RUN-6 JSON document runtime (json.*): ss_json.c is a direct-return shim over the legacy native_json out-param API.",
+      "provides": [
+        "ss_json_"
+      ],
+      "sources": [
+        "ss_json.c",
+        "../../legacy/SemanticScript/runtime/native_json/sem_json_runtime.c"
+      ],
+      "include": [
+        "../../legacy/SemanticScript/runtime/native_json"
+      ]
+    },
+    {
+      "name": "ss_bcrypt",
+      "comment": "APP-RUN-6 password hashing + CSPRNG + base64url (bcrypt.*). The app binds the native ss_bcrypt_*/ss_random_*/ss_base64url_* directly.",
+      "provides": [
+        "ss_bcrypt_",
+        "ss_random_",
+        "ss_base64url_"
+      ],
+      "exports": [
+        "ss_bcrypt_hash",
+        "ss_bcrypt_verify",
+        "ss_random_bytes",
+        "ss_base64url_encode"
+      ],
+      "sources": [
+        "../../legacy/SemanticScript/runtime/native_bcrypt/sem_bcrypt_runtime.c"
+      ],
+      "include": [
+        "../../legacy/SemanticScript/runtime/native_bcrypt"
+      ]
+    },
+    {
+      "name": "ss_log",
+      "comment": "APP-RUN-6 structured logging (log.*). The app binds the native ss_log_* directly.",
+      "provides": [
+        "ss_log_"
+      ],
+      "exports": [
+        "ss_log_info",
+        "ss_log_warn",
+        "ss_log_set_path"
+      ],
+      "sources": [
+        "../../legacy/SemanticScript/runtime/native_log/sem_log_runtime.c"
+      ],
+      "include": [
+        "../../legacy/SemanticScript/runtime/native_log"
+      ]
+    },
+    {
       "name": "ss_net",
       "comment": "APP-RUN-1 HTTP-GET client (net.fetchText): a self-contained winsock GET, no legacy/third-party deps.",
       "provides": [
@@ -107,7 +170,10 @@
         "ss_http_multipart_part_bytes",
         "ss_http_multipart_part_length",
         "ss_http_multipart_part_filename",
-        "ss_http_multipart_part_content_type"
+        "ss_http_multipart_part_content_type",
+        "ss_http_request_cookie",
+        "ss_http_request_path_param",
+        "ss_http_response_file"
       ],
       "sources": [
         "ss_http.c",

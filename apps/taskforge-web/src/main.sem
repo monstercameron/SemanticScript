@@ -919,6 +919,7 @@ registerHandler branch ifError allocateHashBufferCall goto registerAllocationFai
 registerHandler defer releaseHashBufferDefer
 registerHandler do hashBufferPreZeroCall
 registerHandler do hashPasswordCall
+registerHandler do viewHashedPasswordCall
 registerHandler do hashStatusOkCheckCall
 registerHandler branch if hashOk goto hashSucceeded
 registerHandler goto registerHashFailedHandler
@@ -965,6 +966,7 @@ registerHandler do allocateEncodedTokenLengthCall
 registerHandler branch ifError allocateEncodedTokenLengthCall goto registerAllocationFailed
 registerHandler defer releaseEncodedTokenLengthDefer
 registerHandler do encodeTokenCall
+registerHandler do sessionTokenStrCall
 registerHandler do encodeOkCheckCall
 registerHandler branch if encodeOk goto tokenEncodeSucceeded
 registerHandler goto registerTokenEncodeFailed
@@ -991,6 +993,7 @@ registerHandler at registerInsertSessionComplete do allocateCookieHeaderCall
 registerHandler branch ifError allocateCookieHeaderCall goto registerAllocationFailed
 registerHandler defer releaseCookieHeaderDefer
 registerHandler do formatCookieHeaderCall
+registerHandler do cookieHeaderStrCall
 registerHandler do writeCookieHeaderCall
 registerHandler do commitRegisterTxCall
 registerHandler branch ifError commitRegisterTxCall goto registerInsertSessionStepFailed
@@ -1521,7 +1524,7 @@ bindSessionTokenIntoInsertCall in registerHandler
 bindSessionTokenIntoInsertCall invokes sqlite.bindText
 bindSessionTokenIntoInsertCall arg statement SqliteStatement insertSessionStatement
 bindSessionTokenIntoInsertCall arg parameterIndex Int32 bindIndex1
-bindSessionTokenIntoInsertCall arg value String sessionTokenText
+bindSessionTokenIntoInsertCall arg value String sessionTokenStr
 bindSessionTokenIntoInsertCall catch bindSessionTokenIntoInsertError SqliteStatementBindFailure
 
 bindSessionUserIdCall is call
@@ -1596,7 +1599,7 @@ formatCookieHeaderCall arg buffer OpaquePointer cookieHeaderBuffer
 formatCookieHeaderCall arg size Int64 cookieHeaderCapacity
 formatCookieHeaderCall arg format String cookieHeaderTripleFormat
 formatCookieHeaderCall arg first String cookieNameEquals
-formatCookieHeaderCall arg second String sessionTokenText
+formatCookieHeaderCall arg second String sessionTokenStr
 formatCookieHeaderCall arg third String cookieAttributeSuffix
 formatCookieHeaderCall discards "result intentionally ignored"
 
@@ -1605,7 +1608,7 @@ writeCookieHeaderCall in registerHandler
 writeCookieHeaderCall invokes http.responseHeader
 writeCookieHeaderCall arg response HttpResponse response
 writeCookieHeaderCall arg name String setCookieHeaderName
-writeCookieHeaderCall arg value String cookieHeaderText
+writeCookieHeaderCall arg value String cookieHeaderStr
 writeCookieHeaderCall discards "result intentionally ignored"
 
 commitRegisterTxCall is call
@@ -2410,6 +2413,7 @@ loginHandler do allocateLoginEncodedTokenLengthCall
 loginHandler branch ifError allocateLoginEncodedTokenLengthCall goto loginInternalFailed
 loginHandler defer releaseLoginEncodedTokenLengthDefer
 loginHandler do encodeLoginTokenCall
+loginHandler do loginTokenStrCall
 loginHandler do loginEncodeOkCheckCall
 loginHandler branch if loginEncodeOk goto loginEncodeOkLabel
 loginHandler goto loginInternalFailed
@@ -2436,6 +2440,7 @@ loginHandler do allocateLoginCookieBufferCall
 loginHandler branch ifError allocateLoginCookieBufferCall goto loginInternalFailed
 loginHandler defer releaseLoginCookieBufferDefer
 loginHandler do formatLoginCookieHeaderCall
+loginHandler do loginCookieHeaderStrCall
 loginHandler do writeLoginCookieHeaderCall
 loginHandler do allocateLoginResponseBufferCall
 loginHandler branch ifError allocateLoginResponseBufferCall goto loginInternalFailed
@@ -2940,7 +2945,7 @@ bindLoginSessionTokenCall in loginHandler
 bindLoginSessionTokenCall invokes sqlite.bindText
 bindLoginSessionTokenCall arg statement SqliteStatement insertLoginSessionStatement
 bindLoginSessionTokenCall arg parameterIndex Int32 bindIndex1
-bindLoginSessionTokenCall arg value String loginSessionTokenText
+bindLoginSessionTokenCall arg value String loginTokenStr
 bindLoginSessionTokenCall catch bindLoginSessionTokenError SqliteStatementBindFailure
 
 bindLoginSessionUserIdCall is call
@@ -3016,7 +3021,7 @@ formatLoginCookieHeaderCall arg buffer OpaquePointer loginCookieHeaderBuffer
 formatLoginCookieHeaderCall arg size Int64 cookieHeaderCapacity
 formatLoginCookieHeaderCall arg format String cookieHeaderTripleFormat
 formatLoginCookieHeaderCall arg first String cookieNameEquals
-formatLoginCookieHeaderCall arg second String loginSessionTokenText
+formatLoginCookieHeaderCall arg second String loginTokenStr
 formatLoginCookieHeaderCall arg third String cookieAttributeSuffix
 formatLoginCookieHeaderCall discards "result intentionally ignored"
 
@@ -3025,7 +3030,7 @@ writeLoginCookieHeaderCall in loginHandler
 writeLoginCookieHeaderCall invokes http.responseHeader
 writeLoginCookieHeaderCall arg response HttpResponse response
 writeLoginCookieHeaderCall arg name String setCookieHeaderName
-writeLoginCookieHeaderCall arg value String loginCookieHeaderText
+writeLoginCookieHeaderCall arg value String loginCookieHeaderStr
 writeLoginCookieHeaderCall discards "result intentionally ignored"
 
 allocateLoginResponseBufferCall is call
@@ -4847,3 +4852,33 @@ filesystemReadAuthority purpose "Authorize `read filesystem` on the SQLite datab
 filesystemWriteAuthority is capability
 filesystemWriteAuthority grants write filesystem
 filesystemWriteAuthority purpose "Authorize `write filesystem` on the SQLite database-open path"
+
+viewHashedPasswordCall is call
+viewHashedPasswordCall in registerHandler
+viewHashedPasswordCall invokes c.cString
+viewHashedPasswordCall arg pointer OpaquePointer hashBuffer
+viewHashedPasswordCall out hashedPasswordText String
+
+sessionTokenStrCall is call
+sessionTokenStrCall in registerHandler
+sessionTokenStrCall invokes c.cString
+sessionTokenStrCall arg pointer OpaquePointer sessionTokenBuffer
+sessionTokenStrCall out sessionTokenStr String
+
+cookieHeaderStrCall is call
+cookieHeaderStrCall in registerHandler
+cookieHeaderStrCall invokes c.cString
+cookieHeaderStrCall arg pointer OpaquePointer cookieHeaderBuffer
+cookieHeaderStrCall out cookieHeaderStr String
+
+loginTokenStrCall is call
+loginTokenStrCall in loginHandler
+loginTokenStrCall invokes c.cString
+loginTokenStrCall arg pointer OpaquePointer loginTokenBuffer
+loginTokenStrCall out loginTokenStr String
+
+loginCookieHeaderStrCall is call
+loginCookieHeaderStrCall in loginHandler
+loginCookieHeaderStrCall invokes c.cString
+loginCookieHeaderStrCall arg pointer OpaquePointer loginCookieHeaderBuffer
+loginCookieHeaderStrCall out loginCookieHeaderStr String

@@ -8204,7 +8204,9 @@ class EavCodegen:
         if value_tokens:
             gv.initializer = self._const_value(resolved, value_tokens)
         else:
-            gv.initializer = ir.Constant(_PRIMITIVE_IR[resolved], 0)
+            pt = _PRIMITIVE_IR[resolved]
+            # a pointer (String) zero-init is `null`, not the integer 0
+            gv.initializer = ir.Constant(pt, None if isinstance(pt, ir.PointerType) else 0)
         self.module_storage[st.name] = (gv, type_row.payload[0])
 
     def _record_layout(self, rec: Entity):
@@ -8718,6 +8720,12 @@ class EavCodegen:
     def _literal_or_ref(self, type_name: str, tok: str, builder, sym):
         if tok in sym:
             return self._load(sym[tok], builder)
+        # README §12 / WS1-085: a bare reference to a module-storage constant
+        # reads the module global (e.g. a `let` initialized from a default const).
+        ms = getattr(self, "module_storage", {})
+        if tok in ms:
+            ref = ms[tok][0]
+            return builder.load(ref) if isinstance(ref, ir.GlobalVariable) else ref
         resolved = self.resolve_type_name(type_name)
         # README ss33.9: an operationType-typed value referencing an operation is
         # that operation's function pointer (a first-class operation reference).
@@ -9692,12 +9700,13 @@ class EavCodegen:
             sym_name = "ss_http_" + _camel_to_snake(name)
             vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
                     for a in call.facts("arg")]
-            if name.endswith("Length"):
-                ret_ty = ir.IntType(64)
-            elif name.startswith("response"):
-                ret_ty = ir.IntType(32)
+            if name.endswith("Length") or name == "nowMillis":
+                ret_ty = ir.IntType(64)                       # millis / byte counts
+            elif (name.startswith("response") or name == "ensureDirectory"
+                  or name == "valueIsEmpty"):
+                ret_ty = ir.IntType(32)                       # status ints
             else:
-                ret_ty = ir.IntType(8).as_pointer()
+                ret_ty = ir.IntType(8).as_pointer()           # request*/multipart* getters
             fn = self._runtime.get(sym_name)
             if fn is None:
                 fn = ir.Function(self.module,
@@ -9716,6 +9725,68 @@ class EavCodegen:
                 result = builder.icmp_unsigned("==", v, ir.Constant(v.type, None))
             else:
                 result = builder.icmp_signed("==", v, ir.Constant(v.type, 0))
+        elif _family_intrinsic(target) is not None:
+            # APP-RUN-6: sqlite/json/bcrypt/log intrinsic -> a native/shim symbol.
+            symbol, retkind, arg_idx = _family_intrinsic(target)
+            arg_rows = list(call.facts("arg"))
+            if arg_idx is not None:  # resolve only the selected args (skip e.g. unused mode)
+                arg_rows = [arg_rows[i] for i in arg_idx]
+            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
+                    for a in arg_rows]
+            ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32),
+                      "s": ir.IntType(8).as_pointer(), "v": ir.VoidType()}[retkind]
+            fn = self._runtime.get(symbol)
+            if fn is None:
+                fn = ir.Function(self.module,
+                                 ir.FunctionType(ret_ty, [v.type for v in vals]),
+                                 name=symbol)
+                self._runtime[symbol] = fn
+            r = builder.call(fn, vals)
+            if retkind != "v" and call.fact("out") is not None:
+                result = r
+        elif target in ("sqlite.stepResultIsDone", "sqlite.stepResultIsRow"):
+            # The step result code is the raw sqlite3_step return: SQLITE_ROW=100,
+            # SQLITE_DONE=101. The predicate is an equality test.
+            a0 = next(iter(call.facts("arg")), None)
+            v = self._resolve(a0.payload[2], a0.payload[1], builder, sym)
+            code = 101 if target.endswith("Done") else 100
+            result = builder.icmp_signed("==", v, ir.Constant(v.type, code))
+        elif target.startswith("c."):
+            # APP-RUN-6: libc access. `c.snprintf` is the libc variadic; the rest
+            # go through ss_c_* shims (ss_libc.c) declared to take/return Int64
+            # for OpaquePointer handles and const char* for String, so the app's
+            # declared arg/out types match the symbol exactly — no coercion. The
+            # explicit pointer<->String reinterpret is `c.cString` (ss_c_cstring).
+            libc = target[len("c."):]
+            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
+                    for a in call.facts("arg")]
+            out_row = call.fact("out")
+            out_ty = (self.ir_type(out_row.payload[1])
+                      if out_row and len(out_row.payload) >= 2 else None)
+            if libc == "snprintf":
+                fn = self.module.globals.get("snprintf")
+                if not isinstance(fn, ir.Function):
+                    nfixed = min(3, len(vals))
+                    fn = ir.Function(self.module,
+                                     ir.FunctionType(ir.IntType(32),
+                                                     [v.type for v in vals[:nfixed]],
+                                                     var_arg=True),
+                                     name="snprintf")
+                r = builder.call(fn, vals)
+                if out_ty is not None:
+                    result = r
+            else:
+                sym_name = "ss_c_" + libc
+                ret_ty = out_ty if out_ty is not None else ir.VoidType()
+                fn = self._runtime.get(sym_name)
+                if fn is None:
+                    fn = ir.Function(self.module,
+                                     ir.FunctionType(ret_ty, [v.type for v in vals]),
+                                     name=sym_name)
+                    self._runtime[sym_name] = fn
+                r = builder.call(fn, vals)
+                if out_ty is not None and out_row is not None:
+                    result = r
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -9725,8 +9796,14 @@ class EavCodegen:
             ]
             result = builder.call(fnptr, vals)
         elif target in self.functions or (
+                "." in target and target.rsplit(".", 1)[1] in self.functions) or (
                 self.program.entities.get(target) is not None
                 and self.program.entities[target].facts("typeParam")):
+            # A module-aliased call to a co-loaded app op (e.g.
+            # `components.renderPageShellHead`) — the op is registered under its
+            # bare name, so strip the import alias to its tail.
+            if target not in self.functions and self.program.entities.get(target) is None:
+                target = target.rsplit(".", 1)[1]
             callee = self.program.entities[target]
             # R-039: a call to a generic op resolves to the monomorphized clone
             # for the instantiation inferred from this call's arg types.
@@ -10435,6 +10512,10 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add(_gui_runtime_symbol(target))
                 elif target.startswith("http.") and target != "html.render":
                     out.add("ss_http_" + _camel_to_snake(target[len("http."):]))
+                elif _family_intrinsic(target) is not None:  # APP-RUN-6 families
+                    out.add(_family_intrinsic(target)[0])
+                elif target.startswith("c.") and target != "c.snprintf":
+                    out.add("ss_c_" + target[len("c."):])  # libc shims
     # APP-RUN-5: the webServer entry calls the multi-route server runtime.
     if program.of_kind("webServer"):
         out.add("ss_http_serve_routes")
@@ -10445,6 +10526,64 @@ def _camel_to_snake(name: str) -> str:
     """`requestQueryParam` -> `request_query_param`."""
     import re
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+# APP-RUN-6: runtime-intrinsic families for taskforge-web. Each method maps to a
+# (symbol, return-kind, arg-indices) triple. return-kind: "h"=i64 handle/int64,
+# "i"=i32 status, "s"=i8* string, "v"=void. arg-indices=None passes every arg in
+# order; a tuple selects a subset (sqlite.openDatabase drops its unused mode arg).
+# sqlite -> the ss_sqlite_* shims; json -> the ss_json.c direct-return shim;
+# bcrypt/log -> the native runtimes directly (force-exported in the manifest).
+_FAMILY_RT = {
+    "sqlite": {
+        "openDatabase": ("ss_sqlite_open", "h", (0,)),
+        "exec": ("ss_sqlite_exec", "i", None),
+        "prepareStatement": ("ss_sqlite_prepare", "h", None),
+        "stepStatement": ("ss_sqlite_step", "i", None),
+        "bindInt64": ("ss_sqlite_bind_int64", "i", None),
+        "bindText": ("ss_sqlite_bind_text", "i", None),
+        "columnInt64": ("ss_sqlite_column_int64", "h", None),
+        "columnText": ("ss_sqlite_column_text", "s", None),
+        "finalizeStatement": ("ss_sqlite_finalize", "i", None),
+        "closeDatabase": ("ss_sqlite_close", "i", None),
+    },
+    "json": {
+        "createEmptyDocument": ("ss_json_create_empty", "h", None),
+        "createDocument": ("ss_json_from_text", "h", None),
+        "documentRoot": ("ss_json_root", "h", None),
+        "destroyDocument": ("ss_json_destroy", "v", None),
+        "serializeDocument": ("ss_json_serialize", "s", None),
+        "setObjectFieldString": ("ss_json_set_field_string", "i", None),
+        "setObjectFieldInt64": ("ss_json_set_field_int64", "i", None),
+        "setObjectFieldBool": ("ss_json_set_field_bool", "i", None),
+        "setObjectFieldObject": ("ss_json_set_field_object", "h", None),
+        "setObjectFieldArray": ("ss_json_set_field_array", "h", None),
+        "appendArrayElementObject": ("ss_json_append_object", "h", None),
+        "objectFieldAt": ("ss_json_field_at", "h", None),
+        "cursorInt64": ("ss_json_read_int64", "h", None),
+        "cursorString": ("ss_json_read_string", "s", None),
+    },
+    "bcrypt": {
+        "hashPassword": ("ss_bcrypt_hash", "i", None),
+        "verifyPassword": ("ss_bcrypt_verify", "i", None),
+        "randomBytes": ("ss_random_bytes", "i", None),
+        "base64UrlEncode": ("ss_base64url_encode", "i", None),
+    },
+    "log": {
+        "logInfo": ("ss_log_info", "i", None),
+        "logWarn": ("ss_log_warn", "i", None),
+        "openLogFile": ("ss_log_set_path", "i", None),
+    },
+}
+
+
+def _family_intrinsic(target: str):
+    """Return the (symbol, return-kind, arg-indices) spec for a runtime-family
+    intrinsic call target, or None."""
+    if "." not in target:
+        return None
+    fam, meth = target.split(".", 1)
+    return _FAMILY_RT.get(fam, {}).get(meth)
 
 
 def _gui_runtime_symbol(target: str) -> str:
