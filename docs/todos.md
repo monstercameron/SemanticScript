@@ -744,6 +744,23 @@ These were rechecked against README/ROADMAP, `semanticscript.py`, `test_semantic
 - **WS4:** `sem fmt` total/idempotent/round-trip green; slice+doctor+verify-patch power the diagnose→slice→edit→verify→summarize loop; editor moves with parser.
 - **Cross-cutting:** conformance matrix green; drift guard green; §34 migration completed with split preserved.
 
+## App execution — make the X-040–047 ports actually RUN (not just lint)
+
+The X-040–047 ports above lint clean, but their external surface was deferred
+(§27): the `net`/`event`/`gui`/`terminal` runtimes and the `webServer` codegen
+target were never built, so only `html-template-lab` JIT-runs. This wave lands
+the runtimes/codegen (EAV-clean: each intrinsic lowers to a `runtimeBinding`-style
+native call, reusing the legacy C runtimes under `legacy/SemanticScript/runtime`
+where one already exists) so every app JIT-runs and is **e2e-tested**.
+
+- [ ] APP-RUN-0 `html-template-lab` — already JIT-runs (console + `html.render`); add a permanent e2e smoke asserting the rendered dashboard document. →test: app runs, output contains the full escaped `<ol>` document.
+- [ ] APP-RUN-1 `taskforge-api-client` — HTTP-GET client runtime (`ss_net_fetch_text`/`ss_net_free_text`, winsock) + model `net.fetchText`/`net.freeTextBody`. →test: start the local http server, run the app, assert it prints the fetched body.
+- [ ] APP-RUN-2 `taskforge-tui` — provide `c.terminalReadKey` headless-safe (stdin/EOF) so the state machine runs without a console; the other `c.*` are libc (already resolved). →test: feed scripted keystrokes on stdin, assert the rendered table + clean exit.
+- [ ] APP-RUN-3 `event-stream-smoke` — event/stream runtime (`ss_event_*`) + model the 7 `event.*`. →test: emit one event to two subscribers, receive+ack+close, assert the printed receipts and exit 0.
+- [ ] APP-RUN-4 `desktop-window-smoke` — Win32 widget toolkit (`ss_gui_*` over `native_win32_gui`) + model the 16 `gui.*`; headless-safe like `ss_gui_health_check`. →test: create→event→close headless, assert exit 0.
+- [ ] APP-RUN-5 `http-runtime-gauntlet` — model the 17 `http.*` request/response/multipart/SSE intrinsics + lower the `webServer` codegen target onto `ss_http_server_run`. →test: start it, drive representative routes, assert responses.
+- [ ] APP-RUN-6 `taskforge-web` — the full stack: `sqlite`/`json`/`bcrypt`/`http`/`log`/`components` intrinsics + the `webServer` target. →test: register→login→todo CRUD round-trip over http, assert persisted state.
+
 ## Surface-area coverage ledger (3 iterations)
 - **Iteration 1 — structural skeleton:** §1–§16 core grammar/types/calls/control/values + §18/§19 examples → WS1 1A–1H, WS3 stdlib stubs, WS4 fmt.
 - **Iteration 2 — invariants & resolutions:** §17 #1–#55, MD rules, §30 edge features, §33 resolutions, §10.6 value semantics, §28 build → WS2 (all), WS1 1H/1I, WS3 3A/3C/3D.
