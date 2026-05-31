@@ -753,7 +753,7 @@ the runtimes/codegen (EAV-clean: each intrinsic lowers to a `runtimeBinding`-sty
 native call, reusing the legacy C runtimes under `legacy/SemanticScript/runtime`
 where one already exists) so every app JIT-runs and is **e2e-tested**.
 
-- [ ] APP-RUN-0 `html-template-lab` — already JIT-runs (console + `html.render`); add a permanent e2e smoke asserting the rendered dashboard document. →test: app runs, output contains the full escaped `<ol>` document.
+- [x] APP-RUN-0 `html-template-lab` — already JIT-runs (console + `html.render`); add a permanent e2e smoke asserting the rendered dashboard document. →test: app runs, output contains the full escaped `<ol>` document. _(done: `tests/test_apps.py` JIT-runs the project and asserts the full document — doctype, title, the `<ol class="todo-list">` with all three todo rows, and `</html>`; exit 0. Wired into the CI integration loop. This is the extensible app-e2e harness the rest of APP-RUN-1..6 register into.)_
 - [ ] APP-RUN-1 `taskforge-api-client` — HTTP-GET client runtime (`ss_net_fetch_text`/`ss_net_free_text`, winsock) + model `net.fetchText`/`net.freeTextBody`. →test: start the local http server, run the app, assert it prints the fetched body.
 - [ ] APP-RUN-2 `taskforge-tui` — provide `c.terminalReadKey` headless-safe (stdin/EOF) so the state machine runs without a console; the other `c.*` are libc (already resolved). →test: feed scripted keystrokes on stdin, assert the rendered table + clean exit.
 - [ ] APP-RUN-3 `event-stream-smoke` — event/stream runtime (`ss_event_*`) + model the 7 `event.*`. →test: emit one event to two subscribers, receive+ack+close, assert the printed receipts and exit 0.
