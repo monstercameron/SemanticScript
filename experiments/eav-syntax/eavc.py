@@ -8111,7 +8111,14 @@ class EavCodegen:
         ent = self.program.entities.get(resolved)
         if ent is not None and ent.kind == "record":
             return self._record_layout(ent)[0]
-        if ent is not None and ent.kind in ("enum", "error"):
+        if ent is not None and ent.kind == "enum":
+            # R-054: an enum whose variants carry data lowers to a tagged union
+            # {i32 tag, payload}; a plain discriminant enum stays i32 (unchanged).
+            pt = self._enum_payload_type(ent)
+            if pt is not None:
+                return ir.LiteralStructType([ir.IntType(32), pt])
+            return ir.IntType(32)
+        if ent is not None and ent.kind == "error":
             return ir.IntType(32)  # discriminant (errors are enum-equivalent, §9)
         if ent is not None and ent.kind == "operationType":
             orow = ent.fact("out")
@@ -8210,6 +8217,43 @@ class EavCodegen:
         names = [f.payload[0] for f in fields]
         self._record_layouts[rec.name] = (struct_t, names)
         return self._record_layouts[rec.name]
+
+    # -- R-054/R-039 data-carrying (and generic) enum variants --
+    def _enum_base(self, ent: Entity):
+        """(base enum, typeParam→concrete substitution), following an
+        `instantiates Base T…` named instantiation (a generic enum)."""
+        inst = ent.fact("instantiates")
+        if inst and inst.payload:
+            base = self.program.entities[inst.payload[0]]
+            tps = [r.payload[0] for r in base.facts("typeParam") if r.payload]
+            return base, dict(zip(tps, inst.payload[1:]))
+        return ent, {}
+
+    def _enum_variant_names(self, ent: Entity) -> list:
+        base, _ = self._enum_base(ent)
+        return [v.payload[0] for v in base.facts("variant") if v.payload]
+
+    def _enum_repr_map(self, ent: Entity) -> dict:
+        base, _ = self._enum_base(ent)
+        return {r.payload[0]: int(r.payload[1])
+                for r in base.facts("repr") if len(r.payload) >= 2}
+
+    def _enum_payload_type(self, ent: Entity):
+        """The IR type carried by an enum's data variants, or None for a plain
+        (payloadless) discriminant enum. All data variants share one payload
+        type in this minimal model (e.g. Option<T> = none | some T)."""
+        base, sub = self._enum_base(ent)
+        for v in base.facts("variant"):
+            if len(v.payload) >= 2:
+                return self.ir_type(sub.get(v.payload[1], v.payload[1]))
+        return None
+
+    def _enum_variant_has_payload(self, ent: Entity, variant: str) -> bool:
+        base, _ = self._enum_base(ent)
+        for v in base.facts("variant"):
+            if v.payload and v.payload[0] == variant:
+                return len(v.payload) >= 2
+        return False
 
     def is_float_type(self, name: str) -> bool:
         return self.resolve_type_name(name) in _FLOAT_TYPE_NAMES
@@ -8788,12 +8832,14 @@ class EavCodegen:
             builder.cbranch(cond, cont, label_blocks[p[3]])
             return ir.IRBuilder(cont)
         if guard == "ifVariant":
-            # README ss13/ss10.5: `branch ifVariant VALUE VARIANT goto L` narrows a
-            # payloadless enum value by comparing its discriminant. (bind PAYLOAD
-            # for data-carrying variants is pending.)
+            # README ss13/ss10.5: `branch ifVariant VALUE VARIANT [bind P] goto L`
+            # narrows an enum value. For a plain enum it compares the i32
+            # discriminant; for a data enum (R-054) it compares the tag of the
+            # {i32 tag, payload} tagged union and, with `bind P`, extracts the
+            # payload into P for the matched arm.
             value_tok, variant = p[1], p[2]
-            gi = p.index("goto")
-            label = p[gi + 1]
+            bind_name = p[p.index("bind") + 1] if "bind" in p else None
+            label = p[p.index("goto") + 1]
             matches = [
                 e for e in self.program.of_kind("enum")
                 if variant in [v.payload[0] for v in e.facts("variant") if v.payload]
@@ -8805,11 +8851,19 @@ class EavCodegen:
                     row.line, code="SS1352",
                 )
             enum_ent = matches[0]
-            variants = [v.payload[0] for v in enum_ent.facts("variant") if v.payload]
-            repr_map = {r.payload[0]: int(r.payload[1]) for r in enum_ent.facts("repr") if len(r.payload) >= 2}
-            disc = repr_map.get(variant, variants.index(variant))
-            lv = self._resolve(value_tok, "Int32", builder, sym)
-            cond = builder.icmp_signed("==", lv, ir.Constant(ir.IntType(32), disc))
+            variants = self._enum_variant_names(enum_ent)
+            disc = self._enum_repr_map(enum_ent).get(variant, variants.index(variant))
+            pt = self._enum_payload_type(enum_ent)
+            lv = self._resolve(value_tok, enum_ent.name, builder, sym)
+            if pt is not None:
+                if bind_name is not None:
+                    sym[bind_name] = ("val", builder.extract_value(lv, 1))
+                cond = builder.icmp_signed(
+                    "==", builder.extract_value(lv, 0),
+                    ir.Constant(ir.IntType(32), disc))
+            else:
+                cond = builder.icmp_signed(
+                    "==", lv, ir.Constant(ir.IntType(32), disc))
             cont = self._new_cont(fn)
             builder.cbranch(cond, label_blocks[label], cont)
             return ir.IRBuilder(cont)
@@ -9775,20 +9829,32 @@ class EavCodegen:
                 call.line,
             )
         if ent is not None and ent.kind == "enum":
-            variants = [v.payload[0] for v in ent.facts("variant") if v.payload]
+            variants = self._enum_variant_names(ent)
             if tail not in variants:
                 raise EavError(
                     f"{target!r}: enum {head!r} has no variant {tail!r} "
                     f"(README ss10.5)",
                     call.line,
                 )
-            repr_map = {
-                r.payload[0]: int(r.payload[1])
-                for r in ent.facts("repr")
-                if len(r.payload) >= 2
-            }
-            disc = repr_map.get(tail, variants.index(tail))
-            return ir.Constant(ir.IntType(32), disc)
+            disc = self._enum_repr_map(ent).get(tail, variants.index(tail))
+            pt = self._enum_payload_type(ent)
+            if pt is None:
+                return ir.Constant(ir.IntType(32), disc)
+            # R-054: a data enum value is {i32 tag, payload}. A data variant
+            # construction (`Enum.some <payloadArg>`) inserts the payload; a
+            # payloadless variant (`Enum.none`) leaves a zero payload.
+            struct_t = ir.LiteralStructType([ir.IntType(32), pt])
+            val = builder.insert_value(
+                ir.Constant(struct_t, ir.Undefined),
+                ir.Constant(ir.IntType(32), disc), 0)
+            if self._enum_variant_has_payload(ent, tail):
+                pa = next(iter(args.values()), None)
+                pv = (self._resolve(pa.payload[2], pa.payload[1], builder, sym)
+                      if pa is not None else ir.Constant(pt, 0))
+                val = builder.insert_value(val, pv, 1)
+            else:
+                val = builder.insert_value(val, ir.Constant(pt, 0), 1)
+            return val
         if ent is not None and ent.kind == "error":
             # README ss9/ss34: error cases are enum-equivalent — `<Error>.<case>`
             # lowers to the case's discriminant (declaration order).
