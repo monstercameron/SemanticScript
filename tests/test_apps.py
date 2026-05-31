@@ -74,6 +74,9 @@ CONSOLE_APPS = [
         "listener-one handled smoke.event.created",
         "listener-two handled smoke.event.created",
     ], None),
+    # Pure GUI app (no console output): headless widget runtime, exit 0 is the
+    # signal that the full control tree built + event wiring ran + loop exited.
+    ("desktop-window-smoke", [], None),
 ]
 
 

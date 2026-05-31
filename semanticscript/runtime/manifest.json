@@ -54,6 +54,16 @@
       ]
     },
     {
+      "name": "ss_widgets",
+      "comment": "APP-RUN-4 headless widget runtime (gui.*): in-memory handle stubs so the desktop app's control tree + event wiring run non-interactively. Separate ss_widget_ prefix avoids the real Win32 ss_gui_* symbols.",
+      "provides": [
+        "ss_widget_"
+      ],
+      "sources": [
+        "ss_widget.c"
+      ]
+    },
+    {
       "name": "ss_net",
       "comment": "APP-RUN-1 HTTP-GET client (net.fetchText): a self-contained winsock GET, no legacy/third-party deps.",
       "provides": [

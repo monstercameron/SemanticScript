@@ -9587,6 +9587,36 @@ class EavCodegen:
         elif target == "event.closeStream":
             builder.call(self.runtime("ss_event_close_stream"),
                          [arg("stream", "OpaquePointer")])
+        elif target.startswith("gui."):
+            # APP-RUN-4: headless widget runtime. Resolve the call's args in
+            # source order, derive the extern signature from their IR types + the
+            # `out` type (void when discarded), and call the ss_widget_* stub.
+            # Opaque handles are i64, GuiText is i8*, the GuiEventHandler resolves
+            # to a function pointer (passed through; not fired headlessly).
+            name = target[len("gui."):]
+            sym_name = _gui_runtime_symbol(target)
+            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
+                    for a in call.facts("arg")]
+            # Fixed return type per gui.* — a given target is called both with
+            # `out Int32` and with `discards`, so the extern signature must be
+            # consistent (deriving it from a single call's out row mismatches the
+            # other). Creators hand back an i64 handle, textBoxText an i8* String,
+            # every other mutator/query a 0/-1 status int.
+            if name.endswith("Create"):
+                ret_ty = ir.IntType(64)
+            elif name == "textBoxText":
+                ret_ty = ir.IntType(8).as_pointer()
+            else:
+                ret_ty = ir.IntType(32)
+            fn = self._runtime.get(sym_name)
+            if fn is None:
+                fn = ir.Function(self.module,
+                                 ir.FunctionType(ret_ty, [v.type for v in vals]),
+                                 name=sym_name)
+                self._runtime[sym_name] = fn
+            r = builder.call(fn, vals)
+            if call.fact("out") is not None:
+                result = r
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -10302,7 +10332,18 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add("ss_net_free_text")
                 elif target in _EVENT_RUNTIME_SYMBOLS:  # APP-RUN-3 pub/sub
                     out.add(_EVENT_RUNTIME_SYMBOLS[target])
+                elif target.startswith("gui."):         # APP-RUN-4 widgets
+                    out.add(_gui_runtime_symbol(target))
     return out
+
+
+def _gui_runtime_symbol(target: str) -> str:
+    """`gui.applicationCreate` -> `ss_widget_application_create` (the headless
+    widget runtime; ss_widget_ avoids the real Win32 ss_gui_* symbols)."""
+    import re
+    name = target[len("gui."):]
+    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    return "ss_widget_" + snake
 
 
 _EVENT_RUNTIME_SYMBOLS = {
