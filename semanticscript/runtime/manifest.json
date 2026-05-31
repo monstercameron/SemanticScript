@@ -44,6 +44,26 @@
       }
     },
     {
+      "name": "ss_net",
+      "comment": "APP-RUN-1 HTTP-GET client (net.fetchText): a self-contained winsock GET, no legacy/third-party deps.",
+      "provides": [
+        "ss_net_"
+      ],
+      "sources": [
+        "ss_net.c"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
+      ],
+      "platforms": {
+        "windows": {
+          "libs": [
+            "ws2_32"
+          ]
+        }
+      }
+    },
+    {
       "name": "ss_http",
       "provides": [
         "ss_http_"

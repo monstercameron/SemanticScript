@@ -9,13 +9,41 @@ APP-RUN-0..6). Exit 0 iff every registered app behaves as expected.
 Separate from run_examples (single-file examples/) and the protocol-level
 integration tests (test_http_server/gui/wasm/dom).
 """
+import http.server
 import os
+import socketserver
 import subprocess
 import sys
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
 ROOT = os.path.dirname(HERE)                               # repo root
 SEMANTICSCRIPT = os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py")
+
+
+class _Router(http.server.BaseHTTPRequestHandler):
+    routes = {}
+
+    def do_GET(self):
+        body = self.routes.get(self.path, b"not-found")
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+def _serving(port, routes):
+    """Context-manager-ish: returns a TCPServer serving `routes` on a daemon
+    thread; caller must .shutdown() it."""
+    handler = type("H", (_Router,), {"routes": routes})
+    srv = socketserver.TCPServer(("127.0.0.1", port), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
 
 
 def _run_console(app, must_contain, stdin=None):
@@ -45,14 +73,43 @@ CONSOLE_APPS = [
 ]
 
 
+def _run_server_backed(app, port, routes, must_contain):
+    """Stand up a local HTTP server on `port` serving `routes`, run the app
+    (which fetches from it), assert its output, then tear the server down."""
+    srv = _serving(port, routes)
+    try:
+        return _run_console(app, must_contain)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+# Apps that fetch from a local server: (name, port, {path: body}, [markers]).
+SERVER_BACKED_APPS = [
+    ("taskforge-api-client", 18090, {
+        "/health": b"health-ok-42",
+        "/api/version": b"version-0.3.1",
+        "/api/todos": b"todos-none-yet",
+    }, ["started TaskForge fetches", "health-ok-42", "version-0.3.1", "todos-none-yet"]),
+]
+
+
 def main():
     failures = 0
+    total = 0
     for name, markers, stdin in CONSOLE_APPS:
+        total += 1
         ok, detail = _run_console(name, markers, stdin)
         print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
         if not ok:
             failures += 1
-    print("---- %d app(s), %d failed ----" % (len(CONSOLE_APPS), failures))
+    for name, port, routes, markers in SERVER_BACKED_APPS:
+        total += 1
+        ok, detail = _run_server_backed(name, port, routes, markers)
+        print("app %-24s -> %s  (%s)" % (name, "PASS" if ok else "FAIL", detail))
+        if not ok:
+            failures += 1
+    print("---- %d app(s), %d failed ----" % (total, failures))
     return 1 if failures else 0
 
 

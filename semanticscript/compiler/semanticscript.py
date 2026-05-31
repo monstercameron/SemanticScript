@@ -8297,6 +8297,13 @@ class EavCodegen:
         elif name == "ss_http_html_escape_str":
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
                              name="ss_http_html_escape_str")
+        elif name == "ss_net_fetch_text":
+            # APP-RUN-1: HTTP-GET client — char *ss_net_fetch_text(const char *url).
+            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
+                             name="ss_net_fetch_text")
+        elif name == "ss_net_free_text":
+            fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
+                             name="ss_net_free_text")
         elif name == "ss_panic":
             # WS1-130 structured-trap helper: prints a crash report
             # (code · kind · op · row · reason · operands) to stderr and exits.
@@ -9503,6 +9510,39 @@ class EavCodegen:
             # by sink context. Split the template on holes and concat the literal
             # segments with the (escaped) hole values in order.
             result = self._emit_html_render(call, args, builder, sym)
+        elif target == "net.fetchText":
+            # APP-RUN-1: high-level HTTP-GET client. The arg is a record whose
+            # `url` String field is fetched (ss_net_fetch_text, winsock GET); the
+            # result is the call's `out` record with the fetched body in its
+            # `body` field. Field names resolve by name (fallback: field 0), so
+            # the compiler stays agnostic to the app's record naming.
+            req_arg = args.get("request") or next(iter(args.values()), None)
+            if req_arg is None:
+                raise EavError(
+                    f"call {call.name!r} to net.fetchText needs a request record arg",
+                    call.line)
+            req_val = self._resolve(req_arg.payload[2], req_arg.payload[1], builder, sym)
+            req_ent = self.program.entities.get(req_arg.payload[1])
+            _, req_fields = self._record_layout(req_ent)
+            url_idx = req_fields.index("url") if "url" in req_fields else 0
+            url_val = builder.extract_value(req_val, url_idx)
+            body = builder.call(self.runtime("ss_net_fetch_text"), [url_val])
+            out_row = call.fact("out")
+            resp_ent = self.program.entities.get(out_row.payload[1]) if out_row else None
+            if resp_ent is None:
+                raise EavError(
+                    f"call {call.name!r} to net.fetchText needs an `out` response record",
+                    call.line)
+            resp_struct_t, resp_fields = self._record_layout(resp_ent)
+            body_idx = resp_fields.index("body") if "body" in resp_fields else 0
+            result = builder.insert_value(
+                ir.Constant(resp_struct_t, ir.Undefined), body, body_idx)
+        elif target == "net.freeTextBody":
+            # Release a heap-owned response body copy (ss_net_free_text -> free).
+            body_arg = args.get("body") or next(iter(args.values()), None)
+            if body_arg is not None:
+                body_val = self._resolve(body_arg.payload[2], body_arg.payload[1], builder, sym)
+                builder.call(self.runtime("ss_net_free_text"), [body_val])
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -10208,8 +10248,14 @@ def _referenced_runtime_symbols(program: Program) -> set:
                 out.add(body.payload[1])
         if ent.kind in ("call", "task"):
             inv = ent.fact("invokes")
-            if inv and inv.payload and inv.payload[0] == "html.render":
-                out.add("ss_http_html_escape_str")
+            if inv and inv.payload:
+                target = inv.payload[0]
+                if target == "html.render":
+                    out.add("ss_http_html_escape_str")
+                elif target == "net.fetchText":      # APP-RUN-1 HTTP client
+                    out.add("ss_net_fetch_text")
+                elif target == "net.freeTextBody":
+                    out.add("ss_net_free_text")
     return out
 
 
