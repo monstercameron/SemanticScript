@@ -1711,6 +1711,7 @@ class Row:
     payload: list[str]
     line: int
     label: Optional[str] = None  # set for `at LABEL <stepPred> ...` rows
+    comment: Optional[str] = None  # R-086: trailing `# ...` preserved by fmt
 
 
 @dataclass
@@ -1719,6 +1720,12 @@ class Entity:
     kind: str
     line: int
     rows: list[Row] = field(default_factory=list)
+    # R-086: comments preserved by fmt. `lead` are full-line `# ...` lines that
+    # precede the entity (its header block); `comment` is a trailing comment on
+    # the `is` row; `trailing` are full-line comments after the last entity (EOF).
+    lead: list[str] = field(default_factory=list)
+    comment: Optional[str] = None
+    trailing: list[str] = field(default_factory=list)
 
     def facts(self, predicate: str) -> list[Row]:
         return [r for r in self.rows if r.predicate == predicate and r.label is None]
@@ -1938,6 +1945,7 @@ def parse(source_text: str) -> Program:
     i = 0
     n = len(raw_lines)
     current_kind_of: dict[str, str] = {}
+    pending_lead: list[str] = []  # R-086: buffered full-line `# ...` comments
     while i < n:
         raw = raw_lines[i]
         lineno = i + 1
@@ -1950,7 +1958,11 @@ def parse(source_text: str) -> Program:
         tc = _typed_comment_of_line(raw)
         if tc is not None:
             program.typed_comments.append((tc[0], tc[1], lineno))
-        if not stripped or stripped.startswith("#"):
+        if not stripped:
+            i += 1
+            continue
+        if stripped.startswith("#"):
+            pending_lead.append(stripped)  # R-086: preserve full-line comments
             i += 1
             continue
 
@@ -1999,6 +2011,12 @@ def parse(source_text: str) -> Program:
                 )
             program.add(Entity(name=subject, kind=kind, line=lineno))
             current_kind_of[subject] = kind
+            # R-086: full-line comments preceding this entity become its header
+            # block; a trailing comment on the `is` line is preserved in place.
+            _new_ent = program.entities[subject]
+            _new_ent.lead = list(pending_lead)
+            _new_ent.comment = _line_comment(raw)
+            pending_lead.clear()
             # README ss12: single-line module-storage form, consistent with the
             # one-line `let NAME MUTABILITY TYPE VALUE`. Extra tokens on the
             # `is storage` row — `NAME is storage <scope> <mutability> <type>
@@ -2048,9 +2066,12 @@ def parse(source_text: str) -> Program:
                     f"operation (README ss5)",
                     lineno,
                 )
-            entity.rows.append(
-                Row(subject, step_pred, payload[2:], lineno, label=label)
-            )
+            if pending_lead:  # R-086
+                entity.lead.extend(pending_lead)
+                pending_lead.clear()
+            _lr = Row(subject, step_pred, payload[2:], lineno, label=label)
+            _lr.comment = _line_comment(raw)
+            entity.rows.append(_lr)
             i += 1
             continue
 
@@ -2105,13 +2126,26 @@ def parse(source_text: str) -> Program:
             while body_lines and not body_lines[-1].strip():
                 body_lines.pop()
             program.islands[(subject, island_kind)] = body_lines
-            entity.rows.append(Row(subject, predicate, payload, lineno))
+            if pending_lead:  # R-086
+                entity.lead.extend(pending_lead)
+                pending_lead.clear()
+            _ir = Row(subject, predicate, payload, lineno)
+            _ir.comment = _line_comment(raw)
+            entity.rows.append(_ir)
             i = j
             continue
 
-        entity.rows.append(Row(subject, predicate, payload, lineno))
+        if pending_lead:  # R-086
+            entity.lead.extend(pending_lead)
+            pending_lead.clear()
+        _gr = Row(subject, predicate, payload, lineno)
+        _gr.comment = _line_comment(raw)
+        entity.rows.append(_gr)
         i += 1
 
+    # R-086: full-line comments trailing the final entity (no following row).
+    if pending_lead and program.order:
+        program.entities[program.order[-1]].trailing.extend(pending_lead)
     _validate_program(program)
     return program
 
@@ -2139,14 +2173,18 @@ def _emit_rows(ent: Entity, row: Row, program: Program) -> list:
         target = payload[payload.index("target") + 1] if "target" in payload else payload[-1]
         pred, payload = "goto", [target]
     if row.label is not None:
-        return [f"{ent.name} at {row.label} {pred} {' '.join(payload)}".rstrip()]
-    line = f"{ent.name} {pred} {' '.join(payload)}".rstrip()
-    if pred == "body" and ent.kind in ("storage", "htmlTemplate"):
-        island_kind = payload[0] if payload else ""
-        island = program.islands.get((ent.name, island_kind))
-        if island is not None:
-            return [line] + [("    " + b if b else "") for b in island]
-    return [line]
+        out = [f"{ent.name} at {row.label} {pred} {' '.join(payload)}".rstrip()]
+    else:
+        line = f"{ent.name} {pred} {' '.join(payload)}".rstrip()
+        out = [line]
+        if pred == "body" and ent.kind in ("storage", "htmlTemplate"):
+            island_kind = payload[0] if payload else ""
+            island = program.islands.get((ent.name, island_kind))
+            if island is not None:
+                out = [line] + [("    " + b if b else "") for b in island]
+    if row.comment:  # R-086: trailing comment preserved in place on its row
+        out[0] = f"{out[0]}  {row.comment}"
+    return out
 
 
 def format_entity(ent: Entity, program: Program) -> str:
@@ -2169,10 +2207,16 @@ def format_entity(ent: Entity, program: Program) -> str:
         else:
             decl.append(r)
     meta.sort(key=lambda r: (_META_PREDS.index(r.predicate),))  # stable within
-    lines = [f"{ent.name} is {emit_kind}"]
+    # R-086: full-line comments preceding the entity form its header block; a
+    # trailing comment on the `is` line is preserved in place.
+    is_line = f"{ent.name} is {emit_kind}"
+    if ent.comment:
+        is_line = f"{is_line}  {ent.comment}"
+    lines = list(ent.lead) + [is_line]
     for group in (decl, meta, body, gate):
         for r in group:
             lines.extend(_emit_rows(ent, r, program))
+    lines.extend(ent.trailing)
     return "\n".join(lines)
 
 
@@ -10326,6 +10370,15 @@ def _read_source(path: str) -> str:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # EAV source and output are UTF-8 (README §33.2). On Windows the default
+    # console encoding is cp1252, which cannot encode characters that legitimately
+    # appear in source (em-dashes in comments, Unicode string literals) and would
+    # crash `fmt`/`run` output; force UTF-8 so every surface round-trips.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(
         prog="eavc", description="EAV-Steps front end (lex/parse/lower/run)"
     )
