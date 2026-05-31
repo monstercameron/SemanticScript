@@ -470,6 +470,9 @@ DIAGNOSTICS.update({
     "SS1030": {"tier": "T1", "summary": "Call `out` binding type disagrees with the callee's return type.",
                "found": "A direct call binds its result to a type that differs from the invoked operation's declared `out` type.",
                "suggested": "Bind the result to the callee's exact return type (an alias is a distinct newtype and does not silently coerce) (README §10/§15/WS2-089)."},
+    "SS1031": {"tier": "T1", "summary": "`branch if`/`ifFalse` condition is not a Bool.",
+               "found": "A `branch if <cond>` / `branch ifFalse <cond>` whose condition binding is a non-Bool type.",
+               "suggested": "Branch on a Bool — compute a comparison/predicate first and branch on its result (README §13/WS2-089)."},
     "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
                 "found": "Two `PROJECT constant` rows with the same name.",
                 "suggested": "Use one constant per name (README §28.1)."},
@@ -4024,6 +4027,7 @@ def _validate_program(program: Program) -> None:
     _validate_variant_payload_bind(program)
     _validate_variant_positions(program)
     _validate_return_exactness(program)
+    _validate_branch_condition(program)
     _validate_storage_mutation(program)
     _validate_set_targets(program)
     _validate_reserved_targets(program)
@@ -7384,6 +7388,56 @@ def _validate_return_exactness(program: Program) -> None:
                         f"exactly; an alias does not coerce here (README ss10, WS1-029)",
                         row.line, code="SS1029",
                     )
+
+
+def _validate_branch_condition(program: Program) -> None:
+    """README ss13 / WS2-089 (branch-semantics): a `branch if <cond>` /
+    `branch ifFalse <cond>` is a Bool position. When the condition operand
+    resolves to a known non-Bool binding type it is a hard error — branch on a
+    comparison/predicate result, not a raw scalar. (Forms with their own operand
+    grammar — ifValue/ifVariant/ifError/ifReady/ifPending/ifCanceled/ifOut — are
+    handled by their own rules and skipped here.) Unknown operands are skipped to
+    avoid false positives on bindings sourced outside the local btype map."""
+    alias_map = {
+        a.name: a.fact("for").payload[0]
+        for a in program.of_kind("alias")
+        if a.fact("for") and a.fact("for").payload
+    }
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        btypes: dict = {}
+        for r in op.facts("in"):
+            if len(r.payload) >= 2:
+                btypes[r.payload[0]] = r.payload[1]
+        for r in op.facts("let"):
+            if len(r.payload) >= 3:
+                btypes[r.payload[0]] = r.payload[2]
+        for cn in program.order:
+            call = program.entities[cn]
+            owner = call.fact("in")
+            if (call.kind in ("call", "task") and owner and owner.payload
+                    and owner.payload[0] == op.name):
+                o = call.fact("out")
+                if o and len(o.payload) >= 2 and o.payload[0] != "Result":
+                    btypes[o.payload[0]] = o.payload[1]
+        for row in op.rows:
+            if row.predicate != "branch" or len(row.payload) < 2:
+                continue
+            if row.payload[0] not in ("if", "ifFalse"):
+                continue
+            cond = row.payload[1]
+            bt = btypes.get(cond)
+            if bt is None:
+                continue
+            if _resolve_alias(bt, alias_map) != "Bool":
+                raise EavError(
+                    f"`branch {row.payload[0]} {cond}` in {op.name!r} branches on "
+                    f"{cond!r} of type {bt!r}, not Bool; branch on a "
+                    f"comparison/predicate result (README ss13, WS2-089)",
+                    row.line, code="SS1031",
+                )
 
 
 def _validate_variant_positions(program: Program) -> None:
