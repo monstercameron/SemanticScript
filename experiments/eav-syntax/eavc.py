@@ -10712,7 +10712,12 @@ def build_wasm(program: Program, out_path: str):
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["--target=wasm32", "-nostdlib", "-Wl,--no-entry",
-                      "-Wl,--export=" + entry, "-O2", "-o", out_path, ll_path]
+                      "-Wl,--export=" + entry,
+                      # Undefined symbols (a program's runtimeBinding targets,
+                      # e.g. the DOM `dom_*` host functions) become wasm imports
+                      # the JS/browser host supplies — the wasm<->JS interop the
+                      # DOM adapter relies on (WS3-161/§document).
+                      "-Wl,--allow-undefined", "-O2", "-o", out_path, ll_path]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True)
     finally:
