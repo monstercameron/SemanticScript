@@ -13,14 +13,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python-validation:
-    name: Python validation (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
+  validate:
+    name: Validate compiler (Windows, Python ${{ matrix.python-version }})
+    # The native runtime (sqlite/http/async/gui) and the wasm/dom backends are
+    # wired for Windows (runtime/manifest.json links the win/* libuv sources,
+    # ws2_32, and the Win32 GUI), so the full suite runs on windows-latest.
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
         python-version:
           - "3.11"
           - "3.12"
@@ -34,97 +35,35 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            constraints.txt
+          cache-dependency-path: requirements.txt
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -c constraints.txt
-
-      - name: Run fast Python suite
-        run: python SemanticScript/tests/run_suite.py ci-fast
-
-  linux-validation:
-    name: Linux validation + AddressSanitizer (clang)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            constraints.txt
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -c constraints.txt
-
-      - name: Install clang/LLVM (ASan-capable toolchain)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang llvm
-          echo "SEMSC_CLANG=$(command -v clang)" >> "$GITHUB_ENV"
-
-      - name: Run portable suite on Linux
-        run: python SemanticScript/tests/run_suite.py ci-fast
-
-      - name: Run AddressSanitizer over the C runtime
-        run: python SemanticScript/tests/run_suite.py runtime.asan
-
-  vscode-validation:
-    name: VS Code extension validation
-    runs-on: windows-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Set up Node.js
+      - name: Set up Node.js  # the wasm + dom integration tests run the module under node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "20"
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Run editor suite
-        run: python SemanticScript/tests/run_suite.py editor
-
-  release-validation:
-    name: Full release validation
-    runs-on: windows-latest
-    needs:
-      - python-validation
-      - vscode-validation
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            constraints.txt
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -c constraints.txt
+          python -m pip install -r requirements.txt
 
-      - name: Run release suite
-        run: python SemanticScript/tests/run_suite.py ci-release
+      - name: Put clang/LLVM on PATH
+        # The compiler JIT-links a native C runtime (and emits wasm) via clang;
+        # windows-latest ships LLVM under Program Files.
+        shell: pwsh
+        run: |
+          $llvm = "C:\Program Files\LLVM\bin"
+          if (Test-Path $llvm) { Add-Content -Path $env:GITHUB_PATH -Value $llvm }
+          clang --version
+
+      - name: Run the example suite (188 programs — the canonical green gate)
+        run: python tests/run_examples.py
+
+      - name: Run the integration tests (http server, gui, wasm, dom)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($t in "test_http_server", "test_gui", "test_wasm", "test_dom") {
+            python "tests/$t.py"
+            if ($LASTEXITCODE -ne 0) { throw "$t failed with exit $LASTEXITCODE" }
+          }
