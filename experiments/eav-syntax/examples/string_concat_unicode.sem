@@ -30,7 +30,6 @@ main purpose "Concatenate two strings and print"
 main invariant "Writes exactly one line: unicode"
 main let partOne immutable String "uni"
 main let partTwo immutable String "code"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_concat_unicode"
 main let harnessExpected immutable String "unicode"
 main let emptyGuard immutable String ""

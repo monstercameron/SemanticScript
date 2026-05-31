@@ -56,7 +56,6 @@ main let aLeft immutable Int64 10
 main let aRight immutable Int64 5
 main let bLeft immutable Int64 20
 main let bRight immutable Int64 2
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "multi_task_join"
 main let harnessExpected immutable Int64 37
 main let noopDecoy immutable Int64 0

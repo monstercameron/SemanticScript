@@ -39,7 +39,6 @@ main purpose "Build Query{7, 25} and print its rowLimit"
 main invariant "Writes exactly one integer line: 25"
 main let idValue immutable Int64 7
 main let limitValue immutable Int64 25
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_query_fields"
 main let harnessExpected immutable Int64 25
 main let noopDecoy immutable Int64 0

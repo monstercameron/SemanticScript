@@ -41,8 +41,6 @@ main invariant "All stdout writes go through stdoutWriter"
 main invariant "Returns writeFailedExitCode on any write failure"
 
 main let helloText immutable String "hello world"
-main let successExitCode immutable ExitCode 0
-main let writeFailedExitCode immutable ExitCode 1
 main let harnessName immutable String "hello_world"
 main let harnessExpected immutable String "hello world"
 main let emptyGuard immutable String ""

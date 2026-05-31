@@ -34,7 +34,6 @@ main purpose "Compute 6+7 at the entrypoint and print it"
 main invariant "Writes exactly one integer line: 13"
 main let six immutable Int64 6
 main let seven immutable Int64 7
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "program_entrypoint_main"
 main let harnessExpected immutable Int64 13
 main let noopDecoy immutable Int64 0

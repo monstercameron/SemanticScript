@@ -30,7 +30,6 @@ main purpose "Concatenate two strings and print"
 main invariant "Writes exactly one line: abc"
 main let partOne immutable String "a"
 main let partTwo immutable String "bc"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "varargs_concat"
 main let harnessExpected immutable String "abc"
 main let emptyGuard immutable String ""

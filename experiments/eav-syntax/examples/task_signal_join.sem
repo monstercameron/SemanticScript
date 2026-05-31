@@ -50,7 +50,6 @@ main async yes
 main purpose "Start a square task, join it, print the result"
 main invariant "Writes exactly one integer line: 81"
 main let seed immutable Int64 9
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "task_signal_join"
 main let harnessExpected immutable Int64 81
 main let noopDecoy immutable Int64 0

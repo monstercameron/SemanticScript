@@ -34,7 +34,6 @@ main purpose "Write to console with proper capability authorization"
 main invariant "Effect is covered by capability"
 
 main let message immutable String "Hello, world"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "effect_covered_console"
 main let harnessExpected immutable String "Hello, world"
 main let emptyGuard immutable String ""

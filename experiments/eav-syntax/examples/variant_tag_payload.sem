@@ -39,7 +39,6 @@ main purpose "Build Tagged and print its payload field"
 main invariant "Writes exactly one integer line: 99"
 main let firstInput immutable Int64 5
 main let secondInput immutable Int64 99
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "variant_tag_payload"
 main let harnessExpected immutable Int64 99
 main let noopDecoy immutable Int64 0

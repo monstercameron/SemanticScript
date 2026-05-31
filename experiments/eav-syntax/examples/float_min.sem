@@ -33,7 +33,6 @@ main purpose "Compute min(3.0,8.0) and print it"
 main invariant "Writes exactly one float line: 3"
 main let inputA immutable Float64 3.0
 main let inputB immutable Float64 8.0
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "float_min"
 main let harnessExpected immutable Float64 3.0
 main let zeroFloatGuard immutable Float64 0.0

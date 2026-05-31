@@ -78,7 +78,6 @@ main async no
 main purpose "Print sumTo(100)"
 main invariant "Writes exactly one integer line: 5050"
 main let hundred immutable Int64 100
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "recursion_sum"
 main let harnessExpected immutable Int64 5050
 main let noopDecoy immutable Int64 0

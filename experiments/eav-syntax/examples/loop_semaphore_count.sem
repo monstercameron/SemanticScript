@@ -36,7 +36,6 @@ main let total mutable Int64 0
 main let counter mutable Int64 1
 main let bound immutable Int64 7
 main let oneStep immutable Int64 1
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "loop_semaphore_count"
 main let harnessExpected immutable Int64 28
 main let noopDecoy immutable Int64 0

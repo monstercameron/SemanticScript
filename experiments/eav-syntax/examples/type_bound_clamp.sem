@@ -30,7 +30,6 @@ main purpose "Compute math.minInt64 and print it"
 main invariant "Writes exactly one integer line: 100"
 main let operandA immutable Int64 150
 main let operandB immutable Int64 100
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "type_bound_clamp"
 main let harnessExpected immutable Int64 100
 main let noopDecoy immutable Int64 0

@@ -39,7 +39,6 @@ main purpose "Build Stat{1024, 1700000000} and print its size"
 main invariant "Writes exactly one integer line: 1024"
 main let sizeValue immutable Int64 1024
 main let mtimeValue immutable Int64 1700000000
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_file_stat"
 main let harnessExpected immutable Int64 1024
 main let noopDecoy immutable Int64 0

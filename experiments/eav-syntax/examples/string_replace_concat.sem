@@ -30,7 +30,6 @@ main purpose "Concatenate two strings and print"
 main invariant "Writes exactly one line: replaced"
 main let partOne immutable String "re"
 main let partTwo immutable String "placed"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_replace_concat"
 main let harnessExpected immutable String "replaced"
 main let emptyGuard immutable String ""

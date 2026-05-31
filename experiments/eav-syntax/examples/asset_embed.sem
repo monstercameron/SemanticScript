@@ -40,7 +40,6 @@ main memory heap no
 main async no
 main purpose "Print the embedded banner asset"
 main invariant "Writes the banner asset content"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "asset_embed"
 main let harnessExpected immutable String "EAV banner asset"
 main let emptyGuard immutable String ""

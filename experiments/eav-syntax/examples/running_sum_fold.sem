@@ -37,7 +37,6 @@ main let counter mutable Int64 5
 main let total mutable Int64 0
 main let zero immutable Int64 0
 main let oneStep immutable Int64 1
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "running_sum_fold"
 main let harnessExpected immutable Int64 15
 main let noopDecoy immutable Int64 0

@@ -59,7 +59,6 @@ main purpose "Apply the double operation-value twice to 5 and print the result"
 main invariant "Writes exactly one integer line: 20"
 main let fn immutable Int64Endo double
 main let seed immutable Int64 5
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "operation_value_apply"
 main let harnessExpected immutable Int64 20
 main let noopDecoy immutable Int64 0

@@ -53,7 +53,6 @@ main purpose "Run a task through start/poll/cancel and print its result"
 main invariant "Writes exactly one integer line: 42"
 main let leftSeed immutable Int64 6
 main let rightSeed immutable Int64 7
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "cancel_token_lifecycle"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

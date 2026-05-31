@@ -33,7 +33,6 @@ main async no
 main purpose "Write a hex-escaped string and let the escapes decode"
 main invariant "Writes exactly one line: HI"
 main let hexText immutable String "\x48\x49"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_hex_escape"
 main let harnessExpected immutable String "HI"
 main let emptyGuard immutable String ""

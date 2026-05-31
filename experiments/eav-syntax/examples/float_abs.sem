@@ -32,7 +32,6 @@ main async no
 main purpose "Compute abs(-5.0) and print it"
 main invariant "Writes exactly one float line: 5"
 main let inputA immutable Float64 -5.0
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "float_abs"
 main let harnessExpected immutable Float64 5.0
 main let zeroFloatGuard immutable Float64 0.0

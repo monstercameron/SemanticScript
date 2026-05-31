@@ -39,7 +39,6 @@ main let count mutable Int64 1
 main let zero immutable Int64 0
 main let targetIndex immutable Int64 10
 main let oneStep immutable Int64 1
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "fib_iterative"
 main let harnessExpected immutable Int64 55
 main let noopDecoy immutable Int64 0

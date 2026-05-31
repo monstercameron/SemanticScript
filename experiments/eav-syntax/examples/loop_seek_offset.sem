@@ -37,7 +37,6 @@ main let iterations mutable Int64 0
 main let blockSize immutable Int64 10
 main let seekLimit immutable Int64 3
 main let oneStep immutable Int64 1
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "loop_seek_offset"
 main let harnessExpected immutable Int64 30
 main let noopDecoy immutable Int64 0

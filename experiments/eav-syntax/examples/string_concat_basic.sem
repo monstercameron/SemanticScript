@@ -33,7 +33,6 @@ main purpose "Concatenate abc and def and print"
 main invariant "Writes exactly one line: abcdef"
 main let head immutable String "abc"
 main let tail immutable String "def"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_concat_basic"
 main let harnessExpected immutable String "abcdef"
 main let emptyGuard immutable String ""

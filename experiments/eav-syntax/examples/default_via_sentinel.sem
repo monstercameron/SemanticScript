@@ -55,7 +55,6 @@ main async no
 main purpose "Call withDefault(0) and print the resolved value"
 main invariant "Writes exactly one integer line: 42"
 main let sentinelInput immutable Int64 0
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "default_via_sentinel"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

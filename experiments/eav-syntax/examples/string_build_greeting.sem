@@ -33,7 +33,6 @@ main purpose "Build and print a greeting"
 main invariant "Writes exactly one line: Hello, SemanticScript"
 main let salutation immutable String "Hello, "
 main let subjectName immutable String "SemanticScript"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_build_greeting"
 main let harnessExpected immutable String "Hello, SemanticScript"
 main let emptyGuard immutable String ""

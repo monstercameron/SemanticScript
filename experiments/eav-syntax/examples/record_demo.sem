@@ -37,7 +37,6 @@ main purpose "Build Point(11, 22) and print its x"
 main invariant "Writes exactly one integer line: 11"
 main let px immutable Int64 11
 main let py immutable Int64 22
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_demo"
 main let harnessExpected immutable Int64 11
 main let noopDecoy immutable Int64 0

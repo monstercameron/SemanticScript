@@ -45,7 +45,6 @@ main purpose "Compute 40 + 2 and write the result"
 main invariant "Writes exactly one integer line"
 main let leftInput immutable Int64 40
 main let rightInput immutable Int64 2
-main let successExitCode immutable ExitCode 0
 main let harnessName immutable String "add_two"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

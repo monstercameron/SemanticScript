@@ -30,7 +30,6 @@ main purpose "Compute math.shiftLeftInt64 and print it"
 main invariant "Writes exactly one integer line: 48"
 main let operandA immutable Int64 3
 main let operandB immutable Int64 4
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "bit_shift_left_demo"
 main let harnessExpected immutable Int64 48
 main let noopDecoy immutable Int64 0

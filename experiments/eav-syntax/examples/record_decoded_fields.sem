@@ -39,7 +39,6 @@ main purpose "Build Decoded and print its scoreField field"
 main invariant "Writes exactly one integer line: 88"
 main let firstInput immutable Int64 7
 main let secondInput immutable Int64 88
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_decoded_fields"
 main let harnessExpected immutable Int64 88
 main let noopDecoy immutable Int64 0

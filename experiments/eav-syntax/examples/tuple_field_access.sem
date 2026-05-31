@@ -39,7 +39,6 @@ main purpose "Build Pair and print its first field"
 main invariant "Writes exactly one integer line: 11"
 main let firstInput immutable Int64 11
 main let secondInput immutable Int64 22
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "tuple_field_access"
 main let harnessExpected immutable Int64 11
 main let noopDecoy immutable Int64 0

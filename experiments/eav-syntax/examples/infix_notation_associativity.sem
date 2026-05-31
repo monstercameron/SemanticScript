@@ -36,7 +36,6 @@ main invariant "Writes exactly one integer line: 12"
 main let twenty immutable Int64 20
 main let five immutable Int64 5
 main let three immutable Int64 3
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "infix_notation_associativity"
 main let harnessExpected immutable Int64 12
 main let noopDecoy immutable Int64 0

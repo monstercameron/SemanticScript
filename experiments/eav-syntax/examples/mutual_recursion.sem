@@ -106,7 +106,6 @@ main async no
 main purpose "Print isEven(4)"
 main invariant "Writes exactly one integer line: 1"
 main let four immutable Int64 4
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "mutual_recursion"
 main let harnessExpected immutable Int64 1
 main let noopDecoy immutable Int64 0

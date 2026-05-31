@@ -36,7 +36,6 @@ main purpose "Compute max(7,3) and print it through the granted write effect"
 main invariant "Writes exactly one integer line: 7"
 main let bigger immutable Int64 7
 main let smaller immutable Int64 3
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "authority_declare_enforce"
 main let harnessExpected immutable Int64 7
 main let noopDecoy immutable Int64 0

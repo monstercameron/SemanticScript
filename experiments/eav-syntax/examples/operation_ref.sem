@@ -55,7 +55,6 @@ main purpose "Bind double as an Int64Endo and invoke it indirectly on 21"
 main invariant "Writes 42"
 main let seed immutable Int64 21
 main let fn immutable Int64Endo double
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "operation_ref"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

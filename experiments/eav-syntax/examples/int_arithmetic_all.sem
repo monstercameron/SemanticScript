@@ -36,7 +36,6 @@ main let ten immutable Int64 10
 main let five immutable Int64 5
 main let three immutable Int64 3
 main let two immutable Int64 2
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "int_arithmetic_all"
 main let harnessExpected immutable Int64 12
 main let noopDecoy immutable Int64 0

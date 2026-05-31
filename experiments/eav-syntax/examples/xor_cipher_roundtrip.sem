@@ -35,7 +35,6 @@ main purpose "Round-trip 42 through an XOR cipher and print the recovered value"
 main invariant "Writes exactly one integer line: 42"
 main let plain immutable Int64 42
 main let key immutable Int64 99
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "xor_cipher_roundtrip"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

@@ -38,7 +38,6 @@ main async no
 main purpose "Compute abs(-7) through a runtimeBinding op and print it"
 main invariant "Prints 7 and exits zero"
 main let negativeInput immutable Int32 -7
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "runtime_binding"
 main let harnessExpected immutable Int64 7
 main let noopDecoy immutable Int64 0

@@ -39,7 +39,6 @@ main purpose "Build Named and print its beta field"
 main invariant "Writes exactly one integer line: 16"
 main let firstInput immutable Int64 4
 main let secondInput immutable Int64 16
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_named_fields"
 main let harnessExpected immutable Int64 16
 main let noopDecoy immutable Int64 0

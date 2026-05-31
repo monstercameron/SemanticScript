@@ -39,7 +39,6 @@ main let zero immutable Int64 0
 main let outerBound immutable Int64 3
 main let innerBound immutable Int64 4
 main let oneStep immutable Int64 1
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "nested_loops"
 main let harnessExpected immutable Int64 12
 main let noopDecoy immutable Int64 0

@@ -37,7 +37,6 @@ main memory heap no
 main async no
 main purpose "Print the module-scope answerConstant"
 main invariant "Writes exactly one integer line: 7"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "module_storage"
 main let harnessExpected immutable Int64 7
 main let noopDecoy immutable Int64 0

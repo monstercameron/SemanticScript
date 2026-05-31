@@ -40,7 +40,6 @@ main purpose "Build Connection{10, 5432} and print its port"
 main invariant "Writes exactly one integer line: 5432"
 main let hostId immutable Int64 10
 main let portNumber immutable Int64 5432
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_connection_build"
 main let harnessExpected immutable Int64 5432
 main let noopDecoy immutable Int64 0

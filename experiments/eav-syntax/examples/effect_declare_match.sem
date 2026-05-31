@@ -34,7 +34,6 @@ main purpose "Compute 5*11 and print it under a matched write effect"
 main invariant "Writes exactly one integer line: 55"
 main let fiveVal immutable Int64 5
 main let eleven immutable Int64 11
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "effect_declare_match"
 main let harnessExpected immutable Int64 55
 main let noopDecoy immutable Int64 0

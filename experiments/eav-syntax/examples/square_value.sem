@@ -32,7 +32,6 @@ main async no
 main purpose "Compute square(7) and print it"
 main invariant "Writes exactly one integer line: 49"
 main let baseValue immutable Int64 7
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "square_value"
 main let harnessExpected immutable Int64 49
 main let noopDecoy immutable Int64 0

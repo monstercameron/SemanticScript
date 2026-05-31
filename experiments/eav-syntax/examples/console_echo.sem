@@ -30,7 +30,6 @@ main purpose "Concatenate two strings and print"
 main invariant "Writes exactly one line: echo: hello"
 main let partOne immutable String "echo: "
 main let partTwo immutable String "hello"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "console_echo"
 main let harnessExpected immutable String "echo: hello"
 main let emptyGuard immutable String ""

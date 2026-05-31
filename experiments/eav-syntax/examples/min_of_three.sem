@@ -35,7 +35,6 @@ main invariant "Writes exactly one integer line: 3"
 main let firstValue immutable Int64 8
 main let secondValue immutable Int64 3
 main let thirdValue immutable Int64 5
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "min_of_three"
 main let harnessExpected immutable Int64 3
 main let noopDecoy immutable Int64 0

@@ -39,7 +39,6 @@ main purpose "Build Row and print its amount field"
 main invariant "Writes exactly one integer line: 250"
 main let firstInput immutable Int64 3
 main let secondInput immutable Int64 250
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_row_fields"
 main let harnessExpected immutable Int64 250
 main let noopDecoy immutable Int64 0

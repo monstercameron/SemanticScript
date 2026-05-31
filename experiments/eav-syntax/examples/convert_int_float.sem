@@ -33,7 +33,6 @@ main async no
 main purpose "Convert Int64 42 to Float64 and print it"
 main invariant "Writes exactly one float line: 42"
 main let intVal immutable Int64 42
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "convert_int_float"
 main let harnessExpected immutable Float64 42.0
 main let zeroFloatGuard immutable Float64 0.0

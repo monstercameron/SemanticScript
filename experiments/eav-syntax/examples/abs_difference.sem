@@ -34,7 +34,6 @@ main purpose "Compute |10-25| and print it"
 main invariant "Writes exactly one integer line: 15"
 main let firstValue immutable Int64 10
 main let secondValue immutable Int64 25
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "abs_difference"
 main let harnessExpected immutable Int64 15
 main let noopDecoy immutable Int64 0

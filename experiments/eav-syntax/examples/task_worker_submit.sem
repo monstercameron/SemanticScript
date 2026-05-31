@@ -52,7 +52,6 @@ main purpose "Start a combine task, join it, print the result"
 main invariant "Writes exactly one integer line: 123"
 main let seedA immutable Int64 100
 main let seedB immutable Int64 23
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "task_worker_submit"
 main let harnessExpected immutable Int64 123
 main let noopDecoy immutable Int64 0

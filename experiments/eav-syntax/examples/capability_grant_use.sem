@@ -33,7 +33,6 @@ main purpose "Use capability-backed effect"
 main invariant "Capability and effect match"
 
 main let message immutable String "Capability OK"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "capability_grant_use"
 main let harnessExpected immutable String "Capability OK"
 main let emptyGuard immutable String ""

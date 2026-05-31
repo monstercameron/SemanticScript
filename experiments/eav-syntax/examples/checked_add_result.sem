@@ -34,7 +34,6 @@ main purpose "Compute 10 + 20 and print the sum"
 main invariant "Writes exactly one integer line: 30"
 main let first immutable Int64 10
 main let second immutable Int64 20
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "checked_add_result"
 main let harnessExpected immutable Int64 30
 main let noopDecoy immutable Int64 0

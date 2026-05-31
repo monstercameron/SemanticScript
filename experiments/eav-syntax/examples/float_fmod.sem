@@ -30,7 +30,6 @@ main purpose "Compute math.fmodFloat64 and print it"
 main invariant "Writes exactly one float line: 2"
 main let operandA immutable Float64 17.0
 main let operandB immutable Float64 5.0
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "float_fmod"
 main let harnessExpected immutable Float64 2.0
 main let zeroFloatGuard immutable Float64 0.0

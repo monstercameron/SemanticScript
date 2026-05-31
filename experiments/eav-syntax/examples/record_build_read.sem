@@ -33,7 +33,6 @@ main purpose "Build a record and read a field"
 main invariant "Record field access works"
 
 main let age immutable Int64 30
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_build_read"
 main let harnessExpected immutable Int64 30
 main let noopDecoy immutable Int64 0

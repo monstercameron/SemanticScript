@@ -32,7 +32,6 @@ main purpose "Add one to the maximum Int64 and print the wrapped result"
 main invariant "Output is INT64_MIN, demonstrating wraparound"
 main let intMax immutable Int64 9223372036854775807
 main let one immutable Int64 1
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "overflow"
 main let harnessExpected immutable Int64 -9223372036854775808
 main let noopDecoy immutable Int64 0

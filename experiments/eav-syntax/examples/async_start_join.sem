@@ -53,7 +53,6 @@ main purpose "Start an addPair task, join it, print the joined result"
 main invariant "Writes exactly one integer line: 42"
 main let leftSeed immutable Int64 20
 main let rightSeed immutable Int64 22
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "async_start_join"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

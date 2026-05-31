@@ -33,7 +33,6 @@ main purpose "Concatenate two pieces and print the result"
 main invariant "Writes exactly one line: string concat"
 main let head immutable String "string "
 main let tail immutable String "concat"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_concat"
 main let harnessExpected immutable String "string concat"
 main let emptyGuard immutable String ""

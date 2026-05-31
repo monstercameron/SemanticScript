@@ -32,7 +32,6 @@ main async no
 main purpose "Compute negate(42) and print it"
 main invariant "Writes exactly one integer line: -42"
 main let positiveValue immutable Int64 42
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "negate_value"
 main let harnessExpected immutable Int64 -42
 main let noopDecoy immutable Int64 0

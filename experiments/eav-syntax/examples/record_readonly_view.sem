@@ -39,7 +39,6 @@ main purpose "Build Viewed and print its datum field"
 main invariant "Writes exactly one integer line: 42"
 main let firstInput immutable Int64 42
 main let secondInput immutable Int64 7
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "record_readonly_view"
 main let harnessExpected immutable Int64 42
 main let noopDecoy immutable Int64 0

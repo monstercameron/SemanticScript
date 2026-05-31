@@ -32,7 +32,6 @@ main purpose "Compute 1.5 + 2.5 and print it"
 main invariant "Writes exactly one float line: 4"
 main let leftValue immutable Float64 1.5
 main let rightValue immutable Float64 2.5
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "float_math"
 main let harnessExpected immutable Float64 4.0
 main let zeroFloatGuard immutable Float64 0.0

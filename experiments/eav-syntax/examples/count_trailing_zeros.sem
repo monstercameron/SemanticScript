@@ -32,7 +32,6 @@ main async no
 main purpose "Compute ctz(8) and print it"
 main invariant "Writes exactly one integer line: 3"
 main let eightValue immutable Int64 8
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "count_trailing_zeros"
 main let harnessExpected immutable Int64 3
 main let noopDecoy immutable Int64 0

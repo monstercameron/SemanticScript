@@ -35,7 +35,6 @@ main invariant "Writes exactly one line: foobarbaz"
 main let pieceOne immutable String "foo"
 main let pieceTwo immutable String "bar"
 main let pieceThree immutable String "baz"
-main let okCode immutable ExitCode 0
 main let harnessName immutable String "string_join"
 main let harnessExpected immutable String "foobarbaz"
 main let emptyGuard immutable String ""

@@ -177,6 +177,18 @@ DIAGNOSTICS.update({
     "SS0806": {"tier": "T3", "summary": "Module storage declared but never used.",
                "found": "A `storage` entity whose name is never referenced by any operation (no read or `set`).",
                "suggested": "Remove the unused storage, or read/`set` it where intended (README §17/WS2-080)."},
+    "SS0803": {"tier": "T4", "summary": "Error case declared but never used.",
+               "found": "An `errorCase` whose name is never constructed (`makeError`) or matched.",
+               "suggested": "Construct/match the case, or remove it (README §17/WS2-080)."},
+    "SS0804": {"tier": "T3", "summary": "Local const declared but never used.",
+               "found": "An immutable `let` whose name is never referenced in the operation.",
+               "suggested": "Remove the unused const, or use it (README §17/WS2-080)."},
+    "SS0805": {"tier": "T3", "summary": "Operation input never used.",
+               "found": "An `in` parameter whose name never appears in the operation body.",
+               "suggested": "Use the input, or drop it from the signature (README §17/WS2-080)."},
+    "SS0807": {"tier": "T3", "summary": "Call binding never used.",
+               "found": "A call/task `out` binding whose name is never read.",
+               "suggested": "Read the binding, `discards \"…\"` the result, or drop the `out` (README §17/WS2-080)."},
     "SS0950": {"tier": "T3", "summary": "Loop makes no progress toward its exit.",
                "found": "A back-edge loop with no exit path, or whose exit guard is never recomputed in the body.",
                "suggested": "Add a reachable exit (return/branch-out) and recompute or mutate the exit guard each iteration (README §13/§33.3)."},
@@ -4775,6 +4787,66 @@ def _lint_dead_unused(program: Program) -> list:
                     r.line, op.name))
             if r.predicate in ("return", "goto", "jump"):
                 terminated = True
+    # --- reference-based unused checks (per operation scope) ---
+    from collections import Counter
+    owned_by: dict = {}
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind in ("call", "task", "cleanup"):
+            inr = e.fact("in")
+            if inr and inr.payload:
+                owned_by.setdefault(inr.payload[0], []).append(e)
+    # errorCase references: a `Type.Case` or bare `Case` token anywhere.
+    ec_ref: set = set()
+    for n in program.order:
+        for r in program.entities[n].rows:
+            for tok in r.payload:
+                ec_ref.add(tok)
+                if "." in tok:
+                    ec_ref.add(tok.split(".")[-1])
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "errorCase" and ent.name not in ec_ref:
+            out.append(Diagnostic(
+                "SS0803", "warning",
+                f"error case {ent.name!r} is declared but never constructed or "
+                f"matched (README §17/WS2-080)", ent.line, ent.name))
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        # runtimeBinding/intrinsic ops have no EAV body — their inputs/consts are
+        # consumed by the native impl, so don't flag them as unused.
+        body_row = op.fact("body") or op.fact("operationBody")
+        if (body_row is not None and body_row.payload
+                and body_row.payload[0] in ("runtimeBinding", "intrinsic", "abstract")):
+            continue
+        cnt: Counter = Counter()
+        for m in [op] + owned_by.get(op.name, []):
+            for r in m.rows:
+                for tok in r.payload:
+                    cnt[tok] += 1
+        for r in op.facts("in"):  # SS0805 unused input
+            if r.payload and cnt[r.payload[0]] == 1:
+                out.append(Diagnostic(
+                    "SS0805", "warning",
+                    f"input {r.payload[0]!r} of {op.name!r} is never used in the "
+                    f"body (README §17/WS2-080)", r.line, op.name))
+        for r in op.rows:  # SS0804 unused immutable local const
+            if (r.predicate == "let" and len(r.payload) >= 2
+                    and r.payload[1] == "immutable" and cnt[r.payload[0]] == 1):
+                out.append(Diagnostic(
+                    "SS0804", "warning",
+                    f"local const {r.payload[0]!r} in {op.name!r} is declared but "
+                    f"never used (README §17/WS2-080)", r.line, op.name))
+        for m in owned_by.get(op.name, []):  # SS0807 unused call out-binding
+            for r in m.facts("out"):
+                if r.payload and cnt[r.payload[0]] == 1:
+                    out.append(Diagnostic(
+                        "SS0807", "warning",
+                        f"call binding {r.payload[0]!r} in {op.name!r} is bound but "
+                        f"never used — discard it or drop the `out` (README §17/WS2-080)",
+                        r.line, op.name))
     return out
 
 
