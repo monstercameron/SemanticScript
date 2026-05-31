@@ -9,7 +9,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 No versioned releases have been cut yet; the source compatibility contract is
 tracked separately as `CONTRACT_VERSION` (currently `eav-0.3.1`).
 
-## Unreleased
+## 0.4.0-beta.1 (unreleased)
 
 ### Apps — all seven `apps/` now run end-to-end
 
@@ -121,12 +121,15 @@ clean parse):
 
 ### Known gaps (pre-release)
 
-- Validated on Windows/ARM64 only; the Linux/macOS test matrix and GitHub CI
-  have not yet been run green.
+- Validated on Windows/ARM64 only; the Linux/macOS test matrix has not been run.
+  CI is Windows-only and has not yet run green on GitHub (the branch needs a push
+  with the `workflow` scope). The runtime workarounds are Windows-toolchain
+  specific (UCRT inlines `printf`/`snprintf`); POSIX exports them, so they are
+  harmless no-ops there, but this is unverified.
 - The single-file release pipeline (`release.yml` → `package.py`, with
   `version.json` + `SHA256SUMS` + `THIRD_PARTY_LICENSES.md`) is wired but has not
-  yet run on a tag; no user-facing install/quickstart README exists yet (the root
-  `README.md` is the language spec), and there is no `pip`-installable package.
+  yet run on a tag. There is no `pip`-installable package (the distribution model
+  is the frozen single-file binary).
 - The broader language-completeness roadmap (crash-report tiers, non-bypassable
   compile gate + syscall sandbox, linter parity, the ≥150-app conformance
   corpus, the value-model free/move runtime) is tracked in
