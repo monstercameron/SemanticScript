@@ -8326,8 +8326,49 @@ class EavCodegen:
         return fn
 
     # -- body --
+    def _compute_recursive_ops(self) -> set:
+        """The set of user operations that can reach themselves through the
+        call graph (direct or mutual recursion). Only these are instrumented
+        with the WS1-131 depth guard, so non-recursive ops pay nothing."""
+        ops = {n for n in self.program.order
+               if self.program.entities[n].kind in ("operation", "function")}
+        graph: dict[str, set] = {n: set() for n in ops}
+        for cn in self.program.order:
+            c = self.program.entities[cn]
+            if c.kind not in ("call", "task"):
+                continue
+            owner, inv = c.fact("in"), c.fact("invokes")
+            if owner and owner.payload and inv and inv.payload:
+                o, t = owner.payload[0], inv.payload[0]
+                if o in graph and t in ops:
+                    graph[o].add(t)
+        recursive: set = set()
+        for start in graph:
+            seen, stack = set(), list(graph[start])
+            while stack:
+                node = stack.pop()
+                if node == start:
+                    recursive.add(start)
+                    break
+                if node not in seen:
+                    seen.add(node)
+                    stack.extend(graph.get(node, ()))
+        return recursive
+
+    def _depth_counter(self):
+        """The shared `__eav_call_depth` global backing the recursion guard."""
+        if getattr(self, "_depth_gv_cache", None) is None:
+            i64 = ir.IntType(64)
+            gv = ir.GlobalVariable(self.module, i64, name="__eav_call_depth")
+            gv.linkage = "internal"
+            gv.initializer = ir.Constant(i64, 0)
+            self._depth_gv_cache = gv
+        return self._depth_gv_cache
+
     def _define_function(self, op: Entity) -> None:
         fn = self.functions[op.name]
+        if not hasattr(self, "_recursive_ops"):
+            self._recursive_ops = self._compute_recursive_ops()
         let_mut = {
             r.payload[0]: r.payload[1]
             for r in op.facts("let")
@@ -8339,6 +8380,30 @@ class EavCodegen:
 
         entry = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry)
+
+        # WS1-131 recursion-depth guard: a statically-recursive op bumps the
+        # shared depth counter on entry and traps (SSR0013) past the limit;
+        # _emit_defers decrements it on every exit. Non-recursive ops skip this.
+        self._depth_gv = None
+        if op.name in self._recursive_ops:
+            i64 = ir.IntType(64)
+            gv = self._depth_counter()
+            depth = builder.add(builder.load(gv), ir.Constant(i64, 1))
+            builder.store(depth, gv)
+            over = builder.icmp_signed(">", depth,
+                                       ir.Constant(i64, EAV_RECURSION_LIMIT))
+            bad = fn.append_basic_block("recursionLimit")
+            ok = fn.append_basic_block("recursionOk")
+            builder.cbranch(over, bad, ok)
+            tb = ir.IRBuilder(bad)
+            self._emit_panic(
+                tb, "SSR0013", "recursion-depth-exceeded",
+                f"call depth exceeded the limit of {EAV_RECURSION_LIMIT} "
+                f"(likely unbounded recursion)", op.name, op.line, depth,
+                ir.Constant(i64, EAV_RECURSION_LIMIT))
+            tb.unreachable()
+            builder = ir.IRBuilder(ok)
+            self._depth_gv = gv
 
         # Pre-create a block per label so forward gotos resolve.
         label_blocks: dict[str, ir.Block] = {}
@@ -8559,7 +8624,13 @@ class EavCodegen:
 
     def _emit_defers(self, builder, sym) -> None:
         """Run registered defers' worker calls in reverse order (README ss15.6,
-        ss33.8). Called immediately before each return / fallthrough exit."""
+        ss33.8). Called immediately before each return / fallthrough exit. For a
+        recursion-guarded op it also decrements the WS1-131 depth counter, so the
+        counter tracks live depth across every exit path."""
+        if getattr(self, "_depth_gv", None) is not None:
+            i64 = ir.IntType(64)
+            dec = builder.sub(builder.load(self._depth_gv), ir.Constant(i64, 1))
+            builder.store(dec, self._depth_gv)
         for cleanup in reversed(self._defers):
             cr = cleanup.fact("call")
             worker = self.program.entities.get(cr.payload[0]) if cr and cr.payload else None
@@ -9715,7 +9786,17 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0012": {"kind": "narrowing-overflow",
                 "summary": "A narrowing numeric conversion lost data at runtime (value out of target range).",
                 "repair": "Range-check the value before converting, or keep the wider type."},
+    "SSR0013": {"kind": "recursion-depth-exceeded",
+                "summary": "Recursive call depth exceeded the runtime limit (likely unbounded recursion).",
+                "repair": "Add or fix the base case, or convert the recursion to a bounded loop."},
 }
+
+# WS1-131: logical recursion-depth bound. A statically-recursive operation
+# increments a shared depth counter on entry and traps with a structured
+# `eav_panic` (SSR0013) past this limit — a runaway-recursion signal that fires
+# (for typical small frames) before the native stack guard would, and is well
+# above any legitimate recursion depth in practice.
+EAV_RECURSION_LIMIT = 10000
 
 _EAV_PANIC_CFUNC = None  # kept alive so the JIT-registered callback survives GC
 
