@@ -1,27 +1,46 @@
-# HTTP Runtime Gauntlet
+# http-runtime-gauntlet (EAV port)
 
-Native HTTP conformance harness for SemanticScript. This is not a product demo; it is the broad regression target for the HTTP runtime and compiler lowering.
+Full 1:1 EAV-Steps port of `apps/http-runtime-gauntlet` (the v0.1 SemanticScript
+native-HTTP/1.1 conformance harness).
 
-## Coverage
+## Parity
 
-- Exact method/path dispatch for `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`.
-- Request method, path, header, query, body text, body length, and raw body reads.
-- Response text, bytes, status, content type, custom headers, redirects, and empty-body status codes.
-- Multipart text and file reads, including filename and content type metadata.
-- One-shot SSE event formatting.
-- Path-scoped middleware that reads the request and mutates the response.
-- Negative runtime paths for 400, 404, 413, and handler failure behavior.
-- Repeated sequential requests against one native server process.
+- **27 operations** — 2 helpers (`addGauntletHeaders`, `writeTextResponse`),
+  23 route handlers, 2 middleware — matching the original op count exactly.
+- **1 `webServer` entity** with **24 routes** and **23 middleware bindings**,
+  matching the original.
+- **2 capabilities** (`httpRequestReader`, `httpResponseWriter`) and **7
+  module-storage** constants, matching the original.
+- **81 call entities** — the original's inline `call`/`argument`/`run`/`bind`
+  records, promoted to first-class `call` entities (the §20 split).
+- Every `http.*` request-read / response-write / multipart / SSE call and the
+  `pointer.isNull` null-guards are converted.
 
-Known intentional gaps remain visible: route timeout enforcement, structured JSON/form decoding, static file helpers, graceful shutdown hooks, long-lived streaming, and HTTP/2.
+## Conversions / language differences
 
-## Check
+- The v0.1 `webServer`/`serverHost`/`serverPort`/`route`/`routeMiddleware`
+  keywords become the subject-anchored EAV `webServer` entity (`X is webServer`,
+  `X host`, `X port`, `X route`, `X middleware`, §14).
+- **Middleware** uses EAV's §14 ABI `(request, response, next NextMiddleware)
+  -> Bool` instead of the v0.1 `MiddlewareControl` enum:
+  `continueMiddlewareControl` → `Bool true` (continue),
+  `shortCircuitMiddlewareControl` → `Bool false` (short-circuit). The
+  `MiddlewareControl` enum and its constants disappear.
+- **Effect coverage**: EAV `grants` are exact-match (no hierarchical path
+  coverage), so `httpRequestReader` enumerates each narrower read sub-path
+  (`http.request.method`/`.path`/`.header`/`.query`/`.body`/`.multipart`) that
+  the v0.1 source covered via a single hierarchical `http.request read` grant.
+- `warning` → the universal `risk` metadata predicate; the semsc-specific
+  linter-contract verbs (`pinsNullBodyFailurePath`, `responseBodyForwarder`,
+  `routeTimeoutOptOut`) become `rationale` rows (EAV has no SS3603/SS3602/route-
+  timeout equivalents).
+- `bind value`/`ignore value source` → `out NAME TYPE` / `discards "reason"`.
 
-From the repository root:
+## Deferred execution
 
-```powershell
-python apps\http-runtime-gauntlet\scripts\test_http_runtime_gauntlet.py
-.\apps\http-runtime-gauntlet\scripts\check_http_runtime_gauntlet.ps1
-```
-
-Use this app when changing native HTTP, request/response intrinsics, middleware control, or webServer lowering.
+`target webServer` lowering is out of scope in v0.3 (§27), so the harness
+parses + lints clean — handler ABIs validated (SS2603), route methods checked
+(SS2601), routes exact-match-checked (SS2602), effect coverage clean — but is
+**not** codegen'd (`lower_to_llvm` raises). When webServer lowering lands on the
+WS3-017 HTTP runtime, each route becomes an executable golden with no source
+changes.

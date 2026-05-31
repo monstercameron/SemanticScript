@@ -1,0 +1,225 @@
+# TaskForgeWeb regular SemanticScript build plan.
+# Build configuration is ordinary typed record data; semsc lowers BuildPlan internally.
+
+module app.taskForgeWeb.build
+purpose module app.taskForgeWeb.build "Describe the TaskForgeWeb build as ordinary typed SemanticScript data."
+moduleOwns app.taskForgeWeb.build "Build project metadata, module registration, target options, version metadata, and build constants."
+moduleDoesNotOwn app.taskForgeWeb.build "Runtime application behavior; registered app modules own operations, routes, exports, and UI/domain logic."
+invariant module app.taskForgeWeb.build "Build configuration is data first: records hold settings, and configure operation returns the selected BuildPlan."
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+
+record BuildModules
+field BuildModules main BuildModule
+field BuildModules components BuildModule
+field BuildModules pages BuildModule
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion Int64
+field BuildTarget profile String
+field BuildTarget optLevel Int64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget nativeHttpHost String
+field BuildTarget nativeHttpPort Int64
+field BuildTarget formatterLineWidth Int64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+
+record BuildMetadata
+field BuildMetadata buildSource String
+field BuildMetadata runtimeContract String
+field BuildMetadata dispatcherPort String
+field BuildMetadata bcryptCost String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstant
+field BuildConstant type String
+field BuildConstant value String
+
+record BuildConstants
+field BuildConstants serverHostText BuildConstant
+field BuildConstants serverPortNumber BuildConstant
+field BuildConstants apiBaseUrlText BuildConstant
+field BuildConstants databaseUsePersistentStorage BuildConstant
+field BuildConstants databasePath BuildConstant
+field BuildConstants databaseInMemoryPath BuildConstant
+field BuildConstants imagesDirectoryPath BuildConstant
+field BuildConstants assetsDirectoryPath BuildConstant
+field BuildConstants sessionLifetimeMs BuildConstant
+field BuildConstants applyDevSeed BuildConstant
+
+record BuildPlatform
+field BuildPlatform os String
+field BuildPlatform arch String
+field BuildPlatform cpuBaseline String
+field BuildPlatform cpuTune String
+field BuildPlatform nativeOutput String
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable taskForgeWebBuildPlan BuildPlan
+jsonBody taskForgeWebBuildPlan
+  {
+      "project": {
+          "name": "TaskForgeWeb",
+          "id": "taskForgeWeb",
+          "modulePath": "github.com/monstercameron/SemanticScript/apps/taskforge-web",
+          "languageVersion": "1.0",
+          "projectVersion": "1.0.0",
+          "license": "MIT",
+          "sourceRoot": ".",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.taskforge_web",
+              "sourcePath": ".",
+              "mainFile": "main.sem"
+          },
+          "components": {
+              "moduleName": "app.taskforge_web.components",
+              "sourcePath": "components",
+              "mainFile": "main.sem"
+          },
+          "pages": {
+              "moduleName": "app.taskforge_web.pages",
+              "sourcePath": "pages",
+              "mainFile": "main.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "webServer",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "native",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "nativeHttpHost": "127.0.0.1",
+          "nativeHttpPort": 18090,
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "docsOutput": "docs",
+          "nativeOutput": "taskforge-web",
+          "platforms": [
+              { "os": "macos",   "arch": "arm64",  "cpuBaseline": "native",    "cpuTune": "generic", "nativeOutput": "taskforge-web" },
+              { "os": "macos",   "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "taskforge-web-x86_64" },
+              { "os": "linux",   "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "taskforge-web-linux" },
+              { "os": "linux",   "arch": "riscv64","cpuBaseline": "generic",   "cpuTune": "generic", "nativeOutput": "taskforge-web-riscv64" },
+              { "os": "windows", "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "taskforge-web.exe" }
+          ]
+      },
+      "versionInfo": {
+          "version": "1.0.0.0",
+          "publisher": "Earl Cameron",
+          "description": "SemanticScript TaskForge Web — multi-user todo app with bcrypt auth, sqlite storage, image upload, and Tailwind HTML pages.",
+          "copyright": "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE.",
+          "productName": "TaskForge Web",
+          "internalName": "taskforge_web",
+          "originalFilename": "taskforge_web.exe",
+          "comments": "Built from apps/taskforge-web/main.sem by the SemanticScript reference compiler. Stack: standard.http + standard.sqlite + standard.json + standard.bcrypt + standard.html.",
+          "metadata": {
+              "buildSource": "apps/taskforge-web/main.sem",
+              "runtimeContract": "native 1",
+              "dispatcherPort": "18090",
+              "bcryptCost": "12"
+          }
+      },
+      "constants": {
+          "serverHostText": {
+              "type": "String",
+              "value": "127.0.0.1"
+          },
+          "serverPortNumber": {
+              "type": "Int32",
+              "value": "18090"
+          },
+          "apiBaseUrlText": {
+              "type": "String",
+              "value": "http://127.0.0.1:18090"
+          },
+          "databaseUsePersistentStorage": {
+              "type": "String",
+              "value": "yes"
+          },
+          "databasePath": {
+              "type": "String",
+              "value": "taskforge_web.db"
+          },
+          "databaseInMemoryPath": {
+              "type": "String",
+              "value": ":memory:"
+          },
+          "imagesDirectoryPath": {
+              "type": "String",
+              "value": "images"
+          },
+          "assetsDirectoryPath": {
+              "type": "String",
+              "value": "assets"
+          },
+          "sessionLifetimeMs": {
+              "type": "Int64",
+              "value": "2592000000"
+          },
+          "applyDevSeed": {
+              "type": "String",
+              "value": "yes"
+          }
+      }
+  }
+
+operation configureTaskForgeWebBuild
+output operation configureTaskForgeWebBuild BuildPlan
+memory configureTaskForgeWebBuild heap no
+async configureTaskForgeWebBuild no
+purpose operation configureTaskForgeWebBuild "Return the typed build plan for TaskForgeWeb."
+return value taskForgeWebBuildPlan

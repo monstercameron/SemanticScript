@@ -201,3 +201,13 @@ experiments/realtime-auction-arena/**/.coverage.*
 
 # Parser-fuzzer crash repros (only created on failure)
 SemanticScript/tests/fuzz_failures/
+
+# EAV (now root) build artifacts
+wasm_demo.wasm
+wasm_demo.run.cjs
+dom_demo.wasm
+dom_demo.run.cjs
+_dom_host.cjs
+__pycache__/
+_build/
+.coverage
