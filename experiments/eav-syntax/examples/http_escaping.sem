@@ -1,0 +1,133 @@
+# http_escaping — the http runtime's safety helpers (WS3-017). The native http
+# runtime (eav_http.c + sem_http_runtime.c) is compiled + loaded by the JIT and
+# its pure string helpers bind through the `body runtimeBinding <symbol>` seam.
+# These are the load-bearing output-safety functions web apps use: HTML escaping
+# (XSS-safe rendering) and URL percent-encoding/decoding. This exercises:
+#   * html escaping: `<b>… & …</b>` becomes entity-escaped;
+#   * escaping actually happened (the result differs from the raw input);
+#   * url encode/decode round-trips an arbitrary string back to itself;
+#   * url encoding actually happened (a space-bearing string is transformed).
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+HttpEscaping is project
+HttpEscaping module examplesHttpEscaping
+HttpEscaping target console
+HttpEscaping entry main
+
+examplesHttpEscaping is module
+examplesHttpEscaping path examples.httpEscaping
+examplesHttpEscaping exports main
+examplesHttpEscaping purpose "Exercise the http runtime's HTML-escape and URL-encode/decode helpers"
+examplesHttpEscaping invariant "Escaping and encoding are real transformations, decode inverts encode"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+httpHtmlEscape is operation
+httpHtmlEscape in raw String
+httpHtmlEscape out String
+httpHtmlEscape body runtimeBinding eav_http_html_escape
+httpHtmlEscape purpose "HTML-escape a string for safe rendering"
+httpHtmlEscape suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
+
+httpUrlEncode is operation
+httpUrlEncode in raw String
+httpUrlEncode out String
+httpUrlEncode body runtimeBinding eav_http_url_encode
+httpUrlEncode purpose "Percent-encode a string for use in a URL"
+httpUrlEncode suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
+
+httpUrlDecode is operation
+httpUrlDecode in encoded String
+httpUrlDecode out String
+httpUrlDecode body runtimeBinding eav_http_url_decode
+httpUrlDecode purpose "Percent-decode a URL-encoded string"
+httpUrlDecode suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Escape HTML and round-trip a URL encode/decode, then assert"
+main invariant "All four assertions hold"
+main let rawHtml immutable String "<b>hi & bye</b>"
+main let expectEscaped immutable String "&lt;b&gt;hi &amp; bye&lt;/b&gt;"
+main let rawUrl immutable String "hello world & more"
+main let plainUrl immutable String "hello world"
+main let tnEscape immutable String "html escape turns markup into entities"
+main let tnEscapeReal immutable String "escaping changed the string (it is not the raw input)"
+main let tnRoundTrip immutable String "url decode inverts url encode (round-trip)"
+main let tnEncodeReal immutable String "url encode changed a space-bearing string"
+main do escCall
+main do encCall
+main do decCall
+main do encPlain
+main do checkEscape
+main do checkEscapeReal
+main do checkRoundTrip
+main do checkEncodeReal
+main do harnessReport
+main return harnessSummaryCode
+
+escCall is call
+escCall in main
+escCall invokes httpHtmlEscape
+escCall arg raw String rawHtml
+escCall out escaped String
+
+encCall is call
+encCall in main
+encCall invokes httpUrlEncode
+encCall arg raw String rawUrl
+encCall out encoded String
+
+decCall is call
+decCall in main
+decCall invokes httpUrlDecode
+decCall arg encoded String encoded
+decCall out decoded String
+
+encPlain is call
+encPlain in main
+encPlain invokes httpUrlEncode
+encPlain arg raw String plainUrl
+encPlain out encodedPlain String
+
+checkEscape is call
+checkEscape in main
+checkEscape invokes test.assertEqualText
+checkEscape arg name String tnEscape
+checkEscape arg expected String expectEscaped
+checkEscape arg actual String escaped
+
+checkEscapeReal is call
+checkEscapeReal in main
+checkEscapeReal invokes test.assertNotEqualText
+checkEscapeReal arg name String tnEscapeReal
+checkEscapeReal arg expected String rawHtml
+checkEscapeReal arg actual String escaped
+
+checkRoundTrip is call
+checkRoundTrip in main
+checkRoundTrip invokes test.assertEqualText
+checkRoundTrip arg name String tnRoundTrip
+checkRoundTrip arg expected String rawUrl
+checkRoundTrip arg actual String decoded
+
+checkEncodeReal is call
+checkEncodeReal in main
+checkEncodeReal invokes test.assertNotEqualText
+checkEncodeReal arg name String tnEncodeReal
+checkEncodeReal arg expected String plainUrl
+checkEncodeReal arg actual String encodedPlain
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
