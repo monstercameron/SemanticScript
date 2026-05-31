@@ -11168,11 +11168,28 @@ def build_executable(program: Program, out_path: str,
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
+    # A native exe needs a `main` symbol so the linker infers the console
+    # subsystem + CRT startup. The console entry op is conventionally named
+    # `main`, but the webServer (and any non-`main` entry) is named after the
+    # project entry, leaving no `main` and a "subsystem must be defined" link
+    # error. Emit a tiny C `main` that tail-calls the named entry (its IR
+    # signature is `i32()` — a console entry returns ExitCode, SS1191).
+    wrap_path = None
+    entry_fn = _entry_name(program)
+    if entry_fn != "main":
+        wrap_fd, wrap_path = tempfile.mkstemp(suffix=".c", dir=out_dir)
+        with os.fdopen(wrap_fd, "w", encoding="utf-8") as fh:
+            fh.write(f"extern int {entry_fn}(void);\n"
+                     f"int main(void) {{ return {entry_fn}(); }}\n")
+        cmd.append(wrap_path)
     # WS1-130: the structured-trap helper `ss_panic` is compiler-injected at
     # guard sites (not a program runtimeBinding), so it is always linked in.
     # WS3-016: `ss_ffi_add` is the FFI out-param ABI demo symbol — always linked
     # so a program binding it builds natively (the JIT registers it in-process).
-    for _always in ("ss_panic.c", "ss_ffi.c"):
+    # ss_native_libc.c: a real `printf` symbol for the native link — the UCRT
+    # exposes printf only as a header inline, so the IR's direct printf call
+    # (console integer/float output) is otherwise undefined at link time.
+    for _always in ("ss_panic.c", "ss_ffi.c", "ss_native_libc.c"):
         _src = os.path.normpath(os.path.join(rt, _always))
         if os.path.exists(_src):
             cmd.append(_src)
@@ -11192,10 +11209,12 @@ def build_executable(program: Program, out_path: str,
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True)
     finally:
-        try:
-            os.unlink(ll_path)
-        except OSError:
-            pass
+        for _scratch in (ll_path, wrap_path):
+            if _scratch:
+                try:
+                    os.unlink(_scratch)
+                except OSError:
+                    pass
     if proc.returncode != 0:
         raise EavError(f"native build failed: {proc.stderr.strip()}")
     return out_path

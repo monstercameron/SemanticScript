@@ -109,13 +109,20 @@ clean parse):
   deferred cleanup re-emitted at multiple return points dominates every exit.
 - **`fmt -` over a pipe** corrupted non-ASCII source on Windows (cp1252) because
   the child's `sys.stdin` was not UTF-8-reconfigured.
+- **Native `build` of a `webServer` target** failed with `subsystem must be
+  defined` — the entry isn't named `main`, so the linker couldn't infer the
+  console subsystem. `build_executable` now emits a tiny C `main` that tail-calls
+  the named entry.
+- **Native `build` of console programs that print integers/floats** failed with
+  `undefined symbol: printf` — Windows UCRT exposes `printf` only as a header
+  inline (no exported symbol), so the IR's direct call was unresolved. A small
+  always-linked anchor (`ss_native_libc.c`) provides a real `printf` that
+  delegates to the exported `__stdio_common_vfprintf` (JIT path unaffected).
 
 ### Known gaps (pre-release)
 
 - Validated on Windows/ARM64 only; the Linux/macOS test matrix and GitHub CI
   have not yet been run green.
-- `build` (native exe) works for console targets; a `webServer` target fails to
-  link (`subsystem must be defined`).
 - The single-file release pipeline (`release.yml` → `package.py`, with
   `version.json` + `SHA256SUMS` + `THIRD_PARTY_LICENSES.md`) is wired but has not
   yet run on a tag; no user-facing install/quickstart README exists yet (the root
