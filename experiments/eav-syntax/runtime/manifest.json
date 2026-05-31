@@ -149,6 +149,29 @@
           ]
         }
       }
+    },
+    {
+      "name": "eav_gui",
+      "comment": "WS3-044 GUI runtime: the SemanticScript Win32 GUI runtime wrapped for the runtimeBinding seam. A non-interactive health check (create window -> auto-close on shown -> return).",
+      "provides": [
+        "eav_gui_"
+      ],
+      "sources": [
+        "eav_gui.c",
+        "../../../SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c"
+      ],
+      "include": [
+        "../../../SemanticScript/runtime/native_win32_gui"
+      ],
+      "platforms": {
+        "windows": {
+          "libs": [
+            "user32",
+            "gdi32",
+            "comctl32"
+          ]
+        }
+      }
     }
   ]
 }
