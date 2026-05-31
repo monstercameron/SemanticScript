@@ -9,11 +9,11 @@
       ],
       "sources": [
         "eav_sqlite.c",
-        "../../../SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c",
+        "../../../legacy/SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c",
         "../../../third_party/sqlite/sqlite3.c"
       ],
       "include": [
-        "../../../SemanticScript/runtime/native_sqlite",
+        "../../../legacy/SemanticScript/runtime/native_sqlite",
         "../../../third_party/sqlite"
       ],
       "defines": [
@@ -46,10 +46,10 @@
       ],
       "sources": [
         "eav_http.c",
-        "../../../SemanticScript/runtime/native_http/sem_http_runtime.c"
+        "../../../legacy/SemanticScript/runtime/native_http/sem_http_runtime.c"
       ],
       "include": [
-        "../../../SemanticScript/runtime/native_http"
+        "../../../legacy/SemanticScript/runtime/native_http"
       ],
       "defines": [
         "_CRT_SECURE_NO_WARNINGS"
@@ -71,7 +71,7 @@
       ],
       "sources": [
         "eav_async.c",
-        "../../../SemanticScript/runtime/native_async/sem_async_runtime.c",
+        "../../../legacy/SemanticScript/runtime/native_async/sem_async_runtime.c",
         "../../../third_party/libuv/src/fs-poll.c",
         "../../../third_party/libuv/src/idna.c",
         "../../../third_party/libuv/src/inet.c",
@@ -113,7 +113,7 @@
       "include": [
         "../../../third_party/libuv/include",
         "../../../third_party/libuv/src",
-        "../../../SemanticScript/runtime/native_async"
+        "../../../legacy/SemanticScript/runtime/native_async"
       ],
       "defines": [
         "SEM_ASYNC_WITH_LIBUV",
@@ -158,10 +158,10 @@
       ],
       "sources": [
         "eav_gui.c",
-        "../../../SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c"
+        "../../../legacy/SemanticScript/runtime/native_win32_gui/sem_win32_gui_runtime.c"
       ],
       "include": [
-        "../../../SemanticScript/runtime/native_win32_gui"
+        "../../../legacy/SemanticScript/runtime/native_win32_gui"
       ],
       "platforms": {
         "windows": {
