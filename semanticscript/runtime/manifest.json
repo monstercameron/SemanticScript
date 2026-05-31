@@ -44,6 +44,16 @@
       }
     },
     {
+      "name": "ss_event",
+      "comment": "APP-RUN-3 in-process event pub/sub (event.*): a stream queue + per-subscription cursor, no external deps.",
+      "provides": [
+        "ss_event_"
+      ],
+      "sources": [
+        "ss_event.c"
+      ]
+    },
+    {
       "name": "ss_net",
       "comment": "APP-RUN-1 HTTP-GET client (net.fetchText): a self-contained winsock GET, no legacy/third-party deps.",
       "provides": [

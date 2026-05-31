@@ -8304,6 +8304,25 @@ class EavCodegen:
         elif name == "ss_net_free_text":
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
                              name="ss_net_free_text")
+        elif name in ("ss_event_open_stream", "ss_event_subscribe",
+                      "ss_event_append", "ss_event_receive",
+                      "ss_event_ack", "ss_event_close_subscription",
+                      "ss_event_close_stream"):
+            # APP-RUN-3 event pub/sub: opaque handles + ids are Int64; strings
+            # are i8*. Signatures: open(name,cap)->h, subscribe(h,type,key)->h,
+            # append(h,type,key,payload)->id, receive(sub)->id, ack(sub,id)->(),
+            # close_subscription(sub)->(), close_stream(h)->().
+            i64 = ir.IntType(64)
+            sigs = {
+                "ss_event_open_stream": ir.FunctionType(i64, [i8p, i64]),
+                "ss_event_subscribe": ir.FunctionType(i64, [i64, i8p, i8p]),
+                "ss_event_append": ir.FunctionType(i64, [i64, i8p, i8p, i8p]),
+                "ss_event_receive": ir.FunctionType(i64, [i64]),
+                "ss_event_ack": ir.FunctionType(ir.VoidType(), [i64, i64]),
+                "ss_event_close_subscription": ir.FunctionType(ir.VoidType(), [i64]),
+                "ss_event_close_stream": ir.FunctionType(ir.VoidType(), [i64]),
+            }
+            fn = ir.Function(self.module, sigs[name], name=name)
         elif name == "ss_panic":
             # WS1-130 structured-trap helper: prints a crash report
             # (code · kind · op · row · reason · operands) to stderr and exits.
@@ -9543,6 +9562,31 @@ class EavCodegen:
             if body_arg is not None:
                 body_val = self._resolve(body_arg.payload[2], body_arg.payload[1], builder, sym)
                 builder.call(self.runtime("ss_net_free_text"), [body_val])
+        elif target == "event.openProcessStream":
+            # APP-RUN-3: in-process pub/sub (ss_event runtime). Handles + ids are
+            # Int64 (OpaquePointer); receive ignores its out-buffer args.
+            result = builder.call(self.runtime("ss_event_open_stream"),
+                                  [arg("streamName", "String"), arg("queueCapacity", "Int64")])
+        elif target == "event.subscribeStream":
+            result = builder.call(self.runtime("ss_event_subscribe"),
+                                  [arg("stream", "OpaquePointer"),
+                                   arg("eventType", "String"), arg("eventKey", "String")])
+        elif target == "event.appendEvent":
+            result = builder.call(self.runtime("ss_event_append"),
+                                  [arg("stream", "OpaquePointer"), arg("eventType", "String"),
+                                   arg("eventKey", "String"), arg("payloadJson", "String")])
+        elif target == "event.receiveEvent":
+            result = builder.call(self.runtime("ss_event_receive"),
+                                  [arg("subscription", "OpaquePointer")])
+        elif target == "event.acknowledgeEvent":
+            builder.call(self.runtime("ss_event_ack"),
+                         [arg("subscription", "OpaquePointer"), arg("eventId", "Int64")])
+        elif target == "event.closeSubscription":
+            builder.call(self.runtime("ss_event_close_subscription"),
+                         [arg("subscription", "OpaquePointer")])
+        elif target == "event.closeStream":
+            builder.call(self.runtime("ss_event_close_stream"),
+                         [arg("stream", "OpaquePointer")])
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -10256,7 +10300,20 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add("ss_net_fetch_text")
                 elif target == "net.freeTextBody":
                     out.add("ss_net_free_text")
+                elif target in _EVENT_RUNTIME_SYMBOLS:  # APP-RUN-3 pub/sub
+                    out.add(_EVENT_RUNTIME_SYMBOLS[target])
     return out
+
+
+_EVENT_RUNTIME_SYMBOLS = {
+    "event.openProcessStream": "ss_event_open_stream",
+    "event.subscribeStream": "ss_event_subscribe",
+    "event.appendEvent": "ss_event_append",
+    "event.receiveEvent": "ss_event_receive",
+    "event.acknowledgeEvent": "ss_event_ack",
+    "event.closeSubscription": "ss_event_close_subscription",
+    "event.closeStream": "ss_event_close_stream",
+}
 
 
 def _runtime_libs_for(program: Program) -> list:

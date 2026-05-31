@@ -70,6 +70,10 @@ CONSOLE_APPS = [
         "Wire native webserver",
         "</html>",
     ], None),
+    ("event-stream-smoke", [
+        "listener-one handled smoke.event.created",
+        "listener-two handled smoke.event.created",
+    ], None),
 ]
 
 

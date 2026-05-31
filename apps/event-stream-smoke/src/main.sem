@@ -250,11 +250,11 @@ main start firstSubscribeTask
 main join firstSubscribeTask
 main start secondSubscribeTask
 main join secondSubscribeTask
-main start firstReceiveTask
-main start secondReceiveTask
 main start appendSmokeEventTask
 main join appendSmokeEventTask
+main start firstReceiveTask
 main join firstReceiveTask
+main start secondReceiveTask
 main join secondReceiveTask
 main start firstReceivePositiveTask
 main join firstReceivePositiveTask
