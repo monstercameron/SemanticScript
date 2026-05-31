@@ -9957,9 +9957,10 @@ def _record_run(source: str):
     a replay must reproduce."""
     import os
     import subprocess
+    # UTF-8 stdin pipe to match the child's UTF-8 stream reconfigure (README §33.2).
     proc = subprocess.run(
         [sys.executable, os.path.abspath(__file__), "run", "-"],
-        input=source, capture_output=True, text=True,
+        input=source, capture_output=True, text=True, encoding="utf-8",
     )
     return proc.stdout, proc.returncode
 
@@ -9970,9 +9971,13 @@ def _record_run_full(source: str):
     on stderr (`eavc: …`) and must reach the caller, not be dropped."""
     import os
     import subprocess
+    # EAV source/output is UTF-8 (README §33.2); the child reconfigures its
+    # std streams to UTF-8, so the stdin pipe must be UTF-8 too — otherwise a
+    # non-ASCII source byte (e.g. an em-dash in a comment) is mis-encoded as
+    # cp1252 on Windows and the child fails to decode it.
     proc = subprocess.run(
         [sys.executable, os.path.abspath(__file__), "run", "-"],
-        input=source, capture_output=True, text=True,
+        input=source, capture_output=True, text=True, encoding="utf-8",
     )
     return proc.stdout, proc.stderr, proc.returncode
 
@@ -10520,6 +10525,37 @@ def _source_declares_project(source_text: str) -> bool:
     return False
 
 
+def _parse_panic(stderr: str) -> Optional[dict]:
+    """WS1-135: parse an `eav_panic` crash block out of captured stderr into a
+    structured `panic` object for the sem.eval.v1 / run --json envelope. Returns
+    None when the program did not trap through eav_panic."""
+    import re
+    m = re.search(r"EAV PANIC (SSR\d+) (\S+)", stderr)
+    if not m:
+        return None
+    code, kind = m.group(1), m.group(2)
+
+    def field(label):
+        mm = re.search(label + r":[ \t]*(.+)", stderr)
+        return mm.group(1).strip() if mm else None
+
+    row = field("at line")
+    operands = field("operands") or ""
+    lm = re.search(r"left=(-?\d+)", operands)
+    rm = re.search(r"right=(-?\d+)", operands)
+    return {
+        "code": code,
+        "kind": kind,
+        "op": field("op"),
+        "row": int(row) if row and row.isdigit() else row,
+        "reason": field("reason"),
+        "operands": {
+            "left": int(lm.group(1)) if lm else None,
+            "right": int(rm.group(1)) if rm else None,
+        },
+    }
+
+
 def cmd_eval(args) -> int:
     """Run a snippet through the JIT without scaffolding (sem.eval.v1): if the
     source declares no `project` entity, wrap it in a minimal console program,
@@ -10554,17 +10590,23 @@ def cmd_eval(args) -> int:
         except EavError:
             pass  # Fall through to _record_run_full which will catch the error
     out, err, code = _record_run_full(src)
+    panic = _parse_panic(err)  # WS1-135
     if code == 0:
         status = "ok"
+    elif panic is not None:
+        status = "crashed"
     elif err.startswith("eavc:") or "\neavc:" in err:
         # parse/compile failure surfaces through main's EavError handler
         status = "compile-failed"
     else:
         status = "nonzero-exit"
-    sys.stdout.write(_json_envelope(
-        "sem.eval.v1", ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
+    payload = dict(
+        ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
         stdout=out, stderr=err,
-        stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n")) + "\n")
+        stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n"))
+    if panic is not None:
+        payload["panic"] = panic
+    sys.stdout.write(_json_envelope("sem.eval.v1", **payload) + "\n")
     return 0
 
 
