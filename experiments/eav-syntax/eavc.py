@@ -10057,7 +10057,19 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
         return None
     sources = [os.path.normpath(os.path.join(rt, s)) for s in resolved["sources"]]
     os.makedirs(build_dir, exist_ok=True)
-    cmd = list(cc) + ["-O2", "-shared", "-o", out] + sources
+    cmd = list(cc) + ["-O2", "-shared", "-o", out]
+    # The runtime DLL is loaded into the JIT process, so it must match the JIT's
+    # target arch, not clang's native default. On this ARM64 host llvmlite is
+    # x64-emulated (JIT triple x86_64-pc-windows-msvc) while clang defaults to
+    # ARM64 — loading the native DLL fails WinError 193. Pin clang to the JIT
+    # triple so the architectures agree (a no-op when they already match).
+    try:
+        jit_triple = llvm.get_default_triple()
+        if jit_triple:
+            cmd.append("--target=" + jit_triple)
+    except Exception:
+        pass
+    cmd += sources
     for inc in resolved["include"]:
         cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
     for d in resolved["defines"]:
