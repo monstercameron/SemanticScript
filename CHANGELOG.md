@@ -58,6 +58,10 @@ clean parse):
   constant (static JSON response bodies).
 - **App e2e harness** (`tests/test_apps.py`) — console, server-backed,
   webServer-probe, stateful CRUD round-trip, and scripted-TUI runners.
+- **Release engineering** — `version.json` (release version source-of-truth,
+  distinct from the `CONTRACT_VERSION` source-compat contract),
+  `THIRD_PARTY_LICENSES.md` (SQLite / libuv / crypt_blowfish / llvmlite+LLVM /
+  CPython attribution), and this `CHANGELOG.md`.
 
 ### Changed
 
@@ -75,6 +79,11 @@ clean parse):
   it is the row model's name); docs say "SemanticScript".
 - **GitHub Actions wired** to the new compiler; legacy-product workflows no
   longer auto-run.
+- **Release pipeline consolidated** to a single cross-platform `release.yml`
+  (build the PyInstaller binary per-OS via `package.py`, smoke-test, publish with
+  `SHA256SUMS`), replacing the legacy `prepare-release`/`publish-release`/`release`
+  workflows that targeted the removed `vscode-semanticscript`/`sem.spec`/`mcpb`
+  toolchain.
 - **`compare.<op>Int32`** resolves an enum-variant operand (e.g.
   `ScreenMode EditMode`) by its declared type → the i32 discriminant, instead of
   forcing the suffix `Int32` hint.
@@ -107,8 +116,10 @@ clean parse):
   have not yet been run green.
 - `build` (native exe) works for console targets; a `webServer` target fails to
   link (`subsystem must be defined`).
-- No user-facing install/quickstart README (the root `README.md` is the language
-  spec) and no packaging/distribution metadata yet.
+- The single-file release pipeline (`release.yml` → `package.py`, with
+  `version.json` + `SHA256SUMS` + `THIRD_PARTY_LICENSES.md`) is wired but has not
+  yet run on a tag; no user-facing install/quickstart README exists yet (the root
+  `README.md` is the language spec), and there is no `pip`-installable package.
 - The broader language-completeness roadmap (crash-report tiers, non-bypassable
   compile gate + syscall sandbox, linter parity, the ≥150-app conformance
   corpus, the value-model free/move runtime) is tracked in

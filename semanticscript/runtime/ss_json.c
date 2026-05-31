@@ -1,6 +1,6 @@
 /*
  * ss_json.c — direct-return shim over the SemanticScript JSON runtime
- * (legacy/.../native_json/sem_json_runtime.c) for the `json.*` intrinsics
+ * (native_json/sem_json_runtime.c) for the `json.*` intrinsics
  * (APP-RUN-6). The native document API returns a status int and writes the
  * produced handle/cursor through a `*out` pointer; the EAV side wants a plain
  * `args -> single return`, so each entry here performs the out-param dance and

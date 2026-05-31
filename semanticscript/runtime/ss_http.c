@@ -1,7 +1,7 @@
 /*
  * ss_http.c — return-value shim over the SemanticScript HTTP runtime.
  *
- * legacy/SemanticScript/runtime/native_http/sem_http_runtime.c is a self-contained
+ * native_http/sem_http_runtime.c (ported into this runtime tree) is a self-contained
  * HTTP runtime (its h2o binding is optional and OFF here) providing both a socket
  * server and a family of pure request/response/url/session helpers. The legacy
  * semsc.py reached it through compiler-owned `http.*` intrinsics; semanticscript
