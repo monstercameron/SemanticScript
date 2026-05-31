@@ -4,4 +4,4 @@ sentence-transformers>=3,<6
 
 # Optional SQLite vector extension. Search falls back to in-process cosine over
 # the same sentence-transformer vectors when this extension is unavailable.
-sqlite-vec>=0.1.6
+sqlite-vec>=0.1.9
