@@ -4917,48 +4917,6 @@ const documentUsesFutureSyntax = (document) => {
   });
 };
 
-const linterScriptName = () => 'semlint.py';
-
-const candidateLinterPaths = (document) => {
-  const candidates = [];
-  const workspaceFolder = document ? vscode.workspace.getWorkspaceFolder(document.uri) : null;
-  const scriptName = linterScriptName();
-  const addAncestorCandidates = (startPath) => {
-    let currentPath = path.resolve(startPath);
-    const rootPath = path.parse(currentPath).root;
-
-    while (currentPath && currentPath !== rootPath) {
-      candidates.push(path.join(currentPath, 'SemanticScript', 'linter', scriptName));
-      candidates.push(path.join(currentPath, 'linter', scriptName));
-      currentPath = path.dirname(currentPath);
-    }
-  };
-
-  if (linterConfiguredPath) {
-    if (path.isAbsolute(linterConfiguredPath)) {
-      candidates.push(linterConfiguredPath);
-    } else if (workspaceFolder) {
-      candidates.push(path.join(workspaceFolder.uri.fsPath, linterConfiguredPath));
-    }
-  }
-
-  const workspaceFolders = vscode.workspace.workspaceFolders || [];
-  workspaceFolders.forEach((folder) => {
-    candidates.push(path.join(folder.uri.fsPath, 'SemanticScript', 'linter', scriptName));
-    candidates.push(path.join(folder.uri.fsPath, 'linter', scriptName));
-    candidates.push(path.join(folder.uri.fsPath, '..', 'SemanticScript', 'linter', scriptName));
-    addAncestorCandidates(folder.uri.fsPath);
-  });
-
-  if (document && document.fileName) {
-    addAncestorCandidates(path.dirname(document.fileName));
-  }
-
-  candidates.push(path.join(__dirname, 'tools', scriptName));
-
-  return candidates;
-};
-
 // The compiler IS the linter now: `semanticscript check --json` is the
 // structured-diagnostics surface, so the linter resolves the same script.
 const findLinterPath = (document) => findCompilerPath(document);
@@ -4993,41 +4951,6 @@ const diagnosticRange = (document, lineNumber, columnNumber) => {
   );
 };
 
-const semlintMessage = (record) => {
-  const parts = [];
-
-  if (record.code || record.kind) {
-    parts.push([record.code, record.kind].filter(Boolean).join(' '));
-  }
-
-  if (record.intentSlogan) {
-    parts.push(record.intentSlogan);
-  } else if (record.invariantRule) {
-    parts.push(record.invariantRule);
-  }
-
-  if (record.subjectName) {
-    parts.push(`${record.subjectKind || 'subject'}: ${record.subjectName}`);
-  }
-
-  if (record.gapEdge) {
-    parts.push(`gap: ${record.gapEdge}`);
-  }
-
-  return parts.join(' - ') || 'SemanticScript lint diagnostic';
-};
-
-const linterRecordKey = (record) => {
-  const primary = record && record.primary ? record.primary : {};
-  return [
-    record.code || '',
-    record.kind || '',
-    primary.path || '',
-    primary.line || 0,
-    primary.column || 0,
-  ].join(':');
-};
-
 const resolveLinterRecordPath = (document, lintCwd, recordPath) => {
   if (!recordPath) {
     return null;
@@ -5051,55 +4974,6 @@ const resolveLinterRecordPath = (document, lintCwd, recordPath) => {
   }
 
   return candidates[0] || null;
-};
-
-const relatedInformationFromSemlintRecord = (document, record, lintCwd) => {
-  const relatedSpans = Array.isArray(record.related) ? record.related : [];
-
-  return relatedSpans.map((span) => {
-    const absolutePath = resolveLinterRecordPath(document, lintCwd, span.path);
-
-    if (!absolutePath || !fs.existsSync(absolutePath)) {
-      return null;
-    }
-
-    const lineIndex = Math.max(0, (span.line || 1) - 1);
-    const characterIndex = Math.max(0, (span.column || 1) - 1);
-    const location = new vscode.Location(
-      vscode.Uri.file(absolutePath),
-      new vscode.Position(lineIndex, characterIndex)
-    );
-
-    return new vscode.DiagnosticRelatedInformation(
-      location,
-      span.role || 'related SemanticScript source'
-    );
-  }).filter(Boolean);
-};
-
-const diagnosticFromSemlintRecord = (document, record, lintCwd) => {
-  const primary = record.primary || {};
-  const diagnostic = new vscode.Diagnostic(
-    diagnosticRange(document, primary.line, primary.column),
-    semlintMessage(record),
-    severityFromLinter(record.severity)
-  );
-  diagnostic.source = 'semlint';
-  diagnostic.code = record.code || undefined;
-  diagnostic.relatedInformation = relatedInformationFromSemlintRecord(document, record, lintCwd);
-  diagnostic._semanticScriptRecordKey = linterRecordKey(record);
-  return diagnostic;
-};
-
-const diagnosticFromSimpleSemlintRecord = (document, record) => {
-  const diagnostic = new vscode.Diagnostic(
-    diagnosticRange(document, record.line, record.column),
-    record.message || String(record.rule || 'SemanticScript lint diagnostic'),
-    severityFromLinter(record.severity)
-  );
-  diagnostic.source = 'semlint';
-  diagnostic.code = record.rule || undefined;
-  return diagnostic;
 };
 
 const parseLinterDiagnostics = (document, stdout, _lintCwd) => {

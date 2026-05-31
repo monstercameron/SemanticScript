@@ -447,6 +447,12 @@
           }
         ]
       }
-    }
+    },
+    "snippets": [
+      {
+        "language": "semanticscript",
+        "path": "./snippets/semanticscript.code-snippets"
+      }
+    ]
   }
 }
