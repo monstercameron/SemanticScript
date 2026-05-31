@@ -19,6 +19,9 @@ standardAsync path standard.async
 standardAsync exports delay
 standardAsync exports await
 standardAsync exports runOnce
+standardAsync exports withTimeout
+standardAsync exports awaitResult
+standardAsync exports cancel
 standardAsync purpose "Typed EAV contract over the libuv event-loop async runtime via the eav_async_* ABI"
 standardAsync invariant "Every operation is a runtimeBinding to an eav_async_* symbol; no async logic lives in the compiler"
 
@@ -54,3 +57,31 @@ runOnce out Int32
 runOnce body runtimeBinding eav_async_run_once
 runOnce purpose "Run one turn of the event loop without blocking (cooperative progress / poll)"
 runOnce suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+withTimeout is operation
+withTimeout in delayMs AsyncMillis
+withTimeout in value Int64
+withTimeout in timeoutMs AsyncMillis
+withTimeout out AsyncFuture
+withTimeout async yes
+withTimeout body runtimeBinding eav_async_timeout_start
+withTimeout purpose "Arm a future like delay, but resolved as timed-out if timeoutMs elapses first"
+withTimeout invariant "A second libuv timer races the value timer; whichever fires first wins"
+withTimeout suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+awaitResult is operation
+awaitResult in future AsyncFuture
+awaitResult out Int64
+awaitResult async yes
+awaitResult body runtimeBinding eav_async_await_result
+awaitResult outParam
+awaitResult purpose "Drive the loop until ready; bind the value and surface timeout/cancel as a fallible error"
+awaitResult invariant "Returns the value with ok status, or a non-zero status (timeout/cancelled) as the call's error"
+awaitResult suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+cancel is operation
+cancel in future AsyncFuture
+cancel out Int32
+cancel body runtimeBinding eav_async_cancel
+cancel purpose "Cancel a not-yet-ready future; a later awaitResult resolves it as cancelled"
+cancel suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"

@@ -3,15 +3,13 @@
  * SEM_ASYNC_WITH_LIBUV against third_party/libuv) to the EAV front end (eavc),
  * the home of the `standard.async` stdlib.
  *
- * This is the *libuv event-loop* concurrency model — NOT threads. A future is
- * created on the single process-wide loop; `eav_async_delay_start(ms, value)`
- * arms a libuv timer that, after `ms`, completes the future with `value`;
- * `eav_async_await(handle)` drives the loop (`ss_async_future_await` runs it)
- * until the future is ready, then returns the value. So the value is delivered
- * asynchronously, scheduled on and driven by the real libuv loop, with no thread.
+ * libuv event-loop concurrency — NOT threads. A future is created on the single
+ * process-wide loop; a libuv timer completes it with a value after a delay; a
+ * second (timeout) timer or an explicit cancel can instead complete it with a
+ * timeout/cancelled status. `await` drives the loop until the future is ready.
  *
- * Each entry point is a plain `args -> single return` function so it binds
- * through the compiler's generic `body runtimeBinding <symbol>` seam. Handles
+ * Each entry point is a plain `args -> single return` (or out-param) function so
+ * it binds through the compiler's `body runtimeBinding <symbol>` seam. Handles
  * flow through EAV as OpaquePointer (i64).
  */
 #include "sem_async_runtime.h"
@@ -24,7 +22,10 @@
 #define EAV_EXPORT __attribute__((visibility("default")))
 #endif
 
-/* One process-wide loop, created lazily (matches semsc's single-loop model). */
+#define EAV_ASYNC_OK 0
+#define EAV_ASYNC_TIMEOUT 1
+#define EAV_ASYNC_CANCELLED 2
+
 static SSAsyncLoop *g_eav_async_loop = NULL;
 
 static SSAsyncLoop *eav_async_get_loop(void) {
@@ -37,42 +38,101 @@ static SSAsyncLoop *eav_async_get_loop(void) {
 typedef struct {
     SSFuture *future;
     int64_t value;
+    int status;            /* EAV_ASYNC_OK / TIMEOUT / CANCELLED */
+    SSAsyncTimer *work;     /* the value-delivering timer */
+    SSAsyncTimer *timeout;  /* optional timeout timer (NULL if none) */
 } eav_async_job;
 
-/* Loop callback: fires when the timer elapses, completing the future. */
-static void eav_async_delay_resume(void *user_data) {
-    eav_async_job *job = (eav_async_job *)user_data;
-    ss_async_future_complete(job->future, SS_ASYNC_OK, &job->value);
+static void eav_async_work_cb(void *ud) {
+    eav_async_job *j = (eav_async_job *)ud;
+    if (!ss_async_future_is_ready(j->future)) {
+        ss_async_future_complete(j->future, SS_ASYNC_OK, &j->value);
+    }
 }
 
-/* Start an async future that completes with `value` after `delay_ms`,
- * scheduled on the libuv loop. Returns a job handle. Nothing fires until the
- * loop is driven (by `eav_async_await`). */
-EAV_EXPORT void *eav_async_delay_start(int64_t delay_ms, int64_t value) {
+static void eav_async_timeout_cb(void *ud) {
+    eav_async_job *j = (eav_async_job *)ud;
+    if (!ss_async_future_is_ready(j->future)) {
+        j->status = EAV_ASYNC_TIMEOUT;
+        ss_async_future_complete(j->future, SS_ASYNC_ERR_TIMEOUT, 0);
+    }
+}
+
+static eav_async_job *eav_async_new(int64_t delay_ms, int64_t value) {
     SSAsyncLoop *loop = eav_async_get_loop();
-    eav_async_job *job = (eav_async_job *)malloc(sizeof(eav_async_job));
-    if (!job) return NULL;
-    job->value = value;
-    job->future = ss_async_future_create(loop);
-    SSAsyncTimer *timer = NULL;
+    eav_async_job *j = (eav_async_job *)malloc(sizeof(eav_async_job));
+    if (!j) return NULL;
+    j->value = value;
+    j->status = EAV_ASYNC_OK;
+    j->work = NULL;
+    j->timeout = NULL;
+    j->future = ss_async_future_create(loop);
     unsigned long long ms = delay_ms < 0 ? 0ULL : (unsigned long long)delay_ms;
-    ss_async_timer_start(loop, ms, eav_async_delay_resume, job, &timer);
-    return job;
+    ss_async_timer_start(loop, ms, eav_async_work_cb, j, &j->work);
+    return j;
 }
 
-/* Drive the libuv loop until the job's future is ready, then return its value. */
+/* Arm a future that completes with `value` after `delay_ms` on the libuv loop. */
+EAV_EXPORT void *eav_async_delay_start(int64_t delay_ms, int64_t value) {
+    return eav_async_new(delay_ms, value);
+}
+
+/* Like delay_start, but also arms a timeout: if `timeout_ms` elapses before the
+ * value timer fires, the future resolves as timed-out instead. */
+EAV_EXPORT void *eav_async_timeout_start(int64_t delay_ms, int64_t value,
+                                         int64_t timeout_ms) {
+    eav_async_job *j = eav_async_new(delay_ms, value);
+    if (!j) return NULL;
+    unsigned long long ms = timeout_ms < 0 ? 0ULL : (unsigned long long)timeout_ms;
+    ss_async_timer_start(eav_async_get_loop(), ms, eav_async_timeout_cb, j,
+                         &j->timeout);
+    return j;
+}
+
+/* Cancel a not-yet-ready future (e.g. fire-and-forget that is no longer wanted);
+ * a later await resolves it as cancelled. */
+EAV_EXPORT int32_t eav_async_cancel(void *handle) {
+    eav_async_job *j = (eav_async_job *)handle;
+    if (j && !ss_async_future_is_ready(j->future)) {
+        j->status = EAV_ASYNC_CANCELLED;
+        ss_async_future_complete(j->future, SS_ASYNC_ERR_CANCELLED, 0);
+        return EAV_ASYNC_CANCELLED;
+    }
+    return EAV_ASYNC_OK;
+}
+
+static void eav_async_cleanup(eav_async_job *j) {
+    if (j->work) { ss_async_timer_cancel(j->work); ss_async_timer_destroy(j->work); }
+    if (j->timeout) { ss_async_timer_cancel(j->timeout); ss_async_timer_destroy(j->timeout); }
+    ss_async_future_destroy(j->future);
+    free(j);
+}
+
+/* Drive the loop until ready; return the value (ignoring status — for the simple
+ * delay case where timeout/cancel are not used). */
 EAV_EXPORT int64_t eav_async_await(void *handle) {
-    eav_async_job *job = (eav_async_job *)handle;
-    if (!job) return 0;
-    ss_async_future_await(eav_async_get_loop(), job->future);
-    int64_t result = job->value;
-    ss_async_future_destroy(job->future);
-    free(job);
+    eav_async_job *j = (eav_async_job *)handle;
+    if (!j) return 0;
+    ss_async_future_await(eav_async_get_loop(), j->future);
+    int64_t result = j->value;
+    eav_async_cleanup(j);
     return result;
 }
 
-/* Run one turn of the loop (non-blocking-ish); returns 0 on success. Exposed so
- * the stdlib can model `poll` / cooperative progress without awaiting. */
+/* Drive the loop until ready; write the value through `out` and return the
+ * status (0 ok, 1 timeout, 2 cancelled) — the FFI out-param ABI shape, so a
+ * non-zero status becomes the EAV call's fallible error. */
+EAV_EXPORT int32_t eav_async_await_result(void *handle, int64_t *out) {
+    eav_async_job *j = (eav_async_job *)handle;
+    if (!j) { if (out) *out = 0; return EAV_ASYNC_CANCELLED; }
+    ss_async_future_await(eav_async_get_loop(), j->future);
+    int status = j->status;
+    if (out) *out = (status == EAV_ASYNC_OK) ? j->value : 0;
+    eav_async_cleanup(j);
+    return status;
+}
+
+/* Run one turn of the loop without blocking; 0 on success. */
 EAV_EXPORT int32_t eav_async_run_once(void) {
     return ss_async_loop_run_once(eav_async_get_loop());
 }

@@ -1,0 +1,185 @@
+# async_timeout — timeout + cancellation on the libuv async runtime (R-040/R-041).
+# Building on the event loop (async_event_loop.sem), this adds two libuv-timer
+# races and explicit cancellation, surfaced through the FFI out-param ABI: an
+# `awaitResult` returns the value with an ok status, or a non-zero status
+# (timeout / cancelled) that becomes the call's fallible error. The typed home is
+# std/standard.async.sem; the ops are inlined here so the example is runnable.
+#   * fast work under a generous timeout resolves ok (value 42);
+#   * slow work past a short timeout resolves as a CAUGHT timeout error;
+#   * a future cancelled before await resolves as a CAUGHT cancellation error.
+# Timings have wide margins (0/5 vs 100ms) so ordering is deterministic.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+AsyncTimeout is project
+AsyncTimeout module examplesAsyncTimeout
+AsyncTimeout target console
+AsyncTimeout entry main
+
+examplesAsyncTimeout is module
+examplesAsyncTimeout path examples.asyncTimeout
+examplesAsyncTimeout exports main
+examplesAsyncTimeout purpose "Race libuv timers for timeout, and cancel a future, asserting each outcome"
+examplesAsyncTimeout invariant "Timeout and cancellation surface as caught errors; fast work resolves ok"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+AsyncFuture is alias
+AsyncFuture for OpaquePointer
+AsyncFuture purpose "An opaque future handle armed on the libuv loop"
+
+AsyncError is error
+AsyncError purpose "A timeout or cancellation reported by awaitResult"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+asyncWithTimeout is operation
+asyncWithTimeout in delayMs Int64
+asyncWithTimeout in value Int64
+asyncWithTimeout in timeoutMs Int64
+asyncWithTimeout out AsyncFuture
+asyncWithTimeout async yes
+asyncWithTimeout body runtimeBinding eav_async_timeout_start
+asyncWithTimeout suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+
+asyncDelay is operation
+asyncDelay in delayMs Int64
+asyncDelay in value Int64
+asyncDelay out AsyncFuture
+asyncDelay async yes
+asyncDelay body runtimeBinding eav_async_delay_start
+asyncDelay suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+
+asyncAwaitResult is operation
+asyncAwaitResult in future AsyncFuture
+asyncAwaitResult out Int64
+asyncAwaitResult async yes
+asyncAwaitResult outParam
+asyncAwaitResult body runtimeBinding eav_async_await_result
+asyncAwaitResult suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+
+asyncCancel is operation
+asyncCancel in future AsyncFuture
+asyncCancel out Int32
+asyncCancel body runtimeBinding eav_async_cancel
+asyncCancel suppress SS5000 because "runtimeBinding seam to eav_async_*; typed home std/standard.async.sem"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Await an ok future, a timed-out future, and a cancelled future"
+main invariant "All three assertions hold"
+main let zeroMs immutable Int64 0
+main let fastMs immutable Int64 0
+main let slowMs immutable Int64 100
+main let shortTimeout immutable Int64 5
+main let longTimeout immutable Int64 100
+main let midMs immutable Int64 50
+main let valA immutable Int64 42
+main let valB immutable Int64 7
+main let expect42 immutable Int64 42
+main let one immutable Int64 1
+main let timeoutFlag mutable Int64 0
+main let cancelFlag mutable Int64 0
+main let tnOk immutable String "fast work under a generous timeout resolves ok to 42"
+main let tnTimeout immutable String "slow work past a short timeout is a caught timeout error"
+main let tnCancel immutable String "a future cancelled before await is a caught cancellation error"
+main do startOk
+main do awaitOk
+main do startSlow
+main do awaitSlow
+main branch ifError awaitSlow goto timeoutCaught
+main goto afterTimeout
+main at timeoutCaught set timeoutFlag one
+main at afterTimeout do startCancel
+main do doCancel
+main do awaitCancel
+main branch ifError awaitCancel goto cancelCaught
+main goto afterCancel
+main at cancelCaught set cancelFlag one
+main at afterCancel do checkOk
+main do checkTimeout
+main do checkCancel
+main do harnessReport
+main return harnessSummaryCode
+
+startOk is call
+startOk in main
+startOk invokes asyncWithTimeout
+startOk arg delayMs Int64 fastMs
+startOk arg value Int64 valA
+startOk arg timeoutMs Int64 longTimeout
+startOk out futOk AsyncFuture
+
+awaitOk is call
+awaitOk in main
+awaitOk invokes asyncAwaitResult
+awaitOk arg future AsyncFuture futOk
+awaitOk out valOk Int64
+awaitOk catch okErr AsyncError
+
+startSlow is call
+startSlow in main
+startSlow invokes asyncWithTimeout
+startSlow arg delayMs Int64 slowMs
+startSlow arg value Int64 valA
+startSlow arg timeoutMs Int64 shortTimeout
+startSlow out futSlow AsyncFuture
+
+awaitSlow is call
+awaitSlow in main
+awaitSlow invokes asyncAwaitResult
+awaitSlow arg future AsyncFuture futSlow
+awaitSlow out valSlow Int64
+awaitSlow catch slowErr AsyncError
+
+startCancel is call
+startCancel in main
+startCancel invokes asyncDelay
+startCancel arg delayMs Int64 midMs
+startCancel arg value Int64 valB
+startCancel out futCancel AsyncFuture
+
+doCancel is call
+doCancel in main
+doCancel invokes asyncCancel
+doCancel arg future AsyncFuture futCancel
+doCancel out cancelStatus Int32
+
+awaitCancel is call
+awaitCancel in main
+awaitCancel invokes asyncAwaitResult
+awaitCancel arg future AsyncFuture futCancel
+awaitCancel out valCancel Int64
+awaitCancel catch cancelErr AsyncError
+
+checkOk is call
+checkOk in main
+checkOk invokes test.assertEqualInt64
+checkOk arg name String tnOk
+checkOk arg expected Int64 expect42
+checkOk arg actual Int64 valOk
+
+checkTimeout is call
+checkTimeout in main
+checkTimeout invokes test.assertEqualInt64
+checkTimeout arg name String tnTimeout
+checkTimeout arg expected Int64 one
+checkTimeout arg actual Int64 timeoutFlag
+
+checkCancel is call
+checkCancel in main
+checkCancel invokes test.assertEqualInt64
+checkCancel arg name String tnCancel
+checkCancel arg expected Int64 one
+checkCancel arg actual Int64 cancelFlag
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
