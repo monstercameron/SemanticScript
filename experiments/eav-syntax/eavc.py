@@ -8212,6 +8212,10 @@ class EavCodegen:
         elif name == "free":
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
                              name="free")
+        elif name == "realloc":
+            fn = ir.Function(self.module,
+                             ir.FunctionType(i8p, [i8p, ir.IntType(64)]),
+                             name="realloc")
         elif name in ("strcpy", "strcat"):
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i8p]), name=name)
         elif name == "strcmp":
@@ -9023,6 +9027,78 @@ class EavCodegen:
                 off = builder.select(err, builder.add(ir.Constant(i64, 8), buflen),
                                      builder.add(ir.Constant(i64, 8), start))
                 result = builder.gep(buf, [off])  # a view pointer into the buffer
+            else:
+                result = ir.Constant(ir.IntType(32), 0)
+        elif target.startswith("list."):
+            # R-061 collections runtime: a growable Int64 list behind a STABLE
+            # handle. Header (malloc'd, never moves): i64[3] = [count, capacity,
+            # dataPtrBits]. Data (malloc'd, realloc'd on growth): capacity × i64.
+            # The handle is the header pointer, so append's realloc of the data
+            # buffer never dangles the caller's handle. list.get is bounds-checked
+            # (OOB sets the fallible ListError `err` and reads a safe in-bounds
+            # slot — never an out-of-bounds load).
+            i64 = ir.IntType(64)
+            i8p = ir.IntType(8).as_pointer()
+            i64p = i64.as_pointer()
+            _INIT_CAP = 4
+
+            def _slot(b, h, n):  # &header[n]
+                return b.gep(b.bitcast(h, i64p), [ir.Constant(i64, n)])
+
+            if target == "list.create":
+                hdr = builder.call(self.runtime("malloc"), [ir.Constant(i64, 24)])
+                builder.store(ir.Constant(i64, 0), _slot(builder, hdr, 0))
+                builder.store(ir.Constant(i64, _INIT_CAP), _slot(builder, hdr, 1))
+                data = builder.call(self.runtime("malloc"),
+                                    [ir.Constant(i64, _INIT_CAP * 8)])
+                builder.store(builder.ptrtoint(data, i64), _slot(builder, hdr, 2))
+                err = builder.icmp_unsigned(
+                    "==", builder.ptrtoint(hdr, i64), ir.Constant(i64, 0))
+                result = hdr
+            elif target == "list.length":
+                h = arg("list", "OpaquePointer")
+                result = builder.load(_slot(builder, h, 0))
+            elif target == "list.append":
+                h = arg("list", "OpaquePointer")
+                v = arg("value", "Int64")
+                count = builder.load(_slot(builder, h, 0))
+                cap = builder.load(_slot(builder, h, 1))
+                fn = builder.function
+                grow_bb = fn.append_basic_block("listGrow")
+                cont_bb = fn.append_basic_block("listAppendCont")
+                builder.cbranch(builder.icmp_signed("==", count, cap),
+                                grow_bb, cont_bb)
+                gb = ir.IRBuilder(grow_bb)
+                newcap = gb.mul(cap, ir.Constant(i64, 2))
+                olddata = gb.inttoptr(gb.load(_slot(gb, h, 2)), i8p)
+                newdata = gb.call(self.runtime("realloc"),
+                                  [olddata, gb.mul(newcap, ir.Constant(i64, 8))])
+                gb.store(newcap, _slot(gb, h, 1))
+                gb.store(gb.ptrtoint(newdata, i64), _slot(gb, h, 2))
+                gb.branch(cont_bb)
+                builder.position_at_end(cont_bb)
+                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i64p)
+                builder.store(v, builder.gep(data, [count]))
+                builder.store(builder.add(count, ir.Constant(i64, 1)),
+                              _slot(builder, h, 0))
+                result = ir.Constant(ir.IntType(32), 0)
+            elif target == "list.get":
+                h = arg("list", "OpaquePointer")
+                idx = arg("index", "Int64")
+                count = builder.load(_slot(builder, h, 0))
+                oob = builder.or_(
+                    builder.icmp_signed("<", idx, ir.Constant(i64, 0)),
+                    builder.icmp_signed(">=", idx, count))
+                safe = builder.select(oob, ir.Constant(i64, 0), idx)
+                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i64p)
+                result = builder.load(builder.gep(data, [safe]))
+                err = oob
+            elif target == "list.release":
+                h = arg("list", "OpaquePointer")
+                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i8p)
+                builder.call(self.runtime("free"), [data])
+                builder.call(self.runtime("free"), [h])
+                result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
         elif target in ("math.divideInt64", "math.moduloInt64"):
