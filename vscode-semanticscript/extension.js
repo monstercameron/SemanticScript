@@ -2961,6 +2961,19 @@ const provideDocumentSemanticTokens = (document) => {
 };
 
 const registerSemanticTokens = (context) => {
+  // The semantic-token provider is predicate-first (it classifies token[0] as the
+  // verb), which mis-colors the current subject-first `<subject> <predicate>
+  // <payload>` syntax and would override the correct TextMate grammar colors.
+  // It is off by default until reworked + live-tested; the grammar is the
+  // reliable highlighter. Re-enable via semanticScript.semanticHighlighting.enabled.
+  const enabled = vscode.workspace
+    .getConfiguration('semanticScript')
+    .get('semanticHighlighting.enabled', false);
+
+  if (!enabled) {
+    return;
+  }
+
   const provider = {
     provideDocumentSemanticTokens,
   };

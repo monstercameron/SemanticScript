@@ -151,6 +151,11 @@
           "type": "string",
           "default": "",
           "description": "Optional directory for built executables. Leave empty to use a build/ directory beside the source."
+        },
+        "semanticScript.semanticHighlighting.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the experimental semantic-token highlighter. Off by default: it is predicate-first and mis-colors the current subject-first syntax, so the TextMate grammar is the reliable highlighter. Re-enable after the provider is reworked."
         }
       }
     },
