@@ -644,10 +644,14 @@ DIAGNOSTICS.update({
 
 
 def explain(code: str) -> dict:
-    """Return the registry entry for a diagnostic code (README §29 #12)."""
-    if code not in DIAGNOSTICS:
-        raise EavError(f"unknown diagnostic code {code!r}")
-    return DIAGNOSTICS[code]
+    """Return the registry entry for a diagnostic code (README §29 #12). Covers
+    both the compile-time band (DIAGNOSTICS, SS####/MD####) and the runtime trap
+    band (RUNTIME_DIAGNOSTICS, SSR####; WS1-136)."""
+    if code in DIAGNOSTICS:
+        return DIAGNOSTICS[code]
+    if code in RUNTIME_DIAGNOSTICS:
+        return RUNTIME_DIAGNOSTICS[code]
+    raise EavError(f"unknown diagnostic code {code!r}")
 
 
 @dataclass
@@ -664,8 +668,14 @@ class Diagnostic:
 
 
 def format_repair(code: str) -> str:
-    """`Found / Suggested fix` repair text for a code (README §17 repair format)."""
+    """`Found / Suggested fix` repair text for a code (README §17 repair format).
+    Runtime trap codes (SSR####) carry a kind + repair instead of tier/found."""
     entry = explain(code)
+    if "repair" in entry:  # runtime trap band (WS1-136)
+        return (
+            f"{code} (runtime trap · {entry['kind']}): {entry['summary']}\n"
+            f"  Repair: {entry['repair']}"
+        )
     return (
         f"{code} ({entry['tier']}): {entry['summary']}\n"
         f"  Found:        {entry['found']}\n"
@@ -9351,6 +9361,10 @@ class EavCodegen:
         site — the no-UB trap reports `code · kind · op · row · reason · operands`
         to stderr and terminates, instead of a bare `llvm.trap` (silent SIGILL).
         `left`/`right` are the i64 operands at the site (0 for the absent one)."""
+        # WS1-136 emission-coverage guard: a trap code emitted into a program
+        # must be a registered runtime diagnostic (so `explain` always resolves
+        # it and the band stays complete).
+        assert code in RUNTIME_DIAGNOSTICS, f"unregistered runtime code {code!r}"
         i32, i64 = ir.IntType(32), ir.IntType(64)
 
         def s(text):
