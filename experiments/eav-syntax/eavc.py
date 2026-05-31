@@ -1696,6 +1696,7 @@ RESERVED_WORDS = {
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "outParam",                           # WS3-016 FFI out-param ABI marker
     "useRetry",                           # R-041 bounded-retry call row
+    "typeParam",                          # R-039 generic type parameter
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
     "guardRank",                           # X-090 lock-acquisition order
     "region", "strategy", "capacity", "allocateIn", "releaseRegion",  # WS1-112
@@ -1764,6 +1765,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "requires", "ensures",  # X-092 checked contracts
         "maxIterations",  # R-082 loop iteration bound for untrusted-size loops
         "outParam",  # WS3-016 FFI out-param ABI on a runtimeBinding op
+        "typeParam",  # R-039 generic type parameter (monomorphized)
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
@@ -1775,6 +1777,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "requires", "ensures",  # X-092 checked contracts
         "maxIterations",  # R-082 loop iteration bound for untrusted-size loops
         "outParam",  # WS3-016 FFI out-param ABI on a runtimeBinding op
+        "typeParam",  # R-039 generic type parameter (monomorphized)
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -5374,6 +5377,9 @@ def _validate_calls(program: Program) -> None:
                 ent.line,
             )
         callee = program.entities[target]
+        # R-039: the callee's `typeParam` names match any concrete arg/out type —
+        # the instantiation is checked structurally per call, not against `T`.
+        tparams = {r.payload[0] for r in callee.facts("typeParam") if r.payload}
         in_names = [r.payload[0] for r in callee.facts("in") if r.payload]
         arg_names = [a.payload[0] for a in ent.facts("arg") if a.payload]
         for an in arg_names:
@@ -5402,7 +5408,7 @@ def _validate_calls(program: Program) -> None:
                 continue
             slot, arg_type = arg.payload[0], arg.payload[1]
             in_type = in_types.get(slot)
-            if in_type is None or arg_type == in_type:
+            if in_type is None or arg_type == in_type or in_type in tparams:
                 continue
             if (arg_type in newtypes or in_type in newtypes) and (
                 _resolve_alias(arg_type, alias_map)
@@ -5425,7 +5431,8 @@ def _validate_calls(program: Program) -> None:
             co = callee_out.payload
             expected = co[1] if co[0] == "Result" and len(co) >= 2 else co[0]
             bind_type = out_row.payload[1]
-            if expected not in (None, "Void") and bind_type != expected:
+            if (expected not in (None, "Void") and expected not in tparams
+                    and bind_type != expected):
                 same_base = (_resolve_alias(bind_type, alias_map)
                              == _resolve_alias(expected, alias_map))
                 if not same_base:
@@ -8300,9 +8307,30 @@ class EavCodegen:
 
         ops = [o for o in self.program.of_kind("operation")
                if o.name not in configure_ops and _included_for_platform(o)]
-        for op in ops:
+        # R-039 monomorphizing generics: a generic op (>=1 `typeParam`) is not
+        # emitted directly; each distinct instantiation inferred from a call's
+        # arg types is emitted as a substituted clone, and calls resolve to it.
+        generic_ops = {o.name: o for o in ops if o.facts("typeParam")}
+        clones = []
+        if generic_ops:
+            seen = set()
+            for cn in self.program.order:
+                c = self.program.entities[cn]
+                if c.kind not in ("call", "task"):
+                    continue
+                inv = c.fact("invokes")
+                tgt = inv.payload[0] if inv and inv.payload else None
+                if tgt not in generic_ops:
+                    continue
+                typeargs = self._infer_typeargs(generic_ops[tgt], c)
+                if (tgt, typeargs) in seen:
+                    continue
+                seen.add((tgt, typeargs))
+                clones.append(self._make_mono_clone(generic_ops[tgt], typeargs))
+        emit_ops = [o for o in ops if o.name not in generic_ops] + clones
+        for op in emit_ops:
             self.functions[op.name] = self._declare_function(op)
-        for op in ops:
+        for op in emit_ops:
             # runtimeBinding/intrinsic bodies stay bare declarations (extern);
             # full FFI symbol binding is WS3-052/053. Only `body steps` defines.
             if _op_body_kind(op) == "steps":
@@ -8390,6 +8418,45 @@ class EavCodegen:
             gv.initializer = ir.Constant(i64, 0)
             self._depth_gv_cache = gv
         return self._depth_gv_cache
+
+    # -- R-039 monomorphizing generics --
+    @staticmethod
+    def _mangle(name: str, typeargs: tuple) -> str:
+        """Stable LLVM name for a generic instantiation, e.g. genId__Int64."""
+        return name + "".join("__" + t for t in typeargs)
+
+    @staticmethod
+    def _typeparam_names(op: Entity) -> list:
+        return [r.payload[0] for r in op.facts("typeParam") if r.payload]
+
+    def _infer_typeargs(self, gen: Entity, call: Entity) -> tuple:
+        """Bind each `typeParam` of a generic op from the concrete type of the
+        call arg in the slot whose declared param type is that parameter."""
+        tps = self._typeparam_names(gen)
+        in_type = {r.payload[0]: r.payload[1]
+                   for r in gen.facts("in") if len(r.payload) >= 2}
+        arg_type = {a.payload[0]: a.payload[1]
+                    for a in call.facts("arg") if len(a.payload) >= 2}
+        binding: dict = {}
+        for slot, ptype in in_type.items():
+            if ptype in tps and slot in arg_type:
+                binding[ptype] = arg_type[slot]
+        return tuple(binding.get(t, "Int64") for t in tps)
+
+    def _make_mono_clone(self, gen: Entity, typeargs: tuple) -> Entity:
+        """A concrete copy of a generic op with each `typeParam` substituted by
+        its concrete type in every row payload (in/out/let/return type positions);
+        the `typeParam` rows themselves are dropped."""
+        sub = dict(zip(self._typeparam_names(gen), typeargs))
+        mangled = self._mangle(gen.name, typeargs)
+        clone = Entity(name=mangled, kind="operation", line=gen.line)
+        for r in gen.rows:
+            if r.predicate == "typeParam":
+                continue
+            new_payload = [sub.get(tok, tok) for tok in r.payload]
+            clone.rows.append(
+                Row(mangled, r.predicate, new_payload, r.line, label=r.label))
+        return clone
 
     def _define_function(self, op: Entity) -> None:
         fn = self.functions[op.name]
@@ -9349,8 +9416,17 @@ class EavCodegen:
                 for a in call.facts("arg")
             ]
             result = builder.call(fnptr, vals)
-        elif target in self.functions:
+        elif target in self.functions or (
+                self.program.entities.get(target) is not None
+                and self.program.entities[target].facts("typeParam")):
             callee = self.program.entities[target]
+            # R-039: a call to a generic op resolves to the monomorphized clone
+            # for the instantiation inferred from this call's arg types.
+            if callee.facts("typeParam"):
+                eff_target = self._mangle(
+                    target, self._infer_typeargs(callee, call))
+            else:
+                eff_target = target
             # X-092: enforce the callee's `requires` preconditions at the call site.
             # A provably-good literal arg is discharged (no check emitted); any other
             # value gets a runtime assert that traps on violation.
@@ -9402,7 +9478,7 @@ class EavCodegen:
                     rdone = fn.append_basic_block("retryDone")
                     builder.branch(rhead)
                     builder.position_at_end(rhead)
-                    st = builder.call(self.functions[target], vals + [slot])
+                    st = builder.call(self.functions[eff_target], vals + [slot])
                     builder.store(st, status_p)
                     att = builder.load(attempts_p)
                     builder.store(builder.add(att, ir.Constant(i32, 1)), attempts_p)
@@ -9412,11 +9488,11 @@ class EavCodegen:
                     builder.position_at_end(rdone)
                     status = builder.load(status_p)
                 else:
-                    status = builder.call(self.functions[target], vals + [slot])
+                    status = builder.call(self.functions[eff_target], vals + [slot])
                 result = builder.load(slot)
                 err = builder.icmp_signed("!=", status, ir.Constant(i32, 0))
             else:
-                result = builder.call(self.functions[target], vals)
+                result = builder.call(self.functions[eff_target], vals)
         else:
             result = self._emit_derived_target(target, call, args, builder, sym)
 
