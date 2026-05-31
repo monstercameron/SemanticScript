@@ -206,3 +206,48 @@ EAV_EXPORT int32_t eav_async_channel_close(void *chan) {
     free(chan);
     return 0;
 }
+
+/* ---- async interval: a periodic tick driven by the loop ----
+ * Each `tick` arms a one-shot libuv timer for the interval period and drives the
+ * loop until it fires, then returns the running tick count. So N ticks take ~N
+ * periods of real loop time — a cooperative interval, no thread.
+ */
+typedef struct {
+    int64_t period_ms;
+    int64_t ticks;
+} eav_interval;
+
+typedef struct {
+    int fired;
+} eav_interval_wait;
+
+EAV_EXPORT void *eav_async_interval_create(int64_t period_ms) {
+    eav_interval *iv = (eav_interval *)calloc(1, sizeof(eav_interval));
+    if (iv) iv->period_ms = period_ms;
+    return iv;
+}
+
+static void eav_interval_cb(void *ud) {
+    ((eav_interval_wait *)ud)->fired = 1;
+}
+
+EAV_EXPORT int64_t eav_async_interval_tick(void *handle) {
+    eav_interval *iv = (eav_interval *)handle;
+    if (!iv) return 0;
+    eav_interval_wait wait;
+    wait.fired = 0;
+    SSAsyncTimer *timer = NULL;
+    unsigned long long ms = iv->period_ms < 0 ? 0ULL : (unsigned long long)iv->period_ms;
+    ss_async_timer_start(eav_async_get_loop(), ms, eav_interval_cb, &wait, &timer);
+    while (!wait.fired) {
+        ss_async_loop_run_once(eav_async_get_loop());
+    }
+    if (timer) { ss_async_timer_cancel(timer); ss_async_timer_destroy(timer); }
+    iv->ticks++;
+    return iv->ticks;
+}
+
+EAV_EXPORT int32_t eav_async_interval_close(void *handle) {
+    free(handle);
+    return 0;
+}

@@ -26,6 +26,9 @@ standardAsync exports channelCreate
 standardAsync exports channelProduce
 standardAsync exports channelReceive
 standardAsync exports channelClose
+standardAsync exports intervalCreate
+standardAsync exports intervalTick
+standardAsync exports intervalClose
 standardAsync purpose "Typed EAV contract over the libuv event-loop async runtime via the eav_async_* ABI"
 standardAsync invariant "Every operation is a runtimeBinding to an eav_async_* symbol; no async logic lives in the compiler"
 
@@ -124,3 +127,29 @@ channelClose out Int32
 channelClose body runtimeBinding eav_async_channel_close
 channelClose purpose "Release the channel handle"
 channelClose suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+AsyncInterval is alias
+AsyncInterval for OpaquePointer
+AsyncInterval purpose "An opaque periodic-interval handle, advanced by intervalTick"
+
+intervalCreate is operation
+intervalCreate in periodMs AsyncMillis
+intervalCreate out AsyncInterval
+intervalCreate body runtimeBinding eav_async_interval_create
+intervalCreate purpose "Create a periodic interval of periodMs milliseconds"
+intervalCreate suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+intervalTick is operation
+intervalTick in interval AsyncInterval
+intervalTick out Int64
+intervalTick async yes
+intervalTick body runtimeBinding eav_async_interval_tick
+intervalTick purpose "Wait one period on the loop and return the running tick count"
+intervalTick suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
+
+intervalClose is operation
+intervalClose in interval AsyncInterval
+intervalClose out Int32
+intervalClose body runtimeBinding eav_async_interval_close
+intervalClose purpose "Release the interval handle"
+intervalClose suppress SS5000 because "runtimeBinding seam to the eav_async_* libuv runtime; the typed home is this module"
