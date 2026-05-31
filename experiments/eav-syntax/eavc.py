@@ -467,6 +467,9 @@ DIAGNOSTICS.update({
     "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
                "found": "A return of a base/sibling type where the out is an alias newtype.",
                "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
+    "SS1030": {"tier": "T1", "summary": "Call `out` binding type disagrees with the callee's return type.",
+               "found": "A direct call binds its result to a type that differs from the invoked operation's declared `out` type.",
+               "suggested": "Bind the result to the callee's exact return type (an alias is a distinct newtype and does not silently coerce) (README §10/§15/WS2-089)."},
     "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
                 "found": "Two `PROJECT constant` rows with the same name.",
                 "suggested": "Use one constant per name (README §28.1)."},
@@ -5392,6 +5395,35 @@ def _validate_calls(program: Program) -> None:
                     f"newtype and does not silently coerce (README ss10, WS1-031)",
                     arg.line, code="SS3710",
                 )
+        # WS2-089 bind-return-type-domain: the call's `out` binding type must be
+        # the callee's declared return type exactly. A Result-returning callee
+        # binds its OK type via `out` (errors flow through `catch`). A same-base
+        # alias mismatch is a silent newtype coercion, just like the arg case.
+        callee_out = callee.fact("out")
+        out_row = ent.fact("out")
+        if (callee_out and callee_out.payload and out_row
+                and len(out_row.payload) >= 2):
+            co = callee_out.payload
+            expected = co[1] if co[0] == "Result" and len(co) >= 2 else co[0]
+            bind_type = out_row.payload[1]
+            if expected not in (None, "Void") and bind_type != expected:
+                same_base = (_resolve_alias(bind_type, alias_map)
+                             == _resolve_alias(expected, alias_map))
+                if not same_base:
+                    raise EavError(
+                        f"call {ent.name!r} binds the result of {target!r} as "
+                        f"{bind_type!r} but {target!r} returns {expected!r} "
+                        f"(README ss10/ss15, WS2-089)",
+                        out_row.line, code="SS1030",
+                    )
+                if bind_type in newtypes or expected in newtypes:
+                    raise EavError(
+                        f"call {ent.name!r} binds the result of {target!r} as "
+                        f"{bind_type!r} where {target!r} returns {expected!r}; an "
+                        f"alias is a distinct newtype and does not silently coerce "
+                        f"(README ss10, WS2-089)",
+                        out_row.line, code="SS1030",
+                    )
 
 
 BUILTIN_NAMESPACES = {"compare", "console", "math"}
