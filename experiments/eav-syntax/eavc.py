@@ -550,6 +550,12 @@ DIAGNOSTICS.update({
     "SS1706": {"tier": "T0", "summary": "Operation can cause an effect it neither declares nor is authorized for.",
                "found": "An effect that flows up from an activated call/task/cleanup, absent from the op's own `effect` rows AND not covered by any `uses` capability the op holds.",
                "suggested": "Declare it (`effect <action> <resource>`) or authorize it with a covering `uses` capability — the contract must list every effect the op can cause (README §15/§17 #5, WS2-091)."},
+    "SS1707": {"tier": "T1", "summary": "operationType effect bound exceeded.",
+               "found": "An operation bound as a value of an `operationType` whose "
+                        "effective effects are not a subset of the operationType's "
+                        "declared effect bound (behavior-as-data effect escape).",
+               "suggested": "Add the missing effect(s) to the operationType bound, or "
+                            "bind an operation within the bound (README §33.9/WS2-092)."},
     "SS5400": {"tier": "T1", "summary": "`suppress` needs a `because` rationale.",
                "found": "A `suppress CODE` row with no `because`.",
                "suggested": "Write `suppress CODE because \"…\"` (README §30.6.2, §17 #54)."},
@@ -1711,7 +1717,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
                   "borrows", "lifetime", "mayEscape",  # WS1-111 view rows on a sig
                   "unsafe", "wrapsAs", "allocator", "cleanedBy"},  # WS1-116 FFI
     "semsig": {"version", "generatedBy", "describes"},
-    "operationType": {"in", "out"},
+    "operationType": {"in", "out", "effect"},  # WS2-092: effect bound (§33.9)
 }
 
 
@@ -3495,6 +3501,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_multitarget_entry(program))
+    diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_ownership_and_entry_export(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
     # incompatible error types warns.
@@ -4241,6 +4248,16 @@ def _effective_effects(program: Program, op: Entity, seen: set) -> set:
         return set()
     seen.add(op.name)
     eff = set(_effect_rows_of(op))
+    # WS2-092: local operationType value bindings (`let fn … <OpType> <op>`)
+    # contribute the operationType's declared effect bound when invoked
+    # indirectly, so behavior-passed-as-data cannot escape the effect union.
+    ot_bindings = {
+        r.payload[0]: program.entities[r.payload[2]]
+        for r in op.rows
+        if r.predicate == "let" and len(r.payload) >= 3
+        and r.payload[2] in program.entities
+        and program.entities[r.payload[2]].kind == "operationType"
+    }
     for row in op.rows:
         if row.predicate not in _STEP_SPLIT or not row.payload:
             continue
@@ -4257,6 +4274,10 @@ def _effective_effects(program: Program, op: Entity, seen: set) -> set:
                 eff |= _effect_rows_of(w)
         for w in workers:
             if w.kind in ("call", "task"):
+                inv = w.fact("invokes")
+                itgt = inv.payload[0] if inv and inv.payload else None
+                if itgt in ot_bindings:  # WS2-092: indirect call via operationType
+                    eff |= _effect_rows_of(ot_bindings[itgt])
                 callee = _invoked_user_op(program, w)
                 if callee is not None:
                     eff |= _effective_effects(program, callee, seen)
@@ -4684,6 +4705,37 @@ def _lint_entry_abi(program: Program) -> list:
             out.append(Diagnostic("SS1191", "error",
                                   f"console entry {ent.name!r} must return ExitCode/"
                                   f"Int32, got {otype!r} (README ss11)", ent.line, ent.name))
+    return out
+
+
+def _lint_operationtype_effect_bound(program: Program) -> list:
+    """WS2-092 (§33.9): an operation bound as a value of an `operationType` may
+    not perform effects beyond that operationType's declared effect bound —
+    behavior passed as data cannot smuggle an undeclared effect. (The indirect
+    call's effects are unioned into the caller by `_effective_effects`.)"""
+    out: list[Diagnostic] = []
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for r in op.rows:
+            if r.predicate != "let" or len(r.payload) < 4:
+                continue
+            ot = program.entities.get(r.payload[2])
+            bound = program.entities.get(r.payload[3])
+            if (ot is None or ot.kind != "operationType" or bound is None
+                    or bound.kind not in ("operation", "function")):
+                continue
+            escape = _effective_effects(program, bound, set()) - _effect_rows_of(ot)
+            if escape:
+                pretty = sorted(f"{a} {res}" for a, res in escape)
+                out.append(Diagnostic(
+                    "SS1707", "error",
+                    f"operation {bound.name!r} bound as operationType {ot.name!r} in "
+                    f"{op.name!r} performs effect(s) {pretty} outside the "
+                    f"operationType's effect bound — behavior passed as data may not "
+                    f"exceed its declared effects (README §33.9/WS2-092)",
+                    r.line, op.name))
     return out
 
 
