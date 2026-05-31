@@ -327,6 +327,17 @@ DIAGNOSTICS.update({
     "SS1191": {"tier": "T1", "summary": "console entry returns non-ExitCode.",
                "found": "A console entry whose `out` is not ExitCode/Int32.",
                "suggested": "Return ExitCode (alias for Int32) (README §11)."},
+    "SS1192": {"tier": "T1", "summary": "No entry enabled for a built target.",
+               "found": "A project target with zero `entry` ops enabled (every "
+                        "entry is `forTarget`-gated to a different target, and "
+                        "there is no unqualified default).",
+               "suggested": "Add an unqualified `entry`, or a `forTarget <target>` "
+                            "entry for this target (README §7/WS3-160)."},
+    "SS1193": {"tier": "T1", "summary": "Multiple entries enabled for one target.",
+               "found": "Two or more `entry` ops are enabled for the same target "
+                        "(both `forTarget`-gated to it, or two unqualified entries).",
+               "suggested": "Gate each entry with a distinct `forTarget`, leaving "
+                            "exactly one enabled per target (README §7/WS3-160)."},
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
@@ -3483,6 +3494,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
+    diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_ownership_and_entry_export(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
     # incompatible error types warns.
@@ -4672,6 +4684,46 @@ def _lint_entry_abi(program: Program) -> list:
             out.append(Diagnostic("SS1191", "error",
                                   f"console entry {ent.name!r} must return ExitCode/"
                                   f"Int32, got {otype!r} (README ss11)", ent.line, ent.name))
+    return out
+
+
+def _lint_multitarget_entry(program: Program) -> list:
+    """Multi-target entry gating (README §7, WS3-160): a project may repeat
+    `entry`, each gated by a `forTarget` on the named entry entity. Exactly one
+    entry must be enabled per built target — an entry is enabled for target T if
+    its entity carries `forTarget T`, or (when no entry is target-specific for T)
+    if it carries no `forTarget` at all (the unqualified default). Zero or two
+    enabled entries for a target is a hard error (SS1192 / SS1193). A project with
+    no `entry` is library mode and is not gated."""
+    out: list[Diagnostic] = []
+    for proj in program.of_kind("project"):
+        targets = [t.payload[0] for t in proj.facts("target") if t.payload]
+        entries = [e.payload[0] for e in proj.facts("entry") if e.payload]
+        if not targets or not entries:
+            continue
+        gated = {}
+        for name in entries:
+            ent = program.entities.get(name)
+            gated[name] = ({r.payload[0] for r in ent.facts("forTarget") if r.payload}
+                           if ent else set())
+        unqualified = [n for n in entries if not gated[n]]
+        for tgt in targets:
+            specific = [n for n in entries if tgt in gated[n]]
+            enabled = specific if specific else unqualified
+            if len(enabled) == 0:
+                out.append(Diagnostic(
+                    "SS1192", "error",
+                    f"project {proj.name!r} has no entry enabled for target {tgt!r}: "
+                    f"every entry is gated to another target and there is no "
+                    f"unqualified default (README §7/WS3-160)",
+                    proj.line, proj.name))
+            elif len(enabled) > 1:
+                out.append(Diagnostic(
+                    "SS1193", "error",
+                    f"project {proj.name!r} enables {len(enabled)} entries "
+                    f"{sorted(enabled)} for target {tgt!r}; exactly one must be "
+                    f"enabled — gate them with distinct `forTarget` (README §7/WS3-160)",
+                    proj.line, proj.name))
     return out
 
 
