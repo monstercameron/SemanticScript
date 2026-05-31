@@ -15,19 +15,23 @@ import sys
 
 import pytest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
+ROOT = os.path.dirname(HERE)                               # repo root
+sys.path.insert(0, os.path.join(ROOT, "semanticscript", "compiler"))
 
 import semanticscript  # noqa: E402
 
-EXAMPLES = os.path.join(HERE, "examples")
-INVALID_CORPUS = os.path.join(HERE, "invalid_corpus")
-SIGS = os.path.join(HERE, "sigs")
-STD = os.path.join(HERE, "std")
-APPS = os.path.join(HERE, "apps")
-# The untouched v0.1 SemanticScript apps at the repo root — the porting source of
-# record and the parity baseline (X-047). The EAV ports under APPS must not mutate them.
-V1_APPS = os.path.normpath(os.path.join(HERE, "..", "..", "apps"))
+SEMANTICSCRIPT = os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py")
+
+EXAMPLES = os.path.join(ROOT, "examples")
+INVALID_CORPUS = os.path.join(HERE, "invalid_corpus")      # test fixtures, moved with tests/
+SIGS = os.path.join(ROOT, "semanticscript", "sigs")
+STD = os.path.join(ROOT, "semanticscript", "std")
+APPS = os.path.join(ROOT, "apps")
+# The untouched v0.1 SemanticScript apps — the porting source of record and the
+# parity baseline (X-047). Deprecated to legacy/apps/ in the repo reorg; the EAV
+# ports under APPS must not mutate them.
+V1_APPS = os.path.join(ROOT, "legacy", "apps")
 
 
 def _app_program(app, *stdlibs):
@@ -715,7 +719,7 @@ def test_compact_expands_parses_and_runs(tmp_path):
     eav_text, _ = semanticscript.expand_compact_to_eav(_COMPACT_HELLO)
     src_file.write_bytes(eav_text.encode("utf-8"))
     out = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", str(src_file)],
+        [sys.executable, SEMANTICSCRIPT, "run", str(src_file)],
         capture_output=True, text=True,
     )
     assert out.returncode == 0, out.stderr
@@ -1153,14 +1157,14 @@ def test_discover_tests_by_lane():
 def test_contract_version_lockstep():
     # X-020: the code contract version must appear in GOVERNANCE.md (bumping the
     # version requires updating the doc).
-    gov = open(os.path.join(HERE, "GOVERNANCE.md"), encoding="utf-8").read()
+    gov = open(os.path.join(ROOT, "docs", "GOVERNANCE.md"), encoding="utf-8").read()
     assert semanticscript.CONTRACT_VERSION in gov
 
 
 def test_governance_covers_versioning_glossary_freeze():
     # X-021/X-022/X-024: governance doc covers versioning, glossary, and the
     # §31-freeze vs §33/§34 reconciliation.
-    gov = open(os.path.join(HERE, "GOVERNANCE.md"), encoding="utf-8").read()
+    gov = open(os.path.join(ROOT, "docs", "GOVERNANCE.md"), encoding="utf-8").read()
     assert "Versioning & rollout" in gov
     assert "Glossary" in gov
     assert "freeze" in gov and "§34" in gov
@@ -1182,7 +1186,7 @@ def test_typed_comments_extracted_for_docs():
 
 def test_roadmap_registers_all_gaps():
     # X-030..X-037: every §29 roadmap gap #14–#25 has a register entry.
-    roadmap = open(os.path.join(HERE, "ROADMAP.md"), encoding="utf-8").read()
+    roadmap = open(os.path.join(ROOT, "docs", "ROADMAP.md"), encoding="utf-8").read()
     for n in range(14, 26):
         assert f"## #{n} " in roadmap, f"gap #{n} missing from ROADMAP.md"
 
@@ -1245,7 +1249,7 @@ def test_mcp_registry_is_authoritative_and_errors_are_protocol_errors():
 
 def test_lint_json_cli():
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "lint", "--json",
+        [sys.executable, SEMANTICSCRIPT, "lint", "--json",
          os.path.join(EXAMPLES, "hello_world.sem")],
         capture_output=True, text=True,
     )
@@ -1279,7 +1283,7 @@ def test_format_repair_has_found_and_suggested():
 def test_lint_explain_cli_registry_backed():
     # WS4-023: `lint --explain CODE` prints the registry rationale + pattern.
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "lint", "--explain", "SS1041"],
+        [sys.executable, SEMANTICSCRIPT, "lint", "--explain", "SS1041"],
         capture_output=True, text=True,
     )
     assert proc.returncode == 0
@@ -2437,7 +2441,7 @@ def test_random_seeded_sequence_is_deterministic():
     stdlib = open(os.path.join(STD, "standard.random.sem"), encoding="utf-8").read()
     composed = stdlib + "\n" + _RANDOM_SEQ_MAIN
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=composed, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -2511,7 +2515,7 @@ def test_clock_pure_conversion_jit_runs():
     stdlib = open(os.path.join(STD, "standard.clock.sem"), encoding="utf-8").read()
     composed = stdlib + "\n" + _CLOCK_CONV_MAIN
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=composed, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -2582,7 +2586,7 @@ def test_process_exit_returns_code_through_runtime():
     cap = "main effect terminate process.self\nmain uses processTerminator\n"
     composed = stdlib + "\n" + _PROCESS_EXIT_MAIN.format(cap=cap)
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=composed, capture_output=True, text=True,
     )
     assert proc.returncode == 3
@@ -2617,7 +2621,7 @@ def test_math_int_ops_jit_run():
         "show arg value Int64 bitCount\n"
     )
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=src, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -2643,7 +2647,7 @@ def test_math_float_sqrt_jit_run():
         semanticscript.lower_to_llvm(semanticscript.parse(src)))
     assert "llvm.sqrt" in ir_text
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=src, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -2838,7 +2842,7 @@ def test_project_constant_bare_read_jit_runs():
     # WS3-041: a project constant is readable by bare name (project-global) and
     # lowers to its build value.
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_constant_program(), capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -3584,7 +3588,7 @@ def test_set_step_assigns_mutable_and_runs():
     ir = str(semanticscript.lower_to_llvm(prog))
     assert "store" in ir
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_SET_STEP_SRC, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -3643,7 +3647,7 @@ def test_inline_storage_declaration_runs():
     assert [r.payload[0] for r in st.facts("value")] == ["7"]
     assert not [d.render() for d in semanticscript.lint(prog) if d.severity == "error"]
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_INLINE_STORAGE_SRC, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -3666,7 +3670,7 @@ def test_html_render_full_document():
     ir = str(semanticscript.lower_to_llvm(semanticscript.parse(_HTML_RENDER_SRC)))
     assert "ss_http_html_escape_str" in ir  # holes are auto-escaped
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_HTML_RENDER_SRC, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "<h1>Hi &lt;b&gt;x&lt;/b&gt;</h1><p>A &amp; B</p>"
@@ -3705,7 +3709,7 @@ def test_html_render_fragment_hole_inserted_raw():
     # nested fragment.
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_FRAGMENT_NEST_SRC)))
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_FRAGMENT_NEST_SRC, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     # the fragment is nested raw; the sibling String hole is still escaped
@@ -3734,7 +3738,7 @@ def test_cross_module_storage_initializer_resolves():
     # literal and raised on the reference token.
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_CONST_ALIAS_SRC)))
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_CONST_ALIAS_SRC, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "todo-row todo-row-done"
@@ -3743,9 +3747,9 @@ def test_cross_module_storage_initializer_resolves():
 def test_frozen_executable_packaging():
     # X-025: the packager exists and semanticscript is frozen-path-aware; if a built exe is
     # present (dist/semanticscript[.exe] from `python package.py`), it runs standalone.
-    assert os.path.exists(os.path.join(HERE, "package.py"))
+    assert os.path.exists(os.path.join(ROOT, "semanticscript", "packaging", "package.py"))
     assert hasattr(semanticscript, "_bundle_dir")
-    exe = os.path.join(HERE, "dist", "semanticscript" + (".exe" if sys.platform == "win32" else ""))
+    exe = os.path.join(ROOT, "semanticscript", "packaging", "dist", "semanticscript" + (".exe" if sys.platform == "win32" else ""))
     if not os.path.exists(exe):
         pytest.skip("standalone exe not built (run `python package.py`)")
     ver = subprocess.run([exe, "version", "--json"], capture_output=True, text=True)
@@ -3957,7 +3961,7 @@ def test_project_directory_resolution(tmp_path, capsys):
     composed = semanticscript.load_project(str(root))
     assert "is project" in composed and "writeGreeting" in composed
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", str(root)],
+        [sys.executable, SEMANTICSCRIPT, "run", str(root)],
         capture_output=True, text=True)
     assert proc.returncode == 0 and "hello from Multi" in proc.stdout
 
@@ -3979,7 +3983,7 @@ def test_new_project_scaffold(tmp_path, capsys):
     main_src = (root / "src" / "main.sem").read_text(encoding="utf-8")
     assert "is project" not in main_src and "is module" in main_src
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", str(root)],
+        [sys.executable, SEMANTICSCRIPT, "run", str(root)],
         capture_output=True, text=True)
     assert proc.returncode == 0 and "hello from Demoapp" in proc.stdout
     # the test stub runs green
@@ -4106,7 +4110,7 @@ def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
     root = tmp_path / "replayapp"
     assert semanticscript.main(["new", str(root)]) == 0
     check = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "check", "--json", str(root)],
+        [sys.executable, SEMANTICSCRIPT, "check", "--json", str(root)],
         capture_output=True, text=True)
     assert "Traceback (most recent call last)" not in check.stderr, check.stderr
     payload = json.loads(check.stdout)
@@ -4117,7 +4121,7 @@ def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
     for c in replayable:
         argv = c["argv"]
         rp = subprocess.run(
-            [sys.executable, os.path.join(HERE, "semanticscript.py")] + argv,
+            [sys.executable, SEMANTICSCRIPT] + argv,
             capture_output=True, text=True)
         assert "Traceback (most recent call last)" not in rp.stderr, \
             f"replay {argv} crashed:\n{rp.stderr}"
@@ -4380,7 +4384,7 @@ def test_eval_snippet_jit(tmp_path):
     snip.write_text(snippet, encoding="utf-8")
     import json
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "eval", str(snip)],
+        [sys.executable, SEMANTICSCRIPT, "eval", str(snip)],
         capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -4571,7 +4575,7 @@ def test_stdlib_clock_minutes_to_seconds_pure_op():
         "show arg value Int64 secs\n"
     )
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=stdlib + "\n" + main, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -4657,7 +4661,7 @@ def test_async_branch_guard_codegen():
                 _async_guard_program("cancel", "main branch ifCanceled sumTask goto other\n")):
         assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(src)))
         proc = subprocess.run(
-            [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+            [sys.executable, SEMANTICSCRIPT, "run", "-"],
             input=src, capture_output=True, text=True,
         )
         assert proc.returncode == 0, proc.stderr
@@ -5719,7 +5723,7 @@ def test_shared_state_guarded_access_jit_runs():
     src = _shared_state_src()
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(src)))
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=src, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "7"
@@ -5777,7 +5781,7 @@ def test_region_arena_allocates_and_frees_jit_runs():
     assert '@"malloc"' in ir and '@"free"' in ir
     assert ir.count('call void @"free"') >= 2  # one free per allocated slab
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_ARENA_SRC, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
 
@@ -5996,7 +6000,7 @@ def test_standard_memory_contract_and_impl():
     assert alloc.fact("mayEscape").payload[0] == "no"
     # the in-language impl (the region construct) JIT-runs allocate-many/free-once
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_ARENA_SRC, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
 
@@ -6042,7 +6046,7 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     # the malloc + bounds-checked load/store this exercises.
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_BUFFER_RUNTIME_SRC)))
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=_BUFFER_RUNTIME_SRC, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert "4" in proc.stdout      # buffer.length
@@ -6103,10 +6107,10 @@ def test_memory_safety_model_spec_and_version():
     # WS1-121: the normative Memory-safety model section exists, the contract
     # version is bumped + lockstepped to GOVERNANCE.md, and every memory defense in
     # the ledger maps to a WS1-1xx owning todo.
-    readme = open(os.path.join(HERE, "README.md"), encoding="utf-8").read()
+    readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
     assert "Memory-safety model — Normative" in readme
     assert semanticscript.CONTRACT_VERSION == "eav-0.3.1"
-    gov = open(os.path.join(HERE, "GOVERNANCE.md"), encoding="utf-8").read()
+    gov = open(os.path.join(ROOT, "docs", "GOVERNANCE.md"), encoding="utf-8").read()
     assert semanticscript.CONTRACT_VERSION in gov  # X-020 lockstep
     # every memory-asset defense row maps to a WS1-1xx owning todo (no orphans)
     mem_rows = [r for r in semanticscript.DEFECT_LEDGER if r["asset"] == "memory"]
@@ -6316,7 +6320,7 @@ def test_contract_runtime_value_emits_check():
     assert "requireViolated" in ir  # runtime assert emitted
     # and it traps at runtime on the violating (-5) value
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=src.replace("Chg target console\nChg entry main\n",
                           "Chg target console\nChg entry main\n"),
         capture_output=True, text=True)
@@ -6852,10 +6856,12 @@ def test_split_defer_on_call_rejected():
 
 def _semanticscript_run(name: str):
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run",
-         os.path.join(EXAMPLES, name)],
+        [sys.executable,
+         os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py"),
+         "run", os.path.join(EXAMPLES, name)],
         capture_output=True,
         text=True,
+        cwd=ROOT,  # CWD-relative compile-time paths (asset_embed) resolve from root
     )
     return proc
 
@@ -6946,7 +6952,7 @@ def test_list_pure_length_predicate_jit_runs():
         "show arg value Int64 empty\n"
     )
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=stdlib + "\n" + main, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -7029,7 +7035,7 @@ def test_json_semsig_contract_and_enum_discriminant():
         "show arg value Int64 kind\n"
     )
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=src, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -7075,7 +7081,7 @@ def test_e2e_http_url_codec_roundtrip_through_real_runtime():
     stdlib = open(os.path.join(STD, "standard.http.sem"), encoding="utf-8").read()
     composed = stdlib + "\n" + _HTTP_CODEC_MAIN
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=composed, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -7117,7 +7123,7 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     stdlib = open(os.path.join(STD, "standard.sqlite.sem"), encoding="utf-8").read()
     composed = stdlib + "\n" + _SQLITE_ROUNDTRIP_MAIN
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=composed, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -7533,7 +7539,7 @@ def test_app_html_template_lab_jit_runs():
         assert os.path.isfile(os.path.join(web, rel)), rel
 
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", "-"],
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=semanticscript.load_project(web), capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -7671,7 +7677,7 @@ def test_module_storage_lowers_to_global():
 
 def test_embed_literal_source_and_digest():
     # WS1-084: literalSource reads asset bytes; literalDigest verifies the hash.
-    asset = os.path.join(HERE, "assets", "banner.txt")
+    asset = os.path.join(ROOT, "examples", "assets", "banner.txt")
     data = semanticscript.embed_literal_source(asset)
     assert data == b"EAV banner asset"
     semanticscript.embed_literal_source(asset, semanticscript.sha256_hex(data))  # matching digest ok
@@ -8707,7 +8713,7 @@ def test_mcp_stdio_session_round_trips_and_errors():
         "{ this is not valid json",
     ]
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "mcp"],
+        [sys.executable, SEMANTICSCRIPT, "mcp"],
         input="\n".join(requests) + "\n", capture_output=True, text=True)
     assert "Traceback (most recent call last)" not in proc.stderr, proc.stderr
     responses = [json.loads(ln) for ln in proc.stdout.splitlines() if ln.strip()]
@@ -8745,7 +8751,7 @@ def test_new_project_name_normalization_and_runs(tmp_path):
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(composed)))
     # and runs, greeting with the PascalCase name
     proc = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", str(root)],
+        [sys.executable, SEMANTICSCRIPT, "run", str(root)],
         capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert "hello from MyCoolApp2" in proc.stdout
@@ -8786,7 +8792,7 @@ def test_x117_native_build_matches_jit_run(tmp_path):
         semanticscript.build_executable(prog, exe)
         native = subprocess.run([exe], capture_output=True, text=True)
         jit = subprocess.run(
-            [sys.executable, os.path.join(HERE, "semanticscript.py"), "run", path],
+            [sys.executable, SEMANTICSCRIPT, "run", path],
             capture_output=True, text=True)
         assert native.stdout.splitlines() == jit.stdout.splitlines(), \
             f"{example}: native {native.stdout!r} vs jit {jit.stdout!r}"
@@ -9465,7 +9471,7 @@ def test_r080_check_json_surfaces_typed_comments(tmp_path):
     path = tmp_path / "r080.sem"
     path.write_text(src, encoding="utf-8")
     out = subprocess.run(
-        [sys.executable, os.path.join(HERE, "semanticscript.py"), "check", "--json", str(path)],
+        [sys.executable, SEMANTICSCRIPT, "check", "--json", str(path)],
         capture_output=True, text=True,
     )
     payload = json.loads(out.stdout)

@@ -13,9 +13,10 @@ import sys
 import time
 import urllib.request
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
-SERVER = os.path.join(HERE, "http_server_demo.sem")
+HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
+ROOT = os.path.dirname(HERE)                               # repo root
+SEMANTICSCRIPT = os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py")
+SERVER = os.path.join(ROOT, "examples", "demos", "http_server_demo.sem")
 HOST, PORT = "127.0.0.1", 18080
 EXPECT = "EAV HTTP OK 42"
 

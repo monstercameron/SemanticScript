@@ -12,9 +12,10 @@ import os
 import subprocess
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
-DEMO = os.path.join(HERE, "gui_health_demo.sem")
+HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
+ROOT = os.path.dirname(HERE)                               # repo root
+SEMANTICSCRIPT = os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py")
+DEMO = os.path.join(ROOT, "examples", "demos", "gui_health_demo.sem")
 
 
 def main():

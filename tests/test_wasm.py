@@ -11,11 +11,13 @@ import shutil
 import subprocess
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
-SRC = os.path.join(HERE, "wasm_demo.sem")
-WASM = os.path.join(HERE, "wasm_demo.wasm")
-RUNNER = os.path.join(HERE, "wasm_demo.run.cjs")
+HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
+ROOT = os.path.dirname(HERE)                               # repo root
+SEMANTICSCRIPT = os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py")
+DEMOS = os.path.join(ROOT, "examples", "demos")
+SRC = os.path.join(DEMOS, "wasm_demo.sem")
+WASM = os.path.join(DEMOS, "wasm_demo.wasm")
+RUNNER = os.path.join(DEMOS, "wasm_demo.run.cjs")
 
 
 def main():

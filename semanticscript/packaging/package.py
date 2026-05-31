@@ -12,6 +12,9 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The `semanticscript/` package root (parent of this packaging/ dir): the
+# std/sigs/runtime data live here and the compiler under compiler/.
+PKG = os.path.dirname(HERE)
 
 
 def build() -> str:
@@ -23,10 +26,10 @@ def build() -> str:
         "--distpath", dist, "--workpath", work, "--specpath", work,
     ]
     for data_dir in ("std", "sigs", "runtime"):
-        src = os.path.join(HERE, data_dir)
+        src = os.path.join(PKG, data_dir)
         if os.path.isdir(src):
             cmd += ["--add-data", src + os.pathsep + data_dir]
-    cmd.append(os.path.join(HERE, "semanticscript.py"))
+    cmd.append(os.path.join(PKG, "compiler", "semanticscript.py"))
     subprocess.run(cmd, check=True)
     exe = os.path.join(dist, "semanticscript" + (".exe" if sys.platform == "win32" else ""))
     return exe

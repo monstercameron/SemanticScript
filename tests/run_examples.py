@@ -19,9 +19,10 @@ Exit code: 0 iff every example behaves as expected.
 """
 import os, re, subprocess, sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-EXAMPLES = os.path.join(HERE, "examples")
-SEMANTICSCRIPT = os.path.join(HERE, "semanticscript.py")
+HERE = os.path.dirname(os.path.abspath(__file__))          # tests/
+ROOT = os.path.dirname(HERE)                               # repo root
+EXAMPLES = os.path.join(ROOT, "examples")
+SEMANTICSCRIPT = os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py")
 
 MIN_APPS = 150                                       # X-214 corpus coverage floor
 HARD_NEG = {"div_by_zero_trap"}                      # rejected at compile time
@@ -36,7 +37,10 @@ SUMMARY_RE = re.compile(r"----\s*(\d+) passed,\s*(\d+) failed\s*----")
 
 # EAV source/output is UTF-8 (README §33.2); decode child pipes as UTF-8 so
 # non-ASCII comments (em-dash, →, ✓) survive the round-trip on Windows cp1252.
-_UTF8 = dict(capture_output=True, text=True, encoding="utf-8")
+# cwd=ROOT so compile-time CWD-relative paths (e.g. asset_embed's
+# literalSource "examples/assets/banner.txt") resolve no matter where the
+# harness is launched from.
+_UTF8 = dict(capture_output=True, text=True, encoding="utf-8", cwd=ROOT)
 
 
 def run(path, strict=False):

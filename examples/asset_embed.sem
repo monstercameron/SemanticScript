@@ -29,7 +29,7 @@ bannerText is storage
 bannerText scope module
 bannerText type String
 bannerText mutability immutable
-bannerText literalSource "assets/banner.txt"
+bannerText literalSource "examples/assets/banner.txt"
 bannerText literalEncoding utf8
 bannerText literalDigest sha256 144de1874137c5789e54f1ea25a0b89670326576c5e691ed99c54cb05f71b2d6
 bannerText purpose "Banner text embedded from an asset file at compile time"

@@ -9918,12 +9918,14 @@ def _ensure_native_init() -> None:
 
 
 def _bundle_dir() -> str:
-    """Directory holding bundled data (std/, sigs/, runtime/). When frozen by
-    PyInstaller (X-025), data lives under sys._MEIPASS; otherwise alongside
-    semanticscript.py."""
+    """Directory holding bundled data (std/, sigs/, runtime/) — the
+    `semanticscript/` package root. When frozen by PyInstaller (X-025), data
+    lives flattened under sys._MEIPASS; otherwise it is the parent of this
+    file's `compiler/` directory (semanticscript/compiler/semanticscript.py ->
+    semanticscript/)."""
     import os
     base = getattr(sys, "_MEIPASS", None)
-    return base or os.path.dirname(os.path.abspath(__file__))
+    return base or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _runtime_dir() -> str:
