@@ -11250,32 +11250,158 @@ def cmd_index(args) -> int:
     return 0
 
 
-def cmd_search(args) -> int:
-    """Keyword-ranked search over the diagnostic-code registry — matches a code,
-    its summary, the `found` symptom, and the `suggested` fix (sem.search.v1).
-    (TOOL-5)"""
-    query = args.query.lower()
-    terms = [t for t in query.split() if t]
-    results = []
+def _tokenize(text: str) -> list:
+    """Lowercase alphanumeric word tokens."""
+    import re
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _readme_sections() -> list:
+    """The spec README chunked by heading: [{title, text}]. Best-effort — the
+    README may be absent in a frozen build."""
+    import os
+    import re
+    path = os.path.normpath(os.path.join(_bundle_dir(), "..", "README.md"))
+    try:
+        with open(path, encoding="utf-8") as fh:
+            md = fh.read()
+    except OSError:
+        return []
+    sections, title, buf = [], "README", []
+    for line in md.splitlines():
+        m = re.match(r"^#{1,4}\s+(.*)", line)
+        if m:
+            if buf:
+                sections.append({"title": title, "text": "\n".join(buf)[:2000]})
+            title, buf = m.group(1).strip(), [m.group(1).strip()]
+        else:
+            buf.append(line)
+    if buf:
+        sections.append({"title": title, "text": "\n".join(buf)[:2000]})
+    return sections
+
+
+def _search_corpus(path: Optional[str] = None) -> list:
+    """A multi-source searchable corpus for agentic retrieval. Each doc is
+    {source, id, kind, title, text, ref} — `ref` is the command that fetches the
+    full document. Sources: diagnostics, skills, task templates, agent rules, the
+    spec README, and (when `path` is given) the project's entities."""
+    docs = []
     for code, spec in _all_diagnostics().items():
-        haystack = " ".join([
-            code, spec.get("tier", ""), spec.get("summary", ""),
-            spec.get("found", ""), spec.get("suggested", "")]).lower()
-        score = 10 if query in code.lower() else 0
-        score += sum(haystack.count(t) for t in terms)
-        if score:
-            results.append({"code": code, "tier": spec.get("tier", ""),
-                            "summary": spec.get("summary", ""), "score": score})
-    results.sort(key=lambda r: (-r["score"], r["code"]))
-    limit = getattr(args, "limit", None) or 20
-    results = results[:limit]
+        docs.append({
+            "source": "diagnostic", "id": code, "kind": spec.get("tier", ""),
+            "title": spec.get("summary", ""),
+            "text": " ".join([code, spec.get("tier", ""), spec.get("summary", ""),
+                              spec.get("found", ""), spec.get("suggested", "")]),
+            "ref": f"explain {code}"})
+    for name, sk in EAV_SKILLS.items():
+        docs.append({"source": "skill", "id": name, "kind": "skill",
+                     "title": sk["summary"],
+                     "text": " ".join([name, sk["summary"], sk["body"]]),
+                     "ref": f"skills {name}"})
+    for name, tpl in EAV_TASK_TEMPLATES.items():
+        text = " ".join([name] + tpl.get("rowsToAdd", [])
+                        + tpl.get("rowsToVerify", []) + tpl.get("lintRules", []))
+        docs.append({"source": "template", "id": name, "kind": "pattern",
+                     "title": f"how to {name.replace('-', ' ')}",
+                     "text": text, "ref": f"task {name}"})
+    docs.append({"source": "rules", "id": "agent-rules", "kind": "rules",
+                 "title": "EAV agent rules", "text": EAV_AGENT_RULES,
+                 "ref": "agent-docs"})
+    for sec in _readme_sections():
+        docs.append({"source": "spec", "id": sec["title"], "kind": "spec",
+                     "title": sec["title"], "text": sec["text"], "ref": "README.md"})
+    if path:
+        try:
+            program = parse_compact(_read_program_source(path))
+            for n in program.order:
+                e = program.entities[n]
+                parts = [e.name, e.kind]
+                for r in e.rows:
+                    parts.append(r.predicate)
+                    parts.extend(str(p) for p in r.payload)
+                docs.append({"source": "entity", "id": e.name, "kind": e.kind,
+                             "title": e.name, "text": " ".join(parts),
+                             "ref": f"docs {path} --get {e.name}"})
+        except (EavError, OSError):
+            pass
+    return docs
+
+
+def _snippet(text: str, qterms: list, width: int = 160) -> str:
+    """A text window around the earliest query-term hit."""
+    low = text.lower()
+    pos = min((p for p in (low.find(t) for t in qterms) if p != -1), default=-1)
+    if pos == -1:
+        return " ".join(text.split())[:width]
+    start = max(0, pos - width // 3)
+    chunk = " ".join(text[start:start + width].split())
+    return ("…" if start else "") + chunk + ("…" if start + width < len(text) else "")
+
+
+def _tfidf_rank(query: str, docs: list, limit: int) -> list:
+    """Rank `docs` against `query` by TF-IDF with a title boost and prefix-
+    tolerant matching. Returns [{source, id, kind, title, ref, score, snippet}]."""
+    import math
+    qterms = [t for t in _tokenize(query) if len(t) >= 2]
+    if not qterms:
+        return []
+    doc_tokens = [_tokenize(d["text"]) for d in docs]
+    df = {}
+    for toks in doc_tokens:
+        for t in set(toks):
+            df[t] = df.get(t, 0) + 1
+    n_docs = len(docs)
+
+    def idf(term):
+        return math.log((n_docs + 1) / (df.get(term, 0) + 1)) + 1.0
+
+    scored = []
+    for doc, toks in zip(docs, doc_tokens):
+        tf = {}
+        for t in toks:
+            tf[t] = tf.get(t, 0) + 1
+        title_toks = set(_tokenize(doc["title"]))
+        score = 0.0
+        for qt in qterms:
+            freq = tf.get(qt, 0)
+            if freq == 0 and len(qt) >= 3:  # prefix-tolerant (down-weighted)
+                freq = sum(c for t, c in tf.items() if t.startswith(qt)) * 0.5
+            if freq:
+                contrib = (1 + math.log(freq)) * idf(qt)
+                if qt in title_toks:
+                    contrib *= 3.0
+                score += contrib
+        if score > 0:
+            scored.append((score, doc))
+    scored.sort(key=lambda x: -x[0])
+    return [{"source": d["source"], "id": d["id"], "kind": d["kind"],
+             "title": d["title"], "ref": d["ref"], "score": round(s, 3),
+             "snippet": _snippet(d["text"], qterms)}
+            for s, d in scored[:limit]]
+
+
+def cmd_search(args) -> int:
+    """Unified relevance-ranked retrieval (TF-IDF) over the diagnostic registry,
+    skills, task templates, agent rules, the spec, and — with `--path` — a
+    project's entities (sem.search.v1). Real cross-source retrieval for agentic
+    coding; `--source` filters by source. (TOOL-8)"""
+    docs = _search_corpus(getattr(args, "path", None))
+    wanted = getattr(args, "source", None)
+    if wanted:
+        docs = [d for d in docs if d["source"] in set(wanted)]
+    results = _tfidf_rank(args.query, docs, getattr(args, "limit", None) or 20)
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope(
             "sem.search.v1", query=args.query, count=len(results),
             matches=results) + "\n")
     else:
         for r in results:
-            print(f"{r['code']} ({r['tier']}) [{r['score']}]: {r['summary']}")
+            print(f"[{r['source']}] {r['id']} ({r['kind']}) score {r['score']}")
+            print(f"    {r['title']}")
+            if r["snippet"]:
+                print(f"    {r['snippet']}")
+            print(f"    → {r['ref']}")
     return 0
 
 
@@ -12204,8 +12330,17 @@ def cmd_docs(args) -> int:
             "sem.docsSearch.v1", query=args.search, results=scored[:10]) + "\n")
     elif getattr(args, "get", None):
         match = next((e for e in entries if e["name"] == args.get), None)
+        fuzzy = False
+        if match is None:  # near-miss name -> closest entity (agentic-friendly)
+            import difflib
+            close = difflib.get_close_matches(
+                args.get, [e["name"] for e in entries], n=1, cutoff=0.5)
+            if close:
+                match = next(e for e in entries if e["name"] == close[0])
+                fuzzy = True
         sys.stdout.write(_json_envelope(
-            "sem.docs.v1", ok=(match is not None), entity=match) + "\n")
+            "sem.docs.v1", ok=(match is not None), fuzzyMatch=fuzzy,
+            entity=match) + "\n")
     else:
         sys.stdout.write(_json_envelope(
             "sem.docsIndex.v1", count=len(entries),
@@ -12880,8 +13015,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_index = sub.add_parser("index", help="catalog every diagnostic code (tier + summary)")
     sp_index.add_argument("--json", action="store_true")
     sp_index.set_defaults(func=cmd_index)
-    sp_search = sub.add_parser("search", help="keyword-ranked search over the diagnostic registry")
+    sp_search = sub.add_parser("search", help="relevance-ranked retrieval across docs/diagnostics/skills/templates/spec")
     sp_search.add_argument("query", help="search terms")
+    sp_search.add_argument("--source", nargs="*",
+                           choices=["diagnostic", "skill", "template", "rules", "spec", "entity"],
+                           help="restrict to these corpus sources")
+    sp_search.add_argument("--path", help="include this project's entities in the corpus")
     sp_search.add_argument("--limit", type=int, default=20, help="max results (default 20)")
     sp_search.add_argument("--json", action="store_true")
     sp_search.set_defaults(func=cmd_search)
