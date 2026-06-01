@@ -7471,9 +7471,26 @@ def test_sqlite_statement_finalize_tombstoned():
                             "sem_sqlite_runtime.c"), encoding="utf-8").read()
     fin = re.search(r"int ss_sqlite_statement_finalize\(.*?\n\}", src, re.S)
     assert fin and "ss_sqlite_untrack_statement(statement)" in fin.group(0)
-    for fn in ("ss_sqlite_statement_reset", "ss_sqlite_statement_step"):
-        m = re.search(r"int " + re.escape(fn) + r"\(.*?\n\}", src, re.S)
-        assert m and "ss_sqlite_is_live_statement(statement)" in m.group(0), fn
+    # R-194: the live-statement guard is centralized in ss_sqlite_require_live,
+    # which checks registry membership (by pointer value, no deref) AND a non-NULL
+    # handle. Every consumer entry point — reset/step AND every bind/column getter —
+    # must gate on it; the prior code left bind/column at a bare `statement->handle
+    # == NULL` check that read a freed wrapper (use-after-free).
+    live = re.search(r"static int ss_sqlite_require_live\(.*?\n\}", src, re.S)
+    assert live and "ss_sqlite_is_live_statement(statement)" in live.group(0)
+    guarded = (
+        "ss_sqlite_statement_reset", "ss_sqlite_statement_step",
+        "ss_sqlite_statement_bind_int64", "ss_sqlite_statement_bind_double",
+        "ss_sqlite_statement_bind_text", "ss_sqlite_statement_bind_blob",
+        "ss_sqlite_statement_bind_null", "ss_sqlite_statement_column_count",
+        "ss_sqlite_statement_column_type", "ss_sqlite_statement_column_name",
+        "ss_sqlite_statement_column_int64", "ss_sqlite_statement_column_double",
+        "ss_sqlite_statement_column_text", "ss_sqlite_statement_column_blob",
+        "ss_sqlite_statement_column_bytes",
+    )
+    for fn in guarded:
+        m = re.search(r"\b" + re.escape(fn) + r"\(SSSqliteStatement[^\n]*\{.*?\n\}", src, re.S)
+        assert m and "ss_sqlite_require_live(statement)" in m.group(0), fn
 
 
 def test_string_concat_alloc_guarded():

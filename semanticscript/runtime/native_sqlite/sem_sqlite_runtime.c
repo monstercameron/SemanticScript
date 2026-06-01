@@ -80,6 +80,19 @@ static int ss_sqlite_untrack_statement(SSSqliteStatement *statement) {
     return 0;
 }
 
+/* R-194: a statement is usable only if it is a registered (live) wrapper with a
+ * non-NULL native handle. Membership is checked by pointer value BEFORE any field
+ * is read, so a finalized/stale wrapper is rejected without dereferencing freed
+ * memory. Every bind/column/reset/step entry point gates on this. The prior code
+ * guarded only reset/step/finalize and left bind/column at a bare NULL check —
+ * which still read `statement->handle` from a freed wrapper (a use-after-free, and
+ * a gap versus R-139's done note that claimed bind/column were covered). */
+static int ss_sqlite_require_live(const SSSqliteStatement *statement) {
+    return statement != NULL
+        && ss_sqlite_is_live_statement(statement)
+        && statement->handle != NULL;
+}
+
 static int translate_sqlite_open_flags(int open_flags, int *out_sqlite_flags) {
     int translated = 0;
 
@@ -382,8 +395,7 @@ int ss_sqlite_statement_reset(SSSqliteStatement *statement) {
     int reset_status = 0;
 
     /* R-139: reject use-after-finalize (a freed wrapper is no longer live). */
-    if (statement == NULL || !ss_sqlite_is_live_statement(statement)
-            || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
 
@@ -398,8 +410,7 @@ int ss_sqlite_statement_step(SSSqliteStatement *statement) {
     int step_status = 0;
 
     /* R-139: reject use-after-finalize (a freed wrapper is no longer live). */
-    if (statement == NULL || !ss_sqlite_is_live_statement(statement)
-            || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
 
@@ -414,7 +425,7 @@ int ss_sqlite_statement_step(SSSqliteStatement *statement) {
 }
 
 int ss_sqlite_statement_bind_int64(SSSqliteStatement *statement, int parameter_index, long long value) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
     if (sqlite3_bind_int64(statement->handle, parameter_index, (sqlite3_int64)value) != SQLITE_OK) {
@@ -424,7 +435,7 @@ int ss_sqlite_statement_bind_int64(SSSqliteStatement *statement, int parameter_i
 }
 
 int ss_sqlite_statement_bind_double(SSSqliteStatement *statement, int parameter_index, double value) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
     if (sqlite3_bind_double(statement->handle, parameter_index, value) != SQLITE_OK) {
@@ -434,7 +445,7 @@ int ss_sqlite_statement_bind_double(SSSqliteStatement *statement, int parameter_
 }
 
 int ss_sqlite_statement_bind_text(SSSqliteStatement *statement, int parameter_index, const char *value) {
-    if (statement == NULL || statement->handle == NULL || value == NULL) {
+    if (!ss_sqlite_require_live(statement) || value == NULL) {
         return SS_SQLITE_ERR_CONFIG;
     }
     /* SQLITE_TRANSIENT makes SQLite copy the bytes immediately, so the
@@ -449,7 +460,7 @@ int ss_sqlite_statement_bind_blob(SSSqliteStatement *statement, int parameter_in
     static const unsigned char empty_blob = 0;
     const void *blob_value = value;
 
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
     /* A NULL value with length 0 is a legitimate zero-length blob; pass a
@@ -475,7 +486,7 @@ int ss_sqlite_statement_bind_blob(SSSqliteStatement *statement, int parameter_in
 }
 
 int ss_sqlite_statement_bind_null(SSSqliteStatement *statement, int parameter_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
     if (sqlite3_bind_null(statement->handle, parameter_index) != SQLITE_OK) {
@@ -485,14 +496,14 @@ int ss_sqlite_statement_bind_null(SSSqliteStatement *statement, int parameter_in
 }
 
 int ss_sqlite_statement_column_count(SSSqliteStatement *statement) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return 0;
     }
     return sqlite3_column_count(statement->handle);
 }
 
 int ss_sqlite_statement_column_type(SSSqliteStatement *statement, int column_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return SS_SQLITE_COLUMN_NULL;
     }
     /* SQLITE_INTEGER..SQLITE_NULL are numerically 1..5 and our enum was
@@ -502,7 +513,7 @@ int ss_sqlite_statement_column_type(SSSqliteStatement *statement, int column_ind
 }
 
 const char *ss_sqlite_statement_column_name(SSSqliteStatement *statement, int column_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return "";
     }
     const char *name = sqlite3_column_name(statement->handle, column_index);
@@ -510,21 +521,21 @@ const char *ss_sqlite_statement_column_name(SSSqliteStatement *statement, int co
 }
 
 long long ss_sqlite_statement_column_int64(SSSqliteStatement *statement, int column_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return 0;
     }
     return (long long)sqlite3_column_int64(statement->handle, column_index);
 }
 
 double ss_sqlite_statement_column_double(SSSqliteStatement *statement, int column_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return 0.0;
     }
     return sqlite3_column_double(statement->handle, column_index);
 }
 
 const char *ss_sqlite_statement_column_text(SSSqliteStatement *statement, int column_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return "";
     }
     const unsigned char *text = sqlite3_column_text(statement->handle, column_index);
@@ -532,7 +543,7 @@ const char *ss_sqlite_statement_column_text(SSSqliteStatement *statement, int co
 }
 
 const void *ss_sqlite_statement_column_blob(SSSqliteStatement *statement, int column_index) {
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return NULL;
     }
     return sqlite3_column_blob(statement->handle, column_index);
@@ -541,7 +552,7 @@ const void *ss_sqlite_statement_column_blob(SSSqliteStatement *statement, int co
 size_t ss_sqlite_statement_column_bytes(SSSqliteStatement *statement, int column_index) {
     int byte_count = 0;
 
-    if (statement == NULL || statement->handle == NULL) {
+    if (!ss_sqlite_require_live(statement)) {
         return 0;
     }
     byte_count = sqlite3_column_bytes(statement->handle, column_index);
