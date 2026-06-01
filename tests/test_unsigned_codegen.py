@@ -98,6 +98,40 @@ def test_r217_int_to_float_uses_uitofp_for_unsigned():
     assert "uitofp" in _ir(src)
 
 
+def test_r218_negative_int32_prints_with_sign():
+    # console.writeIntegerLine of Int32 -1 must print -1; the old zext-of-narrow
+    # printed 4294967295.
+    src = _HEAD + (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let n immutable Int32 -1\nmain let okCode immutable ExitCode 0\n"
+        "main do show\nmain return okCode\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int32 n\n")
+    rc, out, err = _run(src)
+    assert rc == 0, err
+    assert out == "-1", "Int32 -1 must print as -1, got %r" % out
+
+
+def test_r218_mixed_width_negative_equality_holds():
+    # assertEqualInt64(expected Int64 -1, actual Int32 -1) must be equal: the
+    # narrow actual sign-extends to -1, not zero-extends to 4294967295.
+    src = _HEAD + (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let wide immutable Int64 -1\nmain let narrow immutable Int32 -1\n"
+        'main let caseName immutable String "neg"\nmain let okCode immutable ExitCode 0\n'
+        "main do check\nmain do report\nmain return code\n"
+        "check is call\ncheck in main\ncheck invokes test.assertEqualInt64\n"
+        "check arg name String caseName\ncheck arg expected Int64 wide\n"
+        "check arg actual Int32 narrow\n"
+        "report is call\nreport in main\nreport invokes test.summary\n"
+        "report out code ExitCode\n")
+    rc, out, err = _run(src)
+    assert rc == 0, "mixed-width -1 == -1 must pass (rc=%s, out=%r, %s)" % (rc, out, err)
+    assert "1 passed, 0 failed" in out or "actual -1" in out, out
+
+
 def test_r217_float_to_unsigned_int_uses_fptoui():
     src = _HEAD + (
         "main is operation\nmain out ExitCode\nmain async no\n"

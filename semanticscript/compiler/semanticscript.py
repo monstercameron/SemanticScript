@@ -10159,18 +10159,19 @@ class EavCodegen:
         return builder.select(eq, self.global_string(b"PASS\x00"),
                               self.global_string(b"FAIL\x00"))
 
-    def _emit_test_call(self, target, builder, arg):
+    def _emit_test_call(self, target, builder, arg, arg_type=None):
         """Lower a `test.*` harness call; returns the call result value."""
         i32 = ir.IntType(32)
+        if arg_type is None:
+            arg_type = lambda _slot: None
         if target == "test.assertEqualInt64":
-            i64 = ir.IntType(64)
-            exp, act = arg("expected", "Int64"), arg("actual", "Int64")
             # a Bool/narrow integer (e.g. a comparison result) widens to i64 so it
             # compares and prints the same way console.writeIntegerLine shows it.
-            if isinstance(exp.type, ir.IntType) and exp.type.width < 64:
-                exp = builder.zext(exp, i64)
-            if isinstance(act.type, ir.IntType) and act.type.width < 64:
-                act = builder.zext(act, i64)
+            # R-218: a signed narrow value sign-extends so a negative compares and
+            # prints correctly (a -1 Int32 was zext'd to 4294967295, failing the
+            # assert and printing a wrong actual).
+            exp = self._widen_to_i64(builder, arg("expected", "Int64"), arg_type("expected"))
+            act = self._widen_to_i64(builder, arg("actual", "Int64"), arg_type("actual"))
             status = self._test_tally(builder, builder.icmp_signed("==", exp, act))
             fmt = self.global_string(b"%s  %s  (expected %lld, actual %lld)\n\x00")
             return builder.call(self.runtime("printf"),
@@ -10194,12 +10195,8 @@ class EavCodegen:
             return builder.call(self.runtime("printf"),
                                 [fmt, status, arg("name", "String")])
         if target == "test.assertNotEqualInt64":
-            i64 = ir.IntType(64)
-            exp, act = arg("expected", "Int64"), arg("actual", "Int64")
-            if isinstance(exp.type, ir.IntType) and exp.type.width < 64:
-                exp = builder.zext(exp, i64)
-            if isinstance(act.type, ir.IntType) and act.type.width < 64:
-                act = builder.zext(act, i64)
+            exp = self._widen_to_i64(builder, arg("expected", "Int64"), arg_type("expected"))
+            act = self._widen_to_i64(builder, arg("actual", "Int64"), arg_type("actual"))
             status = self._test_tally(builder, builder.icmp_signed("!=", exp, act))
             fmt = self.global_string(b"%s  %s  (expected != %lld, actual %lld)\n\x00")
             return builder.call(self.runtime("printf"),
@@ -10252,6 +10249,11 @@ class EavCodegen:
                 raise EavError(f"call {call.name!r} missing arg {slot!r}", call.line)
             return self._resolve(a.payload[2], a.payload[1], builder, sym)
 
+        def arg_type(slot):
+            """The arg's declared SS type name (for signedness-aware widening)."""
+            a = args.get(slot)
+            return a.payload[1] if a is not None and len(a.payload) >= 2 else None
+
         result = None
         err = None
         if target == "console.writeLine":
@@ -10260,9 +10262,8 @@ class EavCodegen:
             result = res
         elif target == "console.writeIntegerLine":
             fmt = self.global_string(b"%lld\n\x00")
-            val = arg("value", "Int64")
-            if isinstance(val.type, ir.IntType) and val.type.width < 64:
-                val = builder.zext(val, ir.IntType(64))  # Bool/narrow -> i64 for %lld
+            val = self._widen_to_i64(builder, arg("value", "Int64"),
+                                     arg_type("value"))  # R-218: signed narrows sext
             result = builder.call(self.runtime("printf"), [fmt, val])
         elif target == "assert.equalInt64":
             result = builder.icmp_signed("==", arg("left", "Int64"), arg("right", "Int64"))
@@ -10271,7 +10272,7 @@ class EavCodegen:
         elif target == "test.and":
             result = builder.and_(arg("left", "Bool"), arg("right", "Bool"))
         elif target.startswith("test.assert") or target == "test.summary":
-            result = self._emit_test_call(target, builder, arg)
+            result = self._emit_test_call(target, builder, arg, arg_type)
         elif target == "console.writeFloatLine":
             fmt = self.global_string(b"%g\n\x00")
             val = arg("value", "Float64")
@@ -11144,6 +11145,26 @@ class EavCodegen:
         extension, and int<->float conversions all differ (R-214..R-217)."""
         return self.resolve_type_name(type_name) in (
             "UInt8", "UInt16", "UInt32", "UInt64", "Byte")
+
+    def _widen_to_i64(self, builder, val, type_name):
+        """Widen a sub-i64 integer to i64 for `%lld` printing / Int64 comparison.
+        R-218: a signed narrow integer must SIGN-extend (so a negative Int8/16/32
+        prints and compares correctly); only Bool and unsigned narrows zero-extend
+        (a signed `Int32` -1 was previously zext'd to 4294967295). The producing
+        value's SS type comes from its arg row."""
+        i64 = ir.IntType(64)
+        if not (isinstance(val.type, ir.IntType) and val.type.width < 64):
+            return val
+        # An i1 is always a Bool (0/1) — zero-extend regardless of the declared
+        # arg slot type, since a Bool is routinely passed through an `Int64` arg
+        # (e.g. test.assertEqualInt64 actual <Bool>); sign-extending it would turn
+        # `true` into -1.
+        if val.type.width == 1:
+            return builder.zext(val, i64)
+        resolved = self.resolve_type_name(type_name) if type_name else None
+        if resolved == "Bool" or (type_name and self._is_unsigned_int(type_name)):
+            return builder.zext(val, i64)
+        return builder.sext(val, i64)
 
     def _emit_compare(self, target, args, builder, sym, call):
         """Compiler-derived `compare.<op><Type>` primitive (README ss13). Ordering
