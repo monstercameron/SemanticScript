@@ -1478,6 +1478,57 @@ def test_run_json_entry_strict_and_empty_stdout():
     assert run_json("--entry", "failOp")["exitCode"] == 1
 
 
+def test_invalid_cc_reads_as_degraded():
+    # R-113: an invalid SEMANTICSCRIPT_CC is reported as degraded / no compiler,
+    # not green-lighted into a build that crashes at launch.
+    import json as _json
+    env = dict(os.environ)
+    env["SEMANTICSCRIPT_CC"] = "definitely-not-a-compiler-xyz --flag"
+    r = subprocess.run([sys.executable, SEMANTICSCRIPT, "readiness", "--json"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    rd = _json.loads(r.stdout)
+    assert rd["ok"] is False and rd["cCompiler"] is False
+    s = subprocess.run([sys.executable, SEMANTICSCRIPT, "status", "--json"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert _json.loads(s.stdout)["cCompilerAvailable"] is False
+    # _find_c_compiler returns None for an unresolvable command
+    old = os.environ.get("SEMANTICSCRIPT_CC")
+    try:
+        os.environ["SEMANTICSCRIPT_CC"] = "definitely-not-a-compiler-xyz"
+        assert semanticscript._find_c_compiler() is None
+    finally:
+        if old is None:
+            os.environ.pop("SEMANTICSCRIPT_CC", None)
+        else:
+            os.environ["SEMANTICSCRIPT_CC"] = old
+
+
+def test_mcp_path_schema_accurate_and_project_aware(tmp_path):
+    # R-117: single-file tools advertise "source file"; project-aware tools
+    # advertise "or project directory"; and graph/query actually accept a dir.
+    import json as _json
+    listing = semanticscript.mcp_handle(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
+    desc = {t["name"]: t["inputSchema"]["properties"].get("path", {}).get("description")
+            for t in listing if "path" in t["inputSchema"]["properties"]}
+    assert desc["eval"] == "SemanticScript source file"
+    assert desc["fix_plan"] == "SemanticScript source file"
+    assert "project directory" in desc["graph"] and "project directory" in desc["check"]
+    # graph on a real project directory now succeeds (was a compiler-error).
+    (tmp_path / "src").mkdir()
+    (tmp_path / "build.sem").write_text(
+        "P is project\nP module m\nP target console\nP entry main\n", encoding="utf-8")
+    (tmp_path / "src" / "main.sem").write_text(
+        'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+        "main is operation\nmain out Int32\nmain async no\nmain memory heap no\n"
+        'main purpose "x"\nmain invariant "y"\nmain let z immutable Int32 0\nmain return z\n',
+        encoding="utf-8")
+    g = subprocess.run([sys.executable, SEMANTICSCRIPT, "graph", str(tmp_path), "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(g.stdout)
+    assert env["surface"] == "sem.graph.v1" and env.get("ok") is not False
+
+
 def test_no_duplicate_diagnostic_registry_keys():
     # R-160: a duplicate key in a diagnostic registry literal is silently shadowed
     # by Python (the later entry wins), so a real diagnostic's repair text

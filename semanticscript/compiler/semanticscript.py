@@ -10521,10 +10521,25 @@ def _find_c_compiler():
     reference toolchain: SEMANTICSCRIPT_CC, then clang on PATH / the common Windows LLVM
     install, then `zig cc`. Returns a command prefix list or None."""
     import os
+    import shlex
     from shutil import which
     env = os.environ.get("SEMANTICSCRIPT_CC")
     if env:
-        return [env] if os.path.exists(env) else env.split()
+        # R-113: a whole-string path (may contain spaces) is taken verbatim;
+        # otherwise the command is shlex-parsed and its executable VERIFIED — an
+        # invalid SEMANTICSCRIPT_CC must read as "no compiler" (degraded) so
+        # readiness/status don't green-light a build that crashes at launch.
+        if os.path.exists(env):
+            return [env]
+        try:
+            parts = shlex.split(env, posix=(os.name != "nt"))
+        except ValueError:
+            parts = env.split()
+        if parts:
+            exe = parts[0].strip('"')
+            if which(exe) or os.path.exists(exe):
+                return [exe] + parts[1:]
+        return None  # set but unresolvable -> treated as absent
     clang = which("clang") or (
         "C:/Program Files/LLVM/bin/clang.exe"
         if os.path.exists("C:/Program Files/LLVM/bin/clang.exe") else None
@@ -10792,6 +10807,10 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
             f"building runtime library {lib['name']!r} exceeded "
             f"{_build_timeout_seconds():g}s and was terminated "
             f"(set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
+    except OSError as exc:  # R-113: a bad compiler command fails to launch
+        raise EavError(
+            f"could not launch the C compiler {cmd[0]!r} to build runtime library "
+            f"{lib['name']!r}: {exc} (check SEMANTICSCRIPT_CC or install clang/zig)")
     if proc.returncode != 0:
         try:
             if os.path.exists(out_tmp):
@@ -12422,12 +12441,19 @@ def mcp_handle(request: dict):
             "serverInfo": {"name": "semanticscript", "version": CONTRACT_VERSION},
             "capabilities": {"tools": {}}}}
     if method == "tools/list":
+        # R-117: an accurate per-tool path schema. Most path tools accept a single
+        # file OR a project directory (they read via _read_program_source); the
+        # snippet/repair tools read a single file only, so they must not advertise
+        # a project path that would fail at runtime.
+        single_file = {"eval", "fix_plan"}
         tools = []
         for name, spec in EAV_MCP_TOOLS.items():
             props, required = {}, []
             if spec["path"]:
-                props["path"] = {"type": "string",
-                                 "description": "SemanticScript source file or project path"}
+                props["path"] = {"type": "string", "description": (
+                    "SemanticScript source file"
+                    if name in single_file
+                    else "SemanticScript source file or project directory")}
                 required.append("path")
             for argname, _positional, req, desc in spec["args"]:
                 props[argname] = {"type": "string", "description": desc}
@@ -13213,7 +13239,7 @@ def cmd_graph(args) -> int:
     error becomes a compiler-error envelope, never an argparse/plaintext error)."""
     want_json = getattr(args, "json", False)
     try:
-        program = parse(_read_source(args.path))
+        program = parse(_read_program_source(args.path))  # R-117: accept a project dir too
         text = graph(program, args.kind, args.format)
     except EavError as exc:
         if want_json:
@@ -13344,7 +13370,7 @@ def cmd_query(args) -> int:
     """Print the result of a structural query (`--dimension`)."""
     want_json = getattr(args, "json", False)
     try:
-        program = parse(_read_source(args.path))
+        program = parse(_read_program_source(args.path))  # R-117: accept a project dir too
     except EavError as exc:
         if want_json:
             sys.stdout.write(_json_envelope(
