@@ -1167,9 +1167,29 @@ const char *ss_http_client_fetch(
      * `request_capacity - written` underflow into a huge size_t, so the next
      * snprintf writes out of bounds. The capacity is sized to fit, so anything
      * out of [0, capacity) at any step is a hard failure. */
+    /* R-179: the Host header must carry the explicit port when it is not the
+     * default (80), and an IPv6 literal host must be bracketed
+     * ("Host: [::1]:8080"). Build the header value first. */
+    char host_header[300];
+    int host_is_ipv6 = strchr(host, ':') != NULL;
+    int host_header_length;
+    if (port == 80) {
+        host_header_length = host_is_ipv6
+            ? snprintf(host_header, sizeof(host_header), "[%s]", host)
+            : snprintf(host_header, sizeof(host_header), "%s", host);
+    } else {
+        host_header_length = host_is_ipv6
+            ? snprintf(host_header, sizeof(host_header), "[%s]:%d", host, port)
+            : snprintf(host_header, sizeof(host_header), "%s:%d", host, port);
+    }
+    if (host_header_length < 0 || (size_t)host_header_length >= sizeof(host_header)) {
+        free(request);
+        ss_close_socket(client_socket);
+        return NULL;
+    }
     int written = snprintf(request, request_capacity,
         "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
-        method, path, host);
+        method, path, host_header);
     if (written < 0 || (size_t)written >= request_capacity) {
         free(request);
         ss_close_socket(client_socket);
