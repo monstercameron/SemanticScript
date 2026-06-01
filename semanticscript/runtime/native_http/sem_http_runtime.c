@@ -1916,6 +1916,8 @@ static const char *find_header_end(const char *buffer, size_t read_count, size_t
 
 static long parse_content_length(const char *buffer, const char *header_end) {
     const char *line = buffer;
+    long found_value = 0;
+    int seen = 0;
 
     while (line < header_end && *line != '\0') {
         const char *line_end = strstr(line, "\n");
@@ -1932,7 +1934,28 @@ static long parse_content_length(const char *buffer, const char *header_end) {
             while (*value == ' ' || *value == '\t') {
                 ++value;
             }
-            return strtol(value, NULL, 10);
+            /* R-154: parse strictly. A missing number, trailing junk ("12junk"),
+             * an overflow, or a negative value is rejected (-1 -> the caller
+             * replies 413) instead of being accepted as a body size. */
+            errno = 0;
+            char *endptr;
+            long parsed = strtol(value, &endptr, 10);
+            if (endptr == value || errno == ERANGE || parsed < 0) {
+                return -1;
+            }
+            while (endptr < line_end && (*endptr == ' ' || *endptr == '\t')) {
+                ++endptr;
+            }
+            if (endptr < line_end && *endptr != '\r' && *endptr != '\n') {
+                return -1;
+            }
+            /* R-154: a second Content-Length with a different value is a
+             * request-smuggling vector (RFC 7230 3.3.3) — reject the request. */
+            if (seen && parsed != found_value) {
+                return -1;
+            }
+            found_value = parsed;
+            seen = 1;
         }
 
         line = line_end;
@@ -1941,7 +1964,7 @@ static long parse_content_length(const char *buffer, const char *header_end) {
         }
     }
 
-    return 0;
+    return found_value;
 }
 
 /* Decode a `&`/`=`-split query segment in place: `+` -> space, `%XX` -> byte.

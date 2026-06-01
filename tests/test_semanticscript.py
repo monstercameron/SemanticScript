@@ -6727,6 +6727,25 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_http_content_length_strict_parse():
+    # R-154: parse_content_length must reject a malformed ("12junk"), overflowing,
+    # negative, or conflicting-duplicate Content-Length (-1 -> the caller replies
+    # 413), not accept it as a body size. Source-level guard (injecting raw
+    # malformed requests needs a socket harness; valid Content-Length POSTs
+    # round-trip via test_apps' taskforge-web + test_http_server).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                            "sem_http_runtime.c"), encoding="utf-8").read()
+    m = re.search(r"static long parse_content_length\(.*?\n\}", src, re.S)
+    assert m
+    body = m.group(0)
+    assert "strtol(value, &endptr, 10)" in body          # strict (endptr), not NULL
+    assert "errno == ERANGE" in body                     # overflow rejected
+    assert "seen && parsed != found_value" in body       # duplicate conflict rejected
+    assert "strtol(value, NULL, 10)" not in body         # the lenient parse is gone
+
+
 def test_http_send_all_clamps_chunk_to_int_max():
     # R-153: send_all must clamp each send() request to INT_MAX rather than casting
     # a >INT_MAX size_t body length to a negative/truncated int. Source-level guard
