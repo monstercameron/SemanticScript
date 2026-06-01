@@ -47,10 +47,18 @@ RAW_OUT = {"hello_world": "hello world", "replay_demo": "replay me"}
 # harness is launched from.
 _UTF8 = dict(capture_output=True, text=True, encoding="utf-8", cwd=ROOT)
 
+# R-096: bound every per-example subprocess so one hanging example (an infinite
+# loop, a runtime stall, a compiler regression) can't consume the whole CI job
+# and hide the offending file. Configurable; generous enough for native builds.
+_EXAMPLE_TIMEOUT = float(os.environ.get("SEMANTICSCRIPT_EXAMPLE_TIMEOUT", "") or 90)
+
 
 def run(path, strict=False):
     argv = [sys.executable, SEMANTICSCRIPT, "run"] + (["--strict"] if strict else []) + [path]
-    p = subprocess.run(argv, **_UTF8)
+    try:
+        p = subprocess.run(argv, timeout=_EXAMPLE_TIMEOUT, **_UTF8)
+    except subprocess.TimeoutExpired:
+        return 124, f"TIMEOUT: '{path}' exceeded {_EXAMPLE_TIMEOUT:g}s (run phase)"
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
@@ -58,10 +66,15 @@ def fmt_idempotent(path):
     """fmt(src) must equal fmt(fmt(src)) — the formatter is a fixed point
     (README §22; guards the WS4-005 de-indent class of bugs). Returns
     (ok, detail)."""
-    a = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt", path], **_UTF8)
-    if a.returncode != 0:
-        return False, "fmt failed: " + (a.stderr or "").strip()[:60]
-    b = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt", "-"], input=a.stdout, **_UTF8)
+    try:
+        a = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt", path],
+                           timeout=_EXAMPLE_TIMEOUT, **_UTF8)
+        if a.returncode != 0:
+            return False, "fmt failed: " + (a.stderr or "").strip()[:60]
+        b = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt", "-"],
+                           input=a.stdout, timeout=_EXAMPLE_TIMEOUT, **_UTF8)
+    except subprocess.TimeoutExpired:
+        return False, f"TIMEOUT: '{path}' exceeded {_EXAMPLE_TIMEOUT:g}s (fmt phase)"
     if b.returncode != 0:
         return False, "second fmt failed: " + (b.stderr or "").strip()[:60]
     if a.stdout != b.stdout:

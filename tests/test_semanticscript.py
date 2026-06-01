@@ -1319,6 +1319,73 @@ def test_mcp_missing_required_arg_is_protocol_error():
         assert r["error"]["code"] == -32602, tool
 
 
+def test_json_commands_emit_error_envelope_on_parse_error():
+    # R-098: a JSON-capable command that fails before writing its own envelope
+    # emits a structured sem.error.v1 (ok:false, compiler-error) on stdout, not a
+    # plaintext `semanticscript: …` line on stderr.
+    import json as _json
+    bad = os.path.join(INVALID_CORPUS, "03_unknown_kind.sem")
+    for argv in (["deps", bad, "--json"], ["symbols", bad, "--json"],
+                 ["size", bad, "--json"], ["context", bad, "--json"],
+                 ["slice", bad, "main", "--json"]):
+        proc = subprocess.run([sys.executable, SEMANTICSCRIPT, *argv],
+                              capture_output=True, text=True, encoding="utf-8")
+        env = _json.loads(proc.stdout)
+        assert env["surface"] == "sem.error.v1", argv
+        assert env["ok"] is False and env["status"] == "compiler-error", argv
+        assert proc.returncode != 0, argv
+
+
+def test_eval_replay_timeout_classified_and_configurable():
+    # R-101: a run that exceeds the eval/replay budget is reported as "timed-out"
+    # (a bounded outcome, never an unbounded hang), and the budget is
+    # configurable via SEMANTICSCRIPT_EVAL_TIMEOUT. The subprocess kill itself is
+    # stdlib subprocess.run(timeout=); here we lock the surrounding contract.
+    timeout_err = ("partial\nsemanticscript: eval timeout — execution exceeded "
+                   "2s and was terminated\n")
+    assert semanticscript._classify_run("partial", timeout_err,
+                                        semanticscript._EVAL_TIMEOUT_EXIT) == ("timed-out", None)
+    # a normal nonzero exit is NOT mistaken for a timeout
+    assert semanticscript._classify_run("", "", 7)[0] == "nonzero-exit"
+    old = os.environ.get("SEMANTICSCRIPT_EVAL_TIMEOUT")
+    try:
+        os.environ["SEMANTICSCRIPT_EVAL_TIMEOUT"] = "5"
+        assert semanticscript._eval_timeout_seconds() == 5.0
+        os.environ["SEMANTICSCRIPT_EVAL_TIMEOUT"] = "not-a-number"
+        assert semanticscript._eval_timeout_seconds() == 30.0  # falls back
+    finally:
+        if old is None:
+            os.environ.pop("SEMANTICSCRIPT_EVAL_TIMEOUT", None)
+        else:
+            os.environ["SEMANTICSCRIPT_EVAL_TIMEOUT"] = old
+
+
+def test_build_timeout_configurable():
+    # R-107: native build subprocesses are bounded; the budget is configurable.
+    old = os.environ.get("SEMANTICSCRIPT_BUILD_TIMEOUT")
+    try:
+        os.environ["SEMANTICSCRIPT_BUILD_TIMEOUT"] = "42"
+        assert semanticscript._build_timeout_seconds() == 42.0
+        os.environ["SEMANTICSCRIPT_BUILD_TIMEOUT"] = ""
+        assert semanticscript._build_timeout_seconds() == 300.0  # default
+    finally:
+        if old is None:
+            os.environ.pop("SEMANTICSCRIPT_BUILD_TIMEOUT", None)
+        else:
+            os.environ["SEMANTICSCRIPT_BUILD_TIMEOUT"] = old
+
+
+def test_run_examples_has_per_example_timeout():
+    # R-096: the example harness bounds each per-example subprocess so one hang
+    # can't consume the whole CI job.
+    import importlib.util
+    path = os.path.join(HERE, "run_examples.py")
+    spec = importlib.util.spec_from_file_location("_run_examples_probe", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert isinstance(mod._EXAMPLE_TIMEOUT, float) and mod._EXAMPLE_TIMEOUT > 0
+
+
 def test_dangling_project_entry_rejected():
     # R-104: a project entry naming no declared operation must reject at check
     # (SS1194), not pass green and call a null address at runtime.

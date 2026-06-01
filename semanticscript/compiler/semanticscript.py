@@ -10756,7 +10756,14 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     if "msvc" in jit_triple:
         for sym in resolved.get("exports", []):
             cmd.append("-Wl,/EXPORT:" + sym)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_build_timeout_seconds())
+    except subprocess.TimeoutExpired:  # R-107
+        raise EavError(
+            f"building runtime library {lib['name']!r} exceeded "
+            f"{_build_timeout_seconds():g}s and was terminated "
+            f"(set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
     if proc.returncode != 0:
         raise EavError(
             f"failed to build runtime library {lib['name']!r}: {proc.stderr.strip()}"
@@ -11200,34 +11207,79 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     }
 
 
+def _eval_timeout_seconds() -> float:
+    """R-101: the eval/replay subprocess budget. A hostile or buggy program (an
+    infinite loop, a stuck runtime call) must not wedge `eval`, replay, the test
+    runner, or an agent repair loop forever. Configurable via the
+    SEMANTICSCRIPT_EVAL_TIMEOUT env var (seconds); default 30."""
+    import os
+    try:
+        v = float(os.environ.get("SEMANTICSCRIPT_EVAL_TIMEOUT", "") or 30)
+        return v if v > 0 else 30.0
+    except ValueError:
+        return 30.0
+
+
+def _build_timeout_seconds() -> float:
+    """R-107: the native build subprocess budget (clang/link/runtime-lib). A
+    wedged toolchain process must not hang the CLI/CI forever. Configurable via
+    SEMANTICSCRIPT_BUILD_TIMEOUT (seconds); default 300."""
+    import os
+    try:
+        v = float(os.environ.get("SEMANTICSCRIPT_BUILD_TIMEOUT", "") or 300)
+        return v if v > 0 else 300.0
+    except ValueError:
+        return 300.0
+
+
+_EVAL_TIMEOUT_EXIT = 124  # conventional "killed by timeout" exit code
+
+
+def _decode_stream(s) -> str:
+    return s.decode("utf-8", "replace") if isinstance(s, (bytes, bytearray)) else (s or "")
+
+
 def _record_run(source: str):
     """Run a program in a clean subprocess, capturing (stdout, exitCode). A fresh
     process is the record substrate: it is exactly the capability-mediated output
-    a replay must reproduce."""
+    a replay must reproduce. R-101: bounded by the eval timeout."""
     import os
     import subprocess
     # UTF-8 stdin pipe to match the child's UTF-8 stream reconfigure (README §33.2).
-    proc = subprocess.run(
-        [sys.executable, os.path.abspath(__file__), "run", "-"],
-        input=source, capture_output=True, text=True, encoding="utf-8",
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, os.path.abspath(__file__), "run", "-"],
+            input=source, capture_output=True, text=True, encoding="utf-8",
+            timeout=_eval_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        return _decode_stream(exc.stdout), _EVAL_TIMEOUT_EXIT
     return proc.stdout, proc.returncode
 
 
 def _record_run_full(source: str):
     """Like `_record_run`, but also returns stderr. `eval` needs the compiler/
     runtime diagnostics, not only stdout (R-008): a parse/compile failure surfaces
-    on stderr (`semanticscript: …`) and must reach the caller, not be dropped."""
+    on stderr (`semanticscript: …`) and must reach the caller, not be dropped.
+    R-101: bounded by the eval timeout; a timeout returns a clear status."""
     import os
     import subprocess
     # EAV source/output is UTF-8 (README §33.2); the child reconfigures its
     # std streams to UTF-8, so the stdin pipe must be UTF-8 too — otherwise a
     # non-ASCII source byte (e.g. an em-dash in a comment) is mis-encoded as
     # cp1252 on Windows and the child fails to decode it.
-    proc = subprocess.run(
-        [sys.executable, os.path.abspath(__file__), "run", "-"],
-        input=source, capture_output=True, text=True, encoding="utf-8",
-    )
+    timeout = _eval_timeout_seconds()
+    try:
+        proc = subprocess.run(
+            [sys.executable, os.path.abspath(__file__), "run", "-"],
+            input=source, capture_output=True, text=True, encoding="utf-8",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        err = _decode_stream(exc.stderr)
+        err += (f"\nsemanticscript: eval timeout — execution exceeded {timeout:g}s "
+                f"and was terminated (set SEMANTICSCRIPT_EVAL_TIMEOUT to adjust)\n")
+        return _decode_stream(exc.stdout), err, _EVAL_TIMEOUT_EXIT
     return proc.stdout, proc.stderr, proc.returncode
 
 
@@ -11924,7 +11976,12 @@ def build_executable(program: Program, out_path: str,
         for libname in resolved["libs"]:
             cmd.append("-l" + libname)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_build_timeout_seconds())
+    except subprocess.TimeoutExpired:  # R-107
+        raise EavError(
+            f"native build exceeded {_build_timeout_seconds():g}s and was "
+            f"terminated (set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
     finally:
         for _scratch in (ll_path, wrap_path):
             if _scratch:
@@ -11982,7 +12039,12 @@ def build_wasm(program: Program, out_path: str):
                       # DOM adapter relies on (WS3-161/§document).
                       "-Wl,--allow-undefined", "-O2", "-o", out_path, ll_path]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_build_timeout_seconds())
+    except subprocess.TimeoutExpired:  # R-107
+        raise EavError(
+            f"wasm build exceeded {_build_timeout_seconds():g}s and was "
+            f"terminated (set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
     finally:
         try:
             os.unlink(ll_path)
@@ -12013,7 +12075,7 @@ SEM_SURFACES = (
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
-    "sem.build.v1", "sem.run.v1",
+    "sem.build.v1", "sem.run.v1", "sem.error.v1",
 )
 
 # R-053: standard.* catalogs that ship a `.semsig` contract but whose runtime is
@@ -12531,6 +12593,8 @@ def _parse_panic(stderr: str) -> Optional[dict]:
 def _classify_run(out: str, err: str, code: int):
     """Map a captured (stdout, stderr, exitCode) run to a (status, panic) pair,
     shared by `eval --json` and `run --json` so the two surfaces never diverge."""
+    if code == _EVAL_TIMEOUT_EXIT and "eval timeout" in err:
+        return "timed-out", None  # R-101
     panic = _parse_panic(err)  # WS1-135
     if code == 0:
         status = "ok"
@@ -13583,11 +13647,35 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_graph.set_defaults(func=cmd_graph)
 
     args = parser.parse_args(argv)
+
+    def _emit_json_error(exc, status: str) -> None:
+        # R-098: when a JSON-capable command fails before its own envelope is
+        # written, emit a structured sem.error.v1 (ok:false + a machine-readable
+        # diagnostic) instead of a plaintext `semanticscript: …` on stderr, so an
+        # MCP/agent consumer can distinguish compiler-error / io-error.
+        name = getattr(getattr(args, "func", None), "__name__", "cmd")
+        name = name[4:].replace("_", "-") if name.startswith("cmd_") else name
+        diag = {"code": getattr(exc, "code", None), "severity": "error",
+                "line": getattr(exc, "line", None),
+                "message": getattr(exc, "message", str(exc)),
+                "rendered": f"semanticscript: {exc}"}
+        sys.stdout.write(_json_envelope(
+            "sem.error.v1", ok=False, status=status, command=name,
+            diagnostics=[diag]) + "\n")
+
     try:
         return args.func(args)
     except EavError as exc:
+        if getattr(args, "json", False):
+            _emit_json_error(exc, "compiler-error")
+            return 2
         sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
+    except OSError as exc:
+        if getattr(args, "json", False):
+            _emit_json_error(exc, "io-error")
+            return 2
+        raise
 
 
 if __name__ == "__main__":
