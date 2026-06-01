@@ -10295,6 +10295,17 @@ class EavCodegen:
                 off = builder.select(err, builder.add(ir.Constant(i64, 8), buflen),
                                      builder.add(ir.Constant(i64, 8), start))
                 result = builder.gep(buf, [off])  # a view pointer into the buffer
+            elif target == "buffer.release":
+                # R-207: free the single malloc'd block ([len][bytes][scratch]).
+                # The handle IS that block, so one free reclaims it. Use-after-
+                # release and double-release are prevented statically by the
+                # `owns Buffer cleanedBy buffer.release` contract the .semsig now
+                # declares: the ownership checker requires the release to be
+                # `defer`-ed (SS1503), so it runs exactly once at scope exit, after
+                # the buffer's last use — no runtime tombstone needed.
+                buf = arg("buffer", "OpaquePointer")
+                builder.call(self.runtime("free"), [buf])
+                result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
         elif target.startswith("list."):

@@ -30,6 +30,8 @@ bufferCreate is intrinsic
 bufferCreate target buffer.create
 bufferCreate arg size ByteCount
 bufferCreate out buffer Buffer
+bufferCreate owns Buffer
+bufferCreate cleanedBy buffer.release
 bufferCreate purpose "Allocate a zeroed, length-carrying buffer of `size` bytes (deferred runtime)"
 
 bufferLength is intrinsic
@@ -66,3 +68,9 @@ bufferSlice borrows buffer
 bufferSlice lifetime buffer
 bufferSlice mayEscape no
 bufferSlice purpose "A bounds-checked sub-view that borrows the buffer (a non-owning Slice; deferred runtime)"
+
+bufferRelease is intrinsic
+bufferRelease target buffer.release
+bufferRelease arg buffer Buffer
+bufferRelease out released Int32
+bufferRelease purpose "R-207: free a buffer's heap allocation; the owns/cleanedBy contract on bufferCreate makes this the buffer's single deferred cleanup (deferred runtime)"
