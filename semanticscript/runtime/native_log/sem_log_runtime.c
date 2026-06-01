@@ -76,9 +76,36 @@ static FILE *log_open_if_needed(void) {
     return g_log_file;
 }
 
+/* R-201: confine the log path to a relative location under the launch directory.
+ * The compiler's SS3076 guard rejects literal `..`/absolute log paths, but a
+ * dynamic/request-derived path reaches this seam unchecked; ss_log_set_path then
+ * fopen's whatever it is. Reject an absolute path (POSIX `/`, Windows `\\`,
+ * drive-letter `C:`, or UNC `\\host`) and any `..` segment at the runtime boundary
+ * so an attacker-influenced path cannot append log data outside the log root. */
+static int log_path_is_confined(const char *path) {
+    if (path == NULL || path[0] == '\0') return 0;
+    if (path[0] == '/' || path[0] == '\\') return 0;          /* absolute / UNC */
+    if (path[0] != '\0' && path[1] == ':') return 0;          /* drive letter */
+    const char *segment = path;
+    const char *scan = path;
+    for (;;) {
+        if (*scan == '/' || *scan == '\\' || *scan == '\0') {
+            if ((size_t)(scan - segment) == 2
+                    && segment[0] == '.' && segment[1] == '.') {
+                return 0;                                      /* `..` segment */
+            }
+            if (*scan == '\0') break;
+            segment = scan + 1;
+        }
+        ++scan;
+    }
+    return 1;
+}
+
 int ss_log_set_path(const char *new_path) {
     if (new_path == NULL || new_path[0] == '\0') return SS_LOG_ERR_CONFIG;
     if (g_log_path_locked) return SS_LOG_ERR_CONFIG;
+    if (!log_path_is_confined(new_path)) return SS_LOG_ERR_CONFIG;  /* R-201 */
     size_t len = strlen(new_path);
     if (len >= sizeof(g_log_path)) return SS_LOG_ERR_CONFIG;
     memcpy(g_log_path, new_path, len + 1);
