@@ -188,6 +188,13 @@ passwordScratchCapacity is storage module immutable Int64 256
 displayNameScratchCapacity is storage module immutable Int64 128
 titleScratchCapacity is storage module immutable Int64 512
 bodyScratchCapacity is storage module immutable Int64 10240
+hashBufferCapacity is storage module immutable Int64 64
+hashCapacityArg is storage module immutable Int32 61
+randomBufferCapacity is storage module immutable Int64 32
+randomByteCountArg is storage module immutable Int32 32
+tokenBufferCapacity is storage module immutable Int64 64
+tokenCapacityArg is storage module immutable Int32 64
+lengthOutBufferByteCount is storage module immutable ByteCount 8
 cookieHeaderCapacity is storage module immutable Int64 128
 
 logsDirectoryPath is storage module immutable String "logs"
@@ -841,6 +848,7 @@ registerHandler invariant "On success, exactly one new row in users + one new ro
 registerHandler risk "v1 does not enforce password strength rules other than non-empty; phase-7 will add a minimum length CHECK constraint AT the SQL layer."
 registerHandler let emptyDisplayName immutable String ""
 registerHandler let displayNameForInsert mutable String emptyDisplayName
+registerHandler let hashBufferZeroFillByte immutable Int32 0
 registerHandler let passwordScratchZeroFillByte immutable Int32 0
 registerHandler let dbUnavailableBody immutable String "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"could not open database\"}}\n"
 registerHandler let registerAllocationFailedBody immutable String "{\"error\":{\"code\":\"outOfMemory\",\"message\":\"could not allocate request buffers\"}}\n"
@@ -854,6 +862,7 @@ registerHandler let insertUserPrepareFailedBody immutable String "{\"error\":{\"
 registerHandler let insertBindFailedBody immutable String "{\"error\":{\"code\":\"insertBindFailed\",\"message\":\"failed to bind insert parameters\"}}\n"
 registerHandler let insertUserStepFailedBody immutable String "{\"error\":{\"code\":\"insertUserStepFailed\",\"message\":\"failed to insert user row\"}}\n"
 registerHandler let usernameConflictBody immutable String "{\"error\":{\"code\":\"usernameConflict\",\"message\":\"username already taken\"}}\n"
+registerHandler let randomFailedBody immutable String "{\"error\":{\"code\":\"randomBytesFailed\",\"message\":\"platform CSPRNG failed\"}}\n"
 registerHandler let encodeFailedBody immutable String "{\"error\":{\"code\":\"tokenEncodeFailed\",\"message\":\"session token encoding failed\"}}\n"
 registerHandler let insertSessionPrepareFailedBody immutable String "{\"error\":{\"code\":\"insertSessionPrepareFailed\",\"message\":\"could not prepare session insert\"}}\n"
 registerHandler let sessionBindFailedBody immutable String "{\"error\":{\"code\":\"sessionBindFailed\",\"message\":\"failed to bind session insert parameters\"}}\n"
@@ -895,11 +904,15 @@ registerHandler do readRegisterDisplayNameCall
 registerHandler branch ifError readRegisterDisplayNameCall goto registerDisplayNameResolved
 registerHandler set displayNameForInsert displayNameRecovered
 registerHandler at registerDisplayNameResolved do allocateHashBufferCall
+registerHandler branch ifError allocateHashBufferCall goto registerAllocationFailed
 registerHandler defer releaseHashBufferDefer
-registerHandler do hashStatusOkCheckCall
-registerHandler branch if hashFailed goto registerHashFailedHandler
+registerHandler do hashBufferPreZeroCall
+registerHandler do hashPasswordCall
 registerHandler do viewHashedPasswordCall
-registerHandler do registerWipePasswordScratchCall
+registerHandler do hashStatusOkCheckCall
+registerHandler branch if hashOk goto hashSucceeded
+registerHandler goto registerHashFailedHandler
+registerHandler at hashSucceeded do registerWipePasswordScratchCall
 registerHandler do nowForRegisterCall
 registerHandler do pruneRegisterExpiredSessionsCall
 registerHandler do beginRegisterTxCall
@@ -928,12 +941,25 @@ registerHandler branch ifError drainInsertUserReturningCall goto registerInsertU
 registerHandler do insertUserStepIsDoneCall
 registerHandler branch if insertUserStepIsDone goto registerInsertUserComplete
 registerHandler goto registerInsertUserStepFailed
-registerHandler at registerInsertUserComplete do allocateTokenBufferCall
+registerHandler at registerInsertUserComplete do allocateRandomBufferCall
+registerHandler branch ifError allocateRandomBufferCall goto registerAllocationFailed
+registerHandler defer releaseRandomBufferDefer
+registerHandler do drawRandomBytesCall
+registerHandler do randomOkCheckCall
+registerHandler branch if randomOk goto randomBytesSucceeded
+registerHandler goto registerRandomBytesFailed
+registerHandler at randomBytesSucceeded do allocateTokenBufferCall
+registerHandler branch ifError allocateTokenBufferCall goto registerAllocationFailed
 registerHandler defer releaseTokenBufferDefer
-registerHandler do encodeOkCheckCall
-registerHandler branch if tokenFailed goto registerTokenEncodeFailed
+registerHandler do allocateEncodedTokenLengthCall
+registerHandler branch ifError allocateEncodedTokenLengthCall goto registerAllocationFailed
+registerHandler defer releaseEncodedTokenLengthDefer
+registerHandler do encodeTokenCall
 registerHandler do sessionTokenStrCall
-registerHandler do addExpiresCall
+registerHandler do encodeOkCheckCall
+registerHandler branch if encodeOk goto tokenEncodeSucceeded
+registerHandler goto registerTokenEncodeFailed
+registerHandler at tokenEncodeSucceeded do addExpiresCall
 registerHandler do prepareInsertSessionCall
 registerHandler branch ifError prepareInsertSessionCall goto registerInsertSessionPrepareFailed
 registerHandler defer finalizeInsertSessionDefer
@@ -1005,6 +1031,8 @@ registerHandler return writeInsertUserStepFailedStatus
 registerHandler at registerUsernameConflicted do rollbackRegisterConflictCall
 registerHandler do writeUsernameConflictCall
 registerHandler return writeUsernameConflictStatus
+registerHandler at registerRandomBytesFailed do writeRandomFailedCall
+registerHandler return writeRandomFailedStatus
 registerHandler at registerTokenEncodeFailed do writeEncodeFailedCall
 registerHandler return writeEncodeFailedStatus
 registerHandler at registerInsertSessionPrepareFailed do writeInsertSessionPrepareFailedCall
@@ -1197,41 +1225,19 @@ readRegisterDisplayNameCall arg scratchCapacity Int64 displayNameScratchCapacity
 readRegisterDisplayNameCall out displayNameRecovered String
 readRegisterDisplayNameCall catch readRegisterDisplayNameError JsonAccessError
 
-# R-202: owned-output bcrypt hashing. bcryptHashOwned allocates the 60-char hash
-# string itself (no caller buffer to under-size, so a buffer overflow is
-# structurally impossible) and returns it as an OpaquePointer the handler frees
-# via bcryptFreeString. Replaces the c.malloc + memset + bcrypt.hashPassword
-# caller-buffer pattern.
-bcryptHashOwned is operation
-bcryptHashOwned in plaintext String
-bcryptHashOwned in cost Int32
-bcryptHashOwned out OpaquePointer
-bcryptHashOwned memory heap yes
-bcryptHashOwned async no
-bcryptHashOwned purpose "Hash a password into a freshly-allocated $2b$ string; returns null on failure"
-bcryptHashOwned invariant "Allocates its own output, so there is no caller buffer to overflow; the returned pointer is freed by bcryptFreeString"
-bcryptHashOwned body runtimeBinding ss_bcrypt_hash_owned
-
-bcryptFreeString is operation
-bcryptFreeString in pointer OpaquePointer
-bcryptFreeString async no
-bcryptFreeString purpose "Free a string returned by an owned-output bcrypt helper"
-bcryptFreeString invariant "A double free or foreign pointer is a no-op (the runtime tombstones owned strings)"
-bcryptFreeString body runtimeBinding ss_bcrypt_free_string
-
 allocateHashBufferCall is call
 allocateHashBufferCall in registerHandler
-allocateHashBufferCall invokes bcryptHashOwned
-allocateHashBufferCall arg plaintext String passwordRecovered
-allocateHashBufferCall arg cost Int32 bcryptRecommendedCost
+allocateHashBufferCall invokes c.malloc
+allocateHashBufferCall arg size ByteCount hashBufferCapacity
 allocateHashBufferCall out hashBuffer OpaquePointer
+allocateHashBufferCall catch allocateHashBufferError OpaquePointer
 allocateHashBufferCall owns hashBuffer
 allocateHashBufferCall cleanedBy releaseHashBufferDefer
 
 releaseHashBufferDeferWorker is call
 releaseHashBufferDeferWorker in registerHandler
-releaseHashBufferDeferWorker invokes bcryptFreeString
-releaseHashBufferDeferWorker arg pointer OpaquePointer hashBuffer
+releaseHashBufferDeferWorker invokes c.free
+releaseHashBufferDeferWorker arg resource OpaquePointer hashBuffer
 releaseHashBufferDeferWorker discards "cleanup status ignored"
 
 releaseHashBufferDefer is cleanup
@@ -1239,11 +1245,29 @@ releaseHashBufferDefer in registerHandler
 releaseHashBufferDefer call releaseHashBufferDeferWorker
 releaseHashBufferDefer cleans hashBuffer
 
+hashBufferPreZeroCall is call
+hashBufferPreZeroCall in registerHandler
+hashBufferPreZeroCall invokes c.memset
+hashBufferPreZeroCall arg ptr OpaquePointer hashBuffer
+hashBufferPreZeroCall arg value Int32 hashBufferZeroFillByte
+hashBufferPreZeroCall arg byteCount Int64 hashBufferCapacity
+hashBufferPreZeroCall discards "result intentionally ignored"
+
+hashPasswordCall is call
+hashPasswordCall in registerHandler
+hashPasswordCall invokes bcrypt.hashPassword
+hashPasswordCall arg plaintext String passwordRecovered
+hashPasswordCall arg cost Int32 bcryptRecommendedCost
+hashPasswordCall arg outBuffer OpaquePointer hashBuffer
+hashPasswordCall arg outCapacity Int32 hashCapacityArg
+hashPasswordCall out hashStatus Int32
+
 hashStatusOkCheckCall is call
 hashStatusOkCheckCall in registerHandler
-hashStatusOkCheckCall invokes pointer.isNull
-hashStatusOkCheckCall arg pointer OpaquePointer hashBuffer
-hashStatusOkCheckCall out hashFailed Bool
+hashStatusOkCheckCall invokes math.equalInt32
+hashStatusOkCheckCall arg left Int32 hashStatus
+hashStatusOkCheckCall arg right Int32 jsonOk
+hashStatusOkCheckCall out hashOk Bool
 
 registerWipePasswordScratchCall is call
 registerWipePasswordScratchCall in registerHandler
@@ -1366,30 +1390,53 @@ insertUserStepIsDoneCall invokes sqlite.stepResultIsDone
 insertUserStepIsDoneCall arg stepResult SqliteStepResult insertUserDoneStepResult
 insertUserStepIsDoneCall out insertUserStepIsDone Bool
 
-# R-202: owned-output session token. bcryptSessionTokenOwned draws CSPRNG entropy
-# and base64url-encodes it into a freshly-allocated string itself — no caller
-# random/token/length buffers to mis-size — and returns it as an OpaquePointer the
-# handler frees via bcryptFreeString. Replaces the c.malloc x3 + bcrypt.randomBytes
-# + bcrypt.base64UrlEncode caller-buffer pattern.
-bcryptSessionTokenOwned is operation
-bcryptSessionTokenOwned out OpaquePointer
-bcryptSessionTokenOwned memory heap yes
-bcryptSessionTokenOwned async no
-bcryptSessionTokenOwned purpose "Mint a base64url session token from fresh CSPRNG entropy into a freshly-allocated string; returns null on failure"
-bcryptSessionTokenOwned invariant "Allocates its own output, so there is no caller buffer to overflow; the returned pointer is freed by bcryptFreeString"
-bcryptSessionTokenOwned body runtimeBinding ss_bcrypt_session_token_owned
+allocateRandomBufferCall is call
+allocateRandomBufferCall in registerHandler
+allocateRandomBufferCall invokes c.malloc
+allocateRandomBufferCall arg size ByteCount randomBufferCapacity
+allocateRandomBufferCall out sessionRandomBuffer OpaquePointer
+allocateRandomBufferCall catch allocateRandomBufferError OpaquePointer
+allocateRandomBufferCall owns sessionRandomBuffer
+allocateRandomBufferCall cleanedBy releaseRandomBufferDefer
+
+releaseRandomBufferDeferWorker is call
+releaseRandomBufferDeferWorker in registerHandler
+releaseRandomBufferDeferWorker invokes c.free
+releaseRandomBufferDeferWorker arg resource OpaquePointer sessionRandomBuffer
+releaseRandomBufferDeferWorker discards "cleanup status ignored"
+
+releaseRandomBufferDefer is cleanup
+releaseRandomBufferDefer in registerHandler
+releaseRandomBufferDefer call releaseRandomBufferDeferWorker
+releaseRandomBufferDefer cleans sessionRandomBuffer
+
+drawRandomBytesCall is call
+drawRandomBytesCall in registerHandler
+drawRandomBytesCall invokes bcrypt.randomBytes
+drawRandomBytesCall arg outBuffer OpaquePointer sessionRandomBuffer
+drawRandomBytesCall arg byteCount Int32 randomByteCountArg
+drawRandomBytesCall out randomStatus Int32
+
+randomOkCheckCall is call
+randomOkCheckCall in registerHandler
+randomOkCheckCall invokes math.equalInt32
+randomOkCheckCall arg left Int32 randomStatus
+randomOkCheckCall arg right Int32 jsonOk
+randomOkCheckCall out randomOk Bool
 
 allocateTokenBufferCall is call
 allocateTokenBufferCall in registerHandler
-allocateTokenBufferCall invokes bcryptSessionTokenOwned
+allocateTokenBufferCall invokes c.malloc
+allocateTokenBufferCall arg size ByteCount tokenBufferCapacity
 allocateTokenBufferCall out sessionTokenBuffer OpaquePointer
+allocateTokenBufferCall catch allocateTokenBufferError OpaquePointer
 allocateTokenBufferCall owns sessionTokenBuffer
 allocateTokenBufferCall cleanedBy releaseTokenBufferDefer
 
 releaseTokenBufferDeferWorker is call
 releaseTokenBufferDeferWorker in registerHandler
-releaseTokenBufferDeferWorker invokes bcryptFreeString
-releaseTokenBufferDeferWorker arg pointer OpaquePointer sessionTokenBuffer
+releaseTokenBufferDeferWorker invokes c.free
+releaseTokenBufferDeferWorker arg resource OpaquePointer sessionTokenBuffer
 releaseTokenBufferDeferWorker discards "cleanup status ignored"
 
 releaseTokenBufferDefer is cleanup
@@ -1397,11 +1444,42 @@ releaseTokenBufferDefer in registerHandler
 releaseTokenBufferDefer call releaseTokenBufferDeferWorker
 releaseTokenBufferDefer cleans sessionTokenBuffer
 
+allocateEncodedTokenLengthCall is call
+allocateEncodedTokenLengthCall in registerHandler
+allocateEncodedTokenLengthCall invokes c.malloc
+allocateEncodedTokenLengthCall arg size ByteCount lengthOutBufferByteCount
+allocateEncodedTokenLengthCall out encodedTokenLengthBuffer OpaquePointer
+allocateEncodedTokenLengthCall catch allocateEncodedTokenLengthError OpaquePointer
+allocateEncodedTokenLengthCall owns encodedTokenLengthBuffer
+allocateEncodedTokenLengthCall cleanedBy releaseEncodedTokenLengthDefer
+
+releaseEncodedTokenLengthDeferWorker is call
+releaseEncodedTokenLengthDeferWorker in registerHandler
+releaseEncodedTokenLengthDeferWorker invokes c.free
+releaseEncodedTokenLengthDeferWorker arg resource OpaquePointer encodedTokenLengthBuffer
+releaseEncodedTokenLengthDeferWorker discards "cleanup status ignored"
+
+releaseEncodedTokenLengthDefer is cleanup
+releaseEncodedTokenLengthDefer in registerHandler
+releaseEncodedTokenLengthDefer call releaseEncodedTokenLengthDeferWorker
+releaseEncodedTokenLengthDefer cleans encodedTokenLengthBuffer
+
+encodeTokenCall is call
+encodeTokenCall in registerHandler
+encodeTokenCall invokes bcrypt.base64UrlEncode
+encodeTokenCall arg inputBuffer OpaquePointer sessionRandomBuffer
+encodeTokenCall arg inputCount Int32 randomByteCountArg
+encodeTokenCall arg outputBuffer OpaquePointer sessionTokenBuffer
+encodeTokenCall arg outputCapacity Int32 tokenCapacityArg
+encodeTokenCall arg outputLengthOut OpaquePointer encodedTokenLengthBuffer
+encodeTokenCall out encodeTokenStatus Int32
+
 encodeOkCheckCall is call
 encodeOkCheckCall in registerHandler
-encodeOkCheckCall invokes pointer.isNull
-encodeOkCheckCall arg pointer OpaquePointer sessionTokenBuffer
-encodeOkCheckCall out tokenFailed Bool
+encodeOkCheckCall invokes math.equalInt32
+encodeOkCheckCall arg left Int32 encodeTokenStatus
+encodeOkCheckCall arg right Int32 jsonOk
+encodeOkCheckCall out encodeOk Bool
 
 addExpiresCall is call
 addExpiresCall in registerHandler
@@ -1741,6 +1819,14 @@ writeUsernameConflictCall arg response HttpResponse response
 writeUsernameConflictCall arg status HttpStatusCode httpStatusConflict
 writeUsernameConflictCall arg messageBody HttpTextBody usernameConflictBody
 writeUsernameConflictCall out writeUsernameConflictStatus Int32
+
+writeRandomFailedCall is call
+writeRandomFailedCall in registerHandler
+writeRandomFailedCall invokes writeErrorJsonResponse
+writeRandomFailedCall arg response HttpResponse response
+writeRandomFailedCall arg status HttpStatusCode httpStatusInternalServerError
+writeRandomFailedCall arg messageBody HttpTextBody randomFailedBody
+writeRandomFailedCall out writeRandomFailedStatus Int32
 
 writeEncodeFailedCall is call
 writeEncodeFailedCall in registerHandler
@@ -2303,12 +2389,25 @@ loginHandler do bindUpdateLastLoginUserIdCall
 loginHandler branch ifError bindUpdateLastLoginUserIdCall goto loginLastLoginUpdated
 loginHandler do stepUpdateLastLoginCall
 loginHandler branch ifError stepUpdateLastLoginCall goto loginLastLoginUpdated
-loginHandler at loginLastLoginUpdated do allocateLoginTokenCall
+loginHandler at loginLastLoginUpdated do allocateLoginRandomCall
+loginHandler branch ifError allocateLoginRandomCall goto loginInternalFailed
+loginHandler defer releaseLoginRandomDefer
+loginHandler do drawLoginRandomCall
+loginHandler do loginRandomOkCheckCall
+loginHandler branch if loginRandomOk goto loginRandomOkLabel
+loginHandler goto loginInternalFailed
+loginHandler at loginRandomOkLabel do allocateLoginTokenCall
+loginHandler branch ifError allocateLoginTokenCall goto loginInternalFailed
 loginHandler defer releaseLoginTokenDefer
-loginHandler do loginEncodeOkCheckCall
-loginHandler branch if loginTokenFailed goto loginInternalFailed
+loginHandler do allocateLoginEncodedTokenLengthCall
+loginHandler branch ifError allocateLoginEncodedTokenLengthCall goto loginInternalFailed
+loginHandler defer releaseLoginEncodedTokenLengthDefer
+loginHandler do encodeLoginTokenCall
 loginHandler do loginTokenStrCall
-loginHandler do pruneLoginExpiredSessionsCall
+loginHandler do loginEncodeOkCheckCall
+loginHandler branch if loginEncodeOk goto loginEncodeOkLabel
+loginHandler goto loginInternalFailed
+loginHandler at loginEncodeOkLabel do pruneLoginExpiredSessionsCall
 loginHandler do loginAddExpiresCall
 loginHandler do prepareInsertLoginSessionCall
 loginHandler branch ifError prepareInsertLoginSessionCall goto loginInsertSessionFailed
@@ -2706,17 +2805,53 @@ stepUpdateLastLoginCall arg statement SqliteStatement updateLastLoginStatement
 stepUpdateLastLoginCall discards "result intentionally ignored"
 stepUpdateLastLoginCall catch stepUpdateLastLoginError SqliteStatementStepFailure
 
+allocateLoginRandomCall is call
+allocateLoginRandomCall in loginHandler
+allocateLoginRandomCall invokes c.malloc
+allocateLoginRandomCall arg size ByteCount randomBufferCapacity
+allocateLoginRandomCall out loginRandomBuffer OpaquePointer
+allocateLoginRandomCall catch allocateLoginRandomError OpaquePointer
+allocateLoginRandomCall owns loginRandomBuffer
+allocateLoginRandomCall cleanedBy releaseLoginRandomDefer
+
+releaseLoginRandomDeferWorker is call
+releaseLoginRandomDeferWorker in loginHandler
+releaseLoginRandomDeferWorker invokes c.free
+releaseLoginRandomDeferWorker arg resource OpaquePointer loginRandomBuffer
+releaseLoginRandomDeferWorker discards "cleanup status ignored"
+
+releaseLoginRandomDefer is cleanup
+releaseLoginRandomDefer in loginHandler
+releaseLoginRandomDefer call releaseLoginRandomDeferWorker
+releaseLoginRandomDefer cleans loginRandomBuffer
+
+drawLoginRandomCall is call
+drawLoginRandomCall in loginHandler
+drawLoginRandomCall invokes bcrypt.randomBytes
+drawLoginRandomCall arg outBuffer OpaquePointer loginRandomBuffer
+drawLoginRandomCall arg byteCount Int32 randomByteCountArg
+drawLoginRandomCall out loginRandomStatus Int32
+
+loginRandomOkCheckCall is call
+loginRandomOkCheckCall in loginHandler
+loginRandomOkCheckCall invokes math.equalInt32
+loginRandomOkCheckCall arg left Int32 loginRandomStatus
+loginRandomOkCheckCall arg right Int32 jsonOk
+loginRandomOkCheckCall out loginRandomOk Bool
+
 allocateLoginTokenCall is call
 allocateLoginTokenCall in loginHandler
-allocateLoginTokenCall invokes bcryptSessionTokenOwned
+allocateLoginTokenCall invokes c.malloc
+allocateLoginTokenCall arg size ByteCount tokenBufferCapacity
 allocateLoginTokenCall out loginTokenBuffer OpaquePointer
+allocateLoginTokenCall catch allocateLoginTokenError OpaquePointer
 allocateLoginTokenCall owns loginTokenBuffer
 allocateLoginTokenCall cleanedBy releaseLoginTokenDefer
 
 releaseLoginTokenDeferWorker is call
 releaseLoginTokenDeferWorker in loginHandler
-releaseLoginTokenDeferWorker invokes bcryptFreeString
-releaseLoginTokenDeferWorker arg pointer OpaquePointer loginTokenBuffer
+releaseLoginTokenDeferWorker invokes c.free
+releaseLoginTokenDeferWorker arg resource OpaquePointer loginTokenBuffer
 releaseLoginTokenDeferWorker discards "cleanup status ignored"
 
 releaseLoginTokenDefer is cleanup
@@ -2724,11 +2859,42 @@ releaseLoginTokenDefer in loginHandler
 releaseLoginTokenDefer call releaseLoginTokenDeferWorker
 releaseLoginTokenDefer cleans loginTokenBuffer
 
+allocateLoginEncodedTokenLengthCall is call
+allocateLoginEncodedTokenLengthCall in loginHandler
+allocateLoginEncodedTokenLengthCall invokes c.malloc
+allocateLoginEncodedTokenLengthCall arg size ByteCount lengthOutBufferByteCount
+allocateLoginEncodedTokenLengthCall out loginEncodedTokenLengthBuffer OpaquePointer
+allocateLoginEncodedTokenLengthCall catch allocateLoginEncodedTokenLengthError OpaquePointer
+allocateLoginEncodedTokenLengthCall owns loginEncodedTokenLengthBuffer
+allocateLoginEncodedTokenLengthCall cleanedBy releaseLoginEncodedTokenLengthDefer
+
+releaseLoginEncodedTokenLengthDeferWorker is call
+releaseLoginEncodedTokenLengthDeferWorker in loginHandler
+releaseLoginEncodedTokenLengthDeferWorker invokes c.free
+releaseLoginEncodedTokenLengthDeferWorker arg resource OpaquePointer loginEncodedTokenLengthBuffer
+releaseLoginEncodedTokenLengthDeferWorker discards "cleanup status ignored"
+
+releaseLoginEncodedTokenLengthDefer is cleanup
+releaseLoginEncodedTokenLengthDefer in loginHandler
+releaseLoginEncodedTokenLengthDefer call releaseLoginEncodedTokenLengthDeferWorker
+releaseLoginEncodedTokenLengthDefer cleans loginEncodedTokenLengthBuffer
+
+encodeLoginTokenCall is call
+encodeLoginTokenCall in loginHandler
+encodeLoginTokenCall invokes bcrypt.base64UrlEncode
+encodeLoginTokenCall arg inputBuffer OpaquePointer loginRandomBuffer
+encodeLoginTokenCall arg inputCount Int32 randomByteCountArg
+encodeLoginTokenCall arg outputBuffer OpaquePointer loginTokenBuffer
+encodeLoginTokenCall arg outputCapacity Int32 tokenCapacityArg
+encodeLoginTokenCall arg outputLengthOut OpaquePointer loginEncodedTokenLengthBuffer
+encodeLoginTokenCall out loginEncodeStatus Int32
+
 loginEncodeOkCheckCall is call
 loginEncodeOkCheckCall in loginHandler
-loginEncodeOkCheckCall invokes pointer.isNull
-loginEncodeOkCheckCall arg pointer OpaquePointer loginTokenBuffer
-loginEncodeOkCheckCall out loginTokenFailed Bool
+loginEncodeOkCheckCall invokes math.equalInt32
+loginEncodeOkCheckCall arg left Int32 loginEncodeStatus
+loginEncodeOkCheckCall arg right Int32 jsonOk
+loginEncodeOkCheckCall out loginEncodeOk Bool
 
 pruneLoginExpiredSessionsCall is call
 pruneLoginExpiredSessionsCall in loginHandler
