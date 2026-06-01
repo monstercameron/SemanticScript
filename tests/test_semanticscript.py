@@ -1261,6 +1261,64 @@ def test_mcp_registry_is_authoritative_and_errors_are_protocol_errors():
     assert "error" in missing and "result" not in missing
 
 
+def test_mcp_notifications_get_no_response():
+    # R-111: a JSON-RPC notification (no `id` member) must not be answered.
+    assert semanticscript.mcp_handle(
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    assert semanticscript.mcp_handle(
+        {"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {}}) is None
+    # a real request (with id) still gets a response
+    assert semanticscript.mcp_handle(
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize"}) is not None
+
+
+def _rc(*argv):
+    return subprocess.run([sys.executable, SEMANTICSCRIPT, *argv],
+                          capture_output=True, text=True, encoding="utf-8").returncode
+
+
+def test_check_exit_code_reflects_status():
+    # R-093: single-file `check` exits nonzero on compiler-error and on
+    # error-severity lint (incl. --strict-promoted warnings); 0 when clean.
+    assert _rc("check", os.path.join(INVALID_CORPUS, "03_unknown_kind.sem"), "--json") != 0
+    assert _rc("check", os.path.join(EXAMPLES, "capability_ungranted_use.sem"),
+               "--strict", "--json") != 0
+    assert _rc("check", os.path.join(EXAMPLES, "hello_world.sem"), "--json") == 0
+
+
+def test_eval_exit_code_reflects_ok():
+    # R-100: `eval --json` exits nonzero whenever the envelope is ok:false,
+    # and 0 for a clean run; the program exit code is preserved in `exitCode`.
+    import json as _json
+    bad = subprocess.run([sys.executable, SEMANTICSCRIPT, "eval", "-", "--json"],
+                         input="bad is junk\n", capture_output=True, text=True, encoding="utf-8")
+    assert bad.returncode != 0 and _json.loads(bad.stdout)["ok"] is False
+    assert _rc("eval", os.path.join(EXAMPLES, "hello_world.sem"), "--json") == 0
+
+
+def test_run_json_emits_sem_run_envelope():
+    # R-095: `run --json` is machine-readable (sem.run.v1) with captured
+    # stdout/exitCode, not raw program output streamed past the --json request.
+    import json as _json
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "--json",
+                           os.path.join(EXAMPLES, "hello_world.sem")],
+                          capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(proc.stdout)
+    assert env["surface"] == "sem.run.v1" and env["ok"] is True
+    assert env["exitCode"] == 0 and "hello world" in env["stdout"]
+    assert proc.returncode == 0
+
+
+def test_mcp_missing_required_arg_is_protocol_error():
+    # R-099: a missing required arg is a JSON-RPC error, not a masked empty
+    # success (argparse failing to stderr while empty stdout is wrapped as ok).
+    for tool, args in (("check", {}), ("search", {}), ("query", {"path": "x"})):
+        r = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                       "params": {"name": tool, "arguments": args}})
+        assert "error" in r and "result" not in r, tool
+        assert r["error"]["code"] == -32602, tool
+
+
 def test_lint_json_cli():
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "lint", "--json",

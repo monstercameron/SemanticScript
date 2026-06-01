@@ -11679,6 +11679,21 @@ def cmd_run(args) -> int:
     to a structured `ss_panic` that prints `code · kind · op · row · reason ·
     operands` to stderr and exits 134; a residual bare trap (overflow / deep
     recursion, not yet routed through ss_panic) still surfaces as SSR0001."""
+    # R-095: `run --json` is a machine-readable run — capture the program's
+    # stdout/stderr/exitCode into a sem.run.v1 envelope (with a structured panic
+    # on a trap) instead of streaming raw output past the `--json` request.
+    if getattr(args, "json", False):
+        src = _read_program_source(args.path)
+        out, err, code = _record_run_full(src)
+        status, panic = _classify_run(out, err, code)
+        payload = dict(
+            ok=(code == 0), status=status, exitCode=code, stdout=out, stderr=err,
+            stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n"))
+        if panic is not None:
+            payload["panic"] = panic
+        sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
+        return code
+
     program = parse(_read_program_source(args.path))
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
@@ -11881,7 +11896,7 @@ SEM_SURFACES = (
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
-    "sem.build.v1",
+    "sem.build.v1", "sem.run.v1",
 )
 
 # R-053: standard.* catalogs that ship a `.semsig` contract but whose runtime is
@@ -12071,9 +12086,15 @@ def _mcp_dispatch(tool: str, arguments: dict) -> str:
     return buf.getvalue()
 
 
-def mcp_handle(request: dict) -> dict:
-    """Handle one MCP JSON-RPC request (initialize / tools/list / tools/call)."""
+def mcp_handle(request: dict):
+    """Handle one MCP JSON-RPC request (initialize / tools/list / tools/call).
+
+    Returns the response dict, or None for a JSON-RPC *notification* — a request
+    with no `id` member (e.g. `notifications/initialized`), which per the spec
+    must not be answered (R-111)."""
     method = request.get("method")
+    if "id" not in request:
+        return None  # notification: acknowledged silently, no response
     rid = request.get("id")
     base = {"jsonrpc": "2.0", "id": rid}
     if method == "initialize":
@@ -12109,7 +12130,19 @@ def mcp_handle(request: dict) -> dict:
                 "message": (f"unknown tool: {name!r}" if name
                             else "missing tool name"),
                 "data": {"available": sorted(EAV_MCP_TOOLS)}}}
-        text = _mcp_dispatch(name, params.get("arguments", {}))
+        # R-099: validate required inputs up front. A missing required arg used to
+        # let argparse fail to stderr while an empty stdout was wrapped as a
+        # successful tools/call — a masked failure. Now it is a JSON-RPC error.
+        spec = EAV_MCP_TOOLS[name]
+        arguments = params.get("arguments", {})
+        required = (["path"] if spec["path"] else []) + [a[0] for a in spec["args"] if a[2]]
+        missing = [r for r in required if arguments.get(r) in (None, "")]
+        if missing:
+            return {**base, "error": {
+                "code": -32602,
+                "message": f"missing required argument(s) for {name!r}: {', '.join(missing)}",
+                "data": {"required": required}}}
+        text = _mcp_dispatch(name, arguments)
         return {**base, "result": {"content": [{"type": "text", "text": text}]}}
     return {**base, "error": {"code": -32601, "message": f"method not found: {method}"}}
 
@@ -12270,8 +12303,10 @@ def cmd_mcp(args) -> int:
                 "error": {"code": -32700, "message": "parse error"}}) + "\n")
             sys.stdout.flush()
             continue
-        sys.stdout.write(json.dumps(mcp_handle(request)) + "\n")
-        sys.stdout.flush()
+        response = mcp_handle(request)
+        if response is not None:  # R-111: notifications (no id) get no reply
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()
     return 0
 
 
@@ -12376,6 +12411,21 @@ def _parse_panic(stderr: str) -> Optional[dict]:
     }
 
 
+def _classify_run(out: str, err: str, code: int):
+    """Map a captured (stdout, stderr, exitCode) run to a (status, panic) pair,
+    shared by `eval --json` and `run --json` so the two surfaces never diverge."""
+    panic = _parse_panic(err)  # WS1-135
+    if code == 0:
+        status = "ok"
+    elif panic is not None:
+        status = "crashed"
+    elif err.startswith("semanticscript:") or "\nsemanticscript:" in err:
+        status = "compile-failed"  # parse/compile failure via main's EavError handler
+    else:
+        status = "nonzero-exit"
+    return status, panic
+
+
 def cmd_eval(args) -> int:
     """Run a snippet through the JIT without scaffolding (sem.eval.v1): if the
     source declares no `project` entity, wrap it in a minimal console program,
@@ -12406,20 +12456,11 @@ def cmd_eval(args) -> int:
                     "sem.eval.v1", ok=False, status=status, exitCode=code, wrapped=wrapped,
                     stdout=out, stderr=err,
                     stdoutLines=[]) + "\n")
-                return 0
+                return code  # R-100: ok:false exits nonzero
         except EavError:
             pass  # Fall through to _record_run_full which will catch the error
     out, err, code = _record_run_full(src)
-    panic = _parse_panic(err)  # WS1-135
-    if code == 0:
-        status = "ok"
-    elif panic is not None:
-        status = "crashed"
-    elif err.startswith("semanticscript:") or "\nsemanticscript:" in err:
-        # parse/compile failure surfaces through main's EavError handler
-        status = "compile-failed"
-    else:
-        status = "nonzero-exit"
+    status, panic = _classify_run(out, err, code)
     payload = dict(
         ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
         stdout=out, stderr=err,
@@ -12427,7 +12468,9 @@ def cmd_eval(args) -> int:
     if panic is not None:
         payload["panic"] = panic
     sys.stdout.write(_json_envelope("sem.eval.v1", **payload) + "\n")
-    return 0
+    # R-100: process exit mirrors the program exit (0 iff ok); the program's
+    # own exit code is preserved in the envelope's `exitCode` for the consumer.
+    return code
 
 
 def cmd_deps(args) -> int:
@@ -12627,7 +12670,7 @@ def cmd_check(args) -> int:
         sys.stdout.write(_json_envelope(
             "sem.check.v1", status="compiler-error", ok=False,
             diagnostics=[str(exc)]) + "\n")
-        return 0
+        return 1  # R-093: a compiler error is a nonzero exit, matching the workspace lane
     diags = lint(program)
     diags = _filter_diagnostics_strict(diags, getattr(args, "strict", False))
     errors = [d for d in diags if d.severity == "error"]
@@ -12654,7 +12697,9 @@ def cmd_check(args) -> int:
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
         diagnostics=_structured_diags(diags), typedComments=typed,
         nextCommands=nxt) + "\n")
-    return 0
+    # R-093: error-severity diagnostics (incl. --strict-promoted warnings) exit
+    # nonzero; clean and warning-only single files stay 0, matching the workspace lane.
+    return 1 if status == "lint-diagnostics" else 0
 
 
 def cmd_readiness(args) -> int:
