@@ -1652,9 +1652,16 @@ int32_t ss_gui_window_add_control(void *window_handle, void *control_handle) {
         return SS_GUI_ERR_CONFIG;
     }
     if (window->control_count == window->control_capacity) {
-        size_t new_capacity = window->control_capacity == 0
-            ? 4
-            : window->control_capacity * 2;
+        /* R-143: guard the doubling and the byte multiply so a pathological
+         * count can't wrap to a too-small allocation. */
+        size_t cap = window->control_capacity;
+        if (cap > SIZE_MAX / 2) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
+        size_t new_capacity = cap == 0 ? 4 : cap * 2;
+        if (new_capacity > SIZE_MAX / sizeof(SSGuiControlBuilder *)) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
         expanded = (SSGuiControlBuilder **)realloc(
             window->controls, new_capacity * sizeof(SSGuiControlBuilder *));
         if (expanded == NULL) {
@@ -1683,9 +1690,15 @@ int32_t ss_gui_control_on_event(
         return SS_GUI_ERR_CONFIG;
     }
     if (control->event_count == control->event_capacity) {
-        size_t new_capacity = control->event_capacity == 0
-            ? 2
-            : control->event_capacity * 2;
+        /* R-143: guard the doubling and the byte multiply (see add_control). */
+        size_t cap = control->event_capacity;
+        if (cap > SIZE_MAX / 2) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
+        size_t new_capacity = cap == 0 ? 2 : cap * 2;
+        if (new_capacity > SIZE_MAX / sizeof(SSGuiEventConfig)) {
+            return SS_GUI_ERR_ALLOCATION;
+        }
         expanded = (SSGuiEventConfig *)realloc(
             control->events, new_capacity * sizeof(SSGuiEventConfig));
         if (expanded == NULL) {
