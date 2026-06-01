@@ -14063,6 +14063,10 @@ def _next_command(argv: list, description: str, replayable: bool = True) -> dict
             "replayable": replayable, "description": description}
 
 
+def _next_command_for_source(argv: list, description: str, source_path: str) -> dict:
+    return _next_command(argv, description, replayable=(source_path != "-"))
+
+
 def _json_envelope(surface: str, **payload) -> str:
     import json
     body = {"surface": surface, "version": "v1", "ok": True}
@@ -14727,10 +14731,10 @@ def cmd_dev(args) -> int:
               if projects and projects[0].fact("target") and projects[0].fact("target").payload
               else None)
     runnable = not errors and target == "console"
-    nxt = ([_next_command(["run", args.path], "JIT-run"),
-            _next_command(["build", args.path], "compile to a native exe")]
+    nxt = ([_next_command_for_source(["run", args.path], "JIT-run", args.path),
+            _next_command_for_source(["build", args.path], "compile to a native exe", args.path)]
            if runnable else
-           [_next_command(["check", args.path], "resolve source diagnostics first")])
+           [_next_command_for_source(["check", args.path], "resolve source diagnostics first", args.path)])
     sys.stdout.write(_json_envelope(
         "sem.dev.v1", checkStatus=("lint-diagnostics" if errors else "ok"),
         runnable=runnable, target=target, nextCommands=nxt) + "\n")
@@ -14837,18 +14841,18 @@ def cmd_check(args) -> int:
     except EavError:
         has_tests = True  # discovery failed; keep the prior `test` suggestion
     if status == "lint-diagnostics":
-        nxt = [_next_command(["fix", args.path, "--plan"],
-                             "derive a repair plan for the errors")]
+        nxt = [_next_command_for_source(["fix", args.path, "--plan"],
+                                        "derive a repair plan for the errors", args.path)]
     elif status == "ok-with-warnings":
-        nxt = [_next_command(["fix", args.path, "--plan", "--include-warnings"],
-                             "review warning cleanup")]
+        nxt = [_next_command_for_source(["fix", args.path, "--plan", "--include-warnings"],
+                                        "review warning cleanup", args.path)]
         if has_tests:
-            nxt.append(_next_command(["test", args.path], "run the test operations"))
+            nxt.append(_next_command_for_source(["test", args.path], "run the test operations", args.path))
     else:
         nxt = []
         if has_tests:
-            nxt.append(_next_command(["test", args.path], "run the test operations"))
-        nxt.append(_next_command(["build", args.path], "compile to a native exe"))
+            nxt.append(_next_command_for_source(["test", args.path], "run the test operations", args.path))
+        nxt.append(_next_command_for_source(["build", args.path], "compile to a native exe", args.path))
     # R-080: surface retained typed comments (`# security:`/`# failure:` …) on
     # the machine-facing check envelope so important notes stay reviewable in
     # downstream tooling instead of disappearing.

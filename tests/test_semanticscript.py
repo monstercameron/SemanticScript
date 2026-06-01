@@ -6152,6 +6152,23 @@ def test_check_next_commands(tmp_path, capsys):
         assert any(c["argv"][0] == "fix" for c in benv["nextCommands"])
 
 
+def test_stdin_next_commands_are_not_replayable():
+    # R-234: a command containing stdin (`-`) cannot be replayed without the
+    # already-consumed source stream.
+    import json
+    src = open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read()
+    for command in ("check", "dev"):
+        proc = subprocess.run(
+            [sys.executable, SEMANTICSCRIPT, command, "--json", "-"],
+            input=src, capture_output=True, text=True, encoding="utf-8",
+        )
+        assert proc.returncode == 0, proc.stderr
+        env = json.loads(proc.stdout)
+        stdin_next = [c for c in env["nextCommands"] if "-" in c.get("argv", [])]
+        assert stdin_next, command
+        assert all(c["replayable"] is False for c in stdin_next)
+
+
 def test_versioned_json_envelopes(capsys):
     # WS4-111: every JSON surface emits a consistent versioned envelope
     # {surface, version, ok}, and each surface is declared in SEM_SURFACES.
