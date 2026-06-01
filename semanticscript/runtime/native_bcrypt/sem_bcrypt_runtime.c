@@ -161,7 +161,12 @@ int ss_bcrypt_verify(
     /* Always compare on the full 60 bytes — both strings are known
      * to be that length (we just checked stored, and crypt_blowfish
      * always writes 60 chars for a valid $2b$ setting). */
-    return constant_time_equals(recomputed, expected_hash_60_chars, 60);
+    /* R-255: return the explicit MATCH/MISMATCH symbols, not the raw 0/1 — so a
+     * non-match is SS_BCRYPT_MISMATCH (2), never 0, and cannot be mistaken for
+     * SS_BCRYPT_OK by a "0 == success" caller. */
+    return constant_time_equals(recomputed, expected_hash_60_chars, 60)
+        ? SS_BCRYPT_MATCH
+        : SS_BCRYPT_MISMATCH;
 }
 
 /* ----- base64url encode -----

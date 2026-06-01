@@ -14,7 +14,7 @@
  *     SS_BCRYPT_* enums below.
  *   - The verify entry point ALSO returns the match outcome through
  *     the integer return value: SS_BCRYPT_MATCH (1) on hash equality,
- *     SS_BCRYPT_MISMATCH (0) on inequality, or a negative SS_BCRYPT_ERR_*
+ *     SS_BCRYPT_MISMATCH (2) on inequality, or a negative SS_BCRYPT_ERR_*
  *     code on malformed input. We deliberately collapse "do they match"
  *     and "did the verify succeed" into one return value because the
  *     two questions are inseparable for a constant-time check — there
@@ -46,8 +46,13 @@ extern "C" {
 
 enum {
     SS_BCRYPT_OK              = 0,
-    SS_BCRYPT_MISMATCH        = 0,   /* verify-specific: same value as OK, intentionally */
-    SS_BCRYPT_MATCH           = 1,
+    SS_BCRYPT_MATCH           = 1,   /* verify: the password matches the hash */
+    /* R-255: MISMATCH is DISTINCT from OK (0). Sharing 0 with OK was an
+     * auth-bypass footgun — a caller following the dominant "0 == success"
+     * convention would treat a wrong password (mismatch) as success. A verify
+     * caller MUST test `== SS_BCRYPT_MATCH`; any other non-negative value is a
+     * non-match, and negatives are errors. */
+    SS_BCRYPT_MISMATCH        = 2,
     SS_BCRYPT_ERR_CONFIG      = -1,  /* NULL inputs, undersized buffers, out-of-range cost */
     SS_BCRYPT_ERR_HASH        = -2,  /* crypt_blowfish returned NULL */
     SS_BCRYPT_ERR_RANDOM      = -3,  /* platform CSPRNG failed */
