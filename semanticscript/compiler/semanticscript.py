@@ -13226,6 +13226,41 @@ def _scratch_pointer_apis(semsig_text: str) -> list:
     return sorted(set(found))
 
 
+def _documentation_gaps(semsig_text: str) -> dict:
+    """WS3-110 (`->test`): the ownership/error/description documentation an app
+    author needs to use a public intrinsic safely. Returns the unambiguous gaps:
+
+      * ``undocumented`` — intrinsics with no ``purpose`` row (no description at
+        all); and
+      * ``ownsWithoutCleanup`` — intrinsics that declare they ``own`` an output
+        resource but never name its cleanup, either inline (``owns <slot> cleanedBy
+        <target>``) or via a sibling ``<name> cleanedBy <target>`` row. An owned
+        handle with no documented release is exactly the leak the ownership rows
+        exist to prevent.
+
+    Deliberately conservative — it does NOT flag a handle-returning intrinsic that
+    omits ``owns`` entirely, because that legitimately marks a BORROWED return (a
+    json child node, a cursor, a buffer slice, a memory view) whose lifetime is the
+    parent's; demanding an ``owns`` row there would be a false positive."""
+    import re
+    undocumented, owns_without_cleanup = [], []
+    for block in re.split(r"\n(?=\S+ is intrinsic\b)", semsig_text):
+        m = re.match(r"(\S+) is intrinsic", block)
+        if not m:
+            continue
+        name = m.group(1)
+        if not re.search(rf"^{re.escape(name)} purpose ", block, re.M):
+            undocumented.append(name)
+        owns = re.findall(rf"^{re.escape(name)} owns (.+)$", block, re.M)
+        if owns:
+            inline = any("cleanedBy" in row for row in owns)
+            sibling = bool(re.search(rf"^{re.escape(name)} cleanedBy ", block, re.M))
+            if not inline and not sibling:
+                owns_without_cleanup.append(name)
+    return {"undocumented": sorted(set(undocumented)),
+            "ownsWithoutCleanup": sorted(set(owns_without_cleanup))}
+
+
 def stdlib_readiness_ledger() -> dict:
     """WS3-110: a generated readiness ledger classifying every `standard.*` module
     by maturity, derived from on-disk evidence so it cannot silently drift:
@@ -13279,21 +13314,28 @@ def stdlib_readiness_ledger() -> dict:
         else:
             status = "signature-only"
         deferred = mod in EXPERIMENTAL_STDLIB_MODULES
-        # WS3-110 (`->test`): inventory the raw scratch-pointer contracts this
-        # module's signature exposes to app authors, then flag the ones that are an
-        # un-graduated leak — present in a PUBLIC (non-deferred) module that is not
-        # an acknowledged low-level/graduation-pending primitive.
-        scratch: list = []
+        # WS3-110 (`->test`): parse this module's signature once to (a) inventory
+        # the raw scratch-pointer contracts it exposes to app authors and (b) find
+        # the ownership/error/description documentation gaps a public API must not
+        # have.
+        semsig_text = ""
         if ev.get("semsig"):
             try:
                 with open(os.path.join(sigs, f"standard.{mod}.semsig"),
                           encoding="utf-8") as fh:
-                    scratch = _scratch_pointer_apis(fh.read())
+                    semsig_text = fh.read()
             except OSError:
-                scratch = []
+                semsig_text = ""
+        scratch = _scratch_pointer_apis(semsig_text) if semsig_text else []
         unack_scratch = bool(
             scratch and not deferred
             and mod not in STDLIB_SCRATCH_POINTER_ACKNOWLEDGED)
+        docs = (_documentation_gaps(semsig_text) if semsig_text
+                else {"undocumented": [], "ownsWithoutCleanup": []})
+        # a public (non-deferred) module must fully document its intrinsics
+        doc_gap = bool(
+            not deferred
+            and (docs["undocumented"] or docs["ownsWithoutCleanup"]))
         ledger[mod] = {
             "status": status,
             "deferred": deferred,
@@ -13305,6 +13347,12 @@ def stdlib_readiness_ledger() -> dict:
             "scratchPointerApis": scratch,
             # ...that leak from a public module without acknowledgement (WS3-110)
             "unacknowledgedScratchPointer": unack_scratch,
+            # intrinsics with no `purpose` description row
+            "undocumentedApis": docs["undocumented"],
+            # intrinsics that `own` an output but never name its cleanup
+            "ownsWithoutCleanup": docs["ownsWithoutCleanup"],
+            # ...either gap, in a public module the gate rejects (WS3-110)
+            "documentationGap": doc_gap,
         }
     return ledger
 
@@ -14225,17 +14273,15 @@ def cmd_stdlib_readiness(args) -> int:
     ledger = stdlib_readiness_ledger()
     unbacked = sorted(m for m, e in ledger.items() if e["unbackedPublic"])
     leaks = sorted(m for m, e in ledger.items() if e["unacknowledgedScratchPointer"])
-    # the gate fails on EITHER an unbacked public API OR an un-graduated raw
-    # scratch-pointer leak in a public module (WS3-110 `->test`).
-    ok = not unbacked and not leaks
-    if unbacked and leaks:
-        status = "unbacked-public+scratch-pointer-leak"
-    elif unbacked:
-        status = "unbacked-public"
-    elif leaks:
-        status = "scratch-pointer-leak"
-    else:
-        status = "ok"
+    doc_gaps = sorted(m for m, e in ledger.items() if e["documentationGap"])
+    # the gate fails on an unbacked public API, an un-graduated raw scratch-pointer
+    # leak, OR an undocumented public API (missing description / unowned-cleanup) —
+    # the three clauses of WS3-110's `->test`.
+    ok = not unbacked and not leaks and not doc_gaps
+    parts = [p for p, hit in (("unbacked-public", unbacked),
+                              ("scratch-pointer-leak", leaks),
+                              ("documentation-gap", doc_gaps)) if hit]
+    status = "+".join(parts) if parts else "ok"
     counts = {s: sum(1 for e in ledger.values() if e["status"] == s)
               for s in ("native", "lowered", "intrinsic", "signature-only")}
     # tracked (acknowledged) scratch-pointer contracts, for graduation visibility
@@ -14247,6 +14293,7 @@ def cmd_stdlib_readiness(args) -> int:
             status=status,
             counts=counts, unbackedPublic=unbacked,
             scratchPointerLeak=leaks, scratchPointerApis=tracked_scratch,
+            documentationGap=doc_gaps,
             deferred=sorted(m for m, e in ledger.items() if e["deferred"]),
             modules=ledger) + "\n")
     else:
@@ -14257,6 +14304,10 @@ def cmd_stdlib_readiness(args) -> int:
                 flag += "  <- RAW SCRATCH-POINTER LEAK"
             elif e["scratchPointerApis"]:
                 flag += f"  (scratch-pointer: {', '.join(e['scratchPointerApis'])})"
+            if e["documentationGap"]:
+                gaps = e["undocumentedApis"] + [
+                    f"{n}(owns-no-cleanup)" for n in e["ownsWithoutCleanup"]]
+                flag += f"  <- DOC GAP: {', '.join(gaps)}"
             print(f"{mod:14} {e['status']:15}{mark}{flag}")
         if unbacked:
             sys.stderr.write(
@@ -14268,6 +14319,11 @@ def cmd_stdlib_readiness(args) -> int:
                 f"scratch-pointer contract (add to STDLIB_SCRATCH_POINTER_ACKNOWLEDGED "
                 f"only with a graduation plan, or wrap in an owned type): "
                 f"{', '.join(leaks)}\n")
+        if doc_gaps:
+            sys.stderr.write(
+                f"semanticscript: public stdlib modules with undocumented intrinsics "
+                f"(every public intrinsic needs a `purpose` row, and any `owns` row "
+                f"needs a `cleanedBy` target): {', '.join(doc_gaps)}\n")
     return 0 if ok else 1
 
 

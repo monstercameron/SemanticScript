@@ -15,6 +15,7 @@ openDatabase out SqliteDatabase
 openDatabase catch SqliteDatabaseOpenFailure
 openDatabase async no
 openDatabase owns SqliteDatabase
+openDatabase cleanedBy sqlite.closeDatabase
 openDatabase purpose "Open (or create) a sqlite database handle"
 
 closeDatabase is intrinsic
@@ -22,3 +23,4 @@ closeDatabase target sqlite.closeDatabase
 closeDatabase arg database SqliteDatabase
 closeDatabase catch SqliteDatabaseCloseFailure
 closeDatabase async no
+closeDatabase purpose "Close a sqlite database handle opened by sqlite.openDatabase"
