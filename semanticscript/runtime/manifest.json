@@ -31,12 +31,16 @@
         "../../third_party/sqlite"
       ],
       "defines": [
-        "SQLITE_THREADSAFE=0",
-        "SQLITE_OMIT_LOAD_EXTENSION"
+        "SQLITE_OMIT_LOAD_EXTENSION",
+        "SQLITE_OMIT_DEPRECATED",
+        "SQLITE_DQS=0",
+        "SQLITE_THREADSAFE=2",
+        "SQLITE_DEFAULT_MEMSTATUS=0",
+        "SQLITE_USE_URI=1"
       ],
       "platforms": {
         "linux": {
-          "comment": "R-018: SQLite on Unix links pthread/dl/math; expressed here so the resolver can surface Unix-only link inputs that a Windows build must never see.",
+          "comment": "R-019: SQLite follows the native_sqlite CMake profile: Threads::Threads, CMAKE_DL_LIBS, and m on Linux.",
           "libs": [
             "pthread",
             "dl",
@@ -44,10 +48,9 @@
           ]
         },
         "macos": {
-          "comment": "R-018: macOS SQLite links the math + dynamic-loader libs; pthread is provided by libSystem but kept explicit for parity with the Linux profile.",
+          "comment": "R-019: CMAKE_DL_LIBS is empty on macOS; keep thread/math scoped here without adding Linux's -ldl.",
           "libs": [
             "pthread",
-            "dl",
             "m"
           ]
         }
