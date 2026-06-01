@@ -108,8 +108,7 @@ createEmptyDocument purpose "Create an empty object/array document arena for res
 destroyDocument is intrinsic
 destroyDocument target json.destroyDocument
 destroyDocument arg document JsonDocument
-destroyDocument out released Int32
-destroyDocument purpose "Release a JSON document arena (deferred runtime)"
+destroyDocument purpose "Release a JSON document arena (void cleanup; status not reported)"
 
 documentRoot is intrinsic
 documentRoot target json.documentRoot

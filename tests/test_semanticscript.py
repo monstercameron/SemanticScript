@@ -1520,6 +1520,35 @@ def test_missing_literal_source_is_compile_diagnostic(tmp_path):
     assert "SS3046" in env["stderr"] and "SSR0001" not in env["stderr"]
 
 
+def test_json_semsig_matches_family_runtime_return_kind():
+    # R-163: a json intrinsic's semsig `out` declaration must match the runtime's
+    # actual return kind — a void (retkind "v") runtime symbol must NOT declare an
+    # `out` the lowerer cannot bind (json.destroyDocument was "v" yet declared
+    # `out released Int32`), and a value-returning symbol must declare one.
+    import os
+    sig = semanticscript.load_semsig(open(
+        os.path.join(ROOT, "semanticscript", "sigs", "standard.json.semsig"),
+        encoding="utf-8").read())
+    json_rt = semanticscript._FAMILY_RT.get("json", {})
+    checked = 0
+    for name, ent in sig.entities.items():
+        if ent.kind != "intrinsic":
+            continue
+        target = ent.fact("target")
+        if not (target and target.payload and target.payload[0].startswith("json.")):
+            continue
+        rt = json_rt.get(target.payload[0].split(".", 1)[1])
+        if rt is None:
+            continue
+        retkind, has_out = rt[1], ent.fact("out") is not None
+        checked += 1
+        if retkind == "v":
+            assert not has_out, f"{name}: void runtime symbol must not declare an `out`"
+        else:
+            assert has_out, f"{name}: value-returning runtime ({retkind}) needs an `out`"
+    assert checked >= 5  # the guard actually exercised the json family
+
+
 def test_wasm_import_count_parser():
     # R-122: the .wasm import-section parser distinguishes a self-contained
     # pure-compute module (0 imports, the generated runner runs it as-is) from one
