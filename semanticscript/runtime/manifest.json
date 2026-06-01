@@ -3,6 +3,16 @@
   "comment": "Native runtime libraries linked into JIT/native builds. semanticscript reads this data \u2014 it carries no per-library knowledge in the compiler. A library is built (cached) and loaded only when a program references a runtimeBinding symbol matching one of its `provides` prefixes. R-018: link inputs are platform-scoped. Top-level `sources`/`include`/`defines`/`libs` are the cross-platform base; `platforms.<name>` (windows|linux|macos|wasi) adds host-specific entries, and `compiler.<driver>` (gnu|clang|msvc|zig) adds driver-specific overlays. The resolver `_resolve_runtime_links(library, platform)` merges base + platform + compiler WITHOUT compiling, so non-Windows builds never see Windows-only libs like ws2_32 (R-013).",
   "libraries": [
     {
+      "name": "ss_string",
+      "comment": "X-200: byte-string comparison/(in)equality/find helpers (standard.string), bound via the generic runtimeBinding seam (no compiler change).",
+      "provides": [
+        "ss_string_"
+      ],
+      "sources": [
+        "ss_string.c"
+      ]
+    },
+    {
       "name": "ss_runtime",
       "provides": [
         "ss_sqlite_"

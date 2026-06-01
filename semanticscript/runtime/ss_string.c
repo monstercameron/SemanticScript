@@ -1,0 +1,51 @@
+/*
+ * ss_string.c — string-namespace runtime helpers (standard.string, README §26).
+ *
+ * These back the byte-oriented string operations the `string.concat` intrinsic
+ * does not cover: bytewise comparison, (in)equality, and substring/character
+ * search. Each is a pure function over NUL-terminated UTF-8 byte strings bound
+ * through the generic `body runtimeBinding <symbol>` seam (so no compiler change
+ * is needed), with the typed home in std/standard.string.sem. Strings cross the
+ * EAV boundary as `String` (i8*); results are Int64/Int32. (X-200)
+ */
+#include <string.h>
+#include <stdint.h>
+
+#ifdef _WIN32
+#define SS_EXPORT __declspec(dllexport)
+#else
+#define SS_EXPORT __attribute__((visibility("default")))
+#endif
+
+/* Bytewise comparison (memcmp/strcmp semantics): negative if left < right,
+ * 0 if equal, positive if left > right. NULL sorts before any non-NULL string. */
+SS_EXPORT int32_t ss_string_compare(const char *left, const char *right) {
+    if (left == right) return 0;
+    if (left == NULL) return -1;
+    if (right == NULL) return 1;
+    int r = strcmp(left, right);
+    return r < 0 ? -1 : (r > 0 ? 1 : 0);
+}
+
+/* 1 if the two byte strings are equal, 0 otherwise. */
+SS_EXPORT int32_t ss_string_equal(const char *left, const char *right) {
+    return ss_string_compare(left, right) == 0 ? 1 : 0;
+}
+
+/* 1 if the two byte strings differ, 0 if equal (the negation of equal). */
+SS_EXPORT int32_t ss_string_not_equal(const char *left, const char *right) {
+    return ss_string_compare(left, right) == 0 ? 0 : 1;
+}
+
+/* Byte offset of the first occurrence of `needle` in `haystack`, or -1 if not
+ * found. An empty needle matches at offset 0 (strstr semantics). */
+SS_EXPORT int64_t ss_string_find(const char *haystack, const char *needle) {
+    if (haystack == NULL || needle == NULL) return -1;
+    const char *hit = strstr(haystack, needle);
+    return hit == NULL ? -1 : (int64_t)(hit - haystack);
+}
+
+/* Number of bytes in the string (NUL-terminated length), or 0 for NULL. */
+SS_EXPORT int64_t ss_string_length(const char *text) {
+    return text == NULL ? 0 : (int64_t)strlen(text);
+}
