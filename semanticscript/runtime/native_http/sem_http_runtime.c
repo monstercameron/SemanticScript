@@ -1804,23 +1804,77 @@ size_t ss_http_request_body_length(const SSHttpRequest *request) {
     return request != NULL ? request->body_length : 0;
 }
 
+/* R-212: linear-time substring search (KMP). The multipart parser searches an
+ * attacker-controlled body for boundary markers many times; a naive byte-at-a-
+ * time memcmp scan is O(body * boundary * parts), which a body full of long
+ * near-matching boundary prefixes can drive to its worst case before the app
+ * ever sees the request. KMP makes every search O(haystack + needle): the
+ * failure table records, for each needle prefix, the longest proper prefix that
+ * is also a suffix, so a mismatch never rescans an already-matched haystack
+ * byte. Portable (no platform `memmem`), allocation-free for realistic needle
+ * sizes (boundaries are <=70 bytes per RFC 2046; separators are 2-4). */
+#define SS_HTTP_KMP_STACK_MAX 512
+
 static const char *find_bytes(
     const char *haystack,
     size_t haystack_length,
     const char *needle,
     size_t needle_length
 ) {
-    size_t index;
+    size_t stack_table[SS_HTTP_KMP_STACK_MAX];
+    size_t *failure = stack_table;
+    size_t *heap_table = NULL;
+    const char *result = NULL;
+    size_t i, k;
 
     if (needle_length == 0 || haystack_length < needle_length) {
         return NULL;
     }
-    for (index = 0; index <= haystack_length - needle_length; ++index) {
-        if (memcmp(haystack + index, needle, needle_length) == 0) {
-            return haystack + index;
+    if (needle_length > SS_HTTP_KMP_STACK_MAX) {
+        heap_table = (size_t *)malloc(needle_length * sizeof(size_t));
+        if (heap_table == NULL) {
+            /* Under memory pressure, degrade to the correct naive scan rather
+             * than fail the search; worst-case CPU only returns while OOM. */
+            for (i = 0; i <= haystack_length - needle_length; ++i) {
+                if (memcmp(haystack + i, needle, needle_length) == 0) {
+                    return haystack + i;
+                }
+            }
+            return NULL;
+        }
+        failure = heap_table;
+    }
+
+    /* Build the KMP failure table for `needle`. */
+    failure[0] = 0;
+    k = 0;
+    for (i = 1; i < needle_length; ++i) {
+        while (k > 0 && needle[i] != needle[k]) {
+            k = failure[k - 1];
+        }
+        if (needle[i] == needle[k]) {
+            ++k;
+        }
+        failure[i] = k;
+    }
+
+    /* Scan the haystack; each byte is examined at most twice. */
+    k = 0;
+    for (i = 0; i < haystack_length; ++i) {
+        while (k > 0 && haystack[i] != needle[k]) {
+            k = failure[k - 1];
+        }
+        if (haystack[i] == needle[k]) {
+            ++k;
+        }
+        if (k == needle_length) {
+            result = haystack + (i - needle_length + 1);
+            break;
         }
     }
-    return NULL;
+
+    free(heap_table);
+    return result;
 }
 
 static const char *find_multipart_header_end(
