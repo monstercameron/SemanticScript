@@ -12010,7 +12010,6 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     a runtime trap or hang in one test is captured (status error/timeout + panic)
     instead of killing the whole runner.
     R-007: an optional `lane` restricts execution to one discovered lane."""
-    selected_lane = lane  # the loop below rebinds `lane`; remember the request
     diags = lint(program)
     preflight_ok = not any(d.severity == "error" for d in diags)
     lanes = discover_tests(program)
@@ -12019,8 +12018,8 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     tests: list = []
     if preflight_ok:
         source = format_program(program)  # canonical, runnable source for the child
-        for lane in sorted(lanes):
-            for op in lanes[lane]:
+        for lane_name in sorted(lanes):
+            for op in lanes[lane_name]:
                 out, err, code = _record_run_entry(source, op)
                 run_status, panic = _classify_run(out, err, code)
                 if run_status == "ok":
@@ -12031,15 +12030,16 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
                     status = "error"
                 else:
                     status = "fail"
-                rec = {"name": op, "lane": lane, "status": status, "exitCode": code}
+                rec = {"name": op, "lane": lane_name, "status": status, "exitCode": code}
                 if panic is not None:
                     rec["panic"] = panic
                 if status in ("error", "timeout") and err.strip():
                     rec["error"] = err.strip().splitlines()[-1][:200]
                 tests.append(rec)
-    # R-158: an explicitly selected lane that discovers zero tests is `no-tests`,
-    # not a vacuous `pass` — a misspelled/unimplemented lane must not green CI.
-    selected_empty = selected_lane is not None and preflight_ok and not tests
+    # R-158/R-173: a selected population that discovers zero tests is `no-tests`,
+    # not a vacuous `pass` — a misspelled lane or all-lanes empty run must not
+    # green CI unless the CLI caller opts in with --allow-empty.
+    selected_empty = preflight_ok and not tests
     runtime_status = ("not-run" if not preflight_ok
                       else "no-tests" if selected_empty
                       else "pass" if all(t["status"] == "pass" for t in tests)
@@ -12611,7 +12611,7 @@ def cmd_bench(args) -> int:
     try:
         if os.path.isdir(args.path) and is_project_root(args.path):
             os.chdir(args.path)
-        runnable = _program_target(parse(src)) == "console"
+        runnable = _program_target(parse_compact(src)) == "console"
         # R-108: a runtime trap in the JIT'd program would hard-exit (ss_panic ->
         # 134) and take the whole bench process with it, before sem.bench.v1 is
         # written. Probe the program once in an isolated child to classify its run
@@ -12626,7 +12626,7 @@ def cmd_bench(args) -> int:
         parse_t, lower_t, run_t = [], [], []
         for _ in range(runs):
             t0 = time.perf_counter()
-            prog = parse(src)
+            prog = parse_compact(src)
             t1 = time.perf_counter()
             lower_to_llvm(prog)
             t2 = time.perf_counter()
@@ -12722,8 +12722,9 @@ def cmd_repin(args) -> int:
     if getattr(args, "check", False):
         if getattr(args, "json", False):
             sys.stdout.write(_json_envelope(
-                "sem.repin.v1", lockPath=lock_path, upToDate=up_to_date,
-                wrote=False) + "\n")
+                "sem.repin.v1", ok=up_to_date,
+                status="up-to-date" if up_to_date else "stale",
+                lockPath=lock_path, upToDate=up_to_date, wrote=False) + "\n")
         else:
             print(f"build.sem.lock {'up to date' if up_to_date else 'STALE'}: "
                   f"{lock_path}")
@@ -13121,6 +13122,44 @@ STDLIB_INTRINSIC_MODULES = frozenset({
 })
 
 
+# WS3-110 (`->test`): modules whose raw `OpaquePointer`+capacity ("scratch buffer")
+# intrinsic contracts are KNOWN and tracked, so the readiness gate does not treat
+# them as an un-graduated raw-pointer leak. `buffer` IS the low-level bounds
+# primitive — the raw pointer + length is its reason to exist and what the higher
+# modules are meant to wrap (WS3-112/WS3-115). `json` is the explicit graduation
+# TARGET (WS3-114 replaces its scratch cursor/serialize buffers with owned output
+# strings); it stays acknowledged-but-pending until then. A scratch-pointer
+# contract surfacing in any OTHER public, non-deferred module is an unacknowledged
+# raw-pointer leak the gate rejects — the cohesive-platform invariant
+# WS3-112/WS3-114/WS3-116 all graduate against. (Membership is kept minimal on
+# purpose: pre-acknowledging a module that exposes no such API today would mask a
+# future leak there, so the gate rejects stale entries — see its `->test`.)
+STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "json"})
+
+
+def _scratch_pointer_apis(semsig_text: str) -> list:
+    """WS3-110: intrinsics in a ``.semsig`` that expose the C-style caller-scratch
+    contract — a raw ``OpaquePointer``/``Buffer`` arg PLUS a separate length/
+    capacity scalar — to an app author without an ``unsafe yes`` marker. Returns the
+    intrinsic names (sorted, deduped). Heuristic but conservative: it only fires when
+    BOTH a raw pointer and a sizing scalar appear in the same intrinsic's arg list,
+    which is exactly the unowned scratch-buffer shape the platform is graduating away
+    from."""
+    import re
+    cap = re.compile(r"(?:capacity|length|bytes|size|cap|count)", re.I)
+    found = []
+    for block in re.split(r"\n(?=\S+ is intrinsic\b)", semsig_text):
+        m = re.match(r"(\S+) is intrinsic", block)
+        if not m:
+            continue
+        args = re.findall(r"\S+ (?:arg|out) (\w+) (\w+)", block)
+        has_ptr = any(t in ("OpaquePointer", "Buffer") for _, t in args)
+        has_cap = any(cap.search(slot) for slot, _ in args)
+        if has_ptr and has_cap and "unsafe yes" not in block:
+            found.append(m.group(1))
+    return sorted(set(found))
+
+
 def stdlib_readiness_ledger() -> dict:
     """WS3-110: a generated readiness ledger classifying every `standard.*` module
     by maturity, derived from on-disk evidence so it cannot silently drift:
@@ -13174,6 +13213,21 @@ def stdlib_readiness_ledger() -> dict:
         else:
             status = "signature-only"
         deferred = mod in EXPERIMENTAL_STDLIB_MODULES
+        # WS3-110 (`->test`): inventory the raw scratch-pointer contracts this
+        # module's signature exposes to app authors, then flag the ones that are an
+        # un-graduated leak — present in a PUBLIC (non-deferred) module that is not
+        # an acknowledged low-level/graduation-pending primitive.
+        scratch: list = []
+        if ev.get("semsig"):
+            try:
+                with open(os.path.join(sigs, f"standard.{mod}.semsig"),
+                          encoding="utf-8") as fh:
+                    scratch = _scratch_pointer_apis(fh.read())
+            except OSError:
+                scratch = []
+        unack_scratch = bool(
+            scratch and not deferred
+            and mod not in STDLIB_SCRATCH_POINTER_ACKNOWLEDGED)
         ledger[mod] = {
             "status": status,
             "deferred": deferred,
@@ -13181,6 +13235,10 @@ def stdlib_readiness_ledger() -> dict:
             "lowered": ev.get("lowered", False),
             # an unbacked public API: signature-only with no explicit deferral
             "unbackedPublic": status == "signature-only" and not deferred,
+            # raw caller-scratch-buffer intrinsics this signature still exposes
+            "scratchPointerApis": scratch,
+            # ...that leak from a public module without acknowledgement (WS3-110)
+            "unacknowledgedScratchPointer": unack_scratch,
         }
     return ledger
 
@@ -14082,25 +14140,50 @@ def cmd_stdlib_readiness(args) -> int:
     scaffolding."""
     ledger = stdlib_readiness_ledger()
     unbacked = sorted(m for m, e in ledger.items() if e["unbackedPublic"])
-    ok = not unbacked
+    leaks = sorted(m for m, e in ledger.items() if e["unacknowledgedScratchPointer"])
+    # the gate fails on EITHER an unbacked public API OR an un-graduated raw
+    # scratch-pointer leak in a public module (WS3-110 `->test`).
+    ok = not unbacked and not leaks
+    if unbacked and leaks:
+        status = "unbacked-public+scratch-pointer-leak"
+    elif unbacked:
+        status = "unbacked-public"
+    elif leaks:
+        status = "scratch-pointer-leak"
+    else:
+        status = "ok"
     counts = {s: sum(1 for e in ledger.values() if e["status"] == s)
               for s in ("native", "lowered", "intrinsic", "signature-only")}
+    # tracked (acknowledged) scratch-pointer contracts, for graduation visibility
+    tracked_scratch = {m: e["scratchPointerApis"] for m, e in ledger.items()
+                       if e["scratchPointerApis"]}
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope(
             "sem.stdlibReadiness.v1", ok=ok,
-            status="ok" if ok else "unbacked-public",
+            status=status,
             counts=counts, unbackedPublic=unbacked,
+            scratchPointerLeak=leaks, scratchPointerApis=tracked_scratch,
             deferred=sorted(m for m, e in ledger.items() if e["deferred"]),
             modules=ledger) + "\n")
     else:
         for mod, e in sorted(ledger.items()):
             mark = " (deferred)" if e["deferred"] else ""
             flag = "  <- UNBACKED PUBLIC" if e["unbackedPublic"] else ""
+            if e["unacknowledgedScratchPointer"]:
+                flag += "  <- RAW SCRATCH-POINTER LEAK"
+            elif e["scratchPointerApis"]:
+                flag += f"  (scratch-pointer: {', '.join(e['scratchPointerApis'])})"
             print(f"{mod:14} {e['status']:15}{mark}{flag}")
         if unbacked:
             sys.stderr.write(
                 f"semanticscript: unbacked public stdlib modules (no implementation, "
                 f"not deferred): {', '.join(unbacked)}\n")
+        if leaks:
+            sys.stderr.write(
+                f"semanticscript: public stdlib modules exposing an un-graduated raw "
+                f"scratch-pointer contract (add to STDLIB_SCRATCH_POINTER_ACKNOWLEDGED "
+                f"only with a graduation plan, or wrap in an owned type): "
+                f"{', '.join(leaks)}\n")
     return 0 if ok else 1
 
 
@@ -14421,7 +14504,16 @@ def cmd_slice(args) -> int:
     try:
         text = slice_entity(program, args.entity)
     except EavError as exc:
-        sys.stderr.write(f"semanticscript: {exc}\n")
+        if getattr(args, "json", False):
+            diag = {"code": getattr(exc, "code", None), "severity": "error",
+                    "line": getattr(exc, "line", None),
+                    "message": getattr(exc, "message", str(exc)),
+                    "rendered": f"semanticscript: {exc}"}
+            sys.stdout.write(_json_envelope(
+                "sem.slice.v1", ok=False, status="not-found",
+                entity=args.entity, diagnostics=[diag]) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
     if getattr(args, "json", False):
         ent = program.entities.get(args.entity)
@@ -14471,10 +14563,17 @@ def cmd_test(args) -> int:
         lanes = discover_tests(program)
         selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
         total = 0
+        for lane in selected:
+            total += len(selected[lane])
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.test.v1", status="discovered",
+                selectedLane=args.lane, lanes=selected,
+                totalCount=total) + "\n")
+            return 0
         for lane in sorted(selected):
             for op in selected[lane]:
                 sys.stdout.write(f"{lane}: {op}\n")
-                total += 1
         sys.stdout.write(f"{total} test operation(s)\n")
         return 0
     report = run_tests(program, lane=getattr(args, "lane", None))
