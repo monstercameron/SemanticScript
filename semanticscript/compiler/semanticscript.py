@@ -545,6 +545,17 @@ DIAGNOSTICS.update({
     "SS2603": {"tier": "T1", "summary": "webServer handler ABI mismatch.",
                "found": "A handler whose inputs/output don't match its role ABI.",
                "suggested": "Match the §14 handler ABI for its role (README §14)."},
+    "SS2604": {"tier": "T1", "summary": "Invalid webServer port.",
+               "found": "A `port` that is not an integer literal in 1..65535.",
+               "suggested": "Write `port <1..65535>`; the native listener casts it to an "
+                            "unsigned short, so out-of-range values silently wrap (README §14)."},
+    "SS2605": {"tier": "T1", "summary": "Malformed webServer route path.",
+               "found": "A route path that is not `/`-prefixed, or has an empty "
+                        "segment (`//` or a trailing slash other than root `/`).",
+               "suggested": "Write absolute paths like `/`, `/users`, `/users/:id` (README §14)."},
+    "SS2606": {"tier": "T1", "summary": "Invalid webServer host.",
+               "found": "A `host` whose payload is empty or contains whitespace.",
+               "suggested": "Write a bare/quoted host like `127.0.0.1` or `0.0.0.0` (README §14)."},
     "MD1042": {"tier": "T1", "summary": "purpose payload must be a quoted string.",
                "found": "A `purpose` whose payload is not a quoted string.",
                "suggested": "Write `purpose \"…\"` (README §6)."},
@@ -5760,7 +5771,37 @@ def _validate_webserver_abi(program: Program) -> None:
                 line, code="SS2603",
             )
 
+    def _unquote(tok):
+        return tok[1:-1] if len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"' else tok
+
     for ws in program.of_kind("webServer"):
+        # R-161: validate host/port literals in the source lane so a malformed
+        # value is a structured diagnostic, not a lowering traceback (the old
+        # `int(port_row.payload[0])` crashed on `port nope`) or a native-startup
+        # surprise (ss_http_serve_routes casts the port to unsigned short, so an
+        # out-of-range value silently wraps to a different listening port).
+        port_row = ws.fact("port")
+        if port_row and port_row.payload:
+            tok = _unquote(port_row.payload[0])
+            # A bare integer only: no sign, no whitespace, no float. int(tok)
+            # would accept "+8080"/" 8080 "; we keep the lowering's `int()` honest
+            # by requiring exactly the digits it will later parse.
+            if not tok.isdigit() or not (1 <= int(tok) <= 65535):
+                raise EavError(
+                    f"webServer {ws.name!r} port {port_row.payload[0]!r} is not an "
+                    f"integer in 1..65535; the native listener casts the port to an "
+                    f"unsigned short, so out-of-range values wrap (README ss14)",
+                    port_row.line, code="SS2604",
+                )
+        host_row = ws.fact("host")
+        if host_row and host_row.payload:
+            host = _unquote(host_row.payload[0])
+            if host == "" or any(c.isspace() for c in host):
+                raise EavError(
+                    f"webServer {ws.name!r} host {host_row.payload[0]!r} is empty or "
+                    f"contains whitespace (README ss14)",
+                    host_row.line, code="SS2606",
+                )
         for r in ws.facts("route"):
             if not r.payload:
                 continue
@@ -5771,6 +5812,22 @@ def _validate_webserver_abi(program: Program) -> None:
                     f"webServer {ws.name!r} route method {method!r} is not one of "
                     f"{sorted(_HTTP_METHODS)} (README ss14, WS2-026)",
                     r.line, code="SS2601",
+                )
+            # R-161: a route path must be absolute (`/`-prefixed) with no empty
+            # segments — the native route compiler only rejects non-slash paths at
+            # server startup (SS_HTTP_ERR_CONFIG), too late for `check`/preflight.
+            # Root `/` is the sole single-empty-tail case; `//` and `/users/` are
+            # rejected. The bare `*` catch-all (README ss14) is the one non-slash
+            # path that is legal; segment shapes (`:param`, `*`) are checked below.
+            unq_path = _unquote(path)
+            segs = unq_path.split("/")
+            if unq_path != "*" and (not unq_path.startswith("/")
+                    or (unq_path != "/" and any(s == "" for s in segs[1:]))):
+                raise EavError(
+                    f"webServer {ws.name!r} route {path!r} must be an absolute path "
+                    f"(`/`-prefixed, no empty `//` or trailing-slash segments except "
+                    f"root `/`), or the bare `*` catch-all (README ss14)",
+                    r.line, code="SS2605",
                 )
             # README ss14: dynamic routing — a `:name` path-parameter segment
             # and the `*` catch-all wildcard are accepted. Their dispatch

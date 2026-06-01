@@ -8141,6 +8141,42 @@ def test_webserver_dynamic_routing():
     assert getattr(exc.value, "code", None) == "SS2602"
 
 
+def test_webserver_host_port_route_path_validation():
+    # R-161: host/port/route-path are now a source-lane contract, not a lowering
+    # traceback (`int("nope")`) or a native-startup surprise (port cast to u16
+    # wraps, non-slash route rejected only by ss_http_server_run). The valid base
+    # fixture lints clean; each malformed value is a distinct structured diagnostic.
+    base = _DYNAMIC_ROUTE_SERVER
+    assert not [d.render() for d in semanticscript.lint(semanticscript.parse(base))
+                if d.severity == "error"]
+
+    def code_for(mutated):
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.lint(semanticscript.parse(mutated))
+        return getattr(exc.value, "code", None)
+
+    # non-numeric port used to traceback in _emit_webserver_entry's int(...)
+    assert code_for(base.replace("srv port 8080", "srv port nope")) == "SS2604"
+    # negative port (int() would parse it, then the u16 cast wraps)
+    assert code_for(base.replace("srv port 8080", "srv port -1")) == "SS2604"
+    # over 65535 wraps to a different listening port
+    assert code_for(base.replace("srv port 8080", "srv port 70000")) == "SS2604"
+    # port 0 is not a bindable listener
+    assert code_for(base.replace("srv port 8080", "srv port 0")) == "SS2604"
+    # a route path with no leading slash passes source checks today, fails at startup
+    assert code_for(base.replace('"/api/todos/:id"', '"api/todos/:id"')) == "SS2605"
+    # a trailing slash (empty tail segment) other than root
+    assert code_for(base.replace('"/api/todos/:id"', '"/api/todos/"')) == "SS2605"
+    # an internal empty segment (//)
+    assert code_for(base.replace('"/api/todos/:id"', '"/api//todos"')) == "SS2605"
+    # a whitespace host
+    assert code_for(base.replace('srv host "127.0.0.1"', 'srv host "bad host"')) == "SS2606"
+    # root `/` and the bare `*` catch-all remain valid (already in the base fixture)
+    assert not [d.render() for d in semanticscript.lint(
+        semanticscript.parse(base.replace('"/api/todos/:id"', '"/"')))
+        if d.severity == "error"]
+
+
 def test_app_taskforge_web_project_layout():
     # X-043: taskforge-web uses the §28.2 build.sem + src/ layout — the project
     # manifest in build.sem, modules under src/ (root + components/ + pages/
