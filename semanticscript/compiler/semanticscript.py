@@ -6281,6 +6281,18 @@ _OBSERVABLE_SINK_JSON_PREFIXES = (
 )
 
 
+# R-178b: canonical C arity of the ss_http_* response writers whose final
+# `content_type` parameter is optional at the SS call site. When a call omits it,
+# the http.* lowering pads a null i8* default so the extern signature and the call
+# match the real C function (ss_http_response_text(.., content_type),
+# ss_http_response_bytes(.., body_length, content_type)). Omitting the pad leaves
+# the callee reading an uninitialized arg slot (undefined behavior).
+_HTTP_OPTIONAL_CONTENT_TYPE_ARITY = {
+    "ss_http_response_text": 4,    # response, status, body, content_type
+    "ss_http_response_bytes": 5,   # response, status, body, body_length, content_type
+}
+
+
 def _is_observable_sink(target: str) -> bool:
     # console writes, log.*, html.render, and JSON serialization surface a value to
     # a human-readable or wire-format channel (R-072 extends the original X-072 set)
@@ -10358,6 +10370,19 @@ class EavCodegen:
             sym_name = "ss_http_" + _camel_to_snake(name)
             vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
                     for a in call.facts("arg")]
+            # R-178b: a response writer's trailing `content_type` is OPTIONAL at the
+            # SS call site (omit it to accept the runtime's text/plain default). The
+            # C ABI is fixed-arity, so an omitted trailing arg must be passed as an
+            # explicit typed null i8* — otherwise the callee reads an uninitialized
+            # register/stack slot (UB: a garbage content_type pointer that fails the
+            # CRLF guard and turns every such response into a 500). Padding to the
+            # canonical arity also keeps the cached extern signature uniform across
+            # call sites that DO pass content_type and those that don't (the
+            # name-keyed _runtime_extern cache would otherwise let the first-lowered
+            # arity win and mis-call the rest).
+            _canonical_arity = _HTTP_OPTIONAL_CONTENT_TYPE_ARITY.get(sym_name)
+            if _canonical_arity is not None and len(vals) == _canonical_arity - 1:
+                vals.append(ir.Constant(ir.IntType(8).as_pointer(), None))
             if name.endswith("Length") or name == "nowMillis":
                 ret_ty = ir.IntType(64)                       # millis / byte counts
             elif (name.startswith("response") or name == "ensureDirectory"
