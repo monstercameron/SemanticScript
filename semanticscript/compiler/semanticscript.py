@@ -6635,6 +6635,26 @@ def _validate_secret_flow(program: Program) -> None:
     if not secret_types:
         return
 
+    # R-075: a record that (transitively) contains a secret-typed field cannot be
+    # compared by a normal equality either — deep fieldwise equality (_value_eq)
+    # would strcmp the secret field, reopening the timing side-channel SS3074
+    # closes for a direct secret operand. Compute the closure of such records.
+    records_with_secret: set = set()
+    for _ in range(len(program.order) + 1):
+        grew = False
+        for n in program.order:
+            e = program.entities[n]
+            if e.kind != "record" or e.name in records_with_secret:
+                continue
+            for f in e.facts("field"):
+                if len(f.payload) >= 2 and (f.payload[1] in secret_types
+                                            or f.payload[1] in records_with_secret):
+                    records_with_secret.add(e.name)
+                    grew = True
+                    break
+        if not grew:
+            break
+
     # Collect error-type names so we can detect error-case constructor calls
     # (a call that invokes ErrorDomain.ErrorCase, where ErrorDomain is a known error).
     # R-072: a secret passed as the payload of an error constructor ends up in the error
@@ -6728,11 +6748,22 @@ def _validate_secret_flow(program: Program) -> None:
             if ((target.startswith("math.") or target.startswith("compare."))
                     and "qual" in target):  # equal / notEqual / Equal
                 for a in ent.facts("arg"):
-                    if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                    if len(a.payload) < 2:
+                        continue
+                    if a.payload[1] in secret_types:
                         raise EavError(
                             f"call {ent.name!r} compares a secret {a.payload[2]!r} with "
                             f"{target!r}; secrets compare only via "
                             f"`crypto.equalConstantTime` (timing side-channel, README §13)",
+                            ent.line, code="SS3074")
+                    if a.payload[1] in records_with_secret:
+                        raise EavError(
+                            f"call {ent.name!r} compares {a.payload[2]!r} of record type "
+                            f"{a.payload[1]!r}, which contains a secret field; deep "
+                            f"equality would compare the secret in non-constant time — "
+                            f"compare the non-secret fields explicitly and the secret via "
+                            f"`crypto.equalConstantTime` (timing side-channel, README §13, "
+                            f"R-075)",
                             ent.line, code="SS3074")
 
 

@@ -2546,6 +2546,31 @@ def test_project_registers_undeclared_module_rejected():
     assert not any(d.code == 'SS1196' for d in semanticscript.lint(semanticscript.parse(good)))
 
 
+def test_secret_record_field_equality_rejected():
+    # R-075: a record with a (transitively) secret-typed field compared by record
+    # equality would strcmp the secret field in non-constant time -> SS3074; a
+    # record with no secret field is unaffected.
+    rows = [
+        'm is module', 'm path a.b', 'm purpose "x"', 'm invariant "y"', 'm exports run',
+        'Token is alias', 'Token for String', 'Token typeTrust secret', 'Token purpose "t"',
+        'Cred is record', 'Cred field name String', 'Cred field tok Token', 'Cred purpose "c"',
+        'run is operation', 'run out Int32', 'run async no', 'run purpose "p"',
+        'run invariant "i"', 'run let a immutable Cred', 'run let b immutable Cred',
+        'run let z immutable Int32 0', 'run do cmp', 'run return z',
+        'cmp is call', 'cmp in run', 'cmp invokes compare.equalCred',
+        'cmp arg left Cred a', 'cmp arg right Cred b', 'cmp out r Bool',
+    ]
+    src = chr(10).join(rows) + chr(10)
+    try:
+        diags = semanticscript.lint(semanticscript.parse(src))
+        assert any(d.code == 'SS3074' for d in diags)
+    except semanticscript.EavError as e:
+        assert getattr(e, 'code', None) == 'SS3074'
+    # a record with no secret field compares fine (no SS3074)
+    plain = src.replace('Cred field tok Token', 'Cred field tok String')
+    assert not any(d.code == 'SS3074' for d in semanticscript.lint(semanticscript.parse(plain)))
+
+
 def test_opaque_handle_equality_rejected():
     # R-075: comparing opaque handle (OpaquePointer) values by equality relies on
     # raw address identity and is rejected (SS1346); value types are unaffected.
