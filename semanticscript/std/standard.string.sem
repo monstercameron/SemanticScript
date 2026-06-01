@@ -11,6 +11,8 @@ standardString exports compareBytewise
 standardString exports bytesEqual
 standardString exports bytesNotEqual
 standardString exports findSubstring
+standardString exports findCharFirst
+standardString exports findCharLast
 standardString exports byteLength
 standardString purpose "Byte-string comparison, equality, search, and length"
 standardString invariant "Every operation is a runtimeBinding to an ss_string_* helper; no string logic lives in the compiler"
@@ -54,6 +56,26 @@ findSubstring async no
 findSubstring purpose "Byte offset of the first occurrence of needle in haystack, or -1"
 findSubstring invariant "Pure byte search; performs no effects"
 findSubstring body runtimeBinding ss_string_find
+
+findCharFirst is operation
+findCharFirst in text String
+findCharFirst in byte Int32
+findCharFirst out Int64
+findCharFirst memory heap no
+findCharFirst async no
+findCharFirst purpose "Byte offset of the first occurrence of `byte` in text, or -1"
+findCharFirst invariant "Pure byte search; performs no effects"
+findCharFirst body runtimeBinding ss_string_find_char_first
+
+findCharLast is operation
+findCharLast in text String
+findCharLast in byte Int32
+findCharLast out Int64
+findCharLast memory heap no
+findCharLast async no
+findCharLast purpose "Byte offset of the last occurrence of `byte` in text, or -1"
+findCharLast invariant "Pure byte search; performs no effects"
+findCharLast body runtimeBinding ss_string_find_char_last
 
 byteLength is operation
 byteLength in text String

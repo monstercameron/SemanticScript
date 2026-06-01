@@ -49,3 +49,18 @@ SS_EXPORT int64_t ss_string_find(const char *haystack, const char *needle) {
 SS_EXPORT int64_t ss_string_length(const char *text) {
     return text == NULL ? 0 : (int64_t)strlen(text);
 }
+
+/* Byte offset of the FIRST occurrence of byte `ch` in `text`, or -1 if absent.
+ * `ch` is taken modulo 256 (the low byte). */
+SS_EXPORT int64_t ss_string_find_char_first(const char *text, int32_t ch) {
+    if (text == NULL) return -1;
+    const char *hit = strchr(text, (int)(unsigned char)ch);
+    return hit == NULL ? -1 : (int64_t)(hit - text);
+}
+
+/* Byte offset of the LAST occurrence of byte `ch` in `text`, or -1 if absent. */
+SS_EXPORT int64_t ss_string_find_char_last(const char *text, int32_t ch) {
+    if (text == NULL) return -1;
+    const char *hit = strrchr(text, (int)(unsigned char)ch);
+    return hit == NULL ? -1 : (int64_t)(hit - text);
+}
