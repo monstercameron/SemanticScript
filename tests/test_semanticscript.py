@@ -1478,6 +1478,19 @@ def test_run_json_entry_strict_and_empty_stdout():
     assert run_json("--entry", "failOp")["exitCode"] == 1
 
 
+def test_wasm_import_count_parser():
+    # R-122: the .wasm import-section parser distinguishes a self-contained
+    # pure-compute module (0 imports, the generated runner runs it as-is) from one
+    # that imports host functions (needs a host adapter), so `wasm` can report it
+    # instead of silently producing an artifact the basic runner can't instantiate.
+    header = b"\x00asm\x01\x00\x00\x00"
+    assert semanticscript._wasm_import_count(header) == 0
+    # an import section (id 2) declaring one function import `env.f`
+    with_import = header + b"\x02\x08\x01\x03env\x01f\x00\x00"
+    assert semanticscript._wasm_import_count(with_import) == 1
+    assert semanticscript._wasm_import_count(b"not a wasm file") == 0
+
+
 def test_fmt_check_is_byte_exact(tmp_path):
     # R-114: fmt --check compares exact bytes — a missing terminal newline or
     # extra boundary whitespace is drift, not silently accepted.

@@ -12188,12 +12188,48 @@ _WASM_RUNNER = """\
 const fs = require('fs');
 const path = require('path');
 const bytes = fs.readFileSync(path.join(__dirname, %(wasm)r));
-WebAssembly.instantiate(bytes, {}).then(({ instance }) => {
+// R-122: auto-stub any host imports so the module always instantiates (a
+// no-import pure-compute module ignores this). A module that imports console /
+// DOM / runtime host functions needs a REAL host adapter for those effects —
+// these stubs are no-ops that return 0, so only the module's pure logic runs.
+const importObject = new Proxy({}, { get: () =>
+  new Proxy({}, { get: () => (() => 0) }) });
+WebAssembly.instantiate(bytes, importObject).then(({ instance }) => {
   const result = instance.exports[%(entry)r]();
   console.log(%(entry)r + '() = ' + result);
   process.exit((result | 0) & 0xff);
 });
 """
+
+
+def _wasm_import_count(data: bytes) -> int:
+    """Count the imports declared in a `.wasm` binary's import section (R-122), so
+    `wasm` can tell the user whether the module needs a host adapter. 0 means a
+    self-contained pure-compute module the generated runner runs as-is."""
+    if data[:4] != b"\x00asm":
+        return 0
+
+    def uleb(p):
+        result = shift = 0
+        while p < len(data):
+            byte = data[p]
+            p += 1
+            result |= (byte & 0x7F) << shift
+            if not (byte & 0x80):
+                break
+            shift += 7
+        return result, p
+
+    pos = 8  # 4-byte magic + 4-byte version
+    while pos < len(data):
+        sec_id = data[pos]
+        pos += 1
+        size, pos = uleb(pos)
+        if sec_id == 2:  # the import section
+            count, _ = uleb(pos)
+            return count
+        pos += size
+    return 0
 
 
 def build_wasm(program: Program, out_path: str):
@@ -12253,7 +12289,18 @@ def cmd_wasm(args) -> int:
     runner = os.path.splitext(wasm_path)[0] + ".run.cjs"
     with open(runner, "w", encoding="utf-8") as fh:
         fh.write(_WASM_RUNNER % {"wasm": os.path.basename(wasm_path), "entry": entry})
-    sys.stdout.write(f"wasm:   {wasm_path}\nrunner: {runner}\nentry:  {entry}\n")
+    # R-122: report the import set. A module with imports is not a turnkey
+    # artifact — the generated runner stubs the host so it instantiates, but
+    # console/DOM/runtime effects need a real host adapter for correct behavior.
+    with open(wasm_path, "rb") as fh:
+        imports = _wasm_import_count(fh.read())
+    sys.stdout.write(
+        f"wasm:   {wasm_path}\nrunner: {runner}\nentry:  {entry}\nimports: {imports}\n")
+    if imports:
+        sys.stdout.write(
+            f"note:   this module imports {imports} host function(s); the generated "
+            f"runner stubs them (effects are no-ops). Provide a real host adapter "
+            f"for console/DOM/runtime behavior.\n")
     return 0
 
 
