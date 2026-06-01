@@ -2930,6 +2930,24 @@ static int parse_request_line(
     }
     *version = '\0';
 
+    /* R-177: reject malformed request lines instead of dispatching them. The
+     * method must be non-empty, the target must be origin-form ("/...") or the
+     * asterisk-form ("*"), and the version must be HTTP/1.0 or HTTP/1.1 with no
+     * trailing junk. Anything else is a 400-class bad request. */
+    {
+        const char *http_version = version + 1;
+        if (method[0] == '\0') {
+            return SS_HTTP_ERR_CONFIG;
+        }
+        if (path[0] != '/' && !(path[0] == '*' && path[1] == '\0')) {
+            return SS_HTTP_ERR_CONFIG;
+        }
+        if (strcmp(http_version, "HTTP/1.1") != 0
+                && strcmp(http_version, "HTTP/1.0") != 0) {
+            return SS_HTTP_ERR_CONFIG;
+        }
+    }
+
     query_start = strchr(path, '?');
     if (query_start != NULL) {
         *query_start = '\0';
