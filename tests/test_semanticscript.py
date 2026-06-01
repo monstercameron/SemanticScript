@@ -6727,6 +6727,21 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_http_client_request_checks_truncation_per_step():
+    # R-152: the http client request builder must validate each snprintf result
+    # before using it as the next offset/remaining, so a truncating or negative
+    # write can't make `request + written` point past the buffer or
+    # `request_capacity - written` underflow. Source-level guard (forcing
+    # truncation needs oversized method/path/host; the client round-trips valid
+    # requests via test_http_server + taskforge-api-client).
+    import os
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                            "sem_http_runtime.c"), encoding="utf-8").read()
+    assert "(size_t)written + (size_t)n >= request_capacity" in src
+    # the unchecked accumulate-then-check pattern is gone
+    assert "written += snprintf(request + written" not in src
+
+
 def test_http_content_length_strict_parse():
     # R-154: parse_content_length must reject a malformed ("12junk"), overflowing,
     # negative, or conflicting-duplicate Content-Length (-1 -> the caller replies

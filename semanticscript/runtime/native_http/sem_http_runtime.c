@@ -1143,28 +1143,48 @@ const char *ss_http_client_fetch(
         ss_close_socket(client_socket);
         return NULL;
     }
+    /* R-152: validate after EVERY snprintf, before its result is used as the
+     * offset/remaining for the next one — a truncating or negative write would
+     * otherwise make `request + written` point past the buffer and
+     * `request_capacity - written` underflow into a huge size_t, so the next
+     * snprintf writes out of bounds. The capacity is sized to fit, so anything
+     * out of [0, capacity) at any step is a hard failure. */
     int written = snprintf(request, request_capacity,
         "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
         method, path, host);
-    if (header_line != NULL && header_line[0] != '\0') {
-        written += snprintf(request + written, request_capacity - (size_t)written,
-            "%s\r\n", header_line);
-    }
-    if (has_body) {
-        written += snprintf(request + written, request_capacity - (size_t)written,
-            "Content-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",
-            body_length, body_text);
-    } else {
-        written += snprintf(request + written, request_capacity - (size_t)written, "\r\n");
-    }
-
-    /* R-132: a snprintf error (negative return) or truncation would make the
-     * send length / pointer arithmetic below wrap. The capacity is sized to fit,
-     * so anything out of [0, capacity) is a hard failure. */
     if (written < 0 || (size_t)written >= request_capacity) {
         free(request);
         ss_close_socket(client_socket);
         return NULL;
+    }
+    if (header_line != NULL && header_line[0] != '\0') {
+        int n = snprintf(request + written, request_capacity - (size_t)written,
+            "%s\r\n", header_line);
+        if (n < 0 || (size_t)written + (size_t)n >= request_capacity) {
+            free(request);
+            ss_close_socket(client_socket);
+            return NULL;
+        }
+        written += n;
+    }
+    if (has_body) {
+        int n = snprintf(request + written, request_capacity - (size_t)written,
+            "Content-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",
+            body_length, body_text);
+        if (n < 0 || (size_t)written + (size_t)n >= request_capacity) {
+            free(request);
+            ss_close_socket(client_socket);
+            return NULL;
+        }
+        written += n;
+    } else {
+        int n = snprintf(request + written, request_capacity - (size_t)written, "\r\n");
+        if (n < 0 || (size_t)written + (size_t)n >= request_capacity) {
+            free(request);
+            ss_close_socket(client_socket);
+            return NULL;
+        }
+        written += n;
     }
 
     size_t sent_total = 0;
