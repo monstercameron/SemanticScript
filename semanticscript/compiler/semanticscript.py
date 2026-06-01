@@ -6105,6 +6105,63 @@ def _validate_trust_flow(program: Program) -> None:
             sink_slots[_sink_key(ent)] = slots
     if not sink_slots:
         return
+
+    # R-070: value-PROVENANCE taint, not just the declared type at the sink. A
+    # value is tainted if its declared type is rawExternal/secret OR it is the
+    # `out` of a call that received a tainted input and did NOT cross a trust
+    # boundary — i.e. its out type does not carry a `validated`/`trustedInternal`
+    # label. So a laundering wrapper that takes a raw string and returns a plain
+    # `String` cannot erase the taint (an unknown/user transform PRESERVES it),
+    # and only an op whose output type is the declared trusted type cleans it.
+    _BOUNDARY_LABELS = ("validated", "trustedInternal")
+
+    def _seed_tainted(type_name):
+        return label_of.get(type_name) in _UNTRUSTED_AT_SINK
+
+    storage_tainted = {
+        program.entities[n].name for n in program.order
+        if program.entities[n].kind == "storage"
+        and (program.entities[n].fact("type") is not None
+             and program.entities[n].fact("type").payload
+             and _seed_tainted(program.entities[n].fact("type").payload[0]))
+    }
+    op_calls: dict = {}
+    for n in program.order:
+        c = program.entities[n]
+        if c.kind in ("call", "task"):
+            owner = c.fact("in")
+            if owner and owner.payload:
+                op_calls.setdefault(owner.payload[0], []).append(c)
+    op_tainted: dict = {}
+    for op_name, calls in op_calls.items():
+        op = program.entities.get(op_name)
+        tainted = set(storage_tainted)
+        if op is not None:
+            for r in op.facts("in"):            # tainted operation parameters
+                if len(r.payload) >= 2 and _seed_tainted(r.payload[1]):
+                    tainted.add(r.payload[0])
+            for r in op.facts("let"):           # tainted local bindings
+                if len(r.payload) >= 3 and _seed_tainted(r.payload[2]):
+                    tainted.add(r.payload[0])
+        changed = True
+        while changed:                          # conservative fixpoint
+            changed = False
+            for c in calls:
+                if not any(len(a.payload) >= 3
+                           and (a.payload[2] in tainted or _seed_tainted(a.payload[1]))
+                           for a in c.facts("arg")):
+                    continue
+                for o in c.facts("out"):
+                    if not o.payload:
+                        continue
+                    out_type = o.payload[1] if len(o.payload) >= 2 else None
+                    if label_of.get(out_type) in _BOUNDARY_LABELS:
+                        continue                # crossed a trust boundary -> clean
+                    if o.payload[0] not in tainted:
+                        tainted.add(o.payload[0])
+                        changed = True
+        op_tainted[op_name] = tainted
+
     for n in program.order:
         call = program.entities[n]
         if call.kind not in ("call", "task"):
@@ -6114,6 +6171,9 @@ def _validate_trust_flow(program: Program) -> None:
         slots = sink_slots.get(callee)
         if not slots:
             continue
+        owner = call.fact("in")
+        tainted = op_tainted.get(owner.payload[0] if owner and owner.payload else None,
+                                 storage_tainted)
         for a in call.facts("arg"):
             if len(a.payload) >= 3 and a.payload[0] in slots:
                 lbl = label_of.get(a.payload[1])
@@ -6123,6 +6183,19 @@ def _validate_trust_flow(program: Program) -> None:
                         f"{a.payload[1]!r}, trust `{lbl}`) into the trust-sensitive "
                         f"slot {a.payload[0]!r} of {callee!r} without a validation "
                         f"boundary (README §16/§26)",
+                        call.line, code="SS3070")
+                # R-070: the value carries untrusted PROVENANCE even though its
+                # declared type is plain — it was laundered through a transform
+                # that declared no trust boundary.
+                if a.payload[2] in tainted:
+                    raise EavError(
+                        f"call {call.name!r} passes {a.payload[2]!r} into the "
+                        f"trust-sensitive slot {a.payload[0]!r} of {callee!r}: the "
+                        f"value has untrusted provenance (derived from a rawExternal/"
+                        f"secret source through a transform that declared no trust "
+                        f"boundary), so its plain type {a.payload[1]!r} does not make "
+                        f"it safe — cross a `trustBoundary` validator (README §16/§26, "
+                        f"R-070)",
                         call.line, code="SS3070")
 
 

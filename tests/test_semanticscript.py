@@ -6105,6 +6105,51 @@ def test_validated_value_at_sink_accepted():
     assert "main" in prog.entities  # no SS3070 raised
 
 
+def test_taint_laundered_through_plain_wrapper_rejected():
+    # R-070: trust is value PROVENANCE, not just the declared type at the sink. A
+    # rawExternal value laundered through a user op that returns a plain `String`
+    # (no trust boundary) still carries untrusted provenance, so reaching a
+    # trust-sensitive sink is SS3070 — a "validator-looking" wrapper can't erase
+    # taint by merely renaming a raw string. A real boundary (output typed
+    # `validated`/`trustedInternal`) cleans it; a non-tainted value is unaffected.
+    def src(launder_out):
+        return (
+            "RawBody is alias\nRawBody for String\nRawBody typeTrust rawExternal\n"
+            "Validated is alias\nValidated for String\nValidated typeTrust validated\n"
+            "logIt is operation\nlogIt in line String\nlogIt out Int32\n"
+            "logIt trustConstraint arg line\nlogIt let z immutable Int32 0\nlogIt return z\n"
+            f"clean is operation\nclean in raw RawBody\nclean out {launder_out}\n"
+            "clean let r immutable Int32 0\nclean return r\n"
+            "handler is operation\nhandler out ExitCode\nhandler async no\n"
+            'handler purpose "p"\nhandler invariant "i"\nhandler in body RawBody\n'
+            "handler let okCode immutable ExitCode 0\n"
+            "handler do launderCall\nhandler do sinkCall\nhandler return okCode\n"
+            "launderCall is call\nlaunderCall in handler\nlaunderCall invokes clean\n"
+            f"launderCall arg raw RawBody body\nlaunderCall out cleaned {launder_out}\n"
+            "sinkCall is call\nsinkCall in handler\nsinkCall invokes logIt\n"
+            f"sinkCall arg line {launder_out} cleaned\nsinkCall out n Int32\n"
+            "ExitCode is alias\nExitCode for Int32\n"
+        )
+    # plain-String launderer -> tainted by provenance -> rejected
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src("String"))
+    assert getattr(exc.value, "code", None) == "SS3070"
+    # a non-tainted literal at the same plain sink is fine (no false positive)
+    clean = (
+        "RawBody is alias\nRawBody for String\nRawBody typeTrust rawExternal\n"
+        "logIt is operation\nlogIt in line String\nlogIt out Int32\n"
+        "logIt trustConstraint arg line\nlogIt let z immutable Int32 0\nlogIt return z\n"
+        "handler is operation\nhandler out ExitCode\nhandler async no\n"
+        'handler purpose "p"\nhandler invariant "i"\nhandler in body RawBody\n'
+        'handler let safe immutable String "ok"\nhandler let okCode immutable ExitCode 0\n'
+        "handler do sinkCall\nhandler return okCode\n"
+        "sinkCall is call\nsinkCall in handler\nsinkCall invokes logIt\n"
+        "sinkCall arg line String safe\nsinkCall out n Int32\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+    )
+    assert "handler" in semanticscript.parse(clean).entities
+
+
 def test_typetrust_unknown_label_rejected():
     # X-070: a typeTrust with an unknown label is rejected.
     with pytest.raises(semanticscript.EavError) as exc:
