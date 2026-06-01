@@ -1228,19 +1228,28 @@ def test_mcp_registry_is_authoritative_and_errors_are_protocol_errors():
     gone."""
     import json as _json
     assert not hasattr(semanticscript, "MCP_TOOL_MAP")
-    listed = [t["name"] for t in semanticscript.mcp_handle(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]]
-    assert sorted(listed) == sorted(semanticscript.EAV_MCP_TOOLS)
-    # every listed tool round-trips to its subcommand envelope
-    no_path = {"version", "readiness", "agent_docs"}
+    listed = semanticscript.mcp_handle(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
+    assert sorted(t["name"] for t in listed) == sorted(semanticscript.EAV_MCP_TOOLS)
+    # every listed tool round-trips to a real surface. Supply a value for every
+    # required input the advertised schema declares (path + positionals like
+    # query/code/dimension) — the registry is authoritative for what's required.
     hello = os.path.join(EXAMPLES, "hello_world.sem")
-    for tool in semanticscript.EAV_MCP_TOOLS:
-        args = {} if tool in no_path else {"path": hello}
+    fixtures = {"path": hello, "query": "cleanup", "code": "SS1502", "dimension": "effects"}
+    # `explain` is a text tool (not a sem.* JSON envelope); everything else is JSON.
+    text_tools = {"explain"}
+    for tool in listed:
+        name = tool["name"]
+        required = tool.get("inputSchema", {}).get("required", [])
+        assert all(k in fixtures for k in required), (name, required)
+        args = {k: fixtures[k] for k in required}
         resp = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                                "params": {"name": tool, "arguments": args}})
-        assert "result" in resp, tool
+                                "params": {"name": name, "arguments": args}})
+        assert "result" in resp, name
         text = resp["result"]["content"][0]["text"]
-        assert _json.loads(text)["surface"].startswith("sem."), tool
+        assert text.strip() and "Traceback" not in text, name
+        if name not in text_tools:
+            assert _json.loads(text)["surface"].startswith("sem."), name
     # an unknown tool is a JSON-RPC error, not a text-content "success"
     bad = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                            "params": {"name": "definitely-not-a-tool", "arguments": {}}})

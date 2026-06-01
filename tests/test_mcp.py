@@ -56,14 +56,25 @@ def main():
         print("MCP FAIL: tools/list returned no tools")
         return 1
 
-    # Build a tools/call per tool, supplying `path` when the schema requires it.
+    # Build a tools/call per tool, supplying a value for every required input the
+    # advertised schema declares (path + any positional like query/code/dimension).
+    ARG_FIXTURES = {
+        "path": FIXTURE,
+        "query": "cleanup a database handle",  # search
+        "code": "SS1502",                       # explain
+        "dimension": "effects",                 # query
+    }
     frames = [init]
     idmap = {}
     rid = 100
     for tool in tools:
         name = tool["name"]
         required = tool.get("inputSchema", {}).get("required", [])
-        args = {"path": FIXTURE} if "path" in required else {}
+        args = {k: ARG_FIXTURES[k] for k in required if k in ARG_FIXTURES}
+        missing = [k for k in required if k not in ARG_FIXTURES]
+        if missing:
+            print("MCP FAIL: tool %r needs un-fixtured required args %s" % (name, missing))
+            return 1
         frames.append({"jsonrpc": "2.0", "id": rid, "method": "tools/call",
                        "params": {"name": name, "arguments": args}})
         idmap[rid] = name

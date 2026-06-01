@@ -62,6 +62,20 @@ clean parse):
   distinct from the `CONTRACT_VERSION` source-compat contract),
   `THIRD_PARTY_LICENSES.md` (SQLite / libuv / crypt_blowfish / llvmlite+LLVM /
   CPython attribution), and this `CHANGELOG.md`.
+- **Agentic toolchain (TOOL-0…8)** — the legacy `sem` agent tools ported and
+  upgraded to the EAV language: `emit-ir`/`inspect-ir`, `status`/`clean`,
+  `index`, `bench`, `repin`, and a unified **`search`** — relevance-ranked
+  (TF-IDF) retrieval across the diagnostics, skills, task templates, the language
+  guide, and a project's entities (the real agentic-coding search). Every agent
+  surface returns a versioned `sem.<tool>.v1` JSON envelope (the legacy response
+  structures, preserved).
+- **MCP server expanded to 19 tools** — the stdio JSON-RPC server now exposes
+  `search`, `explain`, `graph`, `query`, `index`, and `status` alongside the
+  original set; the registry is data-driven so the advertised `inputSchema` and
+  the argv it builds can't drift. Driven by `tests/test_mcp.py`.
+- **Test gates** — `tests/test_cli_surface.py` (all 49 commands run + emit their
+  documented shape), `tests/test_agent_tools.py` (the agent JSON tools), and
+  `tests/test_mcp.py`, all wired into CI alongside the example/pytest/app suites.
 
 ### Changed
 
@@ -77,6 +91,12 @@ clean parse):
   `legacy/` references in the runtime manifest).
 - **"EAV" branding removed from all documentation** (kept in source code where
   it is the row model's name); docs say "SemanticScript".
+- **Docs restructured around a front-door README** — `README.md` is now a
+  user-facing landing page (the pitch, a runnable hello-world, core-concept
+  intros, an ideas section, quickstart, and an honest beta-status block); the
+  full language specification moved to [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
+  The search corpus, governance map, grammar pointer, and drift-guard test were
+  repointed accordingly.
 - **GitHub Actions wired** to the new compiler; legacy-product workflows no
   longer auto-run.
 - **Release pipeline consolidated** to a single cross-platform `release.yml`
@@ -130,12 +150,16 @@ clean parse):
   `version.json` + `SHA256SUMS` + `THIRD_PARTY_LICENSES.md`) is wired but has not
   yet run on a tag. There is no `pip`-installable package (the distribution model
   is the frozen single-file binary).
-- Toolchain parity with the legacy `sem` is largely closed (TOOL-0..7: MCP +
-  agentic CLI tools, `emit-ir`/`inspect-ir`, `status`/`clean`, `index`/`search`,
-  `bench`, `repin`). Still deferred: the **network/registry dependency ops**
-  (`download`/`get`/`latest`/`update`/`self`/`bootstrap`) — they need a package
-  registry + remote fetch that doesn't exist yet; the offline pieces (`deps`,
-  `repin`/`mod_tidy` with MVS + a lock) are in place.
+- Toolchain parity with the legacy `sem` is functionally complete (TOOL-0..8:
+  MCP + agentic CLI tools, `emit-ir`/`inspect-ir`, `status`/`clean`,
+  `index`/`search`, `bench`, `repin`). Of the legacy-only commands, `get`/`list`/
+  `help`/`reference`/`bootstrap` are superseded by better-shaped new surfaces
+  (`docs --get`/`describe`, `index`/`symbols`, `agent-docs`/`task`,
+  `skills`/`search`), and `migrate-syntax` is obsolete. Still genuinely open: the
+  **network/registry ops** (`download`/`latest`/`self`/`update`) — they need a
+  package registry that doesn't exist yet; the offline pieces (`deps`,
+  `repin`/`mod_tidy` with MVS + a lock) are in place — plus two niche utilities
+  (`compare-profiles`, `literal`).
 - The broader language-completeness roadmap (crash-report tiers, non-bypassable
   compile gate + syscall sandbox, linter parity, the ≥150-app conformance
   corpus, the value-model free/move runtime) is tracked in
