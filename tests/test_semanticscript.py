@@ -731,6 +731,27 @@ def test_compact_expands_parses_and_runs(tmp_path):
     assert out.stdout.strip() == "hi"
 
 
+def test_compact_profile_consistent_across_commands(tmp_path):
+    # R-157: run / emit-ir / inspect-ir accept the same compact-profile surface
+    # that check/build do — they used the strict EAV parser before, so a compact
+    # source that checked clean failed at execution/codegen with a parse error.
+    src = tmp_path / "compact.sem"
+    src.write_text(_COMPACT_HELLO, encoding="utf-8")
+
+    def run(*argv):
+        return subprocess.run([sys.executable, SEMANTICSCRIPT, *argv],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    chk = run("check", str(src), "--json")
+    assert chk.returncode == 0, chk.stderr  # check already accepted compact
+    r = run("run", str(src))
+    assert r.returncode == 0 and r.stdout.strip() == "hi", r.stderr
+    ir = run("emit-ir", str(src))
+    assert ir.returncode == 0 and "ModuleID" in ir.stdout, ir.stderr
+    ins = run("inspect-ir", str(src), "--json")
+    assert ins.returncode == 0, ins.stderr
+
+
 def test_compact_ss_roundtrip_semantics_preserved():
     # compact -> EAV -> compact -> EAV preserves the entity set and per-entity
     # row counts (gate-0 round-trip, WS4-004).

@@ -11487,7 +11487,7 @@ def cmd_lower(args) -> int:
 def cmd_emit_ir(args) -> int:
     """Emit textual LLVM IR — a named, `-o`-aware superset of `lower` with an
     optional `--optimized` pass. (TOOL-3, parity with the legacy `emit-ir`.)"""
-    program = parse(_read_program_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     text = str(lower_to_llvm(program))
     if getattr(args, "optimized", False):
         try:
@@ -11519,7 +11519,7 @@ def cmd_inspect_ir(args) -> int:
     block/instruction counts), declared externs, and globals (sem.inspectIr.v1).
     (TOOL-3, parity with the legacy `inspect-ir`.)"""
     import llvmlite.binding as llvm
-    program = parse(_read_program_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     text = str(lower_to_llvm(program))
     _ensure_native_init()
     mod = llvm.parse_assembly(text)
@@ -12039,7 +12039,7 @@ def cmd_run(args) -> int:
         # as a lint-error envelope, not silently skipped.
         if getattr(args, "strict", False):
             try:
-                strict_errs = [d for d in _filter_diagnostics_strict(lint(parse(src)), True)
+                strict_errs = [d for d in _filter_diagnostics_strict(lint(parse_compact(src)), True)
                                if d.severity == "error"]
             except EavError:
                 strict_errs = []  # a parse error surfaces through the run below
@@ -12063,7 +12063,7 @@ def cmd_run(args) -> int:
         sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
         return code
 
-    program = parse(_read_program_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
         diags = lint(program)
@@ -12298,7 +12298,7 @@ def build_wasm(program: Program, out_path: str):
 def cmd_wasm(args) -> int:
     """Compile a pure-compute program to a `.wasm` module + a node runner."""
     import os
-    program = parse(_read_program_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     out = getattr(args, "output", None) or (os.path.splitext(args.path)[0] + ".wasm")
     wasm_path, entry = build_wasm(program, out)
     runner = os.path.splitext(wasm_path)[0] + ".run.cjs"
