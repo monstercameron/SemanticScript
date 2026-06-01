@@ -188,8 +188,6 @@ passwordScratchCapacity is storage module immutable Int64 256
 displayNameScratchCapacity is storage module immutable Int64 128
 titleScratchCapacity is storage module immutable Int64 512
 bodyScratchCapacity is storage module immutable Int64 10240
-hashBufferCapacity is storage module immutable Int64 64
-hashCapacityArg is storage module immutable Int32 61
 randomBufferCapacity is storage module immutable Int64 32
 randomByteCountArg is storage module immutable Int32 32
 tokenBufferCapacity is storage module immutable Int64 64
@@ -848,7 +846,6 @@ registerHandler invariant "On success, exactly one new row in users + one new ro
 registerHandler risk "v1 does not enforce password strength rules other than non-empty; phase-7 will add a minimum length CHECK constraint AT the SQL layer."
 registerHandler let emptyDisplayName immutable String ""
 registerHandler let displayNameForInsert mutable String emptyDisplayName
-registerHandler let hashBufferZeroFillByte immutable Int32 0
 registerHandler let passwordScratchZeroFillByte immutable Int32 0
 registerHandler let dbUnavailableBody immutable String "{\"error\":{\"code\":\"databaseUnavailable\",\"message\":\"could not open database\"}}\n"
 registerHandler let registerAllocationFailedBody immutable String "{\"error\":{\"code\":\"outOfMemory\",\"message\":\"could not allocate request buffers\"}}\n"
@@ -903,16 +900,11 @@ registerHandler branch ifError registerDisplayNameCursorCall goto registerDispla
 registerHandler do readRegisterDisplayNameCall
 registerHandler branch ifError readRegisterDisplayNameCall goto registerDisplayNameResolved
 registerHandler set displayNameForInsert displayNameRecovered
-registerHandler at registerDisplayNameResolved do allocateHashBufferCall
-registerHandler branch ifError allocateHashBufferCall goto registerAllocationFailed
-registerHandler defer releaseHashBufferDefer
-registerHandler do hashBufferPreZeroCall
-registerHandler do hashPasswordCall
+registerHandler at registerDisplayNameResolved do hashPasswordOwnedCall
+registerHandler branch ifError hashPasswordOwnedCall goto registerHashFailedHandler
+registerHandler defer releaseHashHandleDefer
 registerHandler do viewHashedPasswordCall
-registerHandler do hashStatusOkCheckCall
-registerHandler branch if hashOk goto hashSucceeded
-registerHandler goto registerHashFailedHandler
-registerHandler at hashSucceeded do registerWipePasswordScratchCall
+registerHandler do registerWipePasswordScratchCall
 registerHandler do nowForRegisterCall
 registerHandler do pruneRegisterExpiredSessionsCall
 registerHandler do beginRegisterTxCall
@@ -1225,49 +1217,26 @@ readRegisterDisplayNameCall arg scratchCapacity Int64 displayNameScratchCapacity
 readRegisterDisplayNameCall out displayNameRecovered String
 readRegisterDisplayNameCall catch readRegisterDisplayNameError JsonAccessError
 
-allocateHashBufferCall is call
-allocateHashBufferCall in registerHandler
-allocateHashBufferCall invokes c.malloc
-allocateHashBufferCall arg size ByteCount hashBufferCapacity
-allocateHashBufferCall out hashBuffer OpaquePointer
-allocateHashBufferCall catch allocateHashBufferError OpaquePointer
-allocateHashBufferCall owns hashBuffer
-allocateHashBufferCall cleanedBy releaseHashBufferDefer
+hashPasswordOwnedCall is call
+hashPasswordOwnedCall in registerHandler
+hashPasswordOwnedCall invokes bcrypt.hashPasswordOwned
+hashPasswordOwnedCall arg plaintext String passwordRecovered
+hashPasswordOwnedCall arg cost Int32 bcryptRecommendedCost
+hashPasswordOwnedCall out hashHandle OpaquePointer
+hashPasswordOwnedCall catch hashPasswordOwnedError OpaquePointer
+hashPasswordOwnedCall owns hashHandle
+hashPasswordOwnedCall cleanedBy releaseHashHandleDefer
 
-releaseHashBufferDeferWorker is call
-releaseHashBufferDeferWorker in registerHandler
-releaseHashBufferDeferWorker invokes c.free
-releaseHashBufferDeferWorker arg resource OpaquePointer hashBuffer
-releaseHashBufferDeferWorker discards "cleanup status ignored"
+releaseHashHandleDeferWorker is call
+releaseHashHandleDeferWorker in registerHandler
+releaseHashHandleDeferWorker invokes bcrypt.freeString
+releaseHashHandleDeferWorker arg handle OpaquePointer hashHandle
+releaseHashHandleDeferWorker discards "cleanup status ignored"
 
-releaseHashBufferDefer is cleanup
-releaseHashBufferDefer in registerHandler
-releaseHashBufferDefer call releaseHashBufferDeferWorker
-releaseHashBufferDefer cleans hashBuffer
-
-hashBufferPreZeroCall is call
-hashBufferPreZeroCall in registerHandler
-hashBufferPreZeroCall invokes c.memset
-hashBufferPreZeroCall arg ptr OpaquePointer hashBuffer
-hashBufferPreZeroCall arg value Int32 hashBufferZeroFillByte
-hashBufferPreZeroCall arg byteCount Int64 hashBufferCapacity
-hashBufferPreZeroCall discards "result intentionally ignored"
-
-hashPasswordCall is call
-hashPasswordCall in registerHandler
-hashPasswordCall invokes bcrypt.hashPassword
-hashPasswordCall arg plaintext String passwordRecovered
-hashPasswordCall arg cost Int32 bcryptRecommendedCost
-hashPasswordCall arg outBuffer OpaquePointer hashBuffer
-hashPasswordCall arg outCapacity Int32 hashCapacityArg
-hashPasswordCall out hashStatus Int32
-
-hashStatusOkCheckCall is call
-hashStatusOkCheckCall in registerHandler
-hashStatusOkCheckCall invokes math.equalInt32
-hashStatusOkCheckCall arg left Int32 hashStatus
-hashStatusOkCheckCall arg right Int32 jsonOk
-hashStatusOkCheckCall out hashOk Bool
+releaseHashHandleDefer is cleanup
+releaseHashHandleDefer in registerHandler
+releaseHashHandleDefer call releaseHashHandleDeferWorker
+releaseHashHandleDefer cleans hashHandle
 
 registerWipePasswordScratchCall is call
 registerWipePasswordScratchCall in registerHandler
@@ -4848,7 +4817,7 @@ filesystemWriteAuthority purpose "Authorize `write filesystem` on the SQLite dat
 viewHashedPasswordCall is call
 viewHashedPasswordCall in registerHandler
 viewHashedPasswordCall invokes c.cString
-viewHashedPasswordCall arg pointer OpaquePointer hashBuffer
+viewHashedPasswordCall arg pointer OpaquePointer hashHandle
 viewHashedPasswordCall out hashedPasswordText String
 
 sessionTokenStrCall is call
