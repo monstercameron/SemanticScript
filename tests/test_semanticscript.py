@@ -821,6 +821,67 @@ def test_compact_profile_consistent_across_commands(tmp_path):
     assert ins.returncode == 0, ins.stderr
 
 
+def test_bench_accepts_compact_profile(tmp_path):
+    # R-170: bench uses the same compact-aware parser as check/run/codegen.
+    import json as _json
+    src = tmp_path / "compact.sem"
+    src.write_text(_COMPACT_HELLO, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "bench", str(src), "--runs", "1", "--json"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    env = _json.loads(proc.stdout)
+    assert env["surface"] == "sem.bench.v1"
+    assert env["runnable"] is True
+    assert env["runStatus"] == "ok"
+    assert env["parseMsBest"] is not None
+    assert env["lowerMsBest"] is not None
+    assert env["runMsBest"] is not None
+
+
+def test_bench_webserver_skips_run_and_malformed_compact_is_structured(tmp_path):
+    # R-170: target detection also goes through parse_compact, while compiler
+    # errors under --json remain machine-readable.
+    import json as _json
+
+    def run(*argv):
+        return subprocess.run([sys.executable, SEMANTICSCRIPT, *argv],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    web = tmp_path / "server.sem"
+    web.write_text(
+        "Demo is project\nDemo module m\nDemo target webServer\nDemo entry api\n"
+        'm is module\nm path a.b\nm exports api\nm purpose "p"\nm invariant "i"\n'
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "api is webServer\napi host \"127.0.0.1\"\napi port 8080\n"
+        "api route GET \"/health\" healthHandler\n"
+        "healthHandler is operation\nhealthHandler in request HttpRequest\n"
+        "healthHandler in response HttpResponse\nhealthHandler out Int32\n"
+        'healthHandler async no\nhealthHandler purpose "p"\nhealthHandler invariant "i"\n'
+        "healthHandler let status immutable Int32 200\nhealthHandler return status\n",
+        encoding="utf-8",
+    )
+    skipped = run("bench", str(web), "--runs", "1", "--json")
+    assert skipped.returncode == 0, skipped.stderr
+    skipped_env = _json.loads(skipped.stdout)
+    assert skipped_env["surface"] == "sem.bench.v1"
+    assert skipped_env["runnable"] is False
+    assert skipped_env["runStatus"] is None
+    assert skipped_env["runMsBest"] is None
+
+    bad = tmp_path / "bad-compact.sem"
+    bad.write_text("operation\nout ExitCode\n", encoding="utf-8")
+    failed = run("bench", str(bad), "--runs", "1", "--json")
+    assert failed.returncode == 2
+    failed_env = _json.loads(failed.stdout)
+    assert failed_env["surface"] == "sem.error.v1"
+    assert failed_env["status"] == "compiler-error"
+    assert failed_env["command"] == "bench"
+    assert failed_env["diagnostics"][0]["severity"] == "error"
+
+
 def test_compact_ss_roundtrip_semantics_preserved():
     # compact -> EAV -> compact -> EAV preserves the entity set and per-entity
     # row counts (gate-0 round-trip, WS4-004).
@@ -1930,6 +1991,41 @@ def test_stdlib_readiness_ledger_gate():
     assert body["surface"] == "sem.stdlibReadiness.v1" and body["ok"] is True
     assert p.returncode == 0
     assert "sem.stdlibReadiness.v1" in semanticscript.SEM_SURFACES
+
+
+def test_stdlib_readiness_scratch_pointer_inventory():
+    # WS3-110 (`->test`): the ledger inventories the raw caller-scratch-buffer
+    # contracts (an app-visible OpaquePointer/Buffer arg PLUS a length/capacity
+    # scalar, no `unsafe` marker) each signature exposes, and the gate fails if one
+    # surfaces in a PUBLIC module that is not an acknowledged low-level/graduation-
+    # pending primitive. The stdlib is currently cohesive; this keeps it that way.
+    led = semanticscript.stdlib_readiness_ledger()
+    # json's scratch cursor/serialize buffers are surfaced (WS3-114 graduation
+    # target) but acknowledged, so they are NOT counted as a leak.
+    assert "cursorString" in led["json"]["scratchPointerApis"]
+    assert "serializeDocument" in led["json"]["scratchPointerApis"]
+    assert led["json"]["unacknowledgedScratchPointer"] is False
+    # buffer/memory are the bounds primitives themselves — acknowledged, not a leak
+    assert led["buffer"]["unacknowledgedScratchPointer"] is False
+    # the gate invariant: zero PUBLIC modules leak an un-graduated raw scratch ptr
+    leaks = sorted(m for m, e in led.items() if e["unacknowledgedScratchPointer"])
+    assert leaks == [], f"un-graduated raw scratch-pointer leaks in public stdlib: {leaks}"
+    # the acknowledged set must only name modules that genuinely have such APIs
+    # (no stale entries silently suppressing a future regression)
+    for m in semanticscript.STDLIB_SCRATCH_POINTER_ACKNOWLEDGED:
+        assert m in led, m
+        assert led[m]["scratchPointerApis"], (
+            f"{m} is acknowledged for scratch-pointer contracts but exposes none; "
+            f"remove it so a real future leak there is not masked")
+    # the detector fires on the shape and respects the unsafe-marker escape hatch
+    leaky = ("writeInto is intrinsic\n  has arg dst OpaquePointer\n"
+             "  has arg capacity Int64\n")
+    assert semanticscript._scratch_pointer_apis(leaky) == ["writeInto"]
+    marked = leaky.replace("is intrinsic\n", "is intrinsic\n  unsafe yes\n")
+    assert semanticscript._scratch_pointer_apis(marked) == []
+    # an owned-output intrinsic (no caller scratch) is not flagged
+    owned = "toString is intrinsic\n  has arg doc OpaquePointer\n  out result String\n"
+    assert semanticscript._scratch_pointer_apis(owned) == []
 
 
 def test_test_lane_empty_is_not_pass():
@@ -4395,6 +4491,53 @@ def test_test_runner_executes_tag_test_ops():
     rep2 = semanticscript.run_tests(semanticscript.parse(_test_program(failing)))
     assert rep2["compositeStatus"] == "fail"
     assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
+
+
+def test_test_discover_json_honors_json_mode(tmp_path):
+    # R-168: --discover --json emits the sem.test.v1 discovery envelope, not
+    # plaintext, for all lanes, a populated selected lane, and an empty lane.
+    import json as _json
+    src = tmp_path / "discover.sem"
+    src.write_text(
+        "checkUnit is operation\ncheckUnit out Bool\ncheckUnit tag test\n"
+        "checkUnit tag unit\n"
+        "checkE2e is operation\ncheckE2e out Bool\ncheckE2e tag test\n"
+        "checkE2e tag e2e\n",
+        encoding="utf-8")
+
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", str(src),
+                        "--discover", "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert p.returncode == 0 and env["surface"] == "sem.test.v1"
+    assert env["status"] == "discovered" and env["selectedLane"] is None
+    assert env["totalCount"] == 2
+    assert env["lanes"]["unit"] == ["checkUnit"]
+    assert env["lanes"]["e2e"] == ["checkE2e"]
+
+    p2 = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", str(src),
+                         "--lane", "unit", "--discover", "--json"],
+                        capture_output=True, text=True, encoding="utf-8")
+    env2 = _json.loads(p2.stdout)
+    assert env2["selectedLane"] == "unit"
+    assert env2["lanes"] == {"unit": ["checkUnit"]}
+    assert env2["totalCount"] == 1 and p2.returncode == 0
+
+    p3 = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", str(src),
+                         "--lane", "integration", "--discover", "--json"],
+                        capture_output=True, text=True, encoding="utf-8")
+    env3 = _json.loads(p3.stdout)
+    assert env3["selectedLane"] == "integration"
+    assert env3["lanes"] == {"integration": []}
+    assert env3["totalCount"] == 0 and p3.returncode == 0
+
+    p4 = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", str(src),
+                         "--discover"],
+                        capture_output=True, text=True, encoding="utf-8")
+    assert p4.returncode == 0
+    assert "unit: checkUnit" in p4.stdout
+    assert "e2e: checkE2e" in p4.stdout
+    assert p4.stdout.strip().endswith("2 test operation(s)")
 
 
 def test_test_runner_isolates_runtime_traps():
@@ -8115,6 +8258,26 @@ def test_weak_password_hash_cost_rejected():
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.parse(src)
     assert getattr(exc.value, "code", None) == "SS3086"
+
+
+def test_bcrypt_buffer_bounds_guarded():
+    # R-202 (partial): the bcrypt buffer helpers must bound the caller-supplied
+    # counts against the declared capacity so a too-small/oversized request fails
+    # closed instead of overflowing. hashPassword rejects an insufficient declared
+    # capacity; base64UrlEncode computes the required size in a wide type and
+    # rejects an undersized output capacity; randomBytes (no separate capacity)
+    # caps byte_count to a sane ceiling. (Tying counts to the true allocation size
+    # needs a bounds-carrying buffer type across the FFI — the R-202 remainder.)
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_bcrypt",
+                            "sem_bcrypt_runtime.c"), encoding="utf-8").read()
+    rb = re.search(r"int ss_random_bytes\(.*?\n\}", src, re.S).group(0)
+    assert "SS_RANDOM_MAX_BYTES" in rb and "byte_count > SS_RANDOM_MAX_BYTES" in rb
+    hh = re.search(r"int ss_bcrypt_hash\(.*?\n\}", src, re.S).group(0)
+    assert "out_hash_buffer_capacity < SS_BCRYPT_HASH_OUTPUT_SIZE" in hh
+    b64 = re.search(r"int ss_base64url_encode\(.*?\n\}", src, re.S).group(0)
+    assert "output_buffer_capacity < required_capacity" in b64
 
 
 def test_format_string_must_be_constant_rejected():

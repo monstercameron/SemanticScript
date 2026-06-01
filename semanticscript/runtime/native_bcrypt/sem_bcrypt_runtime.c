@@ -42,8 +42,18 @@
 
 /* ----- random bytes ----- */
 
+/* R-202: ss_random_bytes has no separate capacity arg — `byte_count` is both the
+ * count to write and the caller's implied buffer size, and it is then written in
+ * full. An absurd/oversized count (a bug or a hostile caller) would write far past
+ * a small allocation. The CSPRNG outputs here are salts (16) and session tokens
+ * (32); cap the request to a generous ceiling so an out-of-range count fails
+ * closed instead of becoming a large overflow. (Tying the count to the buffer's
+ * true allocation size needs a bounds-carrying buffer type across the FFI — the
+ * documented R-202 remainder.) */
+#define SS_RANDOM_MAX_BYTES 4096
+
 int ss_random_bytes(unsigned char *out_buffer, int byte_count) {
-    if (out_buffer == NULL || byte_count <= 0) {
+    if (out_buffer == NULL || byte_count <= 0 || byte_count > SS_RANDOM_MAX_BYTES) {
         return SS_BCRYPT_ERR_CONFIG;
     }
 
