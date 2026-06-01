@@ -12579,6 +12579,13 @@ _FAMILY_RT = {
         "verifyPassword": ("ss_bcrypt_verify", "i", None),
         "randomBytes": ("ss_random_bytes", "i", None),
         "base64UrlEncode": ("ss_base64url_encode", "i", None),
+        # R-202: owned-output variants that allocate their own exact-sized buffer,
+        # so there is NO caller buffer/capacity to mis-size (overflow is
+        # structurally impossible). They return a heap String handle (0 on
+        # failure); the caller `owns` it and frees with bcrypt.freeString.
+        "hashPasswordOwned": ("ss_bcrypt_hash_owned", "h", None),
+        "sessionTokenOwned": ("ss_bcrypt_session_token_owned", "h", None),
+        "freeString": ("ss_bcrypt_free_string", "v", None),
     },
     "log": {
         "logInfo": ("ss_log_info", "i", None),
@@ -12612,6 +12619,8 @@ _FAMILY_HANDLE_ERR = {
     ("json", "documentRoot"): ("<", 0),          # ss_json_root: 0 ok, -1 on fail
     ("sqlite", "openDatabase"): ("==", 0),       # ss_sqlite_open: 0 on fail
     ("sqlite", "prepareStatement"): ("==", 0),   # ss_sqlite_prepare: 0 on fail
+    ("bcrypt", "hashPasswordOwned"): ("==", 0),  # R-202: 0 = hash/alloc failed
+    ("bcrypt", "sessionTokenOwned"): ("==", 0),  # R-202: 0 = entropy/alloc failed
 }
 
 # R-141 fix: retkind "i" status calls whose success code is NOT 0, so the generic

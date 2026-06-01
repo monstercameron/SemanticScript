@@ -46,3 +46,26 @@ base64UrlEncode arg outputCapacity Int32
 base64UrlEncode arg outputLengthOut OpaquePointer
 base64UrlEncode out status Int32
 base64UrlEncode purpose "base64url-encode bytes (no padding) into a caller buffer, writing the length out"
+
+# R-202: owned-output variants. The runtime allocates the output at exactly the
+# size it needs, so there is NO caller buffer/capacity to mis-size — an overflow
+# is structurally impossible (vs the hashPassword/randomBytes buffer pattern that
+# trusts a caller-declared capacity). Each returns a heap String handle as an
+# OpaquePointer (0 on failure); the caller `owns` it and frees with bcrypt.freeString.
+
+hashPasswordOwned is intrinsic
+hashPasswordOwned target bcrypt.hashPasswordOwned
+hashPasswordOwned arg plaintext String
+hashPasswordOwned arg cost Int32
+hashPasswordOwned out hashHandle OpaquePointer
+hashPasswordOwned purpose "Hash a password into a runtime-allocated 60-char $2b$ string (no caller buffer to mis-size, R-202); returns 0 on failure. Caller owns the handle and frees via bcrypt.freeString."
+
+sessionTokenOwned is intrinsic
+sessionTokenOwned target bcrypt.sessionTokenOwned
+sessionTokenOwned out tokenHandle OpaquePointer
+sessionTokenOwned purpose "Mint a base64url session token into a runtime-allocated string (R-202); returns 0 on failure. Caller owns the handle and frees via bcrypt.freeString."
+
+freeString is intrinsic
+freeString target bcrypt.freeString
+freeString arg handle OpaquePointer
+freeString purpose "Free a string handle from bcrypt.hashPasswordOwned / sessionTokenOwned; double-free / foreign-pointer safe (no-op on an untracked pointer)."
