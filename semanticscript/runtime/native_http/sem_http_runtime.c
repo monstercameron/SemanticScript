@@ -17,6 +17,13 @@
  * transport ceiling only prevents unbounded allocation in the blocking adapter.
  */
 #define SS_HTTP_MAX_REQUEST_BYTES (1024 * 1024)
+/* R-205: a ceiling on an in-memory response body. ss_http_response_bytes copies
+ * body_length bytes from a caller pointer; the runtime cannot prove the buffer is
+ * that large (provenance is the documented remainder), but an absurd/garbage or
+ * underflowed length is bounded here so it cannot trigger a catastrophic
+ * over-read / over-allocation. 64 MiB is far above any legitimate in-memory body
+ * (large payloads should stream via the file path, not responseBytes). */
+#define SS_HTTP_RESPONSE_BODY_MAX_BYTES ((size_t)64 * 1024 * 1024)
 #define SS_HTTP_MAX_HEADERS 32
 #define SS_HTTP_MAX_QUERY_PARAMS 32
 #define SS_HTTP_MAX_MULTIPART_PARTS 16
@@ -464,6 +471,13 @@ int ss_http_response_bytes(
     char *owned_content_type = NULL;
 
     if (response == NULL || (body == NULL && body_length > 0)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    if (body_length > SS_HTTP_RESPONSE_BODY_MAX_BYTES) {
+        /* R-205: bound an absurd/garbage/underflowed length before it drives a
+         * copy_bytes_with_nul over-read/over-allocation. (Honest scope: this caps
+         * catastrophic lengths; proving `body` is actually `body_length` live
+         * bytes needs allocation-size provenance — the R-205 remainder.) */
         return SS_HTTP_ERR_CONFIG;
     }
     if (!ss_http_header_value_ok(content_type)) {
