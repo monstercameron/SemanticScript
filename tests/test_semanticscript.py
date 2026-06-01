@@ -7205,6 +7205,42 @@ def test_string_concat_alloc_guarded():
     assert "allocFail" in ir
 
 
+def test_html_render_frees_intermediate_buffers():
+    # R-136 (leak): html.render concatenates a multi-hole template through chained
+    # _concat buffers, and auto-escapes text holes into ss_http_html_escape_str
+    # buffers — both were leaked once per piece. The lowering now frees each, with
+    # the allocator that made it: a _concat buffer is JIT-malloc'd (host `free`),
+    # an escaped-hole buffer is native-lib-malloc'd (cross-CRT-safe ss_http_free_str).
+    # Borrowed pass-throughs and literal constants are never freed.
+    src = (
+        "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
+        "m is module\nm path d.x\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\nHtmlFragment is alias\nHtmlFragment for String\n"
+        "outCap is capability\noutCap grants write console.stdout\noutCap purpose \"w\"\n"
+        "page is htmlTemplate\npage body html\n    <p>{{a}}</p><p>{{b}}</p>\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses outCap\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        'main let av immutable String "hello"\nmain let bv immutable String "world"\n'
+        "main let okCode immutable ExitCode 0\nmain do r\nmain do show\nmain return okCode\n"
+        "r is call\nr in main\nr invokes html.render\nr arg template HtmlTemplate page\n"
+        "r arg a String av\nr arg b String bv\nr out frag HtmlFragment\n"
+        "show is call\nshow in main\nshow invokes console.writeLine\nshow arg text String frag\n"
+    )
+    import llvmlite.binding as llvm
+    semanticscript._ensure_native_init()
+    ir = str(semanticscript.lower_to_llvm(semanticscript.parse(src)))
+    llvm.parse_assembly(ir).verify()
+    # the JIT-malloc'd concat intermediates are freed with host free...
+    assert 'call void @"free"' in ir
+    # ...and the native-lib escaped-hole buffers with the cross-CRT-safe native free
+    assert 'call void @"ss_http_free_str"' in ir
+    # and it actually runs (the frees happen AFTER each copy — no use-after-free)
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"], input=src,
+                       capture_output=True, text=True, encoding="utf-8")
+    assert p.returncode == 0, p.stderr
+    assert "<p>hello</p><p>world</p>" in p.stdout
+
+
 def test_list_map_alloc_guarded():
     # R-137: list/map create + growth null-check their malloc/realloc results,
     # trapping (SSR0022) on OOM instead of storing through NULL. Assert the guard

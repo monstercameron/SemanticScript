@@ -74,6 +74,16 @@ SS_EXPORT const char *ss_http_html_escape_str(const char *input) {
     return buffer;
 }
 
+/* R-136: free a buffer returned by ss_http_url_encode_str / ss_http_url_decode_str
+ * / ss_http_html_escape_str. These are malloc'd INSIDE this runtime library, so
+ * they must be released by this library's free() — the JIT/host may link a
+ * different CRT heap, and freeing across heaps corrupts memory on Windows. The
+ * html.render lowering calls this to release each escaped-hole buffer after it has
+ * been concatenated in. */
+SS_EXPORT void ss_http_free_str(const char *buffer) {
+    if (buffer) free((void *)buffer);
+}
+
 /* ---- request-value probes (renamed off the legacy `request_value_*`) ---- */
 
 SS_EXPORT long long ss_http_value_length(const char *value) {

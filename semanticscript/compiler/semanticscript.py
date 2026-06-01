@@ -8609,6 +8609,11 @@ class EavCodegen:
         elif name == "ss_http_html_escape_str":
             fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
                              name="ss_http_html_escape_str")
+        elif name == "ss_http_free_str":
+            # R-136: release an ss_http_* buffer with the runtime lib's own free
+            # (cross-CRT-safe). void ss_http_free_str(const char *).
+            fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
+                             name="ss_http_free_str")
         elif name == "ss_http_serve_routes":
             # APP-RUN-5 webServer entry: int(host, port, count, methods**,
             # paths**, handlers**) -> blocks in the server loop.
@@ -9436,18 +9441,33 @@ class EavCodegen:
     def _emit_html_render(self, call, args, builder, sym):
         """Lower `html.render`: interleave the template's literal segments with
         its hole values (text holes auto-escaped, HtmlSafeUrl passed through),
-        concatenated into one rendered HTML string (README ss16, X-011)."""
+        concatenated into one rendered HTML string (README ss16, X-011).
+
+        R-136: each intermediate concat buffer and each escaped-hole buffer is a
+        fresh malloc; free them once the next `_concat` has copied them in, so a
+        multi-hole template doesn't leak one heap buffer per piece. Ownership is
+        tracked at codegen time — literal segments are global constants and
+        pass-through holes are borrowed (caller-owned), so neither is ever freed;
+        only values we know came from malloc (`_concat` / `ss_http_html_escape_str`)
+        reach `free`. The single final result stays owned by the caller."""
         tmpl_arg = args.get("template")
         tmpl_name = tmpl_arg.payload[2] if tmpl_arg and len(tmpl_arg.payload) >= 3 else None
         island = self.program.islands.get((tmpl_name, "html"), [])
         text = "\n".join(island)
         parts = __import__("re").split(r"\{\{\s*([\w.]+)\s*\}\}", text)
+        # Each owned buffer must be freed by the allocator that made it: a `_concat`
+        # buffer is JIT-malloc'd (host CRT -> "free"), but an escaped-hole buffer is
+        # malloc'd inside the native ss_http lib (which may link a different CRT heap
+        # on Windows -> "ss_http_free_str"). `*_free` is the free-fn name, or None
+        # for a borrowed/constant operand we must never free.
         result = None
+        result_free = None
         for i, part in enumerate(parts):
-            if i % 2 == 0:  # literal segment
+            if i % 2 == 0:  # literal segment -> a global constant (not owned)
                 if part == "":
                     continue
                 piece = self.global_string(part.encode("utf-8") + b"\x00")
+                piece_free = None
             else:  # hole name -> its (escaped) value
                 a = args.get(part)
                 if a is None or len(a.payload) < 3:
@@ -9459,9 +9479,21 @@ class EavCodegen:
                 # already-escaped markup). README ss16 §10 fragment newtypes.
                 if a.payload[1] not in ("HtmlSafeUrl", "HtmlFragment", "HtmlTrustedFragment"):
                     val = builder.call(self.runtime("ss_http_html_escape_str"), [val])
+                    piece_free = "ss_http_free_str"  # native-lib buffer
+                else:
+                    piece_free = None  # borrowed pass-through (caller owns it)
                 piece = val
-            result = (piece if result is None
-                      else self._concat(builder, result, piece, call.line))
+            if result is None:
+                result, result_free = piece, piece_free
+                continue
+            new = self._concat(builder, result, piece, call.line)
+            # Both operands are now fully copied into `new`; free the ones we own,
+            # each with its own allocator's free.
+            if result_free:
+                builder.call(self.runtime(result_free), [result])
+            if piece_free:
+                builder.call(self.runtime(piece_free), [piece])
+            result, result_free = new, "free"  # a `_concat` result is JIT-malloc'd
         return result if result is not None else self.global_string(b"\x00")
 
     # --- standard.test harness (README §35; std/standard.test.sem) ---------
@@ -11105,6 +11137,7 @@ def _referenced_runtime_symbols(program: Program) -> set:
                 target = inv.payload[0]
                 if target == "html.render":
                     out.add("ss_http_html_escape_str")
+                    out.add("ss_http_free_str")  # R-136: free escaped-hole buffers
                 elif target == "net.fetchText":      # APP-RUN-1 HTTP client
                     out.add("ss_net_fetch_text")
                 elif target == "net.freeTextBody":
