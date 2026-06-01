@@ -1,10 +1,9 @@
-# standard.event.semsig — DEFERRED event-stream contract (README ss27, X-046).
-# The async event stream + subscription runtime (one-emitter-to-many-listeners,
-# wasm-DOM event surface) is not specified in v0.3. This file records the FULL
-# conversion target for the ported apps/event-stream-smoke source: every event.*
-# intrinsic it invokes and the handle/name/id types they reference, so the app
-# type-resolves and lints clean. The runtime (the event.* bodies) lands later;
-# no event.* symbol is lowered in v0.3.
+# standard.event.semsig - process-local event stream contract (README ss27, X-046).
+# The current runtime is an in-process one-emitter-to-many-listeners stream used
+# by apps/event-stream-smoke. It provides stream/subscription handles,
+# append/receive/ack/close semantics, deterministic FIFO delivery, and safe
+# closed-handle behavior through the ss_event_* native runtime. Browser/DOM event
+# interop remains a separate future host integration.
 
 eventSig is semsig
 eventSig version "1.0"
@@ -13,11 +12,11 @@ eventSig describes standard.event
 
 EventStreamHandle is alias
 EventStreamHandle for OpaquePointer
-EventStreamHandle purpose "An opaque event stream handle (deferred runtime)"
+EventStreamHandle purpose "An opaque process-local event stream handle"
 
 EventSubscriptionHandle is alias
 EventSubscriptionHandle for OpaquePointer
-EventSubscriptionHandle purpose "An opaque subscription handle (deferred runtime)"
+EventSubscriptionHandle purpose "An opaque event subscription handle"
 
 EventOutputBuffer is alias
 EventOutputBuffer for OpaquePointer
@@ -62,7 +61,7 @@ openProcessStream arg queueCapacity EventQueueCapacity
 openProcessStream out stream EventStreamHandle
 openProcessStream owns stream cleanedBy event.closeStream
 openProcessStream async yes
-openProcessStream purpose "Open a process-local event stream (deferred runtime)"
+openProcessStream purpose "Open a process-local event stream"
 
 subscribeStream is intrinsic
 subscribeStream target event.subscribeStream
@@ -74,7 +73,7 @@ subscribeStream arg queueCapacity EventQueueCapacity
 subscribeStream out subscription EventSubscriptionHandle
 subscribeStream owns subscription cleanedBy event.closeSubscription
 subscribeStream async yes
-subscribeStream purpose "Create a subscription on a stream for an event type/key (deferred runtime)"
+subscribeStream purpose "Create a subscription on a stream for an event type/key"
 
 receiveEvent is intrinsic
 receiveEvent target event.receiveEvent
@@ -87,7 +86,7 @@ receiveEvent arg outPayloadJson EventOutputBuffer
 receiveEvent arg outPayloadCapacity EventBufferCapacity
 receiveEvent out eventId EventId
 receiveEvent async yes
-receiveEvent purpose "Await the next event on a subscription, copying fields into output buffers (deferred runtime)"
+receiveEvent purpose "Receive the next event id on a subscription"
 
 appendEvent is intrinsic
 appendEvent target event.appendEvent
@@ -97,7 +96,7 @@ appendEvent arg eventKey EventKey
 appendEvent arg payloadJson EventPayloadJson
 appendEvent out appendedEventId EventId
 appendEvent async yes
-appendEvent purpose "Append (emit) one event to the stream, fanning out to all subscriptions (deferred runtime)"
+appendEvent purpose "Append (emit) one event to the stream, fanning out to all subscriptions"
 
 acknowledgeEvent is intrinsic
 acknowledgeEvent target event.acknowledgeEvent
@@ -105,18 +104,18 @@ acknowledgeEvent arg subscription EventSubscriptionHandle
 acknowledgeEvent arg eventId EventId
 acknowledgeEvent out status EventStatusCode
 acknowledgeEvent async yes
-acknowledgeEvent purpose "Acknowledge a received event on a subscription (deferred runtime)"
+acknowledgeEvent purpose "Acknowledge a received event on a subscription"
 
 closeSubscription is intrinsic
 closeSubscription target event.closeSubscription
 closeSubscription arg subscription EventSubscriptionHandle
 closeSubscription out status EventStatusCode
 closeSubscription async yes
-closeSubscription purpose "Close a subscription and release its handle (deferred runtime)"
+closeSubscription purpose "Close a subscription and release its handle"
 
 closeStream is intrinsic
 closeStream target event.closeStream
 closeStream arg stream EventStreamHandle
 closeStream out status EventStatusCode
 closeStream async yes
-closeStream purpose "Close an event stream and release its handle (deferred runtime)"
+closeStream purpose "Close an event stream and release its handle"
