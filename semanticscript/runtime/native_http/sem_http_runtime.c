@@ -1332,6 +1332,17 @@ const char *ss_http_client_fetch(
     if (method == NULL || host == NULL || path == NULL) {
         return NULL;
     }
+    /* R-184: a CR or LF in any caller-supplied request field is formatted
+     * straight into the request line / headers below, so it would inject extra
+     * headers or split the request (request smuggling). CR/LF are structural
+     * HTTP delimiters and are never valid inside a method, request-target, host,
+     * or single header line — reject outright. (ss_http_header_value_ok returns 1
+     * for a NULL/absent header_line.) */
+    if (!ss_http_header_value_ok(method) || !ss_http_header_value_ok(path)
+            || !ss_http_header_value_ok(host)
+            || !ss_http_header_value_ok(header_line)) {
+        return NULL;
+    }
 #ifdef _WIN32
     if (!ss_http_client_winsock_ready()) {
         return NULL;
@@ -1513,13 +1524,21 @@ const char *ss_http_client_fetch(
     response[response_length] = '\0';
 
     int status_code = 0;
-    /* Only trust the status line when the response actually begins with the
-     * HTTP version token (review S2). */
-    if (response_length >= 5 && strncmp(response, "HTTP/", 5) == 0) {
-        const char *status_space = strchr(response, ' ');
-        if (status_space != NULL) {
-            status_code = atoi(status_space + 1);
-        }
+    /* R-184: strict status-line validation. Require exactly "HTTP/1.0 " or
+     * "HTTP/1.1 " followed by a 3-digit code in 100..599 and a delimiter, instead
+     * of the old "first space then atoi" (which accepted "HTTP/1.1 abc" -> 0,
+     * short codes, or trailing junk). A malformed status line yields status 0,
+     * which the body extractor treats as a non-2xx failure. strncmp stops at the
+     * NUL, and the && short-circuits before reading past a short response. */
+    if ((strncmp(response, "HTTP/1.1 ", 9) == 0
+            || strncmp(response, "HTTP/1.0 ", 9) == 0)
+            && response[9] >= '1' && response[9] <= '5'
+            && response[10] >= '0' && response[10] <= '9'
+            && response[11] >= '0' && response[11] <= '9'
+            && (response[12] == ' ' || response[12] == '\r' || response[12] == '\0')) {
+        status_code = (response[9] - '0') * 100
+                    + (response[10] - '0') * 10
+                    + (response[11] - '0');
     }
 
     char *result = ss_http_client_response_body_from_wire(response, status_code);
