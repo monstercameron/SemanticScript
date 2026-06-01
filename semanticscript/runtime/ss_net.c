@@ -35,25 +35,51 @@ static int ss_net_parse_url(const char *url, char *host, size_t hostcap,
     } else if (strncmp(p, "https://", 8) == 0) {
         return -1;  /* TLS not supported */
     }
-    const char *slash = strchr(p, '/');
-    const char *host_end = slash ? slash : p + strlen(p);
-    const char *colon = memchr(p, ':', (size_t)(host_end - p));
+    /* R-172: the authority (host[:port]) ends at the first '/', '?' or '#' —
+     * NOT just '/'. Previously a query-only URL ("host?q=1") folded the query
+     * into the host and lost it. */
+    const char *auth_end = p;
+    while (*auth_end && *auth_end != '/' && *auth_end != '?' && *auth_end != '#') {
+        ++auth_end;
+    }
+    const char *colon = memchr(p, ':', (size_t)(auth_end - p));
     size_t hl;
     if (colon) {
         hl = (size_t)(colon - p);
-        *port = atoi(colon + 1);
+        /* R-166: strict port — digits only, in 1..65535, no trailing junk.
+         * `atoi(colon+1)` accepted "8080junk", ":", "-5", and out-of-range. */
+        const char *ps = colon + 1;
+        char *endp = NULL;
+        long pv = strtol(ps, &endp, 10);
+        if (ps == auth_end || endp != auth_end || pv < 1 || pv > 65535) {
+            return -1;
+        }
+        *port = (int)pv;
     } else {
-        hl = (size_t)(host_end - p);
+        hl = (size_t)(auth_end - p);
         *port = 80;
     }
     if (hl == 0 || hl >= hostcap) return -1;
     memcpy(host, p, hl);
     host[hl] = 0;
-    if (slash) {
-        if (strlen(slash) >= pathcap) return -1;
-        strcpy(path, slash);
-    } else {
+    /* R-172: build the request target from auth_end with the fragment
+     * ('#'...) stripped (fragments are client-only and must not be sent). A
+     * query-only URL yields "/?q"; an empty/fragment-only tail yields "/". */
+    const char *target = auth_end;
+    const char *frag = strchr(target, '#');
+    size_t tlen = frag ? (size_t)(frag - target) : strlen(target);
+    if (tlen == 0) {
+        if (pathcap < 2) return -1;
         strcpy(path, "/");
+    } else if (*target == '?') {
+        if (tlen + 2 > pathcap) return -1;  /* leading '/' + tail + NUL */
+        path[0] = '/';
+        memcpy(path + 1, target, tlen);
+        path[tlen + 1] = 0;
+    } else {  /* starts with '/' */
+        if (tlen + 1 > pathcap) return -1;
+        memcpy(path, target, tlen);
+        path[tlen] = 0;
     }
     return 0;
 }
