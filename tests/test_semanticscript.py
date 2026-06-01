@@ -1699,6 +1699,56 @@ def test_repin_failure_is_json_envelope_and_atomic(tmp_path):
     assert not list(tmp_path.glob("*.tmp*"))
 
 
+def test_repin_check_json_status_tracks_stale_lock(tmp_path):
+    # R-171: a stale --check --json lock is a command failure in both rc and
+    # envelope ok/status, while text mode keeps its existing wording.
+    import json as _json
+    build = tmp_path / "build.sem"
+    build.write_text(
+        "X is project\nX module m\nX target console\nX entry main\n"
+        "X require example.org/u v1.0.0\n", encoding="utf-8")
+    subprocess.run([sys.executable, SEMANTICSCRIPT, "repin", str(tmp_path), "--json"],
+                   capture_output=True, text=True, encoding="utf-8", check=True)
+
+    current = subprocess.run([sys.executable, SEMANTICSCRIPT, "repin", str(tmp_path),
+                              "--check", "--json"],
+                             capture_output=True, text=True, encoding="utf-8")
+    current_env = _json.loads(current.stdout)
+    assert current.returncode == 0
+    assert current_env["surface"] == "sem.repin.v1"
+    assert current_env["ok"] is True
+    assert current_env["status"] == "up-to-date"
+    assert current_env["upToDate"] is True
+    assert current_env["wrote"] is False
+
+    build.write_text(
+        "X is project\nX module m\nX target console\nX entry main\n"
+        "X require example.org/u v1.0.1\n", encoding="utf-8")
+    stale = subprocess.run([sys.executable, SEMANTICSCRIPT, "repin", str(tmp_path),
+                            "--check", "--json"],
+                           capture_output=True, text=True, encoding="utf-8")
+    stale_env = _json.loads(stale.stdout)
+    assert stale.returncode == 1
+    assert stale_env["ok"] is False
+    assert stale_env["status"] == "stale"
+    assert stale_env["upToDate"] is False
+    assert stale_env["wrote"] is False
+
+    text = subprocess.run([sys.executable, SEMANTICSCRIPT, "repin", str(tmp_path),
+                           "--check"],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert text.returncode == 1
+    assert text.stdout == f"build.sem.lock STALE: {tmp_path / 'build.sem.lock'}\n"
+
+    missing = subprocess.run([sys.executable, SEMANTICSCRIPT, "repin",
+                              str(tmp_path / "no-build"), "--check", "--json"],
+                             capture_output=True, text=True, encoding="utf-8")
+    missing_env = _json.loads(missing.stdout)
+    assert missing.returncode == 2
+    assert missing_env["ok"] is False
+    assert missing_env["status"] == "path-error"
+
+
 def test_status_clean_survive_bad_cache_env(tmp_path):
     # R-118: status/clean return structured envelopes (no traceback) when
     # SEMANTICSCRIPT_CACHE_DIR points at a file; status does not create the dir.
@@ -1894,6 +1944,27 @@ def test_test_lane_empty_is_not_pass():
     p2 = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", f, "--lane", "e2e",
                          "--allow-empty", "--json"], capture_output=True, text=True, encoding="utf-8")
     assert _json.loads(p2.stdout)["ok"] is True and p2.returncode == 0
+
+
+def test_test_all_lanes_empty_is_not_pass():
+    # R-173: an all-lanes run with no discovered tests is no-tests (ok:false),
+    # not a vacuous pass, unless --allow-empty is explicit.
+    import json as _json
+    f = os.path.join(EXAMPLES, "hello_world.sem")
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", f, "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert env["tests"] == []
+    assert env["runtimeHarnessStatus"] == "no-tests"
+    assert env["compositeStatus"] == "no-tests"
+    assert env["ok"] is False and p.returncode == 1
+
+    p2 = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", f,
+                         "--allow-empty", "--json"],
+                        capture_output=True, text=True, encoding="utf-8")
+    env2 = _json.loads(p2.stdout)
+    assert env2["compositeStatus"] == "no-tests"
+    assert env2["ok"] is True and p2.returncode == 0
 
 
 def test_runtime_cache_key_includes_headers_and_manifest(tmp_path):
@@ -4390,6 +4461,32 @@ def test_entity_scoped_slice_json(capsys):
     assert env["surface"] == "sem.slice.v1"
     assert env["entity"] == "main" and env["kind"] == "operation"
     assert env["slice"]
+
+
+def test_slice_missing_entity_json_is_not_found_envelope(capsys):
+    # R-169: missing-entity failures in JSON mode stay on the sem.slice.v1 surface.
+    import json
+    rc = semanticscript.main([
+        "slice", os.path.join(EXAMPLES, "hello_world.sem"), "missingEntity", "--json"])
+    captured = capsys.readouterr()
+    env = json.loads(captured.out)
+    assert rc == 2
+    assert captured.err == ""
+    assert env["surface"] == "sem.slice.v1"
+    assert env["ok"] is False
+    assert env["status"] == "not-found"
+    assert env["entity"] == "missingEntity"
+    assert "no entity named 'missingEntity'" in env["diagnostics"][0]["message"]
+
+
+def test_slice_missing_entity_text_stays_plaintext(capsys):
+    # R-169: human-readable slice mode keeps the existing stderr diagnostic.
+    rc = semanticscript.main([
+        "slice", os.path.join(EXAMPLES, "hello_world.sem"), "missingEntity"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert "semanticscript: no entity named 'missingEntity'" in captured.err
 
 
 _HTML_RENDER_SRC = (
@@ -9251,6 +9348,28 @@ def test_json_unicode_escape_rejects_embedded_nul():
     assert "code_point == 0" in dec and "return -1" in dec
 
 
+def test_c_libc_heap_and_file_handles_tombstoned():
+    # R-199: the raw c.* heap/file shims (ss_libc.c) get the same tombstone
+    # treatment — live registries so a double free / foreign free / double fclose /
+    # use-after-fclose fails closed (no-op or safe sentinel) instead of corrupting
+    # the allocator or CRT. Source guard; harness_libc.c drives the misuse
+    # orderings under ASAN+UBSAN in CI, and taskforge-tui round-trips the real
+    # malloc/free/fopen/fprintf/fgets/fclose path.
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_libc.c"),
+               encoding="utf-8").read()
+    for fn in ("ss_c_track", "ss_c_is_live", "ss_c_untrack", "ss_c_stream_usable"):
+        assert fn in src, fn
+    free = re.search(r"void ss_c_free\(.*?\n\}", src, re.S).group(0)
+    assert "ss_c_untrack(&ss_c_live_allocs" in free
+    fclose = re.search(r"int ss_c_fclose\(.*?\n\}", src, re.S).group(0)
+    assert "ss_c_untrack(&ss_c_live_streams" in fclose
+    for fn in ("ss_c_fgets", "ss_c_fprintf", "ss_c_fflush"):
+        m = re.search(r"\b" + re.escape(fn) + r"\([^{]*\{.*?\n\}", src, re.S)
+        assert m and "ss_c_stream_usable" in m.group(0), fn
+
+
 def test_async_runtime_handle_lifecycle_guarded():
     # R-195: the async future/channel/interval handles get the sqlite/event/json
     # tombstone treatment — a per-family live registry so a double await/close or a
@@ -13235,4 +13354,3 @@ def test_x_215():
 def test_remaining_todos_complete():
     """Comprehensive test coverage for all remaining workstream features."""
     assert True
-
