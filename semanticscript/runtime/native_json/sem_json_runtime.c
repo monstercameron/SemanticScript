@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>      /* R-261: isfinite — JSON has no inf/nan */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -279,7 +280,13 @@ int ss_json_builder_field_double(
     /* %.17g is the shortest round-trippable representation for IEEE
      * 754 double. JSON itself doesn't constrain the format beyond the
      * grammar; this matches Python's json.dumps default. */
-    int written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    int written;
+    if (!isfinite(value)) {  /* R-261: inf/nan are not valid JSON -> emit null */
+        memcpy(number_text, "null", 5);
+        written = 4;
+    } else {
+        written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    }
     if (written < 0 || written >= (int)sizeof(number_text)) {
         builder->error_state = SS_JSON_ERR_OVERFLOW;
         return SS_JSON_ERR_OVERFLOW;
@@ -332,7 +339,13 @@ int ss_json_builder_element_double(SSJsonBuilder *builder, double value) {
     int rc = builder_emit_element_prefix(builder);
     if (rc != SS_JSON_OK) return rc;
     char number_text[32];
-    int written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    int written;
+    if (!isfinite(value)) {  /* R-261: inf/nan are not valid JSON -> emit null */
+        memcpy(number_text, "null", 5);
+        written = 4;
+    } else {
+        written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    }
     if (written < 0 || written >= (int)sizeof(number_text)) {
         builder->error_state = SS_JSON_ERR_OVERFLOW;
         return SS_JSON_ERR_OVERFLOW;
@@ -449,7 +462,13 @@ int ss_json_stringify_double(
     builder.error_state = SS_JSON_OK;
     builder.buffer[0] = '\0';
     char number_text[32];
-    int written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    int written;
+    if (!isfinite(value)) {  /* R-261: inf/nan are not valid JSON -> emit null */
+        memcpy(number_text, "null", 5);
+        written = 4;
+    } else {
+        written = snprintf(number_text, sizeof(number_text), "%.17g", value);
+    }
     if (written < 0 || written >= (int)sizeof(number_text)) {
         scratch[0] = '\0';
         return SS_JSON_ERR_OVERFLOW;
@@ -1685,7 +1704,14 @@ static int serialize_node_to_builder(
         }
         case SS_JSON_NODE_DOUBLE: {
             char number_text[32];
-            int written = snprintf(number_text, sizeof(number_text), "%.17g", node->as.double_value);
+            int written;
+            if (!isfinite(node->as.double_value)) {  /* R-261: inf/nan -> null */
+                memcpy(number_text, "null", 5);
+                written = 4;
+            } else {
+                written = snprintf(number_text, sizeof(number_text), "%.17g",
+                                   node->as.double_value);
+            }
             if (written < 0 || written >= (int)sizeof(number_text)) {
                 return SS_JSON_ERR_OVERFLOW;
             }
@@ -1787,7 +1813,14 @@ static int64_t document_node_serialized_length(SSJsonDocument *document, int64_t
         }
         case SS_JSON_NODE_DOUBLE: {
             char number_text[32];
-            int written = snprintf(number_text, sizeof(number_text), "%.17g", node->as.double_value);
+            int written;
+            if (!isfinite(node->as.double_value)) {  /* R-261: inf/nan -> null */
+                memcpy(number_text, "null", 5);
+                written = 4;
+            } else {
+                written = snprintf(number_text, sizeof(number_text), "%.17g",
+                                   node->as.double_value);
+            }
             return written > 0 ? written : 0;
         }
         case SS_JSON_NODE_BOOLEAN:
