@@ -11310,17 +11310,81 @@ EXPERIMENTAL_STDLIB_MODULES = frozenset({"bcrypt", "event", "gui", "log"})
 
 EAV_AGENT_RULES = (
     "EAV-Steps: flat semantic tape, one row = one record, column-1 subject, "
-    "column-2 predicate. No expressions/infix/parens/commas/braces. Calls are "
-    "multi-row (is call / in OP / invokes TARGET / arg / out|catch|discards). "
-    "Effects need a covering capability. Use the stable loop: check -> "
-    "fix --plan -> patch -> fmt --check -> test. Build/run with `semanticscript build` / "
-    "`semanticscript run`."
+    "column-2 predicate. No expressions/infix/parens/commas/braces. Every entity "
+    "opens with `<name> is <kind>`; calls are multi-row (is call / in OP / invokes "
+    "TARGET / arg / out|catch|discards). Effects need a covering `uses`+`grants` "
+    "capability. Stable loop: check -> fix --plan -> patch -> fmt --check -> test. "
+    "Run (JIT) with `semanticscript run <file|dir>`; build a native exe (console "
+    "or webServer) with `semanticscript build <path> -o out` (clang/zig needed for "
+    "the native runtime). The compiler is self-contained under `semanticscript/`; "
+    "worked apps live in `apps/`; start at docs/getting-started.md. Agent surface: "
+    "`agent-docs`, `skills [name]`, `check --json`, `eval`, `docs <file>`, and the "
+    "stdio `mcp` server."
 )
 
+# name -> {summary, body}. `skills` (no arg) lists summaries; `skills <name>`
+# returns the full body (the legacy list-vs-get contract). Content tracks the
+# current toolchain — self-contained runtime, native build, the apps, the MCP.
 EAV_SKILLS = {
-    "eav-start": "Load version-matched rules, then inspect with check/graph/slice.",
-    "eav-syntax": "Subject-first rows; runtimeBinding for native ABIs; §26 .semsig.",
-    "eav-run": "JIT with `semanticscript run`; native exe with `semanticscript build`.",
+    "eav-start": {
+        "summary": "Load version-matched rules, then inspect with check/graph/slice.",
+        "body": (
+            "Start every EAV task by loading the rules (`semanticscript agent-docs`) "
+            "and the syntax skill (`semanticscript skills eav-syntax`). Inspect a "
+            "program before editing: `check --json` (parse+lint), `symbols`/`context` "
+            "(entity graph + project envelope), `graph`/`slice` (dependencies), `size` "
+            "(footprint). Edit with the stable loop: `check` -> `fix --plan` (repair "
+            "plan from diagnostics) -> `patch` (apply) -> `fmt --check` -> `test`. "
+            "Never hand-edit IR; the compiler owns lowering."),
+    },
+    "eav-syntax": {
+        "summary": "Subject-first rows; runtimeBinding for native ABIs; §26 .semsig.",
+        "body": (
+            "Every line is `<subject> <predicate> <payload>` — token 1 is the subject, "
+            "token 2 the predicate. No expressions, infix, parens, commas, or braces. "
+            "An entity opens with `<name> is <kind>` (operation/call/capability/record/"
+            "enum/error/storage/webServer/module/project/alias/...). A call is several "
+            "rows: `is call`, `in <owner>`, `invokes <target>`, `arg <slot> <Type> "
+            "<value>`, then `out <bind> <Type>` | `catch <err> <ErrType>` | `discards "
+            "\"why\"`. An operation declares `out`, `effect`, `uses` (a capability that "
+            "`grants` the effect), and `do <call>` steps. Native ABIs bind through "
+            "`body runtimeBinding <symbol>` with the typed contract in a §26 `.semsig`. "
+            "Islands: `body json|sql|html` + indented content embed literally."),
+    },
+    "eav-run": {
+        "summary": "JIT with `semanticscript run`; native exe with `semanticscript build`.",
+        "body": (
+            "Run a single file or a project directory with `semanticscript run <path>` "
+            "(JIT via llvmlite; no C compiler needed for pure console/compute). Build a "
+            "standalone native executable with `semanticscript build <path> -o out` — "
+            "works for `target console` and `target webServer`; needs clang or `zig cc` "
+            "for the native runtime libs (sqlite/http/json/bcrypt/...). A project is a "
+            "directory with `build.sem` + `src/`. See `apps/` for runnable examples and "
+            "`docs/getting-started.md` for a hello-world."),
+    },
+    "eav-toolchain": {
+        "summary": "The CLI + the stdio MCP server surface.",
+        "body": (
+            "Core: `run build check lint fmt test eval`. Inspect: `lower` (emit IR), "
+            "`symbols context deps graph slice size describe`. Agent: `agent-docs`, "
+            "`skills`, `docs <file>` (per-file entity docs/search), `explain <CODE>`, "
+            "`fix --plan` + `patch`/`verify-patch`, `query`, `scaffold`/`new`. "
+            "Structured output is a versioned `sem.<tool>.v1` JSON envelope (pass "
+            "`--json` where offered). The `mcp` subcommand is a stdio JSON-RPC server "
+            "exposing version/agent_docs/check/readiness/deps/context/symbols/size/"
+            "eval/fix_plan/docs/test/skills as MCP tools."),
+    },
+    "eav-apps": {
+        "summary": "Worked patterns under apps/ (web API, TUI, HTTP).",
+        "body": (
+            "Learn idioms from the runnable apps: `taskforge-web` (a sqlite+bcrypt+json"
+            "+log JSON REST API on the `webServer` target — auth, sessions, CRUD), "
+            "`taskforge-tui` (a console state machine over `c.*`/`pointer.*` byte ops), "
+            "`http-runtime-gauntlet` (the `webServer` codegen + `http.*` request/"
+            "response), `taskforge-api-client` (a `net.fetchText` HTTP client), and "
+            "`event-stream-smoke`/`desktop-window-smoke` (event + headless GUI "
+            "runtimes). All are e2e-tested in `tests/test_apps.py`."),
+    },
 }
 
 
@@ -11354,6 +11418,7 @@ EAV_MCP_TOOLS = {
     "fix_plan": (["fix", "--plan"], "Repair plan from diagnostics", True),
     "docs": (["docs"], "Per-file entity docs (list/get/search)", True),
     "test": (["test"], "Run tag-test operations", True),
+    "skills": (["skills"], "EAV agent skills (list; pass `skill` for a body)", False),
 }
 
 
@@ -11367,6 +11432,8 @@ def _mcp_dispatch(tool: str, arguments: dict) -> str:
     argv = list(spec[0])
     if "path" in arguments:
         argv.append(arguments["path"])
+    if arguments.get("skill"):           # `skills` get-by-name (positional)
+        argv.append(arguments["skill"])
     for flag in ("search", "get"):
         if arguments.get(flag):
             argv += [f"--{flag}", arguments[flag]]
@@ -11401,6 +11468,8 @@ def mcp_handle(request: dict) -> dict:
             if name == "docs":
                 props["search"] = {"type": "string", "description": "keyword-ranked search query"}
                 props["get"] = {"type": "string", "description": "entity name to fetch"}
+            if name == "skills":
+                props["skill"] = {"type": "string", "description": "skill name to fetch its full body"}
             schema = {"type": "object", "properties": props}
             if required:
                 schema["required"] = required
@@ -11603,13 +11672,21 @@ def cmd_agent_docs(args) -> int:
 
 
 def cmd_skills(args) -> int:
-    """List or get EAV agent skills (sem.skills.v1)."""
+    """List EAV agent skills, or get full skill bodies by name (sem.skills.v1).
+
+    `skills` with no names lists summaries; `skills <name>...` returns the full
+    body for each named skill — the legacy list-vs-get contract."""
     names = getattr(args, "names", None)
-    items = [
-        {"name": k, "summary": v}
-        for k, v in EAV_SKILLS.items()
-        if not names or k in names
-    ]
+    if names:
+        items = []
+        for k in names:
+            spec = EAV_SKILLS.get(k)
+            if spec is not None:
+                items.append({"name": k, "summary": spec["summary"],
+                              "body": spec["body"]})
+    else:
+        items = [{"name": k, "summary": v["summary"]}
+                 for k, v in EAV_SKILLS.items()]
     sys.stdout.write(_json_envelope("sem.skills.v1", skills=items) + "\n")
     return 0
 
