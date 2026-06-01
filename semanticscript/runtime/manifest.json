@@ -13,6 +13,16 @@
       ]
     },
     {
+      "name": "ss_path",
+      "comment": "WS3-111: SafePath builders and portable lexical path helpers for standard.path.",
+      "provides": [
+        "ss_path_"
+      ],
+      "sources": [
+        "ss_path.c"
+      ]
+    },
+    {
       "name": "ss_runtime",
       "provides": [
         "ss_sqlite_"

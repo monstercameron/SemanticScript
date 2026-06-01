@@ -9779,6 +9779,146 @@ def test_http_stdlib_parses_lints_and_has_surface():
         assert body.payload[1].startswith("ss_http_")
 
 
+def test_path_stdlib_parses_lints_and_has_safe_surface():
+    # WS3-111: standard.path is the first-class SafePath constructor surface,
+    # backed by runtimeBinding ops rather than a signature-only placeholder.
+    src = open(os.path.join(STD, "standard.path.sem"), encoding="utf-8").read()
+    prog = semanticscript.parse(src)
+    assert not any(d.severity == "error" for d in semanticscript.lint(prog))
+    ops = {n for n in prog.order if prog.entities[n].kind == "operation"}
+    surface = {
+        "fromLiteral", "joinUnderRoot", "normalize", "basename", "extension",
+        "parent", "isChildOf", "separator", "releasePath",
+    }
+    assert surface.issubset(ops), surface - ops
+    for n in surface:
+        body = prog.entities[n].fact("body")
+        assert body and body.payload[0] == "runtimeBinding"
+        assert body.payload[1].startswith("ss_path_")
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["path"]["status"] == "native"
+    assert led["path"]["unbackedPublic"] is False
+    assert led["path"]["documentationGap"] is False
+
+
+def test_path_safe_type_required_at_path_sink():
+    # WS3-111/X-071: a path-sensitive sink can require SafePath exactly. A raw
+    # String must be minted through standard.path first. The newtype check may
+    # reject first (SS3710), before sink typing has to report SS3071.
+    stdlib = open(os.path.join(STD, "standard.path.sem"), encoding="utf-8").read()
+    sink = (
+        "useFile is operation\nuseFile in file SafePath\nuseFile out ExitCode\n"
+        'useFile async no\nuseFile purpose "p"\nuseFile invariant "i"\n'
+        "useFile trustConstraint arg file SafePath\n"
+        "useFile let okCode immutable ExitCode 0\nuseFile return okCode\n"
+    )
+    bad = (
+        stdlib + "\n" + sink +
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let raw immutable String "logs/app.log"\n'
+        "main let okCode immutable ExitCode 0\nmain do openIt\nmain return okCode\n"
+        "openIt is call\nopenIt in main\nopenIt invokes useFile\n"
+        "openIt arg file String raw\nopenIt out status ExitCode\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(bad)
+    assert getattr(exc.value, "code", None) in {"SS3710", "SS3071"}
+
+    good = (
+        stdlib + "\n" + sink +
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let raw immutable String "logs/app.log"\n'
+        "main let okCode immutable ExitCode 0\nmain do mk\n"
+        "main branch ifError mk goto failed\nmain do openIt\nmain return okCode\n"
+        "main at failed return okCode\n"
+        "mk is call\nmk in main\nmk invokes fromLiteral\n"
+        "mk arg literal String raw\nmk out safe SafePath\nmk catch pathErr PathError\n"
+        "openIt is call\nopenIt in main\nopenIt invokes useFile\n"
+        "openIt arg file SafePath safe\nopenIt out status ExitCode\n"
+    )
+    prog = semanticscript.parse(good)
+    assert not any(d.severity == "error" for d in semanticscript.lint(prog))
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the path runtime")
+def test_e2e_path_safe_builders_through_real_runtime():
+    # WS3-111: path builders normalize mixed/percent-encoded separators, expose
+    # basename/extension/parent/isChildOf, and reject traversal through PathError.
+    stdlib = open(os.path.join(STD, "standard.path.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        'main uses stdoutWriter\nmain async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let rootLiteral immutable String "data"\n'
+        'main let childLiteral immutable String "nested%2freport.txt"\n'
+        'main let badLiteral immutable String "safe/%252e%252e/secret.txt"\n'
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 7\n"
+        "main do root\nmain branch ifError root goto failed\n"
+        "main do joined\nmain branch ifError joined goto failed\n"
+        "main do base\nmain branch ifError base goto failed\n"
+        "main do ext\nmain branch ifError ext goto failed\n"
+        "main do parentPath\nmain branch ifError parentPath goto failed\n"
+        "main do childCheck\nmain branch ifError childCheck goto failed\n"
+        "main do showJoined\nmain do showBase\nmain do showExt\n"
+        "main do showParent\nmain do showChild\n"
+        "main do badPath\nmain branch ifError badPath goto rejected\n"
+        "main return failCode\n"
+        "main at rejected return okCode\n"
+        "main at failed return failCode\n"
+        "root is call\nroot in main\nroot invokes fromLiteral\n"
+        "root arg literal String rootLiteral\nroot out rootPath SafePath\nroot catch e1 PathError\n"
+        "joined is call\njoined in main\njoined invokes joinUnderRoot\n"
+        "joined arg root SafePath rootPath\njoined arg child String childLiteral\n"
+        "joined out joinedPath SafePath\njoined catch e2 PathError\n"
+        "base is call\nbase in main\nbase invokes basename\n"
+        "base arg input SafePath joinedPath\nbase out baseName String\nbase catch e3 PathError\n"
+        "ext is call\next in main\next invokes extension\n"
+        "ext arg input SafePath joinedPath\next out extName String\next catch e4 PathError\n"
+        "parentPath is call\nparentPath in main\nparentPath invokes parent\n"
+        "parentPath arg input SafePath joinedPath\nparentPath out parentName SafePath\n"
+        "parentPath catch e5 PathError\n"
+        "childCheck is call\nchildCheck in main\nchildCheck invokes isChildOf\n"
+        "childCheck arg root SafePath rootPath\nchildCheck arg child SafePath joinedPath\n"
+        "childCheck out isChild Int32\nchildCheck catch e6 PathError\n"
+        "badPath is call\nbadPath in main\nbadPath invokes fromLiteral\n"
+        "badPath arg literal String badLiteral\nbadPath out ignored SafePath\nbadPath catch e7 PathError\n"
+        "showJoined is call\nshowJoined in main\nshowJoined invokes console.writeLine\n"
+        "showJoined arg text SafePath joinedPath\n"
+        "showBase is call\nshowBase in main\nshowBase invokes console.writeLine\n"
+        "showBase arg text String baseName\n"
+        "showExt is call\nshowExt in main\nshowExt invokes console.writeLine\n"
+        "showExt arg text String extName\n"
+        "showParent is call\nshowParent in main\nshowParent invokes console.writeLine\n"
+        "showParent arg text SafePath parentName\n"
+        "showChild is call\nshowChild in main\nshowChild invokes console.writeIntegerLine\n"
+        "showChild arg value Int32 isChild\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
+        input=stdlib + "\n" + main, capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "data/nested/report.txt",
+        "report.txt",
+        ".txt",
+        "data/nested",
+        "1",
+    ]
+
+
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the http runtime")
 def test_e2e_http_url_codec_roundtrip_through_real_runtime():
     # WS3-017: compose standard.http with a driver main and JIT-run a URL
