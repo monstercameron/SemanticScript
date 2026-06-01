@@ -2089,6 +2089,83 @@ def test_stdlib_readiness_scratch_pointer_inventory():
     assert semanticscript._scratch_pointer_apis(owned) == []
 
 
+def test_stdlib_readiness_documentation_completeness():
+    # WS3-110 (`->test`): a public API must document itself — every intrinsic needs
+    # a `purpose` description, and any intrinsic that `owns` an output must name its
+    # cleanup. The gate fails on either gap in a public (non-deferred) module. The
+    # stdlib is currently fully documented; this keeps it that way.
+    led = semanticscript.stdlib_readiness_ledger()
+    gaps = sorted(m for m, e in led.items() if e["documentationGap"])
+    assert gaps == [], f"public stdlib modules with undocumented intrinsics: {gaps}"
+    # sqlite is the canonical owned-handle case: openDatabase owns its handle AND
+    # now names the cleanup, so it is not flagged.
+    assert led["sqlite"]["ownsWithoutCleanup"] == []
+    assert led["sqlite"]["undocumentedApis"] == []
+    # the detector (rows are column-0, matching the real .semsig format): an
+    # intrinsic with no `purpose` row is undocumented
+    nodoc = "frob is intrinsic\nfrob target x.frob\nfrob arg a Int64\n"
+    g = semanticscript._documentation_gaps(nodoc)
+    assert g["undocumented"] == ["frob"] and g["ownsWithoutCleanup"] == []
+    # a `purpose` row clears it
+    g = semanticscript._documentation_gaps(nodoc + "frob purpose \"frobs a\"\n")
+    assert g["undocumented"] == []
+    # an `owns` with no cleanup (neither inline nor a sibling row) is a gap...
+    leaky = ("openIt is intrinsic\nopenIt out h Handle\nopenIt owns h\n"
+             "openIt purpose \"open\"\n")
+    assert semanticscript._documentation_gaps(leaky)["ownsWithoutCleanup"] == ["openIt"]
+    # ...cleared by a sibling `cleanedBy` row (the two-row form, e.g. memory)...
+    sib = leaky + "openIt cleanedBy x.close\n"
+    assert semanticscript._documentation_gaps(sib)["ownsWithoutCleanup"] == []
+    # ...or by the inline `owns <slot> cleanedBy <t>` form (e.g. json)
+    inline = ("openIt is intrinsic\nopenIt out h Handle\n"
+              "openIt owns h cleanedBy x.close\nopenIt purpose \"open\"\n")
+    assert semanticscript._documentation_gaps(inline)["ownsWithoutCleanup"] == []
+    # a borrowed handle return (no `owns` row at all) is NOT a gap — not a false pos
+    borrowed = "childOf is intrinsic\nchildOf out c Node\nchildOf purpose \"child\"\n"
+    g = semanticscript._documentation_gaps(borrowed)
+    assert g["undocumented"] == [] and g["ownsWithoutCleanup"] == []
+
+
+def test_stdlib_readiness_tier_profile():
+    # WS3-120: every module carries an importance `tier` (core vs nice-to-have
+    # secondary), ORTHOGONAL to maturity (`deferred`). The readiness surface can
+    # filter by tier, but the tier carries NO gate relief — a secondary module
+    # faces the exact same readiness gate as a core one.
+    import json as _json
+    led = semanticscript.stdlib_readiness_ledger()
+    # every entry has a tier in the allowed set
+    assert all(e["tier"] in ("core", "secondary") for e in led.values())
+    # gui is the one current secondary (a convenience UI layer); it is BOTH
+    # secondary and deferred — the two axes are independent.
+    assert led["gui"]["tier"] == "secondary"
+    assert led["gui"]["deferred"] is True
+    # a foundational module is core
+    assert led["math"]["tier"] == "core" and led["sqlite"]["tier"] == "core"
+    # the secondary set must name only real, classified modules (no stale entries)
+    for m in semanticscript.STDLIB_SECONDARY_MODULES:
+        assert m in led, m
+    # tier carries NO gate relief: the gate fields are computed for a secondary
+    # module exactly as for a core one (same pipeline, no tier short-circuit).
+    for key in ("unbackedPublic", "unacknowledgedScratchPointer",
+                "documentationGap", "undocumentedApis"):
+        assert key in led["gui"], key
+    # the CLI filters the VIEW by tier while the gate still covers the platform
+    full = _json.loads(subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "stdlib-readiness", "--json"],
+        capture_output=True, text=True, encoding="utf-8").stdout)
+    sec = _json.loads(subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "stdlib-readiness", "--json", "--tier", "secondary"],
+        capture_output=True, text=True, encoding="utf-8").stdout)
+    assert full["tierCounts"]["secondary"] >= 1
+    # the secondary view shows only secondary modules...
+    assert set(sec["modules"]) and all(
+        e["tier"] == "secondary" for e in sec["modules"].values())
+    # ...but the gate result (ok) is identical to the full run — filtering a tier
+    # cannot hide a platform failure.
+    assert sec["ok"] == full["ok"]
+    assert "gui" in full["modules"] and "math" not in sec["modules"]
+
+
 def test_test_lane_empty_is_not_pass():
     # R-158: a selected lane that discovers zero tests is no-tests (ok:false),
     # so a misspelled/unimplemented lane cannot green CI — unless --allow-empty.

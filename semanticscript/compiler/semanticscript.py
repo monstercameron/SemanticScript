@@ -13203,6 +13203,19 @@ STDLIB_INTRINSIC_MODULES = frozenset({
 STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "json"})
 
 
+# WS3-120: the nice-to-have / secondary stdlib tier — additive convenience APIs
+# that are NOT v0.3 safety blockers, kept distinct so the platform can grow without
+# confusing optional batteries with core guarantees. `tier` is ORTHOGONAL to
+# `deferred` (maturity): a module can be secondary AND ready, or core AND deferred.
+# Crucially, tier carries NO gate relief — a secondary module faces the exact same
+# readiness gate (unbacked-public / raw-scratch-pointer / documentation) as a core
+# one (enforced by `->test`); the tier only labels importance class for filtering.
+# `gui` is the one convenience layer in the current surface (a UI nicety, also
+# deferred); the future WS3-121..131 modules (cli/config/cache/archive/id/...) join
+# here as they land.
+STDLIB_SECONDARY_MODULES = frozenset({"gui"})
+
+
 def _scratch_pointer_apis(semsig_text: str) -> list:
     """WS3-110: intrinsics in a ``.semsig`` that expose the C-style caller-scratch
     contract — a raw ``OpaquePointer``/``Buffer`` arg PLUS a separate length/
@@ -13339,6 +13352,9 @@ def stdlib_readiness_ledger() -> dict:
         ledger[mod] = {
             "status": status,
             "deferred": deferred,
+            # WS3-120: importance class (core vs nice-to-have), orthogonal to the
+            # maturity classified above; carries no gate relief.
+            "tier": "secondary" if mod in STDLIB_SECONDARY_MODULES else "core",
             "semsig": ev.get("semsig", False),
             "lowered": ev.get("lowered", False),
             # an unbacked public API: signature-only with no explicit deferral
@@ -14271,6 +14287,9 @@ def cmd_stdlib_readiness(args) -> int:
     then fail at lower/run, so app authors can tell cohesive platform APIs from
     scaffolding."""
     ledger = stdlib_readiness_ledger()
+    # the GATE is always computed over the FULL platform — WS3-120: a tier filter
+    # narrows the VIEW but never the gate, so a failure cannot be hidden by asking
+    # only for one tier, and a secondary module faces the same gate as a core one.
     unbacked = sorted(m for m, e in ledger.items() if e["unbackedPublic"])
     leaks = sorted(m for m, e in ledger.items() if e["unacknowledgedScratchPointer"])
     doc_gaps = sorted(m for m, e in ledger.items() if e["documentationGap"])
@@ -14284,20 +14303,27 @@ def cmd_stdlib_readiness(args) -> int:
     status = "+".join(parts) if parts else "ok"
     counts = {s: sum(1 for e in ledger.values() if e["status"] == s)
               for s in ("native", "lowered", "intrinsic", "signature-only")}
+    tier_counts = {t: sum(1 for e in ledger.values() if e["tier"] == t)
+                   for t in ("core", "secondary")}
     # tracked (acknowledged) scratch-pointer contracts, for graduation visibility
     tracked_scratch = {m: e["scratchPointerApis"] for m, e in ledger.items()
                        if e["scratchPointerApis"]}
+    # WS3-120: `--tier core|secondary` filters the displayed inventory only.
+    tier_filter = getattr(args, "tier", None)
+    view = {m: e for m, e in ledger.items()
+            if not tier_filter or e["tier"] == tier_filter}
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope(
             "sem.stdlibReadiness.v1", ok=ok,
             status=status,
-            counts=counts, unbackedPublic=unbacked,
+            counts=counts, tierCounts=tier_counts, tierFilter=tier_filter,
+            unbackedPublic=unbacked,
             scratchPointerLeak=leaks, scratchPointerApis=tracked_scratch,
             documentationGap=doc_gaps,
             deferred=sorted(m for m, e in ledger.items() if e["deferred"]),
-            modules=ledger) + "\n")
+            modules=view) + "\n")
     else:
-        for mod, e in sorted(ledger.items()):
+        for mod, e in sorted(view.items()):
             mark = " (deferred)" if e["deferred"] else ""
             flag = "  <- UNBACKED PUBLIC" if e["unbackedPublic"] else ""
             if e["unacknowledgedScratchPointer"]:
@@ -14308,7 +14334,8 @@ def cmd_stdlib_readiness(args) -> int:
                 gaps = e["undocumentedApis"] + [
                     f"{n}(owns-no-cleanup)" for n in e["ownsWithoutCleanup"]]
                 flag += f"  <- DOC GAP: {', '.join(gaps)}"
-            print(f"{mod:14} {e['status']:15}{mark}{flag}")
+            tier = "" if e["tier"] == "core" else "  [secondary]"
+            print(f"{mod:14} {e['status']:15}{tier}{mark}{flag}")
         if unbacked:
             sys.stderr.write(
                 f"semanticscript: unbacked public stdlib modules (no implementation, "
@@ -14954,6 +14981,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_stdlib = sub.add_parser("stdlib-readiness",
                                help="stdlib module maturity ledger (WS3-110)")
     sp_stdlib.add_argument("--json", action="store_true")
+    sp_stdlib.add_argument("--tier", choices=("core", "secondary"), default=None,
+                           help="filter the displayed inventory by importance tier "
+                                "(WS3-120); the gate still covers the full platform")
     sp_stdlib.set_defaults(func=cmd_stdlib_readiness)
 
     sp_mcp = sub.add_parser("mcp", help="run the MCP stdio JSON-RPC server")
