@@ -1,4 +1,5 @@
 #include "sem_bcrypt_runtime.h"
+#include "../native_platform/ss_platform_entropy.h"
 
 /*
  * Important naming-collision note: this file uses TWO things both
@@ -9,13 +10,11 @@
  *      third_party/bcrypt/crypt_blowfish.c. Symbol prefix:
  *      `_crypt_blowfish_rn` / `_crypt_gensalt_blowfish_rn`.
  *
- *   2. Windows's Cryptography Next-Generation (CNG) API, which
- *      exposes BCryptGenRandom through bcrypt.dll for platform
- *      randomness. Symbol prefix: `BCryptGenRandom`.
+ *   2. The native_platform entropy API, which owns OS CSPRNG selection
+ *      and linker requirements for all runtimes that need randomness.
  *
- * The two are unrelated and the symbol prefixes don't overlap, so
- * including both is safe — but reviewers should not assume the
- * Windows CNG entry points perform the password hash.
+ * The two are unrelated; platform randomness provides salt/session entropy,
+ * not password hashing.
  */
 
 #include "../../../third_party/bcrypt/crypt_blowfish.h"
@@ -26,19 +25,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32)
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
-#  include <bcrypt.h>     /* Windows CNG — provides BCryptGenRandom */
-#  pragma comment(lib, "bcrypt.lib")
-#elif defined(__linux__)
-#  include <sys/random.h>  /* getrandom(2) */
-#  include <errno.h>
-#else
-#  include <fcntl.h>
-#  include <unistd.h>
-#endif
 
 /* ----- random bytes ----- */
 
@@ -57,47 +43,9 @@ int ss_random_bytes(unsigned char *out_buffer, int byte_count) {
         return SS_BCRYPT_ERR_CONFIG;
     }
 
-#if defined(_WIN32)
-    NTSTATUS status = BCryptGenRandom(
-        NULL, out_buffer, (ULONG)byte_count,
-        BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    if (status != 0) {
-        return SS_BCRYPT_ERR_RANDOM;
-    }
-    return SS_BCRYPT_OK;
-#elif defined(__linux__)
-    /* getrandom can be interrupted; loop until we've filled the
-     * buffer or hit a non-EINTR error. */
-    int total_read = 0;
-    while (total_read < byte_count) {
-        ssize_t step = getrandom(
-            out_buffer + total_read,
-            (size_t)(byte_count - total_read),
-            0);
-        if (step < 0) {
-            if (errno == EINTR) continue;
-            return SS_BCRYPT_ERR_RANDOM;
-        }
-        total_read += (int)step;
-    }
-    return SS_BCRYPT_OK;
-#else
-    /* /dev/urandom fallback for any POSIX target without getrandom. */
-    int fd = open("/dev/urandom", O_RDONLY);
-    if (fd < 0) return SS_BCRYPT_ERR_RANDOM;
-    int total_read = 0;
-    while (total_read < byte_count) {
-        ssize_t step = read(fd, out_buffer + total_read,
-                            (size_t)(byte_count - total_read));
-        if (step <= 0) {
-            close(fd);
-            return SS_BCRYPT_ERR_RANDOM;
-        }
-        total_read += (int)step;
-    }
-    close(fd);
-    return SS_BCRYPT_OK;
-#endif
+    return ss_platform_random_bytes(out_buffer, (size_t)byte_count) == 0
+        ? SS_BCRYPT_OK
+        : SS_BCRYPT_ERR_RANDOM;
 }
 
 /* ----- bcrypt hash ----- */

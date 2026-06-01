@@ -23,6 +23,7 @@ _VALID_MANIFEST_PLATFORMS = {"windows", "linux", "macos", "wasi"}
 _VALID_COMPILERS = {"gnu", "clang", "msvc", "zig"}
 _WINDOWS_ONLY_LIBS = {
     "advapi32",
+    "bcrypt",
     "comctl32",
     "dbghelp",
     "gdi32",

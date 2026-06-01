@@ -27,12 +27,10 @@
  *     least SS_BCRYPT_HASH_OUTPUT_SIZE bytes; smaller buffers return
  *     SS_BCRYPT_ERR_CONFIG.
  *
- *   - random_bytes uses the platform CSPRNG (BCryptGenRandom on
- *     Windows, getrandom on Linux, /dev/urandom fallback elsewhere) —
- *     same source we'd want for any session-token / CSRF / salt-byte
- *     use. It does NOT call the bcrypt hasher; it's grouped here only
- *     because the adapter already needs the platform-specific
- *     entropy backends for its own salt generation.
+ *   - random_bytes uses the runtime-wide native_platform CSPRNG helper.
+ *     It does NOT call the bcrypt hasher; bcrypt is only one consumer of
+ *     the shared entropy backend used for salts, session tokens, CSRF
+ *     tokens, and future random-capability APIs.
  *
  *   - base64url_encode emits the URL-safe alphabet (-, _) with NO
  *     padding. Output is null-terminated. Same return-int-status

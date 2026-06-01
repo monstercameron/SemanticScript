@@ -105,7 +105,7 @@
     },
     {
       "name": "ss_bcrypt",
-      "comment": "APP-RUN-6 password hashing + CSPRNG + base64url (bcrypt.*). The app binds the native ss_bcrypt_*/ss_random_*/ss_base64url_* directly.",
+      "comment": "APP-RUN-6 password hashing + CSPRNG + base64url (bcrypt.*). R-028 routes randomness through native_platform/ss_platform_entropy.c. The app binds the native ss_bcrypt_*/ss_random_*/ss_base64url_* directly.",
       "provides": [
         "ss_bcrypt_",
         "ss_random_",
@@ -122,15 +122,25 @@
       ],
       "sources": [
         "native_bcrypt/sem_bcrypt_runtime.c",
+        "native_platform/ss_platform_entropy.c",
         "../../third_party/bcrypt/crypt_blowfish.c",
         "../../third_party/bcrypt/crypt_gensalt.c"
       ],
       "include": [
-        "native_bcrypt"
+        "native_bcrypt",
+        "native_platform"
       ],
       "defines": [
         "_CRT_SECURE_NO_WARNINGS"
-      ]
+      ],
+      "platforms": {
+        "windows": {
+          "comment": "R-028: Windows CNG random bytes require bcrypt.dll; POSIX/macOS entropy backends use libc APIs here.",
+          "libs": [
+            "bcrypt"
+          ]
+        }
+      }
     },
     {
       "name": "ss_log",
