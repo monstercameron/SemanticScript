@@ -6300,6 +6300,15 @@ def _validate_islands(program: Program) -> None:
     executing call's parameter-arg count."""
     import json as _json
     kind_for_type = {"SqlText": "sql", "JsonText": "json", "HtmlTemplate": "html"}
+    sql_calls_by_island: dict[str, list[Entity]] = {}
+    for cn in program.order:
+        call = program.entities[cn]
+        if call.kind not in ("call", "task"):
+            continue
+        for arg in call.facts("arg"):
+            if (len(arg.payload) >= 3
+                    and arg.payload[0] in ("sql", "query")):
+                sql_calls_by_island.setdefault(arg.payload[2], []).append(call)
     for n in program.order:
         ent = program.entities[n]
         if ent.kind not in ("storage", "htmlTemplate"):
@@ -6330,17 +6339,7 @@ def _validate_islands(program: Program) -> None:
                 )
         if kind == "sql":
             placeholders = content.count("?")
-            for cn in program.order:
-                call = program.entities[cn]
-                if call.kind not in ("call", "task"):
-                    continue
-                passes = any(
-                    len(a.payload) >= 3 and a.payload[2] == ent.name
-                    and a.payload[0] in ("sql", "query")
-                    for a in call.facts("arg")
-                )
-                if not passes:
-                    continue
+            for call in sql_calls_by_island.get(ent.name, []):
                 params = [
                     a for a in call.facts("arg")
                     if a.payload and a.payload[0] not in

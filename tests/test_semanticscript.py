@@ -12025,6 +12025,18 @@ def test_x114_sql_placeholder_count_matches_call_params():
     assert _island_code(prepared) is None
 
 
+def test_x114_sql_placeholder_index_many_islands():
+    islands = "".join(
+        f"q{i} is storage\nq{i} type SqlText\nq{i} mutability immutable\n"
+        f"q{i} body sql\n  SELECT ?\n\n"
+        for i in range(25)
+    )
+    src = (_ISLAND_HEAD + islands
+           + "runQuery is call\nrunQuery in main\nrunQuery invokes sqlite.exec\n"
+             "runQuery arg sql SqlText q24\nrunQuery arg name String nameValue\n")
+    assert _island_code(src) is None
+
+
 # === R-017: platform-aware native builds ===
 
 _TWO_PLATFORM_PROGRAM = (
