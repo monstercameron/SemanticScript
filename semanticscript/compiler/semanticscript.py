@@ -10659,16 +10659,22 @@ class EavCodegen:
                 result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
-        elif target in ("math.divideInt64", "math.moduloInt64"):
-            left = arg("left", "Int64")
-            right = arg("right", "Int64")
-            kind_label = ("divide-by-zero" if target == "math.divideInt64"
-                          else "modulo-by-zero")
+        elif target in ("math.divideInt64", "math.moduloInt64",
+                         "math.divideInt32", "math.moduloInt32"):
+            # R-248: the Int32 div/mod variants previously fell through to the
+            # unguarded _INT_BINOPS sdiv/srem path — a zero (or INT_MIN/-1)
+            # divisor was UB/SIGFPE. Route BOTH widths through the div-zero +
+            # signed-overflow guard.
+            ty = "Int32" if target.endswith("Int32") else "Int64"
+            left = arg("left", ty)
+            right = arg("right", ty)
+            is_divide = "divide" in target
+            kind_label = "divide-by-zero" if is_divide else "modulo-by-zero"
             owner_row = call.fact("in")
             op_name = (owner_row.payload[0] if owner_row and owner_row.payload
                        else call.name)
             self._guard_div_zero(builder, right, left, kind_label, op_name, call.line)
-            method = builder.sdiv if target == "math.divideInt64" else builder.srem
+            method = builder.sdiv if is_divide else builder.srem
             result = method(left, right)
         elif target in _INT_BINOPS:
             method = getattr(builder, _INT_BINOPS[target])
@@ -11485,18 +11491,28 @@ class EavCodegen:
 
     def _guard_div_zero(self, builder, divisor, dividend, kind_label,
                         op_name, line) -> None:
-        """Trap on integer divide/modulo by zero (README ss10.6): no UB. Emits a
-        zero-check that branches to a structured `ss_panic` (WS1-130); the
-        builder continues on the nonzero path."""
+        """Trap on integer divide/modulo by zero OR signed overflow (README
+        ss10.6): no UB. Emits a check that branches to a structured `ss_panic`
+        (WS1-130); the builder continues on the safe path."""
         fn = builder.function
         iszero = builder.icmp_signed("==", divisor, ir.Constant(divisor.type, 0))
+        # R-249: sdiv/srem of INT_MIN by -1 is also UB (the quotient INT_MIN is
+        # not representable; x86 raises SIGFPE), so trap it alongside zero. INT_MIN
+        # is width-relative (-2^(w-1)).
+        width = dividend.type.width
+        int_min = ir.Constant(dividend.type, -(1 << (width - 1)))
+        overflow = builder.and_(
+            builder.icmp_signed("==", dividend, int_min),
+            builder.icmp_signed("==", divisor, ir.Constant(divisor.type, -1)))
+        bad = builder.or_(iszero, overflow)
         trap_bb = fn.append_basic_block("divByZero")
         cont_bb = fn.append_basic_block("divCont")
-        builder.cbranch(iszero, trap_bb, cont_bb)
+        builder.cbranch(bad, trap_bb, cont_bb)
         tb = ir.IRBuilder(trap_bb)
         self._emit_panic(
             tb, "SSR0010", kind_label,
-            "integer divide/modulo by zero is undefined (README ss10.6/ss33.5)",
+            "integer divide/modulo by zero or signed overflow (INT_MIN / -1) "
+            "is undefined (README ss10.6/ss33.5)",
             op_name, line, dividend, divisor)
         tb.unreachable()
         builder.position_at_end(cont_bb)
