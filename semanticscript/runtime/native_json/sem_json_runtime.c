@@ -703,17 +703,29 @@ const char *ss_json_find_string(
     return scratch_buffer;
 }
 
+/* R-156: a scalar value must be followed by a JSON value terminator (end of
+ * string, whitespace, or a structural char) — so a malformed suffix like
+ * "12abc" / ".5junk" / "truex" is rejected rather than silently accepted by
+ * atoll/atof/strncmp-prefix. */
+static int json_value_terminator(char c) {
+    return c == '\0' || c == ',' || c == '}' || c == ']'
+        || c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
 long long ss_json_find_int64(
     const char *json_text, const char *field_name, long long missing_default
 ) {
     const char *value_start = find_field_value(json_text, field_name);
     if (value_start == NULL) return missing_default;
-    /* Accept leading minus + digits. atoll handles the rest including
-     * any trailing fractional part by truncating. */
-    if (*value_start != '-' && (*value_start < '0' || *value_start > '9')) {
-        return missing_default;
-    }
-    return atoll(value_start);
+    /* R-156: parse the full JSON number with strtod (handles int/frac/exp) and
+     * require a terminator after it; "12abc" is rejected, "12.5" is accepted and
+     * truncated toward zero (preserving the prior integer-truncation behavior). */
+    char *endptr;
+    double d = strtod(value_start, &endptr);
+    if (endptr == value_start || !json_value_terminator(*endptr)) return missing_default;
+    /* R-155-style range guard: an out-of-range/NaN/Inf double->long long is UB. */
+    if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0)) return missing_default;
+    return (long long)d;
 }
 
 double ss_json_find_double(
@@ -721,11 +733,10 @@ double ss_json_find_double(
 ) {
     const char *value_start = find_field_value(json_text, field_name);
     if (value_start == NULL) return missing_default;
-    if (*value_start != '-' && (*value_start < '0' || *value_start > '9')
-        && *value_start != '.') {
-        return missing_default;
-    }
-    return atof(value_start);
+    char *endptr;
+    double d = strtod(value_start, &endptr);  /* R-156: strict — reject junk suffixes */
+    if (endptr == value_start || !json_value_terminator(*endptr)) return missing_default;
+    return d;
 }
 
 int ss_json_find_bool(
@@ -733,8 +744,11 @@ int ss_json_find_bool(
 ) {
     const char *value_start = find_field_value(json_text, field_name);
     if (value_start == NULL) return missing_default;
-    if (strncmp(value_start, "true", 4) == 0) return 1;
-    if (strncmp(value_start, "false", 5) == 0) return 0;
+    /* R-156: an exact true/false token, not just a prefix ("truex" is rejected). */
+    if (strncmp(value_start, "true", 4) == 0 && json_value_terminator(value_start[4]))
+        return 1;
+    if (strncmp(value_start, "false", 5) == 0 && json_value_terminator(value_start[5]))
+        return 0;
     return missing_default;
 }
 

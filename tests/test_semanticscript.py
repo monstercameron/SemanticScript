@@ -6727,6 +6727,24 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_json_find_helpers_reject_malformed_scalars():
+    # R-156: the legacy string-based json scalar find helpers must parse strictly
+    # — a malformed suffix (12abc / .5junk / truex) is rejected, not silently
+    # accepted by atoll/atof/strncmp-prefix. Source-level guard (these helpers
+    # have no .sem call site to JIT-exercise; the json runtime builds+runs via
+    # test_apps, which forces a rebuild of this code).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_json",
+                            "sem_json_runtime.c"), encoding="utf-8").read()
+    assert "json_value_terminator" in src
+    for fn in ("ss_json_find_int64", "ss_json_find_double", "ss_json_find_bool"):
+        m = re.search(r"\b" + re.escape(fn) + r"\(.*?\n\}", src, re.S)
+        assert m and "json_value_terminator" in m.group(0), f"{fn} not strict (R-156)"
+    # the lenient atoll/atof are gone from the find helpers
+    assert "return atoll(value_start);" not in src and "return atof(value_start);" not in src
+
+
 def test_json_cursor_int64_range_checked():
     # R-155: ss_json_cursor_int64 must range-check a double before casting to
     # `long long` — an out-of-range/NaN/Inf cast is UB. Source-level guard that
