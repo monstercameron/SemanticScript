@@ -1,7 +1,7 @@
-# string_escapes -- builds a string and asserts it via the test harness (README s35).
-# Expected output:
-#   PASS  string_escapes  (expected "col1\tcol2\nrow2", actual "col1\tcol2\nrow2")
-#   ---- 1 passed, 0 failed ----
+# string_escapes — string-literal escape handling (X-200). "tab\there" is 8
+# bytes (t,a,b,<TAB>,h,e,r,e): the \t escape lexes to ONE byte, not two chars.
+# byteLength (standard.string) measures it; asserted via standard.test.
+# Expected output: a PASS line for 8 then "---- N passed, 0 failed ----".
 
 StringEscapes is project
 StringEscapes module examplesStringEscapes
@@ -11,8 +11,8 @@ StringEscapes entry main
 examplesStringEscapes is module
 examplesStringEscapes path examples.stringEscapes
 examplesStringEscapes exports main
-examplesStringEscapes purpose "decode tab/newline escapes"
-examplesStringEscapes invariant "Self-checking via the test harness"
+examplesStringEscapes purpose "Verify string-literal escapes via byte length"
+examplesStringEscapes invariant "main is the only project entry operation"
 
 ExitCode is alias
 ExitCode for Int32
@@ -22,37 +22,53 @@ stdoutWriter is capability
 stdoutWriter grants write console.stdout
 stdoutWriter purpose "Allow controlled writes to standard output"
 
+byteLength is operation
+byteLength in text String
+byteLength out Int64
+byteLength memory heap no
+byteLength async no
+byteLength purpose "Number of bytes in the NUL-terminated string"
+byteLength invariant "Pure; performs no effects"
+byteLength body runtimeBinding ss_string_length
+
 main is operation
 main out ExitCode
 main effect write console.stdout
 main uses stdoutWriter
 main memory heap no
 main async no
-main purpose "decode tab/newline escapes and assert the result"
-main invariant "Asserts the string via the harness"
-main let actualText immutable String "col1\tcol2\nrow2"
+main purpose "Measure 'tab\there' and assert the \t escaped to one byte (len 8)"
+main invariant "All assertions hold"
+main let escapedText immutable String "tab\there"
+main let harnessExpected immutable Int64 8
+main let noopDecoy immutable Int64 0
 main let harnessName immutable String "string_escapes"
-main let harnessExpected immutable String "col1\tcol2\nrow2"
-main let emptyGuard immutable String ""
-main let noopName immutable String "string_escapes: real result (not the empty string)"
+main let noopName immutable String "string_escapes: real byte length (not no-op 0)"
+main do lenCall
 main do checkResult
 main do noopCheck
 main do harnessReport
 main return harnessSummaryCode
 
+lenCall is call
+lenCall in main
+lenCall invokes byteLength
+lenCall arg text String escapedText
+lenCall out lengthValue Int64
+
 checkResult is call
 checkResult in main
-checkResult invokes test.assertEqualText
+checkResult invokes test.assertEqualInt64
 checkResult arg name String harnessName
-checkResult arg expected String harnessExpected
-checkResult arg actual String actualText
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 lengthValue
 
 noopCheck is call
 noopCheck in main
-noopCheck invokes test.assertNotEqualText
+noopCheck invokes test.assertNotEqualInt64
 noopCheck arg name String noopName
-noopCheck arg expected String emptyGuard
-noopCheck arg actual String actualText
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 lengthValue
 
 harnessReport is call
 harnessReport in main
