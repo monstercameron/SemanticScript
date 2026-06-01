@@ -4247,6 +4247,29 @@ def test_out_mutable_storage_with_effect_lowers():
     assert 'store' in ir_text and '@"counter"' in ir_text
 
 
+def test_dead_storage_initializer_warns_only_when_never_read():
+    base = (
+        "counter is storage\ncounter scope module\ncounter type Int64\n"
+        "counter mutability mutable\ncounter value 0\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main purpose \"p\"\nmain invariant \"i\"\n"
+        "main let one immutable Int64 1\nmain let okCode immutable ExitCode 0\n"
+        "main set counter one\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+    )
+    dead = semanticscript.lint(semanticscript.parse(base + "main return okCode\n"))
+    assert "SS0809" in {d.code for d in dead}
+
+    read_back = semanticscript.lint(semanticscript.parse(
+        base
+        + "main do useCounter\nmain return okCode\n"
+        + "useCounter is call\nuseCounter in main\nuseCounter invokes math.addInt64\n"
+        + "useCounter arg left Int64 counter\nuseCounter arg right Int64 one\n"
+        + "useCounter out total Int64\n"
+    ))
+    assert "SS0809" not in {d.code for d in read_back}
+
+
 _OPTYPE_BASE = (
     "Int64Endo is operationType\nInt64Endo in Int64\nInt64Endo out Int64\n"
     "double is operation\ndouble in n Int64\ndouble out Int64\n"

@@ -5453,6 +5453,25 @@ def _lint_dead_unused(program: Program) -> list:
                         pending[tgt].line, op.name))
                 pending[tgt] = r
     # SS0809 dead storage initializer: a mutable storage written but never read.
+    storage_names = {n for n in program.order if program.entities[n].kind == "storage"}
+    written_storage: set[str] = set()
+    read_storage: set[str] = set()
+    for n in program.order:
+        owner = program.entities[n]
+        for r in owner.rows:
+            if r.predicate == "set" and r.payload:
+                target = r.payload[0]
+                if target in storage_names and owner.name != target:
+                    written_storage.add(target)
+                    if target in r.payload[1:]:
+                        read_storage.add(target)
+                for tok in r.payload[1:]:
+                    if tok in storage_names and owner.name != tok:
+                        read_storage.add(tok)
+            else:
+                for tok in r.payload:
+                    if tok in storage_names and owner.name != tok:
+                        read_storage.add(tok)
     for n in program.order:
         st = program.entities[n]
         if st.kind != "storage":
@@ -5460,19 +5479,7 @@ def _lint_dead_unused(program: Program) -> list:
         if (st.fact("mutability") and st.fact("mutability").payload
                 and st.fact("mutability").payload[0] != "mutable"):
             continue
-        written = read = False
-        for m in program.order:
-            owner = program.entities[m]
-            if owner.name == st.name:
-                continue
-            for r in owner.rows:
-                if r.predicate == "set" and r.payload and r.payload[0] == st.name:
-                    written = True
-                    if st.name in r.payload[1:]:
-                        read = True
-                elif st.name in r.payload:
-                    read = True
-        if written and not read:
+        if st.name in written_storage and st.name not in read_storage:
             out.append(Diagnostic(
                 "SS0809", "warning",
                 f"module storage {st.name!r} is written but its value is never read "
