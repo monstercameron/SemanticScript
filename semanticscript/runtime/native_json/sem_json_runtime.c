@@ -908,8 +908,64 @@ static int document_add_node(
     return SS_JSON_OK;
 }
 
+/*
+ * R-198: a registry of live documents (the sqlite R-139 / event R-196 tombstone
+ * pattern). destroyDocument is void and the handle is a plain OpaquePointer, so a
+ * double destroy or a cursor/serialize/read on an already-destroyed handle could
+ * dereference the freed document/arena/nodes. Membership is checked by pointer
+ * VALUE before any field is read, so a stale handle is rejected without touching
+ * freed memory. The central accessor document_node_at gates on it, so every
+ * cursor read (and root/serialize/field/set, which all funnel through it) fails
+ * safe to NULL/sentinel. Single-threaded runtime — no lock needed.
+ */
+static SSJsonDocument **g_live_documents = NULL;
+static size_t g_live_document_count = 0;
+static size_t g_live_document_capacity = 0;
+
+static int ss_json_track_document(SSJsonDocument *document) {
+    if (g_live_document_count == g_live_document_capacity) {
+        size_t next = g_live_document_capacity == 0 ? 8 : g_live_document_capacity * 2;
+        if (g_live_document_capacity > SIZE_MAX / 2
+                || next > SIZE_MAX / sizeof(SSJsonDocument *)) {
+            return 0;
+        }
+        SSJsonDocument **grown = (SSJsonDocument **)realloc(
+            g_live_documents, next * sizeof(SSJsonDocument *));
+        if (grown == NULL) {
+            return 0;
+        }
+        g_live_documents = grown;
+        g_live_document_capacity = next;
+    }
+    g_live_documents[g_live_document_count++] = document;
+    return 1;
+}
+
+static int ss_json_is_live_document(const SSJsonDocument *document) {
+    for (size_t i = 0; i < g_live_document_count; i++) {
+        if (g_live_documents[i] == document) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ss_json_untrack_document(SSJsonDocument *document) {
+    for (size_t i = 0; i < g_live_document_count; i++) {
+        if (g_live_documents[i] == document) {
+            g_live_documents[i] = g_live_documents[g_live_document_count - 1];
+            g_live_document_count--;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static SSJsonNode *document_node_at(SSJsonDocument *document, int64_t cursor) {
-    if (document == NULL || cursor < 0 || cursor >= document->node_count) {
+    /* R-198: reject a non-live (destroyed/stale) document by membership BEFORE
+     * reading node_count — the deref would otherwise be a use-after-free. */
+    if (document == NULL || !ss_json_is_live_document(document)
+            || cursor < 0 || cursor >= document->node_count) {
         return NULL;
     }
     SSJsonNode *node = &document->nodes[cursor];
@@ -1049,6 +1105,14 @@ static SSJsonDocument *document_create_shell(int64_t capacity_bytes) {
     document->capacity_bytes = capacity_bytes;
     document->arena_used = 0;
     document->bytes_used = 0;
+    /* R-198: register before handing the handle out so every read/destroy can
+     * validate it by membership. On registry-growth failure, release the shell
+     * and fail (never expose an untracked document). */
+    if (!ss_json_track_document(document)) {
+        free(document->arena);
+        free(document);
+        return NULL;
+    }
     return document;
 }
 
@@ -1532,7 +1596,10 @@ int ss_json_parse_bool(const char *json_text, int *out) {
 }
 
 void ss_json_document_destroy(SSJsonDocument *document) {
-    if (document == NULL) {
+    /* R-198: untrack first (membership by pointer value, no deref). A double
+     * destroy or a bogus handle fails membership and becomes a no-op instead of
+     * a double-free; only a confirmed-live document is dereferenced/freed. */
+    if (document == NULL || !ss_json_untrack_document(document)) {
         return;
     }
     document_free_all_nodes(document);

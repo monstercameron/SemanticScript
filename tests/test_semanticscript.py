@@ -9071,6 +9071,30 @@ def test_event_runtime_subscription_lifecycle_guarded():
     assert "ss_event_untrack_sub(sub)" in closesub           # double-close no-op
 
 
+def test_json_document_lifecycle_tombstoned():
+    # R-198: JSON documents get the sqlite/event tombstone treatment — a
+    # live-document registry so a double destroyDocument is a no-op (not a
+    # double-free) and root/serialize/cursor reads on a destroyed handle fail safe
+    # instead of dereferencing the freed document/arena/nodes. Source-level guard;
+    # the native harness_json.c exercises the UAF orderings under ASAN+UBSAN in CI,
+    # and taskforge-web round-trips the real create/set/serialize/read path.
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_json",
+                            "sem_json_runtime.c"), encoding="utf-8").read()
+    for fn in ("ss_json_track_document", "ss_json_is_live_document",
+               "ss_json_untrack_document"):
+        assert fn in src, fn
+    # the central accessor rejects a non-live document before reading node_count
+    node_at = re.search(r"static SSJsonNode \*document_node_at\(.*?\n\}", src, re.S).group(0)
+    assert "ss_json_is_live_document(document)" in node_at
+    # create tracks; destroy untracks-first (double-destroy no-op)
+    shell = re.search(r"static SSJsonDocument \*document_create_shell\(.*?\n\}", src, re.S).group(0)
+    assert "ss_json_track_document(document)" in shell
+    destroy = re.search(r"void ss_json_document_destroy\(.*?\n\}", src, re.S).group(0)
+    assert "ss_json_untrack_document(document)" in destroy
+
+
 def test_app_event_stream_smoke_full_port():
     # X-046: the standard.event smoke app is FULLY ported (all 4 ops, every
     # event.* call as a task) against sigs/standard.event.semsig and lints clean
