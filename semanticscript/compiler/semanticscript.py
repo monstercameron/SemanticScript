@@ -11902,9 +11902,10 @@ EAV_AGENT_RULES = (
     "Run (JIT) with `semanticscript run <file|dir>`; build a native exe (console "
     "or webServer) with `semanticscript build <path> -o out` (clang/zig needed for "
     "the native runtime). The compiler is self-contained under `semanticscript/`; "
-    "worked apps live in `apps/`; start at docs/getting-started.md. Agent surface: "
-    "`agent-docs`, `skills [name]`, `check --json`, `eval`, `docs <file>`, and the "
-    "stdio `mcp` server."
+    "worked apps live in `apps/`; start at docs/getting-started.md (the full "
+    "language guide is docs/LANGUAGE.md). Agent surface: `agent-docs`, `skills "
+    "[name]`, `search <query>` (ranked retrieval), `explain <CODE>`, `check --json`, "
+    "`eval`, `docs <file>`, and the stdio `mcp` server (19 tools)."
 )
 
 # name -> {summary, body}. `skills` (no arg) lists summaries; `skills <name>`
@@ -11950,14 +11951,17 @@ EAV_SKILLS = {
     "eav-toolchain": {
         "summary": "The CLI + the stdio MCP server surface.",
         "body": (
-            "Core: `run build check lint fmt test eval`. Inspect: `lower` (emit IR), "
-            "`symbols context deps graph slice size describe`. Agent: `agent-docs`, "
-            "`skills`, `docs <file>` (per-file entity docs/search), `explain <CODE>`, "
-            "`fix --plan` + `patch`/`verify-patch`, `query`, `scaffold`/`new`. "
-            "Structured output is a versioned `sem.<tool>.v1` JSON envelope (pass "
-            "`--json` where offered). The `mcp` subcommand is a stdio JSON-RPC server "
-            "exposing version/agent_docs/check/readiness/deps/context/symbols/size/"
-            "eval/fix_plan/docs/test/skills as MCP tools."),
+            "Core: `run build wasm check lint fmt test eval`. Inspect: `lower`/`emit-ir`/"
+            "`inspect-ir` (IR), `symbols context deps graph slice size describe trace`. "
+            "Agent: `agent-docs`, `skills`, `search <query>` (relevance-ranked retrieval "
+            "across diagnostics/skills/templates/the language guide/a project — the "
+            "agentic search), `explain <CODE>`, `docs <file>` (per-file entity docs/get/"
+            "search), `query <dim>`, `index`, `status`, `fix --plan` + `patch`/"
+            "`verify-patch`, `scaffold`/`new`. Structured output is a versioned "
+            "`sem.<tool>.v1` JSON envelope (pass `--json` where offered). The `mcp` "
+            "subcommand is a stdio JSON-RPC server exposing 19 tools — version, "
+            "agent_docs, skills, readiness, status, index, search, explain, docs, check, "
+            "graph, query, deps, context, symbols, size, eval, fix_plan, test."),
     },
     "eav-apps": {
         "summary": "Worked patterns under apps/ (web API, TUI, HTTP).",
@@ -11986,24 +11990,57 @@ def _json_envelope(surface: str, **payload) -> str:
     return json.dumps(body, indent=2)
 
 
-# name -> (argv-prefix, description, requires_path). `requires_path` drives the
-# tools/list inputSchema (a tool whose CLI takes a positional `path` must mark it
-# `required`, else an agent calling it bare hits an argparse error). The `docs`
-# tool also accepts optional `search`/`get` (handled in _mcp_dispatch).
+# MCP tool registry. Each entry is data-driven so tools/list (the advertised
+# inputSchema) and _mcp_dispatch (the argv it builds) never drift:
+#   argv : the CLI prefix (usually `--json` so the agent gets a sem.<tool>.v1 body)
+#   desc : the one-line tool description shown to the agent
+#   path : True if the CLI takes a positional source/project `path` (-> required)
+#   args : extra inputs as (name, positional?, required?, description); positionals
+#          are appended in declared order (before `path`), flags become `--name v`.
+# Keep this in sync with the `eav-toolchain` skill body, which names the set.
 EAV_MCP_TOOLS = {
-    "version": (["version", "--json"], "Contract version surface", False),
-    "agent_docs": (["agent-docs"], "Version-matched EAV agent rules", False),
-    "check": (["check"], "Source lane: parse + lint status", True),
-    "readiness": (["readiness", "--json"], "Environment lane status", False),
-    "deps": (["deps"], "Dependency graph", True),
-    "context": (["context"], "Project envelope", True),
-    "symbols": (["symbols"], "Full entity graph", True),
-    "size": (["size"], "Footprint probe", True),
-    "eval": (["eval"], "JIT-run a snippet", True),
-    "fix_plan": (["fix", "--plan"], "Repair plan from diagnostics", True),
-    "docs": (["docs"], "Per-file entity docs (list/get/search)", True),
-    "test": (["test"], "Run tag-test operations", True),
-    "skills": (["skills"], "EAV agent skills (list; pass `skill` for a body)", False),
+    # --- registry-free / agent guidance ---
+    "version": {"argv": ["version", "--json"], "desc": "Contract + release version surface",
+                "path": False, "args": []},
+    "agent_docs": {"argv": ["agent-docs"], "desc": "Version-matched SemanticScript agent rules",
+                   "path": False, "args": []},
+    "skills": {"argv": ["skills"], "desc": "SemanticScript agent skills (list; pass `skill` for a body)",
+               "path": False, "args": [("skill", True, False, "skill name to fetch its full body")]},
+    "readiness": {"argv": ["readiness", "--json"], "desc": "Environment lane status",
+                  "path": False, "args": []},
+    "status": {"argv": ["status", "--json"], "desc": "Toolchain + native-target status",
+               "path": False, "args": []},
+    "index": {"argv": ["index", "--json"], "desc": "Repository code index (entities, diagnostics, surfaces)",
+              "path": False, "args": []},
+    # --- relevance-ranked retrieval / docs (the agentic search surface) ---
+    "search": {"argv": ["search", "--json"],
+               "desc": "Relevance-ranked retrieval across diagnostics, skills, task templates, "
+                       "the language guide, and (with `path`) a project's entities — the agentic search",
+               "path": False,
+               "args": [("query", True, True, "natural-language search query"),
+                        ("source", False, False, "restrict to one source: diagnostic|skill|template|rules|spec|entity"),
+                        ("limit", False, False, "max results (default 8)"),
+                        ("path", False, False, "also index this project's entities")]},
+    "explain": {"argv": ["explain"], "desc": "Explain one diagnostic code (tier, cause, suggested fix)",
+                "path": False, "args": [("code", True, True, "diagnostic code, e.g. SS1502")]},
+    "docs": {"argv": ["docs"], "desc": "Per-file entity docs (list; pass `get` for one entity, `search` to rank)",
+             "path": True,
+             "args": [("search", False, False, "keyword-ranked query within the file"),
+                      ("get", False, False, "entity name to fetch (fuzzy-tolerant)")]},
+    # --- program analysis (require a source/project path) ---
+    "check": {"argv": ["check"], "desc": "Source lane: parse + lint status", "path": True, "args": []},
+    "graph": {"argv": ["graph", "--json"], "desc": "Call / control-flow graph",
+              "path": True, "args": [("kind", False, False, "calls|control (default calls)")]},
+    "query": {"argv": ["query", "--json"],
+              "desc": "Query a semantic dimension of a program (e.g. effects, capabilities, calls)",
+              "path": True, "args": [("dimension", True, True, "dimension to extract, e.g. effects")]},
+    "deps": {"argv": ["deps"], "desc": "Dependency graph", "path": True, "args": []},
+    "context": {"argv": ["context"], "desc": "Project envelope", "path": True, "args": []},
+    "symbols": {"argv": ["symbols"], "desc": "Full entity graph", "path": True, "args": []},
+    "size": {"argv": ["size"], "desc": "Footprint probe", "path": True, "args": []},
+    "eval": {"argv": ["eval"], "desc": "JIT-run a snippet", "path": True, "args": []},
+    "fix_plan": {"argv": ["fix", "--plan"], "desc": "Repair plan from diagnostics", "path": True, "args": []},
+    "test": {"argv": ["test"], "desc": "Run tag-test operations", "path": True, "args": []},
 }
 
 
@@ -12014,14 +12051,17 @@ def _mcp_dispatch(tool: str, arguments: dict) -> str:
     spec = EAV_MCP_TOOLS.get(tool)
     if spec is None:
         return f'{{"error": "unknown tool {tool}"}}'
-    argv = list(spec[0])
-    if "path" in arguments:
-        argv.append(arguments["path"])
-    if arguments.get("skill"):           # `skills` get-by-name (positional)
-        argv.append(arguments["skill"])
-    for flag in ("search", "get"):
-        if arguments.get(flag):
-            argv += [f"--{flag}", arguments[flag]]
+    argv = list(spec["argv"])
+    # positional args (in declared order), then the source/project path,
+    for name, positional, _req, _desc in spec["args"]:
+        if positional and arguments.get(name) is not None:
+            argv.append(str(arguments[name]))
+    if spec["path"] and arguments.get("path") is not None:
+        argv.append(str(arguments["path"]))
+    # then flag args.
+    for name, positional, _req, _desc in spec["args"]:
+        if not positional and arguments.get(name) is not None:
+            argv += [f"--{name}", str(arguments[name])]
     buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(buf):
@@ -12044,21 +12084,19 @@ def mcp_handle(request: dict) -> dict:
     if method == "tools/list":
         tools = []
         for name, spec in EAV_MCP_TOOLS.items():
-            desc, requires_path = spec[1], spec[2]
             props, required = {}, []
-            if requires_path:
+            if spec["path"]:
                 props["path"] = {"type": "string",
-                                 "description": "EAV/compact source file or project path"}
+                                 "description": "SemanticScript source file or project path"}
                 required.append("path")
-            if name == "docs":
-                props["search"] = {"type": "string", "description": "keyword-ranked search query"}
-                props["get"] = {"type": "string", "description": "entity name to fetch"}
-            if name == "skills":
-                props["skill"] = {"type": "string", "description": "skill name to fetch its full body"}
+            for argname, _positional, req, desc in spec["args"]:
+                props[argname] = {"type": "string", "description": desc}
+                if req:
+                    required.append(argname)
             schema = {"type": "object", "properties": props}
             if required:
                 schema["required"] = required
-            tools.append({"name": name, "description": desc, "inputSchema": schema})
+            tools.append({"name": name, "description": spec["desc"], "inputSchema": schema})
         return {**base, "result": {"tools": tools}}
     if method == "tools/call":
         params = request.get("params", {})
