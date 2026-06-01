@@ -1445,6 +1445,29 @@ def test_eval_line_numbers_map_to_snippet():
     assert "line 2:" in _json.loads(two_line.stdout)["stderr"]
 
 
+def test_runtime_cache_key_includes_headers_and_manifest(tmp_path):
+    # R-106: a changed included header (an ABI struct/signature change) or a
+    # changed runtime manifest must invalidate the runtime-lib cache key, so a
+    # stale ABI-incompatible library can never be reused from the cache.
+    rt = tmp_path
+    (rt / "manifest.json").write_text("{}", encoding="utf-8")
+    (rt / "src.c").write_text("int x;\n", encoding="utf-8")
+    hdr = rt / "abi.h"
+    hdr.write_text("struct S { int a; };\n", encoding="utf-8")
+    resolved = {"defines": [], "include": ["."], "libs": [], "exports": [],
+                "sources": ["src.c"]}
+
+    def key():
+        return semanticscript._runtime_cache_key(resolved, "host", "cc1", str(rt))
+
+    k1 = key()
+    hdr.write_text("struct S { long a; long b; };\n", encoding="utf-8")  # ABI change
+    k2 = key()
+    assert k1 != k2, "a changed header must invalidate the cache key"
+    (rt / "manifest.json").write_text('{"v": 2}', encoding="utf-8")
+    assert key() != k2, "a changed manifest must invalidate the cache key"
+
+
 def test_dangling_project_entry_rejected():
     # R-104: a project entry naming no declared operation must reject at check
     # (SS1194), not pass green and call a null address at runtime.

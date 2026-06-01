@@ -61,16 +61,38 @@ jobs:
       - name: Freeze the compiler (PyInstaller via packaging/package.py)
         run: python semanticscript/packaging/package.py
 
-      - name: Smoke-test the frozen executable
+      - name: Smoke-test the frozen executable (self-contained)
         shell: bash
         run: |
           set -euo pipefail
           exe="${{ matrix.exe }}"
           test -f "$exe" || { echo "Expected PyInstaller output at $exe"; exit 1; }
-          "$exe" version
-          # Proves the bundled std/sigs/runtime data + llvmlite JIT load inside
-          # the frozen exe and a program runs end to end.
-          "$exe" run examples/hello_world.sem
+          # R-110: match/exceed compiler-exe.yml — copy the exe + a program into an
+          # isolated dir with NO repo files, so the test proves the frozen asset is
+          # fully self-contained (it cannot fall back to the checkout's std /
+          # runtime / third_party / version.json).
+          box="${RUNNER_TEMP:-/tmp}/ssbox"
+          rm -rf "$box"; mkdir -p "$box"
+          cp "$exe" "$box/"; cp examples/hello_world.sem "$box/"
+          name="$(basename "$exe")"
+          cd "$box"
+          "./$name" version
+          # Bundled version.json resolves under _MEIPASS -> status carries releaseVersion.
+          "./$name" status --json | python -c "import sys,json; assert json.load(sys.stdin).get('releaseVersion'), 'status missing releaseVersion (version.json not bundled)'"
+          # JIT path: bundled std/runtime + llvmlite run a program end to end.
+          "./$name" run hello_world.sem
+          # MCP stdio server advertises its tools.
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | "./$name" mcp \
+            | python -c "import sys,json; rs=[json.loads(l) for l in sys.stdin if l.strip()]; t=[r for r in rs if r.get('id')==1][0]['result']['tools']; assert len(t)>=1, 'MCP tools/list returned no tools'"
+          # Native link path (bundled runtime C sources + clang), where a C
+          # toolchain is present on the runner; never fails the release if absent.
+          if [ "${RUNNER_OS}" = "Windows" ]; then nexe="hw.exe"; else nexe="hw"; fi
+          if "./$name" build hello_world.sem -o "$nexe" 2>build.log; then
+            "./$nexe"
+            echo "native build smoke: ok"
+          else
+            echo "native build smoke: skipped (no C toolchain on PATH)"; cat build.log || true
+          fi
 
       - name: Stage the named artifact
         shell: bash

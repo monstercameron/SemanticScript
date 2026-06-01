@@ -10679,6 +10679,30 @@ def _runtime_cache_key(resolved: dict, platform: str, compiler_id: str,
                 digest.update(hashlib.sha256(handle.read()).digest())
         except OSError:
             digest.update(source.encode("utf-8"))
+    # R-106: the source bytes alone are not enough — a changed *header* (an ABI
+    # struct/signature change in a `.h` the sources `#include`) must also
+    # invalidate the cache, as must the runtime manifest. Hash every header in the
+    # resolved include directories (sorted, content-addressed) plus the manifest,
+    # so a stale ABI-incompatible library can never survive a header change.
+    import glob
+    headers: set = set()
+    for inc in resolved.get("include", []):
+        inc_dir = os.path.normpath(os.path.join(runtime_dir, inc))
+        for hdr in glob.glob(os.path.join(inc_dir, "*.h")):
+            headers.add(os.path.normpath(hdr))
+    for hdr in sorted(headers):
+        try:
+            with open(hdr, "rb") as handle:
+                digest.update(b"hdr:")
+                digest.update(hashlib.sha256(handle.read()).digest())
+        except OSError:
+            pass
+    try:
+        with open(os.path.join(runtime_dir, "manifest.json"), "rb") as handle:
+            digest.update(b"manifest:")
+            digest.update(hashlib.sha256(handle.read()).digest())
+    except OSError:
+        pass
     return digest.hexdigest()[:16]
 
 
@@ -10726,7 +10750,11 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
         return None
     sources = [_runtime_link_path(s) for s in resolved["sources"]]
     os.makedirs(build_dir, exist_ok=True)
-    cmd = list(cc) + ["-O2", "-shared", "-o", out]
+    # R-106: build to a per-process temp file, then publish atomically with
+    # os.replace — a concurrent build (or a crash mid-link) can never leave a
+    # partial library at `out` that a reader would load.
+    out_tmp = f"{out}.tmp{os.getpid()}"
+    cmd = list(cc) + ["-O2", "-shared", "-o", out_tmp]
     # The runtime DLL is loaded into the JIT process, so it must match the JIT's
     # target arch, not clang's native default. On this ARM64 host llvmlite is
     # x64-emulated (JIT triple x86_64-pc-windows-msvc) while clang defaults to
@@ -10765,9 +10793,15 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
             f"{_build_timeout_seconds():g}s and was terminated "
             f"(set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
     if proc.returncode != 0:
+        try:
+            if os.path.exists(out_tmp):
+                os.unlink(out_tmp)
+        except OSError:
+            pass
         raise EavError(
             f"failed to build runtime library {lib['name']!r}: {proc.stderr.strip()}"
         )
+    os.replace(out_tmp, out)  # R-106: atomic publish
     return out
 
 
