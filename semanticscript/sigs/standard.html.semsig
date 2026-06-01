@@ -13,6 +13,11 @@ htmlEscapeText is intrinsic
 htmlEscapeText target html.escapeText
 htmlEscapeText arg text String
 htmlEscapeText out fragment HtmlFragment
+htmlEscapeText owns fragment cleanedBy http.freeString
+htmlEscapeText unsafe yes
+htmlEscapeText wrapsAs HtmlFragment
+htmlEscapeText cleanedBy http.freeString
+htmlEscapeText allocator ss_http.string
 htmlEscapeText purpose "Escape text into an HTML fragment by sink context"
 htmlTrustFragment is intrinsic
 htmlTrustFragment target html.trustFragment

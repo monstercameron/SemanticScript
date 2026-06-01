@@ -14,6 +14,11 @@ HttpSafeUrl is alias
 HttpSafeUrl for String
 HttpSafeUrl purpose "A URL validated safe for URL-bearing attributes (href/src/action)"
 
+HttpRuntimeString is alias
+HttpRuntimeString for String
+HttpRuntimeString allocator ss_http.string
+HttpRuntimeString purpose "A runtime-owned HTTP helper string; release with http.freeString"
+
 HttpRequest is record
 HttpRequest field method String
 HttpRequest field path String
@@ -36,6 +41,44 @@ HttpError purpose "Represent routing, serving, and middleware failures"
 NextMiddleware is alias
 NextMiddleware for OpaquePointer
 NextMiddleware purpose "Continuation handle for the downstream middleware chain"
+
+urlEncode is intrinsic
+urlEncode target http.urlEncode
+urlEncode arg component String
+urlEncode out encoded HttpRuntimeString
+urlEncode owns encoded cleanedBy http.freeString
+urlEncode unsafe yes
+urlEncode wrapsAs HttpRuntimeString
+urlEncode cleanedBy http.freeString
+urlEncode allocator ss_http.string
+urlEncode purpose "Percent-encode one URL component; the returned string is freed with http.freeString"
+
+urlDecode is intrinsic
+urlDecode target http.urlDecode
+urlDecode arg component String
+urlDecode out decoded HttpRuntimeString
+urlDecode owns decoded cleanedBy http.freeString
+urlDecode unsafe yes
+urlDecode wrapsAs HttpRuntimeString
+urlDecode cleanedBy http.freeString
+urlDecode allocator ss_http.string
+urlDecode purpose "Decode one URL component; the returned string is freed with http.freeString"
+
+htmlEscape is intrinsic
+htmlEscape target http.htmlEscape
+htmlEscape arg text String
+htmlEscape out escaped HttpRuntimeString
+htmlEscape owns escaped cleanedBy http.freeString
+htmlEscape unsafe yes
+htmlEscape wrapsAs HttpRuntimeString
+htmlEscape cleanedBy http.freeString
+htmlEscape allocator ss_http.string
+htmlEscape purpose "Escape text for HTML interpolation; the returned string is freed with http.freeString"
+
+freeString is intrinsic
+freeString target http.freeString
+freeString arg text HttpRuntimeString
+freeString purpose "Release a runtime-owned string returned by the HTTP helper string intrinsics"
 
 route is intrinsic
 route target http.route

@@ -2194,6 +2194,14 @@ const char *ss_http_multipart_part_content_type(SSHttpRequest *request, const ch
     return part != NULL && part->content_type != NULL ? part->content_type : NULL;
 }
 
+static int is_http_header_token_byte(unsigned char byte) {
+    return isalnum(byte) ||
+           byte == '!' || byte == '#' || byte == '$' || byte == '%' ||
+           byte == '&' || byte == '\'' || byte == '*' || byte == '+' ||
+           byte == '-' || byte == '.' || byte == '^' || byte == '_' ||
+           byte == '`' || byte == '|' || byte == '~';
+}
+
 static int is_valid_header_name(const char *name) {
     const unsigned char *cursor = (const unsigned char *)name;
 
@@ -2202,7 +2210,7 @@ static int is_valid_header_name(const char *name) {
     }
 
     while (*cursor != '\0') {
-        if (!(isalnum(*cursor) || *cursor == '-' || *cursor == '_')) {
+        if (!is_http_header_token_byte(*cursor)) {
             return 0;
         }
         ++cursor;
@@ -2216,6 +2224,38 @@ static int is_valid_header_value(const char *value) {
         return 0;
     }
     return strchr(value, '\r') == NULL && strchr(value, '\n') == NULL;
+}
+
+static char *trim_http_header_ows_left(char *text) {
+    while (*text == ' ' || *text == '\t') {
+        ++text;
+    }
+    return text;
+}
+
+static void trim_http_header_ows_right(char *text) {
+    size_t length = strlen(text);
+    while (length > 0 && (text[length - 1] == ' ' || text[length - 1] == '\t')) {
+        text[length - 1] = '\0';
+        --length;
+    }
+}
+
+static int is_valid_inbound_header_value(const char *value) {
+    const unsigned char *cursor = (const unsigned char *)value;
+
+    if (value == NULL) {
+        return 0;
+    }
+
+    while (*cursor != '\0') {
+        if (*cursor < 0x20 || *cursor == 0x7f) {
+            return 0;
+        }
+        ++cursor;
+    }
+
+    return 1;
 }
 
 int ss_http_response_header(
@@ -2452,11 +2492,11 @@ static void parse_query_params(char *query, SSHttpRequest *request) {
     }
 }
 
-static void parse_headers(char *header_start, char *body_start, SSHttpRequest *request) {
+static int parse_headers(char *header_start, char *body_start, SSHttpRequest *request) {
     char *cursor = header_start;
 
     while (cursor != NULL && cursor < body_start && request->header_count < SS_HTTP_MAX_HEADERS) {
-        char *line = trim_left(cursor);
+        char *line = cursor;
         char *line_end;
         char *colon;
         char *name;
@@ -2471,31 +2511,36 @@ static void parse_headers(char *header_start, char *body_start, SSHttpRequest *r
             line_end = body_start;
         }
         cursor = line_end + (line_end < body_start ? 1 : 0);
+        if (line_end > line && line_end[-1] == '\r') {
+            line_end[-1] = '\0';
+        }
         *line_end = '\0';
-        trim_right(line);
 
         if (*line == '\0') {
             break;
         }
+        if (*line == ' ' || *line == '\t') {
+            return SS_HTTP_ERR_CONFIG;
+        }
 
         colon = strchr(line, ':');
         if (colon == NULL) {
-            continue;
+            return SS_HTTP_ERR_CONFIG;
         }
 
         *colon = '\0';
-        name = trim_left(line);
-        trim_right(name);
-        value = trim_left(colon + 1);
-        trim_right(value);
-        if (*name == '\0') {
-            continue;
+        name = line;
+        value = trim_http_header_ows_left(colon + 1);
+        trim_http_header_ows_right(value);
+        if (!is_valid_header_name(name) || !is_valid_inbound_header_value(value)) {
+            return SS_HTTP_ERR_CONFIG;
         }
 
         request->headers[request->header_count].name = name;
         request->headers[request->header_count].value = value;
         ++request->header_count;
     }
+    return SS_HTTP_OK;
 }
 
 static const char *reason_phrase_for_status(int status) {
@@ -3442,7 +3487,16 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     request.body_length = (size_t)content_length;
     request.backend_request = NULL;
     request.cookie_buffer_used = 0;  /* R-191: reset the per-request cookie arena */
-    parse_headers(header_start, body_start, &request);
+    if (parse_headers(header_start, body_start, &request) != SS_HTTP_OK) {
+        free(request_storage);
+        return send_response(
+            client_socket,
+            400,
+            "text/plain; charset=utf-8",
+            "bad request\n",
+            NULL
+        );
+    }
     parse_query_params(query, &request);
     memset(&stream_backend, 0, sizeof(stream_backend));
     stream_backend.socket_handle = client_socket;

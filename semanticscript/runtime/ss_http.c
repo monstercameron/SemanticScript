@@ -14,15 +14,70 @@
  * bound straight to their legacy `ss_http_*` entry points by the stdlib, so they
  * are not re-shimmed. The URL/HTML codecs DO need a shim: the legacy entry points
  * take a caller scratch buffer, so the `*_str` adapters here allocate a
- * right-sized buffer and hand the EAV side a plain String. (The buffer is owned
- * by the returned String; demo programs are short-lived.)
+ * right-sized buffer and hand the EAV side a plain String. The returned buffer
+ * is owned by this runtime library and must be released through ss_http_free_str
+ * so it returns to the same allocator/CRT that produced it.
  */
 
-#include "sem_http_runtime.h"
+#include "native_http/sem_http_runtime.h"
 #include "ss_runtime_export.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>  /* SIZE_MAX for the codec overflow guards (R-144) */
+
+/*
+ * R-012/R-034: direct String-returning HTTP helpers expose malloc'd buffers to
+ * app code. Track the buffers allocated by this shim so ss_http_free_str can
+ * free only live runtime-owned strings; a literal, foreign pointer, or stale
+ * duplicate fails closed before it reaches the CRT allocator.
+ */
+typedef struct { char **items; size_t count; size_t cap; } ss_http_string_registry;
+
+static ss_http_string_registry ss_http_live_strings;
+
+static int ss_http_track_str(char *buffer) {
+    if (buffer == NULL) {
+        return 0;
+    }
+    if (ss_http_live_strings.count == ss_http_live_strings.cap) {
+        size_t next = ss_http_live_strings.cap == 0 ? 16 : ss_http_live_strings.cap * 2;
+        if (next <= ss_http_live_strings.cap || next > SIZE_MAX / sizeof(char *)) {
+            return 0;
+        }
+        char **grown = (char **)realloc(ss_http_live_strings.items,
+                                        next * sizeof(char *));
+        if (grown == NULL) {
+            return 0;
+        }
+        ss_http_live_strings.items = grown;
+        ss_http_live_strings.cap = next;
+    }
+    ss_http_live_strings.items[ss_http_live_strings.count++] = buffer;
+    return 1;
+}
+
+static int ss_http_str_is_live(const char *buffer) {
+    size_t index;
+    for (index = 0; index < ss_http_live_strings.count; ++index) {
+        if (ss_http_live_strings.items[index] == buffer) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ss_http_untrack_str(const char *buffer) {
+    size_t index;
+    for (index = 0; index < ss_http_live_strings.count; ++index) {
+        if (ss_http_live_strings.items[index] == buffer) {
+            ss_http_live_strings.items[index] =
+                ss_http_live_strings.items[ss_http_live_strings.count - 1];
+            ss_http_live_strings.count--;
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /* ---- URL / HTML codecs: buffer-managing String adapters over the
  * caller-scratch-buffer legacy entry points (distinct `_str` names so they do
@@ -40,6 +95,10 @@ SS_EXPORT const char *ss_http_url_encode_str(const char *input) {
     if (!buffer) return 0;
     buffer[0] = 0;
     ss_http_url_encode(input, buffer, capacity);
+    if (!ss_http_track_str(buffer)) {
+        free(buffer);
+        return 0;
+    }
     return buffer;
 }
 
@@ -51,6 +110,10 @@ SS_EXPORT const char *ss_http_url_decode_str(const char *input) {
     if (!buffer) return 0;
     buffer[0] = 0;
     ss_http_url_decode(input, buffer, capacity);
+    if (!ss_http_track_str(buffer)) {
+        free(buffer);
+        return 0;
+    }
     return buffer;
 }
 
@@ -66,6 +129,10 @@ SS_EXPORT const char *ss_http_html_escape_str(const char *input) {
     if (!buffer) return 0;
     buffer[0] = 0;
     ss_http_html_escape(input, buffer, (int)capacity);
+    if (!ss_http_track_str(buffer)) {
+        free(buffer);
+        return 0;
+    }
     return buffer;
 }
 
@@ -76,7 +143,10 @@ SS_EXPORT const char *ss_http_html_escape_str(const char *input) {
  * html.render lowering calls this to release each escaped-hole buffer after it has
  * been concatenated in. */
 SS_EXPORT void ss_http_free_str(const char *buffer) {
-    if (buffer) free((void *)buffer);
+    if (buffer == NULL || !ss_http_str_is_live(buffer) || !ss_http_untrack_str(buffer)) {
+        return;
+    }
+    free((void *)buffer);
 }
 
 /* ---- request-value probes (renamed off the legacy `request_value_*`) ---- */
