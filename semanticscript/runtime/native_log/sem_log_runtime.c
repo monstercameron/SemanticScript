@@ -15,8 +15,9 @@
 
 #ifdef _WIN32
 #  include <direct.h>     /* _mkdir */
+#  include <sys/stat.h>   /* _stat / _S_IFDIR — R-030 directory-type check */
 #else
-#  include <sys/stat.h>   /* mkdir */
+#  include <sys/stat.h>   /* mkdir, stat */
 #  include <sys/types.h>
 #endif
 
@@ -40,8 +41,19 @@ static int log_mkdir_p_single(const char *path) {
     int rc = mkdir(path, 0755);
 #endif
     if (rc == 0) return 1;
-    if (errno == EEXIST) return 1;
-    /* errno == EEXIST is fine; everything else is a real failure. */
+    if (errno == EEXIST) {
+        /* R-030: EEXIST is fine ONLY if the existing entry is a directory; an
+         * existing plain file at a path segment is a real failure (otherwise we
+         * "succeed" and then fopen the log inside a non-directory). */
+#ifdef _WIN32
+        struct _stat st;
+        return (_stat(path, &st) == 0 && (st.st_mode & _S_IFDIR)) ? 1 : 0;
+#else
+        struct stat st;
+        return (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) ? 1 : 0;
+#endif
+    }
+    /* anything other than EEXIST is a real failure. */
     return 0;
 }
 

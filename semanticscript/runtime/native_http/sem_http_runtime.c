@@ -1781,26 +1781,66 @@ const char *ss_http_form_find_field(
     return NULL;
 }
 
-int ss_http_filesystem_ensure_directory(const char *directory_path) {
-    if (directory_path == NULL || directory_path[0] == '\0') {
-        return SS_HTTP_ERR_CONFIG;
-    }
+/* R-030: create a single directory component. EEXIST is fine ONLY if the
+ * existing entry is itself a directory (an existing plain file is an error, not
+ * a silent success the caller then writes children into). */
+static int ss_http_mkdir_one(const char *path) {
 #ifdef _WIN32
-    if (CreateDirectoryA(directory_path, NULL) == 0) {
+    if (CreateDirectoryA(path, NULL) == 0) {
         DWORD last_error = GetLastError();
         if (last_error != ERROR_ALREADY_EXISTS) {
             return SS_HTTP_ERR_ENGINE;
         }
+        DWORD attrs = GetFileAttributesA(path);
+        if (attrs == INVALID_FILE_ATTRIBUTES
+                || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            return SS_HTTP_ERR_ENGINE;  /* exists but is not a directory */
+        }
     }
     return SS_HTTP_OK;
 #else
-    if (mkdir(directory_path, 0755) != 0) {
+    if (mkdir(path, 0755) != 0) {
         if (errno != EEXIST) {
             return SS_HTTP_ERR_ENGINE;
+        }
+        struct stat st;
+        if (stat(path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            return SS_HTTP_ERR_ENGINE;  /* exists but is not a directory */
         }
     }
     return SS_HTTP_OK;
 #endif
+}
+
+int ss_http_filesystem_ensure_directory(const char *directory_path) {
+    if (directory_path == NULL || directory_path[0] == '\0') {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    /* R-030: create every missing parent (mkdir -p), not just the leaf. A
+     * nested output path (logs/2026/06) previously failed unless every parent
+     * already existed. Walk the path, creating each prefix in turn. */
+    char path[1024];
+    size_t len = strlen(directory_path);
+    if (len >= sizeof(path)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    memcpy(path, directory_path, len + 1);
+    for (size_t i = 1; i < len; ++i) {
+        if (path[i] != '/' && path[i] != '\\') {
+            continue;
+        }
+        if (path[i - 1] == ':' || path[i - 1] == '/' || path[i - 1] == '\\') {
+            continue;  /* a drive root ("C:\") or a repeated separator */
+        }
+        char saved = path[i];
+        path[i] = '\0';
+        int rc = ss_http_mkdir_one(path);
+        path[i] = saved;
+        if (rc != SS_HTTP_OK) {
+            return rc;
+        }
+    }
+    return ss_http_mkdir_one(path);
 }
 
 const char *ss_http_request_query_param(const SSHttpRequest *request, const char *name) {
