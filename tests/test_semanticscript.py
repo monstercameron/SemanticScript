@@ -6581,6 +6581,36 @@ def test_region_free_mismatch_rejected():
     assert getattr(exc.value, "code", None) == "SS1562"
 
 
+def test_region_allocate_sizes_by_type_and_guards_null():
+    # R-129: `allocateIn` must size the slab from the declared type (not a fixed 8
+    # bytes — an undersized slab corrupts the heap when later code writes a full
+    # record through it) and trap (SSR0022) on a NULL malloc instead of handing it
+    # on. A 3-field record (24 bytes) must size from the struct type, and no slab
+    # may be a hardcoded malloc(i64 8).
+    src = (
+        "Arena is project\nArena module appArena\nArena target console\nArena entry main\n"
+        "appArena is module\nappArena path a.b\nappArena purpose \"p\"\nappArena invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "Point is record\nPoint field x Int64\nPoint field y Int64\nPoint field z Int64\n"
+        "requestArena is region\nrequestArena strategy arena\nrequestArena scope main\n"
+        "arenaAllocCap is capability\narenaAllocCap grants allocate heap.requestArena\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main uses arenaAllocCap\nmain effect allocate heap.requestArena\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main allocateIn requestArena p1 Point\n"
+        "main releaseRegion requestArena\nmain return okCode\n"
+    )
+    prog = semanticscript.parse(src)
+    assert not [d for d in semanticscript.lint(prog) if d.severity == "error"]
+    ir = str(semanticscript.lower_to_llvm(prog))
+    # no fixed 8-byte slab; the size is computed from the declared type
+    assert 'call i8* @"malloc"(i64 8)' not in ir
+    # the record (3x i64 = 24 bytes) sizes from its struct type via the gep-null trick
+    assert "getelementptr {i64, i64, i64}, {i64, i64, i64}* null, i32 1" in ir
+    # a NULL malloc traps (SSR0022) instead of binding a null slab
+    assert "allocFail" in ir and "SSR0022" in ir
+
+
 def test_buffer_get_without_error_path_rejected():
     # WS1-115 / §10.6: a bounds-checked buffer read with no `catch` drops the
     # out-of-bounds error -> SS1568.

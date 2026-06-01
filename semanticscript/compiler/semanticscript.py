@@ -9141,12 +9141,22 @@ class EavCodegen:
                 row.line, code="SS1087",
             )
         if pred == "allocateIn":
-            # WS1-112: `allocateIn <region> <var> <Type>` allocates a slab in the
-            # region (single-thread: a malloc), binds <var> to the pointer, and
-            # tracks it under the region so releaseRegion frees the whole arena.
+            # WS1-112 / R-129: `allocateIn <region> <var> <Type>` allocates a slab
+            # SIZED FOR THE DECLARED TYPE (not a fixed 8 bytes — an undersized slab
+            # corrupts the heap the moment later code writes a full record/buffer
+            # through it), binds <var> to the pointer, and tracks it under the
+            # region so releaseRegion frees the whole arena. A failed malloc traps
+            # (SSR0022) instead of handing a NULL slab to later code.
             region, var = p[0], p[1]
-            slab = builder.call(self.runtime("malloc"),
-                                [ir.Constant(ir.IntType(64), 8)])
+            slab_ty = self.ir_type(p[2]) if len(p) >= 3 else ir.IntType(64)
+            # Target-independent sizeof via the GEP-on-null trick: the address of
+            # element 1 of a null T* is exactly sizeof(T). LLVM folds it at -O2.
+            size = builder.ptrtoint(
+                builder.gep(ir.Constant(slab_ty.as_pointer(), None),
+                            [ir.Constant(ir.IntType(32), 1)]),
+                ir.IntType(64))
+            slab = builder.call(self.runtime("malloc"), [size])
+            self._guard_alloc(builder, slab, op.name, row.line)  # R-129: null -> SSR0022
             sym[var] = ("val", slab)
             sym.setdefault("__rgn_" + region, []).append(slab)
             return builder
