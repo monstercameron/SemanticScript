@@ -1349,16 +1349,21 @@ static int parse_json_number(
         errno = 0;
         char *end_ptr = NULL;
         long long parsed = strtoll(start, &end_ptr, 10);
-        if (errno == ERANGE || end_ptr != scan) {
-            errno = 0;
-            *out_double = strtod(start, NULL);
-            if (errno == ERANGE) {
-                return SS_JSON_ERR_MALFORMED_PATH;
-            }
-            is_double = 1;
-        } else {
-            *out_int = parsed;
+        if (errno == ERANGE) {
+            /* R-262: an integer literal that overflows int64 cannot be
+             * faithfully represented. The old strtod fallback silently
+             * downgraded it to a lossy double, so a later cursor_int64 returned
+             * a corrupted value with no signal. Reject it (fail-closed, like the
+             * double-overflow case above and the runtime's other
+             * unrepresentable-input rejections) instead of losing precision. */
+            return SS_JSON_ERR_MALFORMED_PATH;
         }
+        if (end_ptr != scan) {
+            /* The digits were already validated above, so a short parse is a
+             * real malformed number, not an integer/double ambiguity. */
+            return SS_JSON_ERR_MALFORMED_PATH;
+        }
+        *out_int = parsed;
     }
 
     *out_is_double = is_double;
