@@ -45,6 +45,7 @@ CASES = [
     ("status", ["status", "--json"], "json", "sem.status.v1"),
     ("index", ["index", "--json"], "json", "sem.codeIndex.v1"),
     ("search", ["search", "cleanup", "--json"], "json", "sem.search.v1"),
+    ("bench", ["bench", F, "--runs", "2", "--json"], "json", "sem.bench.v1"),
 ]
 
 

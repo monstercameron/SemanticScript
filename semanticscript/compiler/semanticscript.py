@@ -11279,6 +11279,74 @@ def cmd_search(args) -> int:
     return 0
 
 
+def _program_target(program: Program) -> str:
+    """The project's `target` (console by default)."""
+    for ent in program.entities.values():
+        if ent.kind == "project":
+            row = ent.fact("target")
+            if row and row.payload:
+                return row.payload[0]
+    return "console"
+
+
+def cmd_bench(args) -> int:
+    """Benchmark the pipeline — parse / lower / end-to-end JIT-run — reporting the
+    best of N runs in milliseconds (sem.bench.v1). The run phase is skipped for a
+    non-terminating target (e.g. webServer). (TOOL-6)"""
+    import os
+    import time
+    runs = max(1, getattr(args, "runs", None) or 5)
+    src = _read_program_source(args.path)
+    runnable = _program_target(parse(src)) == "console"
+    parse_t, lower_t, run_t = [], [], []
+    for _ in range(runs):
+        t0 = time.perf_counter()
+        prog = parse(src)
+        t1 = time.perf_counter()
+        lower_to_llvm(prog)
+        t2 = time.perf_counter()
+        parse_t.append(t1 - t0)
+        lower_t.append(t2 - t1)
+        if runnable:
+            t3 = time.perf_counter()
+            # The JIT'd program writes to the OS stdout (fd 1) from the C runtime,
+            # which Python-level redirection can't capture; mute fd 1 at the OS
+            # level so the program's output doesn't pollute bench's own (--json).
+            sys.stdout.flush()
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            saved = os.dup(1)
+            os.dup2(devnull, 1)
+            try:
+                jit_run(prog)
+            except OSError:
+                pass  # a trapping program still yields a timing
+            finally:
+                sys.stdout.flush()
+                os.dup2(saved, 1)
+                os.close(saved)
+                os.close(devnull)
+            run_t.append(time.perf_counter() - t3)
+
+    def ms(xs):
+        return round(min(xs) * 1000, 3) if xs else None
+    result = {
+        "path": args.path, "runs": runs, "runnable": runnable,
+        "parseMsBest": ms(parse_t), "lowerMsBest": ms(lower_t),
+        "runMsBest": ms(run_t),
+    }
+    totals = [v for v in (result["parseMsBest"], result["lowerMsBest"],
+                          result["runMsBest"]) if v is not None]
+    result["totalMsBest"] = round(sum(totals), 3)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.bench.v1", **result) + "\n")
+    else:
+        run_s = f" run {result['runMsBest']}ms" if runnable else " (run skipped)"
+        print(f"bench {args.path} (best of {runs}): "
+              f"parse {result['parseMsBest']}ms lower {result['lowerMsBest']}ms"
+              f"{run_s}")
+    return 0
+
+
 def _is_trap_returncode(rc: int) -> bool:
     """True if a subprocess return code indicates a hardware/guard trap — a POSIX
     fatal signal or a Windows NTSTATUS exception code — rather than a normal
@@ -12767,6 +12835,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_search.add_argument("--limit", type=int, default=20, help="max results (default 20)")
     sp_search.add_argument("--json", action="store_true")
     sp_search.set_defaults(func=cmd_search)
+
+    # TOOL-6: pipeline benchmark
+    sp_bench = sub.add_parser("bench", help="benchmark parse/lower/JIT-run (best of N)")
+    sp_bench.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_bench.add_argument("--runs", type=int, default=5, help="iterations (default 5)")
+    sp_bench.add_argument("--json", action="store_true")
+    sp_bench.set_defaults(func=cmd_bench)
 
     # run needs --strict flag (WS2-071)
     sp_run = sub.add_parser("run", help="JIT-compile and execute")
