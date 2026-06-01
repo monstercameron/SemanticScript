@@ -11230,6 +11230,55 @@ def cmd_clean(args) -> int:
     return 0
 
 
+def _all_diagnostics() -> dict:
+    """Every diagnostic code — compile-time (SS/MD) + runtime (SSR) — merged."""
+    return {**DIAGNOSTICS, **RUNTIME_DIAGNOSTICS}
+
+
+def cmd_index(args) -> int:
+    """Catalog every diagnostic code (compile-time + runtime) with tier + summary
+    (sem.codeIndex.v1). The companion to `explain <code>`. (TOOL-5)"""
+    entries = [{"code": code, "tier": spec.get("tier", ""),
+                "summary": spec.get("summary", "")}
+               for code, spec in sorted(_all_diagnostics().items())]
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.codeIndex.v1",
+                                        count=len(entries), codes=entries) + "\n")
+    else:
+        for e in entries:
+            print(f"{e['code']} ({e['tier']}): {e['summary']}")
+    return 0
+
+
+def cmd_search(args) -> int:
+    """Keyword-ranked search over the diagnostic-code registry — matches a code,
+    its summary, the `found` symptom, and the `suggested` fix (sem.search.v1).
+    (TOOL-5)"""
+    query = args.query.lower()
+    terms = [t for t in query.split() if t]
+    results = []
+    for code, spec in _all_diagnostics().items():
+        haystack = " ".join([
+            code, spec.get("tier", ""), spec.get("summary", ""),
+            spec.get("found", ""), spec.get("suggested", "")]).lower()
+        score = 10 if query in code.lower() else 0
+        score += sum(haystack.count(t) for t in terms)
+        if score:
+            results.append({"code": code, "tier": spec.get("tier", ""),
+                            "summary": spec.get("summary", ""), "score": score})
+    results.sort(key=lambda r: (-r["score"], r["code"]))
+    limit = getattr(args, "limit", None) or 20
+    results = results[:limit]
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.search.v1", query=args.query, count=len(results),
+            matches=results) + "\n")
+    else:
+        for r in results:
+            print(f"{r['code']} ({r['tier']}) [{r['score']}]: {r['summary']}")
+    return 0
+
+
 def _is_trap_returncode(rc: int) -> bool:
     """True if a subprocess return code indicates a hardware/guard trap — a POSIX
     fatal signal or a Windows NTSTATUS exception code — rather than a normal
@@ -12708,6 +12757,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_clean = sub.add_parser("clean", help="clear the cached native runtime/build artifacts")
     sp_clean.add_argument("--json", action="store_true")
     sp_clean.set_defaults(func=cmd_clean)
+
+    # TOOL-5: diagnostic-code catalog + keyword search
+    sp_index = sub.add_parser("index", help="catalog every diagnostic code (tier + summary)")
+    sp_index.add_argument("--json", action="store_true")
+    sp_index.set_defaults(func=cmd_index)
+    sp_search = sub.add_parser("search", help="keyword-ranked search over the diagnostic registry")
+    sp_search.add_argument("query", help="search terms")
+    sp_search.add_argument("--limit", type=int, default=20, help="max results (default 20)")
+    sp_search.add_argument("--json", action="store_true")
+    sp_search.set_defaults(func=cmd_search)
 
     # run needs --strict flag (WS2-071)
     sp_run = sub.add_parser("run", help="JIT-compile and execute")

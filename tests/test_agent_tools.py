@@ -43,6 +43,8 @@ CASES = [
     ("emit-ir --optimized", ["emit-ir", F, "--optimized"], "text", "ModuleID"),
     ("inspect-ir", ["inspect-ir", F, "--json"], "json", "sem.inspectIr.v1"),
     ("status", ["status", "--json"], "json", "sem.status.v1"),
+    ("index", ["index", "--json"], "json", "sem.codeIndex.v1"),
+    ("search", ["search", "cleanup", "--json"], "json", "sem.search.v1"),
 ]
 
 
