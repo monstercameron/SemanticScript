@@ -333,6 +333,37 @@ def test_mvs_selects_highest():
     assert semanticscript.mvs_select(reqs) == {"a": "v1.3.0", "b": "v2.0.0"}
 
 
+def test_release_workflow_builds_from_the_requested_tag():
+    # R-120: a manual release dispatch must build + publish from the requested
+    # TAG's commit, never the dispatch branch. The workflow resolves+validates the
+    # tag before any matrix build (preflight job), every job checks out exactly
+    # that tag ref, and build/publish verify HEAD == the resolved tag SHA — so a
+    # release can't upload binaries from a different ref that merely shares the
+    # tag's version string.
+    yaml = pytest.importorskip("yaml")
+    path = os.path.join(ROOT, ".github", "workflows", "release.yml")
+    doc = yaml.safe_load(open(path, encoding="utf-8"))
+    jobs = doc["jobs"]
+    assert "preflight" in jobs, "tag validation must precede the matrix build"
+    # validation runs first; build + publish both depend on it
+    assert jobs["build"]["needs"] == "preflight"
+    assert "preflight" in jobs["publish"]["needs"] and "build" in jobs["publish"]["needs"]
+    # preflight exports the resolved tag + its commit SHA
+    for out in ("tag", "sha", "version", "prerelease"):
+        assert out in jobs["preflight"]["outputs"], out
+    src = open(path, encoding="utf-8").read()
+    # every checkout binds an explicit ref (no bare default-branch checkout)
+    assert "ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}" in src
+    assert src.count("ref: ${{ needs.preflight.outputs.tag }}") == 2  # build + publish
+    # preflight validates version.json against the tag and resolves the tag's commit
+    assert 'rev-parse -q --verify "refs/tags/${tag}^{commit}"' in src
+    assert "does not match version.json version" in src
+    # build + publish each verify HEAD is the resolved tag SHA
+    assert src.count('"${{ needs.preflight.outputs.sha }}"') >= 2
+    # no stale per-job validation step remains
+    assert "steps.ver" not in src
+
+
 def test_mvs_release_beats_prerelease():
     assert semanticscript.mvs_select([("a", "v1.0.0-rc.1"), ("a", "v1.0.0")]) == {"a": "v1.0.0"}
 

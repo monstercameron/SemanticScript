@@ -25,8 +25,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # R-120: resolve and validate the release tag BEFORE any matrix build, against
+  # the source AT THE TAG — not whatever branch a workflow_dispatch was started
+  # on. Both build and publish then check out exactly this tag's commit and verify
+  # their HEAD matches `sha`, so a release can never upload binaries built from a
+  # different ref that merely happens to share the tag's version string.
+  preflight:
+    name: Resolve + verify release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      # Checking out `ref: <tag>` here also enforces that the tag EXISTS: a bogus
+      # workflow_dispatch tag fails this step before anything is built.
+      - name: Check out the requested tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify the tag matches version.json at the tag
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          # The tag must be a real annotated/lightweight git tag, not just a branch
+          # name that resolves — resolve its commit explicitly.
+          if ! sha="$(git rev-parse -q --verify "refs/tags/${tag}^{commit}")"; then
+            echo "Tag '${tag}' does not exist as a git tag in the repository."
+            exit 1
+          fi
+          version="$(python -c 'import json;print(json.load(open("version.json"))["version"])')"
+          if [ "$tag" != "v$version" ]; then
+            echo "Tag '$tag' does not match version.json version '$version' (expected 'v$version')."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          # 0.x releases publish as prereleases.
+          case "$version" in 0.*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
+          echo "Releasing tag '$tag' (version '$version') at commit $sha."
+
   build:
     name: Freeze (${{ matrix.os }})
+    needs: preflight
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -42,8 +93,23 @@ jobs:
             asset: semanticscript-macos-arm64
             exe: semanticscript/packaging/dist/semanticscript
     steps:
-      - name: Check out repository
+      # R-120: build from the resolved tag's commit on every OS, not the dispatch
+      # branch, and fail if HEAD is not the SHA preflight validated.
+      - name: Check out the release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify the built commit is the resolved tag SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          built="$(git rev-parse HEAD)"
+          if [ "$built" != "${{ needs.preflight.outputs.sha }}" ]; then
+            echo "Checked-out commit $built != resolved tag SHA ${{ needs.preflight.outputs.sha }}."
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -110,31 +176,28 @@ jobs:
 
   publish:
     name: Publish GitHub release
-    needs: build
+    needs: [preflight, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      # R-120: check out exactly the resolved tag (not the dispatch branch) and
+      # confirm HEAD is the SHA preflight validated, so the published release notes
+      # / attribution / checksums come from the same commit the binaries were
+      # built from.
+      - name: Check out the release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
 
-      - name: Resolve + verify tag against version.json
-        id: ver
+      - name: Verify the publish checkout is the resolved tag SHA
         shell: bash
         run: |
           set -euo pipefail
-          version="$(python -c 'import json;print(json.load(open("version.json"))["version"])')"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag="${GITHUB_REF_NAME}"
-          fi
-          if [ "$tag" != "v$version" ]; then
-            echo "Tag '$tag' does not match version.json version '$version' (expected 'v$version')."
+          built="$(git rev-parse HEAD)"
+          if [ "$built" != "${{ needs.preflight.outputs.sha }}" ]; then
+            echo "Publish checkout $built != resolved tag SHA ${{ needs.preflight.outputs.sha }}."
             exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          # 0.x releases publish as prereleases.
-          case "$version" in 0.*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
 
       - name: Download all build artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -158,8 +221,8 @@ jobs:
       - name: Create or update the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.ver.outputs.tag }}
-          PRERELEASE: ${{ steps.ver.outputs.prerelease }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
         shell: bash
         run: |
           set -euo pipefail
