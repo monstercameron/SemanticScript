@@ -4196,6 +4196,31 @@ def test_operation_reference_shadow_warns():
     assert "SS3392" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
+def test_operationtype_effect_bound_escape():
+    # R-241 / WS2-092: behavior passed as data may not smuggle effects outside
+    # the operationType's declared bound.
+    src = (
+        "ReadOnly is operationType\nReadOnly in Int64\nReadOnly out Int64\n"
+        "ReadOnly effect read database\n"
+        "FsWriter is operationType\nFsWriter in Int64\nFsWriter out Int64\n"
+        "FsWriter effect write fs.cache\n"
+        "writeValue is operation\nwriteValue in n Int64\nwriteValue out Int64\n"
+        "writeValue effect write fs.cache\n"
+        'writeValue purpose "p"\nwriteValue invariant "i"\nwriteValue return n\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let leaked immutable ReadOnly writeValue\n"
+        "main let ok immutable FsWriter writeValue\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+    )
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    assert "SS1707" in codes
+
+    clean = src.replace("main let leaked immutable ReadOnly writeValue\n", "")
+    assert "SS1707" not in {d.code for d in semanticscript.lint(semanticscript.parse(clean))}
+
+
 def test_alias_annotation_at_written_let_position_ok():
     # WS1-029 / §10: a written `let` type may annotate a base-typed binding to an
     # alias — visible, not silent coercion.
