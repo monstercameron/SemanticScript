@@ -42,25 +42,46 @@ static int ss_net_parse_url(const char *url, char *host, size_t hostcap,
     while (*auth_end && *auth_end != '/' && *auth_end != '?' && *auth_end != '#') {
         ++auth_end;
     }
-    const char *colon = memchr(p, ':', (size_t)(auth_end - p));
+    /* R-166: strict port — digits only, in 1..65535, no trailing junk
+     * (atoi accepted "8080junk", ":", "-5", out-of-range). */
     size_t hl;
-    if (colon) {
-        hl = (size_t)(colon - p);
-        /* R-166: strict port — digits only, in 1..65535, no trailing junk.
-         * `atoi(colon+1)` accepted "8080junk", ":", "-5", and out-of-range. */
-        const char *ps = colon + 1;
+    const char *host_start = p;
+    const char *port_str = NULL;  /* points just past the ':' if a port is given */
+    if (*p == '[') {
+        /* R-186: bracketed IPv6 literal "[addr]" / "[addr]:port". The colon
+         * inside the brackets is part of the address, not a port separator, so
+         * a bare memchr(':') would split it wrong. The host stored for
+         * getaddrinfo is the address WITHOUT the brackets. */
+        const char *rb = memchr(p, ']', (size_t)(auth_end - p));
+        if (rb == NULL || rb == p + 1) return -1;  /* no close bracket / empty */
+        host_start = p + 1;
+        hl = (size_t)(rb - host_start);
+        const char *after = rb + 1;
+        if (after < auth_end) {
+            if (*after != ':') return -1;          /* junk after ']' */
+            port_str = after + 1;
+        }
+    } else {
+        const char *colon = memchr(p, ':', (size_t)(auth_end - p));
+        if (colon) {
+            hl = (size_t)(colon - p);
+            port_str = colon + 1;
+        } else {
+            hl = (size_t)(auth_end - p);
+        }
+    }
+    if (port_str != NULL) {
         char *endp = NULL;
-        long pv = strtol(ps, &endp, 10);
-        if (ps == auth_end || endp != auth_end || pv < 1 || pv > 65535) {
+        long pv = strtol(port_str, &endp, 10);
+        if (port_str == auth_end || endp != auth_end || pv < 1 || pv > 65535) {
             return -1;
         }
         *port = (int)pv;
     } else {
-        hl = (size_t)(auth_end - p);
         *port = 80;
     }
     if (hl == 0 || hl >= hostcap) return -1;
-    memcpy(host, p, hl);
+    memcpy(host, host_start, hl);
     host[hl] = 0;
     /* R-172: build the request target from auth_end with the fragment
      * ('#'...) stripped (fragments are client-only and must not be sent). A

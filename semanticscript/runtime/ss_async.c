@@ -218,8 +218,16 @@ SS_EXPORT int32_t ss_async_channel_produce(void *chan, int64_t delay_ms,
     p->timer = NULL;
     c->pending++;  /* R-138: track in-flight producers so close() can defer free */
     unsigned long long ms = delay_ms < 0 ? 0ULL : (unsigned long long)delay_ms;
-    ss_async_timer_start(ss_async_get_loop(), ms, ss_chan_produce_cb, p,
-                         &p->timer);
+    /* R-181: if the producer timer cannot be armed, its callback (which would
+     * decrement `pending` and free `p`) never fires — leaving `pending` stuck
+     * forever, so receive() spins and close() never frees the channel. Undo the
+     * bookkeeping and report failure instead. */
+    if (ss_async_timer_start(ss_async_get_loop(), ms, ss_chan_produce_cb, p,
+                             &p->timer) != 0) {
+        c->pending--;
+        free(p);
+        return -1;
+    }
     return 0;
 }
 
