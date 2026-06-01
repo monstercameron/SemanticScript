@@ -9117,6 +9117,21 @@ def test_json_document_lifecycle_tombstoned():
     assert "ss_json_untrack_document(document)" in destroy
 
 
+def test_json_unicode_escape_rejects_embedded_nul():
+    # R-192: a \\u0000 escape decodes to a NUL, which would truncate the
+    # NUL-terminated String/field-name and let untrusted JSON smuggle a hidden
+    # suffix past validators/auth/field lookups. decode_unicode_escape must reject
+    # code point 0 (both the value-parse and the find-string paths route through
+    # it). Source-level guard; harness_json.c rejects a \\u0000 value and accepts
+    # a normal \\u0041 escape under ASAN+UBSAN in CI.
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_json",
+                            "sem_json_runtime.c"), encoding="utf-8").read()
+    dec = re.search(r"static int decode_unicode_escape\(.*?\n\}", src, re.S).group(0)
+    assert "code_point == 0" in dec and "return -1" in dec
+
+
 def test_async_runtime_handle_lifecycle_guarded():
     # R-195: the async future/channel/interval handles get the sqlite/event/json
     # tombstone treatment — a per-family live registry so a double await/close or a

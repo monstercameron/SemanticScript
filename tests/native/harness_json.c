@@ -45,6 +45,17 @@ int main(void) {
      * fine, a crash is not. */
     (void)ss_json_document_serialize(doc, scratch, (int64_t)sizeof(scratch), &dead_out);
 
+    /* R-192: a backslash-u-0000 escape in a value must be REJECTED (it would
+     * embed a NUL that truncates the NUL-terminated String), while an ordinary
+     * BMP escape still parses. */
+    SSJsonDocument *nul_doc = NULL;
+    assert(ss_json_document_create_from_text("{\"k\":\"a\\u0000b\"}", 256, &nul_doc) != SS_JSON_OK);
+    assert(nul_doc == NULL);  /* parse failed -> no document handed back */
+    SSJsonDocument *esc_doc = NULL;
+    assert(ss_json_document_create_from_text("{\"k\":\"a\\u0041b\"}", 256, &esc_doc) == SS_JSON_OK);
+    assert(esc_doc != NULL);
+    ss_json_document_destroy(esc_doc);
+
     /* a second document round-trips independently after the first is gone */
     SSJsonDocument *doc2 = NULL;
     assert(ss_json_document_create_empty(1024, SS_JSON_NODE_OBJECT, &doc2) == SS_JSON_OK);
