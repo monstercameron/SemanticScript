@@ -2798,6 +2798,50 @@ def test_sqlite_column_used_after_step_warns():
     assert "SS1901" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
+def _family_catch_ir(invoke, arg_rows, catch_type, retkind_handle):
+    # Minimal program: one fallible family-intrinsic call with a catch + a
+    # `branch ifError ... goto failed`. Returns the lowered IR text.
+    cap = "demoCap is capability\ndemoCap grants write demo.sink\ndemoCap purpose \"d\"\n"
+    out_row = ("callIt out handle OpaquePointer\n" if retkind_handle
+               else "")
+    return _ir_for_source(
+        "Demo is project\nDemo module m\nDemo target console\nDemo entry main\n"
+        "m is module\nm path demo.x\nm exports main\n"
+        'm purpose "exercise a fallible family call"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n" + cap +
+        "main is operation\nmain out ExitCode\nmain effect write demo.sink\n"
+        "main uses demoCap\nmain async no\n"
+        'main purpose "branch on a native failure"\nmain invariant "i"\n'
+        'main let s0 immutable String "x"\n'
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 7\n"
+        "main do callIt\nmain branch ifError callIt goto failed\nmain return okCode\n"
+        "main at failed return failCode\n"
+        "callIt is call\ncallIt in main\ncallIt invokes " + invoke + "\n"
+        + arg_rows + out_row + "callIt catch " + catch_type + "\n"
+    )
+
+
+def test_r141_family_intrinsic_catch_wires_iferror():
+    # R-141: a `catch` + `branch ifError` on a status/handle-returning family
+    # intrinsic must branch on the native result, not the old constant-false `err`
+    # that silently treated every native failure as success. A status ("i") call
+    # wires `icmp ne i32 <call>, 0`; a creation-handle ("h") call wires its failure
+    # sentinel (`icmp eq i64 <call>, 0`). Neither may lower to `br i1 false`.
+    status_ir = _family_catch_ir(
+        "log.logInfo", "callIt arg message String s0\n", "LogError",
+        retkind_handle=False)
+    assert "ss_log_info" in status_ir
+    assert "icmp ne i32" in status_ir
+    assert "br i1 false" not in status_ir
+
+    handle_ir = _family_catch_ir(
+        "sqlite.openDatabase", "callIt arg path String s0\n", "SqliteError",
+        retkind_handle=True)
+    assert "ss_sqlite_open" in handle_ir
+    assert "icmp eq i64" in handle_ir
+    assert "br i1 false" not in handle_ir
+
+
 def test_sqlite_column_used_after_finalize_warns():
     # R-164: finalize frees the statement, so a columnText String read before the
     # finalize and used after it is a use-after-free. The runtime hands

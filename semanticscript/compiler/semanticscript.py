@@ -10066,6 +10066,19 @@ class EavCodegen:
             r = builder.call(fn, vals)
             if retkind != "v" and call.fact("out") is not None:
                 result = r
+            # R-141: wire the native status/handle into `err` so a `catch` +
+            # `branch ifError` actually takes the error path instead of being
+            # constant-false (which silently treated every native failure as
+            # success). retkind "i" is the OK==0 status convention; "h" creation
+            # handles use their explicit failure sentinel. Only when a `catch`
+            # exists (otherwise `err` is unread and we skip the dead compare).
+            if call.fact("catch") is not None:
+                fam, meth = target.split(".", 1)
+                if retkind == "i":
+                    err = builder.icmp_signed("!=", r, ir.Constant(ir.IntType(32), 0))
+                elif retkind == "h" and (fam, meth) in _FAMILY_HANDLE_ERR:
+                    op, sentinel = _FAMILY_HANDLE_ERR[(fam, meth)]
+                    err = builder.icmp_signed(op, r, ir.Constant(ir.IntType(64), sentinel))
         elif target in ("sqlite.stepResultIsDone", "sqlite.stepResultIsRow"):
             # The step result code is the raw sqlite3_step return: SQLITE_ROW=100,
             # SQLITE_DONE=101. The predicate is an equality test.
@@ -11094,6 +11107,24 @@ def _family_intrinsic(target: str):
         return None
     fam, meth = target.split(".", 1)
     return _FAMILY_RT.get(fam, {}).get(meth)
+
+
+# R-141: family intrinsics whose "h" return is a *creation* handle/cursor with an
+# UNAMBIGUOUS failure sentinel, so `branch ifError` can be wired straight from the
+# return value (no status+outParam ABI needed). Maps (family, method) -> the
+# (icmp_op, sentinel) that means "error". Excluded on purpose: value-returning "h"
+# intrinsics (sqlite.columnInt64 / json.cursorInt64 — 0 is a valid datum) and the
+# cursor-mutation helpers whose 0 default aliases the root cursor (json.objectFieldAt
+# / setObjectFieldObject / setObjectFieldArray / appendArrayElementObject); those,
+# plus every "s" string return, need the status+outParam ABI to surface errors
+# (tracked by R-142). retkind "i" status calls are wired generically as `!= 0`.
+_FAMILY_HANDLE_ERR = {
+    ("json", "createDocument"): ("==", 0),       # ss_json_from_text: 0 on parse fail
+    ("json", "createEmptyDocument"): ("==", 0),  # ss_json_create_empty: 0 on fail
+    ("json", "documentRoot"): ("<", 0),          # ss_json_root: 0 ok, -1 on fail
+    ("sqlite", "openDatabase"): ("==", 0),       # ss_sqlite_open: 0 on fail
+    ("sqlite", "prepareStatement"): ("==", 0),   # ss_sqlite_prepare: 0 on fail
+}
 
 
 def _gui_runtime_symbol(target: str) -> str:
