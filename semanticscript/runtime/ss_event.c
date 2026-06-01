@@ -68,6 +68,11 @@ SS_EXPORT long long ss_event_append(long long stream, const char *type,
     SSEventStream *s = (SSEventStream *)(intptr_t)stream;
     if (!s) return 0;
     if (s->count >= s->cap) {
+        /* R-131: bound the doubling so `s->cap * 2` can't overflow the int and
+         * wrap the realloc count. open_stream already caps the initial size. */
+        if (s->cap <= 0 || s->cap > (1 << 24)) {
+            return 0;
+        }
         int ncap = s->cap * 2;
         long long *nids = (long long *)realloc(s->ids, (size_t)ncap * sizeof(long long));
         if (!nids) return 0;
