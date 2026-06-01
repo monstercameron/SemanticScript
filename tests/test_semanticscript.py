@@ -13508,6 +13508,28 @@ def test_e2e_hash_compute_verify():
 
 # X-211 String Operations test programs
 
+@pytest.mark.parametrize("example, marker", [
+    ("string_build_greeting.sem", "Hello, SemanticScript"),
+    ("string_compare_bytewise.sem", "string_compare_bytewise"),
+    ("string_concat.sem", "string concat"),
+    ("string_concat_basic.sem", "abcdef"),
+    ("string_concat_slice.sem", "hello"),
+    ("string_concat_unicode.sem", "unicode"),
+    ("string_escapes.sem", "string_escapes"),
+    ("string_find_char.sem", "last 'l' at 3"),
+    ("string_find_substring.sem", "string_find_substring"),
+    ("string_format_parse.sem", "test"),
+    ("string_hex_escape.sem", "HI"),
+    ("string_join.sem", "foobarbaz"),
+    ("string_not_equal.sem", "string_not_equal"),
+])
+def test_x200_string_surface_examples(example, marker):
+    proc = _semanticscript_run(example)
+    assert proc.returncode == 0, proc.stderr
+    assert marker in proc.stdout
+    assert "0 failed" in proc.stdout
+
+
 def test_e2e_string_concat_slice():
     """X-211: stringConcatSlice — string concatenation and slicing.
     String operations (outputs 'hello')."""
