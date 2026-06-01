@@ -1319,6 +1319,75 @@ def test_mcp_missing_required_arg_is_protocol_error():
         assert r["error"]["code"] == -32602, tool
 
 
+def test_dangling_project_entry_rejected():
+    # R-104: a project entry naming no declared operation must reject at check
+    # (SS1194), not pass green and call a null address at runtime.
+    src = ('P is project\nP module m\nP target console\nP entry ghost\n'
+           'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+           'main is operation\nmain out Int32\nmain async no\nmain memory heap no\n'
+           'main purpose "x"\nmain invariant "y"\nmain return z\n'
+           'main let z immutable Int32 0\n')
+    assert "SS1194" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+
+
+def test_unmatched_runtime_binding_rejected():
+    # R-105: a `body runtimeBinding ss_*` symbol that no native runtime library
+    # provides must reject at check (SS1195), not pass green and crash at run
+    # with a raw native exit code.
+    src = ('P is project\nP module m\nP target console\nP entry main\n'
+           'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+           'main is operation\nmain out Int32\nmain async no\nmain memory heap no\n'
+           'main purpose "x"\nmain invariant "y"\nmain do callExt\nmain return z\n'
+           'callExt is call\ncallExt in main\ncallExt invokes ext\ncallExt out z Int32\n'
+           'ext is operation\next out Int32\next async no\next memory heap no\n'
+           'ext purpose "x"\next invariant "y"\next body runtimeBinding ss_missing_symbol\n')
+    assert "SS1195" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+
+
+def test_workspace_skips_vendor_and_legacy_dirs(tmp_path):
+    # R-094: a root workspace check excludes vendored / generated / legacy /
+    # editor-dependency trees instead of walking them.
+    for sub in ("node_modules/pkg", "legacy", "third_party/libuv", "experiments/x"):
+        (tmp_path / sub).mkdir(parents=True)
+        (tmp_path / sub / "build.sem").write_text("X is project\nX module m\n", encoding="utf-8")
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "build.sem").write_text("Z is project\nZ module m\n", encoding="utf-8")
+    names = " ".join(c["name"] for c in semanticscript.discover_workspace(str(tmp_path)))
+    for skipped in ("node_modules", "legacy", "third_party", "experiments"):
+        assert skipped not in names
+    assert "app" in names
+
+
+def test_escaped_literals_do_not_bypass_security_validators():
+    # R-091: \xNN-escaped literals must be decoded before the path-traversal
+    # (SS3076) and SSRF (SS3075) validators run — they are hard errors raised at
+    # parse/validate time — so an escaped `..` or private host cannot be smuggled
+    # past. (The pre-fix bug: `.strip('"')` left `\x2e\x2e` undecoded.)
+    import pytest as _pytest
+
+    def _code_for(src):
+        with _pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.parse(src)
+        return getattr(exc.value, "code", "") or str(exc.value)
+
+    trav = ('m is module\nm path m\nm exports f\nm purpose "x"\nm invariant "y"\n'
+            'f is operation\nf out String\nf uses fsCap\nf effect read fs\nf async no\n'
+            'f memory heap no\nf purpose "x"\nf invariant "y"\nf do rd\nf return d\n'
+            'f let d immutable String ""\nfsCap is capability\nfsCap grants read fs\n'
+            'fsCap purpose "x"\nfsCap invariant "y"\nrd is call\nrd in f\n'
+            'rd invokes fs.readFile\nrd out d String\n'
+            'rd arg path String "\\x2e\\x2e/etc/passwd"\n')
+    assert _code_for(trav) == "SS3076"
+    ssrf = ('m is module\nm path m\nm exports f\nm purpose "x"\nm invariant "y"\n'
+            'f is operation\nf out String\nf uses netCap\nf effect network egress\n'
+            'f async no\nf memory heap no\nf purpose "x"\nf invariant "y"\nf do c2\n'
+            'f return d\nf let d immutable String ""\nnetCap is capability\n'
+            'netCap grants network egress\nnetCap purpose "x"\nnetCap invariant "y"\n'
+            'c2 is call\nc2 in f\nc2 invokes net.fetchText\nc2 out d String\n'
+            'c2 arg url String "http://127\\x2e0\\x2e0\\x2e1/admin"\n')
+    assert _code_for(ssrf) == "SS3075"
+
+
 def test_lint_json_cli():
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "lint", "--json",

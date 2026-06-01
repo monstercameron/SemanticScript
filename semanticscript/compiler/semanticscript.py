@@ -407,6 +407,18 @@ DIAGNOSTICS.update({
                         "(both `forTarget`-gated to it, or two unqualified entries).",
                "suggested": "Gate each entry with a distinct `forTarget`, leaving "
                             "exactly one enabled per target (README §7/WS3-160)."},
+    "SS1194": {"tier": "T1", "summary": "Project entry names no declared operation.",
+               "found": "A project `entry` token that resolves to no declared "
+                        "entity, so it would be handed to the JIT as a null "
+                        "address and called at runtime (R-104).",
+               "suggested": "Name a declared operation (or a webServer entity) for "
+                            "the project entry (README §7/§11)."},
+    "SS1195": {"tier": "T1", "summary": "runtimeBinding symbol no library provides.",
+               "found": "A `body runtimeBinding ss_*` symbol that no native runtime "
+                        "library in runtime/manifest.json provides, so it would "
+                        "resolve to a null address and crash at first call (R-105).",
+               "suggested": "Fix the symbol name, or add a providing library to the "
+                            "runtime manifest (README §26)."},
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
@@ -1007,6 +1019,11 @@ def load_project(root: str) -> str:
 _WORKSPACE_SKIP_DIRS = frozenset({
     "invalid_corpus", "dist", "build", "_build", "_pyi_build", "__pycache__",
     "assets", "runtime", "docs", ".git",
+    # R-094: a root `check .` must not walk vendored, generated, legacy, or
+    # editor-dependency trees (a normal checkout after `npm install` would
+    # otherwise false-fail on node_modules, libuv, the legacy product, etc.).
+    "node_modules", "third_party", "legacy", "experiments", "vscode-semanticscript",
+    ".github", ".venv", "venv",
 })
 
 
@@ -3639,6 +3656,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_gates(program))
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
+    diags.extend(_lint_runtime_bindings(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
@@ -4860,10 +4878,21 @@ def _lint_entry_abi(program: Program) -> list:
     for proj in program.of_kind("project"):
         targets = {t.payload[0] for t in proj.facts("target") if t.payload}
         entry = proj.fact("entry")
-        if not entry or not entry.payload or "console" not in targets:
+        if not entry or not entry.payload:
             continue
         ent = program.entities.get(entry.payload[0])
-        if ent is None or ent.kind not in ("operation", "function"):
+        # R-104: the entry must name a *declared* entity (regardless of target).
+        # A dangling name would be handed to get_function_address and called as a
+        # null address at runtime; reject it here instead of advertising green.
+        if ent is None:
+            out.append(Diagnostic(
+                "SS1194", "error",
+                f"project entry {entry.payload[0]!r} names no declared operation "
+                f"(README §7/§11)", proj.line, proj.name))
+            continue
+        if "console" not in targets:
+            continue
+        if ent.kind not in ("operation", "function"):
             continue  # webServer entry is a server entity, not an operation
         if ent.facts("in"):
             out.append(Diagnostic("SS1190", "error",
@@ -4875,6 +4904,29 @@ def _lint_entry_abi(program: Program) -> list:
             out.append(Diagnostic("SS1191", "error",
                                   f"console entry {ent.name!r} must return ExitCode/"
                                   f"Int32, got {otype!r} (README ss11)", ent.line, ent.name))
+    return out
+
+
+def _lint_runtime_bindings(program: Program) -> list:
+    """R-105: a `body runtimeBinding ss_*` symbol that no native runtime library
+    provides resolves to null and crashes at first call — report it (SS1195) so
+    `check` rejects it instead of advertising green and crashing at run."""
+    unresolved = _unresolved_runtime_symbols(program)
+    if not unresolved:
+        return []
+    out: list[Diagnostic] = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function"):
+            continue
+        body = ent.fact("body")
+        if (body and body.payload and body.payload[0] == "runtimeBinding"
+                and len(body.payload) >= 2 and body.payload[1] in unresolved):
+            out.append(Diagnostic(
+                "SS1195", "error",
+                f"operation {ent.name!r} binds runtime symbol {body.payload[1]!r}, "
+                f"which no native runtime library provides (runtime/manifest.json); "
+                f"check the symbol name (README §26)", ent.line, ent.name))
     return out
 
 
@@ -6306,6 +6358,20 @@ def _validate_nonce_affinity(program: Program) -> None:
                 crypto_uses[val] = ent.name
 
 
+def _decode_literal_for_validation(tok: str) -> str:
+    """Decode a quoted string literal to its text for the security validators
+    (R-091): `\\xNN` / `\\n` / `\\t` / `\\"` / `\\\\` are resolved *before* the
+    path-traversal and SSRF checks run, so an escaped `..` (`"\\x2e\\x2e/"`) or an
+    escaped private host (`"127\\x2e0\\x2e0\\x2e1"`) cannot slip past. Falls back
+    to a bare quote-strip if the token is not a well-formed literal."""
+    if not (len(tok) >= 2 and tok.startswith('"') and tok.endswith('"')):
+        return tok.strip('"')
+    try:
+        return _decode_string_literal(tok)[:-1].decode("utf-8", "surrogateescape")
+    except (EavError, ValueError, IndexError):
+        return tok.strip('"')
+
+
 def _validate_path_traversal(program: Program) -> None:
     """X-076 / README §8/§27: a filesystem path must be confined under a root. A
     literal `fs.*` path argument that contains a `..` segment or is absolute is an
@@ -6319,12 +6385,12 @@ def _validate_path_traversal(program: Program) -> None:
             tr, vr = ent.fact("type"), ent.fact("value")
             if (tr and tr.payload and tr.payload[0] == "String"
                     and vr and vr.payload and vr.payload[0].startswith('"')):
-                literals[ent.name] = vr.payload[0].strip('"')
+                literals[ent.name] = _decode_literal_for_validation(vr.payload[0])
         if ent.kind in ("operation", "function"):
             for r in ent.facts("let"):
                 if (len(r.payload) >= 4 and r.payload[2] == "String"
                         and r.payload[3].startswith('"')):
-                    literals[r.payload[0]] = r.payload[3].strip('"')
+                    literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
 
     def _is_traversal(path: str) -> bool:
         segs = path.replace("\\", "/").split("/")
@@ -6342,7 +6408,8 @@ def _validate_path_traversal(program: Program) -> None:
             if len(a.payload) < 3:
                 continue
             val = a.payload[2]
-            lit = val.strip('"') if val.startswith('"') else literals.get(val)
+            lit = (_decode_literal_for_validation(val) if val.startswith('"')
+                   else literals.get(val))
             if lit is not None and _is_traversal(lit):
                 raise EavError(
                     f"call {ent.name!r} passes the path {lit!r} to {target!r}; a `..` or "
@@ -6390,11 +6457,11 @@ def _validate_ssrf(program: Program) -> None:
             tr, vr = ent.fact("type"), ent.fact("value")
             if (tr and tr.payload and vr and vr.payload
                     and vr.payload[0].startswith('"')):
-                literals[ent.name] = vr.payload[0].strip('"')
+                literals[ent.name] = _decode_literal_for_validation(vr.payload[0])
         if ent.kind in ("operation", "function"):
             for r in ent.facts("let"):
                 if len(r.payload) >= 4 and r.payload[3].startswith('"'):
-                    literals[r.payload[0]] = r.payload[3].strip('"')
+                    literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
     for n in program.order:
         ent = program.entities[n]
         if ent.kind not in ("call", "task"):
@@ -6407,9 +6474,16 @@ def _validate_ssrf(program: Program) -> None:
             if len(a.payload) < 3:
                 continue
             val = a.payload[2]
-            lit = val.strip('"') if val.startswith('"') else literals.get(val)
+            lit = (_decode_literal_for_validation(val) if val.startswith('"')
+                   else literals.get(val))
             if lit is None or "://" not in lit and "." not in lit:
                 continue
+            # R-091: a decoded CR/LF/NUL in a URL enables request/header injection.
+            if any(c in lit for c in ("\r", "\n", "\x00")):
+                raise EavError(
+                    f"call {ent.name!r} passes a URL with an embedded control byte "
+                    f"(CR/LF/NUL) to {target!r}; this enables request/header "
+                    f"injection (SSRF, README §8)", ent.line, code="SS3075")
             if _is_internal_host(_url_host(lit)):
                 raise EavError(
                     f"call {ent.name!r} sends an outbound request to the internal "
@@ -10846,6 +10920,36 @@ def _runtime_libs_for(program: Program) -> list:
     ]
 
 
+# Runtime `ss_*` symbols the compiler registers directly with the JIT (Python-
+# backed callbacks), so they are NOT in runtime/manifest.json yet resolve fine:
+# the panic hook and the out-param-ABI FFI demo symbols. Excluded from the R-105
+# unresolved-symbol check (a native build links their C counterparts).
+_COMPILER_PROVIDED_RUNTIME_SYMBOLS = frozenset({"ss_panic", "ss_ffi_add", "ss_ffi_count"})
+
+
+def _unresolved_runtime_symbols(program: Program) -> set:
+    """R-105: project runtime symbols (`ss_*`) a program references — via a
+    `body runtimeBinding` row or a lowered intrinsic — that NO native runtime
+    library in runtime/manifest.json provides (and that the compiler does not
+    register directly). Such a symbol falls through to the JIT's default
+    resolver, resolves to null, and crashes at first call with no diagnostic.
+    libc/system symbols (not `ss_`-prefixed) are intentionally left to the
+    default resolver and are not reported. Returns an empty set when the manifest
+    is absent (can't verify — don't false-positive)."""
+    import json
+    import os
+    ss_refs = {s for s in _referenced_runtime_symbols(program)
+               if s.startswith("ss_") and s not in _COMPILER_PROVIDED_RUNTIME_SYMBOLS}
+    if not ss_refs:
+        return set()
+    manifest_path = os.path.join(_runtime_dir(), "manifest.json")
+    if not os.path.exists(manifest_path):
+        return set()
+    manifest = json.loads(open(manifest_path, encoding="utf-8").read())
+    prefixes = [p for lib in manifest.get("libraries", []) for p in lib.get("provides", [])]
+    return {s for s in ss_refs if not any(s.startswith(p) for p in prefixes)}
+
+
 def build_link_plan(program: Program, platform: Optional[str] = None,
                     compiler: Optional[str] = None) -> dict:
     """R-018: a dry-run native link plan — for each runtime library the program
@@ -10998,6 +11102,14 @@ def _register_runtime_symbols(program: Program) -> None:
     referenced = _referenced_runtime_symbols(program)
     if not referenced:
         return
+    # R-105: a referenced ss_* symbol that no runtime library provides would
+    # resolve to null and crash at first call — reject it before JIT finalization.
+    unresolved = _unresolved_runtime_symbols(program)
+    if unresolved:
+        raise EavError(
+            f"runtimeBinding symbol(s) {sorted(unresolved)} are not provided by "
+            f"any native runtime library (runtime/manifest.json); check the symbol "
+            f"name or add a providing library", code="SS1195")
     for lib in _runtime_libs_for(program):
         path = _ensure_runtime_lib(lib)
         prefixes = lib.get("provides", [])
@@ -11040,7 +11152,12 @@ def jit_run(program: Program, entry: Optional[str] = None) -> int:
     engine = llvm.create_mcjit_compiler(mod, tm)
     engine.finalize_object()
     engine.run_static_constructors()
-    addr = engine.get_function_address(entry or _entry_name(program))
+    entry_name = entry or _entry_name(program)
+    addr = engine.get_function_address(entry_name)
+    if not addr:  # R-104: a dangling entry resolves to address 0 — never call it
+        raise EavError(
+            f"entry {entry_name!r} resolved to a null address (no such function "
+            f"was emitted); the project entry must name a declared operation")
     cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
     return cmain()
 

@@ -1,0 +1,23 @@
+# app.sem — the entry operation for the manifest fixture, so the project's
+# `entry main` (declared in build.sem) resolves to a real operation and the
+# fixture checks clean as a complete project. (Added for R-104/SS1194: a
+# dangling project entry is now a lint error.)
+
+taskApp is module
+taskApp path taskApp
+taskApp exports main
+taskApp purpose "Entry module for the manifest test app"
+taskApp invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+main is operation
+main out ExitCode
+main async no
+main memory heap no
+main purpose "Return a clean exit code"
+main invariant "Always returns ExitCode 0"
+main return ok
+main let ok immutable ExitCode 0
