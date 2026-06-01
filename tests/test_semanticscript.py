@@ -1367,6 +1367,33 @@ def _rc(*argv):
                           capture_output=True, text=True, encoding="utf-8").returncode
 
 
+def test_run_stdin_isolated_like_file_run():
+    # R-103: `run -` (stdin) must get the same trap isolation as a file-backed run.
+    # Previously stdin forced the in-process path on POSIX, so a stdin program that
+    # hit an uncatchable fatal trap signal killed the runner instead of mapping to
+    # the stable SSR/134 status. cmd_run now materializes stdin to a temp file and
+    # runs it through the SAME isolated child, so `run -` and `run <file>` agree.
+    trap = os.path.join(EXAMPLES, "deep_recursion_trap.sem")
+    src = open(trap, encoding="utf-8").read()
+    by_file = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", trap],
+                             capture_output=True, text=True, encoding="utf-8")
+    by_stdin = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"], input=src,
+                              capture_output=True, text=True, encoding="utf-8")
+    # both surface the stable trap exit (never an uncaught traceback or a raw kill)
+    assert by_file.returncode == by_stdin.returncode, (by_file.returncode, by_stdin.returncode)
+    assert by_file.returncode == 134
+    # a normal stdin run still produces correct output + clean exit
+    ok = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
+                        input=open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read(),
+                        capture_output=True, text=True, encoding="utf-8")
+    assert ok.returncode == 0 and "hello world" in ok.stdout
+    # source guard: the in-process dispatch no longer special-cases stdin (so on
+    # POSIX `run -` falls through to the isolated child path below it)
+    compiler = open(SEMANTICSCRIPT, encoding="utf-8").read()
+    assert 'if getattr(args, "jit_child", False) or os.name == "nt":' in compiler
+    assert 'fd, tmp_path = tempfile.mkstemp(suffix=".sem")' in compiler
+
+
 def test_check_exit_code_reflects_status():
     # R-093: single-file `check` exits nonzero on compiler-error and on
     # error-severity lint (incl. --strict-promoted warnings); 0 when clean.

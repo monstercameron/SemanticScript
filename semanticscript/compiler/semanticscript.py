@@ -12365,7 +12365,8 @@ def cmd_run(args) -> int:
         sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
         return code
 
-    program = parse_compact(_read_program_source(args.path))
+    source = _read_program_source(args.path)
+    program = parse_compact(source)
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
         diags = lint(program)
@@ -12385,11 +12386,14 @@ def cmd_run(args) -> int:
             f"recursion); {detail}\n")
 
     # Windows surfaces a JIT guard trap as a catchable in-process OSError, so it
-    # needs no subprocess; a stdin program and the isolated POSIX child also run
-    # in-process. POSIX delegates to an isolated child (below) because a trap
-    # there is an uncatchable fatal signal.
+    # needs no subprocess; the isolated child itself also runs in-process. POSIX
+    # delegates to an isolated child (below) because a trap there is an uncatchable
+    # fatal signal. R-103: a stdin (`run -`) program no longer forces the in-process
+    # path on POSIX — it is materialized to a temp file and run through the SAME
+    # isolated child, so a stdin program that traps maps to the stable SSR status
+    # instead of killing this runner.
     entry = getattr(args, "entry", None)  # R-102: run a named op as the entry
-    if getattr(args, "jit_child", False) or args.path == "-" or os.name == "nt":
+    if getattr(args, "jit_child", False) or os.name == "nt":
         sys.stdout.flush()
         try:
             return jit_run(program, entry=entry)
@@ -12397,13 +12401,30 @@ def cmd_run(args) -> int:
             _trap_report(str(exc))
             return 134  # stable "aborted" exit (128 + SIGABRT)
     import subprocess
+    import tempfile
     sys.stdout.flush()
-    child_argv = [sys.executable, os.path.abspath(__file__), "run",
-                  "--_jit-child", args.path]
-    if entry:
-        child_argv += ["--entry", entry]
-    child = subprocess.run(child_argv)
-    rc = child.returncode
+    tmp_path = None
+    try:
+        if args.path == "-":
+            # R-103: the isolated child re-reads its source from a path, so write
+            # the stdin program to a temp file and point the child at it.
+            fd, tmp_path = tempfile.mkstemp(suffix=".sem")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(source)
+            child_source_path = tmp_path
+        else:
+            child_source_path = args.path
+        child_argv = [sys.executable, os.path.abspath(__file__), "run",
+                      "--_jit-child", child_source_path]
+        if entry:
+            child_argv += ["--entry", entry]
+        rc = subprocess.run(child_argv).returncode
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     if _is_trap_returncode(rc):
         _trap_report(f"isolated child terminated with {rc & 0xFFFFFFFF:#010x}")
         return 134
