@@ -1445,6 +1445,39 @@ def test_eval_line_numbers_map_to_snippet():
     assert "line 2:" in _json.loads(two_line.stdout)["stderr"]
 
 
+def test_run_json_entry_strict_and_empty_stdout():
+    # R-159 / R-162 / R-127: `run --json` honors --entry, gates --strict, and
+    # encodes empty stdout as no lines.
+    import json as _json
+    # R-162: a strict lint error is a lint-error envelope, not silently skipped.
+    p = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "--json", "--strict",
+         os.path.join(EXAMPLES, "capability_ungranted_use.sem")],
+        capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert env["status"] == "lint-error" and env["ok"] is False and p.returncode == 1
+    # a program with a clean main (exit 0) and a fail op (exit 1).
+    src = ("P is project\nP module m\nP target console\nP entry main\n"
+           'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+           "main is operation\nmain out Int32\nmain async no\nmain memory heap no\n"
+           'main purpose "x"\nmain invariant "y"\nmain let z immutable Int32 0\nmain return z\n'
+           "failOp is operation\nfailOp out Int32\nfailOp async no\nfailOp memory heap no\n"
+           'failOp purpose "x"\nfailOp invariant "y"\nfailOp let one immutable Int32 1\n'
+           "failOp return one\n")
+
+    def run_json(*extra):
+        return _json.loads(subprocess.run(
+            [sys.executable, SEMANTICSCRIPT, "run", "--json", *extra, "-"],
+            input=src, capture_output=True, text=True, encoding="utf-8").stdout)
+
+    # R-127: a program that prints nothing -> stdoutLines == [] (not [""])
+    base = run_json()
+    assert base["stdout"] == "" and base["stdoutLines"] == [] and base["exitCode"] == 0
+    # R-159: --entry actually selects the operation run as the entry
+    assert run_json("--entry", "main")["exitCode"] == 0
+    assert run_json("--entry", "failOp")["exitCode"] == 1
+
+
 def test_runtime_cache_key_includes_headers_and_manifest(tmp_path):
     # R-106: a changed included header (an ABI struct/signature change) or a
     # changed runtime manifest must invalidate the runtime-lib cache key, so a

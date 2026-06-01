@@ -11933,11 +11933,30 @@ def cmd_run(args) -> int:
     # on a trap) instead of streaming raw output past the `--json` request.
     if getattr(args, "json", False):
         src = _read_program_source(args.path)
-        out, err, code = _record_run_full(src)
+        entry = getattr(args, "entry", None)
+        # R-162: --strict gates the JSON run too — a strict lint error is reported
+        # as a lint-error envelope, not silently skipped.
+        if getattr(args, "strict", False):
+            try:
+                strict_errs = [d for d in _filter_diagnostics_strict(lint(parse(src)), True)
+                               if d.severity == "error"]
+            except EavError:
+                strict_errs = []  # a parse error surfaces through the run below
+            if strict_errs:
+                sys.stdout.write(_json_envelope(
+                    "sem.run.v1", ok=False, status="lint-error", exitCode=1,
+                    stdout="", stderr="\n".join(d.render() for d in strict_errs),
+                    stdoutLines=[]) + "\n")
+                return 1
+        # R-159: honor --entry by running that operation as the entry in the child.
+        if entry:
+            out, err, code = _record_run_entry(src, entry)
+        else:
+            out, err, code = _record_run_full(src)
         status, panic = _classify_run(out, err, code)
         payload = dict(
             ok=(code == 0), status=status, exitCode=code, stdout=out, stderr=err,
-            stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n"))
+            stdoutLines=_stdout_lines(out))  # R-127
         if panic is not None:
             payload["panic"] = panic
         sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
@@ -12674,6 +12693,14 @@ def _parse_panic(stderr: str) -> Optional[dict]:
     }
 
 
+def _stdout_lines(out: str) -> list:
+    """Split captured stdout into lines, dropping the single trailing element that
+    a final newline produces. R-127: empty stdout is *no* lines (`[]`), not one
+    blank line (`[""]`); a trailing newline does not add a phantom empty line."""
+    lines = out.split("\n")
+    return lines[:-1] if lines and lines[-1] == "" else lines
+
+
 def _classify_run(out: str, err: str, code: int):
     """Map a captured (stdout, stderr, exitCode) run to a (status, panic) pair,
     shared by `eval --json` and `run --json` so the two surfaces never diverge."""
@@ -12754,7 +12781,7 @@ def cmd_eval(args) -> int:
     payload = dict(
         ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
         stdout=out, stderr=err,
-        stdoutLines=out.split("\n")[:-1] if out.endswith("\n") else out.split("\n"))
+        stdoutLines=_stdout_lines(out))  # R-127
     if panic is not None:
         payload["panic"] = panic
     sys.stdout.write(_json_envelope("sem.eval.v1", **payload) + "\n")
