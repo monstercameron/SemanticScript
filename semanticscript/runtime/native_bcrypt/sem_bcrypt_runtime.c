@@ -137,13 +137,16 @@ int ss_bcrypt_verify(
     if (expected_length != 60) {
         return SS_BCRYPT_ERR_MALFORMED;
     }
-    /* Quick prefix check — must start with one of the bcrypt setting
-     * prefixes. We're strict and require $2b$ (the format we always
-     * write); legacy stores using $2a$ / $2x$ / $2y$ would be
-     * rejected here. */
+    /* R-254: accept every standard bcrypt setting variant on VERIFY, not just the
+     * $2b$ we write. $2a$ (original), $2b$ (current), $2x$ (bug-compat for the
+     * 2011 sign-extension bug), and $2y$ (PHP's $2b$ alias) are all valid bcrypt
+     * settings that crypt_blowfish recomputes and constant-time-compares
+     * identically — rejecting them locked out any imported/interop password
+     * corpus for no security gain. (We still only ever WRITE $2b$.) */
+    char variant = expected_hash_60_chars[2];
     if (expected_hash_60_chars[0] != '$'
         || expected_hash_60_chars[1] != '2'
-        || expected_hash_60_chars[2] != 'b'
+        || (variant != 'a' && variant != 'b' && variant != 'x' && variant != 'y')
         || expected_hash_60_chars[3] != '$') {
         return SS_BCRYPT_ERR_MALFORMED;
     }
