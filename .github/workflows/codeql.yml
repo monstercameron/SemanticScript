@@ -28,9 +28,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language:
-          - python
-          - javascript-typescript
+        # R-134: add a c-cpp lane for the memory-owning native runtimes. Compiled
+        # languages need a build CodeQL can trace, so c-cpp uses build-mode manual
+        # with tests/native/codeql_build.sh; python/js stay build-mode none.
+        include:
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: c-cpp
+            build-mode: manual
 
     steps:
       - name: Check out repository
@@ -40,8 +47,12 @@ jobs:
         uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           languages: ${{ matrix.language }}
-          build-mode: none
+          build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Build native runtime for CodeQL tracing
+        if: matrix.language == 'c-cpp'
+        run: bash tests/native/codeql_build.sh
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0

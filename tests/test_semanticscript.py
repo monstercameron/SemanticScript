@@ -333,6 +333,44 @@ def test_mvs_selects_highest():
     assert semanticscript.mvs_select(reqs) == {"a": "v1.3.0", "b": "v2.0.0"}
 
 
+def test_native_runtime_sanitizer_coverage_exists():
+    # R-134: the memory-owning native runtimes must have a sanitizer/CodeQL CI lane
+    # so UAF/OOB/overflow/double-free regressions fail CI deterministically (not
+    # only when they happen to crash a functional test). A native-safety job builds
+    # representative harnesses under ASAN+UBSAN with a planted-UAF self-test, and a
+    # CodeQL c-cpp lane analyzes the runtime sources.
+    yaml = pytest.importorskip("yaml")
+    native = os.path.join(ROOT, "tests", "native")
+    # clean harness + planted-bug seed + the runner + the codeql build script
+    assert os.path.isfile(os.path.join(native, "harness_event.c"))
+    assert os.path.isfile(os.path.join(native, "seed_uaf.c"))
+    assert os.path.isfile(os.path.join(native, "run_sanitizers.sh"))
+    assert os.path.isfile(os.path.join(native, "codeql_build.sh"))
+    # the harness exercises the real runtime (pulls in ss_event.c)
+    harness = open(os.path.join(native, "harness_event.c"), encoding="utf-8").read()
+    assert "ss_event.c" in harness
+    # the runner builds under ASAN+UBSAN, hard-aborts on findings, and self-tests
+    # that the planted UAF is actually caught (else the clean result is meaningless)
+    runner = open(os.path.join(native, "run_sanitizers.sh"), encoding="utf-8").read()
+    assert "-fsanitize=address,undefined" in runner
+    assert "-fno-sanitize-recover=all" in runner
+    assert "seed_uaf" in runner and "is NOT active" in runner
+    # the native-safety workflow runs the sanitizer script
+    ns = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows",
+                                          "native-safety.yml"), encoding="utf-8"))
+    assert "sanitizers" in ns["jobs"]
+    assert "run_sanitizers.sh" in open(os.path.join(
+        ROOT, ".github", "workflows", "native-safety.yml"), encoding="utf-8").read()
+    # CodeQL gained a c-cpp lane (build-mode manual) over the runtime sources
+    cq = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows",
+                                          "codeql.yml"), encoding="utf-8"))
+    entries = {e["language"]: e["build-mode"]
+               for e in cq["jobs"]["analyze"]["strategy"]["matrix"]["include"]}
+    assert entries.get("c-cpp") == "manual"
+    assert "codeql_build.sh" in open(os.path.join(
+        ROOT, ".github", "workflows", "codeql.yml"), encoding="utf-8").read()
+
+
 def test_release_workflow_builds_from_the_requested_tag():
     # R-120: a manual release dispatch must build + publish from the requested
     # TAG's commit, never the dispatch branch. The workflow resolves+validates the
