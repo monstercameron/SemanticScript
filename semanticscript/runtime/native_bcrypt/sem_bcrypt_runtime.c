@@ -338,3 +338,88 @@ int ss_issue_csrf_token(
         token_buffer_capacity,
         token_length_out);
 }
+
+/* ----- R-202: owned-output helpers (safe-by-construction) -----
+ *
+ * The buffer-based entry points (ss_bcrypt_hash / ss_base64url_encode /
+ * ss_random_bytes) trust a caller-supplied buffer plus a declared capacity, so a
+ * caller that under-allocates while over-declaring the capacity overflows — the
+ * runtime cannot know the buffer's true size (it lives in another allocator). These
+ * owned-output variants ALLOCATE the output themselves at exactly the size the
+ * operation needs, so there is no caller buffer to mis-size and an overflow is
+ * structurally impossible. They return a heap pointer as an OpaquePointer (i64);
+ * the caller frees it with ss_bcrypt_free_string. A small registry tracks the
+ * strings WE handed out so the free is double-free / foreign-pointer safe (the
+ * sqlite R-139 / event R-196 / json R-198 tombstone pattern). Single-threaded; no
+ * lock. */
+static void **ss_bcrypt_owned = NULL;
+static size_t ss_bcrypt_owned_count = 0;
+static size_t ss_bcrypt_owned_cap = 0;
+
+static int ss_bcrypt_owned_track(void *pointer) {
+    if (ss_bcrypt_owned_count == ss_bcrypt_owned_cap) {
+        size_t next = ss_bcrypt_owned_cap == 0 ? 8 : ss_bcrypt_owned_cap * 2;
+        if (ss_bcrypt_owned_cap > SIZE_MAX / 2 || next > SIZE_MAX / sizeof(void *)) {
+            return 0;
+        }
+        void **grown = (void **)realloc(ss_bcrypt_owned, next * sizeof(void *));
+        if (grown == NULL) {
+            return 0;
+        }
+        ss_bcrypt_owned = grown;
+        ss_bcrypt_owned_cap = next;
+    }
+    ss_bcrypt_owned[ss_bcrypt_owned_count++] = pointer;
+    return 1;
+}
+
+static int ss_bcrypt_owned_untrack(void *pointer) {
+    for (size_t i = 0; i < ss_bcrypt_owned_count; i++) {
+        if (ss_bcrypt_owned[i] == pointer) {
+            ss_bcrypt_owned[i] = ss_bcrypt_owned[ss_bcrypt_owned_count - 1];
+            ss_bcrypt_owned_count--;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+long long ss_bcrypt_hash_owned(const char *plaintext_password, int cost_factor) {
+    char *buffer = (char *)malloc(SS_BCRYPT_HASH_OUTPUT_SIZE);
+    if (buffer == NULL) {
+        return 0;
+    }
+    int status = ss_bcrypt_hash(plaintext_password, cost_factor,
+                                buffer, SS_BCRYPT_HASH_OUTPUT_SIZE);
+    if (status != SS_BCRYPT_OK || !ss_bcrypt_owned_track(buffer)) {
+        free(buffer);
+        return 0;
+    }
+    return (long long)(intptr_t)buffer;
+}
+
+long long ss_bcrypt_session_token_owned(void) {
+    unsigned char scratch[SS_TOKEN_ENTROPY_BYTE_COUNT];
+    /* base64url of 32 entropy bytes = 43 chars + NUL. Compute from the entropy
+     * count so the allocation always matches what issue_base64url_token writes. */
+    int capacity = (((SS_TOKEN_ENTROPY_BYTE_COUNT * 4) + 2) / 3) + 1;
+    char *buffer = (char *)malloc((size_t)capacity);
+    if (buffer == NULL) {
+        return 0;
+    }
+    int token_length = 0;
+    int status = issue_base64url_token(scratch, buffer, capacity, &token_length);
+    if (status != SS_BCRYPT_OK || !ss_bcrypt_owned_track(buffer)) {
+        free(buffer);
+        return 0;
+    }
+    return (long long)(intptr_t)buffer;
+}
+
+void ss_bcrypt_free_string(long long pointer) {
+    void *block = (void *)(intptr_t)pointer;
+    if (block == NULL || !ss_bcrypt_owned_untrack(block)) {
+        return;  /* double free / foreign pointer -> no-op */
+    }
+    free(block);
+}

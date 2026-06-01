@@ -11455,6 +11455,102 @@ def _runtime_lib_cache_path(lib: dict, platform: Optional[str] = None,
     return os.path.join(build_dir, f"{lib['name']}-{key}{_shared_lib_suffix()}")
 
 
+def _object_suffix() -> str:
+    import os
+    return ".obj" if os.name == "nt" else ".o"
+
+
+def _runtime_object_cache_plan(lib: dict, target_triple: str,
+                               platform: Optional[str] = None,
+                               compiler_id: Optional[str] = None) -> tuple:
+    """R-210: cache plan for runtime objects linked into native executables.
+
+    The key is deliberately separate from the JIT shared-library cache path: an
+    object compiled for an executable is ABI-bound to the module target triple in
+    addition to the runtime manifest inputs already covered by
+    `_runtime_cache_key` (compiler identity, defines/includes/libs, source bytes,
+    resolved headers, and manifest bytes).
+    """
+    import hashlib
+    import os
+    rt = _runtime_dir()
+    plat = platform or _host_platform_name()
+    resolved = _resolve_runtime_links(lib, plat)
+    cid = compiler_id if compiler_id is not None else _compiler_identity(_find_c_compiler())
+    object_cid = f"{cid}|target={target_triple or 'host-default'}|artifact=object"
+    key = _runtime_cache_key(resolved, plat, object_cid, rt)
+    obj_dir = os.path.join(_runtime_cache_dir(), "_build", "objects",
+                           f"{lib['name']}-{key}")
+    objects = []
+    for index, source in enumerate(resolved["sources"]):
+        digest = hashlib.sha256(source.encode("utf-8")).hexdigest()[:10]
+        stem = os.path.splitext(os.path.basename(source))[0] or "source"
+        objects.append(os.path.join(obj_dir, f"{index:02d}-{stem}-{digest}{_object_suffix()}"))
+    return obj_dir, objects, resolved
+
+
+def _ensure_runtime_objects(lib: dict, target_triple: str,
+                            platform: Optional[str] = None,
+                            cc: Optional[list] = None,
+                            compiler_id: Optional[str] = None) -> list:
+    """Build or reuse cached runtime object files for native executable links.
+
+    R-210: `build_executable` used to pass every referenced runtime C source to
+    clang on every build. This compiles each resolved source once into a keyed
+    object cache and returns verified object paths for the final link.
+    """
+    import os
+    import subprocess
+    cc = cc if cc is not None else _find_c_compiler()
+    if cc is None:
+        return []
+    cid = compiler_id if compiler_id is not None else _compiler_identity(cc)
+    obj_dir, objects, resolved = _runtime_object_cache_plan(
+        lib, target_triple, platform, cid)
+    if objects and all(os.path.exists(obj) and _runtime_lib_sidecar_matches(obj)
+                       for obj in objects):
+        return objects
+
+    os.makedirs(obj_dir, exist_ok=True)
+    sources = [_runtime_link_path(s) for s in resolved["sources"]]
+    for source, obj in zip(sources, objects):
+        if os.path.exists(obj) and _runtime_lib_sidecar_matches(obj):
+            continue
+        obj_tmp = f"{obj}.tmp{os.getpid()}"
+        cmd = list(cc) + ["-O2", "-c", source, "-o", obj_tmp]
+        if target_triple:
+            cmd.append("--target=" + target_triple)
+        for inc in resolved["include"]:
+            cmd.append("-I" + _runtime_link_path(inc))
+        for d in resolved["defines"]:
+            cmd.append("-D" + d)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=_build_timeout_seconds())
+        except subprocess.TimeoutExpired:  # R-107
+            raise EavError(
+                f"building runtime object for {lib['name']!r} exceeded "
+                f"{_build_timeout_seconds():g}s and was terminated "
+                f"(set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
+        except OSError as exc:  # R-113
+            raise EavError(
+                f"could not launch the C compiler {cmd[0]!r} to build runtime "
+                f"object for {lib['name']!r}: {exc} "
+                f"(check SEMANTICSCRIPT_CC or install clang/zig)")
+        if proc.returncode != 0:
+            try:
+                if os.path.exists(obj_tmp):
+                    os.unlink(obj_tmp)
+            except OSError:
+                pass
+            raise EavError(
+                f"failed to build runtime object for {lib['name']!r}: "
+                f"{proc.stderr.strip()}")
+        os.replace(obj_tmp, obj)
+        _runtime_lib_write_sidecar(obj)
+    return objects
+
+
 def _runtime_lib_file_digest(path: str) -> Optional[str]:
     """R-197: SHA-256 of a built runtime artifact, or None if it cannot be read."""
     import hashlib
@@ -12994,14 +13090,12 @@ def build_executable(program: Program, out_path: str,
     # R-018/R-013: resolve each runtime library's link inputs for the host
     # platform so Windows-only libs (ws2_32) are appended on Windows and
     # POSIX-only libs (pthread/dl/m) are appended on Unix — never both.
+    target_triple = getattr(module, "triple", "") or ""
+    compiler_id = _compiler_identity(cc)
     for lib in _runtime_libs_for(program):
         resolved = _resolve_runtime_links(lib, _host_platform_name())
-        for s in resolved["sources"]:
-            cmd.append(_runtime_link_path(s))
-        for inc in resolved["include"]:
-            cmd.append("-I" + _runtime_link_path(inc))
-        for d in resolved["defines"]:
-            cmd.append("-D" + d)
+        cmd.extend(_ensure_runtime_objects(
+            lib, target_triple, _host_platform_name(), cc, compiler_id))
         for libname in resolved["libs"]:
             cmd.append("-l" + libname)
     try:

@@ -115,7 +115,10 @@
         "ss_bcrypt_hash",
         "ss_bcrypt_verify",
         "ss_random_bytes",
-        "ss_base64url_encode"
+        "ss_base64url_encode",
+        "ss_bcrypt_hash_owned",
+        "ss_bcrypt_session_token_owned",
+        "ss_bcrypt_free_string"
       ],
       "sources": [
         "native_bcrypt/sem_bcrypt_runtime.c",

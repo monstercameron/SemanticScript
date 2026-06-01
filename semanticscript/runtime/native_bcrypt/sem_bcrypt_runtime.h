@@ -108,6 +108,13 @@ int ss_issue_csrf_token(
     int *token_length_out
 );
 
+/* R-202: owned-output variants — allocate the output themselves (no caller
+ * buffer, so an overflow is structurally impossible) and return an OpaquePointer
+ * (i64) the caller frees with ss_bcrypt_free_string. Returns 0 on failure. */
+long long ss_bcrypt_hash_owned(const char *plaintext_password, int cost_factor);
+long long ss_bcrypt_session_token_owned(void);
+void ss_bcrypt_free_string(long long pointer);
+
 #ifdef __cplusplus
 }
 #endif
