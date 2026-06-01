@@ -1478,6 +1478,61 @@ def test_run_json_entry_strict_and_empty_stdout():
     assert run_json("--entry", "failOp")["exitCode"] == 1
 
 
+def test_fmt_check_is_byte_exact(tmp_path):
+    # R-114: fmt --check compares exact bytes — a missing terminal newline or
+    # extra boundary whitespace is drift, not silently accepted.
+    canon = subprocess.run([sys.executable, SEMANTICSCRIPT, "fmt",
+                            os.path.join(EXAMPLES, "hello_world.sem")],
+                           capture_output=True, text=True, encoding="utf-8").stdout
+    good = tmp_path / "g.sem"
+    good.write_text(canon, encoding="utf-8", newline="")
+    assert _rc("fmt", str(good), "--check") == 0
+    bad = tmp_path / "b.sem"
+    bad.write_text(canon.rstrip("\n"), encoding="utf-8", newline="")  # no terminal newline
+    assert _rc("fmt", str(bad), "--check") != 0
+
+
+def test_repin_failure_is_json_envelope_and_atomic(tmp_path):
+    # R-115: repin --json failures are sem.repin.v1 envelopes (not plaintext), and
+    # the lock is written atomically (no leftover temp file).
+    import json as _json
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "repin",
+                        str(tmp_path / "no-build"), "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert env["surface"] == "sem.repin.v1" and env["ok"] is False
+    assert env["status"] == "path-error"
+    (tmp_path / "build.sem").write_text(
+        "X is project\nX module m\nX target console\nX entry main\n"
+        "X require example.org/u v1.0.0\n", encoding="utf-8")
+    subprocess.run([sys.executable, SEMANTICSCRIPT, "repin", str(tmp_path), "--json"],
+                   capture_output=True, text=True, encoding="utf-8")
+    assert (tmp_path / "build.sem.lock").exists()
+    assert not list(tmp_path.glob("*.tmp*"))
+
+
+def test_status_clean_survive_bad_cache_env(tmp_path):
+    # R-118: status/clean return structured envelopes (no traceback) when
+    # SEMANTICSCRIPT_CACHE_DIR points at a file; status does not create the dir.
+    import json as _json
+    cache_file = tmp_path / "cachefile"
+    cache_file.write_text("x", encoding="utf-8")
+    env = dict(os.environ)
+    env["SEMANTICSCRIPT_CACHE_DIR"] = str(cache_file)
+    s = subprocess.run([sys.executable, SEMANTICSCRIPT, "status", "--json"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    sd = _json.loads(s.stdout)
+    assert sd["surface"] == "sem.status.v1" and sd["runtimeCacheUsable"] is False
+    c = subprocess.run([sys.executable, SEMANTICSCRIPT, "clean", "--json"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert _json.loads(c.stdout)["surface"] == "sem.clean.v1"
+    fresh = tmp_path / "fresh"
+    env["SEMANTICSCRIPT_CACHE_DIR"] = str(fresh)
+    subprocess.run([sys.executable, SEMANTICSCRIPT, "status", "--json"],
+                   capture_output=True, text=True, encoding="utf-8", env=env)
+    assert not fresh.exists()  # read-only diagnostic must not create the cache dir
+
+
 def test_invalid_cc_reads_as_degraded():
     # R-113: an invalid SEMANTICSCRIPT_CC is reported as degraded / no compiler,
     # not green-lighted into a build that crashes at launch.

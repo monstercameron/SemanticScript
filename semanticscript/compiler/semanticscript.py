@@ -10502,17 +10502,27 @@ def _runtime_link_path(rel: str) -> str:
     return os.path.normpath(os.path.join(_runtime_dir(), rel))
 
 
-def _runtime_cache_dir() -> str:
+def _runtime_cache_dir(create: bool = True) -> str:
     """A user-writable cache directory for native build artifacts (R-015). The
     runtime bundle (`_runtime_dir`) can be read-only — a packaged install or a
     PyInstaller `_MEIPASS` extraction — and is shared, so compiled runtime
     libraries and scratch IR must NOT be written beside the bundled sources.
-    They live here instead. Override with `SEMANTICSCRIPT_CACHE_DIR`."""
+    They live here instead. Override with `SEMANTICSCRIPT_CACHE_DIR`.
+
+    R-118: pass `create=False` for read-only inspection (a diagnostic like
+    `status` must not mutate the filesystem). When creating, a bad override (e.g.
+    a path that is an existing file) is a clean EavError, not a raw traceback."""
     import os
     import tempfile
     base = os.environ.get("SEMANTICSCRIPT_CACHE_DIR") or os.path.join(
         tempfile.gettempdir(), "semanticscript-cache")
-    os.makedirs(base, exist_ok=True)
+    if create:
+        try:
+            os.makedirs(base, exist_ok=True)
+        except OSError as exc:
+            raise EavError(
+                f"runtime cache dir {base!r} is not usable: {exc} "
+                f"(check SEMANTICSCRIPT_CACHE_DIR)")
     return base
 
 
@@ -11567,8 +11577,11 @@ def cmd_status(args) -> int:
     import llvmlite.binding as llvm
     _ensure_native_init()  # register the native target before querying the triple
     cc = _find_c_compiler()
-    cache = _runtime_cache_dir()
+    cache = _runtime_cache_dir(create=False)  # R-118: status must not mutate the fs
     build = os.path.join(cache, "_build")
+    # R-118: a cache override that exists as a non-directory is unusable — report
+    # it (degraded) rather than crashing on a later makedirs.
+    cache_usable = not (os.path.exists(cache) and not os.path.isdir(cache))
     info = {
         "contractVersion": CONTRACT_VERSION,
         "releaseVersion": _release_version(),
@@ -11580,7 +11593,8 @@ def cmd_status(args) -> int:
         "cCompiler": (cc[0] if cc else None),
         "cCompilerAvailable": cc is not None,
         "runtimeCacheDir": cache,
-        "runtimeCacheBytes": _dir_bytes(build),
+        "runtimeCacheUsable": cache_usable,
+        "runtimeCacheBytes": _dir_bytes(build) if cache_usable else 0,
     }
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope("sem.status.v1", **info) + "\n")
@@ -11594,7 +11608,7 @@ def cmd_clean(args) -> int:
     """Clear the cached native runtime/build artifacts (sem.clean.v1). (TOOL-4)"""
     import os
     import shutil
-    cache = _runtime_cache_dir()
+    cache = _runtime_cache_dir(create=False)  # R-118: inspect, don't create
     build = os.path.join(cache, "_build")
     files_removed, bytes_freed = 0, 0
     if os.path.isdir(build):
@@ -11606,13 +11620,24 @@ def cmd_clean(args) -> int:
                 except OSError:
                     pass
         shutil.rmtree(build, ignore_errors=True)
-    info = {"cacheDir": cache, "filesRemoved": files_removed,
-            "bytesFreed": bytes_freed}
+    # R-118: report partial-deletion failures instead of silently ignoring them.
+    failures = []
+    if os.path.isdir(build):
+        for root, _dirs, files in os.walk(build):
+            for fname in files:
+                failures.append(os.path.relpath(os.path.join(root, fname), build))
+    ok = not failures
+    info = {"ok": ok, "cacheDir": cache, "filesRemoved": files_removed,
+            "bytesFreed": bytes_freed, "deletionFailures": failures}
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope("sem.clean.v1", **info) + "\n")
     else:
-        print(f"cleaned {files_removed} files ({bytes_freed} bytes) from {build}")
-    return 0
+        if failures:
+            print(f"cleaned {files_removed} files but {len(failures)} could not be "
+                  f"removed from {build}")
+        else:
+            print(f"cleaned {files_removed} files ({bytes_freed} bytes) from {build}")
+    return 0 if ok else 1
 
 
 def _all_diagnostics() -> dict:
@@ -11912,12 +11937,26 @@ def cmd_repin(args) -> int:
         build_path = os.path.join(path, "build.sem")
     else:
         build_path = path  # a build.sem manifest (or any project manifest)
-    if not os.path.exists(build_path):
-        sys.stderr.write(f"semanticscript: no build.sem at {build_path}\n")
+    want_json = getattr(args, "json", False)
+
+    def _repin_fail(msg, status):
+        # R-115: a repin failure is a sem.repin.v1 envelope under --json, not a
+        # plaintext stderr line an agent can't parse.
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.repin.v1", ok=False, status=status, error=msg) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {msg}\n")
         return 2
-    with open(build_path, encoding="utf-8") as fh:
-        build_program = parse(fh.read())
-    lock_text = mod_tidy(build_program)
+
+    if not os.path.exists(build_path):
+        return _repin_fail(f"no build.sem at {build_path}", "path-error")
+    try:
+        with open(build_path, encoding="utf-8") as fh:
+            build_program = parse(fh.read())
+        lock_text = mod_tidy(build_program)
+    except (EavError, OSError) as exc:
+        return _repin_fail(str(exc), "compiler-error")
     if not lock_text.endswith("\n"):
         lock_text += "\n"
     lock_path = os.path.join(os.path.dirname(os.path.abspath(build_path)),
@@ -11938,9 +11977,16 @@ def cmd_repin(args) -> int:
                   f"{lock_path}")
         return 0 if up_to_date else 1
 
-    with open(lock_path, "w", encoding="utf-8") as fh:
+    # R-115: write the lock atomically (temp + fsync + replace) so a crash or a
+    # concurrent run can never truncate the existing lock that future checks treat
+    # as a source-of-truth input.
+    _tmp = f"{lock_path}.tmp{os.getpid()}"
+    with open(_tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(lock_text)
-    if getattr(args, "json", False):
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(_tmp, lock_path)
+    if want_json:
         sys.stdout.write(_json_envelope(
             "sem.repin.v1", lockPath=lock_path, upToDate=True,
             wrote=not up_to_date) + "\n")
@@ -13280,10 +13326,15 @@ def cmd_fmt(args) -> int:
     formatted = (format_compact(program) if surface == "compact"
                  else format_program(program))
     if getattr(args, "check", False):
-        # README §24: drift check — exit nonzero if the source is not already
-        # canonically formatted (keeps diffs/patch landings stable).
-        if formatted.strip() != src.strip():
-            sys.stderr.write("semanticscript: fmt drift — run `semanticscript fmt` to canonicalize\n")
+        # README §24: drift check — exit nonzero if the file is not EXACTLY
+        # canonical. R-114: compare byte-for-byte (including boundary whitespace
+        # and the terminal newline) so CI can't accept a file that a later `fmt`
+        # or patch would churn while the check claimed the tree was clean.
+        if formatted != src:
+            reason = ("fmt drift — boundary whitespace / terminal newline differs"
+                      if formatted.strip() == src.strip() else "fmt drift")
+            sys.stderr.write(
+                f"semanticscript: {reason} — run `semanticscript fmt` to canonicalize\n")
             return 1
         return 0
     sys.stdout.write(formatted)
