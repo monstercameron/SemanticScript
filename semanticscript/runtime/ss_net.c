@@ -12,13 +12,73 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 #include "ss_runtime_export.h"
+
+/*
+ * R-204: net.fetchText returns a heap-owned body as a String-shaped char*. The
+ * source type is still String-like, so the runtime must reject freeTextBody on a
+ * literal/global string, stale duplicate, or arbitrary pointer before it reaches
+ * the CRT allocator. Track only allocations produced by this module's body
+ * extraction path; freeing anything else is a safe no-op.
+ */
+typedef struct { char **items; size_t count; size_t cap; } ss_net_body_registry;
+
+static ss_net_body_registry ss_net_live_bodies;
+
+static int ss_net_track_body(char *body) {
+    if (body == NULL) {
+        return 0;
+    }
+    if (ss_net_live_bodies.count == ss_net_live_bodies.cap) {
+        size_t next = ss_net_live_bodies.cap == 0 ? 16 : ss_net_live_bodies.cap * 2;
+        if (next <= ss_net_live_bodies.cap || next > SIZE_MAX / sizeof(char *)) {
+            return 0;
+        }
+        char **grown = (char **)realloc(ss_net_live_bodies.items,
+                                        next * sizeof(char *));
+        if (grown == NULL) {
+            return 0;
+        }
+        ss_net_live_bodies.items = grown;
+        ss_net_live_bodies.cap = next;
+    }
+    ss_net_live_bodies.items[ss_net_live_bodies.count++] = body;
+    return 1;
+}
+
+static int ss_net_body_is_live(const char *body) {
+    size_t index;
+    for (index = 0; index < ss_net_live_bodies.count; ++index) {
+        if (ss_net_live_bodies.items[index] == body) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ss_net_untrack_body(char *body) {
+    size_t index;
+    for (index = 0; index < ss_net_live_bodies.count; ++index) {
+        if (ss_net_live_bodies.items[index] == body) {
+            ss_net_live_bodies.items[index] =
+                ss_net_live_bodies.items[ss_net_live_bodies.count - 1];
+            ss_net_live_bodies.count--;
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static char *ss_net_strdup(const char *s, size_t n) {
     char *p = (char *)malloc(n + 1);
     if (!p) return NULL;
     memcpy(p, s, n);
     p[n] = 0;
+    if (!ss_net_track_body(p)) {
+        free(p);
+        return NULL;
+    }
     return p;
 }
 
@@ -308,5 +368,8 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
 }
 
 SS_EXPORT void ss_net_free_text(char *body) {
-    if (body) free(body);
+    if (body == NULL || !ss_net_body_is_live(body) || !ss_net_untrack_body(body)) {
+        return;
+    }
+    free(body);
 }

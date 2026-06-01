@@ -1576,6 +1576,10 @@ static int hex_to_nibble(char c, int *out) {
     return 0;
 }
 
+static int ss_http_decoded_url_byte_is_string_safe(unsigned char byte) {
+    return byte >= 0x20 && byte != 0x7f;
+}
+
 const char *ss_http_url_decode(
     const char *input,
     char *scratch_buffer,
@@ -1596,7 +1600,9 @@ const char *ss_http_url_decode(
             int hi = 0, lo = 0;
             if (!hex_to_nibble(src[1], &hi)) return NULL;
             if (!hex_to_nibble(src[2], &lo)) return NULL;
-            scratch_buffer[written++] = (char)((hi << 4) | lo);
+            unsigned char decoded = (unsigned char)((hi << 4) | lo);
+            if (!ss_http_decoded_url_byte_is_string_safe(decoded)) return NULL;
+            scratch_buffer[written++] = (char)decoded;
             src += 3;
         } else if (c == '%') {
             return NULL;
@@ -2366,11 +2372,13 @@ static int request_has_transfer_encoding(const char *buffer, const char *header_
 /* Decode a `&`/`=`-split query segment in place: `+` -> space, `%XX` -> byte.
  * URL-decoding never grows the string (every escape collapses to one byte), so
  * decoding into the same buffer is safe. Lenient on a malformed `%` (passes it
- * through literally) rather than dropping the whole request. Without this,
- * http.requestQueryParam returned raw percent-encoded values to handlers. */
-static void ss_http_url_decode_in_place(char *segment) {
+ * through literally) rather than dropping the whole request. Percent-decoded
+ * control bytes fail closed because request query params are exposed as ordinary
+ * NUL-terminated SemanticScript Strings. Without this, http.requestQueryParam
+ * returned raw percent-encoded values to handlers. */
+static int ss_http_url_decode_in_place(char *segment) {
     if (segment == NULL) {
-        return;
+        return 0;
     }
     char *dst = segment;
     const char *src = segment;
@@ -2382,7 +2390,11 @@ static void ss_http_url_decode_in_place(char *segment) {
         } else if (c == '%' && src[1] != '\0' && src[2] != '\0') {
             int hi = 0, lo = 0;
             if (hex_to_nibble(src[1], &hi) && hex_to_nibble(src[2], &lo)) {
-                *dst++ = (char)((hi << 4) | lo);
+                unsigned char decoded = (unsigned char)((hi << 4) | lo);
+                if (!ss_http_decoded_url_byte_is_string_safe(decoded)) {
+                    return 0;
+                }
+                *dst++ = (char)decoded;
                 src += 3;
             } else {
                 *dst++ = c;
@@ -2394,6 +2406,7 @@ static void ss_http_url_decode_in_place(char *segment) {
         }
     }
     *dst = '\0';
+    return 1;
 }
 
 static void parse_query_params(char *query, SSHttpRequest *request) {
@@ -2422,12 +2435,16 @@ static void parse_query_params(char *query, SSHttpRequest *request) {
         equals = strchr(pair, '=');
         if (equals != NULL) {
             *equals = '\0';
-            ss_http_url_decode_in_place(pair);
-            ss_http_url_decode_in_place(equals + 1);
+            if (!ss_http_url_decode_in_place(pair) ||
+                    !ss_http_url_decode_in_place(equals + 1)) {
+                continue;
+            }
             request->query_params[request->query_param_count].name = pair;
             request->query_params[request->query_param_count].value = equals + 1;
         } else {
-            ss_http_url_decode_in_place(pair);
+            if (!ss_http_url_decode_in_place(pair)) {
+                continue;
+            }
             request->query_params[request->query_param_count].name = pair;
             request->query_params[request->query_param_count].value = "";
         }
