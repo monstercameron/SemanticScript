@@ -6640,7 +6640,12 @@ def _validate_path_traversal(program: Program) -> None:
             continue
         inv = ent.fact("invokes")
         target = inv.payload[0] if inv and inv.payload else ""
-        if not (target.startswith("fs.") or target.startswith("filesystem.")):
+        # R-201: log.openLogFile lowers to fopen(g_log_path, "ab") in the log
+        # runtime, so a `..`/absolute log path escapes the intended log directory
+        # exactly like an fs.* sink — it must ride the same SS3076 traversal guard
+        # (it was previously omitted, leaving log paths outside the check).
+        if not (target.startswith("fs.") or target.startswith("filesystem.")
+                or target == "log.openLogFile"):
             continue
         for a in ent.facts("arg"):
             if len(a.payload) < 3:
@@ -6651,8 +6656,9 @@ def _validate_path_traversal(program: Program) -> None:
             if lit is not None and _is_traversal(lit):
                 raise EavError(
                     f"call {ent.name!r} passes the path {lit!r} to {target!r}; a `..` or "
-                    f"absolute path escapes its root — confine it with "
-                    f"`fs.resolveWithin <root>` (README §8)",
+                    f"absolute path escapes its root — confine it under an approved "
+                    f"root (e.g. `fs.resolveWithin <root>`); never pass a `..`/absolute "
+                    f"path literal to a filesystem or log sink (README §8/§27)",
                     ent.line, code="SS3076")
 
 

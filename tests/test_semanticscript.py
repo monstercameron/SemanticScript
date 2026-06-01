@@ -6558,6 +6558,38 @@ def test_path_traversal_literal_rejected():
     assert getattr(exc.value, "code", None) == "SS3076"
 
 
+def test_log_open_path_traversal_rejected():
+    # R-201: log.openLogFile lowers to fopen on g_log_path, so a `..`/absolute log
+    # path escapes the intended log directory and must hit the SS3076 traversal
+    # guard (it was previously omitted, covering only fs.*/filesystem.* sinks).
+    src = (
+        "logIt is operation\nlogIt out ExitCode\nlogIt async no\n"
+        'logIt purpose "p"\nlogIt invariant "i"\n'
+        'logIt let badPath immutable String "../../var/evil.log"\n'
+        "logIt let okCode immutable ExitCode 0\nlogIt do op\nlogIt return okCode\n"
+        "op is call\nop in logIt\nop invokes log.openLogFile\n"
+        "op arg filePath String badPath\nop discards \"x\"\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3076"
+
+
+def test_log_open_safe_relative_path_accepted():
+    # R-201: a confined relative log path (no `..`, not absolute) stays legal, so
+    # the default "logs/app.log" style usage is unaffected.
+    src = (
+        "logIt is operation\nlogIt out ExitCode\nlogIt async no\n"
+        'logIt purpose "p"\nlogIt invariant "i"\n'
+        'logIt let okPath immutable String "logs/app.log"\n'
+        "logIt let okCode immutable ExitCode 0\nlogIt do op\nlogIt return okCode\n"
+        "op is call\nop in logIt\nop invokes log.openLogFile\n"
+        "op arg filePath String okPath\nop discards \"x\"\n"
+    )
+    prog = semanticscript.parse(src)
+    assert "logIt" in prog.entities
+
+
 def test_absolute_path_literal_rejected():
     # X-076: an absolute path literal also escapes a confined root.
     src = (
