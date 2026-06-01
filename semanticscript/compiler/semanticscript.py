@@ -1265,16 +1265,22 @@ def _line_comment(text: str) -> Optional[str]:
     return None
 
 
-def _typed_comment_of_line(text: str) -> Optional[tuple[str, str]]:
-    """Match a single line's (string-aware) comment against the typed-comment
-    grammar, returning (tag, text) or None (README §2, R-080)."""
-    comment = _line_comment(text)
+def _typed_comment_from_comment(comment: Optional[str]) -> Optional[tuple[str, str]]:
+    """Match an already-extracted line comment against the typed-comment grammar,
+    returning (tag, text) or None. Split from _typed_comment_of_line so a caller
+    that already computed the comment (the parse loop) does not rescan the line."""
     if comment is None:
         return None
     m = _TYPED_COMMENT_RE.match(comment)
     if m:
         return (m.group(1), m.group(2).strip())
     return None
+
+
+def _typed_comment_of_line(text: str) -> Optional[tuple[str, str]]:
+    """Match a single line's (string-aware) comment against the typed-comment
+    grammar, returning (tag, text) or None (README §2, R-080)."""
+    return _typed_comment_from_comment(_line_comment(text))
 
 
 def docs(semsig_program: Program) -> list:
@@ -1848,11 +1854,31 @@ class Entity:
     comment: Optional[str] = None
     trailing: list[str] = field(default_factory=list)
 
+    def __post_init__(self):
+        # Backing store for the lazy fact index (see _fact_index). Not dataclass
+        # fields, so they stay out of eq/repr.
+        self._idx = None
+        self._idx_len = -1
+
+    def _fact_index(self) -> dict:
+        """Lazy `predicate -> [Row,...]` index over the (label-less) rows. Rebuilt
+        only when the row count changes, so it stays correct across the appends
+        that happen during parse while making the millions of fact()/facts()
+        lookups in validate + lower O(1) instead of an O(rows) scan each."""
+        if self._idx_len != len(self.rows):
+            idx: dict = {}
+            for r in self.rows:
+                if r.label is None:
+                    idx.setdefault(r.predicate, []).append(r)
+            self._idx = idx
+            self._idx_len = len(self.rows)
+        return self._idx
+
     def facts(self, predicate: str) -> list[Row]:
-        return [r for r in self.rows if r.predicate == predicate and r.label is None]
+        return list(self._fact_index().get(predicate, ()))
 
     def fact(self, predicate: str) -> Optional[Row]:
-        rows = self.facts(predicate)
+        rows = self._fact_index().get(predicate)
         return rows[0] if rows else None
 
 
@@ -2076,7 +2102,8 @@ def parse(source_text: str) -> Program:
         # trailing typed comments are captured; island body lines are consumed by
         # the island block (which sets `i = j`) and never re-enter this loop, so
         # foreign-content `#` text (CSS/SQL comments) is correctly excluded.
-        tc = _typed_comment_of_line(raw)
+        line_cmt = _line_comment(raw)  # computed once; reused for row comments below
+        tc = _typed_comment_from_comment(line_cmt)
         if tc is not None:
             program.typed_comments.append((tc[0], tc[1], lineno))
         if not stripped:
@@ -2136,7 +2163,7 @@ def parse(source_text: str) -> Program:
             # block; a trailing comment on the `is` line is preserved in place.
             _new_ent = program.entities[subject]
             _new_ent.lead = list(pending_lead)
-            _new_ent.comment = _line_comment(raw)
+            _new_ent.comment = line_cmt
             pending_lead.clear()
             # README ss12: single-line module-storage form, consistent with the
             # one-line `let NAME MUTABILITY TYPE VALUE`. Extra tokens on the
@@ -2191,7 +2218,7 @@ def parse(source_text: str) -> Program:
                 entity.lead.extend(pending_lead)
                 pending_lead.clear()
             _lr = Row(subject, step_pred, payload[2:], lineno, label=label)
-            _lr.comment = _line_comment(raw)
+            _lr.comment = line_cmt
             entity.rows.append(_lr)
             i += 1
             continue
@@ -2251,7 +2278,7 @@ def parse(source_text: str) -> Program:
                 entity.lead.extend(pending_lead)
                 pending_lead.clear()
             _ir = Row(subject, predicate, payload, lineno)
-            _ir.comment = _line_comment(raw)
+            _ir.comment = line_cmt
             entity.rows.append(_ir)
             i = j
             continue
@@ -2260,7 +2287,7 @@ def parse(source_text: str) -> Program:
             entity.lead.extend(pending_lead)
             pending_lead.clear()
         _gr = Row(subject, predicate, payload, lineno)
-        _gr.comment = _line_comment(raw)
+        _gr.comment = line_cmt
         entity.rows.append(_gr)
         i += 1
 
@@ -11524,6 +11551,13 @@ def cmd_bench(args) -> int:
     import time
     runs = max(1, getattr(args, "runs", None) or 5)
     src = _read_program_source(args.path)
+    # A project's `literalSource`/db paths are project-relative (the app is meant
+    # to run from its own directory, like the test harness does with cwd=appdir),
+    # so chdir into a project root for the lower/run phases — otherwise embeds
+    # such as taskforge-web's `sql/schema.sql` fail to resolve.
+    _bench_cwd = os.getcwd()
+    if os.path.isdir(args.path) and is_project_root(args.path):
+        os.chdir(args.path)
     runnable = _program_target(parse(src)) == "console"
     parse_t, lower_t, run_t = [], [], []
     for _ in range(runs):
@@ -11553,6 +11587,9 @@ def cmd_bench(args) -> int:
                 os.close(saved)
                 os.close(devnull)
             run_t.append(time.perf_counter() - t3)
+
+    if os.getcwd() != _bench_cwd:
+        os.chdir(_bench_cwd)
 
     def ms(xs):
         return round(min(xs) * 1000, 3) if xs else None
