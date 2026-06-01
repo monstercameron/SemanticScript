@@ -115,6 +115,32 @@ int main(void) {
     make_nested_arrays(nested, sizeof(nested), SS_JSON_MAX_NESTING_DEPTH, "!");
     assert(parse_and_destroy(nested) == SS_JSON_ERR_MALFORMED_PATH);
 
+    /* R-237/R-238: replacing an EXISTING object field / array element calls
+     * document_add_node, which can realloc document->nodes and free the buffer
+     * the parent node pointer was taken from. Replace in a tight loop so the node
+     * count crosses every doubling boundary (16, 32, 64, ...): at each boundary
+     * the replace's internal add reallocs WHILE the parent pointer is held, so a
+     * stale read of old_child through it is a use-after-free (ASAN catches it).
+     * Each replace nets +1 node (the new child; the old one is invalidated), so
+     * the loop steps through every boundary rather than jumping past it. */
+    SSJsonDocument *rdoc = NULL;
+    assert(ss_json_document_create_empty(1 << 20, SS_JSON_NODE_OBJECT, &rdoc) == SS_JSON_OK);
+    int64_t rroot = ss_json_document_root(rdoc);
+    assert(rroot >= 0);
+    int64_t seed_child = -1, seed_arr = -1, seed_elem = -1;
+    assert(ss_json_set_object_field_object(rdoc, rroot, "t", &seed_child) == SS_JSON_OK);
+    assert(ss_json_set_object_field_array(rdoc, rroot, "arr", &seed_arr) == SS_JSON_OK);
+    assert(ss_json_append_array_element_object(rdoc, seed_arr, &seed_elem) == SS_JSON_OK);
+    for (int i = 0; i < 300; ++i) {  /* R-237: replace existing object field */
+        int64_t tmp = -1;
+        assert(ss_json_set_object_field_object(rdoc, rroot, "t", &tmp) == SS_JSON_OK);
+    }
+    for (int i = 0; i < 300; ++i) {  /* R-238: replace existing array element */
+        int64_t tmp = -1;
+        assert(ss_json_replace_array_element_object(rdoc, seed_arr, 0, &tmp) == SS_JSON_OK);
+    }
+    ss_json_document_destroy(rdoc);
+
     /* a second document round-trips independently after the first is gone */
     SSJsonDocument *doc2 = NULL;
     assert(ss_json_document_create_empty(1024, SS_JSON_NODE_OBJECT, &doc2) == SS_JSON_OK);

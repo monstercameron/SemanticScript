@@ -2407,9 +2407,13 @@ static int set_object_field_container(
         return rc;
     }
     if (exists) {
+        /* R-237: document_add_node above may have realloc'd document->nodes,
+         * freeing the buffer object_node (taken before the add) points into.
+         * Re-fetch the node BEFORE reading the old child, or old_child is read
+         * through a dangling pointer. */
+        object_node = document_node_at(document, cursor);
         int64_t old_child = object_node->as.object_value.fields[field_index].child;
         document_invalidate_subtree(document, old_child);
-        object_node = document_node_at(document, cursor);
         object_node->as.object_value.fields[field_index].child = child_cursor;
     } else {
         rc = object_append_field_with_child(document, cursor, object_node, owned_name, child_cursor);
@@ -3141,9 +3145,12 @@ static int replace_array_container(
     int64_t new_cursor;
     rc = document_add_node(document, kind, cursor, &new_cursor);
     if (rc != SS_JSON_OK) return rc;
+    /* R-238: document_add_node may have realloc'd document->nodes, freeing the
+     * buffer array_node points into. Re-fetch BEFORE reading the old child, or
+     * old_child is read through a dangling pointer. */
+    array_node = document_node_at(document, cursor);
     int64_t old_child = array_node->as.array_value.items[index];
     document_invalidate_subtree(document, old_child);
-    array_node = document_node_at(document, cursor);
     array_node->as.array_value.items[index] = new_cursor;
     *out = new_cursor;
     return SS_JSON_OK;
