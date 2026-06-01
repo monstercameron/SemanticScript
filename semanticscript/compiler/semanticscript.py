@@ -11123,6 +11123,13 @@ class EavCodegen:
             acc = feq if acc is None else builder.and_(acc, feq)
         return acc if acc is not None else ir.Constant(ir.IntType(1), 1)
 
+    def _is_unsigned_int(self, type_name) -> bool:
+        """True for the unsigned integer primitives (and the `Byte` synonym). The
+        signed/unsigned distinction is load-bearing for codegen: ordering, width
+        extension, and int<->float conversions all differ (R-214..R-217)."""
+        return self.resolve_type_name(type_name) in (
+            "UInt8", "UInt16", "UInt32", "UInt64", "Byte")
+
     def _emit_compare(self, target, args, builder, sym, call):
         """Compiler-derived `compare.<op><Type>` primitive (README ss13). Ordering
         on Bool/enum operands is rejected (Bool/enum are equals-only, ss17 #45)."""
@@ -11174,6 +11181,12 @@ class EavCodegen:
             if op == "notEqual":
                 return builder.fcmp_unordered("!=", left, right)
             return builder.fcmp_ordered(self._CMP_OPS[op], left, right)
+        # R-214: an ordering compare on an UNSIGNED operand must use the unsigned
+        # predicate — a signed `icmp` reads a value with the high bit set (e.g. a
+        # UInt32 > 2^31) as negative, so `greaterThan` would be backwards.
+        # Equality is bit-identical for both signednesses, so it stays signed.
+        if ordering and self._is_unsigned_int(typ):
+            return builder.icmp_unsigned(self._CMP_OPS[op], left, right)
         return builder.icmp_signed(self._CMP_OPS[op], left, right)
 
     def _emit_convert(self, target, args, builder, sym, call):
@@ -11205,8 +11218,15 @@ class EavCodegen:
             # is false when either operand is NaN). An in-range value still
             # truncates toward zero (the documented float->int behavior).
             w_bits = dst.width
-            lo = ir.Constant(val.type, -(2.0 ** (w_bits - 1)))   # == INT_MIN (exact)
-            hi = ir.Constant(val.type, 2.0 ** (w_bits - 1))      # == INT_MAX + 1 (exact)
+            # R-217: an unsigned destination has range [0, 2^w); a signed one has
+            # [-2^(w-1), 2^(w-1)). Both bounds are exact powers of two and so are
+            # representable in the source float.
+            if self._is_unsigned_int(dst_name):
+                lo = ir.Constant(val.type, 0.0)
+                hi = ir.Constant(val.type, 2.0 ** w_bits)
+            else:
+                lo = ir.Constant(val.type, -(2.0 ** (w_bits - 1)))   # == INT_MIN (exact)
+                hi = ir.Constant(val.type, 2.0 ** (w_bits - 1))      # == INT_MAX + 1 (exact)
             in_range = builder.and_(
                 builder.fcmp_ordered(">=", val, lo),
                 builder.fcmp_ordered("<", val, hi))
@@ -11225,18 +11245,31 @@ class EavCodegen:
                 ir.Constant(ir.IntType(64), w_bits))
             tb.unreachable()
             builder.position_at_end(ok_bb)
-            return builder.fptosi(val, dst)
+            return (builder.fptoui(val, dst) if self._is_unsigned_int(dst_name)
+                    else builder.fptosi(val, dst))
         if not src_float and dst_float:
-            return builder.sitofp(val, dst)
+            # R-217: an unsigned source converts with uitofp; sitofp would read a
+            # high-bit-set value (e.g. a UInt32 > 2^31) as negative.
+            return (builder.uitofp(val, dst) if self._is_unsigned_int(src_name)
+                    else builder.sitofp(val, dst))
         # int -> int
+        src_unsigned = self._is_unsigned_int(src_name)
         if dst.width > src.width:
-            return builder.sext(val, dst)
+            # R-215: widen an UNSIGNED source with zero-extension; sign-extending
+            # it (e.g. UInt8 200 -> UInt32) would set the high bits and corrupt the
+            # value to 4294967240.
+            return builder.zext(val, dst) if src_unsigned else builder.sext(val, dst)
         if dst.width < src.width:
             # WS1-131/R-076: narrowing is checked, not a silent truncation. If
             # the value does not round-trip through the destination width it does
             # not fit, so trap with a structured panic instead of dropping bits.
+            # R-216: the round-trip must re-extend with the SOURCE's signedness —
+            # zero-extending an unsigned value — or a valid in-range unsigned value
+            # (e.g. UInt16 200 -> UInt8) falsely traps because sext(trunc(200)) is
+            # -56. `!=` is sign-agnostic.
             narrowed = builder.trunc(val, dst)
-            roundtrip = builder.sext(narrowed, src)
+            roundtrip = (builder.zext(narrowed, src) if src_unsigned
+                         else builder.sext(narrowed, src))
             overflow = builder.icmp_signed("!=", roundtrip, val)
             fn = builder.function
             bad_bb = fn.append_basic_block("narrowOverflow")
