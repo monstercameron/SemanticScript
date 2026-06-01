@@ -3306,6 +3306,43 @@ def test_record_equality_is_deep_and_type_directed():
     assert "PASS" in p.stdout and "FAIL" not in p.stdout, (p.stdout, p.stderr)
 
 
+def test_generic_record_instantiation_equality_uses_base_fields():
+    # R-213: a named generic-record instantiation has no local `field` rows; its
+    # fields live on the base record. Equality must compare the substituted base
+    # fields, not return true for an empty field list.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\nm exports main\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "Box is record\nBox typeParam T\nBox field value T\n"
+        "IntBox is record\nIntBox instantiates Box Int64\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses stdoutWriter\nmain async no\n"
+        'main purpose "compare two monomorphized generic records"\n'
+        'main invariant "different field values compare unequal"\n'
+        "main let one immutable Int64 1\nmain let two immutable Int64 2\n"
+        "main let zero immutable Int64 0\nmain let bad immutable Int64 1\n"
+        "main let okCode immutable ExitCode 0\nmain let result mutable Int64 0\n"
+        "main do mkA\nmain do mkB\nmain do cmp\n"
+        "main branch ifFalse same goto unequal\n"
+        "main set result bad\nmain goto done\n"
+        "main at unequal set result zero\n"
+        "main at done do show\nmain return okCode\n"
+        "mkA is call\nmkA in main\nmkA invokes IntBox.new\n"
+        "mkA arg value Int64 one\nmkA out a IntBox\n"
+        "mkB is call\nmkB in main\nmkB invokes IntBox.new\n"
+        "mkB arg value Int64 two\nmkB out b IntBox\n"
+        "cmp is call\ncmp in main\ncmp invokes compare.equalIntBox\n"
+        "cmp arg left IntBox a\ncmp arg right IntBox b\ncmp out same Bool\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 result\n"
+    )
+    out, code = semanticscript._record_run(src)
+    assert code == 0
+    assert out.strip() == "0"
+
+
 def test_compare_string_equality_bytewise():
     # README §10.6: String equality is bytewise via strcmp.
     src = (

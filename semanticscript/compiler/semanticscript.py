@@ -11113,13 +11113,28 @@ class EavCodegen:
 
     def _record_field_eq(self, builder, left, right, ent):
         """Deep fieldwise equality (-> i1) of two record values of entity `ent`,
-        each field compared by its declared type via _value_eq (R-075)."""
-        field_rows = [f for f in ent.facts("field") if len(f.payload) >= 2]
+        each field compared by its declared type via _value_eq (R-075).
+        R-213: a named generic instantiation carries its fields on the base
+        record, so follow the same substitution path as _record_layout."""
+        inst = ent.fact("instantiates")
+        if inst and inst.payload:
+            base = self.program.entities[inst.payload[0]]
+            tps = [r.payload[0] for r in base.facts("typeParam") if r.payload]
+            sub = dict(zip(tps, inst.payload[1:]))
+            field_specs = [
+                (f.payload[0], sub.get(f.payload[1], f.payload[1]))
+                for f in base.facts("field") if len(f.payload) >= 2
+            ]
+        else:
+            field_specs = [
+                (f.payload[0], f.payload[1])
+                for f in ent.facts("field") if len(f.payload) >= 2
+            ]
         acc = None
-        for i, frow in enumerate(field_rows):
+        for i, (_fname, ftype) in enumerate(field_specs):
             fl = builder.extract_value(left, i)
             fr = builder.extract_value(right, i)
-            feq = self._value_eq(builder, fl, fr, frow.payload[1])
+            feq = self._value_eq(builder, fl, fr, ftype)
             acc = feq if acc is None else builder.and_(acc, feq)
         return acc if acc is not None else ir.Constant(ir.IntType(1), 1)
 
