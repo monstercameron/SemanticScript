@@ -11148,6 +11148,88 @@ def cmd_inspect_ir(args) -> int:
     return 0
 
 
+def _dir_bytes(path: str) -> int:
+    """Total byte size of the files under `path` (0 if it does not exist)."""
+    import os
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for fname in files:
+            try:
+                total += os.path.getsize(os.path.join(root, fname))
+            except OSError:
+                pass
+    return total
+
+
+def _release_version() -> Optional[str]:
+    """The release version from version.json beside the repo, if available."""
+    import json
+    import os
+    candidate = os.path.normpath(os.path.join(_bundle_dir(), "..", "version.json"))
+    try:
+        with open(candidate, encoding="utf-8") as fh:
+            return json.load(fh).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+def cmd_status(args) -> int:
+    """Toolchain self-diagnostic: versions, compiler path, C-toolchain
+    availability, runtime cache, and platform/triple (sem.status.v1). (TOOL-4)"""
+    import os
+    import platform
+    import llvmlite
+    import llvmlite.binding as llvm
+    _ensure_native_init()  # register the native target before querying the triple
+    cc = _find_c_compiler()
+    cache = _runtime_cache_dir()
+    build = os.path.join(cache, "_build")
+    info = {
+        "contractVersion": CONTRACT_VERSION,
+        "releaseVersion": _release_version(),
+        "compiler": os.path.abspath(__file__),
+        "python": platform.python_version(),
+        "llvmlite": llvmlite.__version__,
+        "platform": _host_platform_name(),
+        "triple": llvm.Target.from_default_triple().triple,
+        "cCompiler": (cc[0] if cc else None),
+        "cCompilerAvailable": cc is not None,
+        "runtimeCacheDir": cache,
+        "runtimeCacheBytes": _dir_bytes(build),
+    }
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.status.v1", **info) + "\n")
+    else:
+        for key, value in info.items():
+            print(f"{key}: {value}")
+    return 0
+
+
+def cmd_clean(args) -> int:
+    """Clear the cached native runtime/build artifacts (sem.clean.v1). (TOOL-4)"""
+    import os
+    import shutil
+    cache = _runtime_cache_dir()
+    build = os.path.join(cache, "_build")
+    files_removed, bytes_freed = 0, 0
+    if os.path.isdir(build):
+        for root, _dirs, files in os.walk(build):
+            for fname in files:
+                try:
+                    bytes_freed += os.path.getsize(os.path.join(root, fname))
+                    files_removed += 1
+                except OSError:
+                    pass
+        shutil.rmtree(build, ignore_errors=True)
+    info = {"cacheDir": cache, "filesRemoved": files_removed,
+            "bytesFreed": bytes_freed}
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.clean.v1", **info) + "\n")
+    else:
+        print(f"cleaned {files_removed} files ({bytes_freed} bytes) from {build}")
+    return 0
+
+
 def _is_trap_returncode(rc: int) -> bool:
     """True if a subprocess return code indicates a hardware/guard trap — a POSIX
     fatal signal or a Windows NTSTATUS exception code — rather than a normal
@@ -12618,6 +12700,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_inspect.add_argument("path", help="EAV/compact source file or project, or - for stdin")
     sp_inspect.add_argument("--json", action="store_true")
     sp_inspect.set_defaults(func=cmd_inspect_ir)
+
+    # TOOL-4: toolchain self-diagnostic + cache clean
+    sp_status = sub.add_parser("status", help="toolchain self-diagnostic (versions, C toolchain, cache, platform)")
+    sp_status.add_argument("--json", action="store_true")
+    sp_status.set_defaults(func=cmd_status)
+    sp_clean = sub.add_parser("clean", help="clear the cached native runtime/build artifacts")
+    sp_clean.add_argument("--json", action="store_true")
+    sp_clean.set_defaults(func=cmd_clean)
 
     # run needs --strict flag (WS2-071)
     sp_run = sub.add_parser("run", help="JIT-compile and execute")
