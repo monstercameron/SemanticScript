@@ -4524,6 +4524,60 @@ def test_frozen_executable_packaging():
     assert run.returncode == 0 and "hello world" in run.stdout
 
 
+def _load_packaging_module():
+    import importlib.util
+    path = os.path.join(ROOT, "semanticscript", "packaging", "package.py")
+    spec = importlib.util.spec_from_file_location("ss_packaging", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_packaging_failures_are_bounded_and_structured():
+    # R-149: the frozen-toolchain packager must not hang or raise a raw
+    # CalledProcessError. A stuck freeze times out with a named phase, a missing
+    # PyInstaller is a structured dependency error, a non-zero freeze surfaces its
+    # output, and the smoke validates `version --json`. Each is a machine-readable
+    # sem.package.v1 envelope (ok:false + status + phase).
+    import importlib.util as _ilu
+    pkg = _load_packaging_module()
+
+    # a stuck freeze times out, naming the phase
+    with pytest.raises(pkg.PackagingError) as exc:
+        pkg._run_bounded([sys.executable, "-c", "import time; time.sleep(30)"],
+                         1, "pyinstaller-freeze")
+    assert exc.value.envelope["status"] == "timeout"
+    assert exc.value.envelope["phase"] == "pyinstaller-freeze"
+    assert exc.value.envelope["surface"] == "sem.package.v1" and exc.value.envelope["ok"] is False
+
+    # a non-zero freeze surfaces a structured failure with output detail
+    with pytest.raises(pkg.PackagingError) as exc2:
+        pkg._run_bounded([sys.executable, "-c",
+                          "import sys; sys.stderr.write('boom'); sys.exit(3)"],
+                         30, "pyinstaller-freeze")
+    assert exc2.value.envelope["status"] == "freeze-failed"
+    assert "boom" in exc2.value.envelope.get("detail", "")
+
+    # a missing PyInstaller is a structured dependency error (build() fails fast)
+    real_find = _ilu.find_spec
+    pkg.importlib.util.find_spec = lambda name, *a, **k: (
+        None if name == "PyInstaller" else real_find(name, *a, **k))
+    try:
+        with pytest.raises(pkg.PackagingError) as exc3:
+            pkg.build()
+        assert exc3.value.envelope["status"] == "dependency-missing"
+        assert exc3.value.envelope["phase"] == "preflight"
+    finally:
+        pkg.importlib.util.find_spec = real_find
+
+    # the version-json smoke validates rc, JSON shape, and ok:true
+    assert pkg._check_version_output(0, '{"ok": true, "version": "1.2.3"}') == "1.2.3"
+    for bad in [(1, '{"ok": true}'), (0, 'not json'), (0, '{"ok": false}')]:
+        with pytest.raises(pkg.PackagingError) as e:
+            pkg._check_version_output(*bad)
+        assert e.value.envelope["status"] == "smoke-failed"
+
+
 def test_golden_match_infra(tmp_path):
     # X-007: matchesGolden compares to a committed golden + verifies sha256;
     # mismatch fails (no implicit update); --update-golden re-pins.
