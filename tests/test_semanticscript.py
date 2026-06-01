@@ -6906,6 +6906,26 @@ def test_json_find_helpers_reject_malformed_scalars():
     assert "return atoll(value_start);" not in src and "return atof(value_start);" not in src
 
 
+def test_http_codec_capacity_overflow_guarded():
+    # R-033 (resolved with R-144): the URL/HTML codec shims must guard their
+    # capacity math before allocating — n*3 (url-encode) and n*6 (html-escape) can
+    # wrap size_t, and html-escape's capacity is passed into a legacy `int`
+    # out_capacity that a large value would truncate to a small/negative size,
+    # under-sizing the buffer. Each path must reject (return 0) instead of writing
+    # past the allocation. Source-level guard (the http codecs are only exercised
+    # by the deferred webServer app, not a JIT example).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_http.c"),
+               encoding="utf-8").read()
+    enc = re.search(r"ss_http_url_encode_str\(.*?\n\}", src, re.S).group(0)
+    assert "(SIZE_MAX - 1) / 3" in enc and "return 0;" in enc
+    esc = re.search(r"ss_http_html_escape_str\(.*?\n\}", src, re.S).group(0)
+    assert "(SIZE_MAX - 1) / 6" in esc
+    # the int-truncation guard R-033 specifically calls for, before the (int) cast
+    assert "0x7fffffffu" in esc and "(int)capacity" in esc
+
+
 def test_json_serialize_shim_never_returns_null():
     # R-142: the ss_json_serialize shim must never hand a NULL (or uninitialized
     # scratch) back as a String. The native serializer sets *out = NULL on every
