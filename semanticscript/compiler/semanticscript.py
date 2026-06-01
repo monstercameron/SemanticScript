@@ -351,7 +351,7 @@ DIAGNOSTICS.update({
     "SS3042": {"tier": "T1", "summary": "`export c` symbol is not a C identifier.",
                "found": "An `export c` symbol with non-C-identifier characters.",
                "suggested": "Use [A-Za-z_][A-Za-z0-9_]* (README §30.4.2)."},
-    "SS3043": {"tier": "T1", "summary": "Duplicate `export c` symbol.",
+    "SS3045": {"tier": "T1", "summary": "Duplicate `export c` symbol.",
                "found": "Two operations exporting the same C symbol.",
                "suggested": "Export symbols must be unique (README §30.4.2)."},
     "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
@@ -366,7 +366,7 @@ DIAGNOSTICS.update({
     "SS3002": {"tier": "T0", "summary": "configure op declares a runtime effect.",
                "found": "A build-time `configure` op with a non-build.* effect.",
                "suggested": "configure is build-time; use only build.* (README §30.3.2)."},
-    "SS2601": {"tier": "T1", "summary": "Unknown .semsig schema version.",
+    "SS2620": {"tier": "T1", "summary": "Unknown .semsig schema version.",
                "found": "A `semsig` header with an unsupported version.",
                "suggested": "Regenerate with a supported toolchain (README §26)."},
     "SS2805": {"tier": "T0", "summary": "Dependency requests an un-allowed effect.",
@@ -1195,7 +1195,7 @@ def classify_sem_file(path: str) -> str:
 
 def load_semsig(source: str) -> Program:
     """Parse a `.semsig` sidecar and validate its header (README ss26). An
-    unknown schema `version` is rejected (SS2601)."""
+    unknown schema `version` is rejected (SS2620)."""
     program = parse(source)
     headers = program.of_kind("semsig")
     if not headers:
@@ -1218,7 +1218,7 @@ def load_semsig(source: str) -> Program:
             raise EavError(
                 f"semsig {sig.name!r} has unknown schema version {v!r}; supported: "
                 f"{sorted(SEMSIG_SCHEMA_VERSIONS)} (README ss26)",
-                code="SS2601",
+                code="SS2620",  # R-160: was SS2601 (shadowed by webServer route-method)
             )
     return program
 
@@ -3896,7 +3896,7 @@ def _lint_c_exports(program: Program) -> list:
                                       f"export symbol {sym!r} is not a valid C identifier",
                                       r.line, ent.name))
             elif sym in seen:
-                out.append(Diagnostic("SS3043", "error",
+                out.append(Diagnostic("SS3045", "error",  # R-160: was SS3043 (shadowed by gated-configure)
                                       f"export symbol {sym!r} is already used by "
                                       f"{seen[sym]!r} (must be unique)", r.line, ent.name))
             else:

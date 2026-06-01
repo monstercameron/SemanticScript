@@ -252,7 +252,7 @@ def test_export_c_duplicate_symbol_rejected():
         "b is operation\nb out Int64\nb export c shared_sym\n"
     )
     codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))}
-    assert "SS3043" in codes
+    assert "SS3045" in codes  # R-160
 
 
 def test_export_c_bad_identifier_rejected():
@@ -268,7 +268,7 @@ def test_export_c_valid_unique_ok():
         "b is operation\nb out Int64\nb export c beta_sym\n"
     )
     codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))}
-    assert "SS3043" not in codes and "SS3042" not in codes
+    assert "SS3045" not in codes and "SS3042" not in codes  # R-160
 
 
 def test_semsig_catalogs_load_and_doc():
@@ -307,7 +307,7 @@ def test_semsig_loads_and_indexes_targets():
 def test_semsig_unknown_version_rejected():
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.load_semsig('s is semsig\ns version "9.9"\ns describes x.y\n')
-    assert exc.value.code == "SS2601"
+    assert exc.value.code == "SS2620"  # R-160: unique code (was shadowed SS2601)
 
 
 def test_semsig_resolution_first_wins():
@@ -1476,6 +1476,28 @@ def test_run_json_entry_strict_and_empty_stdout():
     # R-159: --entry actually selects the operation run as the entry
     assert run_json("--entry", "main")["exitCode"] == 0
     assert run_json("--entry", "failOp")["exitCode"] == 1
+
+
+def test_no_duplicate_diagnostic_registry_keys():
+    # R-160: a duplicate key in a diagnostic registry literal is silently shadowed
+    # by Python (the later entry wins), so a real diagnostic's repair text
+    # disappears (e.g. SS2601/SS3043 each defined twice). Scan the source and
+    # reject any duplicate registry key.
+    import re
+    from collections import Counter
+    src = open(SEMANTICSCRIPT, encoding="utf-8").read()
+    keys = re.findall(r'^\s*"((?:SS|MD|SSR)\d+[A-Z]?)":\s*\{', src, re.M)
+    dupes = {k: n for k, n in Counter(keys).items() if n > 1}
+    assert not dupes, "duplicate diagnostic registry keys (later silently wins): %s" % dupes
+
+
+def test_shadowed_diagnostic_codes_now_unique():
+    # R-160: the two formerly-shadowed meanings have unique, explainable codes.
+    d = semanticscript._all_diagnostics() if hasattr(semanticscript, "_all_diagnostics") else semanticscript.DIAGNOSTICS
+    assert "schema version" in d["SS2620"]["summary"]      # was the shadowed SS2601
+    assert "route method" in d["SS2601"]["summary"].lower()  # the surviving SS2601
+    assert "export `c`" in d["SS3045"]["summary"] or "export c" in d["SS3045"]["summary"].replace("`", "")
+    assert "configure" in d["SS3043"]["summary"].lower()     # the surviving SS3043
 
 
 def test_mcp_survives_malformed_frames():
