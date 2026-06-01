@@ -220,6 +220,7 @@ struct SSHttpResponse {
     char *owned_header_names[SS_HTTP_MAX_HEADERS];
     char *owned_header_values[SS_HTTP_MAX_HEADERS];
     void *backend_response;
+    int head_only;  /* R-174: emit headers (incl. Content-Length) but no body */
 };
 
 static int has_valid_route_table(const SSHttpServerConfig *config) {
@@ -2272,7 +2273,10 @@ static int send_response(
     if (send_all(socket_handle, "\r\n", 2) != SS_HTTP_OK) {
         return SS_HTTP_ERR_ENGINE;
     }
-    if (body_length > 0 && send_all(socket_handle, body, body_length) != SS_HTTP_OK) {
+    /* R-174: a HEAD response carries the entity's Content-Length (emitted above)
+     * but MUST NOT include the body. */
+    if (body_length > 0 && !(response != NULL && response->head_only)
+            && send_all(socket_handle, body, body_length) != SS_HTTP_OK) {
         return SS_HTTP_ERR_ENGINE;
     }
 
@@ -3041,6 +3045,9 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         response.owned_body = NULL;
         response.owned_content_type = NULL;
         response.backend_response = &stream_backend;
+        /* R-174: find_static_route accepts GET and HEAD; a HEAD reply sends the
+         * file's headers (Content-Length etc.) but not the file bytes. */
+        response.head_only = ascii_case_equal(method, "HEAD");
 
         has_static_cache_headers = build_file_cache_headers(
             static_route->root_directory,
