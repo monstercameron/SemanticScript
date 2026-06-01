@@ -29,6 +29,12 @@
 #define DWMSBT_MAINWINDOW 2
 #endif
 
+/* R-200: confine optional-DLL loads to System32 (anti-side-load). Defined since
+ * the Windows 8 SDK; provide the literal value for older headers. */
+#ifndef LOAD_LIBRARY_SEARCH_SYSTEM32
+#define LOAD_LIBRARY_SEARCH_SYSTEM32 0x00000800
+#endif
+
 #define SS_GUI_CLASS_NAME L"SemanticScriptGuiWindow"
 #define SS_GUI_DEFAULT_WINDOW_WIDTH 800
 #define SS_GUI_DEFAULT_WINDOW_HEIGHT 600
@@ -379,7 +385,14 @@ static void apply_modern_window_frame(HWND hwnd) {
         return;
     }
 
-    dwmapi = LoadLibraryW(L"dwmapi.dll");
+    /* R-200: load the optional DWM styling DLL from System32 ONLY. A bare
+     * LoadLibraryW("dwmapi.dll") honors the standard search order (including the
+     * application and current directory), so a packaged app launched from a
+     * writable directory containing a malicious dwmapi.dll would side-load it and
+     * run attacker code before the window is drawn. LOAD_LIBRARY_SEARCH_SYSTEM32
+     * pins the search to the system directory. If the flag is unsupported (very old
+     * Windows) the call fails and we simply skip the optional styling — fail safe. */
+    dwmapi = LoadLibraryExW(L"dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (dwmapi == NULL) {
         return;
     }
