@@ -11752,7 +11752,22 @@ def cmd_search(args) -> int:
     skills, task templates, agent rules, the spec, and — with `--path` — a
     project's entities (sem.search.v1). Real cross-source retrieval for agentic
     coding; `--source` filters by source. (TOOL-8)"""
-    docs = _search_corpus(getattr(args, "path", None))
+    path = getattr(args, "path", None)
+    # R-128: if --path is given it must actually index — an unreadable or
+    # unparseable project is a path-error, not a silent fallback to generic docs
+    # that an agent would mistake for "local entities were searched".
+    if path:
+        try:
+            parse_compact(_read_program_source(path))
+        except (EavError, OSError) as exc:
+            if getattr(args, "json", False):
+                sys.stdout.write(_json_envelope(
+                    "sem.search.v1", ok=False, status="path-error", query=args.query,
+                    path=path, count=0, matches=[], error=str(exc)) + "\n")
+            else:
+                sys.stderr.write(f"semanticscript: search --path {path!r}: {exc}\n")
+            return 2
+    docs = _search_corpus(path)
     wanted = getattr(args, "source", None)
     if wanted:
         docs = [d for d in docs if d["source"] in set(wanted)]
@@ -12355,13 +12370,15 @@ EAV_MCP_TOOLS = {
 }
 
 
-def _mcp_dispatch(tool: str, arguments: dict) -> str:
-    """Run a tool by building its argv and capturing stdout (MCP tools/call)."""
+def _mcp_dispatch(tool: str, arguments: dict):
+    """Run a tool by building its argv and capturing (stdout, stderr, exitCode).
+    R-126: stderr and the integer rc are captured too, so a failed tool call can
+    surface its actionable diagnostic instead of looking like an empty success."""
     import contextlib
     import io
     spec = EAV_MCP_TOOLS.get(tool)
     if spec is None:
-        return f'{{"error": "unknown tool {tool}"}}'
+        return f'{{"error": "unknown tool {tool}"}}', "", 2
     argv = list(spec["argv"])
     # positional args (in declared order), then the source/project path,
     for name, positional, _req, _desc in spec["args"]:
@@ -12373,13 +12390,13 @@ def _mcp_dispatch(tool: str, arguments: dict) -> str:
     for name, positional, _req, _desc in spec["args"]:
         if not positional and arguments.get(name) is not None:
             argv += [f"--{name}", str(arguments[name])]
-    buf = io.StringIO()
+    out_buf, err_buf, rc = io.StringIO(), io.StringIO(), 0
     try:
-        with contextlib.redirect_stdout(buf):
-            main(argv)
-    except SystemExit:
-        pass
-    return buf.getvalue()
+        with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+            rc = main(argv) or 0
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    return out_buf.getvalue(), err_buf.getvalue(), rc
 
 
 def mcp_handle(request: dict):
@@ -12388,6 +12405,12 @@ def mcp_handle(request: dict):
     Returns the response dict, or None for a JSON-RPC *notification* — a request
     with no `id` member (e.g. `notifications/initialized`), which per the spec
     must not be answered (R-111)."""
+    # R-125: a non-object top-level frame (e.g. a JSON-array batch or a bare
+    # scalar) is an invalid request, not a server crash.
+    if not isinstance(request, dict):
+        return {"jsonrpc": "2.0", "id": None, "error": {
+            "code": -32600,
+            "message": "invalid request: expected a JSON object (batches are not supported)"}}
     method = request.get("method")
     if "id" not in request:
         return None  # notification: acknowledged silently, no response
@@ -12417,6 +12440,9 @@ def mcp_handle(request: dict):
         return {**base, "result": {"tools": tools}}
     if method == "tools/call":
         params = request.get("params", {})
+        if not isinstance(params, dict):  # R-125
+            return {**base, "error": {"code": -32602,
+                                      "message": "invalid params: expected an object"}}
         name = params.get("name", "")
         if name not in EAV_MCP_TOOLS:
             # R-011: an unknown or missing tool is a JSON-RPC error (invalid
@@ -12431,6 +12457,9 @@ def mcp_handle(request: dict):
         # successful tools/call — a masked failure. Now it is a JSON-RPC error.
         spec = EAV_MCP_TOOLS[name]
         arguments = params.get("arguments", {})
+        if not isinstance(arguments, dict):  # R-125
+            return {**base, "error": {"code": -32602,
+                                      "message": "invalid arguments: expected an object"}}
         required = (["path"] if spec["path"] else []) + [a[0] for a in spec["args"] if a[2]]
         missing = [r for r in required if arguments.get(r) in (None, "")]
         if missing:
@@ -12438,8 +12467,15 @@ def mcp_handle(request: dict):
                 "code": -32602,
                 "message": f"missing required argument(s) for {name!r}: {', '.join(missing)}",
                 "data": {"required": required}}}
-        text = _mcp_dispatch(name, arguments)
-        return {**base, "result": {"content": [{"type": "text", "text": text}]}}
+        text, stderr, rc = _mcp_dispatch(name, arguments)
+        # R-126: a failed tool call is not an empty success — surface the rc and
+        # the actionable diagnostic (the envelope on stdout, else stderr) and mark
+        # the result as an error so the agent doesn't read a failure as success.
+        content_text = text if text.strip() else stderr.strip()
+        result = {"content": [{"type": "text", "text": content_text}]}
+        if rc != 0:
+            result["isError"] = True
+        return {**base, "result": result}
     return {**base, "error": {"code": -32601, "message": f"method not found: {method}"}}
 
 
@@ -12599,7 +12635,12 @@ def cmd_mcp(args) -> int:
                 "error": {"code": -32700, "message": "parse error"}}) + "\n")
             sys.stdout.flush()
             continue
-        response = mcp_handle(request)
+        try:
+            response = mcp_handle(request)
+        except Exception as exc:  # R-125: a malformed frame must not kill the loop
+            rid = request.get("id") if isinstance(request, dict) else None
+            response = {"jsonrpc": "2.0", "id": rid, "error": {
+                "code": -32603, "message": f"internal error: {exc}"}}
         if response is not None:  # R-111: notifications (no id) get no reply
             sys.stdout.write(json.dumps(response) + "\n")
             sys.stdout.flush()

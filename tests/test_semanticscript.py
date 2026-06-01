@@ -1478,6 +1478,40 @@ def test_run_json_entry_strict_and_empty_stdout():
     assert run_json("--entry", "failOp")["exitCode"] == 1
 
 
+def test_mcp_survives_malformed_frames():
+    # R-125: a non-object top-level frame, or non-dict params/arguments, returns a
+    # JSON-RPC error instead of crashing mcp_handle.
+    assert semanticscript.mcp_handle([])["error"]["code"] == -32600
+    r = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                                   "params": {"name": "check", "arguments": []}})
+    assert "error" in r and r["error"]["code"] == -32602
+    r2 = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                                    "params": []})
+    assert "error" in r2 and r2["error"]["code"] == -32602
+
+
+def test_mcp_tool_failure_is_marked_error():
+    # R-126: a failed tool call surfaces the diagnostic + isError, not an empty
+    # success that an agent reads as a working tool.
+    r = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "explain", "arguments": {"code": "NOPE999"}}})
+    res = r["result"]
+    assert res.get("isError") is True
+    assert "NOPE999" in res["content"][0]["text"]
+
+
+def test_search_path_error_is_not_silent():
+    # R-128: `search --path` to an unreadable path is ok:false/path-error, not a
+    # silent fallback to generic docs.
+    import json as _json
+    p = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "search", "main", "--path",
+         os.path.join(ROOT, "no-such-dir-xyz"), "--json"],
+        capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert env["ok"] is False and env["status"] == "path-error" and p.returncode == 2
+
+
 def test_skills_unknown_name_is_not_found():
     # R-121: an unknown skill name is ok:false/not-found (not an empty success),
     # in both the CLI and the MCP path.
@@ -4510,7 +4544,7 @@ def test_project_aware_commands_accept_app_directories(capsys):
     sample = app_dirs[0]
     for tool, surface in (("deps", "sem.deps.v1"), ("context", "sem.context.v1"),
                           ("symbols", "sem.symbols.v1"), ("size", "sem.size.v1")):
-        out = semanticscript._mcp_dispatch(tool, {"path": sample})
+        out, _err, _rc = semanticscript._mcp_dispatch(tool, {"path": sample})  # R-126: (stdout, stderr, rc)
         assert json.loads(out)["surface"] == surface, f"mcp:{tool}"
 
 
