@@ -2245,6 +2245,12 @@ static int send_response(
     const SSHttpResponse *response
 ) {
     char header[512];
+    /* R-182: a handler can set any Int32 status; an out-of-range value would emit
+     * a malformed status line ("HTTP/1.1 -1 ..." / "HTTP/1.1 99999 ..."). Clamp to
+     * a valid HTTP status (100..599); anything else is reported as 500. */
+    if (status < 100 || status > 599) {
+        status = 500;
+    }
     size_t body_length =
         response != NULL && body != NULL && response->body == body
             ? response->body_length
@@ -2318,6 +2324,9 @@ static int send_sse_headers(SSHttpResponse *response, int status) {
 
     if (backend == NULL || backend->stream_started || backend->stream_closed) {
         return SS_HTTP_ERR_CONFIG;
+    }
+    if (status < 100 || status > 599) {  /* R-182: never emit an invalid status line */
+        status = 500;
     }
 
     header_length = snprintf(
