@@ -10547,6 +10547,19 @@ def test_cyclic_module_storage_init_rejected():
     assert exc.value.code == "SS3022"
 
 
+def test_cyclic_storage_initializer_rejected():
+    src = (
+        "base is storage\nbase scope module\nbase type Int64\nbase mutability immutable\nbase value 0\n"
+        "derived is storage\nderived scope module\nderived type Int64\n"
+        "derived mutability immutable\nderived value base\n"
+    )
+    prog = semanticscript.parse(src)
+    prog.entities["base"].fact("value").payload[:] = ["derived"]
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.EavCodegen(prog)._literal_tokens_for_storage(prog.entities["base"])
+    assert getattr(exc.value, "code", None) == "SS1212"
+
+
 def test_module_storage_init_dag_ok():
     src = (
         "base is storage\nbase scope module\nbase type Int64\nbase mutability immutable\nbase value 0\n"
