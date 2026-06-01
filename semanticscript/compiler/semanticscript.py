@@ -354,6 +354,11 @@ DIAGNOSTICS.update({
     "SS3045": {"tier": "T1", "summary": "Duplicate `export c` symbol.",
                "found": "Two operations exporting the same C symbol.",
                "suggested": "Export symbols must be unique (README §30.4.2)."},
+    "SS3046": {"tier": "T1", "summary": "`literalSource` asset not found.",
+               "found": "A compile-time `literalSource` embed whose file could not "
+                        "be read (R-124).",
+               "suggested": "Check the path and run from the project root; the embed "
+                            "is resolved at compile time (README §30.3.2)."},
     "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
                "found": "A platform targetRuntime other than native/wasm.",
                "suggested": "Use `native` or `wasm` (README §7)."},
@@ -1650,9 +1655,19 @@ def sha256_hex(data: bytes) -> str:
 
 def embed_literal_source(path: str, expected_digest: str = None) -> bytes:
     """Compile-time asset embedding (README ss30.3.2): read the file's bytes and,
-    if a `literalDigest` is given, verify its sha256 (a mismatch is a hard error)."""
-    with open(path, "rb") as fh:
-        data = fh.read()
+    if a `literalDigest` is given, verify its sha256 (a mismatch is a hard error).
+
+    R-124: a missing/unreadable asset is a structured compile diagnostic (SS3046),
+    not a raw FileNotFoundError traceback (build) or an SSR0001 runtime-trap
+    mislabel (run --json) — asset resolution is deterministic, not a runtime fault."""
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        raise EavError(
+            f"literalSource asset {path!r} could not be read at compile time: "
+            f"{exc} (resolve it relative to the project root, README §30.3.2)",
+            code="SS3046")
     if expected_digest is not None:
         verify_digest(data, expected_digest)
     return data

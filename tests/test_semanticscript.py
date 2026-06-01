@@ -1478,6 +1478,27 @@ def test_run_json_entry_strict_and_empty_stdout():
     assert run_json("--entry", "failOp")["exitCode"] == 1
 
 
+def test_missing_literal_source_is_compile_diagnostic(tmp_path):
+    # R-124 (core): a missing compile-time literalSource asset is a structured
+    # compile diagnostic (SS3046), not a raw FileNotFoundError (build) or an
+    # SSR0001 runtime-trap mislabel (run --json).
+    import json as _json
+    import re
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.embed_literal_source(str(tmp_path / "no-such-asset.txt"))
+    assert getattr(exc.value, "code", None) == "SS3046"
+    base = open(os.path.join(EXAMPLES, "asset_embed.sem"), encoding="utf-8").read()
+    broken = re.sub(r'literalSource "[^"]*"',
+                    'literalSource "no-such-asset-xyz.txt"', base)
+    p = tmp_path / "broken.sem"
+    p.write_text(broken, encoding="utf-8")
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "--json", str(p)],
+                          capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(proc.stdout)
+    assert env["status"] == "compile-failed" and env["ok"] is False
+    assert "SS3046" in env["stderr"] and "SSR0001" not in env["stderr"]
+
+
 def test_wasm_import_count_parser():
     # R-122: the .wasm import-section parser distinguishes a self-contained
     # pure-compute module (0 imports, the generated runner runs it as-is) from one
