@@ -94,16 +94,24 @@ SS_EXPORT char *ss_net_fetch_text(const char *url) {
         "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: ss-net/1.0\r\n"
         "Accept: */*\r\nConnection: close\r\n\r\n",
         path, host);
-    if (reqlen <= 0 || send(s, req, reqlen, 0) != reqlen) {
+    /* R-140: snprintf returns the would-be length; a long host/path truncates
+     * (reqlen >= sizeof req). Sending `reqlen` bytes then reads past the buffer,
+     * so reject truncation outright. */
+    if (reqlen <= 0 || reqlen >= (int)sizeof req
+            || send(s, req, reqlen, 0) != reqlen) {
         closesocket(s);
         return NULL;
     }
 
+    /* R-140: bound the response so a large/hostile peer can't grow the buffer
+     * without limit (DoS). 64 MiB is far beyond any text body this client needs. */
+    const size_t SS_NET_MAX_RESPONSE = (size_t)64 * 1024 * 1024;
     size_t cap = 4096, len = 0;
     char *buf = (char *)malloc(cap);
     if (!buf) { closesocket(s); return NULL; }
     for (;;) {
         if (len + 2048 + 1 > cap) {
+            if (cap > SS_NET_MAX_RESPONSE / 2) { free(buf); closesocket(s); return NULL; }
             cap *= 2;
             char *nb = (char *)realloc(buf, cap);
             if (!nb) { free(buf); closesocket(s); return NULL; }

@@ -1158,6 +1158,15 @@ const char *ss_http_client_fetch(
         written += snprintf(request + written, request_capacity - (size_t)written, "\r\n");
     }
 
+    /* R-132: a snprintf error (negative return) or truncation would make the
+     * send length / pointer arithmetic below wrap. The capacity is sized to fit,
+     * so anything out of [0, capacity) is a hard failure. */
+    if (written < 0 || (size_t)written >= request_capacity) {
+        free(request);
+        ss_close_socket(client_socket);
+        return NULL;
+    }
+
     size_t sent_total = 0;
     int send_failed = 0;
     while (sent_total < (size_t)written) {
@@ -1174,6 +1183,10 @@ const char *ss_http_client_fetch(
         return NULL;
     }
 
+    /* R-132: bound the response so a large/hostile upstream cannot grow the
+     * buffer without limit (DoS). 64 MiB is far beyond any body this client
+     * fetches. */
+    const size_t SS_HTTP_CLIENT_MAX_RESPONSE = (size_t)64 * 1024 * 1024;
     size_t response_capacity = 8192;
     size_t response_length = 0;
     char *response = (char *)malloc(response_capacity);
@@ -1183,6 +1196,11 @@ const char *ss_http_client_fetch(
     }
     for (;;) {
         if (response_length + 4096 >= response_capacity) {
+            if (response_capacity > SS_HTTP_CLIENT_MAX_RESPONSE / 2) {
+                free(response);
+                ss_close_socket(client_socket);
+                return NULL;
+            }
             size_t next_capacity = response_capacity * 2;
             char *grown = (char *)realloc(response, next_capacity);
             if (grown == NULL) {
