@@ -2944,14 +2944,18 @@ def _row_refs(row, owned: dict) -> list:
 _SQL_WRITE_VERBS = frozenset({"INSERT", "UPDATE", "DELETE", "REPLACE"})
 _SQL_BEGIN_VERBS = frozenset({"BEGIN", "SAVEPOINT"})
 _SQL_COMMIT_VERBS = frozenset({"COMMIT", "RELEASE"})
-# A live columnText/columnBlob/columnName pointer is SQLite-owned and invalidated
-# by step/reset on the SAME statement; sibling column reads do NOT invalidate it
-# (semsc _COLUMN_TEXT_INVALIDATORS / _OWNED_COLUMN_SOURCES).
+# A live columnText/columnBlob/columnName pointer is SQLite-owned (the runtime
+# returns sqlite3_column_text/blob's pointer straight into a SemanticScript String
+# without copying) and is invalidated by step/reset/finalize on the SAME statement;
+# sibling column reads do NOT invalidate it (semsc _COLUMN_TEXT_INVALIDATORS /
+# _OWNED_COLUMN_SOURCES). R-164: finalize frees the statement, so a column value
+# read before finalize and used after it is a use-after-free the source checker
+# would otherwise miss (it sees an ordinary String, not the borrow).
 _OWNED_COLUMN_TARGETS = frozenset({
     "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
 })
 _COLUMN_INVALIDATOR_TARGETS = frozenset({
-    "sqlite.stepStatement", "sqlite.resetStatement",
+    "sqlite.stepStatement", "sqlite.resetStatement", "sqlite.finalizeStatement",
 })
 _SQLITE_TXN_BEGIN_TARGETS = frozenset({
     "sqlite.beginTransaction", "sqlite.beginImmediateTransaction",
@@ -2995,10 +2999,10 @@ def _lint_sqlite_usage(program: Program) -> list:
     """README ss19 / ss17 #23/#24, aligned with semsc's SS3113/SS3635:
 
     SS1901 - a `columnText`/`columnBlob`/`columnName` value points into
-    SQLite-owned memory that a later `step`/`reset` on the SAME statement
-    invalidates. Flag the value used as a call argument that follows such an
-    invalidation. Sibling column reads do not invalidate, and copied scalars
-    (`columnInt64` etc.) are never tracked.
+    SQLite-owned memory that a later `step`/`reset`/`finalize` on the SAME
+    statement invalidates. Flag the value used as a call argument that follows
+    such an invalidation. Sibling column reads do not invalidate, and copied
+    scalars (`columnInt64` etc.) are never tracked.
 
     SS1902 - an operation that prepares and steps two or more row-mutating
     statements (INSERT/UPDATE/DELETE/REPLACE) must make the transaction boundary
@@ -3112,8 +3116,8 @@ def _lint_sqlite_usage(program: Program) -> list:
                         diags.append(Diagnostic(
                             "SS1901", "warning",
                             f"sqlite column value {val!r} in {op.name!r} is used after a "
-                            f"later step/reset on the same statement invalidated it; copy "
-                            f"or consume it before advancing (README ss17 #23)",
+                            f"later step/reset/finalize on the same statement invalidated "
+                            f"it; copy or consume it before advancing (README ss17 #23)",
                             prod_line, op.name))
                         break
     return diags

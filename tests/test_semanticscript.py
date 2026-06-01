@@ -2798,6 +2798,26 @@ def test_sqlite_column_used_after_step_warns():
     assert "SS1901" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
+def test_sqlite_column_used_after_finalize_warns():
+    # R-164: finalize frees the statement, so a columnText String read before the
+    # finalize and used after it is a use-after-free. The runtime hands
+    # sqlite3_column_text's borrowed pointer straight into a SemanticScript String
+    # (no copy), and the source checker otherwise sees an ordinary String — so the
+    # borrowed-view lint must treat finalize as an invalidator just like step/reset.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let okCode immutable ExitCode 0\nmain let stmt immutable SqliteStatement 1\n"
+        "main do readTitle\nmain do dropStmt\nmain do useTitle\nmain return okCode\n"
+        "readTitle is call\nreadTitle in main\nreadTitle invokes sqlite.columnText\n"
+        "readTitle arg statement SqliteStatement stmt\nreadTitle out title String\n"
+        "dropStmt is call\ndropStmt in main\ndropStmt invokes sqlite.finalizeStatement\n"
+        "dropStmt arg statement SqliteStatement stmt\ndropStmt discards \"x\"\n"
+        "useTitle is call\nuseTitle in main\nuseTitle invokes console.writeLine\n"
+        "useTitle arg text String title\n"
+    )
+    assert "SS1901" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+
+
 def test_sqlite_sibling_column_reads_no_warning():
     # Reading several columns from one row before stepping is the idiomatic
     # pattern: sibling column reads do NOT invalidate each other, and scalar
