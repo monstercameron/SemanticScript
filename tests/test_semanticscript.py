@@ -6727,6 +6727,21 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_log_write_line_checks_write_results():
+    # R-150 (core): ss_log_write_line must report a short write / failed newline /
+    # flush error instead of always returning SS_LOG_OK. Source-level guard (a
+    # partial write needs a full disk / broken sink to trigger; the log runtime
+    # builds and taskforge-web's logging round-trips via test_apps).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_log",
+                            "sem_log_runtime.c"), encoding="utf-8").read()
+    m = re.search(r"int ss_log_write_line\(.*?\n\}", src, re.S)
+    assert m
+    body = m.group(0)
+    assert "fwrite(line, 1, len, fp) != len" in body and "fflush(fp) != 0" in body
+
+
 def test_json_find_helpers_reject_malformed_scalars():
     # R-156: the legacy string-based json scalar find helpers must parse strictly
     # — a malformed suffix (12abc / .5junk / truex) is rejected, not silently

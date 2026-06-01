@@ -90,9 +90,11 @@ int ss_log_write_line(const char *line) {
     FILE *fp = log_open_if_needed();
     if (fp == NULL) return SS_LOG_ERR_ENGINE;
     size_t len = strlen(line);
-    fwrite(line, 1, len, fp);
-    fputc('\n', fp);
-    fflush(fp);
+    /* R-150: a short write, a failed newline, or a flush error means the log line
+     * did not fully reach the sink — report it instead of always claiming OK. */
+    if (fwrite(line, 1, len, fp) != len) return SS_LOG_ERR_ENGINE;
+    if (fputc('\n', fp) == EOF) return SS_LOG_ERR_ENGINE;
+    if (fflush(fp) != 0) return SS_LOG_ERR_ENGINE;
     return SS_LOG_OK;
 }
 
