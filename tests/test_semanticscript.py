@@ -6727,6 +6727,23 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_base64url_encode_capacity_no_int_overflow():
+    # R-145: ss_base64url_encode must compute the required capacity in a wide type
+    # so input_byte_count*4 cannot overflow signed int (an overflow would produce
+    # a small/negative capacity that bypasses the bounds check and overflows the
+    # output buffer). Source-level guard (triggering needs a >0.5GB input; the
+    # bcrypt runtime builds + taskforge-web's auth, bcrypt + base64url, round-trips
+    # via test_apps).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_bcrypt",
+                            "sem_bcrypt_runtime.c"), encoding="utf-8").read()
+    m = re.search(r"ss_base64url_encode\(.*?if \(\(long long\)output_buffer_capacity",
+                  src, re.S)
+    assert m, "base64url capacity math is not widened (R-145)"
+    assert "(long long)input_byte_count * 4" in m.group(0)
+
+
 def test_log_write_line_checks_write_results():
     # R-150 (core): ss_log_write_line must report a short write / failed newline /
     # flush error instead of always returning SS_LOG_OK. Source-level guard (a

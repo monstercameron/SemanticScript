@@ -233,8 +233,13 @@ int ss_base64url_encode(
     if (input_buffer == NULL || output_buffer == NULL || input_byte_count < 0) {
         return SS_BCRYPT_ERR_CONFIG;
     }
-    int required_capacity = ((input_byte_count * 4) + 2) / 3 + 1; /* +1 for NUL */
-    if (output_buffer_capacity < required_capacity) {
+    /* R-145: compute the required capacity in a wide type so `input_byte_count *
+     * 4` cannot overflow signed int — an overflow would produce a small/negative
+     * capacity that slips past the bounds check below and overflows the output
+     * buffer. A genuinely too-large input then fails the capacity check cleanly. */
+    long long required_capacity =
+        (((long long)input_byte_count * 4) + 2) / 3 + 1; /* +1 for NUL */
+    if ((long long)output_buffer_capacity < required_capacity) {
         return SS_BCRYPT_ERR_CONFIG;
     }
 
