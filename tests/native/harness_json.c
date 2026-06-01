@@ -15,6 +15,51 @@
 
 #include "../../semanticscript/runtime/native_json/sem_json_runtime.c"
 
+static void append_text(char *buffer, size_t capacity, size_t *used, const char *text) {
+    while (*text != '\0') {
+        assert(*used + 1 < capacity);
+        buffer[(*used)++] = *text++;
+    }
+    buffer[*used] = '\0';
+}
+
+static void make_nested_arrays(char *buffer, size_t capacity, int depth, const char *leaf) {
+    size_t used = 0;
+    buffer[0] = '\0';
+    for (int i = 0; i < depth; ++i) {
+        append_text(buffer, capacity, &used, "[");
+    }
+    append_text(buffer, capacity, &used, leaf);
+    for (int i = 0; i < depth; ++i) {
+        append_text(buffer, capacity, &used, "]");
+    }
+}
+
+static void make_nested_objects(char *buffer, size_t capacity, int depth, const char *leaf) {
+    size_t used = 0;
+    buffer[0] = '\0';
+    for (int i = 0; i < depth; ++i) {
+        append_text(buffer, capacity, &used, "{\"k\":");
+    }
+    append_text(buffer, capacity, &used, leaf);
+    for (int i = 0; i < depth; ++i) {
+        append_text(buffer, capacity, &used, "}");
+    }
+}
+
+static int parse_and_destroy(const char *json_text) {
+    SSJsonDocument *doc = NULL;
+    int rc = ss_json_document_create_from_text(
+        json_text, (int64_t)strlen(json_text) + 128, &doc);
+    if (rc == SS_JSON_OK) {
+        assert(doc != NULL);
+        ss_json_document_destroy(doc);
+    } else {
+        assert(doc == NULL);
+    }
+    return rc;
+}
+
 int main(void) {
     /* normal lifecycle: create an object document, set a field, read it back via
      * the root cursor, serialize, then destroy. */
@@ -55,6 +100,20 @@ int main(void) {
     assert(ss_json_document_create_from_text("{\"k\":\"a\\u0041b\"}", 256, &esc_doc) == SS_JSON_OK);
     assert(esc_doc != NULL);
     ss_json_document_destroy(esc_doc);
+
+    /* R-189: document parsing enforces the runtime nesting-depth ceiling before
+     * recursing deeper, while preserving valid input exactly at the limit. */
+    char nested[512];
+    make_nested_arrays(nested, sizeof(nested), SS_JSON_MAX_NESTING_DEPTH, "0");
+    assert(parse_and_destroy(nested) == SS_JSON_OK);
+    make_nested_arrays(nested, sizeof(nested), SS_JSON_MAX_NESTING_DEPTH + 1, "0");
+    assert(parse_and_destroy(nested) == SS_JSON_ERR_CAPACITY_EXCEEDED);
+    make_nested_objects(nested, sizeof(nested), SS_JSON_MAX_NESTING_DEPTH, "0");
+    assert(parse_and_destroy(nested) == SS_JSON_OK);
+    make_nested_objects(nested, sizeof(nested), SS_JSON_MAX_NESTING_DEPTH + 1, "0");
+    assert(parse_and_destroy(nested) == SS_JSON_ERR_CAPACITY_EXCEEDED);
+    make_nested_arrays(nested, sizeof(nested), SS_JSON_MAX_NESTING_DEPTH, "!");
+    assert(parse_and_destroy(nested) == SS_JSON_ERR_MALFORMED_PATH);
 
     /* a second document round-trips independently after the first is gone */
     SSJsonDocument *doc2 = NULL;

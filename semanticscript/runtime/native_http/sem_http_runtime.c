@@ -1779,30 +1779,114 @@ static int extract_boundary_value(
     return 1;
 }
 
-static char *extract_quoted_header_parameter(char *header_value, const char *parameter_name) {
-    char pattern[64];
-    char *start;
-    char *end;
-    int pattern_length;
+static int header_parameter_name_equal(
+    const char *start,
+    const char *end,
+    const char *wanted
+) {
+    size_t wanted_length;
+    size_t actual_length;
+    size_t index;
 
-    if (header_value == NULL || parameter_name == NULL) {
-        return NULL;
+    while (start < end && (*start == ' ' || *start == '\t')) {
+        ++start;
     }
-    pattern_length = snprintf(pattern, sizeof(pattern), "%s=\"", parameter_name);
-    if (pattern_length <= 0 || (size_t)pattern_length >= sizeof(pattern)) {
-        return NULL;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t')) {
+        --end;
     }
-    start = strstr(header_value, pattern);
-    if (start == NULL) {
-        return NULL;
+    wanted_length = strlen(wanted);
+    actual_length = (size_t)(end - start);
+    if (actual_length != wanted_length) {
+        return 0;
     }
-    start += pattern_length;
-    end = strchr(start, '"');
-    if (end == NULL) {
-        return NULL;
+    for (index = 0; index < wanted_length; ++index) {
+        if (tolower((unsigned char)start[index]) !=
+                tolower((unsigned char)wanted[index])) {
+            return 0;
+        }
     }
-    *end = '\0';
-    return start;
+    return 1;
+}
+
+static void extract_content_disposition_parameters(
+    char *header_value,
+    char **name_out,
+    char **filename_out
+) {
+    char *cursor;
+    char *name_value_end = NULL;
+    char *filename_value_end = NULL;
+
+    *name_out = NULL;
+    *filename_out = NULL;
+    if (header_value == NULL) {
+        return;
+    }
+
+    cursor = header_value;
+    while (*cursor != '\0') {
+        char *parameter_name_start;
+        char *parameter_name_end;
+        char *value_start;
+        char *value_end;
+
+        while (*cursor == ';' || *cursor == ' ' || *cursor == '\t') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        parameter_name_start = cursor;
+        while (*cursor != '\0' && *cursor != '=' && *cursor != ';') {
+            ++cursor;
+        }
+        if (*cursor != '=') {
+            while (*cursor != '\0' && *cursor != ';') {
+                ++cursor;
+            }
+            continue;
+        }
+        parameter_name_end = cursor;
+        ++cursor;
+        while (*cursor == ' ' || *cursor == '\t') {
+            ++cursor;
+        }
+        if (*cursor != '"') {
+            while (*cursor != '\0' && *cursor != ';') {
+                ++cursor;
+            }
+            continue;
+        }
+
+        value_start = cursor + 1;
+        value_end = strchr(value_start, '"');
+        if (value_end == NULL) {
+            break;
+        }
+        if (*name_out == NULL &&
+                header_parameter_name_equal(
+                    parameter_name_start, parameter_name_end, "name")) {
+            *name_out = value_start;
+            name_value_end = value_end;
+        } else if (*filename_out == NULL &&
+                header_parameter_name_equal(
+                    parameter_name_start, parameter_name_end, "filename")) {
+            *filename_out = value_start;
+            filename_value_end = value_end;
+        }
+        cursor = value_end + 1;
+        while (*cursor != '\0' && *cursor != ';') {
+            ++cursor;
+        }
+    }
+
+    if (name_value_end != NULL) {
+        *name_value_end = '\0';
+    }
+    if (filename_value_end != NULL) {
+        *filename_value_end = '\0';
+    }
 }
 
 static void extract_part_header_values(
@@ -1941,8 +2025,8 @@ static void parse_multipart_request(SSHttpRequest *request) {
             continue;
         }
 
-        part_filename = extract_quoted_header_parameter(disposition, "filename");
-        part_name = extract_quoted_header_parameter(disposition, "name");
+        extract_content_disposition_parameters(
+            disposition, &part_name, &part_filename);
         if (part_name == NULL || *part_name == '\0') {
             cursor = next_boundary_line + line_prefix_length;
             continue;
@@ -2152,11 +2236,11 @@ static long parse_content_length(const char *buffer, const char *header_end) {
     return found_value;
 }
 
-/* R-178: true if the request declares a chunked Transfer-Encoding. The bundled
- * server frames request bodies by Content-Length only, so a chunked body would
- * be dispatched empty/partial — such requests are rejected (501) rather than
- * silently mis-read. */
-static int request_is_chunked(const char *buffer, const char *header_end) {
+/* R-178: true if the request declares any Transfer-Encoding. The bundled server
+ * frames request bodies by Content-Length only, so an encoded body would be
+ * dispatched empty/partial, and TE+CL is ambiguous. Reject before dispatch until
+ * bounded transfer decoding exists. */
+static int request_has_transfer_encoding(const char *buffer, const char *header_end) {
     const char *line = buffer;
     while (line < header_end && *line != '\0') {
         const char *line_end = strstr(line, "\n");
@@ -2167,12 +2251,7 @@ static int request_is_chunked(const char *buffer, const char *header_end) {
             ++line;
         }
         if (ascii_case_prefix_equal(line, "Transfer-Encoding:")) {
-            const char *value = line + strlen("Transfer-Encoding:");
-            for (const char *scan = value; scan < line_end && *scan != '\0'; ++scan) {
-                if (ascii_case_prefix_equal(scan, "chunked")) {
-                    return 1;
-                }
-            }
+            return 1;
         }
         line = line_end;
         while (*line == '\r' || *line == '\n') {
@@ -3159,14 +3238,14 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         );
     }
 
-    /* R-178: chunked request bodies are unsupported; reject (501) rather than
-     * dispatch an empty/partial body that a handler would mis-read. */
-    if (request_is_chunked(request_buffer, body_start)) {
+    /* R-178: transfer-encoded request bodies are unsupported; reject (501)
+     * before the Content-Length read or route dispatch. */
+    if (request_has_transfer_encoding(request_buffer, body_start)) {
         return send_response(
             client_socket,
             501,
             "text/plain; charset=utf-8",
-            "chunked transfer-encoding not supported\n",
+            "transfer-encoding not supported\n",
             NULL
         );
     }

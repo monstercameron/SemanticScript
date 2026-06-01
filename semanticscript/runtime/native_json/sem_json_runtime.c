@@ -13,7 +13,8 @@
  * know whether the most recent open was an object (where field names
  * are required) or an array (where they're forbidden), and whether
  * we're at the first sibling (so we can decide between writing a
- * leading comma or not).
+ * leading comma or not). The document parser uses the same ceiling as
+ * its runtime recursion guard for untrusted nested JSON.
  */
 #define SS_JSON_MAX_NESTING_DEPTH 16
 
@@ -1316,6 +1317,7 @@ static int parse_json_value(
     SSJsonDocument *document,
     const char **scan_io,
     int64_t parent,
+    int depth,
     int64_t *out
 );
 
@@ -1323,6 +1325,7 @@ static int parse_json_object(
     SSJsonDocument *document,
     const char **scan_io,
     int64_t parent,
+    int depth,
     int64_t *out
 ) {
     const char *scan = *scan_io;
@@ -1356,7 +1359,7 @@ static int parse_json_object(
             object_node, object_node->as.object_value.length + 1);
         if (rc != SS_JSON_OK) return rc;
         int64_t child_cursor;
-        rc = parse_json_value(document, &scan, object_cursor, &child_cursor);
+        rc = parse_json_value(document, &scan, object_cursor, depth, &child_cursor);
         if (rc != SS_JSON_OK) return rc;
         object_node = document_node_at(document, object_cursor);
         int64_t field_index = object_node->as.object_value.length++;
@@ -1381,6 +1384,7 @@ static int parse_json_array(
     SSJsonDocument *document,
     const char **scan_io,
     int64_t parent,
+    int depth,
     int64_t *out
 ) {
     const char *scan = *scan_io;
@@ -1402,7 +1406,7 @@ static int parse_json_array(
             array_node, array_node->as.array_value.length + 1);
         if (rc != SS_JSON_OK) return rc;
         int64_t child_cursor;
-        rc = parse_json_value(document, &scan, array_cursor, &child_cursor);
+        rc = parse_json_value(document, &scan, array_cursor, depth, &child_cursor);
         if (rc != SS_JSON_OK) return rc;
         array_node = document_node_at(document, array_cursor);
         array_node->as.array_value.items[array_node->as.array_value.length++] = child_cursor;
@@ -1426,16 +1430,23 @@ static int parse_json_value(
     SSJsonDocument *document,
     const char **scan_io,
     int64_t parent,
+    int depth,
     int64_t *out
 ) {
     const char *scan = skip_whitespace(*scan_io);
     if (*scan == '{') {
+        if (depth >= SS_JSON_MAX_NESTING_DEPTH) {
+            return SS_JSON_ERR_CAPACITY_EXCEEDED;
+        }
         *scan_io = scan;
-        return parse_json_object(document, scan_io, parent, out);
+        return parse_json_object(document, scan_io, parent, depth + 1, out);
     }
     if (*scan == '[') {
+        if (depth >= SS_JSON_MAX_NESTING_DEPTH) {
+            return SS_JSON_ERR_CAPACITY_EXCEEDED;
+        }
         *scan_io = scan;
-        return parse_json_array(document, scan_io, parent, out);
+        return parse_json_array(document, scan_io, parent, depth + 1, out);
     }
     if (*scan == '"') {
         char *value = NULL;
@@ -1538,7 +1549,7 @@ int ss_json_document_create_from_text(
     }
     const char *scan = json_text;
     int64_t root_cursor;
-    int rc = parse_json_value(document, &scan, -1, &root_cursor);
+    int rc = parse_json_value(document, &scan, -1, 0, &root_cursor);
     if (rc == SS_JSON_OK) {
         scan = skip_whitespace(scan);
         if (*scan != '\0' || root_cursor != 0) {
