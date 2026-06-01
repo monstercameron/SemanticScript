@@ -2654,6 +2654,38 @@ def test_fortarget_must_name_declared_target():
     assert not any(d.code == "SS3010" for d in ok)
 
 
+def test_multitarget_entry_zero_two_and_exactly_one():
+    # R-242 / WS3-160: for each declared build target, exactly one project entry
+    # must be enabled by forTarget gating or by an unqualified default.
+    op = (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let ok immutable ExitCode 0\nmain return ok\n"
+        "alt is operation\nalt out ExitCode\nalt async no\n"
+        'alt purpose "p"\nalt invariant "i"\n'
+        "alt let ok2 immutable ExitCode 0\nalt return ok2\n"
+    )
+    no_console = (
+        "P is project\nP module m\nP target console\nP target wasm\nP entry alt\n"
+        "m is module\nm path a.b\n" + op + "alt forTarget wasm\n")
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(no_console))}
+    assert "SS1192" in codes
+
+    two_console = (
+        "P is project\nP module m\nP target console\nP entry main\nP entry alt\n"
+        "m is module\nm path a.b\n" + op)
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(two_console))}
+    assert "SS1193" in codes
+
+    exactly_one = (
+        "P is project\nP module m\nP target console\nP target wasm\n"
+        "P entry main\nP entry alt\nm is module\nm path a.b\n"
+        + op + "alt forTarget wasm\n")
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(exactly_one))}
+    assert "SS1192" not in codes and "SS1193" not in codes
+
+
 def test_emitted_diagnostics_carry_codes():
     # Tagged diagnostics expose their registry code on the exception.
     with pytest.raises(semanticscript.EavError) as exc:
