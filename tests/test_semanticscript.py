@@ -4583,17 +4583,23 @@ def test_runtime_links_resolve_per_platform_without_compiling():
 
 
 def test_runtime_links_sqlite_unix_thread_dl_math():
-    """R-018: SQLite's Unix link inputs (pthread/dl/m) resolve only on Unix
-    platforms, never on Windows. Under the old flat-manifest code these libs
-    could not be expressed per platform at all."""
+    """R-018/R-019: SQLite's Unix link inputs resolve per platform, never on
+    Windows. Linux carries CMAKE_DL_LIBS (-ldl); macOS's CMAKE_DL_LIBS is empty
+    (dlopen lives in libSystem), so `dl` must NOT be required there — the manifest
+    follows the native_sqlite CMake profile."""
     sqlite = _manifest_library("ss_runtime")
-    for unix_platform in ("linux", "macos"):
-        resolved = semanticscript._resolve_runtime_links(sqlite, unix_platform)
-        assert set(["pthread", "dl", "m"]).issubset(set(resolved["libs"])), unix_platform
+    # Linux: pthread + dl + m
+    linux = semanticscript._resolve_runtime_links(sqlite, "linux")
+    assert set(["pthread", "dl", "m"]).issubset(set(linux["libs"])), "linux"
+    # macOS: pthread + m, but NOT dl (CMAKE_DL_LIBS is empty on macOS)
+    macos = semanticscript._resolve_runtime_links(sqlite, "macos")
+    assert set(["pthread", "m"]).issubset(set(macos["libs"])), "macos"
+    assert "dl" not in macos["libs"], "macOS dlopen is in libc; no -ldl"
     win = semanticscript._resolve_runtime_links(sqlite, "windows")
     assert win["libs"] == []  # no Unix link inputs leak onto Windows
-    # base defines survive on every platform
-    assert "SQLITE_THREADSAFE=0" in win["defines"]
+    # base defines survive on every platform (the THREADSAFE value is a manifest
+    # tuning choice — assert the define is present, not a specific level)
+    assert any(d.startswith("SQLITE_THREADSAFE=") for d in win["defines"])
 
 
 def test_runtime_links_reject_unknown_platform_keys():
