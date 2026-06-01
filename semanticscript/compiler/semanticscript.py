@@ -6645,9 +6645,24 @@ def _is_observable_sink(target: str) -> bool:
     # not sinks, so the `http.response` prefix (not a blanket `http.`) is exact.
     if target.startswith("http.response"):
         return True
+    # R-222: the printf-family (`printf`/`c.printf`/`c.fprintf`/`c.sprintf`/
+    # `c.snprintf`/`console.format`) writes a value to stdout/stderr (or a buffer
+    # subsequently emitted), so a secret in a format ARGUMENT is an observable
+    # leak — distinct from the SS3088 format-string-constness check.
+    if target in _PRINTF_TARGETS:
+        return True
     for prefix in _OBSERVABLE_SINK_JSON_PREFIXES:
         if target.startswith(prefix):
             return True
+    # R-223: any wire serializer/encoder surfaces a value into an external
+    # representation, not only JSON. Generalize to a serialize/encode/stringify/
+    # marshal/dump/render verb on any family (yaml/toml/xml/csv/base64/…), so a
+    # secret reaching one is flagged the same as json.serialize.
+    if "." in target:
+        method = target.split(".", 1)[1]
+        for verb in ("serial", "encode", "stringify", "marshal", "dump", "render"):
+            if method.startswith(verb):
+                return True
     return False
 
 
