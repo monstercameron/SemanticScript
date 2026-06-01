@@ -660,6 +660,9 @@ DIAGNOSTICS.update({
     "SS1345": {"tier": "T1", "summary": "Ordering comparison on Bool/enum.",
                "found": "A compare.lessThan/greaterThan on a Bool or enum operand.",
                "suggested": "Bool/enum are equals-only; use equal/notEqual (README §17 #45)."},
+    "SS1346": {"tier": "T1", "summary": "Opaque handle compared by address-identity equality.",
+               "found": "A compare.equal/notEqual whose operand resolves to an OpaquePointer handle — equality would be raw address identity, not a meaningful value equality.",
+               "suggested": "Compare a value field/key, or declare an equality contract for the handle type; raw-pointer identity is not reliable equality (README §10.6/§33.7/R-075)."},
     "SS3010": {"tier": "T1", "summary": "forTarget names an undeclared target.",
                "found": "A `forTarget X` where X is not a project target.",
                "suggested": "Use a target declared by the project (README §30.3.1)."},
@@ -3854,6 +3857,54 @@ def _lint_unknown_enum_variant(program: Program) -> list:
     return diags
 
 
+def _lint_handle_equality_contract(program: Program) -> list:
+    """R-075: comparing two opaque handle (OpaquePointer-backed) values for equality
+    relies on raw address identity — not a meaningful equality for a handle, and a
+    silent footgun for guards/caches/security checks. Until a handle type declares
+    an explicit equality contract, `compare.equal`/`compare.notEqual` on an
+    OpaquePointer-resolved operand is rejected (SS1346). Value types
+    (numeric/Bool/String/record/enum) are unaffected — they get type-directed deep
+    equality via _value_eq."""
+    base: dict = {}
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind == "alias":
+            fr = e.fact("for")
+            if fr and fr.payload:
+                base[e.name] = fr.payload[0]
+
+    def root(t):
+        seen = set()
+        while t in base and t not in seen:
+            seen.add(t)
+            t = base[t]
+        return t
+
+    diags: list = []
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind not in ("call", "task"):
+            continue
+        inv = e.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        tgt = inv.payload[0]
+        if not (tgt.startswith("compare.equal") or tgt.startswith("compare.notEqual")):
+            continue
+        for a in e.facts("arg"):
+            if (len(a.payload) >= 2 and a.payload[0] in ("left", "right")
+                    and root(a.payload[1]) == "OpaquePointer"):
+                diags.append(Diagnostic(
+                    "SS1346", "error",
+                    f"call {e.name!r} compares opaque handle values ({a.payload[1]}) by "
+                    f"equality, which relies on raw address identity; compare a value "
+                    f"field/key instead, or declare an equality contract for the handle "
+                    f"type (README §10.6/§33.7/R-075)",
+                    e.line, e.name))
+                break
+    return diags
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -3968,6 +4019,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_collection_iterator_invalidation(program))
     diags.extend(_lint_string_accumulator_in_loop(program))
     diags.extend(_lint_unknown_enum_variant(program))
+    diags.extend(_lint_handle_equality_contract(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
     # footgun — steer to a tolerance compare (or Decimal for exact values). The
     # footgun is comparing two *computed* floats that "should" be equal; comparing

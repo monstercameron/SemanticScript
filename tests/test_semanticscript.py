@@ -2546,6 +2546,28 @@ def test_project_registers_undeclared_module_rejected():
     assert not any(d.code == 'SS1196' for d in semanticscript.lint(semanticscript.parse(good)))
 
 
+def test_opaque_handle_equality_rejected():
+    # R-075: comparing opaque handle (OpaquePointer) values by equality relies on
+    # raw address identity and is rejected (SS1346); value types are unaffected.
+    rows = [
+        'm is module', 'm path a.b', 'm purpose "x"', 'm invariant "y"', 'm exports run',
+        'H is alias', 'H for OpaquePointer', 'H purpose "handle"',
+        'run is operation', 'run out Int32', 'run async no', 'run purpose "p"',
+        'run invariant "i"', 'run let a immutable H', 'run let b immutable H',
+        'run let z immutable Int32 0', 'run do cmp', 'run return z',
+        'cmp is call', 'cmp in run', 'cmp invokes compare.equalH',
+        'cmp arg left H a', 'cmp arg right H b', 'cmp out r Bool',
+    ]
+    diags = semanticscript.lint(semanticscript.parse(chr(10).join(rows) + chr(10)))
+    assert any(d.code == 'SS1346' and d.severity == 'error' for d in diags)
+    # a String equality at the same shape is NOT flagged (value-type deep equality)
+    srows = [r for r in rows if not r.startswith('H ')]
+    srows = [r.replace(' H ', ' String ').replace('compare.equalH', 'compare.equalString')
+             for r in srows]
+    ok = semanticscript.lint(semanticscript.parse(chr(10).join(srows) + chr(10)))
+    assert not any(d.code == 'SS1346' for d in ok)
+
+
 def test_project_module_check_skips_incomplete_fragment():
     # a lone build fragment (entry op absent — its modules live in sibling files)
     # trips SS1194, NOT a false SS1196; the module check only runs on a complete
