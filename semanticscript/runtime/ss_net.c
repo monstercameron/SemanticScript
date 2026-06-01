@@ -58,7 +58,15 @@ static int ss_net_parse_url(const char *url, char *host, size_t hostcap,
     return 0;
 }
 
-SS_EXPORT char *ss_net_fetch_text(const char *url) {
+/* R-092: the high-level signature's HttpRequestPolicy (timeoutMillis, maxBodyBytes,
+ * redirectLimit) is now passed through and enforced. `redirect_limit` is accepted
+ * but trivially honored: this client never follows redirects (a 3xx body is
+ * returned as-is), so 0 redirects are followed <= any non-negative limit. A value
+ * of 0 for timeout/max_body means "use the built-in default/hard cap". */
+SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
+                                  long long max_body_bytes,
+                                  long long redirect_limit) {
+    (void)redirect_limit;
     if (!url) return NULL;
     char host[256], path[1024];
     int port = 80;
@@ -89,6 +97,16 @@ SS_EXPORT char *ss_net_fetch_text(const char *url) {
     }
     freeaddrinfo(res);
 
+    /* R-092: enforce the policy timeout on the data phases. SO_RCVTIMEO/SO_SNDTIMEO
+     * bound send() and recv() so a slow/stalled peer can't hang the call forever
+     * (the connect() above still uses the OS default). On timeout recv() returns
+     * an error, which the read loop treats as fail-closed (NULL). */
+    if (timeout_ms > 0) {
+        DWORD tv = (DWORD)(timeout_ms > 0x7fffffffLL ? 0x7fffffffLL : timeout_ms);
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+        setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof tv);
+    }
+
     char req[1600];
     int reqlen = snprintf(req, sizeof req,
         "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: ss-net/1.0\r\n"
@@ -103,23 +121,40 @@ SS_EXPORT char *ss_net_fetch_text(const char *url) {
         return NULL;
     }
 
-    /* R-140: bound the response so a large/hostile peer can't grow the buffer
-     * without limit (DoS). 64 MiB is far beyond any text body this client needs. */
-    const size_t SS_NET_MAX_RESPONSE = (size_t)64 * 1024 * 1024;
+    /* R-140/R-092: bound the response so a large/hostile peer can't grow the
+     * buffer without limit (DoS). The policy's maxBodyBytes caps it when set;
+     * otherwise a 64 MiB hard limit applies (the headers are included in this
+     * budget — the body is sliced out afterward). A response that exceeds the cap,
+     * or any recv timeout/error, fails closed (NULL) rather than returning a
+     * truncated or partial body. */
+    const size_t SS_NET_HARD_CAP = (size_t)64 * 1024 * 1024;
+    size_t resp_cap = SS_NET_HARD_CAP;
+    if (max_body_bytes > 0 && (size_t)max_body_bytes < resp_cap) {
+        resp_cap = (size_t)max_body_bytes;
+    }
     size_t cap = 4096, len = 0;
     char *buf = (char *)malloc(cap);
     if (!buf) { closesocket(s); return NULL; }
     for (;;) {
         if (len + 2048 + 1 > cap) {
-            if (cap > SS_NET_MAX_RESPONSE / 2) { free(buf); closesocket(s); return NULL; }
-            cap *= 2;
-            char *nb = (char *)realloc(buf, cap);
+            size_t ncap = cap * 2;
+            /* never grow far past the response cap (+slack for the final NUL) */
+            if (ncap > resp_cap + 2048 + 1) ncap = resp_cap + 2048 + 1;
+            if (ncap <= cap) { free(buf); closesocket(s); return NULL; }
+            char *nb = (char *)realloc(buf, ncap);
             if (!nb) { free(buf); closesocket(s); return NULL; }
             buf = nb;
+            cap = ncap;
         }
         int n = recv(s, buf + len, 2048, 0);
-        if (n <= 0) break;
+        if (n == 0) break;                 /* peer closed -> body complete */
+        if (n < 0) {                       /* R-092: timeout/error -> fail closed */
+            free(buf); closesocket(s); return NULL;
+        }
         len += (size_t)n;
+        if (len > resp_cap) {              /* R-092: over the policy/hard limit */
+            free(buf); closesocket(s); return NULL;
+        }
     }
     closesocket(s);
     buf[len] = 0;

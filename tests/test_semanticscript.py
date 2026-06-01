@@ -8622,6 +8622,31 @@ def test_app_taskforge_api_client_full_port():
     assert not [d.render() for d in diags if d.severity == "error"]
 
 
+def test_net_fetch_passes_request_policy_to_runtime():
+    # R-092: net.fetchText must pass the request's HttpRequestPolicy (timeoutMillis,
+    # maxBodyBytes, redirectLimit) to the runtime, not just the url — so the runtime
+    # can enforce transport limits instead of ignoring them. The lowered call takes
+    # 4 args (url + 3 i64 policy fields), and the policy values are EXTRACTED from
+    # the request record (extractvalue), not hardcoded zero.
+    import llvmlite.binding as llvm
+    semanticscript._ensure_native_init()
+    prog = semanticscript.parse(semanticscript.load_project(
+        os.path.join(APPS, "taskforge-api-client")))
+    ir = str(semanticscript.lower_to_llvm(prog))
+    llvm.parse_assembly(ir).verify()
+    # the extern is the 4-arg policy-carrying ABI
+    assert 'declare i8* @"ss_net_fetch_text"(i8* %".1", i64 %".2", i64 %".3", i64 %".4")' in ir
+    # every fetch call site passes 4 args, and the policy operands are SSA values
+    # (extractvalue from the record), never constant `i64 0`
+    import re
+    calls = re.findall(r'call i8\* @"ss_net_fetch_text"\(([^)]*)\)', ir)
+    assert calls, "no net fetch call lowered"
+    for argstr in calls:
+        parts = [a.strip() for a in argstr.split(",")]
+        assert len(parts) == 4, argstr
+        assert all("i64 %" in p for p in parts[1:]), ("policy not extracted", argstr)
+
+
 def test_async_setup_failures_dont_hang():
     # R-146: a loop-init / future-create / timer-start failure must not leave an
     # awaited future or interval wait permanently unset (an infinite spin —

@@ -8604,8 +8604,12 @@ class EavCodegen:
                              ir.FunctionType(i32, [i8p, i32, i32, i8pp, i8pp, i8pp]),
                              name="ss_http_serve_routes")
         elif name == "ss_net_fetch_text":
-            # APP-RUN-1: HTTP-GET client — char *ss_net_fetch_text(const char *url).
-            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
+            # APP-RUN-1 / R-092: HTTP-GET client — char *ss_net_fetch_text(const
+            # char *url, long long timeout_ms, long long max_body_bytes, long long
+            # redirect_limit). The trailing three carry the request's
+            # HttpRequestPolicy so the runtime can enforce them (0 = default).
+            i64 = ir.IntType(64)
+            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i64, i64, i64]),
                              name="ss_net_fetch_text")
         elif name == "ss_net_free_text":
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
@@ -9961,7 +9965,36 @@ class EavCodegen:
             _, req_fields = self._record_layout(req_ent)
             url_idx = req_fields.index("url") if "url" in req_fields else 0
             url_val = builder.extract_value(req_val, url_idx)
-            body = builder.call(self.runtime("ss_net_fetch_text"), [url_val])
+            # R-092: pass the request's HttpRequestPolicy (timeoutMillis,
+            # maxBodyBytes, redirectLimit) so the runtime enforces transport
+            # limits instead of ignoring them. The policy is an optional sub-record
+            # whose Int64 fields resolve by name; any missing piece lowers to 0
+            # (the runtime's "use the default/hard cap" sentinel). Values are
+            # zero-extended/truncated to the i64 ABI.
+            i64 = ir.IntType(64)
+            zero64 = ir.Constant(i64, 0)
+            timeout_v = max_body_v = redirect_v = zero64
+            if "policy" in req_fields:
+                pol_ent = self.program.entities.get(
+                    req_ent.facts("field")[req_fields.index("policy")].payload[1])
+                if pol_ent is not None and pol_ent.kind == "record":
+                    pol_val = builder.extract_value(req_val, req_fields.index("policy"))
+                    _, pol_fields = self._record_layout(pol_ent)
+
+                    def _pol(name):
+                        if name not in pol_fields:
+                            return zero64
+                        v = builder.extract_value(pol_val, pol_fields.index(name))
+                        if isinstance(v.type, ir.IntType) and v.type.width < 64:
+                            return builder.sext(v, i64)
+                        if isinstance(v.type, ir.IntType) and v.type.width > 64:
+                            return builder.trunc(v, i64)
+                        return v
+                    timeout_v = _pol("timeoutMillis")
+                    max_body_v = _pol("maxBodyBytes")
+                    redirect_v = _pol("redirectLimit")
+            body = builder.call(self.runtime("ss_net_fetch_text"),
+                                [url_val, timeout_v, max_body_v, redirect_v])
             out_row = call.fact("out")
             resp_ent = self.program.entities.get(out_row.payload[1]) if out_row else None
             if resp_ent is None:
