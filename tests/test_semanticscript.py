@@ -6727,6 +6727,27 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_pointer_load_store_null_traps():
+    # R-130 (partial): a raw byte load/store through a null pointer traps with a
+    # structured ss_panic (SSR0021) instead of UB/a silent segfault. Valid
+    # pointers (e.g. the taskforge-tui byte ops) are unaffected. JIT-validated.
+    src = ('P is project\nP module m\nP target console\nP entry main\n'
+           'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+           'ExitCode is alias\nExitCode for Int32\n'
+           'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+           'main purpose "x"\nmain invariant "y"\n'
+           'main let zero immutable Int64 0\nmain let okc immutable ExitCode 0\n'
+           'main do nullp\nmain do st\nmain return okc\n'
+           'nullp is call\nnullp in main\nnullp invokes pointer.offset\n'
+           'nullp arg base OpaquePointer zero\nnullp arg offset Int64 zero\n'
+           'nullp out p OpaquePointer\n'
+           'st is call\nst in main\nst invokes pointer.storeByte\n'
+           'st arg base OpaquePointer p\nst arg offset Int64 zero\nst arg value Int32 zero\n')
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
+                          input=src, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode != 0 and "SSR0021" in proc.stderr
+
+
 def test_buffer_create_negative_size_traps():
     # R-135: a negative buffer.create size traps with a structured ss_panic
     # (SSR0020) before the malloc + unchecked length store, instead of accepting

@@ -9976,9 +9976,11 @@ class EavCodegen:
             if target == "pointer.offset":
                 result = addr
             elif target == "pointer.loadByte":
+                self._guard_pointer_nonnull(builder, addr, target, call.line)  # R-130
                 byte = builder.load(builder.inttoptr(addr, i8ptr))
                 result = builder.zext(byte, ir.IntType(32))
             else:  # pointer.storeByte
+                self._guard_pointer_nonnull(builder, addr, target, call.line)  # R-130
                 value = self._resolve(a[2].payload[2], a[2].payload[1], builder, sym)
                 builder.store(builder.trunc(value, ir.IntType(8)),
                               builder.inttoptr(addr, i8ptr))
@@ -10404,6 +10406,24 @@ class EavCodegen:
             tb, "SSR0020", "buffer-size",
             "buffer.create size must be non-negative (README ss10.6)",
             op_name, line, size, None)
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
+
+    def _guard_pointer_nonnull(self, builder, addr_i64, op_name, line) -> None:
+        """R-130: trap on a null/zero target address before a raw byte load/store,
+        so a null deref is a structured ss_panic (SSR0021) instead of UB / a
+        silent segfault. Valid (non-null) addresses continue unaffected."""
+        i64 = ir.IntType(64)
+        fn = builder.function
+        isnull = builder.icmp_unsigned("==", addr_i64, ir.Constant(i64, 0))
+        trap_bb = fn.append_basic_block("ptrNull")
+        cont_bb = fn.append_basic_block("ptrCont")
+        builder.cbranch(isnull, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        self._emit_panic(
+            tb, "SSR0021", "null-pointer",
+            "raw byte load/store through a null pointer (README ss30.4)",
+            op_name, line, addr_i64, None)
         tb.unreachable()
         builder.position_at_end(cont_bb)
 
@@ -11114,6 +11134,9 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0020": {"kind": "buffer-size",
                 "summary": "buffer.create size is negative, or the allocation for it failed (R-135).",
                 "repair": "Validate the size is non-negative and within memory before creating the buffer."},
+    "SSR0021": {"kind": "null-pointer",
+                "summary": "Raw byte load/store through a null pointer (R-130).",
+                "repair": "Guard the pointer with `pointer.isNull` before `pointer.loadByte`/`storeByte`."},
 }
 
 # WS1-131: logical recursion-depth bound. A statically-recursive operation
