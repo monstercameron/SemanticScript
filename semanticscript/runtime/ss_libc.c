@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <errno.h>  /* R-175: strict ss_c_atoll overflow detection */
 
 #ifdef _WIN32
 #define SS_EXPORT __declspec(dllexport)
@@ -50,7 +51,24 @@ SS_EXPORT long long ss_c_strlen(const char *text) {
 }
 
 SS_EXPORT long long ss_c_atoll(const char *text) {
-    return atoll(text);
+    /* R-175: parse strictly. Plain atoll() silently accepts trailing junk
+     * ("12abc" -> 12), so a malformed request id was used as a real id. Require
+     * the whole token (after optional surrounding whitespace and a sign) to be
+     * digits; any other content yields 0, which callers reject via their
+     * positive-id validation. */
+    if (text == NULL) {
+        return 0;
+    }
+    errno = 0;
+    char *endp = NULL;
+    long long value = strtoll(text, &endp, 10);
+    if (endp == text || errno == ERANGE) {
+        return 0;  /* no digits, or overflow */
+    }
+    while (*endp == ' ' || *endp == '\t' || *endp == '\n' || *endp == '\r') {
+        ++endp;
+    }
+    return *endp == '\0' ? value : 0;  /* trailing junk -> malformed */
 }
 
 /* Variadic formatters backing `c.snprintf`/`c.printf`/`c.fprintf`. Buffers and
