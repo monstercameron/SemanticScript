@@ -5700,6 +5700,9 @@ def test_check_workspace_root_isolates_fixtures(capsys):
     assert payload["surface"] == "sem.check.v1"
     # the misleading composed compiler-error is gone; this is a workspace envelope
     assert payload["status"] == "workspace"
+    assert payload["diagnostics"] == []
+    assert payload["typedComments"] == []
+    assert payload["nextCommands"] == []
     children = payload["children"]
     assert payload["childCount"] == len(children) >= 1
     # the negative corpus is never composed into a normal check

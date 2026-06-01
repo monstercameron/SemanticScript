@@ -14794,6 +14794,7 @@ def check_workspace(root: str) -> dict:
                           "ok": result["ok"],
                           "diagnostics": result["diagnostics"]})
     return {"status": "workspace", "ok": all_ok,
+            "diagnostics": [], "typedComments": [], "nextCommands": [],
             "childCount": len(summaries), "children": summaries}
 
 
