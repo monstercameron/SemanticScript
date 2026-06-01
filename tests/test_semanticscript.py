@@ -2529,6 +2529,32 @@ def test_unknown_enum_variant_generic_instantiation_not_flagged():
         open(os.path.join(EXAMPLES, 'generics_enum.sem'), encoding='utf-8').read())
     assert not any(d.code == 'SS1033' for d in semanticscript.lint(prog))
 
+
+def test_project_registers_undeclared_module_rejected():
+    # WS2-089 (registered-module-contract): a complete project (entry op present)
+    # that registers an undeclared module is rejected (SS1196); a correct ref is
+    # clean.
+    rows = [
+        'P is project', 'P module ghost', 'P target console', 'P entry main',
+        'm is module', 'm path a.b', 'm purpose "x"', 'm invariant "y"', 'm exports main',
+        'main is operation', 'main out Int32', 'main async no', 'main purpose "p"',
+        'main invariant "i"', 'main let z immutable Int32 0', 'main return z',
+    ]
+    bad = semanticscript.lint(semanticscript.parse(chr(10).join(rows) + chr(10)))
+    assert any(d.code == 'SS1196' and d.severity == 'error' for d in bad)
+    good = chr(10).join(rows).replace('P module ghost', 'P module m') + chr(10)
+    assert not any(d.code == 'SS1196' for d in semanticscript.lint(semanticscript.parse(good)))
+
+
+def test_project_module_check_skips_incomplete_fragment():
+    # a lone build fragment (entry op absent — its modules live in sibling files)
+    # trips SS1194, NOT a false SS1196; the module check only runs on a complete
+    # project.
+    frag = chr(10).join(['P is project', 'P module appX', 'P target console',
+                         'P entry main']) + chr(10)
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(frag))}
+    assert 'SS1194' in codes and 'SS1196' not in codes
+
 def test_suppress_scoped_to_entity_not_children():
     # A suppress on the module does not cover the helper op's own diagnostic.
     src = _MOD + (

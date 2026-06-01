@@ -426,6 +426,13 @@ DIAGNOSTICS.update({
                         "address and called at runtime (R-104).",
                "suggested": "Name a declared operation (or a webServer entity) for "
                             "the project entry (README §7/§11)."},
+    "SS1196": {"tier": "T1", "summary": "Project registers an undeclared module.",
+               "found": "A project `module <name>` row whose name resolves to no "
+                        "declared `module` entity, checked once the project's entry "
+                        "operation is present (a complete project, not a lone "
+                        "build fragment).",
+               "suggested": "Register a declared module (match the `<name> is module` "
+                            "entity exactly), or add the missing module (README §7/§28/WS2-089)."},
     "SS1195": {"tier": "T1", "summary": "runtimeBinding symbol no library provides.",
                "found": "A `body runtimeBinding ss_*` symbol that no native runtime "
                         "library in runtime/manifest.json provides, so it would "
@@ -5155,6 +5162,18 @@ def _lint_entry_abi(program: Program) -> list:
                 f"project entry {entry.payload[0]!r} names no declared operation "
                 f"(README §7/§11)", proj.line, proj.name))
             continue
+        # registered-module-contract (WS2-089): every module the project registers
+        # must name a declared `module` entity. Reached only when the entry op IS
+        # present above — so a lone build fragment (whose modules live in sibling
+        # files, composed by load_project) trips SS1194, not a false SS1196 here.
+        declared_modules = {mod.name for mod in program.of_kind("module")}
+        for mref in proj.facts("module"):
+            if mref.payload and mref.payload[0] not in declared_modules:
+                out.append(Diagnostic(
+                    "SS1196", "error",
+                    f"project {proj.name!r} registers module {mref.payload[0]!r} but no "
+                    f"such module is declared (README §7/§28/WS2-089)",
+                    proj.line, proj.name))
         if "console" not in targets:
             continue
         if ent.kind not in ("operation", "function"):
