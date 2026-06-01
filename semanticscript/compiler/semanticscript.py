@@ -10186,7 +10186,10 @@ class EavCodegen:
             # exists (otherwise `err` is unread and we skip the dead compare).
             if call.fact("catch") is not None:
                 fam, meth = target.split(".", 1)
-                if retkind == "i":
+                if retkind == "i" and (fam, meth) in _FAMILY_STATUS_ERR:
+                    op, sentinel = _FAMILY_STATUS_ERR[(fam, meth)]
+                    err = builder.icmp_signed(op, r, ir.Constant(ir.IntType(32), sentinel))
+                elif retkind == "i":
                     err = builder.icmp_signed("!=", r, ir.Constant(ir.IntType(32), 0))
                 elif retkind == "h" and (fam, meth) in _FAMILY_HANDLE_ERR:
                     op, sentinel = _FAMILY_HANDLE_ERR[(fam, meth)]
@@ -11287,6 +11290,15 @@ _FAMILY_HANDLE_ERR = {
     ("json", "documentRoot"): ("<", 0),          # ss_json_root: 0 ok, -1 on fail
     ("sqlite", "openDatabase"): ("==", 0),       # ss_sqlite_open: 0 on fail
     ("sqlite", "prepareStatement"): ("==", 0),   # ss_sqlite_prepare: 0 on fail
+}
+
+# R-141 fix: retkind "i" status calls whose success code is NOT 0, so the generic
+# `err = (status != 0)` would misread success as failure. sqlite.stepStatement
+# returns SS_SQLITE_STEP_ROW (100) / STEP_DONE (101) on success and 1..9 on error,
+# so the error condition is `status < 100` (ROW/DONE are not errors; a `branch
+# ifError` on a successful step must NOT fire — that bug 409'd every register).
+_FAMILY_STATUS_ERR = {
+    ("sqlite", "stepStatement"): ("<", 100),
 }
 
 
