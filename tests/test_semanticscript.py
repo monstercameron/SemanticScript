@@ -6676,6 +6676,15 @@ def test_reducible_cfg_no_warning():
     assert "SS1315" not in {d.code for d in semanticscript.lint(prog)}
 
 
+def test_reducible_cfg_large_linear_chain():
+    labels = ["entry"] + [f"b{i}" for i in range(200)]
+    cfg = {
+        label: ({labels[i + 1]} if i + 1 < len(labels) else set())
+        for i, label in enumerate(labels)
+    }
+    assert semanticscript._is_reducible(cfg)
+
+
 def test_irreducible_cfg_warns():
     # README §17 #15: a multi-entry loop (entry branches into both A and B,
     # which jump to each other) is irreducible.

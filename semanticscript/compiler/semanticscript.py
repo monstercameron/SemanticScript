@@ -2874,17 +2874,27 @@ def _is_reducible(cfg: dict, entry: str = "entry") -> bool:
             for s in succ[n]:
                 if s in preds:
                     preds[s].add(n)
-        for n in list(nodes):
+        mergeable = []
+        for n in nodes:
             if n == entry or n not in nodes:
                 continue
             if len(preds[n]) == 1:
                 p = next(iter(preds[n]))
                 if p == n:
                     continue
-                succ[p].discard(n)
-                succ[p] |= (succ[n] - {n})
-                del succ[n]; nodes.discard(n); changed = True
-                break
+                mergeable.append((n, p))
+        for n, _ in mergeable:
+            if n not in nodes:
+                continue
+            current_preds = {p for p in nodes if n in succ[p]}
+            if len(current_preds) != 1:
+                continue
+            p = next(iter(current_preds))
+            if p == n:
+                continue
+            succ[p].discard(n)
+            succ[p] |= (succ[n] - {n})
+            del succ[n]; nodes.discard(n); changed = True
     return len(nodes) == 1
 
 
@@ -8736,14 +8746,16 @@ def _validate_labels(op: Entity, program: Program) -> None:
     """Label invariants (README ss13, ss17 #11/#12/#13): every goto/branch target
     has exactly one `at` definition; duplicate labels error; dead labels warn."""
     defs: list[str] = []
+    def_set: set[str] = set()
     for row in op.rows:
         if row.label is not None:
-            if row.label in defs:
+            if row.label in def_set:
                 raise EavError(
                     f"duplicate label {row.label!r} in operation {op.name!r} "
                     f"(README ss17 #12)",
                     row.line,
                 )
+            def_set.add(row.label)
             defs.append(row.label)
     refs: set[str] = set()
     for row in op.rows:
@@ -8754,7 +8766,7 @@ def _validate_labels(op: Entity, program: Program) -> None:
             if gi + 1 < len(row.payload):
                 refs.add(row.payload[gi + 1])
     for ref in refs:
-        if ref not in defs:
+        if ref not in def_set:
             raise EavError(
                 f"goto/branch target {ref!r} has no `at {ref}` label in operation "
                 f"{op.name!r} (README ss17 #11)",
