@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdint.h>  /* SIZE_MAX for the statement-registry growth guard (R-139) */
 
 /*
  * Opaque wrappers around the upstream handles. We deliberately keep these
@@ -27,6 +28,57 @@ struct SSSqliteStatement {
     sqlite3_stmt *handle;
     SSSqliteDatabase *owning_database;
 };
+
+/*
+ * R-139: a registry of live statement wrappers. finalize/step/reset check
+ * membership BEFORE dereferencing the pointer, so a double-finalize (a
+ * double-free of native state) or a use-after-finalize is rejected with an error
+ * instead of corrupting the heap. Membership is checked against this array — a
+ * freed pointer's own fields are never read. The runtime is single-threaded (one
+ * loop thread owns the connection), so no lock is needed.
+ */
+static SSSqliteStatement **ss_live_statements = NULL;
+static size_t ss_live_count = 0;
+static size_t ss_live_capacity = 0;
+
+static int ss_sqlite_track_statement(SSSqliteStatement *statement) {
+    if (ss_live_count == ss_live_capacity) {
+        size_t next = ss_live_capacity == 0 ? 16 : ss_live_capacity * 2;
+        if (ss_live_capacity > SIZE_MAX / 2
+                || next > SIZE_MAX / sizeof(SSSqliteStatement *)) {
+            return 0;
+        }
+        SSSqliteStatement **grown = (SSSqliteStatement **)realloc(
+            ss_live_statements, next * sizeof(SSSqliteStatement *));
+        if (grown == NULL) {
+            return 0;
+        }
+        ss_live_statements = grown;
+        ss_live_capacity = next;
+    }
+    ss_live_statements[ss_live_count++] = statement;
+    return 1;
+}
+
+static int ss_sqlite_is_live_statement(const SSSqliteStatement *statement) {
+    for (size_t i = 0; i < ss_live_count; i++) {
+        if (ss_live_statements[i] == statement) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ss_sqlite_untrack_statement(SSSqliteStatement *statement) {
+    for (size_t i = 0; i < ss_live_count; i++) {
+        if (ss_live_statements[i] == statement) {
+            ss_live_statements[i] = ss_live_statements[ss_live_count - 1];
+            ss_live_count--;
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static int translate_sqlite_open_flags(int open_flags, int *out_sqlite_flags) {
     int translated = 0;
@@ -295,6 +347,14 @@ int ss_sqlite_statement_prepare(
         trailing_sql++;
     }
 
+    /* R-139: register before handing the wrapper out so finalize/step can
+     * validate it. If the registry can't grow, fail the prepare cleanly. */
+    if (!ss_sqlite_track_statement(statement)) {
+        sqlite3_finalize(statement->handle);
+        free(statement);
+        return SS_SQLITE_ERR_PREPARE;
+    }
+
     *out_statement = statement;
     return SS_SQLITE_OK;
 }
@@ -302,7 +362,11 @@ int ss_sqlite_statement_prepare(
 int ss_sqlite_statement_finalize(SSSqliteStatement *statement) {
     int finalize_status = 0;
 
-    if (statement == NULL) {
+    /* R-139: only finalize a registered (live) statement, and untrack it first.
+     * A double-finalize or stale pointer fails membership here — never reaching
+     * the freed wrapper — so there is no double sqlite3_finalize and no
+     * double-free of the wrapper. */
+    if (statement == NULL || !ss_sqlite_untrack_statement(statement)) {
         return SS_SQLITE_ERR_CONFIG;
     }
 
@@ -317,7 +381,9 @@ int ss_sqlite_statement_finalize(SSSqliteStatement *statement) {
 int ss_sqlite_statement_reset(SSSqliteStatement *statement) {
     int reset_status = 0;
 
-    if (statement == NULL || statement->handle == NULL) {
+    /* R-139: reject use-after-finalize (a freed wrapper is no longer live). */
+    if (statement == NULL || !ss_sqlite_is_live_statement(statement)
+            || statement->handle == NULL) {
         return SS_SQLITE_ERR_CONFIG;
     }
 
@@ -331,7 +397,9 @@ int ss_sqlite_statement_reset(SSSqliteStatement *statement) {
 int ss_sqlite_statement_step(SSSqliteStatement *statement) {
     int step_status = 0;
 
-    if (statement == NULL || statement->handle == NULL) {
+    /* R-139: reject use-after-finalize (a freed wrapper is no longer live). */
+    if (statement == NULL || !ss_sqlite_is_live_statement(statement)
+            || statement->handle == NULL) {
         return SS_SQLITE_ERR_CONFIG;
     }
 
