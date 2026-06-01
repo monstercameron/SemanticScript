@@ -40,9 +40,26 @@ SS_EXPORT void ss_json_destroy(long long document) {
 
 SS_EXPORT const char *ss_json_serialize(long long document, char *scratch,
                                         long long scratch_capacity) {
-    const char *out = scratch;
+    /* R-142: never return NULL (or uninitialized scratch) as a String. The native
+     * serializer sets *out = NULL on EVERY failure — a null/non-mutable document,
+     * or the realistic scratch-too-small path (sem_json_runtime.c: it returns
+     * SS_JSON_ERR_SCRATCH_TOO_SMALL with *out still NULL) — and on the early
+     * document guard it returns before even null-terminating scratch. The old
+     * `out = scratch; serialize(&out); return out;` therefore handed that NULL
+     * straight back, flowing a null String into downstream console/log/http binds
+     * (a null deref or corrupted response). Fail safe to an empty, null-terminated
+     * string, matching ss_json_read_string's never-NULL contract below. (Surfacing
+     * the exact SS_JSON_ERR_* through `catch` instead of an empty sentinel is a
+     * separate json family-ABI change — see R-142.) */
+    const char *out = NULL;
+    if (scratch != NULL && scratch_capacity > 0) {
+        scratch[0] = '\0';
+    }
     ss_json_document_serialize(DOC(document), scratch, scratch_capacity, &out);
-    return out;
+    if (out != NULL) {
+        return out;
+    }
+    return (scratch != NULL && scratch_capacity > 0) ? scratch : "";
 }
 
 SS_EXPORT int ss_json_set_field_string(long long document, long long cursor,

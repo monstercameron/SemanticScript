@@ -6862,6 +6862,28 @@ def test_json_find_helpers_reject_malformed_scalars():
     assert "return atoll(value_start);" not in src and "return atof(value_start);" not in src
 
 
+def test_json_serialize_shim_never_returns_null():
+    # R-142: the ss_json_serialize shim must never hand a NULL (or uninitialized
+    # scratch) back as a String. The native serializer sets *out = NULL on every
+    # failure (null document, scratch-too-small), so the old `out = scratch;
+    # serialize(&out); return out;` returned NULL into downstream String binds —
+    # a null deref. The shim must null-terminate scratch up front and fall back to
+    # the empty scratch / "" when *out stays NULL. Source-level guard (json is only
+    # exercised by the deferred taskforge-web webServer app, not a JIT example).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_json.c"),
+               encoding="utf-8").read()
+    m = re.search(r"const char \*ss_json_serialize\(.*?\n\}", src, re.S)
+    assert m, "ss_json_serialize not found"
+    body = m.group(0)
+    # the dangerous direct-return form is gone
+    assert "const char *out = scratch;" not in body
+    # null-terminate scratch defensively + a NULL fallback that is not the raw *out
+    assert "scratch[0] = '\\0';" in body
+    assert "out != NULL" in body and 'return (scratch != NULL && scratch_capacity > 0) ? scratch : "";' in body
+
+
 def test_json_cursor_int64_range_checked():
     # R-155: ss_json_cursor_int64 must range-check a double before casting to
     # `long long` — an out-of-range/NaN/Inf cast is UB. Source-level guard that
