@@ -634,20 +634,52 @@ int ss_json_has_field(const char *json_text, const char *field_name) {
     return find_field_value(json_text, field_name) != NULL ? 1 : 0;
 }
 
-/* Decode the four-hex-digit \uXXXX BMP escape into UTF-8 bytes. Writes
- * 1-3 bytes into `out`. Returns bytes written, or -1 on malformed
- * hex. Surrogate-pair handling is deferred — a single \uD8xx without
- * a low surrogate writes the replacement character (U+FFFD). */
-static int decode_unicode_escape(const char *hex_chars, char *out) {
-    int code_point = 0;
-    for (int hex_index = 0; hex_index < 4; ++hex_index) {
-        char c = hex_chars[hex_index];
+/* Parse exactly four hex digits at `p` into a 0..0xFFFF value, or -1 if any of
+ * the four is not a hex digit (a NUL stops it too, since NUL is not hex). */
+static int parse_hex4(const char *p) {
+    int value = 0;
+    for (int i = 0; i < 4; ++i) {
+        char c = p[i];
         int digit;
         if (c >= '0' && c <= '9') digit = c - '0';
         else if (c >= 'a' && c <= 'f') digit = 10 + (c - 'a');
         else if (c >= 'A' && c <= 'F') digit = 10 + (c - 'A');
         else return -1;
-        code_point = (code_point << 4) | digit;
+        value = (value << 4) | digit;
+    }
+    return value;
+}
+
+/* Decode the four-hex-digit \uXXXX escape at `hex_chars` into UTF-8 bytes,
+ * writing up to 4 bytes into `out` (out must hold >= 4). Returns bytes written,
+ * or -1 on malformed hex / a forbidden NUL. R-259: a high surrogate (U+D800..
+ * U+DBFF) immediately followed by a `\uXXXX` low surrogate (U+DC00..U+DFFF) is
+ * combined into the real astral code point (4-byte UTF-8); `*extra_consumed` is
+ * set to 6 (the trailing `\uXXXX`) so the caller advances past it. A lone or
+ * unpaired surrogate still writes U+FFFD. */
+static int decode_unicode_escape(const char *hex_chars, char *out,
+                                 int *extra_consumed) {
+    *extra_consumed = 0;
+    int code_point = parse_hex4(hex_chars);
+    if (code_point < 0) return -1;
+    if (code_point >= 0xD800 && code_point <= 0xDBFF) {
+        /* R-259: try to pair with a trailing \uXXXX low surrogate. */
+        if (hex_chars[4] == '\\' && hex_chars[5] == 'u') {
+            int low = parse_hex4(hex_chars + 6);
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                int cp = 0x10000
+                    + (((code_point - 0xD800) << 10) | (low - 0xDC00));
+                *extra_consumed = 6;  /* the paired \uXXXX */
+                out[0] = (char)(0xF0 | (cp >> 18));
+                out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+                out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+                out[3] = (char)(0x80 | (cp & 0x3F));
+                return 4;
+            }
+        }
+        /* lone high surrogate -> U+FFFD */
+        out[0] = (char)0xEF; out[1] = (char)0xBF; out[2] = (char)0xBD;
+        return 3;
     }
     if (code_point == 0) {
         /* R-192: U+0000 decodes to a literal NUL, but SemanticScript Strings
@@ -701,8 +733,9 @@ const char *ss_json_find_string(
         }
         char escape = scan[1];
         if (escape == '\0') return NULL;
-        char emit_buf[3];
+        char emit_buf[4];   /* R-259: an astral code point is 4 UTF-8 bytes */
         int emit_count;
+        int extra_consumed = 0;
         switch (escape) {
             case '"':  emit_buf[0] = '"';  emit_count = 1; break;
             case '\\': emit_buf[0] = '\\'; emit_count = 1; break;
@@ -717,9 +750,9 @@ const char *ss_json_find_string(
                     || scan[4] == '\0' || scan[5] == '\0') {
                     return NULL;
                 }
-                emit_count = decode_unicode_escape(scan + 2, emit_buf);
+                emit_count = decode_unicode_escape(scan + 2, emit_buf, &extra_consumed);
                 if (emit_count < 0) return NULL;
-                scan += 4;  /* additional skip past the 4 hex digits */
+                scan += 4 + extra_consumed;  /* 4 hex digits + any paired \uXXXX */
                 break;
             default:
                 return NULL;
@@ -1202,8 +1235,9 @@ static int parse_json_string_to_arena(
             document_sync_bytes_used(document);
             return SS_JSON_ERR_MALFORMED_PATH;
         }
-        char emit_buf[3];
+        char emit_buf[4];   /* R-259: an astral code point is 4 UTF-8 bytes */
         int emit_count = 0;
+        int extra_consumed = 0;
         switch (escape) {
             case '"':  emit_buf[0] = '"';  emit_count = 1; break;
             case '\\': emit_buf[0] = '\\'; emit_count = 1; break;
@@ -1220,13 +1254,13 @@ static int parse_json_string_to_arena(
                     document_sync_bytes_used(document);
                     return SS_JSON_ERR_MALFORMED_PATH;
                 }
-                emit_count = decode_unicode_escape(scan + 2, emit_buf);
+                emit_count = decode_unicode_escape(scan + 2, emit_buf, &extra_consumed);
                 if (emit_count < 0) {
                     document->arena_used = arena_mark;
                     document_sync_bytes_used(document);
                     return SS_JSON_ERR_MALFORMED_PATH;
                 }
-                scan += 4;
+                scan += 4 + extra_consumed;  /* 4 hex digits + any paired \uXXXX */
                 break;
             default:
                 document->arena_used = arena_mark;
