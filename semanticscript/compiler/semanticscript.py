@@ -10242,10 +10242,12 @@ class EavCodegen:
                 result = hdr
             elif target == "list.length":
                 h = arg("list", "OpaquePointer")
+                self._guard_collection_live(builder, h, "list.length", call.line)
                 result = builder.load(_slot(builder, h, 0))
             elif target == "list.append":
                 h = arg("list", "OpaquePointer")
                 v = arg("value", "Int64")
+                self._guard_collection_live(builder, h, "list.append", call.line)
                 count = builder.load(_slot(builder, h, 0))
                 cap = builder.load(_slot(builder, h, 1))
                 fn = builder.function
@@ -10271,6 +10273,7 @@ class EavCodegen:
             elif target == "list.get":
                 h = arg("list", "OpaquePointer")
                 idx = arg("index", "Int64")
+                self._guard_collection_live(builder, h, "list.get", call.line)
                 count = builder.load(_slot(builder, h, 0))
                 oob = builder.or_(
                     builder.icmp_signed("<", idx, ir.Constant(i64, 0)),
@@ -10281,9 +10284,24 @@ class EavCodegen:
                 err = oob
             elif target == "list.release":
                 h = arg("list", "OpaquePointer")
-                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i8p)
-                builder.call(self.runtime("free"), [data])
-                builder.call(self.runtime("free"), [h])
+                # R-206: idempotent + tombstoning release. If already released
+                # (capacity poisoned < 0) this is a no-op (no double-free). Else
+                # free the data buffer, zero the data-ptr slot, and poison the
+                # capacity slot to mark the handle dead — the header is retained so
+                # a later use traps via _guard_collection_live instead of a UAF.
+                cap = builder.load(_slot(builder, h, 1))
+                already = builder.icmp_signed("<", cap, ir.Constant(i64, 0))
+                relfn = builder.function
+                do_bb = relfn.append_basic_block("listReleaseDo")
+                done_bb = relfn.append_basic_block("listReleaseDone")
+                builder.cbranch(already, done_bb, do_bb)
+                rb = ir.IRBuilder(do_bb)
+                rdata = rb.inttoptr(rb.load(_slot(rb, h, 2)), i8p)
+                rb.call(self.runtime("free"), [rdata])
+                rb.store(ir.Constant(i64, 0), _slot(rb, h, 2))
+                rb.store(ir.Constant(i64, -1), _slot(rb, h, 1))
+                rb.branch(done_bb)
+                builder.position_at_end(done_bb)
                 result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
@@ -10350,10 +10368,12 @@ class EavCodegen:
                 result = hdr
             elif target == "map.size":
                 h = arg("map", "OpaquePointer")
+                self._guard_collection_live(builder, h, "map.size", call.line)
                 result = builder.load(_slot(builder, h, 0))
             elif target == "map.get":
                 h = arg("map", "OpaquePointer")
                 key = arg("key", "String")
+                self._guard_collection_live(builder, h, "map.get", call.line)
                 found, idx, data = _map_find(h, key)
                 safe = builder.select(found, idx, ir.Constant(i64, 0))
                 result = builder.load(
@@ -10363,6 +10383,7 @@ class EavCodegen:
                 h = arg("map", "OpaquePointer")
                 key = arg("key", "String")
                 value = arg("value", "Int64")
+                self._guard_collection_live(builder, h, "map.put", call.line)
                 found, idx, data = _map_find(h, key)
                 fn = builder.function
                 rep_p = builder.alloca(i32)
@@ -10402,9 +10423,20 @@ class EavCodegen:
                 result = builder.load(rep_p)
             elif target == "map.release":
                 h = arg("map", "OpaquePointer")
-                data = builder.inttoptr(builder.load(_slot(builder, h, 2)), i8p)
-                builder.call(self.runtime("free"), [data])
-                builder.call(self.runtime("free"), [h])
+                # R-206: idempotent + tombstoning release (see list.release).
+                cap = builder.load(_slot(builder, h, 1))
+                already = builder.icmp_signed("<", cap, ir.Constant(i64, 0))
+                relfn = builder.function
+                do_bb = relfn.append_basic_block("mapReleaseDo")
+                done_bb = relfn.append_basic_block("mapReleaseDone")
+                builder.cbranch(already, done_bb, do_bb)
+                rb = ir.IRBuilder(do_bb)
+                rdata = rb.inttoptr(rb.load(_slot(rb, h, 2)), i8p)
+                rb.call(self.runtime("free"), [rdata])
+                rb.store(ir.Constant(i64, 0), _slot(rb, h, 2))
+                rb.store(ir.Constant(i64, -1), _slot(rb, h, 1))
+                rb.branch(done_bb)
+                builder.position_at_end(done_bb)
                 result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
@@ -11187,6 +11219,33 @@ class EavCodegen:
             tb, "SSR0020", "buffer-size",
             "buffer.create size must be non-negative (README ss10.6)",
             op_name, line, size, None)
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
+
+    def _guard_collection_live(self, builder, h, op_name, line) -> None:
+        """R-206: a list/map handle (its malloc'd header, never moved) whose
+        capacity slot has been poisoned to a negative sentinel was released — its
+        data buffer is freed, so reading through it is a use-after-free. Trap with
+        a structured ss_panic (SSR0023) instead. list.release/map.release retain
+        the header (only the data is freed) precisely so this guard can read the
+        sentinel without touching freed memory; a live collection's capacity is
+        always >= the initial capacity, so a negative value is unambiguous. The
+        builder continues on the live path."""
+        i64 = ir.IntType(64)
+        i64p = i64.as_pointer()
+        cap = builder.load(builder.gep(builder.bitcast(h, i64p),
+                                       [ir.Constant(i64, 1)]))
+        dead = builder.icmp_signed("<", cap, ir.Constant(i64, 0))
+        fn = builder.function
+        tag = op_name.replace(".", "_")
+        trap_bb = fn.append_basic_block(tag + "Released")
+        cont_bb = fn.append_basic_block(tag + "Live")
+        builder.cbranch(dead, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        self._emit_panic(
+            tb, "SSR0023", "use-after-release",
+            "a list/map handle was used after release (README ss15.6/R-206)",
+            op_name, line, None, None)
         tb.unreachable()
         builder.position_at_end(cont_bb)
 
@@ -12207,6 +12266,10 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0022": {"kind": "alloc-failed",
                 "summary": "A collection allocation (list/map create or growth) returned NULL (R-137).",
                 "repair": "The process is out of memory; reduce the working set or the collection size."},
+    "SSR0023": {"kind": "use-after-release",
+                "summary": "A list/map handle was used after list.release/map.release (R-206).",
+                "repair": "Do not touch a collection after releasing it; the `owns ... cleanedBy` "
+                          "contract means the release is the last use."},
 }
 
 # WS1-131: logical recursion-depth bound. A statically-recursive operation
