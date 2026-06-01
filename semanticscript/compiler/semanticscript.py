@@ -13013,6 +13013,8 @@ SEM_SURFACES = (
     "sem.bench.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
     "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
     "sem.search.v1", "sem.status.v1",
+    # WS3-110: the generated stdlib readiness ledger.
+    "sem.stdlibReadiness.v1",
     # R-097: the documented "this command has no JSON surface" status, returned
     # for a non-JSON-native command invoked with --json.
     "sem.unsupported.v1",
@@ -13026,6 +13028,81 @@ SEM_SURFACES = (
 # execution stays deferred. (bcrypt -> R-066, event -> R-064, gui -> R-042,
 # log -> R-065.)
 EXPERIMENTAL_STDLIB_MODULES = frozenset({"bcrypt", "event", "gui", "log"})
+
+
+# WS3-110: `standard.*` modules the compiler lowers DIRECTLY — no separate native
+# runtime and no `.semsig`-only gap. math/compare/console arithmetic + value ops,
+# the collection/codec/text intrinsics, the configure-time `build.*` namespace, and
+# the fixed-point `decimal` ops (R-067). Kept explicit so the readiness ledger can
+# tell an intrinsic module apart from an unbacked signature-only one.
+STDLIB_INTRINSIC_MODULES = frozenset({
+    "compare", "console", "math", "convert", "assert", "test",
+    "html", "list", "map", "buffer", "memory", "string", "decimal", "build",
+})
+
+
+def stdlib_readiness_ledger() -> dict:
+    """WS3-110: a generated readiness ledger classifying every `standard.*` module
+    by maturity, derived from on-disk evidence so it cannot silently drift:
+
+      * ``native``         — a ``native_<mod>/`` runtime dir or an ``ss_<mod>.c``
+                             shim backs it;
+      * ``lowered``        — a ``std/standard.<mod>.sem`` SemanticScript module;
+      * ``intrinsic``      — the compiler lowers ``<mod>.*`` directly
+                             (STDLIB_INTRINSIC_MODULES);
+      * ``signature-only`` — a ``.semsig`` with none of the above, i.e. NO
+                             implementation.
+
+    A ``signature-only`` module that is not in EXPERIMENTAL_STDLIB_MODULES is a
+    PUBLIC API with no backing — the gap the readiness gate catches: an app author
+    would ``check`` clean and then fail at lower/run. Each entry records the
+    ``status``, whether it is explicitly ``deferred`` (experimental), and the
+    evidence flags (``semsig``/``lowered``)."""
+    import os
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # semanticscript/
+    sigs = os.path.join(base, "sigs")
+    std = os.path.join(base, "std")
+    rt = os.path.join(base, "runtime")
+    modules: dict = {}
+
+    def _scan(directory, suffix, key):
+        if not os.path.isdir(directory):
+            return
+        for f in os.listdir(directory):
+            if f.startswith("standard.") and f.endswith(suffix):
+                modules.setdefault(f[len("standard."):-len(suffix)], {})[key] = True
+
+    _scan(sigs, ".semsig", "semsig")
+    _scan(std, ".sem", "lowered")
+    native: set = set()
+    if os.path.isdir(rt):
+        for n in os.listdir(rt):
+            if n.startswith("native_") and os.path.isdir(os.path.join(rt, n)):
+                native.add(n[len("native_"):])
+            elif n.startswith("ss_") and n.endswith(".c"):
+                native.add(n[len("ss_"):-len(".c")])
+
+    ledger: dict = {}
+    for mod in sorted(modules):
+        ev = modules[mod]
+        if mod in native:
+            status = "native"
+        elif mod in STDLIB_INTRINSIC_MODULES:
+            status = "intrinsic"
+        elif ev.get("lowered"):
+            status = "lowered"
+        else:
+            status = "signature-only"
+        deferred = mod in EXPERIMENTAL_STDLIB_MODULES
+        ledger[mod] = {
+            "status": status,
+            "deferred": deferred,
+            "semsig": ev.get("semsig", False),
+            "lowered": ev.get("lowered", False),
+            # an unbacked public API: signature-only with no explicit deferral
+            "unbackedPublic": status == "signature-only" and not deferred,
+        }
+    return ledger
 
 EAV_AGENT_RULES = (
     "EAV-Steps: flat semantic tape, one row = one record, column-1 subject, "
@@ -13916,6 +13993,37 @@ def cmd_readiness(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_stdlib_readiness(args) -> int:
+    """WS3-110: emit the generated stdlib readiness ledger (sem.stdlibReadiness.v1),
+    classifying every `standard.*` module by maturity (native/lowered/intrinsic/
+    signature-only). Exits nonzero if any PUBLIC module is signature-only without an
+    explicit deferred status — an unbacked public API that would `check` clean and
+    then fail at lower/run, so app authors can tell cohesive platform APIs from
+    scaffolding."""
+    ledger = stdlib_readiness_ledger()
+    unbacked = sorted(m for m, e in ledger.items() if e["unbackedPublic"])
+    ok = not unbacked
+    counts = {s: sum(1 for e in ledger.values() if e["status"] == s)
+              for s in ("native", "lowered", "intrinsic", "signature-only")}
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.stdlibReadiness.v1", ok=ok,
+            status="ok" if ok else "unbacked-public",
+            counts=counts, unbackedPublic=unbacked,
+            deferred=sorted(m for m, e in ledger.items() if e["deferred"]),
+            modules=ledger) + "\n")
+    else:
+        for mod, e in sorted(ledger.items()):
+            mark = " (deferred)" if e["deferred"] else ""
+            flag = "  <- UNBACKED PUBLIC" if e["unbackedPublic"] else ""
+            print(f"{mod:14} {e['status']:15}{mark}{flag}")
+        if unbacked:
+            sys.stderr.write(
+                f"semanticscript: unbacked public stdlib modules (no implementation, "
+                f"not deferred): {', '.join(unbacked)}\n")
+    return 0 if ok else 1
+
+
 def _default_build_output(path: str, explicit_output: Optional[str]) -> str:
     """Resolve the build output path (README §28.2). R-014: a project-directory
     build lands under the gitignored `dist/` directory (`<dir>/dist/app`), never
@@ -14523,6 +14631,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_readiness = sub.add_parser("readiness", help="environment lane: toolchain status")
     sp_readiness.add_argument("--json", action="store_true")
     sp_readiness.set_defaults(func=cmd_readiness)
+
+    sp_stdlib = sub.add_parser("stdlib-readiness",
+                               help="stdlib module maturity ledger (WS3-110)")
+    sp_stdlib.add_argument("--json", action="store_true")
+    sp_stdlib.set_defaults(func=cmd_stdlib_readiness)
 
     sp_mcp = sub.add_parser("mcp", help="run the MCP stdio JSON-RPC server")
     sp_mcp.set_defaults(func=cmd_mcp)
