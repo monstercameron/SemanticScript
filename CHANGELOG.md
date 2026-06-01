@@ -130,6 +130,12 @@ clean parse):
   `version.json` + `SHA256SUMS` + `THIRD_PARTY_LICENSES.md`) is wired but has not
   yet run on a tag. There is no `pip`-installable package (the distribution model
   is the frozen single-file binary).
+- Toolchain parity with the legacy `sem` is largely closed (TOOL-0..7: MCP +
+  agentic CLI tools, `emit-ir`/`inspect-ir`, `status`/`clean`, `index`/`search`,
+  `bench`, `repin`). Still deferred: the **network/registry dependency ops**
+  (`download`/`get`/`latest`/`update`/`self`/`bootstrap`) — they need a package
+  registry + remote fetch that doesn't exist yet; the offline pieces (`deps`,
+  `repin`/`mod_tidy` with MVS + a lock) are in place.
 - The broader language-completeness roadmap (crash-report tiers, non-bypassable
   compile gate + syscall sandbox, linter parity, the ≥150-app conformance
   corpus, the value-model free/move runtime) is tracked in

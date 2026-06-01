@@ -11347,6 +11347,56 @@ def cmd_bench(args) -> int:
     return 0
 
 
+def cmd_repin(args) -> int:
+    """Re-pin dependencies: regenerate `build.sem.lock` from a `build.sem`
+    manifest via MVS (deterministic). `--check` verifies the existing lock is
+    current without writing (CI gate). (TOOL-7; sem.repin.v1)
+
+    The network/registry-dependent legacy ops (download/get/latest/update/self)
+    are deferred until a package registry exists (no remote fetch in beta)."""
+    import os
+    path = args.path
+    if os.path.isdir(path):
+        build_path = os.path.join(path, "build.sem")
+    else:
+        build_path = path  # a build.sem manifest (or any project manifest)
+    if not os.path.exists(build_path):
+        sys.stderr.write(f"semanticscript: no build.sem at {build_path}\n")
+        return 2
+    with open(build_path, encoding="utf-8") as fh:
+        build_program = parse(fh.read())
+    lock_text = mod_tidy(build_program)
+    if not lock_text.endswith("\n"):
+        lock_text += "\n"
+    lock_path = os.path.join(os.path.dirname(os.path.abspath(build_path)),
+                             "build.sem.lock")
+    existing = ""
+    if os.path.exists(lock_path):
+        with open(lock_path, encoding="utf-8") as fh:
+            existing = fh.read()
+    up_to_date = existing == lock_text
+
+    if getattr(args, "check", False):
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.repin.v1", lockPath=lock_path, upToDate=up_to_date,
+                wrote=False) + "\n")
+        else:
+            print(f"build.sem.lock {'up to date' if up_to_date else 'STALE'}: "
+                  f"{lock_path}")
+        return 0 if up_to_date else 1
+
+    with open(lock_path, "w", encoding="utf-8") as fh:
+        fh.write(lock_text)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.repin.v1", lockPath=lock_path, upToDate=True,
+            wrote=not up_to_date) + "\n")
+    else:
+        print(f"{'unchanged' if up_to_date else 'wrote'} {lock_path}")
+    return 0
+
+
 def _is_trap_returncode(rc: int) -> bool:
     """True if a subprocess return code indicates a hardware/guard trap — a POSIX
     fatal signal or a Windows NTSTATUS exception code — rather than a normal
@@ -12842,6 +12892,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_bench.add_argument("--runs", type=int, default=5, help="iterations (default 5)")
     sp_bench.add_argument("--json", action="store_true")
     sp_bench.set_defaults(func=cmd_bench)
+
+    # TOOL-7: re-pin dependencies (regenerate build.sem.lock via MVS)
+    sp_repin = sub.add_parser("repin", help="regenerate build.sem.lock from build.sem (MVS)")
+    sp_repin.add_argument("path", help="project directory or build.sem manifest")
+    sp_repin.add_argument("--check", action="store_true", help="verify the lock is current, do not write")
+    sp_repin.add_argument("--json", action="store_true")
+    sp_repin.set_defaults(func=cmd_repin)
 
     # run needs --strict flag (WS2-071)
     sp_run = sub.add_parser("run", help="JIT-compile and execute")

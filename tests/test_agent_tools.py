@@ -71,7 +71,27 @@ def main():
             if expect not in out:
                 failures.append((label, "missing %r in output" % expect))
 
-    print("agent tools: %d/%d OK" % (len(CASES) - len(failures), len(CASES)))
+    # repin needs a build.sem fixture: round-trip (write then --check) in a temp dir.
+    import tempfile
+    total = len(CASES) + 1
+    with tempfile.TemporaryDirectory() as td:
+        with open(os.path.join(td, "build.sem"), "w", encoding="utf-8") as fh:
+            fh.write("RepinDemo is project\nRepinDemo module m\n"
+                     "RepinDemo target console\nRepinDemo entry main\n"
+                     "RepinDemo require example.org/u v1.0.0\n")
+        write = subprocess.run([sys.executable, SEM, "repin", td, "--json"],
+                               capture_output=True, text=True, cwd=ROOT, timeout=60)
+        chk = subprocess.run([sys.executable, SEM, "repin", td, "--check", "--json"],
+                             capture_output=True, text=True, cwd=ROOT, timeout=60)
+        try:
+            ok = (json.loads(write.stdout).get("surface") == "sem.repin.v1"
+                  and json.loads(chk.stdout).get("upToDate") is True)
+        except (json.JSONDecodeError, AttributeError):
+            ok = False
+        if not ok:
+            failures.append(("repin", "write/--check round-trip failed"))
+
+    print("agent tools: %d/%d OK" % (total - len(failures), total))
     for label, detail in failures:
         print("  FAIL %-14s %s" % (label, detail))
     return 1 if failures else 0
