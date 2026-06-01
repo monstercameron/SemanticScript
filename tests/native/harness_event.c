@@ -63,6 +63,19 @@ int main(void) {
     /* an absurd capacity is refused, not allocated */
     assert(ss_event_open_stream("f", (1LL << 30)) == 0);
 
+    /* R-196: a stale subscription handle is rejected by the live-subscription
+     * registry instead of dereferencing freed memory. A double closeSubscription
+     * is a no-op (not a double free), and a receive after closeSubscription
+     * returns 0 (not a use-after-free of the freed sub). */
+    long long s6 = ss_event_open_stream("g", 4);
+    long long sub6 = ss_event_subscribe(s6, "t", "k");
+    assert(sub6);
+    ss_event_append(s6, "t", "k", "p");
+    ss_event_close_subscription(sub6);
+    ss_event_close_subscription(sub6);     /* double close: no-op */
+    assert(ss_event_receive(sub6) == 0);   /* receive after close: safe 0 */
+    ss_event_close_stream(s6);
+
     printf("harness_event: OK\n");
     return 0;
 }

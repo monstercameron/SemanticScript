@@ -9060,6 +9060,15 @@ def test_event_runtime_subscription_lifecycle_guarded():
     for fn in ("ss_event_subscribe", "ss_event_append"):
         m = re.search(r"ss_event_" + fn.split("_", 2)[2] + r"\(.*?\n\}", src, re.S)
         assert m and "ss_event_is_live_stream(s)" in m.group(0), fn
+    # R-196: subscriptions get the same tombstone treatment — a live-subscription
+    # registry so receive/close validate a raw handle by membership before any
+    # deref (stale-handle UAF / double-close double-free).
+    for fn in ("ss_event_track_sub", "ss_event_is_live_sub", "ss_event_untrack_sub"):
+        assert fn in src, fn
+    recv = re.search(r"long long ss_event_receive\(.*?\n\}", src, re.S).group(0)
+    assert "ss_event_is_live_sub(sub)" in recv               # reject stale sub
+    closesub = re.search(r"void ss_event_close_subscription\(.*?\n\}", src, re.S).group(0)
+    assert "ss_event_untrack_sub(sub)" in closesub           # double-close no-op
 
 
 def test_app_event_stream_smoke_full_port():

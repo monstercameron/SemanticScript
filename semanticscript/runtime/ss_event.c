@@ -84,6 +84,53 @@ static int ss_event_untrack_stream(SSEventStream *s) {
     return 0;
 }
 
+/*
+ * R-196: a registry of live subscriptions, mirroring the stream tombstone above.
+ * R-131 parent-tracked subscriptions on their stream (so closeStream could orphan
+ * them) but kept no global registry, so receive/close validated a raw subscription
+ * handle with only a NULL check — a stale (already-closed, freed) handle is
+ * non-NULL, so `sub->stream` read freed memory (use-after-free) and a double
+ * close_subscription double-freed. Membership here is checked by pointer VALUE
+ * before any field is read. Single-threaded, so no lock is needed.
+ */
+static SSEventSub **g_live_subs = NULL;
+static size_t g_live_sub_count = 0;
+static size_t g_live_sub_cap = 0;
+
+static int ss_event_track_sub(SSEventSub *sub) {
+    if (g_live_sub_count == g_live_sub_cap) {
+        size_t next = g_live_sub_cap == 0 ? 8 : g_live_sub_cap * 2;
+        if (g_live_sub_cap > SIZE_MAX / 2 || next > SIZE_MAX / sizeof(SSEventSub *)) {
+            return 0;
+        }
+        SSEventSub **grown = (SSEventSub **)realloc(
+            g_live_subs, next * sizeof(SSEventSub *));
+        if (!grown) return 0;
+        g_live_subs = grown;
+        g_live_sub_cap = next;
+    }
+    g_live_subs[g_live_sub_count++] = sub;
+    return 1;
+}
+
+static int ss_event_is_live_sub(const SSEventSub *sub) {
+    for (size_t i = 0; i < g_live_sub_count; i++) {
+        if (g_live_subs[i] == sub) return 1;
+    }
+    return 0;
+}
+
+static int ss_event_untrack_sub(SSEventSub *sub) {
+    for (size_t i = 0; i < g_live_sub_count; i++) {
+        if (g_live_subs[i] == sub) {
+            g_live_subs[i] = g_live_subs[g_live_sub_count - 1];
+            g_live_sub_count--;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 SS_EXPORT long long ss_event_open_stream(const char *name, long long capacity) {
     (void)name;
     /* R-131: a huge `capacity` would truncate through the int `cap` (then the
@@ -120,14 +167,19 @@ SS_EXPORT long long ss_event_subscribe(long long stream, const char *type, const
     if (!s || !ss_event_is_live_stream(s)) return 0;
     SSEventSub *sub = (SSEventSub *)calloc(1, sizeof(SSEventSub));
     if (!sub) return 0;
+    /* R-196: register in the live-subscription tombstone before handing the
+     * handle out, so receive/close can validate it by membership. On any
+     * subsequent failure, untrack before freeing so the registry never holds a
+     * dangling pointer. */
+    if (!ss_event_track_sub(sub)) { free(sub); return 0; }
     /* parent-track: record the subscription on its stream so closeStream can
      * orphan it. Grow the list first; on failure free the sub and fail. */
     if (s->sub_count == s->sub_cap) {
         int ncap = s->sub_cap == 0 ? 4 : s->sub_cap * 2;
-        if (ncap <= 0) { free(sub); return 0; }  /* int overflow guard */
+        if (ncap <= 0) { ss_event_untrack_sub(sub); free(sub); return 0; }  /* int overflow guard */
         SSEventSub **grown = (SSEventSub **)realloc(
             s->subs, (size_t)ncap * sizeof(SSEventSub *));
-        if (!grown) { free(sub); return 0; }
+        if (!grown) { ss_event_untrack_sub(sub); free(sub); return 0; }
         s->subs = grown;
         s->sub_cap = ncap;
     }
@@ -163,7 +215,10 @@ SS_EXPORT long long ss_event_append(long long stream, const char *type,
 
 SS_EXPORT long long ss_event_receive(long long subscription) {
     SSEventSub *sub = (SSEventSub *)(intptr_t)subscription;
-    if (!sub || !sub->stream) return 0;
+    /* R-196: reject a stale/closed subscription by membership BEFORE reading any
+     * field (a freed handle is non-NULL; the prior bare `!sub` check let it
+     * dereference freed memory). An orphaned-but-live sub has stream == NULL. */
+    if (!sub || !ss_event_is_live_sub(sub) || !sub->stream) return 0;
     if (sub->cursor < sub->stream->count)
         return sub->stream->ids[sub->cursor++];
     return 0;  /* 0 = no event available */
@@ -175,7 +230,10 @@ SS_EXPORT void ss_event_ack(long long subscription, long long event_id) {
 
 SS_EXPORT void ss_event_close_subscription(long long subscription) {
     SSEventSub *sub = (SSEventSub *)(intptr_t)subscription;
-    if (!sub) return;
+    /* R-196: untrack first (membership by pointer value, no deref). A double
+     * close or a bogus handle fails membership and becomes a no-op instead of a
+     * double-free / use-after-free. Only a confirmed-live sub is dereferenced. */
+    if (!sub || !ss_event_untrack_sub(sub)) return;
     /* R-131: unlink from the parent stream's list (if the stream is still live)
      * so a later closeStream cannot write through this freed sub pointer. After a
      * closeStream sub->stream is already NULL, so we simply free. */
