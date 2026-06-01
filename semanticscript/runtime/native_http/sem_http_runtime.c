@@ -3662,7 +3662,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     long content_length;
     size_t total_expected;
     size_t total_read;
-    int read_count = recv(client_socket, request_buffer, (int)(sizeof(request_buffer) - 1), 0);
+    int read_count = 0;
     const SSHttpRoute *route;
     SSHttpRequest request;
     SSHttpResponse response;
@@ -3672,12 +3672,30 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     const SSHttpStaticRoute *static_route;
     const char *static_relative_path = NULL;
 
+    /* R-263: the header block can arrive across multiple TCP segments (or simply
+     * not fit in one recv), so accumulate into request_buffer until the
+     * \r\n\r\n terminator is present, the buffer fills, or the peer stops — a
+     * single recv could split the headers and spuriously 400. The body that
+     * follows is read by the Content-Length loop below. */
+    while ((size_t)read_count < sizeof(request_buffer) - 1) {
+        int header_read = recv(client_socket, request_buffer + read_count,
+                               (int)(sizeof(request_buffer) - 1 - read_count), 0);
+        if (header_read <= 0) {
+            break;
+        }
+        read_count += header_read;
+        request_buffer[read_count] = '\0';
+        body_start = (char *)find_header_end(request_buffer, (size_t)read_count,
+                                             &header_bytes);
+        if (body_start != NULL) {
+            break;  /* full header block received */
+        }
+    }
     if (read_count <= 0) {
         return SS_HTTP_ERR_ENGINE;
     }
     request_buffer[read_count] = '\0';
 
-    body_start = (char *)find_header_end(request_buffer, (size_t)read_count, &header_bytes);
     if (body_start == NULL || header_bytes > (size_t)read_count) {
         return send_response(
             client_socket,
