@@ -514,6 +514,9 @@ DIAGNOSTICS.update({
     "SS1033": {"tier": "T1", "summary": "Constructing an unknown enum/error variant.",
                "found": "A call invokes `<Type>.<member>` where `<Type>` is a declared enum or error but `<member>` is not one of its declared variants/cases — a typo'd constructor no type check would otherwise catch.",
                "suggested": "Construct a declared variant of the type (check the `variant`/`errorCase` rows for the exact spelling), or add the missing variant to the type (README §9/§10.5/WS2-089)."},
+    "SS1034": {"tier": "T1", "summary": "Generic instantiation arity mismatch.",
+               "found": "A record/enum `instantiates Base ...` row supplies a different number of concrete type arguments than Base declares with `typeParam` rows.",
+               "suggested": "Pass exactly one concrete type per `typeParam`, or adjust the generic base declaration (README ss10/R-039)."},
     "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
                 "found": "Two `PROJECT constant` rows with the same name.",
                 "suggested": "Use one constant per name (README §28.1)."},
@@ -3857,6 +3860,35 @@ def _lint_unknown_enum_variant(program: Program) -> list:
     return diags
 
 
+def _lint_generic_instantiation_arity(program: Program) -> list:
+    """R-039: named generic record/enum instantiations must pass exactly one
+    concrete type argument per `typeParam` declared by the generic base. Without
+    this check, lowering used `zip()` and silently ignored extra args or left
+    unbound type parameters in the substituted layout."""
+    diags: list = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("record", "enum"):
+            continue
+        inst = ent.fact("instantiates")
+        if not (inst and inst.payload):
+            continue
+        base = program.entities.get(inst.payload[0])
+        if base is None or base.kind != ent.kind:
+            continue
+        expected = [r.payload[0] for r in base.facts("typeParam") if r.payload]
+        actual = inst.payload[1:]
+        if len(actual) != len(expected):
+            diags.append(Diagnostic(
+                "SS1034", "error",
+                f"{ent.kind} {ent.name!r} instantiates {base.name!r} with "
+                f"{len(actual)} type arg(s), but {base.name!r} declares "
+                f"{len(expected)} typeParam row(s) ({', '.join(expected) or 'none'}) "
+                f"(README ss10/R-039)",
+                inst.line, ent.name))
+    return diags
+
+
 def _lint_handle_equality_contract(program: Program) -> list:
     """R-075: comparing two opaque handle (OpaquePointer-backed) values for equality
     relies on raw address identity — not a meaningful equality for a handle, and a
@@ -4019,6 +4051,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_collection_iterator_invalidation(program))
     diags.extend(_lint_string_accumulator_in_loop(program))
     diags.extend(_lint_unknown_enum_variant(program))
+    diags.extend(_lint_generic_instantiation_arity(program))
     diags.extend(_lint_handle_equality_contract(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
     # footgun — steer to a tolerance compare (or Decimal for exact values). The

@@ -2530,6 +2530,35 @@ def test_unknown_enum_variant_generic_instantiation_not_flagged():
     assert not any(d.code == 'SS1033' for d in semanticscript.lint(prog))
 
 
+def test_generic_instantiation_arity_rejected():
+    # R-039: named monomorphic record/enum instantiations must pass exactly one
+    # concrete type per base `typeParam`; lowering must not silently zip/drop args.
+    src = (
+        "Holder is record\n"
+        "Holder typeParam T\n"
+        "Holder field content T\n"
+        "HolderMissing is record\n"
+        "HolderMissing instantiates Holder\n"
+        "HolderExtra is record\n"
+        "HolderExtra instantiates Holder Int64 Float64\n"
+        "Option is enum\n"
+        "Option typeParam T\n"
+        "Option variant some T\n"
+        "OptionMissing is enum\n"
+        "OptionMissing instantiates Option\n"
+    )
+    diags = [d for d in semanticscript.lint(semanticscript.parse(src)) if d.code == 'SS1034']
+    assert len(diags) == 3
+    assert all(d.severity == 'error' for d in diags)
+
+
+def test_generic_instantiation_arity_valid_examples_clean():
+    for name in ('generics_record.sem', 'generics_enum.sem'):
+        prog = semanticscript.parse_compact(
+            open(os.path.join(EXAMPLES, name), encoding='utf-8').read())
+        assert not any(d.code == 'SS1034' for d in semanticscript.lint(prog))
+
+
 def test_project_registers_undeclared_module_rejected():
     # WS2-089 (registered-module-contract): a complete project (entry op present)
     # that registers an undeclared module is rejected (SS1196); a correct ref is
