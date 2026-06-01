@@ -3818,6 +3818,39 @@ def test_ifvariant_bind_payloadless_rejected():
     assert getattr(exc.value, "code", None) == "SS1354"
 
 
+def test_ifvariant_unknown_or_ambiguous_rejected():
+    base = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "Status is enum\nStatus variant open\nStatus variant done\n"
+    )
+
+    def expect_ss1352(extra_enums: str, variant: str) -> None:
+        src = (
+            base
+            + extra_enums
+            + "main is operation\nmain out ExitCode\nmain async no\n"
+            + "main purpose \"p\"\nmain invariant \"i\"\n"
+            + "main let okCode immutable ExitCode 0\n"
+            + "main do makeStatus\n"
+            + f"main branch ifVariant currentStatus {variant} goto matched\n"
+            + "main return okCode\n"
+            + "main at matched return okCode\n"
+            + "makeStatus is call\nmakeStatus in main\n"
+            + "makeStatus invokes Status.done\nmakeStatus out currentStatus Status\n"
+        )
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.lower_to_llvm(semanticscript.parse(src))
+        assert getattr(exc.value, "code", None) == "SS1352"
+
+    expect_ss1352("", "missing")
+    expect_ss1352(
+        "OtherStatus is enum\nOtherStatus variant done\nOtherStatus variant failed\n",
+        "done",
+    )
+
+
 def test_variant_match_golden_is_exhaustive_no_warning():
     # variant_match matches `done` and falls through to a default arm
     # (writeOpen; return) for `open` -> exhaustive-by-default, no SS1353.
