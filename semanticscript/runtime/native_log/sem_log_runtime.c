@@ -9,6 +9,7 @@
 
 #include "sem_log_runtime.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -39,37 +40,43 @@ static int log_mkdir_p_single(const char *path) {
     int rc = mkdir(path, 0755);
 #endif
     if (rc == 0) return 1;
+    if (errno == EEXIST) return 1;
     /* errno == EEXIST is fine; everything else is a real failure. */
     return 0;
 }
 
-/* Ensure the directory holding g_log_path exists. Walks up to the last
- * slash, copies that prefix, and tries to create it. We only attempt
- * one level — if `logs/log.log` resolves to `a/b/c/log.log` and `a/b`
- * doesn't exist either, the open will fail and the caller sees an
- * SS_LOG_ERR_ENGINE. That's deliberate; a refine can add full
- * mkdir -p semantics if any project actually wants nested log dirs. */
-static void log_ensure_parent_directory(void) {
+/* Ensure the directory holding g_log_path exists. Walks every path
+ * prefix and creates each directory segment. Nested log paths such as
+ * `logs/a/b/log.log` are created in order before the file is opened. */
+static int log_ensure_parent_directory(void) {
     char parent[1024];
     size_t i;
-    size_t slash_at = 0;
     int has_slash = 0;
     for (i = 0; g_log_path[i] != '\0' && i < sizeof(parent) - 1; ++i) {
         parent[i] = g_log_path[i];
         if (g_log_path[i] == '/' || g_log_path[i] == '\\') {
-            slash_at = i;
             has_slash = 1;
         }
     }
     parent[i] = '\0';
-    if (!has_slash) return;
-    parent[slash_at] = '\0';
-    (void)log_mkdir_p_single(parent);
+    if (!has_slash) return 1;
+    for (i = 0; parent[i] != '\0'; ++i) {
+        if (parent[i] == '/' || parent[i] == '\\') {
+            char slash = parent[i];
+            parent[i] = '\0';
+            if (parent[0] != '\0' && !log_mkdir_p_single(parent)) {
+                parent[i] = slash;
+                return 0;
+            }
+            parent[i] = slash;
+        }
+    }
+    return 1;
 }
 
 static FILE *log_open_if_needed(void) {
     if (g_log_file != NULL) return g_log_file;
-    log_ensure_parent_directory();
+    if (!log_ensure_parent_directory()) return NULL;
     g_log_file = fopen(g_log_path, "ab");
     if (g_log_file == NULL) return NULL;
     g_log_path_locked = 1;
