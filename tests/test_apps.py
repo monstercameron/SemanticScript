@@ -160,11 +160,18 @@ def _run_webserver_crud(app, port):
     db = os.path.join(appdir, "taskforge_web.db")
 
     def _rmdb():
-        if os.path.exists(db):
-            try:
-                os.remove(db)
-            except OSError:
-                pass
+        # Remove the SQLite database AND its WAL/SHM sidecars. In WAL mode the
+        # committed rows can live in `-wal` until checkpoint, so deleting only the
+        # main `.db` leaves prior-run data (e.g. a registered user) to be replayed
+        # on reopen — making the register step 409 on the second run. Clear all
+        # three so each run starts from a truly empty database (R-006/007).
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            path = db + suffix
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
     _rmdb()
     proc = subprocess.Popen(
