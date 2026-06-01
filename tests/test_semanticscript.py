@@ -3768,6 +3768,30 @@ def test_html_trusted_fragment_via_boundary_ok():
     semanticscript.parse(src)  # no raise
 
 
+def test_user_op_arg_type_mismatch_rejected():
+    # R-073: a user-op call passing a different-base type where the input requires
+    # another (e.g. String where Int64 is required) is an argument type mismatch
+    # (SS3711). Previously only same-base newtype/alias boundaries (SS3710) were
+    # caught, so a plain type mismatch lowered nonsense; the language has no
+    # implicit coercion so this must reject at check time.
+    base = (
+        "callee is operation\ncallee in n Int64\ncallee out Int64\ncallee async no\n"
+        'callee purpose "p"\ncallee invariant "i"\ncallee return n\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let msg immutable String "x"\nmain let num immutable Int64 5\n'
+        "main let okCode immutable ExitCode 0\nmain do callIt\nmain return okCode\n"
+        "callIt is call\ncallIt in main\ncallIt invokes callee\n"
+        "callIt out r Int64\n{ARG}\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(base.replace("{ARG}", "callIt arg n String msg"))
+    assert getattr(exc.value, "code", None) == "SS3711"
+    # the matching-type call is accepted (no false positive)
+    semanticscript.parse(base.replace("{ARG}", "callIt arg n Int64 num"))
+
+
 def test_html_fragment_newtypes_not_interchangeable():
     # WS3-025 / §10: passing an HtmlFragment where an HtmlTrustedFragment user-op
     # input is declared is the no-coercion newtype error (SS3710).

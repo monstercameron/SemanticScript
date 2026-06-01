@@ -445,6 +445,9 @@ DIAGNOSTICS.update({
     "SS3710": {"tier": "T1", "summary": "Silent newtype coercion across an alias.",
                "found": "An arg type differs from the callee input but resolves to the same base.",
                "suggested": "Pass the alias newtype itself; aliases do not coerce (README §10)."},
+    "SS3711": {"tier": "T1", "summary": "Argument type mismatch.",
+               "found": "A call arg whose type differs from the callee input's type (different base).",
+               "suggested": "Pass a value of the callee's declared input type; there is no implicit coercion (README §15)."},
     "SS3700": {"tier": "T1", "summary": "Dotted type outside an alias `for`.",
                "found": "A dotted type name in a let/arg/in/out/catch/field position.",
                "suggested": "Use a bare type, or a local alias `for importAlias.Type` (§7)."},
@@ -5577,18 +5580,29 @@ def _validate_calls(program: Program) -> None:
                 continue
             slot, arg_type = arg.payload[0], arg.payload[1]
             in_type = in_types.get(slot)
-            if in_type is None or arg_type == in_type or in_type in tparams:
+            if (in_type is None or arg_type == in_type
+                    or in_type in tparams or arg_type in tparams):
                 continue
-            if (arg_type in newtypes or in_type in newtypes) and (
-                _resolve_alias(arg_type, alias_map)
-                == _resolve_alias(in_type, alias_map)
-            ):
+            same_base = (_resolve_alias(arg_type, alias_map)
+                         == _resolve_alias(in_type, alias_map))
+            if same_base:
+                # Same base type, different spelling: a silent coercion across a
+                # newtype/alias boundary (one side is a declared `alias … for T`).
                 raise EavError(
                     f"call {ent.name!r} arg {slot!r} passes {arg_type!r} where "
                     f"{target!r} requires {in_type!r}; an alias is a distinct "
                     f"newtype and does not silently coerce (README ss10, WS1-031)",
                     arg.line, code="SS3710",
                 )
+            # R-073: different base types entirely — a plain argument type mismatch
+            # the slot-name checks above could not see (the language has no implicit
+            # coercion, so e.g. a String passed where an Int64 is required is wrong).
+            raise EavError(
+                f"call {ent.name!r} arg {slot!r} passes {arg_type!r} where "
+                f"{target!r} requires {in_type!r} (argument type mismatch; the "
+                f"language has no implicit coercion, README ss15, ss17 #49)",
+                arg.line, code="SS3711",
+            )
         # WS2-089 bind-return-type-domain: the call's `out` binding type must be
         # the callee's declared return type exactly. A Result-returning callee
         # binds its OK type via `out` (errors flow through `catch`). A same-base
