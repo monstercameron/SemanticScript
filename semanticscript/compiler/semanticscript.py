@@ -14089,17 +14089,35 @@ def cmd_check(args) -> int:
     warnings = [d for d in diags if d.severity == "warning"]
     status = ("lint-diagnostics" if errors
               else "ok-with-warnings" if warnings else "ok")
-    # README §24/§32.3 #20: machine-facing next steps.
+    # README §24/§32.3 #20: machine-facing next steps. Only recommend `test` when
+    # the program actually has `tag test` operations — under the R-158/R-173
+    # no-tests gate a `test` run that discovers nothing exits 1 (no vacuous pass),
+    # so recommending it for a test-free file would advertise a `replayable` next
+    # step that is guaranteed to fail (the agent-loop contract, WS4-122). Mirror
+    # cmd_test's own discovery: a project root composes its companion *.test.sem
+    # sources (load_test_project), which the plain check parse above excludes, so a
+    # scaffold's co-located tests are still seen here.
+    try:
+        if (args.path != "-" and os.path.isdir(args.path)
+                and is_project_root(args.path)):
+            has_tests = bool(discover_tests(load_test_project(args.path)))
+        else:
+            has_tests = bool(discover_tests(program))
+    except EavError:
+        has_tests = True  # discovery failed; keep the prior `test` suggestion
     if status == "lint-diagnostics":
         nxt = [_next_command(["fix", args.path, "--plan"],
                              "derive a repair plan for the errors")]
     elif status == "ok-with-warnings":
         nxt = [_next_command(["fix", args.path, "--plan", "--include-warnings"],
-                             "review warning cleanup"),
-               _next_command(["test", args.path], "run the test operations")]
+                             "review warning cleanup")]
+        if has_tests:
+            nxt.append(_next_command(["test", args.path], "run the test operations"))
     else:
-        nxt = [_next_command(["test", args.path], "run the test operations"),
-               _next_command(["build", args.path], "compile to a native exe")]
+        nxt = []
+        if has_tests:
+            nxt.append(_next_command(["test", args.path], "run the test operations"))
+        nxt.append(_next_command(["build", args.path], "compile to a native exe"))
     # R-080: surface retained typed comments (`# security:`/`# failure:` …) on
     # the machine-facing check envelope so important notes stay reviewable in
     # downstream tooling instead of disappearing.
