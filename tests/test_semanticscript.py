@@ -6858,6 +6858,23 @@ def test_json_cursor_int64_range_checked():
         "the double->long long cast in ss_json_cursor_int64 is not range-guarded (R-155)"
 
 
+def test_sqlite_statement_finalize_tombstoned():
+    # R-139: sqlite statement handles are tracked so a double-finalize or
+    # use-after-finalize is rejected (membership / is_live check) instead of
+    # double-freeing native state. Source-level guard (a .sem that finalizes twice
+    # is rejected by the owned-resource checker, so it can't be driven through the
+    # compiler; the sqlite runtime + taskforge-web round-trip via test_apps).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_sqlite",
+                            "sem_sqlite_runtime.c"), encoding="utf-8").read()
+    fin = re.search(r"int ss_sqlite_statement_finalize\(.*?\n\}", src, re.S)
+    assert fin and "ss_sqlite_untrack_statement(statement)" in fin.group(0)
+    for fn in ("ss_sqlite_statement_reset", "ss_sqlite_statement_step"):
+        m = re.search(r"int " + re.escape(fn) + r"\(.*?\n\}", src, re.S)
+        assert m and "ss_sqlite_is_live_statement(statement)" in m.group(0), fn
+
+
 def test_string_concat_alloc_guarded():
     # R-136 (safety): string.concat / html.render null-guard the malloc result
     # before the strcpy/strcat, so an OOM is a structured trap (SSR0022) instead
