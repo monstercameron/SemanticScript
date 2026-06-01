@@ -504,6 +504,9 @@ DIAGNOSTICS.update({
     "SS1032": {"tier": "T3", "summary": "String accumulator re-concatenated inside a loop (O(n²)).",
                "found": "A `string.concat` inside a loop body whose `out` rebinds one of its own inputs — the classic quadratic string-builder accumulator (each turn copies the whole prefix).",
                "suggested": "Collect the pieces in a list and join once after the loop, or write to a bounded text stream — not an accumulator concatenated every iteration (README §13/WS2-089)."},
+    "SS1033": {"tier": "T1", "summary": "Constructing an unknown enum/error variant.",
+               "found": "A call invokes `<Type>.<member>` where `<Type>` is a declared enum or error but `<member>` is not one of its declared variants/cases — a typo'd constructor no type check would otherwise catch.",
+               "suggested": "Construct a declared variant of the type (check the `variant`/`errorCase` rows for the exact spelling), or add the missing variant to the type (README §9/§10.5/WS2-089)."},
     "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
                 "found": "Two `PROJECT constant` rows with the same name.",
                 "suggested": "Use one constant per name (README §28.1)."},
@@ -3791,6 +3794,59 @@ def _lint_string_accumulator_in_loop(program: Program) -> list:
     return diags
 
 
+def _lint_unknown_enum_variant(program: Program) -> list:
+    """WS2-089 (make-error-unknown-variant): constructing a value through
+    `<Type>.<member>` where <Type> is a declared enum (or error) but <member> is
+    not one of its declared `variant`/`errorCase` rows is a hard error (SS1033) — a
+    typo'd constructor that no type check catches (it binds an unresolved member).
+    Only dotted targets whose prefix is a USER-DECLARED enum/error are inspected, so
+    stdlib intrinsics (`list.create`, `math.addInt64`, ...) are never touched."""
+    members: dict = {}      # type name -> set of valid variant/case members
+    instantiates: dict = {}  # monomorphized enum -> generic base it specializes
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind == "enum":
+            members.setdefault(e.name, set()).update(
+                v.payload[0] for v in e.facts("variant") if v.payload)
+            inst = e.fact("instantiates")
+            if inst and inst.payload:
+                instantiates[e.name] = inst.payload[0]
+        elif e.kind == "errorCase":
+            of = e.fact("of")
+            if of and of.payload:
+                members.setdefault(of.payload[0], set()).add(e.name)
+    # a monomorphized enum (`X instantiates Base ...`) inherits Base's variants;
+    # resolve to a fixpoint so a chain of instantiations carries them through.
+    for _ in range(len(instantiates) + 1):
+        changed = False
+        for sub, base in instantiates.items():
+            if base in members and not members[base].issubset(members.setdefault(sub, set())):
+                members[sub] |= members[base]
+                changed = True
+        if not changed:
+            break
+    if not members:
+        return []
+    diags: list = []
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind not in ("call", "task"):
+            continue
+        inv = e.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        prefix, dot, member = inv.payload[0].partition(".")
+        if dot and prefix in members and member not in members[prefix]:
+            valid = ", ".join(sorted(members[prefix])) or "none"
+            diags.append(Diagnostic(
+                "SS1033", "error",
+                f"call {e.name!r} constructs {inv.payload[0]!r}, but {member!r} is not a "
+                f"declared variant/case of {prefix!r} (declared: {valid}) "
+                f"(README §9/§10.5/WS2-089)",
+                e.line, e.name))
+    return diags
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -3904,6 +3960,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_loop_no_progress(program))
     diags.extend(_lint_collection_iterator_invalidation(program))
     diags.extend(_lint_string_accumulator_in_loop(program))
+    diags.extend(_lint_unknown_enum_variant(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
     # footgun — steer to a tolerance compare (or Decimal for exact values). The
     # footgun is comparing two *computed* floats that "should" be equal; comparing

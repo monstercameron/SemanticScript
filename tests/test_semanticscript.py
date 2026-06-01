@@ -2482,6 +2482,53 @@ def test_string_concat_fresh_binding_not_warned():
     assert d == []
 
 
+_ENUM_ROWS = [
+    'm is module',
+    'm path a.b',
+    'm purpose "x"',
+    'm invariant "y"',
+    'm exports run',
+    'Choice is enum',
+    'Choice variant one',
+    'Choice variant two',
+    'Choice purpose "c"',
+    'run is operation',
+    'run out Int32',
+    'run async no',
+    'run purpose "p"',
+    'run invariant "i"',
+    'run let zero immutable Int32 0',
+    'run do mk',
+    'run return zero',
+    'mk is call',
+    'mk in run',
+    'mk invokes Choice.@V@',
+    'mk out v Choice',
+]
+
+
+def _enum_src(variant):
+    return chr(10).join(_ENUM_ROWS).replace('@V@', variant) + chr(10)
+
+
+def test_unknown_enum_variant_rejected():
+    # WS2-089 (make-error-unknown-variant): constructing an undeclared enum
+    # variant is a hard error (SS1033); a declared one is clean.
+    bad = [d for d in semanticscript.lint(semanticscript.parse(_enum_src('bogusVariant')))
+           if d.code == 'SS1033']
+    assert bad and all(d.severity == 'error' for d in bad)
+    good = [d for d in semanticscript.lint(semanticscript.parse(_enum_src('one')))
+            if d.code == 'SS1033']
+    assert good == []
+
+
+def test_unknown_enum_variant_generic_instantiation_not_flagged():
+    # a monomorphized enum (`X instantiates Base ...`) inherits Base's variants,
+    # so constructing them through the instantiation is NOT a false positive.
+    prog = semanticscript.parse_compact(
+        open(os.path.join(EXAMPLES, 'generics_enum.sem'), encoding='utf-8').read())
+    assert not any(d.code == 'SS1033' for d in semanticscript.lint(prog))
+
 def test_suppress_scoped_to_entity_not_children():
     # A suppress on the module does not cover the helper op's own diagnostic.
     src = _MOD + (
