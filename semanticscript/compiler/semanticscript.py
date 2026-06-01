@@ -8418,8 +8418,34 @@ def _validate_enum(ent: Entity) -> None:
 # to end here; webServer/wasm/sqlite/http targets are rejected with a clear
 # message rather than mis-lowered.
 
-from llvmlite import ir
-import llvmlite.binding as llvm
+# R-116: the LLVM backend is imported lazily-tolerant. llvmlite is only needed by
+# the lower/run/build/emit-ir backend paths; the source lane (check/lint/fmt), the
+# agent/version surfaces, and crucially `readiness` must import and run WITHOUT it,
+# so a missing/broken llvmlite reports a clean degraded status instead of aborting
+# the whole module with an ImportError traceback before main() can dispatch. ir /
+# llvm stay None when absent; backend entry points call _require_llvmlite().
+try:
+    from llvmlite import ir
+    import llvmlite.binding as llvm
+    _LLVMLITE_AVAILABLE = True
+except ImportError:
+    ir = None
+    llvm = None
+    _LLVMLITE_AVAILABLE = False
+
+
+def _require_llvmlite() -> None:
+    """R-116: gate a backend (codegen/JIT/native-build) path on llvmlite. Raises a
+    structured EavError — not an AttributeError on a None `ir` — when the LLVM
+    backend is unavailable, so a degraded environment fails with a clear tool
+    error and `readiness --json` can report `ok:false`/`llvmlite:false`."""
+    if not _LLVMLITE_AVAILABLE:
+        raise EavError(
+            "the LLVM backend (llvmlite) is not installed, so lower/run/build/"
+            "emit-ir cannot proceed; install llvmlite, or use the source-lane "
+            "commands (check/lint/fmt). Run `readiness --json` for the degraded "
+            "environment status (R-116).")
+
 
 # Built-in primitive types (README ss10) — usable with no `is` row. `Byte` is a
 # primitive synonym for `UInt8`.
@@ -8432,19 +8458,28 @@ PRIMITIVE_TYPES = {
 
 # EAV primitive type name -> llvmlite IR type. `ExitCode` is the conventional
 # `alias for Int32`, resolved here so console entries lower without a type row.
-_PRIMITIVE_IR = {
-    "Int8": ir.IntType(8), "UInt8": ir.IntType(8), "Byte": ir.IntType(8),
-    "Int16": ir.IntType(16), "UInt16": ir.IntType(16),
-    "Int32": ir.IntType(32), "UInt32": ir.IntType(32), "ExitCode": ir.IntType(32),
-    "Int64": ir.IntType(64), "UInt64": ir.IntType(64),
-    "Float32": ir.FloatType(), "Float64": ir.DoubleType(),
-    "Bool": ir.IntType(1),
-    "String": ir.IntType(8).as_pointer(),
-    "Void": ir.VoidType(),
-    # FFI interim (README ss30.4.1): opaque handles are carried as UInt64.
-    "OpaquePointer": ir.IntType(64),
-    "FileHandle": ir.IntType(64),
-}
+# R-116: built lazily + cached so importing this module does not touch llvmlite —
+# only the codegen reads it, and that path already requires the backend.
+_PRIMITIVE_IR_CACHE = None
+
+
+def _primitive_ir():
+    global _PRIMITIVE_IR_CACHE
+    if _PRIMITIVE_IR_CACHE is None:
+        _PRIMITIVE_IR_CACHE = {
+            "Int8": ir.IntType(8), "UInt8": ir.IntType(8), "Byte": ir.IntType(8),
+            "Int16": ir.IntType(16), "UInt16": ir.IntType(16),
+            "Int32": ir.IntType(32), "UInt32": ir.IntType(32), "ExitCode": ir.IntType(32),
+            "Int64": ir.IntType(64), "UInt64": ir.IntType(64),
+            "Float32": ir.FloatType(), "Float64": ir.DoubleType(),
+            "Bool": ir.IntType(1),
+            "String": ir.IntType(8).as_pointer(),
+            "Void": ir.VoidType(),
+            # FFI interim (README ss30.4.1): opaque handles are carried as UInt64.
+            "OpaquePointer": ir.IntType(64),
+            "FileHandle": ir.IntType(64),
+        }
+    return _PRIMITIVE_IR_CACHE
 
 _FLOAT_TYPE_NAMES = {"Float32", "Float64"}
 
@@ -8606,8 +8641,8 @@ class EavCodegen:
 
     def ir_type(self, name: str) -> ir.Type:
         resolved = self.resolve_type_name(name)
-        if resolved in _PRIMITIVE_IR:
-            return _PRIMITIVE_IR[resolved]
+        if resolved in _primitive_ir():
+            return _primitive_ir()[resolved]
         ent = self.program.entities.get(resolved)
         if ent is not None and ent.kind == "record":
             return self._record_layout(ent)[0]
@@ -8645,8 +8680,8 @@ class EavCodegen:
         if resolved == "Bool":
             return ir.Constant(ir.IntType(1), 1 if tok == "true" else 0)
         if resolved in _FLOAT_TYPE_NAMES:
-            return ir.Constant(_PRIMITIVE_IR[resolved], float(tok))
-        return ir.Constant(_PRIMITIVE_IR.get(resolved, ir.IntType(64)),
+            return ir.Constant(_primitive_ir()[resolved], float(tok))
+        return ir.Constant(_primitive_ir().get(resolved, ir.IntType(64)),
                            _parse_int_literal_value(tok))
 
     def _literal_tokens_for_storage(self, st: Entity, seen=None):
@@ -8695,9 +8730,9 @@ class EavCodegen:
                 self.module_storage[st.name] = (
                     self.global_string(text.encode("utf-8") + b"\x00"), "String")
                 return
-        if resolved not in _PRIMITIVE_IR:
+        if resolved not in _primitive_ir():
             return  # non-primitive module storage (e.g. SqlText) not modeled here
-        gv = ir.GlobalVariable(self.module, _PRIMITIVE_IR[resolved], name=st.name)
+        gv = ir.GlobalVariable(self.module, _primitive_ir()[resolved], name=st.name)
         gv.linkage = "internal"
         mut = st.fact("mutability")
         gv.global_constant = bool(
@@ -8707,7 +8742,7 @@ class EavCodegen:
         if value_tokens:
             gv.initializer = self._const_value(resolved, value_tokens)
         else:
-            pt = _PRIMITIVE_IR[resolved]
+            pt = _primitive_ir()[resolved]
             # a pointer (String) zero-init is `null`, not the integer 0
             gv.initializer = ir.Constant(pt, None if isinstance(pt, ir.PointerType) else 0)
         self.module_storage[st.name] = (gv, type_row.payload[0])
@@ -10994,6 +11029,7 @@ def lower_to_llvm(program: Program, platform: Optional[str] = None) -> ir.Module
     """Lower a parsed EAV Program to an llvmlite ir.Module (console model). R-017:
     `platform` names a declared `platform` entity to build for (host default when
     None) — it sets the module triple and applies `forPlatform` filtering."""
+    _require_llvmlite()  # R-116: clean error if the backend is unavailable
     plat = _resolve_build_platform(program, platform)
     return EavCodegen(program, plat).generate()
 
@@ -11002,6 +11038,7 @@ _NATIVE_INIT_DONE = False
 
 
 def _ensure_native_init() -> None:
+    _require_llvmlite()  # R-116: gate the JIT/native-target init on the backend
     global _NATIVE_INIT_DONE
     if not _NATIVE_INIT_DONE:
         llvm.initialize_native_target()

@@ -4666,6 +4666,46 @@ def test_cross_module_storage_initializer_resolves():
     assert proc.stdout.strip() == "todo-row todo-row-done"
 
 
+def test_readiness_works_without_llvmlite():
+    # R-116: llvmlite is imported lazily-tolerant, so the module imports and the
+    # lightweight lanes run even when the LLVM backend is absent — `readiness`
+    # reports ok:false/llvmlite:false with NO import traceback, while a backend
+    # command fails with a structured tool error (not an AttributeError on None).
+    import json as _json
+    driver = (
+        "import sys, io, json\n"
+        "class _B:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name == 'llvmlite' or name.startswith('llvmlite.'):\n"
+        "            raise ModuleNotFoundError('blocked: ' + name)\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, _B())\n"
+        "for m in [k for k in list(sys.modules) if k=='llvmlite' or k.startswith('llvmlite.')]:\n"
+        "    del sys.modules[m]\n"
+        "sys.path.insert(0, %r)\n" % os.path.join(ROOT, "semanticscript", "compiler") +
+        "import semanticscript as s\n"
+        "assert s._LLVMLITE_AVAILABLE is False\n"
+        "def run(a):\n"
+        "    b,e=io.StringIO(),io.StringIO(); o,r=sys.stdout,sys.stderr\n"
+        "    sys.stdout,sys.stderr=b,e\n"
+        "    try: rc=s.main(a)\n"
+        "    except SystemExit as x: rc=x.code\n"
+        "    finally: sys.stdout,sys.stderr=o,r\n"
+        "    return rc,b.getvalue(),e.getvalue()\n"
+        "rc,out,err=run(['readiness','--json'])\n"
+        "body=json.loads(out)\n"
+        "assert body['ok'] is False and body['llvmlite'] is False, body\n"
+        "assert 'Traceback' not in err\n"
+        "rc,out,_=run(['version','--json']); assert rc==0 and out.strip().startswith('{')\n"
+        "rc,out,err=run(['run','-'])\n"
+        "assert 'llvmlite' in (out+err).lower() and 'Traceback' not in err, (out,err)\n"
+        "print('R116-OK')\n"
+    )
+    p = subprocess.run([sys.executable, "-c", driver], capture_output=True,
+                       text=True, encoding="utf-8")
+    assert p.returncode == 0 and "R116-OK" in p.stdout, (p.stdout, p.stderr)
+
+
 def test_frozen_executable_packaging():
     # X-025: the packager exists and semanticscript is frozen-path-aware; if a built exe is
     # present (dist/semanticscript[.exe] from `python package.py`), it runs standalone.
