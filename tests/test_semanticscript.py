@@ -567,6 +567,25 @@ def test_fallible_call_without_error_path_warns():
     assert "SS3501" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
+def test_ifout_on_fallible_before_error_warns():
+    base = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let a immutable Int64 1\nmain let zero immutable Int64 0\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do risky\nmain branch ifOut risky equals zero goto matched\n"
+        "main return okCode\nmain at matched return okCode\n"
+        "risky is call\nrisky in main\nrisky invokes math.addInt64\n"
+        "risky arg left Int64 a\nrisky arg right Int64 a\n"
+        "risky out result Int64\n"
+    )
+
+    fallible = base + "risky catch e SomeError\nSomeError is error\n"
+    assert "SS3600" in {d.code for d in semanticscript.lint(semanticscript.parse(fallible))}
+
+    non_fallible = semanticscript.lint(semanticscript.parse(base))
+    assert "SS3600" not in {d.code for d in non_fallible}
+
+
 def test_build_sem_full_grammar_parses():
     # WS3-030: the full build.sem manifest grammar parses.
     prog = semanticscript.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
