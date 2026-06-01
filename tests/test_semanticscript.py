@@ -523,7 +523,12 @@ def test_build_sem_lock_parses_with_lock_predicates():
 
 def _example_files():
     import glob
-    return sorted(glob.glob(os.path.join(EXAMPLES, "*.sem")))
+    # Compile-time negatives are rejected before lowering (e.g. div_by_zero_trap
+    # trips SS3111 on a constant 0 divisor), so they cannot pass the parse/lower
+    # lanes of the matrix. run_examples.py exercises them via its HARD_NEG path.
+    compile_negatives = {"div_by_zero_trap.sem"}
+    return sorted(p for p in glob.glob(os.path.join(EXAMPLES, "*.sem"))
+                  if os.path.basename(p) not in compile_negatives)
 
 
 @pytest.mark.parametrize("path", _example_files())
@@ -720,7 +725,7 @@ def test_compact_expands_parses_and_runs(tmp_path):
     src_file.write_bytes(eav_text.encode("utf-8"))
     out = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", str(src_file)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "hi"
@@ -885,7 +890,7 @@ def test_trace_lists_steps_and_bindings():
     text = "\n".join(lines)
     assert "do answerCall -> answerValue" in text
     assert "do writeAnswer" in text
-    assert "return successExitCode" in text
+    assert "return harnessSummaryCode" in text
     # live binding set grows as bindings are introduced
     assert any("answerValue" in l and "live:" in l for l in lines)
 
@@ -1058,7 +1063,7 @@ def test_slice_reparses():
     prog = semanticscript.parse(open(os.path.join(EXAMPLES, "countdown.sem"), encoding="utf-8").read())
     text = semanticscript.slice_entity(prog, "main")
     re = semanticscript.parse(text)
-    assert "main" in re.entities and "checkContinue" in re.entities
+    assert "main" in re.entities and "checkGoing" in re.entities
 
 
 def test_lsp_completions_per_kind():
@@ -1251,10 +1256,15 @@ def test_lint_json_cli():
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "lint", "--json",
          os.path.join(EXAMPLES, "hello_world.sem")],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     import json as _json
-    assert _json.loads(proc.stdout) == [] or isinstance(_json.loads(proc.stdout), list)
+    # `lint --json` emits the sem.lint.v1 envelope; the clean keystone reports
+    # ok with an empty diagnostics list.
+    payload = _json.loads(proc.stdout)
+    assert payload["surface"] == "sem.lint.v1"
+    assert payload["ok"] is True
+    assert payload["diagnostics"] == []
 
 
 def test_diagnostics_registry_round_trip():
@@ -1262,7 +1272,7 @@ def test_diagnostics_registry_round_trip():
     assert semanticscript.DIAGNOSTICS
     for code, entry in semanticscript.DIAGNOSTICS.items():
         assert code[:2] in ("SS", "MD")
-        assert entry["tier"] in ("T0", "T1", "T3", "T4")
+        assert entry["tier"] in ("T0", "T1", "T2", "T3", "T4")
         for field in ("summary", "found", "suggested"):
             assert entry[field]
         assert semanticscript.explain(code) is entry
@@ -1284,7 +1294,7 @@ def test_lint_explain_cli_registry_backed():
     # WS4-023: `lint --explain CODE` prints the registry rationale + pattern.
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "lint", "--explain", "SS1041"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0
     assert "SS1041" in proc.stdout and "Suggested fix:" in proc.stdout
@@ -1907,7 +1917,9 @@ def test_lower_webserver_target_rejected():
     src = "W is project\nW module m\nW target webServer\nW entry s\nm is module\nm path a.b\n"
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.lower_to_llvm(semanticscript.parse(src))
-    assert "console code generator" in exc.value.message
+    # webServer codegen is implemented, so a webServer project that declares no
+    # webServer entity is rejected with that specific diagnostic.
+    assert "webServer target has no webServer entity" in exc.value.message
 
 
 def test_lower_mutable_rebind_stores_to_alloca():
@@ -1929,7 +1941,9 @@ def test_div_by_zero_emits_trap_guard():
     )
     ir_text = _ir_for_source(src)
     assert "divByZero:" in ir_text
-    assert 'call void @"llvm.trap"()' in ir_text
+    # The guard routes to the structured-trap helper `ss_panic` (a named SSR####
+    # report), not a bare llvm.trap, so a runtime divide-by-zero is observable.
+    assert "ss_panic" in ir_text
     assert "sdiv i64" in ir_text
 
 
@@ -2442,7 +2456,7 @@ def test_random_seeded_sequence_is_deterministic():
     composed = stdlib + "\n" + _RANDOM_SEQ_MAIN
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=composed, capture_output=True, text=True,
+        input=composed, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "7806831264735756412"  # LCG(seed=1)
@@ -2516,7 +2530,7 @@ def test_clock_pure_conversion_jit_runs():
     composed = stdlib + "\n" + _CLOCK_CONV_MAIN
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=composed, capture_output=True, text=True,
+        input=composed, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "2"  # 120s -> 2min
@@ -2587,7 +2601,7 @@ def test_process_exit_returns_code_through_runtime():
     composed = stdlib + "\n" + _PROCESS_EXIT_MAIN.format(cap=cap)
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=composed, capture_output=True, text=True,
+        input=composed, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 3
 
@@ -2622,7 +2636,7 @@ def test_math_int_ops_jit_run():
     )
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=src, capture_output=True, text=True,
+        input=src, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "3"  # popcount(7) == 3
@@ -2648,7 +2662,7 @@ def test_math_float_sqrt_jit_run():
     assert "llvm.sqrt" in ir_text
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=src, capture_output=True, text=True,
+        input=src, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "4"  # sqrt(16.0) == 4
@@ -2843,7 +2857,7 @@ def test_project_constant_bare_read_jit_runs():
     # lowers to its build value.
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_constant_program(), capture_output=True, text=True,
+        input=_constant_program(), capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "5"
@@ -3589,7 +3603,7 @@ def test_set_step_assigns_mutable_and_runs():
     assert "store" in ir
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_SET_STEP_SRC, capture_output=True, text=True,
+        input=_SET_STEP_SRC, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "42"
@@ -3648,7 +3662,7 @@ def test_inline_storage_declaration_runs():
     assert not [d.render() for d in semanticscript.lint(prog) if d.severity == "error"]
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_INLINE_STORAGE_SRC, capture_output=True, text=True,
+        input=_INLINE_STORAGE_SRC, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "7"
@@ -3671,7 +3685,7 @@ def test_html_render_full_document():
     assert "ss_http_html_escape_str" in ir  # holes are auto-escaped
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_HTML_RENDER_SRC, capture_output=True, text=True)
+        input=_HTML_RENDER_SRC, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "<h1>Hi &lt;b&gt;x&lt;/b&gt;</h1><p>A &amp; B</p>"
 
@@ -3710,7 +3724,7 @@ def test_html_render_fragment_hole_inserted_raw():
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_FRAGMENT_NEST_SRC)))
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_FRAGMENT_NEST_SRC, capture_output=True, text=True)
+        input=_FRAGMENT_NEST_SRC, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     # the fragment is nested raw; the sibling String hole is still escaped
     assert proc.stdout.strip() == "<div><b>x</b></div><p>a&lt;i&gt;b</p>"
@@ -3739,7 +3753,7 @@ def test_cross_module_storage_initializer_resolves():
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_CONST_ALIAS_SRC)))
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_CONST_ALIAS_SRC, capture_output=True, text=True)
+        input=_CONST_ALIAS_SRC, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "todo-row todo-row-done"
 
@@ -3752,10 +3766,10 @@ def test_frozen_executable_packaging():
     exe = os.path.join(ROOT, "semanticscript", "packaging", "dist", "semanticscript" + (".exe" if sys.platform == "win32" else ""))
     if not os.path.exists(exe):
         pytest.skip("standalone exe not built (run `python package.py`)")
-    ver = subprocess.run([exe, "version", "--json"], capture_output=True, text=True)
+    ver = subprocess.run([exe, "version", "--json"], capture_output=True, text=True, encoding="utf-8")
     assert ver.returncode == 0 and semanticscript.CONTRACT_VERSION in ver.stdout
     run = subprocess.run([exe, "run", os.path.join(EXAMPLES, "hello_world.sem")],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8")
     assert run.returncode == 0 and "hello world" in run.stdout
 
 
@@ -3866,9 +3880,12 @@ def test_check_workspace_root_isolates_fixtures(capsys):
     not_clean = [c for c in children if not c["ok"]]
     assert not_clean == [], not_clean
     assert payload["ok"] is True and rc == 0
-    # apps appear as composed project units, libraries/examples as standalone files
+    # every child is classified as a composed project unit (a dir with a
+    # build.sem, e.g. tests/manifests) or a standalone file — never the
+    # recursively-globbed fixture soup. tests/ holds the manifests project.
     kinds = {c["kind"] for c in children}
-    assert {"project", "file"} <= kinds
+    assert kinds and kinds <= {"project", "file"}
+    assert "project" in kinds
 
 
 def test_load_project_non_project_dir_does_not_recurse(tmp_path):
@@ -3962,7 +3979,7 @@ def test_project_directory_resolution(tmp_path, capsys):
     assert "is project" in composed and "writeGreeting" in composed
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", str(root)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0 and "hello from Multi" in proc.stdout
 
 
@@ -3984,7 +4001,7 @@ def test_new_project_scaffold(tmp_path, capsys):
     assert "is project" not in main_src and "is module" in main_src
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", str(root)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0 and "hello from Demoapp" in proc.stdout
     # the test stub runs green
     test_src = (root / "src" / "main.test.sem").read_text(encoding="utf-8")
@@ -4111,7 +4128,7 @@ def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
     assert semanticscript.main(["new", str(root)]) == 0
     check = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "check", "--json", str(root)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8")
     assert "Traceback (most recent call last)" not in check.stderr, check.stderr
     payload = json.loads(check.stdout)
     assert payload["status"] in ("ok", "ok-with-warnings")
@@ -4122,7 +4139,7 @@ def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
         argv = c["argv"]
         rp = subprocess.run(
             [sys.executable, SEMANTICSCRIPT] + argv,
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8")
         assert "Traceback (most recent call last)" not in rp.stderr, \
             f"replay {argv} crashed:\n{rp.stderr}"
         if argv[0] == "test":
@@ -4385,7 +4402,7 @@ def test_eval_snippet_jit(tmp_path):
     import json
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "eval", str(snip)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     payload = json.loads(proc.stdout)
@@ -4526,10 +4543,16 @@ def test_coverage_floor_probe():
     try:
         for path in glob.glob(os.path.join(EXAMPLES, "*.sem")):
             src = open(path, encoding="utf-8").read()
-            prog = semanticscript.parse(src)
-            semanticscript.lint(prog)
-            str(semanticscript.lower_to_llvm(prog))
-            semanticscript.format_program(prog)
+            try:
+                prog = semanticscript.parse(src)
+                semanticscript.lint(prog)
+                str(semanticscript.lower_to_llvm(prog))
+                semanticscript.format_program(prog)
+            except semanticscript.EavError:
+                # Compile-time negatives (e.g. div_by_zero_trap's SS3111) are
+                # expected to raise; the rejection path still exercises the
+                # compiler, so keep probing the rest of the corpus.
+                continue
     finally:
         sys.settrace(old)
     # Floor below the current ~1570; regressing the example workload's reach
@@ -4576,7 +4599,7 @@ def test_stdlib_clock_minutes_to_seconds_pure_op():
     )
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=stdlib + "\n" + main, capture_output=True, text=True,
+        input=stdlib + "\n" + main, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "180"  # 3 min -> 180 s
@@ -4662,7 +4685,7 @@ def test_async_branch_guard_codegen():
         assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(src)))
         proc = subprocess.run(
             [sys.executable, SEMANTICSCRIPT, "run", "-"],
-            input=src, capture_output=True, text=True,
+            input=src, capture_output=True, text=True, encoding="utf-8",
         )
         assert proc.returncode == 0, proc.stderr
     # ifError on a call with no catch is rejected (SS1041)
@@ -5724,7 +5747,7 @@ def test_shared_state_guarded_access_jit_runs():
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(src)))
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=src, capture_output=True, text=True)
+        input=src, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "7"
 
@@ -5782,7 +5805,7 @@ def test_region_arena_allocates_and_frees_jit_runs():
     assert ir.count('call void @"free"') >= 2  # one free per allocated slab
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_ARENA_SRC, capture_output=True, text=True)
+        input=_ARENA_SRC, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
 
 
@@ -6001,7 +6024,7 @@ def test_standard_memory_contract_and_impl():
     # the in-language impl (the region construct) JIT-runs allocate-many/free-once
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_ARENA_SRC, capture_output=True, text=True)
+        input=_ARENA_SRC, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
 
 
@@ -6047,7 +6070,7 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert not any(d.severity == "error" for d in semanticscript.lint(semanticscript.parse(_BUFFER_RUNTIME_SRC)))
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=_BUFFER_RUNTIME_SRC, capture_output=True, text=True)
+        input=_BUFFER_RUNTIME_SRC, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert "4" in proc.stdout      # buffer.length
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
@@ -6323,7 +6346,7 @@ def test_contract_runtime_value_emits_check():
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
         input=src.replace("Chg target console\nChg entry main\n",
                           "Chg target console\nChg entry main\n"),
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode != 0  # the precondition trap fired
 
 
@@ -6860,7 +6883,7 @@ def _semanticscript_run(name: str):
          os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py"),
          "run", os.path.join(EXAMPLES, name)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         cwd=ROOT,  # CWD-relative compile-time paths (asset_embed) resolve from root
     )
     return proc
@@ -6953,7 +6976,7 @@ def test_list_pure_length_predicate_jit_runs():
     )
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=stdlib + "\n" + main, capture_output=True, text=True,
+        input=stdlib + "\n" + main, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "1"  # length 0 -> isEmpty true
@@ -7036,7 +7059,7 @@ def test_json_semsig_contract_and_enum_discriminant():
     )
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=src, capture_output=True, text=True,
+        input=src, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "2"
@@ -7082,7 +7105,7 @@ def test_e2e_http_url_codec_roundtrip_through_real_runtime():
     composed = stdlib + "\n" + _HTTP_CODEC_MAIN
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=composed, capture_output=True, text=True,
+        input=composed, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "a b&c=d"
@@ -7124,7 +7147,7 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     composed = stdlib + "\n" + _SQLITE_ROUNDTRIP_MAIN
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=composed, capture_output=True, text=True,
+        input=composed, capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "eav"
@@ -7150,9 +7173,13 @@ def test_app_http_runtime_gauntlet_full_port():
     diags = semanticscript.lint(prog)
     assert not [d.render() for d in diags if d.severity == "error"]
     assert not [d.render() for d in diags if d.severity != "error"]
-    # the deferred server is gated at codegen, not lint
-    with pytest.raises(semanticscript.EavError):
-        semanticscript.lower_to_llvm(prog)
+    # webServer codegen is implemented: the full port lowers to verifiable
+    # LLVM IR that drives the native http runtime (ss_http_serve).
+    import llvmlite.binding as llvm
+    semanticscript._ensure_native_init()
+    ir = str(semanticscript.lower_to_llvm(prog))
+    llvm.parse_assembly(ir).verify()
+    assert "ss_http_serve" in ir
 
 
 _DYNAMIC_ROUTE_SERVER = """
@@ -7540,7 +7567,7 @@ def test_app_html_template_lab_jit_runs():
 
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", "-"],
-        input=semanticscript.load_project(web), capture_output=True, text=True,
+        input=semanticscript.load_project(web), capture_output=True, text=True, encoding="utf-8",
     )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
@@ -7563,7 +7590,7 @@ def test_app_html_template_lab_builds_exe(tmp_path):
     src = semanticscript.load_project(os.path.join(APPS, "html-template-lab"))
     out = str(tmp_path / ("htmllab" + (".exe" if sys.platform == "win32" else "")))
     semanticscript.build_executable(semanticscript.parse(src), out)
-    proc = subprocess.run([out], capture_output=True, text=True)
+    proc = subprocess.run([out], capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert "<!doctype html>" in proc.stdout
     assert '<section class="todo-list-region"' in proc.stdout  # raw-nested fragment
@@ -7577,7 +7604,7 @@ def test_build_native_executable_runs(tmp_path):
     prog = semanticscript.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
     semanticscript.build_executable(prog, out)
     assert os.path.exists(out)
-    proc = subprocess.run([out], capture_output=True, text=True)
+    proc = subprocess.run([out], capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert "hello world" in proc.stdout
 
@@ -7589,8 +7616,9 @@ def test_e2e_runtime_binding_calls_libc_symbol():
     # after the op, leaving the symbol unresolved) could not produce 7.
     proc = _semanticscript_run("runtime_binding.sem")
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "7"
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_runtime_binding_extern_named_after_symbol():
     # The extern is named after the bound ABI symbol, and a call targets it.
@@ -7603,8 +7631,9 @@ def test_e2e_ifvalue_comparison_branch():
     # WS1-066: `branch ifValue X equals Y goto L` lowers to compare + branch.
     proc = _semanticscript_run("ifvalue.sem")
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "equal"
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_ifvalue_lowers_to_icmp_branch():
     ir_text = _ir_for("ifvalue.sem")
@@ -7616,8 +7645,9 @@ def test_e2e_compound_condition_sequential_guards():
     # README ss33.4: A AND B is two sequential guards (no and/or keyword).
     proc = _semanticscript_run("compound.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "both positive" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_no_and_or_guard_keyword():
     # `and`/`or` are not guards; a branch using them is rejected.
@@ -7735,15 +7765,17 @@ def test_e2e_variant_match():
     # WS1-063: ifVariant narrows a payloadless enum by discriminant.
     proc = _semanticscript_run("variant_match.sem")
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "is done"
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_operation_reference_indirect_call():
     # WS1-036/056: operationType binding invoked indirectly -> 42.
     proc = _semanticscript_run("operation_ref.sem")
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "42"
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_operationtype_indirect_call_lowers():
     ir_text = _ir_for("operation_ref.sem")
@@ -7787,8 +7819,9 @@ def test_e2e_assert_and_test_and():
     # WS3-019/020: assert.equalInt64 -> Bool, folded by test.and; prints 1.
     proc = _semanticscript_run("assert_demo.sem")
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "1"
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_assert_lowers_to_icmp_and_test_and():
     ir_text = _ir_for("assert_demo.sem")
@@ -7800,8 +7833,9 @@ def test_e2e_string_concat():
     # WS3-015: string.concat via libc malloc/strlen/strcpy/strcat.
     proc = _semanticscript_run("string_concat.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "Hello, world" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_string_concat_lowers_via_libc():
     ir_text = _ir_for("string_concat.sem")
@@ -7884,9 +7918,9 @@ def test_e2e_defer_reverse_order():
     # README §15.6/§33.8: defers run last-registered-first, after the body.
     proc = _semanticscript_run("defer_order.sem")
     assert proc.returncode == 0, proc.stderr
-    lines = [l for l in proc.stdout.splitlines() if l.strip()]
-    assert lines == ["work", "second", "first"]
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_convert_widen_runs():
     # WS1-095/WS3-014: convert.toInt64 widens Int32 -> Int64 (sext).
@@ -7932,8 +7966,9 @@ def test_e2e_overflow_wraps_twos_complement():
 def test_e2e_countdown_runs():
     proc = _semanticscript_run("countdown.sem")
     assert proc.returncode == 0, proc.stderr
-    assert [ln for ln in proc.stdout.splitlines() if ln.strip()] == ["3", "2", "1"]
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_noop_codegen_would_fail():
     """Guard: the e2e/IR tests are not vacuous.
@@ -8502,16 +8537,18 @@ def test_x116_convert_int_paths():
         "widen arg v Int32 smallValue\nwiden out wideValue Int64\n"
         "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 wideValue\n")
     assert sext == "200"
-    # trunc Int64 -> Int32: low 32 bits of 4294967303 == 7, widened back to print
+    # trunc Int64 -> Int32 of an in-range value round-trips exactly. Narrowing is
+    # checked (WS1-131/R-076): a value that does not fit Int32 would trap
+    # (SSR0012), so this exercises the non-overflowing trunc->sext round-trip.
     trunc = _run_codegen_program(
-        "main let bigValue immutable Int64 4294967303\nmain let okCode immutable ExitCode 0\n"
+        "main let bigValue immutable Int64 305419896\nmain let okCode immutable ExitCode 0\n"
         "main do narrow\nmain do rewiden\nmain do show\nmain return okCode\n",
         "narrow is call\nnarrow in main\nnarrow invokes convert.toInt32\n"
         "narrow arg v Int64 bigValue\nnarrow out narrowValue Int32\n"
         "rewiden is call\nrewiden in main\nrewiden invokes convert.toInt64\n"
         "rewiden arg v Int32 narrowValue\nrewiden out wideValue Int64\n"
         "show is call\nshow in main\nshow invokes console.writeIntegerLine\nshow arg value Int64 wideValue\n")
-    assert trunc == "7"
+    assert trunc == "305419896"
 
 
 def test_x116_convert_float_paths():
@@ -8714,7 +8751,7 @@ def test_mcp_stdio_session_round_trips_and_errors():
     ]
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "mcp"],
-        input="\n".join(requests) + "\n", capture_output=True, text=True)
+        input="\n".join(requests) + "\n", capture_output=True, text=True, encoding="utf-8")
     assert "Traceback (most recent call last)" not in proc.stderr, proc.stderr
     responses = [json.loads(ln) for ln in proc.stdout.splitlines() if ln.strip()]
     by_id = {r.get("id"): r for r in responses}
@@ -8752,7 +8789,7 @@ def test_new_project_name_normalization_and_runs(tmp_path):
     # and runs, greeting with the PascalCase name
     proc = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "run", str(root)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr
     assert "hello from MyCoolApp2" in proc.stdout
 
@@ -8790,10 +8827,10 @@ def test_x117_native_build_matches_jit_run(tmp_path):
         prog = semanticscript.parse(open(path, encoding="utf-8").read())
         exe = str(tmp_path / (example.replace(".sem", "") + suffix))
         semanticscript.build_executable(prog, exe)
-        native = subprocess.run([exe], capture_output=True, text=True)
+        native = subprocess.run([exe], capture_output=True, text=True, encoding="utf-8")
         jit = subprocess.run(
             [sys.executable, SEMANTICSCRIPT, "run", path],
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8")
         assert native.stdout.splitlines() == jit.stdout.splitlines(), \
             f"{example}: native {native.stdout!r} vs jit {jit.stdout!r}"
         assert native.returncode == jit.returncode, example
@@ -8837,11 +8874,13 @@ def test_x118_cli_conformance_new_subcommands(capsys):
         out = capsys.readouterr().out
         assert rc in codes, (argv, rc)
         assert json.loads(out)["surface"] == surface, argv
-    # lint --json emits a diagnostics array (list), not a sem.*.v1 envelope
+    # lint --json emits the sem.lint.v1 envelope with a diagnostics array
     rc = semanticscript.main(["lint", hello, "--json"])
     lint_out = capsys.readouterr().out
     assert rc == 0
-    assert isinstance(json.loads(lint_out), list)
+    lint_payload = json.loads(lint_out)
+    assert lint_payload["surface"] == "sem.lint.v1"
+    assert isinstance(lint_payload["diagnostics"], list)
     # doctor emits a human (non-JSON) report and exits cleanly
     rc = semanticscript.main(["doctor", hello])
     doctor_out = capsys.readouterr().out
@@ -9472,7 +9511,7 @@ def test_r080_check_json_surfaces_typed_comments(tmp_path):
     path.write_text(src, encoding="utf-8")
     out = subprocess.run(
         [sys.executable, SEMANTICSCRIPT, "check", "--json", str(path)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     payload = json.loads(out.stdout)
     tags = {c["tag"] for c in payload.get("typedComments", [])}
@@ -9955,14 +9994,20 @@ def test_ws2_091_over_declared_effect_warns_t3_and_runs():
 
 def test_ws2_071_t3_warning_runs_by_default():
     """A program with a T3 opinionated warning runs by default (no --strict).
-    This uses a private op with no `purpose` (MD1021 = T3 advisory)."""
+    This uses a private op with no `purpose` (MD1021 = T3 advisory). `main` itself
+    is fully documented so only the private `helper` trips MD1021 — an exported/
+    entry op with no purpose would be a T1 error (MD1011), not the T3 advisory."""
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
-        'm is module\nm path examples.strict\nm purpose "m"\nm invariant "i"\n'
-        'm exports main\n'
-        "main is operation\n"  # no purpose → MD1021 (T3)
-        "main out ExitCode\nmain async no\n"
-        "main let code immutable ExitCode 0\nmain return code\n"
+        'm is module\nm path examples.strict\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        # private op (not exported/entry) with no purpose → MD1021 (T3 advisory)
+        "helper is operation\nhelper in n ExitCode\nhelper out ExitCode\n"
+        "helper async no\nhelper return n\n"
+        'main is operation\nmain out ExitCode\nmain async no\n'
+        'main purpose "entry"\nmain invariant "ret"\n'
+        "main let zero immutable ExitCode 0\nmain do callHelper\nmain return code\n"
+        "callHelper is call\ncallHelper in main\ncallHelper invokes helper\n"
+        "callHelper arg n ExitCode zero\ncallHelper out code ExitCode\n"
     )
     prog = semanticscript.parse(src)
     diags = semanticscript.lint(prog)
@@ -9978,11 +10023,15 @@ def test_ws2_071_t3_warning_blocked_under_strict():
     """The same T3 program fails when --strict is enabled (blocks T3 opinionated warnings)."""
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
-        'm is module\nm path examples.strict\nm purpose "m"\nm invariant "i"\n'
-        'm exports main\n'
-        "main is operation\n"  # no purpose → MD1021 (T3)
-        "main out ExitCode\nmain async no\n"
-        "main let code immutable ExitCode 0\nmain return code\n"
+        'm is module\nm path examples.strict\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        # private op (not exported/entry) with no purpose → MD1021 (T3 advisory)
+        "helper is operation\nhelper in n ExitCode\nhelper out ExitCode\n"
+        "helper async no\nhelper return n\n"
+        'main is operation\nmain out ExitCode\nmain async no\n'
+        'main purpose "entry"\nmain invariant "ret"\n'
+        "main let zero immutable ExitCode 0\nmain do callHelper\nmain return code\n"
+        "callHelper is call\ncallHelper in main\ncallHelper invokes helper\n"
+        "callHelper arg n ExitCode zero\ncallHelper out code ExitCode\n"
     )
     prog = semanticscript.parse(src)
     diags = semanticscript.lint(prog)
@@ -10004,10 +10053,12 @@ def test_ws2_071_t0_t1_t2_always_block():
     except semanticscript.EavError:
         pass  # Expected
     # Filtering T0/T1/T2 severity should not change
+    # An exported/entry operation missing its `purpose` is a T1 error (MD1011).
     src_with_t1 = (
-        "P is project\nP module m\nP target console\n"
-        "m is module\nm path m\n"
-        "main is operation\nmain invokes unknown.target\n"  # T1 unresolved target
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path m\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"  # no purpose → MD1011 (T1)
+        "main let code immutable ExitCode 0\nmain return code\n"
     )
     prog = semanticscript.parse(src_with_t1)
     diags = semanticscript.lint(prog)
@@ -10134,8 +10185,9 @@ def test_e2e_float_nan_compare():
     Outputs a float value (3.14)."""
     proc = _semanticscript_run("float_nan_compare.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "3.14" in proc.stdout or "3" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_compare_integers():
     """X-201: compare operations on integers (less-than, equal, greater-than).
@@ -10190,16 +10242,18 @@ def test_e2e_branch_else_goto():
     Tests else branch and goto (outputs 1)."""
     proc = _semanticscript_run("branch_else_goto.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "1" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_retry_loop_bounded():
     """X-202: retryLoopBounded — bounded retry loop (respects max attempts).
     Outputs retry count (3)."""
     proc = _semanticscript_run("retry_loop_bounded.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "3" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_compound_or():
     """X-202: compoundOr — compound OR condition via sequential guards.
@@ -10240,8 +10294,9 @@ def test_e2e_repr_enum_flags():
     Uses enum repr for bit flags (outputs 1 for read permission)."""
     proc = _semanticscript_run("repr_enum_flags.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "1" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_generic_container_arity():
     """X-203: genericContainerArity — generic container type with arity.
@@ -10256,24 +10311,27 @@ def test_e2e_tuple_field_access():
     Tuple field indexing (outputs 10)."""
     proc = _semanticscript_run("tuple_field_access.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "10" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_variant_tag_payload():
     """X-203: variantTagPayload — variant with tag and payload.
     Discriminated unions (outputs 1)."""
     proc = _semanticscript_run("variant_tag_payload.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "1" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_pattern_match_exhaustive():
     """X-203: patternMatchExhaustive — exhaustive pattern matching.
     Pattern coverage checking (outputs 1)."""
     proc = _semanticscript_run("pattern_match_exhaustive.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "1" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_type_constraint_bound():
     """X-203: typeConstraintBound — type constraints and bounds.
@@ -10290,8 +10348,9 @@ def test_e2e_function_signature_arity():
     Operation with multiple input/output parameters (outputs 8)."""
     proc = _semanticscript_run("function_signature_arity.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "8" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_higher_order_call():
     """X-204: higherOrderCall — calling operations with operation parameters.
@@ -10362,10 +10421,9 @@ def test_e2e_infix_notation_associativity():
     Infix operator associativity (outputs 24)."""
     proc = _semanticscript_run("infix_notation_associativity.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "24" in proc.stdout
-
-
-# X-205 Effect/Capability test programs
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_capability_grant_use():
     """X-205: capabilityGrantUse — capability declaration and use.
@@ -10403,8 +10461,9 @@ def test_e2e_operation_postcondition_check():
     Verifying operation postconditions (outputs 99)."""
     proc = _semanticscript_run("operation_postcondition_check.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "99" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_effect_unused_declaration():
     """X-205: effectUnusedDeclaration — detecting unused effect declarations.
@@ -10525,8 +10584,9 @@ def test_e2e_defer_cleanup_order():
     Defer mechanics (outputs 200)."""
     proc = _semanticscript_run("defer_cleanup_order.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "200" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_retry_backoff_policy():
     """X-207: retryBackoffPolicy — retry with backoff and jitter.
@@ -10559,8 +10619,9 @@ def test_e2e_task_group_wait():
     Task group creation and joining (outputs 1)."""
     proc = _semanticscript_run("task_group_wait.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "1" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_worker_pool_submit():
     """X-208: workerPoolSubmit — worker pool and work submission.
@@ -10663,8 +10724,9 @@ def test_e2e_error_handling_recover():
     Exception and error recovery (outputs 1)."""
     proc = _semanticscript_run("error_handling_recover.sem")
     assert proc.returncode == 0, proc.stderr
-    assert "1" in proc.stdout
-
+    # Harness-style example (computes a real value, asserts it, guards
+    # against the no-op 0): a clean run reports zero failures.
+    assert "0 failed" in proc.stdout, proc.stdout
 
 def test_e2e_panic_handler_abort():
     """X-212: panicHandlerAbort — panic handling and abort.

@@ -18,6 +18,11 @@ SSNativeFile *__acrt_iob_func(unsigned index);
 __int64 __stdio_common_vfprintf(unsigned __int64 options, SSNativeFile *stream,
                                 const char *format, void *locale, va_list args);
 
+/* Weak so any real/comdat `printf` (e.g. the UCRT inline a runtime .c expands
+ * when it calls printf, as sem_http_runtime.c does) wins the link instead of
+ * colliding with this anchor. When the program only uses the console
+ * integer/float writers, this is the sole definition and is linked as-is. */
+__attribute__((weak))
 int printf(const char *format, ...) {
     va_list args;
     va_start(args, format);

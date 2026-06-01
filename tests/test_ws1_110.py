@@ -31,9 +31,11 @@ def test_ws1_110_record_no_heap_required():
     import semanticscript
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
-        "m is module\nm path m\nm exports main\nm purpose p\nm invariant i\n"
-        "Person is record\nPerson field name String\nPerson field age Int64\n"
+        'm is module\nm path m\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        'Person is record\nPerson field name String\nPerson field age Int64\n'
+        'Person purpose "a person record"\n'
         "main is operation\nmain out Int32\nmain async no\n"
+        'main purpose "build a record"\nmain invariant "returns zero"\n'
         "main memory heap no\n"
         "main let age immutable Int64 30\n"
         "main let code immutable Int32 0\n"
@@ -52,16 +54,17 @@ def test_ws1_110_move_semantics_no_duplicate_free():
     import semanticscript
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
-        "m is module\nm path m\nm exports main\nm purpose p\nm invariant i\n"
+        'm is module\nm path m\nm exports main\nm purpose "p"\nm invariant "i"\n'
         "main is operation\nmain out Int32\nmain async no\n"
-        "main let s immutable String hello\n"
+        'main purpose "move a value"\nmain invariant "returns zero"\n'
+        'main let s immutable String "hello"\n'
         "main let code immutable Int32 0\n"
         "main return code\n"
     )
     prog = semanticscript.parse(src)
     assert prog is not None
-    # Should lower without double-free
-    ir = semanticscript.lower(prog)
+    # Should lower without double-free (lower_to_llvm is the lowering entry point)
+    ir = semanticscript.lower_to_llvm(prog)
     assert ir is not None
     # IR should not have duplicate frees of the same value
     # (this is a structural check on the generated IR)

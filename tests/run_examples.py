@@ -31,8 +31,13 @@ STRICT_NEG = {"capability_ungranted_use", "failure_unhandled_propagate"}  # bloc
 # with the named SSR#### structured report on stderr.
 TRAP_NEG = {"panic_div0_report": "SSR0010",
             "panic_narrowing_report": "SSR0012",
-            "panic_recursion_report": "SSR0013"}
+            "panic_recursion_report": "SSR0013",
+            "deep_recursion_trap": "SSR0013"}
 SUMMARY_RE = re.compile(r"----\s*(\d+) passed,\s*(\d+) failed\s*----")
+# Keystone slices that intentionally print raw output via console.writeLine (no
+# self-checking harness), per README §18 (hello_world) / §30.1.1 (replay_demo).
+# Validated by exact stdout + a clean exit instead of a harness summary.
+RAW_OUT = {"hello_world": "hello world", "replay_demo": "replay me"}
 
 
 # EAV source/output is UTF-8 (README §33.2); decode child pipes as UTF-8 so
@@ -121,6 +126,16 @@ def main():
             rows.append(("NEG-OK" if ok else "NEG-BAD", name,
                          f"runtime panic {want}, exit 134" if ok
                          else f"expected panic {want}/exit 134, got exit {code}"))
+            continue
+
+        if name in RAW_OUT:
+            want = RAW_OUT[name]
+            code, out = run(path)
+            ok = (code == 0 and want in out)
+            suite_ok &= ok
+            rows.append(("PASS" if ok else "FAIL", name,
+                         f"raw output {want!r}" if ok
+                         else f"expected {want!r}, got exit {code}"))
             continue
 
         code, out = run(path)

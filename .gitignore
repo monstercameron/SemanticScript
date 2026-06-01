@@ -53,6 +53,8 @@ node_modules/
 .vscode-test/
 out/
 dist/
+_pyi_build/
+semanticscript/packaging/_pyi_build/
 coverage/
 **/coverage/
 .nyc_output/

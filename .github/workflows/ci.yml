@@ -46,6 +46,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m pip install pytest
 
       - name: Put clang/LLVM on PATH
         # The compiler JIT-links a native C runtime (and emits wasm) via clang;
@@ -58,6 +59,11 @@ jobs:
 
       - name: Run the example suite (188 programs — the canonical green gate)
         run: python tests/run_examples.py
+
+      - name: Run the pytest suite (compiler unit + e2e + ownership tests)
+        # Covers tests/test_semanticscript.py and tests/test_ws1_110.py — the
+        # bulk of the compiler's assertions, previously not exercised by CI.
+        run: python -m pytest tests/ -q
 
       - name: Run the integration tests (http server, gui, wasm, dom, apps, mcp)
         shell: pwsh

@@ -51,16 +51,30 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $exe = "semanticscript\packaging\dist\semanticscript.exe"
-          if (-not (Test-Path -Path $exe -PathType Leaf)) {
-            throw "Expected PyInstaller output at $exe."
-          }
-          & $exe version
-          if ($LASTEXITCODE -ne 0) { throw "semanticscript version failed with $LASTEXITCODE." }
-          # Proves the bundled std/sigs/runtime data + llvmlite JIT load inside the
-          # frozen exe and a program runs end to end.
-          & $exe run examples/hello_world.sem
-          if ($LASTEXITCODE -ne 0) { throw "semanticscript run hello_world failed with $LASTEXITCODE." }
+          # Copy the exe + a couple of programs to an isolated dir with NO repo
+          # files, so the test proves the exe is fully self-contained (it cannot
+          # fall back to the checkout's std/runtime/third_party/version.json).
+          $box = Join-Path $env:RUNNER_TEMP "ssbox"
+          New-Item -ItemType Directory -Force -Path $box | Out-Null
+          Copy-Item "semanticscript\packaging\dist\semanticscript.exe" $box
+          Copy-Item "examples\hello_world.sem" $box
+          $exe = Join-Path $box "semanticscript.exe"
+          if (-not (Test-Path -Path $exe -PathType Leaf)) { throw "No PyInstaller output." }
+          Push-Location $box
+          try {
+            & $exe version; if ($LASTEXITCODE -ne 0) { throw "version failed ($LASTEXITCODE)." }
+            # releaseVersion proves the bundled version.json resolves under _MEIPASS.
+            $status = & $exe status --json | ConvertFrom-Json
+            if (-not $status.releaseVersion) { throw "status missing releaseVersion (version.json not bundled)." }
+            # JIT path: bundled std/runtime + llvmlite run a program end to end.
+            & $exe run hello_world.sem; if ($LASTEXITCODE -ne 0) { throw "run failed ($LASTEXITCODE)." }
+            # Native link path: bundled runtime C sources + clang build a real exe.
+            & $exe build hello_world.sem -o hw.exe; if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)." }
+            & .\hw.exe; if ($LASTEXITCODE -ne 0) { throw "native hw.exe failed ($LASTEXITCODE)." }
+            # MCP stdio server advertises its tools.
+            $mcp = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | & $exe mcp | ConvertFrom-Json
+            if ($mcp.result.tools.Count -lt 1) { throw "MCP tools/list returned no tools." }
+          } finally { Pop-Location }
 
       - name: Upload the executable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

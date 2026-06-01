@@ -10309,6 +10309,24 @@ def _runtime_dir() -> str:
     return os.path.join(_bundle_dir(), "runtime")
 
 
+def _runtime_link_path(rel: str) -> str:
+    """Resolve a runtime-manifest source/include path to an absolute path.
+
+    Manifest paths into the vendored toolchain are written relative to
+    `runtime/` (e.g. `../../third_party/sqlite/sqlite3.c`). In a normal checkout
+    that reaches the repo's `third_party/`. A PyInstaller-frozen build bundles
+    `third_party/` flat under the bundle root (`_MEIPASS/third_party`) rather
+    than two levels above `runtime/`, so any path that reaches into
+    `third_party/` is redirected to the bundled copy. Everything else stays
+    relative to `runtime/`."""
+    import os
+    norm = rel.replace("\\", "/")
+    if getattr(sys, "_MEIPASS", None) and "third_party/" in norm:
+        tail = norm[norm.index("third_party/"):]
+        return os.path.normpath(os.path.join(_bundle_dir(), tail))
+    return os.path.normpath(os.path.join(_runtime_dir(), rel))
+
+
 def _runtime_cache_dir() -> str:
     """A user-writable cache directory for native build artifacts (R-015). The
     runtime bundle (`_runtime_dir`) can be read-only — a packaged install or a
@@ -10531,7 +10549,7 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
         return out  # cached: the key already encodes platform/compiler/sources
     if cc is None:
         return None
-    sources = [os.path.normpath(os.path.join(rt, s)) for s in resolved["sources"]]
+    sources = [_runtime_link_path(s) for s in resolved["sources"]]
     os.makedirs(build_dir, exist_ok=True)
     cmd = list(cc) + ["-O2", "-shared", "-o", out]
     # The runtime DLL is loaded into the JIT process, so it must match the JIT's
@@ -10548,7 +10566,7 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
         pass
     cmd += sources
     for inc in resolved["include"]:
-        cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
+        cmd.append("-I" + _runtime_link_path(inc))
     for d in resolved["defines"]:
         cmd.append("-D" + d)
     for libname in resolved["libs"]:
@@ -11162,15 +11180,23 @@ def _dir_bytes(path: str) -> int:
 
 
 def _release_version() -> Optional[str]:
-    """The release version from version.json beside the repo, if available."""
+    """The release version from version.json, if available. In a normal checkout
+    it sits one level above the `semanticscript/` package root; a PyInstaller
+    build bundles it flat under the bundle root (`_MEIPASS/version.json`), so try
+    the bundled location first."""
     import json
     import os
-    candidate = os.path.normpath(os.path.join(_bundle_dir(), "..", "version.json"))
-    try:
-        with open(candidate, encoding="utf-8") as fh:
-            return json.load(fh).get("version")
-    except (OSError, ValueError):
-        return None
+    candidates = [
+        os.path.join(_bundle_dir(), "version.json"),                 # frozen bundle
+        os.path.normpath(os.path.join(_bundle_dir(), "..", "version.json")),  # checkout
+    ]
+    for candidate in candidates:
+        try:
+            with open(candidate, encoding="utf-8") as fh:
+                return json.load(fh).get("version")
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def cmd_status(args) -> int:
@@ -11609,6 +11635,13 @@ def build_executable(program: Program, out_path: str,
     with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
         fh.write(str(module))
     cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
+    # Pin clang to the module's own target triple. On an ARM64 host where llvmlite
+    # is x64-emulated, the IR triple is x86_64 while clang defaults to ARM64, so
+    # clang would "override the module target triple" and fail the link. Passing
+    # the module triple makes the architectures agree (a no-op when they already
+    # match, e.g. an x64 CI host). Mirrors the runtime-lib build above.
+    if getattr(module, "triple", ""):
+        cmd.append("--target=" + module.triple)
     # A native exe needs a `main` symbol so the linker infers the console
     # subsystem + CRT startup. The console entry op is conventionally named
     # `main`, but the webServer (and any non-`main` entry) is named after the
@@ -11640,9 +11673,9 @@ def build_executable(program: Program, out_path: str,
     for lib in _runtime_libs_for(program):
         resolved = _resolve_runtime_links(lib, _host_platform_name())
         for s in resolved["sources"]:
-            cmd.append(os.path.normpath(os.path.join(rt, s)))
+            cmd.append(_runtime_link_path(s))
         for inc in resolved["include"]:
-            cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
+            cmd.append("-I" + _runtime_link_path(inc))
         for d in resolved["defines"]:
             cmd.append("-D" + d)
         for libname in resolved["libs"]:

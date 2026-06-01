@@ -86,12 +86,12 @@ awaitResult purpose "Drive the loop until ready; bind the value and surface time
 awaitResult invariant "Returns the value with ok status, or a non-zero status (timeout/cancelled) as the call's error"
 awaitResult suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
-cancel is operation
-cancel in future AsyncFuture
-cancel out Int32
-cancel body runtimeBinding ss_async_cancel
-cancel purpose "Cancel a not-yet-ready future; a later awaitResult resolves it as cancelled"
-cancel suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
+cancelFuture is operation
+cancelFuture in future AsyncFuture
+cancelFuture out Int32
+cancelFuture body runtimeBinding ss_async_cancel
+cancelFuture purpose "Cancel a not-yet-ready future; a later awaitResult resolves it as cancelled"
+cancelFuture suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 AsyncChannel is alias
 AsyncChannel for OpaquePointer

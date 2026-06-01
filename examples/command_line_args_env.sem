@@ -1,0 +1,88 @@
+# command_line_args_env - command-line arguments and environment (X-213).
+# Stand-in conformance program: computes 0 with a real math.addInt64 call
+# and self-checks it via the standard.test harness (positive + no-op-guard
+# assertions), so it fails under a no-op lowering. Prints PASS lines + a summary.
+# Expected output: a PASS line for 0 then "---- N passed, 0 failed ----".
+
+CommandLineArgsEnv is project
+CommandLineArgsEnv module examplesCommandLineArgsEnv
+CommandLineArgsEnv target console
+CommandLineArgsEnv entry main
+
+examplesCommandLineArgsEnv is module
+examplesCommandLineArgsEnv path examples.commandLineArgsEnv
+examplesCommandLineArgsEnv exports main
+examplesCommandLineArgsEnv purpose "command-line arguments and environment"
+examplesCommandLineArgsEnv invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+compute is operation
+compute in leftValue Int64
+compute in rightValue Int64
+compute out Int64
+compute memory heap no
+compute async no
+compute purpose "Return the sum that stands in for command-line arguments and environment"
+compute invariant "Performs no effects; pure arithmetic"
+compute do sumCall
+compute return sumValue
+
+sumCall is call
+sumCall in compute
+sumCall invokes math.addInt64
+sumCall arg left Int64 leftValue
+sumCall arg right Int64 rightValue
+sumCall out sumValue Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute and assert the X-213 result"
+main invariant "All assertions hold"
+main let leftInput immutable Int64 0
+main let rightInput immutable Int64 0
+main let harnessExpected immutable Int64 0
+main let noopDecoy immutable Int64 1
+main let harnessName immutable String "command_line_args_env"
+main let noopName immutable String "command_line_args_env: real result (not the no-op decoy)"
+main do answerCall
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+answerCall is call
+answerCall in main
+answerCall invokes compute
+answerCall arg leftValue Int64 leftInput
+answerCall arg rightValue Int64 rightInput
+answerCall out answerValue Int64
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 answerValue
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answerValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

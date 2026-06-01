@@ -1,6 +1,7 @@
-# Hello World — canonical EAV-Steps v0.3 (README ss18).
+# Hello World — canonical EAV-Steps v0.3 (README §18).
 # Expected output: hello world
 # This is the keystone vertical slice: parse -> lower -> run (todos WS1-101).
+# Writes via console.writeLine (-> puts) and returns exit 1 on a write failure.
 
 HelloWorld is project
 HelloWorld module examplesHelloWorld
@@ -25,11 +26,6 @@ stdoutWriter invariant "Only grants write access to console.stdout"
 ConsoleWriteError is error
 ConsoleWriteError purpose "Represent failures from console output operations"
 
-ConsoleWriteFailed is errorCase
-ConsoleWriteFailed of ConsoleWriteError
-ConsoleWriteFailed payload Int32
-ConsoleWriteFailed purpose "Represent a failed stdout write with a platform status code payload"
-
 main is operation
 main out ExitCode
 main effect write console.stdout
@@ -41,38 +37,19 @@ main invariant "All stdout writes go through stdoutWriter"
 main invariant "Returns writeFailedExitCode on any write failure"
 
 main let helloText immutable String "hello world"
-main let harnessName immutable String "hello_world"
-main let harnessExpected immutable String "hello world"
-main let emptyGuard immutable String ""
-main let noopName immutable String "hello_world: real result (not the empty string)"
+main let successExitCode immutable ExitCode 0
+main let writeFailedExitCode immutable ExitCode 1
 
 main do writeHello
-main do noopCheck
-main do harnessReport
 main branch ifError writeHello goto failed
-main return harnessSummaryCode
+main return successExitCode
 
-main at failed return harnessSummaryCode
+main at failed return writeFailedExitCode
 
 writeHello is call
 writeHello in main
-writeHello invokes test.assertEqualText
-writeHello arg name String harnessName
-writeHello arg expected String harnessExpected
-writeHello arg actual String helloText
+writeHello invokes console.writeLine
+writeHello arg text String helloText
 writeHello catch writeError ConsoleWriteError
 writeHello purpose "Write the greeting text to stdout"
 writeHello risk "May fail if stdout is closed or unavailable"
-
-
-noopCheck is call
-noopCheck in main
-noopCheck invokes test.assertNotEqualText
-noopCheck arg name String noopName
-noopCheck arg expected String emptyGuard
-noopCheck arg actual String helloText
-
-harnessReport is call
-harnessReport in main
-harnessReport invokes test.summary
-harnessReport out harnessSummaryCode ExitCode

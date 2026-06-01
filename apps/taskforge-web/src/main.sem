@@ -162,13 +162,9 @@ sqliteDatabaseReadWriter purpose "Authority to execute schema, read, and write S
 
 
 
-serverHostText is storage module immutable String "127.0.0.1"
-serverPortNumber is storage module immutable Int32 18090
 apiBaseUrlText is storage module immutable String "http://127.0.0.1:18090"
 
-databaseUsePersistentStorage is storage module immutable String "yes"
 databasePath is storage module immutable String "taskforge_web.db"
-databaseInMemoryPath is storage module immutable String ":memory:"
 
 imagesDirectoryPath is storage module immutable String "images"
 assetsDirectoryPath is storage module immutable String "assets"
@@ -176,7 +172,6 @@ assetFilenameParam is storage module immutable String "filename"
 
 httpStatusOk is storage module immutable HttpStatusCode 200
 httpStatusCreated is storage module immutable HttpStatusCode 201
-httpStatusNoContent is storage module immutable HttpStatusCode 204
 httpStatusBadRequest is storage module immutable HttpStatusCode 400
 httpStatusUnauthorized is storage module immutable HttpStatusCode 401
 httpStatusNotFound is storage module immutable HttpStatusCode 404
@@ -188,7 +183,6 @@ bcryptRecommendedCost is storage module immutable Int32 12
 jsonResponseCapacity is storage module immutable Int64 4096
 jsonDocumentCapacity is storage module immutable JsonCapacityBytes 65536
 jsonObjectRootKind is storage module immutable JsonValueKind 0
-jsonArrayRootKind is storage module immutable JsonValueKind 1
 usernameScratchCapacity is storage module immutable Int64 64
 passwordScratchCapacity is storage module immutable Int64 256
 displayNameScratchCapacity is storage module immutable Int64 128
@@ -219,8 +213,6 @@ todosListBufferCapacity is storage module immutable Int64 32768
 
 sessionLifetimeMs is storage module immutable Int64 2592000000
 jsonOk is storage module immutable Int32 0
-boolFalse is storage module immutable Bool false
-boolTrue is storage module immutable Bool true
 
 cookieNameSession is storage module immutable String "session"
 setCookieHeaderName is storage module immutable String "Set-Cookie"
@@ -251,8 +243,6 @@ fieldCount is storage module immutable String "count"
 fieldId is storage module immutable String "id"
 fieldDone is storage module immutable String "done"
 fieldCreatedAtMs is storage module immutable String "createdAtMs"
-fieldUpdatedAtMs is storage module immutable String "updatedAtMs"
-fieldCompletedAtMs is storage module immutable String "completedAtMs"
 
 healthBodyJson is storage module immutable JsonText
 healthBodyJson body json
@@ -290,6 +280,7 @@ schemaSqlSource scope module
 schemaSqlSource type SqlText
 schemaSqlSource mutability immutable
 schemaSqlSource literalSource "sql/schema.sql"
+schemaSqlSource literalEncoding utf8
 schemaSqlSource literalDigest sha256 1dbdc9f90b18d8f5a588505e93492c4e00df747a3d1b851164c9f06c9a51a454
 
 
@@ -298,6 +289,7 @@ devSeedSqlSource scope module
 devSeedSqlSource type SqlText
 devSeedSqlSource mutability immutable
 devSeedSqlSource literalSource "sql/dev-seed.sql"
+devSeedSqlSource literalEncoding utf8
 devSeedSqlSource literalDigest sha256 9101c6c9c2e3fefa63377263aa9f184b93637ae796a155e9be3ff49303844f27
 
 
@@ -387,9 +379,6 @@ columnIndex1 is storage module immutable Int32 1
 columnIndex2 is storage module immutable Int32 2
 columnIndex3 is storage module immutable Int32 3
 columnIndex4 is storage module immutable Int32 4
-columnIndex5 is storage module immutable Int32 5
-columnIndex6 is storage module immutable Int32 6
-columnIndex7 is storage module immutable Int32 7
 
 defaultPriority is storage module immutable Int64 2
 

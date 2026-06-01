@@ -1196,6 +1196,7 @@ shortCircuitProbeMiddleware memory arena request
 shortCircuitProbeMiddleware async no
 shortCircuitProbeMiddleware purpose "Write a teapot response then return false (short-circuit) so the route's handler is skipped"
 shortCircuitProbeMiddleware invariant "Returns false unconditionally; the bound handler MUST NEVER run when this middleware fires"
+shortCircuitProbeMiddleware suppress SS0805 because "Short-circuit middleware: returns false to halt the chain and never delegates to next"
 shortCircuitProbeMiddleware risk "Do not bind this middleware to any other route; it would 418 every request"
 shortCircuitProbeMiddleware let teapotStatus immutable Int32 418
 shortCircuitProbeMiddleware let shortCircuitBody immutable String "middleware short-circuited; handler skipped by dispatcher\n"
@@ -1226,6 +1227,7 @@ gauntletMiddleware memory arena request
 gauntletMiddleware async no
 gauntletMiddleware purpose "Set diagnostic response headers (X-Gauntlet-Middleware, X-Gauntlet-Path) before each path-scoped handler runs"
 gauntletMiddleware invariant "Always returns true (continue) so every route's handler runs after the diagnostic headers are stamped"
+gauntletMiddleware suppress SS0805 because "Diagnostic middleware: stamps headers and returns continue; never delegates to next"
 gauntletMiddleware risk "Returning false (short-circuit) requires writing a complete response first, or the dispatcher maps a null body to a 500"
 gauntletMiddleware let middlewareHeaderName immutable String "X-Gauntlet-Middleware"
 gauntletMiddleware let middlewareHeaderValue immutable String "active"
