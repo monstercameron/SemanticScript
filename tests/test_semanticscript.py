@@ -6858,6 +6858,19 @@ def test_json_cursor_int64_range_checked():
         "the double->long long cast in ss_json_cursor_int64 is not range-guarded (R-155)"
 
 
+def test_list_map_alloc_guarded():
+    # R-137: list/map create + growth null-check their malloc/realloc results,
+    # trapping (SSR0022) on OOM instead of storing through NULL. Assert the guard
+    # block is in the lowered IR for both (an actual OOM is impractical to
+    # trigger; the collections examples JIT-run correctly via run_examples, which
+    # proves the guards don't break create/append/put growth).
+    for ex in ("collections_list.sem", "collections_map.sem"):
+        ir = subprocess.run([sys.executable, SEMANTICSCRIPT, "emit-ir",
+                             os.path.join(EXAMPLES, ex)],
+                            capture_output=True, text=True, encoding="utf-8").stdout
+        assert "allocFail" in ir, ex  # the alloc-null guard block is emitted
+
+
 def test_pointer_load_store_null_traps():
     # R-130 (partial): a raw byte load/store through a null pointer traps with a
     # structured ss_panic (SSR0021) instead of UB/a silent segfault. Valid

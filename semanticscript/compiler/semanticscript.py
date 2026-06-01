@@ -9562,13 +9562,13 @@ class EavCodegen:
 
             if target == "list.create":
                 hdr = builder.call(self.runtime("malloc"), [ir.Constant(i64, 24)])
+                self._guard_alloc(builder, hdr, "list.create", call.line)  # R-137
                 builder.store(ir.Constant(i64, 0), _slot(builder, hdr, 0))
                 builder.store(ir.Constant(i64, _INIT_CAP), _slot(builder, hdr, 1))
                 data = builder.call(self.runtime("malloc"),
                                     [ir.Constant(i64, _INIT_CAP * 8)])
+                self._guard_alloc(builder, data, "list.create", call.line)  # R-137
                 builder.store(builder.ptrtoint(data, i64), _slot(builder, hdr, 2))
-                err = builder.icmp_unsigned(
-                    "==", builder.ptrtoint(hdr, i64), ir.Constant(i64, 0))
                 result = hdr
             elif target == "list.length":
                 h = arg("list", "OpaquePointer")
@@ -9588,6 +9588,7 @@ class EavCodegen:
                 olddata = gb.inttoptr(gb.load(_slot(gb, h, 2)), i8p)
                 newdata = gb.call(self.runtime("realloc"),
                                   [olddata, gb.mul(newcap, ir.Constant(i64, 8))])
+                self._guard_alloc(gb, newdata, "list.append", call.line)  # R-137
                 gb.store(newcap, _slot(gb, h, 1))
                 gb.store(gb.ptrtoint(newdata, i64), _slot(gb, h, 2))
                 gb.branch(cont_bb)
@@ -9669,13 +9670,13 @@ class EavCodegen:
 
             if target == "map.create":
                 hdr = builder.call(self.runtime("malloc"), [ir.Constant(i64, 24)])
+                self._guard_alloc(builder, hdr, "map.create", call.line)  # R-137
                 builder.store(ir.Constant(i64, 0), _slot(builder, hdr, 0))
                 builder.store(ir.Constant(i64, _INIT_CAP), _slot(builder, hdr, 1))
                 data = builder.call(self.runtime("malloc"),
                                     [ir.Constant(i64, _INIT_CAP * 16)])
+                self._guard_alloc(builder, data, "map.create", call.line)  # R-137
                 builder.store(builder.ptrtoint(data, i64), _slot(builder, hdr, 2))
-                err = builder.icmp_unsigned(
-                    "==", builder.ptrtoint(hdr, i64), ir.Constant(i64, 0))
                 result = hdr
             elif target == "map.size":
                 h = arg("map", "OpaquePointer")
@@ -9715,6 +9716,7 @@ class EavCodegen:
                 olddata = gb.inttoptr(gb.load(_slot(gb, h, 2)), i8p)
                 newdata = gb.call(self.runtime("realloc"),
                                   [olddata, gb.mul(newcap, ir.Constant(i64, 16))])
+                self._guard_alloc(gb, newdata, "map.put", call.line)  # R-137
                 gb.store(newcap, _slot(gb, h, 1))
                 gb.store(gb.ptrtoint(newdata, i64), _slot(gb, h, 2))
                 gb.branch(afterg)
@@ -10424,6 +10426,26 @@ class EavCodegen:
             tb, "SSR0021", "null-pointer",
             "raw byte load/store through a null pointer (README ss30.4)",
             op_name, line, addr_i64, None)
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
+
+    def _guard_alloc(self, builder, ptr, op_name, line) -> None:
+        """R-137: trap if a list/map allocation (malloc/realloc) returned NULL,
+        before storing the data pointer or elements through it — out-of-memory
+        becomes a structured ss_panic (SSR0022), not a store through NULL. Works
+        with any IRBuilder (the append/growth path uses the grow-block builder)."""
+        i64 = ir.IntType(64)
+        fn = builder.function
+        isnull = builder.icmp_unsigned(
+            "==", builder.ptrtoint(ptr, i64), ir.Constant(i64, 0))
+        trap_bb = fn.append_basic_block("allocFail")
+        cont_bb = fn.append_basic_block("allocFailCont")
+        builder.cbranch(isnull, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        self._emit_panic(
+            tb, "SSR0022", "alloc-failed",
+            "allocation failed (out of memory) building a collection",
+            op_name, line, None, None)
         tb.unreachable()
         builder.position_at_end(cont_bb)
 
@@ -11137,6 +11159,9 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0021": {"kind": "null-pointer",
                 "summary": "Raw byte load/store through a null pointer (R-130).",
                 "repair": "Guard the pointer with `pointer.isNull` before `pointer.loadByte`/`storeByte`."},
+    "SSR0022": {"kind": "alloc-failed",
+                "summary": "A collection allocation (list/map create or growth) returned NULL (R-137).",
+                "repair": "The process is out of memory; reduce the working set or the collection size."},
 }
 
 # WS1-131: logical recursion-depth bound. A statically-recursive operation
