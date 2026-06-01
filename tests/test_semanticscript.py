@@ -8795,7 +8795,8 @@ def test_contract_runtime_value_emits_check():
         input=src.replace("Chg target console\nChg entry main\n",
                           "Chg target console\nChg entry main\n"),
         capture_output=True, text=True, encoding="utf-8")
-    assert proc.returncode != 0  # the precondition trap fired
+    assert proc.returncode == 134 and "SSR0011" in proc.stderr, (
+        proc.returncode, proc.stderr)
 
 
 def _sec_call_src(call):
