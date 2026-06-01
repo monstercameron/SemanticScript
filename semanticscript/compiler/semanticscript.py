@@ -10789,6 +10789,16 @@ class EavCodegen:
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
                 result = r
+            # R-141(b): a `catch` on a response writer must observe the native
+            # status instead of a constant-false `err`. The ss_http_* response
+            # writers return SS_HTTP_OK (0) on success and a nonzero SS_HTTP_ERR_*
+            # on failure, so wire `err = (status != 0)`. Only the `response*`
+            # writers are an OK==0 status channel — the i8* getters, the i64
+            # *Length/nowMillis, and the `valueIsEmpty` predicate are NOT, so they
+            # keep err=None. Guarded by catch-exists so a non-fallible call site
+            # emits no dead compare.
+            if call.fact("catch") is not None and name.startswith("response"):
+                err = builder.icmp_signed("!=", r, ir.Constant(ir.IntType(32), 0))
         elif target == "pointer.isNull":
             # APP-RUN-5/6: null-guard a nullable runtime read (a missing header /
             # query param / body comes back as a null pointer). True iff null.
