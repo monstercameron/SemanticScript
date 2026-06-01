@@ -19,6 +19,12 @@
 #endif
 
 SS_EXPORT long long ss_c_malloc(long long size) {
+    /* R-133: a negative size would wrap to a huge size_t. Reject it (and a zero
+     * request) as a failed allocation — `c.malloc` is fallible, so 0/NULL is the
+     * app-observable "could not allocate" signal it already handles. */
+    if (size <= 0) {
+        return 0;
+    }
     return (long long)(intptr_t)malloc((size_t)size);
 }
 
@@ -27,6 +33,11 @@ SS_EXPORT void ss_c_free(long long pointer) {
 }
 
 SS_EXPORT void ss_c_memset(long long pointer, int value, long long count) {
+    /* R-133: ignore a negative count (would wrap to a huge size_t) and a NULL
+     * destination rather than corrupt memory. */
+    if (pointer == 0 || count <= 0) {
+        return;
+    }
     memset((void *)(intptr_t)pointer, value, (size_t)count);
 }
 

@@ -21,6 +21,7 @@
 #include "sem_http_runtime.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>  /* SIZE_MAX for the codec overflow guards (R-144) */
 
 #ifdef _WIN32
 #define SS_EXPORT __declspec(dllexport)
@@ -32,8 +33,13 @@
  * caller-scratch-buffer legacy entry points (distinct `_str` names so they do
  * not collide with the same-named `ss_http_*` they wrap). ---- */
 
+/* R-144: the worst-case expansion multipliers below (3x url-encode, 6x
+ * html-escape) can overflow size_t for a pathological input. Refuse to allocate
+ * (return NULL, the fallible "could not build" signal) rather than wrap to a
+ * too-small buffer and let the codec write past it. */
 SS_EXPORT const char *ss_http_url_encode_str(const char *input) {
     size_t n = input ? strlen(input) : 0;
+    if (n > (SIZE_MAX - 1) / 3) return 0;
     size_t capacity = n * 3 + 1;  /* worst case every byte -> %XX */
     char *buffer = (char *)malloc(capacity);
     if (!buffer) return 0;
@@ -44,6 +50,7 @@ SS_EXPORT const char *ss_http_url_encode_str(const char *input) {
 
 SS_EXPORT const char *ss_http_url_decode_str(const char *input) {
     size_t n = input ? strlen(input) : 0;
+    if (n == SIZE_MAX) return 0;
     size_t capacity = n + 1;  /* decode never grows */
     char *buffer = (char *)malloc(capacity);
     if (!buffer) return 0;
@@ -54,11 +61,16 @@ SS_EXPORT const char *ss_http_url_decode_str(const char *input) {
 
 SS_EXPORT const char *ss_http_html_escape_str(const char *input) {
     size_t n = input ? strlen(input) : 0;
-    int capacity = (int)(n * 6 + 1);  /* worst case ' -> &#39; */
-    char *buffer = (char *)malloc((size_t)capacity);
+    /* worst case ' -> &#39' (6x). Guard the multiply AND the int the legacy
+     * entry point takes, so a large capacity can't truncate to a small/negative
+     * int and under-size the buffer. */
+    if (n > (SIZE_MAX - 1) / 6) return 0;
+    size_t capacity = n * 6 + 1;
+    if (capacity > 0x7fffffffu) return 0;  /* must fit the int param below */
+    char *buffer = (char *)malloc(capacity);
     if (!buffer) return 0;
     buffer[0] = 0;
-    ss_http_html_escape(input, buffer, capacity);
+    ss_http_html_escape(input, buffer, (int)capacity);
     return buffer;
 }
 

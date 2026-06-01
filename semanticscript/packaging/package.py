@@ -122,6 +122,14 @@ def build() -> str:
     if os.path.isfile(vj):
         cmd += ["--add-data", vj + os.pathsep + "."]
 
+    # The language guide (R-119): `search`/spec retrieval reads docs/LANGUAGE.md
+    # at _bundle_dir()/../docs/LANGUAGE.md, i.e. _MEIPASS/docs/LANGUAGE.md when
+    # frozen — so bundle it there. Without it the frozen exe's `search` returns no
+    # spec hits and `docs/LANGUAGE.md` refs dangle.
+    guide = os.path.join(ROOT, "docs", "LANGUAGE.md")
+    if os.path.isfile(guide):
+        cmd += ["--add-data", guide + os.pathsep + "docs"]
+
     # Embed the Windows version resource + MCP bootstrap metadata.
     if sys.platform == "win32":
         cmd += ["--version-file", _write_version_info(work, version)]
