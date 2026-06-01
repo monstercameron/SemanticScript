@@ -2046,6 +2046,36 @@ static long parse_content_length(const char *buffer, const char *header_end) {
     return found_value;
 }
 
+/* R-178: true if the request declares a chunked Transfer-Encoding. The bundled
+ * server frames request bodies by Content-Length only, so a chunked body would
+ * be dispatched empty/partial — such requests are rejected (501) rather than
+ * silently mis-read. */
+static int request_is_chunked(const char *buffer, const char *header_end) {
+    const char *line = buffer;
+    while (line < header_end && *line != '\0') {
+        const char *line_end = strstr(line, "\n");
+        if (line_end == NULL || line_end > header_end) {
+            line_end = header_end;
+        }
+        while (*line == '\r' || *line == '\n') {
+            ++line;
+        }
+        if (ascii_case_prefix_equal(line, "Transfer-Encoding:")) {
+            const char *value = line + strlen("Transfer-Encoding:");
+            for (const char *scan = value; scan < line_end && *scan != '\0'; ++scan) {
+                if (ascii_case_prefix_equal(scan, "chunked")) {
+                    return 1;
+                }
+            }
+        }
+        line = line_end;
+        while (*line == '\r' || *line == '\n') {
+            ++line;
+        }
+    }
+    return 0;
+}
+
 /* Decode a `&`/`=`-split query segment in place: `+` -> space, `%XX` -> byte.
  * URL-decoding never grows the string (every escape collapses to one byte), so
  * decoding into the same buffer is safe. Lenient on a malformed `%` (passes it
@@ -3019,6 +3049,18 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             400,
             "text/plain; charset=utf-8",
             "bad request\n",
+            NULL
+        );
+    }
+
+    /* R-178: chunked request bodies are unsupported; reject (501) rather than
+     * dispatch an empty/partial body that a handler would mis-read. */
+    if (request_is_chunked(request_buffer, body_start)) {
+        return send_response(
+            client_socket,
+            501,
+            "text/plain; charset=utf-8",
+            "chunked transfer-encoding not supported\n",
             NULL
         );
     }
