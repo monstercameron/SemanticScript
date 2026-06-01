@@ -6558,6 +6558,32 @@ def test_path_traversal_literal_rejected():
     assert getattr(exc.value, "code", None) == "SS3076"
 
 
+def test_path_traversal_percent_encoded_rejected():
+    # WS3-111: the path-traversal check must see through percent-encoding — a
+    # single- or multi-encoded `..` (`%2e%2e`, `%252e%252e`) or encoded mid-path
+    # segment smuggles a traversal past a one-shot literal check, exactly the
+    # "URL-decoded path segments" attack. All decode to `..` and must reject
+    # (SS3076); a safe path with no traversal still parses (no false positive).
+    def fs(path):
+        return (
+            "readIt is operation\nreadIt out ExitCode\nreadIt async no\n"
+            'readIt purpose "p"\nreadIt invariant "i"\n'
+            f'readIt let p immutable String "{path}"\n'
+            "readIt let okCode immutable ExitCode 0\nreadIt do rf\nreadIt return okCode\n"
+            "rf is call\nrf in readIt\nrf invokes fs.readFile\n"
+            "rf arg path String p\nrf out c String\nrf catch e FsError\nFsError is error\n"
+            "ExitCode is alias\nExitCode for Int32\n"
+        )
+    for path in ("%2e%2e/etc/passwd", "data/%2e%2e/secret", "%252e%252e/x",
+                 "data%2f%2e%2e%2froot"):
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.parse(fs(path))
+        assert getattr(exc.value, "code", None) == "SS3076", path
+    # a safe path (including an encoded slash with no `..`) is unaffected
+    for safe in ("data/report.txt", "logs/app.log", "data%2freport"):
+        assert "readIt" in semanticscript.parse(fs(safe)).entities
+
+
 def test_log_open_path_traversal_rejected():
     # R-201: log.openLogFile lowers to fopen on g_log_path, so a `..`/absolute log
     # path escapes the intended log directory and must hit the SS3076 traversal
@@ -10569,6 +10595,24 @@ def test_runtime_cache_dir_outside_bundle_and_honors_env(tmp_path, monkeypatch):
     assert os.path.isdir(cache)  # created on demand
     bundle = os.path.realpath(semanticscript._runtime_dir())
     assert not os.path.realpath(cache).startswith(bundle)
+
+
+def test_runtime_cache_dir_rejects_symlink(tmp_path):
+    # R-197: the cache holds native libraries dlopen'd into the process, so a
+    # symlink/reparse-point cache dir (whose real target is attacker-controllable)
+    # must be refused rather than loaded through. A real private dir is accepted.
+    real = tmp_path / "real_cache"
+    real.mkdir()
+    semanticscript._assert_runtime_cache_dir_safe(str(real))  # must not raise
+    link = tmp_path / "link_cache"
+    try:
+        os.symlink(str(real), str(link), target_is_directory=True)
+    except (OSError, NotImplementedError, AttributeError):
+        # no symlink privilege (e.g. Windows without Developer Mode) -> the
+        # happy-path acceptance above is the portable assertion.
+        return
+    with pytest.raises(semanticscript.EavError):
+        semanticscript._assert_runtime_cache_dir_safe(str(link))
 
 
 def test_build_scratch_ir_not_written_to_runtime_bundle(tmp_path, monkeypatch):

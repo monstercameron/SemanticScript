@@ -6631,8 +6631,27 @@ def _validate_path_traversal(program: Program) -> None:
                     literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
 
     def _is_traversal(path: str) -> bool:
-        segs = path.replace("\\", "/").split("/")
-        return ".." in segs or path.startswith("/") or (len(path) > 1 and path[1] == ":")
+        # WS3-111: check the raw path AND its percent-decoded form, decoding
+        # iteratively so a single- or multi-encoded segment (`%2e%2e`, `%252e`,
+        # `%2f`, `%5c`) cannot smuggle a `..` / separator / absolute prefix past a
+        # one-shot literal check (the path analogue of the R-078 SSRF hardening).
+        import urllib.parse
+        forms = {path}
+        cur = path
+        for _ in range(4):
+            try:
+                nxt = urllib.parse.unquote(cur)
+            except (ValueError, TypeError):
+                break
+            if nxt == cur:
+                break
+            forms.add(nxt)
+            cur = nxt
+        for p in forms:
+            segs = p.replace("\\", "/").split("/")
+            if ".." in segs or p.startswith("/") or (len(p) > 1 and p[1] == ":"):
+                return True
+        return False
 
     for n in program.order:
         ent = program.entities[n]
@@ -11153,12 +11172,67 @@ def _runtime_cache_dir(create: bool = True) -> str:
         tempfile.gettempdir(), "semanticscript-cache")
     if create:
         try:
-            os.makedirs(base, exist_ok=True)
+            # R-197: create private-to-owner where the OS honors it (POSIX mode is
+            # masked by umask; _assert_runtime_cache_dir_safe re-tightens below).
+            os.makedirs(base, mode=0o700, exist_ok=True)
         except OSError as exc:
             raise EavError(
                 f"runtime cache dir {base!r} is not usable: {exc} "
                 f"(check SEMANTICSCRIPT_CACHE_DIR)")
+        _assert_runtime_cache_dir_safe(base)
     return base
+
+
+def _assert_runtime_cache_dir_safe(base: str) -> None:
+    """R-197: the cache holds native libraries that are dlopen'd into the
+    compiler/JIT process, so a writable-by-others cache directory is a code-exec
+    vector — an attacker who can plant a DLL/SO at the deterministic cache path
+    runs in-process on the next build/run. Reject an attacker-controlled directory
+    rather than load from it:
+
+    - a symlink / Windows reparse-point cache dir is refused on every platform
+      (its real target is outside our control);
+    - on POSIX the directory must be owned by the current user, and any group/other
+      write bit is cleared (chmod 0700); if it cannot be cleared, the dir is
+      refused.
+
+    (Deeper Windows ACL ownership verification and a per-artifact signed sidecar
+    remain follow-ups — see docs/todos.md R-197.)"""
+    import os
+    import stat
+    try:
+        info = os.lstat(base)
+    except OSError:
+        return  # nothing to validate (e.g. inspection of a missing dir)
+    if stat.S_ISLNK(info.st_mode):
+        raise EavError(
+            f"runtime cache dir {base!r} is a symlink; refusing to load native "
+            f"libraries through it (R-197). Point SEMANTICSCRIPT_CACHE_DIR at a "
+            f"real, private directory.")
+    if os.name == "nt":
+        # FILE_ATTRIBUTE_REPARSE_POINT (0x400): symlink/junction/mount point.
+        attrs = getattr(info, "st_file_attributes", 0)
+        if attrs & 0x400:
+            raise EavError(
+                f"runtime cache dir {base!r} is a reparse point (symlink/junction); "
+                f"refusing to load native libraries through it (R-197).")
+        return
+    if hasattr(os, "geteuid") and info.st_uid != os.geteuid():
+        raise EavError(
+            f"runtime cache dir {base!r} is owned by uid {info.st_uid}, not the "
+            f"current user; refusing to load native libraries from a directory "
+            f"another account controls (R-197).")
+    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        try:
+            os.chmod(base, 0o700)
+            info = os.lstat(base)
+        except OSError:
+            pass
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise EavError(
+                f"runtime cache dir {base!r} is group/world-writable and could not "
+                f"be tightened to 0700; refusing to load native libraries from it "
+                f"(R-197).")
 
 
 def _find_c_compiler():
