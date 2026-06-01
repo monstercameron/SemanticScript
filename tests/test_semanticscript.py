@@ -1520,33 +1520,41 @@ def test_missing_literal_source_is_compile_diagnostic(tmp_path):
     assert "SS3046" in env["stderr"] and "SSR0001" not in env["stderr"]
 
 
-def test_json_semsig_matches_family_runtime_return_kind():
-    # R-163: a json intrinsic's semsig `out` declaration must match the runtime's
-    # actual return kind — a void (retkind "v") runtime symbol must NOT declare an
-    # `out` the lowerer cannot bind (json.destroyDocument was "v" yet declared
-    # `out released Int32`), and a value-returning symbol must declare one.
+def test_semsig_matches_family_runtime_return_kinds():
+    # R-163 (+ R-141/R-142 contract-drift class): across every
+    # standard.<family>.semsig, an intrinsic's declared shape must match the
+    # runtime symbol it binds (_FAMILY_RT). A void (retkind "v") symbol must NOT
+    # declare an `out` the lowerer cannot bind (json.destroyDocument was the
+    # offender); a value-returning symbol must either bind an `out` or consume its
+    # status via a fallible `catch` (e.g. sqlite.closeDatabase). Guards the whole
+    # runtime contract surface against drifting from the ABI it maps to.
     import os
-    sig = semanticscript.load_semsig(open(
-        os.path.join(ROOT, "semanticscript", "sigs", "standard.json.semsig"),
-        encoding="utf-8").read())
-    json_rt = semanticscript._FAMILY_RT.get("json", {})
+    FAM = semanticscript._FAMILY_RT
+    sigdir = os.path.join(ROOT, "semanticscript", "sigs")
     checked = 0
-    for name, ent in sig.entities.items():
-        if ent.kind != "intrinsic":
+    for fam, methods in FAM.items():
+        sig_path = os.path.join(sigdir, f"standard.{fam}.semsig")
+        if not os.path.exists(sig_path):
             continue
-        target = ent.fact("target")
-        if not (target and target.payload and target.payload[0].startswith("json.")):
-            continue
-        rt = json_rt.get(target.payload[0].split(".", 1)[1])
-        if rt is None:
-            continue
-        retkind, has_out = rt[1], ent.fact("out") is not None
-        checked += 1
-        if retkind == "v":
-            assert not has_out, f"{name}: void runtime symbol must not declare an `out`"
-        else:
-            assert has_out, f"{name}: value-returning runtime ({retkind}) needs an `out`"
-    assert checked >= 5  # the guard actually exercised the json family
+        sig = semanticscript.load_semsig(open(sig_path, encoding="utf-8").read())
+        by_target = {e.fact("target").payload[0]: e
+                     for e in sig.entities.values()
+                     if e.kind == "intrinsic" and e.fact("target") and e.fact("target").payload}
+        for meth, rt in methods.items():
+            ent = by_target.get(f"{fam}.{meth}")
+            if ent is None:
+                continue
+            checked += 1
+            retkind = rt[1]
+            has_out = ent.fact("out") is not None
+            has_catch = ent.fact("catch") is not None
+            if retkind == "v":
+                assert not has_out, f"{fam}.{meth}: void runtime symbol must not declare an `out`"
+            else:
+                assert has_out or has_catch, (
+                    f"{fam}.{meth}: value-returning runtime ({retkind}) must bind an "
+                    f"`out` or consume its status via `catch`")
+    assert checked >= 20  # the guard actually exercised the runtime families
 
 
 def test_wasm_import_count_parser():
