@@ -10780,6 +10780,35 @@ def test_r072_secret_into_json_serialize_document_rejected():
     assert getattr(exc.value, "code", None) == "SS3072"
 
 
+def test_r072_secret_into_http_response_rejected():
+    # R-072: every http.response* writer puts a value into the client-facing HTTP
+    # response, so a secret reaching a response body/header/SSE leaks to the
+    # client — SS3072. The http.request* readers are SOURCES (not sinks), so a
+    # secret-typed request value is not flagged by this rule.
+    def secret_to(target, slot):
+        return (
+            "ApiToken is alias\nApiToken for String\nApiToken typeTrust secret\n"
+            "handler is operation\nhandler out ExitCode\nhandler async no\n"
+            'handler purpose "h"\nhandler invariant "i"\n'
+            "handler in token ApiToken\nhandler in resp OpaquePointer\n"
+            "handler let okCode immutable ExitCode 0\nhandler do writeIt\nhandler return okCode\n"
+            f"writeIt is call\nwriteIt in handler\nwriteIt invokes {target}\n"
+            "writeIt arg response OpaquePointer resp\n"
+            f"writeIt arg {slot} ApiToken token\n"
+            "ExitCode is alias\nExitCode for Int32\n"
+        )
+    for target, slot in (("http.responseText", "text"),
+                         ("http.responseHeader", "value"),
+                         ("http.responseBytes", "bytes"),
+                         ("http.responseSseEvent", "data")):
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.parse(secret_to(target, slot))
+        assert getattr(exc.value, "code", None) == "SS3072", target
+    # a request reader is a SOURCE, not a sink — no false positive
+    assert semanticscript._is_observable_sink("http.responseText")
+    assert not semanticscript._is_observable_sink("http.requestHeader")
+
+
 def test_r072_secret_into_json_encode_rejected():
     # R-072 / §30.1.1: a secret value passed to a json.encode* target is SS3072.
     # No-op-failing: a validator that only blocks json.serial* misses json.encode*.

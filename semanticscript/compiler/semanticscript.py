@@ -6207,6 +6207,12 @@ def _is_observable_sink(target: str) -> bool:
         return True
     if target.startswith("log."):
         return True
+    # R-072: every `http.response*` writer (responseText/Json/Bytes/Header/
+    # SseEvent/File) puts a value into the client-facing HTTP response — a secret
+    # reaching one leaks to the client. The `http.request*` readers are SOURCES,
+    # not sinks, so the `http.response` prefix (not a blanket `http.`) is exact.
+    if target.startswith("http.response"):
+        return True
     for prefix in _OBSERVABLE_SINK_JSON_PREFIXES:
         if target.startswith(prefix):
             return True
