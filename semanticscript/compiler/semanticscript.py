@@ -11455,6 +11455,60 @@ def _runtime_lib_cache_path(lib: dict, platform: Optional[str] = None,
     return os.path.join(build_dir, f"{lib['name']}-{key}{_shared_lib_suffix()}")
 
 
+def _runtime_lib_file_digest(path: str) -> Optional[str]:
+    """R-197: SHA-256 of a built runtime artifact, or None if it cannot be read."""
+    import hashlib
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 16), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def _runtime_lib_write_sidecar(out: str) -> None:
+    """R-197: write `<out>.sha256` (the artifact's content hash) atomically next to
+    a freshly published library, so a later run can confirm the cached artifact is
+    exactly the one we built before loading it into the process."""
+    import os
+    digest = _runtime_lib_file_digest(out)
+    if digest is None:
+        return
+    sidecar = out + ".sha256"
+    tmp = f"{sidecar}.tmp{os.getpid()}"
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(digest)
+        os.replace(tmp, sidecar)
+    except OSError:
+        try:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _runtime_lib_sidecar_matches(out: str) -> bool:
+    """R-197: True iff `<out>` has a sidecar whose recorded hash matches the file's
+    current content. A pre-planted or tampered artifact (no sidecar, or a stale
+    one) does not match, so the caller rebuilds instead of loading it."""
+    import os
+    sidecar = out + ".sha256"
+    if not os.path.exists(sidecar):
+        return False
+    try:
+        with open(sidecar, "r", encoding="utf-8") as fh:
+            recorded = fh.read().strip()
+    except OSError:
+        return False
+    if not recorded:
+        return False
+    actual = _runtime_lib_file_digest(out)
+    return actual is not None and actual == recorded
+
+
 def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     """Build (cached) one native runtime library described by runtime/manifest.json
     and return its path, or None if no C compiler is available. The compiler is
@@ -11479,7 +11533,18 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     build_dir = os.path.join(_runtime_cache_dir(), "_build")
     out = _runtime_lib_cache_path(lib, plat, _compiler_identity(cc))
     if os.path.exists(out):
-        return out  # cached: the key already encodes platform/compiler/sources
+        # R-197: only reuse an artifact we published and that still matches its
+        # content-hash sidecar. A pre-planted DLL/SO at the deterministic cache
+        # path (or a tampered/corrupted one) has no valid sidecar, so it is NOT
+        # loaded — it is discarded and rebuilt below. Combined with the
+        # private-cache-dir check (_assert_runtime_cache_dir_safe), an attacker who
+        # cannot write the directory cannot forge a matching sidecar either.
+        if _runtime_lib_sidecar_matches(out):
+            return out  # cached: key encodes platform/compiler/sources + verified
+        try:
+            os.unlink(out)
+        except OSError:
+            pass  # fall through to rebuild + re-publish a verified artifact
     if cc is None:
         return None
     sources = [_runtime_link_path(s) for s in resolved["sources"]]
@@ -11540,6 +11605,7 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
             f"failed to build runtime library {lib['name']!r}: {proc.stderr.strip()}"
         )
     os.replace(out_tmp, out)  # R-106: atomic publish
+    _runtime_lib_write_sidecar(out)  # R-197: record the content hash for reuse
     return out
 
 
@@ -14258,7 +14324,7 @@ def cmd_build(args) -> int:
 
 def cmd_trace(args) -> int:
     """Print a primary-path trace of an operation."""
-    program = parse(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     try:
         for line in trace(program, args.operation):
             sys.stdout.write(line + "\n")
@@ -14317,7 +14383,7 @@ def cmd_graph(args) -> int:
     error becomes a compiler-error envelope, never an argparse/plaintext error)."""
     want_json = getattr(args, "json", False)
     try:
-        program = parse(_read_program_source(args.path))  # R-117: accept a project dir too
+        program = parse_compact(_read_program_source(args.path))  # R-117/R-165: project dirs + compact
         text = graph(program, args.kind, args.format)
     except EavError as exc:
         if want_json:
@@ -14453,7 +14519,7 @@ def cmd_query(args) -> int:
     """Print the result of a structural query (`--dimension`)."""
     want_json = getattr(args, "json", False)
     try:
-        program = parse(_read_program_source(args.path))  # R-117: accept a project dir too
+        program = parse_compact(_read_program_source(args.path))  # R-117/R-165: project dirs + compact
     except EavError as exc:
         if want_json:
             sys.stdout.write(_json_envelope(
@@ -14609,7 +14675,7 @@ def cmd_test(args) -> int:
 
 def cmd_doctor(args) -> int:
     """Print a severity-grouped diagnostic report with suggested fixes."""
-    groups = doctor(parse(_read_source(args.path)))
+    groups = doctor(parse_compact(_read_program_source(args.path)))
     total = sum(len(v) for v in groups.values())
     for severity in ("error", "warning", "info"):
         for d in groups.get(severity, []):
@@ -14643,7 +14709,7 @@ def cmd_lint(args) -> int:
             return 2
     want_json = getattr(args, "json", False)
     try:
-        program = parse(_read_source(args.path))
+        program = parse_compact(_read_program_source(args.path))
     except EavError as exc:
         # R-085: a parse error on `lint --json` must still be a versioned
         # `sem.lint.v1` envelope (never plaintext), so MCP/agent consumers can

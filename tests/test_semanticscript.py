@@ -821,6 +821,67 @@ def test_compact_profile_consistent_across_commands(tmp_path):
     assert ins.returncode == 0, ins.stderr
 
 
+def test_compact_profile_source_analysis_commands(tmp_path):
+    # R-165/R-176: the source-lane analysis commands share the same compact-aware
+    # parser as check/docs/codegen. One compact fixture exercises the split lanes
+    # that previously fell back to the strict EAV parser.
+    import json as _json
+    src = tmp_path / "compact.sem"
+    src.write_text(_COMPACT_HELLO, encoding="utf-8")
+
+    def run(*argv):
+        return subprocess.run([sys.executable, SEMANTICSCRIPT, *argv],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    chk = run("check", str(src), "--json")
+    assert chk.returncode == 0, chk.stderr
+    assert _json.loads(chk.stdout)["surface"] == "sem.check.v1"
+
+    linted = run("lint", str(src), "--json")
+    assert linted.returncode == 0, linted.stderr
+    lint_env = _json.loads(linted.stdout)
+    assert lint_env["surface"] == "sem.lint.v1"
+    assert lint_env["status"] in ("ok", "ok-with-warnings")
+
+    doctored = run("doctor", str(src))
+    assert doctored.returncode == 0, doctored.stderr
+    assert "bare `operation`" not in doctored.stderr
+
+    traced = run("trace", str(src), "main")
+    assert traced.returncode == 0, traced.stderr
+    assert "let hi" in traced.stdout and "do writeHi" in traced.stdout
+
+    docs = run("docs", str(src), "--json")
+    assert docs.returncode == 0, docs.stderr
+    docs_env = _json.loads(docs.stdout)
+    assert docs_env["surface"] == "sem.docsIndex.v1"
+    assert any(e["name"] == "main" for e in docs_env["entries"])
+
+    graph_calls = run("graph", str(src), "--json")
+    assert graph_calls.returncode == 0, graph_calls.stderr
+    graph_env = _json.loads(graph_calls.stdout)
+    assert graph_env["surface"] == "sem.graph.v1"
+    assert graph_env["kind"] == "calls"
+    assert graph_env["graph"].startswith("digraph calls")
+
+    graph_control = run("graph", str(src), "--kind", "control", "--json")
+    assert graph_control.returncode == 0, graph_control.stderr
+    control_env = _json.loads(graph_control.stdout)
+    assert control_env["kind"] == "control"
+    assert control_env["graph"].startswith("digraph control")
+
+    for dim, expected in (
+        ("effects", "main write console.stdout"),
+        ("uses", "main stdoutWriter"),
+        ("calls", "writeHi console.writeLine"),
+    ):
+        proc = run("query", dim, str(src), "--json")
+        assert proc.returncode == 0, (dim, proc.stderr)
+        env = _json.loads(proc.stdout)
+        assert env["surface"] == "sem.query.v1"
+        assert expected in env["results"]
+
+
 def test_bench_accepts_compact_profile(tmp_path):
     # R-170: bench uses the same compact-aware parser as check/run/codegen.
     import json as _json
@@ -7626,6 +7687,118 @@ def test_http_request_cookie_is_per_request_scratch():
     assert "request.cookie_buffer_used = 0" in src
 
 
+def test_http_multipart_content_disposition_parameter_order(tmp_path):
+    # R-185: Content-Disposition parameters are parsed as independent spans, so a
+    # valid file part is not dropped when filename appears before name.
+    cc = semanticscript._find_c_compiler()
+    if cc is None:
+        pytest.skip("no C compiler available for native HTTP multipart harness")
+    runtime = os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                           "sem_http_runtime.c").replace("\\", "/")
+    harness = tmp_path / "harness_http_multipart.c"
+    harness.write_text(r'''
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "{runtime}"
+
+static SSHttpRequest make_request(char *body) {
+    SSHttpRequest request;
+    memset(&request, 0, sizeof(request));
+    request.method = "POST";
+    request.path = "/upload";
+    request.body = body;
+    request.body_length = strlen(body);
+    request.headers[0].name = "Content-Type";
+    request.headers[0].value = "multipart/form-data; boundary=b";
+    request.header_count = 1;
+    return request;
+}
+
+static void assert_part(
+    char *body,
+    const char *name,
+    const char *expected_body,
+    const char *expected_filename
+) {
+    SSHttpRequest request = make_request(body);
+    const char *text = ss_http_multipart_part_text(&request, name);
+    const void *bytes = ss_http_multipart_part_bytes(&request, name);
+    const char *filename = ss_http_multipart_part_filename(&request, name);
+    size_t expected_length = strlen(expected_body);
+
+    assert(text != NULL);
+    assert(bytes == text);
+    assert(ss_http_multipart_part_length(&request, name) == expected_length);
+    assert(memcmp(bytes, expected_body, expected_length) == 0);
+    assert(filename != NULL);
+    assert(strcmp(filename, expected_filename) == 0);
+}
+
+int main(void) {
+    char name_first[] =
+        "--b\r\n"
+        "Content-Disposition: form-data; name=\"upload\"; filename=\"a.txt\"\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "ABC\r\n"
+        "--b--\r\n";
+    assert_part(name_first, "upload", "ABC", "a.txt");
+
+    char filename_first[] =
+        "--b\r\n"
+        "Content-Disposition: form-data; filename=\"b.txt\"; name=\"upload\"\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "XYZ\r\n"
+        "--b--\r\n";
+    assert_part(filename_first, "upload", "XYZ", "b.txt");
+
+    char text_field[] =
+        "--b\r\n"
+        "Content-Disposition: form-data; name=\"title\"\r\n"
+        "\r\n"
+        "hello\r\n"
+        "--b--\r\n";
+    assert_part(text_field, "title", "hello", "");
+
+    char missing_name[] =
+        "--b\r\n"
+        "Content-Disposition: form-data; filename=\"lost.txt\"\r\n"
+        "\r\n"
+        "DROP\r\n"
+        "--b--\r\n";
+    SSHttpRequest skipped = make_request(missing_name);
+    assert(ss_http_multipart_part_text(&skipped, "upload") == NULL);
+    assert(ss_http_multipart_part_length(&skipped, "upload") == 0);
+    assert(ss_http_multipart_part_filename(&skipped, "upload") == NULL);
+    assert(skipped.multipart_part_count == 0);
+
+    char empty_filename[] =
+        "--b\r\n"
+        "Content-Disposition: form-data; name=\"upload\"; filename=\"\"\r\n"
+        "\r\n"
+        "Z\r\n"
+        "--b--\r\n";
+    assert_part(empty_filename, "upload", "Z", "");
+
+    printf("multipart: OK\n");
+    return 0;
+}
+'''.replace("{runtime}", runtime), encoding="utf-8")
+    exe = tmp_path / ("harness_http_multipart.exe" if sys.platform == "win32"
+                      else "harness_http_multipart")
+    cmd = list(cc) + ["-std=c11", str(harness), "-o", str(exe)]
+    if sys.platform == "win32":
+        cmd.append("-lws2_32")
+    built = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    assert built.returncode == 0, built.stderr
+    ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8")
+    assert ran.returncode == 0, ran.stderr
+    assert "multipart: OK" in ran.stdout
+
+
 def test_http_sse_event_size_capped():
     # R-148: the SSE payload builders must reject an oversized event — the
     # wire-length helper caps the running size and returns a sentinel, and all
@@ -10895,6 +11068,40 @@ def test_runtime_cache_dir_rejects_symlink(tmp_path):
         return
     with pytest.raises(semanticscript.EavError):
         semanticscript._assert_runtime_cache_dir_safe(str(link))
+
+
+def test_runtime_lib_sidecar_detects_tamper(tmp_path):
+    # R-197: a built artifact gets a content-hash sidecar; reuse verifies the
+    # artifact still matches it. A pre-planted/tampered library (hash mismatch) or
+    # one with no sidecar does NOT match, so _ensure_runtime_lib rebuilds instead
+    # of loading it into the process.
+    art = tmp_path / "lib.bin"
+    art.write_bytes(b"genuine-built-bytes")
+    semanticscript._runtime_lib_write_sidecar(str(art))
+    assert (tmp_path / "lib.bin.sha256").exists()
+    assert semanticscript._runtime_lib_sidecar_matches(str(art))   # genuine
+    art.write_bytes(b"MALICIOUS-PLANTED-PAYLOAD")                   # swapped/corrupted
+    assert not semanticscript._runtime_lib_sidecar_matches(str(art))
+    (tmp_path / "lib.bin.sha256").unlink()                         # no sidecar at all
+    assert not semanticscript._runtime_lib_sidecar_matches(str(art))
+
+
+def test_log_runtime_path_confined_to_relative_root():
+    # R-201: the log runtime's ss_log_set_path must reject an absolute/drive/UNC
+    # path or a `..` segment at the runtime boundary, so a dynamic/request-derived
+    # log path cannot append outside the log root (the compiler SS3076 guard only
+    # catches literals). Source guard; the helper is exercised by taskforge-web's
+    # "logs/log.log" (which stays confined).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_log",
+                            "sem_log_runtime.c"), encoding="utf-8").read()
+    assert "log_path_is_confined" in src
+    setp = re.search(r"int ss_log_set_path\(.*?\n\}", src, re.S).group(0)
+    assert "log_path_is_confined(new_path)" in setp
+    fn = re.search(r"static int log_path_is_confined\(.*?\n\}", src, re.S).group(0)
+    # rejects absolute (/ or \\), drive-letter (X:), and `..` segments
+    assert "'/'" in fn and "':'" in fn and "'.'" in fn
 
 
 def test_build_scratch_ir_not_written_to_runtime_bundle(tmp_path, monkeypatch):
