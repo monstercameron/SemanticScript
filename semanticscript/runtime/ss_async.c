@@ -36,6 +36,56 @@ static SSAsyncLoop *ss_async_get_loop(void) {
     return g_ss_async_loop;
 }
 
+/*
+ * R-195: liveness registries for the async handle families (the sqlite R-139 /
+ * event R-196 / json R-198 tombstone pattern). future/channel/interval handles
+ * are plain OpaquePointers freed on await/close, but the entry points only
+ * NULL-checked the raw handle — so a double await/close or a use-after-close
+ * dereferenced freed memory (j->future, c->closed, iv->period_ms). A separate
+ * registry PER FAMILY tracks live handles; membership is checked by pointer VALUE
+ * before any field is read, so a stale handle is rejected without touching freed
+ * memory and without confusing a reused address across families. Single-threaded
+ * libuv loop (no threads) — no lock needed.
+ */
+typedef struct { void **items; size_t count; size_t cap; } ss_async_registry;
+
+static ss_async_registry g_async_jobs;
+static ss_async_registry g_async_channels;
+static ss_async_registry g_async_intervals;
+
+static int ss_async_track(ss_async_registry *r, void *handle) {
+    if (r->count == r->cap) {
+        size_t next = r->cap == 0 ? 8 : r->cap * 2;
+        if (r->cap > SIZE_MAX / 2 || next > SIZE_MAX / sizeof(void *)) {
+            return 0;
+        }
+        void **grown = (void **)realloc(r->items, next * sizeof(void *));
+        if (!grown) return 0;
+        r->items = grown;
+        r->cap = next;
+    }
+    r->items[r->count++] = handle;
+    return 1;
+}
+
+static int ss_async_is_live(const ss_async_registry *r, const void *handle) {
+    for (size_t i = 0; i < r->count; i++) {
+        if (r->items[i] == handle) return 1;
+    }
+    return 0;
+}
+
+static int ss_async_untrack(ss_async_registry *r, void *handle) {
+    for (size_t i = 0; i < r->count; i++) {
+        if (r->items[i] == handle) {
+            r->items[i] = r->items[r->count - 1];
+            r->count--;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 typedef struct {
     SSFuture *future;
     int64_t value;
@@ -43,6 +93,8 @@ typedef struct {
     SSAsyncTimer *work;     /* the value-delivering timer */
     SSAsyncTimer *timeout;  /* optional timeout timer (NULL if none) */
 } ss_async_job;
+
+static void ss_async_cleanup(ss_async_job *j);  /* R-195: untracks + frees a job */
 
 static void ss_async_work_cb(void *ud) {
     ss_async_job *j = (ss_async_job *)ud;
@@ -84,6 +136,13 @@ static ss_async_job *ss_async_new(int64_t delay_ms, int64_t value) {
         j->status = SS_ASYNC_FAILED;
         ss_async_future_complete(j->future, SS_ASYNC_ERR_ENGINE, 0);
     }
+    /* R-195: register before handing the handle out so await/cancel can validate
+     * it. On registry-growth failure, tear the job down (cleanup is a no-op for
+     * the untrack since we never tracked) and report setup failure. */
+    if (!ss_async_track(&g_async_jobs, j)) {
+        ss_async_cleanup(j);
+        return NULL;
+    }
     return j;
 }
 
@@ -117,7 +176,8 @@ SS_EXPORT void *ss_async_timeout_start(int64_t delay_ms, int64_t value,
  * a later await resolves it as cancelled. */
 SS_EXPORT int32_t ss_async_cancel(void *handle) {
     ss_async_job *j = (ss_async_job *)handle;
-    if (j && !ss_async_future_is_ready(j->future)) {
+    /* R-195: reject a stale/freed future handle by membership before deref. */
+    if (j && ss_async_is_live(&g_async_jobs, j) && !ss_async_future_is_ready(j->future)) {
         j->status = SS_ASYNC_CANCELLED;
         ss_async_future_complete(j->future, SS_ASYNC_ERR_CANCELLED, 0);
         return SS_ASYNC_CANCELLED;
@@ -126,6 +186,7 @@ SS_EXPORT int32_t ss_async_cancel(void *handle) {
 }
 
 static void ss_async_cleanup(ss_async_job *j) {
+    ss_async_untrack(&g_async_jobs, j);  /* R-195: tombstone before free */
     if (j->work) { ss_async_timer_cancel(j->work); ss_async_timer_destroy(j->work); }
     if (j->timeout) { ss_async_timer_cancel(j->timeout); ss_async_timer_destroy(j->timeout); }
     ss_async_future_destroy(j->future);
@@ -136,7 +197,9 @@ static void ss_async_cleanup(ss_async_job *j) {
  * delay case where timeout/cancel are not used). */
 SS_EXPORT int64_t ss_async_await(void *handle) {
     ss_async_job *j = (ss_async_job *)handle;
-    if (!j) return 0;
+    /* R-195: a stale handle (already awaited/freed, or bogus) returns 0 instead
+     * of dereferencing freed memory or double-freeing via cleanup. */
+    if (!j || !ss_async_is_live(&g_async_jobs, j)) return 0;
     ss_async_future_await(ss_async_get_loop(), j->future);
     int64_t result = j->value;
     ss_async_cleanup(j);
@@ -148,7 +211,9 @@ SS_EXPORT int64_t ss_async_await(void *handle) {
  * non-zero status becomes the EAV call's fallible error. */
 SS_EXPORT int32_t ss_async_await_result(void *handle, int64_t *out) {
     ss_async_job *j = (ss_async_job *)handle;
-    if (!j) { if (out) *out = 0; return SS_ASYNC_CANCELLED; }
+    /* R-195: a stale handle (already awaited/freed, or bogus) resolves as
+     * cancelled instead of dereferencing freed memory or double-freeing. */
+    if (!j || !ss_async_is_live(&g_async_jobs, j)) { if (out) *out = 0; return SS_ASYNC_CANCELLED; }
     ss_async_future_await(ss_async_get_loop(), j->future);
     int status = j->status;
     if (out) *out = (status == SS_ASYNC_OK) ? j->value : 0;
@@ -185,6 +250,9 @@ typedef struct {
 
 SS_EXPORT void *ss_async_channel_create(void) {
     ss_channel *c = (ss_channel *)calloc(1, sizeof(ss_channel));
+    /* R-195: register so produce/receive/close validate the handle by membership.
+     * On registry-growth failure release the channel and fail. */
+    if (c && !ss_async_track(&g_async_channels, c)) { free(c); return NULL; }
     return c;
 }
 
@@ -201,6 +269,7 @@ static void ss_chan_produce_cb(void *ud) {
     }
     c->pending--;
     if (c->closed && c->pending == 0) {
+        ss_async_untrack(&g_async_channels, c);  /* R-195: tombstone before free */
         free(c);
     }
     free(p);
@@ -210,7 +279,8 @@ static void ss_chan_produce_cb(void *ud) {
 SS_EXPORT int32_t ss_async_channel_produce(void *chan, int64_t delay_ms,
                                              int64_t value) {
     ss_channel *c = (ss_channel *)chan;
-    if (!c || c->closed) return -1;
+    /* R-195: reject a stale/closed channel by membership before deref. */
+    if (!c || !ss_async_is_live(&g_async_channels, c) || c->closed) return -1;
     ss_chan_producer *p = (ss_chan_producer *)malloc(sizeof(ss_chan_producer));
     if (!p) return -1;
     p->chan = c;
@@ -234,7 +304,9 @@ SS_EXPORT int32_t ss_async_channel_produce(void *chan, int64_t delay_ms,
 /* Receive the next value, driving the loop until one is available (FIFO). */
 SS_EXPORT int64_t ss_async_channel_receive(void *chan) {
     ss_channel *c = (ss_channel *)chan;
-    if (!c) return 0;
+    /* R-195: a stale/closed-and-freed channel returns the 0 sentinel instead of
+     * dereferencing freed memory. */
+    if (!c || !ss_async_is_live(&g_async_channels, c)) return 0;
     /* R-138: drive the loop only while a value could still arrive. If the channel
      * is empty with no in-flight producers (or is closed), nothing more is
      * coming — return a 0 sentinel instead of spinning forever. */
@@ -252,12 +324,15 @@ SS_EXPORT int64_t ss_async_channel_receive(void *chan) {
 
 SS_EXPORT int32_t ss_async_channel_close(void *chan) {
     ss_channel *c = (ss_channel *)chan;
-    if (!c) return 0;
+    /* R-195: a double close (or bogus handle) fails membership and is a no-op
+     * instead of a double-free / use-after-free. */
+    if (!c || !ss_async_is_live(&g_async_channels, c)) return 0;
     /* R-138: producers scheduled before close still hold this pointer; freeing
      * now would make their callbacks use-after-free. Mark closed and let the last
      * in-flight producer free it; free immediately only when none are pending. */
     c->closed = 1;
     if (c->pending == 0) {
+        ss_async_untrack(&g_async_channels, c);  /* R-195: tombstone before free */
         free(c);
     }
     return 0;
@@ -279,7 +354,10 @@ typedef struct {
 
 SS_EXPORT void *ss_async_interval_create(int64_t period_ms) {
     ss_interval *iv = (ss_interval *)calloc(1, sizeof(ss_interval));
-    if (iv) iv->period_ms = period_ms;
+    if (!iv) return NULL;
+    iv->period_ms = period_ms;
+    /* R-195: register so tick/close validate the handle by membership. */
+    if (!ss_async_track(&g_async_intervals, iv)) { free(iv); return NULL; }
     return iv;
 }
 
@@ -289,7 +367,8 @@ static void ss_interval_cb(void *ud) {
 
 SS_EXPORT int64_t ss_async_interval_tick(void *handle) {
     ss_interval *iv = (ss_interval *)handle;
-    if (!iv) return 0;
+    /* R-195: reject a stale/closed interval by membership before deref. */
+    if (!iv || !ss_async_is_live(&g_async_intervals, iv)) return 0;
     /* R-146: a NULL loop or a timer that fails to arm would leave `wait.fired`
      * permanently unset, and the drive loop below would spin forever. Bail with a
      * -1 failed-tick sentinel instead of hanging. */
@@ -315,6 +394,11 @@ SS_EXPORT int64_t ss_async_interval_tick(void *handle) {
 }
 
 SS_EXPORT int32_t ss_async_interval_close(void *handle) {
+    /* R-195: untrack first (membership by pointer value, no deref). A double close
+     * or bogus handle fails membership and is a no-op instead of a double-free. */
+    if (!handle || !ss_async_untrack(&g_async_intervals, handle)) {
+        return 0;
+    }
     free(handle);
     return 0;
 }

@@ -9095,6 +9095,42 @@ def test_json_document_lifecycle_tombstoned():
     assert "ss_json_untrack_document(document)" in destroy
 
 
+def test_async_runtime_handle_lifecycle_guarded():
+    # R-195: the async future/channel/interval handles get the sqlite/event/json
+    # tombstone treatment — a per-family live registry so a double await/close or a
+    # use-after-close (await/cancel/produce/receive/close/tick on a freed handle)
+    # is rejected by membership before any deref, instead of a use-after-free /
+    # double-free. Source-level guard; the async examples (async_demo/channel/
+    # interval/timeout/fanout) round-trip the real libuv-backed runtime via the
+    # compiler, and a standalone harness is impractical (needs the libuv build).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_async.c"),
+               encoding="utf-8").read()
+    for fn in ("ss_async_track", "ss_async_is_live", "ss_async_untrack"):
+        assert fn in src, fn
+    # every consumer entry point gates on its family registry before deref
+    checks = {
+        "ss_async_cancel": "ss_async_is_live(&g_async_jobs",
+        "ss_async_await": "ss_async_is_live(&g_async_jobs",
+        "ss_async_await_result": "ss_async_is_live(&g_async_jobs",
+        "ss_async_channel_produce": "ss_async_is_live(&g_async_channels",
+        "ss_async_channel_receive": "ss_async_is_live(&g_async_channels",
+        "ss_async_channel_close": "ss_async_is_live(&g_async_channels",
+        "ss_async_interval_tick": "ss_async_is_live(&g_async_intervals",
+    }
+    for fn, guard in checks.items():
+        # the signature may span lines, so match up to the first body brace
+        m = re.search(r"\b" + re.escape(fn) + r"\([^{]*\{.*?\n\}", src, re.S)
+        assert m and guard in m.group(0), fn
+    # cleanup/close untrack before free (double-free / UAF protection)
+    # match the definition (has a body), not the forward declaration (ends with ;)
+    cleanup = re.search(r"static void ss_async_cleanup\([^;{]*\)\s*\{.*?\n\}", src, re.S).group(0)
+    assert "ss_async_untrack(&g_async_jobs" in cleanup
+    iclose = re.search(r"int32_t ss_async_interval_close\(.*?\n\}", src, re.S).group(0)
+    assert "ss_async_untrack(&g_async_intervals" in iclose
+
+
 def test_app_event_stream_smoke_full_port():
     # X-046: the standard.event smoke app is FULLY ported (all 4 ops, every
     # event.* call as a task) against sigs/standard.event.semsig and lints clean
