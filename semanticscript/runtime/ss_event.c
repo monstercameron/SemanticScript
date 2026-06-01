@@ -16,17 +16,73 @@
 #define SS_EXPORT __attribute__((visibility("default")))
 #endif
 
-typedef struct {
+typedef struct SSEventStream SSEventStream;
+typedef struct SSEventSub SSEventSub;
+
+struct SSEventStream {
     long long *ids;
     int count;
     int cap;
     long long next_id;
-} SSEventStream;
+    /* R-131: the live subscriptions parented to this stream. closeStream orphans
+     * them (NULLs each back-pointer) before freeing, so a later receive on an
+     * orphaned subscription returns 0 instead of dereferencing this freed stream
+     * (the subscription-after-close use-after-free). */
+    SSEventSub **subs;
+    int sub_count;
+    int sub_cap;
+};
 
-typedef struct {
+struct SSEventSub {
     SSEventStream *stream;
     int cursor;
-} SSEventSub;
+};
+
+/*
+ * R-131: a registry of live streams (the sqlite R-139 tombstone pattern). A
+ * double closeStream finds the stream already untracked and becomes a no-op
+ * instead of a double-free, and subscribe/append on a closed stream are rejected
+ * by membership rather than dereferencing freed memory. Membership compares
+ * pointer VALUES only — a freed pointer's fields are never read. Single-threaded
+ * (one loop thread owns the runtime), so no lock is needed.
+ */
+static SSEventStream **g_live_streams = NULL;
+static size_t g_live_count = 0;
+static size_t g_live_cap = 0;
+
+static int ss_event_track_stream(SSEventStream *s) {
+    if (g_live_count == g_live_cap) {
+        size_t next = g_live_cap == 0 ? 8 : g_live_cap * 2;
+        if (g_live_cap > SIZE_MAX / 2 || next > SIZE_MAX / sizeof(SSEventStream *)) {
+            return 0;
+        }
+        SSEventStream **grown = (SSEventStream **)realloc(
+            g_live_streams, next * sizeof(SSEventStream *));
+        if (!grown) return 0;
+        g_live_streams = grown;
+        g_live_cap = next;
+    }
+    g_live_streams[g_live_count++] = s;
+    return 1;
+}
+
+static int ss_event_is_live_stream(const SSEventStream *s) {
+    for (size_t i = 0; i < g_live_count; i++) {
+        if (g_live_streams[i] == s) return 1;
+    }
+    return 0;
+}
+
+static int ss_event_untrack_stream(SSEventStream *s) {
+    for (size_t i = 0; i < g_live_count; i++) {
+        if (g_live_streams[i] == s) {
+            g_live_streams[i] = g_live_streams[g_live_count - 1];
+            g_live_count--;
+            return 1;
+        }
+    }
+    return 0;
+}
 
 SS_EXPORT long long ss_event_open_stream(const char *name, long long capacity) {
     (void)name;
@@ -48,17 +104,36 @@ SS_EXPORT long long ss_event_open_stream(const char *name, long long capacity) {
         return 0;
     }
     s->next_id = 1;
+    if (!ss_event_track_stream(s)) {  /* registry growth failed */
+        free(s->ids);
+        free(s);
+        return 0;
+    }
     return (long long)(intptr_t)s;
 }
 
 SS_EXPORT long long ss_event_subscribe(long long stream, const char *type, const char *key) {
     (void)type; (void)key;
     SSEventStream *s = (SSEventStream *)(intptr_t)stream;
-    if (!s) return 0;
+    /* R-131: no subscribing to a closed/never-opened stream (membership check,
+     * never a deref of a possibly-freed pointer). */
+    if (!s || !ss_event_is_live_stream(s)) return 0;
     SSEventSub *sub = (SSEventSub *)calloc(1, sizeof(SSEventSub));
     if (!sub) return 0;
+    /* parent-track: record the subscription on its stream so closeStream can
+     * orphan it. Grow the list first; on failure free the sub and fail. */
+    if (s->sub_count == s->sub_cap) {
+        int ncap = s->sub_cap == 0 ? 4 : s->sub_cap * 2;
+        if (ncap <= 0) { free(sub); return 0; }  /* int overflow guard */
+        SSEventSub **grown = (SSEventSub **)realloc(
+            s->subs, (size_t)ncap * sizeof(SSEventSub *));
+        if (!grown) { free(sub); return 0; }
+        s->subs = grown;
+        s->sub_cap = ncap;
+    }
     sub->stream = s;
     sub->cursor = 0;
+    s->subs[s->sub_count++] = sub;
     return (long long)(intptr_t)sub;
 }
 
@@ -66,7 +141,9 @@ SS_EXPORT long long ss_event_append(long long stream, const char *type,
                                     const char *key, const char *payload) {
     (void)type; (void)key; (void)payload;
     SSEventStream *s = (SSEventStream *)(intptr_t)stream;
-    if (!s) return 0;
+    /* R-131: appending to a closed stream is rejected, not a deref of freed
+     * memory. */
+    if (!s || !ss_event_is_live_stream(s)) return 0;
     if (s->count >= s->cap) {
         /* R-131: bound the doubling so `s->cap * 2` can't overflow the int and
          * wrap the realloc count. open_stream already caps the initial size. */
@@ -97,10 +174,35 @@ SS_EXPORT void ss_event_ack(long long subscription, long long event_id) {
 }
 
 SS_EXPORT void ss_event_close_subscription(long long subscription) {
-    free((SSEventSub *)(intptr_t)subscription);
+    SSEventSub *sub = (SSEventSub *)(intptr_t)subscription;
+    if (!sub) return;
+    /* R-131: unlink from the parent stream's list (if the stream is still live)
+     * so a later closeStream cannot write through this freed sub pointer. After a
+     * closeStream sub->stream is already NULL, so we simply free. */
+    SSEventStream *s = sub->stream;
+    if (s && ss_event_is_live_stream(s)) {
+        for (int i = 0; i < s->sub_count; i++) {
+            if (s->subs[i] == sub) {
+                s->subs[i] = s->subs[s->sub_count - 1];
+                s->sub_count--;
+                break;
+            }
+        }
+    }
+    free(sub);
 }
 
 SS_EXPORT void ss_event_close_stream(long long stream) {
     SSEventStream *s = (SSEventStream *)(intptr_t)stream;
-    if (s) { free(s->ids); free(s); }
+    /* R-131: a double closeStream finds the stream already untracked -> no-op,
+     * not a double-free (untrack compares pointer values, never derefs `s`). */
+    if (!s || !ss_event_untrack_stream(s)) return;
+    /* Orphan every live subscription so a later receive returns 0 instead of
+     * dereferencing this freed stream (subscription-after-close UAF). */
+    for (int i = 0; i < s->sub_count; i++) {
+        if (s->subs[i]) s->subs[i]->stream = NULL;
+    }
+    free(s->subs);
+    free(s->ids);
+    free(s);
 }

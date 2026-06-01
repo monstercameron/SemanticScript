@@ -8499,6 +8499,33 @@ def test_app_taskforge_api_client_full_port():
     assert not [d.render() for d in diags if d.severity == "error"]
 
 
+def test_event_runtime_subscription_lifecycle_guarded():
+    # R-131: the event runtime must not let a closeStream-before-closeSubscription
+    # become a use-after-free. closeStream parents/orphans its subscriptions
+    # (NULLs each back-pointer) and a live-stream registry makes a double
+    # closeStream a no-op instead of a double-free; receive on an orphaned sub
+    # returns 0. Source-level guard (event execution is deferred — no event.*
+    # lowering — so the runtime can't be driven through the compiler; a standalone
+    # C driver exercising the UAF scenarios is built+run during development).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_event.c"),
+               encoding="utf-8").read()
+    # parent-tracking: the stream carries its live subscriptions
+    assert "SSEventSub **subs" in src
+    # live-stream registry (double-close protection) + orphaning on close
+    for fn in ("ss_event_track_stream", "ss_event_is_live_stream",
+               "ss_event_untrack_stream"):
+        assert fn in src, fn
+    close = re.search(r"void ss_event_close_stream\(.*?\n\}", src, re.S).group(0)
+    assert "ss_event_untrack_stream(s)" in close          # double-close no-op
+    assert "->stream = NULL" in close                     # orphan live subs
+    # subscribe/append refuse a closed stream by membership, never a deref
+    for fn in ("ss_event_subscribe", "ss_event_append"):
+        m = re.search(r"ss_event_" + fn.split("_", 2)[2] + r"\(.*?\n\}", src, re.S)
+        assert m and "ss_event_is_live_stream(s)" in m.group(0), fn
+
+
 def test_app_event_stream_smoke_full_port():
     # X-046: the standard.event smoke app is FULLY ported (all 4 ops, every
     # event.* call as a task) against sigs/standard.event.semsig and lints clean
