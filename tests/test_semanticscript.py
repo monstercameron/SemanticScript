@@ -2450,6 +2450,38 @@ def test_collection_mutated_after_loop_accepted():
     assert not any(d.code == "SS1572" for d in semanticscript.lint(prog))
 
 
+# WS2-089 (string-accumulator-append-in-loop): the `%s` slot is the in-loop
+# `string.concat` whose `out` rebinds its own input `acc` (the O(n²) accumulator);
+# `done` is a post-loop concat into a FRESH binding, which must never be flagged.
+_ACC_FIXTURE = (
+    'm is module\nm path a.b\nm purpose "x"\nm invariant "y"\nm exports run\n'
+    'run is operation\nrun out String\nrun async no\nrun purpose "build"\nrun invariant "ends"\n'
+    'run let acc mutable String ""\nrun let idx mutable Int64 0\nrun let one immutable Int64 1\n'
+    'run let lim immutable Int64 5\nrun let piece immutable String "x"\n'
+    'run at loopHead do checkGoing\nrun branch ifFalse going goto loopExit\n'
+    '%srun do incIdx\nrun goto loopHead\n'
+    'run at loopExit do done\nrun return acc\n'
+    'checkGoing is call\ncheckGoing in run\ncheckGoing invokes math.lessThanInt64\ncheckGoing arg left Int64 idx\ncheckGoing arg right Int64 lim\ncheckGoing out going Bool\n'
+    'appendIt is call\nappendIt in run\nappendIt invokes string.concat\nappendIt arg left String acc\nappendIt arg right String piece\nappendIt out acc String\n'
+    'incIdx is call\nincIdx in run\nincIdx invokes math.addInt64\nincIdx arg left Int64 idx\nincIdx arg right Int64 one\nincIdx out idx Int64\n'
+    'done is call\ndone in run\ndone invokes string.concat\ndone arg left String acc\ndone arg right String piece\ndone out joined String\n')
+
+
+def test_string_accumulator_in_loop_warns():
+    # accumulator concat inside the loop -> SS1032 (T3 warning, not an error)
+    d = [x for x in semanticscript.lint(semanticscript.parse(_ACC_FIXTURE % "run do appendIt\n"))
+         if x.code == "SS1032"]
+    assert d and all(x.severity == "warning" for x in d)
+
+
+def test_string_concat_fresh_binding_not_warned():
+    # with the in-loop accumulator removed, only the post-loop fresh-binding concat
+    # remains — a fresh `out` (joined) is never the O(n²) footgun, so no SS1032.
+    d = [x for x in semanticscript.lint(semanticscript.parse(_ACC_FIXTURE % ""))
+         if x.code == "SS1032"]
+    assert d == []
+
+
 def test_suppress_scoped_to_entity_not_children():
     # A suppress on the module does not cover the helper op's own diagnostic.
     src = _MOD + (

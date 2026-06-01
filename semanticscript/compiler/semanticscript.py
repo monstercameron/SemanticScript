@@ -501,6 +501,9 @@ DIAGNOSTICS.update({
     "SS1031": {"tier": "T1", "summary": "`branch if`/`ifFalse` condition is not a Bool.",
                "found": "A `branch if <cond>` / `branch ifFalse <cond>` whose condition binding is a non-Bool type.",
                "suggested": "Branch on a Bool — compute a comparison/predicate first and branch on its result (README §13/WS2-089)."},
+    "SS1032": {"tier": "T3", "summary": "String accumulator re-concatenated inside a loop (O(n²)).",
+               "found": "A `string.concat` inside a loop body whose `out` rebinds one of its own inputs — the classic quadratic string-builder accumulator (each turn copies the whole prefix).",
+               "suggested": "Collect the pieces in a list and join once after the loop, or write to a bounded text stream — not an accumulator concatenated every iteration (README §13/WS2-089)."},
     "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
                 "found": "Two `PROJECT constant` rows with the same name.",
                 "suggested": "Use one constant per name (README §28.1)."},
@@ -3725,6 +3728,69 @@ def _lint_collection_iterator_invalidation(program: Program) -> list:
     return diags
 
 
+def _lint_string_accumulator_in_loop(program: Program) -> list:
+    """WS2-089 (string-accumulator-append-in-loop): re-concatenating an accumulator
+    string inside a loop is O(n²) — every turn copies the whole prefix. Flag a
+    `string.concat` in a loop body whose `out` binding is also one of its inputs
+    (`acc = concat(acc, piece)`), the unmistakable accumulator shape. SS1032 (T3).
+
+    Reuses the lexical loop-body detection (label row..back-edge row) of the §1J
+    iterator check; precise by construction — a `concat` whose result is a fresh
+    binding (`joined = concat(head, tail)`) is never flagged, so the corpus has zero
+    false positives."""
+    diags: list = []
+
+    def target_of(call):
+        inv = call.fact("invokes")
+        return inv.payload[0] if inv and inv.payload else ""
+
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        rows = op.rows
+        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        if not labels:
+            continue
+        owned = {
+            program.entities[c].name: program.entities[c]
+            for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        }
+        reported: set = set()
+        for gi, r in enumerate(rows):
+            if r.predicate == "goto" and r.payload:
+                tgt = r.payload[0]
+            elif r.predicate == "branch":
+                tgt = _branch_goto_target_and_guards(r, owned)[0]
+            else:
+                tgt = None
+            li = labels.get(tgt) if tgt is not None else None
+            if li is None or li > gi:
+                continue
+            for br in rows[li:gi + 1]:
+                if br.predicate not in ("do", "start", "join", "poll") or not br.payload:
+                    continue
+                call = owned.get(br.payload[0])
+                if call is None or target_of(call) != "string.concat":
+                    continue
+                outs = {o.payload[0] for o in call.facts("out") if o.payload}
+                ins = {a.payload[2] for a in call.facts("arg") if len(a.payload) >= 3}
+                acc = outs & ins
+                if acc and (br.payload[0], br.line) not in reported:
+                    reported.add((br.payload[0], br.line))
+                    name = sorted(acc)[0]
+                    diags.append(Diagnostic(
+                        "SS1032", "warning",
+                        f"string accumulator {name!r} is re-concatenated inside a loop in "
+                        f"{op.name!r} (O(n²) — each turn copies the whole prefix); collect "
+                        f"the pieces in a list and join once after the loop (README "
+                        f"§13/WS2-089)",
+                        br.line, op.name))
+    return diags
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -3837,6 +3903,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_sqlite_usage(program))
     diags.extend(_lint_loop_no_progress(program))
     diags.extend(_lint_collection_iterator_invalidation(program))
+    diags.extend(_lint_string_accumulator_in_loop(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
     # footgun — steer to a tolerance compare (or Decimal for exact values). The
     # footgun is comparing two *computed* floats that "should" be equal; comparing
