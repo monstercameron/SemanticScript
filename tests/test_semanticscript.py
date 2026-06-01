@@ -8823,6 +8823,26 @@ def test_weak_password_hash_cost_rejected():
     assert getattr(exc.value, "code", None) == "SS3086"
 
 
+def test_non_constant_shell_command_rejected():
+    # R-240 / WS2-086: a dynamic shell command is command injection.
+    src = _sec_call_src(
+        "theCall is call\ntheCall in doSec\ntheCall invokes c.system\n"
+        "theCall arg command String runtimeFmt\ntheCall discards \"x\"\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3087"
+
+
+def test_constant_shell_command_accepted():
+    # R-240: literal-bound command rows remain accepted; the ban is on runtime
+    # command construction, not on the shell target spelling itself.
+    src = _sec_call_src(
+        "theCall is call\ntheCall in doSec\ntheCall invokes c.system\n"
+        "theCall arg command String tmpl\ntheCall discards \"x\"\n")
+    prog = semanticscript.parse(src)
+    assert "doSec" in prog.entities
+
+
 def test_bcrypt_buffer_bounds_guarded():
     # R-202 (partial): the bcrypt buffer helpers must bound the caller-supplied
     # counts against the declared capacity so a too-small/oversized request fails
