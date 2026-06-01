@@ -6673,6 +6673,30 @@ def _is_literal_token(tok: str) -> bool:
     return t.replace(".", "", 1).isdigit() or tok in ("true", "false", "yes", "no")
 
 
+_ENV_SECRET_NAME_TOKENS = {"SECRET", "TOKEN", "PASSWORD", "PASSWD", "KEY"}
+
+
+def _looks_secret_env_name(name: str) -> bool:
+    """WS3-108: credential-looking environment names must use the secret API."""
+    import re
+    upper = name.upper()
+    tokens = [t for t in re.split(r"[^A-Z0-9]+", upper) if t]
+    return any(t in _ENV_SECRET_NAME_TOKENS for t in tokens)
+
+
+def _environment_plain_getter_target(program: Program, target: str) -> bool:
+    if target in ("environment.get", "environment.require"):
+        return True
+    callee = program.entities.get(target)
+    if callee is None:
+        return False
+    body = callee.fact("body")
+    return bool(body and len(body.payload) >= 2
+                and body.payload[0] == "runtimeBinding"
+                and body.payload[1] in ("ss_environment_get",
+                                        "ss_environment_require"))
+
+
 def _validate_secret_flow(program: Program) -> None:
     """X-072 / R-072 / README §30.1.1, §8: a `typeTrust secret` value is usable
     (verify/sign/TLS) but never *observable*. Passing a secret-typed value to an
@@ -6726,6 +6750,21 @@ def _validate_secret_flow(program: Program) -> None:
     error_types = {program.entities[n].name for n in program.order
                    if program.entities[n].kind == "error"}
 
+    # Resolve string literals used as env names so `apiKeyName = "API_KEY"` is
+    # treated the same as passing the literal directly.
+    string_literals = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if (tr and tr.payload and vr and vr.payload
+                    and vr.payload[0].startswith('"')):
+                string_literals[ent.name] = _decode_literal_for_validation(vr.payload[0])
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if len(r.payload) >= 4 and r.payload[3].startswith('"'):
+                    string_literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
+
     # Collect clientResponse slot names per callee key so we can detect a secret
     # reaching a client-facing response parameter (R-072 / complement to X-079).
     client_slots: dict = {}
@@ -6763,6 +6802,25 @@ def _validate_secret_flow(program: Program) -> None:
         if ent.kind in ("call", "task"):
             inv = ent.fact("invokes")
             target = inv.payload[0] if inv and inv.payload else ""
+            # WS3-108: a credential-named environment variable mints a secret
+            # value. Calling the non-secret getter for API_KEY/TOKEN/PASSWORD/...
+            # is rejected before the value can be accidentally logged.
+            if _environment_plain_getter_target(program, target):
+                for a in ent.facts("arg"):
+                    if len(a.payload) < 3:
+                        continue
+                    if a.payload[0] != "name":
+                        continue
+                    raw = a.payload[2]
+                    lit = (_decode_literal_for_validation(raw) if raw.startswith('"')
+                           else string_literals.get(raw))
+                    if lit is not None and _looks_secret_env_name(lit):
+                        raise EavError(
+                            f"call {ent.name!r} reads credential-like environment "
+                            f"name {lit!r} through non-secret {target!r}; use "
+                            f"`requireSecret` / EnvironmentSecret so secret-flow "
+                            f"rules can prevent disclosure (README §8, WS3-108)",
+                            ent.line, code="SS3072")
             if _is_observable_sink(target):
                 for a in ent.facts("arg"):
                     # html.render: skip the 'template' slot — only hole args carry

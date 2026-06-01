@@ -23,6 +23,16 @@
       ]
     },
     {
+      "name": "ss_environment",
+      "comment": "WS3-108: capability-gated environment reads and SafePath dotenv loading for standard.environment.",
+      "provides": [
+        "ss_environment_"
+      ],
+      "sources": [
+        "ss_environment.c"
+      ]
+    },
+    {
       "name": "ss_id",
       "comment": "WS3-129: UUID, ULID, slug, monotonic ID, and semver helpers for standard.id.",
       "provides": [

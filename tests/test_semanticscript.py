@@ -9676,7 +9676,7 @@ def test_stdlib_parity_coverage_guard():
     sanctioned = {
         "console", "math", "compare", "convert", "string", "assert", "test",
         "build", "html", "sqlite", "http",
-        "process", "clock", "random", "net", "list", "map", "json",
+        "process", "clock", "random", "environment", "net", "list", "map", "json",
     }
     semsc_only = {
         "bit", "bool", "bytes", "ctype", "numeric", "sort", "inttypes", "stdlib",
@@ -9709,7 +9709,7 @@ def test_r053_experimental_catalogs_shipped_but_not_advertised():
     sanctioned = {
         "console", "math", "compare", "convert", "string", "assert", "test",
         "build", "html", "sqlite", "http",
-        "process", "clock", "random", "net", "list", "map", "json",
+        "process", "clock", "random", "environment", "net", "list", "map", "json",
     }
     experimental = semanticscript.EXPERIMENTAL_STDLIB_MODULES
     assert experimental == {"bcrypt", "event", "gui", "log"}
@@ -9892,6 +9892,152 @@ def test_id_random_ids_require_entropy_capability():
     )
     prog = semanticscript.parse(stdlib + "\n" + main)
     assert any("read random.entropy" in w and "not covered" in w for w in prog.warnings)
+
+
+def test_environment_stdlib_parses_lints_and_has_core_surface():
+    # WS3-108: standard.environment is a native-backed core module, not a
+    # signature-only env-config placeholder.
+    src = open(os.path.join(STD, "standard.environment.sem"), encoding="utf-8").read()
+    prog = semanticscript.parse(src)
+    assert not any(d.severity == "error" for d in semanticscript.lint(prog))
+    ops = {n for n in prog.order if prog.entities[n].kind == "operation"}
+    surface = {
+        "getValue", "requireValue", "requireSecret", "loadDotenv",
+        "releaseValue", "releaseSecret",
+    }
+    assert surface.issubset(ops), surface - ops
+    for n in surface:
+        body = prog.entities[n].fact("body")
+        assert body and body.payload[0] == "runtimeBinding"
+        assert body.payload[1].startswith("ss_environment_")
+    sig = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.environment.semsig"),
+                                  encoding="utf-8").read())
+    docs = semanticscript.docs(sig)
+    assert any(l.startswith("environment.require(") and "throws EnvironmentError" in l
+               for l in docs)
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["environment"]["status"] == "native"
+    assert led["environment"]["tier"] == "core"
+    assert led["environment"]["unbackedPublic"] is False
+    assert led["environment"]["documentationGap"] is False
+
+
+def test_environment_requires_capability_and_secret_api_for_credentials():
+    # WS3-108: env reads are capability-mediated, and credential-like names must
+    # use EnvironmentSecret so the existing secret-flow rules can block disclosure.
+    stdlib = open(os.path.join(STD, "standard.environment.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain effect read env.process\n"
+        'main async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let name immutable EnvironmentName "SEM_ENV_VISIBLE"\n'
+        "main let okCode immutable ExitCode 0\nmain do readEnv\n"
+        "main branch ifError readEnv goto failed\nmain return okCode\n"
+        "main at failed return okCode\n"
+        "readEnv is call\nreadEnv in main\nreadEnv invokes requireValue\n"
+        "readEnv arg name EnvironmentName name\nreadEnv out value EnvironmentValue\n"
+        "readEnv catch envErr EnvironmentError\n"
+    )
+    prog = semanticscript.parse(stdlib + "\n" + main)
+    assert any("read env.process" in w and "not covered" in w for w in prog.warnings)
+
+    credential_name = main.replace('"SEM_ENV_VISIBLE"', '"SEM_ENV_API_KEY"')
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(stdlib + "\n" + credential_name)
+    assert exc.value.code == "SS3072"
+
+    leaking_secret = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "main is operation\nmain out ExitCode\n"
+        "main effect read env.process\nmain effect write console.stdout\n"
+        "main uses environmentReader\nmain uses stdoutWriter\n"
+        'main async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let keyName immutable EnvironmentName "SEM_ENV_API_KEY"\n'
+        "main let okCode immutable ExitCode 0\nmain do readSecret\n"
+        "main branch ifError readSecret goto failed\nmain do show\nmain return okCode\n"
+        "main at failed return okCode\n"
+        "readSecret is call\nreadSecret in main\nreadSecret invokes requireSecret\n"
+        "readSecret arg name EnvironmentName keyName\n"
+        "readSecret out secret EnvironmentSecret\nreadSecret catch envErr EnvironmentError\n"
+        "show is call\nshow in main\nshow invokes console.writeLine\n"
+        "show arg text EnvironmentSecret secret\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(stdlib + "\n" + leaking_secret)
+    assert exc.value.code == "SS3072"
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the environment runtime")
+def test_e2e_environment_dotenv_secret_and_missing_paths(tmp_path):
+    # WS3-108: dotenv loading goes through SafePath, writes the process env, and
+    # required values/secret values come back through the real native runtime.
+    (tmp_path / ".env").write_text(
+        'SEM_ENV_PLAIN=dotenv-value\nSEM_ENV_API_KEY="dont-print"\n',
+        encoding="utf-8",
+    )
+    stdlib = (
+        open(os.path.join(STD, "standard.path.sem"), encoding="utf-8").read() +
+        "\n" +
+        open(os.path.join(STD, "standard.environment.sem"), encoding="utf-8").read()
+    )
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "main is operation\nmain out ExitCode\n"
+        "main effect write console.stdout\nmain effect read env.process\n"
+        "main effect read filesystem.local\nmain effect write env.process\n"
+        "main uses stdoutWriter\nmain uses environmentReader\nmain uses dotenvLoader\n"
+        'main async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let dotenvName immutable String ".env"\n'
+        'main let publicName immutable EnvironmentName "SEM_ENV_PLAIN"\n'
+        'main let secretName immutable EnvironmentName "SEM_ENV_API_KEY"\n'
+        'main let missingName immutable EnvironmentName "SEM_ENV_MISSING"\n'
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 7\n"
+        "main do makePath\nmain branch ifError makePath goto failed\n"
+        "main do load\nmain do readPublic\nmain branch ifError readPublic goto failed\n"
+        "main do readSecret\nmain branch ifError readSecret goto failed\n"
+        "main do showPublic\nmain do releasePublic\nmain do releaseSecretValue\n"
+        "main do missing\nmain branch ifError missing goto missingOk\n"
+        "main return failCode\nmain at missingOk return okCode\nmain at failed return failCode\n"
+        "makePath is call\nmakePath in main\nmakePath invokes fromLiteral\n"
+        "makePath arg literal String dotenvName\nmakePath out dotenvPath SafePath\n"
+        "makePath catch pErr PathError\n"
+        "load is call\nload in main\nload invokes loadDotenv\n"
+        "load arg path SafePath dotenvPath\nload out loadStatus Int32\n"
+        "readPublic is call\nreadPublic in main\nreadPublic invokes requireValue\n"
+        "readPublic arg name EnvironmentName publicName\n"
+        "readPublic out publicValue EnvironmentValue\nreadPublic catch e1 EnvironmentError\n"
+        "readSecret is call\nreadSecret in main\nreadSecret invokes requireSecret\n"
+        "readSecret arg name EnvironmentName secretName\n"
+        "readSecret out secretValue EnvironmentSecret\nreadSecret catch e2 EnvironmentError\n"
+        "showPublic is call\nshowPublic in main\nshowPublic invokes console.writeLine\n"
+        "showPublic arg text EnvironmentValue publicValue\n"
+        "releasePublic is call\nreleasePublic in main\nreleasePublic invokes releaseValue\n"
+        "releasePublic arg value EnvironmentValue publicValue\nreleasePublic out releasedPublic Int32\n"
+        "releaseSecretValue is call\nreleaseSecretValue in main\n"
+        "releaseSecretValue invokes releaseSecret\n"
+        "releaseSecretValue arg value EnvironmentSecret secretValue\n"
+        "releaseSecretValue out releasedSecret Int32\n"
+        "missing is call\nmissing in main\nmissing invokes requireValue\n"
+        "missing arg name EnvironmentName missingName\n"
+        "missing out missingValue EnvironmentValue\nmissing catch e3 EnvironmentError\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
+        input=stdlib + "\n" + main, capture_output=True, text=True,
+        encoding="utf-8", cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == ["dotenv-value"]
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the path runtime")
