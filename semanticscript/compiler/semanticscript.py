@@ -11635,24 +11635,27 @@ def cmd_clean(args) -> int:
                 except OSError:
                     pass
         shutil.rmtree(build, ignore_errors=True)
-    # R-118: report partial-deletion failures instead of silently ignoring them.
+    # R-118: report partial-deletion survivors (e.g. a runtime DLL transiently
+    # locked on Windows) instead of silently ignoring them — but `clean` is
+    # best-effort cache clearing, so a survivor is informational in the envelope,
+    # NOT a command failure: a flaky nonzero exit would break tooling/CI that just
+    # wants the cache cleared and reads the rc.
     failures = []
     if os.path.isdir(build):
         for root, _dirs, files in os.walk(build):
             for fname in files:
                 failures.append(os.path.relpath(os.path.join(root, fname), build))
-    ok = not failures
-    info = {"ok": ok, "cacheDir": cache, "filesRemoved": files_removed,
+    files_removed = max(0, files_removed - len(failures))
+    info = {"ok": True, "cacheDir": cache, "filesRemoved": files_removed,
             "bytesFreed": bytes_freed, "deletionFailures": failures}
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope("sem.clean.v1", **info) + "\n")
     else:
+        msg = f"cleaned {files_removed} files ({bytes_freed} bytes) from {build}"
         if failures:
-            print(f"cleaned {files_removed} files but {len(failures)} could not be "
-                  f"removed from {build}")
-        else:
-            print(f"cleaned {files_removed} files ({bytes_freed} bytes) from {build}")
-    return 0 if ok else 1
+            msg += f"; {len(failures)} could not be removed (in use?)"
+        print(msg)
+    return 0
 
 
 def _all_diagnostics() -> dict:
