@@ -462,6 +462,11 @@ static int is_valid_sse_event_name(const char *event_name) {
     return 1;
 }
 
+/* R-148: a sentinel from sse_data_wire_length meaning the event exceeds the
+ * maximum SSE payload — the caller rejects it instead of overflowing the size
+ * accumulation / allocating an undersized buffer. */
+#define SS_HTTP_SSE_WIRE_OVERFLOW ((size_t)-1)
+
 static size_t sse_data_wire_length(const char *event_data) {
     size_t length = 0;
     const char *cursor = event_data;
@@ -471,8 +476,16 @@ static size_t sse_data_wire_length(const char *event_data) {
         while (*cursor != '\0' && *cursor != '\r' && *cursor != '\n') {
             ++length;
             ++cursor;
+            /* R-148: cap the running length so it cannot overflow size_t (or
+             * produce an unreasonably large allocation) for a huge event. */
+            if (length > (size_t)SS_HTTP_MAX_REQUEST_BYTES) {
+                return SS_HTTP_SSE_WIRE_OVERFLOW;
+            }
         }
         length += 1;
+        if (length > (size_t)SS_HTTP_MAX_REQUEST_BYTES) {
+            return SS_HTTP_SSE_WIRE_OVERFLOW;
+        }
         if (*cursor == '\r') {
             ++cursor;
             if (*cursor == '\n') {
@@ -536,9 +549,13 @@ int ss_http_response_sse_event(
     }
 
     event_name_length = strlen(event_name);
+    size_t sse_wire = sse_data_wire_length(event_data);  /* R-148 */
+    if (sse_wire == SS_HTTP_SSE_WIRE_OVERFLOW) {
+        return SS_HTTP_ERR_CONFIG;
+    }
     payload_length =
         strlen(event_prefix) + event_name_length + 1 +
-        sse_data_wire_length(event_data) +
+        sse_wire +
         1;
     payload = (char *)malloc(payload_length + 1);
     if (payload == NULL) {
@@ -2355,9 +2372,13 @@ int ss_http_sse_write_event(
     }
 
     event_name_length = strlen(event_name);
+    size_t sse_wire = sse_data_wire_length(event_data);  /* R-148 */
+    if (sse_wire == SS_HTTP_SSE_WIRE_OVERFLOW) {
+        return SS_HTTP_ERR_CONFIG;
+    }
     payload_length =
         strlen(event_prefix) + event_name_length + 1 +
-        sse_data_wire_length(event_data) +
+        sse_wire +
         1;
     payload = (char *)malloc(payload_length + 1);
     if (payload == NULL) {
@@ -2412,10 +2433,14 @@ int ss_http_sse_write_event_with_id(
     }
 
     event_name_length = strlen(event_name);
+    size_t sse_wire = sse_data_wire_length(event_data);  /* R-148 */
+    if (sse_wire == SS_HTTP_SSE_WIRE_OVERFLOW) {
+        return SS_HTTP_ERR_CONFIG;
+    }
     payload_length =
         strlen(id_prefix) + (size_t)id_length + 1 +
         strlen(event_prefix) + event_name_length + 1 +
-        sse_data_wire_length(event_data) +
+        sse_wire +
         1;
     payload = (char *)malloc(payload_length + 1);
     if (payload == NULL) {

@@ -6727,6 +6727,21 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_http_sse_event_size_capped():
+    # R-148: the SSE payload builders must reject an oversized event — the
+    # wire-length helper caps the running size and returns a sentinel, and all
+    # three builders check it before the single malloc — instead of overflowing
+    # the size accumulation into an undersized allocation. Source-level guard (a
+    # >1MB SSE event is impractical to drive; http-runtime-gauntlet's SSE routes
+    # round-trip via test_apps).
+    import os
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                            "sem_http_runtime.c"), encoding="utf-8").read()
+    assert "SS_HTTP_SSE_WIRE_OVERFLOW" in src
+    assert src.count("sse_wire == SS_HTTP_SSE_WIRE_OVERFLOW") == 3  # all 3 builders
+    assert "length > (size_t)SS_HTTP_MAX_REQUEST_BYTES" in src       # cap in the helper
+
+
 def test_http_client_request_checks_truncation_per_step():
     # R-152: the http client request builder must validate each snprintf result
     # before using it as the next offset/remaining, so a truncating or negative
