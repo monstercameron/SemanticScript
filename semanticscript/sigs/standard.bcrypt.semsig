@@ -1,9 +1,9 @@
-# standard.bcrypt.semsig — DEFERRED password-hashing + CSPRNG contract
-# (README ss26/ss27, X-043). The bcrypt runtime (cost-12 key schedule over
-# third_party/bcrypt + the platform CSPRNG) is not lowered in v0.3; this records
-# the typed surface the ported apps/taskforge-web invokes (register/login auth +
-# session-token minting), so app code type-resolves against it. No bcrypt.*
-# symbol is lowered in v0.3.
+# standard.bcrypt.semsig — password-hashing + CSPRNG contract
+# (README ss26/ss27, X-043). The bcrypt runtime is backed by the vendored
+# third_party/bcrypt implementation plus the native_platform CSPRNG. This
+# records the typed surface the ported apps/taskforge-web invokes
+# (register/login auth + session-token minting), so app code type-resolves
+# against the ss_bcrypt_*/ss_random_*/ss_base64url_* native bindings.
 
 bcryptSig is semsig
 bcryptSig version "1.0"
@@ -21,21 +21,21 @@ hashPassword arg cost Int32
 hashPassword arg outBuffer OpaquePointer
 hashPassword arg outCapacity Int32
 hashPassword out status Int32
-hashPassword purpose "Hash a plaintext password into a 60-char $2b$ bcrypt string; returns 0 on success (deferred runtime)"
+hashPassword purpose "Hash a plaintext password into a 60-char $2b$ bcrypt string; returns 0 on success"
 
 verifyPassword is intrinsic
 verifyPassword target bcrypt.verifyPassword
 verifyPassword arg plaintext String
 verifyPassword arg expectedHash String
 verifyPassword out result Int32
-verifyPassword purpose "Constant-time verify of a plaintext password against a stored bcrypt hash (deferred runtime)"
+verifyPassword purpose "Constant-time verify of a plaintext password against a stored bcrypt hash"
 
 randomBytes is intrinsic
 randomBytes target bcrypt.randomBytes
 randomBytes arg outBuffer OpaquePointer
 randomBytes arg byteCount Int32
 randomBytes out status Int32
-randomBytes purpose "Fill a buffer with bytes from the platform CSPRNG; returns 0 on success (deferred runtime)"
+randomBytes purpose "Fill a buffer with bytes from the platform CSPRNG; returns 0 on success"
 
 base64UrlEncode is intrinsic
 base64UrlEncode target bcrypt.base64UrlEncode
@@ -45,4 +45,4 @@ base64UrlEncode arg outputBuffer OpaquePointer
 base64UrlEncode arg outputCapacity Int32
 base64UrlEncode arg outputLengthOut OpaquePointer
 base64UrlEncode out status Int32
-base64UrlEncode purpose "base64url-encode bytes (no padding) into a caller buffer, writing the length out (deferred runtime)"
+base64UrlEncode purpose "base64url-encode bytes (no padding) into a caller buffer, writing the length out"
