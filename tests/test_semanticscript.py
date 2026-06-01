@@ -6130,7 +6130,7 @@ def test_memory_safety_model_spec_and_version():
     # WS1-121: the normative Memory-safety model section exists, the contract
     # version is bumped + lockstepped to GOVERNANCE.md, and every memory defense in
     # the ledger maps to a WS1-1xx owning todo.
-    readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    readme = open(os.path.join(ROOT, "docs", "LANGUAGE.md"), encoding="utf-8").read()
     assert "Memory-safety model — Normative" in readme
     assert semanticscript.CONTRACT_VERSION == "eav-0.3.1"
     gov = open(os.path.join(ROOT, "docs", "GOVERNANCE.md"), encoding="utf-8").read()

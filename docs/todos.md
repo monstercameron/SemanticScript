@@ -1,6 +1,6 @@
 # SemanticScript — Implementation TODO (every change + every test)
 
-Granular implementation plan for the SemanticScript spec (`README.md`,
+Granular implementation plan for the SemanticScript spec (`docs/LANGUAGE.md`,
 §§1–34). Built in **3 coverage iterations** across **4 parallel workstreams** so the
 whole surface area is accounted for. Workstreams are *tracks a team can run
 simultaneously*, not subagents.

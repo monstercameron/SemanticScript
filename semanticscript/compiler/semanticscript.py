@@ -10397,13 +10397,19 @@ def _ensure_native_init() -> None:
 
 def _bundle_dir() -> str:
     """Directory holding bundled data (std/, sigs/, runtime/) — the
-    `semanticscript/` package root. When frozen by PyInstaller (X-025), data
-    lives flattened under sys._MEIPASS; otherwise it is the parent of this
+    `semanticscript/` package root. When frozen by PyInstaller (X-025), the
+    bundle preserves the repo layout (`_MEIPASS/semanticscript/{std,sigs,runtime}`
+    with `_MEIPASS/third_party` and `_MEIPASS/version.json` alongside), so the
+    package root is `_MEIPASS/semanticscript`; otherwise it is the parent of this
     file's `compiler/` directory (semanticscript/compiler/semanticscript.py ->
-    semanticscript/)."""
+    semanticscript/). Keeping the structure means manifest-relative paths and the
+    relative `#include`s inside the runtime C sources resolve identically in both
+    modes."""
     import os
     base = getattr(sys, "_MEIPASS", None)
-    return base or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if base:
+        return os.path.join(base, "semanticscript")
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _runtime_dir() -> str:
@@ -10412,20 +10418,13 @@ def _runtime_dir() -> str:
 
 
 def _runtime_link_path(rel: str) -> str:
-    """Resolve a runtime-manifest source/include path to an absolute path.
-
-    Manifest paths into the vendored toolchain are written relative to
-    `runtime/` (e.g. `../../third_party/sqlite/sqlite3.c`). In a normal checkout
-    that reaches the repo's `third_party/`. A PyInstaller-frozen build bundles
-    `third_party/` flat under the bundle root (`_MEIPASS/third_party`) rather
-    than two levels above `runtime/`, so any path that reaches into
-    `third_party/` is redirected to the bundled copy. Everything else stays
-    relative to `runtime/`."""
+    """Resolve a runtime-manifest source/include path (relative to `runtime/`,
+    e.g. `../../third_party/sqlite/sqlite3.c`) to an absolute path. The frozen
+    bundle preserves the repo's directory structure (semanticscript/runtime +
+    third_party), so the same relative paths — and the relative `#include`s
+    inside the runtime C sources — resolve identically whether running from a
+    checkout or from the PyInstaller _MEIPASS extraction."""
     import os
-    norm = rel.replace("\\", "/")
-    if getattr(sys, "_MEIPASS", None) and "third_party/" in norm:
-        tail = norm[norm.index("third_party/"):]
-        return os.path.normpath(os.path.join(_bundle_dir(), tail))
     return os.path.normpath(os.path.join(_runtime_dir(), rel))
 
 
@@ -11384,18 +11383,18 @@ def _tokenize(text: str) -> list:
     return re.findall(r"[a-z0-9]+", text.lower())
 
 
-def _readme_sections() -> list:
-    """The spec README chunked by heading: [{title, text}]. Best-effort — the
-    README may be absent in a frozen build."""
+def _spec_sections() -> list:
+    """The language guide chunked by heading: [{title, text}]. Best-effort — the
+    guide may be absent in a frozen build."""
     import os
     import re
-    path = os.path.normpath(os.path.join(_bundle_dir(), "..", "README.md"))
+    path = os.path.normpath(os.path.join(_bundle_dir(), "..", "docs", "LANGUAGE.md"))
     try:
         with open(path, encoding="utf-8") as fh:
             md = fh.read()
     except OSError:
         return []
-    sections, title, buf = [], "README", []
+    sections, title, buf = [], "LANGUAGE", []
     for line in md.splitlines():
         m = re.match(r"^#{1,4}\s+(.*)", line)
         if m:
@@ -11413,7 +11412,7 @@ def _search_corpus(path: Optional[str] = None) -> list:
     """A multi-source searchable corpus for agentic retrieval. Each doc is
     {source, id, kind, title, text, ref} — `ref` is the command that fetches the
     full document. Sources: diagnostics, skills, task templates, agent rules, the
-    spec README, and (when `path` is given) the project's entities."""
+    language guide, and (when `path` is given) the project's entities."""
     docs = []
     for code, spec in _all_diagnostics().items():
         docs.append({
@@ -11436,9 +11435,9 @@ def _search_corpus(path: Optional[str] = None) -> list:
     docs.append({"source": "rules", "id": "agent-rules", "kind": "rules",
                  "title": "EAV agent rules", "text": EAV_AGENT_RULES,
                  "ref": "agent-docs"})
-    for sec in _readme_sections():
+    for sec in _spec_sections():
         docs.append({"source": "spec", "id": sec["title"], "kind": "spec",
-                     "title": sec["title"], "text": sec["text"], "ref": "README.md"})
+                     "title": sec["title"], "text": sec["text"], "ref": "docs/LANGUAGE.md"})
     if path:
         try:
             program = parse_compact(_read_program_source(path))

@@ -4,8 +4,9 @@ SemanticScript is a row-based language whose programs are flat triples
 (`<subject> <predicate> <payload>`). The toolchain lexes, parses, lints, and
 lowers programs to LLVM IR, then JIT-runs them or builds native executables.
 
-> The root [`README.md`](../README.md) is the full language specification. This
-> page is the practical "install it and run something" guide.
+> The [`README`](../README.md) is the project overview;
+> [`LANGUAGE.md`](LANGUAGE.md) is the full language guide. This page is the
+> practical "install it and run something" walkthrough.
 
 ## Prerequisites
 
@@ -123,6 +124,6 @@ Extension Development Host.
 
 ## Where to go next
 
-- [`README.md`](../README.md) — the language specification.
+- [`LANGUAGE.md`](LANGUAGE.md) — the full language guide.
 - [`CHANGELOG.md`](../CHANGELOG.md) — what's new and the known pre-release gaps.
 - [`docs/todos.md`](todos.md) — the roadmap toward 1.0.

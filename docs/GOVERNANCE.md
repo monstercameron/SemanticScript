@@ -11,7 +11,7 @@ Contract version: **eav-0.3.1** (must equal `semanticscript.CONTRACT_VERSION`; t
 
 ## Change protocol / docs lockstep (X-020)
 
-A grammar change moves these together: `README.md` (§1–§34 spec), `GRAMMAR.md`
+A grammar change moves these together: `docs/LANGUAGE.md` (§1–§34 spec), `GRAMMAR.md`
 (EBNF), `semanticscript.py` (lexer/parser/validation/codegen), `test_semanticscript.py` (tests +
 invalid corpus), and this file's contract version. The token-sync drift guard
 (X-005, `token_sync_drift`) enforces §2↔§5↔§22 consistency automatically.

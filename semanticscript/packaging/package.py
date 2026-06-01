@@ -98,16 +98,19 @@ def build() -> str:
         "--distpath", dist, "--workpath", work, "--specpath", work,
     ]
 
-    # Bundled package data: std / sigs / runtime live under the package root and
-    # keep their directory names inside the bundle (_MEIPASS/<name>).
+    # Bundled package data: std / sigs / runtime. The repo directory structure is
+    # PRESERVED inside the bundle (_MEIPASS/semanticscript/<name>) so that the
+    # relative `#include`s baked into the runtime C sources (e.g.
+    # `../../../third_party/bcrypt/crypt_blowfish.h`) resolve the same way they do
+    # from a checkout. _bundle_dir() points at _MEIPASS/semanticscript to match.
     for data_dir in ("std", "sigs", "runtime"):
         src = os.path.join(PKG, data_dir)
         if os.path.isdir(src):
-            cmd += ["--add-data", src + os.pathsep + data_dir]
+            cmd += ["--add-data", src + os.pathsep + os.path.join("semanticscript", data_dir)]
 
-    # Vendored C sources the runtime manifest links (`../../third_party/...`).
-    # Bundled flat under the bundle root so _runtime_link_path finds them at
-    # _MEIPASS/third_party/<name> when frozen.
+    # Vendored C sources the runtime links. Placed at the bundle root (alongside
+    # semanticscript/, mirroring the repo) so `runtime/../../third_party/...` and
+    # the C sources' relative includes both resolve under _MEIPASS.
     for name in THIRD_PARTY_DIRS:
         src = os.path.join(ROOT, "third_party", name)
         if os.path.isdir(src):

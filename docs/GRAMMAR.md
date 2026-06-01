@@ -52,4 +52,4 @@ reserved-word name, illegal predicate for kind, `at` on a non-operation,
 duplicate field/variant, mixed enum `repr`, `Result` arity, octal/leading-dot/
 space-after-`-` literals, `=` usage, duration literal in a value position.
 
-See `README.md` §1, §2, §5, §10, §17 for the normative prose.
+See `LANGUAGE.md` §1, §2, §5, §10, §17 for the normative prose.
