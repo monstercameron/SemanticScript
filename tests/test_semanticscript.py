@@ -6819,6 +6819,52 @@ def test_taint_laundered_through_plain_wrapper_rejected():
         "ExitCode is alias\nExitCode for Int32\n"
     )
     assert "handler" in semanticscript.parse(clean).entities
+    # R-070 clause 2: a REAL trust boundary — a validator op whose output is typed
+    # `validated`, consumed by a sink that requires the validated type — cleans the
+    # taint and ACCEPTS (the provenance reaches the sink already upgraded).
+    _brows = [
+        'RawBody is alias',
+        'RawBody for String',
+        'RawBody typeTrust rawExternal',
+        'Validated is alias',
+        'Validated for String',
+        'Validated typeTrust validated',
+        'logIt is operation',
+        'logIt in line Validated',
+        'logIt out Int32',
+        'logIt trustConstraint arg line',
+        'logIt let z immutable Int32 0',
+        'logIt return z',
+        'clean is operation',
+        'clean in raw RawBody',
+        'clean out Validated',
+        'clean let r immutable Int32 0',
+        'clean return r',
+        'handler is operation',
+        'handler out ExitCode',
+        'handler async no',
+        'handler purpose "p"',
+        'handler invariant "i"',
+        'handler in body RawBody',
+        'handler let okCode immutable ExitCode 0',
+        'handler do launderCall',
+        'handler do sinkCall',
+        'handler return okCode',
+        'launderCall is call',
+        'launderCall in handler',
+        'launderCall invokes clean',
+        'launderCall arg raw RawBody body',
+        'launderCall out cleaned Validated',
+        'sinkCall is call',
+        'sinkCall in handler',
+        'sinkCall invokes logIt',
+        'sinkCall arg line Validated cleaned',
+        'sinkCall out n Int32',
+        'ExitCode is alias',
+        'ExitCode for Int32',
+    ]
+    boundary = chr(10).join(_brows) + chr(10)
+    assert 'handler' in semanticscript.parse(boundary).entities
 
 
 def test_typetrust_unknown_label_rejected():
