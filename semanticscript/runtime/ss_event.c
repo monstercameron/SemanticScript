@@ -9,12 +9,7 @@
  */
 #include <stdlib.h>
 #include <stdint.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 typedef struct SSEventStream SSEventStream;
 typedef struct SSEventSub SSEventSub;

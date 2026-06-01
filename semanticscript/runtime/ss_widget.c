@@ -15,12 +15,7 @@
  * the real Win32 runtime's ss_gui_* symbols (which back gui_health_demo).
  */
 #include <stdint.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 static long long ss_widget_next_handle = 1;
 static long long ss_widget_new(void) { return ss_widget_next_handle++; }

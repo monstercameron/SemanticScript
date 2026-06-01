@@ -8,13 +8,8 @@
  * boundary as Int64 (OpaquePointer / JsonCursor).
  */
 #include "sem_json_runtime.h"
+#include "ss_runtime_export.h"
 #include <stdint.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
 
 #define DOC(h) ((SSJsonDocument *)(intptr_t)(h))
 

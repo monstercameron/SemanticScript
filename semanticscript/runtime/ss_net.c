@@ -3,20 +3,16 @@
  * intrinsic (APP-RUN-1). Parses an `http://host[:port]/path` URL, performs a
  * GET over a winsock TCP socket, strips the response headers, and returns a
  * heap-owned copy of the body (released by ss_net_free_text). HTTPS/TLS and
- * chunked transfer-encoding are out of scope; the server is expected to reply
- * with a Content-Length body and `Connection: close`.
+ * chunked transfer-encoding are out of scope; chunked responses fail closed
+ * rather than exposing wire framing as body text.
  */
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 static char *ss_net_strdup(const char *s, size_t n) {
     char *p = (char *)malloc(n + 1);
@@ -24,6 +20,106 @@ static char *ss_net_strdup(const char *s, size_t n) {
     memcpy(p, s, n);
     p[n] = 0;
     return p;
+}
+
+static int ss_net_ascii_case_equal_n(const char *left, const char *right, size_t length) {
+    size_t index;
+    for (index = 0; index < length; ++index) {
+        unsigned char left_ch = (unsigned char)left[index];
+        unsigned char right_ch = (unsigned char)right[index];
+        if (tolower(left_ch) != tolower(right_ch)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int ss_net_is_ows(char ch) {
+    return ch == ' ' || ch == '\t';
+}
+
+static int ss_net_header_value_has_token(
+    const char *value,
+    size_t value_length,
+    const char *token
+) {
+    const char *scan = value;
+    const char *end = value + value_length;
+    size_t token_length = strlen(token);
+    while (scan < end) {
+        while (scan < end && (*scan == ',' || ss_net_is_ows(*scan))) {
+            ++scan;
+        }
+        const char *token_start = scan;
+        while (scan < end && *scan != ',') {
+            ++scan;
+        }
+        const char *token_end = scan;
+        while (token_end > token_start && ss_net_is_ows(token_end[-1])) {
+            --token_end;
+        }
+        if ((size_t)(token_end - token_start) == token_length &&
+                ss_net_ascii_case_equal_n(token_start, token, token_length)) {
+            return 1;
+        }
+        if (scan < end && *scan == ',') {
+            ++scan;
+        }
+    }
+    return 0;
+}
+
+static int ss_net_headers_have_chunked_transfer_encoding(
+    const char *headers,
+    size_t headers_length
+) {
+    const char *scan = headers;
+    const char *end = headers + headers_length;
+    const char *header_name = "Transfer-Encoding";
+    size_t header_name_length = strlen(header_name);
+    while (scan < end) {
+        const char *line_end = scan;
+        while (line_end < end && *line_end != '\r' && *line_end != '\n') {
+            ++line_end;
+        }
+        const char *colon = memchr(scan, ':', (size_t)(line_end - scan));
+        if (colon != NULL) {
+            const char *name_start = scan;
+            const char *name_end = colon;
+            while (name_end > name_start && ss_net_is_ows(name_end[-1])) {
+                --name_end;
+            }
+            if ((size_t)(name_end - name_start) == header_name_length &&
+                    ss_net_ascii_case_equal_n(name_start, header_name, header_name_length)) {
+                const char *value_start = colon + 1;
+                while (value_start < line_end && ss_net_is_ows(*value_start)) {
+                    ++value_start;
+                }
+                if (ss_net_header_value_has_token(
+                        value_start, (size_t)(line_end - value_start), "chunked")) {
+                    return 1;
+                }
+            }
+        }
+        scan = line_end;
+        while (scan < end && (*scan == '\r' || *scan == '\n')) {
+            ++scan;
+        }
+    }
+    return 0;
+}
+
+static char *ss_net_response_body_from_wire(const char *response) {
+    if (response == NULL) {
+        return NULL;
+    }
+    char *separator = strstr(response, "\r\n\r\n");
+    if (separator != NULL && ss_net_headers_have_chunked_transfer_encoding(
+            response, (size_t)(separator - response))) {
+        return NULL;
+    }
+    char *body = separator != NULL ? separator + 4 : (char *)response;
+    return ss_net_strdup(body, strlen(body));
 }
 
 /* Split "http://host[:port]/path" into host, port, path. 0 on success. */
@@ -206,10 +302,7 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
     closesocket(s);
     buf[len] = 0;
 
-    /* body starts after the blank line separating headers from content */
-    char *sep = strstr(buf, "\r\n\r\n");
-    char *body = sep ? sep + 4 : buf;
-    char *out = ss_net_strdup(body, strlen(body));
+    char *out = ss_net_response_body_from_wire(buf);
     free(buf);
     return out;  /* heap-owned; released by ss_net_free_text */
 }

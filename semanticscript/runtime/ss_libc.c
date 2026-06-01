@@ -12,12 +12,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>  /* R-175: strict ss_c_atoll overflow detection */
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 /*
  * R-199: liveness registries for the raw c.* heap/file handles (the sqlite R-139 /
@@ -154,6 +149,13 @@ SS_EXPORT long long ss_c_atoll(const char *text) {
  * its v*-counterpart, which IS a real exported symbol. */
 SS_EXPORT int ss_c_snprintf(long long buffer, long long size,
                             const char *format, ...) {
+    /* R-187: do not cast a negative signed size to huge size_t, and do not let
+     * libc dereference a NULL output buffer/format string. A zero-size write is
+     * treated as a safe no-op/error sentinel for this raw shim rather than
+     * forwarding a boundary case whose portability depends on libc details. */
+    if (buffer == 0 || size <= 0 || format == NULL) {
+        return -1;
+    }
     va_list args;
     va_start(args, format);
     int result = vsnprintf((char *)(intptr_t)buffer, (size_t)size, format, args);
@@ -225,6 +227,12 @@ SS_EXPORT int ss_c_fclose(long long stream) {
 }
 SS_EXPORT long long ss_c_fgets(long long buffer, int count, long long stream) {
     FILE *file = (FILE *)(intptr_t)stream;
+    /* R-187: fgets dereferences the destination buffer and interprets count as a
+     * bounded write size. Reject NULL buffers and non-positive counts before
+     * libc sees them; return 0/NULL, matching the existing end-of-input signal. */
+    if (buffer == 0 || count <= 0) {
+        return 0;
+    }
     /* R-199: a read after fclose would dereference the freed FILE object — refuse
      * a stale/foreign handle and return 0 (NULL = no line), which the read loop
      * already treats as end-of-input. Live handles + standard streams are fine. */
@@ -234,6 +242,16 @@ SS_EXPORT long long ss_c_fgets(long long buffer, int count, long long stream) {
     return (long long)(intptr_t)fgets((char *)(intptr_t)buffer, count, file);
 }
 SS_EXPORT long long ss_c_memmove(long long dest, long long src, long long count) {
+    /* R-187: memmove dereferences both pointers when count is positive, and a
+     * negative signed count would wrap to a huge size_t. Positive copies require
+     * non-NULL pointers; zero is a deterministic no-op that returns dest without
+     * entering libc. */
+    if (count < 0 || dest == 0 || src == 0) {
+        return 0;
+    }
+    if (count == 0) {
+        return dest;
+    }
     return (long long)(intptr_t)memmove((void *)(intptr_t)dest,
                                         (void *)(intptr_t)src, (size_t)count);
 }

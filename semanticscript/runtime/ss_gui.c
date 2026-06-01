@@ -12,12 +12,7 @@
  */
 #include <stdint.h>
 #include "sem_win32_gui_runtime.h"
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 /* The GUI runtime source ships an (unguarded) WinMain that references `main` for
  * standalone GUI-exe builds. We build it as a shared library and never call

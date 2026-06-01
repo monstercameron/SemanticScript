@@ -10,12 +10,7 @@
  */
 #include <string.h>
 #include <stdint.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 /* Bytewise comparison (memcmp/strcmp semantics): negative if left < right,
  * 0 if equal, positive if left > right. NULL sorts before any non-NULL string. */

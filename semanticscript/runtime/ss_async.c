@@ -13,14 +13,9 @@
  * flow through EAV as OpaquePointer (i64).
  */
 #include "sem_async_runtime.h"
+#include "ss_runtime_export.h"
 #include <stdint.h>
 #include <stdlib.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
 
 #define SS_ASYNC_OK 0
 #define SS_ASYNC_TIMEOUT 1

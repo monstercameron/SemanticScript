@@ -9,12 +9,7 @@
  * the value never crosses the FFI boundary by-value.
  */
 #include <stdint.h>
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 SS_EXPORT int32_t ss_ffi_add(int64_t a, int64_t b, int64_t *out) {
     if (a < 0) {

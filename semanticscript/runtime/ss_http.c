@@ -19,15 +19,10 @@
  */
 
 #include "sem_http_runtime.h"
+#include "ss_runtime_export.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>  /* SIZE_MAX for the codec overflow guards (R-144) */
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
 
 /* ---- URL / HTML codecs: buffer-managing String adapters over the
  * caller-scratch-buffer legacy entry points (distinct `_str` names so they do

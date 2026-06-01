@@ -293,6 +293,18 @@ static int ascii_case_prefix_equal(const char *text, const char *prefix) {
     return 1;
 }
 
+static int ascii_case_equal_n(const char *left, const char *right, size_t length) {
+    size_t index;
+    for (index = 0; index < length; ++index) {
+        unsigned char left_ch = (unsigned char)left[index];
+        unsigned char right_ch = (unsigned char)right[index];
+        if (tolower(left_ch) != tolower(right_ch)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static char *trim_left(char *text) {
     while (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n') {
         ++text;
@@ -1215,6 +1227,100 @@ static char *ss_http_client_dup(const char *text) {
     return copy;
 }
 
+static int ss_http_client_is_ows(char ch) {
+    return ch == ' ' || ch == '\t';
+}
+
+static int ss_http_client_header_value_has_token(
+    const char *value,
+    size_t value_length,
+    const char *token
+) {
+    const char *scan = value;
+    const char *end = value + value_length;
+    size_t token_length = strlen(token);
+    while (scan < end) {
+        while (scan < end && (*scan == ',' || ss_http_client_is_ows(*scan))) {
+            ++scan;
+        }
+        const char *token_start = scan;
+        while (scan < end && *scan != ',') {
+            ++scan;
+        }
+        const char *token_end = scan;
+        while (token_end > token_start && ss_http_client_is_ows(token_end[-1])) {
+            --token_end;
+        }
+        if ((size_t)(token_end - token_start) == token_length &&
+                ascii_case_equal_n(token_start, token, token_length)) {
+            return 1;
+        }
+        if (scan < end && *scan == ',') {
+            ++scan;
+        }
+    }
+    return 0;
+}
+
+static int ss_http_client_headers_have_chunked_transfer_encoding(
+    const char *headers,
+    size_t headers_length
+) {
+    const char *scan = headers;
+    const char *end = headers + headers_length;
+    const char *header_name = "Transfer-Encoding";
+    size_t header_name_length = strlen(header_name);
+    while (scan < end) {
+        const char *line_end = scan;
+        while (line_end < end && *line_end != '\r' && *line_end != '\n') {
+            ++line_end;
+        }
+        const char *colon = memchr(scan, ':', (size_t)(line_end - scan));
+        if (colon != NULL) {
+            const char *name_start = scan;
+            const char *name_end = colon;
+            while (name_end > name_start && ss_http_client_is_ows(name_end[-1])) {
+                --name_end;
+            }
+            if ((size_t)(name_end - name_start) == header_name_length &&
+                    ascii_case_equal_n(name_start, header_name, header_name_length)) {
+                const char *value_start = colon + 1;
+                while (value_start < line_end && ss_http_client_is_ows(*value_start)) {
+                    ++value_start;
+                }
+                if (ss_http_client_header_value_has_token(
+                        value_start, (size_t)(line_end - value_start), "chunked")) {
+                    return 1;
+                }
+            }
+        }
+        scan = line_end;
+        while (scan < end && (*scan == '\r' || *scan == '\n')) {
+            ++scan;
+        }
+    }
+    return 0;
+}
+
+static char *ss_http_client_response_body_from_wire(
+    const char *response,
+    int status_code
+) {
+    char *body_start;
+    if (response == NULL || status_code < 200 || status_code >= 300) {
+        return NULL;
+    }
+    body_start = strstr(response, "\r\n\r\n");
+    if (body_start == NULL) {
+        return NULL;
+    }
+    if (ss_http_client_headers_have_chunked_transfer_encoding(
+            response, (size_t)(body_start - response))) {
+        return NULL;
+    }
+    return ss_http_client_dup(body_start + 4);
+}
+
 const char *ss_http_client_fetch(
     const char *method,
     const char *host,
@@ -1416,11 +1522,7 @@ const char *ss_http_client_fetch(
         }
     }
 
-    char *body_start = strstr(response, "\r\n\r\n");
-    char *result = NULL;
-    if (body_start != NULL && status_code >= 200 && status_code < 300) {
-        result = ss_http_client_dup(body_start + 4);
-    }
+    char *result = ss_http_client_response_body_from_wire(response, status_code);
     free(response);
     return result;
 }

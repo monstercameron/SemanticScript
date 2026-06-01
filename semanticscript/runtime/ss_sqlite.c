@@ -18,12 +18,7 @@
  */
 
 #include "sem_sqlite_runtime.h"
-
-#ifdef _WIN32
-#define SS_EXPORT __declspec(dllexport)
-#else
-#define SS_EXPORT __attribute__((visibility("default")))
-#endif
+#include "ss_runtime_export.h"
 
 /* ---- database lifecycle (open/query use out-params -> adapted) ---- */
 
@@ -156,4 +151,3 @@ SS_EXPORT long long ss_sqlite_column_bytes(void *stmt, int col) {
 }
 
 /* ---- diagnostics ---- */
-
