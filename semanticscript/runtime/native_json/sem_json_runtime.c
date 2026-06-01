@@ -633,8 +633,8 @@ static int decode_unicode_escape(const char *hex_chars, char *out) {
     if (code_point == 0) {
         /* R-192: U+0000 decodes to a literal NUL, but SemanticScript Strings
          * (and this runtime's field names) are NUL-terminated `char *`. An
-         * embedded NUL truncates the value, so `"admin guest"` would read as
-         * `admin` and a field `"user id"` could compare equal to `"user"` —
+         * embedded NUL truncates the value, so `"admin\u0000guest"` would read as
+         * `admin` and a field `"user\u0000id"` could compare equal to `"user"` —
          * letting untrusted JSON smuggle a hidden suffix past length-based
          * validators, auth/role checks, field lookups, and SQL binds. Reject as
          * malformed rather than decode it. (Other control codes are left intact:
