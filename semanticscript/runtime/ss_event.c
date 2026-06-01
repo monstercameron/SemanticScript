@@ -30,10 +30,23 @@ typedef struct {
 
 SS_EXPORT long long ss_event_open_stream(const char *name, long long capacity) {
     (void)name;
+    /* R-131: a huge `capacity` would truncate through the int `cap` (then the
+     * calloc count wraps), and the ring allocation was unchecked. Clamp to a
+     * sane range and verify both allocations. */
+    if (capacity <= 0) {
+        capacity = 16;
+    }
+    if (capacity > (1 << 24)) {
+        return 0;  /* refuse an absurd ring size */
+    }
     SSEventStream *s = (SSEventStream *)calloc(1, sizeof(SSEventStream));
     if (!s) return 0;
-    s->cap = capacity > 0 ? (int)capacity : 16;
+    s->cap = (int)capacity;
     s->ids = (long long *)calloc((size_t)s->cap, sizeof(long long));
+    if (!s->ids) {
+        free(s);
+        return 0;
+    }
     s->next_id = 1;
     return (long long)(intptr_t)s;
 }

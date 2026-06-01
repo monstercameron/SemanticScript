@@ -149,6 +149,8 @@ typedef struct {
     int head;
     int tail;
     int count;
+    int closed;    /* R-138: set by close() while producers are still in flight */
+    int pending;   /* R-138: scheduled-but-not-yet-fired producer timers */
 } ss_channel;
 
 typedef struct {
@@ -165,10 +167,17 @@ SS_EXPORT void *ss_async_channel_create(void) {
 static void ss_chan_produce_cb(void *ud) {
     ss_chan_producer *p = (ss_chan_producer *)ud;
     ss_channel *c = p->chan;
-    if (c->count < SS_CHAN_CAP) {
+    /* R-138: a producer that fires after close() must not write into (or, as the
+     * last in-flight producer, must free) the channel — close() deferred the
+     * free to us precisely so the channel outlives every scheduled producer. */
+    if (!c->closed && c->count < SS_CHAN_CAP) {
         c->buf[c->tail] = p->value;
         c->tail = (c->tail + 1) % SS_CHAN_CAP;
         c->count++;
+    }
+    c->pending--;
+    if (c->closed && c->pending == 0) {
+        free(c);
     }
     free(p);
 }
@@ -177,12 +186,13 @@ static void ss_chan_produce_cb(void *ud) {
 SS_EXPORT int32_t ss_async_channel_produce(void *chan, int64_t delay_ms,
                                              int64_t value) {
     ss_channel *c = (ss_channel *)chan;
-    if (!c) return -1;
+    if (!c || c->closed) return -1;
     ss_chan_producer *p = (ss_chan_producer *)malloc(sizeof(ss_chan_producer));
     if (!p) return -1;
     p->chan = c;
     p->value = value;
     p->timer = NULL;
+    c->pending++;  /* R-138: track in-flight producers so close() can defer free */
     unsigned long long ms = delay_ms < 0 ? 0ULL : (unsigned long long)delay_ms;
     ss_async_timer_start(ss_async_get_loop(), ms, ss_chan_produce_cb, p,
                          &p->timer);
@@ -193,8 +203,14 @@ SS_EXPORT int32_t ss_async_channel_produce(void *chan, int64_t delay_ms,
 SS_EXPORT int64_t ss_async_channel_receive(void *chan) {
     ss_channel *c = (ss_channel *)chan;
     if (!c) return 0;
-    while (c->count == 0) {
+    /* R-138: drive the loop only while a value could still arrive. If the channel
+     * is empty with no in-flight producers (or is closed), nothing more is
+     * coming — return a 0 sentinel instead of spinning forever. */
+    while (c->count == 0 && c->pending > 0 && !c->closed) {
         ss_async_loop_run_once(ss_async_get_loop());
+    }
+    if (c->count == 0) {
+        return 0;
     }
     int64_t v = c->buf[c->head];
     c->head = (c->head + 1) % SS_CHAN_CAP;
@@ -203,7 +219,15 @@ SS_EXPORT int64_t ss_async_channel_receive(void *chan) {
 }
 
 SS_EXPORT int32_t ss_async_channel_close(void *chan) {
-    free(chan);
+    ss_channel *c = (ss_channel *)chan;
+    if (!c) return 0;
+    /* R-138: producers scheduled before close still hold this pointer; freeing
+     * now would make their callbacks use-after-free. Mark closed and let the last
+     * in-flight producer free it; free immediately only when none are pending. */
+    c->closed = 1;
+    if (c->pending == 0) {
+        free(c);
+    }
     return 0;
 }
 
