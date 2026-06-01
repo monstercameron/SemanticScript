@@ -6451,6 +6451,33 @@ def test_ssrf_external_host_accepted():
     assert "fetchIt" in prog.entities
 
 
+def test_ssrf_obfuscated_internal_hosts_rejected():
+    # R-078: the static SSRF check must see through the common host-obfuscation
+    # tricks, not just literal `localhost`/`127.`/`10.` markers — an integer/hex/
+    # octal IPv4, an IPv6 loopback/private/link-local literal, a `user@host`
+    # userinfo confusion, a percent-encoded host, and a host:port all resolve to
+    # an internal address and must reject (SS3075).
+    for url in (
+        "http://2130706433/",                     # 127.0.0.1 as a decimal integer
+        "http://0x7f000001/",                     # hex
+        "http://0177.0.0.1/",                     # octal first octet
+        "http://evil.com@127.0.0.1/",             # userinfo confusion (real host after @)
+        "http://[::1]/",                          # IPv6 loopback
+        "http://[fc00::1]/",                      # IPv6 unique-local
+        "http://[fe80::1]/",                      # IPv6 link-local
+        "http://%6c%6f%63%61%6c%68%6f%73%74/",    # percent-encoded "localhost"
+        "http://127.0.0.1:8080/admin",            # loopback with port
+        "http://169.254.169.254/latest/",         # cloud metadata (link-local)
+    ):
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.parse(_fetch_src(url))
+        assert getattr(exc.value, "code", None) == "SS3075", url
+    # legitimate external hosts (name + public IP + port) still accept — no FP
+    for url in ("https://api.example.com/v1/users", "https://8.8.8.8/",
+                "http://example.org:8080/x"):
+        assert "fetchIt" in semanticscript.parse(_fetch_src(url)).entities
+
+
 def _untrusted_fetch_src(bound_row=""):
     return (
         "RawUrl is alias\nRawUrl for String\nRawUrl typeTrust rawExternal\n"

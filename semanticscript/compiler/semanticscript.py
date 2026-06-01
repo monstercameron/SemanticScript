@@ -6545,21 +6545,86 @@ _INTERNAL_HOST_MARKERS = (
 
 
 def _url_host(url: str) -> str:
+    """Extract the URL's host, defeating the common SSRF host-obfuscation tricks
+    (R-078): strip the scheme, the path/query/fragment, the `user@` userinfo (so
+    `http://evil.com@127.0.0.1/` resolves to the REAL host 127.0.0.1, after the
+    last `@`), the `:port`, and percent-encoding (`%6c%6f…` -> `localhost`). An
+    IPv6 literal keeps its brackets."""
+    import urllib.parse
     s = url
     if "://" in s:
         s = s.split("://", 1)[1]
-    s = s.split("/", 1)[0]
+    for sep in ("/", "?", "#"):
+        s = s.split(sep, 1)[0]
+    if "@" in s:                       # host is AFTER the last @ (userinfo confusion)
+        s = s.rsplit("@", 1)[1]
+    try:
+        s = urllib.parse.unquote(s)    # decode %-encoded hosts
+    except (ValueError, TypeError):
+        pass
+    if s.startswith("["):              # [IPv6]:port -> keep the bracketed literal
+        end = s.find("]")
+        if end != -1:
+            s = s[:end + 1]
+    else:
+        s = s.split(":", 1)[0]         # strip :port
     return s.lower()
+
+
+def _host_to_ip(host: str):
+    """Interpret `host` as an IP in any of the SSRF-obfuscation forms — a bracketed
+    or bare IPv6 literal, a decimal/hex/octal integer (`2130706433`, `0x7f000001`),
+    or a dotted IPv4 with hex/octal octets (`0177.0.0.1`) — and return an
+    ipaddress object, or None if it is a name (R-078)."""
+    import ipaddress
+    h = host.strip()
+    if h.startswith("[") and h.endswith("]"):
+        h = h[1:-1]
+    try:
+        return ipaddress.ip_address(h)  # canonical IPv4/IPv6 dotted/colon form
+    except ValueError:
+        pass
+
+    def _octet(p: str) -> int:
+        if p[:2] in ("0x", "0X"):
+            return int(p, 16)
+        if len(p) > 1 and p[0] == "0":
+            return int(p, 8)           # legacy octal octet
+        return int(p, 10)
+
+    parts = h.split(".")
+    try:
+        if len(parts) == 1 and parts[0]:        # single integer host
+            n = _octet(parts[0])
+            return ipaddress.ip_address(n) if 0 <= n <= 0xFFFFFFFF else None
+        if len(parts) == 4:                     # dotted, possibly hex/octal octets
+            vals = [_octet(p) for p in parts]
+            if all(0 <= v <= 255 for v in vals):
+                return ipaddress.ip_address(
+                    (vals[0] << 24) | (vals[1] << 16) | (vals[2] << 8) | vals[3])
+    except (ValueError, IndexError):
+        return None
+    return None
 
 
 def _is_internal_host(host: str) -> bool:
     if any(host == m or host.startswith(m) for m in _INTERNAL_HOST_MARKERS):
         return True
-    # 172.16.0.0/12 private range
+    # 172.16.0.0/12 private range (kept as a fast literal path)
     if host.startswith("172."):
         parts = host.split(".")
         if len(parts) >= 2 and parts[1].isdigit() and 16 <= int(parts[1]) <= 31:
             return True
+    # R-078: decode integer/hex/octal/IPv6 host forms and classify by range, so an
+    # obfuscated loopback/private/link-local/metadata address can't slip past the
+    # literal-marker list (ipaddress covers IPv4 10/8·172.16/12·192.168/16 + IPv6
+    # fc00::/7 unique-local via is_private, 127/8·::1 loopback, 169.254/16·fe80::/10
+    # link-local, plus reserved/unspecified).
+    ip = _host_to_ip(host)
+    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local
+                           or ip.is_reserved or ip.is_unspecified
+                           or ip.is_multicast):
+        return True
     return False
 
 
