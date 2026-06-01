@@ -9308,12 +9308,15 @@ class EavCodegen:
                                   builder.sub(zero, diff), diff)
         raise EavError(f"unhandled computed math target {target!r}")
 
-    def _concat(self, builder, left, right):
-        """Heap-concatenate two NUL-terminated i8* strings (README ss30.2.2)."""
+    def _concat(self, builder, left, right, line=0):
+        """Heap-concatenate two NUL-terminated i8* strings (README ss30.2.2).
+        R-136: the malloc result is null-guarded before the strcpy/strcat so an
+        OOM is a structured trap (SSR0022), not a write through a null pointer."""
         la = builder.call(self.runtime("strlen"), [left])
         lb = builder.call(self.runtime("strlen"), [right])
         total = builder.add(builder.add(la, lb), ir.Constant(ir.IntType(64), 1))
         buf = builder.call(self.runtime("malloc"), [total])
+        self._guard_alloc(builder, buf, "string.concat", line)  # R-136
         builder.call(self.runtime("strcpy"), [buf, left])
         builder.call(self.runtime("strcat"), [buf, right])
         return buf
@@ -9345,7 +9348,8 @@ class EavCodegen:
                 if a.payload[1] not in ("HtmlSafeUrl", "HtmlFragment", "HtmlTrustedFragment"):
                     val = builder.call(self.runtime("ss_http_html_escape_str"), [val])
                 piece = val
-            result = piece if result is None else self._concat(builder, result, piece)
+            result = (piece if result is None
+                      else self._concat(builder, result, piece, call.line))
         return result if result is not None else self.global_string(b"\x00")
 
     # --- standard.test harness (README §35; std/standard.test.sem) ---------
@@ -9840,7 +9844,8 @@ class EavCodegen:
                     call.line)
         elif target == "string.concat":
             # README ss30.2.2: heap-concatenate two NUL-terminated strings.
-            result = self._concat(builder, arg("left", "String"), arg("right", "String"))
+            result = self._concat(builder, arg("left", "String"),
+                                   arg("right", "String"), call.line)
         elif target == "html.render":
             # README ss16: render an htmlTemplate island, auto-escaping `{{holes}}`
             # by sink context. Split the template on holes and concat the literal
@@ -10444,7 +10449,7 @@ class EavCodegen:
         tb = ir.IRBuilder(trap_bb)
         self._emit_panic(
             tb, "SSR0022", "alloc-failed",
-            "allocation failed (out of memory) building a collection",
+            "allocation failed (out of memory)",
             op_name, line, None, None)
         tb.unreachable()
         builder.position_at_end(cont_bb)

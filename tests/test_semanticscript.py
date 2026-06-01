@@ -6858,6 +6858,17 @@ def test_json_cursor_int64_range_checked():
         "the double->long long cast in ss_json_cursor_int64 is not range-guarded (R-155)"
 
 
+def test_string_concat_alloc_guarded():
+    # R-136 (safety): string.concat / html.render null-guard the malloc result
+    # before the strcpy/strcat, so an OOM is a structured trap (SSR0022) instead
+    # of a write through NULL. Assert the guard block is in the lowered IR; the
+    # string/html examples JIT-run correctly via run_examples.
+    ir = subprocess.run([sys.executable, SEMANTICSCRIPT, "emit-ir",
+                         os.path.join(EXAMPLES, "string_concat.sem")],
+                        capture_output=True, text=True, encoding="utf-8").stdout
+    assert "allocFail" in ir
+
+
 def test_list_map_alloc_guarded():
     # R-137: list/map create + growth null-check their malloc/realloc results,
     # trapping (SSR0022) on OOM instead of storing through NULL. Assert the guard
