@@ -2654,6 +2654,26 @@ def test_fortarget_must_name_declared_target():
     assert not any(d.code == "SS3010" for d in ok)
 
 
+def test_for_platform_undeclared_rejected():
+    base = (
+        "App is project\nApp module m\nApp target console\nApp entry main\n"
+        + _MOD
+        + "main is operation\nmain out ExitCode\nmain purpose \"p\"\nmain invariant \"i\"\n"
+    )
+    bad = semanticscript.lint(semanticscript.parse(base + "main forPlatform bogusPlat\n"))
+    assert any(d.code == "SS3011" for d in bad)
+
+    ok_src = (
+        "App is project\nApp module m\nApp target console\nApp entry main\n"
+        + _MOD
+        + "linuxX64 is platform\nlinuxX64 os linux\nlinuxX64 arch x64\n"
+        + "main is operation\nmain out ExitCode\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        + "main forPlatform linuxX64\n"
+    )
+    ok = semanticscript.lint(semanticscript.parse(ok_src))
+    assert not any(d.code == "SS3011" for d in ok)
+
+
 def test_multitarget_entry_zero_two_and_exactly_one():
     # R-242 / WS3-160: for each declared build target, exactly one project entry
     # must be enabled by forTarget gating or by an unqualified default.
