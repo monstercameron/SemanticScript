@@ -63,7 +63,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          foreach ($t in "test_http_server", "test_gui", "test_wasm", "test_dom", "test_apps", "test_mcp", "test_agent_tools") {
+          foreach ($t in "test_http_server", "test_gui", "test_wasm", "test_dom", "test_apps", "test_mcp", "test_agent_tools", "test_cli_surface") {
             python "tests/$t.py"
             if ($LASTEXITCODE -ne 0) { throw "$t failed with exit $LASTEXITCODE" }
           }
