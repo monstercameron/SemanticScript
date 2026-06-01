@@ -6727,6 +6727,22 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_http_send_all_clamps_chunk_to_int_max():
+    # R-153: send_all must clamp each send() request to INT_MAX rather than casting
+    # a >INT_MAX size_t body length to a negative/truncated int. Source-level guard
+    # (a >2GB response is impractical to send in a test; the http runtime builds +
+    # test_http_server / http-runtime-gauntlet round-trip end to end).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                            "sem_http_runtime.c"), encoding="utf-8").read()
+    m = re.search(r"static int send_all\(.*?\n\}", src, re.S)
+    assert m
+    body = m.group(0)
+    assert "SS_SEND_CHUNK_MAX" in body
+    assert "(int)(byte_count - sent_count)" not in body  # the unclamped narrowing is gone
+
+
 def test_base64url_encode_capacity_no_int_overflow():
     # R-145: ss_base64url_encode must compute the required capacity in a wide type
     # so input_byte_count*4 cannot overflow signed int (an overflow would produce

@@ -2130,12 +2130,21 @@ static const char *reason_phrase_for_status(int status) {
 
 static int send_all(ss_socket_t socket_handle, const char *data, size_t byte_count) {
     size_t sent_count = 0;
+    /* R-153: send() takes an int length; a body larger than INT_MAX must be sent
+     * in safe-sized chunks rather than casting a huge size_t to a negative or
+     * truncated int. The loop already handles partial sends, so clamping each
+     * request to INT_MAX is sufficient and correct. */
+    const size_t SS_SEND_CHUNK_MAX = 2147483647u; /* INT_MAX */
 
     while (sent_count < byte_count) {
+        size_t remaining = byte_count - sent_count;
+        int request = remaining > SS_SEND_CHUNK_MAX
+                          ? (int)SS_SEND_CHUNK_MAX
+                          : (int)remaining;
         int chunk_count = send(
             socket_handle,
             data + sent_count,
-            (int)(byte_count - sent_count),
+            request,
             0
         );
         if (chunk_count <= 0) {
