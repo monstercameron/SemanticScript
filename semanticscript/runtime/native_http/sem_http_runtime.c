@@ -371,6 +371,21 @@ static char *copy_c_string(const char *source) {
     return copy_bytes_with_nul(source, strlen(source));
 }
 
+/* R-183: a caller-supplied header value (e.g. Content-Type) must not contain CR
+ * or LF — those would split the value into injected response headers (HTTP
+ * response splitting). */
+static int ss_http_header_value_ok(const char *value) {
+    if (value == NULL) {
+        return 1;
+    }
+    for (; *value != '\0'; ++value) {
+        if (*value == '\r' || *value == '\n') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int ss_http_response_text(
     SSHttpResponse *response,
     int status,
@@ -382,6 +397,9 @@ int ss_http_response_text(
 
     if (response == NULL || body == NULL) {
         return SS_HTTP_ERR_CONFIG;
+    }
+    if (!ss_http_header_value_ok(content_type)) {
+        return SS_HTTP_ERR_CONFIG;  /* R-183: reject CRLF-injecting content type */
     }
 
     owned_body = copy_c_string(body);
@@ -421,6 +439,9 @@ int ss_http_response_bytes(
 
     if (response == NULL || (body == NULL && body_length > 0)) {
         return SS_HTTP_ERR_CONFIG;
+    }
+    if (!ss_http_header_value_ok(content_type)) {
+        return SS_HTTP_ERR_CONFIG;  /* R-183: reject CRLF-injecting content type */
     }
 
     owned_body = copy_bytes_with_nul((const char *)body, body_length);
