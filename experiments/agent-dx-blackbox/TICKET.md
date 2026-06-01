@@ -212,34 +212,66 @@ relevant output in the DEVLOG.
 
 ---
 
-## Deliverable: `DEVLOG.md` (graded — the primary artifact)
+## Deliverable: `DEVLOG.md` — THE primary artifact (graded hardest)
 
-Write it incrementally, as engineering notes — candid, specific, balanced; not
-marketing. Required sections:
+**The working program is table stakes; the DEVLOG is the actual deliverable.**
+We are studying the toolchain's developer experience through your eyes, so we
+need an aggressive, unfiltered, blow-by-blow record of what it was *actually*
+like to use these tools. A green checkmark with a thin DEVLOG is a **failed**
+trial. A rich DEVLOG with an honest partial result is a **successful** one.
 
-1. **Onboarding** — The exact first command/tool you ran and why. Could you learn
-   the language *and* the edit workflow from the toolchain alone? Precisely where
-   was it ambiguous, missing, or wrong? Wall-clock time until your first valid
-   row compiled.
-2. **The good** — Tools/diagnostics that genuinely helped. **Quote the specific
-   output** (a diagnostic code, a fix plan, a search hit, a scaffold) that
-   unblocked you, and say what it saved.
-3. **The bad / friction** — Every place you got stuck, guessed wrong, or hit a
-   confusing/misleading message. **Quote it verbatim.** Note attempts-to-green
-   per acceptance criterion.
-4. **The fix loop** — When the check failed, did the toolchain's
-   diagnose → repair-plan → apply → format loop get you to green? Did applying a
-   fix plan work cleanly, or did you have to hand-edit? How many cycles?
-5. **Tool routing** — A table: every distinct tool/command you used × what it was
-   good for × whether you'd reach for it again. List any tool you *expected* to
-   exist but couldn't find, and any you tried that returned something useless.
-6. **Constraint pressure** — Where did the "tool-only / no web / no source
-   reading" rules actually hurt? Name each moment you'd normally have escaped to
-   the web or the source, and how the toolchain did (or didn't) cover for it.
-   This is the core finding.
-7. **Verdict (3–5 sentences)** — Would an AI agent be productive in this language
-   using only these tools? The single biggest DX **win** and the single biggest
-   DX **gap**, each in one sentence.
+### How to write it — non-negotiable rules
+
+- **Document in real time, not at the end.** Open `DEVLOG.md` as your very first
+  action and append to it continuously as you work. Do not reconstruct it from
+  memory afterward — that loses exactly the friction we want.
+- **Keep a running, timestamped command log.** For *every* tool invocation,
+  record: the exact command, what you *expected*, what you *got* (paste the real
+  output — verbatim, including errors and stack traces), and your one-line
+  reaction. Yes, every single one. The log will be long; that is correct.
+- **Quote, never paraphrase.** Diagnostics, error text, fix plans, search hits,
+  help output — paste them verbatim. If you summarize, you have destroyed the
+  evidence.
+- **Be brutally honest and specific.** No diplomacy, no marketing, no "it was a
+  bit tricky." Say *what* was confusing, *why*, what you assumed, how you were
+  wrong, and how many tries it took. Name names: which command, which message,
+  which missing piece.
+- **Count everything.** Attempts-to-green per acceptance criterion, number of
+  fix→check cycles, number of times you guessed a row's shape wrong, number of
+  dead ends. Numbers make DX comparable across model runs.
+- **Log the misses too.** Every command that returned something useless,
+  misleading, empty, or wrong. Every tool you *expected* to exist and went
+  looking for and couldn't find. Every moment you wanted to break a constraint.
+- **Mark wins and pains inline as you go** with `✅ WIN:` and `❌ PAIN:` tags so
+  they can be grepped out later. Don't save them all for the summary.
+
+### Required structure
+
+Start with a continuously-updated **§0 Running command log** (the timestamped
+blow-by-blow above). Then, the synthesis sections — written *from* that log:
+
+1. **Onboarding** — Your exact first command and why. Could you learn the
+   language *and* the edit workflow from the toolchain alone? Where precisely was
+   it ambiguous, missing, or wrong? Wall-clock time to your first compiling row.
+2. **The good** — Tools/diagnostics that genuinely helped, each with the verbatim
+   output that unblocked you and what it saved you.
+3. **The bad / friction** — Every stuck point, wrong guess, and confusing or
+   misleading message, quoted verbatim, with attempts-to-green per AC.
+4. **The fix loop** — Did diagnose → repair-plan → apply → format actually get
+   you to green? Did the fix plan apply cleanly or did you hand-edit? How many
+   cycles?
+5. **Tool routing** — A table: every distinct tool/command × what it was good for
+   × would you reach for it again. Plus tools you expected but couldn't find, and
+   tools that returned something useless.
+6. **Constraint pressure** — Every moment the "tool-only / no web / no source
+   reading" rule actually hurt, and whether the toolchain covered for it. **This
+   is the core finding** — give it real depth.
+7. **Verdict (3–5 sentences)** — Would an AI agent be productive here on tools
+   alone? The single biggest DX **win** and the single biggest DX **gap**.
+
+> Rule of thumb: if a reader of your DEVLOG cannot reconstruct your entire
+> session — every command, every error, every decision — without watching you
+> work, the DEVLOG is not detailed enough. Err on the side of *too much*.
 
 ## Suggested time budget (timebox 2h — fill the time with rigor, not filler)
 
@@ -262,7 +294,10 @@ marketing. Required sections:
       and nothing else in the repo was created or modified.
 - [ ] AC-1 … AC-7 each proven with a pasted tool command + output in the DEVLOG.
 - [ ] T-1 … T-8 executed and recorded, including the T-8 negative check (reverted).
-- [ ] DEVLOG has all seven sections, with verbatim quotes for the good and the bad.
+- [ ] DEVLOG was written **in real time** and contains the §0 running command log
+      (every invocation: command, expected, verbatim output, reaction) plus all
+      seven synthesis sections, with verbatim quotes and `✅ WIN:` / `❌ PAIN:`
+      tags throughout. A thin DEVLOG fails the trial even if the program is green.
 - [ ] You confirm, in one line, that you used **only** the toolchain — no web, no
       reading the compiler source or docs files, no prior-knowledge shortcuts.
 - [ ] End your turn by printing the per-AC proof block and pointing to

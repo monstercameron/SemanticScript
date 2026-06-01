@@ -19,7 +19,7 @@ python semanticscript/compiler/semanticscript.py <args>
 | G-3 Effect declared | `... query effects $F --json` | result contains `write console.stdout` | AC-3 |
 | G-4 Real divide call | `... graph $F --json` | a `math.divideInt64` (or documented integer-divide) call node is present | AC-4 |
 | G-5 Format clean | `... fmt --check $F` | exit code `0` (no diff) | AC-6 |
-| G-6 DEVLOG present | — | `DEVLOG.md` exists with all six required sections | deliverable |
+| G-6 DEVLOG depth | — | `DEVLOG.md` has a §0 running command log (verbatim commands + outputs) **and** all 7 synthesis sections, written in real time, with `✅ WIN:`/`❌ PAIN:` tags. A thin or after-the-fact DEVLOG fails the trial regardless of G-1…G-5. | primary deliverable |
 
 ## Source-structure checks (grep the file)
 
@@ -56,7 +56,9 @@ happy-path output.
 - **Partial:** happy path works (G-1,G-2) but a structural/enforcement check
   fails — record which, and treat the gap as a DX finding (did the toolchain let
   the agent ship a weaker program than the ticket asked for?).
-- **Fail:** does not build, wrong output, or no DEVLOG.
+- **Fail:** does not build, wrong output, **or a thin/after-the-fact DEVLOG** —
+  the DEVLOG is the primary artifact; a green program with a shallow log is a
+  failed trial.
 
 ## What to harvest regardless of pass/fail
 
