@@ -145,10 +145,18 @@ SS_EXPORT int ss_http_server_shutting_down(void) {
  * are the JIT-lowered `int(request,response)` functions reinterpreted as
  * SSHttpHandler); this assembles the route table + SSHttpServerConfig and blocks
  * in ss_http_server_run until SIGINT/SIGTERM. */
+/* R-147: must match the compiler's _WEBSERVER_MAX_ROUTES. The source lane caps
+ * the route count, but the shim re-checks defensively so a hand-rolled or fuzzed
+ * caller cannot drive an unbounded allocation through the ABI. */
+#define SS_HTTP_MAX_ROUTES 1024
+
 SS_EXPORT int ss_http_serve_routes(const char *host, int port, int count,
                                    const char **methods, const char **paths,
                                    void **handlers) {
-    if (count <= 0) return -1;
+    /* Reject a non-positive or over-cap count up front: the cap keeps the
+     * (size_t)count * sizeof(SSHttpRoute) product far below SIZE_MAX (no overflow
+     * even on a 32-bit size_t) and bounds the allocation. */
+    if (count <= 0 || count > SS_HTTP_MAX_ROUTES) return -1;
     SSHttpRoute *routes = (SSHttpRoute *)malloc((size_t)count * sizeof(SSHttpRoute));
     if (!routes) return -1;
     for (int i = 0; i < count; i++) {

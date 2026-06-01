@@ -556,6 +556,11 @@ DIAGNOSTICS.update({
     "SS2606": {"tier": "T1", "summary": "Invalid webServer host.",
                "found": "A `host` whose payload is empty or contains whitespace.",
                "suggested": "Write a bare/quoted host like `127.0.0.1` or `0.0.0.0` (README §14)."},
+    "SS2607": {"tier": "T1", "summary": "webServer route count over the maximum.",
+               "found": "A webServer with more than the documented maximum number of routes.",
+               "suggested": "Keep the route table within the documented cap; the entry "
+                            "builds fixed-size route arrays, so an unbounded count would "
+                            "blow the stack frame or truncate the ABI count (README §14)."},
     "MD1042": {"tier": "T1", "summary": "purpose payload must be a quoted string.",
                "found": "A `purpose` whose payload is not a quoted string.",
                "suggested": "Write `purpose \"…\"` (README §6)."},
@@ -5740,6 +5745,13 @@ def _validate_overrides(program: Program) -> None:
 
 
 _HTTP_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+# R-147: documented maximum webServer route count. _emit_webserver_entry builds
+# three fixed-size i8* route arrays on the entry stack frame and narrows the count
+# to i32 for ss_http_serve_routes; capping the count keeps that stack use bounded
+# (3 * N * 8 bytes — 24 KB at the cap) and well clear of any i32 truncation. Real
+# servers use a few hundred routes at most; this is a generous ceiling. The native
+# shim enforces the same bound defensively.
+_WEBSERVER_MAX_ROUTES = 1024
 _HANDLER_ABI = ({"request": "HttpRequest", "response": "HttpResponse"}, "Int32")
 _MIDDLEWARE_ABI = (
     {"request": "HttpRequest", "response": "HttpResponse", "next": "NextMiddleware"},
@@ -5802,6 +5814,17 @@ def _validate_webserver_abi(program: Program) -> None:
                     f"contains whitespace (README ss14)",
                     host_row.line, code="SS2606",
                 )
+        # R-147: bound the route count in the source lane so the lowered entry's
+        # fixed-size route arrays stay within the stack and the i32 ABI count.
+        route_rows = ws.facts("route")
+        if len(route_rows) > _WEBSERVER_MAX_ROUTES:
+            raise EavError(
+                f"webServer {ws.name!r} declares {len(route_rows)} routes, over the "
+                f"maximum of {_WEBSERVER_MAX_ROUTES}; the entry builds fixed-size route "
+                f"arrays, so an unbounded count would blow the stack frame or truncate "
+                f"the ABI count (README ss14)",
+                ws.line, code="SS2607",
+            )
         for r in ws.facts("route"):
             if not r.payload:
                 continue

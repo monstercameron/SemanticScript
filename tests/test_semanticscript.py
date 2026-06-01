@@ -8263,6 +8263,38 @@ def test_webserver_dynamic_routing():
     assert getattr(exc.value, "code", None) == "SS2602"
 
 
+def _webserver_with_n_routes(n):
+    rows = [
+        "P is project\nP module m\nP target webServer\nP entry srv\n",
+        "m is module\nm path a.b\nm exports srv\nm purpose \"p\"\nm invariant \"i\"\n",
+        "cap is capability\ncap grants write http.response\ncap purpose \"w\"\n",
+        "srv is webServer\nsrv host \"127.0.0.1\"\nsrv port 8080\n",
+    ]
+    rows += [f'srv route GET "/r{i}" h\n' for i in range(n)]
+    rows.append("srv notFound h\n")
+    rows.append(
+        "h is operation\nh in request HttpRequest\nh in response HttpResponse\n"
+        "h out Int32\nh effect write http.response\nh uses cap\nh memory heap no\n"
+        "h async no\nh purpose \"p\"\nh invariant \"i\"\n"
+        "h let ok immutable Int32 0\nh return ok\n")
+    return "".join(rows)
+
+
+def test_webserver_route_count_capped():
+    # R-147: the lowered entry builds three fixed-size i8* route arrays on the
+    # stack and narrows the count to i32, so an unbounded route table could blow
+    # the stack frame or truncate the ABI count. The source lane now caps the
+    # route count (SS2607); the cap (1024) lints clean, one over raises.
+    assert semanticscript._WEBSERVER_MAX_ROUTES == 1024
+    at_cap = semanticscript.parse(_webserver_with_n_routes(
+        semanticscript._WEBSERVER_MAX_ROUTES))
+    assert not [d for d in semanticscript.lint(at_cap) if d.severity == "error"]
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.lint(semanticscript.parse(_webserver_with_n_routes(
+            semanticscript._WEBSERVER_MAX_ROUTES + 1)))
+    assert getattr(exc.value, "code", None) == "SS2607"
+
+
 def test_webserver_host_port_route_path_validation():
     # R-161: host/port/route-path are now a source-lane contract, not a lowering
     # traceback (`int("nope")`) or a native-startup surprise (port cast to u16
