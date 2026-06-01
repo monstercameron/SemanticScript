@@ -6727,6 +6727,26 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_buffer_create_negative_size_traps():
+    # R-135: a negative buffer.create size traps with a structured ss_panic
+    # (SSR0020) before the malloc + unchecked length store, instead of accepting
+    # it and storing through a bogus heap pointer. (A huge size is covered by the
+    # companion alloc-null guard.) JIT-validated; native build shares the IR.
+    src = ('P is project\nP module m\nP target console\nP entry main\n'
+           'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+           'ExitCode is alias\nExitCode for Int32\n'
+           'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+           'main purpose "x"\nmain invariant "y"\n'
+           'main let neg immutable Int64 -1\nmain let okc immutable ExitCode 0\n'
+           'main do mk\nmain return okc\n'
+           'mk is call\nmk in main\nmk invokes buffer.create\n'
+           'mk arg size Int64 neg\nmk out buf Buffer\n')
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
+                          input=src, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode != 0
+    assert "SSR0020" in proc.stderr
+
+
 def test_stdlib_view_contract_enforced_at_call_site():
     # WS1-122: the seam — a stdlib op's `.semsig` publishes the lifetime annotation
     # (memory.allocateIn returns a borrowed `mayEscape no` View) and the LANGUAGE

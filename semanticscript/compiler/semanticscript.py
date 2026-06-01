@@ -9511,8 +9511,10 @@ class EavCodegen:
 
             if target == "buffer.create":
                 n = arg("size", "Int64")
+                self._guard_buffer_size(builder, n, target, call.line)  # R-135
                 total = builder.add(n, ir.Constant(i64, 9))  # 8 len + n + 1 scratch
                 ptr = builder.call(self.runtime("malloc"), [total])
+                self._guard_alloc_nonnull(builder, ptr, target, call.line)  # R-135
                 builder.store(n, builder.bitcast(ptr, i64.as_pointer()))
                 result = ptr
             elif target == "buffer.length":
@@ -10387,6 +10389,42 @@ class EavCodegen:
         tb.unreachable()
         builder.position_at_end(cont_bb)
 
+    def _guard_buffer_size(self, builder, size, op_name, line) -> None:
+        """R-135: a `buffer.create` size must be non-negative — a negative length
+        would flow into `malloc(size + 9)` and an unchecked length store. Emits a
+        check that branches to a structured `ss_panic` (SSR0020); the builder
+        continues on the valid path."""
+        fn = builder.function
+        bad = builder.icmp_signed("<", size, ir.Constant(size.type, 0))
+        trap_bb = fn.append_basic_block("bufSizeBad")
+        cont_bb = fn.append_basic_block("bufSizeCont")
+        builder.cbranch(bad, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        self._emit_panic(
+            tb, "SSR0020", "buffer-size",
+            "buffer.create size must be non-negative (README ss10.6)",
+            op_name, line, size, None)
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
+
+    def _guard_alloc_nonnull(self, builder, ptr, op_name, line) -> None:
+        """R-135: trap if an allocation returned NULL (e.g. a size too large to
+        satisfy) instead of storing through the null pointer."""
+        i64 = ir.IntType(64)
+        fn = builder.function
+        isnull = builder.icmp_unsigned(
+            "==", builder.ptrtoint(ptr, i64), ir.Constant(i64, 0))
+        trap_bb = fn.append_basic_block("allocNull")
+        cont_bb = fn.append_basic_block("allocCont")
+        builder.cbranch(isnull, trap_bb, cont_bb)
+        tb = ir.IRBuilder(trap_bb)
+        self._emit_panic(
+            tb, "SSR0020", "buffer-size",
+            "buffer.create allocation failed (size too large)",
+            op_name, line, None, None)
+        tb.unreachable()
+        builder.position_at_end(cont_bb)
+
     def _emit_derived_target(self, target, call, args, builder, sym):
         """Compiler-derived construction/access targets (README ss10.5): a record
         `<Record>.new`/`<Record>.<field>` and a payloadless `<Enum>.<variant>`."""
@@ -11073,6 +11111,9 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0013": {"kind": "recursion-depth-exceeded",
                 "summary": "Recursive call depth exceeded the runtime limit (likely unbounded recursion).",
                 "repair": "Add or fix the base case, or convert the recursion to a bounded loop."},
+    "SSR0020": {"kind": "buffer-size",
+                "summary": "buffer.create size is negative, or the allocation for it failed (R-135).",
+                "repair": "Validate the size is non-negative and within memory before creating the buffer."},
 }
 
 # WS1-131: logical recursion-depth bound. A statically-recursive operation
