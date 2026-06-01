@@ -11169,13 +11169,35 @@ def jit_run(program: Program, entry: Optional[str] = None) -> int:
     return cmain()
 
 
-def run_tests(program: Program, lane: Optional[str] = None) -> dict:
-    """Execute every `tag test` operation by JIT-running it as an entry and
-    treating a 0 exit as a pass (sem.test.v1; WS3-026/WS4-119). Project semantic
-    preflight (lint errors) runs first and blocks the runtime lane.
+def _record_run_entry(source: str, entry: str):
+    """R-102: run one operation as the entry in an isolated child, returning
+    (stdout, stderr, exitCode). A test op that traps (ss_panic -> 134) or hangs
+    kills only the child — the test runner survives and records the result."""
+    import os
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [sys.executable, os.path.abspath(__file__), "run", "-", "--entry", entry],
+            input=source, capture_output=True, text=True, encoding="utf-8",
+            timeout=_eval_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        err = _decode_stream(exc.stderr) + (
+            f"\nsemanticscript: eval timeout — test '{entry}' exceeded "
+            f"{_eval_timeout_seconds():g}s and was terminated\n")
+        return _decode_stream(exc.stdout), err, _EVAL_TIMEOUT_EXIT
+    return proc.stdout, proc.stderr, proc.returncode
 
-    R-007: an optional `lane` restricts execution to one discovered lane (the
-    `--lane` flag), so `semanticscript test <root> --lane unit` runs only the unit lane."""
+
+def run_tests(program: Program, lane: Optional[str] = None) -> dict:
+    """Execute every `tag test` operation by running it as an entry in an isolated
+    child and treating a 0 exit as a pass (sem.test.v1; WS3-026/WS4-119). Project
+    semantic preflight (lint errors) runs first and blocks the runtime lane.
+
+    R-102: each op runs in its own child (over the program's canonical source), so
+    a runtime trap or hang in one test is captured (status error/timeout + panic)
+    instead of killing the whole runner.
+    R-007: an optional `lane` restricts execution to one discovered lane."""
     diags = lint(program)
     preflight_ok = not any(d.severity == "error" for d in diags)
     lanes = discover_tests(program)
@@ -11183,17 +11205,25 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
         lanes = {lane: lanes.get(lane, [])}
     tests: list = []
     if preflight_ok:
+        source = format_program(program)  # canonical, runnable source for the child
         for lane in sorted(lanes):
             for op in lanes[lane]:
-                try:
-                    code = jit_run(program, entry=op)
-                    status = "pass" if code == 0 else "fail"
-                except EavError as exc:
-                    status, code = "error", None
-                    tests.append({"name": op, "lane": lane, "status": status,
-                                  "error": str(exc)})
-                    continue
-                tests.append({"name": op, "lane": lane, "status": status, "exitCode": code})
+                out, err, code = _record_run_entry(source, op)
+                run_status, panic = _classify_run(out, err, code)
+                if run_status == "ok":
+                    status = "pass"
+                elif run_status == "timed-out":
+                    status = "timeout"
+                elif run_status == "crashed" or panic is not None:
+                    status = "error"
+                else:
+                    status = "fail"
+                rec = {"name": op, "lane": lane, "status": status, "exitCode": code}
+                if panic is not None:
+                    rec["panic"] = panic
+                if status in ("error", "timeout") and err.strip():
+                    rec["error"] = err.strip().splitlines()[-1][:200]
+                tests.append(rec)
     runtime_status = ("not-run" if not preflight_ok
                       else "pass" if all(t["status"] == "pass" for t in tests)
                       else "fail")
@@ -11724,45 +11754,61 @@ def cmd_bench(args) -> int:
     # so chdir into a project root for the lower/run phases — otherwise embeds
     # such as taskforge-web's `sql/schema.sql` fail to resolve.
     _bench_cwd = os.getcwd()
-    if os.path.isdir(args.path) and is_project_root(args.path):
-        os.chdir(args.path)
-    runnable = _program_target(parse(src)) == "console"
-    parse_t, lower_t, run_t = [], [], []
-    for _ in range(runs):
-        t0 = time.perf_counter()
-        prog = parse(src)
-        t1 = time.perf_counter()
-        lower_to_llvm(prog)
-        t2 = time.perf_counter()
-        parse_t.append(t1 - t0)
-        lower_t.append(t2 - t1)
+    # R-109: restore cwd on EVERY exit (parse/lower failure included), not only
+    # after a clean loop — an in-process caller (MCP/test harness) must not be
+    # left in the project directory when a bad project aborts the benchmark.
+    try:
+        if os.path.isdir(args.path) and is_project_root(args.path):
+            os.chdir(args.path)
+        runnable = _program_target(parse(src)) == "console"
+        # R-108: a runtime trap in the JIT'd program would hard-exit (ss_panic ->
+        # 134) and take the whole bench process with it, before sem.bench.v1 is
+        # written. Probe the program once in an isolated child to classify its run
+        # (ok / crashed / nonzero-exit / timed-out); only time the in-process run
+        # when that child run was clean, so a trapping or hanging program is
+        # reported as a benchmark result instead of killing the command.
+        run_status = None
         if runnable:
-            t3 = time.perf_counter()
-            # The JIT'd program writes to the OS stdout (fd 1) from the C runtime,
-            # which Python-level redirection can't capture; mute fd 1 at the OS
-            # level so the program's output doesn't pollute bench's own (--json).
-            sys.stdout.flush()
-            devnull = os.open(os.devnull, os.O_WRONLY)
-            saved = os.dup(1)
-            os.dup2(devnull, 1)
-            try:
-                jit_run(prog)
-            except OSError:
-                pass  # a trapping program still yields a timing
-            finally:
+            p_out, p_err, p_code = _record_run_full(src)
+            run_status, _ = _classify_run(p_out, p_err, p_code)
+        time_run = runnable and run_status == "ok"
+        parse_t, lower_t, run_t = [], [], []
+        for _ in range(runs):
+            t0 = time.perf_counter()
+            prog = parse(src)
+            t1 = time.perf_counter()
+            lower_to_llvm(prog)
+            t2 = time.perf_counter()
+            parse_t.append(t1 - t0)
+            lower_t.append(t2 - t1)
+            if time_run:
+                t3 = time.perf_counter()
+                # The JIT'd program writes to the OS stdout (fd 1) from the C
+                # runtime, which Python-level redirection can't capture; mute fd 1
+                # at the OS level so it doesn't pollute bench's own (--json).
                 sys.stdout.flush()
-                os.dup2(saved, 1)
-                os.close(saved)
-                os.close(devnull)
-            run_t.append(time.perf_counter() - t3)
-
-    if os.getcwd() != _bench_cwd:
-        os.chdir(_bench_cwd)
+                devnull = os.open(os.devnull, os.O_WRONLY)
+                saved = os.dup(1)
+                os.dup2(devnull, 1)
+                try:
+                    jit_run(prog)
+                except OSError:
+                    pass  # a trapping program still yields a timing
+                finally:
+                    sys.stdout.flush()
+                    os.dup2(saved, 1)
+                    os.close(saved)
+                    os.close(devnull)
+                run_t.append(time.perf_counter() - t3)
+    finally:
+        if os.getcwd() != _bench_cwd:
+            os.chdir(_bench_cwd)
 
     def ms(xs):
         return round(min(xs) * 1000, 3) if xs else None
     result = {
         "path": args.path, "runs": runs, "runnable": runnable,
+        "runStatus": run_status,
         "parseMsBest": ms(parse_t), "lowerMsBest": ms(lower_t),
         "runMsBest": ms(run_t),
     }
@@ -11886,17 +11932,21 @@ def cmd_run(args) -> int:
     # needs no subprocess; a stdin program and the isolated POSIX child also run
     # in-process. POSIX delegates to an isolated child (below) because a trap
     # there is an uncatchable fatal signal.
+    entry = getattr(args, "entry", None)  # R-102: run a named op as the entry
     if getattr(args, "jit_child", False) or args.path == "-" or os.name == "nt":
         sys.stdout.flush()
         try:
-            return jit_run(program)
+            return jit_run(program, entry=entry)
         except OSError as exc:
             _trap_report(str(exc))
             return 134  # stable "aborted" exit (128 + SIGABRT)
     import subprocess
     sys.stdout.flush()
-    child = subprocess.run(
-        [sys.executable, os.path.abspath(__file__), "run", "--_jit-child", args.path])
+    child_argv = [sys.executable, os.path.abspath(__file__), "run",
+                  "--_jit-child", args.path]
+    if entry:
+        child_argv += ["--entry", entry]
+    child = subprocess.run(child_argv)
     rc = child.returncode
     if _is_trap_returncode(rc):
         _trap_report(f"isolated child terminated with {rc & 0xFFFFFFFF:#010x}")
@@ -12607,6 +12657,22 @@ def _classify_run(out: str, err: str, code: int):
     return status, panic
 
 
+def _unscaffold_lines(text: str, offset: int) -> str:
+    """R-112: rewrite `line N` references in an eval snippet's diagnostics back
+    from wrapped (scaffold-offset) coordinates to the user's snippet line numbers.
+    Leaves a reference at or above the snippet boundary untouched if subtracting
+    would underflow (a diagnostic genuinely in the scaffold prologue)."""
+    import re
+    if offset <= 0:
+        return text
+
+    def fix(m):
+        n = int(m.group(1)) - offset
+        return f"line {n}" if n >= 1 else m.group(0)
+
+    return re.sub(r"\bline (\d+)", fix, text)
+
+
 def cmd_eval(args) -> int:
     """Run a snippet through the JIT without scaffolding (sem.eval.v1): if the
     source declares no `project` entity, wrap it in a minimal console program,
@@ -12620,6 +12686,10 @@ def cmd_eval(args) -> int:
     WS2-071: --strict blocks T3 warnings before running."""
     src = _read_source(args.path)
     wrapped = not _source_declares_project(src)
+    # R-112: when the snippet is wrapped, the scaffold shifts every line number;
+    # rewrite diagnostics/panic rows back to the user's snippet coordinates so an
+    # editor or agent points its repair at the right line.
+    offset = _EVAL_SCAFFOLD.count("\n") if wrapped else 0
     if wrapped:
         src = _EVAL_SCAFFOLD + src
     # WS2-071: --strict blocks T3 warnings
@@ -12631,6 +12701,7 @@ def cmd_eval(args) -> int:
             errors = [d for d in diags if d.severity == "error"]
             if errors:
                 out, err = "", "\n".join(d.render() for d in errors)
+                err = _unscaffold_lines(err, offset)
                 code = 1
                 status = "lint-error"
                 sys.stdout.write(_json_envelope(
@@ -12642,6 +12713,10 @@ def cmd_eval(args) -> int:
             pass  # Fall through to _record_run_full which will catch the error
     out, err, code = _record_run_full(src)
     status, panic = _classify_run(out, err, code)
+    if offset:
+        err = _unscaffold_lines(err, offset)
+        if panic is not None and isinstance(panic.get("row"), int):
+            panic = {**panic, "row": panic["row"] - offset}
     payload = dict(
         ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
         stdout=out, stderr=err,
@@ -13269,8 +13344,11 @@ def cmd_test(args) -> int:
         sys.stdout.write(f"{total} test operation(s)\n")
         return 0
     report = run_tests(program, lane=getattr(args, "lane", None))
+    # R-102: only a clean `pass` is ok — a lint-`blocked` preflight, an error, or
+    # a failing test is ok:false so an envelope consumer can't read a blocked run
+    # as success (the process exit already distinguishes pass from not-pass).
     sys.stdout.write(_json_envelope(
-        "sem.test.v1", ok=(report["compositeStatus"] in ("pass", "blocked")),
+        "sem.test.v1", ok=(report["compositeStatus"] == "pass"),
         **report) + "\n")
     return 0 if report["compositeStatus"] == "pass" else 1
 
@@ -13453,6 +13531,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_run.add_argument("--strict", action="store_true",
                         help="block T3 opinionated warnings (in addition to T0/T1/T2)")
     sp_run.add_argument("--json", action="store_true")
+    sp_run.add_argument("--entry", default=None,
+                        help="run a named operation as the entry (used by the "
+                             "isolated test runner, R-102)")
     sp_run.add_argument("--_jit-child", dest="jit_child", action="store_true",
                         help=argparse.SUPPRESS)  # R-088: internal isolated JIT child
     sp_run.set_defaults(func=cmd_run)

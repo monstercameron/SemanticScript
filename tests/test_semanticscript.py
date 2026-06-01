@@ -1386,6 +1386,65 @@ def test_run_examples_has_per_example_timeout():
     assert isinstance(mod._EXAMPLE_TIMEOUT, float) and mod._EXAMPLE_TIMEOUT > 0
 
 
+def _runtime_div0_program():
+    # divisor comes from a runtime call (subtract a-a), so it is not statically
+    # folded to 0 — the trap fires at run time, not compile time.
+    return ('P is project\nP module m\nP target console\nP entry main\n'
+            'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+            'ExitCode is alias\nExitCode for Int32\n'
+            'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+            'main purpose "x"\nmain invariant "y"\n'
+            'main let a immutable Int64 5\nmain let okc immutable ExitCode 0\n'
+            'main do subC\nmain do divC\nmain return okc\n'
+            'subC is call\nsubC in main\nsubC invokes math.subtractInt64\n'
+            'subC arg left Int64 a\nsubC arg right Int64 a\nsubC out z Int64\n'
+            'divC is call\ndivC in main\ndivC invokes math.divideInt64\n'
+            'divC arg left Int64 a\ndivC arg right Int64 z\ndivC out q Int64\n')
+
+
+def test_bench_survives_runtime_trap(tmp_path, capsys):
+    # R-108: bench probes the run in an isolated child, so a runtime trap is a
+    # benchmark result (runStatus) instead of killing the process before the
+    # sem.bench.v1 envelope is written.
+    import json as _json
+    p = tmp_path / "rtdiv0.sem"
+    p.write_text(_runtime_div0_program(), encoding="utf-8")
+    semanticscript.main(["bench", str(p), "--runs", "1", "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert env["surface"] == "sem.bench.v1"
+    assert env["runnable"] is True and env["runStatus"] == "crashed"
+    assert env["runMsBest"] is None  # the trapping run is not timed in-process
+
+
+def test_bench_restores_cwd_on_project_failure(tmp_path):
+    # R-109: bench restores the process cwd even when the project aborts (parse
+    # failure), so a later in-process command's relative paths aren't corrupted.
+    proj = tmp_path / "proj"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "X is project\nX module m\nX target console\nX entry main\n", encoding="utf-8")
+    (proj / "src" / "main.sem").write_text("widgetThing is wgt\n", encoding="utf-8")
+    before = os.getcwd()
+    semanticscript.main(["bench", str(proj), "--json"])
+    assert os.getcwd() == before
+
+
+def test_eval_line_numbers_map_to_snippet():
+    # R-112: a wrapped eval snippet reports diagnostics at the user's snippet line
+    # (1-based), not at the scaffold-shifted line (the scaffold adds 11 lines).
+    import json as _json
+    one_line = subprocess.run([sys.executable, SEMANTICSCRIPT, "eval", "-", "--json"],
+                              input="badEntity is wgt\n", capture_output=True, text=True,
+                              encoding="utf-8")
+    env = _json.loads(one_line.stdout)
+    assert "line 1:" in env["stderr"] and "line 12" not in env["stderr"]
+    # an error on the snippet's second line reports line 2
+    two_line = subprocess.run([sys.executable, SEMANTICSCRIPT, "eval", "-", "--json"],
+                              input="okThing is alias\nbadEntity is wgt\n",
+                              capture_output=True, text=True, encoding="utf-8")
+    assert "line 2:" in _json.loads(two_line.stdout)["stderr"]
+
+
 def test_dangling_project_entry_rejected():
     # R-104: a project entry naming no declared operation must reject at check
     # (SS1194), not pass green and call a null address at runtime.
@@ -3605,6 +3664,44 @@ def test_test_runner_executes_tag_test_ops():
     rep2 = semanticscript.run_tests(semanticscript.parse(_test_program(failing)))
     assert rep2["compositeStatus"] == "fail"
     assert {t["name"]: t["status"] for t in rep2["tests"]}["checkFails"] == "fail"
+
+
+def test_test_runner_isolates_runtime_traps():
+    # R-102: a tag-test op that traps at runtime (div0) is captured as an isolated
+    # "error" result carrying its panic, instead of hard-exiting and skipping the
+    # sem.test.v1 envelope. Each op runs in its own child, so the runner survives.
+    trap = (
+        "checkTraps is operation\ncheckTraps out ExitCode\ncheckTraps async no\n"
+        'checkTraps tag test\ncheckTraps purpose "p"\ncheckTraps invariant "i"\n'
+        "checkTraps let a immutable Int64 5\ncheckTraps let okc immutable ExitCode 0\n"
+        "checkTraps do subC\ncheckTraps do divC\ncheckTraps return okc\n"
+        "subC is call\nsubC in checkTraps\nsubC invokes math.subtractInt64\n"
+        "subC arg left Int64 a\nsubC arg right Int64 a\nsubC out z Int64\n"
+        "divC is call\ndivC in checkTraps\ndivC invokes math.divideInt64\n"
+        "divC arg left Int64 a\ndivC arg right Int64 z\ndivC out q Int64\n")
+    rep = semanticscript.run_tests(semanticscript.parse(_test_program(trap)))
+    assert rep["compositeStatus"] == "fail"
+    t = {x["name"]: x for x in rep["tests"]}["checkTraps"]
+    assert t["status"] == "error"
+    assert (t.get("panic") or {}).get("code") == "SSR0010"
+
+
+def test_blocked_test_is_not_ok(capsys):
+    # R-102: a lint-blocked test (preflight error) reports ok:false (not ok:true),
+    # and the exit code agrees.
+    import json as _json
+    bad = ("P is project\nP module m\nP target console\nP entry main\n"
+           "m is module\nm path m\nm exports main\n"   # module missing purpose/invariant
+           "main is operation\nmain out Int32\nmain async no\nmain tag test\n"
+           "main let z immutable Int32 0\nmain return z\n")
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "t.sem")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(bad)
+        rc = semanticscript.main(["test", p, "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert env["compositeStatus"] == "blocked" and env["ok"] is False and rc == 1
 
 
 def test_agent_operating_loop(tmp_path, capsys):
