@@ -2407,6 +2407,49 @@ def test_suppress_unknown_code_errors():
     assert "SS5401" in codes
 
 
+# X-097 / §1J / §27: mutating a collection while a loop iterates it is rejected
+# (SS1572). The body of this loop reads the list (`getElem` = list.get) and the
+# `%s` slot lets the test swap the in-loop mutation in or out; the post-loop
+# `rel` (list.release) is always present to prove a mutation OUTSIDE the borrow is
+# accepted.
+_ITER_FIXTURE = (
+    'm is module\nm path a.b\nm purpose "x"\nm invariant "y"\nm exports run\n'
+    'run is operation\nrun out Int64\nrun async no\nrun purpose "iterate"\nrun invariant "ends"\n'
+    'run let idx mutable Int64 0\nrun let one immutable Int64 1\nrun let seed immutable Int64 5\n'
+    'run do mk\nrun do seedIt\nrun do lenCall\n'
+    'run at loopHead do checkGoing\nrun branch ifFalse going goto loopExit\n'
+    'run do getElem\n%s'
+    'run do incIdx\nrun goto loopHead\n'
+    'run at loopExit do rel\nrun return idx\n'
+    'mk is call\nmk in run\nmk invokes list.create\nmk out lst OpaquePointer\n'
+    'seedIt is call\nseedIt in run\nseedIt invokes list.append\nseedIt arg list OpaquePointer lst\nseedIt arg value Int64 seed\n'
+    'lenCall is call\nlenCall in run\nlenCall invokes list.length\nlenCall arg list OpaquePointer lst\nlenCall out n Int64\n'
+    'checkGoing is call\ncheckGoing in run\ncheckGoing invokes math.lessThanInt64\ncheckGoing arg left Int64 idx\ncheckGoing arg right Int64 n\ncheckGoing out going Bool\n'
+    'getElem is call\ngetElem in run\ngetElem invokes list.get\ngetElem arg list OpaquePointer lst\ngetElem arg index Int64 idx\ngetElem out elem Int64\n'
+    'badAppend is call\nbadAppend in run\nbadAppend invokes list.append\nbadAppend arg list OpaquePointer lst\nbadAppend arg value Int64 elem\n'
+    'incIdx is call\nincIdx in run\nincIdx invokes math.addInt64\nincIdx arg left Int64 idx\nincIdx arg right Int64 one\nincIdx out idx Int64\n'
+    'rel is call\nrel in run\nrel invokes list.release\nrel arg list OpaquePointer lst\n')
+
+
+def test_collection_mutated_during_iteration_rejected():
+    # mutate-during-iteration: append to the list inside the loop that reads it.
+    viol = semanticscript.lint(semanticscript.parse(_ITER_FIXTURE % "run do badAppend\n"))
+    s1572 = [d for d in viol if d.code == "SS1572"]
+    assert s1572, "mutating a collection while iterating it must be rejected (SS1572)"
+    assert all(d.severity == "error" for d in s1572)
+
+
+def test_collection_mutated_after_loop_accepted():
+    # mutate-after-loop: only the post-loop `release` mutates; the iteration borrow
+    # has ended, so it is accepted (no SS1572). No false positive on the clean walk.
+    ok = semanticscript.lint(semanticscript.parse(_ITER_FIXTURE % ""))
+    assert not any(d.code == "SS1572" for d in ok)
+    # and the worked example that iterates-then-releases stays clean end to end
+    prog = semanticscript.parse_compact(
+        open(os.path.join(EXAMPLES, "collections_list_sum.sem"), encoding="utf-8").read())
+    assert not any(d.code == "SS1572" for d in semanticscript.lint(prog))
+
+
 def test_suppress_scoped_to_entity_not_children():
     # A suppress on the module does not cover the helper op's own diagnostic.
     src = _MOD + (

@@ -294,6 +294,9 @@ DIAGNOSTICS.update({
     "SS1571": {"tier": "T1", "summary": "View missing lifetime.",
                "found": "A call/task that `borrows` a resource declares no `lifetime`.",
                "suggested": "A borrowed view must name what it borrows from: add `lifetime <region|resource>` (README §32.1 #9)."},
+    "SS1572": {"tier": "T1", "summary": "Collection mutated while it is being iterated.",
+               "found": "Inside a loop that reads a collection's elements (`list.get`/`map.get`), the same collection handle is also mutated (`append`/`put`/`remove`/`clear`/`release`); iterating a collection borrows it, so the mutation invalidates the live iteration.",
+               "suggested": "Finish iterating before you mutate — move the `append`/`put`/`release` after the loop exit, or collect the changes and apply them once the iteration borrow ends (README §1J/§27)."},
     "SS1569": {"tier": "T1", "summary": "Unsafe FFI allocator missing its wrapping rows.",
                "found": "An `unsafe yes` binding without all of `wrapsAs`/`cleanedBy`/`allocator`.",
                "suggested": "A foreign allocator must re-enter as an owned resource: declare `wrapsAs <OwnedType>` + `cleanedBy <freeTarget>` + `allocator <region|c.heap>` (README §26/§30.4)."},
@@ -3631,6 +3634,97 @@ def _exported_names(program: Program) -> set:
     return names
 
 
+# X-097 / §1J: iterating a collection borrows it as a view; mutating that same
+# collection while the borrow is live invalidates the iteration. The iteration
+# borrow is taken by an element read inside a loop body (`list.get`/`map.get`);
+# these intrinsics mutate (or destroy) the collection.
+_COLLECTION_ITER_READS = frozenset({"list.get", "map.get"})
+_COLLECTION_MUTATORS = frozenset({
+    "list.append", "list.set", "list.insert", "list.remove", "list.clear",
+    "list.release", "map.put", "map.remove", "map.clear", "map.release",
+})
+
+
+def _collection_handle_arg(call) -> Optional[str]:
+    """The value name of the collection a list/map intrinsic operates on — its
+    `list`/`map` arg slot (every list.*/map.* intrinsic names the handle there)."""
+    for a in call.facts("arg"):
+        if len(a.payload) >= 3 and a.payload[0] in ("list", "map"):
+            return a.payload[2]
+    return None
+
+
+def _lint_collection_iterator_invalidation(program: Program) -> list:
+    """X-097 / §1J / §27: reject mutating a collection while a loop is iterating it.
+
+    A back-edge loop whose body reads a collection's elements (`list.get`/`map.get`
+    on handle H) holds an iteration borrow of H for the whole body; if that body
+    also mutates H (`append`/`put`/`remove`/`clear`/`release`), the iteration is
+    invalidated (SS1572). A mutation OUTSIDE the loop body — building the collection
+    before the loop, or releasing it after loop exit — is accepted, since the borrow
+    only spans the iteration. Best-effort and lexical (loop body = label row..back-
+    edge row), mirroring `_lint_loop_no_progress`; it never fires without both an
+    element read and a mutation of the *same* handle in the *same* loop body."""
+    diags: list = []
+
+    def target_of(call):
+        inv = call.fact("invokes")
+        return inv.payload[0] if inv and inv.payload else ""
+
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        rows = op.rows
+        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        if not labels:
+            continue
+        owned = {
+            program.entities[c].name: program.entities[c]
+            for c in program.order
+            if program.entities[c].kind in ("call", "task")
+            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
+        }
+        reported: set = set()
+        for gi, r in enumerate(rows):
+            if r.predicate == "goto" and r.payload:
+                tgt = r.payload[0]
+            elif r.predicate == "branch":
+                tgt = _branch_goto_target_and_guards(r, owned)[0]
+            else:
+                tgt = None
+            li = labels.get(tgt) if tgt is not None else None
+            if li is None or li > gi:   # not a back-edge (forward jump or unknown)
+                continue
+            reads: dict = {}            # handle -> first read line in this body
+            mutations: list = []        # (handle, line, target)
+            for br in rows[li:gi + 1]:
+                if br.predicate not in ("do", "start", "join", "poll") or not br.payload:
+                    continue
+                call = owned.get(br.payload[0])
+                if call is None:
+                    continue
+                tt = target_of(call)
+                handle = _collection_handle_arg(call)
+                if handle is None:
+                    continue
+                if tt in _COLLECTION_ITER_READS:
+                    reads.setdefault(handle, br.line)
+                elif tt in _COLLECTION_MUTATORS:
+                    mutations.append((handle, br.line, tt))
+            for handle, ml, tt in mutations:
+                if handle in reads and (handle, ml) not in reported:
+                    reported.add((handle, ml))
+                    diags.append(Diagnostic(
+                        "SS1572", "error",
+                        f"collection {handle!r} is mutated ({tt}) inside a loop in "
+                        f"{op.name!r} that is iterating it (read at line {reads[handle]}); "
+                        f"iterating borrows the collection, so the mutation invalidates "
+                        f"the live iteration — mutate after the loop exits (README §1J/§27)",
+                        ml, op.name))
+    return diags
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -3742,6 +3836,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_variant_exhaustiveness(program))
     diags.extend(_lint_sqlite_usage(program))
     diags.extend(_lint_loop_no_progress(program))
+    diags.extend(_lint_collection_iterator_invalidation(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
     # footgun — steer to a tolerance compare (or Decimal for exact values). The
     # footgun is comparing two *computed* floats that "should" be equal; comparing
