@@ -2158,6 +2158,8 @@ def test_stdlib_readiness_tier_profile():
     # secondary and deferred — the two axes are independent.
     assert led["gui"]["tier"] == "secondary"
     assert led["gui"]["deferred"] is True
+    assert led["id"]["tier"] == "secondary"
+    assert led["id"]["deferred"] is False
     # a foundational module is core
     assert led["math"]["tier"] == "core" and led["sqlite"]["tier"] == "core"
     # the secondary set must name only real, classified modules (no stale entries)
@@ -2182,7 +2184,8 @@ def test_stdlib_readiness_tier_profile():
     # ...but the gate result (ok) is identical to the full run — filtering a tier
     # cannot hide a platform failure.
     assert sec["ok"] == full["ok"]
-    assert "gui" in full["modules"] and "math" not in sec["modules"]
+    assert {"gui", "id"}.issubset(full["modules"])
+    assert "id" in sec["modules"] and "math" not in sec["modules"]
 
 
 def test_test_lane_empty_is_not_pass():
@@ -9848,6 +9851,49 @@ def test_path_safe_type_required_at_path_sink():
     assert not any(d.severity == "error" for d in semanticscript.lint(prog))
 
 
+def test_id_stdlib_parses_lints_and_has_secondary_surface():
+    # WS3-129: standard.id is a native-backed nice-to-have module, not a
+    # signature-only catalog.
+    src = open(os.path.join(STD, "standard.id.sem"), encoding="utf-8").read()
+    prog = semanticscript.parse(src)
+    assert not any(d.severity == "error" for d in semanticscript.lint(prog))
+    ops = {n for n in prog.order if prog.entities[n].kind == "operation"}
+    surface = {
+        "uuidV4", "ulidNow", "ulidFromSeed", "monotonicNext", "slugify",
+        "semverCompare", "releaseIdString",
+    }
+    assert surface.issubset(ops), surface - ops
+    for n in surface:
+        body = prog.entities[n].fact("body")
+        assert body and body.payload[0] == "runtimeBinding"
+        assert body.payload[1].startswith("ss_id_")
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["id"]["status"] == "native"
+    assert led["id"]["tier"] == "secondary"
+    assert led["id"]["unbackedPublic"] is False
+    assert led["id"]["documentationGap"] is False
+
+
+def test_id_random_ids_require_entropy_capability():
+    # WS3-129: random identifiers draw from random.entropy, so callers need a
+    # covering capability just like standard.random's entropy source.
+    stdlib = open(os.path.join(STD, "standard.id.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain effect read random.entropy\n"
+        'main async no\nmain purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\nmain do make\n"
+        "main branch ifError make goto failed\nmain return okCode\n"
+        "main at failed return okCode\n"
+        "make is call\nmake in main\nmake invokes uuidV4\n"
+        "make out uuid IdentifierText\nmake catch idErr IdError\n"
+    )
+    prog = semanticscript.parse(stdlib + "\n" + main)
+    assert any("read random.entropy" in w and "not covered" in w for w in prog.warnings)
+
+
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the path runtime")
 def test_e2e_path_safe_builders_through_real_runtime():
     # WS3-111: path builders normalize mixed/percent-encoded separators, expose
@@ -9917,6 +9963,140 @@ def test_e2e_path_safe_builders_through_real_runtime():
         "data/nested",
         "1",
     ]
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the id runtime")
+def test_e2e_id_slug_semver_ulid_and_monotonic_runtime():
+    # WS3-129: deterministic pieces are stable under tests: slug normalization,
+    # SemVer prerelease/build comparison, seeded ULID ordering, and monotonic IDs.
+    stdlib = open(os.path.join(STD, "standard.id.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        'main uses stdoutWriter\nmain async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let title immutable String " Hello,  WORLD -- 2026! "\n'
+        'main let semA immutable String "1.0.0-alpha.2"\n'
+        'main let semB immutable String "1.0.0-alpha.10+build.7"\n'
+        'main let semC immutable String "1.0.0+build.1"\n'
+        'main let semD immutable String "v1.0.0+build.2"\n'
+        "main let t1 immutable Int64 1000\nmain let t2 immutable Int64 1001\n"
+        "main let seed immutable Int64 42\n"
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 7\n"
+        "main do slug\nmain branch ifError slug goto failed\n"
+        "main do cmpPre\nmain branch ifError cmpPre goto failed\n"
+        "main do cmpBuild\nmain branch ifError cmpBuild goto failed\n"
+        "main do ulidA\nmain branch ifError ulidA goto failed\n"
+        "main do ulidB\nmain branch ifError ulidB goto failed\n"
+        "main do idOne\nmain do idTwo\n"
+        "main do showSlug\nmain do showPre\nmain do showBuild\n"
+        "main do showUlidA\nmain do showUlidB\nmain do showOne\nmain do showTwo\n"
+        "main return okCode\nmain at failed return failCode\n"
+        "slug is call\nslug in main\nslug invokes slugify\n"
+        "slug arg text String title\nslug out slugText IdentifierText\nslug catch e1 IdError\n"
+        "cmpPre is call\ncmpPre in main\ncmpPre invokes semverCompare\n"
+        "cmpPre arg left String semA\ncmpPre arg right String semB\n"
+        "cmpPre out preOrder Int32\ncmpPre catch e2 IdError\n"
+        "cmpBuild is call\ncmpBuild in main\ncmpBuild invokes semverCompare\n"
+        "cmpBuild arg left String semC\ncmpBuild arg right String semD\n"
+        "cmpBuild out buildOrder Int32\ncmpBuild catch e3 IdError\n"
+        "ulidA is call\nulidA in main\nulidA invokes ulidFromSeed\n"
+        "ulidA arg timeMillis Int64 t1\nulidA arg seed Int64 seed\n"
+        "ulidA out a IdentifierText\nulidA catch e4 IdError\n"
+        "ulidB is call\nulidB in main\nulidB invokes ulidFromSeed\n"
+        "ulidB arg timeMillis Int64 t2\nulidB arg seed Int64 seed\n"
+        "ulidB out b IdentifierText\nulidB catch e5 IdError\n"
+        "idOne is call\nidOne in main\nidOne invokes monotonicNext\nidOne out one Int64\n"
+        "idTwo is call\nidTwo in main\nidTwo invokes monotonicNext\nidTwo out two Int64\n"
+        "showSlug is call\nshowSlug in main\nshowSlug invokes console.writeLine\n"
+        "showSlug arg text IdentifierText slugText\n"
+        "showPre is call\nshowPre in main\nshowPre invokes console.writeIntegerLine\n"
+        "showPre arg value Int32 preOrder\n"
+        "showBuild is call\nshowBuild in main\nshowBuild invokes console.writeIntegerLine\n"
+        "showBuild arg value Int32 buildOrder\n"
+        "showUlidA is call\nshowUlidA in main\nshowUlidA invokes console.writeLine\n"
+        "showUlidA arg text IdentifierText a\n"
+        "showUlidB is call\nshowUlidB in main\nshowUlidB invokes console.writeLine\n"
+        "showUlidB arg text IdentifierText b\n"
+        "showOne is call\nshowOne in main\nshowOne invokes console.writeIntegerLine\n"
+        "showOne arg value Int64 one\n"
+        "showTwo is call\nshowTwo in main\nshowTwo invokes console.writeIntegerLine\n"
+        "showTwo arg value Int64 two\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
+        input=stdlib + "\n" + main, capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0:3] == ["hello-world-2026", "-1", "0"]
+    assert len(lines[3]) == 26 and len(lines[4]) == 26
+    assert lines[3] < lines[4]  # ULID text sorts by timestamp
+    assert lines[5:7] == ["1", "2"]
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the id runtime")
+def test_e2e_id_uuid_ulid_format_and_error_paths():
+    # WS3-129: random IDs have the expected wire format; malformed slug/semver
+    # inputs take the typed IdError path rather than returning sentinel text.
+    import re
+    stdlib = open(os.path.join(STD, "standard.id.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        'stdoutWriter purpose "p"\n'
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main effect read random.entropy\nmain effect read clock.wall\n"
+        "main uses stdoutWriter\nmain uses idEntropy\nmain uses idClock\n"
+        'main async no\nmain purpose "p"\nmain invariant "i"\n'
+        'main let badSlug immutable String "bad\\tname"\n'
+        'main let badSemver immutable String "1.01.0"\n'
+        'main let goodSemver immutable String "1.0.0"\n'
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 7\n"
+        "main do uuid\nmain branch ifError uuid goto failed\n"
+        "main do ulid\nmain branch ifError ulid goto failed\n"
+        "main do showUuid\nmain do showUlid\n"
+        "main do rejectSlug\nmain branch ifError rejectSlug goto slugRejected\n"
+        "main return failCode\n"
+        'main at slugRejected do showSlugRejected\n'
+        "main do rejectSemver\nmain branch ifError rejectSemver goto semverRejected\n"
+        "main return failCode\n"
+        'main at semverRejected do showSemverRejected\n'
+        "main return okCode\n"
+        "main at failed return failCode\n"
+        "uuid is call\nuuid in main\nuuid invokes uuidV4\n"
+        "uuid out uuidText IdentifierText\nuuid catch e1 IdError\n"
+        "ulid is call\nulid in main\nulid invokes ulidNow\n"
+        "ulid out ulidText IdentifierText\nulid catch e2 IdError\n"
+        "rejectSlug is call\nrejectSlug in main\nrejectSlug invokes slugify\n"
+        "rejectSlug arg text String badSlug\nrejectSlug out ignored IdentifierText\n"
+        "rejectSlug catch e3 IdError\n"
+        "rejectSemver is call\nrejectSemver in main\nrejectSemver invokes semverCompare\n"
+        "rejectSemver arg left String badSemver\nrejectSemver arg right String goodSemver\n"
+        "rejectSemver out ignoredOrder Int32\nrejectSemver catch e4 IdError\n"
+        "showUuid is call\nshowUuid in main\nshowUuid invokes console.writeLine\n"
+        "showUuid arg text IdentifierText uuidText\n"
+        "showUlid is call\nshowUlid in main\nshowUlid invokes console.writeLine\n"
+        "showUlid arg text IdentifierText ulidText\n"
+        "showSlugRejected is call\nshowSlugRejected in main\nshowSlugRejected invokes console.writeLine\n"
+        'showSlugRejected arg text String "bad-slug"\n'
+        "showSemverRejected is call\nshowSemverRejected in main\nshowSemverRejected invokes console.writeLine\n"
+        'showSemverRejected arg text String "bad-semver"\n'
+    )
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
+        input=stdlib + "\n" + main, capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", lines[0])
+    assert re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", lines[1])
+    assert lines[2:] == ["bad-slug", "bad-semver"]
 
 
 @pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the http runtime")

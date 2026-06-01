@@ -23,6 +23,28 @@
       ]
     },
     {
+      "name": "ss_id",
+      "comment": "WS3-129: UUID, ULID, slug, monotonic ID, and semver helpers for standard.id.",
+      "provides": [
+        "ss_id_"
+      ],
+      "sources": [
+        "ss_id.c",
+        "native_platform/ss_platform_entropy.c"
+      ],
+      "include": [
+        ".",
+        "native_platform"
+      ],
+      "platforms": {
+        "windows": {
+          "libs": [
+            "bcrypt"
+          ]
+        }
+      }
+    },
+    {
       "name": "ss_runtime",
       "provides": [
         "ss_sqlite_"

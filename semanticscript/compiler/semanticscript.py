@@ -13830,9 +13830,9 @@ STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "json"})
 # readiness gate (unbacked-public / raw-scratch-pointer / documentation) as a core
 # one (enforced by `->test`); the tier only labels importance class for filtering.
 # `gui` is the one convenience layer in the current surface (a UI nicety, also
-# deferred); the future WS3-121..131 modules (cli/config/cache/archive/id/...) join
+# deferred); the future WS3-121..131 modules (cli/config/cache/archive/...) join
 # here as they land.
-STDLIB_SECONDARY_MODULES = frozenset({"gui"})
+STDLIB_SECONDARY_MODULES = frozenset({"gui", "id"})
 
 
 def _scratch_pointer_apis(semsig_text: str) -> list:

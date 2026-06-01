@@ -1,0 +1,85 @@
+# standard.id - UUID, ULID, monotonic IDs, slugs, and semantic versions.
+#
+# Nice-to-have platform utilities (WS3-129) with the same stdlib rules as core
+# modules: entropy/time are explicit capabilities, returned strings are owned by
+# this runtime, and malformed text fails through IdError rather than sentinel
+# strings.
+
+standardId is module
+standardId path standard.id
+standardId exports uuidV4
+standardId exports ulidNow
+standardId exports ulidFromSeed
+standardId exports monotonicNext
+standardId exports slugify
+standardId exports semverCompare
+standardId exports releaseIdString
+standardId purpose "Identifier, slug, and semantic-version utilities"
+standardId invariant "Random IDs require entropy capability; deterministic APIs take injected inputs and are stable under tests"
+
+IdentifierText is alias
+IdentifierText for String
+IdentifierText purpose "An owned identifier string returned by standard.id"
+
+IdError is error
+IdError purpose "Invalid identifier input, invalid semantic version, or entropy/time failure"
+
+idEntropy is capability
+idEntropy grants read random.entropy
+idEntropy purpose "Authority to draw identifier entropy"
+
+idClock is capability
+idClock grants read clock.wall
+idClock purpose "Authority to read wall-clock time for time-ordered IDs"
+
+uuidV4 is operation
+uuidV4 out IdentifierText
+uuidV4 effect read random.entropy
+uuidV4 uses idEntropy
+uuidV4 outParam
+uuidV4 body runtimeBinding ss_id_uuid_v4
+uuidV4 purpose "Generate an RFC 4122 UUID v4 using capability-gated entropy"
+
+ulidNow is operation
+ulidNow out IdentifierText
+ulidNow effect read clock.wall
+ulidNow effect read random.entropy
+ulidNow uses idClock
+ulidNow uses idEntropy
+ulidNow outParam
+ulidNow body runtimeBinding ss_id_ulid_now
+ulidNow purpose "Generate a ULID from wall-clock milliseconds plus capability-gated entropy"
+
+ulidFromSeed is operation
+ulidFromSeed in timeMillis Int64
+ulidFromSeed in seed Int64
+ulidFromSeed out IdentifierText
+ulidFromSeed outParam
+ulidFromSeed body runtimeBinding ss_id_ulid_from_seed
+ulidFromSeed purpose "Deterministically generate a ULID from injected time and seed for tests"
+
+monotonicNext is operation
+monotonicNext out Int64
+monotonicNext body runtimeBinding ss_id_monotonic_next
+monotonicNext purpose "Return the next process-local monotonic integer identifier"
+
+slugify is operation
+slugify in text String
+slugify out IdentifierText
+slugify outParam
+slugify body runtimeBinding ss_id_slugify
+slugify purpose "Create a lowercase ASCII slug, normalizing visible whitespace and punctuation"
+
+semverCompare is operation
+semverCompare in left String
+semverCompare in right String
+semverCompare out Int32
+semverCompare outParam
+semverCompare body runtimeBinding ss_id_semver_compare
+semverCompare purpose "Compare semantic versions: -1, 0, or 1; build metadata is ignored"
+
+releaseIdString is operation
+releaseIdString in text IdentifierText
+releaseIdString out Int32
+releaseIdString body runtimeBinding ss_id_release
+releaseIdString purpose "Release an identifier string allocated by standard.id; stale or foreign values are ignored"

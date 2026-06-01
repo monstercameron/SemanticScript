@@ -1,0 +1,63 @@
+# standard.id.semsig - identifiers, slugs, and semantic versions.
+
+idSig is semsig
+idSig version "1.0"
+idSig generatedBy "semanticscript 0.1"
+idSig describes standard.id
+
+IdentifierText is alias
+IdentifierText for String
+IdentifierText purpose "An owned identifier string returned by standard.id"
+
+IdError is error
+IdError purpose "Invalid identifier input, invalid semantic version, or entropy/time failure"
+
+uuidV4 is intrinsic
+uuidV4 target id.uuidV4
+uuidV4 out value IdentifierText
+uuidV4 catch IdError
+uuidV4 owns value cleanedBy id.release
+uuidV4 purpose "Generate an RFC 4122 UUID v4 using capability-gated entropy"
+
+ulidNow is intrinsic
+ulidNow target id.ulidNow
+ulidNow out value IdentifierText
+ulidNow catch IdError
+ulidNow owns value cleanedBy id.release
+ulidNow purpose "Generate a ULID from wall-clock milliseconds plus capability-gated entropy"
+
+ulidFromSeed is intrinsic
+ulidFromSeed target id.ulidFromSeed
+ulidFromSeed arg timeMillis Int64
+ulidFromSeed arg seed Int64
+ulidFromSeed out value IdentifierText
+ulidFromSeed catch IdError
+ulidFromSeed owns value cleanedBy id.release
+ulidFromSeed purpose "Deterministically generate a ULID from injected time and seed for tests"
+
+monotonicNext is intrinsic
+monotonicNext target id.monotonicNext
+monotonicNext out value Int64
+monotonicNext purpose "Return the next process-local monotonic integer identifier"
+
+slugify is intrinsic
+slugify target id.slugify
+slugify arg text String
+slugify out slug IdentifierText
+slugify catch IdError
+slugify owns slug cleanedBy id.release
+slugify purpose "Create a lowercase ASCII slug, normalizing visible whitespace and punctuation"
+
+semverCompare is intrinsic
+semverCompare target id.semverCompare
+semverCompare arg left String
+semverCompare arg right String
+semverCompare out ordering Int32
+semverCompare catch IdError
+semverCompare purpose "Compare semantic versions: -1, 0, or 1; build metadata is ignored"
+
+release is intrinsic
+release target id.release
+release arg text IdentifierText
+release out released Int32
+release purpose "Release an identifier string allocated by standard.id; stale or foreign values are ignored"
