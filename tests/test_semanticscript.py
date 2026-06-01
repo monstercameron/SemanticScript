@@ -7259,6 +7259,28 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_http_request_cookie_is_per_request_scratch():
+    # R-191: cookie values must be copied into a per-request bump arena, not a
+    # process-global scratch buffer. The global made a second cookie read in one
+    # handler clobber the first, and (if the loop ever gains concurrency) leak one
+    # request's cookie into another. Source-level guard; taskforge-web exercises the
+    # real session-cookie round-trip via test_apps.
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                            "sem_http_runtime.c"), encoding="utf-8").read()
+    # the process-global scratch is gone
+    assert "g_http_cookie_value_scratch" not in src
+    # the request carries its own cookie arena
+    assert "cookie_buffer[SS_HTTP_COOKIE_BUFFER_SIZE]" in src
+    # the reader bump-allocates from the request arena and returns that region
+    fn = re.search(r"const char \*ss_http_request_cookie\(.*?\n\}", src, re.S).group(0)
+    assert "mutable_request->cookie_buffer" in fn
+    assert "cookie_buffer_used +=" in fn
+    # the arena is reset per request in the dispatcher
+    assert "request.cookie_buffer_used = 0" in src
+
+
 def test_http_sse_event_size_capped():
     # R-148: the SSE payload builders must reject an oversized event — the
     # wire-length helper caps the running size and returns a sentinel, and all

@@ -31,6 +31,11 @@
  * still returns the full URL path including the captured ids). */
 #define SS_HTTP_MAX_PATH_PARAMS 8
 #define SS_HTTP_PATH_PARAMS_BUFFER_SIZE 512
+/* R-191: per-request arena holding null-terminated copies of cookie values read
+ * via ss_http_request_cookie. Sized for several distinct values per request (each
+ * value is itself capped at SS_HTTP_COOKIE_VALUE_MAX); a read that would overflow
+ * the arena returns "absent" rather than truncating. */
+#define SS_HTTP_COOKIE_BUFFER_SIZE 1024
 #define SS_HTTP_MAX_ROUTE_SEGMENTS 16
 
 typedef struct SSHttpNameValue {
@@ -205,6 +210,13 @@ struct SSHttpRequest {
      * worrying about which bytes of the request line they came from. */
     char path_params_buffer[SS_HTTP_PATH_PARAMS_BUFFER_SIZE];
     size_t path_params_buffer_used;
+    /* R-191: per-request scratch arena for null-terminated cookie values.
+     * ss_http_request_cookie bump-allocates a fresh region per read, so two
+     * cookie reads in one handler return independently-stable Strings (the old
+     * process-global scratch had the second read clobber the first) and two
+     * requests can never observe each other's cookie value. */
+    char cookie_buffer[SS_HTTP_COOKIE_BUFFER_SIZE];
+    size_t cookie_buffer_used;
     void *backend_request;
 };
 
@@ -647,7 +659,6 @@ const char *ss_http_request_path_param(const SSHttpRequest *request, const char 
  * (43 chars) fits with ample headroom. Anything longer than this is
  * refused rather than truncated; see the header doc for the rationale. */
 #define SS_HTTP_COOKIE_VALUE_MAX 256
-static char g_http_cookie_value_scratch[SS_HTTP_COOKIE_VALUE_MAX];
 
 const char *ss_http_request_cookie(const SSHttpRequest *request, const char *cookie_name) {
     if (request == NULL || cookie_name == NULL) {
@@ -692,9 +703,22 @@ const char *ss_http_request_cookie(const SSHttpRequest *request, const char *coo
                  * incomplete prefix into the session lookup. */
                 return NULL;
             }
-            memcpy(g_http_cookie_value_scratch, pair_value_start, pair_value_length);
-            g_http_cookie_value_scratch[pair_value_length] = '\0';
-            return g_http_cookie_value_scratch;
+            /* R-191: bump-allocate a fresh region from the per-request cookie
+             * arena so this value stays stable even if the handler reads another
+             * cookie afterward. `request` is const-qualified but the underlying
+             * object (handle_client's local) is non-const, so writing through it
+             * is well-defined. If the arena is exhausted, treat as absent rather
+             * than overwrite an earlier value or overflow. */
+            SSHttpRequest *mutable_request = (SSHttpRequest *)request;
+            if (pair_value_length + 1
+                    > sizeof(mutable_request->cookie_buffer) - mutable_request->cookie_buffer_used) {
+                return NULL;
+            }
+            char *dest = mutable_request->cookie_buffer + mutable_request->cookie_buffer_used;
+            memcpy(dest, pair_value_start, pair_value_length);
+            dest[pair_value_length] = '\0';
+            mutable_request->cookie_buffer_used += pair_value_length + 1;
+            return dest;
         }
     }
     return NULL;
@@ -3137,6 +3161,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     request.body = body_start;
     request.body_length = (size_t)content_length;
     request.backend_request = NULL;
+    request.cookie_buffer_used = 0;  /* R-191: reset the per-request cookie arena */
     parse_headers(header_start, body_start, &request);
     parse_query_params(query, &request);
     memset(&stream_backend, 0, sizeof(stream_backend));
