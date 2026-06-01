@@ -46,7 +46,6 @@ asyncDelay out AsyncFuture
 asyncDelay async yes
 asyncDelay body runtimeBinding ss_async_delay_start
 asyncDelay purpose "Arm a future completing with value after delayMs on the libuv loop"
-asyncDelay suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; typed home is std/standard.async.sem"
 
 asyncAwait is operation
 asyncAwait in future AsyncFuture
@@ -54,7 +53,6 @@ asyncAwait out Int64
 asyncAwait async yes
 asyncAwait body runtimeBinding ss_async_await
 asyncAwait purpose "Drive the libuv loop until the future is ready and return its value"
-asyncAwait suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; typed home is std/standard.async.sem"
 
 main is operation
 main out ExitCode

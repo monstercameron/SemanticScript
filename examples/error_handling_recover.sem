@@ -28,10 +28,6 @@ stdoutWriter purpose "Allow controlled writes to standard output"
 ConsoleWriteError is error
 ConsoleWriteError purpose "Represent failures from console output operations"
 
-ConsoleWriteFailed is errorCase
-ConsoleWriteFailed of ConsoleWriteError
-ConsoleWriteFailed payload Int32
-ConsoleWriteFailed purpose "A failed stdout write with a status payload"
 
 main is operation
 main out ExitCode

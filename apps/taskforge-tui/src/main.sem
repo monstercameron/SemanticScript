@@ -118,6 +118,8 @@ carriageReturnByte is storage module immutable Int32 13
 successCode is storage module immutable Int32 0
 flushAllStreams is storage module immutable Int64 0
 
+dataFilePath is storage module immutable String "todos.json"
+
 readTuiKey is operation
 readTuiKey out TuiKeyCode
 readTuiKey effect read console.stdin
@@ -361,7 +363,6 @@ copyStringBuffer uses memoryBufferWriter
 copyStringBuffer memory heap no
 copyStringBuffer async no
 copyStringBuffer purpose "Copy a bounded null-terminated title string into another buffer"
-copyStringBuffer suppress SS0812 because "Small shared literal declared locally to keep the operation self-contained"
 copyStringBuffer invariant "The target buffer is always null-terminated and the returned value is its copied length"
 copyStringBuffer let zeroIndex immutable Int64 0
 copyStringBuffer let oneStep immutable Int64 1
@@ -777,7 +778,6 @@ parseJsonFlagAtOffset uses memoryBufferReader
 parseJsonFlagAtOffset memory heap no
 parseJsonFlagAtOffset async no
 parseJsonFlagAtOffset purpose "Parse a zero-or-one flag from a fixed todo JSON field offset"
-parseJsonFlagAtOffset suppress SS0812 because "Small shared literal declared locally to keep the operation self-contained"
 parseJsonFlagAtOffset invariant "Only ASCII one maps to one; every other byte maps to zero"
 parseJsonFlagAtOffset let zeroFlag immutable Int32 0
 parseJsonFlagAtOffset let oneFlag immutable Int32 1
@@ -816,7 +816,6 @@ renderTodoRow uses consoleStdoutWriter
 renderTodoRow memory heap no
 renderTodoRow async no
 renderTodoRow purpose "Render one visible table row from the heap-backed todo arrays"
-renderTodoRow suppress SS0812 because "Small shared literal declared locally to keep the operation self-contained"
 renderTodoRow invariant "Rendering reads todo arrays but does not mutate todo state"
 renderTodoRow let oneValue immutable Int64 1
 renderTodoRow let doneFlagValue immutable Int32 1
@@ -948,7 +947,6 @@ renderScreen uses consoleStdoutWriter
 renderScreen memory heap no
 renderScreen async no
 renderScreen purpose "Render the todo TUI from heap-backed arrays with a fixed-width edit modal"
-renderScreen suppress SS0812 because "Small shared literal declared locally to keep the operation self-contained"
 renderScreen invariant "The visible row loop emits at most visibleRows rows and does not mutate todo state"
 renderScreen let zeroValue immutable Int64 0
 renderScreen let oneValue immutable Int64 1
@@ -1326,11 +1324,9 @@ saveTodosToJson uses fileCloser
 saveTodosToJson memory heap no
 saveTodosToJson async no
 saveTodosToJson purpose "Persist the active todo array as a JSON array"
-saveTodosToJson suppress SS0812 because "Small shared literal declared locally to keep the operation self-contained"
 saveTodosToJson invariant "Writes each active index once; title bytes pass through JSON escaping; write failure takes precedence"
 saveTodosToJson let zeroValue immutable Int64 0
 saveTodosToJson let oneValue immutable Int64 1
-saveTodosToJson let dataFilePath immutable String "todos.json"
 saveTodosToJson let writeMode immutable String "w"
 saveTodosToJson let openArrayText immutable String "[\n"
 saveTodosToJson let closeArrayText immutable String "]\n"
@@ -1552,7 +1548,6 @@ loadTodosFromJson invariant "Never appends more than todoCapacity todos; accepts
 loadTodosFromJson let zeroValue immutable Int64 0
 loadTodosFromJson let oneValue immutable Int64 1
 loadTodosFromJson let oneFlag immutable Int32 1
-loadTodosFromJson let dataFilePath immutable String "todos.json"
 loadTodosFromJson let readMode immutable String "r"
 loadTodosFromJson let activeValueOffset immutable Int64 10
 loadTodosFromJson let doneValueOffset immutable Int64 19

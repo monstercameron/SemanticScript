@@ -30,7 +30,6 @@ cAbs out Int32
 cAbs body runtimeBinding abs
 cAbs purpose "Absolute value via the libc abs ABI symbol"
 cAbs invariant "Returns the non-negative magnitude of n"
-cAbs suppress SS5000 because "demonstration of the compiler's runtimeBinding seam; the real home is a .semsig-backed stdlib module"
 
 main is operation
 main out ExitCode

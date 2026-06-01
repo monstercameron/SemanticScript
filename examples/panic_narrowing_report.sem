@@ -39,4 +39,4 @@ narrowCall is call
 narrowCall in main
 narrowCall invokes convert.toInt8
 narrowCall arg value Int64 big
-narrowCall out small Int8
+narrowCall discards "status intentionally unused in this demonstration"

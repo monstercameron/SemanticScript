@@ -36,6 +36,8 @@ monotonicClock is capability
 monotonicClock grants read clock.monotonic
 monotonicClock purpose "Authority to read the monotonic clock (for durations/timeouts)"
 
+secondsPerMinute is storage module immutable Int64 60
+
 nowMonotonic is operation
 nowMonotonic out MonotonicInstant
 nowMonotonic effect read clock.monotonic
@@ -71,7 +73,6 @@ secondsToMinutes in seconds Int64
 secondsToMinutes out Int64
 secondsToMinutes async no
 secondsToMinutes purpose "Whole minutes contained in a second count (pure)"
-secondsToMinutes let secondsPerMinute immutable Int64 60
 secondsToMinutes do divideToMinutes
 secondsToMinutes return minutesValue
 
@@ -87,7 +88,6 @@ minutesToSeconds in minutes Int64
 minutesToSeconds out Int64
 minutesToSeconds async no
 minutesToSeconds purpose "Seconds in a minute count (pure)"
-minutesToSeconds let secondsPerMinute immutable Int64 60
 minutesToSeconds do multiplyToSeconds
 minutesToSeconds return secondsValue
 

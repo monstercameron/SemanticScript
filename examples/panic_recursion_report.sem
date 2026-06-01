@@ -40,7 +40,7 @@ recCall is call
 recCall in main
 recCall invokes loopRec
 recCall arg n Int64 seed
-recCall out result Int64
+recCall discards "status intentionally unused in this demonstration"
 
 loopRec is operation
 loopRec in n Int64

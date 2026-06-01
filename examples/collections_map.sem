@@ -162,7 +162,7 @@ getMissing in main
 getMissing invokes map.get
 getMissing arg map MapHandle theMap
 getMissing arg key String kMissing
-getMissing out missingVal Int64
+getMissing discards "status intentionally unused in this demonstration"
 getMissing catch missErr MapError
 
 checkSize is call

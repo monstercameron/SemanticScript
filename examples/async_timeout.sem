@@ -43,7 +43,6 @@ asyncWithTimeout in timeoutMs Int64
 asyncWithTimeout out AsyncFuture
 asyncWithTimeout async yes
 asyncWithTimeout body runtimeBinding ss_async_timeout_start
-asyncWithTimeout suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncDelay is operation
 asyncDelay in delayMs Int64
@@ -51,7 +50,6 @@ asyncDelay in value Int64
 asyncDelay out AsyncFuture
 asyncDelay async yes
 asyncDelay body runtimeBinding ss_async_delay_start
-asyncDelay suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncAwaitResult is operation
 asyncAwaitResult in future AsyncFuture
@@ -59,13 +57,11 @@ asyncAwaitResult out Int64
 asyncAwaitResult async yes
 asyncAwaitResult outParam
 asyncAwaitResult body runtimeBinding ss_async_await_result
-asyncAwaitResult suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 asyncCancel is operation
 asyncCancel in future AsyncFuture
 asyncCancel out Int32
 asyncCancel body runtimeBinding ss_async_cancel
-asyncCancel suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 main is operation
 main out ExitCode
@@ -74,7 +70,6 @@ main uses stdoutWriter
 main async no
 main purpose "Await an ok future, a timed-out future, and a cancelled future"
 main invariant "All three assertions hold"
-main let zeroMs immutable Int64 0
 main let fastMs immutable Int64 0
 main let slowMs immutable Int64 100
 main let shortTimeout immutable Int64 5
@@ -91,7 +86,8 @@ main let tnTimeout immutable String "slow work past a short timeout is a caught 
 main let tnCancel immutable String "a future cancelled before await is a caught cancellation error"
 main do startOk
 main do awaitOk
-main do startSlow
+main branch ifError awaitOk goto okResolved
+main at okResolved do startSlow
 main do awaitSlow
 main branch ifError awaitSlow goto timeoutCaught
 main goto afterTimeout
@@ -135,7 +131,7 @@ awaitSlow is call
 awaitSlow in main
 awaitSlow invokes asyncAwaitResult
 awaitSlow arg future AsyncFuture futSlow
-awaitSlow out valSlow Int64
+awaitSlow discards "status intentionally unused in this demonstration"
 awaitSlow catch slowErr AsyncError
 
 startCancel is call
@@ -149,13 +145,13 @@ doCancel is call
 doCancel in main
 doCancel invokes asyncCancel
 doCancel arg future AsyncFuture futCancel
-doCancel out cancelStatus Int32
+doCancel discards "status intentionally unused in this demonstration"
 
 awaitCancel is call
 awaitCancel in main
 awaitCancel invokes asyncAwaitResult
 awaitCancel arg future AsyncFuture futCancel
-awaitCancel out valCancel Int64
+awaitCancel discards "status intentionally unused in this demonstration"
 awaitCancel catch cancelErr AsyncError
 
 checkOk is call

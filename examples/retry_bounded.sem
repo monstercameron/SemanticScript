@@ -38,7 +38,6 @@ ffiCount body runtimeBinding ss_ffi_count
 ffiCount outParam
 ffiCount purpose "Increment and return a per-process call counter; always fails"
 ffiCount invariant "Writes the attempt number through the out-pointer; returns non-zero"
-ffiCount suppress SS5000 because "retry demo; the real home is a .semsig-backed stdlib module"
 
 main is operation
 main out ExitCode

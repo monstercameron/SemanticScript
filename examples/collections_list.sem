@@ -147,7 +147,7 @@ getOob in main
 getOob invokes list.get
 getOob arg list ListHandle theList
 getOob arg index Int64 idxOob
-getOob out oobValue Int64
+getOob discards "status intentionally unused in this demonstration"
 getOob catch oobErr ListError
 
 checkLen is call

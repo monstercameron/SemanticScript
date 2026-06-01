@@ -35,7 +35,6 @@ sqliteOpenMemory is operation
 sqliteOpenMemory out OpaquePointer
 sqliteOpenMemory body runtimeBinding ss_sqlite_open_memory
 sqliteOpenMemory purpose "Open a fresh in-memory sqlite database"
-sqliteOpenMemory suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
 sqliteExec is operation
 sqliteExec in db OpaquePointer
@@ -43,7 +42,6 @@ sqliteExec in sql String
 sqliteExec out Int32
 sqliteExec body runtimeBinding ss_sqlite_exec
 sqliteExec purpose "Execute a one-shot SQL statement"
-sqliteExec suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
 sqliteQueryScalar is operation
 sqliteQueryScalar in db OpaquePointer
@@ -51,14 +49,12 @@ sqliteQueryScalar in sql String
 sqliteQueryScalar out Int64
 sqliteQueryScalar body runtimeBinding ss_sqlite_query_scalar
 sqliteQueryScalar purpose "Run a query and read the first column of the first row as Int64"
-sqliteQueryScalar suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
 sqliteClose is operation
 sqliteClose in db OpaquePointer
 sqliteClose out Int32
 sqliteClose body runtimeBinding ss_sqlite_close
 sqliteClose purpose "Close the database handle"
-sqliteClose suppress SS5000 because "sqlite runtime seam; the typed home is std/standard.sqlite.sem"
 
 main is operation
 main out ExitCode
@@ -107,28 +103,28 @@ createTab in main
 createTab invokes sqliteExec
 createTab arg db OpaquePointer db
 createTab arg sql String createSql
-createTab out createStatus Int32
+createTab discards "status intentionally unused in this demonstration"
 
 ins10 is call
 ins10 in main
 ins10 invokes sqliteExec
 ins10 arg db OpaquePointer db
 ins10 arg sql String insert10
-ins10 out ins10Status Int32
+ins10 discards "status intentionally unused in this demonstration"
 
 ins20 is call
 ins20 in main
 ins20 invokes sqliteExec
 ins20 arg db OpaquePointer db
 ins20 arg sql String insert20
-ins20 out ins20Status Int32
+ins20 discards "status intentionally unused in this demonstration"
 
 ins30 is call
 ins30 in main
 ins30 invokes sqliteExec
 ins30 arg db OpaquePointer db
 ins30 arg sql String insert30
-ins30 out ins30Status Int32
+ins30 discards "status intentionally unused in this demonstration"
 
 queryCount is call
 queryCount in main
@@ -183,7 +179,7 @@ closeDb is call
 closeDb in main
 closeDb invokes sqliteClose
 closeDb arg db OpaquePointer db
-closeDb out closeStatus Int32
+closeDb discards "status intentionally unused in this demonstration"
 
 harnessReport is call
 harnessReport in main

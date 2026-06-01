@@ -40,7 +40,6 @@ ffiAdd body runtimeBinding ss_ffi_add
 ffiAdd outParam
 ffiAdd purpose "Add two Int64s through the C out-param ABI (ss_ffi_add)"
 ffiAdd invariant "Writes a+b through the out-pointer; returns non-zero for a negative a"
-ffiAdd suppress SS5000 because "demonstration of the FFI out-param seam; the real home is a .semsig-backed stdlib module"
 
 main is operation
 main out ExitCode
@@ -95,7 +94,7 @@ addErr in main
 addErr invokes ffiAdd
 addErr arg a Int64 negA
 addErr arg b Int64 y1
-addErr out errSum Int64
+addErr discards "status intentionally unused in this demonstration"
 addErr catch ffiErr FfiError
 
 checkAdd is call

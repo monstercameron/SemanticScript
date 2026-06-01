@@ -34,20 +34,17 @@ ivCreate is operation
 ivCreate in periodMs Int64
 ivCreate out AsyncIntervalHandle
 ivCreate body runtimeBinding ss_async_interval_create
-ivCreate suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 ivTick is operation
 ivTick in interval AsyncIntervalHandle
 ivTick out Int64
 ivTick async yes
 ivTick body runtimeBinding ss_async_interval_tick
-ivTick suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 ivClose is operation
 ivClose in interval AsyncIntervalHandle
 ivClose out Int32
 ivClose body runtimeBinding ss_async_interval_close
-ivClose suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 main is operation
 main out ExitCode
@@ -89,7 +86,7 @@ tick2 is call
 tick2 in main
 tick2 invokes ivTick
 tick2 arg interval AsyncIntervalHandle theInterval
-tick2 out count2 Int64
+tick2 discards "status intentionally unused in this demonstration"
 
 tick3 is call
 tick3 in main
@@ -122,7 +119,7 @@ closeIv is call
 closeIv in main
 closeIv invokes ivClose
 closeIv arg interval AsyncIntervalHandle theInterval
-closeIv out closeStatus Int32
+closeIv discards "status intentionally unused in this demonstration"
 
 harnessReport is call
 harnessReport in main

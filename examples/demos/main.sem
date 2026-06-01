@@ -124,6 +124,10 @@ taskServer purpose "Route CRUD requests to their handlers (exact-match routes on
 
 # == startup: create the schema ==
 
+databasePath is storage module immutable String "tasks.db"
+textType is storage module immutable HttpContentType "text/plain; charset=utf-8"
+okStatus is storage module immutable HttpStatusCode 200
+
 startupHandler is operation
 startupHandler in serverContext ServerContext
 startupHandler out ExitCode
@@ -133,7 +137,6 @@ startupHandler memory heap no
 startupHandler async no
 startupHandler purpose "Open the database and ensure the tasks table exists"
 startupHandler invariant "Returns 0 only after the schema is created; non-zero halts startup"
-startupHandler let databasePath immutable String "tasks.db"
 startupHandler let okCode immutable ExitCode 0
 startupHandler let failCode immutable ExitCode 1
 startupHandler do openStartupDb
@@ -200,7 +203,6 @@ notFoundHandler purpose "Write a 404 plain-text response for unmatched routes"
 notFoundHandler invariant "Always writes a 404 status"
 notFoundHandler let notFoundStatus immutable HttpStatusCode 404
 notFoundHandler let notFoundBody immutable HttpTextBody "Not Found"
-notFoundHandler let textType immutable HttpContentType "text/plain; charset=utf-8"
 notFoundHandler let okCode immutable Int32 0
 notFoundHandler do writeNotFound
 notFoundHandler return okCode
@@ -212,7 +214,7 @@ writeNotFound arg response HttpResponse response
 writeNotFound arg status HttpStatusCode notFoundStatus
 writeNotFound arg body HttpTextBody notFoundBody
 writeNotFound arg contentType HttpContentType textType
-writeNotFound out writeResult Int32
+writeNotFound discards "response-write status intentionally unused in this demo"
 
 # == shared 500 helper (invoked by every handler's failure label) ==
 
@@ -227,7 +229,6 @@ writeServerError purpose "Write a 500 Internal Server Error plain-text response"
 writeServerError invariant "Always writes a 500 status and returns the write result"
 writeServerError let failStatus immutable HttpStatusCode 500
 writeServerError let errorBody immutable HttpTextBody "Internal Server Error"
-writeServerError let textType immutable HttpContentType "text/plain; charset=utf-8"
 writeServerError do writeFail
 writeServerError return writeFailResult
 
@@ -254,9 +255,7 @@ createTaskHandler memory heap no
 createTaskHandler async no
 createTaskHandler purpose "Create a task from the request body and return its new id"
 createTaskHandler invariant "Responds 201 with the new id on success, 500 on any failure"
-createTaskHandler let databasePath immutable String "tasks.db"
 createTaskHandler let createdStatus immutable HttpStatusCode 201
-createTaskHandler let textType immutable HttpContentType "text/plain; charset=utf-8"
 createTaskHandler let createdPrefix immutable String "created task #"
 createTaskHandler let okCode immutable Int32 0
 createTaskHandler do readTitle
@@ -338,7 +337,7 @@ writeCreated arg response HttpResponse response
 writeCreated arg status HttpStatusCode createdStatus
 writeCreated arg body HttpTextBody createdBody
 writeCreated arg contentType HttpContentType textType
-writeCreated out writeResult Int32
+writeCreated discards "response-write status intentionally unused in this demo"
 
 reportCreateError is call
 reportCreateError in createTaskHandler
@@ -361,9 +360,6 @@ listTasksHandler async no
 listTasksHandler purpose "List every task title as a plain-text body"
 listTasksHandler invariant "Responds 200 with one title per line on success, 500 on any failure"
 listTasksHandler invariant "Finalizes the statement before closing the database (reverse-order cleanup)"
-listTasksHandler let databasePath immutable String "tasks.db"
-listTasksHandler let okStatus immutable HttpStatusCode 200
-listTasksHandler let textType immutable HttpContentType "text/plain; charset=utf-8"
 listTasksHandler let newlineText immutable String "\n"
 listTasksHandler let okCode immutable Int32 0
 listTasksHandler let responseAccumulator mutable String "tasks:\n"
@@ -470,7 +466,7 @@ writeList arg response HttpResponse response
 writeList arg status HttpStatusCode okStatus
 writeList arg body HttpTextBody responseAccumulator
 writeList arg contentType HttpContentType textType
-writeList out writeResult Int32
+writeList discards "response-write status intentionally unused in this demo"
 
 reportListError is call
 reportListError in listTasksHandler
@@ -492,9 +488,6 @@ markDoneHandler memory heap no
 markDoneHandler async no
 markDoneHandler purpose "Mark the task named by the request body as done"
 markDoneHandler invariant "Responds 200 on success, 500 on any failure (including a non-numeric id)"
-markDoneHandler let databasePath immutable String "tasks.db"
-markDoneHandler let okStatus immutable HttpStatusCode 200
-markDoneHandler let textType immutable HttpContentType "text/plain; charset=utf-8"
 markDoneHandler let doneBody immutable HttpTextBody "task marked done"
 markDoneHandler let okCode immutable Int32 0
 markDoneHandler do readDoneId
@@ -561,7 +554,7 @@ writeDone arg response HttpResponse response
 writeDone arg status HttpStatusCode okStatus
 writeDone arg body HttpTextBody doneBody
 writeDone arg contentType HttpContentType textType
-writeDone out writeResult Int32
+writeDone discards "response-write status intentionally unused in this demo"
 
 reportDoneError is call
 reportDoneError in markDoneHandler
@@ -583,9 +576,6 @@ deleteTaskHandler memory heap no
 deleteTaskHandler async no
 deleteTaskHandler purpose "Delete the task named by the request body"
 deleteTaskHandler invariant "Responds 200 on success, 500 on any failure (including a non-numeric id)"
-deleteTaskHandler let databasePath immutable String "tasks.db"
-deleteTaskHandler let okStatus immutable HttpStatusCode 200
-deleteTaskHandler let textType immutable HttpContentType "text/plain; charset=utf-8"
 deleteTaskHandler let deletedBody immutable HttpTextBody "task deleted"
 deleteTaskHandler let okCode immutable Int32 0
 deleteTaskHandler do readDeleteId
@@ -652,7 +642,7 @@ writeDeleted arg response HttpResponse response
 writeDeleted arg status HttpStatusCode okStatus
 writeDeleted arg body HttpTextBody deletedBody
 writeDeleted arg contentType HttpContentType textType
-writeDeleted out writeResult Int32
+writeDeleted discards "response-write status intentionally unused in this demo"
 
 reportDeleteError is call
 reportDeleteError in deleteTaskHandler

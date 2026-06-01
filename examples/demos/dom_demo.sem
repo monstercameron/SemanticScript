@@ -25,7 +25,6 @@ domCreateNode is operation
 domCreateNode out Int32
 domCreateNode body runtimeBinding dom_create_node
 domCreateNode purpose "Create a DOM node (host function); returns its id"
-domCreateNode suppress SS5000 because "wasm DOM host seam; the typed home is std/standard.document"
 
 domSetValue is operation
 domSetValue in node Int32
@@ -33,14 +32,12 @@ domSetValue in value Int32
 domSetValue out Int32
 domSetValue body runtimeBinding dom_set_value
 domSetValue purpose "Set a node's value (host function)"
-domSetValue suppress SS5000 because "wasm DOM host seam; the typed home is std/standard.document"
 
 domGetValue is operation
 domGetValue in node Int32
 domGetValue out Int32
 domGetValue body runtimeBinding dom_get_value
 domGetValue purpose "Read a node's value back (host function)"
-domGetValue suppress SS5000 because "wasm DOM host seam; the typed home is std/standard.document"
 
 main is operation
 main out Int32

@@ -48,7 +48,6 @@ delay async yes
 delay body runtimeBinding ss_async_delay_start
 delay purpose "Arm a future that completes with `value` after `delayMs` on the event loop"
 delay invariant "Returns immediately; the timer fires only once the loop is driven by await/runOnce"
-delay suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 await is operation
 await in future AsyncFuture
@@ -57,13 +56,11 @@ await async yes
 await body runtimeBinding ss_async_await
 await purpose "Drive the event loop until the future is ready, then return its resolved value"
 await invariant "Cooperatively runs the loop; the value is the one the timer callback completed the future with"
-await suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 runOnce is operation
 runOnce out Int32
 runOnce body runtimeBinding ss_async_run_once
 runOnce purpose "Run one turn of the event loop without blocking (cooperative progress / poll)"
-runOnce suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 withTimeout is operation
 withTimeout in delayMs AsyncMillis
@@ -74,7 +71,6 @@ withTimeout async yes
 withTimeout body runtimeBinding ss_async_timeout_start
 withTimeout purpose "Arm a future like delay, but resolved as timed-out if timeoutMs elapses first"
 withTimeout invariant "A second libuv timer races the value timer; whichever fires first wins"
-withTimeout suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 awaitResult is operation
 awaitResult in future AsyncFuture
@@ -84,14 +80,12 @@ awaitResult body runtimeBinding ss_async_await_result
 awaitResult outParam
 awaitResult purpose "Drive the loop until ready; bind the value and surface timeout/cancel as a fallible error"
 awaitResult invariant "Returns the value with ok status, or a non-zero status (timeout/cancelled) as the call's error"
-awaitResult suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 cancelFuture is operation
 cancelFuture in future AsyncFuture
 cancelFuture out Int32
 cancelFuture body runtimeBinding ss_async_cancel
 cancelFuture purpose "Cancel a not-yet-ready future; a later awaitResult resolves it as cancelled"
-cancelFuture suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 AsyncChannel is alias
 AsyncChannel for OpaquePointer
@@ -101,7 +95,6 @@ channelCreate is operation
 channelCreate out AsyncChannel
 channelCreate body runtimeBinding ss_async_channel_create
 channelCreate purpose "Create an empty bounded async channel"
-channelCreate suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 channelProduce is operation
 channelProduce in channel AsyncChannel
@@ -111,7 +104,6 @@ channelProduce out Int32
 channelProduce async yes
 channelProduce body runtimeBinding ss_async_channel_produce
 channelProduce purpose "Schedule a send of value to the channel after delayMs on the loop"
-channelProduce suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 channelReceive is operation
 channelReceive in channel AsyncChannel
@@ -119,14 +111,12 @@ channelReceive out Int64
 channelReceive async yes
 channelReceive body runtimeBinding ss_async_channel_receive
 channelReceive purpose "Receive the next value, driving the loop until one is available (FIFO)"
-channelReceive suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 channelClose is operation
 channelClose in channel AsyncChannel
 channelClose out Int32
 channelClose body runtimeBinding ss_async_channel_close
 channelClose purpose "Release the channel handle"
-channelClose suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 AsyncInterval is alias
 AsyncInterval for OpaquePointer
@@ -137,7 +127,6 @@ intervalCreate in periodMs AsyncMillis
 intervalCreate out AsyncInterval
 intervalCreate body runtimeBinding ss_async_interval_create
 intervalCreate purpose "Create a periodic interval of periodMs milliseconds"
-intervalCreate suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 intervalTick is operation
 intervalTick in interval AsyncInterval
@@ -145,11 +134,9 @@ intervalTick out Int64
 intervalTick async yes
 intervalTick body runtimeBinding ss_async_interval_tick
 intervalTick purpose "Wait one period on the loop and return the running tick count"
-intervalTick suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"
 
 intervalClose is operation
 intervalClose in interval AsyncInterval
 intervalClose out Int32
 intervalClose body runtimeBinding ss_async_interval_close
 intervalClose purpose "Release the interval handle"
-intervalClose suppress SS5000 because "runtimeBinding seam to the ss_async_* libuv runtime; the typed home is this module"

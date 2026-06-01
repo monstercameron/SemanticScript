@@ -21,7 +21,6 @@ guiHealthCheck is operation
 guiHealthCheck out Int32
 guiHealthCheck body runtimeBinding ss_gui_health_check
 guiHealthCheck purpose "Create a window, auto-close it, and return the GUI runtime status (0 = ok)"
-guiHealthCheck suppress SS5000 because "GUI runtime seam; the typed home is std/standard.gui.sem"
 
 main is operation
 main out Int32

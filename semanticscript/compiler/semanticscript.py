@@ -3592,12 +3592,20 @@ def lint(program: Program) -> list:
     if not is_stdlib_module:
         for name in program.order:
             ent = program.entities[name]
-            if ent.kind in ("operation", "function") and _op_body_kind(ent) in (
+            kind = _op_body_kind(ent)
+            if ent.kind in ("operation", "function") and kind in (
                 "runtimeBinding", "intrinsic"
             ):
+                # A runtimeBinding to the project's own native-runtime namespace
+                # (`ss_*`) or the wasm DOM host adapter (`dom_*`) is the sanctioned
+                # platform seam, not ad-hoc app-source FFI. Only raw libc (`c.*`,
+                # bare libc names) and bare `intrinsic` bodies are the debt this
+                # lint targets (those have safe stdlib wrappers).
+                if kind == "runtimeBinding" and _is_platform_runtime_symbol(ent):
+                    continue
                 diags.append(Diagnostic(
                     "SS5000", "warning",
-                    f"operation {ent.name!r} has a `{_op_body_kind(ent)}` body in "
+                    f"operation {ent.name!r} has a `{kind}` body in "
                     f"application source; primitive bodies belong in a .semsig-backed "
                     f"stdlib module (README ss17 #50)",
                     ent.line, ent.name))
@@ -3645,7 +3653,25 @@ def lint(program: Program) -> list:
     diags.extend(_lint_sqlite_usage(program))
     diags.extend(_lint_loop_no_progress(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
-    # footgun — steer to a tolerance compare (or Decimal for exact values).
+    # footgun — steer to a tolerance compare (or Decimal for exact values). The
+    # footgun is comparing two *computed* floats that "should" be equal; comparing
+    # against an exact, named float constant or a float literal (e.g. `x == 0.0`,
+    # a sign/zero test) is an explicit, intentional check and is not flagged.
+    _float_const_names = set()
+    for n in program.order:
+        e = program.entities[n]
+        for r in e.rows:
+            if (r.predicate == "let" and len(r.payload) >= 4
+                    and r.payload[1] == "immutable"
+                    and r.payload[2] in ("Float64", "Float32")):
+                _float_const_names.add(r.payload[0])
+
+    def _is_exact_float_operand(v: str) -> bool:
+        if v in _float_const_names:
+            return True
+        t = v.lstrip("-")
+        return "." in t and t.replace(".", "", 1).isdigit()
+
     for n in program.order:
         ent = program.entities[n]
         if ent.kind not in ("call", "task"):
@@ -3654,6 +3680,10 @@ def lint(program: Program) -> list:
         target = inv.payload[0] if inv and inv.payload else ""
         if target in ("math.equalFloat64", "math.notEqualFloat64",
                       "math.equalFloat32", "math.notEqualFloat32"):
+            operands = [a.payload[2] for a in ent.facts("arg")
+                        if len(a.payload) >= 3]
+            if any(_is_exact_float_operand(v) for v in operands):
+                continue
             diags.append(Diagnostic(
                 "SS3094", "warning",
                 f"call {ent.name!r} compares Float operands with {target!r}; exact "
@@ -4578,6 +4608,11 @@ def _validate_effect_completeness(program: Program) -> None:
         # fully account for. README ss17 #5 / WS2-091.
         if _activates_opaque_target(program, op):
             continue
+        # A runtimeBinding/intrinsic op performs its declared effects through the
+        # native seam, not through a visible step the linter can see, so its
+        # `effect` rows are the contract for that primitive — never over-declared.
+        if _op_body_kind(op) in ("runtimeBinding", "intrinsic"):
+            continue
         activated = _activated_effects(program, op)
         for action, resource in sorted(declared - activated):
             program.warnings.append(
@@ -4913,7 +4948,13 @@ def _lint_dead_unused(program: Program) -> list:
                 for tok in r.payload:
                     cnt[tok] += 1
         for r in op.facts("in"):  # SS0805 unused input
-            if r.payload and cnt[r.payload[0]] == 1:
+            # ABI/injected-context inputs (a webServer handler's request/response,
+            # a middleware's `next` continuation, a GUI handler's session/event)
+            # are mandated by the operation's role ABI, so they are not "unused"
+            # dead parameters even when a given handler does not read them.
+            in_type = r.payload[1] if len(r.payload) >= 2 else ""
+            if (r.payload and cnt[r.payload[0]] == 1
+                    and in_type not in _ABI_CONTEXT_INPUT_TYPES):
                 out.append(Diagnostic(
                     "SS0805", "warning",
                     f"input {r.payload[0]!r} of {op.name!r} is never used in the "
@@ -4998,6 +5039,7 @@ def _lint_dead_unused(program: Program) -> list:
     # SS0812 the same immutable const declared identically in two+ operations
     # (a hoist-to-module-storage candidate).
     const_sites: dict = {}
+    _SS0812_TRIVIAL_LITERALS = {"0", "1", "-1", "true", "false", "yes", "no"}
     for n in program.order:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
@@ -5010,6 +5052,13 @@ def _lint_dead_unused(program: Program) -> list:
     for key, sites in const_sites.items():
         if len({s[0] for s in sites}) >= 2:
             _name, _ty, _val = key
+            # Trivial literals (0, 1, -1, booleans) are idiomatic to declare as a
+            # named local in each operation that needs them; hoisting them to a
+            # module global is not cleaner, so they are exempt from the
+            # hoist-candidate advisory (only substantive shared constants —
+            # strings, magic numbers, paths — are worth flagging).
+            if _val in _SS0812_TRIVIAL_LITERALS:
+                continue
             ops = sorted({s[0] for s in sites})
             out.append(Diagnostic(
                 "SS0812", "warning",
@@ -7786,6 +7835,32 @@ def _op_body_kind(op: Entity) -> str:
     if row and row.payload:
         return row.payload[0]
     return "steps"
+
+
+# The project's own native-runtime symbol namespaces: `ss_*` (the C runtime under
+# runtime/) and `dom_*` (the wasm DOM host adapter). A runtimeBinding to one of
+# these is the sanctioned platform seam (README §11/§26), distinct from ad-hoc
+# raw-libc (`c.*`, bare libc) FFI which has safe stdlib wrappers.
+_PLATFORM_RUNTIME_PREFIXES = ("ss_", "dom_")
+
+# Types that represent an operation's ABI-injected context or continuation: a
+# webServer handler's request/response, a middleware's `next`, the lifecycle
+# serverContext, and the GUI handler session/event. An `in` parameter of one of
+# these types is mandated by the operation's role ABI (README §14), so it is not
+# a dead parameter even when a given handler never reads it (SS0805 exempt).
+_ABI_CONTEXT_INPUT_TYPES = frozenset({
+    "HttpRequest", "HttpResponse", "NextMiddleware", "ServerContext",
+    "GuiSession", "GuiEvent",
+})
+
+
+def _is_platform_runtime_symbol(op: Entity) -> bool:
+    """True if `op`'s runtimeBinding target is a project native-runtime symbol."""
+    row = op.fact("body")
+    if not row or len(row.payload) < 2:
+        return False
+    symbol = row.payload[1]
+    return symbol.startswith(_PLATFORM_RUNTIME_PREFIXES)
 
 
 def _validate_body_kind(op: Entity) -> None:

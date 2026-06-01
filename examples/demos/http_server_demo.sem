@@ -23,7 +23,6 @@ httpServeStatic in path String
 httpServeStatic out Int32
 httpServeStatic body runtimeBinding ss_http_serve_static
 httpServeStatic purpose "Serve GET <path> on host:port with a fixed 200 body; blocks until signal"
-httpServeStatic suppress SS5000 because "http server seam; the typed home is std/standard.http.sem"
 
 main is operation
 main out Int32

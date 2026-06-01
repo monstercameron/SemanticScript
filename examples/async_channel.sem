@@ -35,7 +35,6 @@ stdoutWriter purpose "Allow controlled writes to standard output"
 chanCreate is operation
 chanCreate out AsyncChannelHandle
 chanCreate body runtimeBinding ss_async_channel_create
-chanCreate suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 chanProduce is operation
 chanProduce in channel AsyncChannelHandle
@@ -44,20 +43,17 @@ chanProduce in value Int64
 chanProduce out Int32
 chanProduce async yes
 chanProduce body runtimeBinding ss_async_channel_produce
-chanProduce suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 chanReceive is operation
 chanReceive in channel AsyncChannelHandle
 chanReceive out Int64
 chanReceive async yes
 chanReceive body runtimeBinding ss_async_channel_receive
-chanReceive suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 chanClose is operation
 chanClose in channel AsyncChannelHandle
 chanClose out Int32
 chanClose body runtimeBinding ss_async_channel_close
-chanClose suppress SS5000 because "runtimeBinding seam to ss_async_*; typed home std/standard.async.sem"
 
 main is operation
 main out ExitCode
@@ -104,7 +100,7 @@ produceEarly invokes chanProduce
 produceEarly arg channel AsyncChannelHandle theChannel
 produceEarly arg delayMs Int64 delayEarly
 produceEarly arg value Int64 valEarly
-produceEarly out prodEarlyStatus Int32
+produceEarly discards "status intentionally unused in this demonstration"
 
 produceMid is call
 produceMid in main
@@ -112,7 +108,7 @@ produceMid invokes chanProduce
 produceMid arg channel AsyncChannelHandle theChannel
 produceMid arg delayMs Int64 delayMid
 produceMid arg value Int64 valMid
-produceMid out prodMidStatus Int32
+produceMid discards "status intentionally unused in this demonstration"
 
 produceLate is call
 produceLate in main
@@ -120,7 +116,7 @@ produceLate invokes chanProduce
 produceLate arg channel AsyncChannelHandle theChannel
 produceLate arg delayMs Int64 delayLate
 produceLate arg value Int64 valLate
-produceLate out prodLateStatus Int32
+produceLate discards "status intentionally unused in this demonstration"
 
 recv1 is call
 recv1 in main
@@ -179,7 +175,7 @@ closeChan is call
 closeChan in main
 closeChan invokes chanClose
 closeChan arg channel AsyncChannelHandle theChannel
-closeChan out closeStatus Int32
+closeChan discards "status intentionally unused in this demonstration"
 
 harnessReport is call
 harnessReport in main

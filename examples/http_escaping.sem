@@ -33,21 +33,18 @@ httpHtmlEscape in raw String
 httpHtmlEscape out String
 httpHtmlEscape body runtimeBinding ss_http_html_escape_str
 httpHtmlEscape purpose "HTML-escape a string for safe rendering"
-httpHtmlEscape suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
 
 httpUrlEncode is operation
 httpUrlEncode in raw String
 httpUrlEncode out String
 httpUrlEncode body runtimeBinding ss_http_url_encode_str
 httpUrlEncode purpose "Percent-encode a string for use in a URL"
-httpUrlEncode suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
 
 httpUrlDecode is operation
 httpUrlDecode in encoded String
 httpUrlDecode out String
 httpUrlDecode body runtimeBinding ss_http_url_decode_str
 httpUrlDecode purpose "Percent-decode a URL-encoded string"
-httpUrlDecode suppress SS5000 because "http runtime seam; the typed home is std/standard.http.sem"
 
 main is operation
 main out ExitCode
