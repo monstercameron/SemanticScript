@@ -1855,6 +1855,33 @@ def test_version_surface_registry_complete():
     assert registry - emitted == set(), "registered but never emitted: %s" % (registry - emitted)
 
 
+def test_stdlib_readiness_ledger_gate():
+    # WS3-110: a generated maturity ledger classifies every standard.* module
+    # (native/lowered/intrinsic/signature-only) from on-disk evidence. The gate
+    # fails if any PUBLIC module is signature-only without an explicit deferred
+    # status — an unbacked API that would `check` clean then fail at lower/run.
+    # The stdlib is currently mature; this keeps it that way (a new .semsig-only
+    # public module would trip it).
+    import json as _json
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led, "ledger must classify the standard.* modules"
+    assert all(e["status"] in ("native", "lowered", "intrinsic", "signature-only")
+               for e in led.values())
+    # the gate: no public (non-deferred) module is signature-only / unbacked
+    unbacked = sorted(m for m, e in led.items() if e["unbackedPublic"])
+    assert unbacked == [], f"unbacked public stdlib modules (no impl, not deferred): {unbacked}"
+    # every explicitly-deferred module is a real, classified module
+    for m in semanticscript.EXPERIMENTAL_STDLIB_MODULES:
+        assert m in led, m
+    # the CLI surface emits the registered envelope and exits 0 when clean
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "stdlib-readiness", "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    body = _json.loads(p.stdout)
+    assert body["surface"] == "sem.stdlibReadiness.v1" and body["ok"] is True
+    assert p.returncode == 0
+    assert "sem.stdlibReadiness.v1" in semanticscript.SEM_SURFACES
+
+
 def test_test_lane_empty_is_not_pass():
     # R-158: a selected lane that discovers zero tests is no-tests (ok:false),
     # so a misspelled/unimplemented lane cannot green CI — unless --allow-empty.
@@ -7257,6 +7284,26 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert proc.returncode == 0, proc.stderr
     assert "4" in proc.stdout      # buffer.length
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
+
+
+def test_http_static_file_confines_resolved_path_to_root():
+    # R-190: the lexical path check rejects `..`/absolute paths, but a symlink or
+    # Windows junction planted under the static root can still resolve outside it.
+    # ss_http_response_file must verify the OPENED file's canonical (symlink-
+    # resolved) real path is contained in the root before serving any bytes. Source
+    # guard; taskforge-web's /assets/:filename route serves real in-root files via
+    # this path (verified live), and the containment is TOCTOU-safe on Windows
+    # because it checks the same handle it reads.
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_http",
+                            "sem_http_runtime.c"), encoding="utf-8").read()
+    assert "response_file_within_root" in src
+    assert "GetFinalPathNameByHandleW" in src
+    assert "realpath(root_directory" in src and "realpath(absolute_path" in src
+    fn = re.search(r"int ss_http_response_file\(.*?\n\}", src, re.S).group(0)
+    assert "response_file_within_root(file_handle, root_directory" in fn
+    assert fn.index("response_file_within_root") < fn.index("fread")
 
 
 def test_http_request_cookie_is_per_request_scratch():

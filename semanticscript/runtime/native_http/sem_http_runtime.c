@@ -61,6 +61,7 @@ typedef struct SSHttpPathParam {
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>          /* FILETIME, GetSystemTimeAsFileTime, CreateDirectoryA */
+#include <io.h>               /* R-190: _get_osfhandle / _fileno for path canonicalization */
 typedef SOCKET ss_socket_t;
 #define SS_INVALID_SOCKET INVALID_SOCKET
 static void ss_close_socket(ss_socket_t socket_handle) {
@@ -69,6 +70,7 @@ static void ss_close_socket(ss_socket_t socket_handle) {
 #else
 #include <arpa/inet.h>
 #include <errno.h>
+#include <limits.h>            /* R-190: PATH_MAX for realpath containment check */
 #include <sys/stat.h>          /* mkdir for ss_http_filesystem_ensure_directory */
 #include <sys/select.h>
 #include <time.h>              /* clock_gettime for ss_http_now_millis */
@@ -900,6 +902,78 @@ static void stage_file_cache_headers(
     }
 }
 
+/* R-190: the lexical response_file_path_is_safe check rejects absolute paths and
+ * literal `..` segments, but a symlink/junction PLACED UNDER the static root can
+ * still point outside it while passing that check. This guard resolves the
+ * already-open file AND the root to their canonical (symlink-followed) real paths
+ * and confirms the file is contained in the root. It runs on the SAME handle that
+ * will be read, so it is not subject to a TOCTOU swap between check and open. */
+#ifdef _WIN32
+static int ss_win_real_path_from_handle(HANDLE handle, wchar_t *out, DWORD count) {
+    DWORD n = GetFinalPathNameByHandleW(handle, out, count,
+                                        FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    return n > 0 && n < count;
+}
+
+static int response_file_within_root(FILE *file_handle, const char *root_directory,
+                                     const char *absolute_path) {
+    (void)absolute_path;  /* Windows uses the open handle, not the built path */
+    HANDLE file_handle_win = (HANDLE)_get_osfhandle(_fileno(file_handle));
+    if (file_handle_win == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    wchar_t real_file[1024];
+    if (!ss_win_real_path_from_handle(file_handle_win, real_file, 1024)) {
+        return 0;
+    }
+    /* FILE_FLAG_BACKUP_SEMANTICS is required to open a directory handle. */
+    HANDLE root_handle = CreateFileA(
+        root_directory, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (root_handle == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    wchar_t real_root[1024];
+    int root_ok = ss_win_real_path_from_handle(root_handle, real_root, 1024);
+    CloseHandle(root_handle);
+    if (!root_ok) {
+        return 0;
+    }
+    size_t root_len = wcslen(real_root);
+    if (root_len == 0 || root_len + 1 >= 1024) {
+        return 0;
+    }
+    /* Case-insensitive prefix (Windows paths) + a backslash boundary so a sibling
+     * like "<root>Evil\\x" cannot pass for root "<root>". A directory's final path
+     * has no trailing separator, so the file path must continue with '\\'. */
+    if (_wcsnicmp(real_file, real_root, root_len) != 0) {
+        return 0;
+    }
+    return real_file[root_len] == L'\\';
+}
+#else
+static int response_file_within_root(FILE *file_handle, const char *root_directory,
+                                     const char *absolute_path) {
+    (void)file_handle;
+    char real_root[PATH_MAX];
+    char real_file[PATH_MAX];
+    /* Resolve the root's and the requested file's canonical paths, then require
+     * containment. realpath follows symlinks, so a link escaping the root is
+     * rejected. (The handle-based Windows branch above is the TOCTOU-exact
+     * variant; the runtime's primary target is Windows.) */
+    if (realpath(root_directory, real_root) == NULL
+            || realpath(absolute_path, real_file) == NULL) {
+        return 0;
+    }
+    size_t root_len = strlen(real_root);
+    if (root_len == 0 || strncmp(real_file, real_root, root_len) != 0) {
+        return 0;
+    }
+    return real_file[root_len] == '/';
+}
+#endif
+
 int ss_http_response_file(
     SSHttpResponse *response,
     int status,
@@ -927,6 +1001,14 @@ int ss_http_response_file(
     FILE *file_handle = fopen(absolute_path, "rb");
     if (file_handle == NULL) {
         return SS_HTTP_ERR_ENGINE;
+    }
+    /* R-190: confirm the opened file's real (symlink/junction-resolved) path is
+     * inside the configured root before serving any bytes — a link planted under
+     * the root that points outside it passes the lexical check but is rejected
+     * here, so it cannot disclose files outside the intended directory. */
+    if (!response_file_within_root(file_handle, root_directory, absolute_path)) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_CONFIG;
     }
     if (fseek(file_handle, 0, SEEK_END) != 0) {
         fclose(file_handle);
