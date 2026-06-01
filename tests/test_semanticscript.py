@@ -2344,7 +2344,7 @@ def test_errorcase_requires_of():
 def test_errorcase_enumeration_by_of():
     prog = semanticscript.parse(
         "E is error\nA is errorCase\nA of E\n"
-        "B is errorCase\nB of E\nB payload Int32\n"
+        "B is errorCase\nB of E\n"
     )
     cases = [
         n for n in prog.order
@@ -2352,6 +2352,31 @@ def test_errorcase_enumeration_by_of():
         and prog.entities[n].fact("of").payload == ["E"]
     ]
     assert cases == ["A", "B"]
+
+
+def test_data_carrying_error_case_construction_with_payload_rejected():
+    # R-054: the grammar accepts an errorCase `payload` row (so a payload-declared
+    # case still parses/lints — the fallible-write scaffold uses one), but data-
+    # carrying ERROR cases are not lowered with payload storage yet. CONSTRUCTING
+    # one WITH a payload arg would silently DROP the value, so the codegen fails
+    # closed (SS3047) at that drop site instead of mis-lowering. A payloadless
+    # construction of the same case stays legal.
+    head = (
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "MyErr is error\nBadThing is errorCase\nBadThing of MyErr\nBadThing payload Int64\n"
+        "op is operation\nop out MyErr\nop async no\nop let n immutable Int64 42\n"
+    )
+    # constructing WITH a payload arg -> SS3047 at lowering (the silent-drop site)
+    with_payload = head + (
+        "op do mk\nop return e\n"
+        "mk is call\nmk in op\nmk invokes MyErr.BadThing\nmk arg detail Int64 n\nmk out e MyErr\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.lower_to_llvm(semanticscript.parse(with_payload))
+    assert getattr(exc.value, "code", None) == "SS3047"
+    # a payload-declared errorCase still PARSES/LINTS clean (shipped surface intact)
+    assert "BadThing" in semanticscript.parse(
+        "MyErr is error\nBadThing is errorCase\nBadThing of MyErr\nBadThing payload Int64\n"
+    ).entities
 
 
 def test_parse_result_arity_enforced():

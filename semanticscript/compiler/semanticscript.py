@@ -359,6 +359,11 @@ DIAGNOSTICS.update({
                         "be read (R-124).",
                "suggested": "Check the path and run from the project root; the embed "
                             "is resolved at compile time (README §30.3.2)."},
+    "SS3047": {"tier": "T1", "summary": "Data-carrying error case not lowered.",
+               "found": "An `errorCase` with a `payload` row — the payload would be "
+                        "silently dropped at construction (R-054).",
+               "suggested": "Use a data-carrying enum `variant <name> <Type>` for a "
+                            "value-bearing case, or a payloadless error discriminant (README §9)."},
     "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
                "found": "A platform targetRuntime other than native/wasm.",
                "suggested": "Use `native` or `wasm` (README §7)."},
@@ -11017,6 +11022,22 @@ class EavCodegen:
                     f"{target!r}: error {head!r} has no case {tail!r} (README ss9)",
                     call.line,
                 )
+            # R-054: a data-carrying error case (its errorCase declares a `payload`
+            # row) is NOT lowered with payload storage yet — only the discriminant
+            # is. Constructing one WITH a payload arg would silently drop the value,
+            # so fail closed here (the drop site) rather than mis-lower. The bare
+            # discriminant construction (no payload arg) stays legal, so a
+            # payload-declared case still lints/lowers as a plain error tag.
+            case_ent = self.program.entities.get(tail)
+            if (case_ent is not None and case_ent.fact("payload") is not None
+                    and any(args.values())):
+                raise EavError(
+                    f"{target!r}: error case {tail!r} declares a `payload`, but data-"
+                    f"carrying error cases are not yet lowered — the payload arg would "
+                    f"be silently dropped. Use a data-carrying enum variant "
+                    f"(`variant <name> <Type>`) for a value-bearing case (README §9, "
+                    f"R-054).",
+                    call.line, code="SS3047")
             return ir.Constant(ir.IntType(32), cases.index(tail))
         raise EavError(
             f"call target {target!r} is not modeled by the LLVM console code "
