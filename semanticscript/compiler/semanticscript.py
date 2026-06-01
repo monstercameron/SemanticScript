@@ -10386,6 +10386,36 @@ class EavCodegen:
         "greaterThanOrEqual": ">=", "lessThan": "<", "greaterThan": ">",
     }
 
+    def _value_eq(self, builder, lv, rv, type_name):
+        """R-075: a type-directed equality (-> i1) for one value of declared
+        `type_name`. Float by value (ordered), String bytewise via strcmp, a nested
+        record by deep fieldwise recursion, and numeric/Bool/enum-discriminant/
+        handle by integer value compare. (A data-carrying enum field falls through
+        to the integer compare on its tag-struct, unchanged from before — deep
+        payload-aware enum equality is out of this fix's scope.)"""
+        resolved = self.resolve_type_name(type_name)
+        ent = self.program.entities.get(resolved)
+        if self.is_float_type(type_name):
+            return builder.fcmp_ordered("==", lv, rv)
+        if resolved == "String":
+            cmp = builder.call(self.runtime("strcmp"), [lv, rv])
+            return builder.icmp_signed("==", cmp, ir.Constant(ir.IntType(32), 0))
+        if ent is not None and ent.kind == "record":
+            return self._record_field_eq(builder, lv, rv, ent)
+        return builder.icmp_signed("==", lv, rv)
+
+    def _record_field_eq(self, builder, left, right, ent):
+        """Deep fieldwise equality (-> i1) of two record values of entity `ent`,
+        each field compared by its declared type via _value_eq (R-075)."""
+        field_rows = [f for f in ent.facts("field") if len(f.payload) >= 2]
+        acc = None
+        for i, frow in enumerate(field_rows):
+            fl = builder.extract_value(left, i)
+            fr = builder.extract_value(right, i)
+            feq = self._value_eq(builder, fl, fr, frow.payload[1])
+            acc = feq if acc is None else builder.and_(acc, feq)
+        return acc if acc is not None else ir.Constant(ir.IntType(1), 1)
+
     def _emit_compare(self, target, args, builder, sym, call):
         """Compiler-derived `compare.<op><Type>` primitive (README ss13). Ordering
         on Bool/enum operands is rejected (Bool/enum are equals-only, ss17 #45)."""
@@ -10421,20 +10451,12 @@ class EavCodegen:
         if left is None or right is None:
             raise EavError(f"{target!r} needs left and right args", call.line)
         if is_record:
-            # README ss33.7: records compare by deep fieldwise equality.
-            _struct_t, field_names = self._record_layout(ent)
-            field_rows = [f for f in ent.facts("field") if len(f.payload) >= 2]
-            acc = None
-            for i, frow in enumerate(field_rows):
-                fl = builder.extract_value(left, i)
-                fr = builder.extract_value(right, i)
-                if self.is_float_type(frow.payload[1]):
-                    feq = builder.fcmp_ordered("==", fl, fr)
-                else:
-                    feq = builder.icmp_signed("==", fl, fr)
-                acc = feq if acc is None else builder.and_(acc, feq)
-            if acc is None:
-                acc = ir.Constant(ir.IntType(1), 1)
+            # README ss33.7: records compare by deep, type-directed fieldwise
+            # equality (R-075). A String field is compared bytewise (strcmp), NOT
+            # by the pointer-identity an integer compare would give, and a nested
+            # record field recurses — so two structurally-equal records with
+            # distinct String allocations compare equal.
+            acc = self._record_field_eq(builder, left, right, ent)
             return acc if op == "equal" else builder.not_(acc)
         if resolved == "String":
             # README ss10.6: String equality is bytewise (strcmp), no normalization.

@@ -2688,6 +2688,43 @@ def test_record_fieldwise_equality_and_ordering_rejected():
     assert exc.value.code == "SS1345"
 
 
+def test_record_equality_is_deep_and_type_directed():
+    # R-075: record equality compares each field by its declared type — a String
+    # field bytewise (strcmp), NOT by pointer identity, and a nested record field
+    # recursively. Two structurally-equal records with distinct String allocations
+    # must compare equal (the old integer compare gave a false negative).
+    ir = _ir_for_source(
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "Name is record\nName field first String\n"
+        "Person is record\nPerson field name Name\nPerson field label String\nPerson field age Int64\n"
+        "eqOp is operation\neqOp in a Person\neqOp in b Person\neqOp out Bool\n"
+        "eqOp do cmpCall\neqOp return r\n"
+        "cmpCall is call\ncmpCall in eqOp\ncmpCall invokes compare.equalPerson\n"
+        "cmpCall arg left Person a\ncmpCall arg right Person b\ncmpCall out r Bool\n")
+    assert 'call i32 @"strcmp"' in ir       # String fields compared by content...
+    assert "icmp eq i64" in ir              # ...Int64 field by value...
+    assert "icmp eq i8*" not in ir          # ...never raw pointer identity on a String
+    # behavioral: distinct String allocations (literal vs string.concat) with equal
+    # content make two records compare EQUAL.
+    prog = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\nTag is record\nTag field value String\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        'main let lit immutable String "Ada"\nmain let pre immutable String "Ad"\nmain let suf immutable String "a"\n'
+        'main let tn immutable String "equal-content distinct strings -> records equal"\n'
+        "main do mkJoin\nmain do mkA\nmain do mkB\nmain do cmp\nmain do report\nmain return code\n"
+        "mkJoin is call\nmkJoin in main\nmkJoin invokes string.concat\nmkJoin arg left String pre\nmkJoin arg right String suf\nmkJoin out joined String\n"
+        "mkA is call\nmkA in main\nmkA invokes Tag.new\nmkA arg value String lit\nmkA out a Tag\n"
+        "mkB is call\nmkB in main\nmkB invokes Tag.new\nmkB arg value String joined\nmkB out b Tag\n"
+        "cmp is call\ncmp in main\ncmp invokes compare.equalTag\ncmp arg left Tag a\ncmp arg right Tag b\ncmp out eq Bool\n"
+        "report is call\nreport in main\nreport invokes test.assertTrue\nreport arg name String tn\nreport arg value Bool eq\nreport out code ExitCode\n"
+    )
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"], input=prog,
+                       capture_output=True, text=True, encoding="utf-8")
+    assert "PASS" in p.stdout and "FAIL" not in p.stdout, (p.stdout, p.stderr)
+
+
 def test_compare_string_equality_bytewise():
     # README §10.6: String equality is bytewise via strcmp.
     src = (
