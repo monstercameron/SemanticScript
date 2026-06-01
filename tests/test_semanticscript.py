@@ -4046,6 +4046,42 @@ def test_cli_subcommands_in_process(tmp_path, capsys):
         assert rc == 0, (argv, capsys.readouterr())
 
 
+def test_r097_every_command_accepts_json(tmp_path, capsys):
+    # R-097: the command-wide `--json` contract must hold for EVERY subcommand —
+    # passing --json may never exit 2 with raw argparse "unrecognized arguments"
+    # usage. A JSON-native command emits its sem.*.v1 envelope; a non-native one
+    # emits the documented sem.unsupported.v1 status. Previously parse/lower/
+    # inventory/doctor/emit-ir/build/wasm/fmt/scaffold/verify-patch/trace/normalize
+    # /diff/rename/add/pack/describe/explain all rejected --json.
+    import json as _json
+    src = os.path.join(EXAMPLES, "hello_world.sem")
+    exe = str(tmp_path / ("h" + (".exe" if sys.platform == "win32" else "")))
+    # (argv-without-json) for previously-broken (non-native) commands
+    non_native = [
+        ["lex", src], ["parse", src], ["lower", src], ["inventory", src],
+        ["doctor", src], ["emit-ir", src], ["build", src, "-o", exe],
+        ["wasm", src], ["fmt", src], ["scaffold", "console-program"],
+        ["verify-patch", src], ["trace", src, "main"], ["normalize", src],
+        ["diff", src, src], ["rename", src, "main", "main2"], ["add", src, "extra"],
+        ["pack", src, "main"], ["describe", src, "main"], ["explain", "SS1502"],
+    ]
+    for argv in non_native:
+        rc = semanticscript.main(argv + ["--json"])
+        out = capsys.readouterr().out
+        body = _json.loads(out)
+        assert body["surface"] == "sem.unsupported.v1", argv
+        assert body["ok"] is False and body["status"] == "json-unsupported", argv
+        assert body["command"] == argv[0], argv
+        assert rc == 2, argv
+    # JSON-native commands still pass --json through to their own envelope
+    for argv in (["check", src], ["lint", src], ["query", "effects", src],
+                 ["graph", src], ["inspect-ir", src]):
+        semanticscript.main(argv + ["--json"])
+        body = _json.loads(capsys.readouterr().out)
+        assert body["surface"].startswith("sem.") , argv
+        assert body["surface"] != "sem.unsupported.v1", argv
+
+
 def _test_program(test_ops):
     base = (
         "P is project\nP module m\nP target console\nP entry main\n"

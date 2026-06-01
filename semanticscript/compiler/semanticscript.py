@@ -12524,6 +12524,9 @@ SEM_SURFACES = (
     "sem.bench.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
     "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
     "sem.search.v1", "sem.status.v1",
+    # R-097: the documented "this command has no JSON surface" status, returned
+    # for a non-JSON-native command invoked with --json.
+    "sem.unsupported.v1",
 )
 
 # R-053: standard.* catalogs that ship a `.semsig` contract but whose runtime is
@@ -14186,7 +14189,33 @@ def main(argv: Optional[list[str]] = None) -> int:
                           help="emit a sem.graph.v1 envelope (R-087)")
     sp_graph.set_defaults(func=cmd_graph)
 
+    # R-097: honor the command-wide `--json` contract on EVERY subcommand. The
+    # commands whose subparser opted into `--json` natively emit a `sem.*.v1`
+    # envelope; derive that set from the parser itself (no drift), then auto-
+    # register `--json` on the remaining subparsers so `<cmd> --json` can never
+    # exit 2 with raw argparse usage text. A non-native command that is given
+    # `--json` returns a documented machine-readable `sem.unsupported.v1` envelope
+    # (handled centrally below) instead of running with the flag silently ignored.
+    _json_native = frozenset(
+        name for name, sp in sub.choices.items()
+        if "--json" in sp._option_string_actions)
+    for _name, _sp in sub.choices.items():
+        if "--json" not in _sp._option_string_actions:
+            _sp.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+
     args = parser.parse_args(argv)
+
+    if getattr(args, "json", False) and args.command not in _json_native:
+        # R-097: a documented, machine-readable "no JSON surface here" status —
+        # never a plaintext argparse failure. An agent can branch on ok:false +
+        # status to fall back to the human-readable form or a sibling command.
+        sys.stdout.write(_json_envelope(
+            "sem.unsupported.v1", ok=False, status="json-unsupported",
+            command=args.command,
+            note=(f"`{args.command}` has no machine-readable JSON envelope; rerun "
+                  f"without --json for human-readable output, or use a JSON-native "
+                  f"command (e.g. check/lint/inspect-ir/query/graph --json)")) + "\n")
+        return 2
 
     def _emit_json_error(exc, status: str) -> None:
         # R-098: when a JSON-capable command fails before its own envelope is
