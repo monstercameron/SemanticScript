@@ -213,3 +213,6 @@ _dom_host.cjs
 __pycache__/
 _build/
 .coverage
+
+# Stray runtime artifact when the taskforge-tui app is run from the repo root
+/todos.json
