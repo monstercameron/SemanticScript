@@ -1,10 +1,13 @@
 name: Release
 
-# Cut a release of the single-file `semanticscript` toolchain. Push a `v*` tag
-# (matching version.json) or dispatch manually. Builds the PyInstaller binary on
-# each OS via semanticscript/packaging/package.py, smoke-tests it, then publishes
-# a GitHub release with the per-OS binaries, a SHA256SUMS file, and the
-# third-party attribution. Modeled on the proven compiler-exe.yml freeze step.
+# Cut a release of the `semanticscript` toolchain + VS Code extension. Push a
+# `v*` tag (matching version.json) or dispatch manually. Builds the PyInstaller
+# binary on each OS via semanticscript/packaging/package.py and packages the
+# VS Code extension VSIX via vscode-semanticscript, smoke-tests the binaries,
+# then publishes a GitHub release with the per-OS binaries, the .vsix, a
+# SHA256SUMS file, and third-party attribution. The release notes carry the MCP
+# bootstrap block and the dependencies needed to reproduce the executables.
+# Modeled on the proven compiler-exe.yml freeze step.
 
 on:
   push:
@@ -174,9 +177,68 @@ jobs:
           path: staging/${{ matrix.asset }}
           if-no-files-found: error
 
+  vsix:
+    name: Package VS Code extension
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      # R-120: build the VSIX from the resolved tag's commit, same as the
+      # binaries, and fail if HEAD is not the SHA preflight validated.
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify the built commit is the resolved tag SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          built="$(git rev-parse HEAD)"
+          if [ "$built" != "${{ needs.preflight.outputs.sha }}" ]; then
+            echo "Checked-out commit $built != resolved tag SHA ${{ needs.preflight.outputs.sha }}."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: vscode-semanticscript/package-lock.json
+
+      - name: Install extension dependencies (incl. @vscode/vsce)
+        working-directory: vscode-semanticscript
+        run: npm ci
+
+      - name: Validate extension manifests + entrypoint
+        working-directory: vscode-semanticscript
+        run: npm run check
+
+      - name: Package the VSIX
+        working-directory: vscode-semanticscript
+        # vsce is installed as a devDependency by `npm ci`; --no-install keeps the
+        # pinned local copy and never reaches the network for a different version.
+        run: npx --no-install vsce package --out "semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix"
+
+      - name: Stage the named artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          cp "vscode-semanticscript/semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix" \
+             "staging/semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semanticscript-vscode-vsix
+          path: staging/semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub release
-    needs: [preflight, build]
+    needs: [preflight, build, vsix]
     runs-on: ubuntu-latest
     steps:
       # R-120: check out exactly the resolved tag (not the dispatch branch) and
@@ -218,6 +280,54 @@ jobs:
           sha256sum semanticscript-* > SHA256SUMS
           echo "Release assets:"; ls -la
 
+      - name: Compose the release notes
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Quoted heredoc => fully literal (backticks and $ are safe); the two
+          # placeholders are substituted afterward. Keep the MCP bootstrap block
+          # and the build-dependency list in sync with semanticscript/packaging/
+          # package.py and vscode-semanticscript/package.json.
+          cat > NOTES.md <<'NOTES'
+          SemanticScript __TAG__ — beta toolchain + VS Code extension.
+
+          ## Downloads
+          - `semanticscript-windows-x64.exe`, `semanticscript-linux-x64`, `semanticscript-macos-arm64` — the single-file toolchain (compiler, linter, formatter, JIT, native builder, and MCP stdio server). No install and no adjacent folder required.
+          - `semanticscript-vscode-__VERSION__.vsix` — the VS Code extension (syntax, navigation, completion, linting, compiler integration). Install with `code --install-extension semanticscript-vscode-__VERSION__.vsix`.
+          - `SHA256SUMS` — verify every download, e.g. `sha256sum -c SHA256SUMS`.
+          - `THIRD_PARTY_LICENSES.md`, `LICENSE.txt` — attribution and license.
+
+          ## MCP bootstrap (for agents)
+          The toolchain is also an MCP stdio server. Point an MCP client at it:
+
+              command: "semanticscript"     # or the absolute path to the downloaded binary
+              args:    ["mcp"]
+              cwd:     <your project root>
+
+          Run `semanticscript mcp` for the MCP stdio JSON-RPC server. Start with the `agent_docs` and `skills` tools, then `check`, `readiness`, `graph`, `slice`, and `fix_plan`.
+
+          ## Building the executables yourself
+          The per-OS binaries are produced by `.github/workflows/release.yml`. To reproduce locally you need:
+          - Python 3.12
+          - the pinned dependencies in `requirements.txt`
+          - PyInstaller 6.20.0 (`pip install pyinstaller==6.20.0`)
+          - LLVM/clang on `PATH` for native emit and the `build` smoke test (set `SEMSC_CLANG` if clang is not discoverable)
+
+          Then run `python semanticscript/packaging/package.py`; the binary lands in `semanticscript/packaging/dist/`.
+
+          The VSIX is built with Node.js 20 and `@vscode/vsce` — `npm ci && npm run package:vsix` in `vscode-semanticscript/`.
+
+          See CHANGELOG.md for the full change list. This is a 0.x prerelease.
+          NOTES
+          # YAML's block scalar already stripped the base indent, so the body
+          # reaches bash with prose at column 0 and the MCP block at 4 spaces
+          # (rendered as a code block). Only the placeholders remain to fill in.
+          sed -i "s/__TAG__/${TAG}/g; s/__VERSION__/${VERSION}/g" NOTES.md
+          echo "----- release notes -----"; cat NOTES.md
+
       - name: Create or update the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -226,8 +336,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          notes="SemanticScript ${TAG}. See CHANGELOG.md for details. Verify downloads against SHA256SUMS; third-party attribution in THIRD_PARTY_LICENSES.md."
-          common=(--repo "${{ github.repository }}" --title "SemanticScript ${TAG}" --notes "$notes")
+          common=(--repo "${{ github.repository }}" --title "SemanticScript ${TAG}" --notes-file NOTES.md)
           if [ "$PRERELEASE" = "true" ]; then common+=(--prerelease); fi
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release edit "$TAG" "${common[@]}"
