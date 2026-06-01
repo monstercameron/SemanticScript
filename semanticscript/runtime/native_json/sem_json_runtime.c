@@ -1403,6 +1403,19 @@ static int parse_json_object(
         if (strlen(field_name) > SS_JSON_MAX_FIELD_NAME_BYTES) {
             return SS_JSON_ERR_FIELD_NAME_TOO_LONG;
         }
+        /* R-260: reject a DUPLICATE key. `{"role":"user","role":"admin"}` would
+         * otherwise resolve to "user" on first-wins lookup yet re-serialize both
+         * keys — a privilege-confusion / request-smuggling primitive when a
+         * downstream parser picks the other. An object with a repeated key is
+         * ambiguous; fail closed. (object_node is valid here — the field-name
+         * copy touched only the arena, not the node array, and the capacity grow
+         * that can realloc happens below.) */
+        for (int64_t dup_i = 0; dup_i < object_node->as.object_value.length; ++dup_i) {
+            if (strcmp(object_node->as.object_value.fields[dup_i].name,
+                       field_name) == 0) {
+                return SS_JSON_ERR_MALFORMED_PATH;
+            }
+        }
         scan = skip_whitespace(scan);
         if (*scan != ':') {
             return SS_JSON_ERR_MALFORMED_PATH;
