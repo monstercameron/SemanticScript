@@ -8499,6 +8499,35 @@ def test_app_taskforge_api_client_full_port():
     assert not [d.render() for d in diags if d.severity == "error"]
 
 
+def test_async_setup_failures_dont_hang():
+    # R-146: a loop-init / future-create / timer-start failure must not leave an
+    # awaited future or interval wait permanently unset (an infinite spin —
+    # ss_async_future_await only exits on a broken loop, not a never-completing
+    # future). ss_async_new fails fast on a NULL loop/future and, if the value
+    # timer can't arm, completes the future with a terminal FAILED status; the
+    # interval tick bails with -1 instead of spinning. Source-level guard (the
+    # failure paths need libuv-injection to drive at runtime; the normal delay/
+    # interval/timeout paths are exercised by the async examples).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_async.c"),
+               encoding="utf-8").read()
+    new = re.search(r"static ss_async_job \*ss_async_new\(.*?\n\}", src, re.S).group(0)
+    assert "if (!loop) return NULL;" in new                 # loop-init failure
+    assert "if (!j->future) { free(j); return NULL; }" in new  # future-create failure
+    # value-timer failure completes the future so await terminates
+    assert ("ss_async_timer_start(loop, ms, ss_async_work_cb, j, &j->work) != 0" in new
+            and "SS_ASYNC_FAILED" in new and "ss_async_future_complete" in new)
+    tick = re.search(r"int64_t ss_async_interval_tick\(.*?\n\}", src, re.S).group(0)
+    assert "ss_async_timer_start(loop, ms, ss_interval_cb, &wait, &timer) != 0" in tick
+    assert "return -1;" in tick and "ss_async_loop_run_once(loop) != 0) break" in tick
+    # a timeout timer that can't arm fails the setup rather than degrading to an
+    # unbounded wait on the value timer
+    tmo = re.search(r"void \*ss_async_timeout_start\(.*?\n\}", src, re.S).group(0)
+    assert "ss_async_future_is_ready(j->future)" in tmo  # don't re-arm a resolved future
+    assert "SS_ASYNC_FAILED" in tmo and "ss_async_future_complete" in tmo
+
+
 def test_event_runtime_subscription_lifecycle_guarded():
     # R-131: the event runtime must not let a closeStream-before-closeSubscription
     # become a use-after-free. closeStream parents/orphans its subscriptions

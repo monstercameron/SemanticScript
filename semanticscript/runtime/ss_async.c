@@ -25,6 +25,7 @@
 #define SS_ASYNC_OK 0
 #define SS_ASYNC_TIMEOUT 1
 #define SS_ASYNC_CANCELLED 2
+#define SS_ASYNC_FAILED 3   /* R-146: loop/future/timer setup failed */
 
 static SSAsyncLoop *g_ss_async_loop = NULL;
 
@@ -59,16 +60,30 @@ static void ss_async_timeout_cb(void *ud) {
 }
 
 static ss_async_job *ss_async_new(int64_t delay_ms, int64_t value) {
+    /* R-146: a NULL loop (loop-init failed) would make every future un-drivable —
+     * fail the setup now rather than hand back a job that await can never finish. */
     SSAsyncLoop *loop = ss_async_get_loop();
+    if (!loop) return NULL;
     ss_async_job *j = (ss_async_job *)malloc(sizeof(ss_async_job));
     if (!j) return NULL;
     j->value = value;
     j->status = SS_ASYNC_OK;
     j->work = NULL;
     j->timeout = NULL;
+    /* R-146: a failed future creation must not be awaited (it would never become
+     * ready) — release the job and report setup failure. */
     j->future = ss_async_future_create(loop);
+    if (!j->future) { free(j); return NULL; }
     unsigned long long ms = delay_ms < 0 ? 0ULL : (unsigned long long)delay_ms;
-    ss_async_timer_start(loop, ms, ss_async_work_cb, j, &j->work);
+    /* R-146: if the value timer cannot be armed, nothing will ever complete the
+     * future and `await` would spin forever (ss_async_future_await only exits on a
+     * broken loop, not a never-completing future). Complete it now with a terminal
+     * FAILED status so the await returns deterministically and the error surfaces
+     * through ss_async_await_result. */
+    if (ss_async_timer_start(loop, ms, ss_async_work_cb, j, &j->work) != 0) {
+        j->status = SS_ASYNC_FAILED;
+        ss_async_future_complete(j->future, SS_ASYNC_ERR_ENGINE, 0);
+    }
     return j;
 }
 
@@ -83,9 +98,18 @@ SS_EXPORT void *ss_async_timeout_start(int64_t delay_ms, int64_t value,
                                          int64_t timeout_ms) {
     ss_async_job *j = ss_async_new(delay_ms, value);
     if (!j) return NULL;
+    /* R-146: ss_async_new may have already completed the future (value-timer
+     * setup failed) — don't arm a timeout on an already-resolved future. */
+    if (ss_async_future_is_ready(j->future)) return j;
     unsigned long long ms = timeout_ms < 0 ? 0ULL : (unsigned long long)timeout_ms;
-    ss_async_timer_start(ss_async_get_loop(), ms, ss_async_timeout_cb, j,
-                         &j->timeout);
+    /* R-146: if the timeout timer cannot be armed, the timeout bound this wrapper
+     * promises cannot be honored — resolve as a terminal FAILED setup error rather
+     * than silently degrading to an unbounded wait on the value timer. */
+    if (ss_async_timer_start(ss_async_get_loop(), ms, ss_async_timeout_cb, j,
+                             &j->timeout) != 0) {
+        j->status = SS_ASYNC_FAILED;
+        ss_async_future_complete(j->future, SS_ASYNC_ERR_ENGINE, 0);
+    }
     return j;
 }
 
@@ -258,15 +282,26 @@ static void ss_interval_cb(void *ud) {
 SS_EXPORT int64_t ss_async_interval_tick(void *handle) {
     ss_interval *iv = (ss_interval *)handle;
     if (!iv) return 0;
+    /* R-146: a NULL loop or a timer that fails to arm would leave `wait.fired`
+     * permanently unset, and the drive loop below would spin forever. Bail with a
+     * -1 failed-tick sentinel instead of hanging. */
+    SSAsyncLoop *loop = ss_async_get_loop();
+    if (!loop) return -1;
     ss_interval_wait wait;
     wait.fired = 0;
     SSAsyncTimer *timer = NULL;
     unsigned long long ms = iv->period_ms < 0 ? 0ULL : (unsigned long long)iv->period_ms;
-    ss_async_timer_start(ss_async_get_loop(), ms, ss_interval_cb, &wait, &timer);
+    if (ss_async_timer_start(loop, ms, ss_interval_cb, &wait, &timer) != 0) {
+        return -1;
+    }
+    /* R-146: bound the wait — ss_async_loop_run_once returns non-zero only when
+     * the loop becomes unavailable, at which point the timer can never fire, so
+     * stop rather than spin. */
     while (!wait.fired) {
-        ss_async_loop_run_once(ss_async_get_loop());
+        if (ss_async_loop_run_once(loop) != 0) break;
     }
     if (timer) { ss_async_timer_cancel(timer); ss_async_timer_destroy(timer); }
+    if (!wait.fired) return -1;  /* loop died before the tick fired */
     iv->ticks++;
     return iv->ticks;
 }
