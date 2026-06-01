@@ -244,6 +244,20 @@ struct SSHttpResponse {
     int head_only;  /* R-174: emit headers (incl. Content-Length) but no body */
 };
 
+/* Forward declarations: ss_http_response_file (defined below) streams via the
+ * response's backend socket when one is available, reusing the send path defined
+ * later in the file. */
+static struct SSHttpResponseBackend *response_backend(SSHttpResponse *response);
+static int serve_static_file_streamed(
+    ss_socket_t socket_handle,
+    int status,
+    const char *root_directory,
+    const char *requested_relative_path,
+    SSHttpResponse *response,
+    int head_only,
+    int *committed_out
+);
+
 static int has_valid_route_table(const SSHttpServerConfig *config) {
     size_t index;
 
@@ -1015,6 +1029,26 @@ int ss_http_response_file(
     }
     if (!response_file_path_is_safe(requested_relative_path)) {
         return SS_HTTP_ERR_CONFIG;
+    }
+
+    /* R-211: when the response is bound to a live socket (the server dispatch
+     * path), stream the file in fixed-size chunks instead of reading it whole
+     * into response->owned_body. A pre-commit failure (missing/oversized file)
+     * streams nothing and returns an error, so a handler can still emit its own
+     * error body. The buffered branch below stays for callers with no socket. */
+    SSHttpResponseBackend *backend = response_backend(response);
+    if (backend != NULL && !backend->stream_started && !backend->stream_closed) {
+        int committed = 0;
+        int rc = serve_static_file_streamed(
+            backend->socket_handle, status, root_directory,
+            requested_relative_path, response, response->head_only, &committed);
+        if (committed) {
+            backend->stream_started = 1;
+            if (rc != SS_HTTP_OK) {
+                backend->stream_error = 1;
+            }
+        }
+        return rc;
     }
 
     char absolute_path[1024];
@@ -2724,26 +2758,29 @@ static int send_all(ss_socket_t socket_handle, const char *data, size_t byte_cou
     return SS_HTTP_OK;
 }
 
-static int send_response(
+/* Emit the response status line + Content-Type/Content-Length/Connection +
+ * staged headers + the blank separator line. Factored out of send_response so
+ * the streaming static-file path (R-211) emits an identical header block
+ * without buffering the body. `body_length` is the entity length to advertise
+ * (the in-memory body's length, or the file size for the streamed path). */
+static int send_response_header_block(
     ss_socket_t socket_handle,
     int status,
     const char *content_type,
-    const char *body,
+    size_t body_length,
     const SSHttpResponse *response
 ) {
     char header[512];
+    size_t index;
+    int header_length;
+
     /* R-182: a handler can set any Int32 status; an out-of-range value would emit
      * a malformed status line ("HTTP/1.1 -1 ..." / "HTTP/1.1 99999 ..."). Clamp to
      * a valid HTTP status (100..599); anything else is reported as 500. */
     if (status < 100 || status > 599) {
         status = 500;
     }
-    size_t body_length =
-        response != NULL && body != NULL && response->body == body
-            ? response->body_length
-            : (body != NULL ? strlen(body) : 0);
-    size_t index;
-    int header_length = snprintf(
+    header_length = snprintf(
         header,
         sizeof(header),
         "HTTP/1.1 %d %s\r\n"
@@ -2755,7 +2792,6 @@ static int send_response(
         content_type != NULL ? content_type : "text/plain; charset=utf-8",
         body_length
     );
-
     if (header_length <= 0 || (size_t)header_length >= sizeof(header)) {
         return SS_HTTP_ERR_ENGINE;
     }
@@ -2786,6 +2822,25 @@ static int send_response(
     if (send_all(socket_handle, "\r\n", 2) != SS_HTTP_OK) {
         return SS_HTTP_ERR_ENGINE;
     }
+    return SS_HTTP_OK;
+}
+
+static int send_response(
+    ss_socket_t socket_handle,
+    int status,
+    const char *content_type,
+    const char *body,
+    const SSHttpResponse *response
+) {
+    size_t body_length =
+        response != NULL && body != NULL && response->body == body
+            ? response->body_length
+            : (body != NULL ? strlen(body) : 0);
+
+    if (send_response_header_block(socket_handle, status, content_type,
+                                   body_length, response) != SS_HTTP_OK) {
+        return SS_HTTP_ERR_ENGINE;
+    }
     /* R-174: a HEAD response carries the entity's Content-Length (emitted above)
      * but MUST NOT include the body. */
     if (body_length > 0 && !(response != NULL && response->head_only)
@@ -2793,6 +2848,110 @@ static int send_response(
         return SS_HTTP_ERR_ENGINE;
     }
 
+    return SS_HTTP_OK;
+}
+
+/* R-211: stream a static file to the socket without ever holding the whole file
+ * in heap. ss_http_response_file (the public http.responseFile helper) read the
+ * entire file into response->owned_body before the send path ran, so serving
+ * many large static assets caused avoidable memory spikes. This path validates
+ * the file (lexical safety + symlink/junction containment in the root, R-190 +
+ * the 16 MiB cap), emits the same header block (Content-Length = the real file
+ * size, ETag/Last-Modified/Cache-Control preserved), then copies the body in
+ * fixed-size chunks straight from the file to the socket.
+ *
+ * Failure contract: on a PRE-commit failure (bad path, missing/oversized file)
+ * it sends NOTHING and returns an error, so a handler that called responseFile
+ * can still write its own error response (e.g. a JSON 404 body). Once the header
+ * block is on the wire the response is committed: `*committed_out` is set to 1
+ * (the caller must not send a fallback), and a later read/write failure only
+ * reports an engine error. */
+#define SS_HTTP_STATIC_STREAM_CHUNK ((size_t)64 * 1024)
+
+static int serve_static_file_streamed(
+    ss_socket_t socket_handle,
+    int status,
+    const char *root_directory,
+    const char *requested_relative_path,
+    SSHttpResponse *response,
+    int head_only,
+    int *committed_out
+) {
+    char etag[64] = "";
+    char last_modified[64] = "";
+    char absolute_path[1024];
+    int written;
+    FILE *file_handle;
+    long file_size;
+    const char *content_type;
+
+    if (committed_out != NULL) {
+        *committed_out = 0;
+    }
+    if (response == NULL || root_directory == NULL
+        || requested_relative_path == NULL
+        || !response_file_path_is_safe(requested_relative_path)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    written = snprintf(absolute_path, sizeof(absolute_path),
+                       "%s/%s", root_directory, requested_relative_path);
+    if (written < 0 || written >= (int)sizeof(absolute_path)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    file_handle = fopen(absolute_path, "rb");
+    if (file_handle == NULL) {
+        return SS_HTTP_ERR_ENGINE;
+    }
+    /* R-190: the opened handle's real path must be inside the root. */
+    if (!response_file_within_root(file_handle, root_directory, absolute_path)
+            || fseek(file_handle, 0, SEEK_END) != 0
+            || (file_size = ftell(file_handle)) < 0
+            || file_size > SS_HTTP_FILE_MAX_BYTES
+            || fseek(file_handle, 0, SEEK_SET) != 0) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_CONFIG;
+    }
+
+    content_type = content_type_for_extension(requested_relative_path);
+    if (build_file_cache_headers(root_directory, requested_relative_path,
+                                 etag, sizeof(etag),
+                                 last_modified, sizeof(last_modified))) {
+        stage_file_cache_headers(response, etag, last_modified);
+    }
+    response->status = status;
+    response->content_type = content_type;
+    response->body = NULL;
+    response->body_length = (size_t)file_size;
+    response->head_only = head_only;
+
+    /* Commit point: once the header block is sent the caller must not also send
+     * a fallback response. */
+    if (committed_out != NULL) {
+        *committed_out = 1;
+    }
+    if (send_response_header_block(socket_handle, status, content_type,
+                                   (size_t)file_size, response) != SS_HTTP_OK) {
+        fclose(file_handle);
+        return SS_HTTP_ERR_ENGINE;
+    }
+    if (!head_only) {
+        char chunk[SS_HTTP_STATIC_STREAM_CHUNK];
+        size_t remaining = (size_t)file_size;
+        while (remaining > 0) {
+            size_t want = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+            size_t got = fread(chunk, 1, want, file_handle);
+            if (got == 0) {  /* file shrank under us or a read error */
+                fclose(file_handle);
+                return SS_HTTP_ERR_ENGINE;
+            }
+            if (send_all(socket_handle, chunk, got) != SS_HTTP_OK) {
+                fclose(file_handle);
+                return SS_HTTP_ERR_ENGINE;
+            }
+            remaining -= got;
+        }
+    }
+    fclose(file_handle);
     return SS_HTTP_OK;
 }
 
@@ -3631,28 +3790,30 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             return response_status;
         }
 
-        handler_status = ss_http_response_file(
-            &response,
-            200,
-            static_route->root_directory,
-            static_relative_path
-        );
-        if (handler_status == SS_HTTP_OK && response.body != NULL) {
-            response_status = send_response(
+        /* R-211: stream the file straight to the socket in fixed-size chunks
+         * instead of buffering the whole file into response.owned_body first. A
+         * pre-commit failure (missing/oversized file) sends nothing, so we reply
+         * 404 here; once committed the streamer owns the connection. */
+        {
+            int static_committed = 0;
+            response_status = serve_static_file_streamed(
                 client_socket,
-                response.status,
-                response.content_type,
-                response.body,
-                &response
+                200,
+                static_route->root_directory,
+                static_relative_path,
+                &response,
+                response.head_only,
+                &static_committed
             );
-        } else {
-            response_status = send_response(
-                client_socket,
-                404,
-                "text/plain; charset=utf-8",
-                "not found\n",
-                &response
-            );
+            if (response_status != SS_HTTP_OK && !static_committed) {
+                response_status = send_response(
+                    client_socket,
+                    404,
+                    "text/plain; charset=utf-8",
+                    "not found\n",
+                    &response
+                );
+            }
         }
         clear_owned_response(&response);
         free(request_storage);
