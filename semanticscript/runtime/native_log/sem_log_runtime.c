@@ -101,10 +101,12 @@ int ss_log_write_line(const char *line) {
 /* Escape `src` for embedding inside a JSON string literal. Writes at
  * most `dst_capacity - 1` bytes plus a trailing '\0'. Stops gracefully
  * (truncates the source) if the destination would overflow rather
- * than corrupting the buffer. */
-static void log_escape_json(char *dst, size_t dst_capacity, const char *src) {
+ * than corrupting the buffer. R-150: returns 1 if the source had to be
+ * truncated to fit (so the caller can surface SS_LOG_ERR_TRUNCATED), 0
+ * if the whole source was escaped. */
+static int log_escape_json(char *dst, size_t dst_capacity, const char *src) {
     size_t out = 0;
-    if (dst_capacity == 0) return;
+    if (dst_capacity == 0) return src != NULL && *src != '\0';
     if (src == NULL) src = "";
     for (; *src != '\0' && out + 2 < dst_capacity; ++src) {
         char c = *src;
@@ -123,6 +125,7 @@ static void log_escape_json(char *dst, size_t dst_capacity, const char *src) {
         }
     }
     dst[out] = '\0';
+    return *src != '\0';  /* unconsumed input remains -> truncated */
 }
 
 int ss_log_event(const char *level_text,
@@ -131,12 +134,14 @@ int ss_log_event(const char *level_text,
     char level_buf[32];
     char event_buf[128];
     char message_buf[2048];
-    log_escape_json(level_buf, sizeof(level_buf),
-                    level_text != NULL ? level_text : "");
-    log_escape_json(event_buf, sizeof(event_buf),
-                    event_text != NULL ? event_text : "");
-    log_escape_json(message_buf, sizeof(message_buf),
-                    message_text != NULL ? message_text : "");
+    /* R-150: track whether any field had to be truncated to fit its buffer. */
+    int truncated = 0;
+    truncated |= log_escape_json(level_buf, sizeof(level_buf),
+                                 level_text != NULL ? level_text : "");
+    truncated |= log_escape_json(event_buf, sizeof(event_buf),
+                                 event_text != NULL ? event_text : "");
+    truncated |= log_escape_json(message_buf, sizeof(message_buf),
+                                 message_text != NULL ? message_text : "");
     /* No wall-clock import here — we rely on the user-provided ts when
      * they call ss_log_write_line directly. For these convenience
      * wrappers we omit ts entirely; the access-log path injects ts via
@@ -148,36 +153,46 @@ int ss_log_event(const char *level_text,
         "{\"level\":\"%s\",\"event\":\"%s\",\"message\":\"%s\"}",
         level_buf, event_buf, message_buf);
     if (n <= 0) return SS_LOG_ERR_ENGINE;
-    if ((size_t)n >= sizeof(line)) n = (int)sizeof(line) - 1;
+    if ((size_t)n >= sizeof(line)) { n = (int)sizeof(line) - 1; truncated = 1; }
     line[n] = '\0';
-    return ss_log_write_line(line);
+    /* R-150: still write the (possibly truncated) line so the log entry is not
+     * lost, but a write failure dominates and truncation is reported otherwise —
+     * the caller learns the record was not faithful instead of seeing OK. */
+    int write_status = ss_log_write_line(line);
+    if (write_status != SS_LOG_OK) return write_status;
+    return truncated ? SS_LOG_ERR_TRUNCATED : SS_LOG_OK;
 }
 
 int ss_log_info(const char *message_text)  { return ss_log_event("info",  "app", message_text); }
 int ss_log_warn(const char *message_text)  { return ss_log_event("warn",  "app", message_text); }
 int ss_log_error(const char *message_text) { return ss_log_event("error", "app", message_text); }
 
-void ss_log_http_access(const char *method_text,
-                        const char *path_text,
-                        int http_status,
-                        long long start_ms,
-                        long long now_ms) {
+int ss_log_http_access(const char *method_text,
+                       const char *path_text,
+                       int http_status,
+                       long long start_ms,
+                       long long now_ms) {
     long long latency = now_ms - start_ms;
     if (latency < 0) latency = 0;
     char method_buf[16];
     char path_buf[1024];
-    log_escape_json(method_buf, sizeof(method_buf),
-                    method_text != NULL ? method_text : "");
-    log_escape_json(path_buf, sizeof(path_buf),
-                    path_text != NULL ? path_text : "");
+    /* R-150: report method/path/line truncation + write failure instead of a
+     * silent void, so the access-log path has a deterministic status. */
+    int truncated = 0;
+    truncated |= log_escape_json(method_buf, sizeof(method_buf),
+                                 method_text != NULL ? method_text : "");
+    truncated |= log_escape_json(path_buf, sizeof(path_buf),
+                                 path_text != NULL ? path_text : "");
     char line[1280];
     int n = snprintf(line, sizeof(line),
         "{\"ts\":%lld,\"level\":\"info\",\"event\":\"http.access\","
         "\"method\":\"%s\",\"path\":\"%s\",\"status\":%d,"
         "\"latency_ms\":%lld}",
         now_ms, method_buf, path_buf, http_status, latency);
-    if (n <= 0) return;
-    if ((size_t)n >= sizeof(line)) n = (int)sizeof(line) - 1;
+    if (n <= 0) return SS_LOG_ERR_ENGINE;
+    if ((size_t)n >= sizeof(line)) { n = (int)sizeof(line) - 1; truncated = 1; }
     line[n] = '\0';
-    (void)ss_log_write_line(line);
+    int write_status = ss_log_write_line(line);
+    if (write_status != SS_LOG_OK) return write_status;
+    return truncated ? SS_LOG_ERR_TRUNCATED : SS_LOG_OK;
 }

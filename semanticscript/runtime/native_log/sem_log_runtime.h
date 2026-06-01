@@ -40,7 +40,12 @@ enum {
     SS_LOG_OK                  = 0,
     SS_LOG_ERR_CONFIG          = 1,
     SS_LOG_ERR_RUNTIME_GENERIC = 2,
-    SS_LOG_ERR_ENGINE          = 3
+    SS_LOG_ERR_ENGINE          = 3,
+    /* R-150: the line reached the sink but a field (or the assembled JSON line)
+     * was truncated to fit a fixed buffer — the record is not faithful. Reported
+     * so a caller can react instead of silently logging corrupt/short audit data;
+     * a write failure (SS_LOG_ERR_ENGINE) takes priority over truncation. */
+    SS_LOG_ERR_TRUNCATED       = 4
 };
 
 int ss_log_set_path(const char *new_path);
@@ -74,11 +79,14 @@ int ss_log_error(const char *message_text);
 /* Helper for the http runtime to log one request after dispatch. Not
  * intended for direct call from AS — handlers should use ss_log_event
  * with their own event tag for business-level structured events. */
-void ss_log_http_access(const char *method_text,
-                        const char *path_text,
-                        int http_status,
-                        long long start_ms,
-                        long long now_ms);
+/* R-150: returns a status (SS_LOG_OK / SS_LOG_ERR_ENGINE on a write failure /
+ * SS_LOG_ERR_TRUNCATED if the method/path/line was truncated) so the access-log
+ * path is no longer a silent void. */
+int ss_log_http_access(const char *method_text,
+                       const char *path_text,
+                       int http_status,
+                       long long start_ms,
+                       long long now_ms);
 
 #ifdef __cplusplus
 }

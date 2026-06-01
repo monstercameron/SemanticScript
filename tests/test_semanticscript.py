@@ -7101,6 +7101,33 @@ def test_log_write_line_checks_write_results():
     assert "fwrite(line, 1, len, fp) != len" in body and "fflush(fp) != 0" in body
 
 
+def test_log_reports_truncation():
+    # R-150 (truncation): a log field or assembled JSON line that is truncated to
+    # fit a fixed buffer must be reported (SS_LOG_ERR_TRUNCATED), not silently
+    # logged as OK, and the access-log path must return a status instead of void.
+    # log_escape_json returns a truncation flag; ss_log_event / ss_log_http_access
+    # surface it (a write failure dominates). Source-level guard (a standalone C
+    # driver exercising the >buffer cases is built+run during development; the log
+    # runtime round-trips via test_apps).
+    import os
+    import re
+    hdr = open(os.path.join(ROOT, "semanticscript", "runtime", "native_log",
+                            "sem_log_runtime.h"), encoding="utf-8").read()
+    assert "SS_LOG_ERR_TRUNCATED" in hdr
+    # the access logger now returns a status, not void
+    assert re.search(r"int ss_log_http_access\(", hdr)
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_log",
+                            "sem_log_runtime.c"), encoding="utf-8").read()
+    # log_escape_json reports truncation (returns 1 when input remains)
+    esc = re.search(r"static int log_escape_json\(.*?\n\}", src, re.S).group(0)
+    assert "return *src != '\\0';" in esc
+    # both line builders fold truncation into the returned status
+    for fn in ("ss_log_event", "ss_log_http_access"):
+        m = re.search(r"int " + fn + r"\(.*?\n\}", src, re.S).group(0)
+        assert "truncated = 1;" in m and "SS_LOG_ERR_TRUNCATED" in m, fn
+        assert "if (write_status != SS_LOG_OK) return write_status;" in m, fn
+
+
 def test_json_find_helpers_reject_malformed_scalars():
     # R-156: the legacy string-based json scalar find helpers must parse strictly
     # — a malformed suffix (12abc / .5junk / truex) is rejected, not silently
