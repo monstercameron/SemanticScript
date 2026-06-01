@@ -4187,6 +4187,7 @@ def _validate_program(program: Program) -> None:
     _validate_path_traversal(program)
     _validate_ssrf(program)
     _validate_dos_bounds(program)
+    _validate_request_body_bounds(program)
     _validate_untrusted_loop_bounds(program)
     _validate_error_disclosure(program)
     _validate_utf8_boundary(program)
@@ -6735,6 +6736,34 @@ def _validate_dos_bounds(program: Program) -> None:
                 f"call {ent.name!r} performs external I/O ({target!r}) over untrusted "
                 f"input but declares no `timeout`/`budget`; bound it so a slow or "
                 f"hostile peer cannot stall the process (README §27)",
+                ent.line, code="SS3078")
+
+
+_REQUEST_BODY_READERS = ("http.requestBodyText", "http.requestBodyBytes")
+
+
+def _validate_request_body_bounds(program: Program) -> None:
+    """R-079 / README §27: reading a client request body is reading untrusted,
+    attacker-controlled input, so a body read must declare `limit maximumBytes <n>`
+    — otherwise a huge upload can exhaust memory while the source still satisfies
+    the visible timeout/budget rules. (The http runtime also enforces a global
+    SS_HTTP_MAX_REQUEST_BYTES ceiling; this makes the per-read bound explicit and
+    source-visible, the read analogue of the X-077 decode caps.) Missing it is a
+    hard error (SS3078)."""
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target not in _REQUEST_BODY_READERS:
+            continue
+        if not any(l.payload and l.payload[0] == "maximumBytes"
+                   for l in ent.facts("limit")):
+            raise EavError(
+                f"call {ent.name!r} reads an untrusted client request body "
+                f"({target!r}) with no `limit maximumBytes <n>`; bound it so a huge "
+                f"body cannot exhaust memory (README §27, R-079)",
                 ent.line, code="SS3078")
 
 

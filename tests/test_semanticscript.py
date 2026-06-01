@@ -6538,6 +6538,27 @@ def test_bounded_untrusted_external_call_accepted():
     assert "proxy" in prog.entities
 
 
+def test_request_body_read_requires_byte_cap():
+    # R-079: reading a client request body is reading untrusted attacker-controlled
+    # input, so the read must declare `limit maximumBytes <n>` (else a huge upload
+    # exhausts memory while timeout/budget rules still pass) — SS3078.
+    def reader(limit_row=""):
+        return (
+            "h is operation\nh out ExitCode\nh async no\nh purpose \"p\"\nh invariant \"i\"\n"
+            "h in request HttpRequest\nh let okCode immutable ExitCode 0\n"
+            "h do readBody\nh return okCode\n"
+            "readBody is call\nreadBody in h\nreadBody invokes http.requestBodyText\n"
+            "readBody arg request HttpRequest request\n" + limit_row +
+            "readBody out body String\n"
+            "ExitCode is alias\nExitCode for Int32\n"
+        )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(reader())
+    assert getattr(exc.value, "code", None) == "SS3078"
+    # the same read with a byte cap is accepted
+    assert "h" in semanticscript.parse(reader("readBody limit maximumBytes 1048576\n")).entities
+
+
 def _disclosure_src(boundary_row=""):
     return (
         "DbError is error\nDbError typeTrust trustedInternal\n"

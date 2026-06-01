@@ -581,6 +581,7 @@ bodyReflectHandler return bodyReflectMissingResponseStatus
 bodyReadCall is call
 bodyReadCall in bodyReflectHandler
 bodyReadCall invokes http.requestBodyText
+bodyReadCall limit maximumBytes 1048576
 bodyReadCall arg request HttpRequest request
 bodyReadCall out bodyText String
 
@@ -638,6 +639,7 @@ bodyBytesCommonHeadersCall arg response HttpResponse response
 bodyBytesReadCall is call
 bodyBytesReadCall in bodyBytesReflectHandler
 bodyBytesReadCall invokes http.requestBodyBytes
+bodyBytesReadCall limit maximumBytes 1048576
 bodyBytesReadCall arg request HttpRequest request
 bodyBytesReadCall out bodyBytePointer OpaquePointer
 

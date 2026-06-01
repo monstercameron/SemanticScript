@@ -1051,6 +1051,7 @@ openDbForRegisterCall catch registerDbError Int32
 readRegisterBodyCall is call
 readRegisterBodyCall in registerHandler
 readRegisterBodyCall invokes http.requestBodyText
+readRegisterBodyCall limit maximumBytes 1048576
 readRegisterBodyCall arg request HttpRequest request
 readRegisterBodyCall out registerBodyText String
 
@@ -2460,6 +2461,7 @@ openDbForLoginCall catch loginDbError Int32
 readLoginBodyCall is call
 readLoginBodyCall in loginHandler
 readLoginBodyCall invokes http.requestBodyText
+readLoginBodyCall limit maximumBytes 1048576
 readLoginBodyCall arg request HttpRequest request
 readLoginBodyCall out loginBodyText String
 
@@ -3276,6 +3278,7 @@ createOpenDbCall catch createDbError Int32
 createReadBodyCall is call
 createReadBodyCall in createTodoHandler
 createReadBodyCall invokes http.requestBodyText
+createReadBodyCall limit maximumBytes 1048576
 createReadBodyCall arg request HttpRequest request
 createReadBodyCall out createBodyText String
 
