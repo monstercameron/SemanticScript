@@ -6295,8 +6295,14 @@ def _decode_src(limit_row=""):
     )
 
 
+_FULL_DECODE_LIMITS = (
+    "decode limit maximumBytes 65536\ndecode limit maxDepth 32\n"
+    "decode limit maxElements 1000\ndecode unknownFieldPolicy reject\n"
+)
+
+
 def test_untrusted_decode_without_limit_rejected():
-    # X-077 / §16: decoding a rawExternal input with no `limit maximumBytes` is a
+    # X-077 / §16: decoding a rawExternal input with no decode bounds is a
     # deserialization-DoS hole -> SS3077.
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.parse(_decode_src())
@@ -6304,9 +6310,36 @@ def test_untrusted_decode_without_limit_rejected():
 
 
 def test_untrusted_decode_with_limit_accepted():
-    # X-077: the same decode with a `limit maximumBytes` cap is accepted.
-    prog = semanticscript.parse(_decode_src("decode limit maximumBytes 65536\n"))
+    # R-077: the decode with the FULL set of bounds (maximumBytes + maxDepth +
+    # maxElements + unknownFieldPolicy) is accepted.
+    prog = semanticscript.parse(_decode_src(_FULL_DECODE_LIMITS))
     assert "parseReq" in prog.entities
+
+
+def test_untrusted_decode_requires_every_bound():
+    # R-077: an untrusted decode must bound size (maximumBytes), nesting (maxDepth),
+    # cardinality (maxElements), AND declare an explicit unknown-field policy — each
+    # missing piece is SS3077, so a decoder can't satisfy the lint while still being
+    # exposed to deep-nest / high-cardinality / unknown-field type-confusion.
+    for drop in ("decode limit maximumBytes 65536\n",
+                 "decode limit maxDepth 32\n",
+                 "decode limit maxElements 1000\n",
+                 "decode unknownFieldPolicy reject\n"):
+        partial = _FULL_DECODE_LIMITS.replace(drop, "")
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.parse(_decode_src(partial))
+        assert getattr(exc.value, "code", None) == "SS3077", drop
+    # unknownFieldPolicy ignoreBecause must carry a justifying reason...
+    bare_ignore = _FULL_DECODE_LIMITS.replace(
+        "decode unknownFieldPolicy reject\n", "decode unknownFieldPolicy ignoreBecause\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_decode_src(bare_ignore))
+    assert getattr(exc.value, "code", None) == "SS3077"
+    # ...and is accepted with one
+    reasoned = _FULL_DECODE_LIMITS.replace(
+        "decode unknownFieldPolicy reject\n",
+        'decode unknownFieldPolicy ignoreBecause "schema is forward-compatible"\n')
+    assert "parseReq" in semanticscript.parse(_decode_src(reasoned)).entities
 
 
 def _token_gen_src(rng_target):

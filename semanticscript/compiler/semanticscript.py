@@ -1848,6 +1848,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
         "takesOwnership",                     # WS1-113 ownership transfer
         "limit",                              # X-077 decode limits
+        "unknownFieldPolicy",                 # R-077 untrusted-decode unknown-field policy
         "timeout", "budget",                  # X-078 DoS bounds
         "useRetry",                           # R-041 bounded retry of a fallible call
     },
@@ -1857,6 +1858,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
         "takesOwnership",                     # WS1-113 ownership transfer
         "limit",                              # X-077 decode limits
+        "unknownFieldPolicy",                 # R-077 untrusted-decode unknown-field policy
         "timeout", "budget",                  # X-078 DoS bounds
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
@@ -6358,12 +6360,19 @@ _DECODE_TARGETS = (
 )
 
 
+_REQUIRED_DECODE_LIMITS = ("maximumBytes", "maxDepth", "maxElements")
+_UNKNOWN_FIELD_POLICIES = ("reject", "capture", "ignoreBecause")
+
+
 def _validate_decode_limits(program: Program) -> None:
-    """X-077 / README §16: decoding untrusted input must be bounded. A decode
-    call (`json.parse`/`json.decode`/`json.createDocument`/`codec.decode`) whose
-    input is a `rawExternal`-typed value must carry a `limit maximumBytes <n>` row
-    so malformed/hostile input cannot exhaust memory (deserialization-DoS). Missing
-    the limit is a hard error (SS3077)."""
+    """X-077 / R-077 / README §16: decoding untrusted input must be fully bounded.
+    A decode call (`json.parse`/`json.decode`/`json.createDocument`/`codec.decode`)
+    whose input is a `rawExternal`-typed value must carry every bound — `limit
+    maximumBytes <n>` (size), `limit maxDepth <n>` (nesting, vs a billion-laughs /
+    deep-nest stack blowup), and `limit maxElements <n>` (cardinality, vs a huge
+    flat array/object) — plus an explicit `unknownFieldPolicy reject|capture|
+    ignoreBecause <reason>` (vs type-confusion through unmodeled fields). Any
+    missing bound is a hard error (SS3077)."""
     raw_types = {program.entities[n].name for n in program.order
                  for r in program.entities[n].facts("typeTrust")
                  if r.payload and r.payload[0] == "rawExternal"}
@@ -6381,13 +6390,32 @@ def _validate_decode_limits(program: Program) -> None:
                               for a in ent.facts("arg"))
         if not feeds_untrusted:
             continue
-        has_byte_limit = any(l.payload and l.payload[0] == "maximumBytes"
-                             for l in ent.facts("limit"))
-        if not has_byte_limit:
+        present = {l.payload[0] for l in ent.facts("limit") if l.payload}
+        for kind in _REQUIRED_DECODE_LIMITS:
+            if kind not in present:
+                raise EavError(
+                    f"call {ent.name!r} decodes untrusted input with {target!r} but "
+                    f"declares no `limit {kind} <n>`; an untrusted decode must bound "
+                    f"size (maximumBytes), nesting (maxDepth), and cardinality "
+                    f"(maxElements) so hostile input cannot exhaust memory or stack "
+                    f"(README §16, R-077)",
+                    ent.line, code="SS3077")
+        policy = ent.fact("unknownFieldPolicy")
+        pol = policy.payload[0] if policy and policy.payload else None
+        if pol not in _UNKNOWN_FIELD_POLICIES:
             raise EavError(
                 f"call {ent.name!r} decodes untrusted input with {target!r} but "
-                f"declares no `limit maximumBytes <n>`; bound untrusted decoding so "
-                f"hostile input cannot exhaust memory (README §16)",
+                f"declares no explicit `unknownFieldPolicy "
+                f"{'|'.join(_UNKNOWN_FIELD_POLICIES)} <reason>`; unmodeled fields in "
+                f"untrusted input enable type-confusion and must be handled "
+                f"explicitly (README §16, R-077)",
+                ent.line, code="SS3077")
+        if pol == "ignoreBecause" and not (len(policy.payload) >= 2
+                                           and policy.payload[1]):
+            raise EavError(
+                f"call {ent.name!r} `unknownFieldPolicy ignoreBecause` needs a "
+                f"<reason> justifying why unmodeled fields are safely ignored "
+                f"(README §16, R-077)",
                 ent.line, code="SS3077")
 
 
