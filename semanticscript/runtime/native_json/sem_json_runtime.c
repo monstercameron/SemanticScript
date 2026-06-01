@@ -1862,7 +1862,17 @@ long long ss_json_cursor_int64(
     SSJsonNode *node = document_node_at(document, cursor);
     if (node == NULL) return missing_default;
     if (node->kind == SS_JSON_NODE_INTEGER) return node->as.int_value;
-    if (node->kind == SS_JSON_NODE_DOUBLE) return (long long)node->as.double_value;
+    if (node->kind == SS_JSON_NODE_DOUBLE) {
+        /* R-155: casting a double outside the long long range (or a NaN/Inf) to
+         * long long is undefined behavior. Only convert a finite, in-range value
+         * (truncating toward zero); anything else falls back to missing_default.
+         * The bounds [-2^63, 2^63) bracket the doubles whose cast is in range;
+         * NaN/Inf fail both comparisons (so they fall through to the default). */
+        double d = node->as.double_value;
+        if (d >= -9223372036854775808.0 && d < 9223372036854775808.0)
+            return (long long)d;
+        return missing_default;
+    }
     return missing_default;
 }
 

@@ -6727,6 +6727,22 @@ def test_buffer_runtime_bounds_checked_jit_runs():
     assert "oob" in proc.stdout    # the out-of-bounds get took the error branch
 
 
+def test_json_cursor_int64_range_checked():
+    # R-155: ss_json_cursor_int64 must range-check a double before casting to
+    # `long long` — an out-of-range/NaN/Inf cast is UB. Source-level guard that
+    # the range check is present (the json runtime round-trip itself is exercised
+    # end-to-end by test_apps' taskforge-web, which rebuilds and runs this code).
+    import os
+    import re
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "native_json",
+                            "sem_json_runtime.c"), encoding="utf-8").read()
+    m = re.search(r"long long ss_json_cursor_int64\(.*?\n\}", src, re.S)
+    assert m, "ss_json_cursor_int64 not found"
+    body = m.group(0)
+    assert "9223372036854775808.0" in body and "(long long)d" in body, \
+        "the double->long long cast in ss_json_cursor_int64 is not range-guarded (R-155)"
+
+
 def test_pointer_load_store_null_traps():
     # R-130 (partial): a raw byte load/store through a null pointer traps with a
     # structured ss_panic (SSR0021) instead of UB/a silent segfault. Valid
