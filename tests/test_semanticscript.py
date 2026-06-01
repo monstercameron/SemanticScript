@@ -10048,6 +10048,40 @@ def test_x116_convert_float_paths():
     assert fptrunc == "2.5"
 
 
+def test_float_to_int_conversion_is_range_checked():
+    # R-076: float->int (fptosi) is undefined for NaN/inf or a value outside the
+    # destination integer's range, so it is now checked — an out-of-range value
+    # traps (SSR0014, exit 134) instead of silently producing UB, while an
+    # in-range value still truncates toward zero.
+    def run(val, dst):
+        src = (
+            "P is project\nP module m\nP target console\nP entry main\n"
+            "m is module\nm path a.b\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+            "ExitCode is alias\nExitCode for Int32\n"
+            "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+            f"main let f immutable Float64 {val}\nmain let okCode immutable ExitCode 0\n"
+            "main do conv\nmain return okCode\n"
+            f"conv is call\nconv in main\nconv invokes convert.to{dst}\n"
+            f"conv arg value Float64 f\nconv out n {dst}\n"
+        )
+        return subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"], input=src,
+                              capture_output=True, text=True, encoding="utf-8")
+    # a value beyond Int32's range traps with the structured float-range panic
+    over = run("9999999999.0", "Int32")
+    assert over.returncode == 134 and "SSR0014" in over.stderr, (over.returncode, over.stderr)
+    # an in-range value converts cleanly (truncates toward zero), no false trap
+    assert run("5.7", "Int32").returncode == 0
+    assert run("-3.9", "Int32").returncode == 0
+    # the IR shows the ordered range guard feeding the trap before the fptosi
+    ir = _ir_for_source(
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "op is operation\nop in v Float64\nop out Int32\nop do conv\nop return n\n"
+        "conv is call\nconv in op\nconv invokes convert.toInt32\n"
+        "conv arg value Float64 v\nconv out n Int32\n")
+    assert "fcmp olt" in ir or "fcmp oge" in ir or "f2iRange" in ir
+    assert "SSR0014" in ir and "fptosi" in ir
+
+
 _LOOP_PROGRAM_HEAD = (
     "P is project\nP module m\nP target console\nP entry spin\n"
     "m is module\nm path a.b\nm exports spin\n"

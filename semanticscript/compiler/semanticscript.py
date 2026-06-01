@@ -10490,6 +10490,34 @@ class EavCodegen:
                 return val
             return builder.fpext(val, dst) if dst_bits > src_bits else builder.fptrunc(val, dst)
         if src_float and not dst_float:
+            # R-076: float->int is checked. `fptosi` is undefined for NaN, +/-inf,
+            # or a value outside the destination integer's range, so trap (SSR0014)
+            # on any of those instead. The bounds are the destination's
+            # [min, max+1] as exact powers of two (representable in the source
+            # float); an ORDERED range test also rejects NaN/inf (an ordered fcmp
+            # is false when either operand is NaN). An in-range value still
+            # truncates toward zero (the documented float->int behavior).
+            w_bits = dst.width
+            lo = ir.Constant(val.type, -(2.0 ** (w_bits - 1)))   # == INT_MIN (exact)
+            hi = ir.Constant(val.type, 2.0 ** (w_bits - 1))      # == INT_MAX + 1 (exact)
+            in_range = builder.and_(
+                builder.fcmp_ordered(">=", val, lo),
+                builder.fcmp_ordered("<", val, hi))
+            fn = builder.function
+            ok_bb = fn.append_basic_block("f2iOk")
+            bad_bb = fn.append_basic_block("f2iRange")
+            builder.cbranch(in_range, ok_bb, bad_bb)
+            tb = ir.IRBuilder(bad_bb)
+            owner_row = call.fact("in")
+            op_name = (owner_row.payload[0] if owner_row and owner_row.payload
+                       else call.name)
+            self._emit_panic(
+                tb, "SSR0014", "float-to-int-range",
+                f"float value is NaN/infinite or outside the range of "
+                f"{dst_name!r} ({w_bits}-bit)", op_name, call.line, None,
+                ir.Constant(ir.IntType(64), w_bits))
+            tb.unreachable()
+            builder.position_at_end(ok_bb)
             return builder.fptosi(val, dst)
         if not src_float and dst_float:
             return builder.sitofp(val, dst)
@@ -11385,6 +11413,9 @@ RUNTIME_DIAGNOSTICS = {
     "SSR0013": {"kind": "recursion-depth-exceeded",
                 "summary": "Recursive call depth exceeded the runtime limit (likely unbounded recursion).",
                 "repair": "Add or fix the base case, or convert the recursion to a bounded loop."},
+    "SSR0014": {"kind": "float-to-int-range",
+                "summary": "A float->int conversion saw NaN/infinity or a value outside the target integer range (R-076).",
+                "repair": "Check the float is finite and in range before converting (an out-of-range/NaN fptosi is undefined)."},
     "SSR0020": {"kind": "buffer-size",
                 "summary": "buffer.create size is negative, or the allocation for it failed (R-135).",
                 "repair": "Validate the size is non-negative and within memory before creating the buffer."},
