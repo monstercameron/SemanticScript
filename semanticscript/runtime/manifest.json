@@ -23,6 +23,16 @@
       ]
     },
     {
+      "name": "ss_fs",
+      "comment": "WS3-109: bounded SafePath filesystem reads and Buffer chunking for standard.fs.",
+      "provides": [
+        "ss_fs_"
+      ],
+      "sources": [
+        "ss_fs.c"
+      ]
+    },
+    {
       "name": "ss_environment",
       "comment": "WS3-108: capability-gated environment reads and SafePath dotenv loading for standard.environment.",
       "provides": [

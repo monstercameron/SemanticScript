@@ -2085,6 +2085,9 @@ def test_stdlib_readiness_scratch_pointer_inventory():
     assert "cursorString" in led["json"]["scratchPointerApis"]
     assert "serializeDocument" in led["json"]["scratchPointerApis"]
     assert led["json"]["unacknowledgedScratchPointer"] is False
+    # fs.readChunk intentionally bridges into standard.buffer until streams land.
+    assert led["fs"]["scratchPointerApis"] == ["readChunk"]
+    assert led["fs"]["unacknowledgedScratchPointer"] is False
     # buffer/memory are the bounds primitives themselves — acknowledged, not a leak
     assert led["buffer"]["unacknowledgedScratchPointer"] is False
     # the gate invariant: zero PUBLIC modules leak an un-graduated raw scratch ptr
@@ -9676,7 +9679,7 @@ def test_stdlib_parity_coverage_guard():
     sanctioned = {
         "console", "math", "compare", "convert", "string", "assert", "test",
         "build", "html", "sqlite", "http",
-        "process", "clock", "random", "environment", "net", "list", "map", "json",
+        "process", "clock", "random", "environment", "fs", "net", "list", "map", "json",
     }
     semsc_only = {
         "bit", "bool", "bytes", "ctype", "numeric", "sort", "inttypes", "stdlib",
@@ -9709,7 +9712,7 @@ def test_r053_experimental_catalogs_shipped_but_not_advertised():
     sanctioned = {
         "console", "math", "compare", "convert", "string", "assert", "test",
         "build", "html", "sqlite", "http",
-        "process", "clock", "random", "environment", "net", "list", "map", "json",
+        "process", "clock", "random", "environment", "fs", "net", "list", "map", "json",
     }
     experimental = semanticscript.EXPERIMENTAL_STDLIB_MODULES
     assert experimental == {"bcrypt", "event", "gui", "log"}
@@ -9849,6 +9852,107 @@ def test_path_safe_type_required_at_path_sink():
     )
     prog = semanticscript.parse(good)
     assert not any(d.severity == "error" for d in semanticscript.lint(prog))
+
+
+def test_fs_stdlib_semsig_and_readiness_surface():
+    # WS3-109: standard.fs is native-backed bounded I/O, not an unbounded
+    # whole-file read placeholder.
+    src = open(os.path.join(SIGS, "standard.fs.semsig"), encoding="utf-8").read()
+    prog = semanticscript.load_semsig(src)
+    targets = semanticscript.semsig_targets(prog)
+    for target in {
+        "fs.openRead", "fs.readChunk", "fs.size", "fs.close",
+        "fs.readTextLimit", "fs.releaseText",
+    }:
+        assert target in targets, target
+    read_chunk = targets["fs.readChunk"]
+    assert any(r.payload[:2] == ["buffer", "Buffer"] for r in read_chunk.facts("arg"))
+    assert any(r.payload[:2] == ["maximumBytes", "ByteCount"]
+               for r in read_chunk.facts("arg"))
+    open_read = targets["fs.openRead"]
+    assert open_read.fact("owns").payload == ["file", "cleanedBy", "fs.close"]
+    whole = targets["fs.readTextLimit"]
+    assert any(r.payload[:2] == ["maximumBytes", "ByteCount"] for r in whole.facts("arg"))
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["fs"]["status"] == "native"
+    assert led["fs"]["unbackedPublic"] is False
+    assert led["fs"]["documentationGap"] is False
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the fs runtime")
+def test_e2e_fs_chunked_read_respects_buffer_cap_and_double_close(tmp_path):
+    # WS3-109: read a 5-byte file into a 4-byte Buffer; the runtime must report
+    # and expose only the 4 bytes that fit, then reject a double close.
+    (tmp_path / "data.txt").write_bytes(b"ABCDE")
+    path_stdlib = open(os.path.join(STD, "standard.path.sem"), encoding="utf-8").read()
+    main = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "Buffer is alias\nBuffer for OpaquePointer\n"
+        "FileHandle is alias\nFileHandle for OpaquePointer\n"
+        "FileError is error\nBufferBoundsError is error\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "filesystemReader is capability\nfilesystemReader grants read filesystem.local\n"
+        'stdoutWriter purpose "p"\nfilesystemReader purpose "p"\n'
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main effect read filesystem.local\nmain uses stdoutWriter\n"
+        "main uses filesystemReader\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        'main let rawPath immutable String "data.txt"\n'
+        "main let cap immutable Int64 4\nmain let zero immutable Int64 0\n"
+        "main let third immutable Int64 3\nmain let maxRead immutable Int64 99\n"
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 7\n"
+        "main do safe\nmain branch ifError safe goto failed\n"
+        "main do open\nmain branch ifError open goto failed\n"
+        "main do size\nmain branch ifError size goto failed\n"
+        "main do makeBuf\nmain do read\nmain branch ifError read goto failed\n"
+        "main do first\nmain branch ifError first goto failed\n"
+        "main do fourth\nmain branch ifError fourth goto failed\n"
+        "main do showSize\nmain do showRead\nmain do showFirst\nmain do showFourth\n"
+        "main do releaseBuf\nmain do closeFile\nmain branch ifError closeFile goto failed\n"
+        "main do closeAgain\nmain branch ifError closeAgain goto closedAgain\n"
+        "main return failCode\nmain at closedAgain return okCode\nmain at failed return failCode\n"
+        "safe is call\nsafe in main\nsafe invokes fromLiteral\n"
+        "safe arg literal String rawPath\nsafe out safePath SafePath\nsafe catch pe PathError\n"
+        "open is call\nopen in main\nopen invokes fs.openRead\n"
+        "open arg path SafePath safePath\nopen out file FileHandle\nopen catch fe FileError\n"
+        "size is call\nsize in main\nsize invokes fs.size\n"
+        "size arg file FileHandle file\nsize out fileSize Int64\nsize catch fe2 FileError\n"
+        "makeBuf is call\nmakeBuf in main\nmakeBuf invokes buffer.create\n"
+        "makeBuf arg size Int64 cap\nmakeBuf out buf Buffer\n"
+        "read is call\nread in main\nread invokes fs.readChunk\n"
+        "read arg file FileHandle file\nread arg buffer Buffer buf\n"
+        "read arg maximumBytes Int64 maxRead\nread out readBytes Int64\nread catch fe3 FileError\n"
+        "first is call\nfirst in main\nfirst invokes buffer.get\n"
+        "first arg buffer Buffer buf\nfirst arg index Int64 zero\nfirst out firstByte Byte\n"
+        "first catch be1 BufferBoundsError\n"
+        "fourth is call\nfourth in main\nfourth invokes buffer.get\n"
+        "fourth arg buffer Buffer buf\nfourth arg index Int64 third\nfourth out fourthByte Byte\n"
+        "fourth catch be2 BufferBoundsError\n"
+        "showSize is call\nshowSize in main\nshowSize invokes console.writeIntegerLine\n"
+        "showSize arg value Int64 fileSize\n"
+        "showRead is call\nshowRead in main\nshowRead invokes console.writeIntegerLine\n"
+        "showRead arg value Int64 readBytes\n"
+        "showFirst is call\nshowFirst in main\nshowFirst invokes console.writeIntegerLine\n"
+        "showFirst arg value Byte firstByte\n"
+        "showFourth is call\nshowFourth in main\nshowFourth invokes console.writeIntegerLine\n"
+        "showFourth arg value Byte fourthByte\n"
+        "releaseBuf is call\nreleaseBuf in main\nreleaseBuf invokes buffer.release\n"
+        "releaseBuf arg buffer Buffer buf\nreleaseBuf out released Int32\n"
+        "closeFile is call\ncloseFile in main\ncloseFile invokes fs.close\n"
+        "closeFile arg file FileHandle file\ncloseFile out closeStatus Int32\n"
+        "closeFile catch fe4 FileError\n"
+        "closeAgain is call\ncloseAgain in main\ncloseAgain invokes fs.close\n"
+        "closeAgain arg file FileHandle file\ncloseAgain out secondClose Int32\n"
+        "closeAgain catch fe5 FileError\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "-"],
+        input=path_stdlib + "\n" + main, capture_output=True, text=True,
+        encoding="utf-8", cwd=str(tmp_path),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == ["5", "4", "65", "68"]
 
 
 def test_id_stdlib_parses_lints_and_has_secondary_surface():
@@ -11125,12 +11229,48 @@ def test_module_storage_lowers_to_global():
 
 def test_embed_literal_source_and_digest():
     # WS1-084: literalSource reads asset bytes; literalDigest verifies the hash.
-    asset = os.path.join(ROOT, "examples", "assets", "banner.txt")
-    data = semanticscript.embed_literal_source(asset)
+    asset = os.path.join("examples", "assets", "banner.txt")
+    data = semanticscript.embed_literal_source(asset, project_root=ROOT)
     assert data == b"EAV banner asset"
-    semanticscript.embed_literal_source(asset, semanticscript.sha256_hex(data))  # matching digest ok
+    semanticscript.embed_literal_source(asset, semanticscript.sha256_hex(data),
+                                        project_root=ROOT)  # matching digest ok
     with pytest.raises(semanticscript.EavError):
-        semanticscript.embed_literal_source(asset, semanticscript.sha256_hex(b"tampered"))
+        semanticscript.embed_literal_source(asset, semanticscript.sha256_hex(b"tampered"),
+                                            project_root=ROOT)
+
+
+def test_literal_source_rejects_escape_and_embed_cap(tmp_path, monkeypatch):
+    # WS3-109/R-252: compile-time embeds are project-relative, root-confined, and
+    # byte-capped. Large assets must move to runtime `standard.fs` reads.
+    (tmp_path / "small.txt").write_bytes(b"abcd")
+    (tmp_path / "large.txt").write_bytes(b"abcde")
+    assert semanticscript.embed_literal_source(
+        "small.txt", project_root=str(tmp_path), max_bytes=4) == b"abcd"
+    with pytest.raises(semanticscript.EavError) as abs_exc:
+        semanticscript.embed_literal_source(str(tmp_path / "small.txt"),
+                                            project_root=str(tmp_path))
+    assert abs_exc.value.code == "SS3046"
+    with pytest.raises(semanticscript.EavError) as trav_exc:
+        semanticscript.embed_literal_source("../small.txt", project_root=str(tmp_path))
+    assert trav_exc.value.code == "SS3046"
+    with pytest.raises(semanticscript.EavError) as cap_exc:
+        semanticscript.embed_literal_source("large.txt", project_root=str(tmp_path),
+                                            max_bytes=4)
+    assert cap_exc.value.code == "SS3048"
+
+    monkeypatch.chdir(tmp_path)
+    src = (
+        "bigAsset is storage\nbigAsset scope module\nbigAsset type String\n"
+        "bigAsset mutability immutable\nbigAsset literalSource \"large.txt\"\n"
+        "bigAsset literalEncoding utf8\nbigAsset literalDigest sha256 deadbeef\n"
+    )
+    old_cap = semanticscript.MAX_LITERAL_SOURCE_BYTES
+    semanticscript.MAX_LITERAL_SOURCE_BYTES = 4
+    try:
+        codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    finally:
+        semanticscript.MAX_LITERAL_SOURCE_BYTES = old_cap
+    assert "SS3048" in codes
 
 
 def test_e2e_asset_embed_runs():

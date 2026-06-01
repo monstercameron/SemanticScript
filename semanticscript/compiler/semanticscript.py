@@ -362,6 +362,12 @@ DIAGNOSTICS.update({
                         "be read (R-124).",
                "suggested": "Check the path and run from the project root; the embed "
                             "is resolved at compile time (README §30.3.2)."},
+    "SS3048": {"tier": "T1", "summary": "`literalSource` asset exceeds embed cap.",
+               "found": "A compile-time `literalSource` embed would read more than "
+                        "the platform's maximum embed byte cap.",
+               "suggested": "Keep embedded assets small and content-addressed, or load "
+                            "large/mutable data at runtime through standard.fs with an "
+                            "explicit byte limit (README §30.3.2/WS3-109)."},
     "SS3047": {"tier": "T1", "summary": "Data-carrying error case not lowered.",
                "found": "An `errorCase` with a `payload` row — the payload would be "
                         "silently dropped at construction (R-054).",
@@ -1699,21 +1705,104 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def embed_literal_source(path: str, expected_digest: str = None) -> bytes:
+MAX_LITERAL_SOURCE_BYTES = 1024 * 1024
+
+
+def _literal_source_error(path: str, reason: str, code: str = "SS3046") -> EavError:
+    return EavError(
+        f"literalSource asset {path!r} is not a confined project-relative embed: "
+        f"{reason} (README §30.3.2/WS3-109)",
+        code=code)
+
+
+def _percent_decoded_forms(path: str, passes: int = 8) -> list[str]:
+    import urllib.parse
+    forms = [path]
+    cur = path
+    for _ in range(passes):
+        try:
+            nxt = urllib.parse.unquote(cur)
+        except (TypeError, ValueError):
+            break
+        if nxt == cur:
+            break
+        forms.append(nxt)
+        cur = nxt
+    return forms
+
+
+def _literal_source_path_for_validation(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def _resolve_literal_source_path(path: str, project_root: str = None) -> str:
+    """Resolve a literalSource path under an explicit root and reject escapes.
+
+    The source token is a project-relative asset path, not an arbitrary compiler
+    filesystem read. Validation also checks iteratively percent-decoded forms so
+    `%2e%2e`/`%252e%252e` cannot hide traversal while the actual file opened
+    remains the literal path the source declared.
+    """
+    import os
+    if path is None or path == "":
+        raise _literal_source_error(path or "", "empty path")
+    root = os.path.realpath(project_root or os.getcwd())
+    if os.path.isabs(path) or os.path.splitdrive(path)[0]:
+        raise _literal_source_error(path, "absolute paths and drive prefixes are rejected")
+    for form in _percent_decoded_forms(path):
+        if os.path.isabs(form) or os.path.splitdrive(form)[0]:
+            raise _literal_source_error(path, "encoded absolute path or drive prefix")
+        if any(ord(ch) < 0x20 for ch in form):
+            raise _literal_source_error(path, "control characters are rejected")
+        if ":" in form:
+            raise _literal_source_error(path, "colon path segments are rejected")
+        segs = [seg for seg in _literal_source_path_for_validation(form).split("/") if seg]
+        if any(seg == ".." for seg in segs):
+            raise _literal_source_error(path, "path traversal is rejected")
+    resolved = os.path.realpath(os.path.join(root, path))
+    try:
+        confined = os.path.commonpath([root, resolved]) == root
+    except ValueError:
+        confined = False
+    if not confined:
+        raise _literal_source_error(path, "resolved path escapes the project root")
+    return resolved
+
+
+def embed_literal_source(path: str, expected_digest: str = None, *,
+                         project_root: str = None,
+                         max_bytes: int = MAX_LITERAL_SOURCE_BYTES) -> bytes:
     """Compile-time asset embedding (README ss30.3.2): read the file's bytes and,
     if a `literalDigest` is given, verify its sha256 (a mismatch is a hard error).
 
     R-124: a missing/unreadable asset is a structured compile diagnostic (SS3046),
     not a raw FileNotFoundError traceback (build) or an SSR0001 runtime-trap
-    mislabel (run --json) — asset resolution is deterministic, not a runtime fault."""
+    mislabel (run --json) — asset resolution is deterministic, not a runtime fault.
+    WS3-109/R-252: the path is confined to the project root and the whole-file
+    embed is capped; larger assets must be runtime-loaded through standard.fs."""
+    import os
+    resolved = _resolve_literal_source_path(path, project_root)
+    if max_bytes < 0:
+        raise EavError("literalSource max_bytes must be non-negative", code="SS3048")
     try:
-        with open(path, "rb") as fh:
-            data = fh.read()
+        size = os.path.getsize(resolved)
+        if size > max_bytes:
+            raise EavError(
+                f"literalSource asset {path!r} is {size} bytes, exceeding the "
+                f"{max_bytes} byte embed cap (README §30.3.2/WS3-109)",
+                code="SS3048")
+        with open(resolved, "rb") as fh:
+            data = fh.read(max_bytes + 1)
     except OSError as exc:
         raise EavError(
             f"literalSource asset {path!r} could not be read at compile time: "
             f"{exc} (resolve it relative to the project root, README §30.3.2)",
             code="SS3046")
+    if len(data) > max_bytes:
+        raise EavError(
+            f"literalSource asset {path!r} exceeds the {max_bytes} byte embed cap "
+            f"(README §30.3.2/WS3-109)",
+            code="SS3048")
     if expected_digest is not None:
         verify_digest(data, expected_digest)
     return data
@@ -4022,6 +4111,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
     diags.extend(_lint_memory_layout(program))
+    diags.extend(_lint_literal_source_assets(program))
     diags.extend(_lint_circular_type_alias(program))
     diags.extend(_lint_ownership_and_entry_export(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
@@ -5697,6 +5787,41 @@ def _lint_memory_layout(program: Program) -> list:
                         f"but its locals need about {used} bytes — the frame "
                         f"overruns its budget (README §1J/WS2-084)",
                         op.line, op.name))
+    return out
+
+
+def _lint_literal_source_assets(program: Program) -> list:
+    """WS3-109/R-252: compile-time asset embeds are root-confined and capped.
+
+    Missing assets remain an R-124 check-time convention issue; this lint pass
+    reports deterministic path escapes and over-cap existing files.
+    """
+    import os
+    out: list[Diagnostic] = []
+    for n in program.order:
+        st = program.entities[n]
+        if st.kind != "storage":
+            continue
+        src = st.fact("literalSource")
+        if src is None or not src.payload:
+            continue
+        path = src.payload[0].strip('"')
+        try:
+            resolved = _resolve_literal_source_path(path)
+        except EavError as exc:
+            out.append(Diagnostic(
+                exc.code or "SS3046", "error", str(exc), src.line, st.name))
+            continue
+        try:
+            size = os.path.getsize(resolved)
+        except OSError:
+            continue
+        if size > MAX_LITERAL_SOURCE_BYTES:
+            out.append(Diagnostic(
+                "SS3048", "error",
+                f"literalSource asset {path!r} is {size} bytes, exceeding the "
+                f"{MAX_LITERAL_SOURCE_BYTES} byte embed cap (README §30.3.2/WS3-109)",
+                src.line, st.name))
     return out
 
 
@@ -9362,6 +9487,19 @@ class EavCodegen:
         elif name == "ss_net_free_text":
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
                              name="ss_net_free_text")
+        elif name in ("ss_fs_open_read", "ss_fs_size", "ss_fs_close",
+                      "ss_fs_read_chunk", "ss_fs_read_text_limit",
+                      "ss_fs_release_text"):
+            i64 = ir.IntType(64)
+            sigs = {
+                "ss_fs_open_read": ir.FunctionType(i64, [i8p]),
+                "ss_fs_size": ir.FunctionType(i64, [i64]),
+                "ss_fs_close": ir.FunctionType(i32, [i64]),
+                "ss_fs_read_chunk": ir.FunctionType(i64, [i64, i8p, i64]),
+                "ss_fs_read_text_limit": ir.FunctionType(i8p, [i8p, i64]),
+                "ss_fs_release_text": ir.FunctionType(i32, [i8p]),
+            }
+            fn = ir.Function(self.module, sigs[name], name=name)
         elif name in ("ss_event_open_stream", "ss_event_subscribe",
                       "ss_event_append", "ss_event_receive",
                       "ss_event_ack", "ss_event_close_subscription",
@@ -10433,6 +10571,46 @@ class EavCodegen:
                 result = ir.Constant(ir.IntType(32), 0)
             else:
                 result = ir.Constant(ir.IntType(32), 0)
+        elif target.startswith("fs."):
+            i32 = ir.IntType(32)
+            i64 = ir.IntType(64)
+            i8p = ir.IntType(8).as_pointer()
+
+            def _buffer_ptr(value):
+                if isinstance(value.type, ir.PointerType):
+                    return value
+                return builder.inttoptr(value, i8p)
+
+            if target == "fs.openRead":
+                result = builder.call(self.runtime("ss_fs_open_read"),
+                                      [arg("path", "String")])
+                err = builder.icmp_unsigned("==", result, ir.Constant(i64, 0))
+            elif target == "fs.size":
+                result = builder.call(self.runtime("ss_fs_size"),
+                                      [arg("file", "OpaquePointer")])
+                err = builder.icmp_signed("<", result, ir.Constant(i64, 0))
+            elif target == "fs.close":
+                result = builder.call(self.runtime("ss_fs_close"),
+                                      [arg("file", "OpaquePointer")])
+                err = builder.icmp_signed("!=", result, ir.Constant(i32, 0))
+            elif target == "fs.readChunk":
+                result = builder.call(
+                    self.runtime("ss_fs_read_chunk"),
+                    [arg("file", "OpaquePointer"),
+                     _buffer_ptr(arg("buffer", "OpaquePointer")),
+                     arg("maximumBytes", "Int64")])
+                err = builder.icmp_signed("<", result, ir.Constant(i64, 0))
+            elif target == "fs.readTextLimit":
+                result = builder.call(
+                    self.runtime("ss_fs_read_text_limit"),
+                    [arg("path", "String"), arg("maximumBytes", "Int64")])
+                err = builder.icmp_unsigned("==", result, ir.Constant(i8p, None))
+            elif target == "fs.releaseText":
+                result = builder.call(self.runtime("ss_fs_release_text"),
+                                      [arg("text", "String")])
+            else:
+                result = ir.Constant(i32, 1)
+                err = ir.Constant(ir.IntType(1), 1)
         elif target.startswith("list."):
             # R-061 collections runtime: a growable Int64 list behind a STABLE
             # handle. Header (malloc'd, never moves): i64[3] = [count, capacity,
@@ -12337,6 +12515,8 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add("ss_net_fetch_text")
                 elif target == "net.freeTextBody":
                     out.add("ss_net_free_text")
+                elif target.startswith("fs."):
+                    out.add("ss_fs_" + _camel_to_snake(target[len("fs.") :]))
                 elif target in _EVENT_RUNTIME_SYMBOLS:  # APP-RUN-3 pub/sub
                     out.add(_EVENT_RUNTIME_SYMBOLS[target])
                 elif target.startswith("gui."):         # APP-RUN-4 widgets
@@ -13902,13 +14082,15 @@ STDLIB_INTRINSIC_MODULES = frozenset({
 # primitive — the raw pointer + length is its reason to exist and what the higher
 # modules are meant to wrap (WS3-112/WS3-115). `json` is the explicit graduation
 # TARGET (WS3-114 replaces its scratch cursor/serialize buffers with owned output
-# strings); it stays acknowledged-but-pending until then. A scratch-pointer
+# strings); `fs` has the intentional bounded `readChunk <Buffer>` bridge until
+# WS3-112 streams become the higher-level copy primitive. They stay acknowledged-
+# but-pending until then. A scratch-pointer
 # contract surfacing in any OTHER public, non-deferred module is an unacknowledged
 # raw-pointer leak the gate rejects — the cohesive-platform invariant
 # WS3-112/WS3-114/WS3-116 all graduate against. (Membership is kept minimal on
 # purpose: pre-acknowledging a module that exposes no such API today would mask a
 # future leak there, so the gate rejects stale entries — see its `->test`.)
-STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "json"})
+STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "fs", "json"})
 
 
 # WS3-120: the nice-to-have / secondary stdlib tier — additive convenience APIs
