@@ -7925,6 +7925,20 @@ def test_format_string_must_be_constant_rejected():
     assert getattr(exc.value, "code", None) == "SS3088"
 
 
+def test_snprintf_nonconstant_format_rejected():
+    # R-193: c.snprintf is a variadic libc formatter (ss_c_snprintf forwards the
+    # format straight to vsnprintf), so a non-constant format is the same
+    # format-string-injection sink as printf and must be rejected by SS3088. It was
+    # previously omitted from _PRINTF_TARGETS, leaving a shipped sink unguarded.
+    src = _sec_call_src(
+        "theCall is call\ntheCall in doSec\ntheCall invokes c.snprintf\n"
+        "theCall arg buffer OpaquePointer buf\ntheCall arg size Int32 cap\n"
+        "theCall arg format String runtimeFmt\ntheCall discards \"x\"\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3088"
+
+
 def test_constant_format_string_accepted():
     # WS2-086: a constant format (a literal-bound let) is fine.
     src = _sec_call_src(

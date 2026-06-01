@@ -7129,7 +7129,13 @@ def _contract_holds(cond: str, value: int):
     return None
 
 
-_PRINTF_TARGETS = ("c.printf", "printf", "console.format", "c.fprintf", "c.sprintf")
+# R-193: c.snprintf/snprintf are variadic libc formatters (ss_c_snprintf forwards
+# the caller-controlled format straight to vsnprintf), so a non-constant format is
+# the same format-string-injection sink as printf/sprintf and must be covered by
+# SS3088. They were previously omitted, leaving a shipped printf-family sink
+# outside the guard.
+_PRINTF_TARGETS = ("c.printf", "printf", "console.format", "c.fprintf",
+                   "c.sprintf", "c.snprintf", "snprintf")
 _SHELL_TARGETS = ("shell.run", "shell.exec", "process.exec", "c.system", "os.exec",
                   "c.popen")
 _BCRYPT_HASH_TARGETS = ("bcrypt.hashPassword", "bcrypt.hash")
