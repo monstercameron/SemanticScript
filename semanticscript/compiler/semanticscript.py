@@ -11082,6 +11082,72 @@ def cmd_lower(args) -> int:
     return 0
 
 
+def cmd_emit_ir(args) -> int:
+    """Emit textual LLVM IR — a named, `-o`-aware superset of `lower` with an
+    optional `--optimized` pass. (TOOL-3, parity with the legacy `emit-ir`.)"""
+    program = parse(_read_program_source(args.path))
+    text = str(lower_to_llvm(program))
+    if getattr(args, "optimized", False):
+        try:
+            import llvmlite.binding as llvm
+            _ensure_native_init()
+            mod = llvm.parse_assembly(text)
+            mod.verify()
+            tm = llvm.Target.from_default_triple().create_target_machine()
+            pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0)
+            pb = llvm.create_pass_builder(tm, pto)
+            pb.getModulePassManager().run(mod, pb)
+            text = str(mod)
+        except Exception as exc:  # pragma: no cover - toolchain-dependent
+            sys.stderr.write(
+                f"semanticscript: --optimized unavailable ({exc}); "
+                "emitting unoptimized IR\n")
+    out = getattr(args, "output", None)
+    if out:
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        sys.stderr.write(f"semanticscript: wrote IR to {out}\n")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_inspect_ir(args) -> int:
+    """Structured summary of the lowered LLVM module — defined functions (with
+    block/instruction counts), declared externs, and globals (sem.inspectIr.v1).
+    (TOOL-3, parity with the legacy `inspect-ir`.)"""
+    import llvmlite.binding as llvm
+    program = parse(_read_program_source(args.path))
+    text = str(lower_to_llvm(program))
+    _ensure_native_init()
+    mod = llvm.parse_assembly(text)
+    mod.verify()
+    funcs, externs = [], []
+    for fn in mod.functions:
+        if fn.is_declaration:
+            externs.append(fn.name)
+            continue
+        blocks = list(fn.blocks)
+        ninstr = sum(len(list(b.instructions)) for b in blocks)
+        funcs.append({"name": fn.name, "blocks": len(blocks),
+                      "instructions": ninstr})
+    funcs.sort(key=lambda f: -f["instructions"])
+    externs.sort()
+    global_count = sum(1 for _ in mod.global_variables)
+    summary = dict(functionCount=len(funcs), externCount=len(externs),
+                   globalCount=global_count, irBytes=len(text),
+                   functions=funcs, externs=externs)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.inspectIr.v1", **summary) + "\n")
+    else:
+        print(f"functions: {len(funcs)}  externs: {len(externs)}  "
+              f"globals: {global_count}  ir-bytes: {len(text)}")
+        for f in funcs[:30]:
+            print(f"  {f['name']}: {f['blocks']} blocks, "
+                  f"{f['instructions']} instrs")
+    return 0
+
+
 def _is_trap_returncode(rc: int) -> bool:
     """True if a subprocess return code indicates a hardware/guard trap — a POSIX
     fatal signal or a Windows NTSTATUS exception code — rather than a normal
@@ -12541,6 +12607,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    # TOOL-3: IR inspection — emit-ir (optionally optimized, -o aware) + inspect-ir
+    sp_emit = sub.add_parser("emit-ir", help="emit textual LLVM IR (optionally optimized)")
+    sp_emit.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_emit.add_argument("--optimized", action="store_true", help="run LLVM -O2 passes")
+    sp_emit.add_argument("--output", "-o", help="write IR to this path instead of stdout")
+    sp_emit.set_defaults(func=cmd_emit_ir)
+    sp_inspect = sub.add_parser("inspect-ir", help="structured summary of the lowered module")
+    sp_inspect.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_inspect.add_argument("--json", action="store_true")
+    sp_inspect.set_defaults(func=cmd_inspect_ir)
 
     # run needs --strict flag (WS2-071)
     sp_run = sub.add_parser("run", help="JIT-compile and execute")

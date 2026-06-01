@@ -39,6 +39,9 @@ CASES = [
     ("describe", ["describe", F, "main"], "text", "main"),
     ("trace", ["trace", F, "main"], "text", "live"),
     ("scaffold", ["scaffold", "console-program"], "text", "is project"),
+    ("emit-ir", ["emit-ir", F], "text", "ModuleID"),
+    ("emit-ir --optimized", ["emit-ir", F, "--optimized"], "text", "ModuleID"),
+    ("inspect-ir", ["inspect-ir", F, "--json"], "json", "sem.inspectIr.v1"),
 ]
 
 
