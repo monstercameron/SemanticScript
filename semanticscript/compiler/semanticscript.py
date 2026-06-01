@@ -11232,6 +11232,7 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     a runtime trap or hang in one test is captured (status error/timeout + panic)
     instead of killing the whole runner.
     R-007: an optional `lane` restricts execution to one discovered lane."""
+    selected_lane = lane  # the loop below rebinds `lane`; remember the request
     diags = lint(program)
     preflight_ok = not any(d.severity == "error" for d in diags)
     lanes = discover_tests(program)
@@ -11258,10 +11259,15 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
                 if status in ("error", "timeout") and err.strip():
                     rec["error"] = err.strip().splitlines()[-1][:200]
                 tests.append(rec)
+    # R-158: an explicitly selected lane that discovers zero tests is `no-tests`,
+    # not a vacuous `pass` — a misspelled/unimplemented lane must not green CI.
+    selected_empty = selected_lane is not None and preflight_ok and not tests
     runtime_status = ("not-run" if not preflight_ok
+                      else "no-tests" if selected_empty
                       else "pass" if all(t["status"] == "pass" for t in tests)
                       else "fail")
     composite = ("blocked" if not preflight_ok
+                 else "no-tests" if selected_empty
                  else "pass" if runtime_status == "pass" else "fail")
     return {
         "preflightStatus": "ok" if preflight_ok else "lint-diagnostics",
@@ -12172,6 +12178,10 @@ def cmd_wasm(args) -> int:
 
 
 # Versioned JSON surfaces semanticscript exposes (the sem.*.v1 contract, WS4-111).
+# Every versioned machine surface a command can emit. R-123: this must list
+# exactly the `sem.*.v1` envelopes the commands actually write — no more, no less
+# — so `version --json` is a trustworthy contract-discovery surface. The
+# test_version_surface_registry_complete conformance test keeps it in lockstep.
 SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
@@ -12179,6 +12189,10 @@ SEM_SURFACES = (
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
     "sem.build.v1", "sem.run.v1", "sem.error.v1",
+    # R-123: surfaces that were live but unlisted.
+    "sem.bench.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
+    "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
+    "sem.search.v1", "sem.status.v1",
 )
 
 # R-053: standard.* catalogs that ship a `.semsig` contract but whose runtime is
@@ -12618,12 +12632,22 @@ def cmd_skills(args) -> int:
     body for each named skill — the legacy list-vs-get contract."""
     names = getattr(args, "names", None)
     if names:
-        items = []
+        items, missing = [], []
         for k in names:
             spec = EAV_SKILLS.get(k)
             if spec is not None:
                 items.append({"name": k, "summary": spec["summary"],
                               "body": spec["body"]})
+            else:
+                missing.append(k)
+        if missing:
+            # R-121: a requested skill that doesn't exist is NOT an empty success —
+            # an agent typo would otherwise proceed without the rule bundle it
+            # asked for. Report it with the valid skill names.
+            sys.stdout.write(_json_envelope(
+                "sem.skills.v1", ok=False, status="not-found", skills=items,
+                missing=missing, available=sorted(EAV_SKILLS)) + "\n")
+            return 1
     else:
         items = [{"name": k, "summary": v["summary"]}
                  for k, v in EAV_SKILLS.items()]
@@ -13408,10 +13432,13 @@ def cmd_test(args) -> int:
     # R-102: only a clean `pass` is ok — a lint-`blocked` preflight, an error, or
     # a failing test is ok:false so an envelope consumer can't read a blocked run
     # as success (the process exit already distinguishes pass from not-pass).
-    sys.stdout.write(_json_envelope(
-        "sem.test.v1", ok=(report["compositeStatus"] == "pass"),
-        **report) + "\n")
-    return 0 if report["compositeStatus"] == "pass" else 1
+    # R-158: a selected lane that found zero tests is `no-tests` (ok:false) unless
+    # the caller opts in with --allow-empty.
+    composite = report["compositeStatus"]
+    ok = composite == "pass" or (composite == "no-tests"
+                                 and getattr(args, "allow_empty", False))
+    sys.stdout.write(_json_envelope("sem.test.v1", ok=ok, **report) + "\n")
+    return 0 if ok else 1
 
 
 def cmd_doctor(args) -> int:
@@ -13714,6 +13741,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_test = sub.add_parser("test", help="discover `tag test` ops (by lane)")
     sp_test.add_argument("path", help="EAV source file, or - for stdin")
     sp_test.add_argument("--lane", choices=TEST_LANES, default=None)
+    sp_test.add_argument("--allow-empty", dest="allow_empty", action="store_true",
+                         help="treat a selected lane with zero tests as pass (R-158)")
     sp_test.add_argument("--discover", action="store_true",
                          help="list test ops instead of executing them")
     sp_test.add_argument("--strict", action="store_true",

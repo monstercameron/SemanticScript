@@ -1478,6 +1478,47 @@ def test_run_json_entry_strict_and_empty_stdout():
     assert run_json("--entry", "failOp")["exitCode"] == 1
 
 
+def test_skills_unknown_name_is_not_found():
+    # R-121: an unknown skill name is ok:false/not-found (not an empty success),
+    # in both the CLI and the MCP path.
+    import json as _json
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "skills", "no-such-skill", "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert env["ok"] is False and env["status"] == "not-found"
+    assert "no-such-skill" in env["missing"] and env["available"]
+    assert p.returncode == 1
+    r = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "skills", "arguments": {"skill": "no-such-skill"}}})
+    assert _json.loads(r["result"]["content"][0]["text"])["ok"] is False
+
+
+def test_version_surface_registry_complete():
+    # R-123: SEM_SURFACES must list exactly the sem.*.v1 envelopes the commands
+    # emit (no stale list, no phantom entries), so version --json is a trustworthy
+    # contract-discovery surface.
+    import re
+    src = open(SEMANTICSCRIPT, encoding="utf-8").read()
+    emitted = set(re.findall(r'_json_envelope\(\s*"(sem\.\w+\.v1)"', src))
+    registry = set(semanticscript.SEM_SURFACES)
+    assert emitted - registry == set(), "emitted but unregistered: %s" % (emitted - registry)
+    assert registry - emitted == set(), "registered but never emitted: %s" % (registry - emitted)
+
+
+def test_test_lane_empty_is_not_pass():
+    # R-158: a selected lane that discovers zero tests is no-tests (ok:false),
+    # so a misspelled/unimplemented lane cannot green CI — unless --allow-empty.
+    import json as _json
+    f = os.path.join(EXAMPLES, "add_two.sem")
+    p = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", f, "--lane", "e2e", "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(p.stdout)
+    assert env["compositeStatus"] == "no-tests" and env["ok"] is False and p.returncode == 1
+    p2 = subprocess.run([sys.executable, SEMANTICSCRIPT, "test", f, "--lane", "e2e",
+                         "--allow-empty", "--json"], capture_output=True, text=True, encoding="utf-8")
+    assert _json.loads(p2.stdout)["ok"] is True and p2.returncode == 0
+
+
 def test_runtime_cache_key_includes_headers_and_manifest(tmp_path):
     # R-106: a changed included header (an ABI struct/signature change) or a
     # changed runtime manifest must invalidate the runtime-lib cache key, so a
@@ -9218,7 +9259,7 @@ def test_x118_cli_conformance_new_subcommands(capsys):
         (["check", hello], "sem.check.v1", (0,)),
         (["eval", hello], "sem.eval.v1", (0,)),
         (["test", hello], "sem.test.v1", (0, 1)),
-        (["skills", "list"], "sem.skills.v1", (0,)),
+        (["skills"], "sem.skills.v1", (0,)),  # bare `skills` lists; `skills <name>` gets (R-121)
         (["fix", hello, "--plan"], "sem.fixPlan.v1", (0,)),
         (["deps", hello], "sem.deps.v1", (0,)),
         (["context", hello], "sem.context.v1", (0,)),
