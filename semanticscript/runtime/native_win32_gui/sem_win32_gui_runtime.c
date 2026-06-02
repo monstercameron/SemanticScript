@@ -62,6 +62,13 @@ struct SSGuiControlState {
     HWND hwnd;
     WNDPROC original_proc;
     int suppress_change_events;
+    /* R-265: per-control UTF-8 buffer backing ss_gui_text_box_text. A SHARED
+     * session buffer meant reading any text box realloc'd it, invalidating the
+     * pointer a prior read of a DIFFERENT box had returned (use-after-free). Each
+     * control owns its buffer (freed with the control array), so a returned
+     * pointer stays valid until that same box is read again. */
+    char *text_buffer;
+    size_t text_buffer_capacity;
 };
 
 struct SSGuiSession {
@@ -74,8 +81,6 @@ struct SSGuiSession {
     size_t control_count;
     HFONT control_font;
     int owns_control_font;
-    char *text_buffer;
-    size_t text_buffer_capacity;
     int32_t run_status;
 };
 
@@ -974,7 +979,7 @@ static int32_t ensure_control_kind(
     return SS_GUI_OK;
 }
 
-static int32_t replace_session_text_buffer(SSGuiSession *session, const wchar_t *wide_text) {
+static int32_t replace_control_text_buffer(SSGuiControlState *control, const wchar_t *wide_text) {
     int needed = WideCharToMultiByte(CP_UTF8, 0, wide_text, -1, NULL, 0, NULL, NULL);
     char *buffer;
 
@@ -982,13 +987,15 @@ static int32_t replace_session_text_buffer(SSGuiSession *session, const wchar_t 
         return SS_GUI_ERR_PLATFORM;
     }
 
-    if ((size_t)needed > session->text_buffer_capacity) {
-        buffer = (char *)realloc(session->text_buffer, (size_t)needed);
+    /* R-265: grow THIS control's buffer only — reading another text box leaves
+     * this one's buffer (and any pointer the caller holds into it) untouched. */
+    if ((size_t)needed > control->text_buffer_capacity) {
+        buffer = (char *)realloc(control->text_buffer, (size_t)needed);
         if (buffer == NULL) {
             return SS_GUI_ERR_ALLOCATION;
         }
-        session->text_buffer = buffer;
-        session->text_buffer_capacity = (size_t)needed;
+        control->text_buffer = buffer;
+        control->text_buffer_capacity = (size_t)needed;
     }
 
     if (WideCharToMultiByte(
@@ -996,7 +1003,7 @@ static int32_t replace_session_text_buffer(SSGuiSession *session, const wchar_t 
             0,
             wide_text,
             -1,
-            session->text_buffer,
+            control->text_buffer,
             needed,
             NULL,
             NULL
@@ -1309,7 +1316,12 @@ int32_t ss_gui_application_run(const SSGuiApplicationConfig *config) {
 
     destroy_remaining_windows(&session);
     release_session_font(&session);
-    free(session.text_buffer);
+    /* R-265: free each control's owned text buffer before the array block. calloc
+     * zeroed the array, and an unread text box keeps a NULL buffer, so free() is a
+     * no-op there; a read box's buffer is freed exactly once here. */
+    for (size_t control_index = 0; control_index < session.control_count; ++control_index) {
+        free(session.controls[control_index].text_buffer);
+    }
     free(session.controls);
     free(session.windows);
 
@@ -1346,13 +1358,13 @@ const char *ss_gui_text_box_text(SSGuiSession *session, SSGuiControlId text_box_
         return NULL;
     }
 
-    status = replace_session_text_buffer(session, wide_text);
+    status = replace_control_text_buffer(control, wide_text);
     free(wide_text);
     if (status != SS_GUI_OK) {
         return NULL;
     }
 
-    return session->text_buffer;
+    return control->text_buffer;
 }
 
 int32_t ss_gui_text_box_set_text(
