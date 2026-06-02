@@ -8719,7 +8719,9 @@ def _validate_numeric_ub(program: Program) -> None:
             if const_int(right[2]) == 0:
                 raise EavError(
                     f"call {ent.name!r} divides by the constant 0 in {target!r}; "
-                    f"constant division/modulo by zero is undefined (README §33.5)",
+                    f"constant division/modulo by zero is rejected before lowering. "
+                    f"To exercise the runtime guard, make the divisor non-constant "
+                    f"(README §33.5)",
                     ent.line, code="SS3111")
         # constant shift >= operand width
         if right and "shift" in target.lower():
@@ -11914,10 +11916,27 @@ class EavCodegen:
 
         # README ss17 #9: bind the catch variable so the error value is in scope
         # at the ifError target (the catch dominates the branch). Modeled as the
-        # error discriminant (i32) in the console subset.
+        # error flag (i32) in the console subset.
+        # R-257: bind it to the call's ACTUAL error indicator (`err`), widened to
+        # i32, rather than a constant 0. The old constant meant a program inspecting
+        # the caught error always saw 0 — so `caughtErr != 0` never fired and an
+        # error path that reported/branched on the value was wrong. On the error
+        # path `err` is non-zero, so the caught value now reflects that an error
+        # occurred. (A richer per-error discriminant is the tagged-error ABI, R-054/
+        # R-258; the console subset carries the i32 flag.)
         catch_row = call.fact("catch")
         if catch_row and catch_row.payload:
-            sym[catch_row.payload[0]] = ("val", ir.Constant(ir.IntType(32), 0))
+            i32 = ir.IntType(32)
+            if err is None:
+                caught = ir.Constant(i32, 0)
+            elif err.type == ir.IntType(1):
+                caught = builder.zext(err, i32)
+            elif err.type == i32:
+                caught = err
+            else:
+                caught = builder.zext(builder.icmp_unsigned(
+                    "!=", err, ir.Constant(err.type, 0)), i32)
+            sym[catch_row.payload[0]] = ("val", caught)
 
         out_row = call.fact("out")
         if out_row and out_row.payload and result is not None:
@@ -15069,6 +15088,20 @@ EAV_SKILLS = {
             "`event-stream-smoke`/`desktop-window-smoke` (event + headless GUI "
             "runtimes). All are e2e-tested in `tests/test_apps.py`."),
     },
+    "eav-fallible-operation": {
+        "summary": "Recipe for catch + branch ifError + distinct failure return.",
+        "body": (
+            "Model a fallible operation as a real call with both value and error wiring. "
+            "Rows: declare an error type, add `<call> catch <errName> <ErrorType>`, do "
+            "the call, immediately branch with `<op> branch ifError <call> goto failed`, "
+            "return the success value on the normal path, and add `<op> at failed return "
+            "<nonzero-or-nil-error>`. Do not make the failure case unreachable by using a "
+            "constant that `check` rejects first; for divide-by-zero guard tests, make the "
+            "divisor non-constant. Use `semanticscript scaffold fallible-operation` for a "
+            "complete write/fail template, then run `check --strict`, `fmt --check`, and "
+            "`run`/`build`."
+        ),
+    },
 }
 
 
@@ -15284,6 +15317,18 @@ EAV_TASK_TEMPLATES = {
         "rowsToVerify": ["cleanup deferred on every path the handle is live",
                          "worker has a catch if onFailure is declared"],
         "lintRules": ["SS1503", "SS1542", "SS1544", "SS3044B"],
+    },
+    "model-fallible-operation": {
+        "rowsToAdd": ["<ErrorType> is error",
+                      "<op> do <call>",
+                      "<op> branch ifError <call> goto failed",
+                      "<op> return <successValue>",
+                      "<op> at failed return <nonZeroExitOrNilError>",
+                      "<call> is call / in <op> / invokes <target> / arg ... / out ... / catch <err> <ErrorType>"],
+        "rowsToVerify": ["the failure branch appears immediately after the fallible call",
+                         "the failed label returns without using the successful out binding",
+                         "runtime-guard tests use a non-constant zero source, not a constant that SS3111 rejects"],
+        "lintRules": ["SS1310", "SS1355", "SS3600", "SS3111"],
     },
     "add-async-fanout": {
         "rowsToAdd": ["<op> async yes", "<op> start <task>", "<op> join <task>",
@@ -15718,6 +15763,10 @@ def cmd_docs(args) -> int:
     elif getattr(args, "get", None):
         match = next((e for e in entries if e["name"] == args.get), None)
         fuzzy = False
+        if match is None:  # builtin/std target lookup from shipped .semsig files
+            sig = _builtin_target_signature(args.get)
+            if sig is not None:
+                match = _signature_doc_entry(sig)
         if match is None:  # near-miss name -> closest entity (agentic-friendly)
             import difflib
             close = difflib.get_close_matches(
@@ -15770,7 +15819,46 @@ def cmd_size(args) -> int:
     return 0
 
 
-def _check_program_status(path: str) -> dict:
+def _check_lane_fields(errors: list, warnings: list, strict: bool) -> dict:
+    warning_count = len(warnings)
+    if strict:
+        warning_policy = (
+            "strict mode promotes T3 opinionated warnings to errors; any remaining "
+            "warnings are advisory"
+        )
+    else:
+        warning_policy = (
+            "warnings are reported but do not fail check; use --strict for the "
+            "stricter source gate and require zero warnings in CI if desired"
+        )
+    if warning_count and not strict:
+        note = (
+            f"check is static-only; {warning_count} warning(s) reported but not "
+            "enforced. Run with --strict to block T3 warnings, then run/test/build "
+            "to prove behavior."
+        )
+    elif warning_count:
+        note = (
+            f"check is static-only; {warning_count} advisory warning(s) remain. "
+            "Run/test/build to prove behavior."
+        )
+    else:
+        note = (
+            "check is static-only parse+lint; it is not an execution, test, build, "
+            "or runtime authorization proof."
+        )
+    return {
+        "lane": "static-source",
+        "strict": bool(strict),
+        "errorCount": len(errors),
+        "warningCount": warning_count,
+        "warningPolicy": warning_policy,
+        "runtimeProof": "not-run",
+        "note": note,
+    }
+
+
+def _check_program_status(path: str, strict: bool = False) -> dict:
     """R-003: classify one checkable surface (a single file or a composed project
     directory) into the source-lane status used by `check`. Shared by the
     single-program path and the per-child workspace summaries so the two cannot
@@ -15779,17 +15867,22 @@ def _check_program_status(path: str) -> dict:
     try:
         program = parse_compact(_read_program_source(path))
     except EavError as exc:
-        return {"status": "compiler-error", "ok": False, "diagnostics": [str(exc)]}
+        return {
+            "status": "compiler-error", "ok": False, "diagnostics": [str(exc)],
+            **_check_lane_fields([exc], [], strict),
+        }
     diags = lint(program)
+    diags = _filter_diagnostics_strict(diags, strict)
     errors = [d for d in diags if d.severity == "error"]
     warnings = [d for d in diags if d.severity == "warning"]
     status = ("lint-diagnostics" if errors
               else "ok-with-warnings" if warnings else "ok")
     return {"status": status, "ok": status in ("ok", "ok-with-warnings"),
-            "diagnostics": [d.render() for d in diags]}
+            "diagnostics": [d.render() for d in diags],
+            **_check_lane_fields(errors, warnings, strict)}
 
 
-def check_workspace(root: str) -> dict:
+def check_workspace(root: str, strict: bool = False) -> dict:
     """R-003: check a *workspace* directory (not itself a project root) by checking
     each child independently and never composing unrelated fixtures into one
     program. Each app/example/std/signature/manifest child gets its own source
@@ -15801,16 +15894,23 @@ def check_workspace(root: str) -> dict:
     children = discover_workspace(root)
     summaries = []
     all_ok = True
+    error_count = 0
+    warning_count = 0
     for child in children:
-        result = _check_program_status(child["path"])
+        result = _check_program_status(child["path"], strict)
         all_ok = all_ok and result["ok"]
+        error_count += int(result.get("errorCount", 0))
+        warning_count += int(result.get("warningCount", 0))
         summaries.append({"name": child["name"].replace("\\", "/"),
                           "kind": child["kind"], "status": result["status"],
                           "ok": result["ok"],
-                          "diagnostics": result["diagnostics"]})
+                          "diagnostics": result["diagnostics"],
+                          "errorCount": result.get("errorCount", 0),
+                          "warningCount": result.get("warningCount", 0)})
+    fields = _check_lane_fields([None] * error_count, [None] * warning_count, strict)
     return {"status": "workspace", "ok": all_ok,
             "diagnostics": [], "typedComments": [], "nextCommands": [],
-            "childCount": len(summaries), "children": summaries}
+            "childCount": len(summaries), "children": summaries, **fields}
 
 
 def cmd_check(args) -> int:
@@ -15822,9 +15922,10 @@ def cmd_check(args) -> int:
     with per-child summaries, instead of composing every unrelated fixture into one
     program and surfacing a misleading compiler error from a negative fixture."""
     import os
+    strict = getattr(args, "strict", False)
     if (args.path != "-" and os.path.isdir(args.path)
             and not is_project_root(args.path)):
-        report = check_workspace(args.path)
+        report = check_workspace(args.path, strict)
         sys.stdout.write(_json_envelope("sem.check.v1", **report) + "\n")
         return 0 if report["ok"] else 1
     try:
@@ -15832,10 +15933,11 @@ def cmd_check(args) -> int:
     except EavError as exc:
         sys.stdout.write(_json_envelope(
             "sem.check.v1", status="compiler-error", ok=False,
-            diagnostics=[str(exc)]) + "\n")
+            diagnostics=[str(exc)],
+            **_check_lane_fields([exc], [], strict)) + "\n")
         return 1  # R-093: a compiler error is a nonzero exit, matching the workspace lane
     diags = lint(program)
-    diags = _filter_diagnostics_strict(diags, getattr(args, "strict", False))
+    diags = _filter_diagnostics_strict(diags, strict)
     errors = [d for d in diags if d.severity == "error"]
     warnings = [d for d in diags if d.severity == "warning"]
     status = ("lint-diagnostics" if errors
@@ -15862,10 +15964,15 @@ def cmd_check(args) -> int:
     elif status == "ok-with-warnings":
         nxt = [_next_command_for_source(["fix", args.path, "--plan", "--include-warnings"],
                                         "review warning cleanup", args.path)]
+        nxt.append(_next_command_for_source(["run", args.path],
+                                            "execute the program; check is static-only", args.path))
         if has_tests:
             nxt.append(_next_command_for_source(["test", args.path], "run the test operations", args.path))
+        nxt.append(_next_command_for_source(["build", args.path], "compile to a native exe", args.path))
     else:
         nxt = []
+        nxt.append(_next_command_for_source(["run", args.path],
+                                            "execute the program; check is static-only", args.path))
         if has_tests:
             nxt.append(_next_command_for_source(["test", args.path], "run the test operations", args.path))
         nxt.append(_next_command_for_source(["build", args.path], "compile to a native exe", args.path))
@@ -15877,7 +15984,7 @@ def cmd_check(args) -> int:
     sys.stdout.write(_json_envelope(
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
         diagnostics=_structured_diags(diags), typedComments=typed,
-        nextCommands=nxt) + "\n")
+        nextCommands=nxt, **_check_lane_fields(errors, warnings, strict)) + "\n")
     # R-093: error-severity diagnostics (incl. --strict-promoted warnings) exit
     # nonzero; clean and warning-only single files stay 0, matching the workspace lane.
     return 1 if status == "lint-diagnostics" else 0
@@ -16187,7 +16294,8 @@ def cmd_fmt(args) -> int:
             reason = ("fmt drift — boundary whitespace / terminal newline differs"
                       if formatted.strip() == src.strip() else "fmt drift")
             sys.stderr.write(
-                f"semanticscript: {reason} — run `semanticscript fmt` to canonicalize\n")
+                f"semanticscript: {reason} — run `semanticscript fmt` to canonicalize; "
+                f"{_canonical_order_hint()}\n")
             return 1
         return 0
     sys.stdout.write(formatted)
