@@ -2923,8 +2923,16 @@ GRAPH_KINDS = ("calls", "control")
 
 
 def _call_graph_edges(program: Program) -> list:
-    """(callerOp, calleeOp) edges via each op's activated user-op calls."""
+    """(caller, callee) edges via each op's activated calls.
+
+    DX-05: include EVERY activated call target, not only same-module user ops. A
+    resolved user operation/function is its entity name; a built-in (`console.*`,
+    `math.*`, …) or cross-module / unresolved target is its invoked name verbatim.
+    Previously dotted targets were dropped (`"." not in …`), so a program whose
+    calls are all built-ins produced an empty graph, and cross-module user calls
+    were silently missing. Edges are de-duplicated, preserving first-seen order."""
     edges: list = []
+    seen: set = set()
     for n in program.order:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
@@ -2934,10 +2942,15 @@ def _call_graph_edges(program: Program) -> list:
                 call = program.entities.get(row.payload[0])
                 if call and call.kind in ("call", "task"):
                     inv = call.fact("invokes")
-                    if inv and inv.payload and "." not in inv.payload[0]:
-                        callee = program.entities.get(inv.payload[0])
-                        if callee and callee.kind in ("operation", "function"):
-                            edges.append((op.name, callee.name))
+                    if inv and inv.payload:
+                        target = inv.payload[0]
+                        callee = program.entities.get(target)
+                        node = (callee.name if callee and callee.kind in
+                                ("operation", "function") else target)
+                        edge = (op.name, node)
+                        if edge not in seen:
+                            seen.add(edge)
+                            edges.append(edge)
     return edges
 
 
