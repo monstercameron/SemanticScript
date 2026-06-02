@@ -368,6 +368,15 @@ DIAGNOSTICS.update({
                "suggested": "Keep embedded assets small and content-addressed, or load "
                             "large/mutable data at runtime through standard.fs with an "
                             "explicit byte limit (README §30.3.2/WS3-109)."},
+    "SS3049": {"tier": "T1", "summary": "`return nil <err>` loses the error on a non-pointer Result.",
+               "found": "A `return nil <err>` on an operation whose Result OK type is a "
+                        "non-pointer scalar (Int*/UInt*/Float*/Bool/ExitCode). The function's "
+                        "IR result is the OK type, so the error is lowered to a valid-looking "
+                        "OK 0 and silently lost.",
+               "suggested": "Use a pointer/handle OK type (whose null sentinel signals the "
+                            "error to the caller), or return the error through an explicit "
+                            "out-param; a tagged non-pointer Result return is not yet lowered "
+                            "(README §10.6, R-258)."},
     "SS3047": {"tier": "T1", "summary": "Data-carrying error case not lowered.",
                "found": "An `errorCase` with a `payload` row — the payload would be "
                         "silently dropped at construction (R-054).",
@@ -4213,6 +4222,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_codegen_modeled(program))
     diags.extend(_lint_console_arg_types(program))
     diags.extend(_lint_console_unlowerable_errors(program))
+    diags.extend(_lint_result_nil_error_loss(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
@@ -5701,6 +5711,40 @@ def _lint_console_unlowerable_errors(program: Program) -> list:
                             f"`branch ifError`, or model the cases as a data-carrying "
                             f"`enum` (README §9/§17).",
                             r.line, ent.name))
+    return out
+
+
+def _lint_result_nil_error_loss(program: Program) -> list:
+    """R-258: a `return nil <err>` on an operation whose Result OK type is a
+    non-pointer scalar (Int*/UInt*/Float*/Bool/ExitCode) silently loses the error
+    — the function's IR result is the OK type, so the error lowers to a
+    valid-looking OK 0. A pointer/handle OK type is safe (the null sentinel signals
+    the error). Reject at check (SS3049, mirroring the lowering guard) rather than
+    let it pass check and mis-lower at run."""
+    nonpointer_ok = set(_INT_WIDTHS) | _FLOAT_TYPE_NAMES | {"Bool"}
+    out: list[Diagnostic] = []
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        outr = op.fact("out")
+        if not (outr and outr.payload and outr.payload[0] == "Result"
+                and len(outr.payload) >= 2):
+            continue
+        ok = _resolve_through_aliases(program, outr.payload[1])
+        if ok not in nonpointer_ok:
+            continue  # pointer/handle/record OK type — the null sentinel is safe
+        for r in op.rows:
+            if (r.predicate == "return" and r.payload[:1] == ["nil"]
+                    and len(r.payload) > 1):
+                out.append(Diagnostic(
+                    "SS3049", "error",
+                    f"`return nil {r.payload[1]}` in {op.name!r} returns an error, but "
+                    f"the Result OK type {outr.payload[1]!r} is a non-pointer scalar — "
+                    f"the error would be lowered to a valid-looking OK 0 and silently "
+                    f"lost. Use a pointer/handle OK type, or return the error through "
+                    f"an explicit out-param (README §10.6, R-258).",
+                    r.line, op.name))
     return out
 
 
@@ -10500,6 +10544,20 @@ class EavCodegen:
         # value would be a different IR type than the result; the error is
         # detected out-of-band — the caller null-checks the handle.)
         if p[0] == "nil":
+            # R-258: `return nil <err>` carries an error, but the function's IR
+            # result is the OK type. A POINTER OK type is safe — the caller
+            # null-checks the handle, so the null sentinel signals the error. A
+            # NON-pointer OK type (Int64/Bool/…) has no spare sentinel: the
+            # OK-typed zero is a valid OK value, so the error is SILENTLY LOST.
+            # Fail closed instead of mis-lowering (a tagged Result is the real fix).
+            if len(p) > 1 and not isinstance(ret_ty, ir.PointerType):
+                raise EavError(
+                    f"`return nil {p[1]}` in {op.name!r} returns an error, but the "
+                    f"operation's Result OK type is not a pointer, so the error is "
+                    f"lowered to a valid-looking OK 0 and silently lost. Use a "
+                    f"pointer/handle OK type, or return the error through an explicit "
+                    f"out-param (README ss10.6, R-258).",
+                    row.line, code="SS3049")
             builder.ret(ir.Constant(
                 ret_ty, None if isinstance(ret_ty, ir.PointerType) else 0))
             return builder
