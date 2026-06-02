@@ -6781,6 +6781,18 @@ def _validate_trust_flow(program: Program) -> None:
                     if o.payload[0] not in tainted:
                         tainted.add(o.payload[0])
                         changed = True
+            # R-220: taint also flows through `set <tgt> <src...>` (mutable
+            # storage / mutable-let writes), not only call `out` facts. Without
+            # this, bouncing a rawExternal/secret value through a plain-typed
+            # mutable binding and reading it back launders it before a SQL/path/
+            # command/HTML sink, defeating SS3070. If any source is tainted the
+            # target becomes tainted; iterated to fixpoint alongside the call flow.
+            if op is not None:
+                for sr in op.facts("set"):
+                    if (len(sr.payload) >= 2 and sr.payload[0] not in tainted
+                            and any(s in tainted for s in sr.payload[1:])):
+                        tainted.add(sr.payload[0])
+                        changed = True
         op_tainted[op_name] = tainted
 
     for n in program.order:
