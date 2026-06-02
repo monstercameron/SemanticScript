@@ -16363,6 +16363,19 @@ def main(argv: Optional[list[str]] = None) -> int:
             _emit_json_error(exc, "io-error")
             return 2
         raise
+    except RuntimeError as exc:
+        # R-231: llvmlite raises RuntimeError when LLVM rejects malformed or
+        # unverifiable IR (llvm.parse_assembly / module.verify). That lowering/
+        # verify path is reachable from several JSON-native commands (bench,
+        # inspect-ir, run, emit-ir); without this the rejection escaped main()'s
+        # EavError/OSError mapping as a raw Python traceback (and nonzero abort)
+        # instead of a structured envelope an agent/MCP consumer can parse. Map it
+        # to a codegen-error envelope — or a clean stderr line — like EavError.
+        if getattr(args, "json", False):
+            _emit_json_error(exc, "codegen-error")
+            return 2
+        sys.stderr.write(f"semanticscript: codegen error: {exc}\n")
+        return 2
 
 
 if __name__ == "__main__":
