@@ -10564,13 +10564,22 @@ class EavCodegen:
                      "greaterThanOrEqual": ">="}
             if cmp_tok not in preds:
                 raise EavError(f"unknown comparator {cmp_tok!r} in {guard} (README ss13)", row.line)
-            lx = self._resolve(left_tok, "Int64", builder, sym)
+            # R-250: resolve the operand with its DECLARED type (not a hardcoded
+            # "Int64" hint, which mis-widths a non-Int64 unsigned operand), and pick
+            # the unsigned vs signed predicate from that type. A `branch ifValue x
+            # greaterThan y` on a UInt32/UInt64 with the high bit set otherwise
+            # branches backwards — the same unsigned-compare hole R-214 closed for
+            # _emit_compare. Equality (==/!=) is signedness-agnostic.
+            left_type = getattr(self, "_binding_types", {}).get(left_tok, "Int64")
+            lx = self._resolve(left_tok, left_type, builder, sym)
             ly = self._resolve_as(right_tok, lx.type, builder, sym)
             if isinstance(lx.type, (ir.FloatType, ir.DoubleType)):
                 cond = (builder.fcmp_unordered("!=", lx, ly) if cmp_tok == "notEquals"
                         else builder.fcmp_ordered(preds[cmp_tok], lx, ly))
             else:
-                cond = builder.icmp_signed(preds[cmp_tok], lx, ly)
+                icmp = (builder.icmp_unsigned if self._is_unsigned_int(left_type)
+                        else builder.icmp_signed)
+                cond = icmp(preds[cmp_tok], lx, ly)
             cont = self._new_cont(fn)
             builder.cbranch(cond, label_blocks[label], cont)
             return ir.IRBuilder(cont)
