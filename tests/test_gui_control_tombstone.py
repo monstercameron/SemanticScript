@@ -30,7 +30,7 @@ def test_ensure_control_kind_checks_iswindow():
 
 def test_tombstone_helper_exists_and_clears_matching_controls():
     body = re.search(r"static void tombstone_window_controls\(.*?\n\}", _SRC, re.S).group(0)
-    assert "->window == window" in body
+    assert ".window == window" in body
     assert ".hwnd = NULL" in body
 
 
