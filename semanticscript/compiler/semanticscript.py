@@ -644,6 +644,12 @@ DIAGNOSTICS.update({
     "SS1354": {"tier": "T1", "summary": "`bind` on a payloadless variant.",
                "found": "A `branch ifVariant … bind` on a variant that carries no payload.",
                "suggested": "Drop `bind`, or match a data-carrying variant (README §17 #53)."},
+    "SS1355": {"tier": "T1", "summary": "ifVariant matches an error case (not lowered).",
+               "found": "A `branch ifVariant … VARIANT` whose VARIANT is a declared `errorCase`; "
+                        "ifVariant narrows ENUM variants, and the console code generator does not "
+                        "lower error-variant matching (it would fail at run with SS1352).",
+               "suggested": "Handle the error with `catch` / `branch ifError`, or model the cases "
+                            "as a data-carrying `enum` if you need ifVariant matching (README §9/§17)."},
     "SS1551": {"tier": "T1", "summary": "Import alias collides with a type name.",
                "found": "An `imports ALIAS …` where ALIAS equals a declared type name.",
                "suggested": "Rename the import alias (README §17 #51)."},
@@ -4140,6 +4146,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_runtime_bindings(program))
     diags.extend(_lint_codegen_modeled(program))
     diags.extend(_lint_console_arg_types(program))
+    diags.extend(_lint_console_unlowerable_errors(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
@@ -5562,6 +5569,72 @@ def _lint_console_arg_types(program: Program) -> list:
                    f"use console.writeIntegerLine for an integer")
         if msg is not None:
             out.append(Diagnostic("SS1199", "error", msg, ent.line, ent.name))
+    return out
+
+
+def _lint_console_unlowerable_errors(program: Program) -> list:
+    """DX-01: two error-handling constructs pass the structural `check` but the
+    console code generator cannot lower, so they only fail at `run`/`build` (the
+    false-green that traps an agent in a check-passes/run-fails loop). Reject both
+    at check, mirroring the exact conditions the lowering fails on:
+
+      1. Data-carrying error-case construction — `invokes <Error>.<case>` where the
+         case declares a `payload` row AND the call passes a value arg. The payload
+         is not lowered (R-054), so the value would be silently dropped; lowering
+         fails closed with SS3047. Hoisted here so `check` rejects it.
+      2. `branch ifVariant … <case>` matching an `errorCase`. ifVariant narrows
+         ENUM variants; an error case is unknown across enums, so lowering fails
+         with SS1352. Steer to `catch`/`branch ifError` at check (SS1355)."""
+    out: list[Diagnostic] = []
+    errorcase_names = {program.entities[n].name for n in program.order
+                       if program.entities[n].kind == "errorCase"}
+    enum_variants: set = set()
+    for n in program.order:
+        e = program.entities[n]
+        if e.kind == "enum":
+            for v in e.facts("variant"):
+                if v.payload:
+                    enum_variants.add(v.payload[0])
+
+    for n in program.order:
+        ent = program.entities[n]
+        # (1) data-carrying error-case construction with a value arg
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            target = inv.payload[0] if inv and inv.payload else ""
+            head, _, tail = target.rpartition(".")           # mirrors the lowering
+            owner = program.entities.get(head) if head else None
+            case_ent = program.entities.get(tail) if tail else None
+            if (owner is not None and owner.kind == "error"
+                    and case_ent is not None and case_ent.kind == "errorCase"
+                    and (case_ent.fact("of") or Row("", "", [], 0)).payload[:1] == [head]
+                    and case_ent.fact("payload") is not None
+                    and any(len(a.payload) >= 3 for a in ent.facts("arg"))):
+                out.append(Diagnostic(
+                    "SS3047", "error",
+                    f"call {ent.name!r} constructs the data-carrying error case "
+                    f"{target!r} with a payload arg, but data-carrying error cases are "
+                    f"not yet lowered — the payload would be silently dropped at run. "
+                    f"Use a data-carrying enum variant (`variant <name> <Type>`) for a "
+                    f"value-bearing case, or construct the case without a payload "
+                    f"(README §9, R-054).",
+                    ent.line, ent.name))
+        # (2) ifVariant matching an error case (the console codegen lowers enums only)
+        if ent.kind in ("operation", "function"):
+            for r in ent.rows:
+                if (r.predicate == "branch" and r.payload
+                        and r.payload[0] == "ifVariant" and len(r.payload) >= 3):
+                    variant = r.payload[2]
+                    if variant in errorcase_names and variant not in enum_variants:
+                        out.append(Diagnostic(
+                            "SS1355", "error",
+                            f"`branch ifVariant` in {ent.name!r} matches the error case "
+                            f"{variant!r}; ifVariant narrows enum variants and the console "
+                            f"code generator does not lower error-variant matching (it "
+                            f"fails at run with SS1352). Handle the error with `catch` / "
+                            f"`branch ifError`, or model the cases as a data-carrying "
+                            f"`enum` (README §9/§17).",
+                            r.line, ent.name))
     return out
 
 
