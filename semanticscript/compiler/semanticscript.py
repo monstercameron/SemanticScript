@@ -1931,6 +1931,15 @@ UNIVERSAL_PREDICATES = {
 # Structural + step predicates allowed per entity kind (README ss5). `is` is
 # implicit (handled before dispatch); `at` labeled steps are operation-only and
 # handled separately. Unknown predicate for a kind is a hard parse error.
+# DX-06: predicates an agent reaches for to declare an error in an OPERATION
+# header (errors aren't part of an operation's signature in SemanticScript). When
+# one appears on an operation/function, the rejection names the real construct
+# (`catch` at the call site + `branch ifError`) instead of a bare "not valid".
+_ERROR_HEADER_PREDICATES = frozenset({
+    "error", "errors", "raise", "raises", "throw", "throws", "catch", "catches",
+    "mayFail", "fails", "failsWith", "onError", "except", "rescue",
+})
+
 ALLOWED_PREDICATES: dict[str, set[str]] = {
     "project": {
         "module", "target", "entry", "mode", "languageVersion", "toolchain",
@@ -2418,6 +2427,18 @@ def parse(source_text: str) -> Program:
         # Per-kind predicate dispatch (README ss5, ss17 #22): a predicate must be
         # in the kind's structural/step set or be a universal metadata predicate.
         if not _predicate_allowed(entity.kind, predicate):
+            if (entity.kind in ("operation", "function")
+                    and predicate in _ERROR_HEADER_PREDICATES):
+                # DX-06: name the real construct instead of a bare "not valid".
+                raise EavError(
+                    f"predicate {predicate!r} is not an operation-header construct: a "
+                    f"SemanticScript operation does not declare errors in its "
+                    f"signature. Handle a fallible call's error at the CALL site — "
+                    f"`<call> catch <name> <ErrorType>` — and route it with "
+                    f"`branch ifError <call> goto <label>`; declare the error type "
+                    f"itself with `<Name> is error` (README ss9/ss17).",
+                    lineno,
+                )
             raise EavError(
                 f"predicate {predicate!r} is not valid for a {entity.kind} "
                 f"entity (README ss5)",
