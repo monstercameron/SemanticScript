@@ -13706,17 +13706,21 @@ def _spec_sections() -> list:
             md = fh.read()
     except OSError:
         return []
+    # DX-02: keep the FULL section text (no [:2000] cap). A grammar production or
+    # code example in a long section was being cut, so search/docs could never
+    # return a complete block. Sections are heading-bounded (a few KB at most), so
+    # the whole guide stays a reasonable in-memory corpus.
     sections, title, buf = [], "LANGUAGE", []
     for line in md.splitlines():
         m = re.match(r"^#{1,4}\s+(.*)", line)
         if m:
             if buf:
-                sections.append({"title": title, "text": "\n".join(buf)[:2000]})
+                sections.append({"title": title, "text": "\n".join(buf)})
             title, buf = m.group(1).strip(), [m.group(1).strip()]
         else:
             buf.append(line)
     if buf:
-        sections.append({"title": title, "text": "\n".join(buf)[:2000]})
+        sections.append({"title": title, "text": "\n".join(buf)})
     return sections
 
 
@@ -13778,14 +13782,21 @@ def _snippet(text: str, qterms: list, width: int = 160) -> str:
     return ("…" if start else "") + chunk + ("…" if start + width < len(text) else "")
 
 
-def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160) -> list:
+def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160,
+                full_text_sources: tuple = ()) -> list:
     """Rank `docs` against `query` by TF-IDF with a title boost and prefix-
     tolerant matching. Returns [{source, id, kind, title, ref, score, snippet}].
 
     `snippet_width` is the character window around the hit: the narrow default
     suits a TTY line; callers emitting machine-readable JSON pass a wider window
     (D3) so the snippet carries enough context to be read from the tool rather
-    than truncating the runnable vocabulary to a single line."""
+    than truncating the runnable vocabulary to a single line.
+
+    `full_text_sources` (DX-02): sources whose match returns the COMPLETE document
+    text verbatim instead of a collapsed window — grammar/code blocks (the `spec`
+    source) must come back whole, with newlines/indentation preserved, so an agent
+    gets a usable production or example rather than a truncated, whitespace-
+    flattened fragment."""
     import math
     qterms = [t for t in _tokenize(query) if len(t) >= 2]
     if not qterms:
@@ -13821,7 +13832,8 @@ def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160) ->
     scored.sort(key=lambda x: -x[0])
     return [{"source": d["source"], "id": d["id"], "kind": d["kind"],
              "title": d["title"], "ref": d["ref"], "score": round(s, 3),
-             "snippet": _snippet(d["text"], qterms, snippet_width)}
+             "snippet": (d["text"] if d["source"] in full_text_sources
+                         else _snippet(d["text"], qterms, snippet_width))}
             for s, d in scored[:limit]]
 
 
@@ -13852,8 +13864,12 @@ def cmd_search(args) -> int:
     json_mode = getattr(args, "json", False)
     # D3: JSON consumers (agents/tools) get a wide snippet window so the match
     # carries real context; the TTY path keeps the one-line width.
+    # DX-02: a JSON `spec` match returns the COMPLETE grammar/code section verbatim
+    # (newlines preserved), not a flattened 640-char window — an agent looking up a
+    # grammar production or worked example needs the whole block.
     results = _tfidf_rank(args.query, docs, getattr(args, "limit", None) or 20,
-                          snippet_width=640 if json_mode else 160)
+                          snippet_width=640 if json_mode else 160,
+                          full_text_sources=("spec",) if json_mode else ())
     if json_mode:
         sys.stdout.write(_json_envelope(
             "sem.search.v1", query=args.query, count=len(results),

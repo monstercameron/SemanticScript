@@ -32,3 +32,28 @@ def test_short_doc_is_not_padded():
              "title": "tiny", "ref": "y", "text": "integer overflow only"}]
     wide = _tfidf_rank("integer overflow", docs, 20, snippet_width=640)[0]["snippet"]
     assert wide == "integer overflow only"
+
+
+def test_spec_sections_are_not_capped():
+    # DX-02: the language-guide sections are no longer truncated at 2000 chars, so a
+    # long grammar/code section is available in full (the corpus had a [:2000] cap).
+    secs = semanticscript._spec_sections()
+    if not secs:               # frozen build without the guide — nothing to assert
+        return
+    assert any(len(s["text"]) > 2000 for s in secs), "expected an uncapped long section"
+
+
+def test_full_text_source_returns_complete_block_with_newlines():
+    # DX-02: a `spec` match returns the COMPLETE block verbatim (newlines/indentation
+    # preserved), not a collapsed 640-char window — so grammar/code is usable.
+    block = "Grammar\n```\nstmt ::= 'branch' cond\n     | 'return' value\n```\n" + "x " * 500
+    docs = [{"source": "spec", "id": "Grammar", "kind": "spec",
+             "title": "Grammar", "ref": "docs/LANGUAGE.md", "text": block}]
+    # full-text source -> verbatim, newlines kept, not windowed/flattened
+    full = _tfidf_rank("grammar branch", docs, 20, snippet_width=640,
+                       full_text_sources=("spec",))[0]["snippet"]
+    assert full == block
+    assert "\n" in full
+    # without the full-text source it would be a flattened window (the old behavior)
+    windowed = _tfidf_rank("grammar branch", docs, 20, snippet_width=640)[0]["snippet"]
+    assert "\n" not in windowed and len(windowed) < len(block)
