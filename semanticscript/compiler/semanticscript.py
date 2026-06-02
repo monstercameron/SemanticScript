@@ -13618,9 +13618,14 @@ def _snippet(text: str, qterms: list, width: int = 160) -> str:
     return ("…" if start else "") + chunk + ("…" if start + width < len(text) else "")
 
 
-def _tfidf_rank(query: str, docs: list, limit: int) -> list:
+def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160) -> list:
     """Rank `docs` against `query` by TF-IDF with a title boost and prefix-
-    tolerant matching. Returns [{source, id, kind, title, ref, score, snippet}]."""
+    tolerant matching. Returns [{source, id, kind, title, ref, score, snippet}].
+
+    `snippet_width` is the character window around the hit: the narrow default
+    suits a TTY line; callers emitting machine-readable JSON pass a wider window
+    (D3) so the snippet carries enough context to be read from the tool rather
+    than truncating the runnable vocabulary to a single line."""
     import math
     qterms = [t for t in _tokenize(query) if len(t) >= 2]
     if not qterms:
@@ -13656,7 +13661,7 @@ def _tfidf_rank(query: str, docs: list, limit: int) -> list:
     scored.sort(key=lambda x: -x[0])
     return [{"source": d["source"], "id": d["id"], "kind": d["kind"],
              "title": d["title"], "ref": d["ref"], "score": round(s, 3),
-             "snippet": _snippet(d["text"], qterms)}
+             "snippet": _snippet(d["text"], qterms, snippet_width)}
             for s, d in scored[:limit]]
 
 
@@ -13684,8 +13689,12 @@ def cmd_search(args) -> int:
     wanted = getattr(args, "source", None)
     if wanted:
         docs = [d for d in docs if d["source"] in set(wanted)]
-    results = _tfidf_rank(args.query, docs, getattr(args, "limit", None) or 20)
-    if getattr(args, "json", False):
+    json_mode = getattr(args, "json", False)
+    # D3: JSON consumers (agents/tools) get a wide snippet window so the match
+    # carries real context; the TTY path keeps the one-line width.
+    results = _tfidf_rank(args.query, docs, getattr(args, "limit", None) or 20,
+                          snippet_width=640 if json_mode else 160)
+    if json_mode:
         sys.stdout.write(_json_envelope(
             "sem.search.v1", query=args.query, count=len(results),
             matches=results) + "\n")
