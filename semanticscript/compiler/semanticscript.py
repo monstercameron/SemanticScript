@@ -445,6 +445,14 @@ DIAGNOSTICS.update({
                         "resolve to a null address and crash at first call (R-105).",
                "suggested": "Fix the symbol name, or add a providing library to the "
                             "runtime manifest (README §26)."},
+    "SS1198": {"tier": "T1", "summary": "call target not modeled by the code generator.",
+               "found": "A `call` whose `invokes` target the LLVM console code "
+                        "generator does not model (e.g. the untyped `math.divide` "
+                        "vs the runnable `math.divideInt64`), so it passes `check` "
+                        "but fails at `run`/`build` — a false green (D1/A1).",
+               "suggested": "Use a runnable target — usually a width-typed variant "
+                            "(`...Int64`/`...Int32`/`...Float64`). List the runnable, "
+                            "codegen-modeled targets with `sem targets` (README §27)."},
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
@@ -4107,6 +4115,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_c_exports(program))
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_runtime_bindings(program))
+    diags.extend(_lint_codegen_modeled(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
@@ -5396,6 +5405,82 @@ def _lint_runtime_bindings(program: Program) -> list:
                 f"operation {ent.name!r} binds runtime symbol {body.payload[1]!r}, "
                 f"which no native runtime library provides (runtime/manifest.json); "
                 f"check the symbol name (README §26)", ent.line, ent.name))
+    return out
+
+
+# D1/A1/A9: the targets the LLVM console code generator actually models. A call
+# to anything else passes the structural checks but fails at run/build, so this
+# set is the source of truth for both the SS1198 lint and the `sem targets`
+# discovery command. Mirrors the _emit_call dispatch.
+_CODEGEN_MODELED_PREFIXES = ("c.", "compare.", "convert.to", "http.", "gui.",
+                             "buffer.", "list.", "map.", "fs.", "decimal.",
+                             "test.assert")
+# Namespaces that name a builtin/intrinsic family (vs a user record `Type.new`,
+# a field access `Type.field`, or a cross-module user op `module.op`). Only these
+# are checked for codegen-modeling — everything else is user-defined and resolves
+# through the normal name/record paths.
+_BUILTIN_NAMESPACES = frozenset({
+    "math", "string", "console", "test", "assert", "compare", "convert",
+    "sqlite", "json", "bcrypt", "log", "http", "gui", "event", "c", "buffer",
+    "list", "map", "fs", "decimal", "pointer", "net", "html", "random",
+})
+_CODEGEN_MODELED_EXACT = frozenset({
+    "console.writeLine", "console.writeIntegerLine", "console.writeFloatLine",
+    "console.writeFloat", "test.and", "test.summary", "assert.equalInt64",
+    "assert.true", "html.render", "math.popcountInt64", "net.fetchText",
+    "net.freeTextBody", "string.concat", "pointer.isNull", "pointer.offset",
+    "pointer.loadByte", "pointer.storeByte", "sqlite.stepResultIsDone",
+    "sqlite.stepResultIsRow", "event.openProcessStream", "event.subscribeStream",
+    "event.appendEvent", "event.receiveEvent", "event.acknowledgeEvent",
+    "event.closeSubscription", "event.closeStream",
+})
+
+
+def _codegen_modeled_target(target: str, program: Program) -> bool:
+    """True iff the console code generator models `target` (mirrors _emit_call)."""
+    if target in _CODEGEN_MODELED_EXACT:
+        return True
+    if (target in _INT_BINOPS or target in _INT_CMP or target in _INT_UNARY_INTRIN
+            or target in _MATH_COMPUTED
+            or target in _FLOAT_BINOPS or target in _FLOAT_CMP_ORDERED
+            or target in _FLOAT_CMP_UNORDERED or target in _FLOAT_UNARY_INTRIN
+            or target in _FLOAT_BINARY_INTRIN):
+        return True
+    if _family_intrinsic(target) is not None:   # sqlite/json/bcrypt/log families
+        return True
+    if any(target.startswith(p) for p in _CODEGEN_MODELED_PREFIXES):
+        return True
+    ent = program.entities.get(target)   # a user operation / operationType binding
+    return ent is not None and ent.kind in ("operation", "function", "operationType")
+
+
+def _lint_codegen_modeled(program: Program) -> list:
+    """D1/A1: reject a call whose `invokes` target the code generator does not
+    model — it would pass `check` but fail at `run`/`build` (false green). Mirrors
+    _lint_runtime_bindings (SS1195). A bare (dot-less) name is a user op handled
+    elsewhere; only namespaced builtin targets are checked here."""
+    out: list[Diagnostic] = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        target = inv.payload[0]
+        if "." not in target:
+            continue   # a bare name is a user op / handled elsewhere
+        if target.split(".", 1)[0] not in _BUILTIN_NAMESPACES:
+            continue   # a user record (`Type.new`), field, or cross-module op
+        if _codegen_modeled_target(target, program):
+            continue
+        hint = (f" — try the width-typed `{target}Int64`"
+                if target.startswith("math.") else "")
+        out.append(Diagnostic(
+            "SS1198", "error",
+            f"call {ent.name!r} invokes {target!r}, which the code generator does "
+            f"not model{hint}; it passes `check` but fails at `run`/`build`. List "
+            f"runnable targets with `sem targets` (README §27)", ent.line, ent.name))
     return out
 
 
@@ -15730,6 +15815,43 @@ def cmd_lint(args) -> int:
     return 1 if errors else 0
 
 
+def cmd_targets(args) -> int:
+    """A9: list the call targets the LLVM console code generator actually models —
+    the runnable vocabulary. A target absent here passes the structural `check`
+    but fails at `run`/`build` (SS1198 catches it). Groups by family; prefix
+    families (`c.`/`http.`/`gui.`/`buffer.`/`list.`/`map.`/`fs.`/`compare.`/
+    `convert.to`/`decimal.`) model every method, shown as `<family>.<method>`."""
+    groups: dict = {}
+
+    def add(name):
+        groups.setdefault(name.split(".", 1)[0], set()).add(name)
+
+    for t in _CODEGEN_MODELED_EXACT:
+        add(t)
+    for d in (_INT_BINOPS, _INT_CMP, _INT_UNARY_INTRIN, _MATH_COMPUTED,
+              _FLOAT_BINOPS, _FLOAT_CMP_ORDERED, _FLOAT_CMP_UNORDERED,
+              _FLOAT_UNARY_INTRIN, _FLOAT_BINARY_INTRIN):
+        for t in d:
+            add(t)
+    for fam, methods in _FAMILY_RT.items():       # sqlite/json/bcrypt/log
+        for meth in methods:
+            add(f"{fam}.{meth}")
+    for p in _CODEGEN_MODELED_PREFIXES:           # whole-family prefixes
+        add(f"{p.rstrip('.')}.<any method>")
+    if getattr(args, "json", False):
+        import json
+        print(json.dumps({
+            "version": "sem.targets.v1",
+            "families": {f: sorted(v) for f, v in sorted(groups.items())},
+        }, indent=2))
+    else:
+        for fam in sorted(groups):
+            print(f"{fam}:")
+            for t in sorted(groups[fam]):
+                print(f"  {t}")
+    return 0
+
+
 def cmd_explain(args) -> int:
     """Print the registry entry + repair for a diagnostic code."""
     try:
@@ -15808,6 +15930,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_index = sub.add_parser("index", help="catalog every diagnostic code (tier + summary)")
     sp_index.add_argument("--json", action="store_true")
     sp_index.set_defaults(func=cmd_index)
+    sp_targets = sub.add_parser("targets", help="list the runnable/codegen-modeled call targets (the vocabulary run/build can lower)")
+    sp_targets.add_argument("--json", action="store_true")
+    sp_targets.set_defaults(func=cmd_targets)
     sp_search = sub.add_parser("search", help="relevance-ranked retrieval across docs/diagnostics/skills/templates/spec")
     sp_search.add_argument("query", help="search terms")
     sp_search.add_argument("--source", nargs="*",
