@@ -14024,6 +14024,16 @@ def cmd_run(args) -> int:
         except OSError as exc:
             _trap_report(str(exc))
             return 134  # stable "aborted" exit (128 + SIGABRT)
+        except RuntimeError as exc:
+            # R-232: jit_run's parse_assembly/verify raise RuntimeError when LLVM
+            # rejects the lowered IR. On Windows this branch runs in-process (and
+            # on POSIX it is the isolated `--_jit-child`), so an uncaught
+            # RuntimeError would escape as a raw traceback (Windows) or make the
+            # child exit non-trap so the parent reports a bare nonzero (POSIX).
+            # Route it through the same stable trap path as the OSError guard trap
+            # (SSR0001 -> 134), mirroring the in-process trap handling.
+            _trap_report(f"invalid generated IR rejected by LLVM: {exc}")
+            return 134
     import subprocess
     import tempfile
     sys.stdout.flush()
