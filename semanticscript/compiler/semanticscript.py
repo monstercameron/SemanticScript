@@ -14353,6 +14353,75 @@ def cmd_bench(args) -> int:
     return 0
 
 
+def cmd_profile(args) -> int:
+    """R-057: a performance/IR baseline (sem.profile.v1). Times parse + lower
+    (best of N) and reports IR-quality metrics (defined functions, basic blocks,
+    instructions, IR text size) and the source footprint (entity count by kind).
+    This gives the profiling roadmap an actionable, machine-readable owner and a
+    stable surface for regression gates, without needing the runtime allocation
+    counters (a deeper slice that requires instrumenting the C runtime)."""
+    import time
+    runs = max(1, getattr(args, "runs", None) or 5)
+    src = _read_program_source(args.path)
+    parse_t, lower_t = [], []
+    module = None
+    program = None
+    for _ in range(runs):
+        t0 = time.perf_counter()
+        program = parse_compact(src)
+        t1 = time.perf_counter()
+        module = lower_to_llvm(program)
+        t2 = time.perf_counter()
+        parse_t.append(t1 - t0)
+        lower_t.append(t2 - t1)
+
+    ir_text = str(module)
+    funcs = list(module.functions)
+    defined = [f for f in funcs if not f.is_declaration]
+    n_blocks = sum(len(f.blocks) for f in defined)
+    n_instrs = sum(len(b.instructions) for f in defined for b in f.blocks)
+
+    by_kind: dict = {}
+    for n in program.order:
+        k = program.entities[n].kind
+        by_kind[k] = by_kind.get(k, 0) + 1
+    n_rows = sum(len(program.entities[n].rows) for n in program.order)
+
+    def ms(xs):
+        return round(min(xs) * 1000, 3) if xs else None
+
+    result = {
+        "path": args.path,
+        "runs": runs,
+        "parseMsBest": ms(parse_t),
+        "lowerMsBest": ms(lower_t),
+        "ir": {
+            "functionsDeclared": len(funcs) - len(defined),
+            "functionsDefined": len(defined),
+            "basicBlocks": n_blocks,
+            "instructions": n_instrs,
+            "textBytes": len(ir_text.encode("utf-8")),
+            "textLines": ir_text.count("\n") + 1,
+        },
+        "source": {
+            "entities": len(program.order),
+            "rows": n_rows,
+            "byKind": {k: by_kind[k] for k in sorted(by_kind)},
+        },
+    }
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.profile.v1", **result) + "\n")
+    else:
+        ir = result["ir"]
+        print(f"profile {args.path} (best of {runs}):")
+        print(f"  parse {result['parseMsBest']}ms  lower {result['lowerMsBest']}ms")
+        print(f"  IR: {ir['functionsDefined']} fns, {ir['basicBlocks']} blocks, "
+              f"{ir['instructions']} instrs, {ir['textBytes']} bytes")
+        print(f"  source: {result['source']['entities']} entities, "
+              f"{result['source']['rows']} rows")
+    return 0
+
+
 def cmd_repin(args) -> int:
     """Re-pin dependencies: regenerate `build.sem.lock` from a `build.sem`
     manifest via MVS (deterministic). `--check` verifies the existing lock is
@@ -14780,7 +14849,7 @@ SEM_SURFACES = (
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
     "sem.build.v1", "sem.run.v1", "sem.error.v1", "sem.targetSignature.v1",
     # R-123: surfaces that were live but unlisted.
-    "sem.bench.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
+    "sem.bench.v1", "sem.profile.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
     "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
     "sem.search.v1", "sem.status.v1",
     # WS3-110: the generated stdlib readiness ledger.
@@ -15155,12 +15224,12 @@ EAV_MCP_TOOLS = {
                         ("path", False, False, "also index this project's entities")]},
     "explain": {"argv": ["explain"], "desc": "Explain one diagnostic code (tier, cause, suggested fix)",
                 "path": False, "args": [("code", True, True, "diagnostic code, e.g. SS1502")]},
-    "docs": {"argv": ["docs"], "desc": "Per-file entity docs (list; pass `get` for one entity, `search` to rank)",
+    "docs": {"argv": ["docs"], "desc": "Per-file entity docs, plus builtin signatures with `get`",
              "path": True,
              "args": [("search", False, False, "keyword-ranked query within the file"),
                       ("get", False, False, "entity name to fetch (fuzzy-tolerant)")]},
     # --- program analysis (require a source/project path) ---
-    "check": {"argv": ["check"], "desc": "Source lane: parse + lint status", "path": True, "args": []},
+    "check": {"argv": ["check"], "desc": "Static source lane: parse + lint status", "path": True, "args": []},
     "graph": {"argv": ["graph", "--json"], "desc": "Call / control-flow graph",
               "path": True, "args": [("kind", False, False, "calls|control (default calls)")]},
     "query": {"argv": ["query", "--json"],
@@ -16365,9 +16434,9 @@ def cmd_patch(args) -> int:
     named on the command line and honor `--dry-run`/`--apply`, instead of
     emitting a canned suggestions-only payload regardless of input. A missing or
     corrupt plan is now a distinct, reportable error — indistinguishable before
-    from a valid plan. semanticscript `fix` plans are suggestions-only today
-    (`planUsable:false`), so there is nothing machine-applicable to apply; that
-    is reported faithfully only after a valid plan is actually read."""
+    from a valid plan. A `fix` plan is applyable only when it carries
+    `planUsable:true`; suggestions-only plans are reported faithfully after a
+    valid plan is actually read."""
     import json
     import os
     plan_path = getattr(args, "plan", None)
@@ -16880,6 +16949,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_bench.add_argument("--runs", type=int, default=5, help="iterations (default 5)")
     sp_bench.add_argument("--json", action="store_true")
     sp_bench.set_defaults(func=cmd_bench)
+
+    # R-057: performance/IR baseline (sem.profile.v1)
+    sp_profile = sub.add_parser("profile", help="IR-quality + parse/lower timing baseline (sem.profile.v1)")
+    sp_profile.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_profile.add_argument("--runs", type=int, default=5, help="iterations (default 5)")
+    sp_profile.add_argument("--json", action="store_true")
+    sp_profile.set_defaults(func=cmd_profile)
 
     # TOOL-7: re-pin dependencies (regenerate build.sem.lock via MVS)
     sp_repin = sub.add_parser("repin", help="regenerate build.sem.lock from build.sem (MVS)")
