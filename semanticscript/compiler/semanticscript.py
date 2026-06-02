@@ -3198,12 +3198,7 @@ def _lint_sqlite_usage(program: Program) -> list:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
             continue
-        owned = {
-            program.entities[c].name: program.entities[c]
-            for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        }
+        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
 
         # ---- SS1902: multi-write transaction boundary ----
         write_steps = 0
@@ -3350,12 +3345,7 @@ def _lint_loop_no_progress(program: Program) -> list:
         labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
         if not labels:
             continue
-        owned = {
-            program.entities[c].name: program.entities[c]
-            for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        }
+        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         # R-082: map each owned call to its input arg value names, so a guard
         # recomputed via a helper whose inputs are mutated each turn counts as
         # progress even when the guard's own `out` name is not directly rebound.
@@ -3814,12 +3804,7 @@ def _lint_collection_iterator_invalidation(program: Program) -> list:
         labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
         if not labels:
             continue
-        owned = {
-            program.entities[c].name: program.entities[c]
-            for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        }
+        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         reported: set = set()
         for gi, r in enumerate(rows):
             if r.predicate == "goto" and r.payload:
@@ -3884,12 +3869,7 @@ def _lint_string_accumulator_in_loop(program: Program) -> list:
         labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
         if not labels:
             continue
-        owned = {
-            program.entities[c].name: program.entities[c]
-            for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        }
+        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         reported: set = set()
         for gi, r in enumerate(rows):
             if r.predicate == "goto" and r.payload:
@@ -4051,6 +4031,40 @@ def _lint_handle_equality_contract(program: Program) -> list:
                     e.line, e.name))
                 break
     return diags
+
+
+def _calls_by_owner(program: "Program") -> dict:
+    """R-225: `{operation-name -> [its call/task entities, in program.order order]}`,
+    built in ONE O(entities) pass and memoized per program.
+
+    ~11 validators/linters previously rebuilt this exact per-op filter INSIDE their
+    own per-op loop — `{c for c in program.order if kind in (call,task) and
+    fact("in").payload[:1] == [op.name]}` — which is O(ops × all_calls), i.e. the
+    same map reconstructed once per (op, validator) and the single biggest avoidable
+    cost in the validate path on large programs. They now share this one pass.
+
+    Memoized ON the program instance (Program is an unhashable dataclass, so it
+    can't key a dict; the cache attribute is evicted with the program, no leak); the
+    (order, entity) counts are a cheap staleness key so any added/removed call or
+    operation forces a rebuild. A program is immutable across a `check`, so the map
+    stays valid for every validator in that pass."""
+    key = (len(program.order), len(program.entities))
+    cached = getattr(program, "_calls_by_owner_cache", None)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    owned: dict = {}
+    for cn in program.order:
+        ent = program.entities[cn]
+        if ent.kind not in ("call", "task"):
+            continue
+        inr = ent.fact("in")
+        if inr and inr.payload:
+            owned.setdefault(inr.payload[0], []).append(ent)
+    try:
+        program._calls_by_owner_cache = (key, owned)
+    except (AttributeError, TypeError):
+        pass  # a future __slots__ Program: skip caching, still correct
+    return owned
 
 
 def lint(program: Program) -> list:
@@ -7712,12 +7726,7 @@ def _validate_untrusted_loop_bounds(program: Program) -> None:
         labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
         if not labels:
             continue
-        owned = {
-            program.entities[c].name: program.entities[c]
-            for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        }
+        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         # value -> declared type, from inputs, lets, and owned-call outputs.
         value_type: dict = {}
         for r in op.facts("in"):
@@ -8114,10 +8123,7 @@ def _validate_typestate(program: Program) -> None:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
             continue
-        calls = {program.entities[c].name: program.entities[c]
-                 for c in program.order
-                 if program.entities[c].kind in ("call", "task")
-                 and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]}
+        calls = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         value_state = {}  # value name -> known current state
         for row in op.rows:
             if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
@@ -8229,10 +8235,7 @@ def _validate_regions(program: Program) -> None:
                     return True
             return False
 
-        calls = {program.entities[c].name: program.entities[c]
-                 for c in program.order
-                 if program.entities[c].kind in ("call", "task")
-                 and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]}
+        calls = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         allocated, released, var_region = set(), set(), {}
         for row in op.rows:
             # SS1561: a value allocated in a region used after its release
@@ -8515,12 +8518,7 @@ def _validate_transfer_moves(program: Program) -> None:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
             continue
-        calls = {
-            program.entities[c].name: program.entities[c]
-            for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        }
+        calls = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
         owned: set = set()
         for c in calls.values():
             for o in c.facts("owns"):
@@ -8869,11 +8867,7 @@ def _validate_entry_scope(program: Program) -> None:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
             continue
-        owned = [
-            program.entities[c] for c in program.order
-            if program.entities[c].kind in ("call", "task")
-            and (program.entities[c].fact("in") or Row("", "", [], 0)).payload[:1] == [op.name]
-        ]
+        owned = list(_calls_by_owner(program).get(op.name, ()))
         # WS2-050 is about call-result (`out`) and `catch` scope specifically;
         # plain `let` ordering is governed by `_validate_let_forward_refs`.
         # Only consider a binding whose producing `do`/`join`/`poll` actually
