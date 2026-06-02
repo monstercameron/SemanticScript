@@ -928,6 +928,26 @@ static int32_t create_controls(SSGuiSession *session) {
     return SS_GUI_OK;
 }
 
+/* R-266: when a window is destroyed, Win32 auto-destroys its child controls, but
+ * the cached SSGuiControlState.hwnd values stay non-NULL — a later control op
+ * would SendMessageW to a destroyed (and possibly OS-recycled) HWND. Tombstone
+ * every control of the window by clearing its hwnd so ensure_control_kind rejects
+ * it (SS_GUI_ERR_NOT_FOUND) instead of messaging a stale handle. */
+static void tombstone_window_controls(SSGuiSession *session,
+                                      const SSGuiWindowState *window) {
+    size_t index;
+
+    if (session == NULL || window == NULL) {
+        return;
+    }
+
+    for (index = 0; index < session->control_count; ++index) {
+        if (session->controls[index].window == window) {
+            session->controls[index].hwnd = NULL;
+        }
+    }
+}
+
 static void destroy_remaining_windows(SSGuiSession *session) {
     size_t index;
 
@@ -941,6 +961,7 @@ static void destroy_remaining_windows(SSGuiSession *session) {
             DestroyWindow(hwnd);
         }
         session->windows[index].hwnd = NULL;
+        tombstone_window_controls(session, &session->windows[index]);
     }
 }
 
@@ -968,7 +989,10 @@ static int32_t ensure_control_kind(
     }
 
     control = find_control_state(session, control_id);
-    if (control == NULL || control->hwnd == NULL) {
+    /* R-266: !IsWindow rejects a stale hwnd whose window was destroyed (e.g. the
+     * user closed it via WM_DESTROY without going through ss_gui_window_close, so
+     * the tombstone did not run) — never SendMessageW to a dead/recycled handle. */
+    if (control == NULL || control->hwnd == NULL || !IsWindow(control->hwnd)) {
         return SS_GUI_ERR_NOT_FOUND;
     }
     if (control->config->kind != expected_kind) {
@@ -1543,6 +1567,10 @@ int32_t ss_gui_window_close(SSGuiSession *session, SSGuiWindowId window_id) {
     }
 
     DestroyWindow(window->hwnd);
+    /* R-266: Win32 destroyed the children with the parent — tombstone their cached
+     * hwnds (and the window's) so no later control op messages a stale handle. */
+    tombstone_window_controls(session, window);
+    window->hwnd = NULL;
     return SS_GUI_OK;
 }
 
