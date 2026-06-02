@@ -12586,15 +12586,23 @@ def _runtime_cache_key(resolved: dict, platform: str, compiler_id: str,
 
 
 def _runtime_lib_cache_path(lib: dict, platform: Optional[str] = None,
-                            compiler_id: Optional[str] = None) -> str:
+                            compiler_id: Optional[str] = None,
+                            target_triple: Optional[str] = None) -> str:
     """The cache file path for a runtime library, keyed per R-021. Pure: computes
     the path without compiling, so tests can assert that two platforms (or a
-    changed define) resolve to distinct paths."""
+    changed define) resolve to distinct paths.
+
+    R-253: the shared lib is compiled with `--target=<jit triple>` and loaded into
+    the JIT process, so it is ABI-bound to that triple. Fold the triple into the
+    key (mirroring the object cache's `|target=…`) so a cache dir shared across
+    ABIs (e.g. an x86_64-emulated JIT vs a native ARM64 default) can never serve a
+    wrong-arch DLL at the same path."""
     import os
     rt = _runtime_dir()
     plat = platform or _host_platform_name()
     resolved = _resolve_runtime_links(lib, plat)
     cid = compiler_id if compiler_id is not None else _compiler_identity(_find_c_compiler())
+    cid = f"{cid}|target={target_triple or 'host-default'}"
     key = _runtime_cache_key(resolved, plat, cid, rt)
     build_dir = os.path.join(_runtime_cache_dir(), "_build")
     return os.path.join(build_dir, f"{lib['name']}-{key}{_shared_lib_suffix()}")
@@ -12772,7 +12780,15 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     # full ABI-relevant input set, so existence of the keyed file means it was
     # built from exactly these inputs (no stale reuse, no mtime guessing).
     build_dir = os.path.join(_runtime_cache_dir(), "_build")
-    out = _runtime_lib_cache_path(lib, plat, _compiler_identity(cc))
+    # R-253: resolve the JIT target triple BEFORE the cache path so it is folded
+    # into the key — the DLL is compiled `--target=<jit_triple>` below and loaded
+    # into the JIT process, so the cached artifact is ABI-bound to that triple.
+    jit_triple = ""
+    try:
+        jit_triple = llvm.get_default_triple() or ""
+    except Exception:
+        jit_triple = ""
+    out = _runtime_lib_cache_path(lib, plat, _compiler_identity(cc), jit_triple)
     if os.path.exists(out):
         # R-197: only reuse an artifact we published and that still matches its
         # content-hash sidecar. A pre-planted DLL/SO at the deterministic cache
@@ -12800,13 +12816,8 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     # x64-emulated (JIT triple x86_64-pc-windows-msvc) while clang defaults to
     # ARM64 — loading the native DLL fails WinError 193. Pin clang to the JIT
     # triple so the architectures agree (a no-op when they already match).
-    jit_triple = ""
-    try:
-        jit_triple = llvm.get_default_triple() or ""
-        if jit_triple:
-            cmd.append("--target=" + jit_triple)
-    except Exception:
-        pass
+    if jit_triple:  # R-253: resolved above and already folded into the cache key
+        cmd.append("--target=" + jit_triple)
     cmd += sources
     for inc in resolved["include"]:
         cmd.append("-I" + _runtime_link_path(inc))

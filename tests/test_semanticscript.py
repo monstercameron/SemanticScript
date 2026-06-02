@@ -12766,7 +12766,11 @@ def test_r021_built_runtime_lib_uses_keyed_path():
     lib = _manifest_library("ss_runtime")
     built = semanticscript._ensure_runtime_lib(lib)
     assert built and os.path.exists(built)
-    expected = semanticscript._runtime_lib_cache_path(lib)
+    # R-253: the keyed path folds in the JIT target triple (the lib is compiled
+    # `--target=<triple>` and loaded into the JIT process), so recompute with it.
+    triple = semanticscript.llvm.get_default_triple()
+    expected = semanticscript._runtime_lib_cache_path(
+        lib, None, semanticscript._compiler_identity(semanticscript._find_c_compiler()), triple)
     assert os.path.realpath(built) == os.path.realpath(expected)
     # the keyed name carries a 16-hex-char digest suffix
     import re
