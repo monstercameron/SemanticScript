@@ -15856,23 +15856,61 @@ def cmd_fmt(args) -> int:
     return 0
 
 
+def _fix_edits_for(diag, program) -> list:
+    """DX-04: machine-applicable edits for a diagnostic, where one is deterministic
+    and safe. Each edit is a content-addressed row/entity removal (matched by text
+    at apply time, so it survives line drift and a stale plan fails closed):
+
+      * SS0803 — an error case declared but never constructed/matched: remove the
+        whole entity (every row whose subject is that case name).
+      * SS0900 over-declared `effect` — the op declares an effect it never performs:
+        remove that one `effect <action> <resource>` row. (Parsed from the stable
+        warning text this tool emits.)
+    Other SS0900 warnings (authority-not-covered, dead label, unused call, …) are
+    not single safe mechanical edits, so they stay advisory."""
+    import re
+    if diag.code == "SS0803" and diag.entity:
+        return [{"op": "removeEntity", "entity": diag.entity, "code": "SS0803",
+                 "rationale": f"remove the unused error case {diag.entity!r}"}]
+    if diag.code == "SS0900":
+        m = re.match(r"^(\w+): declares the effect `(\S+) (\S+)` but never performs it",
+                     diag.message or "")
+        if m:
+            op, action, resource = m.group(1), m.group(2), m.group(3)
+            return [{"op": "removeRow", "code": "SS0900",
+                     "row": f"{op} effect {action} {resource}",
+                     "rationale": f"remove the over-declared effect "
+                                  f"`{action} {resource}` from {op!r}"}]
+    return []
+
+
 def cmd_fix(args) -> int:
     """Derive a repair plan from lint diagnostics (sem.fixPlan.v1). Blocker-first
-    by default; `--include-warnings` adds cleanup guidance. The plan is
-    suggestions-only (machine-applicable auto-edits are future work)."""
+    by default; `--include-warnings` adds cleanup guidance.
+
+    DX-04: where a diagnostic has a deterministic, safe repair (SS0803 dead error
+    case, SS0900 over-declared effect), the plan now carries machine-applicable
+    `edits` and sets `planUsable: true`, so `patch` can close the loop. Everything
+    else stays advisory (suggestions-only)."""
+    import os
     program = parse_compact(_read_source(args.path))
     diags = lint(program)
     targeted = (diags if getattr(args, "include_warnings", False)
                 else [d for d in diags if d.severity == "error"])
-    items = []
+    items, edits = [], []
     for d in targeted:
         entry = DIAGNOSTICS.get(d.code, {})
         items.append({"code": d.code, "severity": d.severity, "line": d.line,
                       "message": d.message, "found": entry.get("found"),
                       "suggested": entry.get("suggested")})
-    status = "suggestions-only" if items else "ok"
+        edits.extend(_fix_edits_for(d, program))
+    plan_usable = bool(edits)
+    status = ("applyable" if plan_usable
+              else "suggestions-only" if items else "ok")
     sys.stdout.write(_json_envelope(
-        "sem.fixPlan.v1", status=status, planUsable=False, diagnostics=items) + "\n")
+        "sem.fixPlan.v1", status=status, planUsable=plan_usable,
+        path=(os.path.abspath(args.path) if args.path != "-" else "-"),
+        edits=edits, diagnostics=items) + "\n")
     return 0
 
 
@@ -15923,13 +15961,81 @@ def cmd_patch(args) -> int:
             suggestions=len(plan.get("diagnostics", []) or []),
             note="plan is suggestions-only; apply the suggested repairs manually") + "\n")
         return 0
-    # planUsable plans would be applied/dry-run here once semanticscript emits
-    # machine-applicable edits; until then an actionable plan is unexpected input.
+    # DX-04: apply the machine-applicable edits (removeEntity / removeRow). Edits
+    # are content-addressed (matched by row/entity text, not line number), so a
+    # stale plan that no longer matches fails closed instead of corrupting source.
+    src_path = plan.get("path")
+    if not src_path or src_path == "-" or not os.path.isfile(src_path):
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="no-source", applied=0, dryRun=dry_run,
+            plan=plan_path, path=src_path,
+            note="the plan's source `path` is missing/unreadable (or stdin `-`); "
+                 "regenerate with `fix --json <file>`") + "\n")
+        return 2
+    edits = plan.get("edits", []) or []
+    try:
+        with open(src_path, encoding="utf-8") as fh:
+            original = fh.read()
+    except OSError as exc:
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="no-source", applied=0, dryRun=dry_run,
+            plan=plan_path, path=src_path, note=str(exc)) + "\n")
+        return 2
+
+    remove_entities = {e["entity"] for e in edits
+                       if e.get("op") == "removeEntity" and e.get("entity")}
+    remove_rows = [e["row"] for e in edits if e.get("op") == "removeRow" and e.get("row")]
+    remove_rows_norm = {tuple(r.split()) for r in remove_rows}
+    pending_rows = set(remove_rows_norm)
+    kept, dropped = [], []
+    for line in original.split("\n"):
+        toks = line.split()
+        if toks and toks[0] in remove_entities:          # whole-entity removal
+            dropped.append(line)
+            continue
+        key = tuple(toks)
+        if key in pending_rows:                           # single-row removal (once)
+            dropped.append(line)
+            pending_rows.discard(key)
+            continue
+        kept.append(line)
+    new_source = "\n".join(kept)
+
+    # an edit that matched nothing means the plan is stale — fail closed.
+    unmatched = ([e for e in remove_entities
+                  if not any(l.split()[:1] == [e] for l in dropped)]
+                 + [" ".join(r) for r in pending_rows])
+    if unmatched:
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="stale-plan", applied=0, dryRun=dry_run,
+            plan=plan_path, path=src_path, unmatched=sorted(unmatched),
+            note="an edit no longer matches the source (it changed since `fix`); "
+                 "regenerate the plan") + "\n")
+        return 2
+
+    # re-validate the edited source before writing — never persist a broken file.
+    try:
+        parse_compact(new_source)
+    except EavError as exc:
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=False, status="would-break", applied=0, dryRun=dry_run,
+            plan=plan_path, path=src_path,
+            note=f"applying the plan would not parse: {exc}") + "\n")
+        return 2
+
+    if dry_run:
+        sys.stdout.write(_json_envelope(
+            "sem.patch.v1", ok=True, status="dry-run", applied=0,
+            wouldApply=len(edits), dryRun=True, plan=plan_path, path=src_path,
+            removedLines=len(dropped)) + "\n")
+        return 0
+    with open(src_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(new_source if new_source.endswith("\n") else new_source + "\n")
     sys.stdout.write(_json_envelope(
-        "sem.patch.v1", ok=False, status="unsupported-plan", applied=0,
-        dryRun=dry_run, plan=plan_path,
-        note="machine-applicable plan edits are not implemented yet") + "\n")
-    return 2
+        "sem.patch.v1", ok=True, status="applied", applied=len(edits),
+        dryRun=False, plan=plan_path, path=src_path,
+        removedLines=len(dropped)) + "\n")
+    return 0
 
 
 def cmd_query(args) -> int:
