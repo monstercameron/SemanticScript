@@ -6679,6 +6679,108 @@ def _validate_numeric_precision(program: Program) -> None:
 
 _TRUST_LABELS = ("rawExternal", "validated", "trustedInternal", "secret")
 _UNTRUSTED_AT_SINK = ("rawExternal", "secret")
+_BOUNDARY_LABELS = ("validated", "trustedInternal")
+
+
+def _provenance_taint(program: Program, label_of: dict, seed_labels) -> dict:
+    """Per-operation value-PROVENANCE taint (R-070/R-220/R-221/R-219).
+
+    Returns `{op_name -> set(tainted value names)}`. A value is tainted if its
+    declared type carries one of `seed_labels` (e.g. rawExternal/secret), OR it is
+    derived from such a source through: a call `out` whose out type does not cross
+    a trust boundary; a `set <tgt> <src...>` write (R-220); or the result of a
+    callee summarized as returning tainted provenance (R-221, interprocedural).
+    Iterated to a global fixpoint.
+
+    Shared by the trust-flow sink check (seed rawExternal+secret -> SS3070) and the
+    secret-flow observable-sink check (seed secret only -> SS3072), so a laundering
+    wrapper — identity transform, string.concat, record getter, mutable-binding
+    bounce, or a helper returning module-global state — cannot strip the label and
+    smuggle the value past a sink as a plain type."""
+    def _seed(type_name):
+        return label_of.get(type_name) in seed_labels
+
+    storage_tainted = {
+        program.entities[n].name for n in program.order
+        if program.entities[n].kind == "storage"
+        and (program.entities[n].fact("type") is not None
+             and program.entities[n].fact("type").payload
+             and _seed(program.entities[n].fact("type").payload[0]))
+    }
+    op_calls: dict = {}
+    for n in program.order:
+        c = program.entities[n]
+        if c.kind in ("call", "task"):
+            owner = c.fact("in")
+            if owner and owner.payload:
+                op_calls.setdefault(owner.payload[0], []).append(c)
+    # Process ALL ops (not just those with calls): a leaf helper that only reads a
+    # storage and returns it has no internal calls but must still be summarized.
+    all_ops = [program.entities[n] for n in program.order
+               if program.entities[n].kind in ("operation", "function")]
+
+    def _callee_returns_tainted(callee, returns_tainted):
+        # match the call's invokes target against the returns-tainted op set,
+        # resolving a module qualifier by its leaf (cf. _sink_key / R-224).
+        return callee in returns_tainted or callee.rsplit(".", 1)[-1] in returns_tainted
+
+    op_tainted: dict = {}
+    returns_tainted: set = set()
+    summary_stable = False
+    while not summary_stable:                   # R-221: interprocedural fixpoint
+        summary_stable = True
+        for op in all_ops:
+            op_name = op.name
+            calls = op_calls.get(op_name, [])
+            tainted = set(storage_tainted)
+            for r in op.facts("in"):            # tainted operation parameters
+                if len(r.payload) >= 2 and _seed(r.payload[1]):
+                    tainted.add(r.payload[0])
+            for r in op.facts("let"):           # tainted local bindings
+                if len(r.payload) >= 3 and _seed(r.payload[2]):
+                    tainted.add(r.payload[0])
+            changed = True
+            while changed:                      # conservative per-op fixpoint
+                changed = False
+                for c in calls:
+                    inv = c.fact("invokes")
+                    callee = inv.payload[0] if inv and inv.payload else ""
+                    arg_tainted = any(
+                        len(a.payload) >= 3
+                        and (a.payload[2] in tainted or _seed(a.payload[1]))
+                        for a in c.facts("arg"))
+                    # R-221: a callee that returns tainted provenance launders its
+                    # result even when no tainted arg is passed.
+                    if not (arg_tainted
+                            or _callee_returns_tainted(callee, returns_tainted)):
+                        continue
+                    for o in c.facts("out"):
+                        if not o.payload:
+                            continue
+                        out_type = o.payload[1] if len(o.payload) >= 2 else None
+                        if label_of.get(out_type) in _BOUNDARY_LABELS:
+                            continue            # crossed a trust boundary -> clean
+                        if o.payload[0] not in tainted:
+                            tainted.add(o.payload[0])
+                            changed = True
+                # R-220: taint also flows through `set <tgt> <src...>` writes.
+                for sr in op.facts("set"):
+                    if (len(sr.payload) >= 2 and sr.payload[0] not in tainted
+                            and any(s in tainted for s in sr.payload[1:])):
+                        tainted.add(sr.payload[0])
+                        changed = True
+            op_tainted[op_name] = tainted
+            # R-221: summarize whether this op returns tainted provenance and, if so,
+            # re-iterate so the summary propagates to its callers.
+            if op_name not in returns_tainted:
+                out_row = op.fact("out")
+                out_type = out_row.payload[0] if out_row and out_row.payload else None
+                if (label_of.get(out_type) not in _BOUNDARY_LABELS
+                        and any(r.payload and r.payload[0] in tainted
+                                for r in op.facts("return"))):
+                    returns_tainted.add(op_name)
+                    summary_stable = False
+    return op_tainted
 
 
 def _sink_key(ent: Entity) -> str:
@@ -6727,111 +6829,11 @@ def _validate_trust_flow(program: Program) -> None:
     if not sink_slots:
         return
 
-    # R-070: value-PROVENANCE taint, not just the declared type at the sink. A
-    # value is tainted if its declared type is rawExternal/secret OR it is the
-    # `out` of a call that received a tainted input and did NOT cross a trust
-    # boundary — i.e. its out type does not carry a `validated`/`trustedInternal`
-    # label. So a laundering wrapper that takes a raw string and returns a plain
-    # `String` cannot erase the taint (an unknown/user transform PRESERVES it),
-    # and only an op whose output type is the declared trusted type cleans it.
-    _BOUNDARY_LABELS = ("validated", "trustedInternal")
-
-    def _seed_tainted(type_name):
-        return label_of.get(type_name) in _UNTRUSTED_AT_SINK
-
-    storage_tainted = {
-        program.entities[n].name for n in program.order
-        if program.entities[n].kind == "storage"
-        and (program.entities[n].fact("type") is not None
-             and program.entities[n].fact("type").payload
-             and _seed_tainted(program.entities[n].fact("type").payload[0]))
-    }
-    op_calls: dict = {}
-    for n in program.order:
-        c = program.entities[n]
-        if c.kind in ("call", "task"):
-            owner = c.fact("in")
-            if owner and owner.payload:
-                op_calls.setdefault(owner.payload[0], []).append(c)
-    # R-221: taint is interprocedural on RETURN values. An op that returns a value
-    # carrying untrusted provenance (e.g. it read a module-global rawExternal/secret
-    # storage and returned it) without upgrading the out type to a trust boundary
-    # launders that value at EVERY call site, regardless of whether the call passed
-    # a tainted arg. We compute an `returns_tainted` summary set and iterate the
-    # per-op taint AND the summary together to a global fixpoint. Process ALL ops
-    # (not just those with calls): a leaf helper that only reads a storage and
-    # returns it has no internal calls but must still be summarized.
-    all_ops = [program.entities[n] for n in program.order
-               if program.entities[n].kind in ("operation", "function")]
-
-    def _callee_returns_tainted(callee, returns_tainted):
-        # match the call's invokes target against the returns-tainted op set,
-        # resolving a module qualifier by its leaf (cf. _sink_key / R-224).
-        return callee in returns_tainted or callee.rsplit(".", 1)[-1] in returns_tainted
-
-    op_tainted: dict = {}
-    returns_tainted: set = set()
-    summary_stable = False
-    while not summary_stable:                   # R-221: interprocedural fixpoint
-        summary_stable = True
-        for op in all_ops:
-            op_name = op.name
-            calls = op_calls.get(op_name, [])
-            tainted = set(storage_tainted)
-            for r in op.facts("in"):            # tainted operation parameters
-                if len(r.payload) >= 2 and _seed_tainted(r.payload[1]):
-                    tainted.add(r.payload[0])
-            for r in op.facts("let"):           # tainted local bindings
-                if len(r.payload) >= 3 and _seed_tainted(r.payload[2]):
-                    tainted.add(r.payload[0])
-            changed = True
-            while changed:                      # conservative per-op fixpoint
-                changed = False
-                for c in calls:
-                    inv = c.fact("invokes")
-                    callee = inv.payload[0] if inv and inv.payload else ""
-                    arg_tainted = any(
-                        len(a.payload) >= 3
-                        and (a.payload[2] in tainted or _seed_tainted(a.payload[1]))
-                        for a in c.facts("arg"))
-                    # R-221: a callee that returns tainted provenance launders its
-                    # result even when no tainted arg is passed.
-                    if not (arg_tainted
-                            or _callee_returns_tainted(callee, returns_tainted)):
-                        continue
-                    for o in c.facts("out"):
-                        if not o.payload:
-                            continue
-                        out_type = o.payload[1] if len(o.payload) >= 2 else None
-                        if label_of.get(out_type) in _BOUNDARY_LABELS:
-                            continue            # crossed a trust boundary -> clean
-                        if o.payload[0] not in tainted:
-                            tainted.add(o.payload[0])
-                            changed = True
-                # R-220: taint also flows through `set <tgt> <src...>` (mutable
-                # storage / mutable-let writes), not only call `out` facts. Without
-                # this, bouncing a rawExternal/secret value through a plain-typed
-                # mutable binding and reading it back launders it before a SQL/path/
-                # command/HTML sink, defeating SS3070. If any source is tainted the
-                # target becomes tainted; iterated alongside the call flow.
-                for sr in op.facts("set"):
-                    if (len(sr.payload) >= 2 and sr.payload[0] not in tainted
-                            and any(s in tainted for s in sr.payload[1:])):
-                        tainted.add(sr.payload[0])
-                        changed = True
-            op_tainted[op_name] = tainted
-            # R-221: summarize whether this op returns tainted provenance. A returned
-            # value that is tainted, where the op's out type is not a trust boundary,
-            # makes the op `returns_tainted` — re-iterate the outer fixpoint so the
-            # new summary propagates to its callers.
-            if op_name not in returns_tainted:
-                out_row = op.fact("out")
-                out_type = out_row.payload[0] if out_row and out_row.payload else None
-                if (label_of.get(out_type) not in _BOUNDARY_LABELS
-                        and any(r.payload and r.payload[0] in tainted
-                                for r in op.facts("return"))):
-                    returns_tainted.add(op_name)
-                    summary_stable = False
+    # R-070/R-220/R-221: trust is value PROVENANCE, not just the declared type at
+    # the sink. A laundering wrapper (identity transform, string.concat, a mutable-
+    # binding bounce, or a helper returning module-global state) cannot erase the
+    # rawExternal/secret label. See _provenance_taint for the shared fixpoint.
+    op_tainted = _provenance_taint(program, label_of, _UNTRUSTED_AT_SINK)
 
     for n in program.order:
         call = program.entities[n]
@@ -6844,7 +6846,7 @@ def _validate_trust_flow(program: Program) -> None:
             continue
         owner = call.fact("in")
         tainted = op_tainted.get(owner.payload[0] if owner and owner.payload else None,
-                                 storage_tainted)
+                                 set())
         for a in call.facts("arg"):
             if len(a.payload) >= 3 and a.payload[0] in slots:
                 lbl = label_of.get(a.payload[1])
@@ -7050,6 +7052,20 @@ def _validate_secret_flow(program: Program) -> None:
     if not secret_types:
         return
 
+    # R-219: secret leakage is value PROVENANCE, not only the declared type at the
+    # sink. Without this, passing a secret through ANY op that returns a plain
+    # `String` (identity wrapper, string.concat, a record getter, a mutable-binding
+    # bounce, a helper returning a module-global secret) strips the declared
+    # `secret` label and reaches an observable sink unflagged. Build the per-op
+    # secret-taint map with the shared provenance fixpoint (seeded from `secret`
+    # types) and test taint alongside the declared type at every sink below.
+    label_of: dict = {}
+    for n in program.order:
+        for r in program.entities[n].facts("typeTrust"):
+            if r.payload and r.payload[0] in _TRUST_LABELS:
+                label_of[program.entities[n].name] = r.payload[0]
+    secret_tainted = _provenance_taint(program, label_of, ("secret",))
+
     # R-075: a record that (transitively) contains a secret-typed field cannot be
     # compared by a normal equality either — deep fieldwise equality (_value_eq)
     # would strcmp the secret field, reopening the timing side-channel SS3074
@@ -7129,6 +7145,11 @@ def _validate_secret_flow(program: Program) -> None:
         if ent.kind in ("call", "task"):
             inv = ent.fact("invokes")
             target = inv.payload[0] if inv and inv.payload else ""
+            # R-219: the set of value names carrying secret provenance in THIS call's
+            # owning operation (a plain-typed value laundered from a secret source).
+            _owner = ent.fact("in")
+            op_secret_tainted = secret_tainted.get(
+                _owner.payload[0] if _owner and _owner.payload else None, set())
             # WS3-108: a credential-named environment variable mints a secret
             # value. Calling the non-secret getter for API_KEY/TOKEN/PASSWORD/...
             # is rejected before the value can be accidentally logged.
@@ -7154,12 +7175,14 @@ def _validate_secret_flow(program: Program) -> None:
                     # user data that would be rendered into the document
                     if target == "html.render" and len(a.payload) >= 1 and a.payload[0] == "template":
                         continue
-                    if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                    if len(a.payload) >= 2 and (
+                            a.payload[1] in secret_types
+                            or (len(a.payload) >= 3 and a.payload[2] in op_secret_tainted)):
                         _val = a.payload[2] if len(a.payload) >= 3 else "?"
                         raise EavError(
                             f"call {ent.name!r} writes a secret value {_val!r} "
                             f"to the observable sink {target!r}; a secret is usable but "
-                            f"never observable (README §30.1.1, R-072)",
+                            f"never observable (README §30.1.1, R-072/R-219)",
                             ent.line, code="SS3072")
 
             # R-072: error-case constructor — a call that invokes ErrorDomain.ErrorCase
@@ -7176,13 +7199,15 @@ def _validate_secret_flow(program: Program) -> None:
                 domain_leaf = error_domain.rsplit(".", 1)[-1]    # strip `Mod.` prefix
                 if error_domain in error_types or domain_leaf in error_types:
                     for a in ent.facts("arg"):
-                        if len(a.payload) >= 2 and a.payload[1] in secret_types:
+                        if len(a.payload) >= 2 and (
+                                a.payload[1] in secret_types
+                                or (len(a.payload) >= 3 and a.payload[2] in op_secret_tainted)):
                             _val = a.payload[2] if len(a.payload) >= 3 else "?"
                             raise EavError(
                                 f"call {ent.name!r} passes a secret value {_val!r} "
                                 f"into the error constructor {target!r}; secrets in error "
                                 f"payloads can surface in logs, responses, and diagnostics "
-                                f"(README §30.1.1, R-072)",
+                                f"(README §30.1.1, R-072/R-219)",
                                 ent.line, code="SS3072")
 
             # R-072: clientResponse sink — a secret reaching a client-response parameter
@@ -7191,7 +7216,8 @@ def _validate_secret_flow(program: Program) -> None:
             if resp_slots:
                 for a in ent.facts("arg"):
                     if (len(a.payload) >= 2 and a.payload[0] in resp_slots
-                            and a.payload[1] in secret_types):
+                            and (a.payload[1] in secret_types
+                                 or (len(a.payload) >= 3 and a.payload[2] in op_secret_tainted))):
                         _val = a.payload[2] if len(a.payload) >= 3 else "?"
                         raise EavError(
                             f"call {ent.name!r} sends a secret value {_val!r} "

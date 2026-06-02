@@ -76,6 +76,34 @@ def _secret_error_ctor_program(invoke):
     return chr(10).join(rows) + chr(10)
 
 
+def _secret_launder_program(body_type):
+    # a `body_type` value flows through the plain-String wrapper `clean` and the
+    # laundered result reaches console.writeLine.
+    return chr(10).join([
+        "Secret is alias", "Secret for String", "Secret typeTrust secret",
+        "clean is operation", f"clean in raw {body_type}", "clean out String",
+        "clean let r immutable Int32 0", "clean return r",
+        "handler is operation", "handler out ExitCode", "handler async no",
+        'handler purpose "p"', 'handler invariant "i"', f"handler in body {body_type}",
+        "handler let okCode immutable ExitCode 0",
+        "handler do launderCall", "handler do sinkCall", "handler return okCode",
+        "launderCall is call", "launderCall in handler", "launderCall invokes clean",
+        f"launderCall arg raw {body_type} body", "launderCall out cleaned String",
+        "sinkCall is call", "sinkCall in handler", "sinkCall invokes console.writeLine",
+        "sinkCall arg text String cleaned",
+        "ExitCode is alias", "ExitCode for Int32",
+    ]) + chr(10)
+
+
+def test_r219_secret_laundered_through_plain_wrapper_rejected():
+    # R-219: secret leakage is value PROVENANCE, not just the declared type at the
+    # sink. A secret laundered through a wrapper that returns a plain String still
+    # carries secret provenance, so reaching console.writeLine is SS3072 — a plain
+    # value at the same sink is unaffected (no false positive).
+    assert "SS3072" in _codes_or_raise(_secret_launder_program("Secret"))
+    assert "SS3072" not in _codes_or_raise(_secret_launder_program("String"))
+
+
 def test_r224_secret_into_error_case_constructor_rejected():
     # R-224: the owning error is the segment BEFORE the case, so a module-qualified
     # constructor (`Mod.LoginError.BadToken`) whose first segment is the module —
