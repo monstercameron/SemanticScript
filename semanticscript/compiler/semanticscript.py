@@ -3521,9 +3521,14 @@ def scaffold(pattern: str) -> str:
             'scaffoldModule invariant "Handles the write failure path"\n\n'
             "ExitCode is alias\nExitCode for Int32\n\n"
             "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
+            # DX-03: the failure path is handled by `catch` + `branch ifError`
+            # below, which use the error TYPE — declaring an error *case* here that
+            # is never constructed or matched trips SS0803 under `check --strict`, so
+            # the shipped scaffold would not pass the strict gate it is meant to
+            # model. A bare error type is the right shape for a caught-and-branched
+            # write failure. (Add a `<Case>.make` construction + matching if you want
+            # to demonstrate data-carrying cases — see DX-01.)
             "ConsoleWriteError is error\n\n"
-            "WriteFailed is errorCase\nWriteFailed of ConsoleWriteError\n"
-            "WriteFailed payload Int32\n\n"
             "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
             "main uses stdoutWriter\nmain memory heap no\nmain async no\n"
             'main purpose "Write a line; return 1 on failure"\n'
