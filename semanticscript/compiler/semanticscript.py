@@ -338,7 +338,7 @@ DIAGNOSTICS.update({
                "suggested": "Convert one operand explicitly (e.g. math.convert*) so both operands share a width; EAV has no implicit integer widening (README §10.6)."},
     "SS3111": {"tier": "T1", "summary": "Constant integer UB (div-by-zero / over-wide shift).",
                "found": "A divide/modulo by a constant 0, or a shift by a constant >= the operand width.",
-               "suggested": "Constant division/modulo by zero and shifts >= the type width are undefined — fix the constant (README §10.6/§33.5)."},
+               "suggested": "Constant division/modulo by zero and shifts >= the type width are rejected before lowering. Fix the constant; to exercise the runtime divide/modulo guard, make the divisor a non-constant value that may be zero (README §10.6/§33.5)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -454,6 +454,14 @@ DIAGNOSTICS.update({
                         "resolve to a null address and crash at first call (R-105).",
                "suggested": "Fix the symbol name, or add a providing library to the "
                             "runtime manifest (README §26)."},
+    "SS1201": {"tier": "T1", "summary": "built-in call arg slot/type mismatch.",
+               "found": "A call to a built-in/stdlib intrinsic (e.g. math.divideInt64) "
+                        "that passes an unknown arg slot, omits a required one, or gives a "
+                        "slot the wrong type vs the target's .semsig signature — so it "
+                        "passes the structural `check` but fails the code generator at "
+                        "`run` (DX-09, the arg-slot sibling of SS1198/SS1199).",
+               "suggested": "Look the target up with `targets --signature <target>` (or "
+                            "`describe <target>`) and use its exact arg slot names/types."},
     "SS1199": {"tier": "T1", "summary": "console.write* argument type mismatch.",
                "found": "A `console.writeLine`/`writeIntegerLine`/`writeFloatLine` "
                         "call whose argument type does not match (e.g. an Int64 to "
@@ -1322,6 +1330,76 @@ def semsig_targets(program: Program) -> dict:
             if t and t.payload:
                 out[t.payload[0]] = ent
     return out
+
+
+_SEMSIG_SIG_CACHE: dict = {}
+
+
+def _semsig_signatures_for_module(module: str) -> dict:
+    """DX-08: load standard.<module>.semsig and return {target -> signature dict},
+    cached per module. A signature is {target, args:[{slot,type}], outSlot, out,
+    async, purpose, risk}. Empty dict if the module has no shipped .semsig."""
+    import os
+    if module in _SEMSIG_SIG_CACHE:
+        return _SEMSIG_SIG_CACHE[module]
+    sigs_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sigs")
+    path = os.path.join(sigs_dir, f"standard.{module}.semsig")
+    result: dict = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            prog = load_semsig(fh.read())
+    except (OSError, EavError):
+        _SEMSIG_SIG_CACHE[module] = result
+        return result
+    for tgt, ent in semsig_targets(prog).items():
+        args = [{"slot": r.payload[0], "type": r.payload[1]}
+                for r in ent.facts("arg") if len(r.payload) >= 2]
+        outr = ent.fact("out")
+        out_slot = None
+        out_type = None
+        if outr and outr.payload:
+            out_type = outr.payload[-1]                 # `out [slot] <Type>`
+            out_slot = outr.payload[0] if len(outr.payload) >= 2 else None
+
+        def _txt(name):
+            r = ent.fact(name)
+            return r.payload[0].strip('"') if r and r.payload else None
+
+        arow = ent.fact("async")
+        result[tgt] = {
+            "target": tgt,
+            "args": args,
+            "outSlot": out_slot,
+            "out": out_type,
+            "async": (arow.payload[0] if arow and arow.payload else None),
+            "purpose": _txt("purpose"),
+            "risk": _txt("risk"),
+        }
+    _SEMSIG_SIG_CACHE[module] = result
+    return result
+
+
+def _builtin_target_signature(target: str):
+    """DX-08: the declared signature of a built-in/stdlib intrinsic `target` (e.g.
+    `math.divideInt64` -> args left/right Int64, out Int64) from its
+    standard.<module>.semsig, or None if the target has no semsig contract. The
+    slot names/types are the exact ones `run` enforces, so an agent can look them
+    up via `describe`/`targets --signature` instead of guessing lhs/rhs."""
+    if "." not in target:
+        return None
+    module = target.split(".", 1)[0]
+    return _semsig_signatures_for_module(module).get(target)
+
+
+def _signature_doc_entry(sig: dict) -> dict:
+    """Represent a builtin .semsig target in the same JSON shape as docs --get."""
+    return {
+        "name": sig["target"],
+        "kind": "intrinsic",
+        "purpose": sig.get("purpose") or "",
+        "signature": sig,
+    }
 
 
 _TYPED_COMMENT_RE = re.compile(
@@ -2561,6 +2639,16 @@ _KIND_ORDER = [
 ]
 
 
+def _canonical_order_hint() -> str:
+    return (
+        "expected entity order: "
+        + " -> ".join(_KIND_ORDER)
+        + "; rows inside each entity: declaration rows -> metadata "
+          "(purpose/invariant/note/rationale/risk/example/tag/deprecated/owner) "
+          "-> operation body/steps -> forTarget/forPlatform/suppress"
+    )
+
+
 def _emit_rows(ent: Entity, row: Row, program: Program) -> list:
     """Render one row to source line(s), preserving island bodies indented
     (README ss22; never de-indent an island — the known fmt bug, WS4-005).
@@ -3554,7 +3642,7 @@ def graph(program: Program, kind: str, fmt: str = "dot") -> str:
     return f"digraph {kind} {{\n{body}\n}}\n"
 
 
-SCAFFOLD_PATTERNS = ("console-program", "fallible-write")
+SCAFFOLD_PATTERNS = ("console-program", "fallible-write", "fallible-operation")
 
 
 def scaffold(pattern: str) -> str:
@@ -3581,7 +3669,7 @@ def scaffold(pattern: str) -> str:
             "writeGreeting invokes console.writeLine\n"
             "writeGreeting arg text String greeting\n"
         )
-    if pattern == "fallible-write":
+    if pattern in ("fallible-write", "fallible-operation"):
         return (
             "Scaffold is project\nScaffold module scaffoldModule\n"
             "Scaffold target console\nScaffold entry main\n\n"
@@ -4223,6 +4311,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_console_arg_types(program))
     diags.extend(_lint_console_unlowerable_errors(program))
     diags.extend(_lint_result_nil_error_loss(program))
+    diags.extend(_lint_intrinsic_arg_slots(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
@@ -5745,6 +5834,70 @@ def _lint_result_nil_error_loss(program: Program) -> list:
                     f"lost. Use a pointer/handle OK type, or return the error through "
                     f"an explicit out-param (README §10.6, R-258).",
                     r.line, op.name))
+    return out
+
+
+def _lint_intrinsic_arg_slots(program: Program) -> list:
+    """DX-09: validate a call's args against the built-in target's .semsig
+    signature — the arg-slot sibling of SS1198/SS1199. An unknown slot, a missing
+    required slot, or a wrong-typed slot otherwise passes the structural `check`
+    and is only caught by the code generator at `run` (the guess-and-check loop:
+    an agent guessing `lhs`/`rhs` for math.divideInt64's `left`/`right` saw a false
+    green). Reject it at check (SS1201) and point at `targets --signature`.
+
+    Scope: `math.*` targets only — there the code generator reads each operand BY
+    its slot name (`arg("left")`/`arg("right")`/`arg("value")`), so the .semsig slot
+    names/types are authoritative and a wrong slot really does fail at run. Other
+    families (convert.*/buffer.*/http.*) lower their args POSITIONALLY, so any slot
+    name works and the .semsig names are only documentation — validating those
+    would false-positive. (The reported guess-and-check loop was math.divideInt64.)
+    """
+    out: list[Diagnostic] = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        target = inv.payload[0]
+        if not target.startswith("math."):
+            continue
+        sig = _builtin_target_signature(target)
+        if sig is None:
+            continue
+        sig_slots = {a["slot"]: a["type"] for a in sig["args"]}
+        call_args = {a.payload[0]: a for a in ent.facts("arg")
+                     if a.payload and len(a.payload) >= 1}
+        if not call_args:
+            continue  # no args supplied (e.g. a bare reference) — nothing to check
+        params = ", ".join(f"{s} {t}" for s, t in sig_slots.items()) or "(none)"
+        hint = f"see `targets --signature {target}`"
+        for slot, arow in call_args.items():
+            if slot not in sig_slots:
+                out.append(Diagnostic(
+                    "SS1201", "error",
+                    f"call {ent.name!r} passes arg {slot!r} to {target!r}, which has no "
+                    f"such parameter — its parameters are {params} ({hint})",
+                    arow.line, ent.name))
+        for slot, want in sig_slots.items():
+            if slot not in call_args:
+                out.append(Diagnostic(
+                    "SS1201", "error",
+                    f"call {ent.name!r} is missing required arg {slot!r} ({want}) of "
+                    f"{target!r} — its parameters are {params} ({hint})",
+                    ent.line, ent.name))
+                continue
+            arow = call_args[slot]
+            if len(arow.payload) >= 2:
+                got_t = _resolve_through_aliases(program, arow.payload[1])
+                want_t = _resolve_through_aliases(program, want)
+                if got_t != want_t:
+                    out.append(Diagnostic(
+                        "SS1201", "error",
+                        f"call {ent.name!r} passes {arow.payload[1]!r} to arg {slot!r} of "
+                        f"{target!r}, which expects {want!r} ({hint})",
+                        arow.line, ent.name))
     return out
 
 
@@ -14606,7 +14759,7 @@ SEM_SURFACES = (
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
-    "sem.build.v1", "sem.run.v1", "sem.error.v1",
+    "sem.build.v1", "sem.run.v1", "sem.error.v1", "sem.targetSignature.v1",
     # R-123: surfaces that were live but unlisted.
     "sem.bench.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
     "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
@@ -14830,7 +14983,9 @@ EAV_AGENT_RULES = (
     "column-2 predicate. No expressions/infix/parens/commas/braces. Every entity "
     "opens with `<name> is <kind>`; calls are multi-row (is call / in OP / invokes "
     "TARGET / arg / out|catch|discards). Effects need a covering `uses`+`grants` "
-    "capability. Stable loop: check -> fix --plan -> patch -> fmt --check -> test. "
+    "capability; this is a static source contract, not a runtime sandbox token. "
+    "Stable loop: check (static-only) -> fix --plan -> patch only when "
+    "`planUsable:true` -> fmt --check -> test -> run/build. "
     "Run (JIT) with `semanticscript run <file|dir>`; build a native exe (console "
     "or webServer) with `semanticscript build <path> -o out` (clang/zig needed for "
     "the native runtime). The compiler is self-contained under `semanticscript/`; "
@@ -14849,10 +15004,12 @@ EAV_SKILLS = {
         "body": (
             "Start every EAV task by loading the rules (`semanticscript agent-docs`) "
             "and the syntax skill (`semanticscript skills eav-syntax`). Inspect a "
-            "program before editing: `check --json` (parse+lint), `symbols`/`context` "
+            "program before editing: `check --json` (static parse+lint only; a clean "
+            "check is not a run/build proof), `symbols`/`context` "
             "(entity graph + project envelope), `graph`/`slice` (dependencies), `size` "
             "(footprint). Edit with the stable loop: `check` -> `fix --plan` (repair "
-            "plan from diagnostics) -> `patch` (apply) -> `fmt --check` -> `test`. "
+            "plan from diagnostics) -> `patch` only when `planUsable:true` -> "
+            "`fmt --check` -> `test` -> `run`/`build`. "
             "Never hand-edit IR; the compiler owns lowering."),
     },
     "eav-syntax": {
@@ -14867,7 +15024,11 @@ EAV_SKILLS = {
             "\"why\"`. An operation declares `out`, `effect`, `uses` (a capability that "
             "`grants` the effect), and `do <call>` steps. Native ABIs bind through "
             "`body runtimeBinding <symbol>` with the typed contract in a §26 `.semsig`. "
-            "Islands: `body json|sql|html` + indented content embed literally."),
+            "Canonical entity order is project -> module -> capability -> error -> "
+            "errorCase -> alias -> record -> enum -> operationType -> storage -> "
+            "htmlTemplate -> webServer -> operation/function -> call -> task -> cleanup "
+            "-> intrinsic -> platform -> semsig. Islands: `body json|sql|html` + "
+            "indented content embed literally."),
     },
     "eav-run": {
         "summary": "JIT with `semanticscript run`; native exe with `semanticscript build`.",
@@ -14877,8 +15038,9 @@ EAV_SKILLS = {
             "standalone native executable with `semanticscript build <path> -o out` — "
             "works for `target console` and `target webServer`; needs clang or `zig cc` "
             "for the native runtime libs (sqlite/http/json/bcrypt/...). A project is a "
-            "directory with `build.sem` + `src/`. See `apps/` for runnable examples and "
-            "`docs/getting-started.md` for a hello-world."),
+            "directory with `build.sem` + `src/`. `check` is the static source lane; "
+            "always run or build to prove executable behavior. See `apps/` for runnable "
+            "examples and `docs/getting-started.md` for a hello-world."),
     },
     "eav-toolchain": {
         "summary": "The CLI + the stdio MCP server surface.",
@@ -14888,7 +15050,8 @@ EAV_SKILLS = {
             "Agent: `agent-docs`, `skills`, `search <query>` (relevance-ranked retrieval "
             "across diagnostics/skills/templates/the language guide/a project — the "
             "agentic search), `explain <CODE>`, `docs <file>` (per-file entity docs/get/"
-            "search), `query <dim>`, `index`, `status`, `fix --plan` + `patch`/"
+            "search; `docs --get <builtin>` also returns stdlib signatures), "
+            "`query <dim>`, `index`, `status`, `fix --plan` + `patch`/"
             "`verify-patch`, `scaffold`/`new`. Structured output is a versioned "
             "`sem.<tool>.v1` JSON envelope (pass `--json` where offered). The `mcp` "
             "subcommand is a stdio JSON-RPC server exposing 19 tools — version, "
@@ -15941,14 +16104,32 @@ def cmd_diff(args) -> int:
 
 
 def cmd_describe(args) -> int:
-    """Summarize an entity's contract."""
+    """Summarize an entity's contract. DX-08: if the named entity is not in the
+    program but IS a built-in/stdlib target (e.g. `math.divideInt64`), describe its
+    declared signature from the .semsig instead of erroring — so `describe` doubles
+    as a built-in lookup."""
     program = parse(_read_source(args.path))
     try:
         sys.stdout.write(describe(program, args.entity) + "\n")
         return 0
     except EavError as exc:
-        sys.stderr.write(f"semanticscript: {exc}\n")
-        return 2
+        sig = _builtin_target_signature(args.entity)
+        if sig is None:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+            return 2
+        lines = [f"intrinsic {sig['target']}"]
+        for a in sig["args"]:
+            lines.append(f"  arg {a['slot']} {a['type']}")
+        if sig["out"]:
+            lines.append(f"  out {(sig['outSlot'] + ' ') if sig['outSlot'] else ''}{sig['out']}")
+        if sig.get("async") is not None:
+            lines.append(f"  async {sig['async']}")
+        if sig.get("purpose"):
+            lines.append(f"  purpose \"{sig['purpose']}\"")
+        if sig.get("risk"):
+            lines.append(f"  risk \"{sig['risk']}\"")
+        sys.stdout.write("\n".join(lines) + "\n")
+        return 0
 
 
 def cmd_graph(args) -> int:
@@ -16428,7 +16609,39 @@ def cmd_targets(args) -> int:
     the runnable vocabulary. A target absent here passes the structural `check`
     but fails at `run`/`build` (SS1198 catches it). Groups by family; prefix
     families (`c.`/`http.`/`gui.`/`buffer.`/`list.`/`map.`/`fs.`/`compare.`/
-    `convert.to`/`decimal.`) model every method, shown as `<family>.<method>`."""
+    `convert.to`/`decimal.`) model every method, shown as `<family>.<method>`.
+
+    DX-08: `targets --signature <target>` returns one built-in's declared signature
+    (arg slot names + types + out) from its standard.<module>.semsig — so an agent
+    can look up e.g. math.divideInt64's `left`/`right` slots instead of guessing."""
+    want_json = getattr(args, "json", False)
+    sig_target = getattr(args, "signature", None)
+    if sig_target:
+        sig = _builtin_target_signature(sig_target)
+        if sig is None:
+            if want_json:
+                sys.stdout.write(_json_envelope(
+                    "sem.targetSignature.v1", ok=False, status="unknown-target",
+                    target=sig_target,
+                    note="no .semsig signature for this target; run `targets` for the "
+                         "modeled vocabulary") + "\n")
+            else:
+                sys.stderr.write(
+                    f"semanticscript: no signature for target {sig_target!r} "
+                    f"(run `targets` to list the modeled vocabulary)\n")
+            return 2
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.targetSignature.v1", ok=True, status="ok", **sig) + "\n")
+        else:
+            print(sig["target"])
+            for a in sig["args"]:
+                print(f"  arg {a['slot']} {a['type']}")
+            if sig["out"]:
+                print(f"  out {(sig['outSlot'] + ' ') if sig['outSlot'] else ''}{sig['out']}")
+            if sig.get("purpose"):
+                print(f"  purpose \"{sig['purpose']}\"")
+        return 0
     groups: dict = {}
 
     def add(name):
@@ -16540,6 +16753,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_index.set_defaults(func=cmd_index)
     sp_targets = sub.add_parser("targets", help="list the runnable/codegen-modeled call targets (the vocabulary run/build can lower)")
     sp_targets.add_argument("--json", action="store_true")
+    sp_targets.add_argument("--signature", metavar="TARGET",
+                            help="show one built-in target's arg slots/types + out (DX-08)")
     sp_targets.set_defaults(func=cmd_targets)
     sp_search = sub.add_parser("search", help="relevance-ranked retrieval across docs/diagnostics/skills/templates/spec")
     sp_search.add_argument("query", help="search terms")
