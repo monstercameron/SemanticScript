@@ -10832,9 +10832,15 @@ class EavCodegen:
             err = builder.icmp_signed("<", res, ir.Constant(ir.IntType(32), 0))
             result = res
         elif target == "console.writeIntegerLine":
-            fmt = self.global_string(b"%lld\n\x00")
+            # R-269: select the unsigned conversion %llu for an unsigned operand —
+            # a full-width UInt64 with the high bit set printed via the signed %lld
+            # comes out negative. _widen_to_i64 already zero-extends unsigned narrows,
+            # so the i64 bit pattern is correct; only the format must match the sign.
+            vtype = arg_type("value")
+            fmt = self.global_string(
+                b"%llu\n\x00" if self._is_unsigned_int(vtype) else b"%lld\n\x00")
             val = self._widen_to_i64(builder, arg("value", "Int64"),
-                                     arg_type("value"))  # R-218: signed narrows sext
+                                     vtype)  # R-218: signed narrows sext, unsigned zext
             result = builder.call(self.runtime("printf"), [fmt, val])
         elif target == "assert.equalInt64":
             result = builder.icmp_signed("==", arg("left", "Int64"), arg("right", "Int64"))
