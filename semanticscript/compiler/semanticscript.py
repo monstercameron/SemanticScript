@@ -15514,6 +15514,21 @@ def cmd_build(args) -> int:
     forPlatform + its `output` row); an unknown platform exits with a structured
     sem.build.v1 error."""
     import os
+    want_json = getattr(args, "json", False)
+
+    def _build_failed(status, message, **extra):
+        # R-235: every build failure shares the structured sem.build.v1 error
+        # shape (the R-017 precedent for unknown-platform) under --json, or a
+        # single clean `semanticscript:` line otherwise — never an uncaught
+        # OSError traceback (the command was not JSON-native, so main()'s OSError
+        # handler re-raised it), and never a divergent fourth shape.
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.build.v1", ok=False, status=status, message=message, **extra) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {message}\n")
+        return 2
+
     program = parse_compact(_read_program_source(args.path))
     platform = getattr(args, "platform", None)
     try:
@@ -15521,6 +15536,8 @@ def cmd_build(args) -> int:
     except EavError as exc:
         declared = sorted(n for n in program.order
                           if program.entities[n].kind == "platform")
+        # R-017: an unknown platform is a structured sem.build.v1 error even
+        # without --json (a deliberate machine-readable build contract).
         sys.stdout.write(_json_envelope(
             "sem.build.v1", ok=False, status="unknown-platform",
             platform=platform, declared=declared, message=str(exc)) + "\n")
@@ -15535,11 +15552,19 @@ def cmd_build(args) -> int:
             out_path = os.path.join(base, links["output"])
     out_path = _default_build_output(args.path, out_path)
     try:
-        sys.stdout.write(build_executable(program, out_path, platform) + "\n")
-        return 0
+        exe = build_executable(program, out_path, platform)
     except EavError as exc:
-        sys.stderr.write(f"semanticscript: {exc}\n")
-        return 2
+        return _build_failed("build-error", str(exc), platform=platform, output=out_path)
+    except OSError as exc:
+        # bad/unwritable output dir, missing toolchain binary, etc. — a structured
+        # io-error, not a traceback (R-235).
+        return _build_failed("io-error", str(exc), platform=platform, output=out_path)
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.build.v1", ok=True, status="ok", output=exe) + "\n")
+    else:
+        sys.stdout.write(exe + "\n")
+    return 0
 
 
 def cmd_trace(args) -> int:
@@ -16196,6 +16221,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_build.add_argument("--output", "-o", help="output executable path")
     sp_build.add_argument("--platform", help="declared platform entity to build for "
                           "(triple/forPlatform/output); host default when omitted")
+    sp_build.add_argument("--json", action="store_true",
+                          help="emit a sem.build.v1 envelope for success and every failure (R-235)")
     sp_build.set_defaults(func=cmd_build)
 
     sp_wasm = sub.add_parser("wasm", help="compile a pure-compute program to a "
