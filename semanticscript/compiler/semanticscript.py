@@ -13718,6 +13718,42 @@ def _program_target(program: Program) -> str:
     return "console"
 
 
+_C_RUNTIME_LIBCS = "unset"
+
+
+def _flush_c_runtime_stdio() -> None:
+    """Flush every reachable C runtime's stdio buffers (`fflush(NULL)`).
+
+    The JIT'd program prints through libc `printf`, which is block-buffered. An
+    in-process JIT run returns to Python WITHOUT the program ever calling `exit()`,
+    so libc never runs its atexit flush during the run — the buffered output
+    lingers in the CRT and would otherwise flush to fd 1 at process exit (after
+    `cmd_bench` restored it), appending leaked bytes onto the `sem.bench.v1` JSON
+    (A3). Emptying the buffer here, while fd 1 still points at devnull, discards
+    that output deterministically.
+
+    The JIT resolves `printf` against whichever CRT the dynamic loader finds first
+    (ucrtbase OR msvcrt on Windows; the process-global table on POSIX), which is
+    not necessarily the one we'd guess — so flush ALL of them. Flushing a CRT the
+    program didn't use is a harmless no-op. Pure hygiene: unresolved libc / a
+    flush error leaves behavior unchanged."""
+    import ctypes
+    global _C_RUNTIME_LIBCS
+    if _C_RUNTIME_LIBCS == "unset":
+        libcs = []
+        for name in ("ucrtbase", "msvcrt", None):
+            try:
+                libcs.append(ctypes.CDLL(name))
+            except (OSError, TypeError):
+                continue
+        _C_RUNTIME_LIBCS = libcs
+    for libc in _C_RUNTIME_LIBCS:
+        try:
+            libc.fflush(ctypes.c_void_p(None))  # fflush(NULL): all streams
+        except Exception:
+            pass
+
+
 def cmd_bench(args) -> int:
     """Benchmark the pipeline — parse / lower / end-to-end JIT-run — reporting the
     best of N runs in milliseconds (sem.bench.v1). The run phase is skipped for a
@@ -13734,6 +13770,17 @@ def cmd_bench(args) -> int:
     # R-109: restore cwd on EVERY exit (parse/lower failure included), not only
     # after a clean loop — an in-process caller (MCP/test harness) must not be
     # left in the project directory when a bad project aborts the benchmark.
+    # A3: fd 1 is muted across the ENTIRE timed region (not per-run) and bench's
+    # own output is written to the *saved* real-stdout fd while fd 1 still points
+    # at devnull, then fd 1 is restored in the finally. The JIT'd program prints
+    # through buffered libc stdio and — run in-process — never flushes at exit, so
+    # its output can flush at an arbitrary later point; keeping fd 1 pointed at
+    # devnull until after the envelope is written means any such late flush lands
+    # on devnull and can never interleave with the sem.bench.v1 JSON. This holds
+    # regardless of which C runtime the JIT `printf` binds to (a per-run mute that
+    # restored fd 1 between runs, even with an explicit fflush, leaked
+    # intermittently because the flush could not reliably reach that CRT's buffer).
+    devnull = saved_fd = None
     try:
         if os.path.isdir(args.path) and is_project_root(args.path):
             os.chdir(args.path)
@@ -13749,6 +13796,11 @@ def cmd_bench(args) -> int:
             p_out, p_err, p_code = _record_run_full(src)
             run_status, _ = _classify_run(p_out, p_err, p_code)
         time_run = runnable and run_status == "ok"
+        if time_run:
+            sys.stdout.flush()
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            saved_fd = os.dup(1)
+            os.dup2(devnull, 1)
         parse_t, lower_t, run_t = [], [], []
         for _ in range(runs):
             t0 = time.perf_counter()
@@ -13760,45 +13812,46 @@ def cmd_bench(args) -> int:
             lower_t.append(t2 - t1)
             if time_run:
                 t3 = time.perf_counter()
-                # The JIT'd program writes to the OS stdout (fd 1) from the C
-                # runtime, which Python-level redirection can't capture; mute fd 1
-                # at the OS level so it doesn't pollute bench's own (--json).
-                sys.stdout.flush()
-                devnull = os.open(os.devnull, os.O_WRONLY)
-                saved = os.dup(1)
-                os.dup2(devnull, 1)
                 try:
                     jit_run(prog)
                 except OSError:
                     pass  # a trapping program still yields a timing
-                finally:
-                    sys.stdout.flush()
-                    os.dup2(saved, 1)
-                    os.close(saved)
-                    os.close(devnull)
                 run_t.append(time.perf_counter() - t3)
+
+        def ms(xs):
+            return round(min(xs) * 1000, 3) if xs else None
+        result = {
+            "path": args.path, "runs": runs, "runnable": runnable,
+            "runStatus": run_status,
+            "parseMsBest": ms(parse_t), "lowerMsBest": ms(lower_t),
+            "runMsBest": ms(run_t),
+        }
+        totals = [v for v in (result["parseMsBest"], result["lowerMsBest"],
+                              result["runMsBest"]) if v is not None]
+        result["totalMsBest"] = round(sum(totals), 3)
+        if getattr(args, "json", False):
+            payload = _json_envelope("sem.bench.v1", **result) + "\n"
+        else:
+            run_s = f" run {result['runMsBest']}ms" if runnable else " (run skipped)"
+            payload = (f"bench {args.path} (best of {runs}): "
+                       f"parse {result['parseMsBest']}ms lower {result['lowerMsBest']}ms"
+                       f"{run_s}\n")
+        if saved_fd is not None:
+            # write to the real stdout while fd 1 is still muted, then a final
+            # flush discards any remaining program output to devnull (belt-and-
+            # suspenders alongside the structural separation above).
+            os.write(saved_fd, payload.encode("utf-8"))
+            _flush_c_runtime_stdio()
+        else:
+            sys.stdout.write(payload)
     finally:
+        if saved_fd is not None:
+            os.dup2(saved_fd, 1)
+            os.close(saved_fd)
+        if devnull is not None:
+            os.close(devnull)
         if os.getcwd() != _bench_cwd:
             os.chdir(_bench_cwd)
-
-    def ms(xs):
-        return round(min(xs) * 1000, 3) if xs else None
-    result = {
-        "path": args.path, "runs": runs, "runnable": runnable,
-        "runStatus": run_status,
-        "parseMsBest": ms(parse_t), "lowerMsBest": ms(lower_t),
-        "runMsBest": ms(run_t),
-    }
-    totals = [v for v in (result["parseMsBest"], result["lowerMsBest"],
-                          result["runMsBest"]) if v is not None]
-    result["totalMsBest"] = round(sum(totals), 3)
-    if getattr(args, "json", False):
-        sys.stdout.write(_json_envelope("sem.bench.v1", **result) + "\n")
-    else:
-        run_s = f" run {result['runMsBest']}ms" if runnable else " (run skipped)"
-        print(f"bench {args.path} (best of {runs}): "
-              f"parse {result['parseMsBest']}ms lower {result['lowerMsBest']}ms"
-              f"{run_s}")
     return 0
 
 
