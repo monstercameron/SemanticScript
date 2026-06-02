@@ -13108,6 +13108,9 @@ def _record_run_entry(source: str, entry: str):
         proc = subprocess.run(
             [sys.executable, os.path.abspath(__file__), "run", "-", "--entry", entry],
             input=source, capture_output=True, text=True, encoding="utf-8",
+            errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
+            #                     to fd 1/2 (trivial on Windows); decode defensively
+            #                     so a lone bad byte yields a result, not a crash.
             timeout=_eval_timeout_seconds(),
         )
     except subprocess.TimeoutExpired as exc:
@@ -13215,6 +13218,9 @@ def _record_run(source: str):
         proc = subprocess.run(
             [sys.executable, os.path.abspath(__file__), "run", "-"],
             input=source, capture_output=True, text=True, encoding="utf-8",
+            errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
+            #                     to fd 1/2 (trivial on Windows); decode defensively
+            #                     so a lone bad byte yields a result, not a crash.
             timeout=_eval_timeout_seconds(),
         )
     except subprocess.TimeoutExpired as exc:
@@ -13238,6 +13244,9 @@ def _record_run_full(source: str):
         proc = subprocess.run(
             [sys.executable, os.path.abspath(__file__), "run", "-"],
             input=source, capture_output=True, text=True, encoding="utf-8",
+            errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
+            #                     to fd 1/2 (trivial on Windows); decode defensively
+            #                     so a lone bad byte yields a result, not a crash.
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
