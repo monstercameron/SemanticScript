@@ -445,6 +445,15 @@ DIAGNOSTICS.update({
                         "resolve to a null address and crash at first call (R-105).",
                "suggested": "Fix the symbol name, or add a providing library to the "
                             "runtime manifest (README §26)."},
+    "SS1199": {"tier": "T1", "summary": "console.write* argument type mismatch.",
+               "found": "A `console.writeLine`/`writeIntegerLine`/`writeFloatLine` "
+                        "call whose argument type does not match (e.g. an Int64 to "
+                        "console.writeLine, which prints a String), so it passes "
+                        "`check` but crashes the code generator with a raw "
+                        "i8*-vs-i64 type mismatch at `run` (A2).",
+               "suggested": "console.writeLine prints a String; print an integer "
+                            "with console.writeIntegerLine and a float with "
+                            "console.writeFloatLine (or convert.toString first)."},
     "SS1198": {"tier": "T1", "summary": "call target not modeled by the code generator.",
                "found": "A `call` whose `invokes` target the LLVM console code "
                         "generator does not model (e.g. the untyped `math.divide` "
@@ -4116,6 +4125,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_entry_abi(program))
     diags.extend(_lint_runtime_bindings(program))
     diags.extend(_lint_codegen_modeled(program))
+    diags.extend(_lint_console_arg_types(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
@@ -5481,6 +5491,63 @@ def _lint_codegen_modeled(program: Program) -> list:
             f"call {ent.name!r} invokes {target!r}, which the code generator does "
             f"not model{hint}; it passes `check` but fails at `run`/`build`. List "
             f"runnable targets with `sem targets` (README §27)", ent.line, ent.name))
+    return out
+
+
+def _resolve_through_aliases(program: Program, type_name: str) -> str:
+    """Follow `alias <X> for <Y>` to the underlying type; `Byte`->`UInt8`."""
+    seen: set = set()
+    t = type_name
+    while t not in seen:
+        seen.add(t)
+        ent = program.entities.get(t)
+        if ent is not None and ent.kind == "alias":
+            forr = ent.fact("for")
+            if forr and forr.payload:
+                t = forr.payload[0]
+                continue
+        break
+    return "UInt8" if t == "Byte" else t
+
+
+def _lint_console_arg_types(program: Program) -> list:
+    """A2: console.writeLine prints a String, console.writeIntegerLine an integer,
+    console.writeFloatLine a float. A type mismatch (e.g. an Int64 to writeLine)
+    passes the structural checks but crashes the code generator with a raw
+    i8*-vs-i64 type mismatch at `run`. Reject the clear mismatches at check
+    (SS1199) and steer to the right op."""
+    out: list[Diagnostic] = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        target = inv.payload[0]
+        if target not in ("console.writeLine", "console.writeIntegerLine",
+                          "console.writeFloatLine"):
+            continue
+        args = [a for a in ent.facts("arg") if len(a.payload) >= 2]
+        if not args:
+            continue
+        t = _resolve_through_aliases(program, args[0].payload[1])
+        is_int = t in _INT_WIDTHS or t in ("Int32", "Int64", "ExitCode")
+        is_float = t in _FLOAT_TYPE_NAMES
+        msg = None
+        if target == "console.writeLine" and (is_int or is_float):
+            alt = "console.writeIntegerLine" if is_int else "console.writeFloatLine"
+            msg = (f"call {ent.name!r} passes a {t} to console.writeLine, which "
+                   f"prints a String — use {alt} for that value (or convert it to "
+                   f"a String first)")
+        elif target == "console.writeIntegerLine" and is_float:
+            msg = (f"call {ent.name!r} passes a {t} to console.writeIntegerLine — "
+                   f"use console.writeFloatLine for a float")
+        elif target == "console.writeFloatLine" and is_int:
+            msg = (f"call {ent.name!r} passes a {t} to console.writeFloatLine — "
+                   f"use console.writeIntegerLine for an integer")
+        if msg is not None:
+            out.append(Diagnostic("SS1199", "error", msg, ent.line, ent.name))
     return out
 
 

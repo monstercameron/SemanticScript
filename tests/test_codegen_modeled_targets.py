@@ -57,6 +57,29 @@ def test_user_records_and_modules_not_flagged():
     assert "SS1198" not in _codes(_div_program("components.render"))
 
 
+def _print_program(target, value_type):
+    return _HEAD + (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let v immutable %s 42\nmain let okCode immutable ExitCode 0\n"
+        "main do printCall\nmain return okCode\n"
+        "printCall is call\nprintCall in main\nprintCall invokes %s\n"
+        "printCall arg text %s v\n" % (value_type, target, value_type))
+
+
+def test_a2_integer_to_writeline_rejected_and_steered():
+    # an Int64 to console.writeLine (which prints a String) crashed run with a raw
+    # i8*-vs-i64 traceback; now rejected at check (SS1199) steering to the int op
+    codes = _codes(_print_program("console.writeLine", "Int64"))
+    assert "SS1199" in codes
+
+
+def test_a2_correct_console_ops_not_flagged():
+    # the right op for each type is accepted
+    assert "SS1199" not in _codes(_print_program("console.writeIntegerLine", "Int64"))
+    assert "SS1199" not in _codes(_print_program("console.writeFloatLine", "Float64"))
+
+
 def test_sem_targets_lists_runnable_vocabulary():
     proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "targets", "--json"],
                           capture_output=True, text=True, encoding="utf-8")
