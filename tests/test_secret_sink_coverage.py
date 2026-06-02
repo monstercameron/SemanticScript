@@ -57,3 +57,29 @@ def test_r222_printf_family_targets_are_sinks():
     for target in ("printf", "c.printf", "c.fprintf", "c.sprintf",
                    "c.snprintf", "console.format"):
         assert sink(target), target
+
+
+def _secret_error_ctor_program(invoke):
+    rows = [
+        "m is module", "m path a.b", 'm purpose "x"', 'm invariant "y"',
+        "m exports run",
+        "Token is alias", "Token for String", "Token typeTrust secret",
+        'Token purpose "t"',
+        "LoginError is error",
+        "run is operation", "run out Int32", "run async no", 'run purpose "p"',
+        'run invariant "i"',
+        "run let tok immutable Token", "run let z immutable Int32 0",
+        "run do mk", "run return z",
+        "mk is call", "mk in run", "mk invokes " + invoke,
+        "mk arg payload Token tok",
+    ]
+    return chr(10).join(rows) + chr(10)
+
+
+def test_r224_secret_into_error_case_constructor_rejected():
+    # R-224: the owning error is the segment BEFORE the case, so a module-qualified
+    # constructor (`Mod.LoginError.BadToken`) whose first segment is the module —
+    # not the error — must still be flagged. The unqualified form is the guard that
+    # the previous behavior is preserved.
+    assert "SS3072" in _codes_or_raise(_secret_error_ctor_program("LoginError.BadToken"))
+    assert "SS3072" in _codes_or_raise(_secret_error_ctor_program("Mod.LoginError.BadToken"))

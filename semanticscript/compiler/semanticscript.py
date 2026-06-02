@@ -7114,9 +7114,17 @@ def _validate_secret_flow(program: Program) -> None:
 
             # R-072: error-case constructor — a call that invokes ErrorDomain.ErrorCase
             # where ErrorDomain is a known error type embeds its arg in an error report.
+            # R-224: the owning error is the segment BEFORE the case (the last
+            # segment), not the FIRST. For a module-qualified constructor like
+            # `Mod.LoginError.BadToken` the first segment is the module `Mod`, so a
+            # `split(".",1)[0]` check missed it entirely. Drop the case segment, then
+            # strip any module qualifier (cross-module targets resolve by their leaf,
+            # cf. the function-call resolver) so both `LoginError.BadToken` and
+            # `Mod.LoginError.BadToken` resolve to the error entity `LoginError`.
             if "." in target:
-                domain = target.split(".", 1)[0]
-                if domain in error_types:
+                error_domain = target.rsplit(".", 1)[0]          # drop `.ErrorCase`
+                domain_leaf = error_domain.rsplit(".", 1)[-1]    # strip `Mod.` prefix
+                if error_domain in error_types or domain_leaf in error_types:
                     for a in ent.facts("arg"):
                         if len(a.payload) >= 2 and a.payload[1] in secret_types:
                             _val = a.payload[2] if len(a.payload) >= 3 else "?"
