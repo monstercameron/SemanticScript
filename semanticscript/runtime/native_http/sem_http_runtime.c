@@ -845,19 +845,28 @@ static const char *content_type_for_extension(const char *path) {
     return "application/octet-stream";
 }
 
+/* R-264: forward declaration — build_file_cache_headers (below) must run the
+ * realpath/handle containment guard (defined later) on the open file before
+ * trusting its metadata, so a symlink under the root cannot leak its target. */
+static int response_file_within_root(FILE *file_handle, const char *root_directory,
+                                     const char *absolute_path);
+
+/* R-264: read size/mtime from an ALREADY-OPEN, containment-verified handle via
+ * fstat — not by re-stat'ing a path, which follows a symlink/junction placed
+ * under the static root and would expose the TARGET's size/mtime. */
 static int read_file_cache_metadata(
-    const char *absolute_path,
+    FILE *file_handle,
     long long *byte_count_out,
     time_t *modified_at_out
 ) {
 #ifdef _WIN32
     struct _stat64 file_stat;
-    if (_stat64(absolute_path, &file_stat) != 0) {
+    if (_fstat64(_fileno(file_handle), &file_stat) != 0) {
         return 0;
     }
 #else
     struct stat file_stat;
-    if (stat(absolute_path, &file_stat) != 0) {
+    if (fstat(fileno(file_handle), &file_stat) != 0) {
         return 0;
     }
 #endif
@@ -912,8 +921,28 @@ static int build_file_cache_headers(
     if (written < 0 || written >= (int)sizeof(absolute_path)) {
         return 0;
     }
-    if (!read_file_cache_metadata(absolute_path, &file_size, &modified_at)) {
-        return 0;
+    /* R-264: open the file and run the realpath/handle containment guard (the same
+     * one the byte-serving path uses) BEFORE reading its metadata, then fstat the
+     * validated handle. A bare stat of the rebuilt path follows a symlink/junction
+     * placed under the root and would leak the TARGET's size/mtime through the
+     * ETag/Last-Modified headers even when the body path later refuses to send it.
+     * A legitimate file under the root passes this guard (serving already relies on
+     * it), so cache headers are unaffected for real static assets. */
+    {
+        FILE *metadata_handle = fopen(absolute_path, "rb");
+        if (metadata_handle == NULL) {
+            return 0;
+        }
+        if (!response_file_within_root(metadata_handle, root_directory,
+                                       absolute_path)) {
+            fclose(metadata_handle);
+            return 0;
+        }
+        if (!read_file_cache_metadata(metadata_handle, &file_size, &modified_at)) {
+            fclose(metadata_handle);
+            return 0;
+        }
+        fclose(metadata_handle);
     }
     if (snprintf(etag_out, etag_capacity, "\"%llx-%llx\"",
                  (long long)modified_at, file_size) < 0) {
