@@ -6753,47 +6753,85 @@ def _validate_trust_flow(program: Program) -> None:
             owner = c.fact("in")
             if owner and owner.payload:
                 op_calls.setdefault(owner.payload[0], []).append(c)
+    # R-221: taint is interprocedural on RETURN values. An op that returns a value
+    # carrying untrusted provenance (e.g. it read a module-global rawExternal/secret
+    # storage and returned it) without upgrading the out type to a trust boundary
+    # launders that value at EVERY call site, regardless of whether the call passed
+    # a tainted arg. We compute an `returns_tainted` summary set and iterate the
+    # per-op taint AND the summary together to a global fixpoint. Process ALL ops
+    # (not just those with calls): a leaf helper that only reads a storage and
+    # returns it has no internal calls but must still be summarized.
+    all_ops = [program.entities[n] for n in program.order
+               if program.entities[n].kind in ("operation", "function")]
+
+    def _callee_returns_tainted(callee, returns_tainted):
+        # match the call's invokes target against the returns-tainted op set,
+        # resolving a module qualifier by its leaf (cf. _sink_key / R-224).
+        return callee in returns_tainted or callee.rsplit(".", 1)[-1] in returns_tainted
+
     op_tainted: dict = {}
-    for op_name, calls in op_calls.items():
-        op = program.entities.get(op_name)
-        tainted = set(storage_tainted)
-        if op is not None:
+    returns_tainted: set = set()
+    summary_stable = False
+    while not summary_stable:                   # R-221: interprocedural fixpoint
+        summary_stable = True
+        for op in all_ops:
+            op_name = op.name
+            calls = op_calls.get(op_name, [])
+            tainted = set(storage_tainted)
             for r in op.facts("in"):            # tainted operation parameters
                 if len(r.payload) >= 2 and _seed_tainted(r.payload[1]):
                     tainted.add(r.payload[0])
             for r in op.facts("let"):           # tainted local bindings
                 if len(r.payload) >= 3 and _seed_tainted(r.payload[2]):
                     tainted.add(r.payload[0])
-        changed = True
-        while changed:                          # conservative fixpoint
-            changed = False
-            for c in calls:
-                if not any(len(a.payload) >= 3
-                           and (a.payload[2] in tainted or _seed_tainted(a.payload[1]))
-                           for a in c.facts("arg")):
-                    continue
-                for o in c.facts("out"):
-                    if not o.payload:
+            changed = True
+            while changed:                      # conservative per-op fixpoint
+                changed = False
+                for c in calls:
+                    inv = c.fact("invokes")
+                    callee = inv.payload[0] if inv and inv.payload else ""
+                    arg_tainted = any(
+                        len(a.payload) >= 3
+                        and (a.payload[2] in tainted or _seed_tainted(a.payload[1]))
+                        for a in c.facts("arg"))
+                    # R-221: a callee that returns tainted provenance launders its
+                    # result even when no tainted arg is passed.
+                    if not (arg_tainted
+                            or _callee_returns_tainted(callee, returns_tainted)):
                         continue
-                    out_type = o.payload[1] if len(o.payload) >= 2 else None
-                    if label_of.get(out_type) in _BOUNDARY_LABELS:
-                        continue                # crossed a trust boundary -> clean
-                    if o.payload[0] not in tainted:
-                        tainted.add(o.payload[0])
-                        changed = True
-            # R-220: taint also flows through `set <tgt> <src...>` (mutable
-            # storage / mutable-let writes), not only call `out` facts. Without
-            # this, bouncing a rawExternal/secret value through a plain-typed
-            # mutable binding and reading it back launders it before a SQL/path/
-            # command/HTML sink, defeating SS3070. If any source is tainted the
-            # target becomes tainted; iterated to fixpoint alongside the call flow.
-            if op is not None:
+                    for o in c.facts("out"):
+                        if not o.payload:
+                            continue
+                        out_type = o.payload[1] if len(o.payload) >= 2 else None
+                        if label_of.get(out_type) in _BOUNDARY_LABELS:
+                            continue            # crossed a trust boundary -> clean
+                        if o.payload[0] not in tainted:
+                            tainted.add(o.payload[0])
+                            changed = True
+                # R-220: taint also flows through `set <tgt> <src...>` (mutable
+                # storage / mutable-let writes), not only call `out` facts. Without
+                # this, bouncing a rawExternal/secret value through a plain-typed
+                # mutable binding and reading it back launders it before a SQL/path/
+                # command/HTML sink, defeating SS3070. If any source is tainted the
+                # target becomes tainted; iterated alongside the call flow.
                 for sr in op.facts("set"):
                     if (len(sr.payload) >= 2 and sr.payload[0] not in tainted
                             and any(s in tainted for s in sr.payload[1:])):
                         tainted.add(sr.payload[0])
                         changed = True
-        op_tainted[op_name] = tainted
+            op_tainted[op_name] = tainted
+            # R-221: summarize whether this op returns tainted provenance. A returned
+            # value that is tainted, where the op's out type is not a trust boundary,
+            # makes the op `returns_tainted` — re-iterate the outer fixpoint so the
+            # new summary propagates to its callers.
+            if op_name not in returns_tainted:
+                out_row = op.fact("out")
+                out_type = out_row.payload[0] if out_row and out_row.payload else None
+                if (label_of.get(out_type) not in _BOUNDARY_LABELS
+                        and any(r.payload and r.payload[0] in tainted
+                                for r in op.facts("return"))):
+                    returns_tainted.add(op_name)
+                    summary_stable = False
 
     for n in program.order:
         call = program.entities[n]
