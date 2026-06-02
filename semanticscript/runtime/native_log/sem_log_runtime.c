@@ -135,10 +135,18 @@ int ss_log_write_line(const char *line) {
     if (line == NULL || line[0] == '\0') return SS_LOG_OK;
     FILE *fp = log_open_if_needed();
     if (fp == NULL) return SS_LOG_ERR_ENGINE;
-    size_t len = strlen(line);
-    /* R-150: a short write, a failed newline, or a flush error means the log line
-     * did not fully reach the sink — report it instead of always claiming OK. */
-    if (fwrite(line, 1, len, fp) != len) return SS_LOG_ERR_ENGINE;
+    /* R-268: this is a first-class public API, so a caller can pass arbitrary
+     * text. A raw '\n'/'\r' embedded in `line` would split one call into multiple
+     * log records (log injection / forged entries). Neutralize the record
+     * separators to a single space as the line is written, so one call is always
+     * exactly one record. The ss_log_event wrappers pre-escape control chars
+     * (log_escape_json -> \uXXXX), so this is a no-op for them; it only sanitizes
+     * a direct caller's raw newlines. R-150: a write/flush error still means the
+     * line did not fully reach the sink, so it is reported (fputc -> EOF). */
+    for (const char *p = line; *p != '\0'; ++p) {
+        char c = (*p == '\n' || *p == '\r') ? ' ' : *p;
+        if (fputc(c, fp) == EOF) return SS_LOG_ERR_ENGINE;
+    }
     if (fputc('\n', fp) == EOF) return SS_LOG_ERR_ENGINE;
     if (fflush(fp) != 0) return SS_LOG_ERR_ENGINE;
     return SS_LOG_OK;
