@@ -1578,6 +1578,33 @@ def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
         )
 
 
+def _verify_supply_chain_for_path(path: str) -> None:
+    """R-251: enforce the supply-chain effect allowlist (SS2805) on a real
+    `build`/`run`, not just in unit tests. When `path` is a project directory that
+    has BOTH a `build.sem` manifest and a resolved `build.sem.lock`, every lock
+    `effectSurface` effect must be permitted by a `build.sem` `allowEffect` row.
+
+    A single-file program, or a project without a lock, is a no-op (nothing to
+    verify). A build.sem/lock that does not parse is left to the main build/run to
+    surface — this gate only adds the allowlist check, it is not a manifest
+    validator."""
+    import os
+    if not os.path.isdir(path):
+        return
+    build_path = os.path.join(path, "build.sem")
+    lock_path = os.path.join(path, "build.sem.lock")
+    if not (os.path.isfile(build_path) and os.path.isfile(lock_path)):
+        return
+    try:
+        with open(build_path, encoding="utf-8") as fh:
+            build_program = parse(fh.read())
+        with open(lock_path, encoding="utf-8") as fh:
+            lock_program = parse(fh.read())
+    except (EavError, OSError):
+        return  # a malformed manifest/lock is surfaced by the build/run proper
+    verify_supply_chain(build_program, lock_program)
+
+
 # X-083 threat-model coverage matrix (README §29 #19). Each row maps a
 # vulnerability class to its asset, the EAV defense (a real diagnostic code, an
 # external mechanism, or an explicit out-of-language note), status, and the
@@ -14187,6 +14214,10 @@ def cmd_run(args) -> int:
     to a structured `ss_panic` that prints `code · kind · op · row · reason ·
     operands` to stderr and exits 134; a residual bare trap (overflow / deep
     recursion, not yet routed through ss_panic) still surfaces as SSR0001."""
+    # R-251: enforce the supply-chain effect allowlist before running a project
+    # (no-op for a single file or a project without a build.sem.lock). An
+    # un-allowed dependency effect is SS2805.
+    _verify_supply_chain_for_path(args.path)
     # R-095: `run --json` is a machine-readable run — capture the program's
     # stdout/stderr/exitCode into a sem.run.v1 envelope (with a structured panic
     # on a trap) instead of streaming raw output past the `--json` request.
@@ -15760,6 +15791,14 @@ def cmd_build(args) -> int:
         else:
             sys.stderr.write(f"semanticscript: {message}\n")
         return 2
+
+    # R-251: enforce the supply-chain effect allowlist before building a project
+    # (no-op for a single file or a project without a build.sem.lock); an
+    # un-allowed dependency effect (SS2805) is a structured build failure.
+    try:
+        _verify_supply_chain_for_path(args.path)
+    except EavError as exc:
+        return _build_failed("supply-chain-denied", str(exc))
 
     program = parse_compact(_read_program_source(args.path))
     platform = getattr(args, "platform", None)
