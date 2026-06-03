@@ -465,6 +465,19 @@ DIAGNOSTICS.update({
                         "`run` (DX-09, the arg-slot sibling of SS1198/SS1199).",
                "suggested": "Look the target up with `targets --signature <target>` (or "
                             "`describe <target>`) and use its exact arg slot names/types."},
+    "SS1205": {"tier": "T1", "summary": "built-in call `out` binding value-kind mismatch.",
+               "found": "A call binds a built-in/intrinsic result to an `out` whose "
+                        "value kind disagrees with the target's declared return type — "
+                        "typically an owned handle (OpaquePointer/i64, e.g. "
+                        "bcrypt.hashPasswordOwned) bound directly to `out X String` "
+                        "(i8*). A raw handle is not a String; this passes the structural "
+                        "`check` but crashes the code generator at `run`/`build` with an "
+                        "`i8* != i64` type mismatch (the W2-B codegen crash).",
+               "suggested": "Bind the result as the target's declared return type "
+                            "(`targets --signature <target>`), then convert a "
+                            "NUL-terminated C-string handle to a String with `c.cString` "
+                            "(`out text String`). The handle keeps its own ownership/"
+                            "cleanup; the String is a borrowed view of it."},
     "SS1204": {"tier": "T1", "summary": "assert result discarded.",
                "found": "A boolean `assert.*` intrinsic was called with `discards`, "
                         "so a failed assertion becomes an unused value instead of a "
@@ -1716,6 +1729,18 @@ def _synthetic_codegen_signatures() -> dict:
     add("sqlite.stepResultIsRow", [("stepResult", "SqliteStepResult")],
         "Bool", "row",
         purpose="Return whether a sqlite step result is SQLITE_ROW")
+    # W2-G: the sanctioned OpaquePointer->String reinterpret. An owned C-string
+    # handle (e.g. bcrypt.hashPasswordOwned / sessionTokenOwned -> OpaquePointer,
+    # a heap `char*`) is viewed as a NUL-terminated String so it can be persisted
+    # / bound to SQL. Discoverable via `targets --signature c.cString` and named
+    # by the SS1205 repair hint. The handle stays owned (free it with its own
+    # cleanup, e.g. bcrypt.freeString); the String is a borrowed view of it.
+    add("c.cString", [("pointer", "OpaquePointer")], "String", "text",
+        purpose="View an owned NUL-terminated C-string handle (OpaquePointer) as "
+                "a String for persistence/SQL binding; the handle keeps its own "
+                "ownership and cleanup",
+        risk="The String is a borrowed view of the handle — do not use it after "
+             "the handle is freed")
 
     _SYNTHETIC_SIG_CACHE = sigs
     return sigs
@@ -6771,11 +6796,44 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
         )
         family = target.split(".", 1)[0]
         if (not slot_sensitive and family not in ("json", "sqlite", "log")
-                and not target.startswith("convert.to")):
+                and not target.startswith("convert.")):
             continue
         sig = _builtin_target_signature(target)
         if sig is None:
             continue
+        # W2-B: the `out` binding's value kind must match the target's declared
+        # return kind. Binding an owned handle (OpaquePointer/i64, e.g.
+        # bcrypt.hashPasswordOwned) to `out X String` (i8*) passes the structural
+        # check but crashes the code generator with `i8* != i64`. Catch the
+        # String<->handle confusion here, at check, with a c.cString repair hint.
+        out_w2b = ent.fact("out")
+        if (out_w2b and len(out_w2b.payload) >= 2 and sig.get("out")):
+            def _value_kind(t: str):
+                c = canon_type(t)
+                if c == "String":
+                    return "string"
+                if c in _FLOAT_TYPE_NAMES:
+                    return "float"
+                if c in _INT_WIDTHS or c in ("Int32", "Int64", "Bool", "ExitCode"):
+                    return "int"
+                return None
+            sk, bk = _value_kind(sig["out"]), _value_kind(out_w2b.payload[1])
+            if sk and bk and {sk, bk} == {"string", "int"}:
+                if sk == "int":
+                    fix = (f"a {sig['out']} is an opaque handle, not text — bind "
+                           f"`out {out_w2b.payload[0]} {sig['out']}` and, for a "
+                           f"NUL-terminated C-string handle, convert it with "
+                           f"`c.cString` (`out text String`)")
+                else:
+                    fix = (f"{target!r} returns a String — bind "
+                           f"`out {out_w2b.payload[0]} String`")
+                out.append(Diagnostic(
+                    "SS1205", "error",
+                    f"call {ent.name!r} binds the result of {target!r} (returns "
+                    f"{sig['out']}) to `out {out_w2b.payload[0]} "
+                    f"{out_w2b.payload[1]}`, but those are different value kinds "
+                    f"(a raw handle is not a String) — {fix} (README §10.6)",
+                    out_w2b.line, ent.name))
         if not slot_sensitive:
             expected = sig["args"]
             call_args = [a for a in ent.facts("arg") if a.payload and len(a.payload) >= 1]
@@ -17514,18 +17572,37 @@ def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
                              "rendered": f"semanticscript: {exc}"}],
         }
 
-    out, err, code = _record_run_full(source)
-    run_status, panic = _classify_run(out, err, code)
-    lanes["run"] = {
-        "ok": code == 0,
-        "status": run_status,
-        "exitCode": code,
-        "stdout": out,
-        "stderr": err,
-        "stdoutLines": _stdout_lines(out),
-    }
-    if panic is not None:
-        lanes["run"]["panic"] = panic
+    # W2-H: only the console target is a terminating run-to-exit program. A
+    # `webServer` (or wasm) entry blocks in its server loop and never exits, so
+    # driving it through the run lane just wedges `verify` until the eval timeout
+    # fires (and risks a zombie server holding the port on Windows). Skip the run
+    # lane for a non-console target — its behavior is proven by a live harness /
+    # integration test, not by running it to completion. (Mirrors `bench`, which
+    # reports a non-console target as not runnable.)
+    run_target = _program_target(program)
+    if run_target != "console":
+        lanes["run"] = {
+            "ok": True,
+            "status": "skipped",
+            "reason": (f"target {run_target!r} is a long-running entry that does "
+                       f"not run to exit; the run lane cannot prove it — verify it "
+                       f"with a live/integration harness"),
+            "target": run_target,
+        }
+    else:
+        out, err, code = _record_run_full(
+            source, cwd=getattr(program, "source_root", None))
+        run_status, panic = _classify_run(out, err, code)
+        lanes["run"] = {
+            "ok": code == 0,
+            "status": run_status,
+            "exitCode": code,
+            "stdout": out,
+            "stderr": err,
+            "stdoutLines": _stdout_lines(out),
+        }
+        if panic is not None:
+            lanes["run"]["panic"] = panic
 
     ok = bool(lanes["check"].get("ok") and lanes["test"].get("ok") and lanes["run"].get("ok"))
     status = "ok" if ok else ("blocked" if lanes["test"].get("status") in ("blocked", "compiler-error") else "failed")
