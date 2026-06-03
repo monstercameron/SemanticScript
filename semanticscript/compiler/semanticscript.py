@@ -13918,6 +13918,131 @@ def _ensure_runtime_objects(lib: dict, target_triple: str,
     return objects
 
 
+def _native_object_key(label: str, payload: bytes, target_triple: str,
+                       compiler_id: str) -> str:
+    import hashlib
+    digest = hashlib.sha256()
+    for name, value in (
+        ("label", label),
+        ("compiler", compiler_id),
+        ("target", target_triple or "host-default"),
+    ):
+        digest.update(name.encode("ascii"))
+        digest.update(b"=")
+        digest.update(value.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+    digest.update(payload)
+    return digest.hexdigest()[:24]
+
+
+def _ensure_native_app_object(module, cc: list,
+                              compiler_id: Optional[str] = None) -> str:
+    """Compile or reuse the generated application IR object for native links.
+
+    ITER-3: native builds no longer hand the app `.ll` to clang on every link.
+    The generated IR is compiled once into a content-addressed object keyed by
+    IR text, compiler identity, and target triple; repeated builds that only need
+    a relink reuse this object.
+    """
+    import os
+    import subprocess
+    import tempfile
+    ir_text = str(module)
+    target_triple = getattr(module, "triple", "") or ""
+    cid = compiler_id if compiler_id is not None else _compiler_identity(cc)
+    key = _native_object_key("app-ir-v1", ir_text.encode("utf-8"), target_triple, cid)
+    obj_dir = os.path.join(_runtime_cache_dir(), "_build", "app-objects")
+    obj = os.path.join(obj_dir, f"app-{key}{_object_suffix()}")
+    if os.path.exists(obj) and _runtime_lib_sidecar_matches(obj):
+        return obj
+    os.makedirs(obj_dir, exist_ok=True)
+    ll_fd, ll_path = tempfile.mkstemp(suffix=".ll", dir=obj_dir)
+    obj_tmp = f"{obj}.tmp{os.getpid()}"
+    try:
+        with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
+            fh.write(ir_text)
+        cmd = list(cc) + ["-O2", "-c", ll_path, "-o", obj_tmp]
+        if target_triple:
+            cmd.append("--target=" + target_triple)
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_build_timeout_seconds())
+    except subprocess.TimeoutExpired:
+        raise EavError(
+            f"building native application object exceeded "
+            f"{_build_timeout_seconds():g}s and was terminated "
+            f"(set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
+    except OSError as exc:
+        raise EavError(
+            f"could not launch the C compiler {cc[0]!r} to build native "
+            f"application object: {exc} (check SEMANTICSCRIPT_CC or install clang/zig)")
+    finally:
+        try:
+            os.unlink(ll_path)
+        except OSError:
+            pass
+    if proc.returncode != 0:
+        try:
+            if os.path.exists(obj_tmp):
+                os.unlink(obj_tmp)
+        except OSError:
+            pass
+        raise EavError(f"failed to build native application object: {proc.stderr.strip()}")
+    os.replace(obj_tmp, obj)
+    _runtime_lib_write_sidecar(obj)
+    return obj
+
+
+def _ensure_native_source_object(source_path: str, target_triple: str, cc: list,
+                                 compiler_id: Optional[str] = None) -> str:
+    """Compile or reuse an always-linked native runtime C source object."""
+    import os
+    import subprocess
+    cid = compiler_id if compiler_id is not None else _compiler_identity(cc)
+    try:
+        with open(source_path, "rb") as fh:
+            source_bytes = fh.read()
+    except OSError as exc:
+        raise EavError(f"native runtime source {source_path!r} is not readable: {exc}")
+    key = _native_object_key(
+        "native-source-v1:" + os.path.normpath(source_path),
+        source_bytes, target_triple, cid)
+    stem = os.path.splitext(os.path.basename(source_path))[0] or "source"
+    obj_dir = os.path.join(_runtime_cache_dir(), "_build", "native-objects")
+    obj = os.path.join(obj_dir, f"{stem}-{key}{_object_suffix()}")
+    if os.path.exists(obj) and _runtime_lib_sidecar_matches(obj):
+        return obj
+    os.makedirs(obj_dir, exist_ok=True)
+    obj_tmp = f"{obj}.tmp{os.getpid()}"
+    cmd = list(cc) + ["-O2", "-c", source_path, "-o", obj_tmp]
+    if target_triple:
+        cmd.append("--target=" + target_triple)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_build_timeout_seconds())
+    except subprocess.TimeoutExpired:
+        raise EavError(
+            f"building native runtime object for {os.path.basename(source_path)!r} "
+            f"exceeded {_build_timeout_seconds():g}s and was terminated "
+            f"(set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
+    except OSError as exc:
+        raise EavError(
+            f"could not launch the C compiler {cc[0]!r} to build native runtime "
+            f"object for {os.path.basename(source_path)!r}: {exc} "
+            f"(check SEMANTICSCRIPT_CC or install clang/zig)")
+    if proc.returncode != 0:
+        try:
+            if os.path.exists(obj_tmp):
+                os.unlink(obj_tmp)
+        except OSError:
+            pass
+        raise EavError(
+            f"failed to build native runtime object for "
+            f"{os.path.basename(source_path)!r}: {proc.stderr.strip()}")
+    os.replace(obj_tmp, obj)
+    _runtime_lib_write_sidecar(obj)
+    return obj
+
+
 def _runtime_lib_file_digest(path: str) -> Optional[str]:
     """R-197: SHA-256 of a built runtime artifact, or None if it cannot be read."""
     import hashlib
@@ -13970,6 +14095,100 @@ def _runtime_lib_sidecar_matches(out: str) -> bool:
         return False
     actual = _runtime_lib_file_digest(out)
     return actual is not None and actual == recorded
+
+
+def _native_build_sidecar_path(out_path: str) -> str:
+    return out_path + ".semanticscript-build.json"
+
+
+def _native_build_signature(program: Program, module, platform: Optional[str],
+                            cc: list, entry_fn: str) -> str:
+    """Content signature for reusing an already-built native executable."""
+    import hashlib
+    import json
+    import os
+    target_triple = getattr(module, "triple", "") or ""
+    compiler_id = _compiler_identity(cc)
+    host_platform = _host_platform_name()
+    rt = _runtime_dir()
+    digest = hashlib.sha256()
+    for label, value in (
+        ("ir", str(module)),
+        ("platform", platform or ""),
+        ("host", host_platform),
+        ("compiler", compiler_id),
+        ("triple", target_triple),
+        ("entry", entry_fn),
+    ):
+        digest.update(label.encode("ascii"))
+        digest.update(b"=")
+        digest.update(value.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+    if entry_fn != "main":
+        wrapper = f"extern int {entry_fn}(void);\nint main(void) {{ return {entry_fn}(); }}\n"
+        digest.update(b"wrapper\0")
+        digest.update(wrapper.encode("utf-8"))
+        digest.update(b"\0")
+    for source in ("ss_panic.c", "ss_ffi.c", "ss_native_libc.c"):
+        path = os.path.normpath(os.path.join(rt, source))
+        digest.update(f"always:{source}".encode("utf-8"))
+        digest.update(b"\0")
+        try:
+            with open(path, "rb") as fh:
+                digest.update(hashlib.sha256(fh.read()).digest())
+        except OSError:
+            digest.update(b"<missing>")
+        digest.update(b"\0")
+    object_cid = f"{compiler_id}|target={target_triple}|artifact=object"
+    for lib in _runtime_libs_for(program):
+        resolved = _resolve_runtime_links(lib, host_platform)
+        key = _runtime_cache_key(resolved, host_platform, object_cid, rt)
+        digest.update(json.dumps({
+            "name": lib.get("name"),
+            "key": key,
+            "libs": resolved.get("libs", []),
+            "defines": resolved.get("defines", []),
+            "include": resolved.get("include", []),
+        }, sort_keys=True).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _native_build_cache_matches(out_path: str, signature: str) -> bool:
+    import json
+    import os
+    if not os.path.exists(out_path):
+        return False
+    sidecar = _native_build_sidecar_path(out_path)
+    try:
+        with open(sidecar, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    if data.get("signature") != signature:
+        return False
+    return data.get("outputSha256") == _runtime_lib_file_digest(out_path)
+
+
+def _native_build_write_sidecar(out_path: str, signature: str) -> None:
+    import json
+    import os
+    digest = _runtime_lib_file_digest(out_path)
+    if digest is None:
+        return
+    sidecar = _native_build_sidecar_path(out_path)
+    tmp = f"{sidecar}.tmp{os.getpid()}"
+    data = {"signature": signature, "outputSha256": digest}
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, sort_keys=True)
+        os.replace(tmp, sidecar)
+    except OSError:
+        try:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
@@ -15637,20 +15856,21 @@ def build_executable(program: Program, out_path: str,
     rt = _runtime_dir()
     out_dir = os.path.dirname(os.path.abspath(out_path))
     os.makedirs(out_dir, exist_ok=True)
-    # R-015: write scratch IR into the (writable) output directory, never into
-    # the runtime bundle, which may be read-only or shared across concurrent
-    # builds. mkstemp keeps the name unique so parallel builds do not collide.
-    ll_fd, ll_path = tempfile.mkstemp(suffix=".ll", dir=out_dir)
-    with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
-        fh.write(str(module))
-    cmd = list(cc) + ["-O2", ll_path, "-o", out_path]
+    entry_fn = _entry_name(program)
+    build_signature = _native_build_signature(program, module, platform, cc, entry_fn)
+    if _native_build_cache_matches(out_path, build_signature):
+        return out_path
+    target_triple = getattr(module, "triple", "") or ""
+    compiler_id = _compiler_identity(cc)
+    app_obj = _ensure_native_app_object(module, cc, compiler_id)
+    cmd = list(cc) + ["-O2", app_obj, "-o", out_path]
     # Pin clang to the module's own target triple. On an ARM64 host where llvmlite
     # is x64-emulated, the IR triple is x86_64 while clang defaults to ARM64, so
     # clang would "override the module target triple" and fail the link. Passing
     # the module triple makes the architectures agree (a no-op when they already
     # match, e.g. an x64 CI host). Mirrors the runtime-lib build above.
-    if getattr(module, "triple", ""):
-        cmd.append("--target=" + module.triple)
+    if target_triple:
+        cmd.append("--target=" + target_triple)
     # A native exe needs a `main` symbol so the linker infers the console
     # subsystem + CRT startup. The console entry op is conventionally named
     # `main`, but the webServer (and any non-`main` entry) is named after the
@@ -15658,7 +15878,6 @@ def build_executable(program: Program, out_path: str,
     # error. Emit a tiny C `main` that tail-calls the named entry (its IR
     # signature is `i32()` — a console entry returns ExitCode, SS1191).
     wrap_path = None
-    entry_fn = _entry_name(program)
     if entry_fn != "main":
         wrap_fd, wrap_path = tempfile.mkstemp(suffix=".c", dir=out_dir)
         with os.fdopen(wrap_fd, "w", encoding="utf-8") as fh:
@@ -15675,12 +15894,10 @@ def build_executable(program: Program, out_path: str,
     for _always in ("ss_panic.c", "ss_ffi.c", "ss_native_libc.c"):
         _src = os.path.normpath(os.path.join(rt, _always))
         if os.path.exists(_src):
-            cmd.append(_src)
+            cmd.append(_ensure_native_source_object(_src, target_triple, cc, compiler_id))
     # R-018/R-013: resolve each runtime library's link inputs for the host
     # platform so Windows-only libs (ws2_32) are appended on Windows and
     # POSIX-only libs (pthread/dl/m) are appended on Unix — never both.
-    target_triple = getattr(module, "triple", "") or ""
-    compiler_id = _compiler_identity(cc)
     for lib in _runtime_libs_for(program):
         resolved = _resolve_runtime_links(lib, _host_platform_name())
         cmd.extend(_ensure_runtime_objects(
@@ -15695,7 +15912,7 @@ def build_executable(program: Program, out_path: str,
             f"native build exceeded {_build_timeout_seconds():g}s and was "
             f"terminated (set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
     finally:
-        for _scratch in (ll_path, wrap_path):
+        for _scratch in (wrap_path,):
             if _scratch:
                 try:
                     os.unlink(_scratch)
@@ -15703,6 +15920,7 @@ def build_executable(program: Program, out_path: str,
                     pass
     if proc.returncode != 0:
         raise EavError(f"native build failed: {proc.stderr.strip()}")
+    _native_build_write_sidecar(out_path, build_signature)
     return out_path
 
 
@@ -17149,9 +17367,11 @@ def _default_build_output(path: str, explicit_output: Optional[str]) -> str:
     binary beside the source. A single-file build sits next to its source, and an
     explicit `--output` always wins."""
     import os
-    if explicit_output:
-        return explicit_output
     suffix = ".exe" if sys.platform == "win32" else ""
+    if explicit_output:
+        explicit_output = os.path.normpath(explicit_output)
+        root, ext = os.path.splitext(explicit_output)
+        return explicit_output if not suffix or ext else root + suffix
     if path == "-":
         return "a" + suffix
     if os.path.isdir(path):
@@ -17188,7 +17408,7 @@ def cmd_build(args) -> int:
     except EavError as exc:
         return _build_failed("supply-chain-denied", str(exc))
 
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     platform = getattr(args, "platform", None)
     try:
         plat = _resolve_build_platform(program, platform)
