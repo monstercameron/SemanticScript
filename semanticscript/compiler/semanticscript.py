@@ -73,8 +73,13 @@ DIAGNOSTICS: dict[str, dict] = {
     "SS0002": {
         "tier": "T1",
         "summary": "Entity name is not a valid identifier.",
-        "found": "A name with `_`, `-`, or a leading digit.",
-        "suggested": "Use camelCase: a letter followed by letters/digits (README §2).",
+        "found": "A name with `_`, `-`, or a leading digit. SemanticScript is "
+                 "camelCase-canonical by design (README §2): the formatter keeps "
+                 "exactly one spelling per name, so underscores/hyphens are not a "
+                 "second naming style.",
+        "suggested": "Rename to the camelCase form the diagnostic names "
+                     "(`user_id` -> `userId`): a letter, then letters/digits, no "
+                     "separators (README §2).",
     },
     "SS0003": {
         "tier": "T1",
@@ -1037,6 +1042,22 @@ ISLAND_PREDICATE = "body"
 # Internal identifier grammar (README ss2): camelCase, letter-first, no
 # underscores/hyphens/leading digits.
 _IDENT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9]*\Z")
+
+
+def _camel_case_suggestion(name: str):
+    """AQ-1: the camelCase form of a snake_case/kebab-case/leading-digit name, or
+    None if it can't be made into a valid identifier. The language is camelCase-
+    canonical (no underscores, README §2) by design — so an SS0002 rejection names
+    the conforming spelling (`user_id` -> `userId`) instead of only stating the
+    rule, turning a hard stop into a one-edit fix."""
+    parts = [p for p in re.split(r"[_\-]+", name) if p]
+    if not parts:
+        return None
+    first = parts[0].lstrip("0123456789") or parts[0]
+    head = first[:1].lower() + first[1:]
+    tail = "".join(p[:1].upper() + p[1:] for p in parts[1:])
+    candidate = head + tail
+    return candidate if _IDENT_RE.match(candidate) and candidate != name else None
 
 # Numeric literal grammar (README ss2/ss33.1). A single `_` may separate digits
 # (no leading/trailing/doubled). Decimal rejects octal/0-prefixed forms.
@@ -2985,10 +3006,14 @@ def parse(source_text: str) -> Program:
                     lineno, code="SS0003",
                 )
             if not _IDENT_RE.match(subject):
+                _suggestion = _camel_case_suggestion(subject)
+                _did_you_mean = (f" — did you mean {_suggestion!r}?"
+                                 if _suggestion else "")
                 raise EavError(
-                    f"invalid entity name {subject!r}: names are "
-                    f"[a-zA-Z][a-zA-Z0-9]* — no underscores, hyphens, or leading "
-                    f"digits (README ss2)",
+                    f"invalid entity name {subject!r}: SemanticScript names are "
+                    f"camelCase ([a-zA-Z][a-zA-Z0-9]*) — letter-first, no "
+                    f"underscores/hyphens/leading digits (the formatter keeps one "
+                    f"canonical spelling per name, README ss2){_did_you_mean}",
                     lineno, code="SS0002",
                 )
             if subject in program.entities:
@@ -5962,11 +5987,25 @@ def _capability_grants(program: Program) -> dict:
 
 
 def _op_capability_grants(op: Entity, cap_grants: dict) -> set:
-    """The (action, resource) pairs an op holds via its own `uses` capabilities."""
+    """The (action, resource) pairs an op holds via its own `uses` capabilities.
+
+    AQ-2: a `uses` may name a capability IMPORTED from another module by its
+    module-qualified name (`uses authMod.writeCap`), exactly as a cross-module
+    call names `authMod.someOp`. After load_project composes the modules the
+    capability lives under its bare entity name, so resolve the qualified form to
+    its tail (mirroring the call resolver) — otherwise an imported capability is
+    invisible to effect coverage and every effect it grants is falsely reported
+    uncovered (SS1708)."""
     cov: set = set()
     for u in op.facts("uses"):
-        if u.payload:
-            cov |= cap_grants.get(u.payload[0], set())
+        if not u.payload:
+            continue
+        name = u.payload[0]
+        grants = cap_grants.get(name)
+        if grants is None and "." in name:
+            grants = cap_grants.get(name.rsplit(".", 1)[-1])
+        if grants:
+            cov |= grants
     return cov
 
 
