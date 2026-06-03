@@ -6312,8 +6312,12 @@ def _validate_cleanup(program: Program) -> None:
 
 def _target_is_nonvoid(target: str, program: Program):
     """Whether a call target yields a value semanticscript can statically judge: True for
-    math.* (arith/compare), False for console.* (void), the callee's `out`
-    presence for a bare user op, and None (unknown) for other external targets."""
+    modeled signatures with an output, False for modeled void signatures, the
+    callee's `out` presence for a bare user op, and None (unknown) for other
+    external targets."""
+    sig = _builtin_target_signature(target)
+    if sig is not None:
+        return sig.get("out") is not None
     if (target.startswith("math.") or target.startswith("compare.")
             or target.startswith("convert.to") or target == "string.concat"
             or target.startswith("assert.") or target == "test.and"):
