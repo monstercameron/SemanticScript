@@ -24,6 +24,7 @@ _DECIMAL = {
     "decimal_multiply_scaled": "1000",    # 2.50 * 4.00 = 10.00  (250*400/100)
     "decimal_divide_per_unit": "300",     # 12.00 / 4.00 = 3.00  (1200*100/400)
     "decimal_equal_compare": "1",         # 10.00 == 10.00 -> true
+    "decimal_list_total": "3075",         # 10.50+5.25+12.00+3.00, folded over a list
 }
 
 
