@@ -45,3 +45,32 @@ def test_codegen_runtime_error_is_structured_envelope(command, monkeypatch, caps
     assert data["status"] == "codegen-error"
     assert data["ok"] is False
     assert data["command"] == command
+    assert data["diagnostics"][0]["code"] == "SS5001"
+
+
+def test_call_codegen_error_keeps_source_line(monkeypatch):
+    source = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        'main let text immutable String "hello"\n'
+        "main let ok immutable ExitCode 0\nmain do show\nmain return ok\n"
+        "show is call\nshow in main\nshow invokes console.writeLine\n"
+        "show arg text String text\n"
+        'show discards "console status"\n'
+    )
+    program = ss.parse_compact(source)
+    expected_line = program.entities["show"].line
+
+    def raise_from_call(self, call, builder, sym, let_mut):
+        raise RuntimeError("LLVM type mismatch: i8* != i64")
+
+    monkeypatch.setattr(ss.EavCodegen, "_emit_call_impl", raise_from_call)
+    with pytest.raises(ss.EavError) as excinfo:
+        ss.lower_to_llvm(program)
+    assert excinfo.value.code == "SS5001"
+    assert excinfo.value.line == expected_line
+    assert "show" in excinfo.value.message
+    assert "console.writeLine" in excinfo.value.message

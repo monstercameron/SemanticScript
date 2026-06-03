@@ -777,6 +777,28 @@ def explain(code: str) -> dict:
     raise EavError(f"unknown diagnostic code {code!r}")
 
 
+def _console_safe_text(text: str) -> str:
+    """ASCII-safe rendering for human diagnostics on legacy Windows consoles."""
+    replacements = {
+        "§": "ss",
+        "—": "-",
+        "–": "-",
+        "→": "->",
+        "↔": "<->",
+        "…": "...",
+        "×": "x",
+        "·": "-",
+        "‑": "-",
+        "“": '"',
+        "”": '"',
+        "‘": "'",
+        "’": "'",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode("ascii", "backslashreplace").decode("ascii")
+
+
 @dataclass
 class Diagnostic:
     code: str
@@ -787,7 +809,9 @@ class Diagnostic:
 
     def render(self) -> str:
         loc = f"line {self.line}: " if self.line is not None else ""
-        return f"{self.severity.upper()} {self.code}: {loc}{self.message}"
+        return _console_safe_text(
+            f"{self.severity.upper()} {self.code}: {loc}{self.message}"
+        )
 
 
 def format_repair(code: str) -> str:
@@ -795,11 +819,11 @@ def format_repair(code: str) -> str:
     Runtime trap codes (SSR####) carry a kind + repair instead of tier/found."""
     entry = explain(code)
     if "repair" in entry:  # runtime trap band (WS1-136)
-        return (
+        return _console_safe_text(
             f"{code} (runtime trap · {entry['kind']}): {entry['summary']}\n"
             f"  Repair: {entry['repair']}"
         )
-    return (
+    return _console_safe_text(
         f"{code} ({entry['tier']}): {entry['summary']}\n"
         f"  Found:        {entry['found']}\n"
         f"  Suggested fix: {entry['suggested']}"
@@ -14789,7 +14813,7 @@ def _record_run_entry(source: str, entry: str):
     import subprocess
     try:
         proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__), "run", "-", "--entry", entry],
+            _self_cli_argv() + ["run", "-", "--entry", entry],
             input=source, capture_output=True, text=True, encoding="utf-8",
             errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
             #                     to fd 1/2 (trivial on Windows); decode defensively
@@ -14899,7 +14923,7 @@ def _record_run(source: str):
     # UTF-8 stdin pipe to match the child's UTF-8 stream reconfigure (README §33.2).
     try:
         proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__), "run", "-"],
+            _self_cli_argv() + ["run", "-"],
             input=source, capture_output=True, text=True, encoding="utf-8",
             errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
             #                     to fd 1/2 (trivial on Windows); decode defensively
@@ -14911,7 +14935,7 @@ def _record_run(source: str):
     return proc.stdout, proc.returncode
 
 
-def _record_run_full(source: str):
+def _record_run_full(source: str, timeout: Optional[float] = None):
     """Like `_record_run`, but also returns stderr. `eval` needs the compiler/
     runtime diagnostics, not only stdout (R-008): a parse/compile failure surfaces
     on stderr (`semanticscript: …`) and must reach the caller, not be dropped.
@@ -14922,10 +14946,10 @@ def _record_run_full(source: str):
     # std streams to UTF-8, so the stdin pipe must be UTF-8 too — otherwise a
     # non-ASCII source byte (e.g. an em-dash in a comment) is mis-encoded as
     # cp1252 on Windows and the child fails to decode it.
-    timeout = _eval_timeout_seconds()
+    timeout = timeout or _eval_timeout_seconds()
     try:
         proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__), "run", "-"],
+            _self_cli_argv() + ["run", "-"],
             input=source, capture_output=True, text=True, encoding="utf-8",
             errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
             #                     to fd 1/2 (trivial on Windows); decode defensively
@@ -17153,7 +17177,7 @@ def _check_program_status(path: str, strict: bool = False) -> dict:
     drift. A parse failure is `compiler-error`; otherwise the lint severity picks
     `lint-diagnostics` / `ok-with-warnings` / `ok`."""
     try:
-        program = parse_compact(_read_program_source(path))
+        _source, program = _load_program_for_path(path)
     except EavError as exc:
         return {
             "status": "compiler-error", "ok": False, "diagnostics": [str(exc)],
