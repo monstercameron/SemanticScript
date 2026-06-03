@@ -13,3 +13,8 @@ convertToInt64 target convert.toInt64
 convertToInt64 arg value Float64
 convertToInt64 out converted Int64
 convertToInt64 purpose "Truncate a Float64 to an Int64"
+convertToString is intrinsic
+convertToString target convert.toString
+convertToString arg value Int64
+convertToString out converted String
+convertToString purpose "Format an Int64 as a decimal String"

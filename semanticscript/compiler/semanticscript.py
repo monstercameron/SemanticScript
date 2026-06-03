@@ -1349,6 +1349,11 @@ def semsig_targets(program: Program) -> dict:
 _SEMSIG_SIG_CACHE: dict = {}
 
 
+def _sigs_dir() -> str:
+    import os
+    return os.path.join(_bundle_dir(), "sigs")
+
+
 def _semsig_signatures_for_module(module: str) -> dict:
     """DX-08: load standard.<module>.semsig and return {target -> signature dict},
     cached per module. A signature is {target, args:[{slot,type}], outSlot, out,
@@ -1356,9 +1361,7 @@ def _semsig_signatures_for_module(module: str) -> dict:
     import os
     if module in _SEMSIG_SIG_CACHE:
         return _SEMSIG_SIG_CACHE[module]
-    sigs_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sigs")
-    path = os.path.join(sigs_dir, f"standard.{module}.semsig")
+    path = os.path.join(_sigs_dir(), f"standard.{module}.semsig")
     result: dict = {}
     try:
         with open(path, encoding="utf-8") as fh:
@@ -1394,16 +1397,388 @@ def _semsig_signatures_for_module(module: str) -> dict:
     return result
 
 
+_SYNTHETIC_SIG_CACHE: Optional[dict] = None
+
+
+def _make_builtin_signature(target: str, args: list[tuple[str, str]],
+                            out: Optional[str] = None,
+                            out_slot: Optional[str] = None,
+                            purpose: Optional[str] = None,
+                            risk: Optional[str] = None,
+                            async_value: str = "no",
+                            **extra) -> dict:
+    sig = {
+        "target": target,
+        "args": [{"slot": slot, "type": typ} for slot, typ in args],
+        "outSlot": out_slot,
+        "out": out,
+        "async": async_value,
+        "purpose": purpose,
+        "risk": risk,
+    }
+    sig.update(extra)
+    return sig
+
+
+def _math_int_width(target: str) -> str:
+    return "Int32" if target.endswith("Int32") else "Int64"
+
+
+def _synthetic_codegen_signatures() -> dict:
+    """Fallback signatures for concrete codegen-modeled intrinsics missing from
+    standard.<module>.semsig. The .semsig row still wins when present."""
+    global _SYNTHETIC_SIG_CACHE
+    if _SYNTHETIC_SIG_CACHE is not None:
+        return _SYNTHETIC_SIG_CACHE
+    sigs: dict = {}
+
+    def add(target: str, args: list[tuple[str, str]], out: Optional[str] = None,
+            out_slot: Optional[str] = None, purpose: Optional[str] = None,
+            risk: Optional[str] = None, **extra) -> None:
+        sigs[target] = _make_builtin_signature(
+            target, args, out=out, out_slot=out_slot, purpose=purpose,
+            risk=risk, **extra)
+
+    for target in globals().get("_INT_BINOPS", {}):
+        ty = _math_int_width(target)
+        risk = None
+        if "divide" in target:
+            risk = "Traps on divide-by-zero and signed overflow"
+        elif "modulo" in target:
+            risk = "Traps on modulo-by-zero and signed overflow"
+        add(target, [("left", ty), ("right", ty)], ty,
+            purpose=f"Compute {target.rsplit('.', 1)[1]} over {ty} operands",
+            risk=risk)
+    for target in globals().get("_INT_CMP", {}):
+        ty = _math_int_width(target)
+        add(target, [("left", ty), ("right", ty)], "Bool",
+            purpose=f"Compare two {ty} operands")
+    for target in globals().get("_FLOAT_BINOPS", {}):
+        add(target, [("left", "Float64"), ("right", "Float64")], "Float64",
+            purpose="Compute a Float64 binary operation")
+    for target in globals().get("_FLOAT_CMP_ORDERED", {}):
+        add(target, [("left", "Float64"), ("right", "Float64")], "Bool",
+            purpose="Compare two Float64 operands with ordered IEEE-754 semantics")
+    for target in globals().get("_FLOAT_CMP_UNORDERED", {}):
+        add(target, [("left", "Float64"), ("right", "Float64")], "Bool",
+            purpose="Compare two Float64 operands with unordered IEEE-754 semantics")
+    for target in globals().get("_FLOAT_UNARY_INTRIN", {}):
+        add(target, [("value", "Float64")], "Float64",
+            purpose="Compute a Float64 unary math operation")
+    for target in globals().get("_FLOAT_BINARY_INTRIN", {}):
+        add(target, [("left", "Float64"), ("right", "Float64")], "Float64",
+            purpose="Compute a Float64 binary math intrinsic")
+    for target in globals().get("_INT_UNARY_INTRIN", {}):
+        add(target, [("value", "Int64")], "Int64",
+            purpose="Compute an Int64 unary bit-count operation")
+    for target in globals().get("_MATH_COMPUTED", set()):
+        if target in {"math.isEvenInt64", "math.isOddInt64", "math.isPowerOfTwoInt64"}:
+            add(target, [("value", "Int64")], "Bool",
+                purpose="Compute a Bool predicate over an Int64 value")
+        elif target in {"math.minInt64", "math.maxInt64", "math.absDiffInt64"}:
+            add(target, [("left", "Int64"), ("right", "Int64")], "Int64",
+                purpose="Compute an Int64 binary helper")
+        else:
+            add(target, [("value", "Int64")], "Int64",
+                purpose="Compute an Int64 unary helper")
+
+    add("console.writeFloat", [("value", "Float64")],
+        purpose="Write a float to standard output without appending a newline")
+    add("convert.to.string", [("value", "Int64")], "String", "converted",
+        purpose="Format an Int64 as a decimal String")
+    add("html.render", [("template", "HtmlTemplate")], "HtmlFragment", "html",
+        purpose="Render an htmlTemplate; additional args are template holes",
+        variadic=True,
+        variadicNote="Template hole arg slots come from {{hole}} names in the htmlTemplate body.")
+    add("pointer.isNull", [("pointer", "OpaquePointer")], "Bool",
+        purpose="Return whether an opaque pointer/address is null")
+    add("pointer.offset", [("base", "OpaquePointer"), ("offset", "ByteCount")],
+        "OpaquePointer", "pointer",
+        purpose="Return base plus a byte offset")
+    add("pointer.loadByte", [("buffer", "OpaquePointer"), ("offset", "ByteCount")],
+        "Int32", "value",
+        purpose="Load one byte from an opaque pointer plus byte offset",
+        risk="Traps on null pointer")
+    add("pointer.storeByte", [("buffer", "OpaquePointer"), ("offset", "ByteCount"),
+                              ("value", "Int64")],
+        purpose="Store the low byte of value at an opaque pointer plus byte offset",
+        risk="Traps on null pointer")
+    add("http.requestMethod", [("request", "HttpRequest")], "String", "method",
+        purpose="Read the HTTP request method from a live request")
+    add("http.requestPath", [("request", "HttpRequest")], "String", "path",
+        purpose="Read the HTTP request path from a live request")
+    add("http.requestHeader", [("request", "HttpRequest"), ("name", "String")],
+        "String", "value", purpose="Read a request header value by name")
+    add("http.requestQueryParam", [("request", "HttpRequest"), ("name", "String")],
+        "String", "value", purpose="Read a query parameter value by name")
+    add("http.requestPathParam", [("request", "HttpRequest"), ("name", "String")],
+        "String", "value", purpose="Read a route path parameter value by name")
+    add("http.requestCookie", [("request", "HttpRequest"), ("cookieName", "String")],
+        "String", "value", purpose="Read a request cookie value by name")
+    add("http.requestBodyText", [("request", "HttpRequest")], "String", "body",
+        purpose="Read the request body as text")
+    add("http.requestBodyBytes", [("request", "HttpRequest")], "OpaquePointer", "body",
+        purpose="Read the request body as a borrowed byte pointer")
+    add("http.requestBodyLength", [("request", "HttpRequest")], "ByteCount", "length",
+        purpose="Read the request body byte length")
+    add("http.multipartPartText", [("request", "HttpRequest"), ("name", "String")],
+        "String", "text", purpose="Read a multipart part as text")
+    add("http.multipartPartBytes", [("request", "HttpRequest"), ("name", "String")],
+        "OpaquePointer", "bytes", purpose="Read a multipart part as borrowed bytes")
+    add("http.multipartPartLength", [("request", "HttpRequest"), ("name", "String")],
+        "ByteCount", "length", purpose="Read a multipart part byte length")
+    add("http.multipartPartFilename", [("request", "HttpRequest"), ("name", "String")],
+        "String", "filename", purpose="Read a multipart part filename")
+    add("http.multipartPartContentType", [("request", "HttpRequest"), ("name", "String")],
+        "String", "contentType", purpose="Read a multipart part content type")
+    add("http.responseText", [("response", "HttpResponse"), ("status", "Int32"),
+                              ("body", "String"), ("contentType", "String")],
+        "Int32", "status", purpose="Write a text response body",
+        optionalSlots=["contentType"])
+    add("http.responseBytes", [("response", "HttpResponse"), ("status", "Int32"),
+                               ("body", "OpaquePointer"), ("bodyLength", "ByteCount"),
+                               ("contentType", "String")],
+        "Int32", "status", purpose="Write a byte response body",
+        optionalSlots=["contentType"])
+    add("http.responseFile", [("response", "HttpResponse"), ("status", "Int32"),
+                              ("rootDirectory", "String"), ("requestedPath", "String")],
+        "Int32", "status", purpose="Stream a static file response")
+    add("http.responseHeader", [("response", "HttpResponse"), ("name", "String"),
+                                ("value", "String")],
+        "Int32", "status", purpose="Set an HTTP response header")
+    add("http.responseSseEvent", [("response", "HttpResponse"), ("status", "Int32"),
+                                  ("event", "String"), ("data", "String")],
+        "Int32", "status", purpose="Write a single server-sent event response")
+    add("http.respond", [("response", "HttpResponse"), ("status", "Int32"),
+                         ("body", "String")],
+        "Int32", "status", purpose="Write a plaintext response body")
+    add("http.ensureDirectory", [("directoryPath", "String")], "Int32", "status",
+        purpose="Create a directory if it is missing")
+    add("http.nowMillis", [], "Int64", "millis",
+        purpose="Return the current wall-clock time in milliseconds")
+    add("sqlite.exec", [("database", "SqliteDatabase"), ("sql", "SqlText")],
+        purpose="Execute a SQL statement against a database")
+    add("sqlite.execute", [("database", "SqliteDatabase"), ("sql", "SqlText")],
+        purpose="Alias for sqlite.exec")
+    add("sqlite.openInMemory", [], "SqliteDatabase", "database",
+        purpose="Open an anonymous in-memory sqlite database")
+    add("sqlite.errorMessage", [("database", "SqliteDatabase")],
+        "SqliteText", "message",
+        purpose="Read the last sqlite error message for a database")
+    add("sqlite.lastInsertRowId", [("database", "SqliteDatabase")],
+        "Int64", "rowId",
+        purpose="Read the most recent inserted row id for a database")
+    add("sqlite.changedRowCount", [("database", "SqliteDatabase")],
+        "Int32", "count",
+        purpose="Read the number of rows changed by the previous statement")
+    add("sqlite.enableWalMode", [("database", "SqliteDatabase")],
+        "Int32", "status",
+        purpose="Enable write-ahead logging for a database")
+    add("sqlite.queryScalarInt64", [("database", "SqliteDatabase"), ("sql", "SqlText")],
+        "Int64", "value",
+        purpose="Read a single Int64 from column 0 of a parameterless query")
+    add("sqlite.beginImmediateTransaction", [("database", "SqliteDatabase")],
+        "Int32", "status",
+        purpose="Begin an IMMEDIATE sqlite transaction")
+    add("sqlite.commitTransaction", [("database", "SqliteDatabase")],
+        "Int32", "status",
+        purpose="Commit the current sqlite transaction")
+    add("sqlite.rollbackTransaction", [("database", "SqliteDatabase")],
+        "Int32", "status",
+        purpose="Roll back the current sqlite transaction")
+    add("sqlite.query", [("database", "SqliteDatabase"), ("sql", "SqlText")],
+        "SqliteStatement", "statement",
+        purpose="Alias for sqlite.prepareStatement")
+    add("sqlite.prepareStatement", [("database", "SqliteDatabase"), ("sql", "SqlText")],
+        "SqliteStatement", "statement",
+        purpose="Prepare a SQL statement for stepping and binding")
+    add("sqlite.step", [("statement", "SqliteStatement")],
+        "SqliteStepResult", "stepResult",
+        purpose="Alias for sqlite.stepStatement")
+    add("sqlite.stepStatement", [("statement", "SqliteStatement")],
+        "SqliteStepResult", "stepResult",
+        purpose="Step a prepared sqlite statement")
+    add("sqlite.resetStatement", [("statement", "SqliteStatement")],
+        "Int32", "status",
+        purpose="Reset a prepared sqlite statement for reuse")
+    add("sqlite.bindInt64", [("statement", "SqliteStatement"),
+                             ("parameterIndex", "Int32"), ("value", "Int64")],
+        purpose="Bind an Int64 value to a prepared-statement parameter")
+    add("sqlite.bindDouble", [("statement", "SqliteStatement"),
+                              ("parameterIndex", "Int32"), ("value", "Float64")],
+        purpose="Bind a Float64 value to a prepared-statement parameter")
+    add("sqlite.bindText", [("statement", "SqliteStatement"),
+                            ("parameterIndex", "Int32"), ("value", "String")],
+        purpose="Bind a text value to a prepared-statement parameter")
+    add("sqlite.bindNull", [("statement", "SqliteStatement"),
+                            ("parameterIndex", "Int32")],
+        purpose="Bind NULL to a prepared-statement parameter")
+    add("sqlite.columnCount", [("statement", "SqliteStatement")],
+        "Int32", "count",
+        purpose="Read the number of columns in the current row")
+    add("sqlite.columnType", [("statement", "SqliteStatement"),
+                              ("columnIndex", "Int32")],
+        "Int32", "columnType",
+        purpose="Read the sqlite type tag for a result column")
+    add("sqlite.columnName", [("statement", "SqliteStatement"),
+                              ("columnIndex", "Int32")],
+        "SqliteText", "name",
+        purpose="Read the declared name for a result column")
+    add("sqlite.columnInt64", [("statement", "SqliteStatement"),
+                               ("columnIndex", "Int32")],
+        "Int64", "value",
+        purpose="Read an Int64 column from the current sqlite row")
+    add("sqlite.columnDouble", [("statement", "SqliteStatement"),
+                                ("columnIndex", "Int32")],
+        "Float64", "value",
+        purpose="Read a Float64 column from the current sqlite row")
+    add("sqlite.columnText", [("statement", "SqliteStatement"),
+                              ("columnIndex", "Int32")],
+        "SqliteText", "text",
+        purpose="Read a text column from the current sqlite row")
+    add("sqlite.columnByteCount", [("statement", "SqliteStatement"),
+                                   ("columnIndex", "Int32")],
+        "ByteCount", "byteCount",
+        purpose="Read the byte length of a text/blob result column")
+    add("sqlite.finalizeStatement", [("statement", "SqliteStatement")],
+        purpose="Finalize a prepared sqlite statement")
+    add("sqlite.closeDatabase", [("database", "SqliteDatabase")],
+        "Int32", "status",
+        purpose="Close a sqlite database handle")
+    add("sqlite.libraryVersion", [], "SqliteText", "version",
+        purpose="Read the linked sqlite library version")
+    add("sqlite.stepResultIsDone", [("stepResult", "SqliteStepResult")],
+        "Bool", "done",
+        purpose="Return whether a sqlite step result is SQLITE_DONE")
+    add("sqlite.stepResultIsRow", [("stepResult", "SqliteStepResult")],
+        "Bool", "row",
+        purpose="Return whether a sqlite step result is SQLITE_ROW")
+
+    _SYNTHETIC_SIG_CACHE = sigs
+    return sigs
+
+
 def _builtin_target_signature(target: str):
     """DX-08: the declared signature of a built-in/stdlib intrinsic `target` (e.g.
-    `math.divideInt64` -> args left/right Int64, out Int64) from its
-    standard.<module>.semsig, or None if the target has no semsig contract. The
-    slot names/types are the exact ones `run` enforces, so an agent can look them
-    up via `describe`/`targets --signature` instead of guessing lhs/rhs."""
+    `math.divideInt64` -> args left/right Int64, out Int64). standard.<module>
+    .semsig rows are authoritative; concrete codegen-modeled targets missing
+    from the sidecar get a generated fallback. Slot-sensitive families use these
+    names/types for `check` validation, so an agent can look them up via
+    `describe`/`targets --signature` instead of guessing lhs/rhs."""
     if "." not in target:
         return None
     module = target.split(".", 1)[0]
-    return _semsig_signatures_for_module(module).get(target)
+    sig = (_semsig_signatures_for_module(module).get(target)
+           or _synthetic_codegen_signatures().get(target))
+    if sig is not None:
+        return sig
+    if module == "compare":
+        suffix = target[len("compare."):]
+        cmp_ops = globals().get("_CMP_OPS", {})
+        for op in sorted(cmp_ops, key=len, reverse=True):
+            if suffix.startswith(op) and suffix[len(op):]:
+                typ = suffix[len(op):]
+                return _make_builtin_signature(
+                    target,
+                    [("left", typ), ("right", typ)],
+                    "Bool",
+                    "result",
+                    purpose=f"Compare two {typ} operands")
+    return None
+
+
+def _modeled_signature_target_names() -> list[str]:
+    names = set(_CODEGEN_MODELED_EXACT)
+    for d in (_INT_BINOPS, _INT_CMP, _INT_UNARY_INTRIN, _MATH_COMPUTED,
+              _FLOAT_BINOPS, _FLOAT_CMP_ORDERED, _FLOAT_CMP_UNORDERED,
+              _FLOAT_UNARY_INTRIN, _FLOAT_BINARY_INTRIN):
+        names.update(d)
+    for fam, methods in _FAMILY_RT.items():
+        for meth in methods:
+            names.add(f"{fam}.{meth}")
+    names.update(globals().get("_HTTP_RT", {}))
+    names.update(_synthetic_codegen_signatures())
+    return sorted(names)
+
+
+def _builtin_family_signatures(pattern: str) -> list[dict]:
+    """Return signatures for a concrete family pattern such as json.*."""
+    if not pattern.endswith(".*"):
+        return []
+    module = pattern[:-2]
+    prefix = module + "."
+    by_target: dict[str, dict] = {}
+    for target, sig in _semsig_signatures_for_module(module).items():
+        if target.startswith(prefix):
+            by_target[target] = sig
+    for target in _modeled_signature_target_names():
+        if target.startswith(prefix):
+            sig = _builtin_target_signature(target)
+            if sig is not None:
+                by_target[target] = sig
+    return [by_target[target] for target in sorted(by_target)]
+
+
+def _standard_signature_modules() -> list[str]:
+    import os
+    try:
+        names = os.listdir(_sigs_dir())
+    except OSError:
+        return []
+    return sorted(
+        name[len("standard."):-len(".semsig")]
+        for name in names
+        if name.startswith("standard.") and name.endswith(".semsig")
+    )
+
+
+def _all_builtin_signatures() -> dict[str, dict]:
+    sigs: dict[str, dict] = {}
+    for module in _standard_signature_modules():
+        sigs.update(_semsig_signatures_for_module(module))
+    sigs.update(_synthetic_codegen_signatures())
+    return sigs
+
+
+def _target_catalog() -> dict[str, dict]:
+    """Concrete targets advertised to agents.
+
+    S1: every advertised target is a concrete callable with a discoverable
+    signature. Generic lowerer prefixes remain implementation details; the
+    catalog lists only exact targets so `targets --signature <target>` and
+    `docs --get <target>` cannot disagree or return "no signature".
+    """
+    ledger = stdlib_readiness_ledger() if "stdlib_readiness_ledger" in globals() else {}
+    names = set(_modeled_signature_target_names())
+    for target in _all_builtin_signatures():
+        if target in names or any(target.startswith(p) for p in _CODEGEN_MODELED_PREFIXES):
+            names.add(target)
+    families: dict[str, list[str]] = {}
+    family_status: dict[str, dict] = {}
+    target_rows = []
+    for target in sorted(names):
+        sig = _builtin_target_signature(target)
+        if sig is None:
+            continue
+        family = target.split(".", 1)[0]
+        families.setdefault(family, []).append(target)
+        maturity = ledger.get(family, {})
+        experimental = bool(maturity.get("deferred"))
+        family_status[family] = {
+            "experimental": experimental,
+            "maturity": "experimental" if experimental else "proven",
+            "status": maturity.get("status", "intrinsic"),
+            "tier": maturity.get("tier", "core"),
+        }
+        target_rows.append({
+            "target": target,
+            "family": family,
+            "experimental": experimental,
+            "maturity": "experimental" if experimental else "proven",
+            "status": maturity.get("status", "intrinsic"),
+            "signature": sig,
+        })
+    return {"families": families, "familyStatus": family_status, "targets": target_rows}
 
 
 def _signature_doc_entry(sig: dict) -> dict:
@@ -1413,6 +1788,16 @@ def _signature_doc_entry(sig: dict) -> dict:
         "kind": "intrinsic",
         "purpose": sig.get("purpose") or "",
         "signature": sig,
+    }
+
+
+def _signature_family_doc_entry(pattern: str, signatures: list[dict]) -> dict:
+    return {
+        "name": pattern,
+        "kind": "intrinsicFamily",
+        "purpose": f"Built-in intrinsic signatures matching {pattern}",
+        "signatureCount": len(signatures),
+        "signatures": signatures,
     }
 
 
@@ -17455,33 +17840,22 @@ def cmd_targets(args) -> int:
             if sig.get("purpose"):
                 print(f"  purpose \"{sig['purpose']}\"")
         return 0
-    groups: dict = {}
-
-    def add(name):
-        groups.setdefault(name.split(".", 1)[0], set()).add(name)
-
-    for t in _CODEGEN_MODELED_EXACT:
-        add(t)
-    for d in (_INT_BINOPS, _INT_CMP, _INT_UNARY_INTRIN, _MATH_COMPUTED,
-              _FLOAT_BINOPS, _FLOAT_CMP_ORDERED, _FLOAT_CMP_UNORDERED,
-              _FLOAT_UNARY_INTRIN, _FLOAT_BINARY_INTRIN):
-        for t in d:
-            add(t)
-    for fam, methods in _FAMILY_RT.items():       # sqlite/json/bcrypt/log
-        for meth in methods:
-            add(f"{fam}.{meth}")
-    for p in _CODEGEN_MODELED_PREFIXES:           # whole-family prefixes
-        add(f"{p.rstrip('.')}.<any method>")
-    if getattr(args, "json", False):
+    catalog = _target_catalog()
+    if want_json:
         import json
         print(json.dumps({
+            "surface": "sem.targets.v1",
             "version": "sem.targets.v1",
-            "families": {f: sorted(v) for f, v in sorted(groups.items())},
+            "families": {f: sorted(v) for f, v in sorted(catalog["families"].items())},
+            "familyStatus": catalog["familyStatus"],
+            "targets": catalog["targets"],
         }, indent=2))
     else:
-        for fam in sorted(groups):
-            print(f"{fam}:")
-            for t in sorted(groups[fam]):
+        for fam in sorted(catalog["families"]):
+            status = catalog["familyStatus"].get(fam, {})
+            suffix = " (experimental)" if status.get("experimental") else ""
+            print(f"{fam}{suffix}:")
+            for t in sorted(catalog["families"][fam]):
                 print(f"  {t}")
     return 0
 
