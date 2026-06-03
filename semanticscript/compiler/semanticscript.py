@@ -5019,11 +5019,7 @@ def _validate_program(program: Program) -> None:
     Lint-tier checks live in eavlint.py; this pass enforces only rules the spec
     marks as a *hard error* during parsing.
     """
-    alias_map = {
-        a.name: a.fact("for").payload[0]
-        for a in program.of_kind("alias")
-        if a.fact("for") and a.fact("for").payload
-    }
+    alias_map = program.alias_map()
     for ent in (program.entities[name] for name in program.order):
         if ent.kind == "call" and ent.fact("async") is not None:
             # README ss5/ss15.5: `async` on a call is tolerated-deprecated; it
@@ -5089,6 +5085,7 @@ def _validate_program(program: Program) -> None:
         if ent.kind in ("operation", "function"):
             _validate_let_forward_refs(ent)
             _validate_body_kind(ent)
+            _validate_declared_raises(ent, program)
             _validate_labels(ent, program)
             _validate_return_arity(ent)
             _validate_no_shadow(ent)
@@ -5163,6 +5160,27 @@ def _validate_program(program: Program) -> None:
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
+
+
+def _validate_declared_raises(op: Entity, program: Program) -> None:
+    """`OP raises ErrorType` is declarative. Error control flow remains explicit
+    at the call site with `catch` plus `branch ifError`."""
+    if op.kind not in ("operation", "function"):
+        return
+    for row in op.facts("raises"):
+        if not row.payload:
+            raise EavError(
+                f"{op.kind} {op.name!r} has an empty `raises` row; name one or "
+                f"more declared error types (README ss11/ss25)",
+                row.line, code="SS2552")
+        for err_name in row.payload:
+            err = program.entities.get(err_name)
+            if err is None or err.kind != "error":
+                raise EavError(
+                    f"{op.kind} {op.name!r} raises {err_name!r}, but that name is "
+                    f"not a declared error; add `{err_name} is error` or remove "
+                    f"the `raises` row (README ss11/ss25)",
+                    row.line, code="SS2552")
 
 
 def _validate_module_init_order(program: Program) -> None:
@@ -5867,11 +5885,7 @@ def _lint_entry_abi(program: Program) -> list:
     """Entry-point ABIs (README ss11): a `console` entry operation takes no `in`
     parameters and returns ExitCode/Int32. Reported by the linter since it is a
     whole-program (project+target+entry) cross-reference. (wasm/webServer pending.)"""
-    alias_map = {
-        a.name: a.fact("for").payload[0]
-        for a in program.of_kind("alias")
-        if a.fact("for") and a.fact("for").payload
-    }
+    alias_map = program.alias_map()
     out: list[Diagnostic] = []
     for proj in program.of_kind("project"):
         targets = {t.payload[0] for t in proj.facts("target") if t.payload}
@@ -5944,7 +5958,7 @@ def _lint_runtime_bindings(program: Program) -> list:
 # to anything else passes the structural checks but fails at run/build, so this
 # set is the source of truth for both the SS1198 lint and the `sem targets`
 # discovery command. Mirrors the _emit_call dispatch.
-_CODEGEN_MODELED_PREFIXES = ("c.", "compare.", "convert.to", "http.", "gui.",
+_CODEGEN_MODELED_PREFIXES = ("c.", "compare.", "convert.to", "gui.",
                              "buffer.", "list.", "map.", "fs.", "decimal.",
                              "test.assert")
 # Namespaces that name a builtin/intrinsic family (vs a user record `Type.new`,
@@ -5962,7 +5976,8 @@ _CODEGEN_MODELED_EXACT = frozenset({
     "assert.true", "html.render", "math.popcountInt64", "net.fetchText",
     "net.freeTextBody", "string.concat", "pointer.isNull", "pointer.offset",
     "pointer.loadByte", "pointer.storeByte", "sqlite.stepResultIsDone",
-    "sqlite.stepResultIsRow", "event.openProcessStream", "event.subscribeStream",
+    "sqlite.stepResultIsRow", "convert.toString", "convert.to.string",
+    "event.openProcessStream", "event.subscribeStream",
     "event.appendEvent", "event.receiveEvent", "event.acknowledgeEvent",
     "event.closeSubscription", "event.closeStream",
 })
@@ -5979,6 +5994,8 @@ def _codegen_modeled_target(target: str, program: Program) -> bool:
             or target in _FLOAT_BINARY_INTRIN):
         return True
     if _family_intrinsic(target) is not None:   # sqlite/json/bcrypt/log families
+        return True
+    if _http_intrinsic(target) is not None:
         return True
     if any(target.startswith(p) for p in _CODEGEN_MODELED_PREFIXES):
         return True
@@ -6004,6 +6021,16 @@ def _lint_codegen_modeled(program: Program) -> list:
             continue   # a bare name is a user op / handled elsewhere
         if target.split(".", 1)[0] not in _BUILTIN_NAMESPACES:
             continue   # a user record (`Type.new`), field, or cross-module op
+        if not target.startswith("c."):
+            sig = _builtin_target_signature(target)
+            if sig is None and _codegen_modeled_target(target, program):
+                out.append(Diagnostic(
+                    "SS1198", "error",
+                    f"call {ent.name!r} invokes {target!r}, which matches a broad "
+                    f"builtin lowerer prefix but has no modeled signature; list "
+                    f"runnable targets with `sem targets` and inspect slots with "
+                    f"`sem targets --signature <target>`", ent.line, ent.name))
+                continue
         if _codegen_modeled_target(target, program):
             continue
         hint = (f" — try the width-typed `{target}Int64`"
@@ -6174,21 +6201,95 @@ def _lint_result_nil_error_loss(program: Program) -> list:
 
 
 def _lint_intrinsic_arg_slots(program: Program) -> list:
-    """DX-09: validate a call's args against the built-in target's .semsig
-    signature — the arg-slot sibling of SS1198/SS1199. An unknown slot, a missing
-    required slot, or a wrong-typed slot otherwise passes the structural `check`
-    and is only caught by the code generator at `run` (the guess-and-check loop:
-    an agent guessing `lhs`/`rhs` for math.divideInt64's `left`/`right` saw a false
-    green). Reject it at check (SS1201) and point at `targets --signature`.
+    """Validate built-in call args against the signature table.
 
-    Scope: `math.*` targets only — there the code generator reads each operand BY
-    its slot name (`arg("left")`/`arg("right")`/`arg("value")`), so the .semsig slot
-    names/types are authoritative and a wrong slot really does fail at run. Other
-    families (convert.*/buffer.*/http.*) lower their args POSITIONALLY, so any slot
-    name works and the .semsig names are only documentation — validating those
-    would false-positive. (The reported guess-and-check loop was math.divideInt64.)
+    Slot-sensitive families such as math.* require exact slot names. Positional
+    runtime families use the same signature table for arity and type checks where
+    the lowerer can prove a mismatch before run/build.
     """
     out: list[Diagnostic] = []
+    std_aliases = {
+        "JsonText": "String",
+        "JsonDocument": "Int64",
+        "JsonCursor": "Int64",
+        "JsonCapacityBytes": "Int64",
+        "JsonValueKind": "Int32",
+        "SqlText": "String",
+        "SqliteDatabase": "Int64",
+        "SqliteStatement": "Int64",
+        "SqliteStepResult": "Int32",
+        "SqliteOpenMode": "Int32",
+        "SqliteText": "String",
+        "HttpRequest": "OpaquePointer",
+        "HttpResponse": "OpaquePointer",
+        "HttpHandler": "OpaquePointer",
+        "ServerContext": "OpaquePointer",
+        "HttpStatusCode": "Int32",
+        "HttpTextBody": "String",
+        "HttpContentType": "String",
+        "HttpRuntimeString": "String",
+        "EpochMillis": "Int64",
+        "Buffer": "OpaquePointer",
+        "Slice": "OpaquePointer",
+        "ListHandle": "OpaquePointer",
+        "MapHandle": "OpaquePointer",
+        "FileHandle": "OpaquePointer",
+        "Decimal": "Int64",
+        "Money": "Int64",
+        "ByteCount": "Int64",
+        "OpaquePointer": "Int64",
+        "ExitCode": "Int32",
+    }
+
+    def canon_type(t: str) -> str:
+        t = _resolve_through_aliases(program, t)
+        seen: set = set()
+        while t in std_aliases and t not in seen:
+            seen.add(t)
+            t = std_aliases[t]
+        return t
+
+    def compatible(target: str, slot: str, got: str, want: str) -> bool:
+        nominal_handles = {
+            "JsonDocument", "JsonCursor", "SqliteDatabase", "SqliteStatement",
+            "HttpRequest", "HttpResponse", "ServerContext",
+        }
+        got_root = _resolve_through_aliases(program, got)
+        got_is_opaque_handle = got_root == "OpaquePointer" or got in nominal_handles
+        if want == "SqlText":
+            return got == "SqlText"
+        if got in nominal_handles and want in nominal_handles and got != want:
+            return False
+        got_c, want_c = canon_type(got), canon_type(want)
+        if target in ("convert.toString", "convert.to.string") and got_is_opaque_handle:
+            return False
+        if target == "console.writeIntegerLine" and got_is_opaque_handle:
+            return False
+        if got_c == want_c:
+            return True
+        if target == "sqlite.openDatabase" and slot == "mode":
+            return got_c in ("String", "Int32") and want_c == "Int32"
+        if target == "json.setObjectFieldBool" and slot == "value":
+            return got_c in ("Bool", "Int32", "Int64") and want_c == "Bool"
+        if target.startswith("convert.to"):
+            if target in ("convert.toString", "convert.to.string"):
+                if got_is_opaque_handle:
+                    return False
+                return got_c in _INT_WIDTHS or got_c in ("Bool", "Int32", "Int64")
+            return True
+        if target.startswith("test.assert") and want == "Int64":
+            return got_c in _INT_WIDTHS or got_c == "Bool"
+        if target == "console.writeLine":
+            return got_c == "String" and want_c == "String"
+        if target == "console.writeIntegerLine":
+            return (not got_is_opaque_handle and want_c == "Int64"
+                    and (got_c in _INT_WIDTHS or got_c in ("Bool", "ExitCode")))
+        if target in ("console.writeFloatLine", "console.writeFloat"):
+            return got_c == "Float64" and want_c == "Float64"
+        return False
+
+    def sig_params(sig: dict) -> str:
+        return ", ".join(f"{a['slot']} {a['type']}" for a in sig["args"]) or "(none)"
     for n in program.order:
         ent = program.entities[n]
         if ent.kind not in ("call", "task"):
@@ -6197,16 +6298,76 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
         if not (inv and inv.payload):
             continue
         target = inv.payload[0]
-        if not target.startswith("math."):
+        slot_sensitive = (
+            target.startswith("math.")
+            or target.startswith("assert.")
+            or target.startswith("test.assert")
+            or target.startswith("compare.")
+            or target.startswith("console.")
+            or target.startswith("buffer.")
+            or target.startswith("list.")
+            or target.startswith("map.")
+            or target.startswith("fs.")
+            or target.startswith("decimal.")
+            or target.startswith("event.")
+            or target.startswith("net.")
+            or target.startswith("http.")
+            or target.startswith("bcrypt.")
+            or target.startswith("pointer.")
+            or target == "test.and"
+            or target == "html.render"
+        )
+        family = target.split(".", 1)[0]
+        if (not slot_sensitive and family not in ("json", "sqlite", "log")
+                and not target.startswith("convert.to")):
             continue
         sig = _builtin_target_signature(target)
         if sig is None:
             continue
+        if not slot_sensitive:
+            expected = sig["args"]
+            call_args = [a for a in ent.facts("arg") if a.payload and len(a.payload) >= 1]
+            params = sig_params(sig)
+            hint = f"see `targets --signature {target}`"
+            minimum = 1 if target == "sqlite.openDatabase" else len(expected)
+            if len(call_args) < minimum:
+                missing = expected[len(call_args)] if len(call_args) < len(expected) else expected[-1]
+                out.append(Diagnostic(
+                    "SS1201", "error",
+                    f"call {ent.name!r} is missing required arg {missing['slot']!r} "
+                    f"({missing['type']}) of {target!r} -- its parameters are "
+                    f"{params} ({hint})",
+                    ent.line, ent.name))
+                continue
+            if not sig.get("variadic") and len(call_args) > len(expected):
+                extra = call_args[len(expected)]
+                out.append(Diagnostic(
+                    "SS1201", "error",
+                    f"call {ent.name!r} passes extra arg {extra.payload[0]!r} to "
+                    f"{target!r} -- its parameters are {params} ({hint})",
+                    extra.line, ent.name))
+                continue
+            if family not in ("json", "sqlite") and target not in (
+                    "convert.toString", "convert.to.string"):
+                continue
+            for idx, arow in enumerate(call_args[:len(expected)]):
+                if len(arow.payload) < 2:
+                    continue
+                want = expected[idx]
+                if not compatible(target, want["slot"], arow.payload[1], want["type"]):
+                    out.append(Diagnostic(
+                        "SS1201", "error",
+                        f"call {ent.name!r} passes {arow.payload[1]!r} as positional "
+                        f"arg {idx + 1} ({arow.payload[0]!r}) of {target!r}, which "
+                        f"expects {want['slot']} {want['type']} ({hint})",
+                        arow.line, ent.name))
+            continue
         sig_slots = {a["slot"]: a["type"] for a in sig["args"]}
+        optional_slots = set(sig.get("optionalSlots") or ())
         call_args = {a.payload[0]: a for a in ent.facts("arg")
                      if a.payload and len(a.payload) >= 1}
-        if not call_args:
-            continue  # no args supplied (e.g. a bare reference) — nothing to check
+        if not call_args and not sig_slots:
+            continue
         params = ", ".join(f"{s} {t}" for s, t in sig_slots.items()) or "(none)"
         hint = f"see `targets --signature {target}`"
         for slot, arow in call_args.items():
@@ -6218,6 +6379,8 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
                     arow.line, ent.name))
         for slot, want in sig_slots.items():
             if slot not in call_args:
+                if slot in optional_slots:
+                    continue
                 out.append(Diagnostic(
                     "SS1201", "error",
                     f"call {ent.name!r} is missing required arg {slot!r} ({want}) of "
@@ -6226,9 +6389,7 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
                 continue
             arow = call_args[slot]
             if len(arow.payload) >= 2:
-                got_t = _resolve_through_aliases(program, arow.payload[1])
-                want_t = _resolve_through_aliases(program, want)
-                if got_t != want_t:
+                if not compatible(target, slot, arow.payload[1], want):
                     out.append(Diagnostic(
                         "SS1201", "error",
                         f"call {ent.name!r} passes {arow.payload[1]!r} to arg {slot!r} of "
@@ -6780,11 +6941,7 @@ def _validate_calls(program: Program) -> None:
         for name in program.order
         if program.entities[name].kind in ("operation", "function")
     }
-    alias_map = {
-        a.name: a.fact("for").payload[0]
-        for a in program.of_kind("alias")
-        if a.fact("for") and a.fact("for").payload
-    }
+    alias_map = program.alias_map()
     newtypes = set(alias_map)
     for name in program.order:
         ent = program.entities[name]
@@ -6804,6 +6961,14 @@ def _validate_calls(program: Program) -> None:
                 f"call {ent.name!r} drops the non-void result of {target!r}; add "
                 f"`out`, `catch`, or `discards \"reason\"` (README ss17 #25)",
                 ent.line,
+            )
+        if target.startswith("assert.") and ent.fact("discards") is not None:
+            raise EavError(
+                f"call {ent.name!r} discards the boolean result of {target!r}; "
+                "bind it with `out` and branch/combine it, or use a `test.assert*` "
+                "harness target that records the failure",
+                ent.line,
+                code="SS1204",
             )
         if "." in target:
             continue  # imported / compiler-derived / intrinsic — external
@@ -7043,11 +7208,7 @@ def _validate_overrides(program: Program) -> None:
         for c in proj.facts("constant")
         if len(c.payload) >= 2
     }
-    alias_map = {
-        a.name: a.fact("for").payload[0]
-        for a in program.of_kind("alias")
-        if a.fact("for") and a.fact("for").payload
-    }
+    alias_map = program.alias_map()
     for plat in program.of_kind("platform"):
         for o in plat.facts("override"):
             if len(o.payload) < 2:
@@ -7645,6 +7806,43 @@ _HTTP_OPTIONAL_CONTENT_TYPE_ARITY = {
     "ss_http_response_text": 4,    # response, status, body, content_type
     "ss_http_response_bytes": 5,   # response, status, body, body_length, content_type
 }
+
+# Exact HTTP intrinsics the LLVM lowerer can call directly. The stdlib sidecar
+# also contains future/server-design contracts such as http.route; those are
+# documented contracts, not runnable direct calls in this code generator.
+# return-kind: "h" = i64, "i" = i32 status/int, "s" = i8* string/bytes, "v" = void.
+_HTTP_RT = {
+    "http.urlEncode": ("ss_http_url_encode_str", "s"),
+    "http.urlDecode": ("ss_http_url_decode_str", "s"),
+    "http.htmlEscape": ("ss_http_html_escape_str", "s"),
+    "http.freeString": ("ss_http_free_str", "v"),
+    "http.requestMethod": ("ss_http_request_method", "s"),
+    "http.requestPath": ("ss_http_request_path", "s"),
+    "http.requestHeader": ("ss_http_request_header", "s"),
+    "http.requestQueryParam": ("ss_http_request_query_param", "s"),
+    "http.requestPathParam": ("ss_http_request_path_param", "s"),
+    "http.requestCookie": ("ss_http_request_cookie", "s"),
+    "http.requestBodyText": ("ss_http_request_body_text", "s"),
+    "http.requestBodyBytes": ("ss_http_request_body_bytes", "s"),
+    "http.requestBodyLength": ("ss_http_request_body_length", "h"),
+    "http.multipartPartText": ("ss_http_multipart_part_text", "s"),
+    "http.multipartPartBytes": ("ss_http_multipart_part_bytes", "s"),
+    "http.multipartPartLength": ("ss_http_multipart_part_length", "h"),
+    "http.multipartPartFilename": ("ss_http_multipart_part_filename", "s"),
+    "http.multipartPartContentType": ("ss_http_multipart_part_content_type", "s"),
+    "http.responseText": ("ss_http_response_text", "i"),
+    "http.responseBytes": ("ss_http_response_bytes", "i"),
+    "http.responseFile": ("ss_http_response_file", "i"),
+    "http.responseHeader": ("ss_http_response_header", "i"),
+    "http.responseSseEvent": ("ss_http_response_sse_event", "i"),
+    "http.ensureDirectory": ("ss_http_ensure_directory", "i"),
+    "http.nowMillis": ("ss_http_now_millis", "h"),
+    "http.respond": ("ss_http_respond", "i"),
+}
+
+
+def _http_intrinsic(target: str):
+    return _HTTP_RT.get(target)
 
 
 def _is_observable_sink(target: str) -> bool:
@@ -9006,29 +9204,34 @@ def _validate_numeric_ub(program: Program) -> None:
     (SS3110 — EAV has no implicit widening); a divide/modulo by a constant 0 or a
     shift by a constant >= the operand width is rejected (SS3111). (The runtime
     div-by-zero guard remains for non-constant divisors.)"""
-    int_const = {}  # binding name -> int value
+    storage_const: dict[str, int] = {}  # module storage name -> int value
+    op_const: dict[str, dict[str, int]] = {}  # operation/function -> local let constants
     for n in program.order:
         ent = program.entities[n]
-        rows = []
         if ent.kind == "storage":
             tr, vr = ent.fact("type"), ent.fact("value")
             if tr and tr.payload and vr and vr.payload:
-                rows.append((ent.name, tr.payload[0], vr.payload[0]))
-        if ent.kind in ("operation", "function"):
+                typ, val = tr.payload[0], vr.payload[0]
+                if typ in _INT_WIDTHS:
+                    t = val.lstrip("-")
+                    if t.isdigit():
+                        storage_const[ent.name] = int(val)
+        elif ent.kind in ("operation", "function"):
             for r in ent.facts("let"):
                 if len(r.payload) >= 4:
-                    rows.append((r.payload[0], r.payload[2], r.payload[3]))
-        for name, typ, val in rows:
-            if typ in _INT_WIDTHS:
-                t = val.lstrip("-")
-                if t.isdigit():
-                    int_const[name] = int(val)
+                    name, typ, val = r.payload[0], r.payload[2], r.payload[3]
+                    if typ in _INT_WIDTHS:
+                        t = val.lstrip("-")
+                        if t.isdigit():
+                            op_const.setdefault(ent.name, {})[name] = int(val)
 
-    def const_int(tok):
+    def const_int(tok, owner=None):
         t = tok.lstrip("-")
         if t.isdigit():
             return int(tok)
-        return int_const.get(tok)
+        if owner is not None and tok in op_const.get(owner, {}):
+            return op_const[owner][tok]
+        return storage_const.get(tok)
 
     for n in program.order:
         ent = program.entities[n]
@@ -9038,6 +9241,8 @@ def _validate_numeric_ub(program: Program) -> None:
         target = inv.payload[0] if inv and inv.payload else ""
         if not target.startswith("math."):
             continue
+        owner_row = ent.fact("in")
+        owner = owner_row.payload[0] if owner_row and owner_row.payload else None
         by_slot = {a.payload[0]: a.payload for a in ent.facts("arg")
                    if len(a.payload) >= 3}
         left, right = by_slot.get("left"), by_slot.get("right")
@@ -9052,7 +9257,7 @@ def _validate_numeric_ub(program: Program) -> None:
                     ent.line, code="SS3110")
         # constant divide/modulo by zero
         if right and ("divide" in target.lower() or "modulo" in target.lower()):
-            if const_int(right[2]) == 0:
+            if const_int(right[2], owner) == 0:
                 raise EavError(
                     f"call {ent.name!r} divides by the constant 0 in {target!r}; "
                     f"constant division/modulo by zero is rejected before lowering. "
@@ -9062,7 +9267,7 @@ def _validate_numeric_ub(program: Program) -> None:
         # constant shift >= operand width
         if right and "shift" in target.lower():
             width = 64 if "64" in target else 32 if "32" in target else None
-            amt = const_int(right[2])
+            amt = const_int(right[2], owner)
             if width is not None and amt is not None and amt >= width:
                 raise EavError(
                     f"call {ent.name!r} shifts by the constant {amt} in {target!r} "
@@ -9359,11 +9564,7 @@ def _validate_return_exactness(program: Program) -> None:
     writes no type, so a bare return into an alias `out` requires an *exact* type
     match — returning the base type (or a sibling alias of the same base) where the
     `out` is the alias newtype is rejected (the alias does not coerce here)."""
-    alias_map = {
-        a.name: a.fact("for").payload[0]
-        for a in program.of_kind("alias")
-        if a.fact("for") and a.fact("for").payload
-    }
+    alias_map = program.alias_map()
     if not alias_map:
         return
     for n in program.order:
@@ -9414,11 +9615,7 @@ def _validate_branch_condition(program: Program) -> None:
     grammar — ifValue/ifVariant/ifError/ifReady/ifPending/ifCanceled/ifOut — are
     handled by their own rules and skipped here.) Unknown operands are skipped to
     avoid false positives on bindings sourced outside the local btype map."""
-    alias_map = {
-        a.name: a.fact("for").payload[0]
-        for a in program.of_kind("alias")
-        if a.fact("for") and a.fact("for").payload
-    }
+    alias_map = program.alias_map()
     for n in program.order:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
@@ -9441,7 +9638,7 @@ def _validate_branch_condition(program: Program) -> None:
         for row in op.rows:
             if row.predicate != "branch" or len(row.payload) < 2:
                 continue
-            if row.payload[0] not in ("if", "ifFalse"):
+            if row.payload[0] not in ("if", "ifTrue", "ifFalse"):
                 continue
             cond = row.payload[1]
             bt = btypes.get(cond)
@@ -9479,7 +9676,7 @@ def _validate_variant_positions(program: Program) -> None:
                 continue
             guard = row.payload[0]
             operands: list = []
-            if guard in ("if", "ifFalse") and len(row.payload) >= 2:
+            if guard in ("if", "ifTrue", "ifFalse") and len(row.payload) >= 2:
                 operands.append(row.payload[1])
             elif guard in ("ifValue", "ifOut") and len(row.payload) >= 4:
                 operands += [row.payload[1], row.payload[3]]
@@ -9591,7 +9788,7 @@ def _validate_entry_scope(program: Program) -> None:
                 refs += [t for t in p if t not in ("value", "ok", "error", "nil", "void")]
             elif row.predicate == "branch" and p:
                 g = p[0]
-                if g in ("if", "ifFalse", "ifVariant") and len(p) >= 2:
+                if g in ("if", "ifTrue", "ifFalse", "ifVariant") and len(p) >= 2:
                     refs.append(p[1])
                 elif g in ("ifValue", "ifOut") and len(p) >= 4:
                     refs += [p[1], p[3]]
