@@ -51,14 +51,14 @@ netClose arg socket NetSocket
 netClose out closed Int32
 netClose purpose "Close a connected socket"
 
-# ---- high-level HTTP client surface (net.fetchText), DEFERRED ----
+# ---- high-level HTTP client surface (net.fetchText) ----
 # The async outbound text-fetch client the ported apps/taskforge-api-client
-# uses. Like the socket surface it is deferred (no lowering in v0.3); this
-# records the typed request/response shape app code converts against.
+# uses. The current native client is HTTP-only; HTTPS/TLS must reject at check
+# time until a TLS backend is added.
 
 Url is alias
 Url for String
-Url purpose "An absolute http(s) URL to fetch"
+Url purpose "An absolute http:// URL to fetch with the current native client"
 
 HttpClientBodyText is alias
 HttpClientBodyText for String
@@ -96,10 +96,10 @@ fetchText target net.fetchText
 fetchText arg request HttpGetRequest
 fetchText out response HttpTextResponse
 fetchText async yes
-fetchText purpose "Fetch a URL and return its text response (deferred network client)"
+fetchText purpose "Fetch an HTTP URL and return its text response"
 
 freeTextBody is intrinsic
 freeTextBody target net.freeTextBody
 freeTextBody arg body HttpClientBodyText
 freeTextBody out freed Int32
-freeTextBody purpose "Release a response body copy returned by net.fetchText (deferred)"
+freeTextBody purpose "Release a response body copy returned by net.fetchText"

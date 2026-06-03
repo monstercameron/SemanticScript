@@ -174,6 +174,7 @@ SS_EXPORT int ss_http_serve(const char *host, int port, const char *method,
     route.path = path;
     route.handler = handler;
     route.middleware = 0;
+    route.timeout_millis = 0;
     SSHttpServerConfig config;
     memset(&config, 0, sizeof(config));
     config.host = host;
@@ -202,6 +203,7 @@ SS_EXPORT int ss_http_serve_static(const char *host, int port, const char *path)
     route.path = path;
     route.handler = ss_http_ok_handler;
     route.middleware = 0;
+    route.timeout_millis = 0;
     SSHttpServerConfig config;
     memset(&config, 0, sizeof(config));
     config.host = host;
@@ -227,7 +229,8 @@ SS_EXPORT int ss_http_server_shutting_down(void) {
 
 SS_EXPORT int ss_http_serve_routes(const char *host, int port, int count,
                                    const char **methods, const char **paths,
-                                   void **handlers) {
+                                   void **handlers, void **middlewares,
+                                   const int *timeout_millis) {
     /* Reject a non-positive or over-cap count up front: the cap keeps the
      * (size_t)count * sizeof(SSHttpRoute) product far below SIZE_MAX (no overflow
      * even on a 32-bit size_t) and bounds the allocation. */
@@ -238,7 +241,8 @@ SS_EXPORT int ss_http_serve_routes(const char *host, int port, int count,
         routes[i].method = methods[i];
         routes[i].path = paths[i];
         routes[i].handler = (SSHttpHandler)handlers[i];
-        routes[i].middleware = 0;
+        routes[i].middleware = middlewares ? (SSHttpMiddleware)middlewares[i] : 0;
+        routes[i].timeout_millis = timeout_millis ? timeout_millis[i] : 0;
     }
     SSHttpServerConfig config;
     memset(&config, 0, sizeof(config));

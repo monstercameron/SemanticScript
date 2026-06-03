@@ -182,6 +182,65 @@ static char *ss_net_response_body_from_wire(const char *response) {
     return ss_net_strdup(body, strlen(body));
 }
 
+#define SS_NET_DEFAULT_TIMEOUT_MS 5000LL
+#define SS_NET_MAX_TIMEOUT_MS 0x7fffffffLL
+
+static long long ss_net_effective_timeout_ms(long long timeout_ms) {
+    if (timeout_ms <= 0) {
+        return SS_NET_DEFAULT_TIMEOUT_MS;
+    }
+    if (timeout_ms > SS_NET_MAX_TIMEOUT_MS) {
+        return SS_NET_MAX_TIMEOUT_MS;
+    }
+    return timeout_ms;
+}
+
+static int ss_net_connect_with_timeout(SOCKET sock, const struct sockaddr *addr,
+                                       int addrlen, long long timeout_ms) {
+    u_long nonblocking = 1;
+    u_long blocking = 0;
+    if (ioctlsocket(sock, FIONBIO, &nonblocking) != 0) {
+        return -1;
+    }
+
+    if (connect(sock, addr, addrlen) == 0) {
+        return ioctlsocket(sock, FIONBIO, &blocking) == 0 ? 0 : -1;
+    }
+
+    int err = WSAGetLastError();
+    if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS &&
+            err != WSAEALREADY && err != WSAEINVAL) {
+        ioctlsocket(sock, FIONBIO, &blocking);
+        return -1;
+    }
+
+    fd_set write_set;
+    fd_set except_set;
+    FD_ZERO(&write_set);
+    FD_ZERO(&except_set);
+    FD_SET(sock, &write_set);
+    FD_SET(sock, &except_set);
+
+    struct timeval timeout;
+    timeout.tv_sec = (long)(timeout_ms / 1000);
+    timeout.tv_usec = (long)((timeout_ms % 1000) * 1000);
+    int ready = select(0, NULL, &write_set, &except_set, &timeout);
+    if (ready <= 0) {
+        ioctlsocket(sock, FIONBIO, &blocking);
+        return -1;
+    }
+
+    int so_error = 0;
+    int so_error_len = (int)sizeof so_error;
+    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error,
+                   &so_error_len) != 0 || so_error != 0) {
+        ioctlsocket(sock, FIONBIO, &blocking);
+        return -1;
+    }
+
+    return ioctlsocket(sock, FIONBIO, &blocking) == 0 ? 0 : -1;
+}
+
 /* Split "http://host[:port]/path" into host, port, path. 0 on success. */
 static int ss_net_parse_url(const char *url, char *host, size_t hostcap,
                             int *port, char *path, size_t pathcap) {
@@ -291,24 +350,30 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
     snprintf(portstr, sizeof portstr, "%d", port);
     if (getaddrinfo(host, portstr, &hints, &res) != 0) return NULL;
 
-    SOCKET s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (s == INVALID_SOCKET) { freeaddrinfo(res); return NULL; }
-    if (connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) {
+    long long effective_timeout_ms = ss_net_effective_timeout_ms(timeout_ms);
+    SOCKET s = INVALID_SOCKET;
+    struct addrinfo *ai;
+    for (ai = res; ai != NULL; ai = ai->ai_next) {
+        s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (s == INVALID_SOCKET) {
+            continue;
+        }
+        if (ss_net_connect_with_timeout(s, ai->ai_addr, (int)ai->ai_addrlen,
+                                        effective_timeout_ms) == 0) {
+            break;
+        }
         closesocket(s);
-        freeaddrinfo(res);
-        return NULL;
+        s = INVALID_SOCKET;
     }
     freeaddrinfo(res);
+    if (s == INVALID_SOCKET) return NULL;
 
-    /* R-092: enforce the policy timeout on the data phases. SO_RCVTIMEO/SO_SNDTIMEO
-     * bound send() and recv() so a slow/stalled peer can't hang the call forever
-     * (the connect() above still uses the OS default). On timeout recv() returns
-     * an error, which the read loop treats as fail-closed (NULL). */
-    if (timeout_ms > 0) {
-        DWORD tv = (DWORD)(timeout_ms > 0x7fffffffLL ? 0x7fffffffLL : timeout_ms);
-        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
-        setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof tv);
-    }
+    /* R-092: enforce the policy/default timeout on every transport phase.
+     * connect() uses nonblocking select(), and SO_RCVTIMEO/SO_SNDTIMEO bound
+     * send() and recv() so a slow/stalled peer can't hang the call forever. */
+    DWORD tv = (DWORD)effective_timeout_ms;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof tv);
 
     char req[1600];
     int reqlen = snprintf(req, sizeof req,

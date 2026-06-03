@@ -13,12 +13,14 @@ typedef struct SSHttpRequest SSHttpRequest;
 typedef struct SSHttpResponse SSHttpResponse;
 
 typedef int (*SSHttpHandler)(SSHttpRequest *request, SSHttpResponse *response);
+typedef int (*SSHttpMiddleware)(SSHttpRequest *request, SSHttpResponse *response, void *next);
 
 typedef struct SSHttpRoute {
     const char *method;
     const char *path;
     SSHttpHandler handler;
-    SSHttpHandler middleware;
+    SSHttpMiddleware middleware;
+    int timeout_millis;
 } SSHttpRoute;
 
 typedef struct SSHttpStaticRoute {
@@ -58,20 +60,19 @@ enum {
     SS_HTTP_ERR_ENGINE = 3
 };
 
-/* Middleware return values, surfaced in SemanticScript source as the
- * built-in enum `MiddlewareControl` (repr Int32):
- *   continueMiddlewareControl       == 0  (call the route handler)
- *   shortCircuitMiddlewareControl   == 1  (skip handler; send the
- *                                          middleware-written response)
+/* Middleware return values, surfaced in SemanticScript source through the
+ * v0.3 Bool ABI:
+ *   true/non-zero continues to the route handler
+ *   false/zero skips the handler and sends the middleware-written response
  * Any other non-zero value is treated as a middleware failure and the
- * dispatcher emits a 500 with body "middleware failed\n". The new
+ * dispatcher emits a 500 with body "middleware failed\n". The
  * short-circuit return path additionally validates that middleware
  * actually wrote a response body before sending — a bare short-circuit
  * with response.body == NULL is itself a 500 with a descriptive body
  * so the regression is visible at the client. */
 enum {
-    SS_HTTP_MIDDLEWARE_CONTINUE = 0,
-    SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT = 1
+    SS_HTTP_MIDDLEWARE_CONTINUE = 1,
+    SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT = 0
 };
 
 /*
@@ -97,6 +98,15 @@ int ss_http_server_run(const SSHttpServerConfig *config);
  * belongs in SemanticScript.
  */
 int ss_http_server_is_shutting_down(void);
+
+/*
+ * Discovers the executable/resource directory without mutating process cwd.
+ * ss_http_set_cwd_to_executable_dir keeps its legacy name for ABI compatibility:
+ * it now stores the directory for ss_http_executable_dir() and returns success,
+ * but never calls chdir()/SetCurrentDirectory().
+ */
+int ss_http_set_cwd_to_executable_dir(void);
+const char *ss_http_executable_dir(void);
 
 int ss_http_response_text(
     SSHttpResponse *response,

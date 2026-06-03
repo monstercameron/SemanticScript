@@ -1,4 +1,5 @@
 #include "sem_http_runtime.h"
+#include "ss_platform_time.h"
 
 #include <ctype.h>
 #include <signal.h>
@@ -67,8 +68,9 @@ typedef struct SSHttpPathParam {
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <windows.h>          /* FILETIME, GetSystemTimeAsFileTime, CreateDirectoryA */
+#include <windows.h>          /* CreateDirectoryA */
 #include <io.h>               /* R-190: _get_osfhandle / _fileno for path canonicalization */
+#include <wchar.h>
 typedef SOCKET ss_socket_t;
 #define SS_INVALID_SOCKET INVALID_SOCKET
 static void ss_close_socket(ss_socket_t socket_handle) {
@@ -80,7 +82,8 @@ static void ss_close_socket(ss_socket_t socket_handle) {
 #include <limits.h>            /* R-190: PATH_MAX for realpath containment check */
 #include <sys/stat.h>          /* mkdir for ss_http_filesystem_ensure_directory */
 #include <sys/select.h>
-#include <time.h>              /* clock_gettime for ss_http_now_millis */
+#include <poll.h>
+#include <time.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -92,51 +95,121 @@ static void ss_close_socket(ss_socket_t socket_handle) {
 }
 #endif
 
-int ss_http_set_cwd_to_executable_dir(void) {
+static int ss_http_socket_send(ss_socket_t socket_handle, const char *data, int length) {
 #ifdef _WIN32
-    char path[MAX_PATH];
-    DWORD length = GetModuleFileNameA(NULL, path, (DWORD)sizeof(path));
+    return send(socket_handle, data, length, 0);
+#else
+    int flags = 0;
+#ifdef SO_NOSIGPIPE
+    int one = 1;
+    (void)setsockopt(socket_handle, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
+#ifdef MSG_NOSIGNAL
+    flags |= MSG_NOSIGNAL;
+#endif
+    return (int)send(socket_handle, data, (size_t)length, flags);
+#endif
+}
+
+#define SS_HTTP_PATH_BUFFER_MAX 4096
+static char g_http_executable_dir[SS_HTTP_PATH_BUFFER_MAX];
+
+static int ss_http_store_dirname(char *path, char *out, size_t out_capacity) {
     char *slash;
-    if (length == 0 || length >= sizeof(path)) {
-        return 0;
-    }
-    slash = strrchr(path, '\\');
-    if (slash == NULL) {
-        slash = strrchr(path, '/');
-    }
-    if (slash == NULL) {
-        return 0;
-    }
-    *slash = '\0';
-    return SetCurrentDirectoryA(path) ? 1 : 0;
-#elif defined(__APPLE__)
-    char path[4096];
-    uint32_t size = (uint32_t)sizeof(path);
-    char *slash;
-    if (_NSGetExecutablePath(path, &size) != 0) {
+    if (path == NULL || out == NULL || out_capacity == 0 || path[0] == '\0') {
         return 0;
     }
     slash = strrchr(path, '/');
+#ifdef _WIN32
+    {
+        char *backslash = strrchr(path, '\\');
+        if (backslash != NULL && (slash == NULL || backslash > slash)) {
+            slash = backslash;
+        }
+    }
+#endif
     if (slash == NULL) {
         return 0;
     }
     *slash = '\0';
-    return chdir(path) == 0 ? 1 : 0;
-#else
-    char path[4096];
+    if (strlen(path) + 1 > out_capacity) {
+        return 0;
+    }
+    memcpy(out, path, strlen(path) + 1);
+    return 1;
+}
+
+static int ss_http_discover_executable_dir(char *out, size_t out_capacity) {
+#ifdef _WIN32
+    wchar_t wide_path[MAX_PATH];
+    DWORD length = GetModuleFileNameW(NULL, wide_path, (DWORD)(sizeof(wide_path) / sizeof(wide_path[0])));
+    wchar_t *slash;
+    char utf8_path[SS_HTTP_PATH_BUFFER_MAX];
+    int utf8_length;
+    if (length == 0 || length >= (DWORD)(sizeof(wide_path) / sizeof(wide_path[0]))) {
+        return 0;
+    }
+    slash = wcsrchr(wide_path, L'\\');
+    if (slash == NULL) {
+        slash = wcsrchr(wide_path, L'/');
+    }
+    if (slash == NULL) {
+        return 0;
+    }
+    *slash = L'\0';
+    utf8_length = WideCharToMultiByte(
+        CP_UTF8, 0, wide_path, -1, utf8_path, (int)sizeof(utf8_path), NULL, NULL);
+    if (utf8_length <= 0) {
+        return 0;
+    }
+    if ((size_t)utf8_length > out_capacity) {
+        return 0;
+    }
+    memcpy(out, utf8_path, (size_t)utf8_length);
+    return 1;
+#elif defined(__APPLE__)
+    char path[SS_HTTP_PATH_BUFFER_MAX];
+    char resolved[SS_HTTP_PATH_BUFFER_MAX];
+    uint32_t size = (uint32_t)sizeof(path);
+    if (_NSGetExecutablePath(path, &size) != 0) {
+        return 0;
+    }
+    if (realpath(path, resolved) == NULL) {
+        return ss_http_store_dirname(path, out, out_capacity);
+    }
+    return ss_http_store_dirname(resolved, out, out_capacity);
+#elif defined(__linux__)
+    char path[SS_HTTP_PATH_BUFFER_MAX];
+    char resolved[SS_HTTP_PATH_BUFFER_MAX];
     ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    char *slash;
     if (length <= 0 || length >= (ssize_t)sizeof(path)) {
         return 0;
     }
     path[length] = '\0';
-    slash = strrchr(path, '/');
-    if (slash == NULL) {
+    if (realpath(path, resolved) == NULL) {
+        return ss_http_store_dirname(path, out, out_capacity);
+    }
+    return ss_http_store_dirname(resolved, out, out_capacity);
+#else
+    char cwd[SS_HTTP_PATH_BUFFER_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
         return 0;
     }
-    *slash = '\0';
-    return chdir(path) == 0 ? 1 : 0;
+    if (strlen(cwd) + 1 > out_capacity) {
+        return 0;
+    }
+    memcpy(out, cwd, strlen(cwd) + 1);
+    return 1;
 #endif
+}
+
+const char *ss_http_executable_dir(void) {
+    return g_http_executable_dir[0] != '\0' ? g_http_executable_dir : NULL;
+}
+
+int ss_http_set_cwd_to_executable_dir(void) {
+    return ss_http_discover_executable_dir(
+        g_http_executable_dir, sizeof(g_http_executable_dir));
 }
 
 typedef struct SSHttpResponseBackend {
@@ -273,7 +346,8 @@ static int has_valid_route_table(const SSHttpServerConfig *config) {
 
     for (index = 0; index < config->route_count; ++index) {
         const SSHttpRoute *route = &config->routes[index];
-        if (route->method == NULL || route->path == NULL || route->handler == NULL) {
+        if (route->method == NULL || route->path == NULL || route->handler == NULL ||
+                route->timeout_millis < 0) {
             return 0;
         }
     }
@@ -1239,25 +1313,7 @@ static int request_cache_validator_matches(
 /* ----- ss_http_now_millis ----- */
 
 long long ss_http_now_millis(void) {
-#ifdef _WIN32
-    FILETIME file_time;
-    GetSystemTimeAsFileTime(&file_time);
-    /* FILETIME is 100ns intervals since 1601-01-01. Convert to
-     * milliseconds since 1970-01-01. */
-    ULARGE_INTEGER as_uint64;
-    as_uint64.LowPart  = file_time.dwLowDateTime;
-    as_uint64.HighPart = file_time.dwHighDateTime;
-    static const long long epoch_offset_100ns_units = 116444736000000000LL;
-    long long since_unix_epoch_100ns = (long long)as_uint64.QuadPart - epoch_offset_100ns_units;
-    return since_unix_epoch_100ns / 10000LL;
-#else
-    struct timespec now_ts;
-    if (clock_gettime(CLOCK_REALTIME, &now_ts) != 0) {
-        return 0;
-    }
-    return (long long)now_ts.tv_sec * 1000LL
-         + (long long)(now_ts.tv_nsec / 1000000L);
-#endif
+    return ss_platform_wall_time_ms();
 }
 
 long long ss_http_session_expires_at(long long now_millis, long long ttl_millis) {
@@ -1281,18 +1337,67 @@ bool ss_http_session_is_expired(long long now_millis, long long expires_at_milli
  * must free it (c.free). Does not handle chunked transfer-encoding; the bundled
  * native server replies with Content-Length + close, which this reads in full. */
 #ifdef _WIN32
-static int ss_http_client_winsock_ready(void) {
-    static int initialized = 0;
-    if (!initialized) {
-        WSADATA wsa_data;
-        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-            return 0;
-        }
-        initialized = 1;
-    }
-    return 1;
+static INIT_ONCE g_http_winsock_once = INIT_ONCE_STATIC_INIT;
+static CRITICAL_SECTION g_http_winsock_lock;
+static int g_http_winsock_refcount = 0;
+
+static BOOL CALLBACK ss_http_winsock_init_once(
+    PINIT_ONCE init_once,
+    PVOID parameter,
+    PVOID *context
+) {
+    (void)init_once;
+    (void)parameter;
+    (void)context;
+    InitializeCriticalSection(&g_http_winsock_lock);
+    return TRUE;
 }
 #endif
+
+static int ss_platform_net_startup(void) {
+#ifdef _WIN32
+    if (!InitOnceExecuteOnce(
+            &g_http_winsock_once,
+            ss_http_winsock_init_once,
+            NULL,
+            NULL)) {
+        return 0;
+    }
+    EnterCriticalSection(&g_http_winsock_lock);
+    if (g_http_winsock_refcount == 0) {
+        WSADATA wsa_data;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            LeaveCriticalSection(&g_http_winsock_lock);
+            return 0;
+        }
+    }
+    g_http_winsock_refcount += 1;
+    LeaveCriticalSection(&g_http_winsock_lock);
+    return 1;
+#else
+    return 1;
+#endif
+}
+
+static void ss_platform_net_shutdown(void) {
+#ifdef _WIN32
+    if (!InitOnceExecuteOnce(
+            &g_http_winsock_once,
+            ss_http_winsock_init_once,
+            NULL,
+            NULL)) {
+        return;
+    }
+    EnterCriticalSection(&g_http_winsock_lock);
+    if (g_http_winsock_refcount > 0) {
+        g_http_winsock_refcount -= 1;
+        if (g_http_winsock_refcount == 0) {
+            WSACleanup();
+        }
+    }
+    LeaveCriticalSection(&g_http_winsock_lock);
+#endif
+}
 
 static char *ss_http_client_dup(const char *text) {
     size_t length = strlen(text);
@@ -1398,7 +1503,7 @@ static char *ss_http_client_response_body_from_wire(
     return ss_http_client_dup(body_start + 4);
 }
 
-const char *ss_http_client_fetch(
+static const char *ss_http_client_fetch_impl(
     const char *method,
     const char *host,
     int port,
@@ -1420,12 +1525,6 @@ const char *ss_http_client_fetch(
             || !ss_http_header_value_ok(header_line)) {
         return NULL;
     }
-#ifdef _WIN32
-    if (!ss_http_client_winsock_ready()) {
-        return NULL;
-    }
-#endif
-
     char port_text[16];
     snprintf(port_text, sizeof(port_text), "%d", port);
 
@@ -1549,7 +1648,11 @@ const char *ss_http_client_fetch(
     size_t sent_total = 0;
     int send_failed = 0;
     while (sent_total < (size_t)written) {
-        int sent_now = send(client_socket, request + sent_total, (int)((size_t)written - sent_total), 0);
+        int sent_now = ss_http_socket_send(
+            client_socket,
+            request + sent_total,
+            (int)((size_t)written - sent_total)
+        );
         if (sent_now <= 0) {
             send_failed = 1;
             break;
@@ -1620,6 +1723,23 @@ const char *ss_http_client_fetch(
 
     char *result = ss_http_client_response_body_from_wire(response, status_code);
     free(response);
+    return result;
+}
+
+const char *ss_http_client_fetch(
+    const char *method,
+    const char *host,
+    int port,
+    const char *path,
+    const char *header_line,
+    const char *body
+) {
+    const char *result;
+    if (!ss_platform_net_startup()) {
+        return NULL;
+    }
+    result = ss_http_client_fetch_impl(method, host, port, path, header_line, body);
+    ss_platform_net_shutdown();
     return result;
 }
 
@@ -2812,11 +2932,10 @@ static int send_all(ss_socket_t socket_handle, const char *data, size_t byte_cou
         int request = remaining > SS_SEND_CHUNK_MAX
                           ? (int)SS_SEND_CHUNK_MAX
                           : (int)remaining;
-        int chunk_count = send(
+        int chunk_count = ss_http_socket_send(
             socket_handle,
             data + sent_count,
-            request,
-            0
+            request
         );
         if (chunk_count <= 0) {
             return SS_HTTP_ERR_ENGINE;
@@ -3998,13 +4117,11 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     response.backend_response = &stream_backend;
 
     if (route->middleware != NULL) {
-        handler_status = route->middleware(&request, &response);
+        handler_status = route->middleware(&request, &response, NULL);
         if (handler_status == SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT) {
-            /* Middleware took ownership of the response: skip the route
-             * handler and send what middleware wrote. This is the
-             * `shortCircuitMiddlewareControl` arm of the MiddlewareControl
-             * contract (see docs/reference/syntax-inventory.md `MiddlewareControl`). If middleware
-             * returned short-circuit but never wrote a body, that's a
+            /* v0.3 middleware returns Bool. False short-circuits and sends
+             * what middleware wrote; true continues to the route handler.
+             * If middleware returned false but never wrote a body, that's a
              * silent dispatcher gap — surface it as a 500 with an
              * explicit reason so the regression shows up at the client
              * instead of producing an empty 200 (or worse, a malformed
@@ -4032,9 +4149,10 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             free(request_storage);
             return response_status;
         }
-        if (handler_status != SS_HTTP_OK) {
-            /* Any other non-zero return is an unhandled middleware
-             * failure. The 500 here is the legacy dispatcher behavior
+        if (handler_status != SS_HTTP_MIDDLEWARE_CONTINUE) {
+            /* Bool-returning middleware should produce exactly 0 or 1. A
+             * native/legacy middleware returning another value is an
+             * unhandled failure. The 500 here is the legacy dispatcher behavior
              * the gauntlet's `/reflect/required-header-or-fail` route
              * pins via `pinsNullBodyFailurePath` — do not collapse it
              * with the short-circuit arm above. */
@@ -4051,9 +4169,29 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         }
     }
 
+    long long handler_started_at = route->timeout_millis > 0 ? ss_platform_monotonic_ms() : 0;
     handler_status = route->handler(&request, &response);
+    long long handler_elapsed = 0;
+    if (route->timeout_millis > 0 && handler_started_at > 0) {
+        long long handler_finished_at = ss_platform_monotonic_ms();
+        if (handler_finished_at >= handler_started_at) {
+            handler_elapsed = handler_finished_at - handler_started_at;
+        }
+    }
     if (stream_backend.stream_started) {
         response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+        clear_owned_response(&response);
+        free(request_storage);
+        return response_status;
+    }
+    if (route->timeout_millis > 0 && handler_elapsed > (long long)route->timeout_millis) {
+        response_status = send_response(
+            client_socket,
+            504,
+            "text/plain; charset=utf-8",
+            "route timeout exceeded\n",
+            &response
+        );
         clear_owned_response(&response);
         free(request_storage);
         return response_status;
@@ -4096,6 +4234,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
 }
 
 static int wait_for_listen_socket(ss_socket_t listen_socket) {
+#ifdef _WIN32
     fd_set read_set;
     struct timeval timeout;
     int ready;
@@ -4105,11 +4244,23 @@ static int wait_for_listen_socket(ss_socket_t listen_socket) {
     timeout.tv_sec = SS_HTTP_SHUTDOWN_POLL_MILLIS / 1000;
     timeout.tv_usec = (SS_HTTP_SHUTDOWN_POLL_MILLIS % 1000) * 1000;
 
-    ready = select((int)(listen_socket + 1), &read_set, NULL, NULL, &timeout);
+    ready = select(0, &read_set, NULL, NULL, &timeout);
     if (ready <= 0) {
         return ready;
     }
     return FD_ISSET(listen_socket, &read_set) ? 1 : 0;
+#else
+    struct pollfd fd;
+    int ready;
+    fd.fd = listen_socket;
+    fd.events = POLLIN;
+    fd.revents = 0;
+    ready = poll(&fd, 1, SS_HTTP_SHUTDOWN_POLL_MILLIS);
+    if (ready <= 0) {
+        return ready;
+    }
+    return (fd.revents & POLLIN) ? 1 : 0;
+#endif
 }
 
 int ss_http_server_run(const SSHttpServerConfig *config) {
@@ -4136,28 +4287,21 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
         }
     }
 
-#ifdef _WIN32
-    {
-        WSADATA wsa_data;
-        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
-            free_compiled_routes();
-            return SS_HTTP_ERR_ENGINE;
-        }
+    if (!ss_platform_net_startup()) {
+        free_compiled_routes();
+        return SS_HTTP_ERR_ENGINE;
     }
-#endif
 
     snprintf(port_text, sizeof(port_text), "%hu", config->port);
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = AI_PASSIVE;
 
     if (getaddrinfo(config->host, port_text, &hints, &result) != 0) {
         free_compiled_routes();
-#ifdef _WIN32
-        WSACleanup();
-#endif
+        ss_platform_net_shutdown();
         return SS_HTTP_ERR_ENGINE;
     }
 
@@ -4185,18 +4329,14 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
 
     if (listen_socket == SS_INVALID_SOCKET) {
         free_compiled_routes();
-#ifdef _WIN32
-        WSACleanup();
-#endif
+        ss_platform_net_shutdown();
         return SS_HTTP_ERR_ENGINE;
     }
 
     if (listen(listen_socket, 128) != 0) {
         ss_close_socket(listen_socket);
         free_compiled_routes();
-#ifdef _WIN32
-        WSACleanup();
-#endif
+        ss_platform_net_shutdown();
         return SS_HTTP_ERR_ENGINE;
     }
 
@@ -4231,9 +4371,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
 
     ss_close_socket(listen_socket);
     free_compiled_routes();
-#ifdef _WIN32
-    WSACleanup();
-#endif
+    ss_platform_net_shutdown();
     return SS_HTTP_OK;
 }
 
