@@ -1,4 +1,5 @@
 #include "sem_async_runtime.h"
+#include "ss_platform_time.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -167,24 +168,12 @@ static void after_work_cb(uv_work_t *request, int status) {
 #endif
 
 static unsigned long long fallback_now_ms(void) {
-#ifdef _WIN32
-    return (unsigned long long)GetTickCount64();
-#else
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return 0;
-    }
-    return ((unsigned long long)ts.tv_sec * 1000ULL)
-        + ((unsigned long long)ts.tv_nsec / 1000000ULL);
-#endif
+    long long now = ss_platform_monotonic_ms();
+    return now > 0 ? (unsigned long long)now : 0ULL;
 }
 
 static void fallback_sleep_one_tick(void) {
-#ifdef _WIN32
-    Sleep(1);
-#else
-    usleep(1000);
-#endif
+    ss_platform_sleep_ms(1);
 }
 
 static unsigned long long fallback_deadline_ms(unsigned long long timeout_ms) {
