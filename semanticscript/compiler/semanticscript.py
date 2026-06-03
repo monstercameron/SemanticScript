@@ -518,6 +518,18 @@ DIAGNOSTICS.update({
     "SS3501": {"tier": "T3", "summary": "Fallible call with no error path.",
                "found": "A call with a `catch` but no `branch ifError` for it.",
                "suggested": "Add a `branch ifError CALL goto …`, or `discards` (README §17 #35)."},
+    "SS3502": {"tier": "T3", "summary": "Fallible value read silently swallows its failure.",
+               "found": "A call to a fallible structured-data accessor (a json/sqlite "
+                        "read whose .semsig declares a `catch <Error>` and returns a "
+                        "value, e.g. json.cursorString -> String, json.asInt -> Int64) "
+                        "that binds NO `catch` and does not `discards` it — so a "
+                        "missing/wrong-kind field is not surfaced as an error but "
+                        "silently yields an empty/zero value that flows downstream as a "
+                        "blank field or 0 (the json silent-empty footgun, SEAM-4).",
+               "suggested": "Bind `catch <e> <Error>` and add a `branch ifError <call> "
+                            "goto …` so the not-found/wrong-kind case is handled, or "
+                            "`discards \"<reason>\"` if an empty/default truly is the "
+                            "intended value (README §15/§17 #35)."},
     "SS1064": {"tier": "T1", "summary": "Inconsistent binding type across a merge.",
                "found": "A name is bound to incompatible types on different paths to a label.",
                "suggested": "Bind the same name/type on every predecessor path (README §13)."},
@@ -5045,6 +5057,86 @@ def _calls_by_owner(program: "Program") -> dict:
     return owned
 
 
+# SEAM-4: families whose fallible READ accessors silently default on miss/wrong-kind
+# (a not-found field yields "" / 0, never an error) — and where a `catch` is the
+# ONLY guard (unlike list/map, which can be guarded by a separate length/contains
+# check, so flagging an uncaught get there would false-positive). Restricting to
+# json/sqlite keeps the corpus clean (0 false positives) while killing the named
+# json silent-empty footgun.
+_SILENT_READ_FAMILIES = ("json", "sqlite")
+_SILENT_READ_VALUE_TYPES = (set(globals().get("_INT_WIDTHS", {}))
+                            | {"Int32", "Int64", "Float32", "Float64", "Bool", "String"})
+_SILENT_READ_WRITER_PREFIXES = (
+    "set", "append", "create", "open", "serialize", "write", "insert", "exec",
+    "prepare", "bind", "step", "finalize", "close", "free", "release", "begin",
+    "commit", "rollback",
+)
+_SILENT_READ_RAISES_CACHE: dict = {}
+
+
+def _silent_value_read_raises(target: str):
+    """SEAM-4: the declared error of a fallible structured-data VALUE read, or None.
+
+    A target qualifies when its standard.<module>.semsig declares a `catch <Error>`
+    (it is fallible), its `out` is a plain value type (String / integer / float /
+    Bool — not a handle or a writer's status int), and its name is an accessor (not
+    a writer/factory prefix). These are exactly the reads that, uncaught, surface a
+    missing/wrong-kind field as a silent empty/zero value instead of an error."""
+    if "." not in target:
+        return None
+    if target in _SILENT_READ_RAISES_CACHE:
+        return _SILENT_READ_RAISES_CACHE[target]
+    module, name = target.split(".", 1)
+    raises = None
+    if module in _SILENT_READ_FAMILIES and not any(
+            name.lower().startswith(p) for p in _SILENT_READ_WRITER_PREFIXES):
+        sigmod = _semsig_signatures_for_module(module)
+        if target in sigmod:
+            import os
+            path = os.path.join(_sigs_dir(), f"standard.{module}.semsig")
+            try:
+                ent = semsig_targets(load_semsig(open(path, encoding="utf-8").read())).get(target)
+            except (OSError, EavError):
+                ent = None
+            if ent is not None:
+                crow = ent.fact("catch")
+                orow = ent.fact("out")
+                if (crow and crow.payload and orow and orow.payload
+                        and orow.payload[-1] in _SILENT_READ_VALUE_TYPES):
+                    raises = crow.payload[-1]
+    _SILENT_READ_RAISES_CACHE[target] = raises
+    return raises
+
+
+def _lint_unhandled_value_read(program: Program) -> list:
+    """SEAM-4: a fallible json/sqlite value read with no `catch` and no `discards`
+    silently swallows a missing/wrong-kind failure into an empty/zero value (the
+    json silent-empty footgun). Warn (T3) and name the failure mode (SS3502)."""
+    out: list = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        raises = _silent_value_read_raises(inv.payload[0])
+        if raises is None:
+            continue
+        if ent.fact("catch") is not None or ent.fact("discards") is not None:
+            continue
+        out.append(Diagnostic(
+            "SS3502", "warning",
+            f"call {ent.name!r} reads a value with the fallible "
+            f"{inv.payload[0]!r} but binds no `catch` and does not `discards` it — "
+            f"a missing/wrong-kind field is silently returned as an empty/zero "
+            f"value (not a {raises}) and flows downstream as a blank field. Bind "
+            f"`catch <e> {raises}` + a `branch ifError` path, or `discards "
+            f"\"<reason>\"` if an empty default is intended (README §15/§17 #35)",
+            ent.line, ent.name))
+    return out
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -5121,6 +5213,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_console_unlowerable_errors(program))
     diags.extend(_lint_result_nil_error_loss(program))
     diags.extend(_lint_intrinsic_arg_slots(program))
+    diags.extend(_lint_unhandled_value_read(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
     diags.extend(_lint_dead_unused(program))
