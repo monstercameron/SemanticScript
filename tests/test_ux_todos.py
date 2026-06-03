@@ -125,6 +125,64 @@ def test_fallible_operation_recipe_is_discoverable(capsys):
     assert not [d for d in ss.lint(program) if d.severity == "error"]
 
 
+def test_trust_boundary_recipe_is_discoverable_and_runnable(capsys):
+    assert ss.main(["skills", "eav-trust-boundary", "--json"]) == 0
+    skill = json.loads(capsys.readouterr().out)
+    assert "typeTrust rawExternal" in skill["skills"][0]["body"]
+    assert "plain `String` preserves taint" in skill["skills"][0]["body"]
+
+    assert ss.main(["task", "model-trust-boundary", "--json"]) == 0
+    task = json.loads(capsys.readouterr().out)
+    assert "<validator> out <SafeType>" in task["rowsToAdd"]
+    assert "SS3070" in task["lintRules"]
+
+    assert ss.main(["search", "trust boundary rawExternal", "--source", "skill", "--json"]) == 0
+    search = json.loads(capsys.readouterr().out)
+    assert "eav-trust-boundary" in {item["id"] for item in search["matches"]}
+
+    scaffolded = ss.scaffold("trust-boundary")
+    assert "RawBody typeTrust rawExternal" in scaffolded
+    assert "SafeBody typeTrust validated" in scaffolded
+    assert "writeSafeBody trustConstraint arg line SafeBody" in scaffolded
+    program = ss.parse(scaffolded)
+    assert "SS3070" not in {d.code for d in ss.lint(program) if d.severity == "error"}
+    out, err, code = ss._record_run_full(scaffolded)
+    assert code == 0, err
+    assert out == ""
+
+
+def test_json_decode_recipe_surfaces_all_runtime_limits(capsys):
+    assert ss.main(["skills", "eav-json-decode", "--json"]) == 0
+    skill = json.loads(capsys.readouterr().out)
+    body = skill["skills"][0]["body"]
+    assert "`limit maximumBytes <n>`" in body
+    assert "`limit maxDepth <n>`" in body
+    assert "`limit maxElements <n>`" in body
+    assert "`unknownFieldPolicy reject`" in body
+
+    assert ss.main(["task", "json-decode", "--json"]) == 0
+    task = json.loads(capsys.readouterr().out)
+    assert "<decodeCall> limit maximumBytes <positive-bytes>" in task["rowsToAdd"]
+    assert "<decodeCall> limit maxDepth <positive-depth>" in task["rowsToAdd"]
+    assert "<decodeCall> limit maxElements <positive-count>" in task["rowsToAdd"]
+    assert "<decodeCall> unknownFieldPolicy reject" in task["rowsToAdd"]
+
+    assert ss.main(["search", "json decode limits", "--source", "skill", "--json"]) == 0
+    search = json.loads(capsys.readouterr().out)
+    assert "eav-json-decode" in {item["id"] for item in search["matches"]}
+
+    scaffolded = ss.scaffold("json-decode")
+    assert "parseDoc limit maximumBytes 256" in scaffolded
+    assert "parseDoc limit maxDepth 8" in scaffolded
+    assert "parseDoc limit maxElements 32" in scaffolded
+    assert "parseDoc unknownFieldPolicy reject" in scaffolded
+    program = ss.parse(scaffolded)
+    assert not [d for d in ss.lint(program) if d.severity == "error"]
+    out, err, code = ss._record_run_full(scaffolded)
+    assert code == 0, err
+    assert out == ""
+
+
 def test_human_diagnostics_are_ascii_safe_for_windows_console():
     rendered = ss.Diagnostic(
         "SS0000", "warning", "README §33.5 — use A → B"

@@ -192,6 +192,52 @@ def test_json_swapped_document_cursor_rejected_at_check():
     assert "SS1201" in {d.code for d in ss.lint(ss.parse(src)) if d.severity == "error"}
 
 
+def test_external_signature_out_type_rejected_at_check():
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "JsonDocument is alias\nJsonDocument for Int64\n"
+        "JsonCursor is alias\nJsonCursor for Int64\n"
+        "JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n"
+        "JsonAccessError is error\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main let text immutable String \"{}\"\nmain let cap immutable JsonCapacityBytes 64\n"
+        "main let okc immutable ExitCode 0\nmain do parseDoc\nmain return okc\n"
+        "parseDoc is call\nparseDoc in main\nparseDoc invokes json.createDocument\n"
+        "parseDoc arg jsonText String text\n"
+        "parseDoc arg capacityBytes JsonCapacityBytes cap\n"
+        "parseDoc out cursor JsonCursor\n"
+        "parseDoc catch e JsonAccessError\n"
+    )
+    errors = [d for d in ss.lint(ss.parse(src)) if d.severity == "error"]
+    assert "SS1201" in {d.code for d in errors}
+    assert any("signature returns 'JsonDocument'" in d.message for d in errors)
+
+
+def test_external_signature_catch_type_rejected_at_check():
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "JsonDocument is alias\nJsonDocument for Int64\n"
+        "JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n"
+        "JsonAccessError is error\n"
+        "OtherError is error\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main let text immutable String \"{}\"\nmain let cap immutable JsonCapacityBytes 64\n"
+        "main let okc immutable ExitCode 0\nmain do parseDoc\nmain return okc\n"
+        "parseDoc is call\nparseDoc in main\nparseDoc invokes json.createDocument\n"
+        "parseDoc arg jsonText String text\n"
+        "parseDoc arg capacityBytes JsonCapacityBytes cap\n"
+        "parseDoc out document JsonDocument\n"
+        "parseDoc catch e OtherError\n"
+    )
+    errors = [d for d in ss.lint(ss.parse(src)) if d.severity == "error"]
+    assert "SS1201" in {d.code for d in errors}
+    assert any("signature raises 'JsonAccessError'" in d.message for d in errors)
+
+
 def test_log_missing_message_rejected_at_check():
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
@@ -335,19 +381,33 @@ def test_json_invalid_document_with_bogus_scratch_does_not_access_violate():
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
         'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ByteCount is alias\nByteCount for Int64\n"
         "JsonDocument is alias\nJsonDocument for OpaquePointer\n"
         "JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n"
         "JsonText is alias\nJsonText for String\n"
         "ExitCode is alias\nExitCode for Int32\n"
         "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
         "main let badDoc immutable JsonDocument 1\n"
-        "main let badScratch immutable OpaquePointer 1\n"
         "main let cap immutable JsonCapacityBytes 16\n"
         "main let okc immutable ExitCode 0\n"
+        "main do allocScratch\nmain defer releaseScratch\n"
         "main do serialize\nmain do show\nmain return okc\n"
+        "allocScratch is call\nallocScratch in main\nallocScratch invokes c.malloc\n"
+        "allocScratch arg size ByteCount cap\n"
+        "allocScratch out scratch OpaquePointer\n"
+        "allocScratch catch allocError OpaquePointer\n"
+        "allocScratch owns scratch\n"
+        "allocScratch cleanedBy releaseScratch\n"
+        "releaseScratchWorker is call\nreleaseScratchWorker in main\n"
+        "releaseScratchWorker invokes c.free\n"
+        "releaseScratchWorker arg resource OpaquePointer scratch\n"
+        "releaseScratchWorker discards \"cleanup status ignored\"\n"
+        "releaseScratch is cleanup\nreleaseScratch in main\n"
+        "releaseScratch call releaseScratchWorker\n"
+        "releaseScratch cleans scratch\n"
         "serialize is call\nserialize in main\nserialize invokes json.serializeDocument\n"
         "serialize arg document JsonDocument badDoc\n"
-        "serialize arg scratch OpaquePointer badScratch\n"
+        "serialize arg scratch OpaquePointer scratch\n"
         "serialize arg scratchCapacity JsonCapacityBytes cap\n"
         "serialize out text JsonText\n"
         "show is call\nshow in main\nshow invokes console.writeLine\n"

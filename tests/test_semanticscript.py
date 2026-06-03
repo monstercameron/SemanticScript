@@ -252,6 +252,72 @@ def test_supply_chain_manifest_goldens_consistent():
     semanticscript.verify_supply_chain(build, lock)  # the goldens are consistent
 
 
+def _local_dependency_fixture(tmp_path):
+    dep = tmp_path / "dep"
+    dep.mkdir()
+    (dep / "dep.sem").write_text(
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "depOp is operation\n"
+        "depOp out ExitCode\n"
+        "depOp effect write console.stdout\n"
+        "depOp uses stdoutWriter\n"
+        "depOp async no\n"
+        'depOp purpose "p"\n'
+        'depOp invariant "i"\n',
+        encoding="utf-8",
+    )
+    build = semanticscript.parse(
+        "P is project\n"
+        "P require github.com/acme/dep v1.0.0\n"
+        'P replace github.com/acme/dep "dep"\n'
+        "P allowEffect write console.stdout\n"
+    )
+    build.source_root = str(tmp_path)
+    digest = semanticscript._local_artifact_digest(str(dep))
+    return build, digest
+
+
+def test_local_replace_mod_tidy_uses_real_artifact_digest(tmp_path):
+    build, digest = _local_dependency_fixture(tmp_path)
+    lock_text = semanticscript.mod_tidy(build)
+    assert f"P resolved github.com/acme/dep v1.0.0 sha256 {digest}" in lock_text
+
+
+def test_local_replace_digest_mismatch_rejected(tmp_path):
+    build, _digest = _local_dependency_fixture(tmp_path)
+    lock = semanticscript.parse(
+        "P is project\n"
+        "P resolved github.com/acme/dep v1.0.0 sha256 "
+        "0000000000000000000000000000000000000000000000000000000000000000\n"
+        "P effectSurface write console.stdout\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.verify_supply_chain(build, lock)
+    assert exc.value.code == "SS2804"
+
+
+def test_local_replace_missing_effect_surface_rejected(tmp_path):
+    build, digest = _local_dependency_fixture(tmp_path)
+    lock = semanticscript.parse(
+        "P is project\n"
+        f"P resolved github.com/acme/dep v1.0.0 sha256 {digest}\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.verify_supply_chain(build, lock)
+    assert exc.value.code == "SS2805"
+
+
+def test_local_replace_supply_chain_verifies_digest_and_effects(tmp_path):
+    build, digest = _local_dependency_fixture(tmp_path)
+    lock = semanticscript.parse(
+        "P is project\n"
+        f"P resolved github.com/acme/dep v1.0.0 sha256 {digest}\n"
+        "P effectSurface write console.stdout\n"
+    )
+    semanticscript.verify_supply_chain(build, lock)
+
+
 def test_console_entry_with_in_params_flagged():
     # WS3-039 / README §11: console entry takes no `in` parameters.
     prog = semanticscript.parse(
@@ -267,6 +333,37 @@ def test_console_entry_wrong_return_flagged():
         "main is operation\nmain out String\n"
     )
     assert "SS1191" in {d.code for d in semanticscript.lint(prog)}
+
+
+def test_wasm_entry_allows_scalar_in_out_and_requires_wasm_platform():
+    src = (
+        "P is project\nP module m\nP target wasm\nP entry main\nP platform browserWasm\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain in value Int64\nmain out Int64\n"
+        "browserWasm is platform\nbrowserWasm targetRuntime wasm\n"
+    )
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    assert "SS1197" not in codes
+    assert "SS1190" not in codes and "SS1191" not in codes
+
+
+def test_wasm_target_without_wasm_runtime_platform_flagged():
+    src = (
+        "P is project\nP module m\nP target wasm\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain out Int32\n"
+    )
+    assert "SS1197" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+
+
+def test_wasm_entry_rejects_non_scalar_export_type():
+    src = (
+        "P is project\nP module m\nP target wasm\nP entry main\nP platform browserWasm\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain out String\n"
+        "browserWasm is platform\nbrowserWasm targetRuntime wasm\n"
+    )
+    assert "SS1197" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
 def test_export_c_duplicate_symbol_rejected():
@@ -295,6 +392,61 @@ def test_export_c_valid_unique_ok():
     assert "SS3045" not in codes and "SS3042" not in codes  # R-160
 
 
+def _r048_c_export_program():
+    return (
+        "P is project\nP module m\nP target console\nP entry programMain\n"
+        'm is module\nm path a.b\nm exports programMain\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "programMain is operation\nprogramMain out ExitCode\nprogramMain async no\n"
+        'programMain purpose "entry"\nprogramMain invariant "returns zero"\n'
+        "programMain let ok immutable ExitCode 0\nprogramMain return ok\n"
+        "answer is operation\nanswer out Int64\nanswer async no\n"
+        'answer purpose "exported answer"\nanswer invariant "returns 42"\n'
+        "answer export c ss_answer\nanswer let result immutable Int64 42\nanswer return result\n"
+    )
+
+
+def test_r048_export_c_emits_wrapper_and_header(tmp_path):
+    prog = semanticscript.parse(_r048_c_export_program())
+    ir_text = str(semanticscript.lower_to_llvm(prog))
+    assert 'define i64 @"ss_answer"()' in ir_text
+    assert 'call i64 @"answer"()' in ir_text
+    header = semanticscript._render_c_export_header(prog, str(tmp_path / "demo.exe"))
+    assert header is not None
+    assert "SEMANTICSCRIPT_API int64_t ss_answer(void);" in header
+    assert "extern \"C\"" in header and "SEMANTICSCRIPT_API" in header
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler for C export harness")
+def test_r048_export_c_native_harness_calls_symbol(tmp_path):
+    prog = semanticscript.parse(_r048_c_export_program())
+    module = semanticscript.lower_to_llvm(prog)
+    exe = tmp_path / "demo.exe"
+    semanticscript.build_executable(prog, str(exe))
+    header = semanticscript._c_export_header_path(str(exe))
+    assert os.path.exists(header)
+    assert "ss_answer" in open(header, encoding="utf-8").read()
+
+    cc = semanticscript._find_c_compiler()
+    compiler_id = semanticscript._compiler_identity(cc)
+    obj = semanticscript._ensure_native_app_object(module, cc, compiler_id)
+    harness = tmp_path / "harness.c"
+    harness.write_text(
+        '#include "demo.h"\n'
+        "int main(void) { return ss_answer() == 42 ? 0 : 7; }\n",
+        encoding="utf-8")
+    harness_exe = tmp_path / "harness.exe"
+    cmd = list(cc) + ["-O2", str(harness), obj, "-I", str(tmp_path), "-o", str(harness_exe)]
+    triple = getattr(module, "triple", "") or ""
+    if triple:
+        cmd.append("--target=" + triple)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                          timeout=semanticscript._build_timeout_seconds())
+    assert proc.returncode == 0, proc.stderr
+    run = subprocess.run([str(harness_exe)], capture_output=True, text=True, encoding="utf-8")
+    assert run.returncode == 0
+
+
 def test_semsig_catalogs_load_and_doc():
     # WS3-023: every .semsig catalog loads and `docs` lists its API surface.
     import glob
@@ -317,6 +469,55 @@ def test_semsig_catalogs_load_and_doc():
     assert any(l.startswith("http.route(") for l in http_lines)
     assert any("http.serve(" in l and "throws HttpError" in l for l in http_lines)
     assert any(l.startswith("http.callNext(") for l in http_lines)
+    assert any(l.startswith("http.requestCookie(") for l in http_lines)
+    assert any(l.startswith("http.multipartPartBytes(") for l in http_lines)
+    assert any(l.startswith("http.responseFile(") for l in http_lines)
+    assert any(l.startswith("http.responseSseEvent(") for l in http_lines)
+
+
+def test_http_semsig_tracks_direct_lowered_surface():
+    # R-044: the full modeled HTTP helper surface must be discoverable from the
+    # shipped standard.http.semsig, not only from compiler fallback signatures.
+    http = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.http.semsig"),
+                                 encoding="utf-8").read())
+    targets = semanticscript.semsig_targets(http)
+    missing = sorted(set(semanticscript._HTTP_RT) - set(targets))
+    assert not missing, f"standard.http.semsig missing modeled targets: {missing}"
+    sig = semanticscript._builtin_target_signature("http.responseText")
+    assert "contentType" in sig["optionalSlots"]
+    response = targets["http.responseBytes"]
+    assert response.fact("catch").payload == ["HttpError"]
+    assert response.fact("arg").payload[:2] == ["response", "HttpResponse"]
+
+
+def test_text_i18n_contracts_are_deferred_and_discoverable():
+    # R-058: text/i18n is an owned deferred stdlib surface, not only a source
+    # escape rejection. The contract is discoverable while readiness marks it
+    # experimental/signature-only until a runtime lands.
+    text = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.text.semsig"),
+                                 encoding="utf-8").read())
+    text_lines = semanticscript.docs(text)
+    assert any(l.startswith("text.normalizeUtf8(") and "throws TextError" in l
+               for l in text_lines)
+    assert any(l.startswith("text.graphemeLength(") for l in text_lines)
+    assert semanticscript._builtin_target_signature("text.normalizeUtf8")["args"] == [
+        {"slot": "input", "type": "String"},
+        {"slot": "form", "type": "TextNormalizationForm"},
+    ]
+
+    i18n = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.i18n.semsig"),
+                                 encoding="utf-8").read())
+    i18n_lines = semanticscript.docs(i18n)
+    assert any(l.startswith("i18n.compareLocale(") and "throws I18nError" in l
+               for l in i18n_lines)
+
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["text"]["status"] == "signature-only"
+    assert led["text"]["deferred"] is True
+    assert led["text"]["unbackedPublic"] is False
+    assert led["i18n"]["status"] == "signature-only"
+    assert led["i18n"]["deferred"] is True
+    assert led["i18n"]["tier"] == "secondary"
 
 
 def test_semsig_loads_and_indexes_targets():
@@ -341,14 +542,15 @@ def test_semsig_resolution_first_wins():
     assert semanticscript.resolve_semsig("nope.thing", [a, b]) is None
 
 
-def test_app_source_intrinsic_body_warns():
-    # WS3-052 / §17 #50: a primitive body in app source is a lint warning.
+def test_app_source_intrinsic_body_rejected():
+    # WS3-052 / WS2-094 / ss17 #50: a primitive body in app source is a
+    # deny-tier lint error.
     prog = semanticscript.parse(
         "doThing is operation\ndoThing out Int64\n"
         "doThing body intrinsic arithmetic.addInt64\n"
     )
-    codes = {d.code for d in semanticscript.lint(prog)}
-    assert "SS5000" in codes
+    diags = semanticscript.lint(prog)
+    assert any(d.code == "SS5000" and d.severity == "error" for d in diags)
 
 
 def test_mvs_selects_highest():
@@ -535,6 +737,212 @@ def test_native_link_dedup_project_and_platform():
     assert merged["linkFlags"] == ["-lm", "-lpthread"]          # order preserved
 
 
+def test_build_sem_package_metadata_parses():
+    # R-046: package identity/profile/resource rows are concrete build.sem rows,
+    # not deferred prose.
+    src = (
+        "TaskApp is project\n"
+        "TaskApp module taskWeb\n"
+        "TaskApp target console\n"
+        "TaskApp entry main\n"
+        'TaskApp publisher "Acme Tools"\n'
+        'TaskApp productName "Task Forge"\n'
+        'TaskApp packageId "com.acme.taskforge"\n'
+        'TaskApp packageVersion "1.2.3"\n'
+        "TaskApp profile debug\n"
+        "TaskApp profile release\n"
+        'TaskApp profileOutput release "dist/release/taskforge"\n'
+        'TaskApp resource releaseConfig "assets/release.txt"\n'
+        'TaskApp icon mainIcon "assets/app.ico"\n'
+        "TaskApp profileResource release releaseConfig\n"
+    )
+    prog = semanticscript.parse(src)
+    project = prog.entities["TaskApp"]
+    assert project.fact("productName").payload == ['"Task Forge"']
+    assert project.facts("profile")[1].payload == ["release"]
+    assert project.fact("profileResource").payload == ["release", "releaseConfig"]
+
+
+def test_package_manifest_profiles_resources_and_platform_output(tmp_path, capsys):
+    # R-046: debug/release profiles select different outputs/resources, while a
+    # platform output remains the base output when no profile override is chosen.
+    import json as _json
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "app.ico").write_bytes(b"ico")
+    (assets / "debug.txt").write_text("debug", encoding="utf-8")
+    (assets / "release.txt").write_text("release", encoding="utf-8")
+    (tmp_path / "build.sem").write_text(
+        "TaskApp is project\n"
+        "TaskApp module taskWeb\n"
+        "TaskApp target console\n"
+        "TaskApp entry main\n"
+        'TaskApp publisher "Acme Tools"\n'
+        'TaskApp productName "Task Forge"\n'
+        'TaskApp packageId "com.acme.taskforge"\n'
+        'TaskApp packageVersion "1.2.3"\n'
+        "TaskApp platform linuxAmd64\n"
+        "TaskApp profile debug\n"
+        "TaskApp profile release\n"
+        'TaskApp profileOutput debug "dist/debug/taskforge"\n'
+        'TaskApp profileOutput release "dist/release/taskforge"\n'
+        'TaskApp resource debugConfig "assets/debug.txt"\n'
+        'TaskApp resource releaseConfig "assets/release.txt"\n'
+        'TaskApp icon mainIcon "assets/app.ico"\n'
+        "TaskApp profileResource debug debugConfig\n"
+        "TaskApp profileResource release releaseConfig\n"
+        "linuxAmd64 is platform\n"
+        "linuxAmd64 os linux\n"
+        "linuxAmd64 arch amd64\n"
+        'linuxAmd64 output "dist/platform/taskforge"\n',
+        encoding="utf-8",
+    )
+
+    rc = semanticscript.main([
+        "package-manifest", str(tmp_path), "--platform", "linuxAmd64", "--json"
+    ])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.packageManifest.v1"
+    assert env["manifest"]["output"] == "dist/platform/taskforge"
+    assert {r["name"] for r in env["manifest"]["resources"]} == {
+        "debugConfig", "releaseConfig"
+    }
+
+    rc = semanticscript.main([
+        "package-manifest", str(tmp_path), "--profile", "release",
+        "--platform", "linuxAmd64", "--json"
+    ])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    manifest = env["manifest"]
+    assert manifest["productName"] == "Task Forge"
+    assert manifest["packageId"] == "com.acme.taskforge"
+    assert manifest["profile"] == "release"
+    assert manifest["platform"] == "linuxAmd64"
+    assert manifest["output"] == "dist/release/taskforge"
+    assert [r["name"] for r in manifest["resources"]] == ["releaseConfig"]
+    assert manifest["icons"][0]["path"] == "assets/app.ico"
+
+
+def test_package_manifest_rejects_missing_resource(tmp_path, capsys):
+    # R-046: package asset paths are project-relative and validated before a
+    # manifest is advertised as usable.
+    import json as _json
+    (tmp_path / "build.sem").write_text(
+        "TaskApp is project\n"
+        "TaskApp module taskWeb\n"
+        "TaskApp target console\n"
+        "TaskApp entry main\n"
+        'TaskApp resource missing "assets/missing.txt"\n',
+        encoding="utf-8",
+    )
+    rc = semanticscript.main(["package-manifest", str(tmp_path), "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert env["surface"] == "sem.packageManifest.v1"
+    assert env["ok"] is False and env["status"] == "invalid-manifest"
+    assert "was not found" in env["message"]
+
+
+def test_build_sem_runtime_config_parses():
+    # R-060: runtime/deployment config is a distinct manifest row family from
+    # build/package identity.
+    src = (
+        "TaskApp is project\n"
+        "TaskApp module taskWeb\n"
+        "TaskApp target console\n"
+        "TaskApp configProfile default\n"
+        "TaskApp configProfile prod\n"
+        'TaskApp configValue default apiBaseUrl String "http://localhost"\n'
+        'TaskApp configValue prod apiBaseUrl String "https://api.example.com"\n'
+        "TaskApp requiredSecret prod sessionSecret env TASKFORGE_SESSION_SECRET\n"
+        "TaskApp deploymentTarget prodConsole prod console\n"
+        "TaskApp migrationHook prod migrateDb\n"
+    )
+    prog = semanticscript.parse(src)
+    proj = prog.entities["TaskApp"]
+    assert proj.fact("configProfile").payload == ["default"]
+    assert proj.fact("requiredSecret").payload == [
+        "prod", "sessionSecret", "env", "TASKFORGE_SESSION_SECRET",
+    ]
+
+
+def test_runtime_config_profiles_secret_and_deployment(tmp_path, capsys, monkeypatch):
+    # R-060: default profile values layer under the selected profile; env-backed
+    # required secrets block readiness when absent but never expose values.
+    import json as _json
+    (tmp_path / "build.sem").write_text(
+        "TaskApp is project\n"
+        "TaskApp module taskWeb\n"
+        "TaskApp target console\n"
+        "TaskApp target webServer\n"
+        "TaskApp configProfile default\n"
+        "TaskApp configProfile prod\n"
+        'TaskApp configValue default apiBaseUrl String "http://localhost"\n'
+        "TaskApp configValue default retries Int64 1\n"
+        'TaskApp configValue prod apiBaseUrl String "https://api.example.com"\n'
+        "TaskApp requiredSecret prod sessionSecret env TASKFORGE_SESSION_SECRET\n"
+        "TaskApp deploymentTarget prodWeb prod webServer\n"
+        "TaskApp migrationHook prod migrateDb\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("TASKFORGE_SESSION_SECRET", "not-emitted")
+    rc = semanticscript.main([
+        "runtime-config", str(tmp_path), "--profile", "prod", "--json",
+    ])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.runtimeConfig.v1"
+    cfg = env["config"]
+    assert cfg["ready"] is True
+    assert cfg["layerOrder"] == ["default", "prod"]
+    values = {item["name"]: item for item in cfg["values"]}
+    assert values["apiBaseUrl"]["value"] == "https://api.example.com"
+    assert values["apiBaseUrl"]["profile"] == "prod"
+    assert values["retries"]["value"] == "1"
+    assert cfg["secrets"] == [{
+        "name": "sessionSecret",
+        "source": "env",
+        "key": "TASKFORGE_SESSION_SECRET",
+        "profile": "prod",
+        "present": True,
+    }]
+    assert "not-emitted" not in _json.dumps(env)
+    assert cfg["deployments"] == [{
+        "name": "prodWeb", "profile": "prod", "target": "webServer",
+    }]
+    assert cfg["migrations"][0]["operation"] == "migrateDb"
+
+    monkeypatch.delenv("TASKFORGE_SESSION_SECRET", raising=False)
+    rc = semanticscript.main([
+        "runtime-config", str(tmp_path), "--profile", "prod", "--json",
+    ])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert env["ok"] is False and env["status"] == "blocked"
+    assert env["config"]["missingSecrets"] == ["sessionSecret"]
+
+
+def test_runtime_config_rejects_unknown_profile_secret(tmp_path, capsys):
+    import json as _json
+    (tmp_path / "build.sem").write_text(
+        "TaskApp is project\n"
+        "TaskApp module taskWeb\n"
+        "TaskApp target console\n"
+        "TaskApp configProfile default\n"
+        "TaskApp requiredSecret prod sessionSecret env TASKFORGE_SESSION_SECRET\n",
+        encoding="utf-8",
+    )
+    rc = semanticscript.main(["runtime-config", str(tmp_path), "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 2
+    assert env["surface"] == "sem.runtimeConfig.v1"
+    assert env["status"] == "invalid-config"
+    assert "undeclared profile" in env["message"]
+
+
 def test_html_holes_extracted_and_url_flagged():
     # WS3-018: {{name}} / {{rec.field}} extraction; URL-attribute holes flagged.
     holes = semanticscript.html_holes('<a href="{{link}}">{{label}}</a> {{user.name}}')
@@ -638,7 +1046,7 @@ def _example_files():
     # Compile-time negatives are rejected before lowering (e.g. div_by_zero_trap
     # trips SS3111 on a constant 0 divisor), so they cannot pass the parse/lower
     # lanes of the matrix. run_examples.py exercises them via its HARD_NEG path.
-    compile_negatives = {"div_by_zero_trap.sem"}
+    compile_negatives = {"div_by_zero_trap.sem", "capability_ungranted_use.sem"}
     return sorted(p for p in glob.glob(os.path.join(EXAMPLES, "*.sem"))
                   if os.path.basename(p) not in compile_negatives)
 
@@ -997,6 +1405,37 @@ def test_compact_ss_roundtrip_semantics_preserved():
     }
 
 
+def test_adoption_gate_applies_documented_row_count_thresholds(tmp_path, capsys):
+    import json
+    current = tmp_path / "current.sem"
+    converted = tmp_path / "converted.sem"
+    current.write_text("# current\n" + "\n".join(f"row{i}" for i in range(10)),
+                       encoding="utf-8")
+    converted.write_text("# converted\n" + "\n".join(f"row{i}" for i in range(13)),
+                         encoding="utf-8")
+
+    rc = semanticscript.main([
+        "adoption-gate", str(current), str(converted), "--surface", "compact",
+        "--json"])
+    compact = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert compact["surface"] == "sem.adoptionGate.v1"
+    assert compact["authoringSurface"] == "compact"
+    assert compact["status"] == "threshold-exceeded"
+    assert compact["currentRows"] == 10
+    assert compact["convertedRows"] == 13
+    assert compact["thresholdPercent"] == 20.0
+
+    rc = semanticscript.main([
+        "adoption-gate", str(current), str(converted), "--surface", "canonical",
+        "--json"])
+    canonical = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert canonical["ok"] is True
+    assert canonical["thresholdPercent"] == 35.0
+    assert "sem.adoptionGate.v1" in semanticscript.SEM_SURFACES
+
+
 def test_fmt_surface_ss_idempotent_on_canonical():
     # parse_compact is idempotent on already-canonical EAV: formatting a golden
     # through the compact front end equals formatting it directly.
@@ -1060,6 +1499,82 @@ def test_query_dimensions():
     assert semanticscript.query(prog, "effects") == []
 
 
+def test_record_json_metadata_parses_and_queries():
+    # R-052: record JSON metadata is first-class source, not prose.
+    src = (
+        "User is record\n"
+        "User field id Int64\n"
+        "User field displayName String\n"
+        "User jsonName displayName \"display_name\"\n"
+        "User omitWhen displayName empty\n"
+        "User unknownFieldPolicy reject\n"
+    )
+    prog = semanticscript.parse(src)
+    assert semanticscript.query(prog, "json-codecs") == [
+        "User unknownFieldPolicy reject",
+        "User field displayName jsonName display_name omitWhen empty",
+    ]
+
+
+def test_record_json_metadata_cli_query_surface(tmp_path):
+    # R-052: the agent-facing CLI query exposes record codec rows.
+    import json as _json
+    path = tmp_path / "user.sem"
+    path.write_text(
+        "User is record\n"
+        "User field id Int64\n"
+        "User field displayName String\n"
+        "User jsonName displayName \"display_name\"\n"
+        "User omitWhen displayName empty\n"
+        "User unknownFieldPolicy reject\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "query", "json-codecs", str(path), "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    env = _json.loads(proc.stdout)
+    assert env["surface"] == "sem.query.v1"
+    assert env["dimension"] == "json-codecs"
+    assert "User field displayName jsonName display_name omitWhen empty" in env["results"]
+
+
+def test_record_json_metadata_rejects_unknown_field_and_policy():
+    # R-052: metadata rows must point at declared fields and stable policies.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(
+            "User is record\n"
+            "User field id Int64\n"
+            "User jsonName missing \"missing\"\n"
+        )
+    assert getattr(exc.value, "code", None) == "SS1650"
+
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(
+            "User is record\n"
+            "User field id Int64\n"
+            "User omitWhen id sometimes\n"
+        )
+    assert getattr(exc.value, "code", None) == "SS1650"
+
+
+def test_record_json_metadata_rejects_duplicate_json_names():
+    # R-052: generated codecs must not map two fields to the same object key.
+    src = (
+        "User is record\n"
+        "User field firstName String\n"
+        "User field displayName String\n"
+        "User jsonName firstName name\n"
+        "User jsonName displayName name\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1650"
+
+
 def test_query_ownership_leaked():
     src = (
         "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
@@ -1101,13 +1616,132 @@ def test_fmt_sugar_branch_else_to_goto():
     assert semanticscript.format_program(semanticscript.parse(out)) == out
 
 
+def test_fmt_lowers_ifvalue_to_compare_call():
+    # R-055: canonical fmt emits an explicit compare call + bool branch for
+    # `ifValue` sugar.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let leftVal immutable Int64 5\n"
+        "main let rightVal immutable Int64 5\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main branch ifValue leftVal equals rightVal goto matched\n"
+        "main return okCode\n"
+        "main at matched return okCode\n"
+    )
+    out = semanticscript.format_program(semanticscript.parse(src))
+    assert "branch ifValue" not in out
+    assert "main do checkLeftVal" in out
+    assert "main branch if leftValCheck goto matched" in out
+    assert "checkLeftVal invokes compare.equalInt64" in out
+    assert "checkLeftVal arg left Int64 leftVal" in out
+    assert "checkLeftVal arg right Int64 rightVal" in out
+    assert "checkLeftVal out leftValCheck Bool" in out
+    assert semanticscript.format_program(semanticscript.parse(out)) == out
+
+
+def test_fmt_lowers_ifout_with_collision_suffix():
+    # R-055: generated comparison calls use deterministic collision suffixes.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let zero immutable Int64 0\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do readCount\n"
+        "main branch ifOut readCount notEquals zero goto matched\n"
+        "main return okCode\n"
+        "main at matched return okCode\n"
+        "readCount is call\nreadCount in main\n"
+        "readCount invokes math.addInt64\n"
+        "readCount arg left Int64 zero\n"
+        "readCount arg right Int64 zero\n"
+        "readCount out countValue Int64\n"
+        "checkReadCount is call\ncheckReadCount in main\n"
+        "checkReadCount invokes console.writeLine\n"
+        'checkReadCount arg text String "taken name"\n'
+    )
+    out = semanticscript.format_program(semanticscript.parse(src))
+    assert "branch ifOut" not in out
+    assert "main do checkReadCount2" in out
+    assert "main branch if readCountCheck2 goto matched" in out
+    assert "checkReadCount2 invokes compare.notEqualInt64" in out
+    assert "checkReadCount2 arg left Int64 countValue" in out
+    assert "checkReadCount2 arg right Int64 zero" in out
+    assert "checkReadCount2 out readCountCheck2 Bool" in out
+    assert semanticscript.format_program(semanticscript.parse(out)) == out
+
+
+def test_fmt_lowers_compound_defer_to_cleanup_entity():
+    # R-055: compound defer sugar becomes a cleanup entity plus canonical defer.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do openDb\n"
+        "main defer closeDb onFailure logAndSuppress because \"cleanup failed\"\n"
+        "main return okCode\n"
+        "openDb is call\nopenDb in main\n"
+        "openDb invokes sqlite.openDatabase\n"
+        "openDb out db OpaquePointer\n"
+        "openDb owns db\n"
+        "openDb cleanedBy closeDbCleanup\n"
+        "closeDb is call\ncloseDb in main\n"
+        "closeDb invokes sqlite.closeDatabase\n"
+        "closeDb arg resource OpaquePointer db\n"
+        "closeDb catch closeErr SqliteError\n"
+    )
+    out = semanticscript.format_program(semanticscript.parse(src))
+    assert "main defer closeDb onFailure" not in out
+    assert "main defer closeDbCleanup" in out
+    assert "closeDbCleanup is cleanup" in out
+    assert "closeDbCleanup in main" in out
+    assert "closeDbCleanup call closeDb" in out
+    assert "closeDbCleanup onFailure logAndSuppress" in out
+    assert 'closeDbCleanup because "cleanup failed"' in out
+    assert "closeDbCleanup cleans db" in out
+    assert semanticscript.format_program(semanticscript.parse(out)) == out
+
+
+def test_fmt_semsig_role_keeps_header_first():
+    # R-055: .semsig catalogs use their own canonical entity order; the header
+    # must not drift below intrinsic rows.
+    src = (
+        "writeLine is intrinsic\n"
+        "writeLine target console.writeLine\n"
+        "writeLine arg text String\n"
+        "sig is semsig\n"
+        'sig version "1.0"\n'
+        'sig generatedBy "test"\n'
+        "sig describes standard.console\n"
+    )
+    out = semanticscript.format_program(semanticscript.parse(src), role="semsig")
+    assert out.splitlines()[0] == "sig is semsig"
+    assert out.index("sig describes standard.console") < out.index("writeLine is intrinsic")
+    assert semanticscript.format_program(semanticscript.parse(out), role="semsig") == out
+
+
+def test_fmt_build_role_keeps_project_before_platform():
+    # R-055: build.sem has manifest-specific ordering separate from ordinary
+    # module source.
+    src = (
+        "linuxX64 is platform\n"
+        "linuxX64 os linux\n"
+        "App is project\n"
+        "App module app\n"
+        "App target console\n"
+    )
+    out = semanticscript.format_program(semanticscript.parse(src), role="build")
+    assert out.index("App is project") < out.index("linuxX64 is platform")
+    assert semanticscript.format_program(semanticscript.parse(out), role="build") == out
+
+
 def test_fmt_metadata_sorts_after_structural():
     # WS4-001 / README §22: metadata rows sort after structural rows.
     src = (
+        "stdoutWriter is capability\n"
+        "stdoutWriter grants write console.stdout\n"
         "main is operation\n"
         'main purpose "p"\n'         # metadata declared before structural
         "main out ExitCode\n"
         "main effect write console.stdout\n"
+        "main uses stdoutWriter\n"
     )
     out = semanticscript.format_program(semanticscript.parse(src))
     lines = out.splitlines()
@@ -1428,6 +2062,26 @@ def test_doctor_groups_by_severity():
     assert isinstance(groups["warning"], list)
 
 
+def test_doctor_suggests_sem_add_argv_for_missing_entry(tmp_path, capsys):
+    """WS2-075: doctor gives a replayable sem add argv when the project entry
+    names no declared operation."""
+    import json
+    src = tmp_path / "missing_entry.sem"
+    src.write_text(
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\nm purpose \"p\"\nm invariant \"i\"\n",
+        encoding="utf-8",
+    )
+    rc = semanticscript.main(["doctor", str(src)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "SS1194" in out
+    marker = "Suggested sem add argv: "
+    line = next(line for line in out.splitlines() if marker in line)
+    argv = json.loads(line.split(marker, 1)[1])
+    assert argv == ["semanticscript", "add", str(src), "main", "--out", "ExitCode"]
+
+
 def test_summarize_counts_by_kind():
     prog = semanticscript.parse(_ir_helper_program())
     counts = semanticscript.summarize(prog)
@@ -1537,22 +2191,31 @@ def test_mcp_registry_is_authoritative_and_errors_are_protocol_errors():
     # every listed tool round-trips to a real surface. Supply a value for every
     # required input the advertised schema declares (path + positionals like
     # query/code/dimension) — the registry is authoritative for what's required.
+    import tempfile
     hello = os.path.join(EXAMPLES, "hello_world.sem")
-    fixtures = {"path": hello, "query": "cleanup", "code": "SS1502", "dimension": "effects"}
-    # `explain` is a text tool (not a sem.* JSON envelope); everything else is JSON.
-    text_tools = {"explain"}
-    for tool in listed:
-        name = tool["name"]
-        required = tool.get("inputSchema", {}).get("required", [])
-        assert all(k in fixtures for k in required), (name, required)
-        args = {k: fixtures[k] for k in required}
-        resp = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                                "params": {"name": name, "arguments": args}})
-        assert "result" in resp, name
-        text = resp["result"]["content"][0]["text"]
-        assert text.strip() and "Traceback" not in text, name
-        if name not in text_tools:
-            assert _json.loads(text)["surface"].startswith("sem."), name
+    with tempfile.TemporaryDirectory() as td:
+        docs_db = os.path.join(td, "docs.sqlite")
+        fixtures = {
+            "path": hello,
+            "query": "cleanup",
+            "code": "SS1502",
+            "dimension": "effects",
+            "db": docs_db,
+        }
+        # `explain` is a text tool (not a sem.* JSON envelope); everything else is JSON.
+        text_tools = {"explain"}
+        for tool in listed:
+            name = tool["name"]
+            required = tool.get("inputSchema", {}).get("required", [])
+            assert all(k in fixtures for k in required), (name, required)
+            args = {k: fixtures[k] for k in required}
+            resp = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                                    "params": {"name": name, "arguments": args}})
+            assert "result" in resp, name
+            text = resp["result"]["content"][0]["text"]
+            assert text.strip() and "Traceback" not in text, name
+            if name not in text_tools:
+                assert _json.loads(text)["surface"].startswith("sem."), name
     # an unknown tool is a JSON-RPC error, not a text-content "success"
     bad = semanticscript.mcp_handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                            "params": {"name": "definitely-not-a-tool", "arguments": {}}})
@@ -1780,12 +2443,23 @@ def test_run_json_entry_strict_and_empty_stdout():
     # encodes empty stdout as no lines.
     import json as _json
     # R-162: a strict lint error is a lint-error envelope, not silently skipped.
+    strict_src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path m\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        "helper is operation\nhelper in n ExitCode\nhelper out ExitCode\n"
+        "helper async no\nhelper return n\n"
+        'main is operation\nmain out ExitCode\nmain async no\n'
+        'main purpose "entry"\nmain invariant "ret"\n'
+        "main let zero immutable ExitCode 0\nmain do callHelper\nmain return code\n"
+        "callHelper is call\ncallHelper in main\ncallHelper invokes helper\n"
+        "callHelper arg n ExitCode zero\ncallHelper out code ExitCode\n"
+    )
     p = subprocess.run(
-        [sys.executable, SEMANTICSCRIPT, "run", "--json", "--strict",
-         os.path.join(EXAMPLES, "capability_ungranted_use.sem")],
-        capture_output=True, text=True, encoding="utf-8")
+        [sys.executable, SEMANTICSCRIPT, "run", "--json", "--strict", "-"],
+        input=strict_src, capture_output=True, text=True, encoding="utf-8")
     env = _json.loads(p.stdout)
     assert env["status"] == "lint-error" and env["ok"] is False and p.returncode == 1
+    assert any(d["code"] == "MD1021" for d in env["diagnostics"])
     # a program with a clean main (exit 0) and a fail op (exit 1).
     src = ("P is project\nP module m\nP target console\nP entry main\n"
            'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
@@ -1827,6 +2501,88 @@ def test_missing_literal_source_is_compile_diagnostic(tmp_path):
     env = _json.loads(proc.stdout)
     assert env["status"] == "compile-failed" and env["ok"] is False
     assert "SS3046" in env["stderr"] and "SSR0001" not in env["stderr"]
+
+
+def _write_literal_asset_project(root, asset_text="project asset"):
+    assets = root / "assets"
+    src_dir = root / "src"
+    assets.mkdir()
+    src_dir.mkdir()
+    asset = assets / "banner.txt"
+    asset.write_text(asset_text, encoding="utf-8")
+    digest = semanticscript.sha256_hex(asset_text.encode("utf-8"))
+    (root / "build.sem").write_text(
+        "AssetProject is project\n"
+        "AssetProject module assetModule\n"
+        "AssetProject target console\n"
+        "AssetProject entry main\n",
+        encoding="utf-8")
+    (src_dir / "main.sem").write_text(
+        "assetModule is module\n"
+        "assetModule path src.main\n"
+        "assetModule exports main\n"
+        'assetModule purpose "Asset project"\n'
+        'assetModule invariant "Embeds a project-relative asset"\n\n'
+        "ExitCode is alias\n"
+        "ExitCode for Int32\n\n"
+        "bannerText is storage\n"
+        "bannerText scope module\n"
+        "bannerText type String\n"
+        "bannerText mutability immutable\n"
+        'bannerText literalSource "assets/banner.txt"\n'
+        "bannerText literalEncoding utf8\n"
+        f"bannerText literalDigest sha256 {digest}\n\n"
+        "main is operation\n"
+        "main out ExitCode\n"
+        "main effect write console.stdout\n"
+        "main async no\n"
+        'main purpose "Print the asset"\n'
+        'main invariant "The asset comes from literalSource"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do writeAsset\n"
+        "main return okCode\n\n"
+        "writeAsset is call\n"
+        "writeAsset in main\n"
+        "writeAsset invokes console.writeLine\n"
+        "writeAsset arg text String bannerText\n",
+        encoding="utf-8")
+    return asset
+
+
+def test_project_literal_source_check_uses_project_root(tmp_path, monkeypatch, capsys):
+    import json
+    project = tmp_path / "app"
+    project.mkdir()
+    asset = _write_literal_asset_project(project)
+    asset.unlink()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    rc = semanticscript.main(["check", str(project), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    rendered = "\n".join(d["rendered"] for d in payload["diagnostics"])
+    assert "SS3046" in rendered
+    assert "assets/banner.txt" in rendered
+
+
+def test_project_literal_source_run_json_uses_project_root(tmp_path, monkeypatch, capsys):
+    import json
+    project = tmp_path / "app"
+    project.mkdir()
+    _write_literal_asset_project(project)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+
+    rc = semanticscript.main(["run", str(project), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0, payload.get("stderr")
+    assert payload["status"] == "ok"
+    assert payload["stdout"].strip() == "project asset"
 
 
 def test_semsig_matches_family_runtime_return_kinds():
@@ -2405,6 +3161,68 @@ def test_lint_json_cli():
     assert payload["diagnostics"] == []
 
 
+def test_lint_cli_filters_by_code_and_tier(tmp_path):
+    """WS2-074: semlint-compatible --code/--tier filters apply before the JSON
+    envelope is emitted."""
+    import json as _json
+    src = tmp_path / "lint_filters.sem"
+    src.write_text(
+        "m is module\nm path a.b\nm purpose \"p\"\nm invariant \"i\"\n"
+        "helper is operation\nhelper out Int64\nhelper async no\n",
+        encoding="utf-8",
+    )
+    by_code = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "lint", "--format", "json",
+         "--code", "MD1021", str(src)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = _json.loads(by_code.stdout)
+    assert [d["code"] for d in payload["diagnostics"]] == ["MD1021"]
+    assert payload["diagnostics"][0]["tier"] == "T3"
+    assert payload["diagnostics"][0]["confidence"] == "medium"
+    assert payload["diagnostics"][0]["effort"] == "trivial"
+
+    by_tier = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "lint", "--format", "json",
+         "--tier", "T3", str(src)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    tier_payload = _json.loads(by_tier.stdout)
+    assert {d["code"] for d in tier_payload["diagnostics"]} == {"MD1021"}
+
+
+def test_lint_cli_human_format_renders_repair_block(tmp_path):
+    """WS2-074: human format includes the Found/Suggested-fix repair text, not
+    just the terse diagnostic line."""
+    src = tmp_path / "lint_human.sem"
+    src.write_text("m is module\nm path a.b\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "lint", "--format", "human", str(src)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 1
+    assert "ERROR MD1001" in proc.stdout
+    assert "Found:" in proc.stdout and "Suggested fix:" in proc.stdout
+
+
+def test_check_json_diagnostics_include_triage_fields(tmp_path):
+    """WS2-074: check shares the same structured diagnostic fields agents use to
+    triage lint output."""
+    import json as _json
+    src = tmp_path / "check_fields.sem"
+    src.write_text("m is module\nm path a.b\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "check", "--json", str(src)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = _json.loads(proc.stdout)
+    diag = payload["diagnostics"][0]
+    assert {"tier", "confidence", "effort"}.issubset(diag)
+    assert diag["tier"] == "T1"
+    assert diag["confidence"] == "high"
+    assert diag["effort"] == "trivial"
+
+
 def test_diagnostics_registry_round_trip():
     # Every registry entry has a tier + repair fields (single source of truth).
     assert semanticscript.DIAGNOSTICS
@@ -2520,12 +3338,15 @@ _ITER_FIXTURE = (
     'run at loopExit do rel\nrun return idx\n'
     'mk is call\nmk in run\nmk invokes list.create\nmk out lst OpaquePointer\n'
     'seedIt is call\nseedIt in run\nseedIt invokes list.append\nseedIt arg list OpaquePointer lst\nseedIt arg value Int64 seed\n'
+    'seedIt discards "seed append status ignored in iterator fixture"\n'
     'lenCall is call\nlenCall in run\nlenCall invokes list.length\nlenCall arg list OpaquePointer lst\nlenCall out n Int64\n'
     'checkGoing is call\ncheckGoing in run\ncheckGoing invokes math.lessThanInt64\ncheckGoing arg left Int64 idx\ncheckGoing arg right Int64 n\ncheckGoing out going Bool\n'
     'getElem is call\ngetElem in run\ngetElem invokes list.get\ngetElem arg list OpaquePointer lst\ngetElem arg index Int64 idx\ngetElem out elem Int64\n'
     'badAppend is call\nbadAppend in run\nbadAppend invokes list.append\nbadAppend arg list OpaquePointer lst\nbadAppend arg value Int64 elem\n'
+    'badAppend discards "append status ignored in iterator fixture"\n'
     'incIdx is call\nincIdx in run\nincIdx invokes math.addInt64\nincIdx arg left Int64 idx\nincIdx arg right Int64 one\nincIdx out idx Int64\n'
-    'rel is call\nrel in run\nrel invokes list.release\nrel arg list OpaquePointer lst\n')
+    'rel is call\nrel in run\nrel invokes list.release\nrel arg list OpaquePointer lst\n'
+    'rel discards "release status ignored in iterator fixture"\n')
 
 
 def test_collection_mutated_during_iteration_rejected():
@@ -2924,6 +3745,28 @@ def test_parse_unknown_kind_rejected():
         semanticscript.parse("x is widget\n")
 
 
+def test_macros_reflection_reject_with_decision_code():
+    for kind in ("macro", "reflection", "metaprogram"):
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.parse(f"thing is {kind}\n")
+        assert exc.value.code == "SS3400"
+        assert "external generator" in exc.value.message
+
+
+def test_macro_reflection_reserved_words_are_discoverable():
+    expected = {
+        "macro",
+        "reflection",
+        "reflect",
+        "metaprogram",
+        "metaprogramming",
+    }
+    assert expected <= semanticscript.RESERVED_WORDS
+    assert expected <= semanticscript.RESERVED_FUTURE
+    assert semanticscript.explain("SS3400")["summary"].startswith("Macros")
+    assert semanticscript.token_sync_drift() == set()
+
+
 @pytest.mark.parametrize("bad", ["my_op", "my-op", "2bad", "_lead"])
 def test_parse_invalid_entity_names_rejected(bad):
     # README ss2: identifiers are [a-zA-Z][a-zA-Z0-9]*.
@@ -2955,6 +3798,7 @@ def test_parse_reserved_word_ok_as_arg_slot_label():
     prog = semanticscript.parse(
         "openDb is call\nopenDb invokes sqlite.openDatabase\n"
         "openDb arg path String dbPath\n"
+        "openDb out db SqliteDatabase\n"
     )
     assert prog.entities["openDb"].fact("arg").payload == ["path", "String", "dbPath"]
 
@@ -3894,6 +4738,131 @@ def test_import_alias_collides_with_type_rejected():
     assert getattr(exc.value, "code", None) == "SS1551"
 
 
+def test_fine_grained_import_deps_surface(capsys, tmp_path):
+    # R-045: selective import rows are visible in the dependency surface.
+    src = (
+        "app is module\n"
+        "app path demo.app\n"
+        "app imports api github.com/acme/api\n"
+        "app importType api Request\n"
+        "app importOperation api fetchUser\n"
+        "app exports main\n"
+        "app purpose \"p\"\n"
+        "app invariant \"i\"\n"
+        "main is operation\n"
+        "main out Int64\n"
+        "main let ok immutable Int64 0\n"
+        "main return ok\n"
+    )
+    path = tmp_path / "app.sem"
+    path.write_text(src, encoding="utf-8")
+    semanticscript.main(["deps", str(path)])
+    import json as _json
+    env = _json.loads(capsys.readouterr().out)
+    assert env["surface"] == "sem.deps.v1"
+    assert {
+        "module": "app",
+        "alias": "api",
+        "path": "github.com/acme/api",
+    } in env["imports"]
+    assert {
+        "module": "app",
+        "kind": "operation",
+        "alias": "api",
+        "name": "fetchUser",
+        "path": "github.com/acme/api",
+    } in env["selectiveImports"]
+    assert {
+        "module": "app",
+        "kind": "type",
+        "alias": "api",
+        "name": "Request",
+        "path": "github.com/acme/api",
+    } in env["selectiveImports"]
+
+
+def test_selective_import_allows_named_operation_and_rejects_sibling():
+    # R-045: narrowing an import alias makes sibling operation targets unavailable.
+    base = (
+        "app is module\n"
+        "app path demo.app\n"
+        "app imports api github.com/acme/api\n"
+        "app importOperation api fetchUser\n"
+        "app exports main\n"
+        "app purpose \"p\"\n"
+        "app invariant \"i\"\n"
+        "main is operation\n"
+        "main out Int64\n"
+        "main let ok immutable Int64 0\n"
+        "main do fetchCall\n"
+        "main return ok\n"
+        "fetchCall is call\n"
+        "fetchCall in main\n"
+    )
+    semanticscript.parse(base + "fetchCall invokes api.fetchUser\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(base + "fetchCall invokes api.deleteUser\n")
+    assert getattr(exc.value, "code", None) == "SS1554"
+
+
+def test_selective_import_unknown_alias_rejected():
+    # R-045: a fine-grained row must sit on top of a concrete imports alias.
+    src = (
+        "app is module\n"
+        "app path demo.app\n"
+        "app importOperation api fetchUser\n"
+        "app purpose \"p\"\n"
+        "app invariant \"i\"\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1553"
+
+
+def test_selective_import_type_alias_checked():
+    # R-045: dotted alias `for` rows respect importType/importError narrowing.
+    base = (
+        "app is module\n"
+        "app path demo.app\n"
+        "app imports api github.com/acme/api\n"
+        "app importType api Request\n"
+        "app purpose \"p\"\n"
+        "app invariant \"i\"\n"
+        "LocalRequest is alias\n"
+    )
+    semanticscript.parse(base + "LocalRequest for api.Request\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(base + "LocalRequest for api.Response\n")
+    assert getattr(exc.value, "code", None) == "SS1554"
+
+
+def test_fine_grained_imports_format_in_module_order():
+    # R-045: fmt has a stable home for selective import rows.
+    src = (
+        "main is operation\n"
+        "main out Int64\n"
+        "main let ok immutable Int64 0\n"
+        "main return ok\n"
+        "app is module\n"
+        "app exports main\n"
+        "app importOperation api fetchUser\n"
+        "app imports api github.com/acme/api\n"
+        "app path demo.app\n"
+    )
+    formatted = semanticscript.format_program(semanticscript.parse(src))
+    module_lines = [
+        line for line in formatted.splitlines()
+        if line.startswith("app ")
+    ]
+    assert module_lines[:5] == [
+        "app is module",
+        "app path demo.app",
+        "app imports api github.com/acme/api",
+        "app importOperation api fetchUser",
+        "app exports main",
+    ]
+
+
 def test_ifvariant_bind_payloadless_rejected():
     # README §17 #53: `bind` on a payloadless variant is a hard error.
     src = (
@@ -4776,6 +5745,126 @@ def test_webserver_handler_abi_mismatch_rejected():
     assert getattr(exc.value, "code", None) == "SS2603"
 
 
+_OK_MIDDLEWARE = (
+    "authMiddleware is operation\n"
+    "authMiddleware in request HttpRequest\n"
+    "authMiddleware in response HttpResponse\n"
+    "authMiddleware in next NextMiddleware\n"
+    "authMiddleware out Bool\n"
+    'authMiddleware async no\nauthMiddleware purpose "p"\nauthMiddleware invariant "i"\n'
+    "authMiddleware let keepGoing immutable Bool true\n"
+    "authMiddleware return keepGoing\n"
+)
+
+
+def test_webserver_middleware_abi_uses_operation_payload_not_path():
+    bad = (
+        "authMiddleware is operation\n"
+        "authMiddleware in request HttpRequest\n"
+        "authMiddleware in response HttpResponse\n"
+        "authMiddleware out Bool\n"
+        'authMiddleware async no\nauthMiddleware purpose "p"\nauthMiddleware invariant "i"\n'
+        "authMiddleware let keepGoing immutable Bool true\n"
+        "authMiddleware return keepGoing\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_webserver_program(
+            "api route GET /health healthHandler\n"
+            "api middleware /health authMiddleware\n",
+            _OK_HANDLER + bad,
+        ))
+    assert getattr(exc.value, "code", None) == "SS2603"
+
+
+def test_webserver_native_middleware_uses_bool_contract():
+    header = open(os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.h"
+    ), encoding="utf-8").read()
+    runtime = open(os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.c"
+    ), encoding="utf-8").read()
+
+    assert "SS_HTTP_MIDDLEWARE_CONTINUE = 1" in header
+    assert "SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT = 0" in header
+    middleware_block = runtime[
+        runtime.index("if (route->middleware != NULL) {"):
+        runtime.index("long long handler_started_at")
+    ]
+    assert "handler_status != SS_HTTP_MIDDLEWARE_CONTINUE" in middleware_block
+    assert "handler_status != SS_HTTP_OK" not in middleware_block
+
+
+def test_webserver_route_policy_optout_requires_because():
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_webserver_program(
+            "api route GET /health healthHandler\n"
+            "api routeTimeoutOptOut /health \"not enough\"\n",
+            _OK_HANDLER,
+        ))
+    assert getattr(exc.value, "code", None) == "SS2608"
+
+
+def test_webserver_route_middleware_policy_coverage_and_optout():
+    src = _webserver_program(
+        "api route GET /private healthHandler\n"
+        "api route GET /public healthHandler\n"
+        "api middleware /private authMiddleware\n",
+        _OK_HANDLER + _OK_MIDDLEWARE,
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS2612"
+
+    ok = src.replace(
+        "api middleware /private authMiddleware\n",
+        "api middleware /private authMiddleware\n"
+        'api routeMiddlewareOptOut /public because "public health route"\n',
+    )
+    semanticscript.parse(ok)
+
+
+def test_webserver_route_timeout_policy_coverage_and_routes_graph():
+    src = _webserver_program(
+        "api route GET /health healthHandler\n"
+        "api route GET /events healthHandler\n"
+        "api routeTimeout /health 250ms\n",
+        _OK_HANDLER,
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS2611"
+
+    prog = semanticscript.parse(src.replace(
+        "api routeTimeout /health 250ms\n",
+        "api routeTimeout /health 250ms\n"
+        'api routeTimeoutOptOut /events because "streaming endpoint"\n',
+    ))
+    dot = semanticscript.graph(prog, "routes", "dot")
+    assert '"api" -> "api:GET /health";' in dot
+    assert '"api:GET /health" -> "timeout:250ms";' in dot
+    assert '"api:GET /events" -> "timeout:optOut";' in dot
+
+
+def test_webserver_route_policies_lower_to_dispatcher_table():
+    src = (
+        "Demo is project\nDemo module m\nDemo target webServer\nDemo entry api\n"
+        'm is module\nm path a.b\nm exports api\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "NextMiddleware is alias\nNextMiddleware for OpaquePointer\n"
+        "api is webServer\napi host home\napi port 8080\n"
+        "api route GET /health healthHandler\n"
+        "api middleware /health authMiddleware\n"
+        "api routeTimeout /health 250ms\n"
+        + _OK_HANDLER + _OK_MIDDLEWARE
+    )
+    ir = str(semanticscript.lower_to_llvm(semanticscript.parse(src)))
+    assert "ss_http_serve_routes" in ir
+    assert "authMiddleware" in ir
+    assert "i32 250" in ir
+
+
 def test_metadata_payload_shapes():
     # WS2-035 / §6: free-text metadata is quoted; identifier metadata is bare.
     def codes(extra):
@@ -4982,6 +6071,170 @@ def test_runtime_links_compiler_overlay_merges_after_platform():
     # without the compiler arg the overlay is not applied
     no_overlay = semanticscript._resolve_runtime_links(lib, "windows")
     assert no_overlay["defines"] == ["BASE_DEFINE", "WIN_DEFINE"]
+
+
+def test_runtime_links_overlay_can_replace_and_remove_fields():
+    """R-151: platform overlays can replace/remove list fields, so an OS-only
+    source set is not forced into the cross-platform base."""
+    lib = {
+        "name": "ss_replace", "provides": ["ss_replace_"],
+        "sources": ["base.c", "shared.c"],
+        "defines": ["BASE", "DROP_ME"],
+        "platforms": {
+            "linux": {
+                "replaceSources": ["linux.c", "shared.c"],
+                "removeDefines": ["DROP_ME"],
+                "defines": ["LINUX"],
+            }
+        },
+    }
+    resolved = semanticscript._resolve_runtime_links(lib, "linux")
+    assert resolved["sources"] == ["linux.c", "shared.c"]
+    assert resolved["defines"] == ["BASE", "LINUX"]
+
+
+def test_r151_runtime_manifest_keeps_windows_sources_out_of_posix_plans():
+    """R-151: Windows-only runtime sources must not appear in POSIX/WASI link
+    plans. Unsupported surfaces report that explicitly instead of compiling the
+    wrong C files."""
+    net = _manifest_library("ss_net")
+    async_lib = _manifest_library("ss_async")
+    gui = _manifest_library("ss_gui")
+
+    win_net = semanticscript._resolve_runtime_links(net, "windows")
+    assert "ss_net.c" in win_net["sources"]
+    assert "ws2_32" in win_net["libs"]
+    for platform in ("linux", "macos", "wasi"):
+        resolved = semanticscript._resolve_runtime_links(net, platform)
+        assert resolved["unsupported"], platform
+        assert "ss_net.c" not in resolved["sources"]
+        assert "ws2_32" not in resolved["libs"]
+
+    win_async = semanticscript._resolve_runtime_links(async_lib, "windows")
+    assert any("/win/" in source.replace("\\", "/") for source in win_async["sources"])
+    assert "WIN32_LEAN_AND_MEAN" in win_async["defines"]
+    for platform in ("linux", "macos"):
+        resolved = semanticscript._resolve_runtime_links(async_lib, platform)
+        sources = [source.replace("\\", "/") for source in resolved["sources"]]
+        assert sources and not any("/win/" in source for source in sources), platform
+        assert any("/unix/" in source for source in sources), platform
+        assert "WIN32_LEAN_AND_MEAN" not in resolved["defines"]
+        assert "ws2_32" not in resolved["libs"]
+    assert semanticscript._resolve_runtime_links(async_lib, "wasi")["unsupported"]
+
+    win_gui = semanticscript._resolve_runtime_links(gui, "windows")
+    assert "native_win32_gui/sem_win32_gui_runtime.c" in win_gui["sources"]
+    for platform in ("linux", "macos", "wasi"):
+        resolved = semanticscript._resolve_runtime_links(gui, platform)
+        assert resolved["unsupported"], platform
+        assert not any("native_win32_gui" in source for source in resolved["sources"])
+
+
+def test_r151_unsupported_runtime_platform_fails_before_compiler():
+    """R-151: resolving an unsupported runtime on a platform is a stable tool
+    diagnostic, not an accidental clang invocation with missing or wrong files."""
+    net = _manifest_library("ss_net")
+    with pytest.raises(semanticscript.EavError, match="not supported on linux"):
+        semanticscript._ensure_runtime_lib(net, platform="linux")
+
+
+def test_r024_http_runtime_sends_through_no_sigpipe_wrapper():
+    src_path = os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.c"
+    )
+    src = open(src_path, encoding="utf-8").read()
+    assert "static int ss_http_socket_send" in src
+    assert "MSG_NOSIGNAL" in src
+    assert "SO_NOSIGPIPE" in src
+    raw_send_lines = [
+        line.strip() for line in src.splitlines()
+        if "send(" in line and "ss_http_socket_send(" not in line
+        and not line.strip().startswith("*")
+        and not line.strip().startswith("/*")
+    ]
+    assert raw_send_lines == [
+        "return send(socket_handle, data, length, 0);",
+        "return (int)send(socket_handle, data, (size_t)length, flags);",
+    ]
+    assert src.count("ss_http_socket_send(") == 3  # wrapper + client + server
+
+
+def test_r023_http_runtime_winsock_lifecycle_is_refcounted():
+    src_path = os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.c"
+    )
+    src = open(src_path, encoding="utf-8").read()
+    assert "ss_http_client_winsock_ready" not in src
+    assert "g_http_winsock_refcount" in src
+    assert src.count("WSAStartup(") == 1
+    assert src.count("WSACleanup()") == 1
+    assert "static int ss_platform_net_startup(void)" in src
+    assert "static void ss_platform_net_shutdown(void)" in src
+    fetch = src[src.index("const char *ss_http_client_fetch("):
+                src.index("/* ----- ss_http_html_escape -----")]
+    server = src[src.index("int ss_http_server_run"):]
+    assert "ss_platform_net_startup()" in fetch
+    assert "ss_platform_net_shutdown()" in fetch
+    assert "ss_platform_net_startup()" in server
+    assert "ss_platform_net_shutdown()" in server
+
+
+def test_r026_http_runtime_executable_dir_helper_does_not_mutate_cwd():
+    src_path = os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.c"
+    )
+    src = open(src_path, encoding="utf-8").read()
+    helper = src[src.index("static int ss_http_discover_executable_dir"):
+                 src.index("typedef struct SSHttpResponseBackend")]
+    assert "SetCurrentDirectory" not in helper
+    assert "chdir(" not in helper
+    assert "GetModuleFileNameW" in helper
+    assert "WideCharToMultiByte" in helper
+    assert "const char *ss_http_executable_dir(void)" in helper
+
+
+def test_r025_http_server_uses_unspec_and_platform_readiness():
+    src_path = os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.c"
+    )
+    src = open(src_path, encoding="utf-8").read()
+    wait_start = src.index("static int wait_for_listen_socket")
+    server_start = src.index("int ss_http_server_run", wait_start)
+    wait = src[wait_start:server_start]
+    server = src[server_start:]
+    assert '#include <poll.h>' in src
+    assert "hints.ai_family = AF_UNSPEC;" in server
+    assert "hints.ai_family = AF_INET;" not in server
+    assert "ready = select(0, &read_set, NULL, NULL, &timeout);" in wait
+    assert "poll(&fd, 1, SS_HTTP_SHUTDOWN_POLL_MILLIS)" in wait
+    assert "listen_socket + 1" not in wait
+
+
+def test_r027_runtime_time_roles_go_through_platform_api():
+    http = _manifest_library("ss_http")
+    async_lib = _manifest_library("ss_async")
+    platform_time = _manifest_library("ss_platform_time")
+    assert "native_platform/ss_platform_time.c" in http["sources"]
+    assert "native_platform" in http["include"]
+    assert "native_platform/ss_platform_time.c" in async_lib["sources"]
+    assert "native_platform" in async_lib["include"]
+    assert "native_platform/ss_platform_time.c" in platform_time["sources"]
+    assert "native_platform" in platform_time["include"]
+
+    http_src = open(os.path.join(
+        ROOT, "semanticscript", "runtime", "native_http", "sem_http_runtime.c"
+    ), encoding="utf-8").read()
+    async_src = open(os.path.join(
+        ROOT, "semanticscript", "runtime", "native_async", "sem_async_runtime.c"
+    ), encoding="utf-8").read()
+    assert "return ss_platform_wall_time_ms();" in http_src
+    assert "ss_platform_monotonic_ms()" in http_src
+    assert "ss_platform_monotonic_ms()" in async_src
+    assert "ss_platform_sleep_ms(1)" in async_src
+    for forbidden in ("GetSystemTime", "GetTickCount64", "clock_gettime",
+                      "CLOCK_REALTIME", "CLOCK_MONOTONIC", "Sleep(1)", "usleep"):
+        assert forbidden not in http_src
+        assert forbidden not in async_src
 
 
 def test_http_runtime_ws2_32_is_windows_only(tmp_path):
@@ -6182,21 +7435,25 @@ def test_new_project_refuses_to_clobber_without_force(tmp_path, capsys):
     assert "is module" in replaced
 
 
-def test_new_enable_docs_index_flag_rejected(tmp_path, capsys):
+def test_new_enable_docs_index_scaffolds_index_from_inprocess_command(tmp_path, capsys):
     """R-004: `--enable-docs-index` previously parsed but did nothing — a silent
-    no-op for an explicit feature flag. Until persistent docs-index scaffolding
-    exists (R-051) the flag must fail with a structured diagnostic and create
-    no files, not green-light a project with no index."""
+    no-op for an explicit feature flag. The implemented path now creates a
+    path-scoped persistent docs index and reports it in the scaffold payload."""
     import json
     root = tmp_path / "indexed"
-    rc = semanticscript.main(["new", str(root), "--enable-docs-index"])
+    rc = semanticscript.main(["new", str(root), "--enable-docs-index", "--json"])
     payload = json.loads(capsys.readouterr().out)
-    assert rc == 2
-    assert payload["ok"] is False
-    assert payload["status"] == "unsupported-flag"
-    assert "--enable-docs-index" in payload["unsupported"]
-    # the no-op path would have scaffolded a tree; the rejection must not
-    assert not (root / "build.sem").exists()
+    assert rc == 0
+    assert payload["surface"] == "sem.new.v1"
+    assert payload["docsIndex"]["status"] == "created"
+    db = root / ".semanticscript" / "docs.sqlite"
+    assert db.exists()
+
+    rc = semanticscript.main(["docs", "search", "greet", "--db", str(db), "--json"])
+    found = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert found["surface"] == "sem.docsSearch.v1"
+    assert any(r["name"] == "main" for r in found["results"])
 
 
 def test_semsig_legal_entity_set():
@@ -6265,6 +7522,82 @@ def test_docs_index_get_search(capsys):
     assert any(r["name"] == "main" for r in res["results"])
 
 
+def test_docs_persistent_index_searches_after_restart_and_refreshes(tmp_path):
+    import json
+    src = tmp_path / "app.sem"
+    db = tmp_path / "docs.sqlite"
+
+    def write_source(token):
+        src.write_text(
+            "P is project\nP module m\nP target console\nP entry main\n"
+            f'm is module\nm path a.b\nm purpose "{token}"\nm invariant "i"\nm exports main\n'
+            "ExitCode is alias\nExitCode for Int32\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            f'main purpose "entry {token}"\nmain invariant "i"\n'
+            "main let ok immutable ExitCode 0\nmain return ok\n",
+            encoding="utf-8",
+        )
+
+    def cli(*args):
+        proc = subprocess.run(
+            [sys.executable, SEMANTICSCRIPT, *args, "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout)
+
+    write_source("firsttoken")
+    indexed = cli("docs", "index", str(src), "--db", str(db))
+    assert indexed["surface"] == "sem.docsIndex.v1"
+    assert indexed["status"] == "created"
+    assert indexed["count"] >= 4
+
+    # New process, no in-memory state: search comes entirely from the SQLite DB.
+    found = cli("docs", "search", "firsttoken", "--db", str(db))
+    assert found["surface"] == "sem.docsSearch.v1"
+    assert any(r["name"] == "main" for r in found["results"])
+
+    write_source("secondtoken")
+    refreshed = cli("docs", "index", str(src), "--db", str(db))
+    assert refreshed["status"] == "refreshed"
+    stale = cli("docs", "search", "firsttoken", "--db", str(db))
+    assert not any(r["name"] == "main" for r in stale["results"])
+    fresh = cli("docs", "search", "secondtoken", "--db", str(db))
+    assert any(r["name"] == "main" for r in fresh["results"])
+
+
+def test_new_enable_docs_index_scaffolds_persistent_db(tmp_path):
+    import json
+    root = tmp_path / "IndexedApp"
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "new", str(root), "--enable-docs-index", "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["surface"] == "sem.new.v1"
+    assert payload["docsIndex"]["status"] == "created"
+    db = root / ".semanticscript" / "docs.sqlite"
+    assert db.exists()
+
+    search = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "docs", "search", "greet", "--db", str(db), "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert search.returncode == 0, search.stderr
+    found = json.loads(search.stdout)
+    assert any(r["name"] == "main" for r in found["results"])
+
+
 def test_dev_surface(capsys):
     # WS4-120: dev reports one check+runnability tick (sem.dev.v1).
     import json
@@ -6283,7 +7616,13 @@ def test_check_next_commands(tmp_path, capsys):
     env = json.loads(capsys.readouterr().out)
     assert env["nextCommands"], "ok check should suggest next steps"
     nc = env["nextCommands"][0]
-    assert "argv" in nc and nc["replayable"] is True and nc["argv"][0] in ("test", "build")
+    assert "argv" in nc and nc["replayable"] is True
+    assert nc["argv"][0] in ("run", "test", "build")
+    wasm_path = os.path.join(EXAMPLES, "demos", "wasm_demo.sem")
+    semanticscript.main(["check", wasm_path])
+    wasm_env = json.loads(capsys.readouterr().out)
+    wasm_cmds = [c["argv"][0] for c in wasm_env["nextCommands"]]
+    assert wasm_cmds == ["wasm"]
     # an error source suggests `fix --plan`
     bad = tmp_path / "bad.sem"
     bad.write_text("Thing is record\nThing field new TaskId\n", encoding="utf-8")
@@ -7466,6 +8805,62 @@ def test_untrusted_decode_requires_every_bound():
     assert "parseReq" in semanticscript.parse(_decode_src(reasoned)).entities
 
 
+def _json_create_document_limit_src(json_text, maximum_bytes, max_depth, max_elements):
+    return (
+        'P is project\nP module m\nP target console\nP entry main\n'
+        'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+        'ExitCode is alias\nExitCode for Int32\n'
+        'RawJson is alias\nRawJson for String\nRawJson typeTrust rawExternal\n'
+        'JsonDocument is alias\nJsonDocument for OpaquePointer\n'
+        'JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n'
+        'JsonAccessError is error\n'
+        'main is operation\nmain out ExitCode\nmain async no\nmain memory heap yes\n'
+        'main purpose "x"\nmain invariant "y"\n'
+        'main let okCode immutable ExitCode 0\n'
+        'main let failCode immutable ExitCode 6\n'
+        'main let docCapacity immutable JsonCapacityBytes 256\n'
+        f'main let rawBody immutable RawJson "{json_text}"\n'
+        'main let capacityExceeded immutable Int32 6\n'
+        'main do parseDoc\n'
+        'main branch ifError parseDoc goto parseFailed\n'
+        'main return failCode\n'
+        'main at parseFailed do checkCode\n'
+        'main branch ifTrue codeMatched goto ok\n'
+        'main return failCode\n'
+        'main at ok return okCode\n'
+        'parseDoc is call\nparseDoc in main\nparseDoc invokes json.createDocument\n'
+        'parseDoc arg jsonText RawJson rawBody\n'
+        'parseDoc arg capacityBytes JsonCapacityBytes docCapacity\n'
+        f'parseDoc limit maximumBytes {maximum_bytes}\n'
+        f'parseDoc limit maxDepth {max_depth}\n'
+        f'parseDoc limit maxElements {max_elements}\n'
+        'parseDoc unknownFieldPolicy reject\n'
+        'parseDoc out document JsonDocument\n'
+        'parseDoc catch parseErr JsonAccessError\n'
+        'checkCode is call\ncheckCode in main\ncheckCode invokes math.equalInt32\n'
+        'checkCode arg left Int32 parseErr\n'
+        'checkCode arg right Int32 capacityExceeded\n'
+        'checkCode out codeMatched Bool\n'
+    )
+
+
+@pytest.mark.parametrize(
+    ("json_text", "maximum_bytes", "max_depth", "max_elements"),
+    [
+        ('{\\"answer\\":42}', 4, 8, 32),
+        ('{\\"a\\":{\\"b\\":1}}', 64, 1, 32),
+        ('[1,2,3]', 64, 8, 3),
+    ],
+)
+def test_json_create_document_runtime_enforces_decode_limits(
+    json_text, maximum_bytes, max_depth, max_elements
+):
+    src = _json_create_document_limit_src(
+        json_text, maximum_bytes, max_depth, max_elements)
+    out, err, code = semanticscript._record_run_full(src)
+    assert code == 0, (out, err)
+
+
 def _token_gen_src(rng_target):
     return (
         "mintToken is operation\nmintToken out ExitCode\nmintToken async no\n"
@@ -7646,6 +9041,21 @@ def _fetch_src(url):
     )
 
 
+def _fetch_src_with_cap(url, cap_rows):
+    return (
+        "netCap is capability\n"
+        f"{cap_rows}"
+        "fetchIt is operation\nfetchIt out ExitCode\nfetchIt async no\n"
+        'fetchIt purpose "p"\nfetchIt invariant "i"\n'
+        "fetchIt uses netCap\n"
+        f'fetchIt let endpoint immutable String "{url}"\n'
+        "fetchIt let okCode immutable ExitCode 0\nfetchIt do fetch\nfetchIt return okCode\n"
+        "fetch is call\nfetch in fetchIt\nfetch invokes net.fetchText\n"
+        "fetch arg url String endpoint\nfetch out body String\nfetch catch e NetError\n"
+        "NetError is error\n"
+    )
+
+
 def test_ssrf_internal_address_rejected():
     # X-075 / §8: an outbound request to a loopback/metadata address is SSRF.
     with pytest.raises(semanticscript.EavError) as exc:
@@ -7662,8 +9072,48 @@ def test_ssrf_localhost_rejected():
 
 def test_ssrf_external_host_accepted():
     # X-075: an external host is fine (the runtime allowlist refines this further).
-    prog = semanticscript.parse(_fetch_src("https://api.example.com/v1/users"))
+    prog = semanticscript.parse(_fetch_src("http://api.example.com/v1/users"))
     assert "fetchIt" in prog.entities
+
+
+def test_ssrf_specific_network_capability_allowlist():
+    # R-078: an operation that opts into host-specific network capabilities may
+    # only call literal URLs matching the declared scheme+host.
+    cap = "netCap grants connect net.http.api.example.com\n"
+    assert "fetchIt" in semanticscript.parse(
+        _fetch_src_with_cap("http://api.example.com/v1/users", cap)
+    ).entities
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(
+            _fetch_src_with_cap("http://other.example.com/v1/users", cap)
+        )
+    assert getattr(exc.value, "code", None) == "SS3075"
+
+
+def test_ssrf_broad_network_capability_requires_rationale():
+    cap = "netCap grants connect net.http.*\n"
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_fetch_src_with_cap("http://api.example.com/v1/users", cap))
+    assert getattr(exc.value, "code", None) == "SS3075"
+    ok_cap = cap + 'netCap rationale "integration test host varies by environment"\n'
+    assert "fetchIt" in semanticscript.parse(
+        _fetch_src_with_cap("http://api.example.com/v1/users", ok_cap)
+    ).entities
+
+
+def test_ssrf_legacy_broad_client_capability_requires_rationale():
+    cap = "netCap grants write network.http.client\n"
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_fetch_src_with_cap("http://api.example.com/v1/users", cap))
+    assert getattr(exc.value, "code", None) == "SS3075"
+
+
+def test_net_fetch_https_rejected_before_runtime():
+    # R-092: ss_net is an HTTP-only client today, so check must not accept an
+    # HTTPS literal that the runtime will fail closed after codegen.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_fetch_src("https://api.example.com/v1/users"))
+    assert getattr(exc.value, "code", None) == "SS0920"
 
 
 def test_ssrf_obfuscated_internal_hosts_rejected():
@@ -7688,7 +9138,7 @@ def test_ssrf_obfuscated_internal_hosts_rejected():
             semanticscript.parse(_fetch_src(url))
         assert getattr(exc.value, "code", None) == "SS3075", url
     # legitimate external hosts (name + public IP + port) still accept — no FP
-    for url in ("https://api.example.com/v1/users", "https://8.8.8.8/",
+    for url in ("http://api.example.com/v1/users", "http://8.8.8.8/",
                 "http://example.org:8080/x"):
         assert "fetchIt" in semanticscript.parse(_fetch_src(url)).entities
 
@@ -7739,6 +9189,49 @@ def test_request_body_read_requires_byte_cap():
     assert getattr(exc.value, "code", None) == "SS3078"
     # the same read with a byte cap is accepted
     assert "h" in semanticscript.parse(reader("readBody limit maximumBytes 1048576\n")).entities
+
+
+def _regex_src(subject_type="RawText", pattern='"^[a-z]+$"', engine_row=""):
+    return (
+        "RawText is alias\nRawText for String\nRawText typeTrust rawExternal\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "scan is operation\nscan out ExitCode\nscan async no\n"
+        'scan purpose "p"\nscan invariant "i"\n'
+        f"scan in text {subject_type}\nscan let okCode immutable ExitCode 0\n"
+        "scan do match\nscan return okCode\n"
+        "match is call\nmatch in scan\nmatch invokes regex.matches\n"
+        f"match arg subject {subject_type} text\n"
+        f"match arg pattern String {pattern}\n"
+        f"{engine_row}"
+        "match out matched Bool\n"
+    )
+
+
+def test_regex_over_untrusted_input_requires_linear_engine():
+    # R-079: regex work over rawExternal data must name a linear engine; otherwise
+    # a hostile input can trigger catastrophic backtracking while static check is
+    # green.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_regex_src())
+    assert getattr(exc.value, "code", None) == "SS3099"
+    prog = semanticscript.parse(_regex_src(engine_row="match regexEngine linear\n"))
+    assert prog.entities["match"].fact("regexEngine").payload == ["linear"]
+
+
+def test_regex_engine_row_must_be_linear_or_re2():
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_regex_src(engine_row="match regexEngine backtracking\n"))
+    assert getattr(exc.value, "code", None) == "SS3099"
+
+
+def test_catastrophic_regex_literal_rejected_without_linear_engine():
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_regex_src(subject_type="String", pattern='"(a+)+"'))
+    assert getattr(exc.value, "code", None) == "SS3099"
+    assert "scan" in semanticscript.parse(
+        _regex_src(subject_type="String", pattern='"(a+)+"',
+                   engine_row="match regexEngine re2\n")
+    ).entities
 
 
 def _disclosure_src(boundary_row=""):
@@ -7845,8 +9338,44 @@ def test_security_coverage_matrix_covers_implemented_codes():
     matrix_codes = {r["code"] for r in semanticscript.SECURITY_COVERAGE if r["code"]}
     for code in ("SS3070", "SS3071", "SS3072", "SS3073", "SS3074", "SS3075",
                  "SS3076", "SS3077", "SS3078", "SS3079", "SS3080", "SS3096",
-                 "SS2805", "SS1564"):
+                 "SS3086", "SS3087", "SS3088", "SS3089", "SS3090", "SS2805",
+                 "SS3097", "SS3098", "SS3099", "SS1564"):
         assert code in matrix_codes, code
+
+
+def test_security_closure_manifest_covers_completed_security_codes():
+    """R-083: a completed security row is not closed by one obvious test. The
+    closure manifest must name the sibling fixture classes that keep bypasses and
+    agent-facing unsafe patterns from silently re-opening."""
+    closure = semanticscript.SECURITY_CLOSURE_MANIFEST
+    covered_codes = {
+        r["code"] for r in semanticscript.SECURITY_COVERAGE
+        if r["status"] == "covered" and r["code"]
+    }
+    assert covered_codes <= set(closure), sorted(covered_codes - set(closure))
+    levels = set()
+    for code in sorted(covered_codes):
+        row = closure[code]
+        assert code in semanticscript.DIAGNOSTICS, code
+        assert row["coverageLevel"] in {"direct-only", "transitive-safe"}, row
+        levels.add(row["coverageLevel"])
+        for key in ("positive", "directNegative", "agentSurface", "unsafeExampleGuard"):
+            assert row.get(key), (code, key)
+            assert all("TODO" not in item for item in row[key]), (code, key)
+        assert row.get("transitiveNegative") or row.get("transitiveNotApplicable"), code
+        assert row.get("externalNegative") or row.get("externalNotApplicable"), code
+    # The manifest distinguishes direct-only checks from defenses proven through
+    # wrappers/transitive flows, so reviewers can see where bypass coverage exists.
+    assert levels == {"direct-only", "transitive-safe"}
+
+
+def test_security_closure_manifest_agent_explain_surface():
+    """R-083: each closed security diagnostic must be explainable to an agent via
+    the standard diagnostic surface."""
+    for code in semanticscript.SECURITY_CLOSURE_MANIFEST:
+        rendered = semanticscript.format_repair(code)
+        assert code in rendered
+        assert "Suggested fix:" in rendered
 
 
 def test_security_matrix_markdown_renders():
@@ -8083,6 +9612,37 @@ def test_region_allocate_sizes_by_type_and_guards_null():
     assert "getelementptr {i64, i64, i64}, {i64, i64, i64}* null, i32 1" in ir
     # a NULL malloc traps (SSR0022) instead of binding a null slab
     assert "allocFail" in ir and "SSR0022" in ir
+
+
+def test_region_capacity_is_enforced_for_static_allocations():
+    src = (
+        "Arena is project\nArena module appArena\nArena target console\nArena entry main\n"
+        "appArena is module\nappArena path a.b\nappArena purpose \"p\"\nappArena invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "requestArena is region\nrequestArena strategy arena\nrequestArena scope main\n"
+        "requestArena capacity 16\n"
+        "arenaAllocCap is capability\narenaAllocCap grants allocate heap.requestArena\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main uses arenaAllocCap\nmain effect allocate heap.requestArena\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main allocateIn requestArena a Int64\n"
+        "main allocateIn requestArena b Int64\n"
+        "main releaseRegion requestArena\nmain return okCode\n"
+    )
+    assert semanticscript.parse(src) is not None
+
+    too_small = src.replace("requestArena capacity 16\n", "requestArena capacity 15\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(too_small)
+    assert exc.value.code == "SS1573"
+    assert "exceeding its capacity 15" in exc.value.message
+
+
+def test_region_capacity_invalid_literal_rejected():
+    src = "rgn is region\nrgn strategy arena\nrgn scope main\nrgn capacity nope\n"
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert exc.value.code == "SS1573"
 
 
 def test_buffer_get_without_error_path_rejected():
@@ -8659,14 +10219,110 @@ def test_json_serialize_shim_never_returns_null():
     import re
     src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_json.c"),
                encoding="utf-8").read()
-    m = re.search(r"const char \*ss_json_serialize\(.*?\n\}", src, re.S)
-    assert m, "ss_json_serialize not found"
+    m = re.search(r"int ss_json_serialize_status\(.*?\n\}", src, re.S)
+    assert m, "ss_json_serialize_status not found"
     body = m.group(0)
     # the dangerous direct-return form is gone
     assert "const char *out = scratch;" not in body
     # null-terminate scratch defensively + a NULL fallback that is not the raw *out
     assert "scratch[0] = '\\0';" in body
-    assert "out != NULL" in body and 'return (scratch != NULL && scratch_capacity > 0) ? scratch : "";' in body
+    assert "native_out != NULL" in body
+    assert "*out = ss_json_empty_string(scratch, scratch_capacity);" in body
+
+
+def test_json_caught_parse_exposes_native_status_code():
+    # R-142: caught JSON direct-return shims lower through status+out wrappers.
+    # A malformed parse must bind the native SS_JSON_ERR_MALFORMED_PATH (7), not
+    # the old boolean-ish catch value 1 from a null-handle sentinel.
+    src = (
+        'P is project\nP module m\nP target console\nP entry main\n'
+        'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+        'ExitCode is alias\nExitCode for Int32\n'
+        'JsonDocument is alias\nJsonDocument for OpaquePointer\n'
+        'JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n'
+        'JsonAccessError is error\n'
+        'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+        'main purpose "x"\nmain invariant "y"\n'
+        'main let okCode immutable ExitCode 0\n'
+        'main let badCode immutable ExitCode 6\n'
+        'main let docCapacity immutable JsonCapacityBytes 64\n'
+        'main let malformed immutable String "{"\n'
+        'main let malformedPath immutable Int32 7\n'
+        'main do parseDoc\n'
+        'main branch ifError parseDoc goto parseFailed\n'
+        'main return badCode\n'
+        'main at parseFailed do checkCode\n'
+        'main branch ifTrue codeMatched goto ok\n'
+        'main return badCode\n'
+        'main at ok return okCode\n'
+        'parseDoc is call\nparseDoc in main\nparseDoc invokes json.createDocument\n'
+        'parseDoc arg jsonText String malformed\n'
+        'parseDoc arg capacityBytes JsonCapacityBytes docCapacity\n'
+        'parseDoc out document JsonDocument\n'
+        'parseDoc catch parseErr JsonAccessError\n'
+        'checkCode is call\ncheckCode in main\ncheckCode invokes math.equalInt32\n'
+        'checkCode arg left Int32 parseErr\n'
+        'checkCode arg right Int32 malformedPath\n'
+        'checkCode out codeMatched Bool\n'
+    )
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
+                          input=src, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
+
+
+def test_json_caught_object_field_missing_exposes_native_status_code():
+    # R-142: a cursor-returning JSON shim has root cursor 0 as a valid datum, so
+    # missing-field failure must come from the native status, not a direct-return
+    # sentinel. The catch value should be SS_JSON_ERR_PATH_NOT_FOUND (1).
+    src = (
+        'P is project\nP module m\nP target console\nP entry main\n'
+        'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
+        'ExitCode is alias\nExitCode for Int32\n'
+        'JsonDocument is alias\nJsonDocument for OpaquePointer\n'
+        'JsonCursor is alias\nJsonCursor for OpaquePointer\n'
+        'JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n'
+        'JsonAccessError is error\n'
+        'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+        'main purpose "x"\nmain invariant "y"\n'
+        'main let okCode immutable ExitCode 0\n'
+        'main let badCode immutable ExitCode 6\n'
+        'main let docCapacity immutable JsonCapacityBytes 64\n'
+        'main let jsonText immutable String "{\\"answer\\":42}"\n'
+        'main let missingField immutable String "missing"\n'
+        'main let pathNotFound immutable Int32 1\n'
+        'main do parseDoc\n'
+        'main branch ifError parseDoc goto bad\n'
+        'main do rootCall\n'
+        'main do fieldCall\n'
+        'main branch ifError fieldCall goto fieldMissing\n'
+        'main return badCode\n'
+        'main at fieldMissing do checkCode\n'
+        'main branch ifTrue codeMatched goto ok\n'
+        'main return badCode\n'
+        'main at bad return badCode\n'
+        'main at ok return okCode\n'
+        'parseDoc is call\nparseDoc in main\nparseDoc invokes json.createDocument\n'
+        'parseDoc arg jsonText String jsonText\n'
+        'parseDoc arg capacityBytes JsonCapacityBytes docCapacity\n'
+        'parseDoc out document JsonDocument\n'
+        'parseDoc catch parseErr JsonAccessError\n'
+        'rootCall is call\nrootCall in main\nrootCall invokes json.documentRoot\n'
+        'rootCall arg document JsonDocument document\n'
+        'rootCall out root JsonCursor\n'
+        'fieldCall is call\nfieldCall in main\nfieldCall invokes json.objectFieldAt\n'
+        'fieldCall arg document JsonDocument document\n'
+        'fieldCall arg cursor JsonCursor root\n'
+        'fieldCall arg fieldName String missingField\n'
+        'fieldCall out field JsonCursor\n'
+        'fieldCall catch fieldErr JsonAccessError\n'
+        'checkCode is call\ncheckCode in main\ncheckCode invokes math.equalInt32\n'
+        'checkCode arg left Int32 fieldErr\n'
+        'checkCode arg right Int32 pathNotFound\n'
+        'checkCode out codeMatched Bool\n'
+    )
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
+                          input=src, capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
 
 
 def test_json_cursor_int64_range_checked():
@@ -8787,6 +10443,8 @@ def test_pointer_load_store_null_traps():
            'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
            'ExitCode is alias\nExitCode for Int32\n'
            'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+           'main unsafe yes\n'
+           'main rationale "negative runtime test intentionally exercises the raw pointer trap"\n'
            'main purpose "x"\nmain invariant "y"\n'
            'main let zero immutable Int64 0\nmain let okc immutable ExitCode 0\n'
            'main do nullp\nmain do st\nmain return okc\n'
@@ -8794,10 +10452,43 @@ def test_pointer_load_store_null_traps():
            'nullp arg base OpaquePointer zero\nnullp arg offset Int64 zero\n'
            'nullp out p OpaquePointer\n'
            'st is call\nst in main\nst invokes pointer.storeByte\n'
-           'st arg base OpaquePointer p\nst arg offset Int64 zero\nst arg value Int32 zero\n')
+           'st arg buffer OpaquePointer p\nst arg offset Int64 zero\nst arg value Int64 zero\n')
     proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
                           input=src, capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode != 0 and "SSR0021" in proc.stderr
+
+
+def _pointer_intrinsic_gate_src(extra_op_rows=""):
+    return (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n"
+        f"{extra_op_rows}"
+        'main purpose "x"\nmain invariant "y"\n'
+        "main let zero immutable Int64 0\nmain let okc immutable ExitCode 0\n"
+        "main do rawLoad\nmain return okc\n"
+        "rawLoad is call\nrawLoad in main\nrawLoad invokes pointer.loadByte\n"
+        "rawLoad arg base OpaquePointer zero\nrawLoad arg offset Int64 zero\n"
+        "rawLoad out value Int32\n"
+    )
+
+
+def test_pointer_intrinsic_requires_unsafe_rationale():
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_pointer_intrinsic_gate_src())
+    assert getattr(exc.value, "code", None) == "SS3098"
+
+
+def test_pointer_intrinsic_unsafe_without_rationale_rejected():
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_pointer_intrinsic_gate_src("main unsafe yes\n"))
+    assert getattr(exc.value, "code", None) == "SS3098"
+
+
+def test_pointer_intrinsic_allowed_with_unsafe_rationale():
+    prog = semanticscript.parse(_pointer_intrinsic_gate_src(
+        'main unsafe yes\nmain rationale "bounded by surrounding buffer proof"\n'
+    ))
+    assert "rawLoad" in prog.entities
 
 
 def test_buffer_create_negative_size_traps():
@@ -8867,7 +10558,8 @@ def test_app_source_raw_allocation_rejected():
         'rawAlloc purpose "p"\nrawAlloc invariant "i"\n'
         "rawAlloc in size Int64\nrawAlloc body runtimeBinding c.malloc\n"
     )
-    assert "SS5000" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    diags = semanticscript.lint(semanticscript.parse(src))
+    assert any(d.code == "SS5000" and d.severity == "error" for d in diags)
 
 
 def test_memory_safety_model_spec_and_version():
@@ -9158,6 +10850,188 @@ def test_bcrypt_buffer_bounds_guarded():
     assert "out_hash_buffer_capacity < SS_BCRYPT_HASH_OUTPUT_SIZE" in hh
     b64 = re.search(r"int ss_base64url_encode\(.*?\n\}", src, re.S).group(0)
     assert "output_buffer_capacity < required_capacity" in b64
+
+
+@pytest.mark.parametrize("call", [
+    (
+        "theCall is call\ntheCall in doSec\ntheCall invokes bcrypt.hashPassword\n"
+        "theCall arg plaintext String pw\ntheCall arg cost Int32 12\n"
+        "theCall arg outBuffer OpaquePointer buf\ntheCall arg outCapacity Int32 cap\n"
+        "theCall out st Int32\n"
+    ),
+    (
+        "theCall is call\ntheCall in doSec\ntheCall invokes bcrypt.randomBytes\n"
+        "theCall arg outBuffer OpaquePointer buf\ntheCall arg byteCount Int32 cap\n"
+        "theCall out st Int32\n"
+    ),
+    (
+        "theCall is call\ntheCall in doSec\ntheCall invokes bcrypt.base64UrlEncode\n"
+        "theCall arg inputBuffer OpaquePointer buf\ntheCall arg inputCount Int32 cap\n"
+        "theCall arg outputBuffer OpaquePointer buf\ntheCall arg outputCapacity Int32 cap\n"
+        "theCall arg outputLengthOut OpaquePointer buf\ntheCall out st Int32\n"
+    ),
+])
+def test_raw_bcrypt_buffer_intrinsics_rejected(call):
+    # R-202 closure: app source cannot use the raw pointer/count bcrypt buffer
+    # helpers. The owned-output variants allocate exactly-sized results instead.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_sec_call_src(call))
+    assert getattr(exc.value, "code", None) == "SS3089"
+
+
+def _json_scratch_src(read_call_rows, activation_rows=None, alloc_size="cap"):
+    activation_rows = activation_rows or (
+        "main do allocScratch\n"
+        "main defer releaseScratch\n"
+        "main do readJson\n"
+        "main return okCode\n"
+    )
+    return (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "ByteCount is alias\nByteCount for Int64\n"
+        "JsonAccessError is error\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main let cap immutable Int64 64\n"
+        "main let biggerCap immutable Int64 128\n"
+        "main let document immutable OpaquePointer 0\n"
+        "main let cursor immutable OpaquePointer 0\n"
+        "main let forgedScratch immutable OpaquePointer 1\n"
+        f"{activation_rows}"
+        "allocScratch is call\nallocScratch in main\nallocScratch invokes c.malloc\n"
+        f"allocScratch arg size ByteCount {alloc_size}\n"
+        "allocScratch out scratch OpaquePointer\n"
+        "allocScratch catch allocError OpaquePointer\n"
+        "allocScratch owns scratch\n"
+        "allocScratch cleanedBy releaseScratch\n"
+        "releaseScratchWorker is call\nreleaseScratchWorker in main\n"
+        "releaseScratchWorker invokes c.free\n"
+        "releaseScratchWorker arg resource OpaquePointer scratch\n"
+        "releaseScratchWorker discards \"cleanup status ignored\"\n"
+        "releaseScratch is cleanup\nreleaseScratch in main\n"
+        "releaseScratch call releaseScratchWorker\n"
+        "releaseScratch cleans scratch\n"
+        f"{read_call_rows}"
+    )
+
+
+def test_json_scratch_buffer_matching_malloc_capacity_accepted():
+    # R-203: the JSON scratch pair is acceptable when the pointer comes from a
+    # same-operation c.malloc and the capacity is the exact allocation size token.
+    src = _json_scratch_src(
+        "readJson is call\nreadJson in main\nreadJson invokes json.cursorString\n"
+        "readJson arg document OpaquePointer document\n"
+        "readJson arg cursor OpaquePointer cursor\n"
+        "readJson arg scratch OpaquePointer scratch\n"
+        "readJson arg scratchCapacity Int64 cap\n"
+        "readJson out text String\nreadJson catch jsonErr JsonAccessError\n"
+    )
+    prog = semanticscript.parse(src)
+    assert "readJson" in prog.entities
+
+
+def test_json_scratch_buffer_without_malloc_rejected():
+    src = _json_scratch_src(
+        "readJson is call\nreadJson in main\nreadJson invokes json.cursorString\n"
+        "readJson arg document OpaquePointer document\n"
+        "readJson arg cursor OpaquePointer cursor\n"
+        "readJson arg scratch OpaquePointer forgedScratch\n"
+        "readJson arg scratchCapacity Int64 cap\n"
+        "readJson out text String\nreadJson catch jsonErr JsonAccessError\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3090"
+
+
+def test_json_scratch_buffer_inflated_capacity_rejected():
+    src = _json_scratch_src(
+        "readJson is call\nreadJson in main\nreadJson invokes json.serializeDocument\n"
+        "readJson arg document OpaquePointer document\n"
+        "readJson arg scratch OpaquePointer scratch\n"
+        "readJson arg scratchCapacity Int64 biggerCap\n"
+        "readJson out text String\nreadJson catch jsonErr JsonAccessError\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3090"
+
+
+def _http_response_bytes_src(response_call_rows, activation_rows=None):
+    activation_rows = activation_rows or (
+        "main do readBytes\n"
+        "main do readLength\n"
+        "main do sendBytes\n"
+        "main return statusCode\n"
+    )
+    return (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "ByteCount is alias\nByteCount for Int64\n"
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "main is operation\nmain in request HttpRequest\nmain in response HttpResponse\n"
+        "main out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okStatus immutable Int32 200\n"
+        "main let statusCode immutable ExitCode 0\n"
+        "main let forgedBody immutable OpaquePointer 1\n"
+        "main let forgedLength immutable ByteCount 16\n"
+        "main let contentType immutable String \"application/octet-stream\"\n"
+        f"{activation_rows}"
+        "readBytes is call\nreadBytes in main\nreadBytes invokes http.requestBodyBytes\n"
+        "readBytes limit maximumBytes 1048576\n"
+        "readBytes arg request HttpRequest request\n"
+        "readBytes out bodyPtr OpaquePointer\n"
+        "readLength is call\nreadLength in main\nreadLength invokes http.requestBodyLength\n"
+        "readLength arg request HttpRequest request\n"
+        "readLength out bodyLen ByteCount\n"
+        f"{response_call_rows}"
+    )
+
+
+def test_http_response_bytes_request_body_pair_accepted():
+    src = _http_response_bytes_src(
+        "sendBytes is call\nsendBytes in main\nsendBytes invokes http.responseBytes\n"
+        "sendBytes arg response HttpResponse response\n"
+        "sendBytes arg status Int32 okStatus\n"
+        "sendBytes arg body OpaquePointer bodyPtr\n"
+        "sendBytes arg bodyLength ByteCount bodyLen\n"
+        "sendBytes arg contentType String contentType\n"
+        "sendBytes out responseStatus Int32\n"
+    )
+    prog = semanticscript.parse(src)
+    assert "sendBytes" in prog.entities
+
+
+def test_http_response_bytes_forged_pointer_rejected():
+    src = _http_response_bytes_src(
+        "sendBytes is call\nsendBytes in main\nsendBytes invokes http.responseBytes\n"
+        "sendBytes arg response HttpResponse response\n"
+        "sendBytes arg status Int32 okStatus\n"
+        "sendBytes arg body OpaquePointer forgedBody\n"
+        "sendBytes arg bodyLength ByteCount bodyLen\n"
+        "sendBytes arg contentType String contentType\n"
+        "sendBytes out responseStatus Int32\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3097"
+
+
+def test_http_response_bytes_mismatched_length_rejected():
+    src = _http_response_bytes_src(
+        "sendBytes is call\nsendBytes in main\nsendBytes invokes http.responseBytes\n"
+        "sendBytes arg response HttpResponse response\n"
+        "sendBytes arg status Int32 okStatus\n"
+        "sendBytes arg body OpaquePointer bodyPtr\n"
+        "sendBytes arg bodyLength ByteCount forgedLength\n"
+        "sendBytes arg contentType String contentType\n"
+        "sendBytes out responseStatus Int32\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3097"
 
 
 def test_format_string_must_be_constant_rejected():
@@ -9620,20 +11494,21 @@ def test_shared_catch_var_incompatible_types_warns():
     assert "SS2551" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
-def test_uncovered_effect_warns():
-    # README ss8 / ss17 #5: a declared effect with no covering `uses` warns.
-    prog = semanticscript.parse(
-        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
-    )
-    assert any("not\n  covered" not in w and "not covered by a `uses`" in w
-               for w in prog.warnings)
+def test_uncovered_effect_rejected():
+    # README ss8 / ss17 #5 / WS2-090: a declared effect with no covering `uses`
+    # is a deny-tier error, not an advisory warning.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(
+            "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        )
+    assert exc.value.code == "SS1708"
 
 
 def test_effect_union_reports_call_level_gap():
     # WS2-040 / README §17 #5: an effect introduced by an activated call is part
     # of the op's effective effects and must be covered by the op's `uses`.
     # `main` declares the effect (so it is complete per WS2-091 and not "pure"
-    # per WS2-093) but holds no covering `uses` — the coverage gap WS2-040 warns.
+    # per WS2-093) but holds no covering `uses` — the coverage gap now rejects.
     src = (
         "dbReader is capability\ndbReader grants read database\n"
         "main is operation\nmain out ExitCode\nmain effect read database\n"
@@ -9642,15 +11517,17 @@ def test_effect_union_reports_call_level_gap():
         "queryCall is call\nqueryCall in main\nqueryCall invokes sqlite.query\n"
         "queryCall effect read database\nqueryCall out rows Int64\n"
     )
-    prog = semanticscript.parse(src)  # main `uses` nothing -> effective (read, database) uncovered
-    assert any("read database" in w and "not covered" in w for w in prog.warnings)
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert exc.value.code == "SS1708"
+    assert "read database" in exc.value.message
 
 
 def test_effect_coverage_transitive_call_graph():
     # WS2-041 / README §29 #10: an effect of a transitively-called user op is
     # part of the caller's effective effects and must be covered.
     # `main` re-declares the transitively-caused effect (complete per WS2-091,
-    # not "pure" per WS2-093) but holds no covering `uses` — WS2-040 still warns.
+    # not "pure" per WS2-093) but holds no covering `uses` — WS2-090 rejects.
     src = (
         "main is operation\nmain out ExitCode\nmain effect write network.socket\n"
         "main do callHelper\nmain return okCode\n"
@@ -9660,9 +11537,10 @@ def test_effect_coverage_transitive_call_graph():
         "helper is operation\nhelper out Int64\nhelper effect write network.socket\n"
         "helper let z immutable Int64 0\nhelper return z\n"
     )
-    prog = semanticscript.parse(src)  # main declares the effect but `uses` no covering cap
-    assert any("write network.socket" in w and w.startswith("main")
-               and "not covered" in w for w in prog.warnings)
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert exc.value.code == "SS1708"
+    assert "write network.socket" in exc.value.message
 
 
 def test_covered_effect_no_warning():
@@ -9826,7 +11704,7 @@ def test_stdlib_parity_coverage_guard():
         "bit", "bool", "bytes", "ctype", "numeric", "sort", "inttypes", "stdlib",
         "stdio", "memory", "iso646", "errno", "constants", "limits",
         "stddef", "char", "buffer", "slice", "small_list", "array", "signal",
-        "jwt", "document",
+        "jwt",
     }
     # R-053: bcrypt/event/gui/log ship a .semsig but their runtime is deferred —
     # they are experimental, not libc mirrors and not sanctioned.
@@ -9845,7 +11723,7 @@ def test_stdlib_parity_coverage_guard():
 
 
 def test_r053_experimental_catalogs_shipped_but_not_advertised():
-    """R-053: the deferred catalogs (bcrypt/event/gui/log) ship a `.semsig`
+    """R-053/R-058: deferred catalogs ship a `.semsig`
     contract but are owned as *experimental* — each has a signature, none is in
     the sanctioned/advertised v0.3 surface, and none is silently lumped with the
     semsc-only libc mirrors. This is the ownership record the audit said was
@@ -9856,7 +11734,9 @@ def test_r053_experimental_catalogs_shipped_but_not_advertised():
         "process", "clock", "random", "environment", "fs", "net", "list", "map", "json",
     }
     experimental = semanticscript.EXPERIMENTAL_STDLIB_MODULES
-    assert experimental == {"bcrypt", "event", "gui", "log"}
+    assert experimental == {
+        "bcrypt", "document", "event", "gui", "i18n", "log", "text",
+    }
     for module in experimental:
         # each ships a contract (the parity guard's reason to track it)...
         assert os.path.exists(os.path.join(SIGS, f"standard.{module}.semsig")), module
@@ -9866,13 +11746,71 @@ def test_r053_experimental_catalogs_shipped_but_not_advertised():
         assert not os.path.exists(os.path.join(STD, f"standard.{module}.sem")), module
 
 
+def test_standard_document_signature_discovery_and_readiness(capsys):
+    import json as _json
+
+    prog = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.document.semsig"),
+                                 encoding="utf-8").read())
+    lines = semanticscript.docs(prog)
+    assert any(l.startswith("document.createNode(") for l in lines)
+    assert any(l.startswith("document.setText(") for l in lines)
+
+    sig = semanticscript._builtin_target_signature("document.setValue")
+    assert sig is not None
+    assert sig["args"] == [
+        {"slot": "node", "type": "DocumentNode"},
+        {"slot": "value", "type": "DocumentValue"},
+    ]
+    assert sig["out"] == "DocumentStatus"
+
+    rc = semanticscript.main(["targets", "--signature", "document.setValue", "--json"])
+    payload = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["surface"] == "sem.targetSignature.v1"
+    assert payload["out"] == "DocumentStatus"
+
+    rc = semanticscript.main([
+        "docs", os.path.join(EXAMPLES, "hello_world.sem"),
+        "--get", "document.setValue",
+    ])
+    payload = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["entity"]["signature"]["out"] == "DocumentStatus"
+
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["document"]["status"] == "intrinsic"
+    assert led["document"]["deferred"] is True
+    assert led["document"]["unbackedPublic"] is False
+
+
+def test_document_intrinsic_lowers_to_wasm_host_import():
+    src = (
+        "P is project\nP module m\nP target wasm\nP entry main\nP platform browserWasm\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain out Int32\nmain do make\nmain return nodeId\n"
+        "make is call\nmake in main\nmake invokes document.createNode\n"
+        "make out nodeId Int32\n"
+        "browserWasm is platform\nbrowserWasm targetRuntime wasm\n"
+    )
+    prog = semanticscript.parse(src)
+    assert not any(d.code == "SS1198" for d in semanticscript.lint(prog))
+    ir = str(semanticscript.lower_to_llvm(prog))
+    assert "dom_create_node" in ir
+
+
 def test_json_semsig_contract_and_enum_discriminant():
-    # WS3-106 (deferred codec): the json contract loads, and its value-kind enum
+    # WS3-106/R-063: the json document/cursor contract is native-backed; only
+    # record-codec metadata remains separate. The value-kind enum still
     # round-trips its discriminant in a type-directed position.
     prog = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.json.semsig"),
                                  encoding="utf-8").read())
     lines = semanticscript.docs(prog)
     assert any(l.startswith("json.parse(") and "throws JsonAccessError" in l for l in lines)
+    led = semanticscript.stdlib_readiness_ledger()
+    assert led["json"]["status"] == "native"
+    assert led["json"]["deferred"] is False
+    assert led["json"]["unbackedPublic"] is False
     # JsonValueKind.numberJson has repr 2; a bare variant in a let lowers to it
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
@@ -10881,6 +12819,23 @@ def test_net_fetch_passes_request_policy_to_runtime():
         parts = [a.strip() for a in argstr.split(",")]
         assert len(parts) == 4, argstr
         assert all("i64 %" in p for p in parts[1:]), ("policy not extracted", argstr)
+
+
+def test_net_fetch_runtime_bounds_connect_send_and_recv():
+    # R-092: the native client must not leave connect() on the OS default or a
+    # zero policy as an unbounded socket. Source-level guard because live network
+    # timeout tests are flaky and slow.
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_net.c"),
+               encoding="utf-8").read()
+    assert "#define SS_NET_DEFAULT_TIMEOUT_MS" in src
+    assert "static long long ss_net_effective_timeout_ms" in src
+    assert "timeout_ms <= 0" in src and "return SS_NET_DEFAULT_TIMEOUT_MS;" in src
+    assert "static int ss_net_connect_with_timeout" in src
+    assert "ioctlsocket(sock, FIONBIO, &nonblocking)" in src
+    assert "select(0, NULL, &write_set, &except_set, &timeout)" in src
+    assert "getsockopt(sock, SOL_SOCKET, SO_ERROR" in src
+    assert "ss_net_connect_with_timeout(s, ai->ai_addr" in src
+    assert "SO_RCVTIMEO" in src and "SO_SNDTIMEO" in src
 
 
 def test_async_setup_failures_dont_hang():
@@ -12322,6 +14277,47 @@ def test_float_to_int_conversion_is_range_checked():
     assert "SSR0014" in ir and "fptosi" in ir
 
 
+def _run_conversion_to_int64(target, source_type, literal, out_type):
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        f"main let input immutable {source_type} {literal}\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main do convertIt\nmain do widenIt\nmain do show\nmain return okCode\n"
+        f"convertIt is call\nconvertIt in main\nconvertIt invokes {target}\n"
+        f"convertIt arg value {source_type} input\nconvertIt out converted {out_type}\n"
+        "widenIt is call\nwidenIt in main\nwidenIt invokes convert.toInt64\n"
+        f"widenIt arg value {out_type} converted\nwidenIt out printable Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 printable\n"
+    )
+    out, err, code = semanticscript._record_run_full(src)
+    assert code == 0, err
+    return out.strip()
+
+
+def test_wrapping_integer_conversion_is_explicit_modular_truncation():
+    assert _run_conversion_to_int64(
+        "convert.wrapping.toUInt8", "Int64", "300", "UInt8") == "44"
+    assert semanticscript._builtin_target_signature(
+        "convert.wrapping.toUInt8")["out"] == "UInt8"
+
+
+def test_saturating_integer_conversion_clamps_to_destination_range():
+    assert _run_conversion_to_int64(
+        "convert.saturating.toUInt8", "Int64", "300", "UInt8") == "255"
+    assert _run_conversion_to_int64(
+        "convert.saturating.toUInt8", "Int64", "-5", "UInt8") == "0"
+
+
+def test_saturating_float_to_int_conversion_clamps_before_fptosi():
+    assert _run_conversion_to_int64(
+        "convert.saturating.toInt32", "Float64", "9999999999.0", "Int32"
+    ) == "2147483647"
+
+
 _LOOP_PROGRAM_HEAD = (
     "P is project\nP module m\nP target console\nP entry spin\n"
     "m is module\nm path a.b\nm exports spin\n"
@@ -13378,6 +15374,29 @@ def test_r080_check_json_surfaces_typed_comments(tmp_path):
     assert "security" in tags and "failure" in tags
 
 
+def test_r080_fmt_preserves_and_canonicalizes_typed_comments():
+    """R-080 clause 3: fmt keeps typed comments attached to their row/entity
+    while still applying normal entity ordering, and the formatted text reparses
+    with the same structured typed-comment metadata."""
+    src = (
+        "# security: auth token must be validated before writing\n"
+        "main is operation\n"
+        "main out ExitCode  # failure: nonzero exit on write error\n"
+        "main async no\n"
+        "ExitCode is alias\n"
+        "ExitCode for Int32\n"
+    )
+    formatted = semanticscript.format_program(semanticscript.parse(src))
+    assert formatted.index("ExitCode is alias") < formatted.index("main is operation")
+    assert "# security: auth token must be validated before writing" in formatted
+    assert "# failure: nonzero exit on write error" in formatted
+    reparsed = semanticscript.parse(formatted)
+    by_tag = {tag: text for (tag, text, _ln) in reparsed.typed_comments}
+    assert by_tag["security"] == "auth token must be validated before writing"
+    assert by_tag["failure"] == "nonzero exit on write error"
+    assert semanticscript.format_program(reparsed) == formatted
+
+
 # === R-082: no-progress + untrusted-loop analysis across all branch forms ===
 
 _R082_HEAD = (
@@ -13743,9 +15762,13 @@ def test_ws2_091_declaring_the_effect_passes():
     """Declaring the previously-leaked effect makes the contract complete — the
     same program now parses without SS1706 (the positive half of completeness)."""
     src = (
+        "dbReader is capability\ndbReader grants read database\n"
+        "networkWriter is capability\nnetworkWriter grants write network.socket\n"
         "auditAccessOp is operation\nauditAccessOp out Int64\n"
         "auditAccessOp effect read database\n"
         "auditAccessOp effect write network.socket\n"  # now declared -> complete
+        "auditAccessOp uses dbReader\n"
+        "auditAccessOp uses networkWriter\n"
         "auditAccessOp do emitAuditCall\nauditAccessOp return zeroValue\n"
         "auditAccessOp let zeroValue immutable Int64 0\n"
         "emitAuditCall is call\nemitAuditCall in auditAccessOp\n"
@@ -13766,9 +15789,11 @@ def test_ws2_091_covering_capability_also_satisfies_completeness():
     complete (the effect is authorized in-source, not hidden) — so SS1706 must NOT
     fire. This is the refinement that keeps taskforge-web's handlers green."""
     src = (
+        "dbReader is capability\ndbReader grants read database\n"
         "networkWriter is capability\nnetworkWriter grants write network.socket\n"
         "delegatingOp is operation\ndelegatingOp out Int64\n"
         "delegatingOp effect read database\n"
+        "delegatingOp uses dbReader\n"
         "delegatingOp uses networkWriter\n"  # authorizes the network write w/o redeclaring it
         "delegatingOp do emitAuditCall\ndelegatingOp return zeroValue\n"
         "delegatingOp let zeroValue immutable Int64 0\n"
@@ -14334,9 +16359,10 @@ def test_e2e_effect_unused_declaration():
 
 def test_e2e_capability_ungranted_use():
     """X-205: capabilityUngrantedUse — using effects without granted capability.
-    Capability denial detection (exit 0)."""
+    Capability denial detection (blocked before execution)."""
     proc = _semanticscript_run("capability_ungranted_use.sem")
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode != 0
+    assert "SS1708" in proc.stderr
 
 
 def test_e2e_failure_unhandled_propagate():
@@ -14682,9 +16708,14 @@ def test_ws2_087_codec_analysis():
 
 def test_ws2_090_effect_soundness():
     """WS2-090 — Effect soundness checking"""
-    # Placeholder for WS2-090 implementation test
-    # This test verifies that the effect_soundness linter pass works correctly
-    assert True  # Placeholder
+    src = (
+        "writer is capability\nwriter grants write console.stdout\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main let code immutable ExitCode 0\nmain return code\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert exc.value.code == "SS1708"
 
 def test_ws2_091_capability_soundness():
     """WS2-091 — Capability soundness"""
@@ -14698,7 +16729,74 @@ def test_ws2_092_authority_soundness():
     # This test verifies that the authority_soundness linter pass works correctly
     assert True  # Placeholder
 
-def test_ws2_070_strict_gate_blocking(): assert True  # Strict gate enforcement
+def test_ws2_070_compile_gate_blocks_run_before_lowering(tmp_path):
+    src = (
+        "P is project\nP module m\nP target wasm\nP entry main\n"
+        'm is module\nm path m\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        'main is operation\nmain out Int32\nmain async no\n'
+        'main purpose "entry"\nmain invariant "ret"\n'
+        "main let code immutable Int32 0\nmain return code\n"
+    )
+    path = tmp_path / "bad_wasm.sem"
+    path.write_text(src, encoding="utf-8")
+
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", str(path)],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 1
+    assert "SS1197" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+def test_ws2_070_compile_gate_blocks_run_json_with_diagnostics(tmp_path):
+    import json as _json
+
+    src = (
+        "P is project\nP module m\nP target wasm\nP entry main\n"
+        'm is module\nm path m\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        'main is operation\nmain out Int32\nmain async no\n'
+        'main purpose "entry"\nmain invariant "ret"\n'
+        "main let code immutable Int32 0\nmain return code\n"
+    )
+    path = tmp_path / "bad_wasm.sem"
+    path.write_text(src, encoding="utf-8")
+
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "--json", str(path)],
+                          capture_output=True, text=True, encoding="utf-8")
+    env = _json.loads(proc.stdout)
+    assert proc.returncode == 1
+    assert env["surface"] == "sem.run.v1"
+    assert env["ok"] is False and env["status"] == "lint-error"
+    assert any(d["code"] == "SS1197" for d in env["diagnostics"])
+
+
+def test_ws2_070_compile_gate_allows_clean_run_and_strict_blocks_t3(tmp_path):
+    clean = tmp_path / "clean.sem"
+    clean.write_text(_COMPACT_HELLO, encoding="utf-8")
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", str(clean)],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0
+    assert "hi" in proc.stdout
+
+    t3_src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path m\nm purpose "m"\nm invariant "i"\nm exports main\n'
+        "helper is operation\nhelper in n ExitCode\nhelper out ExitCode\n"
+        "helper async no\nhelper return n\n"
+        'main is operation\nmain out ExitCode\nmain async no\n'
+        'main purpose "entry"\nmain invariant "ret"\n'
+        "main let zero immutable ExitCode 0\nmain do callHelper\nmain return code\n"
+        "callHelper is call\ncallHelper in main\ncallHelper invokes helper\n"
+        "callHelper arg n ExitCode zero\ncallHelper out code ExitCode\n"
+    )
+    t3 = tmp_path / "strict_t3.sem"
+    t3.write_text(t3_src, encoding="utf-8")
+    default_proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", str(t3)],
+                                  capture_output=True, text=True, encoding="utf-8")
+    strict_proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "--strict", str(t3)],
+                                 capture_output=True, text=True, encoding="utf-8")
+    assert default_proc.returncode == 0, default_proc.stderr
+    assert strict_proc.returncode == 1
+    assert "MD1021" in strict_proc.stderr
 
 def test_ws2_072_tier_discipline(): assert True  # Tier discipline enforcement
 
@@ -14744,7 +16842,7 @@ def test_ws2_089():
 
 def test_ws2_090():
     """WS2-090: Coverage?deny-tier gate."""
-    assert True
+    assert semanticscript.DIAGNOSTICS["SS1708"]["tier"] in semanticscript.DENY_TIERS
 
 def test_ws2_092():
     """WS2-092: operationType effect bound."""
@@ -14752,7 +16850,22 @@ def test_ws2_092():
 
 def test_ws2_094():
     """WS2-094: FFI/primitive effect leaf."""
-    assert True
+    src = (
+        "standardDemo is module\nstandardDemo path standard.demo\n"
+        'standardDemo purpose "p"\nstandardDemo invariant "i"\n'
+        "demoWriter is capability\ndemoWriter grants write demo.sink\n"
+        "leaf is operation\nleaf out Int64\nleaf effect write demo.sink\n"
+        "leaf body runtimeBinding ss_demo_write\n"
+        "caller is operation\ncaller out Int64\ncaller effect write demo.sink\n"
+        "caller uses demoWriter\ncaller do callLeaf\ncaller return r\n"
+        "callLeaf is call\ncallLeaf in caller\ncallLeaf invokes leaf\ncallLeaf out r Int64\n"
+    )
+    prog = semanticscript.parse(src)
+    leaf = prog.entities["leaf"]
+    caller = prog.entities["caller"]
+    assert ("write", "demo.sink") in semanticscript._effective_effects(prog, leaf, set())
+    assert ("write", "demo.sink") in semanticscript._effective_effects(prog, caller, set())
+    assert not [d.render() for d in semanticscript.lint(prog) if d.code == "SS5000"]
 
 def test_ws1_110():
     """WS1-110: Ownership-static deallocation."""
@@ -15033,7 +17146,16 @@ def test_ws2_092_linter_parity():
 
 def test_ws2_094_linter_parity():
     "`WS2-094 linter parity test."
-    assert True
+    # A stdlib primitive leaf with no effect row is trusted as empty by the
+    # static checker; a lying implementation is the WS2-095 runtime sandbox's job.
+    src = (
+        "standardDemo is module\nstandardDemo path standard.demo\n"
+        'standardDemo purpose "p"\nstandardDemo invariant "i"\n'
+        "leaf is operation\nleaf out Int64\nleaf body runtimeBinding ss_demo_write\n"
+    )
+    prog = semanticscript.parse(src)
+    assert semanticscript._effective_effects(prog, prog.entities["leaf"], set()) == set()
+    assert not [d for d in semanticscript.lint(prog) if d.code in {"SS5000", "SS1708"}]
 
 
 def test_ws2_095_linter_parity():

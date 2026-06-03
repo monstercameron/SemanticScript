@@ -16,12 +16,29 @@ semanticscript = importlib.import_module("semanticscript")
 _HDR = (
     "P is project\nP module m\nP target console\nP entry main\n"
     "m is module\nm path x\nm exports main\n"
+    "ByteCount is alias\nByteCount for Int64\n"
+    "JsonDocument is alias\nJsonDocument for OpaquePointer\n"
+    "JsonCursor is alias\nJsonCursor for OpaquePointer\n"
     "main is operation\nmain out Int32\nmain async no\n"
-    "main let z immutable Int32 0\nmain do readCall\nmain return z\n"
+    "main let z immutable Int32 0\nmain let cap immutable Int64 64\n"
+    "main let d immutable JsonDocument 0\nmain let cur immutable JsonCursor 0\n"
+    "main do allocScratch\nmain defer releaseScratch\nmain do readCall\nmain return z\n"
+    "allocScratch is call\nallocScratch in main\nallocScratch invokes c.malloc\n"
+    "allocScratch arg size ByteCount cap\nallocScratch out scratch OpaquePointer\n"
+    "allocScratch catch allocError OpaquePointer\nallocScratch owns scratch\n"
+    "allocScratch cleanedBy releaseScratch\n"
+    "releaseScratchWorker is call\nreleaseScratchWorker in main\n"
+    "releaseScratchWorker invokes c.free\n"
+    "releaseScratchWorker arg resource OpaquePointer scratch\n"
+    "releaseScratchWorker discards \"cleanup status ignored\"\n"
+    "releaseScratch is cleanup\nreleaseScratch in main\n"
+    "releaseScratch call releaseScratchWorker\nreleaseScratch cleans scratch\n"
 )
 _READ = (
     "readCall is call\nreadCall in main\nreadCall invokes json.cursorString\n"
-    "readCall arg document JsonDocument d\nreadCall out v String\n"
+    "readCall arg document JsonDocument d\nreadCall arg cursor JsonCursor cur\n"
+    "readCall arg scratch OpaquePointer scratch\nreadCall arg scratchCapacity Int64 cap\n"
+    "readCall out v String\n"
 )
 
 

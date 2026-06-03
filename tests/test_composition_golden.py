@@ -28,7 +28,8 @@ semanticscript = importlib.import_module("semanticscript")
 def test_seam2_register_login_tasks_round_trip_golden():
     if semanticscript._find_c_compiler() is None:
         pytest.skip("no C compiler for the native taskforge-web composition golden")
-    # A port distinct from test_apps.py's 18090 so the script and this collected
-    # test never contend for the same socket (the W2-I zombie-port hazard).
-    ok, message = test_apps._run_webserver_crud("taskforge-web", 18097)
+    # Probe the port declared by apps/taskforge-web/src/main.sem. The helper does
+    # not rewrite the webServer entity, so using a synthetic port only proves the
+    # probe missed the server.
+    ok, message = test_apps._run_webserver_crud("taskforge-web", 18090)
     assert ok, f"composition round-trip failed: {message}"
