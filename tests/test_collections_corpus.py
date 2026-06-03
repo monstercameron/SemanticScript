@@ -20,6 +20,7 @@ EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 _LIST = {
     "collections_list_sum": "210",  # 10+20+30+40+50+60
     "list_find_max": "60",          # max(10,50,30,60,20,40)
+    "list_count_above": "3",        # # elements > 35: 50,60,40 (guarded loop)
 }
 
 

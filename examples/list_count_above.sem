@@ -1,0 +1,179 @@
+# list_count_above — count the list elements strictly greater than a threshold,
+# using a CONDITIONAL inside the iteration loop (README §27 collections, §13
+# control flow). Walks the list with a goto-loop; for each element a
+# math.greaterThanInt64 guard decides whether to increment the counter (a
+# `branch ifFalse` skips the increment), so it exercises a branch nested in a loop.
+#
+# Correctness observation: of (10,50,30,60,20,40), three are > 35 (50,60,40).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+ListCountAbove is project
+ListCountAbove module examplesListCountAbove
+ListCountAbove target console
+ListCountAbove entry main
+
+examplesListCountAbove is module
+examplesListCountAbove path examples.listCountAbove
+examplesListCountAbove exports main
+examplesListCountAbove purpose "Count list elements above a threshold with a guarded loop"
+examplesListCountAbove invariant "The count comes from iterating + comparing, not a constant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+ListHandle is alias
+ListHandle for OpaquePointer
+ListHandle purpose "An opaque growable-list handle"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Count how many list elements exceed 35 with a guarded goto-loop"
+main invariant "Loop terminates at index == length; count is 3"
+main let v10 immutable Int64 10
+main let v50 immutable Int64 50
+main let v30 immutable Int64 30
+main let v60 immutable Int64 60
+main let v20 immutable Int64 20
+main let v40 immutable Int64 40
+main let threshold immutable Int64 35
+main let count mutable Int64 0
+main let idx mutable Int64 0
+main let one immutable Int64 1
+main let expectCount immutable Int64 3
+main let zeroGuard immutable Int64 0
+main let tnCount immutable String "three list elements exceed 35"
+main let tnNonZero immutable String "the counted total is real (not the initial 0)"
+main do mk
+main do app0
+main do app1
+main do app2
+main do app3
+main do app4
+main do app5
+main do lenCall
+main at loopHead do checkGoing
+main branch ifFalse going goto loopExit
+main do getElem
+main do isAbove
+main branch ifFalse above goto skipCount
+main do bumpCount
+main at skipCount do incIdx
+main goto loopHead
+main at loopExit do checkCount
+main do checkNonZero
+main do rel
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes list.create
+mk out theList ListHandle
+
+app0 is call
+app0 in main
+app0 invokes list.append
+app0 arg list ListHandle theList
+app0 arg value Int64 v10
+
+app1 is call
+app1 in main
+app1 invokes list.append
+app1 arg list ListHandle theList
+app1 arg value Int64 v50
+
+app2 is call
+app2 in main
+app2 invokes list.append
+app2 arg list ListHandle theList
+app2 arg value Int64 v30
+
+app3 is call
+app3 in main
+app3 invokes list.append
+app3 arg list ListHandle theList
+app3 arg value Int64 v60
+
+app4 is call
+app4 in main
+app4 invokes list.append
+app4 arg list ListHandle theList
+app4 arg value Int64 v20
+
+app5 is call
+app5 in main
+app5 invokes list.append
+app5 arg list ListHandle theList
+app5 arg value Int64 v40
+
+lenCall is call
+lenCall in main
+lenCall invokes list.length
+lenCall arg list ListHandle theList
+lenCall out listLen Int64
+
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.lessThanInt64
+checkGoing arg left Int64 idx
+checkGoing arg right Int64 listLen
+checkGoing out going Bool
+
+getElem is call
+getElem in main
+getElem invokes list.get
+getElem arg list ListHandle theList
+getElem arg index Int64 idx
+getElem out elem Int64
+
+isAbove is call
+isAbove in main
+isAbove invokes math.greaterThanInt64
+isAbove arg left Int64 elem
+isAbove arg right Int64 threshold
+isAbove out above Bool
+
+bumpCount is call
+bumpCount in main
+bumpCount invokes math.addInt64
+bumpCount arg left Int64 count
+bumpCount arg right Int64 one
+bumpCount out count Int64
+
+incIdx is call
+incIdx in main
+incIdx invokes math.addInt64
+incIdx arg left Int64 idx
+incIdx arg right Int64 one
+incIdx out idx Int64
+
+checkCount is call
+checkCount in main
+checkCount invokes test.assertEqualInt64
+checkCount arg name String tnCount
+checkCount arg expected Int64 expectCount
+checkCount arg actual Int64 count
+
+checkNonZero is call
+checkNonZero in main
+checkNonZero invokes test.assertNotEqualInt64
+checkNonZero arg name String tnNonZero
+checkNonZero arg expected Int64 zeroGuard
+checkNonZero arg actual Int64 count
+
+rel is call
+rel in main
+rel invokes list.release
+rel arg list ListHandle theList
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
