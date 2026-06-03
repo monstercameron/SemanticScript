@@ -9948,6 +9948,16 @@ def _validate_time_safety(program: Program) -> None:
                 )
 
 
+# BIN-3: handle->String reinterprets that yield a BORROWED VIEW the §1J view
+# checker must treat as `mayEscape no` — the String aliases the source handle and
+# may not outlive it. c.cString views an owned OpaquePointer (e.g. a bcrypt hash /
+# session-token handle, a c.malloc buffer) as a NUL-terminated String; returning
+# that String out of the op escapes the op-local handle (a dangling scratch
+# buffer). These are synthetic signatures (no .semsig `borrows` row), so they are
+# seeded into the no-escape set explicitly.
+_INTRINSIC_VIEW_NOESCAPE_BUILTINS = frozenset({"c.cString"})
+
+
 def _validate_view_lifetimes(program: Program) -> None:
     """WS1-111 / README §32.1 #9: resources clean up; **views** borrow and never
     clean. A call/task whose `out` carries a `borrows <resource>` row is a view:
@@ -10001,7 +10011,7 @@ def _validate_view_lifetimes(program: Program) -> None:
     # and the language enforces it at every call site — neither hard-codes the
     # other. So returning a borrowed View/Slice out of an op is rejected (SS1560)
     # without the caller re-declaring the rows.
-    intrinsic_view_noescape = set()
+    intrinsic_view_noescape = set(_INTRINSIC_VIEW_NOESCAPE_BUILTINS)  # BIN-3 seed
     for n in program.order:
         ent = program.entities[n]
         if ent.kind == "intrinsic" and ent.fact("borrows") is not None:

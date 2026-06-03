@@ -185,3 +185,44 @@ def test_aq4_golden_lane_compares_snapshot(tmp_path):
     gp.write_text("DIFFERENT\n", newline="\n")
     rec = status()
     assert rec["status"] == "fail" and rec["golden"] == "snapshot-mismatch"
+
+
+# --- BIN-3: a handle->String view (c.cString) may not escape its borrowed source ---
+
+_CSTRING_OP_HEAD = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path x\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ConsoleWriteError is error\nExitCode is alias\nExitCode for Int32\n"
+    "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+    "{LEAK}"
+    "main is operation\nmain out Int32\nmain async no\nmain purpose \"p\"\n"
+    "main invariant \"i\"\nmain let z immutable Int32 0\nmain return z\n"
+)
+# an op that allocates an owned handle, views it as a String via c.cString, and
+# RETURNS the String out — escaping the op-local handle (a dangling scratch view).
+_LEAK_ESCAPE = (
+    "leak is operation\nleak out String\nleak async no\nleak purpose \"p\"\n"
+    "leak invariant \"i\"\nleak do allocCall\nleak do viewCall\nleak return viewStr\n"
+    "allocCall is call\nallocCall in leak\nallocCall invokes bcrypt.sessionTokenOwned\n"
+    "allocCall out h OpaquePointer\nallocCall owns h\nallocCall cleanedBy freeDefer\n"
+    "viewCall is call\nviewCall in leak\nviewCall invokes c.cString\n"
+    "viewCall arg pointer OpaquePointer h\nviewCall out viewStr String\n"
+    "freeDeferWorker is call\nfreeDeferWorker in leak\n"
+    "freeDeferWorker invokes bcrypt.freeString\n"
+    "freeDeferWorker arg handle OpaquePointer h\nfreeDeferWorker discards \"x\"\n"
+    "freeDefer is cleanup\nfreeDefer in leak\nfreeDefer call freeDeferWorker\n"
+    "freeDefer cleans h\n"
+)
+
+
+def test_bin3_cstring_view_escaping_its_handle_is_rejected():
+    # Returning a c.cString String out of the op that owns the handle would let the
+    # borrowed view outlive (dangle past) its source — SS1560.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.lint(semanticscript.parse(
+            _CSTRING_OP_HEAD.replace("{LEAK}", _LEAK_ESCAPE)))
+    assert exc.value.code == "SS1560"
+
+
+def test_bin3_cstring_seeded_as_noescape_view_builtin():
+    assert "c.cString" in semanticscript._INTRINSIC_VIEW_NOESCAPE_BUILTINS
