@@ -3760,12 +3760,29 @@ class Program:
         default_factory=dict, init=False, repr=False)
     _alias_map_cache: Optional[dict[str, str]] = field(
         default=None, init=False, repr=False)
+    _owned_by_cache: Optional[dict[str, tuple[Entity, ...]]] = field(
+        default=None, init=False, repr=False)
+    _entity_tuple_cache: Optional[tuple[Entity, ...]] = field(
+        default=None, init=False, repr=False)
 
     def add(self, entity: Entity) -> None:
         self.entities[entity.name] = entity
         self.order.append(entity.name)
         self._kind_cache.clear()
         self._alias_map_cache = None
+        self._owned_by_cache = None
+        self._entity_tuple_cache = None
+
+    def entities_in_order(self) -> tuple[Entity, ...]:
+        """Cached ordered entity view for validators and lints.
+
+        R-229: a `check` should not rebuild the same whole-program iteration
+        scaffolding in every pass. Keep the public `order` list for stable
+        formatting/codegen, but let check-lane passes share this ordered tuple.
+        """
+        if self._entity_tuple_cache is None:
+            self._entity_tuple_cache = tuple(self.entities[name] for name in self.order)
+        return self._entity_tuple_cache
 
     def of_kind(self, kind: str) -> list[Entity]:
         norm = "operation" if kind == "operation" else kind
@@ -3796,6 +3813,18 @@ class Program:
                 if row and row.payload
             }
         return dict(self._alias_map_cache)
+
+    def owned_by_owner(self) -> dict[str, tuple[Entity, ...]]:
+        """Cached call/task/cleanup ownership map keyed by operation name."""
+        if self._owned_by_cache is None:
+            out: dict[str, list[Entity]] = {}
+            for ent in self.entities_in_order():
+                if ent.kind in ("call", "task", "cleanup"):
+                    inr = ent.fact("in")
+                    if inr and inr.payload:
+                        out.setdefault(inr.payload[0], []).append(ent)
+            self._owned_by_cache = {k: tuple(v) for k, v in out.items()}
+        return dict(self._owned_by_cache)
 
 
 # Inclusive integer ranges per primitive width (README ss10/ss33.6).
@@ -7413,7 +7442,7 @@ def _validate_program(program: Program) -> None:
     marks as a *hard error* during parsing.
     """
     alias_map = program.alias_map()
-    for ent in (program.entities[name] for name in program.order):
+    for ent in program.entities_in_order():
         if ent.kind == "call" and ent.fact("async") is not None:
             # README ss5/ss15.5: `async` on a call is tolerated-deprecated; it
             # promotes to a `task` on fmt. Parse it, but record the deprecation.
@@ -9290,13 +9319,13 @@ def _lint_dead_unused(program: Program) -> list:
     (unused-call already warns via _validate_activation_count; dead labels via
     the label validator.)"""
     out: list[Diagnostic] = []
+    entities = program.entities_in_order()
     used_caps: set = set()
-    for n in program.order:
-        for r in program.entities[n].facts("uses"):
+    for ent in entities:
+        for r in ent.facts("uses"):
             if r.payload:
                 used_caps.add(r.payload[0])
-    for n in program.order:
-        ent = program.entities[n]
+    for ent in entities:
         if ent.kind == "capability" and ent.name not in used_caps:
             out.append(Diagnostic(
                 "SS0802", "warning",
@@ -9306,13 +9335,12 @@ def _lint_dead_unused(program: Program) -> list:
     # SS0806: a module `storage` whose name never appears in another entity's row
     # (never read or written by any operation).
     referenced: set = set()
-    for n in program.order:
-        sub = program.entities[n].name
-        for r in program.entities[n].rows:
+    for ent in entities:
+        sub = ent.name
+        for r in ent.rows:
             for tok in r.payload:
                 referenced.add((sub, tok))
-    for n in program.order:
-        ent = program.entities[n]
+    for ent in entities:
         if ent.kind != "storage":
             continue
         if not any(tok == ent.name and sub != ent.name for (sub, tok) in referenced):
@@ -9321,8 +9349,7 @@ def _lint_dead_unused(program: Program) -> list:
                 f"module storage {ent.name!r} is declared but never read or "
                 f"written by any operation (README §17/WS2-080)",
                 ent.line, ent.name))
-    for n in program.order:
-        op = program.entities[n]
+    for op in entities:
         if op.kind not in ("operation", "function"):
             continue
         terminated = False
@@ -9340,30 +9367,22 @@ def _lint_dead_unused(program: Program) -> list:
                 terminated = True
     # --- reference-based unused checks (per operation scope) ---
     from collections import Counter
-    owned_by: dict = {}
-    for n in program.order:
-        e = program.entities[n]
-        if e.kind in ("call", "task", "cleanup"):
-            inr = e.fact("in")
-            if inr and inr.payload:
-                owned_by.setdefault(inr.payload[0], []).append(e)
+    owned_by = program.owned_by_owner()
     # errorCase references: a `Type.Case` or bare `Case` token anywhere.
     ec_ref: set = set()
-    for n in program.order:
-        for r in program.entities[n].rows:
+    for ent in entities:
+        for r in ent.rows:
             for tok in r.payload:
                 ec_ref.add(tok)
                 if "." in tok:
                     ec_ref.add(tok.split(".")[-1])
-    for n in program.order:
-        ent = program.entities[n]
+    for ent in entities:
         if ent.kind == "errorCase" and ent.name not in ec_ref:
             out.append(Diagnostic(
                 "SS0803", "warning",
                 f"error case {ent.name!r} is declared but never constructed or "
                 f"matched (README §17/WS2-080)", ent.line, ent.name))
-    for n in program.order:
-        op = program.entities[n]
+    for op in entities:
         if op.kind not in ("operation", "function"):
             continue
         # runtimeBinding/intrinsic ops have no EAV body — their inputs/consts are
@@ -9373,7 +9392,7 @@ def _lint_dead_unused(program: Program) -> list:
                 and body_row.payload[0] in ("runtimeBinding", "intrinsic", "abstract")):
             continue
         cnt: Counter = Counter()
-        for m in [op] + owned_by.get(op.name, []):
+        for m in [op, *owned_by.get(op.name, [])]:
             for r in m.rows:
                 for tok in r.payload:
                     cnt[tok] += 1
@@ -9406,7 +9425,7 @@ def _lint_dead_unused(program: Program) -> list:
                         r.line, op.name))
         # SS0808 dead store: two consecutive `set X` with no read of X between
         # (conservative: straight-line within the op + its owned-call arg reads).
-        member_rows = [r for m in [op] + owned_by.get(op.name, []) for r in m.rows]
+        member_rows = [r for m in [op, *owned_by.get(op.name, [])] for r in m.rows]
         pending: dict = {}  # name -> the row of an as-yet-unread `set`
         for r in op.rows:
             if r.label is not None or r.predicate in ("branch", "goto", "jump", "return"):
@@ -9425,11 +9444,10 @@ def _lint_dead_unused(program: Program) -> list:
                         pending[tgt].line, op.name))
                 pending[tgt] = r
     # SS0809 dead storage initializer: a mutable storage written but never read.
-    storage_names = {n for n in program.order if program.entities[n].kind == "storage"}
+    storage_names = {ent.name for ent in entities if ent.kind == "storage"}
     written_storage: set[str] = set()
     read_storage: set[str] = set()
-    for n in program.order:
-        owner = program.entities[n]
+    for owner in entities:
         for r in owner.rows:
             if r.predicate == "set" and r.payload:
                 target = r.payload[0]
@@ -9444,8 +9462,7 @@ def _lint_dead_unused(program: Program) -> list:
                 for tok in r.payload:
                     if tok in storage_names and owner.name != tok:
                         read_storage.add(tok)
-    for n in program.order:
-        st = program.entities[n]
+    for st in entities:
         if st.kind != "storage":
             continue
         if (st.fact("mutability") and st.fact("mutability").payload
@@ -9460,8 +9477,7 @@ def _lint_dead_unused(program: Program) -> list:
     # SS0811 duplicate single-valued declaration row on one entity.
     single_valued = {"purpose", "path", "for", "scope", "mutability", "type",
                      "value", "memory", "async", "out"}
-    for n in program.order:
-        ent = program.entities[n]
+    for ent in entities:
         seen_pred: set = set()
         for r in ent.rows:
             if r.label is not None or r.predicate not in single_valued:
@@ -9477,8 +9493,7 @@ def _lint_dead_unused(program: Program) -> list:
     # (a hoist-to-module-storage candidate).
     const_sites: dict = {}
     _SS0812_TRIVIAL_LITERALS = {"0", "1", "-1", "true", "false", "yes", "no"}
-    for n in program.order:
-        op = program.entities[n]
+    for op in entities:
         if op.kind not in ("operation", "function"):
             continue
         for r in op.rows:
@@ -9544,8 +9559,8 @@ def _lint_memory_layout(program: Program) -> list:
       SS0823 array-length-zero             SS0828 inline-capacity-without-spill
       SS0824 inline-capacity-overrun       SS0829 stack-limit-overrun"""
     out: list[Diagnostic] = []
-    for n in program.order:
-        st = program.entities[n]
+    entities = program.entities_in_order()
+    for st in entities:
         if st.kind == "storage" and st.fact("literalSource") is not None:
             if st.fact("literalDigest") is None:
                 out.append(Diagnostic(
@@ -9605,16 +9620,9 @@ def _lint_memory_layout(program: Program) -> list:
                     f"path — over-capacity values have nowhere to go (README "
                     f"§10.6/WS2-084)", al.line, al.name))
 
-    owned_by: dict = {}
-    for n in program.order:
-        e = program.entities[n]
-        if e.kind in ("call", "task", "cleanup"):
-            inr = e.fact("in")
-            if inr and inr.payload:
-                owned_by.setdefault(inr.payload[0], []).append(e)
+    owned_by = program.owned_by_owner()
 
-    for n in program.order:
-        op = program.entities[n]
+    for op in entities:
         if op.kind not in ("operation", "function"):
             continue
         mrow = op.fact("memory")
