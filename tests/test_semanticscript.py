@@ -161,6 +161,30 @@ def test_invalid_corpus_is_populated():
     assert len(_corpus_files()) >= 15
 
 
+def test_program_kind_and_alias_indexes_are_cached_and_invalidated():
+    # R-228: of_kind and alias_map are shared indexes, not repeated full scans.
+    program = semanticscript.parse(
+        "ExitCode is alias\nExitCode for Int32\n"
+        "UserId is alias\nUserId for Int64\n"
+        "main is operation\nmain out ExitCode\nmain return code\n"
+        "code is storage\ncode type ExitCode\n"
+    )
+    first_ops = program.of_kind("operation")
+    assert [op.name for op in first_ops] == ["main"]
+    assert "operation" in program._kind_cache
+    first_ops.clear()
+    assert [op.name for op in program.of_kind("operation")] == ["main"]
+
+    aliases = program.alias_map()
+    assert aliases == {"ExitCode": "Int32", "UserId": "Int64"}
+    aliases["ExitCode"] = "String"
+    assert program.alias_map()["ExitCode"] == "Int32"
+
+    program.add(semanticscript.Entity("helper", "operation", 99))
+    assert program._alias_map_cache is None
+    assert [op.name for op in program.of_kind("operation")] == ["main", "helper"]
+
+
 MANIFESTS = os.path.join(HERE, "manifests")
 
 
@@ -1260,6 +1284,54 @@ def test_rename_collision_rejected():
     src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
     with pytest.raises(semanticscript.EavError):
         semanticscript.rename_entity(src, "addTwoValues", "main")  # main already exists
+
+
+def test_project_rename_write_updates_cross_file_references(tmp_path, capsys):
+    root = tmp_path / "app"
+    (root / "src").mkdir(parents=True)
+    (root / "build.sem").write_text(
+        "App is project\nApp module mainModule\nApp target console\nApp entry main\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "main.sem").write_text(
+        "mainModule is module\nmainModule path app.main\nmainModule exports main\n"
+        "mainModule imports feature app.feature\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let ok immutable ExitCode 0\nmain do helperCall\nmain return ok\n"
+        "helperCall is call\nhelperCall in main\nhelperCall invokes feature.helperOp\n"
+        "helperCall out resultValue Int64\n",
+        encoding="utf-8",
+    )
+    (root / "src" / "feature.sem").write_text(
+        "featureModule is module\nfeatureModule path app.feature\nfeatureModule exports helperOp\n"
+        "helperOp is operation\nhelperOp out Int64\nhelperOp async no\n"
+        "helperOp let resultValue immutable Int64 42\nhelperOp return resultValue\n",
+        encoding="utf-8",
+    )
+
+    rc = semanticscript.main(["rename", str(root), "helperOp", "renamedHelper", "--write"])
+    capsys.readouterr()
+    assert rc == 0
+    composed = semanticscript.load_project(str(root))
+    assert "renamedHelper is operation" in composed
+    assert "helperCall invokes feature.renamedHelper" in composed
+    assert "helperOp" not in composed
+    semanticscript.parse(composed)
+
+
+def test_rename_write_error_leaves_file_unchanged(tmp_path, capsys):
+    path = tmp_path / "one.sem"
+    original = (
+        "main is operation\nmain out Int32\nmain async no\n"
+        "main let code immutable Int32 0\nmain return code\n"
+    )
+    path.write_text(original, encoding="utf-8")
+
+    rc = semanticscript.main(["rename", str(path), "missingEntity", "renamed", "--write"])
+    capsys.readouterr()
+    assert rc == 2
+    assert path.read_text(encoding="utf-8") == original
 
 
 def test_add_operation_appends_valid_op():
@@ -3608,10 +3680,9 @@ def test_return_arity_single_rejects_void_return():
         semanticscript.parse("get is operation\nget out Int64\nget return void\n")
 
 
-def test_sqlite_column_used_after_step_warns():
-    # README §17 #23 (semsc SS3113): a borrowed columnText pointer used AFTER a
-    # later step on the same statement is a use-after-invalidation. (No-op-failing:
-    # the old rule flagged the wrong site; a no-op lowering would not flag at all.)
+def test_sqlite_column_text_after_step_no_longer_warns():
+    # W2-E: ss_sqlite_column_text now copies before crossing the EAV boundary,
+    # so the value survives later statement movement.
     src = (
         "main is operation\nmain out ExitCode\nmain async no\n"
         "main let okCode immutable ExitCode 0\nmain let stmt immutable SqliteStatement 1\n"
@@ -3623,7 +3694,7 @@ def test_sqlite_column_used_after_step_warns():
         "useTitle is call\nuseTitle in main\nuseTitle invokes console.writeLine\n"
         "useTitle arg text String title\n"
     )
-    assert "SS1901" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    assert "SS1901" not in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
 def _family_catch_ir(invoke, arg_rows, catch_type, retkind_handle):
@@ -3670,12 +3741,9 @@ def test_r141_family_intrinsic_catch_wires_iferror():
     assert "br i1 false" not in handle_ir
 
 
-def test_sqlite_column_used_after_finalize_warns():
-    # R-164: finalize frees the statement, so a columnText String read before the
-    # finalize and used after it is a use-after-free. The runtime hands
-    # sqlite3_column_text's borrowed pointer straight into a SemanticScript String
-    # (no copy), and the source checker otherwise sees an ordinary String — so the
-    # borrowed-view lint must treat finalize as an invalidator just like step/reset.
+def test_sqlite_column_text_after_finalize_no_longer_warns():
+    # W2-E: columnText is copied by the shim, so finalizing the statement no
+    # longer invalidates the returned SemanticScript String.
     src = (
         "main is operation\nmain out ExitCode\nmain async no\n"
         "main let okCode immutable ExitCode 0\nmain let stmt immutable SqliteStatement 1\n"
@@ -3687,7 +3755,7 @@ def test_sqlite_column_used_after_finalize_warns():
         "useTitle is call\nuseTitle in main\nuseTitle invokes console.writeLine\n"
         "useTitle arg text String title\n"
     )
-    assert "SS1901" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    assert "SS1901" not in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
 def test_sqlite_sibling_column_reads_no_warning():
@@ -5564,6 +5632,8 @@ def test_readiness_works_without_llvmlite():
 def test_frozen_executable_packaging():
     # X-025: the packager exists and semanticscript is frozen-path-aware; if a built exe is
     # present (dist/semanticscript[.exe] from `python package.py`), it runs standalone.
+    import json as _json
+
     assert os.path.exists(os.path.join(ROOT, "semanticscript", "packaging", "package.py"))
     assert hasattr(semanticscript, "_bundle_dir")
     exe = os.path.join(ROOT, "semanticscript", "packaging", "dist", "semanticscript" + (".exe" if sys.platform == "win32" else ""))
@@ -5574,6 +5644,45 @@ def test_frozen_executable_packaging():
     run = subprocess.run([exe, "run", os.path.join(EXAMPLES, "hello_world.sem")],
                          capture_output=True, text=True, encoding="utf-8")
     assert run.returncode == 0 and "hello world" in run.stdout
+    sig = subprocess.run([exe, "targets", "--signature", "json.createDocument", "--json"],
+                         capture_output=True, text=True, encoding="utf-8")
+    assert sig.returncode == 0, sig.stderr
+    sig_payload = _json.loads(sig.stdout)
+    assert sig_payload["surface"] == "sem.targetSignature.v1"
+    assert sig_payload["out"] == "JsonDocument"
+
+
+def test_frozen_meipass_signature_data_path(tmp_path, monkeypatch, capsys):
+    # DEF-6: PyInstaller bundles sigs at _MEIPASS/semanticscript/sigs. The
+    # signature loader must use the same frozen-aware package root as runtime data,
+    # not derive a checkout-only path from __file__.
+    import json as _json
+    import shutil
+
+    bundle_sigs = tmp_path / "semanticscript" / "sigs"
+    bundle_sigs.mkdir(parents=True)
+    shutil.copyfile(
+        os.path.join(SIGS, "standard.json.semsig"),
+        bundle_sigs / "standard.json.semsig",
+    )
+
+    monkeypatch.setattr(semanticscript.sys, "_MEIPASS", str(tmp_path), raising=False)
+    semanticscript._SEMSIG_SIG_CACHE.clear()
+    try:
+        assert semanticscript._sigs_dir() == os.path.join(str(tmp_path), "semanticscript", "sigs")
+        assert semanticscript._standard_signature_modules() == ["json"]
+
+        sig = semanticscript._builtin_target_signature("json.createDocument")
+        assert sig is not None
+        assert sig["out"] == "JsonDocument"
+
+        rc = semanticscript.main(["targets", "--signature", "json.createDocument", "--json"])
+        payload = _json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert payload["surface"] == "sem.targetSignature.v1"
+        assert payload["out"] == "JsonDocument"
+    finally:
+        semanticscript._SEMSIG_SIG_CACHE.clear()
 
 
 def _load_packaging_module():
@@ -9409,6 +9518,38 @@ def test_dropped_result_with_discards_ok():
     assert prog.entities["sumCall"].fact("discards") is not None
 
 
+def test_dropped_external_status_result_rejected_from_signature():
+    # R-074: dotted externals use the signature table for result disposition.
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        'main let msg immutable String "hi"\n'
+        "main let ok immutable ExitCode 0\n"
+        "main do logCall\nmain return ok\n"
+        "logCall is call\nlogCall in main\nlogCall invokes log.logInfo\n"
+        "logCall arg messageText String msg\n"  # no out/catch/discards
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert "drops the non-void result" in exc.value.message
+
+
+def test_dropped_external_handle_result_rejected_from_signature():
+    src = (
+        "main is operation\nmain out ExitCode\n"
+        'main let text immutable String "{}"\n'
+        "main let cap immutable JsonCapacityBytes 1024\n"
+        "main let ok immutable ExitCode 0\n"
+        "main do parseDoc\nmain return ok\n"
+        "JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n"
+        "parseDoc is call\nparseDoc in main\nparseDoc invokes json.createDocument\n"
+        "parseDoc arg jsonText String text\n"
+        "parseDoc arg capacityBytes JsonCapacityBytes cap\n"  # no out/catch/discards
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert "drops the non-void result" in exc.value.message
+
+
 def test_void_console_write_needs_no_discards():
     # console.writeLine is void -> dropping its result is fine.
     src = (
@@ -12329,6 +12470,7 @@ def test_build_scratch_ir_not_written_to_runtime_bundle(tmp_path, monkeypatch):
         captured["dir"] = kwargs.get("dir")
         return real_mkstemp(*args, **kwargs)
 
+    monkeypatch.setenv("SEMANTICSCRIPT_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(_tempfile, "mkstemp", spy_mkstemp)
     prog = semanticscript.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
     out = tmp_path / "app.exe"
@@ -12339,6 +12481,35 @@ def test_build_scratch_ir_not_written_to_runtime_bundle(tmp_path, monkeypatch):
     # the bundle holds no leftover scratch IR
     import glob
     assert glob.glob(os.path.join(semanticscript._runtime_dir(), "*.ll")) == []
+
+
+def test_native_build_noop_reuses_content_hash_sidecar(tmp_path, monkeypatch):
+    """ITER-3: an unchanged native rebuild reuses the existing executable."""
+    prog = semanticscript.parse(open(os.path.join(EXAMPLES, "hello_world.sem"), encoding="utf-8").read())
+    out = tmp_path / "app.exe"
+    calls = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        if "--version" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="fakecc 1.0\n", stderr="")
+        if "-o" in cmd:
+            output = cmd[cmd.index("-o") + 1]
+            with open(output, "wb") as fh:
+                fh.write(b"fake executable")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(semanticscript, "_find_c_compiler", lambda: ["fakecc"])
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    semanticscript.build_executable(prog, str(out))
+    link_calls = [cmd for cmd in calls if "-o" in cmd and cmd[cmd.index("-o") + 1] == str(out)]
+    assert len(link_calls) == 1
+    assert os.path.exists(semanticscript._native_build_sidecar_path(str(out)))
+
+    semanticscript.build_executable(prog, str(out))
+    link_calls = [cmd for cmd in calls if "-o" in cmd and cmd[cmd.index("-o") + 1] == str(out)]
+    assert len(link_calls) == 1
 
 
 def test_runtime_lib_cache_lives_in_cache_dir(tmp_path, monkeypatch):
