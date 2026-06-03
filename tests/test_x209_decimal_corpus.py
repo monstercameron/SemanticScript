@@ -19,8 +19,10 @@ EXAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 # example -> the golden raw decimal value (amount * 100) it reaches
 _DECIMAL = {
-    "decimal_exact_money": "1575",      # $10.50 + $5.25 = $15.75
-    "decimal_subtract_refund": "1050",  # $15.75 - $5.25 = $10.50
+    "decimal_exact_money": "1575",        # 10.50 + 5.25 = 15.75
+    "decimal_subtract_refund": "1050",    # 15.75 - 5.25 = 10.50
+    "decimal_multiply_scaled": "1000",    # 2.50 * 4.00 = 10.00  (250*400/100)
+    "decimal_divide_per_unit": "300",     # 12.00 / 4.00 = 3.00  (1200*100/400)
 }
 
 

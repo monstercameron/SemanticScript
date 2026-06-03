@@ -1,0 +1,74 @@
+# decimal_multiply_scaled — scaled-decimal multiplication (README §27, R-067).
+# Decimal is a scale-2 Int64 (raw = amount*100). decimal.multiply multiplies the
+# two raw operands and divides the product by 100 (toward zero), keeping the scale
+# fixed: 2.50 * 4.00 = 10.00 is computed exactly as (250 * 400) / 100 = 1000.
+#
+# Correctness observation: (250 * 400) / 100 == 1000  (2.50 * 4.00 = 10.00).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+DecimalMultiplyScaled is project
+DecimalMultiplyScaled module examplesDecimalMultiplyScaled
+DecimalMultiplyScaled target console
+DecimalMultiplyScaled entry main
+
+examplesDecimalMultiplyScaled is module
+examplesDecimalMultiplyScaled path examples.decimalMultiplyScaled
+examplesDecimalMultiplyScaled exports main
+examplesDecimalMultiplyScaled purpose "Multiply two scaled decimals, keeping scale 2"
+examplesDecimalMultiplyScaled invariant "Product is rescaled by /100 toward zero"
+
+ExitCode is alias
+ExitCode for Int32
+
+Decimal is alias
+Decimal for Int64
+Decimal purpose "Fixed-scale value: the raw Int64 is the amount * 100 (scale 2)"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute 2.50 * 4.00 exactly and assert 10.00"
+main invariant "Writes the test harness summary"
+main let unitPrice immutable Decimal 250
+main let factor immutable Decimal 400
+main let harnessName immutable String "decimal_multiply_scaled"
+main let harnessExpected immutable Decimal 1000
+main let noopDecoy immutable Decimal 0
+main let noopName immutable String "decimal_multiply_scaled: real product (not the no-op 0)"
+main do multiplyScaled
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+multiplyScaled is call
+multiplyScaled in main
+multiplyScaled invokes decimal.multiply
+multiplyScaled arg left Decimal unitPrice
+multiplyScaled arg right Decimal factor
+multiplyScaled out product Decimal
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 product
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 product
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

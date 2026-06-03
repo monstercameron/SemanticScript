@@ -1,0 +1,74 @@
+# decimal_divide_per_unit — scaled-decimal division (README §27, R-067). Decimal
+# is a scale-2 Int64 (raw = amount*100). decimal.divide scales the dividend by 100
+# before dividing (toward zero), keeping the scale fixed: 12.00 / 4.00 = 3.00 is
+# computed exactly as (1200 * 100) / 400 = 300.
+#
+# Correctness observation: (1200 * 100) / 400 == 300  (12.00 / 4.00 = 3.00).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+DecimalDividePerUnit is project
+DecimalDividePerUnit module examplesDecimalDividePerUnit
+DecimalDividePerUnit target console
+DecimalDividePerUnit entry main
+
+examplesDecimalDividePerUnit is module
+examplesDecimalDividePerUnit path examples.decimalDividePerUnit
+examplesDecimalDividePerUnit exports main
+examplesDecimalDividePerUnit purpose "Divide two scaled decimals, keeping scale 2"
+examplesDecimalDividePerUnit invariant "Dividend is scaled by 100 before dividing"
+
+ExitCode is alias
+ExitCode for Int32
+
+Decimal is alias
+Decimal for Int64
+Decimal purpose "Fixed-scale value: the raw Int64 is the amount * 100 (scale 2)"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute 12.00 / 4.00 exactly and assert 3.00"
+main invariant "Writes the test harness summary"
+main let total immutable Decimal 1200
+main let divisor immutable Decimal 400
+main let harnessName immutable String "decimal_divide_per_unit"
+main let harnessExpected immutable Decimal 300
+main let noopDecoy immutable Decimal 0
+main let noopName immutable String "decimal_divide_per_unit: real quotient (not the no-op 0)"
+main do dividePerUnit
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+dividePerUnit is call
+dividePerUnit in main
+dividePerUnit invokes decimal.divide
+dividePerUnit arg left Decimal total
+dividePerUnit arg right Decimal divisor
+dividePerUnit out quotient Decimal
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 quotient
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 quotient
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
