@@ -248,6 +248,9 @@ DIAGNOSTICS.update({
     "SS0951": {"tier": "T1", "summary": "Unbounded loop over an untrusted size.",
                "found": "A back-edge loop whose exit guard reads a `typeTrust rawExternal`/`secret` value, with no `maxIterations <n>` row on the owning operation.",
                "suggested": "Bound a loop driven by untrusted input with `maxIterations <n>` so a hostile size cannot spin the process (R-082, README §13/§27)."},
+    "SS0920": {"tier": "T1", "summary": "Unsupported net.fetchText URL scheme.",
+               "found": "A `net.fetchText` URL literal uses a scheme the current native client cannot execute.",
+               "suggested": "Use an `http://` URL with the current `ss_net` runtime, or add TLS support before accepting `https://` (R-092, README §27)."},
     "SS3095": {"tier": "T1", "summary": "Arithmetic on wall-clock time.",
                "found": "A math.* call with a `WallTime` operand (elapsed/duration or local-time arithmetic).",
                "suggested": "Use a `MonotonicInstant` for durations, or an explicit timezone conversion for calendar math; `WallTime` has no arithmetic (README §30.5.3/§27)."},
@@ -278,6 +281,9 @@ DIAGNOSTICS.update({
     "SS3078": {"tier": "T1", "summary": "Unbounded external call over untrusted input.",
                "found": "A `net.*`/`http.*`/`sqlite.*`/`db.*`/`fs.*` call with a `rawExternal` arg and no `timeout`/`budget` row.",
                "suggested": "Bound external I/O over untrusted input with a `timeout <budget>` (or `budget …`) row so a slow/hostile peer cannot stall the process (README §27)."},
+    "SS3099": {"tier": "T1", "summary": "Regex over untrusted input lacks a linear engine guarantee.",
+               "found": "A `regex.*` call can run a backtracking engine against hostile input or a catastrophic literal pattern.",
+               "suggested": "Route the call through a linear engine with `regexEngine linear`/`regexEngine re2`, or reject the pattern before it reaches the regex call (README §27, R-079)."},
     "SS3079": {"tier": "T1", "summary": "Internal error disclosed to a client.",
                "found": "A `typeTrust trustedInternal` error reaches a `clientResponse` sink slot with no `errorBoundary` mapping.",
                "suggested": "Map the internal error to a client-safe error with `errorBoundary <InternalError> <ClientError>` before it reaches the response (information-disclosure defense, README §16/§25)."},
@@ -302,6 +308,9 @@ DIAGNOSTICS.update({
     "SS1572": {"tier": "T1", "summary": "Collection mutated while it is being iterated.",
                "found": "Inside a loop that reads a collection's elements (`list.get`/`map.get`), the same collection handle is also mutated (`append`/`put`/`remove`/`clear`/`release`); iterating a collection borrows it, so the mutation invalidates the live iteration.",
                "suggested": "Finish iterating before you mutate — move the `append`/`put`/`release` after the loop exit, or collect the changes and apply them once the iteration borrow ends (README §1J/§27)."},
+    "SS1573": {"tier": "T1", "summary": "Region capacity exceeded.",
+               "found": "The total static size of `allocateIn` rows for a region exceeds that region's `capacity`.",
+               "suggested": "Increase the region `capacity`, reduce the allocations, or move large values to a larger/general region (README §29 #14)."},
     "SS1569": {"tier": "T1", "summary": "Unsafe FFI allocator missing its wrapping rows.",
                "found": "An `unsafe yes` binding without all of `wrapsAs`/`cleanedBy`/`allocator`.",
                "suggested": "A foreign allocator must re-enter as an owned resource: declare `wrapsAs <OwnedType>` + `cleanedBy <freeTarget>` + `allocator <region|c.heap>` (README §26/§30.4)."},
@@ -323,6 +332,18 @@ DIAGNOSTICS.update({
     "SS3088": {"tier": "T1", "summary": "Non-constant format string.",
                "found": "A printf-family call whose format argument is not a compile-time constant (format-string injection).",
                "suggested": "The format string must be a literal/constant; pass dynamic values as arguments (README §30.2.2)."},
+    "SS3089": {"tier": "T1", "summary": "Raw bcrypt buffer intrinsic used from app source.",
+               "found": "A bcrypt buffer helper takes raw OpaquePointer plus caller-declared counts/capacities.",
+               "suggested": "Use the owned-output bcrypt helpers (`bcrypt.hashPasswordOwned` / `bcrypt.sessionTokenOwned`) so the runtime allocates exactly-sized output (R-202)."},
+    "SS3090": {"tier": "T1", "summary": "JSON scratch buffer lacks an allocation proof.",
+               "found": "A JSON scratch-buffer call passes an OpaquePointer plus capacity that is not proven to match a live same-operation allocation.",
+               "suggested": "Allocate the scratch buffer with `c.malloc`, pass the same size binding as `scratchCapacity`, and keep the cleanup deferred until after the JSON call (R-203)."},
+    "SS3097": {"tier": "T1", "summary": "HTTP byte response lacks a body-length proof.",
+               "found": "An `http.responseBytes` call passes a raw body pointer and length that are not proven to describe the same live byte range.",
+               "suggested": "Pair request-body pointers with `http.requestBodyLength`, multipart byte pointers with `http.multipartPartLength`, or pass an owned `c.malloc` buffer with the same size binding (R-205)."},
+    "SS3098": {"tier": "T1", "summary": "Raw pointer intrinsic without unsafe operation gate.",
+               "found": "An app-visible `pointer.offset`/`pointer.loadByte`/`pointer.storeByte` call appears in an operation not marked unsafe with a rationale.",
+               "suggested": "Move byte access to `standard.buffer`, or mark the containing operation `unsafe yes` with a `rationale` documenting the bounds/lifetime proof (R-188)."},
     "SS3092": {"tier": "T1", "summary": "Precondition statically violated at a call.",
                "found": "A call passes a literal that violates the callee's `requires <cond> <param>`.",
                "suggested": "Pass a value satisfying the precondition; a satisfying literal is discharged (no runtime check), an unknown value gets a runtime assert (README §6/§10.6)."},
@@ -350,7 +371,7 @@ DIAGNOSTICS.update({
     "SS3094": {"tier": "T3", "summary": "Equality on Float operands.",
                "found": "A math.equal/notEqual on Float32/Float64 operands (NaN/epsilon footgun).",
                "suggested": "Compare floats within a tolerance, or use `Decimal`/`decimal.equal` for exact values (README §10.6)."},
-    "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
+    "SS5000": {"tier": "T1", "summary": "Primitive body in application source.",
                "found": "An app operation with a runtimeBinding/intrinsic body.",
                "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
     "SS5001": {"tier": "T1", "summary": "LLVM/codegen failure surfaced by the compiler.",
@@ -456,6 +477,13 @@ DIAGNOSTICS.update({
                         "build fragment).",
                "suggested": "Register a declared module (match the `<name> is module` "
                             "entity exactly), or add the missing module (README §7/§28/WS2-089)."},
+    "SS1197": {"tier": "T1", "summary": "wasm target/platform or entry ABI mismatch.",
+               "found": "A project declares `target wasm` without a declared wasm "
+                        "runtime platform, or its entry is not an operation/function "
+                        "with scalar WebAssembly ABI types.",
+               "suggested": "Declare a platform with `targetRuntime wasm`, keep the "
+                            "wasm entry as an operation/function, and use scalar "
+                            "entry `in`/`out` types (Int*/UInt*/Float*/Bool)."},
     "SS1195": {"tier": "T1", "summary": "runtimeBinding symbol no library provides.",
                "found": "A `body runtimeBinding ss_*` symbol that no native runtime "
                         "library in runtime/manifest.json provides, so it would "
@@ -520,6 +548,14 @@ DIAGNOSTICS.update({
     "SS1635": {"tier": "T1", "summary": "render args do not match template holes.",
                "found": "An html.render whose hole args differ from the `{{holes}}`.",
                "suggested": "Provide exactly one arg per hole (README §17 #33)."},
+    "SS1650": {"tier": "T1", "summary": "Invalid record JSON codec metadata.",
+               "found": "A record `jsonName`/`omitWhen`/`unknownFieldPolicy` row "
+                        "with a missing field, duplicate JSON name, malformed "
+                        "payload, or unsupported policy.",
+               "suggested": "Use `jsonName <field> <json-key>`, `omitWhen <field> "
+                            "empty|zero|false|nil|never`, and one "
+                            "`unknownFieldPolicy reject|capture|ignoreBecause <reason>` "
+                            "row on the record (README ss10/ss16)."},
     "SS3501": {"tier": "T3", "summary": "Fallible call with no error path.",
                "found": "A call with a `catch` but no `branch ifError` for it.",
                "suggested": "Add a `branch ifError CALL goto …`, or `discards` (README §17 #35)."},
@@ -580,6 +616,9 @@ DIAGNOSTICS.update({
     "SS3392": {"tier": "T3", "summary": "Operation-reference binding shadows an operation.",
                "found": "A local operationType binding whose name is also a module operation.",
                "suggested": "Rename the binding so `invokes` is unambiguous (README §33.10)."},
+    "SS3400": {"tier": "T1", "summary": "Macros/reflection are not a v0.x language feature.",
+               "found": "A source row attempts to declare a macro/reflection/metaprogramming entity.",
+               "suggested": "Use records/enums, `.semsig` contracts, `sem docs`/`sem search`, scaffolds, or an external generator that emits ordinary SemanticScript rows (README §29 #24)."},
     "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
                "found": "A return of a base/sibling type where the out is an alias newtype.",
                "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
@@ -669,6 +708,26 @@ DIAGNOSTICS.update({
                "suggested": "Keep the route table within the documented cap; the entry "
                             "builds fixed-size route arrays, so an unbounded count would "
                             "blow the stack frame or truncate the ABI count (README §14)."},
+    "SS2608": {"tier": "T1", "summary": "webServer route policy opt-out needs because.",
+               "found": "A routeTimeoutOptOut or routeMiddlewareOptOut without a "
+                        "`because \"reason\"` payload.",
+               "suggested": "Write `routeTimeoutOptOut <path> because \"reason\"` or "
+                            "`routeMiddlewareOptOut <path> because \"reason\"` (README §14)."},
+    "SS2609": {"tier": "T1", "summary": "Malformed webServer route timeout.",
+               "found": "A routeTimeout row whose path/budget is malformed.",
+               "suggested": "Write `routeTimeout <path> <Nms|Ns|Nm|Nh>` with a positive "
+                            "budget on a declared route path (README §14)."},
+    "SS2610": {"tier": "T1", "summary": "webServer route policy references no route.",
+               "found": "A route policy row whose path does not match a declared route.",
+               "suggested": "Use a declared route path, a middleware prefix path, or `*` for all routes."},
+    "SS2611": {"tier": "T1", "summary": "webServer route lacks timeout policy.",
+               "found": "A webServer with route-timeout policy enabled has an uncovered route.",
+               "suggested": "Add `routeTimeout <path> <budget>` or "
+                            "`routeTimeoutOptOut <path> because \"reason\"`."},
+    "SS2612": {"tier": "T1", "summary": "webServer route lacks middleware policy.",
+               "found": "A webServer with middleware policy enabled has an uncovered route.",
+               "suggested": "Add a `middleware <path> <operation>` prefix row or "
+                            "`routeMiddlewareOptOut <path> because \"reason\"`."},
     "MD1042": {"tier": "T1", "summary": "purpose payload must be a quoted string.",
                "found": "A `purpose` whose payload is not a quoted string.",
                "suggested": "Write `purpose \"…\"` (README §6)."},
@@ -714,6 +773,17 @@ DIAGNOSTICS.update({
     "SS1552": {"tier": "T1", "summary": "Operation name collides with a builtin namespace.",
                "found": "An operation named compare/console/math.",
                "suggested": "Rename the operation (README §17 #51)."},
+    "SS1553": {"tier": "T1", "summary": "Selective import row is invalid.",
+               "found": "An `importOperation`/`importType`/`importError`/`importCapability`/"
+                        "`importConstant` row whose alias is not imported, whose shape is "
+                        "wrong, or whose imported member is not a bare identifier.",
+               "suggested": "Declare `MODULE imports ALIAS MODULEPATH` first, then write "
+                            "`MODULE importOperation ALIAS exportedName` (README §7)."},
+    "SS1554": {"tier": "T1", "summary": "Reference outside a selective import.",
+               "found": "A dotted call target or dotted alias type reference whose import "
+                        "alias was narrowed and does not include that member.",
+               "suggested": "Add the matching selective import row, or remove the selective "
+                            "rows for that alias to import the whole module (README §7)."},
     "SS1353": {"tier": "T3", "summary": "Non-exhaustive ifVariant match.",
                "found": "A closed enum matched on a subset of variants with no default arm.",
                "suggested": "Cover every variant or end the series in a default transfer (README §17 #52)."},
@@ -784,6 +854,11 @@ DIAGNOSTICS.update({
                         "declared effect bound (behavior-as-data effect escape).",
                "suggested": "Add the missing effect(s) to the operationType bound, or "
                             "bind an operation within the bound (README §33.9/WS2-092)."},
+    "SS1708": {"tier": "T1", "summary": "Effective effect is not covered by a capability.",
+               "found": "An operation/function can cause an effect that no `uses` "
+                        "capability grants to that operation/function.",
+               "suggested": "Add a covering capability and `uses` row, or remove the "
+                            "effectful call/declared effect (README ss8/ss17 #5, WS2-090)."},
     "SS5400": {"tier": "T1", "summary": "`suppress` needs a `because` rationale.",
                "found": "A `suppress CODE` row with no `because`.",
                "suggested": "Write `suppress CODE because \"…\"` (README §30.6.2, §17 #54)."},
@@ -844,6 +919,23 @@ class Diagnostic:
         )
 
 
+class CompileGateError(EavError):
+    """Raised when phase-0 lint rejects lowering/execution."""
+
+    def __init__(self, diagnostics: list[Diagnostic]) -> None:
+        self.diagnostics = diagnostics
+        codes = ", ".join(dict.fromkeys(d.code for d in diagnostics))
+        first = diagnostics[0] if diagnostics else None
+        super().__init__(
+            f"compile gate blocked lowering on diagnostic(s): {codes}",
+            first.line if first is not None else None,
+            first.code if first is not None else None,
+        )
+
+
+DENY_TIERS = {"T0", "T1", "T2"}
+
+
 def format_repair(code: str) -> str:
     """`Found / Suggested fix` repair text for a code (README §17 repair format).
     Runtime trap codes (SSR####) carry a kind + repair instead of tier/found."""
@@ -888,6 +980,51 @@ def _filter_diagnostics_strict(diags: list[Diagnostic], strict: bool) -> list[Di
         else:
             result.append(d)
     return result
+
+
+def _compile_gate_blockers(diags: list[Diagnostic],
+                           strict: bool = False) -> list[Diagnostic]:
+    """Diagnostics that block lowering/execution (WS2-070/071)."""
+    blockers = []
+    for d in _filter_diagnostics_strict(diags, strict):
+        entry = explain(d.code)
+        tier = entry.get("tier", "T4")
+        if tier in DENY_TIERS or d.severity == "error":
+            blockers.append(d)
+    return blockers
+
+
+def compile_gate(program: "Program", strict: bool = False) -> None:
+    """Phase-0 compile gate: deny-tier lint findings block `run` before lowering."""
+    blockers = _compile_gate_blockers(lint(program), strict=strict)
+    if blockers:
+        raise CompileGateError(blockers)
+
+
+def _filter_diagnostics_for_cli(diags: list[Diagnostic],
+                                tiers: Optional[list[str]] = None,
+                                codes: Optional[list[str]] = None) -> list[Diagnostic]:
+    """WS2-074: semlint-style diagnostic filters shared by `lint`.
+
+    `tiers` filters by registry tier (T0/T1/T2/T3/T4); `codes` filters by exact
+    diagnostic code. Unknown codes are rejected by the caller before filtering so
+    typos fail closed instead of returning an empty report.
+    """
+    tier_set = set(tiers or [])
+    code_set = set(codes or [])
+    out = []
+    for diag in diags:
+        if code_set and diag.code not in code_set:
+            continue
+        if tier_set:
+            try:
+                tier = explain(diag.code).get("tier")
+            except EavError:
+                tier = None
+            if tier not in tier_set:
+                continue
+        out.append(diag)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -1015,6 +1152,12 @@ ENTITY_KINDS = {
     "operationType",
     "semsig",
 }
+
+DEFERRED_METAPROGRAMMING_KINDS = frozenset({
+    "macro",
+    "reflection",
+    "metaprogram",
+})
 
 # Step predicates valid in an operation's body (README ss5).
 STEP_PREDICATES = {
@@ -1466,7 +1609,7 @@ def _sigs_dir() -> str:
 def _semsig_signatures_for_module(module: str) -> dict:
     """DX-08: load standard.<module>.semsig and return {target -> signature dict},
     cached per module. A signature is {target, args:[{slot,type}], outSlot, out,
-    async, purpose, risk}. Empty dict if the module has no shipped .semsig."""
+    catch, async, purpose, risk}. Empty dict if the module has no shipped .semsig."""
     import os
     if module in _SEMSIG_SIG_CACHE:
         return _SEMSIG_SIG_CACHE[module]
@@ -1531,6 +1674,16 @@ def _make_builtin_signature(target: str, args: list[tuple[str, str]],
 
 def _math_int_width(target: str) -> str:
     return "Int32" if target.endswith("Int32") else "Int64"
+
+
+_COMPARE_OPS = {
+    "equal": "==",
+    "notEqual": "!=",
+    "lessThanOrEqual": "<=",
+    "greaterThanOrEqual": ">=",
+    "lessThan": "<",
+    "greaterThan": ">",
+}
 
 
 def _synthetic_codegen_signatures() -> dict:
@@ -2134,6 +2287,77 @@ def internal_import_allowed(importer_path: str, target_path: str) -> bool:
     return importer_path == parent or importer_path.startswith(parent + ".")
 
 
+def _manifest_source_root(program: Program) -> Optional[str]:
+    return getattr(program, "source_root", None)
+
+
+def _manifest_replace_map(project: Entity) -> dict[str, str]:
+    return {
+        r.payload[0]: _unquote_token(r.payload[1])
+        for r in project.facts("replace")
+        if len(r.payload) >= 2
+    }
+
+
+def _resolve_local_replace(root: Optional[str], replacement: str) -> Optional[str]:
+    import os
+    base = root or os.getcwd()
+    path = replacement if os.path.isabs(replacement) else os.path.join(base, replacement)
+    resolved = os.path.realpath(path)
+    return resolved if os.path.exists(resolved) else None
+
+
+def _artifact_files(path: str) -> list[tuple[str, str]]:
+    import os
+    if os.path.isfile(path):
+        return [(os.path.basename(path), path)]
+    out = []
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", "dist", "build"}]
+        for filename in files:
+            full = os.path.join(root, filename)
+            rel = os.path.relpath(full, path).replace("\\", "/")
+            out.append((rel, full))
+    return sorted(out)
+
+
+def _local_artifact_digest(path: str) -> str:
+    import hashlib
+    digest = hashlib.sha256()
+    for rel, full in _artifact_files(path):
+        digest.update(rel.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+        with open(full, "rb") as fh:
+            digest.update(hashlib.sha256(fh.read()).digest())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _local_artifact_effects(path: str) -> set[tuple[str, str]]:
+    import os
+    effects: set[tuple[str, str]] = set()
+    for rel, full in _artifact_files(path):
+        if not (rel.endswith(".sem") or rel.endswith(".semsig")):
+            continue
+        with open(full, encoding="utf-8") as fh:
+            prog = parse(fh.read())
+        for name in prog.order:
+            ent = prog.entities[name]
+            for row in ent.facts("effect"):
+                if len(row.payload) >= 2:
+                    effects.add((row.payload[0], row.payload[1]))
+    return effects
+
+
+def _resolved_digest_by_repo(lock_program: Program) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for proj in lock_program.of_kind("project"):
+        for row in proj.facts("resolved"):
+            if len(row.payload) >= 4 and row.payload[2] == "sha256":
+                out[row.payload[0]] = row.payload[3]
+    return out
+
+
 def mod_tidy(build_program: Program) -> str:
     """Generate a `build.sem.lock` from a `build.sem` manifest (README ss28.4):
     MVS-resolved requires (with content digests), toolchainResolved, and the
@@ -2516,16 +2740,20 @@ RESERVED_WORDS = {
     # structural predicate tokens
     "in", "out", "effect", "uses", "memory", "async", "let", "label",
     "field", "variant", "repr", "for", "of", "path", "imports", "exports",
+    "importOperation", "importType", "importError", "importCapability",
+    "importConstant",
+    "jsonName", "omitWhen", "unknownFieldPolicy",
     "scope", "type", "mutability", "value", "body", "literalSource",
     "literalDigest", "literalEncoding",  # WS2-084 embed encoding/digest rows
     "align", "layout", "inlineCapacity", "arrayLength",  # WS2-084 layout rows
     "grants", "invokes", "arg", "discards", "catch",
     "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "optionalSlot",
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
     "consumes", "takesOwnership",         # WS1-113 ownership-transfer rows
     "outParam",                           # WS3-016 FFI out-param ABI marker
-    "useRetry",                           # R-041 bounded-retry call row
+    "useRetry", "retryBackoffMs",         # R-041 bounded-retry call rows
     "typeParam",                          # R-039 generic type parameter
     "instantiates",                       # R-039 named generic-record instantiation
     "sharedState", "guard", "protectedBy", "readShared", "setShared",  # WS2-083
@@ -2537,14 +2765,20 @@ RESERVED_WORDS = {
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
+    "regexEngine",                         # R-079 regex linearity row
     "maxIterations",                       # R-082 loop iteration bound
     "clientResponse", "errorBoundary",     # X-079 error-disclosure rows
     "optOut",                              # X-080 protection opt-out row
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
+    "macro", "reflection", "reflect", "metaprogram", "metaprogramming",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
     "languageVersion", "toolchain", "require", "replace", "allowEffect",
     "constant", "configure", "nativeLibrary", "nativeHeader", "nativeLinkFlag",
+    "publisher", "productName", "packageId", "packageVersion", "profile",
+    "profileOutput", "resource", "icon", "profileResource",
+    "configProfile", "configValue", "requiredSecret", "deploymentTarget",
+    "migrationHook",
     "os", "arch", "targetRuntime", "output", "override",
     # generated lock predicate tokens
     "resolved", "toolchainResolved", "effectSurface",
@@ -2578,9 +2812,17 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "module", "target", "entry", "mode", "languageVersion", "toolchain",
         "require", "replace", "allowEffect", "platform", "constant", "configure",
         "nativeLibrary", "nativeHeader", "nativeLinkFlag",
+        "publisher", "productName", "packageId", "packageVersion", "profile",
+        "profileOutput", "resource", "icon", "profileResource",
+        "configProfile", "configValue", "requiredSecret", "deploymentTarget",
+        "migrationHook",
         "resolved", "toolchainResolved", "effectSurface", "optOut",
     },
-    "module": {"path", "imports", "exports"},
+    "module": {
+        "path", "imports", "exports",
+        "importOperation", "importType", "importError", "importCapability",
+        "importConstant",
+    },
     "capability": {"grants"},
     "sharedState": {"scope", "type", "mutability", "value", "guard", "owner",
                     "guardRank"},
@@ -2591,7 +2833,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     # R-039: a record may be generic (`typeParam T` + fields typed `T`) or a
     # named monomorphic instantiation (`instantiates Base <TypeArgs…>`).
     "record": {"field", "typeTrust", "align", "layout", "typeParam",
-               "instantiates"},  # WS2-084 layout rows
+               "instantiates", "jsonName", "omitWhen",
+               "unknownFieldPolicy"},  # WS2-084 layout rows; R-052 JSON codec metadata
     # R-039/R-054: an enum may be generic (`typeParam T`, variants typed `T`) or
     # a named monomorphic instantiation (`instantiates Base <TypeArgs…>`).
     "enum": {"variant", "repr", "typeTrust", "typeParam", "instantiates"},
@@ -2631,7 +2874,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "limit",                              # X-077 decode limits
         "unknownFieldPolicy",                 # R-077 untrusted-decode unknown-field policy
         "timeout", "budget",                  # X-078 DoS bounds
-        "useRetry",                           # R-041 bounded retry of a fallible call
+        "regexEngine",                        # R-079 regex linearity
+        "useRetry", "retryBackoffMs",         # R-041 bounded retry of a fallible call
     },
     "task": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -2641,6 +2885,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "limit",                              # X-077 decode limits
         "unknownFieldPolicy",                 # R-077 untrusted-decode unknown-field policy
         "timeout", "budget",                  # X-078 DoS bounds
+        "regexEngine",                        # R-079 regex linearity
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans"},
     "storage": {
@@ -2650,7 +2895,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "htmlTemplate": {"body"},
     "webServer": {
         "host", "port", "startup", "shutdown", "notFound", "methodNotAllowed",
-        "route", "middleware", "optOut",
+        "route", "middleware", "routeTimeout", "routeTimeoutOptOut",
+        "routeMiddlewareOptOut", "optOut",
     },
     "platform": {
         "os", "arch", "targetRuntime", "output", "override",
@@ -2659,7 +2905,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "intrinsic": {"target", "arg", "out", "catch", "async", "owns",
                   "trustConstraint", "clientResponse",
                   "borrows", "lifetime", "mayEscape",  # WS1-111 view rows on a sig
-                  "unsafe", "wrapsAs", "allocator", "cleanedBy"},  # WS1-116 FFI
+                  "unsafe", "wrapsAs", "allocator", "cleanedBy",
+                  "optionalSlot"},  # WS1-116 FFI + signature metadata
     "semsig": {"version", "generatedBy", "describes"},
     "operationType": {"in", "out", "effect"},  # WS2-092: effect bound (§33.9)
 }
@@ -2722,6 +2969,7 @@ class Program:
     order: list[str] = field(default_factory=list)
     islands: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    source_root: Optional[str] = None
     # R-080: typed comments (`# <tag>: text`, README §2/§34) retained as
     # structured metadata so important `# security:`/`# failure:` notes survive
     # into docs/describe surfaces instead of disappearing. Each item is
@@ -2857,7 +3105,10 @@ def _check_unique_labels(ent: Entity, predicate: str, what: str, cite: str) -> N
 
 # Reserved words with no §5 predicate home yet — reserved for a future version
 # (the drift guard tolerates exactly these; anything else unhomed is a failure).
-RESERVED_FUTURE = {"using"}
+RESERVED_FUTURE = {
+    "using",
+    "macro", "reflection", "reflect", "metaprogram", "metaprogramming",
+}
 
 
 def token_sync_drift() -> set:
@@ -2993,6 +3244,16 @@ def parse(source_text: str) -> Program:
                 raise EavError("`is` row needs a kind", lineno)
             kind = payload[0]
             if kind not in ENTITY_KINDS:
+                if kind in DEFERRED_METAPROGRAMMING_KINDS:
+                    raise EavError(
+                        "macros/reflection/metaprogramming are intentionally "
+                        "unsupported in v0.x; use records/enums, .semsig "
+                        "contracts, sem docs/search, scaffolds, or an external "
+                        "generator that emits ordinary SemanticScript rows "
+                        "(README ss29 #24)",
+                        lineno,
+                        code="SS3400",
+                    )
                 raise EavError(f"unknown entity kind {kind!r} (README ss5)", lineno)
             # README ss11 / WS1-027: `function` is an alias for `operation`.
             # Normalize at parse so downstream sees a single kind and reuses the
@@ -3181,11 +3442,47 @@ _META_PREDS = (
     "deprecated", "owner",
 )
 _GATE_PREDS = ("forTarget", "forPlatform", "suppress")
+_SELECTIVE_IMPORT_PREDICATES = (
+    "importOperation",
+    "importType",
+    "importError",
+    "importCapability",
+    "importConstant",
+)
+_SELECTIVE_IMPORT_KIND_BY_PREDICATE = {
+    "importOperation": "operation",
+    "importType": "type",
+    "importError": "error",
+    "importCapability": "capability",
+    "importConstant": "constant",
+}
+_JSON_OMIT_WHEN_POLICIES = ("never", "nil", "empty", "zero", "false")
+_MODULE_DECL_PRED_ORDER = {
+    "path": 0,
+    "imports": 1,
+    "importType": 2,
+    "importError": 3,
+    "importCapability": 4,
+    "importConstant": 5,
+    "importOperation": 6,
+    "exports": 7,
+}
 _KIND_ORDER = [
     "project", "module", "capability", "error", "errorCase", "alias", "record",
     "enum", "operationType", "storage", "htmlTemplate", "webServer", "operation",
     "function", "call", "task", "cleanup", "intrinsic", "platform", "semsig",
 ]
+_KIND_ORDER_BY_ROLE = {
+    # A .semsig is a catalog: keep the header first, then referenced public
+    # types, then the intrinsic rows that point at concrete targets.
+    "semsig": [
+        "semsig", "alias", "record", "enum", "error", "errorCase", "intrinsic",
+    ],
+    # build.sem manifests should lead with the project contract, then platform
+    # overrides. Other kinds are ranked after those if a future manifest admits
+    # them.
+    "build": ["project", "platform"],
+}
 
 
 def _canonical_order_hint() -> str:
@@ -3195,6 +3492,15 @@ def _canonical_order_hint() -> str:
         + "; rows inside each entity: declaration rows -> metadata "
           "(purpose/invariant/note/rationale/risk/example/tag/deprecated/owner) "
           "-> operation body/steps -> forTarget/forPlatform/suppress"
+    )
+
+
+def _module_decl_order_key(row: Row) -> tuple:
+    return (
+        _MODULE_DECL_PRED_ORDER.get(row.predicate, 100),
+        row.payload[0] if row.payload else "",
+        row.payload[1] if len(row.payload) > 1 else "",
+        row.line,
     )
 
 
@@ -3642,7 +3948,7 @@ def describe(program: Program, name: str) -> str:
     return "\n".join(lines)
 
 
-GRAPH_KINDS = ("calls", "control")
+GRAPH_KINDS = ("calls", "control", "routes")
 
 
 def _call_graph_edges(program: Program) -> list:
@@ -4201,13 +4507,114 @@ def _control_edges(program: Program) -> list:
     return edges
 
 
+def _unquote_token(tok: str) -> str:
+    if len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"':
+        try:
+            return _decode_string_literal(tok).rstrip(b"\x00").decode("utf-8")
+        except Exception:
+            return tok[1:-1]
+    return tok
+
+
+def _duration_literal_to_millis(tok: str) -> Optional[int]:
+    """Route policy budgets lower to integer milliseconds for the C dispatcher.
+
+    Bare positive integers are milliseconds. Duration literals use the same
+    lexical class as the rest of the toolchain; sub-millisecond values round up
+    to one millisecond so a positive budget never lowers to "disabled".
+    """
+    if _INT_DEC_RE.match(tok):
+        value = int(tok.replace("_", ""))
+        return value if value > 0 else None
+    m = re.match(r"([0-9]+)(ns|us|ms|s|m|h)\Z", tok)
+    if not m:
+        return None
+    value = int(m.group(1))
+    unit = m.group(2)
+    if value <= 0:
+        return None
+    if unit == "ns":
+        return max(1, (value + 999999) // 1000000)
+    if unit == "us":
+        return max(1, (value + 999) // 1000)
+    if unit == "ms":
+        return value
+    if unit == "s":
+        return value * 1000
+    if unit == "m":
+        return value * 60 * 1000
+    if unit == "h":
+        return value * 60 * 60 * 1000
+    return None
+
+
+def _route_policy_has_because(row: Row) -> bool:
+    return (
+        len(row.payload) >= 3
+        and row.payload[1] == "because"
+        and len(row.payload[2]) >= 2
+        and row.payload[2][0] == '"'
+        and row.payload[2][-1] == '"'
+        and bool(_unquote_token(row.payload[2]).strip())
+    )
+
+
+def _route_path_covered(route_path: str, policy_path: str) -> bool:
+    if policy_path == "*":
+        return True
+    if policy_path == "/":
+        return route_path.startswith("/")
+    return route_path == policy_path or route_path.startswith(policy_path.rstrip("/") + "/")
+
+
+def _webserver_route_rows(ws: Entity) -> list[Row]:
+    return [r for r in ws.facts("route") if len(r.payload) >= 3]
+
+
+def _webserver_route_node(ws: Entity, route: Row) -> str:
+    return f"{ws.name}:{route.payload[0]} {_unquote_token(route.payload[1])}"
+
+
+def _matching_route_policy(rows: list[Row], route_path: str) -> Optional[Row]:
+    for row in rows:
+        if row.payload and _route_path_covered(route_path, _unquote_token(row.payload[0])):
+            return row
+    return None
+
+
+def _route_policy_edges(program: Program) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for ws in program.of_kind("webServer"):
+        timeouts = ws.facts("routeTimeout")
+        timeout_optouts = ws.facts("routeTimeoutOptOut")
+        middleware_optouts = ws.facts("routeMiddlewareOptOut")
+        for route in _webserver_route_rows(ws):
+            route_node = _webserver_route_node(ws, route)
+            edges.append((ws.name, route_node))
+            edges.append((route_node, route.payload[2]))
+            route_path = _unquote_token(route.payload[1])
+            mw = _matching_route_policy(ws.facts("middleware"), route_path)
+            if mw and len(mw.payload) >= 2:
+                edges.append((route_node, f"middleware:{mw.payload[1]}"))
+            timeout = _matching_route_policy(timeouts, route_path)
+            if timeout and len(timeout.payload) >= 2:
+                edges.append((route_node, f"timeout:{timeout.payload[1]}"))
+            elif _matching_route_policy(timeout_optouts, route_path):
+                edges.append((route_node, "timeout:optOut"))
+            if _matching_route_policy(middleware_optouts, route_path):
+                edges.append((route_node, "middleware:optOut"))
+    return edges
+
+
 def graph(program: Program, kind: str, fmt: str = "dot") -> str:
-    """Emit a `calls` or `control` graph as DOT or mermaid (README ss24)."""
+    """Emit a `calls`, `control`, or `routes` graph as DOT or mermaid."""
     if kind == "calls":
         edges = [(a, b) for a, b in _call_graph_edges(program)]
         pairs = [(a, b) for a, b in edges]
     elif kind == "control":
         pairs = [(f"{op}:{src}", f"{op}:{dst}") for op, src, dst in _control_edges(program)]
+    elif kind == "routes":
+        pairs = _route_policy_edges(program)
     else:
         raise EavError(f"unknown graph kind {kind!r}")
     if fmt == "mermaid":
@@ -5884,6 +6291,322 @@ def _check_dotted_types(ent: Entity) -> None:
                 check(t, r.line)
 
 
+def _record_json_key(token: str, row: Row) -> str:
+    if token.startswith('"'):
+        key = _decode_literal_for_validation(token)
+    else:
+        if not _IDENT_RE.match(token):
+            raise EavError(
+                f"record {row.subject!r} jsonName key {token!r} must be a bare "
+                f"identifier or a quoted JSON field name (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        key = token
+    if not key or any(ord(ch) < 0x20 for ch in key):
+        raise EavError(
+            f"record {row.subject!r} jsonName key {key!r} must be non-empty and "
+            f"contain no control characters (README ss10/ss16)",
+            row.line,
+            code="SS1650",
+        )
+    return key
+
+
+def _validate_record_json_metadata(record: Entity) -> None:
+    fields = {r.payload[0] for r in record.facts("field") if r.payload}
+
+    def require_field(row: Row, pred: str) -> str:
+        if len(row.payload) != 2:
+            raise EavError(
+                f"record {record.name!r} `{pred}` row must be "
+                f"`{pred} <field> <value>` (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        field = row.payload[0]
+        if field not in fields:
+            raise EavError(
+                f"record {record.name!r} `{pred}` references field {field!r}, "
+                f"but no such `field` row exists (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        return field
+
+    json_name_by_field: dict[str, str] = {}
+    field_by_json_name: dict[str, str] = {}
+    for row in record.facts("jsonName"):
+        field = require_field(row, "jsonName")
+        if field in json_name_by_field:
+            raise EavError(
+                f"record {record.name!r} has duplicate jsonName metadata for "
+                f"field {field!r} (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        key = _record_json_key(row.payload[1], row)
+        prior = field_by_json_name.get(key)
+        if prior is not None and prior != field:
+            raise EavError(
+                f"record {record.name!r} maps both {prior!r} and {field!r} to "
+                f"JSON key {key!r}; JSON object fields must be unambiguous "
+                f"(README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        json_name_by_field[field] = key
+        field_by_json_name[key] = field
+
+    omit_by_field: dict[str, str] = {}
+    for row in record.facts("omitWhen"):
+        field = require_field(row, "omitWhen")
+        if field in omit_by_field:
+            raise EavError(
+                f"record {record.name!r} has duplicate omitWhen metadata for "
+                f"field {field!r} (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        policy = row.payload[1]
+        if policy not in _JSON_OMIT_WHEN_POLICIES:
+            raise EavError(
+                f"record {record.name!r} omitWhen {field!r} policy {policy!r} "
+                f"must be one of {'|'.join(_JSON_OMIT_WHEN_POLICIES)} "
+                f"(README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        omit_by_field[field] = policy
+
+    policies = record.facts("unknownFieldPolicy")
+    if len(policies) > 1:
+        raise EavError(
+            f"record {record.name!r} may declare at most one unknownFieldPolicy "
+            f"row (README ss10/ss16)",
+            policies[1].line,
+            code="SS1650",
+        )
+    if policies:
+        row = policies[0]
+        policy = row.payload[0] if row.payload else None
+        if policy not in _UNKNOWN_FIELD_POLICIES:
+            raise EavError(
+                f"record {record.name!r} unknownFieldPolicy must be one of "
+                f"{'|'.join(_UNKNOWN_FIELD_POLICIES)} (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+        if policy == "ignoreBecause" and not (
+            len(row.payload) >= 2 and row.payload[1]
+        ):
+            raise EavError(
+                f"record {record.name!r} unknownFieldPolicy ignoreBecause needs "
+                f"a reason (README ss10/ss16)",
+                row.line,
+                code="SS1650",
+            )
+
+
+def _selective_import_indexes(program: Program) -> tuple[dict, dict]:
+    """Return module import aliases and narrowed import members.
+
+    Shape:
+      aliases[module][alias] = modulePath|None
+      selected[module][alias][kind] = {member, ...}
+    """
+    aliases: dict[str, dict[str, Optional[str]]] = {}
+    selected: dict[str, dict[str, dict[str, set[str]]]] = {}
+    seen_rows: set[tuple[str, str, str, str]] = set()
+    for mod in program.of_kind("module"):
+        mod_aliases: dict[str, Optional[str]] = {}
+        for row in mod.facts("imports"):
+            if row.payload:
+                mod_aliases[row.payload[0]] = (
+                    row.payload[1] if len(row.payload) > 1 else None
+                )
+        aliases[mod.name] = mod_aliases
+        for pred in _SELECTIVE_IMPORT_PREDICATES:
+            kind = _SELECTIVE_IMPORT_KIND_BY_PREDICATE[pred]
+            for row in mod.facts(pred):
+                if len(row.payload) != 2:
+                    raise EavError(
+                        f"module {mod.name!r} {pred} row must be "
+                        f"`{pred} <importAlias> <exportedName>` (README ss7)",
+                        row.line,
+                        code="SS1553",
+                    )
+                alias, member = row.payload
+                if alias not in mod_aliases:
+                    raise EavError(
+                        f"module {mod.name!r} {pred} references import alias "
+                        f"{alias!r}, but no `imports {alias} ...` row exists "
+                        f"(README ss7)",
+                        row.line,
+                        code="SS1553",
+                    )
+                if not _IDENT_RE.match(member):
+                    raise EavError(
+                        f"module {mod.name!r} {pred} member {member!r} must be "
+                        f"a bare exported identifier (README ss7)",
+                        row.line,
+                        code="SS1553",
+                    )
+                key = (mod.name, alias, kind, member)
+                if key in seen_rows:
+                    raise EavError(
+                        f"duplicate selective import {pred} {alias} {member} "
+                        f"in module {mod.name!r} (README ss7)",
+                        row.line,
+                        code="SS1553",
+                    )
+                seen_rows.add(key)
+                selected.setdefault(mod.name, {}).setdefault(alias, {}).setdefault(
+                    kind, set()).add(member)
+    return aliases, selected
+
+
+def _module_owner_maps(program: Program) -> tuple[set[str], dict[str, str]]:
+    """Best-effort entity -> module scope.
+
+    The current compiler loads modules into one flat Program. Prefer explicit
+    `exports` ownership, and fall back to source order for single-file/module
+    slices so selective imports still protect the common authoring shape.
+    """
+    modules = {n for n in program.order if program.entities[n].kind == "module"}
+    exported_by: dict[str, str] = {}
+    export_conflicts: set[str] = set()
+    order_owner: dict[str, str] = {}
+    current_module: Optional[str] = None
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind == "module":
+            current_module = ent.name
+            for row in ent.facts("exports"):
+                if not row.payload:
+                    continue
+                exported = row.payload[0]
+                prior = exported_by.get(exported)
+                if prior is not None and prior != ent.name:
+                    export_conflicts.add(exported)
+                else:
+                    exported_by[exported] = ent.name
+            continue
+        if current_module is not None:
+            order_owner.setdefault(name, current_module)
+    for name in export_conflicts:
+        exported_by.pop(name, None)
+    owner: dict[str, str] = {}
+    if len(modules) == 1:
+        only = next(iter(modules))
+        owner = {
+            name: only
+            for name in program.order
+            if program.entities[name].kind != "module"
+        }
+    owner.update(order_owner)
+    owner.update(exported_by)
+    return modules, owner
+
+
+def _owner_module_for_call(program: Program, owner_by_entity: dict[str, str],
+                           call: Entity) -> Optional[str]:
+    in_row = call.fact("in")
+    if in_row and in_row.payload:
+        module = owner_by_entity.get(in_row.payload[0])
+        if module is not None:
+            return module
+    return owner_by_entity.get(call.name)
+
+
+def _split_import_ref(token: str) -> Optional[tuple[str, str]]:
+    if "." not in token:
+        return None
+    alias, member = token.split(".", 1)
+    if not alias or not member:
+        return None
+    return alias, member
+
+
+def _selector_scope(selected: dict, modules: set[str], alias: str,
+                    module: Optional[str]) -> Optional[dict[str, set[str]]]:
+    if module is not None:
+        return selected.get(module, {}).get(alias)
+    if len(modules) == 1:
+        only = next(iter(modules))
+        return selected.get(only, {}).get(alias)
+    candidates = [
+        selected[m][alias]
+        for m in sorted(selected)
+        if alias in selected.get(m, {})
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _selective_member_allowed(scope: Optional[dict[str, set[str]]],
+                              kinds: tuple[str, ...], member: str) -> bool:
+    if scope is None:
+        return True
+    narrowed = False
+    allowed: set[str] = set()
+    for kind in kinds:
+        members = scope.get(kind)
+        if members is not None:
+            narrowed = True
+            allowed.update(members)
+    return (not narrowed) or member in allowed
+
+
+def _validate_selective_ref(token: str, row: Row, modules: set[str],
+                            selected: dict, module: Optional[str],
+                            kinds: tuple[str, ...]) -> None:
+    ref = _split_import_ref(token)
+    if ref is None:
+        return
+    alias, member = ref
+    scope = _selector_scope(selected, modules, alias, module)
+    if _selective_member_allowed(scope, kinds, member):
+        return
+    kind_text = "/".join(kinds)
+    raise EavError(
+        f"{row.predicate} references {token!r}, but import alias {alias!r} is "
+        f"narrowed for {kind_text} and does not import {member!r} (README ss7)",
+        row.line,
+        code="SS1554",
+    )
+
+
+def _validate_selective_imports(program: Program) -> None:
+    """Fine-grained module imports (R-045).
+
+    A module may narrow a whole-module alias with kind-specific rows such as
+    `importOperation api fetchUser`. When a kind is narrowed, sibling members of
+    that kind are no longer reachable through the alias.
+    """
+    _aliases, selected = _selective_import_indexes(program)
+    if not selected:
+        return
+    modules, owner_by_entity = _module_owner_maps(program)
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            if inv and inv.payload:
+                _validate_selective_ref(
+                    inv.payload[0], inv, modules, selected,
+                    _owner_module_for_call(program, owner_by_entity, ent),
+                    ("operation",),
+                )
+        elif ent.kind == "alias":
+            module = owner_by_entity.get(ent.name)
+            for row in ent.facts("for"):
+                if row.payload:
+                    _validate_selective_ref(
+                        row.payload[0], row, modules, selected, module,
+                        ("type", "error"),
+                    )
+
+
 def _validate_configure(program: Program) -> None:
     """A `configure` op is build-time (README ss30.3.2): it may use only
     build-time (`build.*`) capabilities — a runtime effect is an error."""
@@ -6106,6 +6829,8 @@ def _activates_opaque_target(program: Program, op: Entity) -> bool:
         if ref is None:
             continue
         workers = [ref]
+        if _is_compound_defer_row(row) and ref.kind == "call":
+            workers = [ref]
         if ref.kind == "cleanup":
             cr = ref.fact("call")
             w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
@@ -6144,6 +6869,8 @@ def _activated_effects(program: Program, op: Entity) -> set:
             continue
         activated |= _effect_rows_of(ref)
         workers = [ref]
+        if _is_compound_defer_row(row) and ref.kind == "call":
+            workers = [ref]
         if ref.kind == "cleanup":
             cr = ref.fact("call")
             w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
@@ -6583,6 +7310,7 @@ _BUILTIN_NAMESPACES = frozenset({
     "math", "string", "console", "test", "assert", "compare", "convert",
     "sqlite", "json", "bcrypt", "log", "http", "gui", "event", "c", "buffer",
     "list", "map", "fs", "decimal", "pointer", "net", "html", "random",
+    "document",
 })
 _CODEGEN_MODELED_EXACT = frozenset({
     "console.writeLine", "console.writeIntegerLine", "console.writeFloatLine",
@@ -8790,6 +9518,31 @@ _REQUIRED_DECODE_LIMITS = ("maximumBytes", "maxDepth", "maxElements")
 _UNKNOWN_FIELD_POLICIES = ("reject", "capture", "ignoreBecause")
 
 
+def _decode_limit_literal(ent: Entity, kind: str) -> int:
+    row = next((r for r in ent.facts("limit")
+                if r.payload and r.payload[0] == kind), None)
+    if row is None or len(row.payload) < 2:
+        raise EavError(
+            f"call {ent.name!r} decodes untrusted input but declares no "
+            f"`limit {kind} <n>` value (README ss16, R-077)",
+            ent.line, code="SS3077")
+    try:
+        value = _parse_int_literal_value(row.payload[1])
+    except ValueError:
+        raise EavError(
+            f"call {ent.name!r} `limit {kind}` must be a positive integer "
+            f"literal so the runtime decode budget is known before parsing "
+            f"(README ss16, R-077)",
+            row.line, code="SS3077")
+    if value <= 0:
+        raise EavError(
+            f"call {ent.name!r} `limit {kind}` must be positive; zero or "
+            f"negative decode budgets do not bound untrusted input "
+            f"(README ss16, R-077)",
+            row.line, code="SS3077")
+    return value
+
+
 def _validate_decode_limits(program: Program) -> None:
     """X-077 / R-077 / README §16: decoding untrusted input must be fully bounded.
     A decode call (`json.parse`/`json.decode`/`json.createDocument`/`codec.decode`)
@@ -9105,6 +9858,68 @@ def _is_internal_host(host: str) -> bool:
                            or ip.is_multicast):
         return True
     return False
+
+
+def _url_scheme(url: str) -> str:
+    if "://" not in url:
+        return ""
+    return url.split("://", 1)[0].lower()
+
+
+def _net_connect_policy(action: str, resource: str) -> Optional[tuple[str, str]]:
+    if action != "connect" or not resource.startswith("net."):
+        return None
+    parts = resource.split(".")
+    if len(parts) < 3:
+        return ("*", "*")
+    return (parts[1].lower(), ".".join(parts[2:]).lower())
+
+
+def _net_host_policy_matches(policy: tuple[str, str], scheme: str, host: str) -> bool:
+    allowed_scheme, allowed_host = policy
+    if allowed_scheme not in ("*", scheme):
+        return False
+    host = host.lower().strip("[]")
+    allowed_host = allowed_host.lower()
+    if allowed_host == "*":
+        return True
+    if allowed_host.startswith("*."):
+        suffix = allowed_host[1:]
+        return host.endswith(suffix) and host != allowed_host[2:]
+    return host == allowed_host
+
+
+def _is_broad_network_grant(action: str, resource: str) -> bool:
+    if (action, resource) == ("write", "network.http.client"):
+        return True
+    pol = _net_connect_policy(action, resource)
+    if pol is None:
+        return False
+    scheme, host = pol
+    return scheme == "*" or host == "*" or host in ("http.*", "https.*")
+
+
+def _used_capabilities(program: Program, owner: Optional[Entity]) -> list[Entity]:
+    if owner is None:
+        return []
+    out = []
+    for row in owner.facts("uses"):
+        if not row.payload:
+            continue
+        name = row.payload[0]
+        cap = program.entities.get(name)
+        if cap is None and "." in name:
+            cap = program.entities.get(name.rsplit(".", 1)[-1])
+        if cap is not None and cap.kind == "capability":
+            out.append(cap)
+    return out
+
+
+def _owner_entity_for_call(program: Program, ent: Entity) -> Optional[Entity]:
+    row = ent.fact("in")
+    if not (row and row.payload):
+        return None
+    return program.entities.get(row.payload[0])
 
 
 def _validate_ssrf(program: Program) -> None:
@@ -9423,6 +10238,53 @@ _INT_WIDTHS = {"Int8": 8, "UInt8": 8, "Byte": 8, "Int16": 16, "UInt16": 16,
 _REGION_STRATEGIES = ("arena", "fixedBuffer", "general")
 
 
+def _region_static_type_size(program: Program, type_name: str, seen: Optional[set] = None):
+    """Best-effort static byte size for region capacity checks.
+
+    `allocateIn` names a declared type, not a runtime byte count. The codegen uses
+    LLVM's sizeof for the real allocation; this validator computes the same value
+    for primitives and ordinary records so `region capacity` is enforced before
+    lowering. Unknown/dynamic layouts return None rather than guessing.
+    """
+    if seen is None:
+        seen = set()
+    if not type_name or type_name in seen:
+        return None
+    seen.add(type_name)
+    ent = program.entities.get(type_name)
+    if ent is not None and ent.kind == "alias":
+        row = ent.fact("for")
+        if row and row.payload:
+            return _region_static_type_size(program, row.payload[0], seen)
+    resolved = type_name
+    if resolved in _PRIM_BYTES:
+        return _PRIM_BYTES[resolved]
+    ent = program.entities.get(resolved)
+    if ent is None:
+        return None
+    if ent.kind == "enum":
+        return 8
+    if ent.kind != "record":
+        return None
+
+    offset = 0
+    max_align = 1
+    for field in ent.facts("field"):
+        if len(field.payload) < 2:
+            return None
+        size = _region_static_type_size(program, field.payload[1], set(seen))
+        if size is None:
+            return None
+        align = min(max(size, 1), 8)
+        max_align = max(max_align, align)
+        if offset % align:
+            offset += align - (offset % align)
+        offset += size
+    if offset % max_align:
+        offset += max_align - (offset % max_align)
+    return offset
+
+
 def _validate_ffi_wrapping(program: Program) -> None:
     """WS1-116 / README §26/§30.4: a `runtimeBinding`/`intrinsic` that allocates
     foreign memory is `unsafe yes` and must re-enter app source as an owned
@@ -9494,6 +10356,18 @@ _PRINTF_TARGETS = ("c.printf", "printf", "console.format", "c.fprintf",
 _SHELL_TARGETS = ("shell.run", "shell.exec", "process.exec", "c.system", "os.exec",
                   "c.popen")
 _BCRYPT_HASH_TARGETS = ("bcrypt.hashPassword", "bcrypt.hash")
+_BCRYPT_RAW_BUFFER_TARGETS = (
+    "bcrypt.hashPassword",
+    "bcrypt.hash",
+    "bcrypt.randomBytes",
+    "bcrypt.base64UrlEncode",
+)
+_JSON_SCRATCH_TARGETS = ("json.cursorString", "json.serializeDocument")
+_RAW_POINTER_INTRINSICS = (
+    "pointer.offset",
+    "pointer.loadByte",
+    "pointer.storeByte",
+)
 _MIN_BCRYPT_COST = 10
 
 # WS2-086: the semsc security-lint names reconciled to the EAV X6 diagnostics.
@@ -14738,6 +15612,25 @@ _FAMILY_RT = {
         "logWarn": ("ss_log_warn", "i", None),
         "openLogFile": ("ss_log_set_path", "i", None),
     },
+    "document": {
+        "createNode": ("dom_create_node", "i", None),
+        "setValue": ("dom_set_value", "i", None),
+        "getValue": ("dom_get_value", "i", None),
+        "setText": ("dom_set_text", "i", None),
+    },
+}
+
+
+_JSON_STATUS_OUTPARAM_RT = {
+    ("json", "createEmptyDocument"): ("ss_json_create_empty_status", "h"),
+    ("json", "createDocument"): ("ss_json_from_text_status", "h"),
+    ("json", "documentRoot"): ("ss_json_root_status", "h"),
+    ("json", "serializeDocument"): ("ss_json_serialize_status", "s"),
+    ("json", "setObjectFieldObject"): ("ss_json_set_field_object_status", "h"),
+    ("json", "setObjectFieldArray"): ("ss_json_set_field_array_status", "h"),
+    ("json", "appendArrayElementObject"): ("ss_json_append_object_status", "h"),
+    ("json", "objectFieldAt"): ("ss_json_field_at_status", "h"),
+    ("json", "cursorString"): ("ss_json_read_string_status", "s"),
 }
 
 
@@ -14821,27 +15714,70 @@ def _libc_ret_types():
     }
 
 
-def _runtime_libs_for(program: Program) -> list:
+_LIBC_NULL_ERROR_RETURNS = {"malloc", "fopen", "memmove", "cString", "cstring"}
+_LIBC_NEGATIVE_ERROR_RETURNS = {
+    "putchar",
+    "puts",
+    "fflush",
+    "fclose",
+    "snprintf",
+    "printf",
+    "fprintf",
+}
+
+
+def _runtime_libs_for(program: Program, *, include_compiler_provided: bool = True) -> list:
     """Native runtime libraries (from runtime/manifest.json) whose `provides`
     prefixes match a runtimeBinding symbol the program references."""
     import json
     import os
     referenced = _referenced_runtime_symbols(program)
+    if not include_compiler_provided:
+        referenced = {
+            sym for sym in referenced
+            if sym not in _COMPILER_PROVIDED_RUNTIME_SYMBOLS
+        }
     manifest_path = os.path.join(_runtime_dir(), "manifest.json")
     if not referenced or not os.path.exists(manifest_path):
         return []
     manifest = json.loads(open(manifest_path, encoding="utf-8").read())
-    return [
-        lib for lib in manifest.get("libraries", [])
-        if any(s.startswith(p) for s in referenced for p in lib.get("provides", []))
-    ]
+    by_name = {lib.get("name"): lib for lib in manifest.get("libraries", [])}
+    selected = []
+    selected_names = set()
+
+    def add_with_requires(lib):
+        name = lib.get("name")
+        if name in selected_names:
+            return
+        selected.append(lib)
+        selected_names.add(name)
+        for required in lib.get("requires", []):
+            dep = by_name.get(required)
+            if dep is not None:
+                add_with_requires(dep)
+
+    for lib in manifest.get("libraries", []):
+        if any(s.startswith(p) for s in referenced for p in lib.get("provides", [])):
+            add_with_requires(lib)
+    if "ss_platform_time" in selected_names and any(
+        lib.get("name") != "ss_platform_time"
+        and "native_platform/ss_platform_time.c" in lib.get("sources", [])
+        for lib in selected
+    ):
+        selected = [lib for lib in selected if lib.get("name") != "ss_platform_time"]
+    return selected
 
 
 # Runtime `ss_*` symbols the compiler registers directly with the JIT (Python-
 # backed callbacks), so they are NOT in runtime/manifest.json yet resolve fine:
 # the panic hook and the out-param-ABI FFI demo symbols. Excluded from the R-105
 # unresolved-symbol check (a native build links their C counterparts).
-_COMPILER_PROVIDED_RUNTIME_SYMBOLS = frozenset({"ss_panic", "ss_ffi_add", "ss_ffi_count"})
+_COMPILER_PROVIDED_RUNTIME_SYMBOLS = frozenset({
+    "ss_panic",
+    "ss_ffi_add",
+    "ss_ffi_count",
+    "ss_platform_sleep_ms",
+})
 
 
 def _unresolved_runtime_symbols(program: Program) -> set:
@@ -14931,6 +15867,7 @@ RUNTIME_DIAGNOSTICS = {
 EAV_RECURSION_LIMIT = 10000
 
 _EAV_PANIC_CFUNC = None  # kept alive so the JIT-registered callback survives GC
+_EAV_PLATFORM_SLEEP_CFUNC = None
 
 
 def _ss_panic_py(code, kind, op, row, reason, left, right) -> None:
@@ -14967,6 +15904,13 @@ def _ss_panic_py(code, kind, op, row, reason, left, right) -> None:
 _EAV_FFI_ADD_CFUNC = None  # kept alive so the JIT-registered callback survives GC
 _EAV_FFI_COUNT_CFUNC = None
 _EAV_FFI_COUNT_N = [0]  # per-process invocation counter for the retry demo
+
+
+def _ss_platform_sleep_ms_py(milliseconds) -> None:
+    """In-process `ss_platform_sleep_ms` for JIT retry backoff."""
+    import time
+    ms = max(0, int(milliseconds))
+    time.sleep(ms / 1000.0)
 
 
 def _ss_ffi_count_py(out_ptr) -> int:
@@ -15043,7 +15987,7 @@ def _register_runtime_symbols(program: Program) -> None:
             f"runtimeBinding symbol(s) {sorted(unresolved)} are not provided by "
             f"any native runtime library (runtime/manifest.json); check the symbol "
             f"name or add a providing library", code="SS1195")
-    for lib in _runtime_libs_for(program):
+    for lib in _runtime_libs_for(program, include_compiler_provided=False):
         path = _ensure_runtime_lib(lib)
         prefixes = lib.get("provides", [])
         needed = {s for s in referenced if any(s.startswith(p) for p in prefixes)}
@@ -15103,7 +16047,7 @@ def _self_cli_argv() -> list[str]:
     return [sys.executable, os.path.abspath(__file__)]
 
 
-def _record_run_entry(source: str, entry: str):
+def _record_run_entry(source: str, entry: str, cwd: Optional[str] = None):
     """R-102: run one operation as the entry in an isolated child, returning
     (stdout, stderr, exitCode). A test op that traps (ss_panic -> 134) or hangs
     kills only the child — the test runner survives and records the result."""
@@ -15230,7 +16174,7 @@ def _decode_stream(s) -> str:
     return s.decode("utf-8", "replace") if isinstance(s, (bytes, bytearray)) else (s or "")
 
 
-def _record_run(source: str):
+def _record_run(source: str, cwd: Optional[str] = None):
     """Run a program in a clean subprocess, capturing (stdout, exitCode). A fresh
     process is the record substrate: it is exactly the capability-mediated output
     a replay must reproduce. R-101: bounded by the eval timeout."""
@@ -16455,14 +17399,15 @@ STDLIB_INTRINSIC_MODULES = frozenset({
 # modules are meant to wrap (WS3-112/WS3-115). `json` is the explicit graduation
 # TARGET (WS3-114 replaces its scratch cursor/serialize buffers with owned output
 # strings); `fs` has the intentional bounded `readChunk <Buffer>` bridge until
-# WS3-112 streams become the higher-level copy primitive. They stay acknowledged-
+# WS3-112 streams become the higher-level copy primitive; `http.responseBytes`
+# is guarded by the SS3097 pointer/length proof checker. They stay acknowledged-
 # but-pending until then. A scratch-pointer
 # contract surfacing in any OTHER public, non-deferred module is an unacknowledged
 # raw-pointer leak the gate rejects — the cohesive-platform invariant
 # WS3-112/WS3-114/WS3-116 all graduate against. (Membership is kept minimal on
 # purpose: pre-acknowledging a module that exposes no such API today would mask a
 # future leak there, so the gate rejects stale entries — see its `->test`.)
-STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "fs", "json"})
+STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "fs", "http", "json"})
 
 
 # WS3-120: the nice-to-have / secondary stdlib tier — additive convenience APIs
@@ -16475,7 +17420,7 @@ STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "fs", "json"})
 # `gui` is the one convenience layer in the current surface (a UI nicety, also
 # deferred); the future WS3-121..131 modules (cli/config/cache/archive/...) join
 # here as they land.
-STDLIB_SECONDARY_MODULES = frozenset({"gui", "id"})
+STDLIB_SECONDARY_MODULES = frozenset({"gui", "i18n", "id"})
 
 
 def _scratch_pointer_apis(semsig_text: str) -> list:
@@ -17470,9 +18415,164 @@ def _doc_entries(program: Program) -> list:
     return out
 
 
+def _docs_index_init(db_path: str):
+    import os
+    import sqlite3
+    parent = os.path.dirname(os.path.abspath(db_path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS docs_meta ("
+        "path TEXT PRIMARY KEY, digest TEXT NOT NULL, mtime_ns INTEGER NOT NULL, "
+        "entry_count INTEGER NOT NULL, indexed_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS docs_entries ("
+        "path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, "
+        "purpose TEXT NOT NULL, text TEXT NOT NULL, "
+        "PRIMARY KEY(path, name))"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS docs_entries_text_idx "
+        "ON docs_entries(name, purpose)"
+    )
+    return conn
+
+
+def _docs_source_paths(path: str) -> list[str]:
+    import os
+    if path != "-" and os.path.isdir(path):
+        return _project_source_paths(path)
+    return [path]
+
+
+def _docs_source_stamp(path: str, source: str) -> tuple[str, int]:
+    import hashlib
+    import os
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    mtimes = []
+    for src_path in _docs_source_paths(path):
+        if src_path != "-" and os.path.exists(src_path):
+            mtimes.append(os.stat(src_path).st_mtime_ns)
+    return digest, max(mtimes) if mtimes else 0
+
+
+def _docs_index_write(path: str, db_path: str) -> dict:
+    import datetime
+    import os
+    source = _read_program_source(path)
+    program = parse_compact(source)
+    entries = _doc_entries(program)
+    digest, mtime_ns = _docs_source_stamp(path, source)
+    scope = os.path.abspath(path) if path != "-" else "-"
+    conn = _docs_index_init(db_path)
+    try:
+        old = conn.execute(
+            "SELECT digest, entry_count FROM docs_meta WHERE path = ?",
+            (scope,),
+        ).fetchone()
+        status = "fresh" if old and old[0] == digest else (
+            "created" if old is None else "refreshed")
+        if status != "fresh":
+            conn.execute("DELETE FROM docs_entries WHERE path = ?", (scope,))
+            conn.executemany(
+                "INSERT INTO docs_entries(path, name, kind, purpose, text) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [(scope, e["name"], e["kind"], e["purpose"],
+                  f'{e["name"]} {e["kind"]} {e["purpose"]}') for e in entries],
+            )
+            conn.execute(
+                "INSERT INTO docs_meta(path, digest, mtime_ns, entry_count, indexed_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(path) DO UPDATE SET "
+                "digest=excluded.digest, mtime_ns=excluded.mtime_ns, "
+                "entry_count=excluded.entry_count, indexed_at=excluded.indexed_at",
+                (scope, digest, mtime_ns, len(entries),
+                 datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")),
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "status": status,
+            "path": scope,
+            "db": os.path.abspath(db_path),
+            "count": len(entries),
+            "previousCount": old[1] if old else None,
+        }
+    finally:
+        conn.close()
+
+
+def _docs_index_search(db_path: str, query: str, scope: Optional[str] = None,
+                       limit: int = 10) -> dict:
+    import os
+    conn = _docs_index_init(db_path)
+    try:
+        params: list = []
+        where = ""
+        if scope:
+            where = "WHERE path = ?"
+            params.append(os.path.abspath(scope))
+        rows = conn.execute(
+            "SELECT path, name, kind, purpose, text FROM docs_entries " + where,
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+    terms = [t for t in query.lower().split() if t]
+    scored = []
+    for path, name, kind, purpose, text in rows:
+        hay = text.lower()
+        score = sum(hay.count(t) for t in terms)
+        if score:
+            scored.append({
+                "path": path,
+                "name": name,
+                "kind": kind,
+                "purpose": purpose,
+                "score": score,
+            })
+    scored.sort(key=lambda x: (-x["score"], x["path"], x["name"]))
+    return {
+        "ok": True,
+        "db": os.path.abspath(db_path),
+        "query": query,
+        "scope": os.path.abspath(scope) if scope else None,
+        "results": scored[:limit],
+        "count": len(scored[:limit]),
+    }
+
+
 def cmd_docs(args) -> int:
     """Docs catalog over program entities (no third-party dep): list / get / a
     keyword-ranked `--search` (sem.docsIndex.v1 / sem.docs.v1 / sem.docsSearch.v1)."""
+    if args.path == "index" and getattr(args, "db", None):
+        if not getattr(args, "extra", None):
+            sys.stdout.write(_json_envelope(
+                "sem.docsIndex.v1", ok=False, status="missing-path",
+                db=args.db, hint="usage: docs index <path> --db <file>") + "\n")
+            return 2
+        payload = _docs_index_write(args.extra[0], args.db)
+        sys.stdout.write(_json_envelope("sem.docsIndex.v1", **payload) + "\n")
+        return 0
+    if args.path == "search" and getattr(args, "db", None):
+        query = " ".join(getattr(args, "extra", [])).strip()
+        if not query:
+            sys.stdout.write(_json_envelope(
+                "sem.docsSearch.v1", ok=False, status="missing-query",
+                db=args.db, hint="usage: docs search <query> --db <file>") + "\n")
+            return 2
+        payload = _docs_index_search(
+            args.db, query, scope=getattr(args, "scope", None),
+            limit=getattr(args, "limit", None) or 10)
+        sys.stdout.write(_json_envelope("sem.docsSearch.v1", **payload) + "\n")
+        return 0
+    if not args.path:
+        sys.stdout.write(_json_envelope(
+            "sem.docsIndex.v1", ok=False, status="missing-path",
+            hint="usage: docs <path> [--get NAME|--search QUERY]") + "\n")
+        return 2
     entries = _doc_entries(parse_compact(_read_program_source(args.path)))
     if getattr(args, "search", None):
         terms = [t for t in args.search.lower().split() if t]
@@ -17642,6 +18742,31 @@ def check_workspace(root: str, strict: bool = False) -> dict:
             "childCount": len(summaries), "children": summaries, **fields}
 
 
+def _check_proof_next_commands(path: str, program: Program, has_tests: bool) -> list:
+    projects = program.of_kind("project")
+    targets = [row.payload[0] for proj in projects for row in proj.facts("target")
+               if row.payload] or ["console"]
+    commands: list[dict] = []
+    if "wasm" in targets and not any(t in targets for t in ("console", "webServer")):
+        commands.append(_next_command_for_source(
+            ["wasm", path], "compile to WebAssembly; check is static-only", path))
+        if has_tests:
+            commands.append(_next_command_for_source(
+                ["test", path], "run the test operations", path))
+        return commands
+    commands.append(_next_command_for_source(
+        ["run", path], "execute the program; check is static-only", path))
+    if has_tests:
+        commands.append(_next_command_for_source(
+            ["test", path], "run the test operations", path))
+    commands.append(_next_command_for_source(
+        ["build", path], "compile to a native exe", path))
+    if "wasm" in targets:
+        commands.append(_next_command_for_source(
+            ["wasm", path], "compile the wasm target", path))
+    return commands
+
+
 def cmd_check(args) -> int:
     """Source lane (sem.check.v1): parse + lint, classify ok / ok-with-warnings /
     lint-diagnostics / compiler-error (README check/readiness split).
@@ -17759,6 +18884,7 @@ def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
     try:
         if path != "-" and os.path.isdir(path) and is_project_root(path):
             test_program = load_test_project(path)
+            test_program.source_root = _program_source_root_for_path(path)
         else:
             test_program = program
         test_diags = _filter_diagnostics_strict(lint(test_program), strict)
@@ -18046,6 +19172,97 @@ def _default_build_output(path: str, explicit_output: Optional[str]) -> str:
     if os.path.isdir(path):
         return os.path.join(path, "dist", "app" + suffix)
     return os.path.splitext(path)[0] + suffix
+
+
+def cmd_package_manifest(args) -> int:
+    """Validate and emit app packaging metadata from build.sem (R-046)."""
+    want_json = getattr(args, "json", False)
+    try:
+        manifest = package_manifest_for_path(
+            args.path,
+            profile=getattr(args, "profile", None),
+            platform=getattr(args, "platform", None),
+        )
+    except (EavError, OSError) as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.packageManifest.v1",
+                ok=False,
+                status="invalid-manifest",
+                message=str(exc),
+            ) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 2
+
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.packageManifest.v1",
+            ok=True,
+            status="ok",
+            manifest=manifest,
+        ) + "\n")
+    else:
+        sys.stdout.write(f"project: {manifest['project']}\n")
+        sys.stdout.write(f"productName: {manifest['productName']}\n")
+        sys.stdout.write(f"packageId: {manifest['packageId']}\n")
+        if manifest.get("packageVersion"):
+            sys.stdout.write(f"packageVersion: {manifest['packageVersion']}\n")
+        if manifest.get("profile"):
+            sys.stdout.write(f"profile: {manifest['profile']}\n")
+        if manifest.get("platform"):
+            sys.stdout.write(f"platform: {manifest['platform']}\n")
+        if manifest.get("output"):
+            sys.stdout.write(f"output: {manifest['output']}\n")
+        for icon in manifest["icons"]:
+            sys.stdout.write(f"icon {icon['name']}: {icon['path']}\n")
+        for resource in manifest["resources"]:
+            sys.stdout.write(f"resource {resource['name']}: {resource['path']}\n")
+    return 0
+
+
+def cmd_runtime_config(args) -> int:
+    """Validate and emit runtime/deployment config from build.sem (R-060)."""
+    want_json = getattr(args, "json", False)
+    try:
+        config = runtime_config_for_path(
+            args.path,
+            profile=getattr(args, "profile", None),
+        )
+    except (EavError, OSError) as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.runtimeConfig.v1",
+                ok=False,
+                status="invalid-config",
+                message=str(exc),
+            ) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 2
+
+    status = "ok" if config["ready"] else "blocked"
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.runtimeConfig.v1",
+            ok=config["ready"],
+            status=status,
+            config=config,
+        ) + "\n")
+    else:
+        sys.stdout.write(f"project: {config['project']}\n")
+        sys.stdout.write(f"profile: {config['profile']}\n")
+        for item in config["values"]:
+            sys.stdout.write(
+                f"config {item['name']} ({item['type']}): {item['value']}\n")
+        for item in config["secrets"]:
+            mark = "present" if item["present"] else "missing"
+            sys.stdout.write(f"secret {item['name']} ({item['source']}:{item['key']}): {mark}\n")
+        for dep in config["deployments"]:
+            sys.stdout.write(f"deployment {dep['name']}: {dep['target']}\n")
+        for mig in config["migrations"]:
+            sys.stdout.write(f"migration {mig['order']}: {mig['operation']}\n")
+    return 0 if config["ready"] else 1
 
 
 def cmd_build(args) -> int:
