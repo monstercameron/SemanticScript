@@ -1310,6 +1310,45 @@ def _read_program_source(path: str) -> str:
     return _read_source(path)
 
 
+def _read_program_source_with_cache_key(path: str) -> tuple[str, str]:
+    """Read a program and return a content-addressed key for in-process reuse.
+
+    ITER-2: the current compiler still lowers one composed ``Program`` rather
+    than durable per-module artifacts, but agent inner loops such as
+    ``verify --watch`` can still avoid reparsing unchanged file graphs. Project
+    keys are built from each composed file's path and bytes, so one-file edits
+    invalidate only the composed snapshot that actually changed.
+    """
+    import hashlib
+    import os
+    digest = hashlib.sha256()
+    if path != "-" and os.path.isdir(path):
+        parts: list[str] = []
+        for filename in _project_source_paths(path):
+            full = os.path.abspath(filename)
+            with open(filename, "rb") as fh:
+                data = fh.read()
+            digest.update(b"file\0")
+            digest.update(full.encode("utf-8", "surrogateescape"))
+            digest.update(b"\0")
+            digest.update(hashlib.sha256(data).digest())
+            digest.update(b"\0")
+            parts.append(data.decode("utf-8"))
+        return "\n".join(parts), "project:" + digest.hexdigest()
+    source = _read_source(path)
+    digest.update(b"stdin" if path == "-" else os.path.abspath(path).encode(
+        "utf-8", "surrogateescape"))
+    digest.update(b"\0")
+    digest.update(source.encode("utf-8"))
+    return source, "file:" + digest.hexdigest()
+
+
+def _load_program_for_path(path: str) -> tuple[str, "Program"]:
+    """Read and parse a file/project through the ITER-2 parse cache."""
+    source, cache_key = _read_program_source_with_cache_key(path)
+    return source, _parse_compact_cached(source, cache_key)
+
+
 def classify_sem_file(path: str) -> str:
     """Role of a file in the `.sem` family (README §28.2): build / lock / semsig /
     test / source / other."""
@@ -15526,7 +15565,8 @@ def cmd_bench(args) -> int:
     try:
         if os.path.isdir(args.path) and is_project_root(args.path):
             os.chdir(args.path)
-        runnable = _program_target(parse_compact(src)) == "console"
+        program_for_probe = parse_compact(src)
+        runnable = _program_target(program_for_probe) == "console"
         # R-108: a runtime trap in the JIT'd program would hard-exit (ss_panic ->
         # 134) and take the whole bench process with it, before sem.bench.v1 is
         # written. Probe the program once in an isolated child to classify its run
@@ -15535,7 +15575,10 @@ def cmd_bench(args) -> int:
         # reported as a benchmark result instead of killing the command.
         run_status = None
         if runnable:
-            p_out, p_err, p_code = _record_run_full(src)
+            preflight_timeout = _eval_timeout_seconds()
+            if _runtime_libs_for(program_for_probe):
+                preflight_timeout = max(preflight_timeout, _build_timeout_seconds())
+            p_out, p_err, p_code = _record_run_full(src, timeout=preflight_timeout)
             run_status, _ = _classify_run(p_out, p_err, p_code)
         time_run = runnable and run_status == "ok"
         if time_run:
@@ -15574,7 +15617,12 @@ def cmd_bench(args) -> int:
         if getattr(args, "json", False):
             payload = _json_envelope("sem.bench.v1", **result) + "\n"
         else:
-            run_s = f" run {result['runMsBest']}ms" if runnable else " (run skipped)"
+            if time_run:
+                run_s = f" run {result['runMsBest']}ms"
+            elif runnable:
+                run_s = f" (run skipped: {run_status or 'not-run'})"
+            else:
+                run_s = " (run skipped)"
             payload = (f"bench {args.path} (best of {runs}): "
                        f"parse {result['parseMsBest']}ms lower {result['lowerMsBest']}ms"
                        f"{run_s}\n")
@@ -15795,8 +15843,7 @@ def cmd_run(args) -> int:
         sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
         return code
 
-    source = _read_program_source(args.path)
-    program = parse_compact(source)
+    source, program = _load_program_for_path(args.path)
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
         diags = lint(program)
@@ -16090,7 +16137,8 @@ SEM_SURFACES = (
     "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
     "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
-    "sem.build.v1", "sem.run.v1", "sem.error.v1", "sem.targetSignature.v1",
+    "sem.build.v1", "sem.run.v1", "sem.verify.v1", "sem.error.v1", "sem.targetSignature.v1",
+    "sem.targetSignatures.v1", "sem.reservedWords.v1",
     # R-123: surfaces that were live but unlisted.
     "sem.bench.v1", "sem.profile.v1", "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
     "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
@@ -16323,7 +16371,7 @@ EAV_AGENT_RULES = (
     "worked apps live in `apps/`; start at docs/getting-started.md (the full "
     "language guide is docs/LANGUAGE.md). Agent surface: `agent-docs`, `skills "
     "[name]`, `search <query>` (ranked retrieval), `explain <CODE>`, `check --json`, "
-    "`eval`, `docs <file>`, and the stdio `mcp` server (19 tools)."
+    "`eval`, `docs <file>`, and the stdio `mcp` server (20 tools)."
 )
 
 # name -> {summary, body}. `skills` (no arg) lists summaries; `skills <name>`
@@ -16385,9 +16433,9 @@ EAV_SKILLS = {
             "`query <dim>`, `index`, `status`, `fix --plan` + `patch`/"
             "`verify-patch`, `scaffold`/`new`. Structured output is a versioned "
             "`sem.<tool>.v1` JSON envelope (pass `--json` where offered). The `mcp` "
-            "subcommand is a stdio JSON-RPC server exposing 19 tools — version, "
+            "subcommand is a stdio JSON-RPC server exposing 20 tools — version, "
             "agent_docs, skills, readiness, status, index, search, explain, docs, check, "
-            "graph, query, deps, context, symbols, size, eval, fix_plan, test."),
+            "graph, query, deps, context, symbols, size, eval, fix_plan, test, verify."),
     },
     "eav-apps": {
         "summary": "Worked patterns under apps/ (web API, TUI, HTTP).",
@@ -16415,6 +16463,63 @@ EAV_SKILLS = {
         ),
     },
 }
+
+
+_SUBSYSTEM_RECIPE_BODIES = {
+    "json": (
+        "JSON recipe: inspect `targets --signature json.* --json`, then start from "
+        "`semanticscript scaffold json-output`. The scaffold creates a bounded JSON "
+        "document, gets the root cursor, writes an Int64 object field, serializes "
+        "through an owned scratch buffer, prints the JSON text, and releases both "
+        "handles. Keep JsonDocument and JsonCursor slots in canonical order: "
+        "document, cursor, fieldName, value."
+    ),
+    "sqlite": (
+        "Sqlite recipe: inspect `targets --signature sqlite.* --json`, then start "
+        "from `semanticscript scaffold db-roundtrip`. Use SqlText for the sql slot, "
+        "own database/statement handles with cleanedBy cleanup rows, step before "
+        "column reads, consume column values before invalidating text columns, and "
+        "wrap multiple writes in an explicit transaction when the program grows."
+    ),
+    "log": (
+        "Logging recipe: inspect `targets --signature log.* --json`, then start from "
+        "`semanticscript scaffold logged-op`. Open the log file with "
+        "log.openLogFile filePath, then append with log.logInfo/log.logWarn "
+        "messageText. Treat log calls as observable sinks: do not log secrets."
+    ),
+    "assert": (
+        "Pure assert recipe: `assert.equalInt64 left/right -> Bool` and "
+        "`assert.true value -> Bool` compute predicates only. Bind the Bool with "
+        "`out`, branch or combine it with `test.and`, and never discard it. For "
+        "reporting tests, use the `test.assert*` harness family."
+    ),
+    "test": (
+        "Test harness recipe: use `test.assertEqualInt64 name/expected/actual`, "
+        "`test.assertTrue name/value`, and finish with `test.summary out ExitCode`. "
+        "The harness prints PASS/FAIL lines and returns the failure count."
+    ),
+}
+
+
+def _install_subsystem_recipe_skills() -> None:
+    for family in sorted(_target_catalog()["families"]):
+        key = f"eav-subsystem-{family}"
+        if key in EAV_SKILLS:
+            continue
+        body = _SUBSYSTEM_RECIPE_BODIES.get(
+            family,
+            f"{family} recipe: inspect the callable surface with "
+            f"`semanticscript targets --signature {family}.* --json`, then use "
+            f"the exact arg slots/types shown there. A clean `check` is static-only; "
+            f"prove behavior with `semanticscript verify <path>` or run/build."
+        )
+        EAV_SKILLS[key] = {
+            "summary": f"Runnable {family} subsystem recipe and signature lookup.",
+            "body": body,
+        }
+
+
+_install_subsystem_recipe_skills()
 
 
 def _next_command(argv: list, description: str, replayable: bool = True) -> dict:
@@ -16485,6 +16590,7 @@ EAV_MCP_TOOLS = {
     "eval": {"argv": ["eval"], "desc": "JIT-run a snippet", "path": True, "args": []},
     "fix_plan": {"argv": ["fix", "--plan"], "desc": "Repair plan from diagnostics", "path": True, "args": []},
     "test": {"argv": ["test"], "desc": "Run tag-test operations", "path": True, "args": []},
+    "verify": {"argv": ["verify", "--json"], "desc": "One-shot check + tests + run gate", "path": True, "args": []},
 }
 
 
@@ -16618,7 +16724,7 @@ EAV_TASK_TEMPLATES = {
                       "prepare invokes prepareStatement", "step invokes stepStatement",
                       "read invokes columnText / out value",
                       "finalize invokes finalizeStatement", "close invokes closeDatabase"],
-        "rowsToVerify": ["column result consumed before the next read/step",
+        "rowsToVerify": ["borrowed column blobs consumed before the next step",
                          "db handle owns + cleanedBy + defer on every path"],
         "lintRules": ["SS1901", "SS1902", "SS1503"],
     },
@@ -16641,6 +16747,36 @@ EAV_TASK_TEMPLATES = {
                          "the failed label returns without using the successful out binding",
                          "runtime-guard tests use a non-constant zero source, not a constant that SS3111 rejects"],
         "lintRules": ["SS1310", "SS1355", "SS3600", "SS3111"],
+    },
+    "json-output": {
+        "rowsToAdd": ["start with `semanticscript scaffold json-output`",
+                      "json.createEmptyDocument -> json.documentRoot",
+                      "json.setObjectFieldInt64 document/cursor/fieldName/value",
+                      "json.serializeDocument document/scratch/scratchCapacity",
+                      "buffer.create owns scratch cleanedBy buffer.release"],
+        "rowsToVerify": ["targets --signature json.* agrees with docs --get json.*",
+                         "document/cursor slots are not swapped",
+                         "scratch buffer and document cleanup rows are present"],
+        "lintRules": ["SS1201", "SS1503"],
+    },
+    "db-roundtrip": {
+        "rowsToAdd": ["start with `semanticscript scaffold db-roundtrip`",
+                      "sqlite.openDatabase path -> db",
+                      "sqlite.exec create/insert using SqlText",
+                      "sqlite.prepareStatement -> stepStatement -> columnInt64",
+                      "sqlite.finalizeStatement and sqlite.closeDatabase cleanup"],
+        "rowsToVerify": ["sql args are SqlText, not plain String",
+                         "statement/database handles have cleanup",
+                         "borrowed column blobs are consumed before invalidating statement state"],
+        "lintRules": ["SS1201", "SS1503", "SS1901", "SS1902"],
+    },
+    "logged-op": {
+        "rowsToAdd": ["start with `semanticscript scaffold logged-op`",
+                      "log.openLogFile arg filePath String",
+                      "log.logInfo/log.logWarn arg messageText String"],
+        "rowsToVerify": ["do not pass secrets to log.* observable sinks",
+                         "status results are bound, caught, or explicitly discarded"],
+        "lintRules": ["SS1201", "SS3043"],
     },
     "add-async-fanout": {
         "rowsToAdd": ["<op> async yes", "<op> start <task>", "<op> join <task>",
@@ -17076,9 +17212,13 @@ def cmd_docs(args) -> int:
         match = next((e for e in entries if e["name"] == args.get), None)
         fuzzy = False
         if match is None:  # builtin/std target lookup from shipped .semsig files
-            sig = _builtin_target_signature(args.get)
-            if sig is not None:
-                match = _signature_doc_entry(sig)
+            family_sigs = _builtin_family_signatures(args.get)
+            if family_sigs:
+                match = _signature_family_doc_entry(args.get, family_sigs)
+            else:
+                sig = _builtin_target_signature(args.get)
+                if sig is not None:
+                    match = _signature_doc_entry(sig)
         if match is None:  # near-miss name -> closest entity (agentic-friendly)
             import difflib
             close = difflib.get_close_matches(
@@ -17241,7 +17381,7 @@ def cmd_check(args) -> int:
         sys.stdout.write(_json_envelope("sem.check.v1", **report) + "\n")
         return 0 if report["ok"] else 1
     try:
-        program = parse_compact(_read_program_source(args.path))
+        _source, program = _load_program_for_path(args.path)
     except EavError as exc:
         sys.stdout.write(_json_envelope(
             "sem.check.v1", status="compiler-error", ok=False,
@@ -17300,6 +17440,205 @@ def cmd_check(args) -> int:
     # R-093: error-severity diagnostics (incl. --strict-promoted warnings) exit
     # nonzero; clean and warning-only single files stay 0, matching the workspace lane.
     return 1 if status == "lint-diagnostics" else 0
+
+
+def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
+    """Build one sem.verify.v1 payload and return (payload, process_exit_code)."""
+    import os
+    lanes = {
+        "check": {"ok": False, "status": "not-run"},
+        "test": {"ok": True, "status": "not-run"},
+        "run": {"ok": False, "status": "not-run"},
+    }
+    try:
+        source, program = _load_program_for_path(path)
+    except EavError as exc:
+        lanes["check"] = {
+            "ok": False,
+            "status": "compiler-error",
+            "diagnostics": [{"code": exc.code, "severity": "error",
+                             "line": exc.line, "entity": None,
+                             "message": exc.message,
+                             "rendered": f"semanticscript: {exc}"}],
+        }
+        return {"status": "blocked", "path": path, "strict": strict, "lanes": lanes}, 1
+
+    diags = _filter_diagnostics_strict(lint(program), strict)
+    errors = [d for d in diags if d.severity == "error"]
+    warnings = [d for d in diags if d.severity == "warning"]
+    check_status = ("lint-diagnostics" if errors
+                    else "ok-with-warnings" if warnings else "ok")
+    lanes["check"] = {
+        "ok": not errors,
+        "status": check_status,
+        "diagnostics": _structured_diags(diags),
+        **_check_lane_fields(errors, warnings, strict),
+    }
+    if errors:
+        lanes["test"] = {"ok": True, "status": "skipped", "reason": "check failed"}
+        lanes["run"] = {"ok": True, "status": "skipped", "reason": "check failed"}
+        return {"status": "blocked", "path": path, "strict": strict, "lanes": lanes}, 1
+
+    try:
+        if path != "-" and os.path.isdir(path) and is_project_root(path):
+            test_program = load_test_project(path)
+        else:
+            test_program = program
+        test_diags = _filter_diagnostics_strict(lint(test_program), strict)
+        test_errors = [d for d in test_diags if d.severity == "error"]
+        tests_by_lane = discover_tests(test_program)
+        test_count = sum(len(v) for v in tests_by_lane.values())
+        if test_errors:
+            lanes["test"] = {
+                "ok": False,
+                "status": "blocked",
+                "diagnostics": _structured_diags(test_errors),
+            }
+        elif test_count == 0:
+            lanes["test"] = {"ok": True, "status": "skipped", "reason": "no tag test operations"}
+        else:
+            report = run_tests(test_program)
+            test_ok = report.get("compositeStatus") == "pass"
+            lanes["test"] = {"ok": test_ok, "status": report.get("compositeStatus"), **report}
+    except EavError as exc:
+        lanes["test"] = {
+            "ok": False,
+            "status": "compiler-error",
+            "diagnostics": [{"code": exc.code, "severity": "error",
+                             "line": exc.line, "entity": None,
+                             "message": exc.message,
+                             "rendered": f"semanticscript: {exc}"}],
+        }
+
+    out, err, code = _record_run_full(source)
+    run_status, panic = _classify_run(out, err, code)
+    lanes["run"] = {
+        "ok": code == 0,
+        "status": run_status,
+        "exitCode": code,
+        "stdout": out,
+        "stderr": err,
+        "stdoutLines": _stdout_lines(out),
+    }
+    if panic is not None:
+        lanes["run"]["panic"] = panic
+
+    ok = bool(lanes["check"].get("ok") and lanes["test"].get("ok") and lanes["run"].get("ok"))
+    status = "ok" if ok else ("blocked" if lanes["test"].get("status") in ("blocked", "compiler-error") else "failed")
+    return {"status": status, "path": path, "strict": strict, "lanes": lanes}, (0 if ok else 1)
+
+
+def _emit_verify_payload(payload: dict, want_json: bool) -> None:
+    ok = payload.get("status") == "ok"
+    if want_json:
+        sys.stdout.write(_json_envelope("sem.verify.v1", ok=ok, **payload) + "\n")
+    else:
+        lanes = payload["lanes"]
+        if lanes["check"].get("status") == "compiler-error":
+            diag = (lanes["check"].get("diagnostics") or [{}])[0]
+            sys.stderr.write(f"verify: check blocked: {diag.get('rendered') or diag.get('message')}\n")
+            return
+        sys.stdout.write(f"check: {lanes['check']['status']}\n")
+        sys.stdout.write(f"test: {lanes['test']['status']}\n")
+        exit_code = lanes["run"].get("exitCode")
+        suffix = f" ({exit_code})" if exit_code is not None else ""
+        sys.stdout.write(f"run: {lanes['run']['status']}{suffix}\n")
+
+
+def _verify_watch_files(path: str) -> list[str]:
+    """Files whose content should trigger a verify --watch rerun."""
+    import os
+    if path == "-":
+        raise EavError("verify --watch does not support stdin; watch a file or project directory")
+    if os.path.isdir(path) and is_project_root(path):
+        files = list(_project_source_paths(path))
+        try:
+            tests = discover_project_tests(path)
+            for rel in tests.get("coLocated", []) + tests.get("testsDir", []):
+                files.append(os.path.join(path, rel))
+        except Exception:
+            pass
+    else:
+        files = [path]
+    out: list[str] = []
+    seen: set = set()
+    for filename in files:
+        full = os.path.abspath(filename)
+        if full not in seen:
+            seen.add(full)
+            out.append(full)
+    return sorted(out)
+
+
+def _verify_watch_digest(path: str) -> tuple[str, list[str]]:
+    import hashlib
+    import os
+    files = _verify_watch_files(path)
+    digest = hashlib.sha256()
+    for filename in files:
+        digest.update(filename.encode("utf-8", "surrogateescape"))
+        digest.update(b"\0")
+        try:
+            st = os.stat(filename)
+            digest.update(str(st.st_size).encode("ascii"))
+            digest.update(b":")
+            with open(filename, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 16), b""):
+                    digest.update(chunk)
+        except OSError:
+            digest.update(b"<missing>")
+        digest.update(b"\0")
+    return digest.hexdigest(), files
+
+
+def _cmd_verify_watch(args) -> int:
+    import time
+    strict = getattr(args, "strict", False)
+    want_json = getattr(args, "json", False)
+    interval = max(0.05, float(getattr(args, "watch_interval", 1.0) or 1.0))
+    limit = getattr(args, "watch_count", None)
+    if limit is not None and limit <= 0:
+        raise EavError("--watch-count must be positive")
+    last_digest = None
+    emitted = 0
+    last_rc = 0
+    try:
+        while True:
+            digest, files = _verify_watch_digest(args.path)
+            if digest != last_digest:
+                payload, rc = _verify_once_payload(args.path, strict)
+                emitted += 1
+                payload["watch"] = {
+                    "mode": "watch",
+                    "sequence": emitted,
+                    "digest": digest,
+                    "fileCount": len(files),
+                    "intervalSeconds": interval,
+                }
+                _emit_verify_payload(payload, want_json)
+                try:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                except Exception:
+                    pass
+                last_digest = digest
+                last_rc = rc
+                if limit is not None and emitted >= limit:
+                    return last_rc
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        if not want_json:
+            sys.stderr.write("verify: watch stopped\n")
+        return last_rc
+
+
+def cmd_verify(args) -> int:
+    """G3/G4: one-shot or watched check + test + run gate (sem.verify.v1)."""
+    if getattr(args, "watch", False):
+        return _cmd_verify_watch(args)
+    payload, rc = _verify_once_payload(args.path, getattr(args, "strict", False))
+    _emit_verify_payload(payload, getattr(args, "json", False))
+    return rc
 
 
 def cmd_readiness(args) -> int:
@@ -17939,8 +18278,28 @@ def cmd_query(args) -> int:
 
 def cmd_rename(args) -> int:
     """Rename an entity and all references; print the updated source."""
+    import os
     try:
-        sys.stdout.write(rename_entity(_read_source(args.path), args.old, args.new))
+        if args.path != "-" and os.path.isdir(args.path):
+            rewritten = rename_project_sources(args.path, args.old, args.new)
+            if getattr(args, "write", False):
+                for path in sorted(rewritten):
+                    _atomic_write_text(path, rewritten[path])
+                sys.stdout.write(
+                    f"renamed {args.old!r} to {args.new!r} in {len(rewritten)} file(s)\n")
+            else:
+                sys.stdout.write("\n".join(rewritten[p] for p in sorted(rewritten)))
+                if rewritten:
+                    sys.stdout.write("\n")
+            return 0
+        out = rename_entity(_read_source(args.path), args.old, args.new)
+        if getattr(args, "write", False):
+            if args.path == "-":
+                raise EavError("rename --write requires a filesystem path, not stdin")
+            _atomic_write_text(args.path, out)
+            sys.stdout.write(f"renamed {args.old!r} to {args.new!r} in {args.path}\n")
+        else:
+            sys.stdout.write(out)
         return 0
     except EavError as exc:
         sys.stderr.write(f"semanticscript: {exc}\n")
@@ -18129,26 +18488,59 @@ def cmd_lint(args) -> int:
     return 1 if errors else 0
 
 
+def cmd_reserved_words(args) -> int:
+    """Print the parser's reserved-word table."""
+    words = sorted(RESERVED_WORDS)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.reservedWords.v1", status="ok", words=words,
+            futureReserved=sorted(RESERVED_FUTURE)) + "\n")
+    else:
+        for word in words:
+            sys.stdout.write(word + "\n")
+    return 0
+
+
 def cmd_targets(args) -> int:
-    """A9: list the call targets the LLVM console code generator actually models —
-    the runnable vocabulary. A target absent here passes the structural `check`
-    but fails at `run`/`build` (SS1198 catches it). Groups by family; prefix
-    families (`c.`/`http.`/`gui.`/`buffer.`/`list.`/`map.`/`fs.`/`compare.`/
-    `convert.to`/`decimal.`) model every method, shown as `<family>.<method>`.
+    """A9/S1: list the concrete call targets the LLVM console code generator
+    models as the public runnable vocabulary. Every advertised target has a real
+    signature, and target rows carry the stdlib maturity label (`proven` or
+    `experimental`) so broad implementation prefixes are not mistaken for stable
+    call contracts.
 
     DX-08: `targets --signature <target>` returns one built-in's declared signature
-    (arg slot names + types + out) from its standard.<module>.semsig — so an agent
-    can look up e.g. math.divideInt64's `left`/`right` slots instead of guessing."""
+    (arg slot names + types + out) from standard.<module>.semsig or the generated
+    codegen fallback, so an agent can look up e.g. math.divideInt64's `left`/`right`
+    slots instead of guessing."""
     want_json = getattr(args, "json", False)
     sig_target = getattr(args, "signature", None)
     if sig_target:
+        family_sigs = _builtin_family_signatures(sig_target)
+        if family_sigs:
+            if want_json:
+                sys.stdout.write(_json_envelope(
+                    "sem.targetSignatures.v1", ok=True, status="ok",
+                    target=sig_target, count=len(family_sigs),
+                    signatures=family_sigs) + "\n")
+            else:
+                print(sig_target)
+                for sig in family_sigs:
+                    print(f"  {sig['target']}")
+                    for a in sig["args"]:
+                        print(f"    arg {a['slot']} {a['type']}")
+                    if sig["out"]:
+                        out_slot = (sig["outSlot"] + " ") if sig["outSlot"] else ""
+                        print(f"    out {out_slot}{sig['out']}")
+                    if sig.get("purpose"):
+                        print(f"    purpose \"{sig['purpose']}\"")
+            return 0
         sig = _builtin_target_signature(sig_target)
         if sig is None:
             if want_json:
                 sys.stdout.write(_json_envelope(
                     "sem.targetSignature.v1", ok=False, status="unknown-target",
                     target=sig_target,
-                    note="no .semsig signature for this target; run `targets` for the "
+                    note="no signature for this target; run `targets` for the "
                          "modeled vocabulary") + "\n")
             else:
                 sys.stderr.write(
@@ -18223,7 +18615,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     # every standard stream so source round-trips through pipes intact.
     for _stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
-            _stream.reconfigure(encoding="utf-8")
+            if _stream is sys.stdin:
+                _stream.reconfigure(encoding="utf-8")
+            else:
+                _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
         except (AttributeError, ValueError):
             pass
     parser = argparse.ArgumentParser(
@@ -18265,6 +18660,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_index = sub.add_parser("index", help="catalog every diagnostic code (tier + summary)")
     sp_index.add_argument("--json", action="store_true")
     sp_index.set_defaults(func=cmd_index)
+    sp_reserved = sub.add_parser("reserved-words", help="list reserved words from the parser table")
+    sp_reserved.add_argument("--json", action="store_true")
+    sp_reserved.set_defaults(func=cmd_reserved_words)
     sp_targets = sub.add_parser("targets", help="list the runnable/codegen-modeled call targets (the vocabulary run/build can lower)")
     sp_targets.add_argument("--json", action="store_true")
     sp_targets.add_argument("--signature", metavar="TARGET",
@@ -18347,6 +18745,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                           help="block T3 opinionated warnings (in addition to T0/T1/T2)")
     sp_check.set_defaults(func=cmd_check)
 
+    sp_verify_one = sub.add_parser("verify", help="one-shot check + test + run gate")
+    sp_verify_one.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_verify_one.add_argument("--strict", action="store_true",
+                               help="block T3 opinionated warnings before runtime lanes")
+    sp_verify_one.add_argument("--json", action="store_true")
+    sp_verify_one.add_argument("--watch", action="store_true",
+                               help="rerun verify when source/test files change")
+    sp_verify_one.add_argument("--watch-interval", type=float, default=1.0,
+                               help="poll interval for --watch in seconds (default 1.0)")
+    sp_verify_one.add_argument("--watch-count", type=int, default=None,
+                               help=argparse.SUPPRESS)
+    sp_verify_one.set_defaults(func=cmd_verify)
+
     sp_readiness = sub.add_parser("readiness", help="environment lane: toolchain status")
     sp_readiness.add_argument("--json", action="store_true")
     sp_readiness.set_defaults(func=cmd_readiness)
@@ -18410,6 +18821,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     sp_fmt.add_argument("--check", action="store_true",
                         help="exit nonzero if the source is not canonically formatted")
+    sp_fmt.add_argument("--write", "-w", action="store_true",
+                        help="rewrite the source file with the canonical format")
     sp_fmt.set_defaults(func=cmd_fmt)
 
     sp_fix = sub.add_parser("fix", help="derive a repair plan from diagnostics")
@@ -18479,9 +18892,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_diff.set_defaults(func=cmd_diff)
 
     sp_rename = sub.add_parser("rename", help="rename an entity and its references")
-    sp_rename.add_argument("path", help="EAV source file, or - for stdin")
+    sp_rename.add_argument("path", help="EAV source file, project directory, or - for stdin")
     sp_rename.add_argument("old")
     sp_rename.add_argument("new")
+    sp_rename.add_argument("--write", "-w", action="store_true",
+                           help="rewrite the file/project sources atomically instead of printing to stdout")
     sp_rename.set_defaults(func=cmd_rename)
 
     sp_add = sub.add_parser("add", help="append a scaffolded operation")
@@ -18543,14 +18958,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                   f"command (e.g. check/lint/inspect-ir/query/graph --json)")) + "\n")
         return 2
 
-    def _emit_json_error(exc, status: str) -> None:
+    def _emit_json_error(exc, status: str, code: Optional[str] = None) -> None:
         # R-098: when a JSON-capable command fails before its own envelope is
         # written, emit a structured sem.error.v1 (ok:false + a machine-readable
         # diagnostic) instead of a plaintext `semanticscript: …` on stderr, so an
         # MCP/agent consumer can distinguish compiler-error / io-error.
         name = getattr(getattr(args, "func", None), "__name__", "cmd")
         name = name[4:].replace("_", "-") if name.startswith("cmd_") else name
-        diag = {"code": getattr(exc, "code", None), "severity": "error",
+        diag = {"code": code if code is not None else getattr(exc, "code", None),
+                "severity": "error",
                 "line": getattr(exc, "line", None),
                 "message": getattr(exc, "message", str(exc)),
                 "rendered": f"semanticscript: {exc}"}
@@ -18580,9 +18996,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         # instead of a structured envelope an agent/MCP consumer can parse. Map it
         # to a codegen-error envelope — or a clean stderr line — like EavError.
         if getattr(args, "json", False):
-            _emit_json_error(exc, "codegen-error")
+            _emit_json_error(exc, "codegen-error", code="SS5001")
             return 2
-        sys.stderr.write(f"semanticscript: codegen error: {exc}\n")
+        sys.stderr.write(f"semanticscript: SS5001 codegen error: {exc}\n")
         return 2
 
 

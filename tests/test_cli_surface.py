@@ -109,7 +109,7 @@ CASES = [
     ("bench",        ["bench", F, "--runs", "2", "--json"], surface("sem.bench.v1")),
     ("eval",         ["eval", F, "--json"],             surface("sem.eval.v1")),
     ("run",          ["run", F],                        rc0),
-    ("test",         ["test", F],                       surface("sem.test.v1")),
+    ("test",         ["test", F, "--allow-empty"],      surface("sem.test.v1")),
 ]
 
 
