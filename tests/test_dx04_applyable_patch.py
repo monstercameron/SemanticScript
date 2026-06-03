@@ -87,3 +87,61 @@ def test_clean_program_has_no_applyable_edits(tmp_path, capsys):
     plan = _fix(src, capsys)
     assert plan["planUsable"] is False
     assert plan["edits"] == []
+
+
+def test_fix_replaces_unused_call_out_with_discards(tmp_path, capsys):
+    src = tmp_path / "unused-out.sem"
+    src.write_text(_HEAD + (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okc immutable ExitCode 0\nmain let one immutable Int64 1\n"
+        "main let two immutable Int64 2\nmain do sumCall\nmain return okc\n"
+        "sumCall is call\nsumCall in main\nsumCall invokes math.addInt64\n"
+        "sumCall arg left Int64 one\nsumCall arg right Int64 two\n"
+        "sumCall out total Int64\n"
+    ), encoding="utf-8")
+
+    plan = _fix(src, capsys)
+    assert plan["planUsable"] is True
+    assert any(e["op"] == "replaceRow" and e["code"] == "SS0807" for e in plan["edits"])
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(plan), encoding="utf-8")
+    applied = _patch(plan_file, "--apply", capsys)
+    assert applied["status"] == "applied"
+    text = src.read_text(encoding="utf-8")
+    assert "sumCall out total Int64" not in text
+    assert 'sumCall discards "unused result explicitly discarded by fix plan"' in text
+    ss.main(["check", str(src), "--strict", "--json"])
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+
+
+def test_fix_renames_unambiguous_builtin_arg_slots(tmp_path, capsys):
+    src = tmp_path / "bad-slots.sem"
+    src.write_text(_HEAD + (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let leftValue immutable Int64 84\n"
+        "main let rightValue immutable Int64 2\nmain do divCall\nmain return quotient\n"
+        "divCall is call\ndivCall in main\ndivCall invokes math.divideInt64\n"
+        "divCall arg lhs Int64 leftValue\n"
+        "divCall arg rhs Int64 rightValue\n"
+        "divCall out quotient Int64\n"
+    ), encoding="utf-8")
+
+    plan = _fix(src, capsys)
+    assert plan["planUsable"] is True
+    slot_edits = [e for e in plan["edits"] if e["op"] == "replaceRow" and e["code"] == "SS1201"]
+    assert {e["new"].split()[2] for e in slot_edits} == {"left", "right"}
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(plan), encoding="utf-8")
+    applied = _patch(plan_file, "--apply", capsys)
+    assert applied["status"] == "applied"
+    text = src.read_text(encoding="utf-8")
+    assert "divCall arg lhs" not in text
+    assert "divCall arg rhs" not in text
+    assert "divCall arg left Int64 leftValue" in text
+    assert "divCall arg right Int64 rightValue" in text
+    ss.main(["check", str(src), "--strict", "--json"])
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"

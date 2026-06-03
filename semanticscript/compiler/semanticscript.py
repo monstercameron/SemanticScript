@@ -17647,7 +17647,62 @@ def _fix_edits_for(diag, program) -> list:
                      "row": f"{op} effect {action} {resource}",
                      "rationale": f"remove the over-declared effect "
                                   f"`{action} {resource}` from {op!r}"}]
+    if diag.code == "SS1201":
+        ent = call_entity(diag.entity)
+        if ent is None:
+            return []
+        inv = ent.fact("invokes")
+        if not inv or not inv.payload:
+            return []
+        sig = _builtin_target_signature(inv.payload[0])
+        if sig is None or sig.get("variadic"):
+            return []
+        expected = list(sig.get("args") or [])
+        arg_rows = [row for row in ent.facts("arg") if len(row.payload) >= 2]
+        if len(arg_rows) != len(expected):
+            return []
+        expected_slots = [arg["slot"] for arg in expected]
+        existing_slots = [row.payload[0] for row in arg_rows]
+        missing = {slot for slot in expected_slots if slot not in existing_slots}
+        unknown = [row for row in arg_rows if row.payload[0] not in expected_slots]
+        if not unknown or len(unknown) != len(missing):
+            return []
+        edits = []
+        used_new_slots = set()
+        for idx, row in enumerate(arg_rows):
+            if row not in unknown:
+                continue
+            wanted = expected[idx]
+            new_slot = wanted["slot"]
+            if new_slot not in missing or row.payload[1] != wanted["type"]:
+                return []
+            if new_slot in used_new_slots:
+                return []
+            used_new_slots.add(new_slot)
+            new_payload = [new_slot] + list(row.payload[1:])
+            edits.append({
+                "op": "replaceRow",
+                "code": "SS1201",
+                "old": row_text(row),
+                "new": " ".join([row.subject, "arg"] + new_payload),
+                "rationale": (f"rename arg slot {row.payload[0]!r} to "
+                              f"{new_slot!r} for {inv.payload[0]!r}"),
+            })
+        return edits
     return []
+
+
+def _dedupe_patch_edits(edits: list) -> list:
+    seen = set()
+    out = []
+    for edit in edits:
+        key = (edit.get("op"), edit.get("entity"), edit.get("row"),
+               edit.get("old"), edit.get("new"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(edit)
+    return out
 
 
 def cmd_fix(args) -> int:
@@ -17670,6 +17725,7 @@ def cmd_fix(args) -> int:
                       "message": d.message, "found": entry.get("found"),
                       "suggested": entry.get("suggested")})
         edits.extend(_fix_edits_for(d, program))
+    edits = _dedupe_patch_edits(edits)
     plan_usable = bool(edits)
     status = ("applyable" if plan_usable
               else "suggestions-only" if items else "ok")
@@ -17751,11 +17807,22 @@ def cmd_patch(args) -> int:
     remove_entities = {e["entity"] for e in edits
                        if e.get("op") == "removeEntity" and e.get("entity")}
     remove_rows = [e["row"] for e in edits if e.get("op") == "removeRow" and e.get("row")]
-    remove_rows_norm = {tuple(r.split()) for r in remove_rows}
+    replace_rows = [e for e in edits
+                    if e.get("op") == "replaceRow" and e.get("old") and e.get("new")]
+
+    def row_key(text: str) -> tuple:
+        try:
+            return tuple(tokenize_line(text))
+        except EavError:
+            return tuple(text.split())
+
+    remove_rows_norm = {row_key(r) for r in remove_rows}
+    replace_by_old = {row_key(e["old"]): e["new"] for e in replace_rows}
     pending_rows = set(remove_rows_norm)
-    kept, dropped = [], []
+    pending_replacements = set(replace_by_old)
+    kept, dropped, replaced = [], [], []
     for line in original.split("\n"):
-        toks = line.split()
+        toks = row_key(line)
         if toks and toks[0] in remove_entities:          # whole-entity removal
             dropped.append(line)
             continue
@@ -17764,13 +17831,19 @@ def cmd_patch(args) -> int:
             dropped.append(line)
             pending_rows.discard(key)
             continue
+        if key in pending_replacements:                   # single-row replacement
+            kept.append(replace_by_old[key])
+            replaced.append(line)
+            pending_replacements.discard(key)
+            continue
         kept.append(line)
     new_source = "\n".join(kept)
 
     # an edit that matched nothing means the plan is stale — fail closed.
     unmatched = ([e for e in remove_entities
-                  if not any(l.split()[:1] == [e] for l in dropped)]
-                 + [" ".join(r) for r in pending_rows])
+                  if not any(row_key(l)[:1] == (e,) for l in dropped)]
+                 + [" ".join(r) for r in pending_rows]
+                 + [" ".join(r) for r in pending_replacements])
     if unmatched:
         sys.stdout.write(_json_envelope(
             "sem.patch.v1", ok=False, status="stale-plan", applied=0, dryRun=dry_run,
@@ -17793,14 +17866,14 @@ def cmd_patch(args) -> int:
         sys.stdout.write(_json_envelope(
             "sem.patch.v1", ok=True, status="dry-run", applied=0,
             wouldApply=len(edits), dryRun=True, plan=plan_path, path=src_path,
-            removedLines=len(dropped)) + "\n")
+            removedLines=len(dropped), replacedLines=len(replaced)) + "\n")
         return 0
     with open(src_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(new_source if new_source.endswith("\n") else new_source + "\n")
     sys.stdout.write(_json_envelope(
         "sem.patch.v1", ok=True, status="applied", applied=len(edits),
         dryRun=False, plan=plan_path, path=src_path,
-        removedLines=len(dropped)) + "\n")
+        removedLines=len(dropped), replacedLines=len(replaced)) + "\n")
     return 0
 
 
