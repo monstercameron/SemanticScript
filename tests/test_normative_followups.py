@@ -111,3 +111,25 @@ def test_bin2_check_clean_console_examples_all_lower():
         semanticscript.lower_to_llvm(prog)  # must not raise
         lowered += 1
     assert lowered >= 50, f"expected to lower many console examples, got {lowered}"
+
+
+# --- BIN-1: webServer lowers its declared route table (static + dynamic) ---
+
+def test_bin1_webserver_route_table_lowers_static_and_dynamic_routes():
+    # The webServer target must lower EVERY declared route — including dynamic
+    # `:param` routes — into the dispatcher's route table. taskforge-web mixes
+    # static (/api/todos) and dynamic (/api/todos/:id, /assets/:filename) routes;
+    # the live dispatcher matches them (a GET /api/todos/:id returns the handler's
+    # 501 stub, not a 404), and here we pin that they reach the lowered IR table.
+    import os
+    app = "apps/taskforge-web"
+    if not os.path.isdir(app):
+        pytest.skip("taskforge-web app not present")
+    pytest.importorskip("llvmlite")
+    prog = semanticscript.parse(semanticscript.load_project(app))
+    prog.source_root = semanticscript._program_source_root_for_path(app)
+    assert semanticscript._program_target(prog) == "webServer"
+    ir = str(semanticscript.lower_to_llvm(prog))
+    for route in ("/api/todos", "/api/todos/:id",
+                  "/api/todos/:id/complete", "/assets/:filename"):
+        assert route in ir, f"route {route!r} was not lowered into the dispatch table"
