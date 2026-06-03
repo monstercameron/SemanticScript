@@ -13,9 +13,29 @@
 
 #define DOC(h) ((SSJsonDocument *)(intptr_t)(h))
 
+static int ss_json_valid_document(long long document) {
+    return document != 0 && ss_json_is_live_document(DOC(document));
+}
+
+static const char *ss_json_empty_string(char *scratch, long long scratch_capacity) {
+    if (scratch != NULL && scratch_capacity > 0) {
+        scratch[0] = '\0';
+        return scratch;
+    }
+    return "";
+}
+
 SS_EXPORT long long ss_json_create_empty(long long capacity_bytes, int root_kind) {
     SSJsonDocument *d = 0;
-    if (ss_json_document_create_empty(capacity_bytes, root_kind, &d) != 0) return 0;
+    /* The public standard.json JsonValueKind enum is ordered
+     * null/bool/number/string/array/object (array=4, object=5), while the native
+     * document runtime stores node kinds as object=0, array=1. Translate the
+     * public contract at the shim boundary so a documented `objectJson` root does
+     * not silently create a null handle and serialize as an empty string. */
+    int native_root_kind = root_kind;
+    if (root_kind == 5) native_root_kind = SS_JSON_NODE_OBJECT;
+    if (root_kind == 4) native_root_kind = SS_JSON_NODE_ARRAY;
+    if (ss_json_document_create_empty(capacity_bytes, native_root_kind, &d) != 0) return 0;
     return (long long)(intptr_t)d;
 }
 
@@ -26,10 +46,12 @@ SS_EXPORT long long ss_json_from_text(const char *json_text, long long capacity_
 }
 
 SS_EXPORT long long ss_json_root(long long document) {
+    if (!ss_json_valid_document(document)) return -1;
     return ss_json_document_root(DOC(document));
 }
 
 SS_EXPORT void ss_json_destroy(long long document) {
+    if (!ss_json_valid_document(document)) return;
     ss_json_document_destroy(DOC(document));
 }
 
@@ -46,6 +68,9 @@ SS_EXPORT const char *ss_json_serialize(long long document, char *scratch,
      * string, matching ss_json_read_string's never-NULL contract below. (Surfacing
      * the exact SS_JSON_ERR_* through `catch` instead of an empty sentinel is a
      * separate json family-ABI change — see R-142.) */
+    if (!ss_json_valid_document(document)) {
+        return "";
+    }
     const char *out = NULL;
     if (scratch != NULL && scratch_capacity > 0) {
         scratch[0] = '\0';
@@ -59,11 +84,13 @@ SS_EXPORT const char *ss_json_serialize(long long document, char *scratch,
 
 SS_EXPORT int ss_json_set_field_string(long long document, long long cursor,
                                        const char *field_name, const char *value) {
+    if (!ss_json_valid_document(document)) return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
     return ss_json_set_object_field_string(DOC(document), cursor, field_name, value);
 }
 
 SS_EXPORT int ss_json_set_field_int64(long long document, long long cursor,
                                       const char *field_name, long long value) {
+    if (!ss_json_valid_document(document)) return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
     return ss_json_set_object_field_int64(DOC(document), cursor, field_name, value);
 }
 
@@ -71,12 +98,14 @@ SS_EXPORT int ss_json_set_field_bool(long long document, long long cursor,
                                      const char *field_name, long long value) {
     /* Truthiness arrives as Int64 from both call sites (a Bool literal or a
      * sqlite 0/1 column), normalized here to the native int contract. */
+    if (!ss_json_valid_document(document)) return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
     return ss_json_set_object_field_bool(DOC(document), cursor, field_name,
                                          value != 0);
 }
 
 SS_EXPORT long long ss_json_set_field_object(long long document, long long cursor,
                                              const char *field_name) {
+    if (!ss_json_valid_document(document)) return -1;
     int64_t out = 0;
     ss_json_set_object_field_object(DOC(document), cursor, field_name, &out);
     return out;
@@ -84,12 +113,14 @@ SS_EXPORT long long ss_json_set_field_object(long long document, long long curso
 
 SS_EXPORT long long ss_json_set_field_array(long long document, long long cursor,
                                             const char *field_name) {
+    if (!ss_json_valid_document(document)) return -1;
     int64_t out = 0;
     ss_json_set_object_field_array(DOC(document), cursor, field_name, &out);
     return out;
 }
 
 SS_EXPORT long long ss_json_append_object(long long document, long long cursor) {
+    if (!ss_json_valid_document(document)) return -1;
     int64_t out = 0;
     ss_json_append_array_element_object(DOC(document), cursor, &out);
     return out;
@@ -97,6 +128,7 @@ SS_EXPORT long long ss_json_append_object(long long document, long long cursor) 
 
 SS_EXPORT long long ss_json_field_at(long long document, long long cursor,
                                      const char *field_name) {
+    if (!ss_json_valid_document(document)) return -1;
     int64_t out = 0;
     ss_json_navigate_object_field(DOC(document), cursor, field_name, &out);
     return out;
@@ -104,6 +136,7 @@ SS_EXPORT long long ss_json_field_at(long long document, long long cursor,
 
 SS_EXPORT long long ss_json_read_int64(long long document, long long cursor,
                                        long long missing_default) {
+    if (!ss_json_valid_document(document)) return missing_default;
     return ss_json_cursor_int64(DOC(document), cursor, missing_default);
 }
 
@@ -113,6 +146,9 @@ SS_EXPORT const char *ss_json_read_string(long long document, long long cursor,
      * the value absent, and callers treat the read as a String default (e.g. an
      * optional `displayName` that lowers to a NOT NULL '' column). Returning NULL
      * here would propagate a null String into binds and crash/violate schema. */
+    if (!ss_json_valid_document(document)) {
+        return "";
+    }
     const char *out = scratch;
     if (scratch != NULL && scratch_capacity > 0) {
         scratch[0] = '\0';

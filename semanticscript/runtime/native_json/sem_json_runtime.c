@@ -1005,7 +1005,7 @@ static int ss_json_track_document(SSJsonDocument *document) {
     return 1;
 }
 
-static int ss_json_is_live_document(const SSJsonDocument *document) {
+int ss_json_is_live_document(const SSJsonDocument *document) {
     for (size_t i = 0; i < g_live_document_count; i++) {
         if (g_live_documents[i] == document) {
             return 1;

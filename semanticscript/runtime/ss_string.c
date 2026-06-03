@@ -8,8 +8,10 @@
  * is needed), with the typed home in std/standard.string.sem. Strings cross the
  * EAV boundary as `String` (i8*); results are Int64/Int32. (X-200)
  */
-#include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "ss_runtime_export.h"
 
 /* Bytewise comparison (memcmp/strcmp semantics): negative if left < right,
@@ -58,4 +60,18 @@ SS_EXPORT int64_t ss_string_find_char_last(const char *text, int32_t ch) {
     if (text == NULL) return -1;
     const char *hit = strrchr(text, (int)(unsigned char)ch);
     return hit == NULL ? -1 : (int64_t)(hit - text);
+}
+
+/* Allocate a NUL-terminated decimal rendering of a signed Int64 value. The
+ * caller receives a normal SemanticScript String pointer; there is no ownership
+ * surface for freeing converted strings yet, matching string.concat's current
+ * process-lifetime behavior. */
+SS_EXPORT const char *ss_string_i64_to_string(int64_t value) {
+    char tmp[32];
+    int n = snprintf(tmp, sizeof tmp, "%lld", (long long)value);
+    if (n < 0 || n >= (int)sizeof tmp) return NULL;
+    char *out = (char *)malloc((size_t)n + 1);
+    if (out == NULL) return NULL;
+    memcpy(out, tmp, (size_t)n + 1);
+    return out;
 }

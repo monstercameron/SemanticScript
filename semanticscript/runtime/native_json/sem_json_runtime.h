@@ -255,6 +255,7 @@ int ss_json_document_create_empty(
 );
 
 void ss_json_document_destroy(SSJsonDocument *document);
+int ss_json_is_live_document(const SSJsonDocument *document);
 
 int ss_json_document_serialize(
     SSJsonDocument *document,
