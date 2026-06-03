@@ -9,8 +9,9 @@
 #
 # Handles (SqliteDatabase, SqliteStatement) are OpaquePointer; on x86-64 the
 # pointer and an i64 share the ABI register, so the OpaquePointer lowering is
-# exact. Strings returned by the column readers point into engine-owned memory
-# valid only until the next call on the same statement — copy before stepping.
+# exact. Strings returned by the ss_sqlite shim are copied before crossing the
+# EAV boundary, so columnText/columnName/errorMessage results survive later
+# statement steps and helper/module returns.
 
 standardSqlite is module
 standardSqlite path standard.sqlite
@@ -31,7 +32,7 @@ SqlText purpose "Null-terminated SQL source; dynamic values use ? placeholders p
 
 SqliteText is alias
 SqliteText for String
-SqliteText purpose "Engine-owned text from columnText/columnName, valid only until the statement advances"
+SqliteText purpose "Copied sqlite text returned by columnText/columnName/errorMessage"
 
 SqliteStepResult is enum
 SqliteStepResult variant rowStep
@@ -221,7 +222,7 @@ columnText in statement SqliteStatement
 columnText in columnIndex Int32
 columnText out SqliteText
 columnText body runtimeBinding ss_sqlite_column_text
-columnText purpose "Read a 0-based result column as engine-owned text valid until the next step"
+columnText purpose "Read a copied 0-based result column as text"
 
 columnByteCount is operation
 columnByteCount in statement SqliteStatement

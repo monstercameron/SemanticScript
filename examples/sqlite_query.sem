@@ -27,6 +27,10 @@ ExitCode is alias
 ExitCode for Int32
 ExitCode purpose "Process exit status"
 
+SqlText is alias
+SqlText for String
+SqlText purpose "SQL text trusted for sqlite execution"
+
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
 stdoutWriter purpose "Allow controlled writes to standard output"
@@ -38,14 +42,14 @@ sqliteOpenMemory purpose "Open a fresh in-memory sqlite database"
 
 sqliteExec is operation
 sqliteExec in db OpaquePointer
-sqliteExec in sql String
+sqliteExec in sql SqlText
 sqliteExec out Int32
 sqliteExec body runtimeBinding ss_sqlite_exec
 sqliteExec purpose "Execute a one-shot SQL statement"
 
 sqliteQueryScalar is operation
 sqliteQueryScalar in db OpaquePointer
-sqliteQueryScalar in sql String
+sqliteQueryScalar in sql SqlText
 sqliteQueryScalar out Int64
 sqliteQueryScalar body runtimeBinding ss_sqlite_query_scalar
 sqliteQueryScalar purpose "Run a query and read the first column of the first row as Int64"
@@ -63,13 +67,13 @@ main uses stdoutWriter
 main async no
 main purpose "Seed a table and assert aggregate and filtered query results"
 main invariant "All four assertions hold"
-main let createSql immutable String "CREATE TABLE t(n INTEGER)"
-main let insert10 immutable String "INSERT INTO t VALUES(10)"
-main let insert20 immutable String "INSERT INTO t VALUES(20)"
-main let insert30 immutable String "INSERT INTO t VALUES(30)"
-main let countSql immutable String "SELECT COUNT(*) FROM t"
-main let sumSql immutable String "SELECT SUM(n) FROM t"
-main let filterSql immutable String "SELECT n FROM t WHERE n = 20"
+main let createSql immutable SqlText "CREATE TABLE t(n INTEGER)"
+main let insert10 immutable SqlText "INSERT INTO t VALUES(10)"
+main let insert20 immutable SqlText "INSERT INTO t VALUES(20)"
+main let insert30 immutable SqlText "INSERT INTO t VALUES(30)"
+main let countSql immutable SqlText "SELECT COUNT(*) FROM t"
+main let sumSql immutable SqlText "SELECT SUM(n) FROM t"
+main let filterSql immutable SqlText "SELECT n FROM t WHERE n = 20"
 main let expectCount immutable Int64 3
 main let expectSum immutable Int64 60
 main let expectFiltered immutable Int64 20
@@ -102,49 +106,49 @@ createTab is call
 createTab in main
 createTab invokes sqliteExec
 createTab arg db OpaquePointer db
-createTab arg sql String createSql
+createTab arg sql SqlText createSql
 createTab discards "status intentionally unused in this demonstration"
 
 ins10 is call
 ins10 in main
 ins10 invokes sqliteExec
 ins10 arg db OpaquePointer db
-ins10 arg sql String insert10
+ins10 arg sql SqlText insert10
 ins10 discards "status intentionally unused in this demonstration"
 
 ins20 is call
 ins20 in main
 ins20 invokes sqliteExec
 ins20 arg db OpaquePointer db
-ins20 arg sql String insert20
+ins20 arg sql SqlText insert20
 ins20 discards "status intentionally unused in this demonstration"
 
 ins30 is call
 ins30 in main
 ins30 invokes sqliteExec
 ins30 arg db OpaquePointer db
-ins30 arg sql String insert30
+ins30 arg sql SqlText insert30
 ins30 discards "status intentionally unused in this demonstration"
 
 queryCount is call
 queryCount in main
 queryCount invokes sqliteQueryScalar
 queryCount arg db OpaquePointer db
-queryCount arg sql String countSql
+queryCount arg sql SqlText countSql
 queryCount out rowCount Int64
 
 querySum is call
 querySum in main
 querySum invokes sqliteQueryScalar
 querySum arg db OpaquePointer db
-querySum arg sql String sumSql
+querySum arg sql SqlText sumSql
 querySum out rowSum Int64
 
 queryFiltered is call
 queryFiltered in main
 queryFiltered invokes sqliteQueryScalar
 queryFiltered arg db OpaquePointer db
-queryFiltered arg sql String filterSql
+queryFiltered arg sql SqlText filterSql
 queryFiltered out filtered Int64
 
 checkCount is call

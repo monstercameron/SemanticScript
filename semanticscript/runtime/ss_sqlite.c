@@ -15,10 +15,30 @@
  *
  * Handles flow through EAV as OpaquePointer (i64); on x86-64 a pointer and an
  * i64 share the argument/return register, so the lowering is ABI-compatible.
+ * Text-returning helpers copy the sqlite-owned string before crossing the EAV
+ * boundary. The language does not have a general string-free surface yet, so
+ * these match string.concat / convert.toString's process-lifetime allocation
+ * model instead of handing callers a dangling sqlite3_column_text pointer.
  */
 
 #include "sem_sqlite_runtime.h"
 #include "ss_runtime_export.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+static const char *ss_sqlite_dup_text(const char *text) {
+    if (text == 0) {
+        return 0;
+    }
+    size_t n = strlen(text);
+    char *copy = (char *)malloc(n + 1);
+    if (copy == 0) {
+        return 0;
+    }
+    memcpy(copy, text, n + 1);
+    return copy;
+}
 
 /* ---- database lifecycle (open/query use out-params -> adapted) ---- */
 
@@ -43,7 +63,7 @@ SS_EXPORT int ss_sqlite_close(void *db) {
 }
 
 SS_EXPORT const char *ss_sqlite_errmsg(void *db) {
-    return ss_sqlite_database_errmsg((SSSqliteDatabase *)db);
+    return ss_sqlite_dup_text(ss_sqlite_database_errmsg((SSSqliteDatabase *)db));
 }
 
 SS_EXPORT long long ss_sqlite_last_insert_rowid(void *db) {
@@ -131,7 +151,7 @@ SS_EXPORT int ss_sqlite_column_type(void *stmt, int col) {
 }
 
 SS_EXPORT const char *ss_sqlite_column_name(void *stmt, int col) {
-    return ss_sqlite_statement_column_name((SSSqliteStatement *)stmt, col);
+    return ss_sqlite_dup_text(ss_sqlite_statement_column_name((SSSqliteStatement *)stmt, col));
 }
 
 SS_EXPORT long long ss_sqlite_column_int64(void *stmt, int col) {
@@ -143,7 +163,7 @@ SS_EXPORT double ss_sqlite_column_double(void *stmt, int col) {
 }
 
 SS_EXPORT const char *ss_sqlite_column_text(void *stmt, int col) {
-    return ss_sqlite_statement_column_text((SSSqliteStatement *)stmt, col);
+    return ss_sqlite_dup_text(ss_sqlite_statement_column_text((SSSqliteStatement *)stmt, col));
 }
 
 SS_EXPORT long long ss_sqlite_column_bytes(void *stmt, int col) {

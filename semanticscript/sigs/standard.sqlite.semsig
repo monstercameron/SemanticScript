@@ -7,6 +7,32 @@ sqliteSig version "1.0"
 sqliteSig generatedBy "semanticscript 0.1"
 sqliteSig describes standard.sqlite
 
+SqlText is alias
+SqlText for String
+SqlText typeTrust validated
+SqlText purpose "A SQL statement string that is intended for sqlite.* interpreter calls"
+
+SqliteDatabase is alias
+SqliteDatabase for Int64
+SqliteDatabase purpose "Opaque sqlite database handle"
+
+SqliteStatement is alias
+SqliteStatement for Int64
+SqliteStatement purpose "Opaque sqlite prepared-statement handle"
+
+SqliteStepResult is alias
+SqliteStepResult for Int32
+SqliteStepResult purpose "Raw sqlite3_step status code"
+
+SqliteOpenMode is enum
+SqliteOpenMode variant readOnly
+SqliteOpenMode variant readWrite
+SqliteOpenMode variant readWriteCreate
+SqliteOpenMode repr readOnly 1
+SqliteOpenMode repr readWrite 2
+SqliteOpenMode repr readWriteCreate 6
+SqliteOpenMode purpose "SQLite open flags: read-only, read-write, or read-write-create"
+
 openDatabase is intrinsic
 openDatabase target sqlite.openDatabase
 openDatabase arg path String
