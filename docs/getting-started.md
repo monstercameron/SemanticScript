@@ -93,13 +93,24 @@ must be covered by a `uses`-ed `capability`; the `call` invokes the
 | Command | What it does |
 |---|---|
 | `semanticscript run <path>` | JIT-compile and execute (a file or a project dir). |
-| `semanticscript check --json <path>` | Structured diagnostics (`sem.check.v1`). |
+| `semanticscript check --json <path>` | Static parse+lint diagnostics (`sem.check.v1`); warning-only results exit 0 by default. |
+| `semanticscript check --strict <path>` | Stricter source gate; promotes T3 warnings to errors. |
+| `semanticscript verify --strict <path>` | One-shot static check, discovered tag tests, and run proof (`sem.verify.v1`). |
 | `semanticscript lint <path>` | Human-readable lint diagnostics. |
-| `semanticscript fmt <path>` | Format source (canonical row layout). |
+| `semanticscript fmt <path>` | Format source (canonical row layout); add `-w`/`--write` to update a file. |
 | `semanticscript build <path> -o out` | Build a native executable. |
+| `semanticscript targets --signature <target>` | Show builtin arg slots, types, and output type. Use `<family>.*` for a family such as `json.*`. |
+| `semanticscript reserved-words --json` | List the exact reserved-name set. |
 | `semanticscript version` | Print the source-compatibility contract version. |
 
 Run `semanticscript --help` for the full subcommand list.
+
+`check` is a static source lane. It does not execute the program, run tests,
+build an executable, or provide a runtime sandbox. After a clean or warning-only
+check, use `verify --strict`, `run`, `test`, or `build` to prove behavior.
+Use `targets --signature` before authoring a builtin call, `docs --get <family>.*`
+or `targets --signature <family>.*` to inspect a builtin family, and
+`reserved-words` when a candidate entity, variable, or type name looks ambiguous.
 
 ## Multi-file projects
 

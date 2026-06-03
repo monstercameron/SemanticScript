@@ -101,6 +101,7 @@ the tools alone.
 
 | Aspect | Required behavior |
 |---|---|
+| Packaging | lives inside a **real project** (a manifest + source tree) that you **create with the toolchain's own project-creation capability** — not a single hand-rolled loose file |
 | Target | console program, single entry operation |
 | Dividend | a named, immutable value binding equal to `84` |
 | Divisor | a named value binding equal to `2` |
@@ -110,17 +111,27 @@ the tools alone.
 | Failure mode | if the divisor is zero, take a distinct labeled failure path that does **not** divide and returns a **non-zero** exit code |
 | Authority | the stdout write is a declared effect, granted by a capability the operation `uses`; the grant is exactly that effect, nothing broader |
 | Error vocabulary | a named `error` entity for the divide-by-zero condition, referenced by the failure path |
+| Delivery | the project is compiled to a **standalone native executable on disk**, and the program is proven by **running that built binary** — not only by JIT-executing the source |
 
 For this input (`84 / 2`) the **success path is the one taken**; the failure path
 must still be present, well-formed, and reachable in principle (the guard is real,
 not dead syntax).
 
+> **This is not a single-file exercise.** A lone `.sem` that JIT-runs is a
+> *failed* deliverable, even if it prints `42`. You must stand up a project with
+> the toolchain and produce a real built binary. Discovering *how* to do both —
+> from the toolchain alone — is part of the test.
+
 ---
 
 ## Functional requirements
 
-- **FR-1 — Project shape.** A console-target program with exactly one entry
-  operation. No `build.sem`, no multi-file project.
+- **FR-0 — Created as a project.** You must use the toolchain's own
+  project-creation capability to scaffold a fresh project (a manifest + a source
+  tree + whatever the scaffold generates). You may not hand-author a single loose
+  file as the deliverable. The divide logic lives in the project's source.
+- **FR-1 — Project shape.** A console-target project with exactly one entry
+  operation. Keep the generated project layout; put your logic in its source.
 - **FR-2 — Named operands.** `84` (dividend) and `2` (divisor) are declared as
   named value bindings inside the operation. The quotient must be computed from
   them — a hardcoded `42` anywhere is an automatic fail.
@@ -142,13 +153,23 @@ not dead syntax).
   divide-by-zero condition and is referenced on the failure path.
 - **FR-8 — Exit codes.** Success path returns `0`; the divide-by-zero failure
   path returns a non-zero code.
+- **FR-9 — Native build artifact.** Compile the project to a **standalone native
+  executable file on disk** using the toolchain. The binary must exist as a real
+  artifact, not just a transient JIT run.
+- **FR-10 — Prove via the binary.** The `42` / exit-0 proof must come from
+  **executing the built binary directly** (in addition to any JIT run you do
+  while iterating).
+- **FR-11 — Project test passes.** If the scaffold generates a test for the
+  project, make it pass; run the project's tests through the toolchain and show
+  the result.
 
 ## Design constraints
 
 - One flat tape of `subject predicate payload` rows; no hidden control flow.
 - No external libraries, no network, no runtime seams (sqlite/http/json/...).
-- The only files that may exist or change as a result of this ticket are
-  `experiments/agent-dx-blackbox/safe_divide.sem` and `.../DEVLOG.md`.
+- The deliverables are a **project directory** (created by the toolchain, holding
+  your divide logic and its built binary) and a `DEVLOG.md`, both under
+  `experiments/agent-dx-blackbox/`. Do not modify anything else in the repo.
 
 ## Edge cases to handle / consider (note your reasoning in the DEVLOG)
 
@@ -161,6 +182,13 @@ not dead syntax).
   whether the toolchain distinguishes them.
 - **EC-4** Printing an integer vs. a string: confirm which primitive prints a
   bare integer line so output is exactly `42`.
+- **EC-5** A program may pass the static check yet fail to run or build because a
+  named target isn't supported by the code generator. **Passing the check is not
+  proof it runs.** You must actually run it and actually build the binary — and
+  log any case where check said one thing and run/build said another.
+- **EC-6** Building a native executable may depend on a C toolchain. Use the
+  toolchain's own environment/readiness reporting to confirm the build lane is
+  available before assuming a build failure is your fault; record what it said.
 
 ---
 
@@ -169,10 +197,14 @@ not dead syntax).
 Each is `Given/When/Then` and must be **proven by a tool command** whose output
 you paste into the DEVLOG. Self-attestation does not count.
 
-- [ ] **AC-1 — Builds clean.** *Given* `safe_divide.sem`, *when* you run the
-      toolchain's parse+lint check, *then* it reports **zero errors and zero
-      warnings**. Paste the check output.
-- [ ] **AC-2 — Correct output & exit.** *Given* the program, *when* you run it,
+- [ ] **AC-0 — Created as a project.** *Given* an empty working area, *when* you
+      use the toolchain's project-creation capability, *then* a real project
+      (manifest + source tree) is generated. Paste the creation command's output
+      and the resulting file listing.
+- [ ] **AC-1 — Checks clean.** *Given* the project, *when* you run the toolchain's
+      parse+lint check on it, *then* it reports **zero errors and zero warnings**.
+      Paste the check output.
+- [ ] **AC-2 — Correct output & exit.** *Given* the project, *when* you run it,
       *then* stdout is exactly `42\n` and the process exit code is `0`. Paste the
       run output.
 - [ ] **AC-3 — Effect declared.** *Given* the program, *when* you query its
@@ -191,8 +223,15 @@ you paste into the DEVLOG. Self-attestation does not count.
       and a distinct labeled block that returns non-zero without dividing. Show
       the rows and cite the toolchain's runtime divide-by-zero diagnostic
       (its code + repair text) to justify the guard.
-- [ ] **AC-7 — Canonical format.** *Given* the file, *when* you run the
+- [ ] **AC-7 — Canonical format.** *Given* the project source, *when* you run the
       toolchain's format check, *then* it passes with no diff. Paste the result.
+- [ ] **AC-8 — Native binary built and runs.** *Given* the project, *when* you
+      compile it to a standalone native executable, *then* the binary file exists
+      on disk **and** executing that binary directly prints `42\n` with exit code
+      `0`. Paste the build command/output, the on-disk path, and the binary's run.
+- [ ] **AC-9 — Project test passes.** *Given* the project's generated test(s),
+      *when* you run them through the toolchain, *then* they pass. Paste the
+      result. (If the scaffold generates no test, say so and prove it.)
 
 ## Test plan
 
@@ -201,14 +240,19 @@ relevant output in the DEVLOG.
 
 | # | Action (via the toolchain) | Expected result | AC |
 |---|---|---|---|
-| T-1 | Parse+lint check on the file | Clean: 0 errors, 0 warnings | AC-1 |
-| T-2 | Run the program | stdout `42\n`; exit code `0` | AC-2 |
-| T-3 | Query the program's **effects** | Includes `write console.stdout` | AC-3 |
+| T-0 | Create the project with the toolchain; list the generated tree | A real project (manifest + source tree) exists on disk | AC-0 |
+| T-1 | Parse+lint check on the project | Clean: 0 errors, 0 warnings | AC-1 |
+| T-2 | Run the project (JIT) | stdout `42\n`; exit code `0` | AC-2 |
+| T-3 | Query the project's **effects** | Includes `write console.stdout` | AC-3 |
 | T-4 | Inspect **capabilities / authority** | A capability grants exactly `write console.stdout`; operation `uses` it | AC-4 |
-| T-5 | Inspect the **call graph** | A real integer-divide call node feeds the printed value | AC-5 |
+| T-5 | Inspect the **call graph / calls** | A real integer-divide call feeds the printed value (if `graph` is empty for a flat program, use the calls/slice query and note that gap) | AC-5 |
 | T-6 | Explain the **runtime divide-by-zero diagnostic** | You can name the code + repair, and your guard matches it | AC-6 |
 | T-7 | **Format** check | No reformatting needed | AC-7 |
-| T-8 | **Negative check:** copy the file, delete the `uses` row *or* the `grants` row, check the copy | The check now **FAILS** with an effect/capability diagnostic — authority is enforced, not cosmetic. Delete the copy, keep the original. | AC-3/AC-4 |
+| T-8 | **Negative check:** copy the project source, delete the `uses` row *or* the `grants` row, check the copy | The check now **FAILS** with an effect/capability diagnostic — authority is enforced, not cosmetic. Delete the copy, keep the original. | AC-3/AC-4 |
+| T-9 | Confirm the **build lane** via the toolchain's environment/readiness report | Reports the native build lane is available | AC-8 |
+| T-10 | **Build** the project to a standalone native executable | Build succeeds; the binary file exists on disk (record its path) | AC-8 |
+| T-11 | Execute the **built binary directly** (not JIT) | stdout `42\n`; exit code `0` | AC-8 |
+| T-12 | Run the project's **tests** through the toolchain | Tests pass (or: prove the scaffold generated none) | AC-9 |
 
 ---
 

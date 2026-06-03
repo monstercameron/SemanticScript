@@ -32,10 +32,12 @@ stdoutWriter grants write console.stdout   # …which is the only thing it's all
 ```
 
 If an operation performs an effect it didn't declare, or uses a capability that
-doesn't grant that effect, it **doesn't compile**. The contract — *what can this
-code touch, how can it fail, what must it clean up* — lives in the source, not in
-your head. That's what makes a program legible to a reviewer, a linter, or an
-agent without running it.
+doesn't grant that effect, the source lane reports it. `check --strict` is the
+CI-style gate; the default `check` still exits 0 for warning-only findings and
+tells you how many warnings were not enforced. The contract — *what can this code
+touch, how can it fail, what must it clean up* — lives in the source, not in your
+head. That's what makes a program legible to a reviewer, a linter, or an agent
+before running it.
 
 Every line is the same shape:
 
@@ -108,8 +110,9 @@ follow. The kinds are the vocabulary of the language:
 | `error` | a named, typed failure value |
 | `alias` / `type` / `record` / `enum` | the type vocabulary |
 
-**Operations declare their whole contract.** Inputs, output arity, side effects,
-authority, heap use, and async-ness are all rows:
+**Operations declare their whole contract.** Inputs, output arity, typed
+failure surface (`raises`), side effects, authority, heap use, and async-ness
+are all rows:
 
 ```
 addTwo is operation
@@ -140,7 +143,9 @@ expressions.
 
 **Failure is data.** Errors are declared entities; operations branch on them
 explicitly (`branch ifError <call> goto <label>`); there are no invisible
-exceptions unwinding through your stack.
+exceptions unwinding through your stack. Use `operation raises ErrorType` to
+document an operation's possible errors, and use call-site `catch` plus
+`branch ifError` to handle a specific fallible call.
 
 > Full grammar, every predicate, and every entity kind: **[docs/LANGUAGE.md](docs/LANGUAGE.md)**.
 
@@ -157,16 +162,23 @@ review, and refactor it. That shows up across the toolchain:
 - **A built-in MCP server.** `semanticscript mcp` speaks JSON-RPC over stdio:
   `check`, `docs`, `graph`, `skills`, `search`, and more, each returning a
   stable, versioned `sem.<tool>.v1` JSON envelope.
-- **49 structured CLI tools** for retrieval and reasoning — `semanticscript
+- **50 structured CLI tools** for retrieval and reasoning — `semanticscript
   search "add a route"` does relevance-ranked retrieval across the diagnostics,
   skills, task templates, and spec; `explain SS1502` describes any diagnostic;
-  `query effects <file>` extracts a program's effect set; `fix --plan` emits a
-  machine-applicable patch plan.
+  `targets --signature TARGET` shows builtin arg slots/types; `reserved-words`
+  lists the exact reserved-name set; `query effects <file>` extracts a
+  program's effect set; `fix --plan` emits a repair plan whose `planUsable`
+  field says whether `patch` can apply it.
 - **Self-describing diagnostics.** 170 diagnostics, each with a tier, a summary,
   what was found, and a suggested fix.
 
 The result: an agent can answer "what does this touch, how can it fail, where do
 I add X" from the source alone.
+
+Capabilities are a static source contract, not a runtime sandbox. Removing a
+`uses` row does not revoke a live OS permission; it changes what the source
+checker can authorize. A passing `check` means "static source lane passed," not
+"this program has been executed, tested, built, or sandboxed."
 
 ---
 
@@ -205,9 +217,10 @@ python -m pip install -r requirements.txt          # chiefly llvmlite (bundles L
 # alias the compiler for convenience
 alias semanticscript='python semanticscript/compiler/semanticscript.py'   # bash/zsh
 
-semanticscript run examples/hello_world.sem        # -> hello world
-semanticscript check examples/add_two.sem --json   # structured diagnostics
-semanticscript build examples/add_two.sem -o add   # native executable
+semanticscript check examples/add_two.sem --json       # static diagnostics
+semanticscript check examples/add_two.sem --strict     # stricter source gate
+semanticscript run examples/hello_world.sem            # -> hello world
+semanticscript build examples/add_two.sem -o add       # native executable
 ```
 
 You need **Python 3.12** and, for native builds and the native runtime,
@@ -223,14 +236,22 @@ a C compiler. Full setup, project layout, and editor integration:
 |---|---|
 | `run` | JIT-compile and execute a file or project directory |
 | `build` / `wasm` | native executable / WebAssembly module + runner |
-| `check` / `lint` | structured (`sem.check.v1`) and human-readable diagnostics |
-| `fmt` | canonical row formatting (`--check` for CI) |
-| `fix` / `patch` | emit a machine-applicable fix plan, then apply it |
+| `check` / `lint` | static parse+lint diagnostics; default allows warning-only success, `--strict` promotes T3 warnings |
+| `verify` | one-shot check + discovered tests + run proof; use when "green means runnable" matters |
+| `fmt` | canonical row formatting (`--check` for CI, `-w`/`--write` to update a file) |
+| `fix` / `patch` | emit a repair plan; `patch` applies only plans with `planUsable:true` |
 | `graph` / `query` / `symbols` / `deps` | call graph, effect/dimension queries, symbol & dependency views |
+| `targets --signature` / `reserved-words` | discover builtin call signatures and reserved names |
 | `docs` / `explain` / `search` / `skills` | semantic docs, diagnostic lookup, ranked retrieval, agent skills |
 | `mcp` | run the MCP stdio server for agent integration |
 
-`semanticscript --help` lists all 49 commands.
+`semanticscript --help` lists all 50 commands.
+
+Use `check` to prove the source contract, then `verify`, `run`, `test`, or `build`
+to prove runtime behavior. The `sem.check.v1` envelope says this explicitly: it
+includes `lane: "static-source"`, warning counts, the active strict policy, and
+replayable next commands for run/build verification. `verify --strict <path>`
+packages the common check+test+run gate behind one `sem.verify.v1` envelope.
 
 ---
 

@@ -153,6 +153,9 @@ does not strip them.
 The following tokens are reserved and may not be used as entity names, variable
 names, or type names:
 
+The toolchain source of truth is discoverable with
+`semanticscript reserved-words` or `semanticscript reserved-words --json`.
+
 **Literals:**
 ```
 nil true false
@@ -166,7 +169,7 @@ is at
 **Step predicates and guards:**
 ```
 do defer start join poll cancel detach branch return goto set
-if ifFalse ifOut ifValue ifVariant ifError ifReady ifPending ifCanceled else onFailure
+if ifTrue ifFalse ifOut ifValue ifVariant ifError ifReady ifPending ifCanceled else onFailure
 equals notEquals greaterThan lessThan bind
 propagate logAndSuppress because
 ```
@@ -334,7 +337,7 @@ predicates (§6) are available on every entity kind and listed separately.
 | `alias` | `is for typeTrust` | — |
 | `sharedState` | `is scope type mutability value guard owner` (WS2-083) | — |
 | `region` | `is strategy scope capacity` (WS1-112) | — |
-| `operation` | `is in out effect uses memory async label let body export trustConstraint errorBoundary optOut maxIterations` | `do defer start join poll cancel detach branch return goto set at readShared setShared allocateIn releaseRegion` |
+| `operation` | `is in out raises effect uses memory async label let body export trustConstraint errorBoundary optOut maxIterations` | `do defer start join poll cancel detach branch return goto set at readShared setShared allocateIn releaseRegion` |
 | `call` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
 | `task` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
 | `cleanup` | `is in call onFailure because cleans` | — |
@@ -674,6 +677,11 @@ Lint: every `effect` must be covered by a `uses` capability whose `grants`
 matches action + resource. Uncovered effect is a lint warning requesting a
 covering capability.
 
+This is a static source contract, not a runtime sandbox. A `capability` value is
+not an OS token and removing a `uses` row does not revoke a live process
+permission. The checker proves what the source declares and authorizes; runtime
+behavior still has to be proved with `run`, `test`, or `build`.
+
 **Threat model.** The capability/effect/trust-boundary system defends three
 assets: *authority* — no operation performs an effect it did not declare and was
 not granted, including through a primitive body (§11); *trust* — untrusted input
@@ -780,7 +788,7 @@ bare in the source. Examples by module:
 | `standard.http` | `HttpRequest`, `HttpResponse`, `HttpTextBody`, `HttpStatusCode`, `HttpContentType`, `NextMiddleware`, `ServerContext` |
 | `standard.sqlite` | `SqliteDatabase`, `SqliteStatement`, `SqliteStepResult`, `SqlText`, `SqliteOpenMode`, `SqliteQueryFailure`, `SqliteDatabaseOpenFailure`, `SqliteDatabaseCloseFailure` |
 | `standard.html` | `HtmlTemplate`, `HtmlFragment`, `HtmlSafeUrl`, `HtmlTrustedFragment` |
-| `standard.convert` | `ConversionError` |
+| `standard.convert` | `ConversionError`; `convert.toString` formats an `Int64` as `String` |
 | `standard.build` | `BuildPlan`, `BuildTarget` — **new in v0.3 (proposed module)** |
 | `standard.test` | `TestResult` (+ `test.and`) — **new in v0.3 (proposed module)** |
 | `standard.assert` | assertion targets `assert.*`; no exported types (maps to the repo's existing `standard.assert` if present) |
@@ -1118,6 +1126,24 @@ entities.
 
 All declaration rows are order-independent. The one exception: multiple `in`
 rows preserve parameter order by document order.
+
+### Declarative failure surface
+
+`OP raises ErrorType` documents an operation's externally visible failure
+surface as source data:
+
+```sem
+healthHandler is operation
+healthHandler out Result HealthBody HealthError
+healthHandler raises SqliteDatabaseOpenFailure
+healthHandler raises SqliteQueryFailure
+```
+
+Each payload token in a `raises` row must name a declared `error` entity. The
+row is declarative: it does not create exception unwinding and it does not bind a
+runtime error variable. Executable failure handling still lives at the call/task
+site with `catch`, followed by `branch ifError CALL goto LABEL` after `do` or
+`join` (§13, §15, §25).
 
 ### Operation bodies
 
@@ -2476,6 +2502,11 @@ incrementHitCounter discards "metrics counter value is not used by the response"
 `discards` payload must be a quoted string. Lint: a call whose target returns
 non-void with no `out`, no `catch`, and no `discards` is an error.
 
+Do not use `discards` for boolean `assert.*` intrinsics such as
+`assert.equalInt64` or `assert.true`: the assertion result must be bound with
+`out` and branched/combined, or the call must use a `test.assert*` harness
+target that records the failure. Discarding an `assert.*` result is SS1204.
+
 A **fallible** cleanup call does not use `discards`: it declares a `catch`, and
 the cleanup entity's `onFailure` policy consumes that error (`logAndSuppress`
 logs it, `propagate` returns it). `discards` is only for genuinely infallible
@@ -2750,6 +2781,10 @@ The first column-1 token-bearing row ends the island.
 | `JsonText` | `json` |
 | `HtmlTemplate` | `html` |
 
+`SqlText` is constructible from a typed literal or a `body sql` storage island.
+Built-in sqlite SQL slots require that exact declared type; a plain `String`
+does not satisfy `sqlite.exec` or `sqlite.prepareStatement`.
+
 HTML templates use the `htmlTemplate` kind:
 
 ```sem
@@ -2933,8 +2968,10 @@ lint error (e.g., passing `String` where `HtmlSafeUrl` is required for an
     `return`. Unresolved started task at operation exit is a hard error.
 21. `cancel TASK` requires the task to have been `start`-ed on the current path.
 22. `branch ifCanceled TASK` requires a preceding `cancel TASK` + `join TASK`.
-23. `columnText`/`columnBlob`/`columnName` sqlite column results must be consumed
-    before the next read on the same statement.
+23. `columnText` and `columnName` sqlite column results are copied strings and
+    may be returned across helper/module boundaries. `columnBlob` is borrowed
+    sqlite storage and must be consumed before the next read on the same
+    statement.
 24. Multi-write sequences on the same resource require a transaction.
 25. A non-void call with no `out`, no `catch`, and no `discards` is an error.
 26. No dotted internal entity references. Dots only in external target paths and
@@ -3321,9 +3358,9 @@ readCount catch queryErr SqliteQueryFailure
 
 formatCount is call
 formatCount in healthHandler
-formatCount invokes convert.convertSignedInt64ToString
-formatCount arg inputValue Int64 openTaskCount
-formatCount out countText String
+formatCount invokes convert.toString
+formatCount arg value Int64 openTaskCount
+formatCount out converted String
 formatCount catch formatErr ConversionError
 
 writeOk is call
@@ -3331,7 +3368,7 @@ writeOk in healthHandler
 writeOk invokes http.responseText
 writeOk arg response HttpResponse response
 writeOk arg status HttpStatusCode okStatus
-writeOk arg body HttpTextBody countText
+writeOk arg body HttpTextBody converted
 writeOk arg contentType HttpContentType textContentType
 writeOk out writeResult Int32
 
@@ -3522,14 +3559,18 @@ it is not legal.
 ```
 1. module entity (path, imports, exports, metadata)
 2. capability entities
-3. alias entities
-4. enum entities
-5. record entities
-6. error entities
-7. errorCase entities
-8. module-scope storage entities and DSL islands
-9. webServer entity
-10. operations (each followed immediately by its call, task, and cleanup blocks)
+3. error entities
+4. errorCase entities
+5. alias entities
+6. record entities
+7. enum entities
+8. operationType entities
+9. module-scope storage entities and DSL islands
+10. webServer entity
+11. operations/functions
+12. call entities
+13. task entities
+14. cleanup entities
 ```
 
 The `project` entity is **not** in module source — it lives in `build.sem` (§7).
@@ -3800,8 +3841,8 @@ to follow.
 
 **Default inclusion.** A bare slice includes the operation's declaration + `let`
 + step rows + label metadata, plus every `call`/`task`/`cleanup` it activates,
-every capability named by `uses`, every error named by `catch`, every type named
-by `in`/`out`/`arg`/`catch`/`let`, and the imports those external targets/types
+every capability named by `uses`, every error named by `catch` or `raises`,
+every type named by `in`/`out`/`arg`/`catch`/`raises`/`let`, and the imports those external targets/types
 need. Flags widen or narrow it:
 
 | Flag | Adds / restricts |
@@ -5444,11 +5485,12 @@ the universal `tag test` metadata row (§6) — no new core syntax. A `.test.sem
 file is **part of the same module** as the source it sits beside (§28.2), so it
 invokes that module's operations by bare name (`addTwoValues` below resolves to
 the module's operation, §15). Two stdlib modules split the surface:
-`standard.assert` provides the assertion targets (imported as `assert` →
-`assert.equalInt64`/`assert.true`/`assert.matchesGolden`), and `standard.test`
-provides the `TestResult` type and result combinators (imported as `test` →
-`test.and`). A test operation takes no inputs and returns `out TestResult`; its
-assertion calls fail the test on mismatch:
+`standard.assert` provides pure assertion predicates (imported as `assert` →
+`assert.equalInt64`/`assert.true`), and `standard.test` provides the reporting
+harness calls and Bool-result combinators (imported as `test` → `test.and` and
+`test.assert*`). In the current console subset, `TestResult` is modeled as
+`Bool`: pure `assert.*` calls compute a Bool, while `test.assert*` calls print
+PASS/FAIL rows and update the harness tally.
 
 ```sem
 taskTests imports assert standard.assert
@@ -5475,40 +5517,36 @@ computeSum out sumValue Int64
 checkSum is call
 checkSum in addsTwoNumbers
 checkSum invokes assert.equalInt64
-checkSum arg expected Int64 expectedSum
-checkSum arg actual Int64 sumValue
-checkSum out testOutcome TestResult
+checkSum arg left Int64 expectedSum
+checkSum arg right Int64 sumValue
+checkSum out testOutcome Bool
 ```
 
-**Concrete API.** `TestResult` is a `standard.test` record (a pass/fail flag, a
-message, and an assertion count). The `.semsig` signatures (§26):
+**Concrete API.** The implemented `.semsig` signatures (§26):
 
 ```sem
 assertEqualInt64 is intrinsic
 assertEqualInt64 target assert.equalInt64
-assertEqualInt64 arg expected Int64
-assertEqualInt64 arg actual Int64
-assertEqualInt64 arg message String              # failure message
-assertEqualInt64 out TestResult
+assertEqualInt64 arg left Int64
+assertEqualInt64 arg right Int64
+assertEqualInt64 out passed Bool
 
 assertTrue is intrinsic
 assertTrue target assert.true
-assertTrue arg actual Bool
-assertTrue arg message String
-assertTrue out TestResult
-
-assertMatchesGolden is intrinsic
-assertMatchesGolden target assert.matchesGolden
-assertMatchesGolden arg actual String            # produced output to compare
-assertMatchesGolden arg goldenPath String         # path under tests/golden/
-assertMatchesGolden arg expectedDigest String     # sha256 of the committed golden
-assertMatchesGolden out TestResult
+assertTrue arg value Bool
+assertTrue out passed Bool
 
 testAnd is intrinsic
 testAnd target test.and
-testAnd arg left TestResult
-testAnd arg right TestResult
-testAnd out TestResult
+testAnd arg left Bool
+testAnd arg right Bool
+testAnd out both Bool
+
+assertEqualInt64Harness is intrinsic
+assertEqualInt64Harness target test.assertEqualInt64
+assertEqualInt64Harness arg name String
+assertEqualInt64Harness arg expected Int64
+assertEqualInt64Harness arg actual Int64
 ```
 
 **Golden tests.** `assert.matchesGolden` compares `actual` against the committed
@@ -5519,9 +5557,10 @@ the digest — goldens are never updated implicitly on a normal run.
 
 **Combining results without arrays.** v0.3 has no variadic or array, so there is
 no `all(list)`: combination is the **binary** `test.and left right` (fails if
-either fails), folded through a `let outcome mutable TestResult` across many
-assertions (or a labeled-goto loop over `let` fixtures, §13). A single-assertion
-test returns its assert's `out` directly.
+either fails), folded through a `let outcome mutable Bool` across many
+assertions (or a labeled-goto loop over `let` fixtures, §13). A single pure
+assertion test returns its assert's `out` directly; a harness-style test uses
+`test.assert*` calls plus `test.summary`.
 
 **Lanes.** `tag test` marks the operation a test; an optional second tag selects
 its lane (`tag unit` | `tag integration` | `tag e2e`), defaulting to `unit`. The
@@ -5901,6 +5940,9 @@ is safe and deterministic:
   widening is exact.
 - **int→float** rounds to nearest, ties to even (IEEE-754).
 
+`convert.toString` formats an `Int64` as a decimal `String`; inspect its slots
+with `semanticscript targets --signature convert.toString`.
+
 Default = trap on loss (safe). Callers that deliberately want wrap or saturate
 use explicit stdlib variants (`convert.*Wrapping` / `*Saturating`, External
 surface §27) — the core conversion stays simple and safe by default.
@@ -6033,7 +6075,7 @@ timing and shadow-protection, which do not justify the lockstep maintenance cost
 tape / declaration    is
 kinds                 operation  call  task  cleanup  record  enum  alias  storage
 type structure        field  variant  for  operationType
-signature / dataflow  in  out  catch  invokes  arg  discards  let  mutable  body
+signature / dataflow  in  out  raises  catch  invokes  arg  discards  let  mutable  body
 control flow          do  branch  goto  return  at
 async lifecycle       start  join  poll  cancel  detach        (the task half of the split)
 cleanup               defer  owns  cleanedBy  cleans  onFailure  because   (the cleanup half)
