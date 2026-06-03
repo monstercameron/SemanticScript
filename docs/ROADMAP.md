@@ -40,14 +40,21 @@ cost. Stub: the conformance matrix + adoption-gate row-count are the metrics.
 Status: deferred. Direction: codegen quality + profiling hooks.
 
 ## #22 — Text/i18n (X-037)
-Status: deferred. Direction: `\u{…}` escapes + Unicode-aware string ops (today
-strings are bytewise UTF-8; `\u{}` is reserved-rejected).
+Status: owned deferred stdlib contract. Direction: source strings remain
+bytewise UTF-8 in v0.x and `\u{}` remains reserved-rejected; Unicode
+normalization/graphemes/case-folding live in `standard.text`, while
+locale/collation/formatting live in `standard.i18n`.
 
 ## #23 — Publishing/distribution workflow (X-037)
 Status: deferred. Direction: `sem mod` publish/vendor + registry.
 
 ## #24 — Macros/reflection (X-037)
-Status: deferred. Direction: compile-time metaprogramming surface, if any.
+Status: rejected for v0.x / future-reserved. Direction: no in-language
+macros/reflection; use external generators that emit ordinary `.sem` rows and
+revisit only with a deterministic experiment.
 
 ## #25 — Deployment/runtime config (X-037)
-Status: deferred. Direction: runtime configuration + deployment targets.
+Status: tool-visible manifest surface. Direction: `build.sem` owns runtime
+config profiles, layered values, env-backed required secrets, deployment
+targets, and migration hooks; `sem runtime-config --json` reports ready vs
+blocked without mixing this with package metadata.

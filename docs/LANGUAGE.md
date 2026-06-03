@@ -194,10 +194,13 @@ function-pointer type, no closures.
 in out effect uses memory async let label
 field variant repr for of
 path imports exports
+importOperation importType importError importCapability importConstant
+jsonName omitWhen unknownFieldPolicy
 scope type mutability value body literalSource literalDigest
 grants invokes arg async discards catch
 purpose invariant note rationale risk example tag deprecated owner
 target owns cleanedBy cleans trustConstraint
+limit timeout budget regexEngine
 using mode forTarget forPlatform suppress
 version generatedBy describes
 ```
@@ -224,6 +227,9 @@ is no `match` block.)
 ```
 languageVersion toolchain require replace allowEffect platform constant
 configure nativeLibrary nativeHeader nativeLinkFlag
+publisher productName packageId packageVersion profile profileOutput resource
+icon profileResource
+configProfile configValue requiredSecret deploymentTarget migrationHook
 os arch targetRuntime output override
 ```
 
@@ -235,6 +241,11 @@ resolved toolchainResolved effectSurface
 **Interop annotation tokens (roadmap, §30.4.2):**
 ```
 export c
+```
+
+**Future-reserved metaprogramming tokens (R-059):**
+```
+macro reflection reflect metaprogram metaprogramming
 ```
 
 **Primitive type names:**
@@ -327,23 +338,23 @@ predicates (§6) are available on every entity kind and listed separately.
 
 | Subject kind | Structural declaration predicates | Step predicates |
 |---|---|---|
-| `project` | `is module target entry mode languageVersion toolchain require replace allowEffect platform constant configure nativeLibrary nativeHeader nativeLinkFlag` + `.sem.lock`-only `resolved toolchainResolved effectSurface` | — |
-| `module` | `is path imports exports` | — |
+| `project` | `is module target entry mode languageVersion toolchain require replace allowEffect platform constant configure nativeLibrary nativeHeader nativeLinkFlag publisher productName packageId packageVersion profile profileOutput resource icon profileResource configProfile configValue requiredSecret deploymentTarget migrationHook` + `.sem.lock`-only `resolved toolchainResolved effectSurface` | — |
+| `module` | `is path imports importOperation importType importError importCapability importConstant exports` | — |
 | `capability` | `is grants` | — |
 | `error` | `is typeTrust` | — |
 | `errorCase` | `is of payload` | — |
-| `record` | `is field typeTrust` | — |
+| `record` | `is field typeTrust jsonName omitWhen unknownFieldPolicy` | — |
 | `enum` | `is variant repr typeTrust` | — |
 | `alias` | `is for typeTrust` | — |
 | `sharedState` | `is scope type mutability value guard owner` (WS2-083) | — |
 | `region` | `is strategy scope capacity` (WS1-112) | — |
 | `operation` | `is in out raises effect uses memory async label let body export trustConstraint errorBoundary optOut maxIterations` | `do defer start join poll cancel detach branch return goto set at readShared setShared allocateIn releaseRegion` |
-| `call` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
-| `task` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget` | — |
+| `call` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget regexEngine` | — |
+| `task` | `is in invokes arg out catch discards owns cleanedBy effect borrows lifetime mayEscape takesOwnership limit timeout budget regexEngine` | — |
 | `cleanup` | `is in call onFailure because cleans` | — |
 | `storage` | `is scope type mutability value body literalSource literalDigest` | — |
 | `htmlTemplate` | `is body` | — |
-| `webServer` | `is host port startup shutdown notFound methodNotAllowed route middleware optOut` | — |
+| `webServer` | `is host port startup shutdown notFound methodNotAllowed route middleware routeTimeout routeTimeoutOptOut routeMiddlewareOptOut optOut` | — |
 | `platform` | `is os arch targetRuntime output override nativeLibrary nativeHeader nativeLinkFlag` (build.sem, §28.1) | — |
 | `intrinsic` | `is target arg out catch async owns trustConstraint clientResponse borrows lifetime mayEscape` | — |
 | `semsig` | `is version generatedBy describes` (.semsig header, §26) | — |
@@ -554,6 +565,26 @@ taskWeb invariant "All database access goes through databaseAccess capability"
 
 `imports <alias> <modulePath>` — one row per imported module. The alias becomes
 the namespace prefix for external target paths.
+
+Selective imports narrow a module alias by exported member:
+
+```sem
+taskWeb importOperation sqlite openDatabase
+taskWeb importType      sqlite SqliteDatabase
+taskWeb importError     sqlite SqliteDatabaseOpenFailure
+taskWeb importCapability auth bcryptHasher
+taskWeb importConstant  config maxPageSize
+```
+
+Each selective row has shape
+`importOperation|importType|importError|importCapability|importConstant <alias> <exportedName>`
+and requires a matching `imports <alias> <modulePath>` row on the same module.
+Rows are kind-specific. If an alias has `importOperation sqlite openDatabase`,
+then `sqlite.openDatabase` is reachable but `sqlite.closeDatabase` is rejected
+until it is also imported (SS1554). If an alias has no selective rows for a kind,
+that kind remains whole-module imported. Dotted type references are still valid
+only in `alias for` rows; `importType` and `importError` narrow which
+`<alias>.<TypeName>` targets may be used there.
 
 `exports <entity>` — one row per exported entity. All module entities default
 to module-private. `exports` applies uniformly to any entity kind (`operation`,
@@ -816,6 +847,31 @@ Task purpose "Represent a single work item"
 `field` rows: `NAME field FIELDNAME TYPE`. Document order is field declaration
 order. Field names follow identifier grammar. Duplicate field names within one
 record are a hard error.
+
+**JSON codec metadata (R-052).** Records may declare the metadata needed by
+generated `standard.json` codecs:
+
+```sem
+Task jsonName title "task_title"
+Task omitWhen title empty
+Task unknownFieldPolicy reject
+```
+
+`jsonName <field> <json-key>` maps a declared field to a JSON object key. The
+key is either a bare identifier or a quoted string when it needs characters
+outside identifier grammar (for example `snake_case`).
+
+`omitWhen <field> never|nil|empty|zero|false` declares the encoder omission
+policy for that field. The row must reference an existing field.
+
+`unknownFieldPolicy reject|capture|ignoreBecause <reason>` declares the decode
+policy for JSON object fields not modeled by the record. A record may declare at
+most one policy row. `ignoreBecause` requires a reason.
+
+The compiler validates that metadata rows reference real fields, that two fields
+do not map to the same JSON key, and that policies are in the supported set
+(SS1650). `sem query json-codecs <file|project> --json` surfaces these rows for
+tools and future codec generators.
 
 Accessing a record's fields is done through typed calls or template hydration
 (§16). No dot notation on internal entity references.
@@ -2105,6 +2161,28 @@ is the return value of the downstream chain; the middleware returns it directly
 or checks it before returning. Middleware rows on the webServer entity apply to
 the path prefix in document order.
 
+### Route Policy Rows
+
+Route policy rows live on the `webServer` entity:
+
+```sem
+appServer routeTimeout "/tasks" 250ms
+appServer routeTimeoutOptOut "/events" because "server-sent events stream until the client disconnects"
+appServer routeMiddlewareOptOut "/health" because "public health endpoint"
+```
+
+`routeTimeout PATH BUDGET` applies a dispatcher-owned post-handler response
+budget to every declared route covered by `PATH` (`*` covers all routes; `/`
+covers every absolute route). `BUDGET` is a positive integer millisecond count
+or a duration literal such as `250ms`, `2s`, or `1m`.
+
+If any timeout policy row is present, every route must be covered by either
+`routeTimeout` or `routeTimeoutOptOut ... because "reason"`. If any middleware
+or middleware opt-out row is present, every route must be covered by a
+`middleware PATH OP` prefix row or `routeMiddlewareOptOut ... because "reason"`.
+`sem graph --kind routes` shows route handlers plus timeout/middleware policy
+edges for audit.
+
 **Conversion from v0.1:**
 
 | v0.1 | v0.3 |
@@ -2275,8 +2353,12 @@ handleRequest releaseRegion requestArena           # frees both slabs, once
 Allocating without a capability granting `allocate heap.<region>` is a hard error
 (**SS1563**); an `allocateIn`/`releaseRegion` naming an undeclared region, or
 releasing a region the op never allocated into, is a hard error (**SS1562**) — so
-wrong-region free is unrepresentable. The arena lowers to real `malloc`/`free`
-(one `free` per slab at `releaseRegion`) and JIT-runs.
+wrong-region free is unrepresentable. If a region declares `capacity N`, the
+checker sums the static byte size of all `allocateIn` rows in the scoped
+operation and rejects totals above `N` (**SS1573**). The arena lowers to real
+type-sized `malloc`/`free` slabs (one `free` per slab at `releaseRegion`) and
+JIT-runs; null allocation traps with a structured runtime panic rather than
+binding a null region value.
 
 ### Bounds-checked buffers (WS1-115, §10.6)
 
@@ -3586,8 +3668,10 @@ followed by any `platform` entities in declaration order:
 5. PROJECT replace ...
 6. PROJECT allowEffect ...
 7. PROJECT nativeLibrary / nativeHeader / nativeLinkFlag   (§30.4.1)
-8. PROJECT platform / constant / configure
-9. platform entities (each: is, os, arch, targetRuntime, output, then
+8. PROJECT publisher / productName / packageId / packageVersion
+9. PROJECT profile / profileOutput / resource / icon / profileResource
+10. PROJECT platform / constant / configure
+11. platform entities (each: is, os, arch, targetRuntime, output, then
    per-platform nativeLibrary/nativeHeader/nativeLinkFlag, override, then metadata)
 ```
 
@@ -4310,7 +4394,7 @@ The labels are `rawExternal | validated | trustedInternal | secret`. Untrusted
 input enters as `rawExternal` and becomes trusted only by crossing a declared
 trust boundary — a validator whose **output** type is `validated`/
 `trustedInternal`. An operation marks a trust-sensitive **sink** parameter with
-`trustConstraint arg <slot>`; passing a value whose declared type is
+`trustConstraint arg <slot>`; passing a value whose provenance is
 `rawExternal` (or `secret`) into that slot is a hard error (**SS3070**):
 
 ```sem
@@ -4319,10 +4403,12 @@ runQuery in sql SafeSql
 runQuery trustConstraint arg sql     # this slot must receive trusted input
 ```
 
-Because trust is a property of the value's declared type, it propagates over the
-explicit `out`→`arg` dataflow with no aliasing — so the check is exact, not
-heuristic. (This promotes `trustConstraint` from advisory to enforced when the
-arg type carries a trust label.)
+Trust is value provenance, not just the declared type at the final sink. The
+checker propagates raw/secret provenance through `let`, `set`, call outputs, and
+user-operation returns. A helper that returns plain `String` does not clean the
+value; it preserves taint and still fails at the sink. The upgrade point is a
+validator operation whose output type is `validated`/`trustedInternal`, for
+example the pattern emitted by `semanticscript scaffold trust-boundary`.
 
 **Sink-typing (X-071).** When a sink names the trusted type it requires —
 `trustConstraint arg <slot> <TrustedType>` (SQL→`SqlText`, HTML→`HtmlSafeUrl`,
@@ -4382,13 +4468,38 @@ are caught by sink-typing (SS3071).
 literal that targets localhost, a private/link-local range, or the cloud-metadata
 address (`169.254.169.254`) is a hard error (**SS3075**); requests go to
 allowlisted external hosts via an `HttpSafeUrl` (raw-String URLs are caught by
-sink-typing). The per-host allowlist rides the net capability at runtime.
+sink-typing). The per-host allowlist rides the net capability at runtime. Source
+can also opt into a static host allowlist with capability grants of the form
+`grants connect net.<scheme>.<host>`; when such grants are present on an
+operation, literal outbound URLs must match one of them. Broad grants such as
+`connect net.http.*`, `connect net.*`, or `write network.http.client` need a
+visible `rationale` row.
+
+```sem
+apiClient is capability
+apiClient grants connect net.http.api.example.com
+
+fetchUsers uses apiClient
+fetchUsers let endpoint immutable String "http://api.example.com/v1/users"
+```
 
 **DoS bounds (X-078).** An effectful external call
 (`net.*`/`http.*`/`sqlite.*`/`db.*`/`fs.*`) that takes a `rawExternal` argument
 must carry a `timeout` or `budget` row, so a slow/hostile peer cannot stall the
 process; an unbounded untrusted external call is a hard error (**SS3078**). (The
-untrusted-decode size cap is X-077's `limit maximumBytes`.)
+untrusted-decode size cap is X-077's `limit maximumBytes`.) Reading an HTTP
+request body must also carry `limit maximumBytes <n>`. A `regex.*` call whose
+subject or pattern is `rawExternal`, or whose literal pattern has an obvious
+nested-quantifier catastrophic-backtracking shape, must route through a linear
+engine with `regexEngine linear` or `regexEngine re2`; otherwise it is a hard
+error (**SS3099**, R-079).
+
+```sem
+match invokes regex.matches
+match arg subject RawText body        # RawText is typeTrust rawExternal
+match arg pattern String "^[a-z]+$"
+match regexEngine linear              # required for regex over rawExternal data
+```
 
 **Error-disclosure boundary (X-079).** An internal error/trap detail
 (`typeTrust trustedInternal` on the error type) may not reach a client-response
@@ -4572,22 +4683,23 @@ hold a runtime-sized set of values.
   form, no angle brackets) plus the `each` loop sugar above. Iteration and
   ownership follow the same `owns`/`cleanedBy` model as other resources.
 
-**Retry, timeout, cancellation policy.** `retryPolicy`, `useRetry`, `timeout`,
-`timeoutBudget`, `cancelOn` are not in v0.3.
-- *Interim (v0.3):* bounded-counter `goto` retry (§13 retry example); timeout
-  modeled as a concurrent timer `task` raced against the work (§13 timeout
-  example); cancellation via `cancel TASK` (§13).
-- *Planned:* declaration rows attached to a `call`/`task` — `useRetry POLICY`,
-  `timeout BUDGET`, `cancelOn TOKEN` — with a `retryPolicy` entity (max attempts,
-  backoff). They lower to the goto/timer patterns, so the policy stays
-  declarative source data rather than hand-rolled control flow.
+**Retry, timeout, cancellation policy.** `useRetry N` on a fallible out-param
+`call` lowers to a bounded retry loop, and optional `retryBackoffMs N` sleeps via
+the shared platform monotonic/sleep runtime between failed attempts. Timeout and
+cancellation are modeled by `standard.async` (`withTimeout`, `cancel`,
+`awaitResult`) so the status path is still a normal fallible call result.
+- *Current (v0.3):* bounded retries use `useRetry N`; retry delay uses
+  `retryBackoffMs N`; timeout/cancel use the async runtime examples.
+- *Planned:* named `retryPolicy`/`timeoutBudget`/`cancelOn` policy entities that
+  expand to the same lowering, so larger programs can reuse policy data instead
+  of repeating literals on each call.
 
 **GUI target.** `windowsGui` is reserved; `standard.gui`, `guiBackend`, and
 Win32 native bridge support are not in v0.3. `target windowsGui` is a compile
 error until a GUI spec is approved.
 
-**Route policy rows.** `routeTimeout`, `routeTimeoutOptOut`,
-`routeMiddlewareOptOut` are not in v0.3.
+**Route policy rows.** `routeTimeout`, `routeTimeoutOptOut`, and
+`routeMiddlewareOptOut` are part of the `webServer` entity (see §14).
 
 **HTTP surface details.** Static-file serving (the current `staticRoute`
 prefix/directory feature), redirect helpers, cookie/header bindings, SSE,
@@ -4595,17 +4707,21 @@ null-body handling, response-body/SQL forwarder declarations, and request
 readers beyond `HttpRequest` are not in v0.3. These are stdlib patterns, not
 syntax.
 
-**Fine-grained import rows.** `importOperation`, `importType`, `importError`,
-`importCapability`, `importConstant` are not in v0.3. `imports ALIAS PATH`
-imports the whole module; fine-grained selective imports are a future syntax.
+**Fine-grained import rows (R-045).** `importOperation`, `importType`,
+`importError`, `importCapability`, and `importConstant` are v0.3 module rows
+layered on top of `imports ALIAS PATH` (§7). They narrow the reachable operation,
+type/error, capability, or constant surface for an import alias and are surfaced
+by `sem deps` as `selectiveImports`.
 
-**Build and package metadata.** The core build and dependency model **is**
-specified — `build.sem` (identity, `languageVersion`/`toolchain`,
-`require`/`replace`, targets) and the generated `build.sem.lock` (§28). What is
-deferred is the *vanity/packaging surface*: `publisher`, `productName`, build
-profiles, explicit output paths, and icon/resource rows. These live in the
-`build.sem` manifest (the toolchain config layer), never in module source rows,
-and are added incrementally without touching the language grammar.
+**Build and package metadata.** The core build, dependency, and app package
+metadata model **is** specified: `build.sem` carries identity,
+`languageVersion`/`toolchain`, `require`/`replace`, targets, platforms,
+publisher/product/package identity, build profiles, output overrides, and
+icon/resource rows; the generated `build.sem.lock` carries resolved dependency
+state (§28). These rows live in the `build.sem` manifest (the toolchain config
+layer), never in module source rows. Installer formats and publishing registry
+workflows remain ecosystem work, but the package manifest data is tool-visible
+and validated by `sem package-manifest`.
 
 **Data-carrying destructuring / `match` — RESOLVED (§13 `ifVariant`).** Earlier
 drafts deferred this; v0.3 now inspects data-carrying enum variants and error
@@ -4646,8 +4762,9 @@ Until they ship, only the targets already used in examples (`console.*`,
 `standard.document`/wasm-DOM, and JSON-codec/validation items) share this
 disposition: stdlib plus target-ABI work, gated behind the capability/effect and
 `.semsig` model and specified when their modules are. JSON in particular is an
-application pattern over a future `standard.json` module (§16), not core syntax;
-record JSON metadata (`jsonName`/`omitWhen`) lands with that module's spec.
+application pattern over `standard.json` (§16), not core syntax; record JSON
+metadata rows (`jsonName`/`omitWhen`/`unknownFieldPolicy`) are specified in §10
+and exposed by `sem query json-codecs`.
 
 ### Mapped by existing v0.3 constructs
 
@@ -4684,9 +4801,10 @@ constructor *syntax* — construction is a typed call. Whole-record update is
 (§12); fields are not individually mutable.
 
 **Record JSON metadata** (`recordFieldJsonName`, `recordFieldJsonOmitWhen`,
-etc.). Deferred to the JSON codec spec. Do not use `fieldJsonName` or similar
-predicates in v0.3 source — the exact predicate names are not yet stable and
-will be specified when the `standard.json` module API is defined.
+etc.). Map to the v0.3 record rows `jsonName <field> <json-key>`,
+`omitWhen <field> never|nil|empty|zero|false`, and
+`unknownFieldPolicy reject|capture|ignoreBecause <reason>` (§10/R-052). Do not
+use `fieldJsonName` or other v0.1-style predicate names.
 
 **Domain/static literal structures** (`domainLiteral*`, `literalSource`,
 `literalBytes`, etc.). Map to `storage` entities with `body` islands.
@@ -4747,7 +4865,7 @@ second config format (no TOML, YAML, or JSON manifest) to learn.
 
 | File | Authored by | Committed | Holds |
 |---|---|---|---|
-| `build.sem` | human/agent | yes | identity, language + toolchain version, `require`/`replace` deps, build targets, platforms, constants |
+| `build.sem` | human/agent | yes | identity, language + toolchain version, `require`/`replace` deps, build targets, platforms, constants, package metadata |
 | `build.sem.lock` | `sem` (generated) | yes | resolved dep graph (path → version → sha256), aggregated capability surface, resolved toolchain version |
 
 `build.sem` absorbs what Go splits across `go.mod` plus build configuration; it
@@ -4800,6 +4918,20 @@ PROJECT configure <operationName>         # build-time op → out BuildPlan (§3
 PROJECT nativeLibrary <name>              # native link inputs (§30.4.1)
 PROJECT nativeHeader "<path>"
 PROJECT nativeLinkFlag "<flag>"
+PROJECT publisher "<name>"                # package publisher/vendor
+PROJECT productName "<name>"              # human-facing product name
+PROJECT packageId "<id>"                  # stable package identity
+PROJECT packageVersion "<version>"        # package/display version
+PROJECT profile <name>                    # build/package profile, e.g. debug or release
+PROJECT profileOutput <profile> "<path>"  # profile-specific output override
+PROJECT resource <name> "<path>"          # project-relative packaged asset
+PROJECT icon <name> "<path>"              # project-relative icon asset
+PROJECT profileResource <profile> <resourceName>
+PROJECT configProfile <name>                         # runtime/deployment profile
+PROJECT configValue <profile> <name> <type> <value>  # layered runtime value
+PROJECT requiredSecret <profile> <name> env <key>    # required env-backed secret
+PROJECT deploymentTarget <name> <profile> <target>   # deployment descriptor
+PROJECT migrationHook <profile> <operationName>      # ordered migration hook
 ```
 
 **`build.sem.lock` row grammar** (generated, never hand-edited):
@@ -4842,6 +4974,34 @@ order). Exact duplicates — same library name, same header path, same flag stri
 preserved (linker flags are order-sensitive). Library names carry no version, so
 there is no version conflict; reconciling two header paths is the author's
 responsibility (the resolver does not reorder).
+
+**Package manifest metadata.** `publisher`, `productName`, `packageId`, and
+`packageVersion` are single-valued project identity rows. `profile <name>`
+declares a selectable build/package profile. `profileOutput <profile> "<path>"`
+overrides the selected platform's `output` row for that profile; when no profile
+output is selected, `platform output` is the base output. `resource <name>
+"<path>"` and `icon <name> "<path>"` are project-relative paths that must stay
+inside the project root and exist when `sem package-manifest` validates the
+manifest. `profileResource <profile> <resourceName>` narrows the selected
+profile to named resources; a profile with no `profileResource` rows includes
+all declared resources. Unknown profiles, unknown resources, absolute paths,
+path traversal, and missing files are hard manifest errors. The command
+`sem package-manifest <project|build.sem> [--profile NAME] [--platform NAME]
+[--json]` emits the `sem.packageManifest.v1` surface.
+
+**Runtime/deployment configuration (R-060).** Runtime configuration is distinct
+from build/package metadata. `configProfile <name>` declares a selectable
+runtime/deployment profile. `configValue <profile> <name> <type> <value>` adds a
+typed value for that profile; a selected profile layers over `default` when a
+`default` profile is declared, so profile-specific values override defaults
+without changing source. `requiredSecret <profile> <name> env <key>` records a
+required environment-backed secret and checks only presence, never emitting the
+secret value. `deploymentTarget <name> <profile> <target>` names the deployment
+lane for a declared project `target`, and `migrationHook <profile>
+<operationName>` records ordered runtime migration hooks for the selected
+profile. `sem runtime-config <project|build.sem> [--profile NAME] [--json]`
+emits `sem.runtimeConfig.v1`; missing required secrets produce `status:"blocked"`
+instead of a package/build error.
 
 **Build constants (§28.1).** `PROJECT constant <name> <type> <value>` declares a
 **project-global, read-only** build-time value. It is visible by bare name in any
@@ -5060,10 +5220,10 @@ They are contract requirements, not optional polish.
 | 19 | **Security threat model** — assets/adversaries (authority, trust, supply chain), distinct from the #10 enforcement algorithm | Thin | 5 | §8, §16, §28.5 |
 | 20 | **Strategic success criteria** — win condition vs. hardening current syntax and vs. competitors; multi-surface maintenance cost | Absent | all | §21, Adoption framing |
 | 21 | **Performance & profiling** — resource budgets beyond `memory`, allocation/hot-path reporting, optimization controls, perf diagnostics | Absent | 5 | §10.6, §11 |
-| 22 | **Text & i18n** — Unicode normalization, grapheme model, locale-aware comparison/casing/collation, formatting, translation (today: bytewise UTF-8 only) | Absent | 6 | §10.6, §30.2.2 |
+| 22 | **Text & i18n** — Unicode normalization, grapheme model, locale-aware comparison/casing/collation, formatting, translation (today: bytewise UTF-8 only) | Owned deferred stdlib contract | 6 | §10.6, §30.2.2 |
 | 23 | **Publishing & distribution workflow** — publish/auth, private deps, provenance, vulnerability advisories, yank/retraction, discovery (beyond MVS resolve) | Thin | 6 | §28.4, §28.6 |
-| 24 | **Macros / metaprogramming / reflection** — codegen-in-language, compile-time reflection, schema introspection (const-fold §30.3.2 is the only adjacent piece) | Absent | 6 | §30.3.2 |
-| 25 | **Deployment & runtime configuration** — runtime config, secrets, env profiles, schema migrations, operational config (distinct from build config, §28) | Absent | 6 | §28, §30.5.3 |
+| 24 | **Macros / metaprogramming / reflection** — codegen-in-language, compile-time reflection, schema introspection (const-fold §30.3.2 is the only adjacent piece) | Rejected for v0.x / future-reserved | 6 | §30.3.2 |
+| 25 | **Deployment & runtime configuration** — runtime config, secrets, env profiles, schema migrations, operational config (distinct from build config, §28) | Tool-visible manifest surface | 6 | §28, §30.5.3 |
 | 26 | **Resource ownership edge semantics** — ownership transfer, aliasing an owned handle, double-cleanup, escape-via-`return` | Absent | 3 | §15, §15.6, §32.1 |
 | 27 | **Semantic diff** — row-aware typed deltas (effect added, cleanup removed, route/arity changed) for review + supply-chain | Absent | 4 | §28.5, §32.3 |
 
@@ -5085,6 +5245,22 @@ stdlib and apps convert, prove the codemod, or commit to permanent coexistence.
 operational and security surfaces. #21 performance, #22 text/i18n, #23 publishing,
 #24 macros/reflection, and #25 deployment/config are the operational and ecosystem
 subsystems §32 decomposes — mostly stdlib/runtime work beyond the core language.
+
+**#22 Text/i18n owner (R-058).** v0.x source strings stay bytewise UTF-8:
+`\xNN` is the only source-level non-ASCII byte escape, and `\u{...}` remains a
+reserved-deferred error. Unicode-aware behavior is owned by the deferred
+`standard.text` and `standard.i18n` contracts: `standard.text` owns UTF-8
+validation, normalization forms, grapheme length/truncation, and case folding;
+`standard.i18n` owns locale validation, collation, and locale-aware formatting.
+Both modules are discoverable through `.semsig` and readiness as experimental
+signature-only surfaces until a runtime implementation lands.
+
+**#24 Macros/reflection decision (R-059).** v0.x has no in-language
+`macro`, `reflection`, or `metaprogram` entity. Attempts to declare one fail
+with `SS3400`. The accepted alternatives are records/enums for schema shape,
+`.semsig` contracts plus `sem docs`/`sem search` for contract discovery,
+scaffolds/tasks for repeatable authoring patterns, and external generators that
+emit ordinary `.sem` rows which then pass `fmt` and `check`.
 
 **#3 Lowering plan (keystone).** The Adoption framing claims both surfaces "map
 to the same canonical SemanticScript form," implying a shared AST with current syntax — but
@@ -5211,10 +5387,10 @@ one answer:
 | Memory mechanism | **Roadmap #14** (source contract is §10.6) |
 | Runtime debugging & observability | **Roadmap #18** |
 | Performance & profiling | **Roadmap #21** |
-| Text & i18n | **Roadmap #22** |
-| Publishing / distribution workflow | **Roadmap #23** (resolve/MVS is §28) |
-| Macros / metaprogramming / reflection | **Roadmap #24** |
-| Deployment / runtime config | **Roadmap #25** |
+| Text & i18n | **Deferred stdlib contracts: `standard.text` + `standard.i18n` (R-058, Roadmap #22)** |
+| Publishing / distribution workflow | **Roadmap #23** (resolve/MVS is §28; selective import rows are §7/R-045) |
+| Macros / metaprogramming / reflection | **Rejected for v0.x / future-reserved (R-059, Roadmap #24)** |
+| Deployment / runtime config | **`sem runtime-config` manifest surface (R-060, Roadmap #25)** |
 | Resource ownership edges | **Roadmap #26** — source rows exist (§15/§15.6); transfer/alias/double-cleanup/escape rules open |
 | Semantic diff | **Roadmap #27** — row-aware typed deltas (§32.3) |
 
@@ -6081,7 +6257,7 @@ async lifecycle       start  join  poll  cancel  detach        (the task half of
 cleanup               defer  owns  cleanedBy  cleans  onFailure  because   (the cleanup half)
 guards                if  ifFalse  ifError  ifVariant  ifReady  ifPending  ifCanceled  else  bind
 security boundary     effect  uses  capability  grants          (rule b)
-module wiring         module  imports  exports
+module wiring         module  imports  importOperation  importType  importError  importCapability  importConstant  exports
 literals              nil  true  false
 primitive types       Int8…Int64  UInt8…UInt64  Float32  Float64  Bool  String  Void  Byte  Result
 ```
