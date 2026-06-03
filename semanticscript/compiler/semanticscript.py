@@ -5904,6 +5904,126 @@ def _lint_c_exports(program: Program) -> list:
     return out
 
 
+def _c_export_rows(program: Program, platform: Optional[str] = None) -> list[tuple[Entity, str]]:
+    """Return `(operation, C symbol)` exports included for this platform (R-048)."""
+    out: list[tuple[Entity, str]] = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function"):
+            continue
+        gates = [r.payload[0] for r in ent.facts("forPlatform") if r.payload]
+        if gates and platform is not None and platform not in gates:
+            continue
+        for row in ent.facts("export"):
+            if len(row.payload) >= 2 and row.payload[0] == "c":
+                sym = row.payload[1]
+                if _C_IDENT_RE.match(sym):
+                    out.append((ent, sym))
+    return out
+
+
+def _c_export_header_path(out_path: str) -> str:
+    import os
+    root, _ext = os.path.splitext(os.path.abspath(out_path))
+    return root + ".h"
+
+
+def _c_export_type(type_name: Optional[str], alias_map: dict) -> str:
+    if not type_name:
+        return "void"
+    resolved = _resolve_alias(type_name, alias_map)
+    mapping = {
+        "Bool": "bool",
+        "Int8": "int8_t", "Int16": "int16_t", "Int32": "int32_t", "Int64": "int64_t",
+        "UInt8": "uint8_t", "UInt16": "uint16_t", "UInt32": "uint32_t", "UInt64": "uint64_t",
+        "Float32": "float", "Float64": "double",
+        "String": "const char *",
+        "OpaquePointer": "void *",
+    }
+    if resolved not in mapping:
+        raise EavError(
+            f"`export c` uses unsupported C ABI type {type_name!r} "
+            f"(resolved to {resolved!r}); use scalar/String/OpaquePointer types")
+    return mapping[resolved]
+
+
+def _operation_c_signature(op: Entity, alias_map: dict) -> tuple[str, list[tuple[str, str]]]:
+    out_row = op.fact("out")
+    ret_type = None
+    if out_row and out_row.payload:
+        ret_type = out_row.payload[1] if out_row.payload[0] == "Result" else out_row.payload[0]
+    ret = _c_export_type(ret_type, alias_map)
+    args = []
+    for row in op.facts("in"):
+        if len(row.payload) >= 2:
+            args.append((row.payload[0], _c_export_type(row.payload[1], alias_map)))
+    return ret, args
+
+
+def _render_c_export_header(program: Program, out_path: str,
+                            platform: Optional[str] = None) -> Optional[str]:
+    exports = _c_export_rows(program, platform)
+    if not exports:
+        return None
+    import os
+    base = os.path.basename(_c_export_header_path(out_path))
+    guard = re.sub(r"[^A-Za-z0-9_]", "_", base).upper()
+    if not guard or guard[0].isdigit():
+        guard = "SEMANTICSCRIPT_" + guard
+    alias_map = program.alias_map()
+    lines = [
+        f"#ifndef {guard}",
+        f"#define {guard}",
+        "",
+        "#include <stdbool.h>",
+        "#include <stdint.h>",
+        "",
+        "#ifndef SEMANTICSCRIPT_API",
+        "#  if defined(_WIN32) && defined(SEMANTICSCRIPT_SHARED)",
+        "#    if defined(SEMANTICSCRIPT_BUILD)",
+        "#      define SEMANTICSCRIPT_API __declspec(dllexport)",
+        "#    else",
+        "#      define SEMANTICSCRIPT_API __declspec(dllimport)",
+        "#    endif",
+        "#  else",
+        "#    define SEMANTICSCRIPT_API",
+        "#  endif",
+        "#endif",
+        "",
+        "#ifdef __cplusplus",
+        "extern \"C\" {",
+        "#endif",
+        "",
+    ]
+    for op, sym in exports:
+        ret, args = _operation_c_signature(op, alias_map)
+        params = ", ".join(f"{typ} {name}" for name, typ in args) or "void"
+        lines.append(f"SEMANTICSCRIPT_API {ret} {sym}({params});")
+    lines.extend([
+        "",
+        "#ifdef __cplusplus",
+        "}",
+        "#endif",
+        "",
+        f"#endif /* {guard} */",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _write_c_export_header(program: Program, out_path: str,
+                           platform: Optional[str] = None) -> Optional[str]:
+    text = _render_c_export_header(program, out_path, platform)
+    if text is None:
+        return None
+    path = _c_export_header_path(out_path)
+    import os
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    return path
+
+
 def _lint_ownership_and_entry_export(program: Program) -> list:
     """WS2-021 lint warnings: #39 a call that `owns` a resource without a
     `cleanedBy` cleanup; #38 the project entry should be exported (MD1013); #36 an
@@ -6035,6 +6155,7 @@ def _validate_program(program: Program) -> None:
             _check_unique_labels(
                 ent, "field", "field name", "README ss10/ss17 #29"
             )
+            _validate_record_json_metadata(ent)
             for fr in ent.facts("field"):
                 if fr.payload and fr.payload[0] == "new":
                     raise EavError(
@@ -6120,6 +6241,7 @@ def _validate_program(program: Program) -> None:
     _validate_calls(program)
     _validate_binding_consistency(program)
     _validate_invoke_ambiguity(program)
+    _validate_selective_imports(program)
     _validate_variant_payload_bind(program)
     _validate_variant_positions(program)
     _validate_return_exactness(program)
@@ -6145,12 +6267,16 @@ def _validate_program(program: Program) -> None:
     _validate_ssrf(program)
     _validate_dos_bounds(program)
     _validate_request_body_bounds(program)
+    _validate_regex_linearity(program)
     _validate_untrusted_loop_bounds(program)
     _validate_error_disclosure(program)
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
     _validate_shared_state(program)
     _validate_security_parity(program)
+    _validate_json_scratch_buffers(program)
+    _validate_http_response_bytes_buffers(program)
+    _validate_pointer_intrinsic_unsafe_gate(program)
     _validate_contracts(program)
     _validate_typestate(program)
     _validate_lock_ordering(program)
@@ -6642,9 +6768,9 @@ def _validate_configure(program: Program) -> None:
                 )
     _validate_step_split(program)
     _validate_activation_count(program)
-    _validate_effect_coverage(program)
     _validate_purity(program)
     _validate_effect_completeness(program)
+    _validate_effect_coverage(program)
 
 
 def _validate_activation_count(program: Program) -> None:
@@ -6660,6 +6786,8 @@ def _validate_activation_count(program: Program) -> None:
             for row in ent.rows:
                 if row.predicate == "do" and row.payload:
                     do_count[row.payload[0]] = do_count.get(row.payload[0], 0) + 1
+                elif _is_compound_defer_row(row) and row.payload:
+                    cleanup_count[row.payload[0]] = cleanup_count.get(row.payload[0], 0) + 1
         elif ent.kind == "cleanup":
             cr = ent.fact("call")
             if cr and cr.payload:
@@ -6798,6 +6926,8 @@ def _effective_effects(program: Program, op: Entity, seen: set) -> set:
             continue
         eff |= _effect_rows_of(ref)
         workers = [ref]
+        if _is_compound_defer_row(row) and ref.kind == "call":
+            workers = [ref]
         if ref.kind == "cleanup":
             cr = ref.fact("call")
             w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
@@ -6890,18 +7020,25 @@ def _validate_effect_coverage(program: Program) -> None:
     """An operation's *effective* effects are its own plus those of the calls/
     tasks/cleanups it activates; every effective effect should be covered by a
     `uses` capability (README ss8, ss15, ss17 #5; effect-union WS2-040). An
-    uncovered effect — including one introduced by an activated call — warns."""
+    uncovered effect — including one introduced by an activated call — is a
+    deny-tier error (WS2-090)."""
     cap_grants = _capability_grants(program)
     for name in program.order:
         op = program.entities[name]
         if op.kind not in ("operation", "function"):
             continue
+        # WS2-094: runtimeBinding/intrinsic ops are trusted primitive leaves.
+        # Their declared `effect` rows are the leaf contract the static checker
+        # trusts; callers must hold capabilities for the effects that flow out.
+        if _op_body_kind(op) in ("runtimeBinding", "intrinsic"):
+            continue
         own = _op_capability_grants(op, cap_grants)
         for action, resource in sorted(_effective_effects(program, op, set())):
             if not _effect_path_covers(own, action, resource):
-                program.warnings.append(
+                raise EavError(
                     f"{op.name}: effective effect `{action} {resource}` is not "
-                    f"covered by a `uses` capability (README ss8, ss17 #5)"
+                    f"covered by a `uses` capability (README ss8, ss17 #5, WS2-090)",
+                    op.line, code="SS1708",
                 )
 
 
@@ -7059,6 +7196,16 @@ def _validate_step_split(program: Program) -> None:
                     f"entity (README ss13)",
                     row.line,
                 )
+            if (row.predicate == "defer" and _is_compound_defer_row(row)
+                    and ref.kind == "call"):
+                owner = ref.fact("in")
+                if owner and owner.payload and owner.payload[0] != op.name:
+                    raise EavError(
+                        f"`defer {ref.name}` activates a call owned by "
+                        f"{owner.payload[0]!r}, not {op.name!r} (README ss17 #4)",
+                        row.line,
+                    )
+                continue
             if ref.kind != expected:
                 raise EavError(
                     f"`{row.predicate} {ref.name}` targets a {ref.kind}; "
@@ -7088,6 +7235,16 @@ def _validate_cleanup(program: Program) -> None:
         if r.payload
     }
     cleanups = {n for n in program.order if program.entities[n].kind == "cleanup"}
+
+    def compound_defer_satisfies(owner: Optional[Entity], cleanup_name: str) -> bool:
+        if owner is None:
+            return False
+        for row in owner.rows:
+            if (_is_compound_defer_row(row) and row.payload
+                    and f"{row.payload[0]}Cleanup" == cleanup_name):
+                return True
+        return False
+
     for name in program.order:
         ent = program.entities[name]
         if ent.kind == "cleanup":
@@ -7175,7 +7332,10 @@ def _validate_cleanup(program: Program) -> None:
         if ent.kind in ("call", "task"):
             cb = ent.fact("cleanedBy")
             if cb and cb.payload:
-                if cb.payload[0] not in cleanups:
+                owner_row = ent.fact("in")
+                owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+                compound_deferred = compound_defer_satisfies(owner, cb.payload[0])
+                if cb.payload[0] not in cleanups and not compound_deferred:
                     raise EavError(
                         f"{ent.kind} {ent.name!r} cleanedBy {cb.payload[0]!r}, which is "
                         f"not a cleanup entity (dangling cleanedBy, README ss15)",
@@ -7183,12 +7343,10 @@ def _validate_cleanup(program: Program) -> None:
                     )
                 # README ss17 #16 (SS1502): the cleanup must be `defer`-ed in the
                 # owning operation so the resource is released on every path.
-                owner_row = ent.fact("in")
-                owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
                 deferred = owner is not None and any(
                     r.predicate == "defer" and r.payload and r.payload[0] == cb.payload[0]
                     for r in owner.rows
-                )
+                ) or compound_deferred
                 if owner is not None and not deferred:
                     raise EavError(
                         f"{ent.kind} {ent.name!r} owns a resource cleaned by "
@@ -7231,6 +7389,12 @@ def _lint_entry_abi(program: Program) -> list:
     for proj in program.of_kind("project"):
         targets = {t.payload[0] for t in proj.facts("target") if t.payload}
         entry = proj.fact("entry")
+        if "wasm" in targets and not _project_wasm_runtime_platforms(program, proj):
+            out.append(Diagnostic(
+                "SS1197", "error",
+                f"project {proj.name!r} declares target wasm but no selected "
+                f"platform has targetRuntime wasm (README ss7/ss11)",
+                proj.line, proj.name))
         if not entry or not entry.payload:
             continue
         ent = program.entities.get(entry.payload[0])
@@ -7255,6 +7419,30 @@ def _lint_entry_abi(program: Program) -> list:
                     f"project {proj.name!r} registers module {mref.payload[0]!r} but no "
                     f"such module is declared (README §7/§28/WS2-089)",
                     proj.line, proj.name))
+        if "wasm" in targets:
+            if ent.kind not in ("operation", "function"):
+                out.append(Diagnostic(
+                    "SS1197", "error",
+                    f"wasm entry {ent.name!r} must be an operation/function, "
+                    f"got {ent.kind!r} (README ss11)", ent.line, ent.name))
+            else:
+                for row in ent.facts("in"):
+                    if len(row.payload) >= 2:
+                        typ = row.payload[1]
+                        if _resolve_alias(typ, alias_map) not in _WASM_ENTRY_SCALAR_TYPES:
+                            out.append(Diagnostic(
+                                "SS1197", "error",
+                                f"wasm entry {ent.name!r} input {row.payload[0]!r} "
+                                f"uses non-scalar ABI type {typ!r}",
+                                row.line, ent.name))
+                orow = ent.fact("out")
+                if orow and orow.payload:
+                    otype = orow.payload[0]
+                    if _resolve_alias(otype, alias_map) not in _WASM_ENTRY_SCALAR_TYPES:
+                        out.append(Diagnostic(
+                            "SS1197", "error",
+                            f"wasm entry {ent.name!r} returns non-scalar ABI type "
+                            f"{otype!r}", orow.line, ent.name))
         if "console" not in targets:
             continue
         if ent.kind not in ("operation", "function"):
@@ -7299,7 +7487,8 @@ def _lint_runtime_bindings(program: Program) -> list:
 # to anything else passes the structural checks but fails at run/build, so this
 # set is the source of truth for both the SS1198 lint and the `sem targets`
 # discovery command. Mirrors the _emit_call dispatch.
-_CODEGEN_MODELED_PREFIXES = ("c.", "compare.", "convert.to", "gui.",
+_CODEGEN_MODELED_PREFIXES = ("c.", "compare.", "convert.to",
+                             "convert.wrapping.to", "convert.saturating.to", "gui.",
                              "buffer.", "list.", "map.", "fs.", "decimal.",
                              "test.assert")
 # Namespaces that name a builtin/intrinsic family (vs a user record `Type.new`,
@@ -7603,17 +7792,28 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
         if got in nominal_handles and want in nominal_handles and got != want:
             return False
         got_c, want_c = canon_type(got), canon_type(want)
+        if want == "Numeric":
+            return got_c in _INT_WIDTHS or got_c in _FLOAT_TYPE_NAMES
         if target in ("convert.toString", "convert.to.string") and got_is_opaque_handle:
             return False
         if target == "console.writeIntegerLine" and got_is_opaque_handle:
             return False
         if got_c == want_c:
             return True
+        if target.startswith("compare.") and want_c in _INT_WIDTHS:
+            got_ent = program.entities.get(got_root)
+            return (
+                got_c in _INT_WIDTHS
+                or got_c in ("Bool", "ExitCode")
+                or (got_ent is not None and got_ent.kind in ("enum", "error"))
+            )
         if target == "sqlite.openDatabase" and slot == "mode":
             return got_c in ("String", "Int32") and want_c == "Int32"
         if target == "json.setObjectFieldBool" and slot == "value":
             return got_c in ("Bool", "Int32", "Int64") and want_c == "Bool"
-        if target.startswith("convert.to"):
+        if (target.startswith("convert.to")
+                or target.startswith("convert.wrapping.to")
+                or target.startswith("convert.saturating.to")):
             if target in ("convert.toString", "convert.to.string"):
                 if got_is_opaque_handle:
                     return False
@@ -7699,6 +7899,22 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
                     f"{out_w2b.payload[1]}`, but those are different value kinds "
                     f"(a raw handle is not a String) — {fix} (README §10.6)",
                     out_w2b.line, ent.name))
+            elif not compatible(target, "out", out_w2b.payload[1], sig["out"]):
+                out.append(Diagnostic(
+                    "SS1201", "error",
+                    f"call {ent.name!r} binds the result of {target!r} as "
+                    f"{out_w2b.payload[1]!r}, but the signature returns "
+                    f"{sig['out']!r} (see `targets --signature {target}`)",
+                    out_w2b.line, ent.name))
+        catch_w2b = ent.fact("catch")
+        if (catch_w2b and len(catch_w2b.payload) >= 2 and sig.get("catch")
+                and catch_w2b.payload[1] != sig["catch"]):
+            out.append(Diagnostic(
+                "SS1201", "error",
+                f"call {ent.name!r} catches {catch_w2b.payload[1]!r} from "
+                f"{target!r}, but the signature raises {sig['catch']!r} "
+                f"(see `targets --signature {target}`)",
+                catch_w2b.line, ent.name))
         if not slot_sensitive:
             expected = sig["args"]
             call_args = [a for a in ent.facts("arg") if a.payload and len(a.payload) >= 1]
@@ -7722,7 +7938,7 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
                     f"{target!r} -- its parameters are {params} ({hint})",
                     extra.line, ent.name))
                 continue
-            if family not in ("json", "sqlite") and target not in (
+            if family not in ("json", "sqlite", "convert") and target not in (
                     "convert.toString", "convert.to.string"):
                 continue
             for idx, arow in enumerate(call_args[:len(expected)]):
@@ -7747,6 +7963,8 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
         hint = f"see `targets --signature {target}`"
         for slot, arow in call_args.items():
             if slot not in sig_slots:
+                if sig.get("variadic") and target == "html.render" and slot != "template":
+                    continue
                 out.append(Diagnostic(
                     "SS1201", "error",
                     f"call {ent.name!r} passes arg {slot!r} to {target!r}, which has no "
@@ -8181,14 +8399,20 @@ def _lint_literal_source_assets(program: Program) -> list:
             continue
         path = src.payload[0].strip('"')
         try:
-            resolved = _resolve_literal_source_path(path)
+            resolved = _resolve_literal_source_path(
+                path, getattr(program, "source_root", None))
         except EavError as exc:
             out.append(Diagnostic(
                 exc.code or "SS3046", "error", str(exc), src.line, st.name))
             continue
         try:
             size = os.path.getsize(resolved)
-        except OSError:
+        except OSError as exc:
+            out.append(Diagnostic(
+                "SS3046", "error",
+                f"literalSource asset {path!r} could not be read at check time: "
+                f"{exc} (README ss30.3.2/R-124)",
+                src.line, st.name))
             continue
         if size > MAX_LITERAL_SOURCE_BYTES:
             out.append(Diagnostic(
@@ -8625,8 +8849,8 @@ def _validate_webserver_abi(program: Program) -> None:
     """README ss14 / WS2-026: webServer handler ABIs. Route/notFound/
     methodNotAllowed handlers take (request, response) -> Int32; startup/shutdown
     take (serverContext) -> ExitCode; middleware takes (request, response, next)
-    -> Bool. Route methods are a fixed bare set; routes are exact-match static
-    (no `:param` / `*` wildcards)."""
+    -> Bool. Route methods are a fixed bare set; dynamic `:param` segments and
+    the bare `*` catch-all are accepted and validated before lowering."""
 
     def check_abi(opname, abi, line, role):
         want_ins, want_out = abi
@@ -8646,6 +8870,33 @@ def _validate_webserver_abi(program: Program) -> None:
 
     def _unquote(tok):
         return tok[1:-1] if len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"' else tok
+
+    def validate_policy_path(ws: Entity, row: Row, tok: str, what: str) -> str:
+        unq_path = _unquote_token(tok)
+        segs = unq_path.split("/")
+        if unq_path != "*" and (not unq_path.startswith("/")
+                or (unq_path != "/" and any(s == "" for s in segs[1:]))):
+            raise EavError(
+                f"webServer {ws.name!r} {what} {tok!r} must be an absolute path "
+                f"(`/`-prefixed, no empty `//` or trailing-slash segments except "
+                f"root `/`), or the bare `*` catch-all (README ss14)",
+                row.line, code="SS2605",
+            )
+        for seg in unq_path.split("/"):
+            if seg == "*" or not seg.startswith(":"):
+                continue
+            if not _IDENT_RE.match(seg[1:]):
+                raise EavError(
+                    f"webServer {ws.name!r} {what} {tok!r} has a malformed route "
+                    f"parameter {seg!r}; use `:name` with an identifier "
+                    f"(README ss14)",
+                    row.line, code="SS2602",
+                )
+        return unq_path
+
+    def covers_any_route(policy_path: str, route_paths: list[str]) -> bool:
+        return bool(route_paths) and any(_route_path_covered(p, policy_path)
+                                        for p in route_paths)
 
     for ws in program.of_kind("webServer"):
         # R-161: validate host/port literals in the source lane so a malformed
@@ -8686,6 +8937,7 @@ def _validate_webserver_abi(program: Program) -> None:
                 f"the ABI count (README ss14)",
                 ws.line, code="SS2607",
             )
+        route_paths: list[str] = []
         for r in ws.facts("route"):
             if not r.payload:
                 continue
@@ -8704,6 +8956,7 @@ def _validate_webserver_abi(program: Program) -> None:
             # rejected. The bare `*` catch-all (README ss14) is the one non-slash
             # path that is legal; segment shapes (`:param`, `*`) are checked below.
             unq_path = _unquote(path)
+            route_paths.append(unq_path)
             segs = unq_path.split("/")
             if unq_path != "*" and (not unq_path.startswith("/")
                     or (unq_path != "/" and any(s == "" for s in segs[1:]))):
@@ -8731,9 +8984,93 @@ def _validate_webserver_abi(program: Program) -> None:
                     )
             if len(r.payload) >= 3:
                 check_abi(r.payload[2], _HANDLER_ABI, r.line, "route handler")
+        for row in ws.facts("middleware"):
+            if row.payload:
+                mw_path = validate_policy_path(ws, row, row.payload[0], "middleware")
+                if route_paths and not covers_any_route(mw_path, route_paths):
+                    raise EavError(
+                        f"webServer {ws.name!r} middleware path {row.payload[0]!r} "
+                        "does not cover any declared route (README ss14)",
+                        row.line, code="SS2610",
+                    )
+            if len(row.payload) >= 2:
+                check_abi(row.payload[1], _MIDDLEWARE_ABI, row.line,
+                          "middleware handler")
+
+        for row in ws.facts("routeTimeout"):
+            if len(row.payload) < 2:
+                raise EavError(
+                    f"webServer {ws.name!r} routeTimeout needs a path and a "
+                    "positive budget (README ss14)",
+                    row.line, code="SS2609",
+                )
+            policy_path = validate_policy_path(ws, row, row.payload[0], "routeTimeout")
+            budget = _duration_literal_to_millis(row.payload[1])
+            if budget is None or budget > 2147483647:
+                raise EavError(
+                    f"webServer {ws.name!r} routeTimeout budget {row.payload[1]!r} "
+                    "is not a positive millisecond/duration budget that fits Int32 "
+                    "(README ss14)",
+                    row.line, code="SS2609",
+                )
+            if route_paths and not covers_any_route(policy_path, route_paths):
+                raise EavError(
+                    f"webServer {ws.name!r} routeTimeout path {row.payload[0]!r} "
+                    "does not cover any declared route (README ss14)",
+                    row.line, code="SS2610",
+                )
+
+        for pred in ("routeTimeoutOptOut", "routeMiddlewareOptOut"):
+            for row in ws.facts(pred):
+                if not row.payload:
+                    raise EavError(
+                        f"webServer {ws.name!r} {pred} needs a path and "
+                        "`because \"reason\"` (README ss14)",
+                        row.line, code="SS2608",
+                    )
+                policy_path = validate_policy_path(ws, row, row.payload[0], pred)
+                if not _route_policy_has_because(row):
+                    raise EavError(
+                        f"webServer {ws.name!r} {pred} for {row.payload[0]!r} "
+                        "needs `because \"reason\"` so route-policy audits know "
+                        "why the protection is absent (README ss14)",
+                        row.line, code="SS2608",
+                    )
+                if route_paths and not covers_any_route(policy_path, route_paths):
+                    raise EavError(
+                        f"webServer {ws.name!r} {pred} path {row.payload[0]!r} "
+                        "does not cover any declared route (README ss14)",
+                        row.line, code="SS2610",
+                    )
+
+        if route_paths and (ws.facts("routeTimeout") or ws.facts("routeTimeoutOptOut")):
+            timeout_policies = ws.facts("routeTimeout")
+            timeout_optouts = ws.facts("routeTimeoutOptOut")
+            for r in _webserver_route_rows(ws):
+                route_path = _unquote_token(r.payload[1])
+                if not (_matching_route_policy(timeout_policies, route_path)
+                        or _matching_route_policy(timeout_optouts, route_path)):
+                    raise EavError(
+                        f"webServer {ws.name!r} route {r.payload[0]} {r.payload[1]} "
+                        "has no route timeout or timeout opt-out (README ss14)",
+                        r.line, code="SS2611",
+                    )
+
+        if route_paths and (ws.facts("middleware") or ws.facts("routeMiddlewareOptOut")):
+            middleware_rows = ws.facts("middleware")
+            middleware_optouts = ws.facts("routeMiddlewareOptOut")
+            for r in _webserver_route_rows(ws):
+                route_path = _unquote_token(r.payload[1])
+                if not (_matching_route_policy(middleware_rows, route_path)
+                        or _matching_route_policy(middleware_optouts, route_path)):
+                    raise EavError(
+                        f"webServer {ws.name!r} route {r.payload[0]} {r.payload[1]} "
+                        "has no route middleware or middleware opt-out (README ss14)",
+                        r.line, code="SS2612",
+                    )
+
         for pred, abi in (("notFound", _HANDLER_ABI), ("methodNotAllowed", _HANDLER_ABI),
-                          ("startup", _LIFECYCLE_ABI), ("shutdown", _LIFECYCLE_ABI),
-                          ("middleware", _MIDDLEWARE_ABI)):
+                          ("startup", _LIFECYCLE_ABI), ("shutdown", _LIFECYCLE_ABI)):
             for row in ws.facts(pred):
                 if row.payload:
                     check_abi(row.payload[0], abi, row.line, f"{pred} handler")
@@ -9569,7 +9906,9 @@ def _validate_decode_limits(program: Program) -> None:
                               for a in ent.facts("arg"))
         if not feeds_untrusted:
             continue
-        present = {l.payload[0] for l in ent.facts("limit") if l.payload}
+        for kind in _REQUIRED_DECODE_LIMITS:
+            _decode_limit_literal(ent, kind)
+        present = set(_REQUIRED_DECODE_LIMITS)
         for kind in _REQUIRED_DECODE_LIMITS:
             if kind not in present:
                 raise EavError(
@@ -9941,6 +10280,22 @@ def _validate_ssrf(program: Program) -> None:
                 if len(r.payload) >= 4 and r.payload[3].startswith('"'):
                     literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
     for n in program.order:
+        owner = program.entities[n]
+        if owner.kind not in ("operation", "function"):
+            continue
+        for cap in _used_capabilities(program, owner):
+            for grant in cap.facts("grants"):
+                if len(grant.payload) < 2:
+                    continue
+                if (_is_broad_network_grant(grant.payload[0], grant.payload[1])
+                        and cap.fact("rationale") is None):
+                    raise EavError(
+                        f"capability {cap.name!r} grants broad outbound network "
+                        f"authority `{grant.payload[0]} {grant.payload[1]}` but "
+                        f"has no `rationale`; broad network allowlists need a "
+                        f"visible reason (SSRF, README §8/R-078)",
+                        grant.line, code="SS3075")
+    for n in program.order:
         ent = program.entities[n]
         if ent.kind not in ("call", "task"):
             continue
@@ -9962,11 +10317,37 @@ def _validate_ssrf(program: Program) -> None:
                     f"call {ent.name!r} passes a URL with an embedded control byte "
                     f"(CR/LF/NUL) to {target!r}; this enables request/header "
                     f"injection (SSRF, README §8)", ent.line, code="SS3075")
+            if target == "net.fetchText" and lit.lower().startswith("https://"):
+                raise EavError(
+                    f"call {ent.name!r} passes HTTPS URL {lit!r} to net.fetchText, "
+                    "but the current ss_net runtime is an HTTP-only client with no "
+                    "TLS backend; use http:// or add TLS support before accepting "
+                    "https:// at check time (R-092, README §27)",
+                    ent.line, code="SS0920")
             if _is_internal_host(_url_host(lit)):
                 raise EavError(
                     f"call {ent.name!r} sends an outbound request to the internal "
                     f"address {lit!r} via {target!r}; outbound requests go to "
                     f"allowlisted external hosts only (SSRF, README §8)",
+                    ent.line, code="SS3075")
+            owner = _owner_entity_for_call(program, ent)
+            policies = [
+                pol
+                for cap in _used_capabilities(program, owner)
+                for grant in cap.facts("grants")
+                if len(grant.payload) >= 2
+                for pol in [_net_connect_policy(grant.payload[0], grant.payload[1])]
+                if pol is not None
+            ]
+            if policies and not any(
+                    _net_host_policy_matches(pol, _url_scheme(lit), _url_host(lit))
+                    for pol in policies):
+                allowed = ", ".join(f"net.{scheme}.{host}" for scheme, host in policies)
+                raise EavError(
+                    f"call {ent.name!r} sends outbound request {lit!r} outside "
+                    f"the operation's network capability allowlist ({allowed}); "
+                    f"grant `connect net.<scheme>.<host>` for the exact external "
+                    f"host or validate the URL before use (SSRF, README §8/R-078)",
                     ent.line, code="SS3075")
 
 
@@ -10030,6 +10411,79 @@ def _validate_request_body_bounds(program: Program) -> None:
                 f"({target!r}) with no `limit maximumBytes <n>`; bound it so a huge "
                 f"body cannot exhaust memory (README §27, R-079)",
                 ent.line, code="SS3078")
+
+
+_REGEX_LINEAR_ENGINES = ("linear", "re2")
+_REGEX_PATTERN_SLOTS = {"pattern", "regex", "regexp", "expression"}
+_REGEX_NESTED_QUANTIFIER_RE = re.compile(
+    r"\((?:\\.|[^()])*?(?:[+*]|\{\d+(?:,\d*)?\})(?:\\.|[^()])*?\)\s*(?:[+*]|\{\d+(?:,\d*)?\})"
+)
+
+
+def _regex_literal_body(token: str) -> Optional[str]:
+    if len(token) >= 2 and token[0] == token[-1] == '"':
+        return token[1:-1]
+    return None
+
+
+def _regex_literal_has_catastrophic_shape(token: str) -> bool:
+    body = _regex_literal_body(token)
+    if body is None:
+        return False
+    return bool(_REGEX_NESTED_QUANTIFIER_RE.search(body))
+
+
+def _validate_regex_linearity(program: Program) -> None:
+    """R-079 / README ss27: regex work over untrusted data must not route through
+    a potentially-catastrophic backtracking engine. A `regex.*` call whose subject
+    or pattern is `rawExternal` must name `regexEngine linear|re2`. A literal
+    pattern with an obvious nested-quantifier shape is also rejected unless the
+    call names one of those linear engines."""
+    raw_types = {
+        program.entities[n].name for n in program.order
+        for r in program.entities[n].facts("typeTrust")
+        if r.payload and r.payload[0] == "rawExternal"
+    }
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not target.startswith("regex."):
+            continue
+        engine_row = ent.fact("regexEngine")
+        engine = engine_row.payload[0] if engine_row and engine_row.payload else None
+        if engine_row is not None and (
+                len(engine_row.payload) != 1 or engine not in _REGEX_LINEAR_ENGINES):
+            raise EavError(
+                f"call {ent.name!r} declares invalid `regexEngine` "
+                f"{' '.join(engine_row.payload)!r}; expected "
+                f"{'|'.join(_REGEX_LINEAR_ENGINES)} so regex work cannot "
+                f"catastrophically backtrack (README ss27, R-079)",
+                engine_row.line, code="SS3099")
+        has_linear_engine = engine in _REGEX_LINEAR_ENGINES
+        feeds_untrusted = any(len(a.payload) >= 2 and a.payload[1] in raw_types
+                              for a in ent.facts("arg"))
+        catastrophic_literal = any(
+            len(a.payload) >= 3
+            and a.payload[0] in _REGEX_PATTERN_SLOTS
+            and _regex_literal_has_catastrophic_shape(a.payload[2])
+            for a in ent.facts("arg")
+        )
+        if feeds_untrusted and not has_linear_engine:
+            raise EavError(
+                f"call {ent.name!r} invokes {target!r} over rawExternal input "
+                f"without `regexEngine linear`/`regexEngine re2`; hostile input "
+                f"must not reach a backtracking regex engine (README ss27, R-079)",
+                ent.line, code="SS3099")
+        if catastrophic_literal and not has_linear_engine:
+            raise EavError(
+                f"call {ent.name!r} invokes {target!r} with a nested-quantifier "
+                f"literal pattern but no linear engine guarantee; add "
+                f"`regexEngine linear`/`regexEngine re2` or reject the pattern "
+                f"before the call (README ss27, R-079)",
+                ent.line, code="SS3099")
 
 
 def _validate_untrusted_loop_bounds(program: Program) -> None:
@@ -10298,6 +10752,17 @@ def _validate_ffi_wrapping(program: Program) -> None:
         u = ent.fact("unsafe")
         if not (u and u.payload and u.payload[0] in ("yes", "true", "1")):
             continue
+        if ent.kind in ("operation", "function"):
+            body = ent.fact("body")
+            is_foreign_binding = (
+                body is not None and body.payload
+                and body.payload[0] in ("runtimeBinding", "intrinsic")
+            )
+            has_allocator_contract = any(
+                ent.fact(r) is not None for r in ("wrapsAs", "cleanedBy", "allocator")
+            )
+            if not is_foreign_binding and not has_allocator_contract:
+                continue
         missing = [r for r in ("wrapsAs", "cleanedBy", "allocator")
                    if ent.fact(r) is None]
         if missing:
@@ -10388,8 +10853,10 @@ def _validate_security_parity(program: Program) -> None:
     with a constant cost < 10 is rejected (SS3086); a shell/exec command that is
     not a compile-time constant is rejected (SS3087, command injection); a
     printf-family format that is not constant is rejected (SS3088, format-string
-    injection). The other names in SECURITY_LINT_PARITY are the existing X-071/072/
-    073/077 checks (reconciled, not re-implemented)."""
+    injection). R-202 rejects app-source use of raw bcrypt pointer/count buffer
+    helpers (SS3089) in favor of owned-output helpers. The other names in
+    SECURITY_LINT_PARITY are the existing X-071/072/073/077 checks (reconciled,
+    not re-implemented)."""
     const_names, int_const = set(), {}
     for n in program.order:
         ent = program.entities[n]
@@ -10428,6 +10895,14 @@ def _validate_security_parity(program: Program) -> None:
                     f"call {ent.name!r} hashes a password with cost {ci} (< "
                     f"{_MIN_BCRYPT_COST}); use a cost >= {_MIN_BCRYPT_COST} (README §8)",
                     ent.line, code="SS3086")
+        if target in _BCRYPT_RAW_BUFFER_TARGETS:
+            raise EavError(
+                f"call {ent.name!r} invokes raw bcrypt buffer intrinsic {target!r}; "
+                f"raw OpaquePointer plus caller-declared counts/capacities are not "
+                f"safe app-source contracts. Use bcrypt.hashPasswordOwned or "
+                f"bcrypt.sessionTokenOwned so the runtime allocates exact-sized "
+                f"output (R-202).",
+                ent.line, code="SS3089")
         if target in _SHELL_TARGETS:
             for slot in ("command", "cmd", "commandLine"):
                 if slot in args and not is_const(args[slot]):
@@ -10443,6 +10918,233 @@ def _validate_security_parity(program: Program) -> None:
                 f"{target!r}; the format string must be constant — pass dynamic values "
                 f"as arguments (README §30.2.2)",
                 ent.line, code="SS3088")
+
+
+def _validate_json_scratch_buffers(program: Program) -> None:
+    """R-203: prove JSON raw scratch pointer/capacity pairs before runtime.
+
+    A JSON scratch call is accepted only when its scratch pointer is a same-op
+    `c.malloc` out binding, that allocation is activated first, and the
+    `scratchCapacity` token is exactly the same size token passed to `c.malloc`.
+    This rejects forged pointers and inflated capacities at check time.
+    """
+    calls_by_op: dict[str, list[Entity]] = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        owner = ent.fact("in")
+        if owner and owner.payload:
+            calls_by_op.setdefault(owner.payload[0], []).append(ent)
+
+    def target_of(call: Entity) -> str:
+        inv = call.fact("invokes")
+        return inv.payload[0] if inv and inv.payload else ""
+
+    def arg_value(call: Entity, slot: str) -> str | None:
+        for row in call.facts("arg"):
+            if len(row.payload) >= 3 and row.payload[0] == slot:
+                return row.payload[2]
+        return None
+
+    def out_name(call: Entity) -> str | None:
+        row = call.fact("out")
+        return row.payload[0] if row and row.payload else None
+
+    for op_name, calls in calls_by_op.items():
+        op = program.entities.get(op_name)
+        if op is None or op.kind not in ("operation", "function"):
+            continue
+        activation_order: dict[str, int] = {}
+        for idx, row in enumerate(op.rows):
+            if row.predicate == "do" and row.payload:
+                activation_order.setdefault(row.payload[0], idx)
+
+        malloc_by_pointer: dict[str, tuple[Entity, str]] = {}
+        for call in calls:
+            if target_of(call) != "c.malloc":
+                continue
+            ptr = out_name(call)
+            size = arg_value(call, "size")
+            if not ptr or size is None:
+                continue
+            if call.fact("owns") is None or call.fact("cleanedBy") is None:
+                continue
+            malloc_by_pointer[ptr] = (call, size)
+
+        for call in calls:
+            target = target_of(call)
+            if target not in _JSON_SCRATCH_TARGETS:
+                continue
+            scratch = arg_value(call, "scratch")
+            capacity = arg_value(call, "scratchCapacity")
+            proof = malloc_by_pointer.get(scratch or "")
+            if proof is None:
+                raise EavError(
+                    f"call {call.name!r} invokes {target!r} with scratch pointer "
+                    f"{scratch!r}, but that pointer is not a same-operation "
+                    f"`c.malloc` out binding with ownership/cleanup rows (R-203)",
+                    call.line, code="SS3090")
+            malloc_call, allocated_size = proof
+            malloc_pos = activation_order.get(malloc_call.name)
+            json_pos = activation_order.get(call.name)
+            if malloc_pos is None or json_pos is None or malloc_pos >= json_pos:
+                raise EavError(
+                    f"call {call.name!r} invokes {target!r} before scratch allocation "
+                    f"{malloc_call.name!r} is activated in {op.name!r} (R-203)",
+                    call.line, code="SS3090")
+            if capacity != allocated_size:
+                raise EavError(
+                    f"call {call.name!r} invokes {target!r} with scratchCapacity "
+                    f"{capacity!r}, but scratch pointer {scratch!r} was allocated "
+                    f"with size {allocated_size!r}; pass the same binding/literal so "
+                    f"the raw pointer/count pair is proven consistent (R-203)",
+                    call.line, code="SS3090")
+
+
+def _validate_http_response_bytes_buffers(program: Program) -> None:
+    """R-205: prove `http.responseBytes` body pointer/length pairs.
+
+    Accepted proofs:
+      * request body bytes paired with request body length for the same request
+      * multipart part bytes paired with multipart part length for same request/name
+      * a same-op `c.malloc` out binding with the same size token as bodyLength
+    """
+    calls_by_op: dict[str, list[Entity]] = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        owner = ent.fact("in")
+        if owner and owner.payload:
+            calls_by_op.setdefault(owner.payload[0], []).append(ent)
+
+    def target_of(call: Entity) -> str:
+        inv = call.fact("invokes")
+        return inv.payload[0] if inv and inv.payload else ""
+
+    def arg_value(call: Entity, slot: str) -> str | None:
+        for row in call.facts("arg"):
+            if len(row.payload) >= 3 and row.payload[0] == slot:
+                return row.payload[2]
+        return None
+
+    def out_name(call: Entity) -> str | None:
+        row = call.fact("out")
+        return row.payload[0] if row and row.payload else None
+
+    for op_name, calls in calls_by_op.items():
+        op = program.entities.get(op_name)
+        if op is None or op.kind not in ("operation", "function"):
+            continue
+        activation_order: dict[str, int] = {}
+        for idx, row in enumerate(op.rows):
+            if row.predicate == "do" and row.payload:
+                activation_order.setdefault(row.payload[0], idx)
+
+        malloc_by_pointer: dict[str, tuple[Entity, str]] = {}
+        request_bytes: dict[str, tuple[Entity, str | None]] = {}
+        request_lengths: dict[tuple[str | None], tuple[Entity, str]] = {}
+        multipart_bytes: dict[str, tuple[Entity, str | None, str | None]] = {}
+        multipart_lengths: dict[tuple[str | None, str | None], tuple[Entity, str]] = {}
+
+        for call in calls:
+            target = target_of(call)
+            out = out_name(call)
+            if target == "c.malloc":
+                size = arg_value(call, "size")
+                if out and size is not None and call.fact("owns") is not None and call.fact("cleanedBy") is not None:
+                    malloc_by_pointer[out] = (call, size)
+            elif target == "http.requestBodyBytes" and out:
+                request_bytes[out] = (call, arg_value(call, "request"))
+            elif target == "http.requestBodyLength" and out:
+                request_lengths[(arg_value(call, "request"),)] = (call, out)
+            elif target == "http.multipartPartBytes" and out:
+                multipart_bytes[out] = (
+                    call,
+                    arg_value(call, "request"),
+                    arg_value(call, "name"),
+                )
+            elif target == "http.multipartPartLength" and out:
+                multipart_lengths[(arg_value(call, "request"), arg_value(call, "name"))] = (call, out)
+
+        def activated_before(producer: Entity, consumer: Entity) -> bool:
+            prod_pos = activation_order.get(producer.name)
+            cons_pos = activation_order.get(consumer.name)
+            return prod_pos is not None and cons_pos is not None and prod_pos < cons_pos
+
+        for call in calls:
+            if target_of(call) != "http.responseBytes":
+                continue
+            body = arg_value(call, "body")
+            length = arg_value(call, "bodyLength")
+            if body is None or length is None:
+                continue
+
+            malloc_proof = malloc_by_pointer.get(body)
+            if malloc_proof is not None:
+                malloc_call, allocated_size = malloc_proof
+                if activated_before(malloc_call, call) and length == allocated_size:
+                    continue
+
+            request_proof = request_bytes.get(body)
+            if request_proof is not None:
+                bytes_call, request_name = request_proof
+                length_proof = request_lengths.get((request_name,))
+                if length_proof is not None:
+                    length_call, length_out = length_proof
+                    if length == length_out and activated_before(bytes_call, call) and activated_before(length_call, call):
+                        continue
+
+            multipart_proof = multipart_bytes.get(body)
+            if multipart_proof is not None:
+                bytes_call, request_name, part_name = multipart_proof
+                length_proof = multipart_lengths.get((request_name, part_name))
+                if length_proof is not None:
+                    length_call, length_out = length_proof
+                    if length == length_out and activated_before(bytes_call, call) and activated_before(length_call, call):
+                        continue
+
+            raise EavError(
+                f"call {call.name!r} invokes http.responseBytes with body pointer "
+                f"{body!r} and bodyLength {length!r}, but that pair is not proven "
+                f"to describe the same live byte range. Use matching "
+                f"http.requestBodyBytes/requestBodyLength, matching "
+                f"http.multipartPartBytes/multipartPartLength, or a same-op "
+                f"c.malloc size token (R-205).",
+                call.line, code="SS3097")
+
+
+def _validate_pointer_intrinsic_unsafe_gate(program: Program) -> None:
+    """R-188: raw pointer byte intrinsics are app-visible only behind `unsafe`.
+
+    This does not pretend raw OpaquePointer arithmetic is bounds-safe; R-130 keeps
+    the bounds-carrying replacement work open. It prevents accidental ordinary
+    source use and forces every remaining direct pointer loop to carry a local
+    rationale that documents its bounds/lifetime proof.
+    """
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        inv = call.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if target not in _RAW_POINTER_INTRINSICS:
+            continue
+        owner_row = call.fact("in")
+        owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+        unsafe = owner.fact("unsafe") if owner is not None else None
+        rationale = owner.fact("rationale") if owner is not None else None
+        unsafe_yes = unsafe and unsafe.payload and unsafe.payload[0] in ("yes", "true", "1")
+        if not unsafe_yes or rationale is None:
+            owner_name = owner.name if owner is not None else "<unknown>"
+            raise EavError(
+                f"call {call.name!r} invokes raw pointer intrinsic {target!r} inside "
+                f"{owner_name!r}; direct pointer arithmetic/byte access requires the "
+                f"containing operation to declare `unsafe yes` plus a `rationale` "
+                f"documenting its bounds and lifetime proof (R-188). Prefer "
+                f"`standard.buffer` for ordinary byte access.",
+                call.line, code="SS3098")
 
 
 def _validate_contracts(program: Program) -> None:
@@ -10607,7 +11309,17 @@ def _validate_regions(program: Program) -> None:
             raise EavError(  # WS1-120 SS1570
                 f"region {ent.name!r} needs a `scope <op>` (README §29 #14)",
                 ent.line, code="SS1570")
-        regions[ent.name] = strat.payload[0]
+        cap_row = ent.fact("capacity")
+        capacity = None
+        if cap_row and cap_row.payload:
+            capacity = _layout_int(cap_row.payload[0])
+            if capacity is None or capacity < 0:
+                raise EavError(
+                    f"region {ent.name!r} has invalid capacity "
+                    f"{cap_row.payload[0]!r}; expected a non-negative integer "
+                    f"byte count (README §29 #14)",
+                    cap_row.line, code="SS1573")
+        regions[ent.name] = {"strategy": strat.payload[0], "capacity": capacity}
     for n in program.order:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
@@ -10627,7 +11339,7 @@ def _validate_regions(program: Program) -> None:
             return False
 
         calls = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
-        allocated, released, var_region = set(), set(), {}
+        allocated, released, var_region, used_bytes = set(), set(), {}, {}
         for row in op.rows:
             # SS1561: a value allocated in a region used after its release
             refs = []
@@ -10658,6 +11370,18 @@ def _validate_regions(program: Program) -> None:
                 allocated.add(region)
                 if len(row.payload) >= 2:
                     var_region[row.payload[1]] = region
+                if len(row.payload) >= 3:
+                    size = _region_static_type_size(program, row.payload[2])
+                    capacity = regions[region]["capacity"]
+                    if size is not None and capacity is not None:
+                        total = used_bytes.get(region, 0) + size
+                        if total > capacity:
+                            raise EavError(
+                                f"{op.name!r} allocates {total} bytes in region "
+                                f"{region!r}, exceeding its capacity {capacity} "
+                                f"(README §29 #14)",
+                                row.line, code="SS1573")
+                        used_bytes[region] = total
             elif row.predicate == "releaseRegion" and row.payload:
                 region = row.payload[0]
                 if region not in regions:
