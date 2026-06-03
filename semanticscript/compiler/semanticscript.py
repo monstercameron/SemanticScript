@@ -348,6 +348,9 @@ DIAGNOSTICS.update({
     "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
                "found": "An app operation with a runtimeBinding/intrinsic body.",
                "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
+    "SS5001": {"tier": "T1", "summary": "LLVM/codegen failure surfaced by the compiler.",
+               "found": "The lowering or LLVM verification path raised a backend RuntimeError.",
+               "suggested": "Use the source diagnostic preceding this error when present; otherwise minimize the program and file the generated-IR failure with the offending call/operation."},
     "SS3041": {"tier": "T1", "summary": "Multiple `export c` rows on one operation.",
                "found": "An operation with more than one `export c` symbol.",
                "suggested": "Use a single `export c <symbol>` per op (README §30.4.2)."},
@@ -462,6 +465,14 @@ DIAGNOSTICS.update({
                         "`run` (DX-09, the arg-slot sibling of SS1198/SS1199).",
                "suggested": "Look the target up with `targets --signature <target>` (or "
                             "`describe <target>`) and use its exact arg slot names/types."},
+    "SS1204": {"tier": "T1", "summary": "assert result discarded.",
+               "found": "A boolean `assert.*` intrinsic was called with `discards`, "
+                        "so a failed assertion becomes an unused value instead of a "
+                        "test failure.",
+               "suggested": "For pure assertions, use `assert.equalInt64` with "
+                            "`arg left Int64 ...`, `arg right Int64 ...`, and `out ... Bool`, "
+                            "then branch/combine it with `test.and`. For harness reporting, "
+                            "use `test.assertEqualInt64` with `name`/`expected`/`actual`."},
     "SS1199": {"tier": "T1", "summary": "console.write* argument type mismatch.",
                "found": "A `console.writeLine`/`writeIntegerLine`/`writeFloatLine` "
                         "call whose argument type does not match (e.g. an Int64 to "
@@ -521,8 +532,8 @@ DIAGNOSTICS.update({
     "SS3001": {"tier": "T4", "summary": "`branch else` not after a guard.",
                "found": "A `branch else` that doesn't follow a guard branch.",
                "suggested": "Use `branch else` only as the default after a guard (§17 #30/#31)."},
-    "SS1901": {"tier": "T3", "summary": "sqlite column pointer used after step/reset invalidated it.",
-               "found": "A `columnText`/`columnBlob`/`columnName` value used after a later step/reset on its statement.",
+    "SS1901": {"tier": "T3", "summary": "sqlite borrowed column pointer used after step/reset invalidated it.",
+               "found": "A borrowed sqlite column pointer value used after a later step/reset on its statement.",
                "suggested": "Copy or consume the borrowed column value before advancing the statement (README §17 #23)."},
     "SS1902": {"tier": "T3", "summary": "Multi-write sqlite sequence without a transaction.",
                "found": "Two or more prepared+stepped INSERT/UPDATE/DELETE statements with no BEGIN/COMMIT.",
@@ -694,6 +705,9 @@ DIAGNOSTICS.update({
     "SS2551": {"tier": "T3", "summary": "Shared catch var with incompatible types.",
                "found": "A catch variable reused across calls with different error types.",
                "suggested": "Use distinct catch names, or a common error type (README §25)."},
+    "SS2552": {"tier": "T1", "summary": "Invalid operation `raises` row.",
+               "found": "An operation/function `raises` row is empty or names a type that is not an `error` entity.",
+               "suggested": "Declare the error with `<Name> is error`, then write `operationName raises <Name>`; use call-site `catch` + `branch ifError` for control flow (README §11/§25)."},
     "SS1315": {"tier": "T3", "summary": "Irreducible control flow.",
                "found": "A multi-entry loop (CFG not T1-T2 reducible).",
                "suggested": "Restructure to a single-entry loop (README §17 #15)."},
@@ -1982,7 +1996,7 @@ RESERVED_WORDS = {
     "is", "at",
     # step predicates and guards
     "do", "defer", "start", "join", "poll", "cancel", "detach", "branch",
-    "return", "goto", "set", "if", "ifFalse", "ifOut", "ifValue", "ifVariant",
+    "return", "goto", "set", "if", "ifTrue", "ifFalse", "ifOut", "ifValue", "ifVariant",
     "ifError", "ifReady", "ifPending", "ifCanceled", "else", "onFailure",
     "equals", "notEquals", "greaterThan", "lessThan", "bind",
     "propagate", "logAndSuppress", "because",
@@ -2045,12 +2059,11 @@ UNIVERSAL_PREDICATES = {
 # Structural + step predicates allowed per entity kind (README ss5). `is` is
 # implicit (handled before dispatch); `at` labeled steps are operation-only and
 # handled separately. Unknown predicate for a kind is a hard parse error.
-# DX-06: predicates an agent reaches for to declare an error in an OPERATION
-# header (errors aren't part of an operation's signature in SemanticScript). When
-# one appears on an operation/function, the rejection names the real construct
-# (`catch` at the call site + `branch ifError`) instead of a bare "not valid".
+# DX-06: predicates an agent reaches for to model operation failure. `raises` is
+# now a declarative operation row; the other spellings still point at call-site
+# `catch` + `branch ifError` instead of a bare "not valid".
 _ERROR_HEADER_PREDICATES = frozenset({
-    "error", "errors", "raise", "raises", "throw", "throws", "catch", "catches",
+    "error", "errors", "raise", "throw", "throws", "catch", "catches",
     "mayFail", "fails", "failsWith", "onError", "except", "rescue",
 })
 
@@ -2082,7 +2095,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
               "arrayLength", "allocator"},
     "operation": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
-        "body", "export",
+        "body", "export", "raises",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
         "optOut", "readShared", "setShared", "allocateIn", "releaseRegion",
@@ -2094,7 +2107,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
-        "body", "export",
+        "body", "export", "raises",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
         "branch", "return", "goto", "set", "errorBoundary", "optOut",
         "readShared", "setShared", "allocateIn", "releaseRegion",
@@ -2208,20 +2221,46 @@ class Program:
     # into docs/describe surfaces instead of disappearing. Each item is
     # (tag, text, line); line is 1-based for the source row carrying the comment.
     typed_comments: list[tuple[str, str, int]] = field(default_factory=list)
+    _kind_cache: dict[str, tuple[Entity, ...]] = field(
+        default_factory=dict, init=False, repr=False)
+    _alias_map_cache: Optional[dict[str, str]] = field(
+        default=None, init=False, repr=False)
 
     def add(self, entity: Entity) -> None:
         self.entities[entity.name] = entity
         self.order.append(entity.name)
+        self._kind_cache.clear()
+        self._alias_map_cache = None
 
     def of_kind(self, kind: str) -> list[Entity]:
         norm = "operation" if kind == "operation" else kind
+        cached = self._kind_cache.get(norm)
+        if cached is not None:
+            return list(cached)
         out = []
         for name in self.order:
             ent = self.entities[name]
             k = "operation" if ent.kind == "function" else ent.kind
             if k == norm:
                 out.append(ent)
+        self._kind_cache[norm] = tuple(out)
         return out
+
+    def alias_map(self) -> dict[str, str]:
+        """Cached alias/newtype table for validators.
+
+        R-228: several passes need the same alias map. Build it once per parsed
+        program, invalidate on add(), and return a copy so callers cannot mutate
+        the cached table.
+        """
+        if self._alias_map_cache is None:
+            self._alias_map_cache = {
+                a.name: row.payload[0]
+                for a in self.of_kind("alias")
+                for row in [a.fact("for")]
+                if row and row.payload
+            }
+        return dict(self._alias_map_cache)
 
 
 # Inclusive integer ranges per primitive width (README ss10/ss33.6).
@@ -2323,7 +2362,7 @@ def token_sync_drift() -> set:
     literals = {"nil", "true", "false", "yes", "no"}
     core = {"is", "at"}
     guards = {
-        "if", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
+        "if", "ifTrue", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
         "ifPending", "ifCanceled", "else", "onFailure", "equals", "notEquals",
         "greaterThan", "lessThan", "bind", "propagate", "logAndSuppress",
         "because", "immutable", "mutable",
@@ -2545,9 +2584,9 @@ def parse(source_text: str) -> Program:
                     and predicate in _ERROR_HEADER_PREDICATES):
                 # DX-06: name the real construct instead of a bare "not valid".
                 raise EavError(
-                    f"predicate {predicate!r} is not an operation-header construct: a "
-                    f"SemanticScript operation does not declare errors in its "
-                    f"signature. Handle a fallible call's error at the CALL site — "
+                    f"predicate {predicate!r} is not an operation-header construct. "
+                    f"Use `raises ErrorType` only as declarative operation metadata; "
+                    f"handle a fallible call's error at the CALL site — "
                     f"`<call> catch <name> <ErrorType>` — and route it with "
                     f"`branch ifError <call> goto <label>`; declare the error type "
                     f"itself with `<Name> is error` (README ss9/ss17).",
@@ -2725,7 +2764,7 @@ def _kind_rank(kind: str) -> int:
 # subject token is omitted; `operation`/`call`/`task` headers re-anchor it.
 COMPACT_HEADERS = {"operation", "call", "task"}
 COMPACT_GUARDS = {
-    "if", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
+    "if", "ifTrue", "ifFalse", "ifOut", "ifValue", "ifVariant", "ifError", "ifReady",
     "ifPending", "ifCanceled", "else",
 }
 
@@ -2820,6 +2859,35 @@ def expand_compact_to_eav(source: str):
 def parse_compact(source: str) -> "Program":
     """Parse compact-profile source by expanding to canonical EAV first."""
     return parse(expand_compact_to_eav(source)[0])
+
+
+_PARSE_COMPACT_CACHE: dict[str, "Program"] = {}
+_PARSE_COMPACT_CACHE_ORDER: list[str] = []
+_PARSE_COMPACT_CACHE_LIMIT = 32
+
+
+def _parse_compact_cached(source: str, cache_key: Optional[str] = None) -> "Program":
+    """Parse compact source with a small content-addressed in-process cache.
+
+    The returned ``Program`` is a deep copy of the cached value because later
+    passes may attach or rewrite lowering-only state. That preserves cache
+    correctness while still avoiding the compact expansion + parser work on
+    unchanged watch-loop snapshots.
+    """
+    import copy
+    import hashlib
+    key = cache_key or ("source:" + hashlib.sha256(
+        source.encode("utf-8")).hexdigest())
+    cached = _PARSE_COMPACT_CACHE.get(key)
+    if cached is not None:
+        return copy.deepcopy(cached)
+    program = parse_compact(source)
+    _PARSE_COMPACT_CACHE[key] = copy.deepcopy(program)
+    _PARSE_COMPACT_CACHE_ORDER.append(key)
+    while len(_PARSE_COMPACT_CACHE_ORDER) > _PARSE_COMPACT_CACHE_LIMIT:
+        old = _PARSE_COMPACT_CACHE_ORDER.pop(0)
+        _PARSE_COMPACT_CACHE.pop(old, None)
+    return program
 
 
 def lint_compact(source: str) -> list:
@@ -3259,7 +3327,7 @@ def _row_refs(row, owned: dict) -> list:
         refs += [t for t in p if t not in ("value", "ok", "error", "nil", "void")]
     elif row.predicate == "branch" and p:
         g = p[0]
-        if g in ("if", "ifFalse", "ifVariant") and len(p) >= 2:
+        if g in ("if", "ifTrue", "ifFalse", "ifVariant") and len(p) >= 2:
             refs.append(p[1])
         elif g in ("ifValue", "ifOut") and len(p) >= 4:
             refs += [p[1], p[3]]
@@ -3272,15 +3340,12 @@ def _row_refs(row, owned: dict) -> list:
 _SQL_WRITE_VERBS = frozenset({"INSERT", "UPDATE", "DELETE", "REPLACE"})
 _SQL_BEGIN_VERBS = frozenset({"BEGIN", "SAVEPOINT"})
 _SQL_COMMIT_VERBS = frozenset({"COMMIT", "RELEASE"})
-# A live columnText/columnBlob/columnName pointer is SQLite-owned (the runtime
-# returns sqlite3_column_text/blob's pointer straight into a SemanticScript String
-# without copying) and is invalidated by step/reset/finalize on the SAME statement;
-# sibling column reads do NOT invalidate it (semsc _COLUMN_TEXT_INVALIDATORS /
-# _OWNED_COLUMN_SOURCES). R-164: finalize frees the statement, so a column value
-# read before finalize and used after it is a use-after-free the source checker
-# would otherwise miss (it sees an ordinary String, not the borrow).
+# A live borrowed column pointer is SQLite-owned and is invalidated by
+# step/reset/finalize on the SAME statement; sibling column reads do NOT
+# invalidate it. Text helpers (columnText/columnName) now copy at the runtime
+# boundary, so only non-copying column pointer APIs belong here.
 _OWNED_COLUMN_TARGETS = frozenset({
-    "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
+    "sqlite.columnBlob",
 })
 _COLUMN_INVALIDATOR_TARGETS = frozenset({
     "sqlite.stepStatement", "sqlite.resetStatement", "sqlite.finalizeStatement",
@@ -3326,11 +3391,11 @@ def _sql_first_verb(sql_text: str):
 def _lint_sqlite_usage(program: Program) -> list:
     """README ss19 / ss17 #23/#24, aligned with semsc's SS3113/SS3635:
 
-    SS1901 - a `columnText`/`columnBlob`/`columnName` value points into
-    SQLite-owned memory that a later `step`/`reset`/`finalize` on the SAME
-    statement invalidates. Flag the value used as a call argument that follows
-    such an invalidation. Sibling column reads do not invalidate, and copied
-    scalars (`columnInt64` etc.) are never tracked.
+    SS1901 - a borrowed sqlite column pointer value points into SQLite-owned
+    memory that a later `step`/`reset`/`finalize` on the SAME statement
+    invalidates. Flag the value used as a call argument that follows such an
+    invalidation. Sibling column reads do not invalidate, and copied text/scalars
+    (`columnText`, `columnName`, `columnInt64`, etc.) are never tracked.
 
     SS1902 - an operation that prepares and steps two or more row-mutating
     statements (INSERT/UPDATE/DELETE/REPLACE) must make the transaction boundary
@@ -3468,7 +3533,7 @@ def _branch_goto_target_and_guards(row, owned: dict):
     if label is None:
         return None, set()
     guards: set = set()
-    if guard in ("if", "ifFalse", "ifVariant") and len(p) >= 2:
+    if guard in ("if", "ifTrue", "ifFalse", "ifVariant") and len(p) >= 2:
         guards.add(p[1])
     elif guard == "ifValue" and len(p) >= 4:
         guards.update({p[1], p[3]})
@@ -3642,7 +3707,10 @@ def graph(program: Program, kind: str, fmt: str = "dot") -> str:
     return f"digraph {kind} {{\n{body}\n}}\n"
 
 
-SCAFFOLD_PATTERNS = ("console-program", "fallible-write", "fallible-operation")
+SCAFFOLD_PATTERNS = (
+    "console-program", "fallible-write", "fallible-operation",
+    "json-output", "db-roundtrip", "logged-op",
+)
 
 
 def scaffold(pattern: str) -> str:
@@ -3703,6 +3771,202 @@ def scaffold(pattern: str) -> str:
             "writeGreeting arg text String greeting\n"
             "writeGreeting catch writeError ConsoleWriteError\n"
         )
+    if pattern == "json-output":
+        return (
+            "JsonOutputScaffold is project\nJsonOutputScaffold module jsonOutputModule\n"
+            "JsonOutputScaffold target console\nJsonOutputScaffold entry main\n\n"
+            "jsonOutputModule is module\njsonOutputModule path examples.jsonOutputScaffold\n"
+            "jsonOutputModule exports main\n"
+            'jsonOutputModule purpose "Build and print one JSON object"\n'
+            'jsonOutputModule invariant "main is the only entry operation"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "JsonDocument is alias\nJsonDocument for OpaquePointer\n"
+            "JsonCursor is alias\nJsonCursor for OpaquePointer\n"
+            "JsonText is alias\nJsonText for String\n"
+            "JsonCapacityBytes is alias\nJsonCapacityBytes for Int64\n"
+            "Buffer is alias\nBuffer for OpaquePointer\n"
+            "ByteCount is alias\nByteCount for Int64\n\n"
+            "JsonValueKind is enum\n"
+            "JsonValueKind variant objectJson\n"
+            "JsonValueKind repr objectJson 5\n\n"
+            "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
+            "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+            "main uses stdoutWriter\nmain memory heap yes\nmain async no\n"
+            'main purpose "Create a JSON document, set a field, serialize it, and print it"\n'
+            'main invariant "The document and scratch buffer are released"\n'
+            "main let jsonCapacity immutable JsonCapacityBytes 256\n"
+            "main let startOffset immutable ByteCount 0\n"
+            "main let rootKind immutable JsonValueKind objectJson\n"
+            'main let answerField immutable String "answer"\n'
+            "main let answerValue immutable Int64 42\n"
+            "main let okCode immutable ExitCode 0\n"
+            "main do createScratch\nmain defer releaseScratch\nmain do makeScratchView\n"
+            "main do createDoc\nmain defer destroyDoc\n"
+            "main do readRoot\nmain do setAnswer\nmain do serializeDoc\n"
+            "main do printJson\nmain return okCode\n\n"
+            "createScratch is call\ncreateScratch in main\n"
+            "createScratch invokes buffer.create\n"
+            "createScratch arg size ByteCount jsonCapacity\n"
+            "createScratch out scratch Buffer\n"
+            "createScratch owns scratch\n"
+            "createScratch cleanedBy releaseScratch\n\n"
+            "releaseScratchWorker is call\nreleaseScratchWorker in main\n"
+            "releaseScratchWorker invokes buffer.release\n"
+            "releaseScratchWorker arg buffer Buffer scratch\n"
+            'releaseScratchWorker discards "scratch release status ignored"\n\n'
+            "releaseScratch is cleanup\nreleaseScratch in main\n"
+            "releaseScratch call releaseScratchWorker\n"
+            "releaseScratch cleans scratch\n"
+            'releaseScratch because "release the JSON serialization scratch buffer"\n\n'
+            "makeScratchView is call\nmakeScratchView in main\n"
+            "makeScratchView invokes buffer.slice\n"
+            "makeScratchView arg buffer Buffer scratch\n"
+            "makeScratchView arg start ByteCount startOffset\n"
+            "makeScratchView arg length ByteCount jsonCapacity\n"
+            "makeScratchView out scratchBytes Slice\n\n"
+            "createDoc is call\ncreateDoc in main\n"
+            "createDoc invokes json.createEmptyDocument\n"
+            "createDoc arg capacityBytes JsonCapacityBytes jsonCapacity\n"
+            "createDoc arg rootKind JsonValueKind rootKind\n"
+            "createDoc out document JsonDocument\n"
+            "createDoc owns document\n"
+            "createDoc cleanedBy destroyDoc\n\n"
+            "destroyDocWorker is call\ndestroyDocWorker in main\n"
+            "destroyDocWorker invokes json.destroyDocument\n"
+            "destroyDocWorker arg document JsonDocument document\n"
+            'destroyDocWorker discards "document release is best-effort cleanup"\n\n'
+            "destroyDoc is cleanup\ndestroyDoc in main\n"
+            "destroyDoc call destroyDocWorker\n"
+            "destroyDoc cleans document\n"
+            'destroyDoc because "release the JSON document arena"\n\n'
+            "readRoot is call\nreadRoot in main\n"
+            "readRoot invokes json.documentRoot\n"
+            "readRoot arg document JsonDocument document\n"
+            "readRoot out root JsonCursor\n\n"
+            "setAnswer is call\nsetAnswer in main\n"
+            "setAnswer invokes json.setObjectFieldInt64\n"
+            "setAnswer arg document JsonDocument document\n"
+            "setAnswer arg cursor JsonCursor root\n"
+            "setAnswer arg fieldName String answerField\n"
+            "setAnswer arg value Int64 answerValue\n"
+            'setAnswer discards "field-set status intentionally ignored in scaffold"\n\n'
+            "serializeDoc is call\nserializeDoc in main\n"
+            "serializeDoc invokes json.serializeDocument\n"
+            "serializeDoc arg document JsonDocument document\n"
+            "serializeDoc arg scratch OpaquePointer scratchBytes\n"
+            "serializeDoc arg scratchCapacity JsonCapacityBytes jsonCapacity\n"
+            "serializeDoc out jsonText JsonText\n\n"
+            "printJson is call\nprintJson in main\n"
+            "printJson invokes console.writeLine\n"
+            "printJson arg text JsonText jsonText\n"
+        )
+    if pattern == "db-roundtrip":
+        return (
+            "DbRoundtripScaffold is project\nDbRoundtripScaffold module dbRoundtripModule\n"
+            "DbRoundtripScaffold target console\nDbRoundtripScaffold entry main\n\n"
+            "dbRoundtripModule is module\ndbRoundtripModule path examples.dbRoundtripScaffold\n"
+            "dbRoundtripModule exports main\n"
+            'dbRoundtripModule purpose "Insert and read back one sqlite value"\n'
+            'dbRoundtripModule invariant "The selected value comes from sqlite"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n"
+            "SqlText is alias\nSqlText for String\nSqlText typeTrust validated\n"
+            "SqliteDatabase is alias\nSqliteDatabase for Int64\n"
+            "SqliteStatement is alias\nSqliteStatement for Int64\n"
+            "SqliteStepResult is alias\nSqliteStepResult for Int32\n\n"
+            "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
+            "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+            "main uses stdoutWriter\nmain async no\n"
+            'main purpose "Create a table, insert 42, read it back, and assert it"\n'
+            'main invariant "The database and statement handles are closed"\n'
+            'main let dbPath immutable String ":memory:"\n'
+            'main let createSql immutable SqlText "CREATE TABLE t(n INTEGER)"\n'
+            'main let insertSql immutable SqlText "INSERT INTO t VALUES(42)"\n'
+            'main let selectSql immutable SqlText "SELECT n FROM t"\n'
+            "main let expected immutable Int64 42\n"
+            'main let valueName immutable String "sqlite readback value"\n'
+            'main let rowName immutable String "sqlite step produced a row"\n'
+            "main do openDb\nmain defer closeDb\n"
+            "main do createTable\nmain do insertRow\n"
+            "main do prepareRead\nmain defer finalizeRead\n"
+            "main do stepRead\nmain do isRow\nmain do readValue\n"
+            "main do checkRow\nmain do checkValue\nmain do harnessReport\n"
+            "main return harnessSummaryCode\n\n"
+            "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+            "openDb arg path String dbPath\nopenDb out db SqliteDatabase\n"
+            "openDb owns db\nopenDb cleanedBy closeDb\n\n"
+            "closeDbWorker is call\ncloseDbWorker in main\n"
+            "closeDbWorker invokes sqlite.closeDatabase\n"
+            "closeDbWorker arg database SqliteDatabase db\n"
+            'closeDbWorker discards "close status ignored during cleanup"\n\n'
+            "closeDb is cleanup\ncloseDb in main\ncloseDb call closeDbWorker\n"
+            "closeDb cleans db\n"
+            'closeDb because "close the sqlite database handle"\n\n'
+            "createTable is call\ncreateTable in main\ncreateTable invokes sqlite.exec\n"
+            "createTable arg database SqliteDatabase db\n"
+            "createTable arg sql SqlText createSql\n"
+            'createTable discards "DDL status ignored in scaffold"\n\n'
+            "insertRow is call\ninsertRow in main\ninsertRow invokes sqlite.exec\n"
+            "insertRow arg database SqliteDatabase db\n"
+            "insertRow arg sql SqlText insertSql\n"
+            'insertRow discards "single-row insert status ignored in scaffold"\n\n'
+            "prepareRead is call\nprepareRead in main\n"
+            "prepareRead invokes sqlite.prepareStatement\n"
+            "prepareRead arg database SqliteDatabase db\n"
+            "prepareRead arg sql SqlText selectSql\n"
+            "prepareRead out statement SqliteStatement\n"
+            "prepareRead owns statement\n"
+            "prepareRead cleanedBy finalizeRead\n\n"
+            "finalizeReadWorker is call\nfinalizeReadWorker in main\n"
+            "finalizeReadWorker invokes sqlite.finalizeStatement\n"
+            "finalizeReadWorker arg statement SqliteStatement statement\n"
+            'finalizeReadWorker discards "finalize status ignored during cleanup"\n\n'
+            "finalizeRead is cleanup\nfinalizeRead in main\n"
+            "finalizeRead call finalizeReadWorker\nfinalizeRead cleans statement\n"
+            'finalizeRead because "release the prepared statement"\n\n'
+            "stepRead is call\nstepRead in main\nstepRead invokes sqlite.stepStatement\n"
+            "stepRead arg statement SqliteStatement statement\n"
+            "stepRead out stepResult SqliteStepResult\n\n"
+            "isRow is call\nisRow in main\nisRow invokes sqlite.stepResultIsRow\n"
+            "isRow arg stepResult SqliteStepResult stepResult\n"
+            "isRow out rowReady Bool\n\n"
+            "readValue is call\nreadValue in main\nreadValue invokes sqlite.columnInt64\n"
+            "readValue arg statement SqliteStatement statement\n"
+            "readValue arg columnIndex Int32 0\n"
+            "readValue out value Int64\n\n"
+            "checkRow is call\ncheckRow in main\ncheckRow invokes test.assertTrue\n"
+            "checkRow arg name String rowName\ncheckRow arg value Bool rowReady\n\n"
+            "checkValue is call\ncheckValue in main\n"
+            "checkValue invokes test.assertEqualInt64\n"
+            "checkValue arg name String valueName\n"
+            "checkValue arg expected Int64 expected\n"
+            "checkValue arg actual Int64 value\n\n"
+            "harnessReport is call\nharnessReport in main\n"
+            "harnessReport invokes test.summary\n"
+            "harnessReport out harnessSummaryCode ExitCode\n"
+        )
+    if pattern == "logged-op":
+        return (
+            "LoggedOpScaffold is project\nLoggedOpScaffold module loggedOpModule\n"
+            "LoggedOpScaffold target console\nLoggedOpScaffold entry main\n\n"
+            "loggedOpModule is module\nloggedOpModule path examples.loggedOpScaffold\n"
+            "loggedOpModule exports main\n"
+            'loggedOpModule purpose "Write one structured log record"\n'
+            'loggedOpModule invariant "main returns zero after logging"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            'main purpose "Open a log file and append one INFO record"\n'
+            'main invariant "The log call is made before returning"\n'
+            'main let logPath immutable String "scaffold.log"\n'
+            'main let message immutable String "logged-op scaffold ran"\n'
+            "main let okCode immutable ExitCode 0\n"
+            "main do openLog\nmain do writeLog\nmain return okCode\n\n"
+            "openLog is call\nopenLog in main\nopenLog invokes log.openLogFile\n"
+            "openLog arg filePath String logPath\n"
+            'openLog discards "open status ignored in scaffold"\n\n'
+            "writeLog is call\nwriteLog in main\nwriteLog invokes log.logInfo\n"
+            "writeLog arg messageText String message\n"
+            'writeLog discards "log status ignored in scaffold"\n'
+        )
     raise EavError(f"unknown scaffold pattern {pattern!r}")
 
 
@@ -3750,19 +4014,91 @@ def rename_entity(source: str, old: str, new: str) -> str:
         raise EavError(f"no entity named {old!r} to rename")
     if new in program.entities:
         raise EavError(f"rename target {new!r} already exists (collision)")
+    return _rename_program_source(program, old, new)
+
+
+def _rename_program_source(program: Program, old: str, new: str) -> str:
+    """Rename exact EAV tokens inside an already parsed program."""
+    def rename_token(token: str) -> str:
+        if token == old:
+            return new
+        if "." in token:
+            head, tail = token.rsplit(".", 1)
+            if tail == old:
+                return f"{head}.{new}"
+        return token
+
     for n in program.order:
         ent = program.entities[n]
         for row in ent.rows:
-            row.payload = [new if t == old else t for t in row.payload]
+            row.payload = [rename_token(t) for t in row.payload]
             if row.label == old:
                 row.label = new
-    ent = program.entities.pop(old)
-    ent.name = new
-    program.entities[new] = ent
-    program.order = [new if n == old else n for n in program.order]
+    if old in program.entities:
+        ent = program.entities.pop(old)
+        ent.name = new
+        program.entities[new] = ent
+        program.order = [new if n == old else n for n in program.order]
     out = format_program(program)
     parse(out)  # the rename must still parse (validity preserved)
     return out
+
+
+def _project_source_paths(root: str) -> list[str]:
+    """Source files that load_project(root) composes, preserving that order."""
+    import glob
+    import os
+    paths: list[str] = []
+    build = os.path.join(root, "build.sem")
+    if os.path.isfile(build):
+        paths.append(build)
+    src_dir = os.path.join(root, "src")
+    if os.path.isdir(src_dir):
+        candidates = glob.glob(os.path.join(src_dir, "**", "*.sem"), recursive=True)
+    else:
+        candidates = glob.glob(os.path.join(root, "*.sem"))
+    paths.extend(sorted(f for f in candidates if classify_sem_file(f) == "source"))
+    if not paths:
+        raise EavError(f"no source .sem files found under {root!r} (README ss28.2)")
+    return paths
+
+
+def rename_project_sources(root: str, old: str, new: str) -> dict[str, str]:
+    """Project-wide rename plan: validate once on the composed program, then
+    return per-file rewritten source so callers can write atomically."""
+    if not _IDENT_RE.match(new) or new in RESERVED_WORDS:
+        raise EavError(f"invalid new name {new!r} (README ss2)")
+    paths = _project_source_paths(root)
+    sources = {p: open(p, encoding="utf-8").read() for p in paths}
+    combined = "\n".join(sources[p] for p in paths)
+    combined_program = parse(combined)
+    if old not in combined_program.entities:
+        raise EavError(f"no entity named {old!r} to rename in project {root!r}")
+    if new in combined_program.entities:
+        raise EavError(f"rename target {new!r} already exists in project {root!r}")
+    rewritten: dict[str, str] = {}
+    for path in paths:
+        program = parse(sources[path])
+        rewritten[path] = _rename_program_source(program, old, new)
+    parse("\n".join(rewritten[p] for p in paths))
+    return rewritten
+
+
+def _atomic_write_text(path: str, text: str) -> None:
+    import os
+    import tempfile
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".semanticscript.", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text if text.endswith("\n") else text + "\n")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def add_operation(source: str, name: str, out_type: str = "ExitCode") -> str:
@@ -16367,26 +16703,56 @@ def cmd_fmt(args) -> int:
                 f"{_canonical_order_hint()}\n")
             return 1
         return 0
+    if getattr(args, "write", False):
+        if args.path == "-":
+            sys.stderr.write("semanticscript: fmt -w needs a file path, not stdin\n")
+            return 2
+        with open(args.path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(formatted)
+        return 0
     sys.stdout.write(formatted)
     return 0
 
 
 def _fix_edits_for(diag, program) -> list:
-    """DX-04: machine-applicable edits for a diagnostic, where one is deterministic
-    and safe. Each edit is a content-addressed row/entity removal (matched by text
-    at apply time, so it survives line drift and a stale plan fails closed):
-
-      * SS0803 — an error case declared but never constructed/matched: remove the
-        whole entity (every row whose subject is that case name).
-      * SS0900 over-declared `effect` — the op declares an effect it never performs:
-        remove that one `effect <action> <resource>` row. (Parsed from the stable
-        warning text this tool emits.)
-    Other SS0900 warnings (authority-not-covered, dead label, unused call, …) are
-    not single safe mechanical edits, so they stay advisory."""
+    """Return deterministic, machine-applicable edits for one diagnostic."""
     import re
+
+    def row_text(row: Row) -> str:
+        return " ".join([row.subject, row.predicate] + list(row.payload))
+
+    def call_entity(name: Optional[str]) -> Optional[Entity]:
+        ent = program.entities.get(name or "")
+        if ent and ent.kind in ("call", "task"):
+            return ent
+        return None
+
     if diag.code == "SS0803" and diag.entity:
         return [{"op": "removeEntity", "entity": diag.entity, "code": "SS0803",
                  "rationale": f"remove the unused error case {diag.entity!r}"}]
+    if diag.code == "SS0807":
+        binding_match = re.search(r"call binding '([^']+)'", diag.message or "")
+        binding = binding_match.group(1) if binding_match else None
+        for ent in program.entities.values():
+            if ent.kind not in ("call", "task"):
+                continue
+            inv = ent.fact("invokes")
+            if inv and inv.payload and inv.payload[0].startswith("assert."):
+                continue
+            if ent.fact("discards") is not None:
+                continue
+            for row in ent.facts("out"):
+                if binding and (not row.payload or row.payload[0] != binding):
+                    continue
+                if diag.line and row.line != diag.line:
+                    continue
+                return [{
+                    "op": "replaceRow",
+                    "code": "SS0807",
+                    "old": row_text(row),
+                    "new": f'{ent.name} discards "unused result explicitly discarded by fix plan"',
+                    "rationale": f"explicitly discard unused call binding {row.payload[0]!r}",
+                }]
     if diag.code == "SS0900":
         m = re.match(r"^(\w+): declares the effect `(\S+) (\S+)` but never performs it",
                      diag.message or "")
