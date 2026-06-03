@@ -12,32 +12,15 @@
 
 DomDemo is project
 DomDemo module fix
-DomDemo target console
+DomDemo target wasm
 DomDemo entry main
+DomDemo platform browserWasm
 
 fix is module
 fix path fix.mod
 fix exports main
 fix purpose "Host the DOM wasm-interop demo entry"
 fix invariant "Exposes main, which round-trips a value through JS DOM host functions"
-
-domCreateNode is operation
-domCreateNode out Int32
-domCreateNode body runtimeBinding dom_create_node
-domCreateNode purpose "Create a DOM node (host function); returns its id"
-
-domSetValue is operation
-domSetValue in node Int32
-domSetValue in value Int32
-domSetValue out Int32
-domSetValue body runtimeBinding dom_set_value
-domSetValue purpose "Set a node's value (host function)"
-
-domGetValue is operation
-domGetValue in node Int32
-domGetValue out Int32
-domGetValue body runtimeBinding dom_get_value
-domGetValue purpose "Read a node's value back (host function)"
 
 main is operation
 main out Int32
@@ -52,18 +35,22 @@ main return readBack
 
 makeNode is call
 makeNode in main
-makeNode invokes domCreateNode
+makeNode invokes document.createNode
 makeNode out nodeId Int32
 
 setNode is call
 setNode in main
-setNode invokes domSetValue
+setNode invokes document.setValue
 setNode arg node Int32 nodeId
 setNode arg value Int32 theValue
 setNode discards "the set-value host status is not needed"
 
 getNode is call
 getNode in main
-getNode invokes domGetValue
+getNode invokes document.getValue
 getNode arg node Int32 nodeId
 getNode out readBack Int32
+
+browserWasm is platform
+browserWasm targetRuntime wasm
+browserWasm purpose "Wasm runtime platform for the DOM host adapter demo"

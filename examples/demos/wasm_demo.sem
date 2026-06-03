@@ -8,8 +8,9 @@
 
 WasmDemo is project
 WasmDemo module fix
-WasmDemo target console
+WasmDemo target wasm
 WasmDemo entry main
+WasmDemo platform browserWasm
 
 fix is module
 fix path fix.mod
@@ -36,3 +37,7 @@ compareSevens invokes math.equalInt64
 compareSevens arg left Int64 seven
 compareSevens arg right Int64 seven
 compareSevens out equalSevens Bool
+
+browserWasm is platform
+browserWasm targetRuntime wasm
+browserWasm purpose "Wasm runtime platform for the demo module"
