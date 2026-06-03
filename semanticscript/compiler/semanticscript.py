@@ -11238,7 +11238,11 @@ class EavCodegen:
             # NON-pointer OK type (Int64/Bool/…) has no spare sentinel: the
             # OK-typed zero is a valid OK value, so the error is SILENTLY LOST.
             # Fail closed instead of mis-lowering (a tagged Result is the real fix).
-            if len(p) > 1 and not isinstance(ret_ty, ir.PointerType):
+            # OpaquePointer/FileHandle are i64 in IR, but source-level handle
+            # types still use 0 as their null/error sentinel.
+            ok_root = self.resolve_type_name(type_hint)
+            handle_ok = ok_root in ("OpaquePointer", "FileHandle")
+            if len(p) > 1 and not isinstance(ret_ty, ir.PointerType) and not handle_ok:
                 raise EavError(
                     f"`return nil {p[1]}` in {op.name!r} returns an error, but the "
                     f"operation's Result OK type is not a pointer, so the error is "
@@ -11269,7 +11273,7 @@ class EavCodegen:
             cont = self._new_cont(fn)
             builder.cbranch(err, label_blocks[p[3]], cont)
             return ir.IRBuilder(cont)
-        if guard == "if":
+        if guard in ("if", "ifTrue"):
             cond = self._resolve(p[1], "Bool", builder, sym)
             cont = self._new_cont(fn)
             builder.cbranch(cond, label_blocks[p[3]], cont)
@@ -11590,6 +11594,23 @@ class EavCodegen:
         return fn
 
     def _emit_call(self, call, builder, sym, let_mut) -> None:
+        try:
+            return self._emit_call_impl(call, builder, sym, let_mut)
+        except EavError:
+            raise
+        except (RuntimeError, TypeError, ValueError) as exc:
+            target = "<unknown>"
+            target_row = call.fact("invokes")
+            if target_row and target_row.payload:
+                target = target_row.payload[0]
+            raise EavError(
+                f"codegen failed while lowering call {call.name!r} "
+                f"to {target!r}: {exc}",
+                call.line,
+                code="SS5001",
+            ) from exc
+
+    def _emit_call_impl(self, call, builder, sym, let_mut) -> None:
         target_row = call.fact("invokes")
         if not target_row or not target_row.payload:
             raise EavError(f"call {call.name!r} missing `invokes` (README ss15)", call.line)
@@ -12194,14 +12215,14 @@ class EavCodegen:
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
                 result = r
-        elif target.startswith("http.") and target not in ("html.render",):
+        elif _http_intrinsic(target) is not None:
             # APP-RUN-5: request/response/multipart accessors over the legacy
             # ss_http_* runtime. Resolve args in order (handles are i64, names/
             # bodies i8*, status i32); fixed return type per family (getters ->
             # i8* String/bytes, *Length -> i64, response* -> i32 status) so the
             # extern signature is consistent across discard/capture call sites.
             name = target[len("http."):]
-            sym_name = "ss_http_" + _camel_to_snake(name)
+            sym_name, retkind = _http_intrinsic(target)
             vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
                     for a in call.facts("arg")]
             # R-178b: a response writer's trailing `content_type` is OPTIONAL at the
@@ -12217,16 +12238,11 @@ class EavCodegen:
             _canonical_arity = _HTTP_OPTIONAL_CONTENT_TYPE_ARITY.get(sym_name)
             if _canonical_arity is not None and len(vals) == _canonical_arity - 1:
                 vals.append(ir.Constant(ir.IntType(8).as_pointer(), None))
-            if name.endswith("Length") or name == "nowMillis":
-                ret_ty = ir.IntType(64)                       # millis / byte counts
-            elif (name.startswith("response") or name == "ensureDirectory"
-                  or name == "valueIsEmpty"):
-                ret_ty = ir.IntType(32)                       # status ints
-            else:
-                ret_ty = ir.IntType(8).as_pointer()           # request*/multipart* getters
+            ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32),
+                      "s": ir.IntType(8).as_pointer(), "v": ir.VoidType()}[retkind]
             fn = self._runtime_extern(sym_name, ret_ty, [v.type for v in vals])
             r = builder.call(fn, vals)
-            if call.fact("out") is not None:
+            if retkind != "v" and call.fact("out") is not None:
                 result = r
             # R-141(b): a `catch` on a response writer must observe the native
             # status instead of a constant-false `err`. The ss_http_* response
@@ -12282,7 +12298,7 @@ class EavCodegen:
                 arg_rows = [arg_rows[i] for i in arg_idx]
             vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
                     for a in arg_rows]
-            ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32),
+            ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32), "d": ir.DoubleType(),
                       "s": ir.IntType(8).as_pointer(), "v": ir.VoidType()}[retkind]
             fn = self._runtime_extern(symbol, ret_ty, [v.type for v in vals])
             r = builder.call(fn, vals)
@@ -12652,7 +12668,8 @@ class EavCodegen:
         widen=sext / narrow=trunc, int->float=sitofp, float->int=fptosi (trunc
         toward zero), float widen/narrow=fpext/fptrunc."""
         dst_name = target[len("convert.to"):]
-        dst = self.ir_type(dst_name)
+        if dst_name.startswith("."):
+            dst_name = dst_name[1:2].upper() + dst_name[2:]
         if not args:
             raise EavError(f"{target!r} needs one input arg", call.line)
         a = next(iter(args.values()))
@@ -12660,6 +12677,28 @@ class EavCodegen:
         val = self._resolve(a.payload[2], src_name, builder, sym)
         src = val.type
         src_float = self.is_float_type(src_name)
+        if self.resolve_type_name(dst_name) == "String":
+            if src_float or not isinstance(src, ir.IntType):
+                raise EavError(
+                    f"{target!r} supports integer inputs only for now; got "
+                    f"{src_name!r}",
+                    call.line,
+                    code="SS1199",
+                )
+            i64 = ir.IntType(64)
+            if src.width > 64:
+                v64 = builder.trunc(val, i64)
+            elif src.width < 64:
+                v64 = self._widen_to_i64(builder, val, src_name)
+            else:
+                v64 = val
+            result = builder.call(
+                self._runtime_extern("ss_string_i64_to_string",
+                                     ir.IntType(8).as_pointer(), [i64]),
+                [v64])
+            self._guard_alloc(builder, result, target, call.line)
+            return result
+        dst = self.ir_type(dst_name)
         dst_float = self.resolve_type_name(dst_name) in _FLOAT_TYPE_NAMES
         if src_float and dst_float:
             dst_bits = 64 if self.resolve_type_name(dst_name) == "Float64" else 32
@@ -13669,6 +13708,8 @@ def _referenced_runtime_symbols(program: Program) -> set:
                 if target == "html.render":
                     out.add("ss_http_html_escape_str")
                     out.add("ss_http_free_str")  # R-136: free escaped-hole buffers
+                elif target in ("convert.toString", "convert.to.string"):
+                    out.add("ss_string_i64_to_string")
                 elif target == "net.fetchText":      # APP-RUN-1 HTTP client
                     out.add("ss_net_fetch_text")
                 elif target == "net.freeTextBody":
@@ -13679,8 +13720,8 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add(_EVENT_RUNTIME_SYMBOLS[target])
                 elif target.startswith("gui."):         # APP-RUN-4 widgets
                     out.add(_gui_runtime_symbol(target))
-                elif target.startswith("http.") and target != "html.render":
-                    out.add("ss_http_" + _camel_to_snake(target[len("http."):]))
+                elif _http_intrinsic(target) is not None:
+                    out.add(_http_intrinsic(target)[0])
                 elif _family_intrinsic(target) is not None:  # APP-RUN-6 families
                     out.add(_family_intrinsic(target)[0])
                 elif target.startswith("c."):
@@ -13699,22 +13740,43 @@ def _camel_to_snake(name: str) -> str:
 
 # APP-RUN-6: runtime-intrinsic families for taskforge-web. Each method maps to a
 # (symbol, return-kind, arg-indices) triple. return-kind: "h"=i64 handle/int64,
-# "i"=i32 status, "s"=i8* string, "v"=void. arg-indices=None passes every arg in
+# "i"=i32 status, "d"=f64, "s"=i8* string, "v"=void. arg-indices=None passes every arg in
 # order; a tuple selects a subset (sqlite.openDatabase drops its unused mode arg).
 # sqlite -> the ss_sqlite_* shims; json -> the ss_json.c direct-return shim;
 # bcrypt/log -> the native runtimes directly (force-exported in the manifest).
 _FAMILY_RT = {
     "sqlite": {
         "openDatabase": ("ss_sqlite_open", "h", (0,)),
+        "openInMemory": ("ss_sqlite_open_memory", "h", None),
         "exec": ("ss_sqlite_exec", "i", None),
+        "execute": ("ss_sqlite_exec", "i", None),
+        "queryScalarInt64": ("ss_sqlite_query_scalar", "h", None),
+        "query": ("ss_sqlite_prepare", "h", None),
         "prepareStatement": ("ss_sqlite_prepare", "h", None),
+        "step": ("ss_sqlite_step", "i", None),
         "stepStatement": ("ss_sqlite_step", "i", None),
         "bindInt64": ("ss_sqlite_bind_int64", "i", None),
+        "bindDouble": ("ss_sqlite_bind_double", "i", None),
         "bindText": ("ss_sqlite_bind_text", "i", None),
+        "bindNull": ("ss_sqlite_bind_null", "i", None),
+        "columnCount": ("ss_sqlite_column_count", "i", None),
+        "columnType": ("ss_sqlite_column_type", "i", None),
+        "columnName": ("ss_sqlite_column_name", "s", None),
         "columnInt64": ("ss_sqlite_column_int64", "h", None),
+        "columnDouble": ("ss_sqlite_column_double", "d", None),
         "columnText": ("ss_sqlite_column_text", "s", None),
+        "columnByteCount": ("ss_sqlite_column_bytes", "h", None),
+        "resetStatement": ("ss_sqlite_reset", "i", None),
         "finalizeStatement": ("ss_sqlite_finalize", "i", None),
         "closeDatabase": ("ss_sqlite_close", "i", None),
+        "errorMessage": ("ss_sqlite_errmsg", "s", None),
+        "lastInsertRowId": ("ss_sqlite_last_insert_rowid", "h", None),
+        "changedRowCount": ("ss_sqlite_changes", "i", None),
+        "enableWalMode": ("ss_sqlite_enable_wal", "i", None),
+        "beginImmediateTransaction": ("ss_sqlite_begin_immediate", "i", None),
+        "commitTransaction": ("ss_sqlite_commit", "i", None),
+        "rollbackTransaction": ("ss_sqlite_rollback", "i", None),
+        "libraryVersion": ("ss_sqlite_library_version", "s", None),
     },
     "json": {
         "createEmptyDocument": ("ss_json_create_empty", "h", None),
@@ -13776,6 +13838,8 @@ _FAMILY_HANDLE_ERR = {
     ("json", "createEmptyDocument"): ("==", 0),  # ss_json_create_empty: 0 on fail
     ("json", "documentRoot"): ("<", 0),          # ss_json_root: 0 ok, -1 on fail
     ("sqlite", "openDatabase"): ("==", 0),       # ss_sqlite_open: 0 on fail
+    ("sqlite", "openInMemory"): ("==", 0),       # ss_sqlite_open_memory: 0 on fail
+    ("sqlite", "query"): ("==", 0),              # alias for ss_sqlite_prepare
     ("sqlite", "prepareStatement"): ("==", 0),   # ss_sqlite_prepare: 0 on fail
     ("bcrypt", "hashPasswordOwned"): ("==", 0),  # R-202: 0 = hash/alloc failed
     ("bcrypt", "sessionTokenOwned"): ("==", 0),  # R-202: 0 = entropy/alloc failed
@@ -13788,6 +13852,7 @@ _FAMILY_HANDLE_ERR = {
 # ifError` on a successful step must NOT fire — that bug 409'd every register).
 _FAMILY_STATUS_ERR = {
     ("sqlite", "stepStatement"): ("<", 100),
+    ("sqlite", "step"): ("<", 100),
 }
 
 
@@ -14102,6 +14167,14 @@ def jit_run(program: Program, entry: Optional[str] = None) -> int:
             f"was emitted); the project entry must name a declared operation")
     cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
     return cmain()
+
+
+def _self_cli_argv() -> list[str]:
+    """Return argv prefix for spawning this CLI from a child process."""
+    import os
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, os.path.abspath(__file__)]
 
 
 def _record_run_entry(source: str, entry: str):
