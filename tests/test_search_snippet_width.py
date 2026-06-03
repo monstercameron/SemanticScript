@@ -8,6 +8,7 @@ window so a match carries real context; short snippets reflect short source
 docs, not truncation.
 """
 import importlib
+import json
 
 semanticscript = importlib.import_module("semanticscript")
 
@@ -57,3 +58,26 @@ def test_full_text_source_returns_complete_block_with_newlines():
     # without the full-text source it would be a flattened window (the old behavior)
     windowed = _tfidf_rank("grammar branch", docs, 20, snippet_width=640)[0]["snippet"]
     assert "\n" not in windowed and len(windowed) < len(block)
+
+
+def test_machine_readable_rank_can_include_complete_text_with_snippet():
+    long_text = ("integer overflow\n" + "context " * 200).strip()
+    docs = [{"source": "diagnostic", "id": "SSZ", "kind": "T1",
+             "title": "Integer overflow", "ref": "z", "text": long_text}]
+    row = _tfidf_rank(
+        "integer overflow", docs, 20, snippet_width=160, include_full_text=True
+    )[0]
+    assert row["fullText"] == long_text
+    assert len(row["fullText"]) > len(row["snippet"])
+    assert "\n" in row["fullText"]
+
+
+def test_json_search_includes_full_text_field(capsys):
+    assert semanticscript.main([
+        "search", "sqlite columnBlob lifetime", "--json", "--limit", "5"
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["surface"] == "sem.search.v1"
+    assert payload["matches"]
+    assert all("fullText" in item for item in payload["matches"])
+    assert all(item["fullText"] for item in payload["matches"])

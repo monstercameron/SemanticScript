@@ -15315,7 +15315,7 @@ def _snippet(text: str, qterms: list, width: int = 160) -> str:
 
 
 def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160,
-                full_text_sources: tuple = ()) -> list:
+                full_text_sources: tuple = (), include_full_text: bool = False) -> list:
     """Rank `docs` against `query` by TF-IDF with a title boost and prefix-
     tolerant matching. Returns [{source, id, kind, title, ref, score, snippet}].
 
@@ -15328,7 +15328,11 @@ def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160,
     text verbatim instead of a collapsed window — grammar/code blocks (the `spec`
     source) must come back whole, with newlines/indentation preserved, so an agent
     gets a usable production or example rather than a truncated, whitespace-
-    flattened fragment."""
+    flattened fragment.
+
+    `include_full_text` is for machine-readable callers: keep the compact
+    snippet for ranking/preview, and add the complete document text separately so
+    agents do not have to infer behavior from a truncated preview."""
     import math
     qterms = [t for t in _tokenize(query) if len(t) >= 2]
     if not qterms:
@@ -15362,11 +15366,16 @@ def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160,
         if score > 0:
             scored.append((score, doc))
     scored.sort(key=lambda x: -x[0])
-    return [{"source": d["source"], "id": d["id"], "kind": d["kind"],
-             "title": d["title"], "ref": d["ref"], "score": round(s, 3),
-             "snippet": (d["text"] if d["source"] in full_text_sources
-                         else _snippet(d["text"], qterms, snippet_width))}
-            for s, d in scored[:limit]]
+    rows = []
+    for s, d in scored[:limit]:
+        row = {"source": d["source"], "id": d["id"], "kind": d["kind"],
+               "title": d["title"], "ref": d["ref"], "score": round(s, 3),
+               "snippet": (d["text"] if d["source"] in full_text_sources
+                           else _snippet(d["text"], qterms, snippet_width))}
+        if include_full_text:
+            row["fullText"] = d["text"]
+        rows.append(row)
+    return rows
 
 
 def cmd_search(args) -> int:
@@ -15401,7 +15410,8 @@ def cmd_search(args) -> int:
     # grammar production or worked example needs the whole block.
     results = _tfidf_rank(args.query, docs, getattr(args, "limit", None) or 20,
                           snippet_width=640 if json_mode else 160,
-                          full_text_sources=("spec",) if json_mode else ())
+                          full_text_sources=("spec",) if json_mode else (),
+                          include_full_text=json_mode)
     if json_mode:
         sys.stdout.write(_json_envelope(
             "sem.search.v1", query=args.query, count=len(results),
