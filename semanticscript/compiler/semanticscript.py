@@ -2219,6 +2219,391 @@ def merge_native_links(program: Program, platform_name: str) -> dict:
     }
 
 
+def _build_manifest_path(path: str) -> str:
+    """Return the build.sem manifest path for a project directory or manifest."""
+    import os
+    return os.path.join(path, "build.sem") if os.path.isdir(path) else path
+
+
+def _first_project(program: Program, context: str = "build.sem") -> Entity:
+    projects = program.of_kind("project")
+    if not projects:
+        raise EavError(f"no `project` entity in {context}")
+    return projects[0]
+
+
+def _project_text_value(project: Entity, predicate: str,
+                        default: Optional[str] = None) -> Optional[str]:
+    row = project.fact(predicate)
+    if row is None or not row.payload:
+        return default
+    value = _unquote_token(row.payload[0])
+    if value == "":
+        raise EavError(f"project {project.name!r} {predicate} must not be empty",
+                       row.line)
+    return value
+
+
+def _dedupe_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _package_asset_path(root: str, rel_path: str, row: Row, kind: str) -> str:
+    """Resolve a package asset path under the project root and require it exists."""
+    import os
+    root_real = os.path.realpath(root)
+    if os.path.isabs(rel_path):
+        raise EavError(
+            f"package {kind} path {rel_path!r} must be project-relative",
+            row.line,
+        )
+    resolved = os.path.realpath(os.path.join(root_real, rel_path))
+    try:
+        inside = os.path.commonpath([root_real, resolved]) == root_real
+    except ValueError:
+        inside = False
+    if not inside:
+        raise EavError(
+            f"package {kind} path {rel_path!r} escapes the project root",
+            row.line,
+        )
+    if not os.path.isfile(resolved):
+        raise EavError(
+            f"package {kind} path {rel_path!r} was not found",
+            row.line,
+        )
+    return resolved
+
+
+def _package_asset_rows(project: Entity, manifest_dir: str,
+                        predicate: str) -> list[dict]:
+    out: list[dict] = []
+    names: set[str] = set()
+    for row in project.facts(predicate):
+        if len(row.payload) < 2:
+            raise EavError(
+                f"project {project.name!r} {predicate} needs <name> <path>",
+                row.line,
+            )
+        name = row.payload[0]
+        if not _IDENT_RE.match(name):
+            raise EavError(
+                f"project {project.name!r} {predicate} name {name!r} must be an identifier",
+                row.line,
+            )
+        if name in names:
+            raise EavError(
+                f"duplicate package {predicate} name {name!r}",
+                row.line,
+            )
+        names.add(name)
+        rel = _unquote_token(row.payload[1]).replace("\\", "/")
+        abs_path = _package_asset_path(manifest_dir, rel, row, predicate)
+        out.append({
+            "name": name,
+            "path": rel,
+            "absolutePath": abs_path,
+            "exists": True,
+        })
+    return out
+
+
+def package_manifest_for_path(path: str, *, profile: Optional[str] = None,
+                              platform: Optional[str] = None) -> dict:
+    """Generate the app packaging manifest described by build.sem metadata.
+
+    R-046: product identity, release/debug profiles, output overrides, resources,
+    and icons are now concrete project rows. This validates the authored rows and
+    returns a machine-readable manifest; it intentionally does not freeze or
+    installer-package the app.
+    """
+    import os
+    build_path = _build_manifest_path(path)
+    if not os.path.exists(build_path):
+        raise EavError(f"no build.sem at {build_path!r}")
+    manifest_dir = os.path.dirname(os.path.abspath(build_path))
+    with open(build_path, encoding="utf-8") as fh:
+        program = parse(fh.read())
+    project = _first_project(program)
+
+    profiles = _dedupe_ordered([
+        row.payload[0]
+        for row in project.facts("profile")
+        if row.payload
+    ])
+    profile_set = set(profiles)
+    for prof in profiles:
+        if not _IDENT_RE.match(prof):
+            raise EavError(f"profile {prof!r} must be an identifier")
+    if profile is not None and profile not in profile_set:
+        raise EavError(
+            f"unknown package profile {profile!r}; declared profiles: {profiles}"
+        )
+
+    profile_outputs: dict[str, str] = {}
+    for row in project.facts("profileOutput"):
+        if len(row.payload) < 2:
+            raise EavError(
+                f"project {project.name!r} profileOutput needs <profile> <path>",
+                row.line,
+            )
+        prof = row.payload[0]
+        if prof not in profile_set:
+            raise EavError(
+                f"profileOutput references undeclared profile {prof!r}",
+                row.line,
+            )
+        profile_outputs[prof] = _unquote_token(row.payload[1]).replace("\\", "/")
+
+    platform_outputs: dict[str, Optional[str]] = {}
+    for row in project.facts("platform"):
+        if not row.payload:
+            continue
+        name = row.payload[0]
+        ent = program.entities.get(name)
+        if ent is None or ent.kind != "platform":
+            raise EavError(
+                f"project {project.name!r} platform {name!r} is not a platform entity",
+                row.line,
+            )
+        platform_outputs[name] = merge_native_links(program, name).get("output")
+    if platform is not None and platform not in platform_outputs:
+        raise EavError(
+            f"unknown package platform {platform!r}; declared platforms: "
+            f"{sorted(platform_outputs)}"
+        )
+
+    resources = _package_asset_rows(project, manifest_dir, "resource")
+    icons = _package_asset_rows(project, manifest_dir, "icon")
+    resource_by_name = {item["name"]: item for item in resources}
+    profile_resources: dict[str, list[str]] = {name: [] for name in profiles}
+    for row in project.facts("profileResource"):
+        if len(row.payload) < 2:
+            raise EavError(
+                f"project {project.name!r} profileResource needs <profile> <resourceName>",
+                row.line,
+            )
+        prof, resource_name = row.payload[0], row.payload[1]
+        if prof not in profile_set:
+            raise EavError(
+                f"profileResource references undeclared profile {prof!r}",
+                row.line,
+            )
+        if resource_name not in resource_by_name:
+            raise EavError(
+                f"profileResource {prof!r} references unknown resource {resource_name!r}",
+                row.line,
+            )
+        profile_resources.setdefault(prof, []).append(resource_name)
+
+    selected_resources = resources
+    if profile is not None and profile_resources.get(profile):
+        selected_resources = [resource_by_name[name]
+                              for name in profile_resources[profile]]
+
+    platform_output = platform_outputs.get(platform) if platform else None
+    profile_output = profile_outputs.get(profile) if profile else None
+    output = profile_output or platform_output
+
+    return {
+        "project": project.name,
+        "publisher": _project_text_value(project, "publisher"),
+        "productName": _project_text_value(project, "productName", project.name),
+        "packageId": _project_text_value(project, "packageId", project.name),
+        "packageVersion": _project_text_value(project, "packageVersion"),
+        "profile": profile,
+        "profiles": profiles,
+        "platform": platform,
+        "platformOutputs": platform_outputs,
+        "profileOutputs": profile_outputs,
+        "output": output,
+        "resources": selected_resources,
+        "allResources": resources,
+        "profileResources": profile_resources,
+        "icons": icons,
+    }
+
+
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _runtime_profiles(project: Entity) -> list[str]:
+    profiles = _dedupe_ordered([
+        row.payload[0]
+        for row in project.facts("configProfile")
+        if row.payload
+    ])
+    for prof in profiles:
+        if not _IDENT_RE.match(prof):
+            raise EavError(f"runtime config profile {prof!r} must be an identifier")
+    return profiles
+
+
+def _runtime_profile_scope(profiles: list[str], selected: Optional[str]) -> tuple[str, list[str]]:
+    profile_set = set(profiles)
+    if selected is None:
+        if "default" in profile_set:
+            selected = "default"
+        elif profiles:
+            selected = profiles[0]
+        else:
+            selected = "default"
+            profiles = ["default"]
+            profile_set = {"default"}
+    if selected not in profile_set:
+        raise EavError(
+            f"unknown runtime config profile {selected!r}; declared profiles: {profiles}"
+        )
+    scope = ["default"] if "default" in profile_set else []
+    if selected != "default":
+        scope.append(selected)
+    return selected, scope
+
+
+def runtime_config_for_path(path: str, *, profile: Optional[str] = None) -> dict:
+    """Resolve runtime/deployment configuration from build.sem (R-060).
+
+    This is deliberately separate from package_manifest_for_path: package rows
+    describe identity/resources/output, while runtime config rows describe
+    environment/profile values, required secrets, deployment targets, and
+    migration hooks.
+    """
+    import os
+    build_path = _build_manifest_path(path)
+    if not os.path.exists(build_path):
+        raise EavError(f"no build.sem at {build_path!r}")
+    with open(build_path, encoding="utf-8") as fh:
+        program = parse(fh.read())
+    project = _first_project(program)
+
+    profiles = _runtime_profiles(project)
+    selected, scope = _runtime_profile_scope(profiles, profile)
+    profile_set = set(profiles)
+
+    target_values = {
+        row.payload[0]
+        for row in project.facts("target")
+        if row.payload
+    }
+
+    values_by_name: dict[str, dict] = {}
+    for row in project.facts("configValue"):
+        if len(row.payload) < 4:
+            raise EavError(
+                f"project {project.name!r} configValue needs <profile> <name> <type> <value>",
+                row.line,
+            )
+        prof, name, typ = row.payload[0], row.payload[1], row.payload[2]
+        if prof not in profile_set:
+            raise EavError(f"configValue references undeclared profile {prof!r}", row.line)
+        if prof not in scope:
+            continue
+        if not _IDENT_RE.match(name):
+            raise EavError(f"configValue name {name!r} must be an identifier", row.line)
+        if typ not in PRIMITIVE_TYPES and typ != "String":
+            raise EavError(f"configValue {name!r} has unsupported type {typ!r}", row.line)
+        value = _unquote_token(" ".join(row.payload[3:]))
+        values_by_name[name] = {
+            "name": name,
+            "type": typ,
+            "value": value,
+            "profile": prof,
+        }
+
+    secrets_by_name: dict[str, dict] = {}
+    for row in project.facts("requiredSecret"):
+        if len(row.payload) < 4:
+            raise EavError(
+                f"project {project.name!r} requiredSecret needs <profile> <name> <source> <key>",
+                row.line,
+            )
+        prof, name, source, key = row.payload[:4]
+        if prof not in profile_set:
+            raise EavError(f"requiredSecret references undeclared profile {prof!r}", row.line)
+        if prof not in scope:
+            continue
+        if not _IDENT_RE.match(name):
+            raise EavError(f"requiredSecret name {name!r} must be an identifier", row.line)
+        if source != "env":
+            raise EavError(
+                f"requiredSecret {name!r} source {source!r} is not supported; use env",
+                row.line,
+            )
+        key = _unquote_token(key)
+        if not _ENV_NAME_RE.match(key):
+            raise EavError(f"requiredSecret {name!r} env key {key!r} is invalid", row.line)
+        present = bool(os.environ.get(key))
+        secrets_by_name[name] = {
+            "name": name,
+            "source": source,
+            "key": key,
+            "profile": prof,
+            "present": present,
+        }
+
+    deployments: list[dict] = []
+    deployment_names: set[str] = set()
+    for row in project.facts("deploymentTarget"):
+        if len(row.payload) < 3:
+            raise EavError(
+                f"project {project.name!r} deploymentTarget needs <name> <profile> <target>",
+                row.line,
+            )
+        name, prof, target = row.payload[:3]
+        if not _IDENT_RE.match(name):
+            raise EavError(f"deploymentTarget name {name!r} must be an identifier", row.line)
+        if name in deployment_names:
+            raise EavError(f"duplicate deploymentTarget {name!r}", row.line)
+        deployment_names.add(name)
+        if prof not in profile_set:
+            raise EavError(f"deploymentTarget references undeclared profile {prof!r}", row.line)
+        if target not in target_values:
+            raise EavError(f"deploymentTarget {name!r} references undeclared target {target!r}", row.line)
+        if prof == selected:
+            deployments.append({"name": name, "profile": prof, "target": target})
+
+    migrations: list[dict] = []
+    for row in project.facts("migrationHook"):
+        if len(row.payload) < 2:
+            raise EavError(
+                f"project {project.name!r} migrationHook needs <profile> <operation>",
+                row.line,
+            )
+        prof, operation = row.payload[:2]
+        if prof not in profile_set:
+            raise EavError(f"migrationHook references undeclared profile {prof!r}", row.line)
+        if not _IDENT_RE.match(operation):
+            raise EavError(f"migrationHook operation {operation!r} must be an identifier", row.line)
+        if prof == selected:
+            migrations.append({
+                "profile": prof,
+                "operation": operation,
+                "order": len(migrations),
+            })
+
+    secrets = list(secrets_by_name.values())
+    missing = [item for item in secrets if not item["present"]]
+    return {
+        "project": project.name,
+        "profile": selected,
+        "profiles": profiles,
+        "layerOrder": scope,
+        "values": list(values_by_name.values()),
+        "secrets": secrets,
+        "missingSecrets": [item["name"] for item in missing],
+        "deployments": deployments,
+        "migrations": migrations,
+        "ready": not missing,
+    }
+
+
 _PLATFORM_ARCH_TRIPLE = {
     "amd64": "x86_64", "x86_64": "x86_64", "x64": "x86_64",
     "arm64": "aarch64", "aarch64": "aarch64",
@@ -3524,6 +3909,287 @@ def _emit_rows(ent: Entity, row: Row, program: Program) -> list:
                 out = [line] + [("    " + b if b else "") for b in island]
     if row.comment:  # R-086: trailing comment preserved in place on its row
         out[0] = f"{out[0]}  {row.comment}"
+    return out
+
+
+_FMT_BRANCH_CMP_TARGET = {
+    "equals": "equal",
+    "notEquals": "notEqual",
+    "lessThan": "lessThan",
+    "lessThanOrEqual": "lessThanOrEqual",
+    "greaterThan": "greaterThan",
+    "greaterThanOrEqual": "greaterThanOrEqual",
+}
+
+
+def _is_compound_defer_row(row: Row) -> bool:
+    return (
+        row.predicate == "defer"
+        and len(row.payload) > 1
+        and ("onFailure" in row.payload or "because" in row.payload)
+    )
+
+
+_KEEP_FMT_LABEL = object()
+
+
+def _clone_row(row: Row, *, subject: Optional[str] = None,
+               predicate: Optional[str] = None, payload: Optional[list[str]] = None,
+               label: object = _KEEP_FMT_LABEL) -> Row:
+    nr = Row(
+        subject if subject is not None else row.subject,
+        predicate if predicate is not None else row.predicate,
+        list(payload) if payload is not None else list(row.payload),
+        row.line,
+        label=(row.label if label is _KEEP_FMT_LABEL else label),
+    )
+    nr.comment = row.comment
+    return nr
+
+
+def _clone_entity(ent: Entity) -> Entity:
+    ne = Entity(ent.name, ent.kind, ent.line)
+    ne.lead = list(ent.lead)
+    ne.comment = ent.comment
+    ne.trailing = list(ent.trailing)
+    ne.rows = [_clone_row(r) for r in ent.rows]
+    return ne
+
+
+def _clone_program_for_format(program: Program) -> Program:
+    out = Program()
+    out.islands = {k: list(v) for k, v in program.islands.items()}
+    out.warnings = list(program.warnings)
+    out.source_root = program.source_root
+    out.typed_comments = list(program.typed_comments)
+    for name in program.order:
+        out.add(_clone_entity(program.entities[name]))
+    return out
+
+
+def _fmt_upper_ident(name: str) -> str:
+    return name[:1].upper() + name[1:] if name else name
+
+
+def _fmt_binding_types(program: Program, op_name: str) -> dict[str, str]:
+    op = program.entities.get(op_name)
+    if op is None:
+        return {}
+    out: dict[str, str] = {}
+    for r in op.facts("in"):
+        if len(r.payload) >= 2:
+            out[r.payload[0]] = r.payload[1]
+    for r in op.facts("let"):
+        if len(r.payload) >= 3:
+            out[r.payload[0]] = r.payload[2]
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind not in ("call", "task"):
+            continue
+        owner = ent.fact("in")
+        orow = ent.fact("out")
+        if (owner and owner.payload and owner.payload[0] == op_name
+                and orow and len(orow.payload) >= 2):
+            out[orow.payload[0]] = orow.payload[1]
+    return out
+
+
+def _fmt_find_compare_call(program: Program, op_name: str, target: str,
+                           left_type: str, left_value: str,
+                           right_value: str) -> Optional[tuple[str, str]]:
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind != "call":
+            continue
+        owner = ent.fact("in")
+        inv = ent.fact("invokes")
+        out = ent.fact("out")
+        if not (owner and owner.payload and owner.payload[0] == op_name
+                and inv and inv.payload and inv.payload[0] == target
+                and out and len(out.payload) >= 2 and out.payload[1] == "Bool"):
+            continue
+        args = {r.payload[0]: r.payload for r in ent.facts("arg") if len(r.payload) >= 3}
+        if (args.get("left") == ["left", left_type, left_value]
+                and args.get("right") == ["right", left_type, right_value]):
+            return ent.name, out.payload[0]
+    return None
+
+
+def _fmt_used_bindings(program: Program, op_name: str) -> set[str]:
+    return set(_fmt_binding_types(program, op_name))
+
+
+def _fmt_unique_pair(program: Program, name_base: str, out_base: str,
+                     op_name: str) -> tuple[str, str]:
+    used = _fmt_used_bindings(program, op_name)
+    i = 1
+    while True:
+        suffix = "" if i == 1 else str(i)
+        name = f"{name_base}{suffix}"
+        out = f"{out_base}{suffix}"
+        if name not in program.entities and out not in used:
+            return name, out
+        i += 1
+
+
+def _fmt_add_compare_call(program: Program, op_name: str, row: Row) -> tuple[str, str]:
+    p = row.payload
+    if len(p) < 5 or "goto" not in p:
+        raise EavError(f"`branch {' '.join(p)}` is not valid comparison sugar", row.line)
+    guard, left_token, cmp_token, right_token = p[0], p[1], p[2], p[3]
+    cmp_target = _FMT_BRANCH_CMP_TARGET.get(cmp_token)
+    if cmp_target is None:
+        raise EavError(f"unknown comparator {cmp_token!r} in {guard} (README ss13)",
+                       row.line)
+    left_value = left_token
+    if guard == "ifOut":
+        callee = program.entities.get(left_token)
+        orow = callee.fact("out") if callee else None
+        if not (orow and len(orow.payload) >= 2):
+            raise EavError(f"`ifOut {left_token}` needs a call with one `out` binding",
+                           row.line)
+        left_value = orow.payload[0]
+        left_type = orow.payload[1]
+        name_base = "check" + _fmt_upper_ident(left_token)
+        out_base = left_token + "Check"
+    else:
+        bindings = _fmt_binding_types(program, op_name)
+        left_type = bindings.get(left_value)
+        if left_type is None:
+            raise EavError(f"`ifValue {left_value}` needs a typed binding in scope",
+                           row.line)
+        name_base = "check" + _fmt_upper_ident(left_value)
+        out_base = left_value + "Check"
+    target = f"compare.{cmp_target}{left_type}"
+    existing = _fmt_find_compare_call(program, op_name, target, left_type,
+                                      left_value, right_token)
+    if existing is not None:
+        return existing
+    call_name, out_name = _fmt_unique_pair(program, name_base, out_base, op_name)
+    ent = Entity(call_name, "call", row.line)
+    ent.rows.extend([
+        Row(call_name, "in", [op_name], row.line),
+        Row(call_name, "invokes", [target], row.line),
+        Row(call_name, "arg", ["left", left_type, left_value], row.line),
+        Row(call_name, "arg", ["right", left_type, right_token], row.line),
+        Row(call_name, "out", [out_name, "Bool"], row.line),
+    ])
+    program.add(ent)
+    return call_name, out_name
+
+
+def _fmt_cleanup_resource(worker: Entity) -> Optional[str]:
+    args = [r.payload for r in worker.facts("arg") if len(r.payload) >= 3]
+    preferred = {
+        "resource", "handle", "database", "statement", "region", "buffer",
+        "pointer", "file", "stream",
+    }
+    for payload in args:
+        if payload[0] in preferred:
+            return payload[2]
+    if len(args) == 1:
+        return args[0][2]
+    return None
+
+
+def _fmt_find_cleanup(program: Program, op_name: str, worker_name: str,
+                      policy: Optional[str], reason: list[str]) -> Optional[str]:
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind != "cleanup":
+            continue
+        owner = ent.fact("in")
+        call = ent.fact("call")
+        if not (owner and owner.payload and owner.payload[0] == op_name
+                and call and call.payload and call.payload[0] == worker_name):
+            continue
+        onfail = ent.fact("onFailure")
+        because = ent.fact("because")
+        if policy and not (onfail and onfail.payload and onfail.payload[0] == policy):
+            continue
+        if reason and not (because and because.payload == reason):
+            continue
+        return ent.name
+    return None
+
+
+def _fmt_unique_entity_name(program: Program, base: str) -> str:
+    if base not in program.entities:
+        return base
+    i = 2
+    while f"{base}{i}" in program.entities:
+        i += 1
+    return f"{base}{i}"
+
+
+def _fmt_add_cleanup(program: Program, op_name: str, row: Row) -> str:
+    p = row.payload
+    worker_name = p[0] if p else ""
+    if not worker_name:
+        raise EavError("compound defer needs a worker call", row.line)
+    worker = program.entities.get(worker_name)
+    if worker is None or worker.kind != "call":
+        raise EavError(f"compound defer worker {worker_name!r} is not a call",
+                       row.line)
+    policy = None
+    reason: list[str] = []
+    if "onFailure" in p:
+        i = p.index("onFailure")
+        if i + 1 >= len(p):
+            raise EavError("compound defer `onFailure` needs a policy", row.line)
+        policy = p[i + 1]
+    if "because" in p:
+        i = p.index("because")
+        reason = p[i + 1:]
+    existing = _fmt_find_cleanup(program, op_name, worker_name, policy, reason)
+    if existing is not None:
+        return existing
+    resource = _fmt_cleanup_resource(worker)
+    if resource is None:
+        raise EavError(
+            f"compound defer {worker_name!r} needs a resource/handle arg so fmt can "
+            "generate `cleans <binding>`",
+            row.line,
+        )
+    cleanup_name = _fmt_unique_entity_name(program, f"{worker_name}Cleanup")
+    ent = Entity(cleanup_name, "cleanup", row.line)
+    ent.rows.extend([
+        Row(cleanup_name, "in", [op_name], row.line),
+        Row(cleanup_name, "call", [worker_name], row.line),
+    ])
+    if policy:
+        ent.rows.append(Row(cleanup_name, "onFailure", [policy], row.line))
+    if reason:
+        ent.rows.append(Row(cleanup_name, "because", reason, row.line))
+    ent.rows.append(Row(cleanup_name, "cleans", [resource], row.line))
+    program.add(ent)
+    return cleanup_name
+
+
+def _canonicalize_format_sugar(program: Program) -> Program:
+    out = _clone_program_for_format(program)
+    for name in list(out.order):
+        ent = out.entities[name]
+        if ent.kind not in ("operation", "function"):
+            continue
+        rows: list[Row] = []
+        for row in ent.rows:
+            if row.predicate == "branch" and row.payload and row.payload[0] in ("ifValue", "ifOut"):
+                call_name, out_name = _fmt_add_compare_call(out, ent.name, row)
+                rows.append(_clone_row(row, predicate="do", payload=[call_name]))
+                gi = row.payload.index("goto")
+                label = row.payload[gi + 1]
+                rows.append(_clone_row(row, predicate="branch",
+                                       payload=["if", out_name, "goto", label],
+                                       label=None))
+                continue
+            if _is_compound_defer_row(row):
+                cleanup_name = _fmt_add_cleanup(out, ent.name, row)
+                rows.append(_clone_row(row, payload=[cleanup_name]))
+                continue
+            rows.append(row)
+        ent.rows = rows
+        ent._idx_len = -1
     return out
 
 
@@ -7366,7 +8032,10 @@ def _target_is_nonvoid(target: str, program: Program):
     if sig is not None:
         return sig.get("out") is not None
     if (target.startswith("math.") or target.startswith("compare.")
-            or target.startswith("convert.to") or target == "string.concat"
+            or target.startswith("convert.to")
+            or target.startswith("convert.wrapping.to")
+            or target.startswith("convert.saturating.to")
+            or target == "string.concat"
             or target.startswith("assert.") or target == "test.and"):
         return True
     if target == "test.summary":  # returns the failure count as an ExitCode
@@ -7378,6 +8047,23 @@ def _target_is_nonvoid(target: str, program: Program):
         if callee is not None and callee.kind in ("operation", "function"):
             return callee.fact("out") is not None
     return None
+
+
+_WASM_ENTRY_SCALAR_TYPES = frozenset({
+    "Bool", "Int8", "UInt8", "Int16", "UInt16", "Int32", "UInt32",
+    "Int64", "UInt64", "Float32", "Float64", "ExitCode",
+})
+
+
+def _project_wasm_runtime_platforms(program: Program, proj: Entity) -> set[str]:
+    wasm_platforms = {
+        plat.name
+        for plat in program.of_kind("platform")
+        for row in [plat.fact("targetRuntime")]
+        if row and row.payload and row.payload[0] == "wasm"
+    }
+    selected = {row.payload[0] for row in proj.facts("platform") if row.payload}
+    return wasm_platforms if not selected else wasm_platforms & selected
 
 
 def _lint_entry_abi(program: Program) -> list:
@@ -12688,7 +13374,9 @@ class EavCodegen:
         if src_row and src_row.payload:
             dig = st.fact("literalDigest")
             expected = dig.payload[-1] if dig and dig.payload else None
-            data = embed_literal_source(src_row.payload[0].strip('"'), expected)
+            data = embed_literal_source(
+                src_row.payload[0].strip('"'), expected,
+                project_root=getattr(self.program, "source_root", None))
             self.module_storage[st.name] = (self.global_string(data + b"\x00"), "String")
             return
         # README §2: a `body <kind>` island (json/sql/html/...) embeds its indented
@@ -12824,13 +13512,22 @@ class EavCodegen:
             # (cross-CRT-safe). void ss_http_free_str(const char *).
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
                              name="ss_http_free_str")
+        elif name == "ss_platform_sleep_ms":
+            fn = ir.Function(
+                self.module,
+                ir.FunctionType(ir.VoidType(), [ir.IntType(32)]),
+                name="ss_platform_sleep_ms",
+            )
         elif name == "ss_http_serve_routes":
             # APP-RUN-5 webServer entry: int(host, port, count, methods**,
-            # paths**, handlers**) -> blocks in the server loop.
+            # paths**, handlers**, middlewares**, timeouts_ms*) -> blocks in the
+            # server loop.
             i32 = ir.IntType(32)
             i8pp = i8p.as_pointer()
+            i32p = i32.as_pointer()
             fn = ir.Function(self.module,
-                             ir.FunctionType(i32, [i8p, i32, i32, i8pp, i8pp, i8pp]),
+                             ir.FunctionType(i32, [i8p, i32, i32, i8pp, i8pp, i8pp,
+                                                   i8pp, i32p]),
                              name="ss_http_serve_routes")
         elif name == "ss_net_fetch_text":
             # APP-RUN-1 / R-092: HTTP-GET client — char *ss_net_fetch_text(const
@@ -12907,11 +13604,10 @@ class EavCodegen:
         project = projects[0]
         target_row = project.fact("target")
         target = target_row.payload[0] if target_row and target_row.payload else "console"
-        if target not in ("console", "webServer"):
+        if target not in ("console", "webServer", "wasm"):
             raise EavError(
-                "the LLVM code generator supports `target console` and "
-                f"`target webServer`, got {target!r}; wasm lowering is out of scope "
-                "(todos WS3)"
+                "the LLVM code generator supports `target console`, "
+                f"`target webServer`, and `target wasm`, got {target!r}"
             )
         entry_row = project.fact("entry")
         if entry_row and entry_row.payload:
@@ -12975,9 +13671,36 @@ class EavCodegen:
             # full FFI symbol binding is WS3-052/053. Only `body steps` defines.
             if _op_body_kind(op) == "steps":
                 self._define_function(op)
+        self._emit_c_export_wrappers(emit_ops)
         if target == "webServer":
             self._emit_webserver_entry()
         return self.module
+
+    def _emit_c_export_wrappers(self, emit_ops: list[Entity]) -> None:
+        """R-048: expose `OP export c <symbol>` as a stable C-callable wrapper."""
+        included = {op.name: op for op in emit_ops}
+        for op, symbol in _c_export_rows(self.program, self.build_platform.name if self.build_platform else None):
+            if op.name not in included:
+                continue
+            target = self.functions.get(op.name)
+            if target is None:
+                continue
+            if symbol == target.name:
+                continue
+            existing = self.module.globals.get(symbol)
+            if existing is not None:
+                raise EavError(
+                    f"`export c` symbol {symbol!r} conflicts with an emitted LLVM symbol",
+                    op.line, code="SS3045")
+            wrapper = ir.Function(self.module, target.function_type, name=symbol)
+            for arg, src in zip(wrapper.args, target.args):
+                arg.name = src.name
+            b = ir.IRBuilder(wrapper.append_basic_block("entry"))
+            result = b.call(target, list(wrapper.args))
+            if isinstance(target.function_type.return_type, ir.VoidType):
+                b.ret_void()
+            else:
+                b.ret(result)
 
     def _emit_webserver_entry(self) -> None:
         """APP-RUN-5: synthesize the `webServer` entry as an i32() function named
@@ -12993,8 +13716,16 @@ class EavCodegen:
         i8p = ir.IntType(8).as_pointer()
         i8pp = i8p.as_pointer()
         i32 = ir.IntType(32)
+        i32p = i32.as_pointer()
         def _unquote(tok):
-            return tok[1:-1] if len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"' else tok
+            return _unquote_token(tok)
+        def _middleware_for_route(path: str):
+            return _matching_route_policy(ws.facts("middleware"), path)
+        def _timeout_for_route(path: str) -> int:
+            row = _matching_route_policy(ws.facts("routeTimeout"), path)
+            if row is None or len(row.payload) < 2:
+                return 0
+            return _duration_literal_to_millis(row.payload[1]) or 0
         host_row, port_row = ws.fact("host"), ws.fact("port")
         host = _unquote(host_row.payload[0]) if host_row and host_row.payload else "127.0.0.1"
         port = int(port_row.payload[0]) if port_row and port_row.payload else 8080
@@ -13005,6 +13736,8 @@ class EavCodegen:
         methods = b.alloca(ir.ArrayType(i8p, n))
         paths = b.alloca(ir.ArrayType(i8p, n))
         handlers = b.alloca(ir.ArrayType(i8p, n))
+        middlewares = b.alloca(ir.ArrayType(i8p, n))
+        timeouts = b.alloca(ir.ArrayType(i32, n))
         for i, payload in enumerate(routes):
             method, path, handler_name = payload[0], _unquote(payload[1]), payload[2]
             hfn = self.functions.get(handler_name)
@@ -13018,11 +13751,26 @@ class EavCodegen:
             b.store(self.global_string(path.encode("utf-8") + b"\x00"),
                     b.gep(paths, idx))
             b.store(b.bitcast(hfn, i8p), b.gep(handlers, idx))
+            middleware_row = _middleware_for_route(path)
+            mfn = None
+            if middleware_row is not None and len(middleware_row.payload) >= 2:
+                mfn = self.functions.get(middleware_row.payload[1])
+                if mfn is None:
+                    raise EavError(
+                        f"webServer {ws.name!r} middleware handler "
+                        f"{middleware_row.payload[1]!r} is not a defined operation "
+                        "(README §14)",
+                        middleware_row.line,
+                    )
+            b.store(b.bitcast(mfn, i8p) if mfn is not None else ir.Constant(i8p, None),
+                    b.gep(middlewares, idx))
+            b.store(i32(_timeout_for_route(path)), b.gep(timeouts, idx))
         r = b.call(self.runtime("ss_http_serve_routes"),
                    [self.global_string(host.encode("utf-8") + b"\x00"),
                     i32(port), i32(n),
                     b.bitcast(methods, i8pp), b.bitcast(paths, i8pp),
-                    b.bitcast(handlers, i8pp)])
+                    b.bitcast(handlers, i8pp), b.bitcast(middlewares, i8pp),
+                    b.bitcast(timeouts, i32p)])
         b.ret(r)
 
     def _signature(self, op: Entity):
@@ -13432,8 +14180,12 @@ class EavCodegen:
             # README ss15.6: register the cleanup; its worker runs (in reverse
             # registration order) before each return. Nothing emitted here.
             cleanup = self.program.entities.get(p[0]) if p else None
-            if cleanup is not None:
+            if cleanup is not None and cleanup.kind == "cleanup":
                 self._defers.append(cleanup)
+            elif cleanup is not None and cleanup.kind == "call" and _is_compound_defer_row(row):
+                synthetic = Entity(f"{cleanup.name}Cleanup", "cleanup", row.line)
+                synthetic.rows.append(Row(synthetic.name, "call", [cleanup.name], row.line))
+                self._defers.append(synthetic)
             return builder
         if pred == "start":
             # Single-thread backend (README ss13): `start` runs the task eagerly;
@@ -13916,6 +14668,7 @@ class EavCodegen:
 
         result = None
         err = None
+        caught_error_value = None
         if target == "console.writeLine":
             res = builder.call(self.runtime("puts"), [arg("text", "String")])
             err = builder.icmp_signed("<", res, ir.Constant(ir.IntType(32), 0))
@@ -14342,7 +15095,9 @@ class EavCodegen:
             result = self._emit_math_computed(target, arg, builder)
         elif target.startswith("compare."):
             result = self._emit_compare(target, args, builder, sym, call)
-        elif target.startswith("convert.to"):
+        elif (target.startswith("convert.to")
+              or target.startswith("convert.wrapping.to")
+              or target.startswith("convert.saturating.to")):
             result = self._emit_convert(target, args, builder, sym, call)
         elif target.startswith("decimal."):
             # R-067: Decimal/Money are scaled Int64 — fixed scale 2 (raw value is
@@ -14456,14 +15211,20 @@ class EavCodegen:
             # Int64 (OpaquePointer); receive ignores its out-buffer args.
             result = builder.call(self.runtime("ss_event_open_stream"),
                                   [arg("streamName", "String"), arg("queueCapacity", "Int64")])
+            if call.fact("catch") is not None:
+                err = builder.icmp_signed("==", result, ir.Constant(ir.IntType(64), 0))
         elif target == "event.subscribeStream":
             result = builder.call(self.runtime("ss_event_subscribe"),
                                   [arg("stream", "OpaquePointer"),
                                    arg("eventType", "String"), arg("eventKey", "String")])
+            if call.fact("catch") is not None:
+                err = builder.icmp_signed("==", result, ir.Constant(ir.IntType(64), 0))
         elif target == "event.appendEvent":
             result = builder.call(self.runtime("ss_event_append"),
                                   [arg("stream", "OpaquePointer"), arg("eventType", "String"),
                                    arg("eventKey", "String"), arg("payloadJson", "String")])
+            if call.fact("catch") is not None:
+                err = builder.icmp_signed("==", result, ir.Constant(ir.IntType(64), 0))
         elif target == "event.receiveEvent":
             result = builder.call(self.runtime("ss_event_receive"),
                                   [arg("subscription", "OpaquePointer")])
@@ -14501,6 +15262,14 @@ class EavCodegen:
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
                 result = r
+            if call.fact("catch") is not None:
+                if name.endswith("Create"):
+                    err = builder.icmp_signed("==", r, ir.Constant(ir.IntType(64), 0))
+                elif name == "textBoxText":
+                    err = builder.icmp_unsigned(
+                        "==", r, ir.Constant(ir.IntType(8).as_pointer(), None))
+                elif ret_ty == ir.IntType(32):
+                    err = builder.icmp_signed("!=", r, ir.Constant(ir.IntType(32), 0))
         elif _http_intrinsic(target) is not None:
             # APP-RUN-5: request/response/multipart accessors over the legacy
             # ss_http_* runtime. Resolve args in order (handles are i64, names/
@@ -14586,26 +15355,53 @@ class EavCodegen:
                     for a in arg_rows]
             ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32), "d": ir.DoubleType(),
                       "s": ir.IntType(8).as_pointer(), "v": ir.VoidType()}[retkind]
-            fn = self._runtime_extern(symbol, ret_ty, [v.type for v in vals])
-            r = builder.call(fn, vals)
-            if retkind != "v" and call.fact("out") is not None:
-                result = r
-            # R-141: wire the native status/handle into `err` so a `catch` +
-            # `branch ifError` actually takes the error path instead of being
-            # constant-false (which silently treated every native failure as
-            # success). retkind "i" is the OK==0 status convention; "h" creation
-            # handles use their explicit failure sentinel. Only when a `catch`
-            # exists (otherwise `err` is unread and we skip the dead compare).
-            if call.fact("catch") is not None:
-                fam, meth = target.split(".", 1)
-                if retkind == "i" and (fam, meth) in _FAMILY_STATUS_ERR:
-                    op, sentinel = _FAMILY_STATUS_ERR[(fam, meth)]
-                    err = builder.icmp_signed(op, r, ir.Constant(ir.IntType(32), sentinel))
-                elif retkind == "i":
-                    err = builder.icmp_signed("!=", r, ir.Constant(ir.IntType(32), 0))
-                elif retkind == "h" and (fam, meth) in _FAMILY_HANDLE_ERR:
-                    op, sentinel = _FAMILY_HANDLE_ERR[(fam, meth)]
-                    err = builder.icmp_signed(op, r, ir.Constant(ir.IntType(64), sentinel))
+            fam, meth = target.split(".", 1)
+            if (fam, meth) == ("json", "createDocument"):
+                vals = vals + self._json_create_document_policy_args(call)
+            status_spec = (_JSON_STATUS_OUTPARAM_RT.get((fam, meth))
+                           if call.fact("catch") is not None else None)
+            if status_spec is not None:
+                # R-142: caught JSON direct-return calls must not erase the native
+                # SS_JSON_ERR_* status into empty strings, root-cursor 0, or null
+                # handles. The exported wrapper returns i32 status and writes the
+                # former direct result into an out-param, so `branch ifError` and
+                # the catch variable observe the actual native status.
+                status_symbol, status_retkind = status_spec
+                out_ty = {"h": ir.IntType(64),
+                          "s": ir.IntType(8).as_pointer()}[status_retkind]
+                slot = builder.alloca(out_ty)
+                fn = self._runtime_extern(
+                    status_symbol, ir.IntType(32), [v.type for v in vals] + [slot.type])
+                status = builder.call(fn, vals + [slot])
+                if call.fact("out") is not None:
+                    result = builder.load(slot)
+                err = builder.icmp_signed("!=", status, ir.Constant(ir.IntType(32), 0))
+                caught_error_value = status
+            else:
+                fn = self._runtime_extern(symbol, ret_ty, [v.type for v in vals])
+                r = builder.call(fn, vals)
+                if retkind != "v" and call.fact("out") is not None:
+                    result = r
+                # R-141: wire the native status/handle into `err` so a `catch` +
+                # `branch ifError` actually takes the error path instead of being
+                # constant-false (which silently treated every native failure as
+                # success). retkind "i" is the OK==0 status convention; "h" creation
+                # handles use their explicit failure sentinel. Only when a `catch`
+                # exists (otherwise `err` is unread and we skip the dead compare).
+                if call.fact("catch") is not None:
+                    if retkind == "i" and (fam, meth) in _FAMILY_STATUS_ERR:
+                        op, sentinel = _FAMILY_STATUS_ERR[(fam, meth)]
+                        err = builder.icmp_signed(
+                            op, r, ir.Constant(ir.IntType(32), sentinel))
+                        caught_error_value = r
+                    elif retkind == "i":
+                        err = builder.icmp_signed(
+                            "!=", r, ir.Constant(ir.IntType(32), 0))
+                        caught_error_value = r
+                    elif retkind == "h" and (fam, meth) in _FAMILY_HANDLE_ERR:
+                        op, sentinel = _FAMILY_HANDLE_ERR[(fam, meth)]
+                        err = builder.icmp_signed(
+                            op, r, ir.Constant(ir.IntType(64), sentinel))
         elif target in ("sqlite.stepResultIsDone", "sqlite.stepResultIsRow"):
             # The step result code is the raw sqlite3_step return: SQLITE_ROW=100,
             # SQLITE_DONE=101. The predicate is an equality test.
@@ -14644,6 +15440,8 @@ class EavCodegen:
                 r = builder.call(fn, vals)
                 if out_ty is not None:
                     result = r
+                if call.fact("catch") is not None and libc in _LIBC_NEGATIVE_ERROR_RETURNS:
+                    err = builder.icmp_signed("<", r, ir.Constant(ir.IntType(32), 0))
             else:
                 sym_name = "ss_c_" + libc
                 ret_ty = _libc_ret_types().get(
@@ -14653,6 +15451,14 @@ class EavCodegen:
                 if (out_ty is not None and out_row is not None
                         and not isinstance(ret_ty, ir.VoidType)):
                     result = r
+                if call.fact("catch") is not None:
+                    if libc in _LIBC_NEGATIVE_ERROR_RETURNS:
+                        err = builder.icmp_signed("<", r, ir.Constant(ir.IntType(32), 0))
+                    elif libc in _LIBC_NULL_ERROR_RETURNS:
+                        if isinstance(ret_ty, ir.PointerType):
+                            err = builder.icmp_unsigned("==", r, ir.Constant(ret_ty, None))
+                        else:
+                            err = builder.icmp_signed("==", r, ir.Constant(ret_ty, 0))
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -14718,15 +15524,32 @@ class EavCodegen:
                         max_attempts = max(1, int(str(retry_row.payload[0]).replace("_", "")))
                     except ValueError:
                         max_attempts = 1
+                backoff_row = call.fact("retryBackoffMs")
+                retry_backoff_ms = 0
+                if backoff_row and backoff_row.payload:
+                    tok = str(backoff_row.payload[0]).replace("_", "")
+                    if not tok.isdigit():
+                        raise EavError(
+                            "retryBackoffMs expects a non-negative integer "
+                            "millisecond literal",
+                            backoff_row.line,
+                            code="SS0410",
+                        )
+                    retry_backoff_ms = int(tok)
                 if max_attempts > 1:
                     # R-041 bounded retry: re-invoke the fallible out-param call up
                     # to `max_attempts` times, stopping on the first ok (status 0).
+                    # `retryBackoffMs N` sleeps between failed attempts only.
                     fn = builder.function
                     attempts_p = builder.alloca(i32)
                     status_p = builder.alloca(i32)
                     builder.store(ir.Constant(i32, 1), attempts_p)
                     rhead = fn.append_basic_block("retryHead")
                     rdone = fn.append_basic_block("retryDone")
+                    rdelay = (
+                        fn.append_basic_block("retryBackoff")
+                        if retry_backoff_ms > 0 else None
+                    )
                     builder.branch(rhead)
                     builder.position_at_end(rhead)
                     st = builder.call(self.functions[eff_target], vals + [slot])
@@ -14735,7 +15558,17 @@ class EavCodegen:
                     builder.store(builder.add(att, ir.Constant(i32, 1)), attempts_p)
                     not_ok = builder.icmp_signed("!=", st, ir.Constant(i32, 0))
                     more = builder.icmp_signed("<", att, ir.Constant(i32, max_attempts))
-                    builder.cbranch(builder.and_(not_ok, more), rhead, rdone)
+                    should_retry = builder.and_(not_ok, more)
+                    if rdelay is not None:
+                        builder.cbranch(should_retry, rdelay, rdone)
+                        builder.position_at_end(rdelay)
+                        builder.call(
+                            self.runtime("ss_platform_sleep_ms"),
+                            [ir.Constant(i32, retry_backoff_ms)],
+                        )
+                        builder.branch(rhead)
+                    else:
+                        builder.cbranch(should_retry, rhead, rdone)
                     builder.position_at_end(rdone)
                     status = builder.load(status_p)
                 else:
@@ -14762,15 +15595,16 @@ class EavCodegen:
         catch_row = call.fact("catch")
         if catch_row and catch_row.payload:
             i32 = ir.IntType(32)
-            if err is None:
+            caught_src = caught_error_value if caught_error_value is not None else err
+            if caught_src is None:
                 caught = ir.Constant(i32, 0)
-            elif err.type == ir.IntType(1):
-                caught = builder.zext(err, i32)
-            elif err.type == i32:
-                caught = err
+            elif caught_src.type == ir.IntType(1):
+                caught = builder.zext(caught_src, i32)
+            elif caught_src.type == i32:
+                caught = caught_src
             else:
                 caught = builder.zext(builder.icmp_unsigned(
-                    "!=", err, ir.Constant(err.type, 0)), i32)
+                    "!=", caught_src, ir.Constant(caught_src.type, 0)), i32)
             sym[catch_row.payload[0]] = ("val", caught)
 
         out_row = call.fact("out")
@@ -14953,7 +15787,15 @@ class EavCodegen:
         """Explicit numeric conversion `convert.to<Type>` (README ss33.5): int
         widen=sext / narrow=trunc, int->float=sitofp, float->int=fptosi (trunc
         toward zero), float widen/narrow=fpext/fptrunc."""
-        dst_name = target[len("convert.to"):]
+        mode = "checked"
+        prefix = "convert.to"
+        if target.startswith("convert.wrapping.to"):
+            mode = "wrapping"
+            prefix = "convert.wrapping.to"
+        elif target.startswith("convert.saturating.to"):
+            mode = "saturating"
+            prefix = "convert.saturating.to"
+        dst_name = target[len(prefix):]
         if dst_name.startswith("."):
             dst_name = dst_name[1:2].upper() + dst_name[2:]
         if not args:
@@ -14964,6 +15806,13 @@ class EavCodegen:
         src = val.type
         src_float = self.is_float_type(src_name)
         if self.resolve_type_name(dst_name) == "String":
+            if mode != "checked":
+                raise EavError(
+                    f"{target!r} is not defined for String output; use "
+                    f"`convert.toString` for formatting",
+                    call.line,
+                    code="SS1199",
+                )
             if src_float or not isinstance(src, ir.IntType):
                 raise EavError(
                     f"{target!r} supports integer inputs only for now; got "
@@ -14993,6 +15842,59 @@ class EavCodegen:
                 return val
             return builder.fpext(val, dst) if dst_bits > src_bits else builder.fptrunc(val, dst)
         if src_float and not dst_float:
+            if mode == "wrapping":
+                raise EavError(
+                    f"{target!r} is only defined for integer-to-integer inputs; "
+                    "float wrapping would require an out-of-range fptosi",
+                    call.line,
+                    code="SS1199",
+                )
+            if mode == "saturating":
+                w_bits = dst.width
+                dst_resolved = self.resolve_type_name(dst_name)
+                dst_min, dst_max = _INT_RANGES[dst_resolved]
+                if self._is_unsigned_int(dst_name):
+                    lo_f = ir.Constant(val.type, 0.0)
+                    hi_f = ir.Constant(val.type, 2.0 ** w_bits)
+                else:
+                    lo_f = ir.Constant(val.type, -(2.0 ** (w_bits - 1)))
+                    hi_f = ir.Constant(val.type, 2.0 ** (w_bits - 1))
+                fn = builder.function
+                nan_bb = fn.append_basic_block("f2iSatNan")
+                range_bb = fn.append_basic_block("f2iSatRange")
+                low_bb = fn.append_basic_block("f2iSatLow")
+                high_bb = fn.append_basic_block("f2iSatHigh")
+                conv_bb = fn.append_basic_block("f2iSatConvert")
+                done_bb = fn.append_basic_block("f2iSatDone")
+                is_nan = builder.fcmp_unordered("!=", val, val)
+                builder.cbranch(is_nan, nan_bb, range_bb)
+
+                nb = ir.IRBuilder(nan_bb)
+                nb.branch(done_bb)
+
+                rb = ir.IRBuilder(range_bb)
+                too_low = rb.fcmp_ordered("<", val, lo_f)
+                rb.cbranch(too_low, low_bb, high_bb)
+
+                lb = ir.IRBuilder(low_bb)
+                lb.branch(done_bb)
+
+                hb = ir.IRBuilder(high_bb)
+                too_high = hb.fcmp_ordered(">=", val, hi_f)
+                hb.cbranch(too_high, done_bb, conv_bb)
+
+                cb = ir.IRBuilder(conv_bb)
+                converted = (cb.fptoui(val, dst) if self._is_unsigned_int(dst_name)
+                             else cb.fptosi(val, dst))
+                cb.branch(done_bb)
+
+                builder.position_at_end(done_bb)
+                phi = builder.phi(dst, name="saturated")
+                phi.add_incoming(ir.Constant(dst, 0), nan_bb)
+                phi.add_incoming(ir.Constant(dst, dst_min), low_bb)
+                phi.add_incoming(ir.Constant(dst, dst_max), high_bb)
+                phi.add_incoming(converted, conv_bb)
+                return phi
             # R-076: float->int is checked. `fptosi` is undefined for NaN, +/-inf,
             # or a value outside the destination integer's range, so trap (SSR0014)
             # on any of those instead. The bounds are the destination's
@@ -15037,12 +15939,37 @@ class EavCodegen:
                     else builder.sitofp(val, dst))
         # int -> int
         src_unsigned = self._is_unsigned_int(src_name)
+        if mode == "saturating":
+            src_resolved = self.resolve_type_name(src_name)
+            dst_resolved = self.resolve_type_name(dst_name)
+            src_min, src_max = _INT_RANGES[src_resolved]
+            dst_min, dst_max = _INT_RANGES[dst_resolved]
+            lo_needed = dst_min > src_min
+            hi_needed = dst_max < src_max
+            clamped = val
+            if lo_needed:
+                lo_const = ir.Constant(src, dst_min)
+                low = (builder.icmp_unsigned("<", clamped, lo_const)
+                       if src_unsigned else builder.icmp_signed("<", clamped, lo_const))
+                clamped = builder.select(low, lo_const, clamped)
+            if hi_needed:
+                hi_const = ir.Constant(src, dst_max)
+                high = (builder.icmp_unsigned(">", clamped, hi_const)
+                        if src_unsigned else builder.icmp_signed(">", clamped, hi_const))
+                clamped = builder.select(high, hi_const, clamped)
+            if dst.width > src.width:
+                return builder.zext(clamped, dst) if src_unsigned else builder.sext(clamped, dst)
+            if dst.width < src.width:
+                return builder.trunc(clamped, dst)
+            return clamped
         if dst.width > src.width:
             # R-215: widen an UNSIGNED source with zero-extension; sign-extending
             # it (e.g. UInt8 200 -> UInt32) would set the high bits and corrupt the
             # value to 4294967240.
             return builder.zext(val, dst) if src_unsigned else builder.sext(val, dst)
         if dst.width < src.width:
+            if mode == "wrapping":
+                return builder.trunc(val, dst)
             # WS1-131/R-076: narrowing is checked, not a silent truncation. If
             # the value does not round-trip through the destination width it does
             # not fit, so trap with a structured panic instead of dropping bits.
@@ -15597,6 +16524,10 @@ def _resolve_runtime_links(library: dict, platform: str,
     driver-specific entries. Order is base -> platform -> compiler with
     first-occurrence-wins de-duplication so the plan is deterministic.
 
+    R-151: overlays may also use `replaceSources` / `removeSources` (and the
+    equivalent for include/defines/libs/exports) so OS-specific source sets are
+    truly platform-scoped instead of being forced into the cross-platform base.
+
     Tests drive this with an explicit `platform=` so a Linux/macOS resolved link
     set can be asserted on a Windows host without a Linux machine.
     """
@@ -15625,13 +16556,28 @@ def _resolve_runtime_links(library: dict, platform: str,
     if compiler is not None:
         overlays.append(compilers.get(compiler, {}))
 
+    def field_key(prefix: str, field: str) -> str:
+        return prefix + field[:1].upper() + field[1:]
+
     def merged(field: str) -> list:
         seen: list = []
         for layer in overlays:
-            for value in layer.get(field, []) or []:
+            replace_key = field_key("replace", field)
+            remove_key = field_key("remove", field)
+            if replace_key in layer:
+                seen = []
+                values = layer.get(replace_key, []) or []
+            else:
+                values = layer.get(field, []) or []
+            for value in layer.get(remove_key, []) or []:
+                seen = [existing for existing in seen if existing != value]
+            for value in values:
                 if value not in seen:
                     seen.append(value)  # base then platform then compiler order
         return seen
+
+    unsupported = next((layer.get("unsupported") for layer in overlays
+                        if layer.get("unsupported")), None)
 
     return {
         "name": library.get("name"),
@@ -15646,6 +16592,7 @@ def _resolve_runtime_links(library: dict, platform: str,
         # resolver) reads, so these must be force-exported. Empty on POSIX,
         # where shared-object default visibility already exports them.
         "exports": merged("exports"),
+        "unsupported": unsupported,
     }
 
 
@@ -15794,6 +16741,14 @@ def _ensure_runtime_objects(lib: dict, target_triple: str,
     cid = compiler_id if compiler_id is not None else _compiler_identity(cc)
     obj_dir, objects, resolved = _runtime_object_cache_plan(
         lib, target_triple, platform, cid)
+    plat = platform or _host_platform_name()
+    if resolved.get("unsupported"):
+        raise EavError(
+            f"runtime library {lib['name']!r} is not supported on {plat}: "
+            f"{resolved['unsupported']}")
+    if not resolved["sources"]:
+        raise EavError(
+            f"runtime library {lib['name']!r} has no sources for platform {plat}")
     if objects and all(os.path.exists(obj) and _runtime_lib_sidecar_matches(obj)
                        for obj in objects):
         return objects
@@ -16127,6 +17082,10 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     rt = _runtime_dir()
     plat = platform or _host_platform_name()
     resolved = _resolve_runtime_links(lib, plat)
+    if resolved.get("unsupported"):
+        raise EavError(
+            f"runtime library {lib['name']!r} is not supported on {plat}: "
+            f"{resolved['unsupported']}")
     cc = _find_c_compiler()
     # R-015: the compiled shared library lands in the user-writable cache, not
     # under the (possibly read-only/shared) runtime bundle. R-021: keyed by the
@@ -16157,6 +17116,9 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
             pass  # fall through to rebuild + re-publish a verified artifact
     if cc is None:
         return None
+    if not resolved["sources"]:
+        raise EavError(
+            f"runtime library {lib['name']!r} has no sources for platform {plat}")
     sources = [_runtime_link_path(s) for s in resolved["sources"]]
     os.makedirs(build_dir, exist_ok=True)
     # R-106: build to a per-process temp file, then publish atomically with
@@ -16250,6 +17212,8 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add(_family_intrinsic(target)[0])
                 elif target.startswith("c."):
                     out.add("ss_c_" + target[len("c."):])  # libc shims (incl. snprintf)
+            if ent.fact("retryBackoffMs") is not None:
+                out.add("ss_platform_sleep_ms")
     # APP-RUN-5: the webServer entry calls the multi-route server runtime.
     if program.of_kind("webServer"):
         out.add("ss_http_serve_routes")
@@ -16267,7 +17231,8 @@ def _camel_to_snake(name: str) -> str:
 # "i"=i32 status, "d"=f64, "s"=i8* string, "v"=void. arg-indices=None passes every arg in
 # order; a tuple selects a subset (sqlite.openDatabase drops its unused mode arg).
 # sqlite -> the ss_sqlite_* shims; json -> the ss_json.c direct-return shim;
-# bcrypt/log -> the native runtimes directly (force-exported in the manifest).
+# document -> wasm host imports; bcrypt/log -> native runtimes directly
+# (force-exported in the manifest).
 _FAMILY_RT = {
     "sqlite": {
         "openDatabase": ("ss_sqlite_open", "h", (0,)),
@@ -16667,6 +17632,7 @@ def _register_panic_symbol() -> None:
     every JIT run."""
     import ctypes
     global _EAV_PANIC_CFUNC, _EAV_FFI_ADD_CFUNC, _EAV_FFI_COUNT_CFUNC
+    global _EAV_PLATFORM_SLEEP_CFUNC
     if _EAV_PANIC_CFUNC is None:
         cft = ctypes.CFUNCTYPE(
             None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
@@ -16686,6 +17652,13 @@ def _register_panic_symbol() -> None:
         _EAV_FFI_COUNT_CFUNC = cft3(_ss_ffi_count_py)
     llvm.add_symbol(
         "ss_ffi_count", ctypes.cast(_EAV_FFI_COUNT_CFUNC, ctypes.c_void_p).value)
+    if _EAV_PLATFORM_SLEEP_CFUNC is None:
+        cft4 = ctypes.CFUNCTYPE(None, ctypes.c_uint32)
+        _EAV_PLATFORM_SLEEP_CFUNC = cft4(_ss_platform_sleep_ms_py)
+    llvm.add_symbol(
+        "ss_platform_sleep_ms",
+        ctypes.cast(_EAV_PLATFORM_SLEEP_CFUNC, ctypes.c_void_p).value,
+    )
 
 
 _LOADED_RUNTIME_DLLS: list = []
@@ -17885,6 +18858,7 @@ def build_executable(program: Program, out_path: str,
     entry_fn = _entry_name(program)
     build_signature = _native_build_signature(program, module, platform, cc, entry_fn)
     if _native_build_cache_matches(out_path, build_signature):
+        _write_c_export_header(program, out_path, platform)
         return out_path
     target_triple = getattr(module, "triple", "") or ""
     compiler_id = _compiler_identity(cc)
@@ -17946,6 +18920,7 @@ def build_executable(program: Program, out_path: str,
                     pass
     if proc.returncode != 0:
         raise EavError(f"native build failed: {proc.stderr.strip()}")
+    _write_c_export_header(program, out_path, platform)
     _native_build_write_sidecar(out_path, build_signature)
     return out_path
 
