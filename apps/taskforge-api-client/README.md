@@ -29,10 +29,10 @@ async outbound HTTP client that probes a running `apps/taskforge-web` server).
   (a console entry returns `ExitCode`), and the `console.writeLine` error path
   (console.writeLine is void in SemanticScript).
 
-## Deferred execution
+## Runtime behavior
 
-The `standard.net` client runtime is not specified in v0.3 (§27), so the `net.*`
-targets stay external (unlowered). The record construction/access ops are real
-SemanticScript record lowering, but the program cannot run until the net runtime lands.
-The whole app parses + lints clean as `target console`; when `net.fetchText` /
-`net.freeTextBody` gain bodies, this source runs unchanged — no source changes.
+`net.fetchText` now lowers through the native `ss_net` HTTP client and
+`net.freeTextBody` releases the heap-owned body returned by that client. The
+current runtime is HTTP-only: `http://` URLs run, while `https://` URLs reject at
+check time until a TLS backend is added. The whole app parses, lints, and runs as
+`target console` against the local TaskForge server.

@@ -3,11 +3,10 @@
 # (an uncovered effect, README §8/§12/§17 #5).
 #
 # Correctness observation (verified):
-#   * default `semanticscript check` -> WARNING SS0900 (effect not covered by a capability);
-#     T3 advisory, so it still runs (`semanticscript run` prints the line).
-#   * `semanticscript run --strict`  -> REJECTED, non-zero exit (the gate promotes the T3).
-#   * `semanticscript check --strict --json` -> "ok": false, "status": "lint-diagnostics".
-# This proves the authority model flags the gap and --strict enforces it.
+#   * default `semanticscript check` -> ERROR SS1708 (effect not covered by a capability).
+#   * default `semanticscript run`   -> REJECTED before execution by the compile gate.
+#   * `semanticscript check --json`  -> nonzero diagnostic envelope.
+# This proves the authority model enforces the gap by default.
 
 CapabilityUngrantedUse is project
 CapabilityUngrantedUse module examplesCapabilityUngrantedUse

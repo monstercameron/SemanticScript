@@ -8,12 +8,11 @@
 # copy (net.freeTextBody). Every fetch is a `task` (EAV async = start/join,
 # README §13) converted against sigs/standard.net.semsig.
 #
-# Network *execution* is deferred: the standard.net client runtime is not in v0.3
-# (§27), so the net.* targets stay external (unlowered). The record construction
-# (HttpRequestPolicy.new / HttpGetRequest.new) and field access
+# Network execution is native HTTP-only today: net.fetchText lowers through the
+# ss_net runtime, and HTTPS/TLS is rejected until a TLS backend lands. The record
+# construction (HttpRequestPolicy.new / HttpGetRequest.new) and field access
 # (HttpTextResponse.body) are real EAV record ops. The whole app parses + lints
-# clean as `target console`; when the net runtime lands, net.fetchText /
-# net.freeTextBody gain bodies and this source runs unchanged. (X-041)
+# clean as `target console`. (X-041)
 #
 # Conversions / language differences: the original's `new` + `fieldSet` builder
 # becomes immutable `Record.new` construction; the wait-set
@@ -36,7 +35,7 @@ ExitCode purpose "Process exit status"
 
 Url is alias
 Url for String
-Url purpose "An absolute http(s) URL to fetch"
+Url purpose "An absolute http:// URL to fetch with the current native client"
 
 HttpClientBodyText is alias
 HttpClientBodyText for String
@@ -72,6 +71,7 @@ HttpTextResponse purpose "A fetched text response carrying the heap-owned body c
 outboundFetch is capability
 outboundFetch grants write network.http.client
 outboundFetch purpose "Authority to perform outbound HTTP client work through standard.net"
+outboundFetch rationale "Test harness client intentionally targets the local TaskForge loopback server"
 
 consoleStdoutWriteCapability is capability
 consoleStdoutWriteCapability grants write console.stdout

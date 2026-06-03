@@ -310,6 +310,8 @@ getTitlePointerAt in titleCapacity Int64
 getTitlePointerAt out OpaquePointer
 getTitlePointerAt memory heap no
 getTitlePointerAt async no
+getTitlePointerAt unsafe yes
+getTitlePointerAt rationale "Uses pointer.offset over a contiguous title buffer; caller-provided index and capacity are checked by the surrounding TUI flow until standard.buffer replaces this raw pointer path"
 getTitlePointerAt purpose "Return the start pointer for one title slot in the contiguous title array"
 getTitlePointerAt invariant "The returned pointer is titlesBuffer + todoIndex * titleCapacity"
 getTitlePointerAt do offsetCall
@@ -337,6 +339,8 @@ writeEmptyBuffer effect write memory.buffer
 writeEmptyBuffer uses memoryBufferWriter
 writeEmptyBuffer memory heap no
 writeEmptyBuffer async no
+writeEmptyBuffer unsafe yes
+writeEmptyBuffer rationale "Writes a NUL byte through a caller-owned C buffer pointer; buffer lifetime and capacity are managed by the TUI allocation path"
 writeEmptyBuffer purpose "Store a leading NUL so a title-edit buffer starts empty"
 writeEmptyBuffer invariant "After success targetBuffer contains an empty C string"
 writeEmptyBuffer let zeroOffset immutable Int64 0
@@ -362,6 +366,8 @@ copyStringBuffer uses memoryBufferReader
 copyStringBuffer uses memoryBufferWriter
 copyStringBuffer memory heap no
 copyStringBuffer async no
+copyStringBuffer unsafe yes
+copyStringBuffer rationale "Copies bytes between caller-owned C string buffers with explicit target capacity checks until standard.buffer replaces this raw pointer loop"
 copyStringBuffer purpose "Copy a bounded null-terminated title string into another buffer"
 copyStringBuffer invariant "The target buffer is always null-terminated and the returned value is its copied length"
 copyStringBuffer let zeroIndex immutable Int64 0
@@ -451,6 +457,8 @@ appendPrintableKeyToBuffer effect write memory.buffer
 appendPrintableKeyToBuffer uses memoryBufferWriter
 appendPrintableKeyToBuffer memory heap no
 appendPrintableKeyToBuffer async no
+appendPrintableKeyToBuffer unsafe yes
+appendPrintableKeyToBuffer rationale "Appends one ASCII byte into a caller-owned edit buffer after capacity checks; raw pointer write is intentionally isolated here"
 appendPrintableKeyToBuffer purpose "Append one printable key to the edit buffer when there is room"
 appendPrintableKeyToBuffer invariant "Buffer stays null-terminated; length never grows past capacity minus one"
 appendPrintableKeyToBuffer risk "Only single-byte printable ASCII (32..126) is accepted; multi-byte/UTF-8/paste are dropped"
@@ -529,6 +537,8 @@ deleteLastBufferByte effect write memory.buffer
 deleteLastBufferByte uses memoryBufferWriter
 deleteLastBufferByte memory heap no
 deleteLastBufferByte async no
+deleteLastBufferByte unsafe yes
+deleteLastBufferByte rationale "Backspace handling writes a terminator into a caller-owned edit buffer after length checks; raw pointer write is intentionally isolated here"
 deleteLastBufferByte purpose "Remove the last edit-buffer byte for backspace handling"
 deleteLastBufferByte invariant "Buffer stays null-terminated and length never goes below zero"
 deleteLastBufferByte let zeroLength immutable Int64 0
@@ -574,6 +584,8 @@ copyFixedTodoJsonTitleAtOffset uses memoryBufferReader
 copyFixedTodoJsonTitleAtOffset uses memoryBufferWriter
 copyFixedTodoJsonTitleAtOffset memory heap no
 copyFixedTodoJsonTitleAtOffset async no
+copyFixedTodoJsonTitleAtOffset unsafe yes
+copyFixedTodoJsonTitleAtOffset rationale "Decodes fixed-format JSON title bytes from caller-owned line and title buffers with explicit offset and capacity checks"
 copyFixedTodoJsonTitleAtOffset purpose "Copy a fixed todo JSON title value into a caller-owned C string buffer"
 copyFixedTodoJsonTitleAtOffset invariant "Only the object shape emitted by saveTodosToJson and its quote/backslash escapes are decoded"
 copyFixedTodoJsonTitleAtOffset let zeroIndex immutable Int64 0
@@ -777,6 +789,8 @@ parseJsonFlagAtOffset effect read memory.buffer
 parseJsonFlagAtOffset uses memoryBufferReader
 parseJsonFlagAtOffset memory heap no
 parseJsonFlagAtOffset async no
+parseJsonFlagAtOffset unsafe yes
+parseJsonFlagAtOffset rationale "Reads one fixed-format JSON flag byte from a caller-owned line buffer at a previously matched field offset"
 parseJsonFlagAtOffset purpose "Parse a zero-or-one flag from a fixed todo JSON field offset"
 parseJsonFlagAtOffset invariant "Only ASCII one maps to one; every other byte maps to zero"
 parseJsonFlagAtOffset let zeroFlag immutable Int32 0
@@ -815,6 +829,8 @@ renderTodoRow uses memoryBufferReader
 renderTodoRow uses consoleStdoutWriter
 renderTodoRow memory heap no
 renderTodoRow async no
+renderTodoRow unsafe yes
+renderTodoRow rationale "Reads done and title bytes from caller-owned TUI arrays while rendering rows; indices are bounded by todoCount and titleCapacity in the render loop"
 renderTodoRow purpose "Render one visible table row from the heap-backed todo arrays"
 renderTodoRow invariant "Rendering reads todo arrays but does not mutate todo state"
 renderTodoRow let oneValue immutable Int64 1
@@ -1199,6 +1215,8 @@ writeJsonEscapedStringBuffer uses memoryBufferReader
 writeJsonEscapedStringBuffer uses filesystemWriter
 writeJsonEscapedStringBuffer memory heap no
 writeJsonEscapedStringBuffer async no
+writeJsonEscapedStringBuffer unsafe yes
+writeJsonEscapedStringBuffer rationale "Reads caller-owned title buffer bytes until NUL while writing escaped JSON; allocation and bounds are managed by the TUI storage layout"
 writeJsonEscapedStringBuffer purpose "Write a title buffer as JSON string content with quote and backslash escaped"
 writeJsonEscapedStringBuffer invariant "Reads until NUL and writes each source byte once, escaping quote and backslash"
 writeJsonEscapedStringBuffer let zeroIndex immutable Int64 0
@@ -1323,6 +1341,8 @@ saveTodosToJson uses fileOpener
 saveTodosToJson uses fileCloser
 saveTodosToJson memory heap no
 saveTodosToJson async no
+saveTodosToJson unsafe yes
+saveTodosToJson rationale "Reads fixed-width done and title arrays by raw byte pointer while serializing the TUI store; todoCount and titleCapacity bound the loop"
 saveTodosToJson purpose "Persist the active todo array as a JSON array"
 saveTodosToJson invariant "Writes each active index once; title bytes pass through JSON escaping; write failure takes precedence"
 saveTodosToJson let zeroValue immutable Int64 0
@@ -1543,6 +1563,8 @@ loadTodosFromJson uses memoryBufferReader
 loadTodosFromJson uses memoryBufferWriter
 loadTodosFromJson memory heap no
 loadTodosFromJson async no
+loadTodosFromJson unsafe yes
+loadTodosFromJson rationale "Loads fixed-format JSON into caller-owned done and title buffers with explicit capacity checks before raw byte writes"
 loadTodosFromJson purpose "Load active todo objects from todos.json into the heap-backed arrays"
 loadTodosFromJson invariant "Never appends more than todoCapacity todos; accepts only saveTodosToJson's exact object key order"
 loadTodosFromJson let zeroValue immutable Int64 0
@@ -1708,6 +1730,8 @@ appendTodoFromEditBuffer uses memoryBufferReader
 appendTodoFromEditBuffer uses memoryBufferWriter
 appendTodoFromEditBuffer memory heap no
 appendTodoFromEditBuffer async no
+appendTodoFromEditBuffer unsafe yes
+appendTodoFromEditBuffer rationale "Writes one done byte and copies the caller-owned edit buffer into a fixed title slot after todo capacity checks"
 appendTodoFromEditBuffer purpose "Append the edit buffer as a new unfinished todo"
 appendTodoFromEditBuffer invariant "Writes exactly one title slot and one done byte, then returns todoCount plus one"
 appendTodoFromEditBuffer let zeroValue immutable Int64 0
@@ -1793,6 +1817,8 @@ toggleTodoAtSelectedIndex uses memoryBufferReader
 toggleTodoAtSelectedIndex uses memoryBufferWriter
 toggleTodoAtSelectedIndex memory heap no
 toggleTodoAtSelectedIndex async no
+toggleTodoAtSelectedIndex unsafe yes
+toggleTodoAtSelectedIndex rationale "Reads and writes one done byte in the caller-owned done array at a selected index checked by the UI flow"
 toggleTodoAtSelectedIndex purpose "Toggle the done flag for an existing selected todo and return the new done value"
 toggleTodoAtSelectedIndex invariant "The selected done byte becomes zero or one and is returned; titles and todoCount unchanged"
 toggleTodoAtSelectedIndex let zeroValue immutable Int32 0
@@ -1848,6 +1874,8 @@ deleteTodoAtSelectedIndex uses memoryBufferReader
 deleteTodoAtSelectedIndex uses memoryBufferWriter
 deleteTodoAtSelectedIndex memory heap no
 deleteTodoAtSelectedIndex async no
+deleteTodoAtSelectedIndex unsafe yes
+deleteTodoAtSelectedIndex rationale "Shifts fixed-width done and title storage with raw pointer offsets after selected-index and count checks"
 deleteTodoAtSelectedIndex purpose "Delete the selected todo and shift later todo storage left"
 deleteTodoAtSelectedIndex invariant "Later todos shift left by one in both arrays; todoCount is decremented once; returns the new count"
 deleteTodoAtSelectedIndex let zeroValue immutable Int64 0

@@ -19,6 +19,9 @@ appHtmlTemplateLab invariant "The entry op attempts exactly one console.writeLin
 ExitCode is alias
 ExitCode for Int32
 
+ConsoleWriteError is error
+ConsoleWriteError purpose "Console write failure"
+
 stdoutWriter is capability
 stdoutWriter grants write console.stdout
 stdoutWriter purpose "Allow controlled writes to standard output"
@@ -48,4 +51,4 @@ writeDashboardHtml is call
 writeDashboardHtml in main
 writeDashboardHtml invokes console.writeLine
 writeDashboardHtml arg text String dashboardHtml
-writeDashboardHtml catch writeDashboardHtmlError Int32
+writeDashboardHtml catch writeDashboardHtmlError ConsoleWriteError
