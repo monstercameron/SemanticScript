@@ -4719,7 +4719,12 @@ def discover_tests(program: Program) -> dict:
         ent = program.entities[n]
         if ent.kind not in ("operation", "function"):
             continue
-        tags = [r.payload[0] for r in ent.facts("tag") if r.payload]
+        # AQ-4: flatten ALL tag tokens, not just payload[0], so the lane in a
+        # single-row `tag test golden` (payload ["test","golden"]) is seen — and
+        # a two-row `tag test` + `tag golden` works too. Reading only payload[0]
+        # silently collapsed every `tag test <lane>` op into the unit lane, so the
+        # component/integration/e2e/golden lanes were never actually realized.
+        tags = [tok for r in ent.facts("tag") for tok in r.payload]
         if "test" in tags:
             lane = next((t for t in tags if t in TEST_LANES), "unit")
             result.setdefault(lane, []).append(ent.name)
@@ -15141,6 +15146,24 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
                 else:
                     status = "fail"
                 rec = {"name": op, "lane": lane_name, "status": status, "exitCode": code}
+                # AQ-4: the golden lane compares produced stdout to a pinned
+                # snapshot (tests/golden/<op>.out), not just exit 0 - realizing the
+                # golden lane's defining behavior (README ss28.7/ss30.5.1). A run
+                # that passes but whose output diverges from (or lacks) its golden
+                # snapshot fails the golden lane. Opt-in update via
+                # SEMANTICSCRIPT_UPDATE_GOLDEN=1 (the --update-golden surface).
+                if lane_name == "golden" and status == "pass":
+                    import os as _os
+                    _root = getattr(program, "source_root", None) or "."
+                    _gp = _os.path.join(_root, "tests", "golden", op + ".out")
+                    _gm = golden_match(
+                        out, _gp,
+                        update=_os.environ.get("SEMANTICSCRIPT_UPDATE_GOLDEN") == "1")
+                    rec["golden"] = (_gm.get("reason") or
+                                     ("matched" if _gm["ok"] else "snapshot-mismatch"))
+                    if not _gm["ok"]:
+                        status = "fail"
+                        rec["status"] = "fail"
                 if panic is not None:
                     rec["panic"] = panic
                 if status in ("error", "timeout") and err.strip():

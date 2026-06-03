@@ -133,3 +133,55 @@ def test_bin1_webserver_route_table_lowers_static_and_dynamic_routes():
     for route in ("/api/todos", "/api/todos/:id",
                   "/api/todos/:id/complete", "/assets/:filename"):
         assert route in ir, f"route {route!r} was not lowered into the dispatch table"
+
+
+# --- AQ-4: the test runner realizes ALL declared lanes (incl. golden snapshots) ---
+
+_GOLDEN_OP = (
+    "P is project\nP module m\nP target console\nP entry goldenOp\n"
+    "m is module\nm path x\nm exports goldenOp\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ExitCode is alias\nExitCode for Int32\nConsoleWriteError is error\n"
+    "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+    "goldenOp is operation\ngoldenOp tag test golden\ngoldenOp out ExitCode\n"
+    "goldenOp effect write console.stdout\ngoldenOp uses stdoutWriter\n"
+    "goldenOp async no\ngoldenOp purpose \"p\"\ngoldenOp invariant \"i\"\n"
+    "goldenOp let g immutable String \"golden line\"\n"
+    "goldenOp let z immutable ExitCode 0\ngoldenOp do w\ngoldenOp return z\n"
+    "w is call\nw in goldenOp\nw invokes console.writeLine\nw arg text String g\n"
+    "w catch e ConsoleWriteError\n"
+)
+
+
+def test_aq4_lane_detection_reads_all_tag_tokens():
+    # `tag test golden` (one row, two tokens) must land in the golden lane — not
+    # silently collapse to unit by reading only the first token.
+    prog = semanticscript.parse(_GOLDEN_OP)
+    assert semanticscript.discover_tests(prog) == {"golden": ["goldenOp"]}
+    # a plain `tag test` is still a unit test.
+    unit = semanticscript.parse(_GOLDEN_OP.replace(
+        "goldenOp tag test golden", "goldenOp tag test"))
+    assert list(semanticscript.discover_tests(unit).keys()) == ["unit"]
+
+
+def test_aq4_golden_lane_compares_snapshot(tmp_path):
+    pytest.importorskip("llvmlite")
+    import os
+    (tmp_path / "tests" / "golden").mkdir(parents=True)
+    prog = semanticscript.parse(_GOLDEN_OP)
+    prog.source_root = str(tmp_path)
+    gp = tmp_path / "tests" / "golden" / "goldenOp.out"
+
+    def status():
+        return semanticscript.run_tests(prog)["tests"][0]
+
+    # no snapshot -> the golden lane fails (a golden test needs a pinned snapshot).
+    rec = status()
+    assert rec["status"] == "fail" and rec["golden"] == "missing-golden"
+    # matching snapshot -> pass.
+    gp.write_text("golden line\n", newline="\n")
+    rec = status()
+    assert rec["status"] == "pass" and rec["golden"] == "matched"
+    # divergent snapshot -> fail (exit 0 alone is NOT enough for the golden lane).
+    gp.write_text("DIFFERENT\n", newline="\n")
+    rec = status()
+    assert rec["status"] == "fail" and rec["golden"] == "snapshot-mismatch"
