@@ -142,6 +142,19 @@
       ]
     },
     {
+      "name": "ss_platform_time",
+      "comment": "R-027/R-041 shared wall-clock, monotonic-clock, and sleep platform API.",
+      "provides": [
+        "ss_platform_"
+      ],
+      "sources": [
+        "native_platform/ss_platform_time.c"
+      ],
+      "include": [
+        "native_platform"
+      ]
+    },
+    {
       "name": "ss_json",
       "comment": "APP-RUN-6 JSON document runtime (json.*): ss_json.c is a direct-return shim over the legacy native_json out-param API.",
       "provides": [
@@ -218,17 +231,26 @@
       "provides": [
         "ss_net_"
       ],
-      "sources": [
-        "ss_net.c"
-      ],
       "defines": [
         "_CRT_SECURE_NO_WARNINGS"
       ],
       "platforms": {
         "windows": {
+          "sources": [
+            "ss_net.c"
+          ],
           "libs": [
             "ws2_32"
           ]
+        },
+        "linux": {
+          "unsupported": "standard.net's current ss_net.c backend is Winsock-only; use Windows or add the POSIX socket backend from R-062/R-092."
+        },
+        "macos": {
+          "unsupported": "standard.net's current ss_net.c backend is Winsock-only; use Windows or add the POSIX socket backend from R-062/R-092."
+        },
+        "wasi": {
+          "unsupported": "standard.net has no WASI socket backend yet."
         }
       }
     },
@@ -263,10 +285,12 @@
       ],
       "sources": [
         "ss_http.c",
-        "native_http/sem_http_runtime.c"
+        "native_http/sem_http_runtime.c",
+        "native_platform/ss_platform_time.c"
       ],
       "include": [
-        "native_http"
+        "native_http",
+        "native_platform"
       ],
       "defines": [
         "_CRT_SECURE_NO_WARNINGS"
@@ -289,6 +313,7 @@
       "sources": [
         "ss_async.c",
         "native_async/sem_async_runtime.c",
+        "native_platform/ss_platform_time.c",
         "../../third_party/libuv/src/fs-poll.c",
         "../../third_party/libuv/src/idna.c",
         "../../third_party/libuv/src/inet.c",
@@ -300,46 +325,54 @@
         "../../third_party/libuv/src/timer.c",
         "../../third_party/libuv/src/uv-common.c",
         "../../third_party/libuv/src/uv-data-getter-setters.c",
-        "../../third_party/libuv/src/version.c",
-        "../../third_party/libuv/src/win/async.c",
-        "../../third_party/libuv/src/win/core.c",
-        "../../third_party/libuv/src/win/detect-wakeup.c",
-        "../../third_party/libuv/src/win/dl.c",
-        "../../third_party/libuv/src/win/error.c",
-        "../../third_party/libuv/src/win/fs.c",
-        "../../third_party/libuv/src/win/fs-event.c",
-        "../../third_party/libuv/src/win/getaddrinfo.c",
-        "../../third_party/libuv/src/win/getnameinfo.c",
-        "../../third_party/libuv/src/win/handle.c",
-        "../../third_party/libuv/src/win/loop-watcher.c",
-        "../../third_party/libuv/src/win/pipe.c",
-        "../../third_party/libuv/src/win/thread.c",
-        "../../third_party/libuv/src/win/poll.c",
-        "../../third_party/libuv/src/win/process.c",
-        "../../third_party/libuv/src/win/process-stdio.c",
-        "../../third_party/libuv/src/win/signal.c",
-        "../../third_party/libuv/src/win/snprintf.c",
-        "../../third_party/libuv/src/win/stream.c",
-        "../../third_party/libuv/src/win/tcp.c",
-        "../../third_party/libuv/src/win/tty.c",
-        "../../third_party/libuv/src/win/udp.c",
-        "../../third_party/libuv/src/win/util.c",
-        "../../third_party/libuv/src/win/winapi.c",
-        "../../third_party/libuv/src/win/winsock.c"
+        "../../third_party/libuv/src/version.c"
       ],
       "include": [
         "../../third_party/libuv/include",
         "../../third_party/libuv/src",
-        "native_async"
+        "native_async",
+        "native_platform"
       ],
       "defines": [
-        "SEM_ASYNC_WITH_LIBUV",
-        "WIN32_LEAN_AND_MEAN",
-        "_WIN32_WINNT=0x0A00",
-        "_CRT_SECURE_NO_WARNINGS"
+        "SEM_ASYNC_WITH_LIBUV"
       ],
       "platforms": {
         "windows": {
+          "sources": [
+            "../../third_party/libuv/src/win/async.c",
+            "../../third_party/libuv/src/win/core.c",
+            "../../third_party/libuv/src/win/detect-wakeup.c",
+            "../../third_party/libuv/src/win/dl.c",
+            "../../third_party/libuv/src/win/error.c",
+            "../../third_party/libuv/src/win/fs.c",
+            "../../third_party/libuv/src/win/fs-event.c",
+            "../../third_party/libuv/src/win/getaddrinfo.c",
+            "../../third_party/libuv/src/win/getnameinfo.c",
+            "../../third_party/libuv/src/win/handle.c",
+            "../../third_party/libuv/src/win/loop-watcher.c",
+            "../../third_party/libuv/src/win/pipe.c",
+            "../../third_party/libuv/src/win/thread.c",
+            "../../third_party/libuv/src/win/poll.c",
+            "../../third_party/libuv/src/win/process.c",
+            "../../third_party/libuv/src/win/process-stdio.c",
+            "../../third_party/libuv/src/win/signal.c",
+            "../../third_party/libuv/src/win/snprintf.c",
+            "../../third_party/libuv/src/win/stream.c",
+            "../../third_party/libuv/src/win/tcp.c",
+            "../../third_party/libuv/src/win/tty.c",
+            "../../third_party/libuv/src/win/udp.c",
+            "../../third_party/libuv/src/win/util.c",
+            "../../third_party/libuv/src/win/winapi.c",
+            "../../third_party/libuv/src/win/winsock.c"
+          ],
+          "include": [
+            "../../third_party/libuv/src/win"
+          ],
+          "defines": [
+            "WIN32_LEAN_AND_MEAN",
+            "_WIN32_WINNT=0x0A00",
+            "_CRT_SECURE_NO_WARNINGS"
+          ],
           "libs": [
             "psapi",
             "advapi32",
@@ -354,6 +387,40 @@
           ]
         },
         "linux": {
+          "sources": [
+            "../../third_party/libuv/src/unix/async.c",
+            "../../third_party/libuv/src/unix/core.c",
+            "../../third_party/libuv/src/unix/dl.c",
+            "../../third_party/libuv/src/unix/fs.c",
+            "../../third_party/libuv/src/unix/getaddrinfo.c",
+            "../../third_party/libuv/src/unix/getnameinfo.c",
+            "../../third_party/libuv/src/unix/loop-watcher.c",
+            "../../third_party/libuv/src/unix/loop.c",
+            "../../third_party/libuv/src/unix/pipe.c",
+            "../../third_party/libuv/src/unix/poll.c",
+            "../../third_party/libuv/src/unix/process.c",
+            "../../third_party/libuv/src/unix/random-devurandom.c",
+            "../../third_party/libuv/src/unix/signal.c",
+            "../../third_party/libuv/src/unix/stream.c",
+            "../../third_party/libuv/src/unix/tcp.c",
+            "../../third_party/libuv/src/unix/thread.c",
+            "../../third_party/libuv/src/unix/tty.c",
+            "../../third_party/libuv/src/unix/udp.c",
+            "../../third_party/libuv/src/unix/linux.c",
+            "../../third_party/libuv/src/unix/procfs-exepath.c",
+            "../../third_party/libuv/src/unix/proctitle.c",
+            "../../third_party/libuv/src/unix/random-getrandom.c",
+            "../../third_party/libuv/src/unix/random-sysctl-linux.c"
+          ],
+          "include": [
+            "../../third_party/libuv/src/unix"
+          ],
+          "defines": [
+            "_FILE_OFFSET_BITS=64",
+            "_LARGEFILE_SOURCE",
+            "_GNU_SOURCE",
+            "_POSIX_C_SOURCE=200112"
+          ],
           "libs": [
             "pthread",
             "dl",
@@ -361,9 +428,46 @@
           ]
         },
         "macos": {
+          "sources": [
+            "../../third_party/libuv/src/unix/async.c",
+            "../../third_party/libuv/src/unix/core.c",
+            "../../third_party/libuv/src/unix/dl.c",
+            "../../third_party/libuv/src/unix/fs.c",
+            "../../third_party/libuv/src/unix/getaddrinfo.c",
+            "../../third_party/libuv/src/unix/getnameinfo.c",
+            "../../third_party/libuv/src/unix/loop-watcher.c",
+            "../../third_party/libuv/src/unix/loop.c",
+            "../../third_party/libuv/src/unix/pipe.c",
+            "../../third_party/libuv/src/unix/poll.c",
+            "../../third_party/libuv/src/unix/process.c",
+            "../../third_party/libuv/src/unix/random-devurandom.c",
+            "../../third_party/libuv/src/unix/signal.c",
+            "../../third_party/libuv/src/unix/stream.c",
+            "../../third_party/libuv/src/unix/tcp.c",
+            "../../third_party/libuv/src/unix/thread.c",
+            "../../third_party/libuv/src/unix/tty.c",
+            "../../third_party/libuv/src/unix/udp.c",
+            "../../third_party/libuv/src/unix/bsd-ifaddrs.c",
+            "../../third_party/libuv/src/unix/darwin-proctitle.c",
+            "../../third_party/libuv/src/unix/darwin.c",
+            "../../third_party/libuv/src/unix/fsevents.c",
+            "../../third_party/libuv/src/unix/kqueue.c",
+            "../../third_party/libuv/src/unix/proctitle.c",
+            "../../third_party/libuv/src/unix/random-getentropy.c"
+          ],
+          "include": [
+            "../../third_party/libuv/src/unix"
+          ],
+          "defines": [
+            "_FILE_OFFSET_BITS=64",
+            "_LARGEFILE_SOURCE"
+          ],
           "libs": [
             "pthread"
           ]
+        },
+        "wasi": {
+          "unsupported": "standard.async's libuv runtime has no WASI backend in this manifest."
         }
       }
     },
@@ -373,20 +477,29 @@
       "provides": [
         "ss_gui_"
       ],
-      "sources": [
-        "ss_gui.c",
-        "native_win32_gui/sem_win32_gui_runtime.c"
-      ],
-      "include": [
-        "native_win32_gui"
-      ],
       "platforms": {
         "windows": {
+          "sources": [
+            "ss_gui.c",
+            "native_win32_gui/sem_win32_gui_runtime.c"
+          ],
+          "include": [
+            "native_win32_gui"
+          ],
           "libs": [
             "user32",
             "gdi32",
             "comctl32"
           ]
+        },
+        "linux": {
+          "unsupported": "standard.gui currently has only the Win32 runtime backend."
+        },
+        "macos": {
+          "unsupported": "standard.gui currently has only the Win32 runtime backend."
+        },
+        "wasi": {
+          "unsupported": "standard.gui has no WASI GUI backend."
         }
       }
     }
