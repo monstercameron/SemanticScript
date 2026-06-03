@@ -91,36 +91,42 @@ app0 in main
 app0 invokes list.append
 app0 arg list ListHandle theList
 app0 arg value Int64 v10
+app0 discards "append status ignored in collection example"
 
 app1 is call
 app1 in main
 app1 invokes list.append
 app1 arg list ListHandle theList
 app1 arg value Int64 v20
+app1 discards "append status ignored in collection example"
 
 app2 is call
 app2 in main
 app2 invokes list.append
 app2 arg list ListHandle theList
 app2 arg value Int64 v30
+app2 discards "append status ignored in collection example"
 
 app3 is call
 app3 in main
 app3 invokes list.append
 app3 arg list ListHandle theList
 app3 arg value Int64 v40
+app3 discards "append status ignored in collection example"
 
 app4 is call
 app4 in main
 app4 invokes list.append
 app4 arg list ListHandle theList
 app4 arg value Int64 v50
+app4 discards "append status ignored in collection example"
 
 app5 is call
 app5 in main
 app5 invokes list.append
 app5 arg list ListHandle theList
 app5 arg value Int64 v60
+app5 discards "append status ignored in collection example"
 
 lenCall is call
 lenCall in main
@@ -189,6 +195,7 @@ rel is call
 rel in main
 rel invokes list.release
 rel arg list ListHandle theList
+rel discards "release status ignored during cleanup"
 
 harnessReport is call
 harnessReport in main

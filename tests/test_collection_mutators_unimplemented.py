@@ -1,32 +1,21 @@
 #!/usr/bin/env python3
-"""Tripwire: collection mutators that lint accepts but the runtime silently drops.
+"""R-061 guard: unimplemented collection mutators fail closed.
 
-Six collection intrinsics — list.set, list.insert, list.remove, list.clear,
-map.remove, map.clear — appear in the iteration-invalidation mutator set
-(semanticscript.py `_COLLECTION_MUTATORS`) so a program that calls them passes
-`check` clean. But none of them is in its module's `.semsig` and none is lowered,
-so at runtime they are NO-OPS: a `map.remove` leaves the entry in place, a
-`map.clear` leaves the map full. The program looks green up to the point an
-assertion actually observes the (non-)mutation. This is the DX-11 species —
-silently wrong with no diagnostic — applied to collections.
-
-The test below encodes the CORRECT behavior (remove drops the size by one) and is
-marked xfail: today it fails because remove no-ops, so the suite stays green. When
-the runtime gains a real `map.remove` (or a `check`-time SS#### diagnostic rejects
-the unimplemented intrinsic), this XPASSes / changes shape and flags that the mark
-should be removed and the example promoted into the corpus.
+The runnable collection surface is list.create/append/length/get/release and
+map.create/put/get/size/release. Mutator names kept for iterator-invalidation
+analysis (list.set/insert/remove/clear and map.remove/clear) must not pass
+`check` as runnable no-ops. They currently have no modeled signature, so SS1198
+rejects them before lowering. If a real mutator implementation lands later, this
+test should be replaced by a corpus example that proves the mutation behavior.
 """
 import importlib
-import os
 import subprocess
 import sys
-
-import pytest
 
 semanticscript = importlib.import_module("semanticscript")
 SEMANTICSCRIPT = semanticscript.__file__
 
-# minimal: two puts -> size 2, remove one -> size SHOULD be 1.
+
 _PROGRAM = """\
 P is project
 P module m
@@ -74,12 +63,14 @@ putA invokes map.put
 putA arg map MapHandle theMap
 putA arg key String kA
 putA arg value Int64 v1
+putA discards "put status ignored in mutator probe"
 putB is call
 putB in main
 putB invokes map.put
 putB arg map MapHandle theMap
 putB arg key String kB
 putB arg value Int64 v2
+putB discards "put status ignored in mutator probe"
 rm is call
 rm in main
 rm invokes map.remove
@@ -103,27 +94,15 @@ rep out code ExitCode
 """
 
 
-def test_map_remove_decrements_size_checks_clean(tmp_path):
-    # the gap is specifically that this CHECKS clean — lint does not warn that
-    # map.remove will no-op. That clean check is the trap.
+def test_map_remove_unimplemented_intrinsic_rejected_at_check(tmp_path):
     p = tmp_path / "rm.sem"
     p.write_text(_PROGRAM, encoding="utf-8")
-    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "check", str(p), "--json"],
-                          capture_output=True, text=True, encoding="utf-8")
-    assert proc.returncode in (0, 0), proc.stderr
-    assert '"status"' in proc.stdout
-
-
-@pytest.mark.xfail(reason="map.remove has no runtime lowering — silently no-ops; "
-                          "implement it (or emit a check-time diagnostic) then "
-                          "drop this mark and promote to a corpus example",
-                   strict=False)
-def test_map_remove_actually_removes(tmp_path):
-    p = tmp_path / "rm.sem"
-    p.write_text(_PROGRAM, encoding="utf-8")
-    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", str(p)],
-                          capture_output=True, text=True, encoding="utf-8")
-    assert proc.returncode == 0, proc.stderr
-    # CORRECT behavior: removing one of two keys leaves size 1, all green.
-    assert "PASS" in proc.stdout and "FAIL" not in proc.stdout, proc.stdout
-    assert "1 passed, 0 failed" in proc.stdout, proc.stdout
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "check", str(p), "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert proc.returncode != 0
+    assert '"SS1198"' in proc.stdout
+    assert "map.remove" in proc.stdout

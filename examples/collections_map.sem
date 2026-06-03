@@ -95,6 +95,7 @@ putAlpha invokes map.put
 putAlpha arg map MapHandle theMap
 putAlpha arg key String kAlpha
 putAlpha arg value Int64 n1
+putAlpha discards "put status ignored in collection example"
 
 putBeta is call
 putBeta in main
@@ -102,6 +103,7 @@ putBeta invokes map.put
 putBeta arg map MapHandle theMap
 putBeta arg key String kBeta
 putBeta arg value Int64 n2
+putBeta discards "put status ignored in collection example"
 
 putGamma is call
 putGamma in main
@@ -109,6 +111,7 @@ putGamma invokes map.put
 putGamma arg map MapHandle theMap
 putGamma arg key String kGamma
 putGamma arg value Int64 n3
+putGamma discards "put status ignored in collection example"
 
 sizeCall is call
 sizeCall in main
@@ -143,6 +146,7 @@ replaceBeta invokes map.put
 replaceBeta arg map MapHandle theMap
 replaceBeta arg key String kBeta
 replaceBeta arg value Int64 n20
+replaceBeta discards "put status ignored in collection example"
 
 getBeta2 is call
 getBeta2 in main
@@ -211,6 +215,7 @@ rel is call
 rel in main
 rel invokes map.release
 rel arg map MapHandle theMap
+rel discards "release status ignored during cleanup"
 
 harnessReport is call
 harnessReport in main
