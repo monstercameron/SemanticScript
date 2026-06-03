@@ -12235,12 +12235,43 @@ class EavCodegen:
             self._runtime[name] = fn
         return fn
 
+    def _json_create_document_policy_args(self, call) -> list:
+        i64 = ir.IntType(64)
+        values = {kind: 0 for kind in _REQUIRED_DECODE_LIMITS}
+        for row in call.facts("limit"):
+            if not row.payload or row.payload[0] not in values:
+                continue
+            if len(row.payload) < 2:
+                raise EavError(
+                    f"call {call.name!r} `limit {row.payload[0]}` has no value "
+                    f"(README ss16, R-077)",
+                    row.line, code="SS3077")
+            try:
+                parsed = _parse_int_literal_value(row.payload[1])
+            except ValueError:
+                raise EavError(
+                    f"call {call.name!r} `limit {row.payload[0]}` must be an "
+                    f"integer literal for runtime decode enforcement "
+                    f"(README ss16, R-077)",
+                    row.line, code="SS3077")
+            if parsed < 0:
+                raise EavError(
+                    f"call {call.name!r} `limit {row.payload[0]}` must not be "
+                    f"negative (README ss16, R-077)",
+                    row.line, code="SS3077")
+            values[row.payload[0]] = parsed
+        return [
+            ir.Constant(i64, values["maximumBytes"]),
+            ir.Constant(i64, values["maxDepth"]),
+            ir.Constant(i64, values["maxElements"]),
+        ]
+
     def _emit_call(self, call, builder, sym, let_mut) -> None:
         try:
             return self._emit_call_impl(call, builder, sym, let_mut)
         except EavError:
             raise
-        except (RuntimeError, TypeError, ValueError) as exc:
+        except Exception as exc:  # BIN-2: any lowering error -> coded SS5001
             target = "<unknown>"
             target_row = call.fact("invokes")
             if target_row and target_row.payload:
@@ -13724,7 +13755,26 @@ def lower_to_llvm(program: Program, platform: Optional[str] = None) -> ir.Module
     None) — it sets the module triple and applies `forPlatform` filtering."""
     _require_llvmlite()  # R-116: clean error if the backend is unavailable
     plat = _resolve_build_platform(program, platform)
-    return EavCodegen(program, plat).generate()
+    try:
+        return EavCodegen(program, plat).generate()
+    except EavError:
+        raise  # already a coded diagnostic (e.g. SS5001 from _emit_call)
+    except Exception as exc:
+        # BIN-2 (check supseteq codegen): a check-clean program must NEVER surface
+        # a raw backend traceback. The per-call wrapper attributes call failures;
+        # this top-level net catches every OTHER lowering site (return/branch/
+        # storage/webServer-entry/module-globals) and every exception type,
+        # turning an unexpected lowering failure into a coded SS5001 instead of a
+        # crash. Such a case is a check-supseteq-codegen soundness gap: the proper
+        # fix is a check-time diagnostic (as SS1198/SS1205 do), never an uncaught
+        # exception.
+        raise EavError(
+            f"codegen failed lowering this program to LLVM IR "
+            f"({type(exc).__name__}: {exc}). A program that passes `check` "
+            f"reaching this is a check-supseteq-codegen soundness gap - please "
+            f"report it; it should be caught at check (README ss29 #10)",
+            code="SS5001",
+        ) from exc
 
 
 _NATIVE_INIT_DONE = False

@@ -70,3 +70,44 @@ def test_aq2_genuinely_missing_capability_still_uncovered():
         semanticscript.lint(semanticscript.parse(
             _AQ2.replace("{USES}", "authMod.noSuchCap")))
     assert exc.value.code == "SS1708"
+
+
+# --- BIN-2: check ⊇ codegen — no program reaches a RAW codegen exception ---
+
+def test_bin2_unexpected_codegen_exception_becomes_coded_ss5001():
+    # Any unexpected backend failure (any site, any exception type — here a
+    # KeyError, which the old narrow wrapper did NOT catch) must surface as a
+    # coded SS5001, never a raw traceback.
+    prog = semanticscript.parse(open("examples/hello_world.sem", encoding="utf-8").read())
+    orig = semanticscript.EavCodegen.generate
+    semanticscript.EavCodegen.generate = lambda self: (_ for _ in ()).throw(
+        KeyError("synthetic backend blowup"))
+    try:
+        with pytest.raises(semanticscript.EavError) as exc:
+            semanticscript.lower_to_llvm(prog)
+        assert exc.value.code == "SS5001"
+        assert "KeyError" in str(exc.value)
+    finally:
+        semanticscript.EavCodegen.generate = orig
+
+
+def test_bin2_check_clean_console_examples_all_lower():
+    # The corpus soundness assertion: every check-clean console-target example
+    # lowers without raising. A check≠codegen regression (a program that passes
+    # check but cannot lower) turns this red.
+    import glob
+    lowered = 0
+    for path in sorted(glob.glob("examples/*.sem")):
+        src = open(path, encoding="utf-8").read()
+        try:
+            prog = semanticscript.parse(src)
+        except semanticscript.EavError:
+            continue  # not parseable (negative fixture) — out of scope
+        if semanticscript._program_target(prog) != "console":
+            continue
+        errs = [d for d in semanticscript.lint(prog) if d.severity == "error"]
+        if errs:
+            continue  # not check-clean — check is allowed to reject it
+        semanticscript.lower_to_llvm(prog)  # must not raise
+        lowered += 1
+    assert lowered >= 50, f"expected to lower many console examples, got {lowered}"
