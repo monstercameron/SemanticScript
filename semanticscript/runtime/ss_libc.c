@@ -142,18 +142,73 @@ SS_EXPORT long long ss_c_atoll(const char *text) {
     return *endp == '\0' ? value : 0;  /* trailing junk -> malformed */
 }
 
+/* R-267: scan a printf format for a `%n` conversion — the ONLY directive that
+ * writes through a pointer argument, i.e. the arbitrary-write primitive of an
+ * uncontrolled-format-string attack. `%%` is a literal percent and is skipped;
+ * flags/width/precision/length modifiers between `%` and the conversion are
+ * stepped over so `%-10.5n` is still caught. Returns 1 if the format must be
+ * refused. (%s/%x/%p info-leak reads cannot be distinguished from legitimate
+ * formatting, so the contract is: these shims are LITERAL-format-only — the EAV
+ * `c.printf` binding enforces a constant format via SS3088, and dynamic strings
+ * must go through ss_c_print_str, the %s-safe path below. This is the C-layer
+ * last line of defense for a bypassed/forged caller.) */
+static int ss_c_format_has_percent_n(const char *format) {
+    if (format == NULL) {
+        return 0;
+    }
+    for (size_t i = 0; format[i] != '\0'; ++i) {
+        if (format[i] != '%') {
+            continue;
+        }
+        ++i;
+        if (format[i] == '\0') {
+            break;            /* trailing '%' */
+        }
+        if (format[i] == '%') {
+            continue;         /* '%%' -> literal percent, not a conversion */
+        }
+        while (format[i] != '\0'
+               && strchr("-+ #0'.*123456789hlLjztq", format[i]) != NULL) {
+            ++i;
+        }
+        if (format[i] == '\0') {
+            break;
+        }
+        if (format[i] == 'n') {
+            return 1;         /* the memory-WRITE directive */
+        }
+    }
+    return 0;
+}
+
+/* R-267: print a dynamic string as DATA, never as a printf format. This is the
+ * %s-safe path for app/user-derived text — directives like %s/%x/%n inside
+ * `text` are emitted literally, not interpreted. Prefer this over c.printf for
+ * any non-literal string. Returns a non-negative count on success, -1 on a NULL
+ * input or write error. */
+SS_EXPORT int ss_c_print_str(const char *text) {
+    if (text == NULL) {
+        return -1;
+    }
+    int result = fputs(text, stdout);
+    return result < 0 ? -1 : result;
+}
+
 /* Variadic formatters backing `c.snprintf`/`c.printf`/`c.fprintf`. Buffers and
  * streams cross as OpaquePointer (Int64). These shims exist because the bare
  * snprintf/printf/fprintf symbols are header inlines on Windows UCRT with no
  * exported symbol, so the JIT cannot relocate a direct call; each forwards to
- * its v*-counterpart, which IS a real exported symbol. */
+ * its v*-counterpart, which IS a real exported symbol. The `format` argument is
+ * LITERAL-format-only (R-267): a `%n`-bearing format is refused outright, and
+ * dynamic strings belong in ss_c_print_str, not the format position. */
 SS_EXPORT int ss_c_snprintf(long long buffer, long long size,
                             const char *format, ...) {
     /* R-187: do not cast a negative signed size to huge size_t, and do not let
      * libc dereference a NULL output buffer/format string. A zero-size write is
      * treated as a safe no-op/error sentinel for this raw shim rather than
      * forwarding a boundary case whose portability depends on libc details. */
-    if (buffer == 0 || size <= 0 || format == NULL) {
+    if (buffer == 0 || size <= 0 || format == NULL
+        || ss_c_format_has_percent_n(format)) {   /* R-267 */
         return -1;
     }
     va_list args;
@@ -164,6 +219,9 @@ SS_EXPORT int ss_c_snprintf(long long buffer, long long size,
 }
 
 SS_EXPORT int ss_c_printf(const char *format, ...) {
+    if (format == NULL || ss_c_format_has_percent_n(format)) {   /* R-267 */
+        return -1;
+    }
     va_list args;
     va_start(args, format);
     int result = vprintf(format, args);
@@ -177,6 +235,9 @@ SS_EXPORT int ss_c_fprintf(long long stream, const char *format, ...) {
      * a use-after-fclose would otherwise touch the freed FILE object. Live
      * c.fopen handles and the standard streams are allowed. */
     if (!ss_c_stream_usable(file)) {
+        return -1;
+    }
+    if (format == NULL || ss_c_format_has_percent_n(format)) {   /* R-267 */
         return -1;
     }
     va_list args;

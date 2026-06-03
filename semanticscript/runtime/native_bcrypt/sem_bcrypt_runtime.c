@@ -102,6 +102,35 @@ int ss_bcrypt_hash(
     return SS_BCRYPT_OK;
 }
 
+/* R-256: production-floor-enforcing hash. A cost below the enforced safe floor
+ * is refused (SS_BCRYPT_ERR_WEAK_COST) BEFORE any hashing, so a defaulted /
+ * uninitialized / dynamically-computed weak cost cannot silently produce a
+ * trivially brute-forceable credential. ss_bcrypt_hash itself still accepts the
+ * full format range (4..31) for verify-side re-derivation and fast tests. */
+int ss_bcrypt_hash_checked(
+    const char *plaintext_password,
+    int cost_factor,
+    char *out_hash_buffer,
+    int out_hash_buffer_capacity
+) {
+    if (cost_factor < SS_BCRYPT_SAFE_MIN_COST) {
+        return SS_BCRYPT_ERR_WEAK_COST;
+    }
+    return ss_bcrypt_hash(plaintext_password, cost_factor,
+                          out_hash_buffer, out_hash_buffer_capacity);
+}
+
+/* R-256: no-cost-arg safe default — there is no cost parameter to omit or
+ * mis-set, so the result is always at least the recommended production cost. */
+int ss_bcrypt_hash_default(
+    const char *plaintext_password,
+    char *out_hash_buffer,
+    int out_hash_buffer_capacity
+) {
+    return ss_bcrypt_hash(plaintext_password, SS_BCRYPT_DEFAULT_COST,
+                          out_hash_buffer, out_hash_buffer_capacity);
+}
+
 /* ----- bcrypt verify -----
  *
  * Strategy: hash the plaintext using the stored hash AS the salt
@@ -352,6 +381,12 @@ long long ss_bcrypt_hash_owned(const char *plaintext_password, int cost_factor) 
         return 0;
     }
     return (long long)(intptr_t)buffer;
+}
+
+/* R-256: owned no-cost-arg safe default — same allocation contract as
+ * ss_bcrypt_hash_owned but pinned to SS_BCRYPT_DEFAULT_COST. */
+long long ss_bcrypt_hash_owned_default(const char *plaintext_password) {
+    return ss_bcrypt_hash_owned(plaintext_password, SS_BCRYPT_DEFAULT_COST);
 }
 
 long long ss_bcrypt_session_token_owned(void) {

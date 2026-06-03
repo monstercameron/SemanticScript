@@ -56,7 +56,8 @@ enum {
     SS_BCRYPT_ERR_CONFIG      = -1,  /* NULL inputs, undersized buffers, out-of-range cost */
     SS_BCRYPT_ERR_HASH        = -2,  /* crypt_blowfish returned NULL */
     SS_BCRYPT_ERR_RANDOM      = -3,  /* platform CSPRNG failed */
-    SS_BCRYPT_ERR_MALFORMED   = -4   /* verify saw a stored hash that isn't a valid bcrypt setting */
+    SS_BCRYPT_ERR_MALFORMED   = -4,  /* verify saw a stored hash that isn't a valid bcrypt setting */
+    SS_BCRYPT_ERR_WEAK_COST   = -5   /* R-256: cost below the enforced production floor (SS_BCRYPT_SAFE_MIN_COST) */
 };
 
 /*
@@ -75,9 +76,40 @@ enum {
 #define SS_BCRYPT_MIN_COST 4
 #define SS_BCRYPT_MAX_COST 31
 
+/*
+ * R-256: the enforced PRODUCTION floor and the no-cost-arg default.
+ * SS_BCRYPT_MIN_COST (4) is only the bcrypt FORMAT minimum (~hundreds of µs,
+ * trivially brute-forceable) — `ss_bcrypt_hash` keeps accepting that range so
+ * fast tests and verify-side re-derivation still work. But a caller that omits
+ * or defaults the cost must not silently get a weak hash. The *_checked entry
+ * point refuses any cost below SS_BCRYPT_SAFE_MIN_COST, and the *_default entry
+ * points hash at SS_BCRYPT_DEFAULT_COST with no cost argument to mis-set.
+ * Production credential storage should call the _checked/_default surface.
+ */
+#define SS_BCRYPT_SAFE_MIN_COST 12
+#define SS_BCRYPT_DEFAULT_COST  12
+
 int ss_bcrypt_hash(
     const char *plaintext_password,
     int cost_factor,
+    char *out_hash_buffer,
+    int out_hash_buffer_capacity
+);
+
+/* R-256: production-floor-enforcing hash. Identical to ss_bcrypt_hash except a
+ * cost below SS_BCRYPT_SAFE_MIN_COST returns SS_BCRYPT_ERR_WEAK_COST instead of
+ * silently producing a weak hash. */
+int ss_bcrypt_hash_checked(
+    const char *plaintext_password,
+    int cost_factor,
+    char *out_hash_buffer,
+    int out_hash_buffer_capacity
+);
+
+/* R-256: no-cost-arg safe default. Hashes at SS_BCRYPT_DEFAULT_COST so a caller
+ * cannot omit or mis-default the cost into a weak value. */
+int ss_bcrypt_hash_default(
+    const char *plaintext_password,
     char *out_hash_buffer,
     int out_hash_buffer_capacity
 );
@@ -115,6 +147,8 @@ int ss_issue_csrf_token(
  * buffer, so an overflow is structurally impossible) and return an OpaquePointer
  * (i64) the caller frees with ss_bcrypt_free_string. Returns 0 on failure. */
 long long ss_bcrypt_hash_owned(const char *plaintext_password, int cost_factor);
+/* R-256: owned no-cost-arg safe default — hashes at SS_BCRYPT_DEFAULT_COST. */
+long long ss_bcrypt_hash_owned_default(const char *plaintext_password);
 long long ss_bcrypt_session_token_owned(void);
 void ss_bcrypt_free_string(long long pointer);
 
