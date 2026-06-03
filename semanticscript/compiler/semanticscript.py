@@ -1630,6 +1630,11 @@ def _semsig_signatures_for_module(module: str) -> dict:
         if outr and outr.payload:
             out_type = outr.payload[-1]                 # `out [slot] <Type>`
             out_slot = outr.payload[0] if len(outr.payload) >= 2 else None
+        catchr = ent.fact("catch")
+        catch_type = catchr.payload[-1] if catchr and catchr.payload else None
+        optional_slots = [
+            r.payload[0] for r in ent.facts("optionalSlot") if r.payload
+        ]
 
         def _txt(name):
             r = ent.fact(name)
@@ -1641,9 +1646,11 @@ def _semsig_signatures_for_module(module: str) -> dict:
             "args": args,
             "outSlot": out_slot,
             "out": out_type,
+            "catch": catch_type,
             "async": (arow.payload[0] if arow and arow.payload else None),
             "purpose": _txt("purpose"),
             "risk": _txt("risk"),
+            "optionalSlots": optional_slots,
         }
     _SEMSIG_SIG_CACHE[module] = result
     return result
@@ -1765,6 +1772,56 @@ def _synthetic_codegen_signatures() -> dict:
                               ("value", "Int64")],
         purpose="Store the low byte of value at an opaque pointer plus byte offset",
         risk="Traps on null pointer")
+    add("c.terminalReadKey", [], "Int32", "keyCode",
+        purpose="Read one terminal key code; EOF maps to the Escape key")
+    add("c.putchar", [("character", "Int32")], "Int32", "status",
+        purpose="Write one byte/character to stdout")
+    add("c.puts", [("text", "String")], "Int32", "status",
+        purpose="Write a string plus newline to stdout")
+    add("c.printf", [("format", "String")], "Int32", "written",
+        purpose="Formatted stdout write; format must be constant",
+        variadic=True,
+        variadicNote="Additional value slots are matched by the printf format string.")
+    add("c.fprintf", [("stream", "FileHandle"), ("format", "String")],
+        "Int32", "written",
+        purpose="Formatted stream write; format must be constant",
+        variadic=True,
+        variadicNote="Additional value slots are matched by the printf format string.")
+    add("c.snprintf", [("buffer", "OpaquePointer"), ("size", "ByteCount"),
+                       ("format", "String")],
+        "Int32", "written",
+        purpose="Formatted bounded buffer write; format must be constant",
+        variadic=True,
+        variadicNote="Additional value slots are matched by the printf format string.")
+    add("c.fflush", [("stream", "FileHandle")], "Int32", "status",
+        purpose="Flush a live stream handle, or all streams when stream is null")
+    add("c.fopen", [("filename", "String"), ("mode", "String")],
+        "FileHandle", "stream",
+        purpose="Open a file stream tracked by the libc liveness registry")
+    add("c.fclose", [("stream", "FileHandle")], "Int32", "status",
+        purpose="Close a live file stream handle")
+    add("c.fgets", [("buffer", "OpaquePointer"), ("count", "Int32"),
+                    ("stream", "FileHandle")],
+        "OpaquePointer", "result",
+        purpose="Read one line into a caller-provided buffer from a live stream")
+    add("c.malloc", [("size", "ByteCount")], "OpaquePointer", "pointer",
+        purpose="Allocate a runtime-tracked C heap block")
+    add("c.free", [("pointer", "OpaquePointer")],
+        purpose="Free a live c.malloc block; stale/foreign pointers fail closed")
+    add("c.memmove", [("dest", "OpaquePointer"), ("src", "OpaquePointer"),
+                      ("count", "ByteCount")],
+        "OpaquePointer", "dest",
+        purpose="Move bytes between non-null raw buffers")
+    add("c.memset", [("ptr", "OpaquePointer"), ("value", "Int64"),
+                     ("num", "ByteCount")],
+        purpose="Set raw buffer bytes")
+    add("c.strcmp", [("left", "String"), ("right", "String")],
+        "Int32", "ordering",
+        purpose="Compare two NUL-terminated strings")
+    add("c.strlen", [("text", "String")], "ByteCount", "length",
+        purpose="Return the byte length of a NUL-terminated string")
+    add("c.atoll", [("text", "String")], "Int64", "value",
+        purpose="Parse a decimal Int64 using the strict libc shim")
     add("http.requestMethod", [("request", "HttpRequest")], "String", "method",
         purpose="Read the HTTP request method from a live request")
     add("http.requestPath", [("request", "HttpRequest")], "String", "path",
@@ -1946,9 +2003,25 @@ def _builtin_target_signature(target: str):
            or _synthetic_codegen_signatures().get(target))
     if sig is not None:
         return sig
+    if module == "convert":
+        for prefix, mode in (
+                ("convert.wrapping.to", "wrapping"),
+                ("convert.saturating.to", "saturating"),
+                ("convert.to", "checked")):
+            if target.startswith(prefix) and target[len(prefix):]:
+                dst = target[len(prefix):]
+                if dst.startswith("."):
+                    dst = dst[1:2].upper() + dst[2:]
+                if dst in _INT_RANGES or dst in _FLOAT_TYPE_NAMES or dst == "String":
+                    return _make_builtin_signature(
+                        target,
+                        [("value", "Numeric")],
+                        dst,
+                        "converted",
+                        purpose=f"{mode.capitalize()} conversion to {dst}")
     if module == "compare":
         suffix = target[len("compare."):]
-        cmp_ops = globals().get("_CMP_OPS", {})
+        cmp_ops = _COMPARE_OPS
         for op in sorted(cmp_ops, key=len, reverse=True):
             if suffix.startswith(op) and suffix[len(op):]:
                 typ = suffix[len(op):]
@@ -2836,6 +2909,27 @@ SECURITY_COVERAGE = [
     {"vuln": "Secret disclosure (logs/transcripts/source)", "asset": "confidentiality",
      "todo": "X-072", "code": "SS3072", "status": "covered",
      "note": "secret value to an observable sink, or a hardcoded secret literal, is rejected"},
+    {"vuln": "Weak password hashing cost", "asset": "confidentiality",
+     "todo": "WS2-086", "code": "SS3086", "status": "covered",
+     "note": "bcrypt password hashes below the safe cost floor are rejected"},
+    {"vuln": "Raw bcrypt buffer/count misuse", "asset": "memory",
+     "todo": "R-202", "code": "SS3089", "status": "covered",
+     "note": "app source must use owned-output bcrypt helpers, not raw pointer/count buffers"},
+    {"vuln": "JSON scratch buffer/count misuse", "asset": "memory",
+     "todo": "R-203", "code": "SS3090", "status": "covered",
+     "note": "JSON scratch pointers must be same-operation malloc outputs with matching capacities"},
+    {"vuln": "HTTP byte response pointer/length misuse", "asset": "memory",
+     "todo": "R-205", "code": "SS3097", "status": "covered",
+     "note": "http.responseBytes must use a proven request/multipart byte slice or owned allocation"},
+    {"vuln": "Raw pointer arithmetic in app source", "asset": "memory",
+     "todo": "R-188", "code": "SS3098", "status": "covered",
+     "note": "pointer.offset/loadByte/storeByte require an explicit unsafe operation rationale"},
+    {"vuln": "Shell command injection", "asset": "authority",
+     "todo": "WS2-086", "code": "SS3087", "status": "covered",
+     "note": "shell/exec command strings must be compile-time constants"},
+    {"vuln": "Format-string injection", "asset": "memory",
+     "todo": "WS2-086", "code": "SS3088", "status": "covered",
+     "note": "printf-family format strings must be compile-time constants"},
     {"vuln": "Timing side-channel on secret compare", "asset": "confidentiality",
      "todo": "X-074", "code": "SS3074", "status": "covered",
      "note": "secrets compare only via crypto.equalConstantTime"},
@@ -2844,7 +2938,7 @@ SECURITY_COVERAGE = [
      "note": "security material needs the CSPRNG; nonces/IVs are affine"},
     {"vuln": "SSRF (server-side request forgery)", "asset": "authority", "todo": "X-075",
      "code": "SS3075", "status": "covered",
-     "note": "internal/loopback/metadata URL literal rejected; HttpSafeUrl required"},
+     "note": "internal/loopback/metadata URL literal rejected; static net host grants constrain literal URLs"},
     {"vuln": "Path traversal / absolute-escape", "asset": "authority", "todo": "X-076",
      "code": "SS3076", "status": "covered",
      "note": "../ or absolute fs path literal rejected; SafePath required"},
@@ -2854,6 +2948,9 @@ SECURITY_COVERAGE = [
     {"vuln": "Resource-exhaustion DoS (slow peer)", "asset": "availability", "todo": "X-078",
      "code": "SS3078", "status": "covered",
      "note": "external I/O over untrusted input requires a timeout/budget"},
+    {"vuln": "Resource-exhaustion DoS (regex backtracking)", "asset": "availability",
+     "todo": "R-079", "code": "SS3099", "status": "covered",
+     "note": "regex over rawExternal input or catastrophic literal patterns requires a linear engine"},
     {"vuln": "Information disclosure via error detail", "asset": "confidentiality",
      "todo": "X-079", "code": "SS3079", "status": "covered",
      "note": "internal error to a client-response sink requires an errorBoundary mapping"},
@@ -2882,6 +2979,264 @@ SECURITY_COVERAGE = [
      "status": "out-of-language",
      "note": "inherent app-logic class; mitigated by tests/goldens, not a language invariant"},
 ]
+
+
+SECURITY_CLOSURE_MANIFEST = {
+    "SS3070": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_validated_value_at_sink_accepted"],
+        "directNegative": ["test_rawexternal_value_at_sink_rejected"],
+        "transitiveNegative": [
+            "test_taint_laundered_through_plain_wrapper_rejected",
+            "test_trust_flow_set_laundering_rejected",
+            "test_interprocedural_return_taint_rejected",
+        ],
+        "externalNegative": ["test_raw_external_return_to_user_function_sink_rejected"],
+        "agentSurface": ["lint --explain SS3070", "scaffold trust-boundary",
+                         "task model-trust-boundary"],
+        "unsafeExampleGuard": ["docs/examples must not show rawExternal -> trustConstraint sink"],
+    },
+    "SS3071": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_trusted_type_into_sink_accepted"],
+        "directNegative": ["test_plain_string_into_typed_sink_rejected"],
+        "transitiveNegative": [
+            "test_trustedinternal_wrong_type_at_sink_rejected",
+            "test_string_built_value_into_sink_rejected",
+        ],
+        "externalNegative": ["test_external_signature_sink_type_rejected"],
+        "agentSurface": ["lint --explain SS3071", "docs --get builtin signatures"],
+        "unsafeExampleGuard": ["docs/examples must use SqlText/HtmlSafeUrl/SafePath trusted types"],
+    },
+    "SS3072": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_secret_consumed_by_verify_accepted"],
+        "directNegative": ["test_secret_to_console_rejected"],
+        "transitiveNegative": [
+            "test_secret_written_to_log_sink_rejected",
+            "test_r072_secret_into_http_response_rejected",
+            "test_r072_secret_into_json_encode_rejected",
+        ],
+        "externalNegative": ["test_secret_sink_coverage_all_observable_targets"],
+        "agentSurface": ["lint --explain SS3072", "agent-docs secret handling"],
+        "unsafeExampleGuard": ["docs/examples must not log, print, serialize, or return secrets"],
+    },
+    "SS3073": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_nonce_single_use_accepted"],
+        "directNegative": ["test_deterministic_rng_into_security_generator_rejected"],
+        "transitiveNegative": ["test_nonce_reuse_rejected"],
+        "externalNegative": ["test_id_random_ids_require_entropy_capability"],
+        "agentSurface": ["lint --explain SS3073", "search crypto randomness"],
+        "unsafeExampleGuard": ["docs/examples must use random.entropy for security material"],
+    },
+    "SS3074": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_secret_constant_time_compare_accepted"],
+        "directNegative": ["test_secret_variable_compare_rejected"],
+        "transitiveNegative": [
+            "test_secret_math_not_equal_comparison_rejected",
+            "test_secret_math_equal_int64_comparison_rejected",
+        ],
+        "externalNegative": [],
+        "externalNotApplicable": "constant-time comparison is a source-level call-shape rule",
+        "agentSurface": ["lint --explain SS3074", "search constant-time compare"],
+        "unsafeExampleGuard": ["docs/examples must compare secrets with crypto.equalConstantTime"],
+    },
+    "SS3075": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_ssrf_external_host_accepted"],
+        "directNegative": ["test_ssrf_internal_address_rejected"],
+        "transitiveNegative": [
+            "test_ssrf_obfuscated_internal_hosts_rejected",
+            "test_ssrf_specific_network_capability_allowlist",
+            "test_ssrf_broad_network_capability_requires_rationale",
+            "test_ssrf_legacy_broad_client_capability_requires_rationale",
+        ],
+        "externalNegative": ["test_net_fetch_text_requires_safe_url_signature"],
+        "agentSurface": ["lint --explain SS3075", "docs --get net.fetchText"],
+        "unsafeExampleGuard": ["docs/examples must not fetch private/metadata URLs"],
+    },
+    "SS3076": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_confined_relative_path_accepted"],
+        "directNegative": ["test_path_traversal_literal_rejected"],
+        "transitiveNegative": [
+            "test_path_traversal_percent_encoded_rejected",
+            "test_log_open_path_traversal_rejected",
+            "test_literal_source_rejects_escape_and_embed_cap",
+        ],
+        "externalNegative": ["test_path_safe_type_required_at_path_sink"],
+        "agentSurface": ["lint --explain SS3076", "scaffold uses SafePath"],
+        "unsafeExampleGuard": ["docs/examples must use SafePath builders"],
+    },
+    "SS3077": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_untrusted_decode_with_limit_accepted"],
+        "directNegative": ["test_untrusted_decode_without_limit_rejected"],
+        "transitiveNegative": ["test_untrusted_decode_requires_every_bound"],
+        "externalNegative": ["test_json_decode_signature_limit_required"],
+        "agentSurface": ["lint --explain SS3077", "search decode limits"],
+        "unsafeExampleGuard": ["docs/examples must bound untrusted decode size"],
+    },
+    "SS3078": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_bounded_untrusted_external_call_accepted"],
+        "directNegative": ["test_unbounded_untrusted_external_call_rejected"],
+        "transitiveNegative": ["test_untrusted_allocation_without_max_bytes_rejected"],
+        "externalNegative": ["test_external_io_signature_timeout_required"],
+        "agentSurface": ["lint --explain SS3078", "search timeout budget"],
+        "unsafeExampleGuard": ["docs/examples must attach timeouts/budgets to untrusted I/O"],
+    },
+    "SS3099": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_regex_over_untrusted_input_requires_linear_engine"],
+        "directNegative": ["test_regex_over_untrusted_input_requires_linear_engine"],
+        "transitiveNegative": ["test_catastrophic_regex_literal_rejected_without_linear_engine"],
+        "externalNegative": ["test_regex_engine_row_must_be_linear_or_re2"],
+        "agentSurface": ["lint --explain SS3099", "README ss27 regexEngine row"],
+        "unsafeExampleGuard": ["docs/examples must use regexEngine linear/re2 for untrusted regex"],
+    },
+    "SS3079": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_internal_error_with_boundary_accepted"],
+        "directNegative": ["test_internal_error_to_client_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "errorBoundary is declared on the response operation",
+        "externalNegative": ["test_client_response_signature_requires_boundary"],
+        "agentSurface": ["lint --explain SS3079", "fix --plan errorBoundary guidance"],
+        "unsafeExampleGuard": ["docs/examples must map internal errors before client response"],
+    },
+    "SS3080": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_protection_optout_with_because_accepted"],
+        "directNegative": ["test_protection_optout_without_because_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "opt-out rationale is local metadata",
+        "externalNegative": [],
+        "externalNotApplicable": "opt-out rationale is not an external signature contract",
+        "agentSurface": ["lint --explain SS3080", "agent-docs opt-out rationale"],
+        "unsafeExampleGuard": ["docs/examples must not show optOut without because"],
+    },
+    "SS3086": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_bcrypt_buffer_bounds_guarded"],
+        "directNegative": ["test_weak_password_hash_cost_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "bcrypt cost is a literal/config value at the call site",
+        "externalNegative": ["test_bcrypt_hash_rejects_cost_below_safe_floor"],
+        "agentSurface": ["lint --explain SS3086", "docs --get bcrypt.hashPassword"],
+        "unsafeExampleGuard": ["docs/examples must use bcrypt cost >= 10"],
+    },
+    "SS3089": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_hash_password_owned_wires_symbol_and_catch"],
+        "directNegative": ["test_raw_bcrypt_buffer_intrinsics_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "raw bcrypt buffer use is a source-level call-shape rule",
+        "externalNegative": ["test_bcrypt_buffer_bounds_guarded"],
+        "agentSurface": ["lint --explain SS3089", "docs --get bcrypt.sessionTokenOwned"],
+        "unsafeExampleGuard": ["docs/examples must prefer owned-output bcrypt helpers"],
+    },
+    "SS3090": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_json_scratch_buffer_matching_malloc_capacity_accepted"],
+        "directNegative": ["test_json_scratch_buffer_without_malloc_rejected"],
+        "transitiveNegative": ["test_json_scratch_buffer_inflated_capacity_rejected"],
+        "transitiveNotApplicable": "scratch pointer/capacity proof is local to the operation activation order",
+        "externalNegative": ["test_apps.py taskforge-web"],
+        "agentSurface": ["lint --explain SS3090", "docs --get json.cursorString"],
+        "unsafeExampleGuard": ["docs/examples must not pass forged JSON scratch pointers"],
+    },
+    "SS3097": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_http_response_bytes_request_body_pair_accepted"],
+        "directNegative": ["test_http_response_bytes_forged_pointer_rejected"],
+        "transitiveNegative": ["test_http_response_bytes_mismatched_length_rejected"],
+        "transitiveNotApplicable": "response byte pointer/length proof is local to the operation activation order",
+        "externalNegative": ["test_apps.py http-runtime-gauntlet"],
+        "agentSurface": ["lint --explain SS3097", "docs --get http.responseBytes"],
+        "unsafeExampleGuard": ["docs/examples must not pass forged response byte pointers"],
+    },
+    "SS3098": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_pointer_intrinsic_allowed_with_unsafe_rationale"],
+        "directNegative": ["test_pointer_intrinsic_requires_unsafe_rationale"],
+        "transitiveNegative": ["test_pointer_intrinsic_unsafe_without_rationale_rejected"],
+        "transitiveNotApplicable": "unsafe gating is local to the containing operation",
+        "externalNegative": ["test_apps.py taskforge-tui"],
+        "agentSurface": ["lint --explain SS3098", "docs --get pointer.loadByte"],
+        "unsafeExampleGuard": ["docs/examples should prefer standard.buffer"],
+    },
+    "SS3087": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_constant_shell_command_accepted"],
+        "directNegative": ["test_non_constant_shell_command_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "shell command constness is checked at the sink slot",
+        "externalNegative": ["test_non_constant_shell_command_rejected"],
+        "agentSurface": ["lint --explain SS3087", "docs --get c.system"],
+        "unsafeExampleGuard": ["docs/examples must not build shell commands from user data"],
+    },
+    "SS3088": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_constant_format_string_accepted"],
+        "directNegative": ["test_format_string_must_be_constant_rejected"],
+        "transitiveNegative": ["test_snprintf_nonconstant_format_rejected"],
+        "externalNegative": ["test_c_printf_user_format_does_not_interpret_directives"],
+        "agentSurface": ["lint --explain SS3088", "docs --get c.printf"],
+        "unsafeExampleGuard": ["docs/examples must route dynamic text through %s-safe wrappers"],
+    },
+    "SS2805": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_supply_chain_allowlist"],
+        "directNegative": ["test_supply_chain_diff_flags_new_effect"],
+        "transitiveNegative": ["test_supply_chain_transitive_escalation_rejected"],
+        "externalNegative": ["test_cmd_build_enforces_effect_surface_allowlist"],
+        "agentSurface": ["lint --explain SS2805", "verify supply-chain envelope"],
+        "unsafeExampleGuard": ["docs/examples must not use stub dependency digests as proof"],
+    },
+    "SS3093": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_float_money_comparison_allowed_when_not_exact_value"],
+        "directNegative": ["test_money_operand_in_float_math_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "exact-money rejection is local to numeric op operands",
+        "externalNegative": [],
+        "externalNotApplicable": "exact-money rejection is not an external signature contract",
+        "agentSurface": ["lint --explain SS3093", "search decimal money"],
+        "unsafeExampleGuard": ["docs/examples must use Decimal/Money for exact values"],
+    },
+    "SS3095": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_monotonic_duration_arithmetic_accepted"],
+        "directNegative": ["test_walltime_arithmetic_rejected"],
+        "transitiveNegative": ["test_walltime_local_arithmetic_rejected"],
+        "externalNegative": [],
+        "externalNotApplicable": "wall-clock arithmetic is a source-level type rule",
+        "agentSurface": ["lint --explain SS3095", "search monotonic time"],
+        "unsafeExampleGuard": ["docs/examples must use MonotonicInstant for elapsed time"],
+    },
+    "SS3096": {
+        "coverageLevel": "direct-only",
+        "positive": ["test_validated_bytes_to_text_accepted"],
+        "directNegative": ["test_unvalidated_bytes_to_text_rejected"],
+        "transitiveNegative": [],
+        "transitiveNotApplicable": "bytes->text validation boundary is the call output type",
+        "externalNegative": ["test_bytes_to_text_signature_requires_validated_output"],
+        "agentSurface": ["lint --explain SS3096", "docs --get bytes.toText"],
+        "unsafeExampleGuard": ["docs/examples must decode untrusted bytes into validated text"],
+    },
+    "SS1564": {
+        "coverageLevel": "transitive-safe",
+        "positive": ["test_borrow_consumes_no_keeps_owner"],
+        "directNegative": ["test_use_after_move_rejected"],
+        "transitiveNegative": ["test_takesownership_use_after_move_rejected"],
+        "externalNegative": ["test_resource_signature_consumes_then_use_rejected"],
+        "agentSurface": ["lint --explain SS1564", "describe ownership rows"],
+        "unsafeExampleGuard": ["docs/examples must not use moved owned resources"],
+    },
+}
 
 
 def security_matrix_markdown() -> str:
@@ -19139,7 +19494,10 @@ def _scratch_pointer_apis(semsig_text: str) -> list:
             continue
         args = re.findall(r"\S+ (?:arg|out) (\w+) (\w+)", block)
         has_ptr = any(t in ("OpaquePointer", "Buffer") for _, t in args)
-        has_cap = any(cap.search(slot) for slot, _ in args)
+        has_cap = any(
+            t not in ("OpaquePointer", "Buffer") and cap.search(slot)
+            for slot, t in args
+        )
         if has_ptr and has_cap and "unsafe yes" not in block:
             found.append(m.group(1))
     return sorted(set(found))
