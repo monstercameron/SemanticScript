@@ -1,7 +1,8 @@
 # standard.json.semsig — generated signature sidecar (README ss16, ss27).
-# DEFERRED codec: JSON is an application pattern over this module, not core syntax
-# (§16); the encode/decode runtime ties to the record-codec gap. Parity now is
-# this contract — the value-kind enum, access errors, and access targets. (WS3-106)
+# JSON is an application pattern over this module, not core syntax (§16).
+# The document/cursor API below is native-backed; record-codec metadata is
+# expressed on record entities with jsonName/omitWhen/unknownFieldPolicy rows.
+# Generated codec lowering remains future standard.json work. (R-052)
 
 jsonSig is semsig
 jsonSig version "1.0"
@@ -69,7 +70,7 @@ jsonRelease arg value JsonValue
 jsonRelease out released Int32
 jsonRelease purpose "Release a parsed JSON value tree"
 
-# ---- document-cursor API (X-043), DEFERRED ----
+# ---- document-cursor API (X-043), native runtime ----
 # The DOM-style bounded-arena parse/build surface the ported apps/taskforge-web
 # uses: request parsing (createDocument/objectFieldAt/cursorString/cursorInt64)
 # and response building (createEmptyDocument/setObjectField*/appendArrayElement*/
@@ -94,7 +95,7 @@ createDocument arg capacityBytes JsonCapacityBytes
 createDocument out document JsonDocument
 createDocument catch JsonAccessError
 createDocument owns document cleanedBy json.destroyDocument
-createDocument purpose "Parse JSON text into a bounded document arena (deferred runtime)"
+createDocument purpose "Parse JSON text into a bounded document arena; call limit rows maximumBytes/maxDepth/maxElements lower into native parser budgets"
 
 createEmptyDocument is intrinsic
 createEmptyDocument target json.createEmptyDocument
@@ -103,7 +104,7 @@ createEmptyDocument arg rootKind JsonValueKind
 createEmptyDocument out document JsonDocument
 createEmptyDocument catch JsonAccessError
 createEmptyDocument owns document cleanedBy json.destroyDocument
-createEmptyDocument purpose "Create an empty object/array document arena for response building (deferred runtime)"
+createEmptyDocument purpose "Create an empty object/array document arena for response building"
 
 destroyDocument is intrinsic
 destroyDocument target json.destroyDocument
@@ -114,7 +115,7 @@ documentRoot is intrinsic
 documentRoot target json.documentRoot
 documentRoot arg document JsonDocument
 documentRoot out cursor JsonCursor
-documentRoot purpose "Return a cursor at the document's root node (deferred runtime)"
+documentRoot purpose "Return a cursor at the document's root node"
 
 objectFieldAt is intrinsic
 objectFieldAt target json.objectFieldAt
@@ -123,7 +124,7 @@ objectFieldAt arg cursor JsonCursor
 objectFieldAt arg fieldName String
 objectFieldAt out field JsonCursor
 objectFieldAt catch JsonAccessError
-objectFieldAt purpose "Return a cursor at the named field of an object node, or fail if absent (deferred runtime)"
+objectFieldAt purpose "Return a cursor at the named field of an object node, or fail if absent"
 
 cursorString is intrinsic
 cursorString target json.cursorString
@@ -133,7 +134,7 @@ cursorString arg scratch OpaquePointer
 cursorString arg scratchCapacity JsonCapacityBytes
 cursorString out text String
 cursorString catch JsonAccessError
-cursorString purpose "Copy a string node's value into a caller scratch buffer (deferred runtime)"
+cursorString purpose "Copy a string node's value into a caller scratch buffer"
 
 cursorInt64 is intrinsic
 cursorInt64 target json.cursorInt64
@@ -141,7 +142,7 @@ cursorInt64 arg document JsonDocument
 cursorInt64 arg cursor JsonCursor
 cursorInt64 arg missingDefault Int64
 cursorInt64 out value Int64
-cursorInt64 purpose "Read an integer node's value, falling back to a default when absent (deferred runtime)"
+cursorInt64 purpose "Read an integer node's value, falling back to a default when absent"
 
 setObjectFieldString is intrinsic
 setObjectFieldString target json.setObjectFieldString
@@ -151,7 +152,7 @@ setObjectFieldString arg fieldName String
 setObjectFieldString arg value String
 setObjectFieldString out set Int32
 setObjectFieldString catch JsonAccessError
-setObjectFieldString purpose "Set a string field on an object node (deferred runtime)"
+setObjectFieldString purpose "Set a string field on an object node"
 
 setObjectFieldInt64 is intrinsic
 setObjectFieldInt64 target json.setObjectFieldInt64
@@ -161,7 +162,7 @@ setObjectFieldInt64 arg fieldName String
 setObjectFieldInt64 arg value Int64
 setObjectFieldInt64 out set Int32
 setObjectFieldInt64 catch JsonAccessError
-setObjectFieldInt64 purpose "Set an integer field on an object node (deferred runtime)"
+setObjectFieldInt64 purpose "Set an integer field on an object node"
 
 setObjectFieldBool is intrinsic
 setObjectFieldBool target json.setObjectFieldBool
@@ -171,7 +172,7 @@ setObjectFieldBool arg fieldName String
 setObjectFieldBool arg value Bool
 setObjectFieldBool out set Int32
 setObjectFieldBool catch JsonAccessError
-setObjectFieldBool purpose "Set a boolean field on an object node (deferred runtime)"
+setObjectFieldBool purpose "Set a boolean field on an object node"
 
 setObjectFieldObject is intrinsic
 setObjectFieldObject target json.setObjectFieldObject
@@ -180,7 +181,7 @@ setObjectFieldObject arg cursor JsonCursor
 setObjectFieldObject arg fieldName String
 setObjectFieldObject out objectCursor JsonCursor
 setObjectFieldObject catch JsonAccessError
-setObjectFieldObject purpose "Create a nested object field and return a cursor at it (deferred runtime)"
+setObjectFieldObject purpose "Create a nested object field and return a cursor at it"
 
 setObjectFieldArray is intrinsic
 setObjectFieldArray target json.setObjectFieldArray
@@ -189,7 +190,7 @@ setObjectFieldArray arg cursor JsonCursor
 setObjectFieldArray arg fieldName String
 setObjectFieldArray out arrayCursor JsonCursor
 setObjectFieldArray catch JsonAccessError
-setObjectFieldArray purpose "Create a nested array field and return a cursor at it (deferred runtime)"
+setObjectFieldArray purpose "Create a nested array field and return a cursor at it"
 
 appendArrayElementObject is intrinsic
 appendArrayElementObject target json.appendArrayElementObject
@@ -197,7 +198,7 @@ appendArrayElementObject arg document JsonDocument
 appendArrayElementObject arg cursor JsonCursor
 appendArrayElementObject out elementCursor JsonCursor
 appendArrayElementObject catch JsonAccessError
-appendArrayElementObject purpose "Append an object element to an array node and return a cursor at it (deferred runtime)"
+appendArrayElementObject purpose "Append an object element to an array node and return a cursor at it"
 
 serializeDocument is intrinsic
 serializeDocument target json.serializeDocument
@@ -206,4 +207,4 @@ serializeDocument arg scratch OpaquePointer
 serializeDocument arg scratchCapacity JsonCapacityBytes
 serializeDocument out text JsonText
 serializeDocument catch JsonAccessError
-serializeDocument purpose "Serialize a document arena to JSON text in a caller scratch buffer (deferred runtime)"
+serializeDocument purpose "Serialize a document arena to JSON text in a caller scratch buffer"

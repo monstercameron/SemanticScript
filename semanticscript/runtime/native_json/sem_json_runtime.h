@@ -248,6 +248,15 @@ int ss_json_document_create_from_text(
     SSJsonDocument **out
 );
 
+int ss_json_document_create_from_text_limited(
+    const char *json_text,
+    int64_t capacity_bytes,
+    int64_t maximum_bytes,
+    int64_t max_depth,
+    int64_t max_elements,
+    SSJsonDocument **out
+);
+
 int ss_json_document_create_empty(
     int64_t capacity_bytes,
     int32_t root_kind,

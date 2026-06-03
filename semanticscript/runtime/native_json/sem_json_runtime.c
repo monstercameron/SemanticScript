@@ -17,7 +17,8 @@
  * leading comma or not). The document parser uses the same ceiling as
  * its runtime recursion guard for untrusted nested JSON.
  */
-#define SS_JSON_MAX_NESTING_DEPTH 16
+#define SS_JSON_DEFAULT_NESTING_DEPTH 16
+#define SS_JSON_MAX_NESTING_DEPTH 256
 
 typedef enum SSJsonContainerKind {
     SS_JSON_CONTAINER_NONE   = 0,
@@ -858,6 +859,8 @@ struct SSJsonDocument {
     int64_t arena_used;
     int64_t capacity_bytes;
     int64_t bytes_used;
+    int64_t max_parse_depth;
+    int64_t max_parse_elements;
 };
 
 static int document_is_container_kind(int32_t kind) {
@@ -932,6 +935,10 @@ static int document_copy_field_name(
 static int document_ensure_node_capacity(SSJsonDocument *document) {
     if (document == NULL) {
         return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
+    }
+    if (document->max_parse_elements > 0
+            && document->node_count >= document->max_parse_elements) {
+        return SS_JSON_ERR_CAPACITY_EXCEEDED;
     }
     if (document->node_count < document->node_capacity) {
         return SS_JSON_OK;
@@ -1169,6 +1176,8 @@ static SSJsonDocument *document_create_shell(int64_t capacity_bytes) {
     document->capacity_bytes = capacity_bytes;
     document->arena_used = 0;
     document->bytes_used = 0;
+    document->max_parse_depth = 0;
+    document->max_parse_elements = 0;
     /* R-198: register before handing the handle out so every read/destroy can
      * validate it by membership. On registry-growth failure, release the shell
      * and fail (never expose an untracked document). */
@@ -1183,6 +1192,17 @@ static SSJsonDocument *document_create_shell(int64_t capacity_bytes) {
 static int is_json_value_delimiter(char c) {
     return c == '\0' || c == ',' || c == '}' || c == ']'
         || c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+static int64_t document_effective_max_depth(const SSJsonDocument *document) {
+    int64_t requested = (document != NULL) ? document->max_parse_depth : 0;
+    if (requested <= 0) {
+        requested = SS_JSON_DEFAULT_NESTING_DEPTH;
+    }
+    if (requested > SS_JSON_MAX_NESTING_DEPTH) {
+        requested = SS_JSON_MAX_NESTING_DEPTH;
+    }
+    return requested;
 }
 
 static int parse_json_string_to_arena(
@@ -1506,14 +1526,14 @@ static int parse_json_value(
 ) {
     const char *scan = skip_whitespace(*scan_io);
     if (*scan == '{') {
-        if (depth >= SS_JSON_MAX_NESTING_DEPTH) {
+        if (depth >= document_effective_max_depth(document)) {
             return SS_JSON_ERR_CAPACITY_EXCEEDED;
         }
         *scan_io = scan;
         return parse_json_object(document, scan_io, parent, depth + 1, out);
     }
     if (*scan == '[') {
-        if (depth >= SS_JSON_MAX_NESTING_DEPTH) {
+        if (depth >= document_effective_max_depth(document)) {
             return SS_JSON_ERR_CAPACITY_EXCEEDED;
         }
         *scan_io = scan;
@@ -1610,14 +1630,37 @@ int ss_json_document_create_from_text(
     int64_t capacity_bytes,
     SSJsonDocument **out
 ) {
+    return ss_json_document_create_from_text_limited(
+        json_text, capacity_bytes, 0, 0, 0, out);
+}
+
+int ss_json_document_create_from_text_limited(
+    const char *json_text,
+    int64_t capacity_bytes,
+    int64_t maximum_bytes,
+    int64_t max_depth,
+    int64_t max_elements,
+    SSJsonDocument **out
+) {
     if (json_text == NULL || out == NULL) {
         return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
     }
     *out = NULL;
+    if (maximum_bytes < 0 || max_depth < 0 || max_elements < 0) {
+        return SS_JSON_ERR_CAPACITY_EXCEEDED;
+    }
+    if (maximum_bytes > 0) {
+        size_t text_len = strlen(json_text);
+        if (text_len > (size_t)INT64_MAX || (int64_t)text_len > maximum_bytes) {
+            return SS_JSON_ERR_CAPACITY_EXCEEDED;
+        }
+    }
     SSJsonDocument *document = document_create_shell(capacity_bytes);
     if (document == NULL) {
         return SS_JSON_ERR_CAPACITY_EXCEEDED;
     }
+    document->max_parse_depth = max_depth;
+    document->max_parse_elements = max_elements;
     const char *scan = json_text;
     int64_t root_cursor;
     int rc = parse_json_value(document, &scan, -1, 0, &root_cursor);
