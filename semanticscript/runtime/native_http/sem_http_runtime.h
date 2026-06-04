@@ -152,6 +152,9 @@ int ss_http_client_disconnected(SSHttpResponse *response);
 
 const char *ss_http_request_method(const SSHttpRequest *request);
 const char *ss_http_request_path(const SSHttpRequest *request);
+/* Request string readers return a non-NULL SemanticScript String. Missing
+ * values are represented as the empty string, so ordinary string operations are
+ * safe without an OpaquePointer null guard. */
 const char *ss_http_request_header(const SSHttpRequest *request, const char *name);
 const char *ss_http_request_query_param(const SSHttpRequest *request, const char *name);
 const char *ss_http_request_body_text(const SSHttpRequest *request);
@@ -160,7 +163,7 @@ size_t ss_http_request_body_length(const SSHttpRequest *request);
 
 /*
  * Returns the captured value for a path-pattern parameter (the route
- * declared `:name` segment), or NULL when the route has no such param.
+ * declared `:name` segment), or the empty string when the route has no such param.
  * The returned pointer is valid for the duration of the handler call and
  * points into a per-request scratch buffer — the full request path
  * remains intact and is still readable via ss_http_request_path().
@@ -175,20 +178,20 @@ const char *ss_http_request_path_param(const SSHttpRequest *request, const char 
 
 /*
  * Returns the value of the named cookie from the request's `Cookie:`
- * header, or NULL when the header is absent or the cookie isn't
+ * header, or the empty string when the header is absent or the cookie isn't
  * present. The returned pointer is valid for the duration of the
  * handler call and points into a per-request scratch buffer (the
  * decoded value is unescaped from any percent-encoding the client
  * applied). Maximum value length is 256 bytes; longer values return
- * NULL rather than truncate, so a session-token cookie that exceeds
+ * the empty string rather than truncate, so a session-token cookie that exceeds
  * its expected length surfaces as "no session attached".
  */
 const char *ss_http_request_cookie(const SSHttpRequest *request, const char *cookie_name);
 
 /*
- * Convenience predicates for nullable request-derived string values returned by
- * requestHeader/query/pathParam/cookie/body readers. NULL is treated as empty so
- * handlers can test "missing or empty" without touching request memory directly.
+ * Convenience predicates for request-derived string values returned by
+ * requestHeader/query/pathParam/cookie/body readers. Missing values are exposed
+ * as empty strings; NULL is still treated as empty for defensive native callers.
  */
 long long ss_http_request_value_length(const char *value);
 int ss_http_request_value_is_empty(const char *value);

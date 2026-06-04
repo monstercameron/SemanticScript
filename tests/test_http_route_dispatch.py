@@ -110,3 +110,60 @@ def test_bin1_webserver_route_dispatch_matches_static_and_dynamic(tmp_path):
     ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8")
     assert ran.returncode == 0, ran.stderr
     assert "http-dispatch: OK" in ran.stderr
+
+
+NULLSAFE_HARNESS = r'''
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+/* Reach SSHttpRequest internals and the native string helpers. */
+#include "sem_http_runtime.c"
+#include "ss_string.c"
+
+int main(void) {
+    SSHttpRequest req;
+    memset(&req, 0, sizeof(req));
+    req.method = "GET";
+    req.path = "/search";
+
+    const char *query = ss_http_request_query_param(&req, "missing");
+    const char *header = ss_http_request_header(&req, "missing");
+    const char *path_param = ss_http_request_path_param(&req, "id");
+    const char *cookie = ss_http_request_cookie(&req, "sid");
+
+    assert(query != NULL && header != NULL && path_param != NULL && cookie != NULL);
+    assert(ss_string_length(query) == 0);
+    assert(ss_string_length(header) == 0);
+    assert(ss_string_length(path_param) == 0);
+    assert(ss_string_length(cookie) == 0);
+    assert(ss_string_equal(query, "") == 1);
+
+    fprintf(stderr, "http-nullsafe: OK\n");
+    return 0;
+}
+'''
+
+
+def test_nullsafe_missing_request_values_are_empty_strings(tmp_path):
+    cc = semanticscript._find_c_compiler()
+    if cc is None:
+        pytest.skip("no C compiler for the native http nullsafe harness")
+    http_dir = os.path.join(ROOT, "semanticscript", "runtime", "native_http")
+    runtime_dir = os.path.join(ROOT, "semanticscript", "runtime")
+    plat_dir = os.path.join(ROOT, "semanticscript", "runtime", "native_platform")
+    harness = tmp_path / "harness_http_nullsafe.c"
+    harness.write_text(NULLSAFE_HARNESS, encoding="utf-8")
+    exe = tmp_path / ("harness_nullsafe.exe" if sys.platform == "win32" else "harness_nullsafe")
+    cmd = list(cc) + ["-std=c11",
+                      "-I" + http_dir, "-I" + runtime_dir, "-I" + plat_dir,
+                      str(harness),
+                      os.path.join(plat_dir, "ss_platform_time.c"),
+                      "-o", str(exe)]
+    if sys.platform == "win32":
+        cmd += ["-lws2_32"]
+    built = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    if built.returncode != 0:
+        pytest.skip("http nullsafe harness build unavailable: " + built.stderr[-400:])
+    ran = subprocess.run([str(exe)], capture_output=True, text=True, encoding="utf-8")
+    assert ran.returncode == 0, ran.stderr
+    assert "http-nullsafe: OK" in ran.stderr

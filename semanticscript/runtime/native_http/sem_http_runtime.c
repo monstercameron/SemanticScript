@@ -711,42 +711,42 @@ int ss_http_response_sse_event(
 }
 
 const char *ss_http_request_method(const SSHttpRequest *request) {
-    return request != NULL ? request->method : NULL;
+    return request != NULL && request->method != NULL ? request->method : "";
 }
 
 const char *ss_http_request_path(const SSHttpRequest *request) {
-    return request != NULL ? request->path : NULL;
+    return request != NULL && request->path != NULL ? request->path : "";
 }
 
 const char *ss_http_request_header(const SSHttpRequest *request, const char *name) {
     size_t index;
 
     if (request == NULL || name == NULL) {
-        return NULL;
+        return "";
     }
 
     for (index = 0; index < request->header_count; ++index) {
         if (request->headers[index].name != NULL &&
                 ascii_case_equal(request->headers[index].name, name)) {
-            return request->headers[index].value;
+            return request->headers[index].value != NULL ? request->headers[index].value : "";
         }
     }
 
-    return NULL;
+    return "";
 }
 
 const char *ss_http_request_path_param(const SSHttpRequest *request, const char *name) {
     size_t index;
     if (request == NULL || name == NULL) {
-        return NULL;
+        return "";
     }
     for (index = 0; index < request->path_param_count; ++index) {
         if (request->path_params[index].name != NULL
             && strcmp(request->path_params[index].name, name) == 0) {
-            return request->path_params[index].value;
+            return request->path_params[index].value != NULL ? request->path_params[index].value : "";
         }
     }
-    return NULL;
+    return "";
 }
 
 /* Cookie value scratch — sized so a 32-byte session token base64url
@@ -756,14 +756,14 @@ const char *ss_http_request_path_param(const SSHttpRequest *request, const char 
 
 const char *ss_http_request_cookie(const SSHttpRequest *request, const char *cookie_name) {
     if (request == NULL || cookie_name == NULL) {
-        return NULL;
+        return "";
     }
     const char *cookie_header = ss_http_request_header(request, "cookie");
-    if (cookie_header == NULL) {
-        return NULL;
+    if (cookie_header == NULL || cookie_header[0] == '\0') {
+        return "";
     }
     size_t name_length = strlen(cookie_name);
-    if (name_length == 0) return NULL;
+    if (name_length == 0) return "";
 
     const char *scan = cookie_header;
     while (*scan != '\0') {
@@ -771,7 +771,7 @@ const char *ss_http_request_cookie(const SSHttpRequest *request, const char *coo
         while (*scan == ' ' || *scan == '\t' || *scan == ';') {
             ++scan;
         }
-        if (*scan == '\0') return NULL;
+        if (*scan == '\0') return "";
 
         const char *pair_name_start = scan;
         while (*scan != '\0' && *scan != '=' && *scan != ';') {
@@ -795,7 +795,7 @@ const char *ss_http_request_cookie(const SSHttpRequest *request, const char *coo
                 /* Refuse to truncate — caller treats this as "absent" so
                  * an oversize attacker-controlled cookie doesn't pass an
                  * incomplete prefix into the session lookup. */
-                return NULL;
+                return "";
             }
             /* R-191: bump-allocate a fresh region from the per-request cookie
              * arena so this value stays stable even if the handler reads another
@@ -806,7 +806,7 @@ const char *ss_http_request_cookie(const SSHttpRequest *request, const char *coo
             SSHttpRequest *mutable_request = (SSHttpRequest *)request;
             if (pair_value_length + 1
                     > sizeof(mutable_request->cookie_buffer) - mutable_request->cookie_buffer_used) {
-                return NULL;
+                return "";
             }
             char *dest = mutable_request->cookie_buffer + mutable_request->cookie_buffer_used;
             memcpy(dest, pair_value_start, pair_value_length);
@@ -815,7 +815,7 @@ const char *ss_http_request_cookie(const SSHttpRequest *request, const char *coo
             return dest;
         }
     }
-    return NULL;
+    return "";
 }
 
 long long ss_http_request_value_length(const char *value) {
@@ -1974,17 +1974,17 @@ const char *ss_http_request_query_param(const SSHttpRequest *request, const char
     size_t index;
 
     if (request == NULL || name == NULL) {
-        return NULL;
+        return "";
     }
 
     for (index = 0; index < request->query_param_count; ++index) {
         if (request->query_params[index].name != NULL &&
                 strcmp(request->query_params[index].name, name) == 0) {
-            return request->query_params[index].value;
+            return request->query_params[index].value != NULL ? request->query_params[index].value : "";
         }
     }
 
-    return NULL;
+    return "";
 }
 
 const char *ss_http_request_body_text(const SSHttpRequest *request) {
