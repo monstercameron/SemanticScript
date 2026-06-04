@@ -56,6 +56,35 @@ def test_fix2_build_identity_unit():
     assert ident["contractVersion"] == semanticscript.CONTRACT_VERSION
 
 
+# --- AQ-9 / S4: every scaffold (incl. compositions) is reachable from `skills` ---
+
+def test_aq9_every_scaffold_has_a_reachable_skill_recipe():
+    """AQ-9 / S4 (the recurring 'idiom not reachable from the tool' dead-end): every
+    scaffold pattern — especially the multi-subsystem composition ones (db-roundtrip,
+    json-output, logged-op, handler-route) — must be discoverable as a `skills`
+    recipe, not only via `scaffold <name>`. A composition idiom that can't be found
+    from the discovery surface is what burned whole runs."""
+    patterns = list(getattr(semanticscript, "SCAFFOLD_PATTERNS", ()))
+    assert patterns, "no scaffold patterns"
+    skills = semanticscript.EAV_SKILLS
+    for p in patterns:
+        key = f"eav-scaffold-{p}"
+        assert key in skills, f"scaffold {p!r} has no reachable skill recipe"
+        assert skills[key].get("body"), f"skill {key} has no body"
+        # the recipe must point back at the runnable template.
+        assert p in skills[key]["body"], f"skill {key} does not name `scaffold {p}`"
+
+
+def test_aq9_scaffold_skill_is_served_by_the_skills_command():
+    """The recipe is actually reachable through the CLI surface an agent queries."""
+    proc = subprocess.run([sys.executable, SC, "skills", "eav-scaffold-db-roundtrip",
+                           "--json"], capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    d = json.loads(proc.stdout)
+    blob = json.dumps(d)
+    assert "db-roundtrip" in blob and "sqlite" in blob.lower()
+
+
 # --- NS-1/AQ-1: identical duplicate type declarations compose across modules ---
 
 def _two_module_project(tmp_path, b_exitcode_base):
