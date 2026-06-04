@@ -32,6 +32,7 @@
     "onLanguage:semanticscript",
     "onCommand:semanticscript.toggleSegmentColors",
     "onCommand:semanticscript.runLinter",
+    "onCommand:semanticscript.runFixPlan",
     "onCommand:semanticscript.compileCurrentFile"
   ],
   "main": "./extension.js",
@@ -87,6 +88,11 @@
         "command": "semanticscript.runLinter",
         "title": "SemanticScript: Run Linter",
         "icon": "$(checklist)"
+      },
+      {
+        "command": "semanticscript.runFixPlan",
+        "title": "SemanticScript: Run Fix Plan",
+        "icon": "$(lightbulb)"
       },
       {
         "command": "semanticscript.compileCurrentFile",

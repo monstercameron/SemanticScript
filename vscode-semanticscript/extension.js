@@ -1212,7 +1212,8 @@ let linterRunMode = 'onSave';
 let linterPythonPath = 'python';
 let linterConfiguredPath = '';
 let linterSkipFutureSyntax = false;
-let linterEngine = 'semlint';
+let linterEngine = 'semanticscript';
+let fixPlanOutputChannel = null;
 let compilerPythonPath = 'python';
 let compilerConfiguredPath = '';
 let compilerOutputDirectory = '';
@@ -4716,13 +4717,144 @@ const provideCompletions = (document, position) => {
   return symbolCompletionItems(document, position);
 };
 
+const rangeForToken = (lineIndex, token) => (
+  new vscode.Range(
+    lineIndex,
+    token.start,
+    lineIndex,
+    token.start + token.length
+  )
+);
+
+const validRenameName = (name) => (
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+  && !declarationVerbs.has(name)
+  && !contextVerbs.has(name)
+  && !actionVerbs.has(name)
+  && !controlVerbs.has(name)
+  && !schemaValues.has(name)
+);
+
+const renameInfoAtPosition = (document, position) => {
+  const tokenInfo = getTokenAtPosition(document, position);
+
+  if (!tokenInfo || tokenInfo.tokenIndex === 0) {
+    return null;
+  }
+
+  const text = tokenInfo.token.text;
+
+  if (!isSymbolLike(text) || schemaValues.has(text)) {
+    return null;
+  }
+
+  const index = getDocumentSymbolIndex(document);
+  const currentOperation = index.lineOperations.get(position.line) || null;
+  const entry = index.symbols.get(text);
+  const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+  if (!declaration) {
+    return null;
+  }
+
+  return {
+    text,
+    declaration,
+    range: rangeForToken(position.line, tokenInfo.token),
+  };
+};
+
+const prepareRename = (document, position) => {
+  const info = renameInfoAtPosition(document, position);
+
+  if (!info) {
+    return null;
+  }
+
+  return {
+    range: info.range,
+    placeholder: info.text,
+  };
+};
+
+const provideRenameEdits = (document, position, newName) => {
+  const info = renameInfoAtPosition(document, position);
+
+  if (!info) {
+    throw new Error('No SemanticScript symbol at this position can be renamed.');
+  }
+
+  if (!validRenameName(newName)) {
+    throw new Error('SemanticScript rename targets must be non-reserved identifiers.');
+  }
+
+  const edit = new vscode.WorkspaceEdit();
+  const index = getDocumentSymbolIndex(document);
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const tokens = tokenizeLine(document.lineAt(lineIndex).text);
+    const currentOperation = index.lineOperations.get(lineIndex) || null;
+
+    tokens.forEach((token, tokenIndex) => {
+      if (tokenIndex === 0 || token.text !== info.text || !isSymbolLike(token.text)) {
+        return;
+      }
+
+      const entry = index.symbols.get(token.text);
+      const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+      if (declaration === info.declaration) {
+        edit.replace(document.uri, rangeForToken(lineIndex, token), newName);
+      }
+    });
+  }
+
+  return edit;
+};
+
+const inlayHint = (lineIndex, token, label, kind) => (
+  new vscode.InlayHint(
+    new vscode.Position(lineIndex, token.start + token.length),
+    label,
+    kind
+  )
+);
+
+const provideInlayHints = (document, range) => {
+  const hints = [];
+  const startLine = Math.max(0, range ? range.start.line : 0);
+  const endLine = Math.min(document.lineCount - 1, range ? range.end.line : document.lineCount - 1);
+
+  for (let lineIndex = startLine; lineIndex <= endLine; lineIndex += 1) {
+    const tokens = tokenizeLine(document.lineAt(lineIndex).text);
+    const verb = tokenAt(tokens, 0);
+
+    if ((verb === 'const' || verb === 'var' || verb === 'let') && tokens[1] && tokens[2]) {
+      hints.push(inlayHint(lineIndex, tokens[1], `: ${tokens[2].text}`, vscode.InlayHintKind.Type));
+    } else if ((verb === 'bind' || verb === 'bindOk' || verb === 'bindError') && tokens[1] && tokens[2]) {
+      hints.push(inlayHint(lineIndex, tokens[1], `: ${tokens[2].text}`, vscode.InlayHintKind.Type));
+    } else if (verb === 'input') {
+      const parts = inputParts(tokens);
+      if (tokens[parts.nameIndex] && tokens[parts.typeIndex]) {
+        hints.push(inlayHint(lineIndex, tokens[parts.nameIndex], `: ${tokens[parts.typeIndex].text}`, vscode.InlayHintKind.Type));
+      }
+    } else if (verb === 'call' && tokens[1] && tokens[2]) {
+      hints.push(inlayHint(lineIndex, tokens[1], ` -> ${tokens[2].text}`, vscode.InlayHintKind.Parameter));
+    }
+  }
+
+  return hints;
+};
+
 const registerLanguageNavigation = (context) => {
   const selector = { language: 'semanticscript' };
 
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(selector, { provideDefinition }),
     vscode.languages.registerDocumentSymbolProvider(selector, { provideDocumentSymbols }),
-    vscode.languages.registerCompletionItemProvider(selector, { provideCompletionItems: provideCompletions }, '.', '"')
+    vscode.languages.registerCompletionItemProvider(selector, { provideCompletionItems: provideCompletions }, '.', '"'),
+    vscode.languages.registerRenameProvider(selector, { prepareRename, provideRenameEdits }),
+    vscode.languages.registerInlayHintsProvider(selector, { provideInlayHints })
   );
 };
 
@@ -4995,8 +5127,8 @@ const parseLinterDiagnostics = (document, stdout, _lintCwd) => {
   }
 
   // sem.check.v1: { ok, diagnostics: [{ code, severity, line, message, entity }] }.
-  // Tolerate a bare array too. The surface has no column/related/fix data, so
-  // diagnostics anchor to the reported line and carry no quick-fix records.
+  // Tolerate a bare array too. Diagnostics anchor to the reported line; quick
+  // fixes are routed through `semanticscript fix --plan`.
   const records = Array.isArray(payload)
     ? payload
     : (Array.isArray(payload.diagnostics) ? payload.diagnostics : []);
@@ -5176,7 +5308,96 @@ const scheduleLinterRun = (document, delayMilliseconds = 350) => {
   }, delayMilliseconds));
 };
 
-const codeActionsFromSemlintDiagnostic = (document, diagnostic) => {
+const runFixPlanForDocument = async (document) => {
+  if (!document || !isSemanticScriptDocument(document)) {
+    vscode.window.showInformationMessage('Open a SemanticScript file to derive a fix plan.');
+    return;
+  }
+
+  syncConfiguration();
+
+  if (document.isDirty) {
+    await document.save();
+  }
+
+  const linterPath = findLinterPath(document);
+
+  if (!linterPath) {
+    vscode.window.showWarningMessage('SemanticScript compiler not found. Set semanticScript.linter.path or open the SemanticScript repo root.');
+    return;
+  }
+
+  const cwd = projectRootForDocument(document)
+    || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+    || path.dirname(document.fileName);
+  const args = [linterPath, 'fix', document.fileName, '--plan', '--json'];
+
+  fixPlanOutputChannel.clear();
+  fixPlanOutputChannel.appendLine(`SemanticScript fix plan: ${document.fileName}`);
+  fixPlanOutputChannel.appendLine(`${linterPythonPath} ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`);
+
+  const fixProcess = childProcess.spawn(
+    linterPythonPath,
+    args,
+    {
+      cwd,
+      windowsHide: true,
+    }
+  );
+
+  let stdout = '';
+  let stderr = '';
+
+  fixProcess.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  fixProcess.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  fixProcess.on('error', (error) => {
+    fixPlanOutputChannel.show(true);
+    fixPlanOutputChannel.appendLine(`error: ${error.message}`);
+    vscode.window.showErrorMessage(`SemanticScript fix plan failed: ${error.message}`);
+  });
+
+  fixProcess.on('close', (code) => {
+    if (stdout.trim()) {
+      fixPlanOutputChannel.appendLine('stdout:');
+      fixPlanOutputChannel.appendLine(stdout.trim());
+    }
+
+    if (stderr.trim()) {
+      fixPlanOutputChannel.appendLine('stderr:');
+      fixPlanOutputChannel.appendLine(stderr.trim());
+    }
+
+    fixPlanOutputChannel.show(true);
+
+    if (code === 0) {
+      vscode.window.showInformationMessage('SemanticScript fix plan generated.');
+    } else {
+      vscode.window.showErrorMessage(`SemanticScript fix plan failed with exit code ${code}.`);
+    }
+  });
+};
+
+const codeActionsFromSemanticScriptDiagnostic = (document, diagnostic) => {
+  if (diagnostic && diagnostic.source === 'semanticscript' && diagnostic.code) {
+    const action = new vscode.CodeAction(
+      `SemanticScript: Run fix --plan for ${diagnostic.code}`,
+      vscode.CodeActionKind.QuickFix
+    );
+    action.command = {
+      command: 'semanticscript.runFixPlan',
+      title: 'Run SemanticScript fix plan',
+      arguments: [document],
+    };
+    action.diagnostics = [diagnostic];
+    return [action];
+  }
+
   const cacheEntry = lintRecordCache.get(document.uri.toString());
 
   if (!cacheEntry || !diagnostic || diagnostic.source !== 'semlint' || !diagnostic._semanticScriptRecordKey) {
@@ -5227,11 +5448,12 @@ const codeActionsFromSemlintDiagnostic = (document, diagnostic) => {
 };
 
 const registerLinter = (context) => {
-  diagnosticCollection = vscode.languages.createDiagnosticCollection('semlint');
+  diagnosticCollection = vscode.languages.createDiagnosticCollection('semanticscript');
   lintStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   lintStatusBarItem.command = 'semanticscript.runLinter';
+  fixPlanOutputChannel = vscode.window.createOutputChannel('SemanticScript Fix Plan');
 
-  context.subscriptions.push(diagnosticCollection, lintStatusBarItem);
+  context.subscriptions.push(diagnosticCollection, lintStatusBarItem, fixPlanOutputChannel);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('semanticscript.runLinter', () => {
@@ -5247,12 +5469,19 @@ const registerLinter = (context) => {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('semanticscript.runFixPlan', async (document) => {
+      const targetDocument = document && document.uri
+        ? document
+        : vscode.window.activeTextEditor?.document;
+
+      await runFixPlanForDocument(targetDocument);
+    }),
     vscode.languages.registerCodeActionsProvider(
       { language: 'semanticscript' },
       {
         provideCodeActions(document, _range, contextForActions) {
           return contextForActions.diagnostics.flatMap((diagnostic) => (
-            codeActionsFromSemlintDiagnostic(document, diagnostic)
+            codeActionsFromSemanticScriptDiagnostic(document, diagnostic)
           ));
         },
       },
