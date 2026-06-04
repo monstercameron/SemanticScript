@@ -4028,8 +4028,12 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
 
     route = find_compiled_route(method, path, &request);
     if (route == NULL) {
-        if (config->method_not_allowed_handler != NULL &&
-                find_compiled_method_mismatch(method, path, &request) != NULL) {
+        if (find_compiled_method_mismatch(method, path, &request) != NULL) {
+            /* WEB-2: the path exists but not for this method -> 405 Method Not
+             * Allowed, NEVER 404. Use the typed method-not-allowed handler when
+             * one is registered; otherwise still return a plain 405 (previously a
+             * missing handler fell through to the 404 not-found path, mislabeling
+             * a method mismatch as an unknown route). */
             memset(&response, 0, sizeof(response));
             response.status = 405;
             response.body = NULL;
@@ -4038,17 +4042,23 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             response.owned_body = NULL;
             response.owned_content_type = NULL;
             response.backend_response = &stream_backend;
-            int mna_status = config->method_not_allowed_handler(&request, &response);
-            if (mna_status == SS_HTTP_OK && stream_backend.stream_started) {
-                response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
-            } else if (mna_status == SS_HTTP_OK && response.body != NULL) {
-                response_status = send_response(
-                    client_socket,
-                    response.status,
-                    response.content_type,
-                    response.body,
-                    &response);
-            } else {
+            int handled = 0;
+            if (config->method_not_allowed_handler != NULL) {
+                int mna_status = config->method_not_allowed_handler(&request, &response);
+                if (mna_status == SS_HTTP_OK && stream_backend.stream_started) {
+                    response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+                    handled = 1;
+                } else if (mna_status == SS_HTTP_OK && response.body != NULL) {
+                    response_status = send_response(
+                        client_socket,
+                        response.status,
+                        response.content_type,
+                        response.body,
+                        &response);
+                    handled = 1;
+                }
+            }
+            if (!handled) {
                 response_status = send_response(
                     client_socket,
                     405,

@@ -2084,6 +2084,15 @@ def _modeled_signature_target_names() -> list[str]:
             names.add(f"{fam}.{meth}")
     names.update(globals().get("_HTTP_RT", {}))
     names.update(_synthetic_codegen_signatures())
+    # AQ-8: the compare.* family is generated on-the-fly by _builtin_target_
+    # signature's suffix parser, so it was resolvable (and codegen-modeled via the
+    # `compare.` prefix) yet INVISIBLE to the single signature catalog (docs/
+    # targets). Enumerate the canonical ops x scalar types so the one catalog is
+    # complete - every resolvable+modeled compare target is discoverable.
+    for _op in _COMPARE_OPS:
+        for _typ in ("Int8", "UInt8", "Int16", "UInt16", "Int32", "UInt32",
+                     "Int64", "UInt64", "Float32", "Float64", "Bool", "String"):
+            names.add(f"compare.{_op}{_typ}")
     return sorted(names)
 
 
