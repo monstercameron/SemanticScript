@@ -15692,12 +15692,24 @@ class EavCodegen:
         if tok in getattr(self, "project_constants", {}):
             ctype, cval = self.project_constants[tok]
             return self._const_value(self.resolve_type_name(ctype), list(cval))
-        if ote is not None and ote.kind == "enum":
-            variants = [v.payload[0] for v in ote.facts("variant") if v.payload]
+        # BIN-2/TRUST-1: resolve an enum variant against the *declared* type, not
+        # only the repr-flattened one. A user enum whose name shadows a builtin
+        # role type (e.g. the json scaffold's `JsonValueKind`, which _norm_type maps
+        # to Int32) would otherwise skip this branch — `resolved` is `Int32`, no
+        # enum entity — and a check-clean `let k JsonValueKind objectJson` crashed
+        # codegen ("not in scope, expected an integer binding"). Prefer the resolved
+        # enum, else fall back to the unresolved declared type name.
+        enum_ent = ote if (ote is not None and ote.kind == "enum") else None
+        if enum_ent is None:
+            direct = self.program.entities.get(type_name)
+            if direct is not None and direct.kind == "enum":
+                enum_ent = direct
+        if enum_ent is not None:
+            variants = [v.payload[0] for v in enum_ent.facts("variant") if v.payload]
             if tok in variants:
                 repr_map = {
                     r.payload[0]: int(r.payload[1])
-                    for r in ote.facts("repr") if len(r.payload) >= 2
+                    for r in enum_ent.facts("repr") if len(r.payload) >= 2
                 }
                 disc = repr_map.get(tok, variants.index(tok))
                 return ir.Constant(ir.IntType(32), disc)

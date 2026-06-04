@@ -56,6 +56,40 @@ def test_fix2_build_identity_unit():
     assert ident["contractVersion"] == semanticscript.CONTRACT_VERSION
 
 
+# --- TRUST-1 / BIN-2: a check-clean enum-repr program must lower (no false green) ---
+
+def test_trust1_enum_shadowing_builtin_role_type_lowers():
+    """TRUST-1/BIN-2 (R-4): a check-clean program may not crash codegen. A user enum
+    whose name shadows a builtin role type (the json scaffold's `JsonValueKind`,
+    which normalizes to Int32) had its variant resolution skipped at lowering —
+    `let k JsonValueKind objectJson` passed `check` but crashed `run` with
+    "objectJson is not in scope (expected an integer binding)". The variant must
+    resolve against the declared enum, so the program lowers."""
+    src = ("P is project\nP module m\nP target console\nP entry main\n"
+           "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+           "ExitCode is alias\nExitCode for Int32\n"
+           "JsonValueKind is enum\nJsonValueKind variant objectJson\n"
+           "JsonValueKind repr objectJson 5\n"
+           "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+           "main invariant \"i\"\nmain let k immutable JsonValueKind objectJson\n"
+           "main let z immutable ExitCode 0\nmain return z\n")
+    prog = semanticscript.parse(src)
+    assert not [d for d in semanticscript.lint(prog) if d.severity == "error"]
+    # the crux: lowering must not raise the false-green codegen error.
+    semanticscript.lower_to_llvm(prog)
+
+
+def test_trust1_json_output_scaffold_checks_clean_and_lowers():
+    """The json-output scaffold (a documented, agent-reachable idiom) must not be a
+    false green: it builds a `JsonValueKind` enum + `json.createEmptyDocument` and
+    previously crashed `run`/`build` at the enum-repr arg. It must now check clean
+    AND lower."""
+    src = semanticscript.scaffold("json-output")
+    prog = semanticscript.parse(src)
+    assert not [d for d in semanticscript.lint(prog) if d.severity == "error"]
+    semanticscript.lower_to_llvm(prog)
+
+
 # --- TEST-2: the runner realizes all declared lanes (not just advertises them) ---
 
 def _lane_op(name, lane):
