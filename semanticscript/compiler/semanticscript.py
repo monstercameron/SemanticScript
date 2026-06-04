@@ -23539,6 +23539,14 @@ def _fix_edits_for(diag, program) -> list:
                               f"{new_slot!r} for {inv.payload[0]!r}"),
             })
         return edits
+    # AQ-5: the style tier becomes machine-applyable. SS1340 (ifValue/ifOut is
+    # comparison sugar) is repaired exactly by running the source through fmt,
+    # which canonicalizes the sugar to `compare` + `branch if`. Emit a
+    # whole-source `formatSource` edit so `patch` can realize the style fix.
+    if diag.code == "SS1340":
+        return [{"op": "formatSource", "code": "SS1340",
+                 "rationale": "canonicalize ifValue/ifOut sugar to compare + "
+                              "`branch if` via fmt (style-tier repair)"}]
     return []
 
 
@@ -23659,6 +23667,8 @@ def cmd_patch(args) -> int:
     remove_rows = [e["row"] for e in edits if e.get("op") == "removeRow" and e.get("row")]
     replace_rows = [e for e in edits
                     if e.get("op") == "replaceRow" and e.get("old") and e.get("new")]
+    # AQ-5: a whole-source style repair (canonicalize via fmt) after row edits.
+    format_source = any(e.get("op") == "formatSource" for e in edits)
 
     def row_key(text: str) -> tuple:
         try:
@@ -23701,6 +23711,19 @@ def cmd_patch(args) -> int:
             note="an edit no longer matches the source (it changed since `fix`); "
                  "regenerate the plan") + "\n")
         return 2
+
+    # AQ-5: realize the style-tier repair — canonicalize the whole source through
+    # fmt (the formatter *is* the fix for SS1340 sugar). Run after row edits so the
+    # two compose, and before re-validation so the formatted bytes are what's vetted.
+    if format_source:
+        try:
+            new_source = format_program(parse_compact(new_source))
+        except EavError as exc:
+            sys.stdout.write(_json_envelope(
+                "sem.patch.v1", ok=False, status="would-break", applied=0,
+                dryRun=dry_run, plan=plan_path, path=src_path,
+                note=f"formatting the plan would not parse: {exc}") + "\n")
+            return 2
 
     # re-validate the edited source before writing — never persist a broken file.
     try:

@@ -173,6 +173,44 @@ def test_erg2_analysis_commands_accept_a_project_directory(tmp_path):
 
 # --- AQ-3: refactoring (rename) operates at project scope ---
 
+# --- AQ-5: the style tier is machine-applyable (fmt-as-fix) ---
+
+def test_aq5_style_tier_repair_is_a_formatsource_edit():
+    # an SS1340 (ifValue/ifOut sugar, T4 style) diagnostic yields a whole-source
+    # formatSource edit — `fix`/`patch` now cover the style tier, not just blockers.
+    prog = semanticscript.parse(
+        open(os.path.join(ROOT, "examples", "ifvalue.sem"), encoding="utf-8").read())
+    diags = [d for d in semanticscript.lint(prog) if d.code == "SS1340"]
+    assert diags, "the ifvalue example should raise the SS1340 style diagnostic"
+    edits = semanticscript._fix_edits_for(diags[0], prog)
+    assert edits and edits[0]["op"] == "formatSource" and edits[0]["code"] == "SS1340"
+
+
+def test_aq5_patch_applies_the_style_fix_end_to_end(tmp_path):
+    import json
+    p = tmp_path / "ifvalue.sem"
+    p.write_text(open(os.path.join(ROOT, "examples", "ifvalue.sem"),
+                      encoding="utf-8").read(), encoding="utf-8")
+    assert "branch ifValue" in p.read_text(encoding="utf-8")
+    # fix --include-warnings surfaces the style tier and emits an applyable plan.
+    fix = subprocess.run(
+        [sys.executable, SC, "fix", str(p), "--include-warnings", "--json"],
+        capture_output=True, text=True, encoding="utf-8")
+    plan = json.loads(fix.stdout)
+    assert plan.get("planUsable") is True
+    assert any(e.get("op") == "formatSource" for e in plan.get("edits", []))
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(fix.stdout, encoding="utf-8")
+    # patch realizes the fix: the sugar is canonicalized to compare + `branch if`.
+    patch = subprocess.run([sys.executable, SC, "patch", str(plan_path), "--apply"],
+                           capture_output=True, text=True, encoding="utf-8")
+    assert patch.returncode == 0, patch.stdout + patch.stderr
+    out = p.read_text(encoding="utf-8")
+    assert "branch ifValue" not in out and "branch if " in out
+    # and the canonicalized source still parses (never persisted broken).
+    semanticscript.parse(out)
+
+
 def test_aq3_rename_rewrites_entity_and_refs_across_the_project(tmp_path):
     proj = tmp_path / "p"
     (proj / "src").mkdir(parents=True)
