@@ -155,3 +155,42 @@ def test_aq11_summary_command_is_registered_and_runs():
     assert proc.returncode == 0, proc.stderr
     d = json.loads(proc.stdout)
     assert d.get("surface") == "sem.summary.v1" and d.get("target") == "console"
+
+
+# --- ERG-2: analysis commands accept a project directory, not only a file ---
+
+def test_erg2_analysis_commands_accept_a_project_directory(tmp_path):
+    proj = tmp_path / "proj"
+    subprocess.run([sys.executable, SC, "new", str(proj)],
+                   capture_output=True, text=True)
+    # the program-analysis family must all accept a project dir uniformly
+    # (inventory was the file-only outlier, now fixed).
+    for cmd in ("inventory", "summary", "graph", "symbols", "context", "size"):
+        r = subprocess.run([sys.executable, SC, cmd, str(proj)],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert r.returncode == 0, f"`{cmd} <project-dir>` failed: {r.stderr[-200:]}"
+
+
+# --- AQ-3: refactoring (rename) operates at project scope ---
+
+def test_aq3_rename_rewrites_entity_and_refs_across_the_project(tmp_path):
+    proj = tmp_path / "p"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "Proj is project\nProj module appMod\nProj target console\nProj entry main\n",
+        encoding="utf-8")
+    (proj / "src" / "main.sem").write_text(
+        "appMod is module\nappMod path src.main\nappMod exports main\n"
+        "appMod purpose \"p\"\nappMod invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "helperValue is storage\nhelperValue scope module\nhelperValue type Int32\n"
+        "helperValue value 42\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+        "main invariant \"i\"\nmain return helperValue\n", encoding="utf-8")
+    r = subprocess.run([sys.executable, SC, "rename", str(proj),
+                        "helperValue", "answerValue", "--write"],
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    txt = (proj / "src" / "main.sem").read_text(encoding="utf-8")
+    assert "helperValue" not in txt
+    assert "answerValue is storage" in txt and "main return answerValue" in txt

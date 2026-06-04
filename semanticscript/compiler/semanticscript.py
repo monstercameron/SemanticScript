@@ -23927,7 +23927,10 @@ def cmd_doctor(args) -> int:
 
 def cmd_inventory(args) -> int:
     """Print entity counts by kind."""
-    program = parse(_read_source(args.path))
+    # ERG-2: an analysis command (like summary/graph/symbols/context/size) accepts a
+    # project DIRECTORY, not only a single file - route through the dir-aware,
+    # compact-aware loader so `inventory <project>` works like its peers.
+    program = parse_compact(_read_program_source(args.path))
     counts = summarize(program)
     for kind in sorted(counts):
         sys.stdout.write(f"{counts[kind]:4d}  {kind}\n")
