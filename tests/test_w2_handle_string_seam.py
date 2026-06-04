@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """W2-B / W2-G / W2-H: the auth⊗db seam — owned-handle -> String + verify on a server.
 
-W2-B: binding an owned handle (OpaquePointer/i64, e.g. bcrypt.hashPasswordOwned /
+W2-B: binding an owned handle (OpaquePointer, e.g. bcrypt.hashPasswordOwned /
       sessionTokenOwned) directly to `out X String` (i8*) used to slip through
-      `check` and crash the code generator with `i8* != i64` (SS5001). It is now
-      caught at check time as SS1205 with a c.cString repair hint.
+      `check` and crash the code generator with a handle/String mismatch
+      (SS5001). It is now caught at check time as SS1205 with a c.cString repair
+      hint.
 W2-G: `c.cString` (the sanctioned OpaquePointer->String reinterpret) now has a
       discoverable builtin signature, so `targets --signature c.cString` / describe
       surface it and the SS1205 hint is actionable.

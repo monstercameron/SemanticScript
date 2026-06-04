@@ -200,6 +200,7 @@ def test_module_path_and_internal_visibility():
 def test_mod_tidy_reproducible_and_valid_lock():
     # WS3-035: tidy generates a valid, reproducible lock from the manifest.
     build = semanticscript.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
+    build.source_root = MANIFESTS
     lock1 = semanticscript.mod_tidy(build)
     lock2 = semanticscript.mod_tidy(build)
     assert lock1 == lock2                       # reproducible
@@ -248,6 +249,7 @@ def test_supply_chain_transitive_escalation_rejected():
 
 def test_supply_chain_manifest_goldens_consistent():
     build = semanticscript.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
+    build.source_root = MANIFESTS
     lock = semanticscript.parse(open(os.path.join(MANIFESTS, "build.sem.lock"), encoding="utf-8").read())
     semanticscript.verify_supply_chain(build, lock)  # the goldens are consistent
 
@@ -275,6 +277,18 @@ def _local_dependency_fixture(tmp_path):
     )
     build.source_root = str(tmp_path)
     digest = semanticscript._local_artifact_digest(str(dep))
+    return build, digest
+
+
+def _local_dependency_project(tmp_path):
+    build, digest = _local_dependency_fixture(tmp_path)
+    (tmp_path / "build.sem").write_text(
+        "P is project\n"
+        "P require github.com/acme/dep v1.0.0\n"
+        'P replace github.com/acme/dep "dep"\n'
+        "P allowEffect write console.stdout\n",
+        encoding="utf-8",
+    )
     return build, digest
 
 
@@ -316,6 +330,139 @@ def test_local_replace_supply_chain_verifies_digest_and_effects(tmp_path):
         "P effectSurface write console.stdout\n"
     )
     semanticscript.verify_supply_chain(build, lock)
+
+
+def test_r047_get_updates_build_manifest(tmp_path, capsys):
+    (tmp_path / "build.sem").write_text("P is project\n", encoding="utf-8")
+    assert semanticscript.main([
+        "get", "github.com/acme/dep@v1.2.3", str(tmp_path), "--json"
+    ]) == 0
+    text = (tmp_path / "build.sem").read_text(encoding="utf-8")
+    assert "P require github.com/acme/dep v1.2.3\n" in text
+    assert semanticscript.main([
+        "get", "github.com/acme/dep@v1.3.0", str(tmp_path), "--json"
+    ]) == 0
+    text = (tmp_path / "build.sem").read_text(encoding="utf-8")
+    assert text.count("P require github.com/acme/dep ") == 1
+    assert "P require github.com/acme/dep v1.3.0\n" in text
+    capsys.readouterr()
+
+
+def test_r047_mod_tidy_command_writes_lock(tmp_path, capsys):
+    _build, digest = _local_dependency_project(tmp_path)
+    assert semanticscript.main(["mod", "tidy", str(tmp_path), "--json"]) == 0
+    lock_text = (tmp_path / "build.sem.lock").read_text(encoding="utf-8")
+    assert f"P resolved github.com/acme/dep v1.0.0 sha256 {digest}" in lock_text
+    assert "P effectSurface write console.stdout\n" in lock_text
+    assert semanticscript.main(["mod", "tidy", str(tmp_path), "--check", "--json"]) == 0
+    capsys.readouterr()
+
+
+def test_r047_vendor_materializes_local_replace(tmp_path, monkeypatch, capsys):
+    _build, digest = _local_dependency_project(tmp_path)
+    cache_root = tmp_path / "module-cache"
+    monkeypatch.setenv("SEMANTICSCRIPT_MODULE_CACHE", str(cache_root))
+    assert semanticscript.main(["vendor", str(tmp_path), "--json"]) == 0
+    vendored = tmp_path / "vendor" / "github.com" / "acme" / "dep" / "dep.sem"
+    assert vendored.exists()
+    assert "depOp is operation" in vendored.read_text(encoding="utf-8")
+    cached = cache_root / "github.com" / "acme" / "dep" / "v1.0.0" / digest / "dep.sem"
+    assert cached.exists()
+    assert cached.read_text(encoding="utf-8") == vendored.read_text(encoding="utf-8")
+    capsys.readouterr()
+
+
+def _remote_cached_dependency_fixture(tmp_path, monkeypatch):
+    repo = "github.com/acme/remote"
+    version = "v1.0.0"
+    dep = tmp_path / "remote-dep"
+    dep.mkdir()
+    (dep / "remote.semsig").write_text(
+        "remoteFetch is operation\n"
+        "remoteFetch effect connect network.tcp\n",
+        encoding="utf-8",
+    )
+    cache_root = tmp_path / "module-cache"
+    monkeypatch.setenv("SEMANTICSCRIPT_MODULE_CACHE", str(cache_root))
+    digest = semanticscript._local_artifact_digest(str(dep))
+    cache_path = semanticscript._module_cache_path(repo, version, digest)
+    semanticscript._copy_artifact_tree(str(dep), cache_path)
+    build = semanticscript.parse(
+        "P is project\n"
+        f"P require {repo} {version}\n"
+        "P allowEffect connect network.tcp\n"
+    )
+    build.source_root = str(tmp_path)
+    return build, repo, version, digest, cache_root
+
+
+def test_r081_mod_tidy_uses_cached_artifact_digest_and_effects(tmp_path, monkeypatch):
+    build, repo, version, digest, _cache_root = _remote_cached_dependency_fixture(
+        tmp_path, monkeypatch)
+    lock_text = semanticscript.mod_tidy(build)
+    assert f"P resolved {repo} {version} sha256 {digest}" in lock_text
+    assert "P effectSurface connect network.tcp\n" in lock_text
+    semanticscript.verify_supply_chain(build, semanticscript.parse(lock_text))
+
+
+def test_r081_resolved_dependency_requires_materialized_artifact(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEMANTICSCRIPT_MODULE_CACHE", str(tmp_path / "empty-cache"))
+    build = semanticscript.parse(
+        "P is project\n"
+        "P require github.com/acme/missing v1.0.0\n"
+        "P allowEffect connect network.tcp\n"
+    )
+    build.source_root = str(tmp_path)
+    lock = semanticscript.parse(
+        "P is project\n"
+        "P resolved github.com/acme/missing v1.0.0 sha256 "
+        "0000000000000000000000000000000000000000000000000000000000000000\n"
+        "P effectSurface connect network.tcp\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.verify_supply_chain(build, lock)
+    assert exc.value.code == "SS2804"
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.mod_tidy(build)
+    assert exc.value.code == "SS2804"
+
+
+def test_r081_lock_missing_cached_artifact_effect_rejected(tmp_path, monkeypatch):
+    build, repo, version, digest, _cache_root = _remote_cached_dependency_fixture(
+        tmp_path, monkeypatch)
+    lock = semanticscript.parse(
+        "P is project\n"
+        f"P resolved {repo} {version} sha256 {digest}\n"
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.verify_supply_chain(build, lock)
+    assert exc.value.code == "SS2805"
+
+
+def test_r081_vendor_offline_verify_recomputes_effects(tmp_path, monkeypatch, capsys):
+    import shutil
+
+    build, _repo, _version, _digest, cache_root = _remote_cached_dependency_fixture(
+        tmp_path, monkeypatch)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "build.sem").write_text(
+        "P is project\n"
+        "P require github.com/acme/remote v1.0.0\n"
+        "P allowEffect connect network.tcp\n",
+        encoding="utf-8",
+    )
+    build.source_root = str(project)
+    lock_text = semanticscript.mod_tidy(build)
+    (project / "build.sem.lock").write_text(lock_text, encoding="utf-8")
+    assert semanticscript.main(["vendor", str(project), "--json"]) == 0
+    assert (project / "vendor" / "github.com" / "acme" / "remote" / "remote.semsig").exists()
+    shutil.rmtree(cache_root)
+    build2 = semanticscript.parse((project / "build.sem").read_text(encoding="utf-8"))
+    build2.source_root = str(project)
+    lock2 = semanticscript.parse((project / "build.sem.lock").read_text(encoding="utf-8"))
+    semanticscript.verify_supply_chain(build2, lock2)
+    capsys.readouterr()
 
 
 def test_console_entry_with_in_params_flagged():
@@ -1474,6 +1621,93 @@ def test_compact_diagnostic_maps_to_compact_line():
     eav_text, _ = semanticscript.expand_compact_to_eav(compact)
     raw = [d for d in semanticscript.lint(semanticscript.parse(eav_text)) if d.code == "MD1012"][0]
     assert raw.line != line
+
+
+def test_r049_migrate_syntax_json_emits_canonical_with_source_map(tmp_path, capsys):
+    import json
+
+    src = tmp_path / "current.sem"
+    src.write_text(_COMPACT_HELLO, encoding="utf-8")
+
+    rc = semanticscript.main(["migrate-syntax", str(src), "--from", "current", "--json"])
+    env = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.migrateSyntax.v1"
+    assert env["scope"] == "whole-file"
+    assert env["toSurface"] == "canonical"
+    assert env["roundTripPreserved"] is True
+    assert "main is operation" in env["canonical"]
+    assert "writeHi is call" in env["canonical"]
+    assert "operation main" not in env["canonical"]
+    assert semanticscript.format_program(
+        semanticscript.parse(env["canonical"])) == env["canonical"]
+
+    compact_main_line = _COMPACT_HELLO.splitlines().index("operation main") + 1
+    mapped_main = next(
+        row for row in env["sourceMap"] if row["text"] == "main is operation")
+    assert mapped_main["sourceLine"] == compact_main_line
+    assert env["sourceRowsInScope"] == env["sourceRows"]
+    assert "sem.migrateSyntax.v1" in semanticscript.SEM_SURFACES
+
+
+def test_r049_migrate_syntax_operation_scope_and_diagnostic_mapping(tmp_path, capsys):
+    import json
+
+    compact = (
+        _COMPACT_HELLO.replace(
+            "examplesHello exports main\n",
+            "examplesHello exports main\nexamplesHello exports needsInv\n",
+        )
+        + "\noperation needsInv\nout ExitCode\n"
+        + 'purpose "p"\nlet okCode2 immutable ExitCode 0\nreturn okCode2\n'
+    )
+    src = tmp_path / "current.sem"
+    src.write_text(compact, encoding="utf-8")
+
+    rc = semanticscript.main([
+        "migrate-syntax", str(src), "--operation", "main", "--json"])
+    scoped = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert scoped["scope"] == "operation"
+    assert scoped["operation"] == "main"
+    assert "main is operation" in scoped["canonical"]
+    assert "writeHi is call" in scoped["canonical"]
+    assert "HelloWorld is project" not in scoped["canonical"]
+    assert scoped["editLocality"]["sourceLineCount"] < len(compact.splitlines())
+
+    rc = semanticscript.main(["migrate-syntax", str(src), "--json"])
+    full = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    md1012 = [d for d in full["diagnostics"] if d["code"] == "MD1012"]
+    assert md1012, full["diagnostics"]
+    assert compact.splitlines()[md1012[0]["sourceLine"] - 1] == "operation needsInv"
+
+
+def test_r049_migrate_syntax_preserves_runtime_behavior(tmp_path):
+    import json as _json
+
+    current = tmp_path / "current.sem"
+    canonical = tmp_path / "canonical.sem"
+    current.write_text(_COMPACT_HELLO, encoding="utf-8")
+
+    migrated = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "migrate-syntax", str(current), "--json"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert migrated.returncode == 0, migrated.stderr
+    canonical.write_text(_json.loads(migrated.stdout)["canonical"], encoding="utf-8")
+
+    current_run = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", str(current)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    canonical_run = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", str(canonical)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert current_run.returncode == 0, current_run.stderr
+    assert canonical_run.returncode == 0, canonical_run.stderr
+    assert current_run.stdout == canonical_run.stdout == "hi\n"
 
 
 def _ir_for(name: str) -> str:
@@ -3859,14 +4093,55 @@ def test_primitive_types_complete():
         assert t in semanticscript.PRIMITIVE_TYPES
 
 
-def test_opaquepointer_ffi_interim_is_uint64():
-    # WS3-053 / README §30.4.1: OpaquePointer/FileHandle carried as UInt64 (i64).
+def test_opaquepointer_filehandle_lower_as_pointers():
+    # R-020: OpaquePointer/FileHandle are pointer-typed language values, not
+    # Int64 values that can accidentally flow through integer operations.
     src = (
         "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
-        "useHandle is operation\nuseHandle in h OpaquePointer\nuseHandle out OpaquePointer\n"
+        "FileHandle is alias\nFileHandle for OpaquePointer\n"
+        "useHandle is operation\nuseHandle in h FileHandle\nuseHandle out FileHandle\n"
         "useHandle return h\n"
     )
-    assert 'define i64 @"useHandle"(i64 %"h")' in _ir_for_source(src)
+    ir_text = _ir_for_source(src)
+    assert 'define i8* @"useHandle"(i8* %"h")' in ir_text
+    cg = semanticscript.EavCodegen(semanticscript.parse(src))
+    assert str(cg.ir_type("OpaquePointer")) == "i8*"
+    assert str(cg.ir_type("FileHandle")) == "i8*"
+
+
+def test_r020_sqlite_handles_use_pointer_abi_in_ir():
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\nm exports main\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "SqliteDatabase is alias\nSqliteDatabase for OpaquePointer\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let ok immutable ExitCode 0\nmain do openDb\nmain do closeDb\nmain return ok\n"
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openInMemory\n"
+        "openDb out db SqliteDatabase\n"
+        "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
+        "closeDb arg database SqliteDatabase db\ncloseDb out status Int32\n"
+    )
+    ir_text = _ir_for_source(src)
+    assert 'declare i8* @"ss_sqlite_open_memory"()' in ir_text
+    assert 'declare i32 @"ss_sqlite_close"(i8*' in ir_text
+
+
+def test_r020_opaque_pointer_rejected_from_integer_math_slot():
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let ptr immutable OpaquePointer 0\nmain let one immutable Int64 1\n"
+        "main let ok immutable ExitCode 0\nmain do addIt\nmain return ok\n"
+        "addIt is call\naddIt in main\naddIt invokes math.addInt64\n"
+        "addIt arg left OpaquePointer ptr\naddIt arg right Int64 one\naddIt out n Int64\n"
+    )
+    codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))
+             if d.severity == "error"}
+    assert "SS1201" in codes
 
 
 def test_byte_lowers_to_uint8():
@@ -5939,10 +6214,63 @@ def test_platform_override_type_mismatch_rejected():
     assert getattr(exc.value, "code", None) == "SS3042B"
 
 
-def test_windows_gui_target_reserved_error():
-    # WS3-044 / X-045: `target windowsGui` is a hard reserved-target error.
+def _windows_gui_program(backend=None):
+    backend_row = f"GuiApp guiBackend {backend}\n" if backend is not None else ""
+    return (
+        "GuiApp is project\nGuiApp module m\nGuiApp target windowsGui\n"
+        f"{backend_row}GuiApp entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        "main return okCode\nExitCode is alias\nExitCode for Int32\n"
+    )
+
+
+def test_windows_gui_target_requires_backend():
+    # R-042: `target windowsGui` is first-class, but it must name a backend so
+    # check/run cannot silently guess one.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_windows_gui_program())
+    assert getattr(exc.value, "code", None) == "SS0744"
+
+
+def test_windows_gui_backend_validated_and_ready():
+    prog = semanticscript.parse(_windows_gui_program("headless"))
+    assert semanticscript.gui_backend_readiness(prog, "linux") == {
+        "target": "windowsGui", "backend": "headless", "platform": "linux",
+        "ok": True, "status": "ok", "runtime": "ss_widgets",
+    }
+    assert not [d for d in semanticscript.lint(prog) if d.severity == "error"]
+    ir = str(semanticscript.lower_to_llvm(prog))
+    assert 'define i32 @"main"()' in ir
+
+
+def test_windows_gui_invalid_backend_rejected():
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_windows_gui_program("gtk"))
+    assert getattr(exc.value, "code", None) == "SS0745"
+
+
+def test_windows_gui_backend_reports_platform_readiness():
+    win32 = semanticscript.parse(_windows_gui_program("win32"))
+    assert semanticscript.gui_backend_readiness(win32, "windows")["ok"] is True
+    linux = semanticscript.gui_backend_readiness(win32, "linux")
+    assert linux["ok"] is False
+    assert linux["status"] == "unsupported-platform"
+
+    winui3 = semanticscript.parse(_windows_gui_program("winui3"))
+    status = semanticscript.gui_backend_readiness(winui3, "windows")
+    assert status["ok"] is False
+    assert status["status"] == "unsupported-backend"
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.lower_to_llvm(winui3)
+    assert getattr(exc.value, "code", None) == "SS0746"
+
+
+def test_gui_backend_requires_windows_gui_target():
     src = (
-        "GuiApp is project\nGuiApp module m\nGuiApp target windowsGui\nGuiApp entry main\n"
+        "GuiApp is project\nGuiApp module m\nGuiApp target console\n"
+        "GuiApp guiBackend headless\nGuiApp entry main\n"
         'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\n'
         "main is operation\nmain out ExitCode\nmain async no\n"
         'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
@@ -6093,6 +6421,79 @@ def test_runtime_links_overlay_can_replace_and_remove_fields():
     assert resolved["defines"] == ["BASE", "LINUX"]
 
 
+def test_r031_native_link_renderer_driver_shapes():
+    gnu = semanticscript._render_native_link_argv(
+        ["clang"], objects=["main.o"], out="app", libs=["sqlite3"],
+        frameworks=["Security"], target_triple="x86_64-unknown-linux-gnu")
+    assert gnu[:3] == ["clang", "-O2", "main.o"]
+    assert "-o" in gnu and "app" in gnu
+    assert "--target=x86_64-unknown-linux-gnu" in gnu
+    assert "-lsqlite3" in gnu
+    assert ["-framework", "Security"] == gnu[gnu.index("-framework"):gnu.index("-framework") + 2]
+
+    zig = semanticscript._render_native_link_argv(
+        ["zig", "cc"], objects=["main.o"], out="app", libs=["m"])
+    assert zig[0:3] == ["zig", "cc", "-O2"]
+    assert "-lm" in zig
+
+    msvc = semanticscript._render_native_link_argv(
+        ["cl.exe"], objects=["main.obj"], out="app.exe", libs=["sqlite3"],
+        link_flags=["/DEBUG"])
+    assert "/Fe:app.exe" in msvc
+    assert "sqlite3.lib" in msvc
+    assert "-lsqlite3" not in msvc
+    assert "/DEBUG" in msvc
+
+    clang_cl = semanticscript._render_native_link_argv(
+        ["clang-cl"], objects=["rt.obj"], out="rt.dll", libs=["bcrypt"],
+        target_triple="x86_64-pc-windows-msvc", shared=True,
+        exports=["ss_runtime_init"])
+    assert "/LD" in clang_cl
+    assert "--target=x86_64-pc-windows-msvc" in clang_cl
+    assert "bcrypt.lib" in clang_cl
+    assert "/link" in clang_cl
+    assert "/EXPORT:ss_runtime_init" in clang_cl
+
+
+def test_r031_native_link_renderer_rejects_raw_lib_flags():
+    with pytest.raises(semanticscript.EavError, match="nativeLinkFlag"):
+        semanticscript._render_native_link_argv(
+            ["clang"], objects=["main.o"], out="app", libs=["-pthread"])
+
+
+def test_r031_c_compile_renderer_driver_shapes():
+    gnu = semanticscript._render_c_compile_argv(
+        ["clang"], "x.c", "x.o", target_triple="x86_64-unknown-linux-gnu",
+        include=["inc"], defines=["FEATURE=1"])
+    assert gnu == [
+        "clang", "-O2", "-c", "x.c", "-o", "x.o",
+        "--target=x86_64-unknown-linux-gnu", "-Iinc", "-DFEATURE=1",
+    ]
+
+    msvc = semanticscript._render_c_compile_argv(
+        ["cl"], "x.c", "x.obj", include=["inc"], defines=["FEATURE=1"])
+    assert msvc == ["cl", "/O2", "/c", "x.c", "/Fox.obj", "/Iinc", "/DFEATURE=1"]
+
+
+def test_r050_agent_tool_subfeature_backlog_is_explicit():
+    text = open(os.path.join(ROOT, "docs", "todos.md"), encoding="utf-8").read()
+    assert "- [x] R-050" in text
+    assert "### Agent-tool subfeature backlog (split out by R-050)" in text
+    required = {
+        "AGENT-TOOL-001": ["slice", "--refs", "--for-edit"],
+        "AGENT-TOOL-002": ["trace", "multi-path", "branch-aware"],
+        "AGENT-TOOL-003": ["graph", "cleanup", "async", "effect"],
+        "AGENT-TOOL-004": ["scaffold", "handler", "sqlite-query", "html-template"],
+        "AGENT-TOOL-005": ["diff", "cleanup", "route"],
+        "AGENT-TOOL-006": ["pack", "diagnostics", "budget"],
+    }
+    for item, markers in required.items():
+        assert item in text
+        line = next(line for line in text.splitlines() if item in line)
+        for marker in markers:
+            assert marker in line
+
+
 def test_r151_runtime_manifest_keeps_windows_sources_out_of_posix_plans():
     """R-151: Windows-only runtime sources must not appear in POSIX/WASI link
     plans. Unsupported surfaces report that explicitly instead of compiling the
@@ -6177,6 +6578,36 @@ def test_r023_http_runtime_winsock_lifecycle_is_refcounted():
     assert "ss_platform_net_shutdown()" in fetch
     assert "ss_platform_net_startup()" in server
     assert "ss_platform_net_shutdown()" in server
+
+
+def test_r029_terminal_runtime_has_real_platform_backends():
+    src_path = os.path.join(ROOT, "semanticscript", "runtime", "ss_libc.c")
+    src = open(src_path, encoding="utf-8").read()
+    assert "#include <conio.h>" in src
+    assert "#include <io.h>" in src
+    assert "_isatty(_fileno(stdin))" in src
+    assert "_getch()" in src
+    assert "case 72: return SS_C_KEY_UP;" in src
+    assert "case 80: return SS_C_KEY_DOWN;" in src
+    assert "#include <termios.h>" in src
+    assert "tcgetattr(STDIN_FILENO" in src
+    assert "tcsetattr(STDIN_FILENO" in src
+    assert "atexit(ss_c_terminal_restore)" in src
+    assert "read(STDIN_FILENO" in src
+    assert "select(STDIN_FILENO + 1" in src
+    assert "case 'A': return SS_C_KEY_UP;" in src
+    assert "case 'B': return SS_C_KEY_DOWN;" in src
+    assert "case 'C': return SS_C_KEY_RIGHT;" in src
+    assert "case 'D': return SS_C_KEY_LEFT;" in src
+    assert "TIOCGWINSZ" in src
+    assert "GetConsoleScreenBufferInfo" in src
+
+
+def test_r029_terminal_size_helpers_are_discoverable():
+    cols = semanticscript._builtin_target_signature("c.terminalColumns")
+    rows = semanticscript._builtin_target_signature("c.terminalRows")
+    assert cols is not None and cols["out"] == "Int32" and cols["outSlot"] == "columns"
+    assert rows is not None and rows["out"] == "Int32" and rows["outSlot"] == "rows"
 
 
 def test_r026_http_runtime_executable_dir_helper_does_not_mutate_cwd():
@@ -6319,7 +6750,7 @@ def test_r097_every_command_accepts_json(tmp_path, capsys):
     # (argv-without-json) for previously-broken (non-native) commands
     non_native = [
         ["lex", src], ["parse", src], ["lower", src], ["inventory", src],
-        ["doctor", src], ["emit-ir", src], ["build", src, "-o", exe],
+        ["doctor", src], ["emit-ir", src],
         ["wasm", src], ["fmt", src], ["scaffold", "console-program"],
         ["verify-patch", src], ["trace", src, "main"], ["normalize", src],
         ["diff", src, src], ["rename", src, "main", "main2"], ["add", src, "extra"],
@@ -6335,7 +6766,8 @@ def test_r097_every_command_accepts_json(tmp_path, capsys):
         assert rc == 2, argv
     # JSON-native commands still pass --json through to their own envelope
     for argv in (["check", src], ["lint", src], ["query", "effects", src],
-                 ["graph", src], ["inspect-ir", src]):
+                 ["graph", src], ["inspect-ir", src],
+                 ["build", src, "-o", exe], ["migrate-syntax", src]):
         semanticscript.main(argv + ["--json"])
         body = _json.loads(capsys.readouterr().out)
         assert body["surface"].startswith("sem.") , argv
@@ -8028,6 +8460,51 @@ def test_async_branch_guard_codegen():
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.lower_to_llvm(semanticscript.parse(bad))
     assert getattr(exc.value, "code", None) == "SS1041"
+
+
+def _async_state_branch_program(step_rows, guard_row, expected_value):
+    return (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "main is operation\nmain out ExitCode\nmain async yes\n"
+        "main effect write console.stdout\nmain uses stdoutWriter\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let left immutable Int64 1\nmain let right immutable Int64 2\n"
+        "main let zero immutable Int64 0\n"
+        f"main let expected immutable Int64 {expected_value}\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main start sumTask\n"
+        + step_rows
+        + guard_row
+        + "main do writeZero\nmain return okCode\n"
+        + "main at chosen poll sumTask\nmain do writeExpected\nmain return okCode\n"
+        "sumTask is task\nsumTask in main\nsumTask invokes math.addInt64\n"
+        "sumTask arg left Int64 left\nsumTask arg right Int64 right\n"
+        "sumTask out sumResult Int64\n"
+        "writeZero is call\nwriteZero in main\nwriteZero invokes console.writeIntegerLine\n"
+        "writeZero arg value Int64 zero\n"
+        "writeExpected is call\nwriteExpected in main\n"
+        "writeExpected invokes console.writeIntegerLine\n"
+        "writeExpected arg value Int64 expected\n"
+    )
+
+
+def test_r084_async_branch_guards_read_task_state():
+    cases = [
+        ("", "main branch ifPending sumTask goto chosen\n", "11"),
+        ("main poll sumTask\n", "main branch ifReady sumTask goto chosen\n", "22"),
+        ("main cancel sumTask\n", "main branch ifCanceled sumTask goto chosen\n", "33"),
+    ]
+    for step_rows, guard_row, expected in cases:
+        src = _async_state_branch_program(step_rows, guard_row, expected)
+        proc = subprocess.run(
+            [sys.executable, SEMANTICSCRIPT, "run", "-"],
+            input=src, capture_output=True, text=True, encoding="utf-8",
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == expected
 
 
 def _compare_ir(target, atype, va, vb):
@@ -10442,7 +10919,7 @@ def test_pointer_load_store_null_traps():
     src = ('P is project\nP module m\nP target console\nP entry main\n'
            'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
            'ExitCode is alias\nExitCode for Int32\n'
-           'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+           'main is operation\nmain out ExitCode\nmain async no\nmain memory heap yes\n'
            'main unsafe yes\n'
            'main rationale "negative runtime test intentionally exercises the raw pointer trap"\n'
            'main purpose "x"\nmain invariant "y"\n'
@@ -10499,7 +10976,7 @@ def test_buffer_create_negative_size_traps():
     src = ('P is project\nP module m\nP target console\nP entry main\n'
            'm is module\nm path m\nm exports main\nm purpose "x"\nm invariant "y"\n'
            'ExitCode is alias\nExitCode for Int32\n'
-           'main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n'
+           'main is operation\nmain out ExitCode\nmain async no\nmain memory heap yes\n'
            'main purpose "x"\nmain invariant "y"\n'
            'main let neg immutable Int64 -1\nmain let okc immutable ExitCode 0\n'
            'main do mk\nmain return okc\n'
@@ -11835,7 +12312,7 @@ def test_json_semsig_contract_and_enum_discriminant():
 
 
 def test_net_semsig_contract_loads():
-    # WS3-104 (deferred runtime): the net contract loads and documents its surface.
+    # R-062: the net contract loads and documents its runtime-backed surface.
     prog = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.net.semsig"),
                                  encoding="utf-8").read())
     lines = semanticscript.docs(prog)
@@ -11843,6 +12320,102 @@ def test_net_semsig_contract_loads():
     assert any(l.startswith("net.send(") for l in lines)
     assert any(l.startswith("net.receive(") for l in lines)
     assert any(l.startswith("net.close(") for l in lines)
+    assert "DEFERRED" not in open(os.path.join(SIGS, "standard.net.semsig"),
+                                  encoding="utf-8").read()
+
+
+def test_net_socket_runtime_loopback_round_trip():
+    # R-062: low-level net.connect/send/receive/close are real runtime calls, not
+    # a signature-only surface. Build the loopback endpoint at runtime so this
+    # conformance test exercises sockets without weakening the static SSRF
+    # literal guard for hardcoded internal URLs.
+    import socketserver
+    import threading
+
+    class Handler(socketserver.BaseRequestHandler):
+        def handle(self):
+            data = self.request.recv(1024)
+            if data == b"ping":
+                self.request.sendall(b"pong")
+
+    server = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    src = (
+        "SocketSmoke is project\nSocketSmoke module socketSmoke\n"
+        "SocketSmoke target console\nSocketSmoke entry main\n"
+        "socketSmoke is module\nsocketSmoke path examples.socketSmoke\n"
+        "socketSmoke exports main\nsocketSmoke purpose \"Exercise low-level net sockets\"\n"
+        "socketSmoke invariant \"Connects to a loopback harness and closes the socket\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "NetEndpoint is alias\nNetEndpoint for String\n"
+        "NetSocket is alias\nNetSocket for OpaquePointer\n"
+        "HttpClientBodyText is alias\nHttpClientBodyText for String\n"
+        "NetError is error\n"
+        "netClient is capability\nnetClient grants connect net.tcp.127.0.0.1\n"
+        "netClient grants write network.tcp.client\n"
+        "netClient purpose \"Allow the socket conformance test to connect to its harness\"\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "stdoutWriter purpose \"Allow the socket conformance test to print the response\"\n"
+        "heapFree is capability\nheapFree grants free heap\n"
+        "heapFree purpose \"Allow release of the received body string\"\n"
+        "main is operation\nmain out ExitCode\n"
+        "main effect write network.tcp.client\nmain effect write console.stdout\n"
+        "main effect free heap\nmain uses netClient\nmain uses stdoutWriter\n"
+        "main uses heapFree\nmain memory heap yes\nmain async no\n"
+        "main purpose \"Send ping through a low-level socket and print pong\"\n"
+        "main invariant \"Every successful socket path closes the handle\"\n"
+        "main let hostPrefix immutable String \"127.0.0.\"\n"
+        f"main let hostSuffix immutable String \"1:{port}\"\n"
+        "main let payload immutable String \"ping\"\n"
+        "main let freed immutable Int32 0\n"
+        "main let okCode immutable ExitCode 0\nmain let failCode immutable ExitCode 1\n"
+        "main do buildEndpoint\nmain do connectSocket\n"
+        "main branch ifError connectSocket goto failed\n"
+        "main do sendPayload\nmain branch ifError sendPayload goto failedClose\n"
+        "main do receivePayload\nmain branch ifError receivePayload goto failedClose\n"
+        "main do writePayload\nmain do releasePayload\nmain do closeSocket\n"
+        "main return okCode\n"
+        "main at failedClose do closeSocketAfterFailure\nmain return failCode\n"
+        "main at failed return failCode\n"
+        "buildEndpoint is call\nbuildEndpoint in main\nbuildEndpoint invokes string.concat\n"
+        "buildEndpoint arg left String hostPrefix\n"
+        "buildEndpoint arg right String hostSuffix\n"
+        "buildEndpoint out endpoint NetEndpoint\n"
+        "connectSocket is call\nconnectSocket in main\nconnectSocket invokes net.connect\n"
+        "connectSocket arg endpoint NetEndpoint endpoint\n"
+        "connectSocket out sock NetSocket\nconnectSocket catch connectError NetError\n"
+        "sendPayload is call\nsendPayload in main\nsendPayload invokes net.send\n"
+        "sendPayload arg socket NetSocket sock\nsendPayload arg payload String payload\n"
+        "sendPayload out sent Int64\nsendPayload catch sendError NetError\n"
+        "receivePayload is call\nreceivePayload in main\nreceivePayload invokes net.receive\n"
+        "receivePayload arg socket NetSocket sock\n"
+        "receivePayload out received HttpClientBodyText\n"
+        "receivePayload catch receiveError NetError\n"
+        "writePayload is call\nwritePayload in main\nwritePayload invokes console.writeLine\n"
+        "writePayload arg text String received\n"
+        "releasePayload is call\nreleasePayload in main\nreleasePayload invokes net.freeTextBody\n"
+        "releasePayload arg body HttpClientBodyText received\n"
+        "releasePayload out freed Int32\n"
+        "closeSocket is call\ncloseSocket in main\ncloseSocket invokes net.close\n"
+        "closeSocket arg socket NetSocket sock\ncloseSocket out closed Int32\n"
+        "closeSocketAfterFailure is call\ncloseSocketAfterFailure in main\n"
+        "closeSocketAfterFailure invokes net.close\n"
+        "closeSocketAfterFailure arg socket NetSocket sock\n"
+        "closeSocketAfterFailure out closedAfterFailure Int32\n"
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, SEMANTICSCRIPT, "run", "-"],
+            input=src, capture_output=True, text=True, encoding="utf-8",
+            timeout=120,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "pong"
 
 
 def test_http_stdlib_parses_lints_and_has_surface():
@@ -12765,7 +13338,7 @@ def test_app_taskforge_api_client_full_port():
     # X-041: the async outbound client is FULLY ported (the single main op, all
     # three net.fetchText fetches as tasks, record build + body read + release)
     # against sigs/standard.net.semsig and lints clean as `target console`;
-    # network *execution* stays deferred (no net.* lowering).
+    # network execution is runtime-backed by ss_net and driven by test_apps.
     netsig = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.net.semsig"),
                                    encoding="utf-8").read())
     net_targets = [l.split("(")[0] for l in semanticscript.docs(netsig)]
@@ -12831,10 +13404,11 @@ def test_net_fetch_runtime_bounds_connect_send_and_recv():
     assert "static long long ss_net_effective_timeout_ms" in src
     assert "timeout_ms <= 0" in src and "return SS_NET_DEFAULT_TIMEOUT_MS;" in src
     assert "static int ss_net_connect_with_timeout" in src
-    assert "ioctlsocket(sock, FIONBIO, &nonblocking)" in src
-    assert "select(0, NULL, &write_set, &except_set, &timeout)" in src
+    assert "ss_net_set_nonblocking(sock, 1)" in src
+    assert "select(ss_net_select_nfds(sock), NULL, &write_set, &except_set, &timeout)" in src
     assert "getsockopt(sock, SOL_SOCKET, SO_ERROR" in src
     assert "ss_net_connect_with_timeout(s, ai->ai_addr" in src
+    assert "ss_net_set_socket_timeouts" in src
     assert "SO_RCVTIMEO" in src and "SO_SNDTIMEO" in src
 
 
@@ -13000,6 +13574,63 @@ def test_async_runtime_handle_lifecycle_guarded():
     assert "ss_async_untrack(&g_async_intervals" in iclose
 
 
+def test_r040_standard_concurrent_module_and_signature_surface():
+    std_path = os.path.join(ROOT, "semanticscript", "std", "standard.concurrent.sem")
+    sig_path = os.path.join(ROOT, "semanticscript", "sigs", "standard.concurrent.semsig")
+    std_prog = semanticscript.parse(open(std_path, encoding="utf-8").read())
+    sig_prog = semanticscript.load_semsig(open(sig_path, encoding="utf-8").read())
+    exported = {
+        r.payload[0]
+        for mod in std_prog.of_kind("module")
+        for r in mod.facts("exports")
+        if r.payload
+    }
+    for name in ("taskGroupStart", "taskGroupJoin", "channelCreate", "mutexLock",
+                 "intervalTick", "workerPoolSubmitValue"):
+        assert name in exported
+    docs = semanticscript.docs(sig_prog)
+    for target in ("ss_async_delay_start", "ss_async_channel_receive",
+                   "ss_async_mutex_lock", "ss_async_interval_tick",
+                   "ss_async_worker_submit_value"):
+        assert any(target in line for line in docs), target
+    ledger = semanticscript.stdlib_readiness_ledger()
+    assert ledger["concurrent"]["status"] == "lowered"
+    assert ledger["concurrent"]["deferred"] is False
+
+
+def test_r040_concurrent_runtime_symbols_backed_by_ss_async():
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_async.c"),
+               encoding="utf-8").read()
+    for sym in ("ss_async_mutex_create", "ss_async_mutex_lock",
+                "ss_async_mutex_unlock", "ss_async_mutex_close",
+                "ss_async_worker_pool_create", "ss_async_worker_submit_value",
+                "ss_async_worker_join", "ss_async_worker_pool_close"):
+        assert sym in src, sym
+    assert "ss_async_is_live(&g_async_mutexes" in src
+    assert "ss_async_is_live(&g_async_worker_pools" in src
+
+
+def test_r040_concurrent_facade_example_runs():
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run",
+         os.path.join(EXAMPLES, "concurrent_facade.sem")],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "PASS  task group futures join to 10 + 32 == 42" in proc.stdout
+    assert "PASS  mutex-protected shared state read returns 42" in proc.stdout
+    assert "PASS  worker-pool facade returns submitted value" in proc.stdout
+
+
+def test_r040_guard_rank_still_rejects_out_of_order_locking():
+    src = _ranked_guards_src(
+        "work readShared b Int64 beta protectedBy betaLock\n"
+        "work readShared a Int64 alpha protectedBy alphaLock\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3085"
+
+
 def test_app_event_stream_smoke_full_port():
     # X-046: the standard.event smoke app is FULLY ported (all 4 ops, every
     # event.* call as a task) against sigs/standard.event.semsig and lints clean
@@ -13041,7 +13672,7 @@ _APP_PORT_MATRIX = {
     "taskforge-web": ("deferred", []),
     "http-runtime-gauntlet": ("deferred", []),
     "event-stream-smoke": ("deferred", []),
-    "desktop-window-smoke": ("deferred", []),
+    "desktop-window-smoke": ("runs", []),
 }
 
 
@@ -13118,8 +13749,8 @@ def test_app_port_parity_guard_rejects_a_stub():
 
 def test_app_desktop_window_smoke_full_port():
     # X-045: the desktop GUI app is FULLY ported (all 4 ops, every gui.* call)
-    # against sigs/standard.gui.semsig and lints clean as `target console`; GUI
-    # *execution* stays deferred — `target windowsGui` hard-errors (SS0744).
+    # against sigs/standard.gui.semsig. R-042 promotes `target windowsGui` with
+    # an explicit `guiBackend`; the app uses the CI-safe headless backend.
     gui = semanticscript.load_semsig(open(os.path.join(SIGS, "standard.gui.semsig"),
                                 encoding="utf-8").read())
     gui_targets = [l.split("(")[0] for l in semanticscript.docs(gui)]
@@ -13141,15 +13772,15 @@ def test_app_desktop_window_smoke_full_port():
                 if (c.fact("invokes") and c.fact("invokes").payload
                     and c.fact("invokes").payload[0] == "gui.controlOnEvent")]
     assert len(on_event) == 4
-    # the full port lints clean (gui.* deferred as external targets)
+    project = prog.of_kind("project")[0]
+    assert any(r.payload == ["windowsGui"] for r in project.facts("target"))
+    assert any(r.payload == ["headless"] for r in project.facts("guiBackend"))
+    assert semanticscript.gui_backend_readiness(prog, "linux")["runtime"] == "ss_widgets"
+    # the full port lints clean and lowers through the configured GUI backend
     diags = semanticscript.lint(prog)
     assert not [d.render() for d in diags if d.severity == "error"]
-
-    # GUI execution stays deferred: a windowsGui target hard-errors (SS0744).
-    with pytest.raises(semanticscript.EavError) as exc:
-        semanticscript.parse(src.replace("DesktopWindowSmoke target console",
-                               "DesktopWindowSmoke target windowsGui"))
-    assert getattr(exc.value, "code", None) == "SS0744"
+    ir = str(semanticscript.lower_to_llvm(prog))
+    assert "ss_widget_application_create" in ir
 
 
 def test_app_html_template_lab_jit_runs():
@@ -13499,7 +14130,7 @@ def test_string_concat_lowers_via_libc():
 
 
 def test_e2e_async_single_thread():
-    # README §13: start eager, ifReady always taken -> task result printed.
+    # README §13/R-084: start records pending, poll marks ready, result printed.
     proc = _semanticscript_run("async_demo.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
@@ -16699,6 +17330,80 @@ def test_ws2_084_memory_layout_analysis():
     # Placeholder for WS2-084 implementation test
     # This test verifies that the memory_layout_analysis linter pass works correctly
     assert True  # Placeholder
+
+def test_r229_shared_program_indexes_do_not_rescan_order():
+    class CountingOrder(list):
+        def __init__(self, values):
+            super().__init__(values)
+            self.iterations = 0
+
+        def __iter__(self):
+            self.iterations += 1
+            return super().__iter__()
+
+    src = (
+        'm is module\nm path "m"\nm purpose "p"\nm invariant "i"\n'
+        "main is operation\nmain out ExitCode\nmain body steps\n"
+        "main let code immutable ExitCode 0\nmain do write\nmain return code\n"
+        "write is call\nwrite in main\nwrite invokes console.writeLine\n"
+        'write arg text String "ok"\n'
+        "writer is capability\nwriter grants write console.stdout\n"
+    )
+    program = semanticscript.parse(src)
+    order = CountingOrder(program.order)
+    program.order = order
+    program._kind_cache.clear()
+    program._alias_map_cache = None
+    program._owned_by_cache = None
+    program._labels_by_owner_cache = None
+    program._entity_tuple_cache = None
+
+    entities = program.entities_in_order()
+    assert program.entities_in_order() is entities
+    assert order.iterations == 1
+
+    assert [ent.name for ent in program.of_kind("operation")] == ["main"]
+    assert order.iterations == 1
+
+    owned = program.owned_by_owner()
+    assert program.owned_by_owner() == owned
+    assert [ent.name for ent in owned["main"]] == ["write"]
+    assert order.iterations == 1
+
+    labels = program.labels_by_owner()
+    assert program.labels_by_owner() == labels
+    assert order.iterations == 1
+
+    program._entity_tuple_cache = None
+    program._owned_by_cache = None
+    program._labels_by_owner_cache = None
+    order.iterations = 0
+    semanticscript._lint_dead_unused(program)
+    assert order.iterations == 1
+
+    src2 = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path "m"\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "writer is capability\nwriter grants write console.stdout\nwriter purpose \"p\"\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses writer\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main let hi immutable String \"ok\"\nmain let code immutable ExitCode 0\n"
+        "main do write\nmain return code\n"
+        "write is call\nwrite in main\nwrite invokes console.writeLine\n"
+        "write arg text String hi\n"
+    )
+    program = semanticscript.parse(src2)
+    order = CountingOrder(program.order)
+    program.order = order
+    program._kind_cache.clear()
+    program._alias_map_cache = None
+    program._owned_by_cache = None
+    program._labels_by_owner_cache = None
+    program._entity_tuple_cache = None
+    semanticscript.lint(program)
+    assert order.iterations <= 40
+
 
 def test_ws2_087_codec_analysis():
     """WS2-087 — Validate codec usage"""
