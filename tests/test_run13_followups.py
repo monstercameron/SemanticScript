@@ -56,6 +56,25 @@ def test_fix2_build_identity_unit():
     assert ident["contractVersion"] == semanticscript.CONTRACT_VERSION
 
 
+# --- TRUE-1: `task` with no template lists templates (self-describing surface) ---
+
+def test_true1_task_with_no_template_lists_the_catalog():
+    """TRUE-1 (R-15): `task` with no template must list the available templates,
+    not die with an argparse "required arg" error. A self-describing toolchain has
+    to answer "what can I do?" — the way `docs` (no path) returns its catalog."""
+    proc = subprocess.run([sys.executable, SC, "task", "--json"],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    d = json.loads(proc.stdout)
+    assert d.get("ok") is True and d.get("status") == "catalog"
+    assert d.get("templates"), "no templates listed"
+    # and a named template still emits its checklist.
+    one = d["templates"][0]
+    p2 = subprocess.run([sys.executable, SC, "task", one, "--json"],
+                        capture_output=True, text=True, encoding="utf-8")
+    assert p2.returncode == 0 and json.loads(p2.stdout).get("template") == one
+
+
 # --- TRUST-1 / BIN-2: a check-clean enum-repr program must lower (no false green) ---
 
 def test_trust1_enum_shadowing_builtin_role_type_lowers():

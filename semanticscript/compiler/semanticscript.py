@@ -22017,6 +22017,15 @@ def cmd_new(args) -> int:
 
 def cmd_task(args) -> int:
     """Emit an agent workflow checklist for a template (sem.task.v1)."""
+    # TRUE-1 (R-15): `task` with no template lists the available templates (a
+    # catalog), not an argparse error — a self-describing surface must answer
+    # "what can I do?" instead of demanding an arg the caller is trying to learn.
+    if getattr(args, "template", None) is None:
+        sys.stdout.write(_json_envelope(
+            "sem.task.v1", ok=True, status="catalog",
+            templates=sorted(EAV_TASK_TEMPLATES),
+            available=sorted(EAV_TASK_TEMPLATES)) + "\n")
+        return 0
     tmpl = EAV_TASK_TEMPLATES.get(args.template)
     if tmpl is None:
         sys.stdout.write(_json_envelope(
@@ -24454,7 +24463,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_new.set_defaults(func=cmd_new)
 
     sp_task = sub.add_parser("task", help="emit an agent workflow checklist")
-    sp_task.add_argument("template", help="one of: " + ", ".join(sorted(EAV_TASK_TEMPLATES)))
+    sp_task.add_argument("template", nargs="?",
+                         help="one of: " + ", ".join(sorted(EAV_TASK_TEMPLATES))
+                         + " (omit to list templates)")
     sp_task.add_argument("--json", action="store_true")
     sp_task.set_defaults(func=cmd_task)
 
