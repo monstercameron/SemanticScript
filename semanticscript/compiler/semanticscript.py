@@ -23132,6 +23132,25 @@ def cmd_runtime_config(args) -> int:
     return 0 if config["ready"] else 1
 
 
+def _build_identity(program: Program, platform: Optional[str] = None) -> dict:
+    """FIX-2: a content-addressed identity for a built artifact - the sha256 of the
+    lowered LLVM IR plus the contract/release version. Surfacing it lets a consumer
+    verify reproducibility (same source+toolchain -> same irSha256) and confirm a
+    rebuild actually changed, instead of trusting an opaque exe path alone."""
+    import hashlib
+    ir_sha = None
+    try:
+        ir_sha = hashlib.sha256(
+            str(lower_to_llvm(program, platform)).encode("utf-8")).hexdigest()
+    except EavError:
+        ir_sha = None
+    return {
+        "irSha256": ir_sha,
+        "contractVersion": CONTRACT_VERSION,
+        "releaseVersion": _release_version(),
+    }
+
+
 def cmd_build(args) -> int:
     """Compile a program to a native executable (IR -> clang -> exe). R-017: an
     optional `--platform NAME` selects a declared `platform` entity (triple +
@@ -23193,7 +23212,8 @@ def cmd_build(args) -> int:
         return _build_failed("io-error", str(exc), platform=platform, output=out_path)
     if want_json:
         sys.stdout.write(_json_envelope(
-            "sem.build.v1", ok=True, status="ok", output=exe) + "\n")
+            "sem.build.v1", ok=True, status="ok", output=exe,
+            identity=_build_identity(program, platform)) + "\n")
     else:
         sys.stdout.write(exe + "\n")
     return 0
