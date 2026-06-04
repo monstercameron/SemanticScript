@@ -70,6 +70,7 @@ HttpTextResponse purpose "A fetched text response carrying the heap-owned body c
 
 outboundFetch is capability
 outboundFetch grants write network.http.client
+outboundFetch grants connect net.http.127.0.0.1
 outboundFetch purpose "Authority to perform outbound HTTP client work through standard.net"
 outboundFetch rationale "Test harness client intentionally targets the local TaskForge loopback server"
 

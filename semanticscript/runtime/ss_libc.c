@@ -12,16 +12,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>  /* R-175: strict ss_c_atoll overflow detection */
-#ifdef _WIN32
-#include <windows.h>
-#include <conio.h>
-#include <io.h>
-#else
-#include <unistd.h>
-#include <termios.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
-#endif
+#include "native_platform/ss_platform.h"
 #include "ss_runtime_export.h"
 
 /*

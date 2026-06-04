@@ -10,9 +10,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "native_platform/ss_platform_entropy.h"
+#include "native_platform/ss_platform_time.h"
 #include "ss_runtime_export.h"
 
 #define SS_ID_OK 0
@@ -98,7 +98,7 @@ SS_EXPORT int32_t ss_id_uuid_v4(const char **out) {
 }
 
 static int64_t current_time_millis(void) {
-    return (int64_t)time(NULL) * 1000;
+    return (int64_t)ss_platform_wall_time_ms();
 }
 
 static void fill_seeded_random(unsigned char bytes[10], uint64_t seed) {

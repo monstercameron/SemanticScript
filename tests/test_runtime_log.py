@@ -20,7 +20,7 @@ def test_log_contract_is_runtime_backed_not_deferred():
         "provides": ["ss_log_"],
         "exports": ["ss_log_info", "ss_log_warn", "ss_log_set_path"],
         "sources": ["native_log/sem_log_runtime.c"],
-        "include": ["native_log"],
+        "include": ["native_log", "native_platform"],
     }]
 
 
@@ -29,7 +29,9 @@ def test_log_runtime_creates_nested_parent_directories():
         encoding="utf-8"
     )
     assert "static int log_ensure_parent_directory(void)" in source
-    assert "if (errno == EEXIST) return 1;" in source
+    assert "if (errno == EEXIST)" in source
+    assert "_stat(path, &st)" in source
+    assert "stat(path, &st)" in source
     assert "if (!log_ensure_parent_directory()) return NULL;" in source
     assert "parent[i] = '\\0';" in source
     assert "log_mkdir_p_single(parent)" in source

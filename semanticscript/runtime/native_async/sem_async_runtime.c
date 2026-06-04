@@ -1,5 +1,6 @@
 #include "sem_async_runtime.h"
-#include "ss_platform_time.h"
+#include "../native_platform/ss_platform.h"
+#include "../native_platform/ss_platform_time.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -8,13 +9,6 @@
 
 #ifdef SEM_ASYNC_WITH_LIBUV
 #include <uv.h>
-#endif
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <pthread.h>
-#include <time.h>
-#include <unistd.h>
 #endif
 
 typedef struct SSFutureContinuation SSFutureContinuation;

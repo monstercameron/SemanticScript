@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
     size_t reply_len;
     int rc, started;
 
-    if (!ss_http_client_winsock_ready()) { fprintf(stderr, "winsock\n"); return 2; }
+    if (!ss_platform_net_startup()) { fprintf(stderr, "net startup\n"); return 2; }
     write_asset(dir);
 
     /* GET over a socket: a multi-chunk body, fully and exactly delivered, never
@@ -182,10 +182,12 @@ def test_static_file_streams_multichunk_body(tmp_path):
         pytest.skip("no C compiler available for native HTTP streaming harness")
     runtime = os.path.join(ROOT, "semanticscript", "runtime", "native_http",
                            "sem_http_runtime.c").replace("\\", "/")
+    platform_time = os.path.join(ROOT, "semanticscript", "runtime", "native_platform",
+                                 "ss_platform_time.c").replace("\\", "/")
     harness = tmp_path / "harness_http_static_streaming.c"
     harness.write_text(HARNESS.replace("{runtime}", runtime), encoding="utf-8")
     exe = tmp_path / ("harness.exe" if sys.platform == "win32" else "harness")
-    cmd = list(cc) + ["-std=c11", str(harness), "-o", str(exe)]
+    cmd = list(cc) + ["-std=c11", str(harness), platform_time, "-o", str(exe)]
     if sys.platform == "win32":
         cmd.append("-lws2_32")
     built = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")

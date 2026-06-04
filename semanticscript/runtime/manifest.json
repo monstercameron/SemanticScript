@@ -50,7 +50,8 @@
       ],
       "sources": [
         "ss_id.c",
-        "native_platform/ss_platform_entropy.c"
+        "native_platform/ss_platform_entropy.c",
+        "native_platform/ss_platform_time.c"
       ],
       "include": [
         ".",
@@ -222,7 +223,8 @@
         "native_log/sem_log_runtime.c"
       ],
       "include": [
-        "native_log"
+        "native_log",
+        "native_platform"
       ]
     },
     {

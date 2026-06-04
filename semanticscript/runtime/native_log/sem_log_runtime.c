@@ -8,18 +8,11 @@
  */
 
 #include "sem_log_runtime.h"
+#include "../native_platform/ss_platform.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
-
-#ifdef _WIN32
-#  include <direct.h>     /* _mkdir */
-#  include <sys/stat.h>   /* _stat / _S_IFDIR — R-030 directory-type check */
-#else
-#  include <sys/stat.h>   /* mkdir, stat */
-#  include <sys/types.h>
-#endif
 
 /* Default path: writes to logs/log.log under whatever cwd the process
  * was launched from. For the taskforge-web app launched from build/ this

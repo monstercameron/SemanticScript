@@ -6,25 +6,13 @@
  * chunked transfer-encoding are out of scope; chunked responses fail closed
  * rather than exposing wire framing as body text.
  */
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/select.h>
-#include <sys/time.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#endif
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <limits.h>
+#include "native_platform/ss_platform.h"
 #include "ss_runtime_export.h"
 
 #ifdef _WIN32
@@ -399,6 +387,65 @@ static int ss_net_parse_url(const char *url, char *host, size_t hostcap,
     return 0;
 }
 
+static int ss_net_sockaddr_is_private(const struct sockaddr *addr) {
+    if (addr == NULL) {
+        return 1;
+    }
+    if (addr->sa_family == AF_INET) {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)addr;
+        uint32_t ip = ntohl(in->sin_addr.s_addr);
+        uint32_t first = (ip >> 24) & 0xffu;
+        uint32_t second = (ip >> 16) & 0xffu;
+        if (first == 0 || first == 10 || first == 127 || first >= 224) {
+            return 1;
+        }
+        if (first == 100 && second >= 64 && second <= 127) {
+            return 1;
+        }
+        if (first == 169 && second == 254) {
+            return 1;
+        }
+        if (first == 172 && second >= 16 && second <= 31) {
+            return 1;
+        }
+        if (first == 192 && second == 168) {
+            return 1;
+        }
+        return 0;
+    }
+    if (addr->sa_family == AF_INET6) {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
+        const unsigned char *b = (const unsigned char *)&in6->sin6_addr;
+        int all_zero = 1;
+        size_t i;
+        for (i = 0; i < 16; ++i) {
+            if (b[i] != 0) {
+                all_zero = 0;
+                break;
+            }
+        }
+        if (all_zero) {
+            return 1;
+        }
+        if (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 &&
+                b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 &&
+                b[8] == 0 && b[9] == 0 && b[10] == 0 && b[11] == 0 &&
+                b[12] == 0 && b[13] == 0 && b[14] == 0 && b[15] == 1) {
+            return 1;
+        }
+        if ((b[0] & 0xfeu) == 0xfcu) {
+            return 1;  /* unique-local fc00::/7 */
+        }
+        if (b[0] == 0xfeu && (b[1] & 0xc0u) == 0x80u) {
+            return 1;  /* link-local fe80::/10 */
+        }
+        if (b[0] == 0xffu) {
+            return 1;  /* multicast */
+        }
+    }
+    return 0;
+}
+
 static int ss_net_parse_endpoint(const char *endpoint, char *host, size_t hostcap,
                                  char *port, size_t portcap) {
     if (endpoint == NULL || hostcap == 0 || portcap == 0) {
@@ -572,10 +619,14 @@ SS_EXPORT int ss_net_close(void *socket_handle) {
  * redirectLimit) is now passed through and enforced. `redirect_limit` is accepted
  * but trivially honored: this client never follows redirects (a 3xx body is
  * returned as-is), so 0 redirects are followed <= any non-negative limit. A value
- * of 0 for timeout/max_body means "use the built-in default/hard cap". */
+ * of 0 for timeout/max_body means "use the built-in default/hard cap".
+ * allow_private is compiler-proven from an exact loopback/private capability with
+ * a rationale; otherwise DNS answers resolving to private/link-local/loopback
+ * ranges are skipped to close the DNS-rebinding half of R-078. */
 SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
                                   long long max_body_bytes,
-                                  long long redirect_limit) {
+                                  long long redirect_limit,
+                                  long long allow_private) {
     (void)redirect_limit;
     if (!url) return NULL;
     char host[256], path[1024];
@@ -597,6 +648,9 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
     ss_net_socket_t s = SS_NET_INVALID_SOCKET;
     struct addrinfo *ai;
     for (ai = res; ai != NULL; ai = ai->ai_next) {
+        if (!allow_private && ss_net_sockaddr_is_private(ai->ai_addr)) {
+            continue;
+        }
         s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (s == SS_NET_INVALID_SOCKET) {
             continue;

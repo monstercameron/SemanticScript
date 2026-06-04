@@ -1,17 +1,11 @@
 #include "sem_http_runtime.h"
-#include "ss_platform_time.h"
+#include "../native_platform/ss_platform.h"
+#include "../native_platform/ss_platform_time.h"
 
 #include <ctype.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <time.h>
-
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 
 /* Keep the fallback backend's full-request buffer bounded. Applications should
  * enforce their own smaller body policy with ss_http_request_body_length; this
@@ -65,29 +59,13 @@ typedef struct SSHttpPathParam {
 } SSHttpPathParam;
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>          /* CreateDirectoryA */
-#include <io.h>               /* R-190: _get_osfhandle / _fileno for path canonicalization */
-#include <wchar.h>
 typedef SOCKET ss_socket_t;
 #define SS_INVALID_SOCKET INVALID_SOCKET
 static void ss_close_socket(ss_socket_t socket_handle) {
     closesocket(socket_handle);
 }
 #else
-#include <arpa/inet.h>
 #include <errno.h>
-#include <limits.h>            /* R-190: PATH_MAX for realpath containment check */
-#include <sys/stat.h>          /* mkdir for ss_http_filesystem_ensure_directory */
-#include <sys/select.h>
-#include <poll.h>
-#include <time.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
 typedef int ss_socket_t;
 #define SS_INVALID_SOCKET (-1)
 static void ss_close_socket(ss_socket_t socket_handle) {

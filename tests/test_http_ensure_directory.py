@@ -68,10 +68,12 @@ def test_ensure_directory_creates_nested_and_rejects_file_segment(tmp_path):
         pytest.skip("no C compiler available for native HTTP harness")
     runtime = os.path.join(ROOT, "semanticscript", "runtime", "native_http",
                            "sem_http_runtime.c").replace("\\", "/")
+    platform_time = os.path.join(ROOT, "semanticscript", "runtime", "native_platform",
+                                 "ss_platform_time.c").replace("\\", "/")
     harness = tmp_path / "harness_ensure_dir.c"
     harness.write_text(HARNESS.replace("{runtime}", runtime), encoding="utf-8")
     exe = tmp_path / ("harness.exe" if sys.platform == "win32" else "harness")
-    cmd = list(cc) + ["-std=c11", str(harness), "-o", str(exe)]
+    cmd = list(cc) + ["-std=c11", str(harness), platform_time, "-o", str(exe)]
     if sys.platform == "win32":
         cmd.append("-lws2_32")
     built = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")

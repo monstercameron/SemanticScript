@@ -79,7 +79,7 @@ static int loopback_pair(ss_socket_t *server, ss_socket_t *client) {
 
 int main(void) {
     ss_socket_t client;
-    if (!ss_http_client_winsock_ready()) { fprintf(stderr, "winsock\n"); return 2; }
+    if (!ss_platform_net_startup()) { fprintf(stderr, "net startup\n"); return 2; }
     if (!loopback_pair(&g_server_fd, &client)) { fprintf(stderr, "pair\n"); return 2; }
 
     /* run handle_client on the server end in a thread */
@@ -129,10 +129,12 @@ def test_split_header_block_parses_not_400(tmp_path):
         pytest.skip("no C compiler available for native HTTP harness")
     runtime = os.path.join(ROOT, "semanticscript", "runtime", "native_http",
                            "sem_http_runtime.c").replace("\\", "/")
+    platform_time = os.path.join(ROOT, "semanticscript", "runtime", "native_platform",
+                                 "ss_platform_time.c").replace("\\", "/")
     harness = tmp_path / "harness_http_frag.c"
     harness.write_text(HARNESS.replace("{runtime}", runtime), encoding="utf-8")
     exe = tmp_path / ("harness.exe" if sys.platform == "win32" else "harness")
-    cmd = list(cc) + ["-std=c11", str(harness), "-o", str(exe)]
+    cmd = list(cc) + ["-std=c11", str(harness), platform_time, "-o", str(exe)]
     if sys.platform == "win32":
         cmd.append("-lws2_32")
     else:
