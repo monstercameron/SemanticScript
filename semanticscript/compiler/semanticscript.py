@@ -501,11 +501,11 @@ DIAGNOSTICS.update({
     "SS1205": {"tier": "T1", "summary": "built-in call `out` binding value-kind mismatch.",
                "found": "A call binds a built-in/intrinsic result to an `out` whose "
                         "value kind disagrees with the target's declared return type — "
-                        "typically an owned handle (OpaquePointer/i64, e.g. "
+                        "typically an owned handle (OpaquePointer, e.g. "
                         "bcrypt.hashPasswordOwned) bound directly to `out X String` "
                         "(i8*). A raw handle is not a String; this passes the structural "
                         "`check` but crashes the code generator at `run`/`build` with an "
-                        "`i8* != i64` type mismatch (the W2-B codegen crash).",
+                        "`i8*` handle/String mismatch (the W2-B codegen crash).",
                "suggested": "Bind the result as the target's declared return type "
                             "(`targets --signature <target>`), then convert a "
                             "NUL-terminated C-string handle to a String with `c.cString` "
@@ -743,9 +743,22 @@ DIAGNOSTICS.update({
     "MD1047": {"tier": "T1", "summary": "owner payload must be a bare identifier.",
                "found": "An `owner` whose payload is quoted or not an identifier.",
                "suggested": "Write `owner someIdentifier` (README §6)."},
-    "SS0744": {"tier": "T1", "summary": "Reserved target windowsGui is unspecified.",
-               "found": "A project targeting `windowsGui` (GUI module not defined in v0.3).",
-               "suggested": "Remove the windowsGui target until the GUI spec lands (README §27)."},
+    "SS0744": {"tier": "T1", "summary": "windowsGui project target is missing its backend row.",
+               "found": "A project declares `target windowsGui` without exactly one "
+                        "`guiBackend` row, or declares `guiBackend` without that target.",
+               "suggested": "Use `Project target windowsGui` together with exactly one "
+                            "`Project guiBackend headless|win32|winui3` row (README §27)."},
+    "SS0745": {"tier": "T1", "summary": "Invalid GUI backend.",
+               "found": "A `guiBackend` row names a backend other than "
+                        "`headless`, `win32`, or `winui3`.",
+               "suggested": "Use `guiBackend headless` for CI/headless execution, "
+                            "`guiBackend win32` for the current native Windows backend, "
+                            "or keep `winui3` behind readiness checks (README §27)."},
+    "SS0746": {"tier": "T1", "summary": "GUI backend unsupported on this platform.",
+               "found": "The selected `windowsGui` backend has no runnable runtime on "
+                        "the selected host/platform.",
+               "suggested": "Use `guiBackend headless` for portable non-interactive runs, "
+                            "or build the `win32` backend on Windows (README §27)."},
     "SS1085": {"tier": "T1", "summary": "out rebinds immutable module storage.",
                "found": "A call `out` targeting an `immutable` module storage entity.",
                "suggested": "Declare the storage `mutability mutable` (README §12)."},
@@ -2695,6 +2708,18 @@ _PLATFORM_ARCH_TRIPLE = {
 }
 
 
+def _platform_os(plat: "Entity") -> str:
+    row = plat.fact("os")
+    os_name = row.payload[0].lower() if row and row.payload else ""
+    if os_name in ("windows", "win", "win32"):
+        return "windows"
+    if os_name in ("macos", "darwin", "osx"):
+        return "macos"
+    if os_name in ("wasi", "emscripten"):
+        return "wasi"
+    return "linux" if os_name == "linux" else _host_platform_name()
+
+
 def _platform_triple(plat: "Entity") -> str:
     """Map a `platform` entity's os/arch/targetRuntime to an LLVM target triple
     (R-017, README §28.1). A wasm/wasi runtime wins; otherwise os+arch select the
@@ -2775,6 +2800,32 @@ def _resolve_local_replace(root: Optional[str], replacement: str) -> Optional[st
     return resolved if os.path.exists(resolved) else None
 
 
+def _build_manifest_path(path: str) -> str:
+    import os
+    return os.path.join(path, "build.sem") if os.path.isdir(path) else path
+
+
+def _write_text_atomic(path: str, text: str) -> None:
+    import os
+    tmp = f"{path}.tmp{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+def _parse_dependency_spec(spec: str) -> tuple[str, str]:
+    if "@" not in spec:
+        raise EavError("dependency must be repo@version, e.g. github.com/acme/lib@v1.2.3")
+    repo, version = spec.rsplit("@", 1)
+    if not is_repo_path(repo):
+        raise EavError(f"invalid dependency repo path {repo!r}")
+    if not is_semver(version):
+        raise EavError(f"invalid dependency version {version!r}; expected SemVer tag vMAJOR.MINOR.PATCH")
+    return repo, version
+
+
 def _artifact_files(path: str) -> list[tuple[str, str]]:
     import os
     if os.path.isfile(path):
@@ -2801,19 +2852,174 @@ def _local_artifact_digest(path: str) -> str:
     return digest.hexdigest()
 
 
+def _module_cache_root() -> str:
+    import os
+    configured = os.environ.get("SEMANTICSCRIPT_MODULE_CACHE")
+    if configured:
+        return os.path.realpath(configured)
+    return os.path.realpath(os.path.join(os.path.expanduser("~"), ".semanticscript", "pkg", "mod"))
+
+
+def _module_cache_path(repo: str, version: str, digest: str) -> str:
+    import os
+    return os.path.join(_module_cache_root(), repo.replace("/", os.sep), version, digest)
+
+
+def _path_inside(path: str, root: str) -> bool:
+    import os
+    path = os.path.realpath(path)
+    root = os.path.realpath(root)
+    return path == root or path.startswith(root + os.sep)
+
+
+def _vendor_root(root: str) -> str:
+    import os
+    return os.path.realpath(os.path.join(root, "vendor"))
+
+
+def _vendor_dependency_path(root: Optional[str], repo: str) -> Optional[str]:
+    import os
+    if root is None:
+        return None
+    vendor_root = _vendor_root(root)
+    path = os.path.realpath(os.path.join(vendor_root, repo.replace("/", os.sep)))
+    if not _path_inside(path, vendor_root):
+        raise EavError(f"vendor dependency path escapes vendor root for {repo!r}")
+    return path if os.path.exists(path) else None
+
+
+def _module_cache_candidates(repo: str, version: str, digest: Optional[str] = None) -> list[str]:
+    import os
+    cache_root = _module_cache_root()
+    if digest is not None:
+        path = os.path.realpath(_module_cache_path(repo, version, digest))
+        if not _path_inside(path, cache_root):
+            raise EavError(f"module cache dependency path escapes cache root for {repo!r}")
+        return [path] if os.path.exists(path) else []
+    version_root = os.path.realpath(os.path.join(cache_root, repo.replace("/", os.sep), version))
+    if not _path_inside(version_root, cache_root) or not os.path.isdir(version_root):
+        return []
+    out = []
+    for name in sorted(os.listdir(version_root)):
+        if not is_sha256_digest(name):
+            continue
+        path = os.path.realpath(os.path.join(version_root, name))
+        if _path_inside(path, version_root) and os.path.exists(path):
+            out.append(path)
+    return out
+
+
+def _dependency_artifact_candidates(
+    root: Optional[str],
+    repo: str,
+    version: str,
+    digest: Optional[str] = None,
+    replacement: Optional[str] = None,
+    include_vendor: bool = True,
+) -> list[str]:
+    import os
+    out: list[str] = []
+    if replacement is not None:
+        local = _resolve_local_replace(root, replacement)
+        if local is not None:
+            out.append(local)
+    if include_vendor:
+        vendored = _vendor_dependency_path(root, repo)
+        if vendored is not None:
+            out.append(vendored)
+    out.extend(_module_cache_candidates(repo, version, digest))
+    deduped = []
+    seen = set()
+    for path in out:
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
+        seen.add(real)
+        deduped.append(real)
+    return deduped
+
+
+def _resolve_dependency_artifact(
+    root: Optional[str],
+    repo: str,
+    version: str,
+    digest: Optional[str] = None,
+    replacement: Optional[str] = None,
+    include_vendor: bool = True,
+) -> Optional[tuple[str, str]]:
+    candidates = _dependency_artifact_candidates(
+        root, repo, version, digest=digest, replacement=replacement,
+        include_vendor=include_vendor)
+    for path in candidates:
+        actual = _local_artifact_digest(path)
+        if digest is None or actual == digest:
+            return path, actual
+    return None
+
+
+def _prove_dependency_artifact(
+    root: Optional[str],
+    repo: str,
+    version: str,
+    digest: str,
+    replacement: Optional[str] = None,
+) -> tuple[str, str]:
+    candidates = _dependency_artifact_candidates(
+        root, repo, version, digest=digest, replacement=replacement)
+    if not candidates:
+        raise EavError(
+            f"resolved dependency {repo!r}@{version} has no materialized artifact "
+            f"for sha256 {digest}; add a replace row, populate the module cache, "
+            f"or vendor the dependency before verification (README ss28.4/R-081)",
+            code="SS2804",
+        )
+    mismatches = []
+    for path in candidates:
+        actual = _local_artifact_digest(path)
+        if actual == digest:
+            return path, actual
+        mismatches.append((path, actual))
+    detail = ", ".join(f"{path} -> sha256 {actual}" for path, actual in mismatches)
+    raise EavError(
+        f"resolved dependency {repo!r}@{version} digest is stale or tampered: "
+        f"lock has sha256 {digest}, materialized artifact(s) have {detail} "
+        f"(README ss28.4/R-081)",
+        code="SS2804",
+    )
+
+
+def _copy_artifact_tree(source: str, dest: str) -> None:
+    import os
+    import shutil
+    if os.path.exists(dest):
+        shutil.rmtree(dest)
+    if os.path.isdir(source):
+        for rel, full in _artifact_files(source):
+            target = os.path.join(dest, rel)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(full, target)
+    else:
+        os.makedirs(dest, exist_ok=True)
+        shutil.copy2(source, os.path.join(dest, os.path.basename(source)))
+
+
 def _local_artifact_effects(path: str) -> set[tuple[str, str]]:
     import os
     effects: set[tuple[str, str]] = set()
     for rel, full in _artifact_files(path):
-        if not (rel.endswith(".sem") or rel.endswith(".semsig")):
+        if not (rel.endswith(".sem") or rel.endswith(".semsig")
+                or rel.endswith("build.sem.lock")):
             continue
         with open(full, encoding="utf-8") as fh:
-            prog = parse(fh.read())
-        for name in prog.order:
-            ent = prog.entities[name]
-            for row in ent.facts("effect"):
-                if len(row.payload) >= 2:
-                    effects.add((row.payload[0], row.payload[1]))
+            for line in fh:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or line[:1].isspace():
+                    continue
+                toks = tokenize_line(stripped)
+                if len(toks) >= 4 and toks[1] == "effect":
+                    effects.add((toks[2], toks[3]))
+                elif len(toks) >= 4 and toks[1] == "effectSurface":
+                    effects.add((toks[2], toks[3]))
     return effects
 
 
@@ -2823,6 +3029,15 @@ def _resolved_digest_by_repo(lock_program: Program) -> dict[str, str]:
         for row in proj.facts("resolved"):
             if len(row.payload) >= 4 and row.payload[2] == "sha256":
                 out[row.payload[0]] = row.payload[3]
+    return out
+
+
+def _resolved_dependencies(lock_program: Program) -> dict[str, tuple[str, str]]:
+    out: dict[str, tuple[str, str]] = {}
+    for proj in lock_program.of_kind("project"):
+        for row in proj.facts("resolved"):
+            if len(row.payload) >= 4 and row.payload[2] == "sha256":
+                out[row.payload[0]] = (row.payload[1], row.payload[3])
     return out
 
 
@@ -3556,6 +3771,7 @@ RESERVED_WORDS = {
     # manifest predicate tokens
     "languageVersion", "toolchain", "require", "replace", "allowEffect",
     "constant", "configure", "nativeLibrary", "nativeHeader", "nativeLinkFlag",
+    "guiBackend",
     "publisher", "productName", "packageId", "packageVersion", "profile",
     "profileOutput", "resource", "icon", "profileResource",
     "configProfile", "configValue", "requiredSecret", "deploymentTarget",
@@ -3590,7 +3806,7 @@ _ERROR_HEADER_PREDICATES = frozenset({
 
 ALLOWED_PREDICATES: dict[str, set[str]] = {
     "project": {
-        "module", "target", "entry", "mode", "languageVersion", "toolchain",
+        "module", "target", "guiBackend", "entry", "mode", "languageVersion", "toolchain",
         "require", "replace", "allowEffect", "platform", "constant", "configure",
         "nativeLibrary", "nativeHeader", "nativeLinkFlag",
         "publisher", "productName", "packageId", "packageVersion", "profile",
@@ -3762,6 +3978,8 @@ class Program:
         default=None, init=False, repr=False)
     _owned_by_cache: Optional[dict[str, tuple[Entity, ...]]] = field(
         default=None, init=False, repr=False)
+    _labels_by_owner_cache: Optional[dict[str, dict[str, int]]] = field(
+        default=None, init=False, repr=False)
     _entity_tuple_cache: Optional[tuple[Entity, ...]] = field(
         default=None, init=False, repr=False)
 
@@ -3771,6 +3989,7 @@ class Program:
         self._kind_cache.clear()
         self._alias_map_cache = None
         self._owned_by_cache = None
+        self._labels_by_owner_cache = None
         self._entity_tuple_cache = None
 
     def entities_in_order(self) -> tuple[Entity, ...]:
@@ -3790,8 +4009,7 @@ class Program:
         if cached is not None:
             return list(cached)
         out = []
-        for name in self.order:
-            ent = self.entities[name]
+        for ent in self.entities_in_order():
             k = "operation" if ent.kind == "function" else ent.kind
             if k == norm:
                 out.append(ent)
@@ -3825,6 +4043,21 @@ class Program:
                         out.setdefault(inr.payload[0], []).append(ent)
             self._owned_by_cache = {k: tuple(v) for k, v in out.items()}
         return dict(self._owned_by_cache)
+
+    def labels_by_owner(self) -> dict[str, dict[str, int]]:
+        """Cached operation label indexes keyed by operation/function name."""
+        if self._labels_by_owner_cache is None:
+            out: dict[str, dict[str, int]] = {}
+            for ent in self.of_kind("operation"):
+                labels = {
+                    row.label: idx
+                    for idx, row in enumerate(ent.rows)
+                    if row.label is not None
+                }
+                if labels:
+                    out[ent.name] = labels
+            self._labels_by_owner_cache = out
+        return {k: dict(v) for k, v in self._labels_by_owner_cache.items()}
 
 
 # Inclusive integer ranges per primitive width (README ss10/ss33.6).
@@ -7395,8 +7628,7 @@ def _apply_suppressions(program: Program, diags: list) -> list:
     *same* entity (README ss30.6.2, ss17 #54). An operation's suppress covers its
     own rows, not its child call/task/cleanup entities (each is its own subject)."""
     suppressed: set = set()  # (entity, code)
-    for name in program.order:
-        ent = program.entities[name]
+    for ent in program.entities_in_order():
         for row in ent.facts("suppress"):
             # WS2-072: only advisory (T3/T4) codes are suppressible; a deny-tier
             # (T0/T1/T2) suppress is rejected (SS5402) and stays in effect.
@@ -7410,8 +7642,7 @@ def _suppress_diagnostics(program: Program, diags: list) -> list:
     """A `suppress CODE` row must carry a real code and a `because` (README
     ss17 #54)."""
     extra: list[Diagnostic] = []
-    for name in program.order:
-        ent = program.entities[name]
+    for ent in program.entities_in_order():
         for row in ent.facts("suppress"):
             if not row.payload:
                 continue
@@ -8823,7 +9054,8 @@ _BUILTIN_NAMESPACES = frozenset({
 _CODEGEN_MODELED_EXACT = frozenset({
     "console.writeLine", "console.writeIntegerLine", "console.writeFloatLine",
     "console.writeFloat", "test.and", "test.summary", "assert.equalInt64",
-    "assert.true", "html.render", "math.popcountInt64", "net.fetchText",
+    "assert.true", "html.render", "math.popcountInt64", "net.connect",
+    "net.send", "net.receive", "net.close", "net.fetchText",
     "net.freeTextBody", "string.concat", "pointer.isNull", "pointer.offset",
     "pointer.loadByte", "pointer.storeByte", "sqlite.stepResultIsDone",
     "sqlite.stepResultIsRow", "convert.toString", "convert.to.string",
@@ -10820,7 +11052,8 @@ _HTTP_OPTIONAL_CONTENT_TYPE_ARITY = {
 # Exact HTTP intrinsics the LLVM lowerer can call directly. The stdlib sidecar
 # also contains future/server-design contracts such as http.route; those are
 # documented contracts, not runnable direct calls in this code generator.
-# return-kind: "h" = i64, "i" = i32 status/int, "s" = i8* string/bytes, "v" = void.
+# return-kind: "h" = i64 scalar/length, "i" = i32 status/int,
+# "s" = i8* string/bytes, "v" = void.
 _HTTP_RT = {
     "http.urlEncode": ("ss_http_url_encode_str", "s"),
     "http.urlDecode": ("ss_http_url_decode_str", "s"),
@@ -13738,6 +13971,7 @@ _PRIMITIVE_IR_CACHE = None
 def _primitive_ir():
     global _PRIMITIVE_IR_CACHE
     if _PRIMITIVE_IR_CACHE is None:
+        i8p = ir.IntType(8).as_pointer()
         _PRIMITIVE_IR_CACHE = {
             "Int8": ir.IntType(8), "UInt8": ir.IntType(8), "Byte": ir.IntType(8),
             "Int16": ir.IntType(16), "UInt16": ir.IntType(16),
@@ -13745,15 +13979,29 @@ def _primitive_ir():
             "Int64": ir.IntType(64), "UInt64": ir.IntType(64),
             "Float32": ir.FloatType(), "Float64": ir.DoubleType(),
             "Bool": ir.IntType(1),
-            "String": ir.IntType(8).as_pointer(),
+            "String": i8p,
             "Void": ir.VoidType(),
-            # FFI interim (README ss30.4.1): opaque handles are carried as UInt64.
-            "OpaquePointer": ir.IntType(64),
-            "FileHandle": ir.IntType(64),
+            # Runtime handles are pointer-typed in IR. Legacy C shims that still
+            # expose stable integer IDs adapt at their call sites; the language
+            # value no longer masquerades as Int64.
+            "OpaquePointer": i8p,
+            "FileHandle": i8p,
         }
     return _PRIMITIVE_IR_CACHE
 
 _FLOAT_TYPE_NAMES = {"Float32", "Float64"}
+
+
+def _runtime_kind_ir(kind: str) -> ir.Type:
+    i32, i64 = ir.IntType(32), ir.IntType(64)
+    return {
+        "h": i64,  # legacy integer handle / Int64 scalar ABI
+        "i": i32,
+        "d": ir.DoubleType(),
+        "s": ir.IntType(8).as_pointer(),
+        "p": ir.IntType(8).as_pointer(),  # native pointer handle ABI
+        "v": ir.VoidType(),
+    }[kind]
 
 # Integer math targets -> llvmlite IRBuilder binary-op method names.
 # Bitwise ops (shift/and/or/xor) round out the integer ALU: the linter already
@@ -13825,9 +14073,49 @@ _MATH_COMPUTED = {
 }
 
 
+_BUILTIN_ROLE_TYPES = {
+    # Scalar role aliases surfaced by stdlib signatures and app scaffolds.
+    "ByteCount": "Int64",
+    "JsonCapacityBytes": "Int64",
+    "HttpStatusCode": "Int32",
+    "SqliteStepResult": "Int32",
+    "SqliteOpenMode": "Int32",
+    "JsonValueKind": "Int32",
+    "EventId": "Int64",
+    "EventQueueCapacity": "Int64",
+    "EventBufferCapacity": "Int64",
+    "EventStatusCode": "Int64",
+    # Handle role aliases whose values are opaque pointers at the language edge.
+    "JsonDocument": "OpaquePointer",
+    "JsonCursor": "OpaquePointer",
+    "SqliteDatabase": "OpaquePointer",
+    "SqliteStatement": "OpaquePointer",
+    "HttpRequest": "OpaquePointer",
+    "HttpResponse": "OpaquePointer",
+    "HttpHandler": "OpaquePointer",
+    "NextMiddleware": "OpaquePointer",
+    "ServerContext": "OpaquePointer",
+    "Buffer": "OpaquePointer",
+    "Slice": "OpaquePointer",
+    "ListHandle": "OpaquePointer",
+    "MapHandle": "OpaquePointer",
+    "EventStreamHandle": "OpaquePointer",
+    "EventSubscriptionHandle": "OpaquePointer",
+    "EventOutputBuffer": "OpaquePointer",
+    "AsyncFuture": "OpaquePointer",
+    "AsyncChannel": "OpaquePointer",
+    "AsyncInterval": "OpaquePointer",
+    "GuiSession": "OpaquePointer",
+    "GuiEvent": "OpaquePointer",
+    "WidgetHandle": "OpaquePointer",
+}
+
+
 def _norm_type(tok: str) -> str:
-    """Normalize a type token. `Byte` is a synonym for `UInt8` (README ss10)."""
-    return "UInt8" if tok == "Byte" else tok
+    """Normalize built-in role aliases. `Byte` is a synonym for `UInt8`."""
+    if tok == "Byte":
+        return "UInt8"
+    return _BUILTIN_ROLE_TYPES.get(tok, tok)
 
 
 def _parse_int_literal_value(tok: str) -> int:
@@ -17105,7 +17393,136 @@ _RUNTIME_MANIFEST_PLATFORMS = ("windows", "linux", "macos", "wasi")
 # R-018: optional `compiler.<driver>` overlay keys for driver-specific flags
 # (e.g. MSVC `.lib` link shapes vs GNU `-l`). Validated the same way as the
 # platform keys so unknown driver overlays fail closed instead of being ignored.
-_RUNTIME_MANIFEST_COMPILERS = ("gnu", "clang", "msvc", "zig")
+_RUNTIME_MANIFEST_COMPILERS = ("gnu", "clang", "clang-cl", "msvc", "zig")
+
+
+def _compiler_driver(cc: Optional[list]) -> str:
+    """Return the normalized compiler-driver family used for argv rendering."""
+    import os
+    if not cc:
+        return "gnu"
+    exe = os.path.basename(str(cc[0])).lower()
+    if exe.endswith(".exe"):
+        exe = exe[:-4]
+    if exe == "zig" and len(cc) >= 2 and str(cc[1]).lower() == "cc":
+        return "zig"
+    if exe == "clang-cl":
+        return "clang-cl"
+    if exe == "cl":
+        return "msvc"
+    if exe in ("clang", "clang++"):
+        return "clang"
+    return "gnu"
+
+
+def _native_library_arg(driver: str, name: str) -> str:
+    """Render one system-library input for the selected driver.
+
+    R-031: `libs` are structured library names, not raw linker flags. Raw flags
+    belong in explicit `nativeLinkFlag` rows or the manifest's `linkFlags` field.
+    """
+    import os
+    if name.startswith("-") or name.startswith("/"):
+        raise EavError(
+            f"native library {name!r} is a raw linker flag; put raw flags in "
+            f"`nativeLinkFlag` / `linkFlags`, and keep `libs` as bare library names "
+            f"(R-031)")
+    has_path = "/" in name or "\\" in name
+    _, ext = os.path.splitext(name)
+    if driver in ("msvc", "clang-cl"):
+        if has_path or ext:
+            return name
+        return name + ".lib"
+    if has_path or ext:
+        return name
+    return "-l" + name
+
+
+def _render_c_compile_argv(cc: list, source: str, obj: str, *,
+                           target_triple: str = "",
+                           include: Optional[list[str]] = None,
+                           defines: Optional[list[str]] = None) -> list[str]:
+    """R-031 dry-runable compile-object argv renderer."""
+    driver = _compiler_driver(cc)
+    include = include or []
+    defines = defines or []
+    if driver in ("msvc", "clang-cl"):
+        cmd = list(cc) + ["/O2", "/c", source, "/Fo" + obj]
+        if target_triple and driver == "clang-cl":
+            cmd.append("--target=" + target_triple)
+        for inc in include:
+            cmd.append("/I" + inc)
+        for define in defines:
+            cmd.append("/D" + define)
+        return cmd
+    cmd = list(cc) + ["-O2", "-c", source, "-o", obj]
+    if target_triple:
+        cmd.append("--target=" + target_triple)
+    for inc in include:
+        cmd.append("-I" + inc)
+    for define in defines:
+        cmd.append("-D" + define)
+    return cmd
+
+
+def _render_native_link_argv(cc: list, *, objects: list[str], out: str,
+                             libs: Optional[list[str]] = None,
+                             frameworks: Optional[list[str]] = None,
+                             link_flags: Optional[list[str]] = None,
+                             include: Optional[list[str]] = None,
+                             defines: Optional[list[str]] = None,
+                             target_triple: str = "",
+                             shared: bool = False,
+                             exports: Optional[list[str]] = None) -> list[str]:
+    """R-031 normalized native link argv renderer.
+
+    This is deliberately pure so tests can assert GNU/clang/clang-cl/MSVC/zig
+    command shapes without launching those compilers.
+    """
+    driver = _compiler_driver(cc)
+    libs = libs or []
+    frameworks = frameworks or []
+    link_flags = link_flags or []
+    include = include or []
+    defines = defines or []
+    exports = exports or []
+    rendered_libs = [_native_library_arg(driver, lib) for lib in libs]
+    if driver in ("msvc", "clang-cl"):
+        cmd = list(cc)
+        if shared:
+            cmd.append("/LD")
+        if target_triple and driver == "clang-cl":
+            cmd.append("--target=" + target_triple)
+        cmd.extend(objects)
+        for inc in include:
+            cmd.append("/I" + inc)
+        for define in defines:
+            cmd.append("/D" + define)
+        cmd.append("/Fe:" + out)
+        cmd.extend(rendered_libs)
+        cmd.extend(link_flags)
+        if exports:
+            cmd.append("/link")
+            cmd.extend("/EXPORT:" + sym for sym in exports)
+        return cmd
+    cmd = list(cc) + ["-O2"]
+    if shared:
+        cmd.append("-shared")
+    cmd.extend(objects)
+    cmd.extend(["-o", out])
+    if target_triple:
+        cmd.append("--target=" + target_triple)
+    for inc in include:
+        cmd.append("-I" + inc)
+    for define in defines:
+        cmd.append("-D" + define)
+    cmd.extend(rendered_libs)
+    for fw in frameworks:
+        cmd.extend(["-framework", fw])
+    cmd.extend(link_flags)
+    if exports and "msvc" in target_triple:
+        cmd.extend("-Wl,/EXPORT:" + sym for sym in exports)
+    return cmd
 
 
 def _host_platform_name() -> str:
@@ -17240,7 +17657,7 @@ def _runtime_cache_key(resolved: dict, platform: str, compiler_id: str,
     for part in (platform, compiler_id):
         digest.update(part.encode("utf-8"))
         digest.update(b"\0")
-    for field in ("defines", "include", "libs", "exports"):
+    for field in ("defines", "include", "libs", "frameworks", "linkFlags", "exports"):
         for value in resolved.get(field, []):
             digest.update(f"{field}={value}".encode("utf-8"))
             digest.update(b"\0")
@@ -18008,6 +18425,7 @@ def _libc_ret_types():
     return {
         "putchar": i32, "puts": i32, "fflush": i32, "fclose": i32,
         "strcmp": i32, "terminalReadKey": i32,
+        "terminalColumns": i32, "terminalRows": i32,
         "malloc": i64, "fopen": i64, "fgets": i64, "memmove": i64,
         "strlen": i64, "atoll": i64,
         "free": void, "memset": void,
