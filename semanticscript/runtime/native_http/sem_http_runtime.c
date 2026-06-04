@@ -4305,6 +4305,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
         return SS_HTTP_ERR_ENGINE;
     }
 
+    int bind_in_use = 0;  /* BIN-8: distinguish port-in-use from other bind errors */
     for (current = result; current != NULL; current = current->ai_next) {
         int reuse = 1;
         listen_socket = socket(current->ai_family, current->ai_socktype, current->ai_protocol);
@@ -4321,6 +4322,22 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
         if (bind(listen_socket, current->ai_addr, (int)current->ai_addrlen) == 0) {
             break;
         }
+#if defined(_WIN32)
+        {
+            /* WSAEADDRINUSE: another socket has the port. WSAEACCES: the port is
+             * held EXCLUSIVELY (SO_EXCLUSIVEADDRUSE) by another process — Windows
+             * reports a SO_REUSEADDR bind against it as access-denied, not
+             * in-use. Both are the zombie-port condition for our purposes. */
+            int werr = WSAGetLastError();
+            if (werr == WSAEADDRINUSE || werr == WSAEACCES) {
+                bind_in_use = 1;
+            }
+        }
+#else
+        if (errno == EADDRINUSE) {
+            bind_in_use = 1;
+        }
+#endif
         ss_close_socket(listen_socket);
         listen_socket = SS_INVALID_SOCKET;
     }
@@ -4328,9 +4345,18 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     freeaddrinfo(result);
 
     if (listen_socket == SS_INVALID_SOCKET) {
+        if (bind_in_use) {
+            /* BIN-8: a clear, actionable diagnosis of the zombie-port hazard
+             * instead of a cryptic engine failure. */
+            fprintf(stderr,
+                "SemanticScript HTTP server: port %hu on %s is already in use "
+                "(another server is still bound, or the port has not been "
+                "released yet)\n", config->port, config->host);
+            fflush(stderr);
+        }
         free_compiled_routes();
         ss_platform_net_shutdown();
-        return SS_HTTP_ERR_ENGINE;
+        return bind_in_use ? SS_HTTP_ERR_ADDR_IN_USE : SS_HTTP_ERR_ENGINE;
     }
 
     if (listen(listen_socket, 128) != 0) {

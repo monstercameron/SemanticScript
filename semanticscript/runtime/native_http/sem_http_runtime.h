@@ -57,7 +57,11 @@ enum {
     SS_HTTP_OK = 0,
     SS_HTTP_ERR_CONFIG = 1,
     SS_HTTP_ERR_RUNTIME_UNAVAILABLE = 2,
-    SS_HTTP_ERR_ENGINE = 3
+    SS_HTTP_ERR_ENGINE = 3,
+    /* BIN-8: the listen port is already bound (a still-running / not-yet-released
+     * server, the zombie-port hazard). Distinct from a generic engine error so a
+     * caller/agent can diagnose it cleanly instead of a cryptic failure. */
+    SS_HTTP_ERR_ADDR_IN_USE = 4
 };
 
 /* Middleware return values, surfaced in SemanticScript source through the
