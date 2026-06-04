@@ -1227,6 +1227,17 @@ def _camel_case_suggestion(name: str):
     candidate = head + tail
     return candidate if _IDENT_RE.match(candidate) and candidate != name else None
 
+
+def _reserved_word_suggestion(name: str):
+    """ERG-1: a non-reserved variant of a reserved-word entity name (`type` ->
+    `typeValue`), so SS0003 names a usable spelling instead of only stating the
+    rule - the reserved-word analogue of _camel_case_suggestion for SS0002."""
+    for suffix in ("Value", "Op", "Item", "Entry", "Field", "X"):
+        cand = name + suffix
+        if cand not in RESERVED_WORDS and _IDENT_RE.match(cand):
+            return cand
+    return None
+
 # Numeric literal grammar (README ss2/ss33.1). A single `_` may separate digits
 # (no leading/trailing/doubled). Decimal rejects octal/0-prefixed forms.
 _INT_DEC_RE = re.compile(r"(0|[1-9](_?[0-9])*)\Z")
@@ -4339,9 +4350,12 @@ def parse(source_text: str) -> Program:
             if kind == "function":
                 kind = "operation"
             if subject in RESERVED_WORDS:
+                _rw_sug = _reserved_word_suggestion(subject)
+                _rw_hint = f" - try {_rw_sug!r}" if _rw_sug else ""
                 raise EavError(
                     f"reserved word {subject!r} may not be an entity name "
-                    f"(README ss2); arg-slot/field/variant labels are exempt",
+                    f"(README ss2); arg-slot/field/variant labels are exempt"
+                    f"{_rw_hint}",
                     lineno, code="SS0003",
                 )
             if not _IDENT_RE.match(subject):
@@ -24108,6 +24122,64 @@ def _read_source(path: str) -> str:
         raise EavError(f"cannot read {path!r}: {exc.strerror or exc}")
 
 
+def _program_summary(program: Program) -> dict:
+    """AQ-11: a first-class structured whole-program semantic summary - one envelope
+    aggregating what was scattered across inventory/context/symbols/graph: entity
+    counts by kind, every operation with its effects/capabilities/invoked targets,
+    the declared capabilities + grants, the effect set, and the call-graph edges."""
+    from collections import Counter
+    kinds = Counter(e.kind for e in program.entities.values())
+    ops, edges, effects, caps = [], [], set(), []
+    # index calls by owning op once
+    owner_calls = {}
+    for c in program.order:
+        ce = program.entities[c]
+        if ce.kind in ("call", "task"):
+            owner = ce.fact("in")
+            inv = ce.fact("invokes")
+            if owner and owner.payload and inv and inv.payload:
+                owner_calls.setdefault(owner.payload[0], []).append(inv.payload[0])
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("operation", "function"):
+            op_effects = [" ".join(r.payload) for r in ent.facts("effect") if r.payload]
+            uses = [r.payload[0] for r in ent.facts("uses") if r.payload]
+            invoked = sorted(set(owner_calls.get(ent.name, [])))
+            for tgt in invoked:
+                edges.append({"from": ent.name, "to": tgt})
+            effects.update(op_effects)
+            ops.append({"name": ent.name, "effects": op_effects,
+                        "uses": uses, "invokes": invoked})
+        elif ent.kind == "capability":
+            caps.append({"name": ent.name,
+                         "grants": [" ".join(g.payload) for g in ent.facts("grants") if g.payload]})
+    return {
+        "target": _program_target(program),
+        "entityCounts": dict(sorted(kinds.items())),
+        "operations": ops,
+        "capabilities": caps,
+        "effects": sorted(effects),
+        "callGraph": edges,
+    }
+
+
+def cmd_summary(args) -> int:
+    """AQ-11: emit a structured whole-program semantic summary (sem.summary.v1)."""
+    program = parse_compact(_read_program_source(args.path))
+    summary = _program_summary(program)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.summary.v1", ok=True, **summary) + "\n")
+    else:
+        sys.stdout.write(f"target: {summary['target']}\n")
+        sys.stdout.write("entities: " + ", ".join(
+            f"{k}={v}" for k, v in summary["entityCounts"].items()) + "\n")
+        sys.stdout.write(
+            f"operations: {len(summary['operations'])}, effects: "
+            f"{len(summary['effects'])}, capabilities: {len(summary['capabilities'])}, "
+            f"call-edges: {len(summary['callGraph'])}\n")
+    return 0
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     # EAV source and output are UTF-8 (README §33.2). On Windows the default
     # console encoding is cp1252, which cannot encode characters that legitimately
@@ -24148,6 +24220,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_inspect.add_argument("path", help="EAV/compact source file or project, or - for stdin")
     sp_inspect.add_argument("--json", action="store_true")
     sp_inspect.set_defaults(func=cmd_inspect_ir)
+    # AQ-11: first-class whole-program semantic summary
+    sp_summary = sub.add_parser("summary", help="structured whole-program semantic summary (entities, effects, capabilities, call graph)")
+    sp_summary.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_summary.add_argument("--json", action="store_true")
+    sp_summary.set_defaults(func=cmd_summary)
 
     # TOOL-4: toolchain self-diagnostic + cache clean
     sp_status = sub.add_parser("status", help="toolchain self-diagnostic (versions, C toolchain, cache, platform)")

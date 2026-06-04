@@ -106,3 +106,52 @@ def test_aq7_every_trusted_type_has_a_reachable_constructor():
                    if t not in constructors and t not in _SOURCE_CONSTRUCTED_TRUSTED]
     assert not unreachable, (
         f"trusted types with no reachable constructor (unusable): {unreachable}")
+
+
+# --- ERG-1: a reserved-word entity name names a usable alternative ---
+
+def test_erg1_ss0003_suggests_a_non_reserved_name():
+    f = semanticscript._reserved_word_suggestion
+    sug = f("type")
+    assert sug and sug not in semanticscript.RESERVED_WORDS
+    src = ("P is project\nP module m\nP target console\nP entry main\n"
+           "m is module\nm path x\nm exports main\n"
+           "type is operation\ntype out Int32\ntype return z\n"
+           "z is storage\nz scope module\nz type Int32\nz value 0\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert exc.value.code == "SS0003"
+    assert "try" in str(exc.value) and sug in str(exc.value)
+
+
+# --- AQ-11: first-class whole-program semantic summary ---
+
+def test_aq11_program_summary_aggregates_the_whole_program():
+    src = ("P is project\nP module m\nP target console\nP entry main\n"
+           "m is module\nm path x\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+           "ExitCode is alias\nExitCode for Int32\n"
+           "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+           "ConsoleWriteError is error\n"
+           "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+           "main uses stdoutWriter\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+           "main let h immutable String \"hi\"\nmain let z immutable ExitCode 0\n"
+           "main do w\nmain return z\n"
+           "w is call\nw in main\nw invokes console.writeLine\nw arg text String h\n"
+           "w catch e ConsoleWriteError\n")
+    s = semanticscript._program_summary(semanticscript.parse(src))
+    assert s["target"] == "console"
+    assert s["entityCounts"].get("operation") == 1 and s["entityCounts"].get("capability") == 1
+    assert any(o["name"] == "main" and "write console.stdout" in o["effects"]
+               and "stdoutWriter" in o["uses"] and "console.writeLine" in o["invokes"]
+               for o in s["operations"])
+    assert "write console.stdout" in s["effects"]
+    assert {"from": "main", "to": "console.writeLine"} in s["callGraph"]
+
+
+def test_aq11_summary_command_is_registered_and_runs():
+    proc = subprocess.run([sys.executable, SC, "summary",
+                           os.path.join(ROOT, "examples", "hello_world.sem"), "--json"],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    d = json.loads(proc.stdout)
+    assert d.get("surface") == "sem.summary.v1" and d.get("target") == "console"
