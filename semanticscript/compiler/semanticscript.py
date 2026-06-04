@@ -1488,13 +1488,20 @@ def load_test_project(root: str) -> Program:
       * skips any entity whose name already exists in the runtime program
         (runtime declarations win — e.g. the shared `ExitCode` alias).
     The remaining test-only entities (the `tag test` operations and any test
-    helper types/modules) are appended, along with their indentation islands."""
-    runtime = parse_compact(load_project(root))
+    helper types/modules) are appended, along with their indentation islands.
+
+    TEST-3 (§30.5.1): a `.test.sem` shares its sibling source file's module, so a
+    test operation invokes that module's operations by bare name (`addTwoValues`).
+    That only resolves once the test entities are composed in, so both the runtime
+    and each test fragment are parsed with `validate=False` and the *composed*
+    program is validated once at the end — never the test fragment in isolation
+    (which would false-flag the sibling bare target as an unresolved invoke)."""
+    runtime = parse_compact(load_project(root), validate=False)
     discovered = discover_project_tests(root)
     for rel in discovered["coLocated"]:
         import os
         test_source = open(os.path.join(root, rel), encoding="utf-8").read()
-        test_program = parse_compact(test_source)
+        test_program = parse_compact(test_source, validate=False)
         for name in test_program.order:
             entity = test_program.entities[name]
             # the runtime project (build.sem) is authoritative; a test file's own
@@ -1506,6 +1513,9 @@ def load_test_project(root: str) -> Program:
             for island_key, island_lines in test_program.islands.items():
                 if island_key[0] == name:
                     runtime.islands[island_key] = island_lines
+    # validate the fully composed program once — bare-name invokes into a sibling
+    # module's operations resolve here, where every entity is present.
+    _validate_program(runtime)
     return runtime
 
 
@@ -4272,7 +4282,7 @@ def _leading_spaces(raw: str) -> int:
     return n
 
 
-def parse(source_text: str) -> Program:
+def parse(source_text: str, *, validate: bool = True) -> Program:
     """Parse EAV-Steps source into a Program (README ss1, ss5).
 
     Enforces the structural invariants needed to lower safely:
@@ -4281,6 +4291,11 @@ def parse(source_text: str) -> Program:
       * `<kind>` after `is` is a known entity kind (README ss5).
       * Column-1 subject + column-2 predicate; `at` introduces a labeled step
         whose label is column 3 and step predicate column 4+ (README ss1).
+
+    TEST-3 (§30.5.1): `validate=False` parses the rows but defers the hard-error
+    `_validate_program` pass (cross-call resolution, ownership, …). A
+    `.test.sem` fragment shares its sibling's module, so its bare-name `invokes`
+    only resolve once composed — the composed program is validated as a whole.
     """
 
     program = Program()
@@ -4523,7 +4538,8 @@ def parse(source_text: str) -> Program:
     # R-086: full-line comments trailing the final entity (no following row).
     if pending_lead and program.order:
         program.entities[program.order[-1]].trailing.extend(pending_lead)
-    _validate_program(program)
+    if validate:
+        _validate_program(program)
     return program
 
 
@@ -5049,9 +5065,13 @@ def expand_compact_to_eav(source: str):
     return "\n".join(out), origin
 
 
-def parse_compact(source: str) -> "Program":
-    """Parse compact-profile source by expanding to canonical EAV first."""
-    return parse(expand_compact_to_eav(source)[0])
+def parse_compact(source: str, *, validate: bool = True) -> "Program":
+    """Parse compact-profile source by expanding to canonical EAV first.
+
+    `validate=False` defers the hard-error validation pass (see `parse`); used
+    to compose a `.test.sem` fragment with its sibling module before validating
+    the whole (TEST-3, §30.5.1)."""
+    return parse(expand_compact_to_eav(source)[0], validate=validate)
 
 
 _PARSE_COMPACT_CACHE: dict[str, "Program"] = {}

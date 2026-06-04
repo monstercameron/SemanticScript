@@ -7687,6 +7687,59 @@ def test_test_project_composes_runtime_with_companion_tests(tmp_path):
     assert not any(d.severity == "error" for d in semanticscript.lint(composed))
 
 
+def test_test3_sem_test_invokes_sibling_module_op_by_bare_name(tmp_path):
+    """TEST-3 (§30.5.1): a `.test.sem` shares its sibling source file's module, so
+    a test operation invokes that module's operations *by bare name*. Composition
+    must resolve that bare target against the sibling op — the test fragment is
+    never validated in isolation (which would false-flag the sibling invoke as an
+    unresolved bare target). The genuinely-undefined case must still error."""
+    import json
+    root = tmp_path / "calcproj"
+    (root / "src").mkdir(parents=True)
+    (root / "build.sem").write_text(
+        "Calc is project\nCalc module calc\nCalc target console\nCalc entry main\n",
+        encoding="utf-8")
+    (root / "src" / "calc.sem").write_text(
+        "calc is module\ncalc path src.calc\ncalc exports main addTwoValues\n"
+        "calc purpose \"p\"\ncalc invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "addTwoValues is operation\naddTwoValues in leftValue Int64\n"
+        "addTwoValues in rightValue Int64\naddTwoValues out Int64\n"
+        "addTwoValues async no\naddTwoValues purpose \"sum\"\naddTwoValues invariant \"i\"\n"
+        "addTwoValues let s immutable Int64 0\naddTwoValues return s\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+        "main invariant \"i\"\nmain let z immutable ExitCode 0\nmain return z\n",
+        encoding="utf-8")
+    test_sem = (
+        "calcTest is module\ncalcTest path src.calcTest\n"
+        "calcTest exports addsTwoNumbers\ncalcTest purpose \"t\"\ncalcTest invariant \"i\"\n"
+        "addsTwoNumbers is operation\naddsTwoNumbers out Int64\naddsTwoNumbers async no\n"
+        "addsTwoNumbers purpose \"addTwoValues returns the sum\"\n"
+        "addsTwoNumbers invariant \"i\"\naddsTwoNumbers tag test\n"
+        "addsTwoNumbers let leftInput immutable Int64 40\n"
+        "addsTwoNumbers let rightInput immutable Int64 2\n"
+        "addsTwoNumbers do computeSum\naddsTwoNumbers return sumValue\n"
+        "computeSum is call\ncomputeSum in addsTwoNumbers\n"
+        "computeSum invokes addTwoValues\n"  # bare name -> sibling module op
+        "computeSum arg leftValue Int64 leftInput\n"
+        "computeSum arg rightValue Int64 rightInput\n"
+        "computeSum out sumValue Int64\n")
+    (root / "src" / "calc.test.sem").write_text(test_sem, encoding="utf-8")
+
+    # composition resolves the sibling bare target and lints clean.
+    composed = semanticscript.load_test_project(str(root))
+    assert "addsTwoNumbers" in composed.entities and "addTwoValues" in composed.entities
+    assert not any(d.severity == "error" for d in semanticscript.lint(composed))
+
+    # an undefined bare target is still a hard error after composition.
+    (root / "src" / "calc.test.sem").write_text(
+        test_sem.replace("invokes addTwoValues", "invokes addThreeValues"),
+        encoding="utf-8")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.load_test_project(str(root))
+    assert "unresolved bare target" in str(exc.value)
+
+
 def test_semanticscript_test_runs_generated_unit_test_on_project_dir(tmp_path, capsys):
     """R-007 no-op-failing test: `semanticscript test <root> --json` must execute the
     generated `checkGreetingLength` unit test and report exactly one pass.
