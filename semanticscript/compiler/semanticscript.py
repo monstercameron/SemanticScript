@@ -14284,8 +14284,10 @@ class EavCodegen:
             ret = self.ir_type(orow.payload[0]) if orow and orow.payload else ir.VoidType()
             params = [self.ir_type(r.payload[0]) for r in ent.facts("in") if r.payload]
             return ir.FunctionType(ret, params).as_pointer()  # function pointer (§33.9)
-        # other named types: opaque i64 handle in the console model.
-        return ir.IntType(64)
+        # Other named runtime-handle-like values stay opaque at the language
+        # boundary. Concrete runtimes choose pointer ABI or an adapted integer
+        # ID ABI explicitly at the call site.
+        return ir.IntType(8).as_pointer()
 
     def _error_cases(self, error_name: str) -> list:
         return [
@@ -14305,8 +14307,13 @@ class EavCodegen:
             return ir.Constant(ir.IntType(1), 1 if tok == "true" else 0)
         if resolved in _FLOAT_TYPE_NAMES:
             return ir.Constant(_primitive_ir()[resolved], float(tok))
-        return ir.Constant(_primitive_ir().get(resolved, ir.IntType(64)),
-                           _parse_int_literal_value(tok))
+        llvm_type = _primitive_ir().get(resolved, ir.IntType(64))
+        value = _parse_int_literal_value(tok)
+        if isinstance(llvm_type, ir.PointerType):
+            if value == 0:
+                return ir.Constant(llvm_type, None)
+            return ir.Constant(ir.IntType(64), value).inttoptr(llvm_type)
+        return ir.Constant(llvm_type, value)
 
     def _literal_tokens_for_storage(self, st: Entity, seen=None):
         """Resolve a module-storage initializer to its underlying literal tokens,
@@ -14504,6 +14511,17 @@ class EavCodegen:
         elif name == "ss_net_free_text":
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
                              name="ss_net_free_text")
+        elif name in ("ss_net_connect", "ss_net_send", "ss_net_receive",
+                      "ss_net_close"):
+            i64 = ir.IntType(64)
+            i32 = ir.IntType(32)
+            sigs = {
+                "ss_net_connect": ir.FunctionType(i8p, [i8p]),
+                "ss_net_send": ir.FunctionType(i64, [i8p, i8p]),
+                "ss_net_receive": ir.FunctionType(i8p, [i8p]),
+                "ss_net_close": ir.FunctionType(i32, [i8p]),
+            }
+            fn = ir.Function(self.module, sigs[name], name=name)
         elif name in ("ss_fs_open_read", "ss_fs_size", "ss_fs_close",
                       "ss_fs_read_chunk", "ss_fs_read_text_limit",
                       "ss_fs_release_text"):
@@ -14568,11 +14586,23 @@ class EavCodegen:
         project = projects[0]
         target_row = project.fact("target")
         target = target_row.payload[0] if target_row and target_row.payload else "console"
-        if target not in ("console", "webServer", "wasm"):
+        if target not in ("console", "webServer", "wasm", "windowsGui"):
             raise EavError(
                 "the LLVM code generator supports `target console`, "
-                f"`target webServer`, and `target wasm`, got {target!r}"
+                f"`target webServer`, `target wasm`, and `target windowsGui`, "
+                f"got {target!r}"
             )
+        if target == "windowsGui":
+            platform = (_platform_os(self.build_platform)
+                        if self.build_platform is not None else _host_platform_name())
+            readiness = gui_backend_readiness(self.program, platform)
+            if not readiness.get("ok"):
+                raise EavError(
+                    f"windowsGui guiBackend {readiness.get('backend')!r} is not "
+                    f"runnable on {readiness.get('platform')!r}: "
+                    f"{readiness.get('reason') or readiness.get('status')}",
+                    (target_row.line if target_row else project.line), code="SS0746",
+                )
         entry_row = project.fact("entry")
         if entry_row and entry_row.payload:
             self.entry_name = entry_row.payload[0]
@@ -14926,6 +14956,15 @@ class EavCodegen:
         self._call_info: dict[str, tuple] = {}
         self._cont_count = 0
         self._defers: list = []  # cleanup entities, in registration order
+        self._task_states: dict[str, tuple] = {}
+        i32 = ir.IntType(32)
+        for cn in self.program.order:
+            task = self.program.entities[cn]
+            owner = task.fact("in") if task.kind == "task" else None
+            if owner and owner.payload and owner.payload[0] == op.name:
+                ptr = builder.alloca(i32, name=f"{task.name}.state")
+                builder.store(ir.Constant(i32, 0), ptr)
+                self._task_states[task.name] = ("ptr", ptr, "Int32")
 
         for row in op.rows:
             if row.label is not None:
@@ -15008,14 +15047,53 @@ class EavCodegen:
             if tok[:1].isdigit() or tok[:1] in "-.":
                 return ir.Constant(self.ir_type(type_name), float(tok))
             raise EavError(f"{tok!r} is not in scope (expected a Float binding)")
+        ir_ty = self.ir_type(type_name)
         if tok[:1].isdigit() or (tok[:1] == "-" and tok[1:2].isdigit()):
-            return ir.Constant(self.ir_type(type_name), _parse_int_literal_value(tok))
+            value = _parse_int_literal_value(tok)
+            if isinstance(ir_ty, ir.PointerType):
+                if value == 0:
+                    return ir.Constant(ir_ty, None)
+                return builder.inttoptr(ir.Constant(ir.IntType(64), value), ir_ty)
+            return ir.Constant(ir_ty, value)
         raise EavError(f"{tok!r} is not in scope (expected an integer binding)")
 
     def _load(self, entry, builder):
         if entry[0] == "val":
             return entry[1]
         return builder.load(entry[1])
+
+    def _null_constant(self, llvm_type):
+        return ir.Constant(
+            llvm_type, None if isinstance(llvm_type, ir.PointerType) else 0)
+
+    def _coerce_value(self, builder, value, llvm_type):
+        if value.type == llvm_type:
+            return value
+        if isinstance(llvm_type, ir.PointerType):
+            if isinstance(value.type, ir.PointerType):
+                return builder.bitcast(value, llvm_type)
+            return builder.inttoptr(value, llvm_type)
+        if isinstance(value.type, ir.PointerType) and isinstance(llvm_type, ir.IntType):
+            return builder.ptrtoint(value, llvm_type)
+        if isinstance(value.type, ir.IntType) and isinstance(llvm_type, ir.IntType):
+            if value.type.width < llvm_type.width:
+                return builder.zext(value, llvm_type)
+            if value.type.width > llvm_type.width:
+                return builder.trunc(value, llvm_type)
+        return value
+
+    def _as_i64(self, builder, value):
+        return self._coerce_value(builder, value, ir.IntType(64))
+
+    def _as_i8p(self, builder, value):
+        return self._coerce_value(builder, value, ir.IntType(8).as_pointer())
+
+    def _cmp_sentinel(self, builder, op: str, value, sentinel: int):
+        if isinstance(value.type, ir.PointerType):
+            value_i64 = builder.ptrtoint(value, ir.IntType(64))
+            return builder.icmp_signed(
+                op, value_i64, ir.Constant(ir.IntType(64), sentinel))
+        return builder.icmp_signed(op, value, ir.Constant(value.type, sentinel))
 
     def _entry_alloca(self, builder, ir_ty, name):
         """Allocate a zero-initialized slot at the top of the function's entry
@@ -15055,6 +15133,11 @@ class EavCodegen:
             return self._load(sym[tok], builder)
         if tok in getattr(self, "module_storage", {}):
             return self._read_module_storage(tok, builder)
+        if isinstance(llvm_type, ir.PointerType):
+            value = _parse_int_literal_value(tok)
+            if value == 0:
+                return ir.Constant(llvm_type, None)
+            return builder.inttoptr(ir.Constant(ir.IntType(64), value), llvm_type)
         if isinstance(llvm_type, (ir.FloatType, ir.DoubleType)):
             return ir.Constant(llvm_type, float(tok))
         return ir.Constant(llvm_type, _parse_int_literal_value(tok))
@@ -15152,15 +15235,34 @@ class EavCodegen:
                 self._defers.append(synthetic)
             return builder
         if pred == "start":
-            # Single-thread backend (README ss13): `start` runs the task eagerly;
-            # its result is available immediately (poll always-ready, join cheap).
+            # R-084: deterministic single-thread task state. The backend still
+            # computes at start, but readiness/cancellation is no longer a
+            # hardcoded branch shortcut: start marks pending, poll/join mark
+            # ready, cancel marks canceled, and branch guards read the state slot.
             task = self.program.entities.get(p[0]) if p else None
             if task is not None and task.kind == "task":
                 self._emit_call(task, builder, sym, let_mut)
+                state = self._task_states.get(task.name)
+                if state is not None:
+                    builder.store(ir.Constant(ir.IntType(32), 1), state[1])
             return builder
-        if pred in ("join", "poll", "cancel", "detach"):
-            # join/poll/cancel/detach: no-ops on the single-thread backend; the
-            # task already completed at `start` (README ss13).
+        if pred in ("join", "poll"):
+            state = self._task_states.get(p[0]) if p else None
+            if state is not None:
+                current = builder.load(state[1])
+                canceled = builder.icmp_signed("==", current, ir.Constant(ir.IntType(32), 3))
+                next_state = builder.select(canceled, current, ir.Constant(ir.IntType(32), 2))
+                builder.store(next_state, state[1])
+            return builder
+        if pred == "cancel":
+            state = self._task_states.get(p[0]) if p else None
+            if state is not None:
+                builder.store(ir.Constant(ir.IntType(32), 3), state[1])
+            return builder
+        if pred == "detach":
+            state = self._task_states.get(p[0]) if p else None
+            if state is not None:
+                builder.store(ir.Constant(ir.IntType(32), 4), state[1])
             return builder
         if pred == "return":
             return self._emit_return(op, fn, row, builder, sym)
@@ -15209,8 +15311,8 @@ class EavCodegen:
             # NON-pointer OK type (Int64/Bool/…) has no spare sentinel: the
             # OK-typed zero is a valid OK value, so the error is SILENTLY LOST.
             # Fail closed instead of mis-lowering (a tagged Result is the real fix).
-            # OpaquePointer/FileHandle are i64 in IR, but source-level handle
-            # types still use 0 as their null/error sentinel.
+            # OpaquePointer/FileHandle are pointer-typed in IR and use null as
+            # their error sentinel.
             ok_root = self.resolve_type_name(type_hint)
             handle_ok = ok_root in ("OpaquePointer", "FileHandle")
             if len(p) > 1 and not isinstance(ret_ty, ir.PointerType) and not handle_ok:
@@ -15332,15 +15434,26 @@ class EavCodegen:
             builder.cbranch(cond, label_blocks[label], cont)
             return ir.IRBuilder(cont)
         if guard == "ifReady":
-            # README ss13: single-thread tasks are always ready after `start`,
-            # so `ifReady` is unconditionally taken; the fallthrough (pending)
-            # path is emitted into a fresh, unreachable continuation block.
-            builder.branch(label_blocks[p[3]])
-            return ir.IRBuilder(self._new_cont(fn))
+            # R-084: readiness is a real task-state check, not an unconditional
+            # branch on the single-thread backend.
+            state = self._task_states.get(p[1])
+            cond = (builder.icmp_signed("==", builder.load(state[1]),
+                                        ir.Constant(ir.IntType(32), 2))
+                    if state is not None else ir.Constant(ir.IntType(1), 0))
+            cont = self._new_cont(fn)
+            builder.cbranch(cond, label_blocks[p[3]], cont)
+            return ir.IRBuilder(cont)
         if guard in ("ifPending", "ifCanceled"):
             # Never taken on the single-thread backend (never pending; not
             # canceled unless `cancel` ran) — fall through (README ss13).
-            return builder
+            state = self._task_states.get(p[1])
+            want = 1 if guard == "ifPending" else 3
+            cond = (builder.icmp_signed("==", builder.load(state[1]),
+                                        ir.Constant(ir.IntType(32), want))
+                    if state is not None else ir.Constant(ir.IntType(1), 0))
+            cont = self._new_cont(fn)
+            builder.cbranch(cond, label_blocks[p[3]], cont)
+            return ir.IRBuilder(cont)
         raise EavError(
             f"branch guard {guard!r} is not modeled by the LLVM console code "
             "generator (todos WS1-066 sugar)",
@@ -15736,21 +15849,22 @@ class EavCodegen:
                 return builder.inttoptr(value, i8p)
 
             if target == "fs.openRead":
-                result = builder.call(self.runtime("ss_fs_open_read"),
-                                      [arg("path", "String")])
-                err = builder.icmp_unsigned("==", result, ir.Constant(i64, 0))
+                raw = builder.call(self.runtime("ss_fs_open_read"),
+                                   [arg("path", "String")])
+                err = builder.icmp_unsigned("==", raw, ir.Constant(i64, 0))
+                result = self._as_i8p(builder, raw)
             elif target == "fs.size":
                 result = builder.call(self.runtime("ss_fs_size"),
-                                      [arg("file", "OpaquePointer")])
+                                      [self._as_i64(builder, arg("file", "OpaquePointer"))])
                 err = builder.icmp_signed("<", result, ir.Constant(i64, 0))
             elif target == "fs.close":
                 result = builder.call(self.runtime("ss_fs_close"),
-                                      [arg("file", "OpaquePointer")])
+                                      [self._as_i64(builder, arg("file", "OpaquePointer"))])
                 err = builder.icmp_signed("!=", result, ir.Constant(i32, 0))
             elif target == "fs.readChunk":
                 result = builder.call(
                     self.runtime("ss_fs_read_chunk"),
-                    [arg("file", "OpaquePointer"),
+                    [self._as_i64(builder, arg("file", "OpaquePointer")),
                      _buffer_ptr(arg("buffer", "OpaquePointer")),
                      arg("maximumBytes", "Int64")])
                 err = builder.icmp_signed("<", result, ir.Constant(i64, 0))
@@ -16170,37 +16284,64 @@ class EavCodegen:
             if body_arg is not None:
                 body_val = self._resolve(body_arg.payload[2], body_arg.payload[1], builder, sym)
                 builder.call(self.runtime("ss_net_free_text"), [body_val])
+        elif target == "net.connect":
+            result = builder.call(self.runtime("ss_net_connect"),
+                                  [arg("endpoint", "String")])
+            if call.fact("catch") is not None:
+                err = builder.icmp_unsigned(
+                    "==", result, self._null_constant(result.type))
+        elif target == "net.send":
+            result = builder.call(self.runtime("ss_net_send"),
+                                  [arg("socket", "OpaquePointer"),
+                                   arg("payload", "String")])
+            if call.fact("catch") is not None:
+                err = builder.icmp_signed("<", result,
+                                          ir.Constant(result.type, 0))
+        elif target == "net.receive":
+            result = builder.call(self.runtime("ss_net_receive"),
+                                  [arg("socket", "OpaquePointer")])
+            if call.fact("catch") is not None:
+                err = builder.icmp_unsigned(
+                    "==", result, self._null_constant(result.type))
+        elif target == "net.close":
+            result = builder.call(self.runtime("ss_net_close"),
+                                  [arg("socket", "OpaquePointer")])
         elif target == "event.openProcessStream":
             # APP-RUN-3: in-process pub/sub (ss_event runtime). Handles + ids are
-            # Int64 (OpaquePointer); receive ignores its out-buffer args.
-            result = builder.call(self.runtime("ss_event_open_stream"),
-                                  [arg("streamName", "String"), arg("queueCapacity", "Int64")])
+            # pointer-typed in SemanticScript IR; this legacy C shim still uses
+            # stable i64 IDs, so the boundary converts explicitly.
+            raw = builder.call(self.runtime("ss_event_open_stream"),
+                               [arg("streamName", "String"), arg("queueCapacity", "Int64")])
+            result = self._as_i8p(builder, raw)
             if call.fact("catch") is not None:
-                err = builder.icmp_signed("==", result, ir.Constant(ir.IntType(64), 0))
+                err = builder.icmp_signed("==", raw, ir.Constant(ir.IntType(64), 0))
         elif target == "event.subscribeStream":
-            result = builder.call(self.runtime("ss_event_subscribe"),
-                                  [arg("stream", "OpaquePointer"),
-                                   arg("eventType", "String"), arg("eventKey", "String")])
+            raw = builder.call(self.runtime("ss_event_subscribe"),
+                               [self._as_i64(builder, arg("stream", "OpaquePointer")),
+                                arg("eventType", "String"), arg("eventKey", "String")])
+            result = self._as_i8p(builder, raw)
             if call.fact("catch") is not None:
-                err = builder.icmp_signed("==", result, ir.Constant(ir.IntType(64), 0))
+                err = builder.icmp_signed("==", raw, ir.Constant(ir.IntType(64), 0))
         elif target == "event.appendEvent":
             result = builder.call(self.runtime("ss_event_append"),
-                                  [arg("stream", "OpaquePointer"), arg("eventType", "String"),
+                                  [self._as_i64(builder, arg("stream", "OpaquePointer")),
+                                   arg("eventType", "String"),
                                    arg("eventKey", "String"), arg("payloadJson", "String")])
             if call.fact("catch") is not None:
                 err = builder.icmp_signed("==", result, ir.Constant(ir.IntType(64), 0))
         elif target == "event.receiveEvent":
             result = builder.call(self.runtime("ss_event_receive"),
-                                  [arg("subscription", "OpaquePointer")])
+                                  [self._as_i64(builder, arg("subscription", "OpaquePointer"))])
         elif target == "event.acknowledgeEvent":
             builder.call(self.runtime("ss_event_ack"),
-                         [arg("subscription", "OpaquePointer"), arg("eventId", "Int64")])
+                         [self._as_i64(builder, arg("subscription", "OpaquePointer")),
+                          arg("eventId", "Int64")])
         elif target == "event.closeSubscription":
             builder.call(self.runtime("ss_event_close_subscription"),
-                         [arg("subscription", "OpaquePointer")])
+                         [self._as_i64(builder, arg("subscription", "OpaquePointer"))])
         elif target == "event.closeStream":
             builder.call(self.runtime("ss_event_close_stream"),
-                         [arg("stream", "OpaquePointer")])
+                         [self._as_i64(builder, arg("stream", "OpaquePointer"))])
         elif target.startswith("gui."):
             # APP-RUN-4: headless widget runtime. Resolve the call's args in
             # source order, derive the extern signature from their IR types + the
@@ -16209,8 +16350,15 @@ class EavCodegen:
             # to a function pointer (passed through; not fired headlessly).
             name = target[len("gui."):]
             sym_name = _gui_runtime_symbol(target)
-            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
-                    for a in call.facts("arg")]
+            vals = []
+            for a in call.facts("arg"):
+                v = self._resolve(a.payload[2], a.payload[1], builder, sym)
+                # ss_widget_* still models GUI handles as long long. The handler
+                # callback slot is a real function pointer (`void *`) and remains
+                # pointer-typed.
+                if a.payload[0] != "handler" and isinstance(v.type, ir.PointerType):
+                    v = self._as_i64(builder, v)
+                vals.append(v)
             # Fixed return type per gui.* — a given target is called both with
             # `out Int32` and with `discards`, so the extern signature must be
             # consistent (deriving it from a single call's out row mismatches the
@@ -16225,7 +16373,7 @@ class EavCodegen:
             fn = self._runtime_extern(sym_name, ret_ty, [v.type for v in vals])
             r = builder.call(fn, vals)
             if call.fact("out") is not None:
-                result = r
+                result = self._as_i8p(builder, r) if name.endswith("Create") else r
             if call.fact("catch") is not None:
                 if name.endswith("Create"):
                     err = builder.icmp_signed("==", r, ir.Constant(ir.IntType(64), 0))
@@ -16284,7 +16432,7 @@ class EavCodegen:
                 result = builder.icmp_signed("==", v, ir.Constant(v.type, 0))
         elif target in ("pointer.offset", "pointer.loadByte", "pointer.storeByte"):
             # APP-RUN-2: explicit byte-addressed pointer ops over an OpaquePointer
-            # (an Int64 address). `offset` returns base+n; `loadByte`/`storeByte`
+            # handle. `offset` returns base+n as another pointer; `loadByte`/`storeByte`
             # reinterpret base+n as a byte address and load (zero-extended to Int32)
             # or store (the low byte of value). The reinterpret is the intrinsic's
             # defined semantics, not an implicit coercion of mismatched types.
@@ -16299,7 +16447,7 @@ class EavCodegen:
             off = self._resolve(a[1].payload[2], a[1].payload[1], builder, sym)
             addr = builder.add(base, off)
             if target == "pointer.offset":
-                result = addr
+                result = builder.inttoptr(addr, i8ptr)
             elif target == "pointer.loadByte":
                 self._guard_pointer_nonnull(builder, addr, target, call.line)  # R-130
                 byte = builder.load(builder.inttoptr(addr, i8ptr))
@@ -16315,11 +16463,38 @@ class EavCodegen:
             arg_rows = list(call.facts("arg"))
             if arg_idx is not None:  # resolve only the selected args (skip e.g. unused mode)
                 arg_rows = [arg_rows[i] for i in arg_idx]
-            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
-                    for a in arg_rows]
-            ret_ty = {"h": ir.IntType(64), "i": ir.IntType(32), "d": ir.DoubleType(),
-                      "s": ir.IntType(8).as_pointer(), "v": ir.VoidType()}[retkind]
             fam, meth = target.split(".", 1)
+
+            def _family_arg_value(row, value):
+                slot = row.payload[0] if row.payload else ""
+                if fam == "sqlite" and slot in ("database", "statement"):
+                    return self._as_i8p(builder, value)
+                if fam == "json":
+                    if slot in ("document", "cursor"):
+                        return self._as_i64(builder, value)
+                    if slot == "scratch":
+                        return self._as_i8p(builder, value)
+                if fam == "bcrypt":
+                    if meth == "freeString" and slot == "handle":
+                        return self._as_i64(builder, value)
+                    if slot in ("outBuffer", "inputBuffer", "outputBuffer",
+                                "outputLengthOut"):
+                        return self._as_i8p(builder, value)
+                return value
+
+            def _family_result_value(value):
+                out_row = call.fact("out")
+                if out_row is not None and len(out_row.payload) >= 2:
+                    return self._coerce_value(
+                        builder, value, self.ir_type(out_row.payload[1]))
+                return value
+
+            vals = [
+                _family_arg_value(
+                    a, self._resolve(a.payload[2], a.payload[1], builder, sym))
+                for a in arg_rows
+            ]
+            ret_ty = _runtime_kind_ir(retkind)
             if (fam, meth) == ("json", "createDocument"):
                 vals = vals + self._json_create_document_policy_args(call)
             status_spec = (_JSON_STATUS_OUTPARAM_RT.get((fam, meth))
@@ -16331,21 +16506,20 @@ class EavCodegen:
                 # former direct result into an out-param, so `branch ifError` and
                 # the catch variable observe the actual native status.
                 status_symbol, status_retkind = status_spec
-                out_ty = {"h": ir.IntType(64),
-                          "s": ir.IntType(8).as_pointer()}[status_retkind]
+                out_ty = _runtime_kind_ir(status_retkind)
                 slot = builder.alloca(out_ty)
                 fn = self._runtime_extern(
                     status_symbol, ir.IntType(32), [v.type for v in vals] + [slot.type])
                 status = builder.call(fn, vals + [slot])
                 if call.fact("out") is not None:
-                    result = builder.load(slot)
+                    result = _family_result_value(builder.load(slot))
                 err = builder.icmp_signed("!=", status, ir.Constant(ir.IntType(32), 0))
                 caught_error_value = status
             else:
                 fn = self._runtime_extern(symbol, ret_ty, [v.type for v in vals])
                 r = builder.call(fn, vals)
                 if retkind != "v" and call.fact("out") is not None:
-                    result = r
+                    result = _family_result_value(r)
                 # R-141: wire the native status/handle into `err` so a `catch` +
                 # `branch ifError` actually takes the error path instead of being
                 # constant-false (which silently treated every native failure as
@@ -16362,10 +16536,9 @@ class EavCodegen:
                         err = builder.icmp_signed(
                             "!=", r, ir.Constant(ir.IntType(32), 0))
                         caught_error_value = r
-                    elif retkind == "h" and (fam, meth) in _FAMILY_HANDLE_ERR:
+                    elif retkind in ("h", "p") and (fam, meth) in _FAMILY_HANDLE_ERR:
                         op, sentinel = _FAMILY_HANDLE_ERR[(fam, meth)]
-                        err = builder.icmp_signed(
-                            op, r, ir.Constant(ir.IntType(64), sentinel))
+                        err = self._cmp_sentinel(builder, op, r, sentinel)
         elif target in ("sqlite.stepResultIsDone", "sqlite.stepResultIsRow"):
             # The step result code is the raw sqlite3_step return: SQLITE_ROW=100,
             # SQLITE_DONE=101. The predicate is an equality test.
@@ -16376,12 +16549,28 @@ class EavCodegen:
         elif target.startswith("c."):
             # APP-RUN-6: libc access. `c.snprintf` is the variadic formatter; the
             # rest go through ss_c_* shims (ss_libc.c) declared to take/return
-            # Int64 for OpaquePointer handles and const char* for String, so the
-            # app's declared arg/out types match the symbol exactly — no coercion.
-            # The explicit pointer<->String reinterpret is `c.cString` (ss_c_cString).
+            # pointer handles as legacy long long values and const char* for
+            # String. Source handles stay pointer-typed; this boundary adapts the
+            # older shim ABI explicitly.
             libc = target[len("c."):]
-            vals = [self._resolve(a.payload[2], a.payload[1], builder, sym)
-                    for a in call.facts("arg")]
+            libc_i64_slots = {
+                "snprintf": {"buffer"},
+                "fprintf": {"stream"},
+                "fflush": {"stream"},
+                "fclose": {"stream"},
+                "fgets": {"buffer", "stream"},
+                "free": {"pointer"},
+                "memmove": {"dest", "src"},
+                "memset": {"ptr", "pointer"},
+                "cString": {"pointer"},
+                "cstring": {"pointer"},
+            }
+            vals = []
+            for a in call.facts("arg"):
+                v = self._resolve(a.payload[2], a.payload[1], builder, sym)
+                if a.payload and a.payload[0] in libc_i64_slots.get(libc, set()):
+                    v = self._as_i64(builder, v)
+                vals.append(v)
             out_row = call.fact("out")
             out_ty = (self.ir_type(out_row.payload[1])
                       if out_row and len(out_row.payload) >= 2 else None)
@@ -16403,7 +16592,7 @@ class EavCodegen:
                                      name=sym_name)
                 r = builder.call(fn, vals)
                 if out_ty is not None:
-                    result = r
+                    result = self._coerce_value(builder, r, out_ty)
                 if call.fact("catch") is not None and libc in _LIBC_NEGATIVE_ERROR_RETURNS:
                     err = builder.icmp_signed("<", r, ir.Constant(ir.IntType(32), 0))
             else:
@@ -16414,7 +16603,7 @@ class EavCodegen:
                 r = builder.call(fn, vals)
                 if (out_ty is not None and out_row is not None
                         and not isinstance(ret_ty, ir.VoidType)):
-                    result = r
+                    result = self._coerce_value(builder, r, out_ty)
                 if call.fact("catch") is not None:
                     if libc in _LIBC_NEGATIVE_ERROR_RETURNS:
                         err = builder.icmp_signed("<", r, ir.Constant(ir.IntType(32), 0))
@@ -17679,6 +17868,8 @@ def _resolve_runtime_links(library: dict, platform: str,
         "include": merged("include"),
         "defines": merged("defines"),
         "libs": merged("libs"),
+        "frameworks": merged("frameworks"),
+        "linkFlags": merged("linkFlags"),
         # Symbols the library binds straight to a legacy `ss_*` runtime function
         # (no shim). On a Windows/MSVC-style link only `dllexport`/`/EXPORT:`
         # symbols enter the DLL export table that ctypes (the JIT symbol
@@ -17852,13 +18043,11 @@ def _ensure_runtime_objects(lib: dict, target_triple: str,
         if os.path.exists(obj) and _runtime_lib_sidecar_matches(obj):
             continue
         obj_tmp = f"{obj}.tmp{os.getpid()}"
-        cmd = list(cc) + ["-O2", "-c", source, "-o", obj_tmp]
-        if target_triple:
-            cmd.append("--target=" + target_triple)
-        for inc in resolved["include"]:
-            cmd.append("-I" + _runtime_link_path(inc))
-        for d in resolved["defines"]:
-            cmd.append("-D" + d)
+        cmd = _render_c_compile_argv(
+            cc, source, obj_tmp, target_triple=target_triple,
+            include=[_runtime_link_path(inc) for inc in resolved["include"]],
+            defines=list(resolved["defines"]),
+        )
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
                                   timeout=_build_timeout_seconds())
@@ -17929,9 +18118,8 @@ def _ensure_native_app_object(module, cc: list,
     try:
         with os.fdopen(ll_fd, "w", encoding="utf-8") as fh:
             fh.write(ir_text)
-        cmd = list(cc) + ["-O2", "-c", ll_path, "-o", obj_tmp]
-        if target_triple:
-            cmd.append("--target=" + target_triple)
+        cmd = _render_c_compile_argv(
+            cc, ll_path, obj_tmp, target_triple=target_triple)
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=_build_timeout_seconds())
     except subprocess.TimeoutExpired:
@@ -17981,9 +18169,8 @@ def _ensure_native_source_object(source_path: str, target_triple: str, cc: list,
         return obj
     os.makedirs(obj_dir, exist_ok=True)
     obj_tmp = f"{obj}.tmp{os.getpid()}"
-    cmd = list(cc) + ["-O2", "-c", source_path, "-o", obj_tmp]
-    if target_triple:
-        cmd.append("--target=" + target_triple)
+    cmd = _render_c_compile_argv(
+        cc, source_path, obj_tmp, target_triple=target_triple)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=_build_timeout_seconds())
@@ -18218,21 +18405,21 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     # os.replace — a concurrent build (or a crash mid-link) can never leave a
     # partial library at `out` that a reader would load.
     out_tmp = f"{out}.tmp{os.getpid()}"
-    cmd = list(cc) + ["-O2", "-shared", "-o", out_tmp]
+    cmd = _render_native_link_argv(
+        cc, objects=sources, out=out_tmp, libs=list(resolved["libs"]),
+        frameworks=list(resolved.get("frameworks", [])),
+        link_flags=list(resolved.get("linkFlags", [])),
+        include=[_runtime_link_path(inc) for inc in resolved["include"]],
+        defines=list(resolved["defines"]), target_triple=jit_triple,
+        shared=True, exports=list(resolved.get("exports", [])),
+    )
     # The runtime DLL is loaded into the JIT process, so it must match the JIT's
     # target arch, not clang's native default. On this ARM64 host llvmlite is
     # x64-emulated (JIT triple x86_64-pc-windows-msvc) while clang defaults to
     # ARM64 — loading the native DLL fails WinError 193. Pin clang to the JIT
     # triple so the architectures agree (a no-op when they already match).
-    if jit_triple:  # R-253: resolved above and already folded into the cache key
-        cmd.append("--target=" + jit_triple)
-    cmd += sources
-    for inc in resolved["include"]:
-        cmd.append("-I" + _runtime_link_path(inc))
-    for d in resolved["defines"]:
-        cmd.append("-D" + d)
-    for libname in resolved["libs"]:
-        cmd.append("-l" + libname)
+    # R-031: `_render_native_link_argv` owns driver-specific target/include/
+    # define/library rendering.
     # Force-export the legacy symbols this library binds directly (no shim).
     # MSVC-style links (lld-link, used for the x86_64-pc-windows-msvc JIT
     # triple) export nothing unless dllexport/`/EXPORT:`-named, so a directly
@@ -18240,9 +18427,7 @@ def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
     # reads — its address would resolve to null and the call would fault. POSIX
     # shared objects export default-visibility symbols already, so this is a
     # Windows-only concern (`/EXPORT:` is lld-link/MSVC syntax).
-    if "msvc" in jit_triple:
-        for sym in resolved.get("exports", []):
-            cmd.append("-Wl,/EXPORT:" + sym)
+    # R-031: `_render_native_link_argv` also owns driver-specific export syntax.
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=_build_timeout_seconds())
@@ -18293,6 +18478,14 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add("ss_net_fetch_text")
                 elif target == "net.freeTextBody":
                     out.add("ss_net_free_text")
+                elif target == "net.connect":
+                    out.add("ss_net_connect")
+                elif target == "net.send":
+                    out.add("ss_net_send")
+                elif target == "net.receive":
+                    out.add("ss_net_receive")
+                elif target == "net.close":
+                    out.add("ss_net_close")
                 elif target.startswith("fs."):
                     out.add("ss_fs_" + _camel_to_snake(target[len("fs.") :]))
                 elif target in _EVENT_RUNTIME_SYMBOLS:  # APP-RUN-3 pub/sub
@@ -18320,21 +18513,22 @@ def _camel_to_snake(name: str) -> str:
 
 
 # APP-RUN-6: runtime-intrinsic families for taskforge-web. Each method maps to a
-# (symbol, return-kind, arg-indices) triple. return-kind: "h"=i64 handle/int64,
-# "i"=i32 status, "d"=f64, "s"=i8* string, "v"=void. arg-indices=None passes every arg in
+# (symbol, return-kind, arg-indices) triple. return-kind: "h"=legacy i64
+# handle/int64, "p"=native i8* handle, "i"=i32 status, "d"=f64,
+# "s"=i8* string, "v"=void. arg-indices=None passes every arg in
 # order; a tuple selects a subset (sqlite.openDatabase drops its unused mode arg).
 # sqlite -> the ss_sqlite_* shims; json -> the ss_json.c direct-return shim;
 # document -> wasm host imports; bcrypt/log -> native runtimes directly
 # (force-exported in the manifest).
 _FAMILY_RT = {
     "sqlite": {
-        "openDatabase": ("ss_sqlite_open", "h", (0,)),
-        "openInMemory": ("ss_sqlite_open_memory", "h", None),
+        "openDatabase": ("ss_sqlite_open", "p", (0,)),
+        "openInMemory": ("ss_sqlite_open_memory", "p", None),
         "exec": ("ss_sqlite_exec", "i", None),
         "execute": ("ss_sqlite_exec", "i", None),
         "queryScalarInt64": ("ss_sqlite_query_scalar", "h", None),
-        "query": ("ss_sqlite_prepare", "h", None),
-        "prepareStatement": ("ss_sqlite_prepare", "h", None),
+        "query": ("ss_sqlite_prepare", "p", None),
+        "prepareStatement": ("ss_sqlite_prepare", "p", None),
         "step": ("ss_sqlite_step", "i", None),
         "stepStatement": ("ss_sqlite_step", "i", None),
         "bindInt64": ("ss_sqlite_bind_int64", "i", None),
@@ -19963,14 +20157,16 @@ def build_executable(program: Program, out_path: str,
     target_triple = getattr(module, "triple", "") or ""
     compiler_id = _compiler_identity(cc)
     app_obj = _ensure_native_app_object(module, cc, compiler_id)
-    cmd = list(cc) + ["-O2", app_obj, "-o", out_path]
+    link_inputs = [app_obj]
+    runtime_libs: list[str] = []
+    runtime_frameworks: list[str] = []
+    runtime_link_flags: list[str] = []
     # Pin clang to the module's own target triple. On an ARM64 host where llvmlite
     # is x64-emulated, the IR triple is x86_64 while clang defaults to ARM64, so
     # clang would "override the module target triple" and fail the link. Passing
     # the module triple makes the architectures agree (a no-op when they already
     # match, e.g. an x64 CI host). Mirrors the runtime-lib build above.
-    if target_triple:
-        cmd.append("--target=" + target_triple)
+    # R-031: final target-triple rendering is owned by `_render_native_link_argv`.
     # A native exe needs a `main` symbol so the linker infers the console
     # subsystem + CRT startup. The console entry op is conventionally named
     # `main`, but the webServer (and any non-`main` entry) is named after the
@@ -19983,7 +20179,7 @@ def build_executable(program: Program, out_path: str,
         with os.fdopen(wrap_fd, "w", encoding="utf-8") as fh:
             fh.write(f"extern int {entry_fn}(void);\n"
                      f"int main(void) {{ return {entry_fn}(); }}\n")
-        cmd.append(wrap_path)
+        link_inputs.append(wrap_path)
     # WS1-130: the structured-trap helper `ss_panic` is compiler-injected at
     # guard sites (not a program runtimeBinding), so it is always linked in.
     # WS3-016: `ss_ffi_add` is the FFI out-param ABI demo symbol — always linked
@@ -19994,16 +20190,23 @@ def build_executable(program: Program, out_path: str,
     for _always in ("ss_panic.c", "ss_ffi.c", "ss_native_libc.c"):
         _src = os.path.normpath(os.path.join(rt, _always))
         if os.path.exists(_src):
-            cmd.append(_ensure_native_source_object(_src, target_triple, cc, compiler_id))
+            link_inputs.append(_ensure_native_source_object(
+                _src, target_triple, cc, compiler_id))
     # R-018/R-013: resolve each runtime library's link inputs for the host
     # platform so Windows-only libs (ws2_32) are appended on Windows and
     # POSIX-only libs (pthread/dl/m) are appended on Unix — never both.
     for lib in _runtime_libs_for(program):
         resolved = _resolve_runtime_links(lib, _host_platform_name())
-        cmd.extend(_ensure_runtime_objects(
+        link_inputs.extend(_ensure_runtime_objects(
             lib, target_triple, _host_platform_name(), cc, compiler_id))
-        for libname in resolved["libs"]:
-            cmd.append("-l" + libname)
+        runtime_libs.extend(resolved["libs"])
+        runtime_frameworks.extend(resolved.get("frameworks", []))
+        runtime_link_flags.extend(resolved.get("linkFlags", []))
+    cmd = _render_native_link_argv(
+        cc, objects=link_inputs, out=out_path, libs=runtime_libs,
+        frameworks=runtime_frameworks, link_flags=runtime_link_flags,
+        target_triple=target_triple,
+    )
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=_build_timeout_seconds())
