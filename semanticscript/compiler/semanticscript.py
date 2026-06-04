@@ -598,6 +598,9 @@ DIAGNOSTICS.update({
     "SS3900": {"tier": "T3", "summary": "owns without cleanedBy.",
                "found": "A call that owns a resource but declares no cleanedBy.",
                "suggested": "Add `cleanedBy <cleanup>` so the resource is released (§15)."},
+    "SS2616": {"tier": "T2", "summary": "webServer startup-owned handle cannot reach request handlers.",
+               "found": "A `startup`/`shutdown` handler owns a resource (e.g. an opened DB) with no cleanup; request handlers receive only (request, response) (README §14), so a startup-opened handle/connection cannot propagate to them — yielding a silent fresh/0-byte resource per request (WEB-1/R-9).",
+               "suggested": "Share cross-request state through module `storage`/`sharedState` (a connection path/config) and open the resource per-request in the handler, or release the startup-owned handle before `startup` returns (README §14)."},
     "SS3600": {"tier": "T3", "summary": "ifOut on a fallible call before its error.",
                "found": "An `ifOut` inspecting a call that has a catch.",
                "suggested": "Handle the error (branch ifError) before inspecting the out (§17 #36)."},
@@ -8209,12 +8212,38 @@ def _lint_ownership_and_entry_export(program: Program) -> list:
     `ifOut` on a fallible call before its error is handled."""
     out: list[Diagnostic] = []
     exported = _exported_names(program)
+    # WEB-1 (R-9): an owned resource in a webServer `startup`/`shutdown` handler is
+    # not a generic leak — it is a state-propagation bug. Handlers receive only
+    # (request, response) (README §14), so a handle/connection a startup handler
+    # owns cannot reach them; the app silently gets a fresh/0-byte resource per
+    # request. Collect the lifecycle handler op names so their owned-without-cleanup
+    # calls get the specific SS2616 (with the per-request-module-storage fix) rather
+    # than the generic SS3900.
+    _lifecycle_handlers = {
+        row.payload[0]
+        for ws in program.of_kind("webServer")
+        for pred in ("startup", "shutdown")
+        for row in ws.facts(pred)
+        if row.payload
+    }
     for ent in program.entities_in_order():
         if ent.kind in ("call", "task"):
             if ent.fact("owns") is not None and ent.fact("cleanedBy") is None:
-                out.append(Diagnostic("SS3900", "warning",
-                                      f"{ent.kind} {ent.name!r} owns a resource but has "
-                                      f"no `cleanedBy` cleanup", ent.line, ent.name))
+                in_row = ent.fact("in")
+                owner = in_row.payload[0] if in_row and in_row.payload else None
+                if owner in _lifecycle_handlers:
+                    out.append(Diagnostic(
+                        "SS2616", "warning",
+                        f"{ent.kind} {ent.name!r} owns a resource in the webServer "
+                        f"lifecycle handler {owner!r}; a startup-owned handle cannot "
+                        f"reach request handlers (they receive only request/response, "
+                        f"README §14). Share state via module storage opened "
+                        f"per-request, or release it before {owner!r} returns",
+                        ent.line, ent.name))
+                else:
+                    out.append(Diagnostic("SS3900", "warning",
+                                          f"{ent.kind} {ent.name!r} owns a resource but has "
+                                          f"no `cleanedBy` cleanup", ent.line, ent.name))
         if ent.kind in ("operation", "function"):
             for row in ent.rows:
                 if (row.predicate == "branch" and row.payload and row.payload[0] == "ifOut"):

@@ -56,6 +56,73 @@ def test_fix2_build_identity_unit():
     assert ident["contractVersion"] == semanticscript.CONTRACT_VERSION
 
 
+# --- WEB-1: startup-owned handle that can't reach handlers is flagged (R-9) ---
+
+def _webserver_with_startup(owns_cleanup: bool):
+    """A webServer whose `startup` handler opens+owns a DB handle. With
+    owns_cleanup=False it's the R-9 anti-pattern (the handle can't reach request
+    handlers); with True it releases the handle in startup (correct)."""
+    cleanup_rows = ("initDb defer closeDb\n" if owns_cleanup else "")
+    open_cleanup = ("openDb cleanedBy closeDb\n" if owns_cleanup else "")
+    cleanup_ent = (
+        "closeWorker is call\ncloseWorker in initDb\n"
+        "closeWorker invokes sqlite.closeDatabase\n"
+        "closeWorker arg database SqliteDatabase dbHandle\n"
+        "closeWorker discards \"x\"\n"
+        "closeDb is cleanup\ncloseDb in initDb\ncloseDb call closeWorker\n"
+        "closeDb cleans dbHandle\ncloseDb because \"release\"\n"
+    ) if owns_cleanup else ""
+    return (
+        "Demo is project\nDemo module m\nDemo target webServer\nDemo entry api\n"
+        'm is module\nm path a.b\nm exports api\nm purpose "p"\nm invariant "i"\n'
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "ServerContext is alias\nServerContext for OpaquePointer\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "SqliteDatabase is alias\nSqliteDatabase for Int64\n"
+        "dbWriter is capability\ndbWriter grants write sqlite.database\n"
+        "api is webServer\napi host \"127.0.0.1\"\napi port 8080\n"
+        "api startup initDb\napi route GET \"/health\" healthHandler\n"
+        "initDb is operation\ninitDb in serverContext ServerContext\ninitDb out ExitCode\n"
+        "initDb effect write sqlite.database\ninitDb uses dbWriter\n"
+        'initDb async no\ninitDb purpose "open the app db"\ninitDb invariant "i"\n'
+        "initDb let okCode immutable ExitCode 0\ninitDb do openDb\n"
+        + cleanup_rows +
+        "initDb return okCode\n"
+        "openDb is call\nopenDb in initDb\nopenDb invokes sqlite.openInMemory\n"
+        "openDb out dbHandle SqliteDatabase\nopenDb owns dbHandle\n"
+        + open_cleanup + cleanup_ent +
+        "healthHandler is operation\nhealthHandler in request HttpRequest\n"
+        "healthHandler in response HttpResponse\nhealthHandler out Int32\n"
+        'healthHandler async no\nhealthHandler purpose "p"\nhealthHandler invariant "i"\n'
+        "healthHandler let status immutable Int32 200\nhealthHandler return status\n")
+
+
+def test_web1_startup_owned_handle_that_cant_reach_handlers_is_flagged():
+    """WEB-1 (R-9): a `startup` handler that owns a resource with no cleanup can't
+    propagate it to request handlers (they get only request/response, §14), so the
+    app silently gets a fresh/0-byte resource per request. The toolchain must name
+    that specific bug (SS2616), not pass silently — and a startup that releases its
+    handle is clean."""
+    codes = lambda src: {d.code for d in semanticscript.lint(semanticscript.parse(src))}
+    assert "SS2616" in codes(_webserver_with_startup(owns_cleanup=False))
+    # releasing the handle in startup is the correct lifecycle — no SS2616.
+    clean = codes(_webserver_with_startup(owns_cleanup=True))
+    assert "SS2616" not in clean and "SS3900" not in clean
+
+
+def test_web1_does_not_false_positive_the_per_request_pattern():
+    """The valid pattern (share a DB path via module storage, open per-request — what
+    taskforge-web does) has no startup-owned handle, so it must not trip SS2616."""
+    import os
+    app = os.path.join(ROOT, "apps", "taskforge-web")
+    if not os.path.isdir(app):
+        pytest.skip("taskforge-web app fixture not present")
+    prog = semanticscript.load_project(app)
+    diags = semanticscript.lint(semanticscript.parse(prog))
+    assert not [d for d in diags if d.code == "SS2616"], "false-positive on per-request app"
+
+
 # --- ERG-3: `bench` on a webServer is server-aware, not a silent skip ---
 
 def test_erg3_bench_on_webserver_is_server_aware(tmp_path):
