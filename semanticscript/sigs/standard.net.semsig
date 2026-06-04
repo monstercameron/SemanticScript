@@ -1,8 +1,7 @@
 # standard.net.semsig — generated signature sidecar (README ss26, ss27).
-# DEFERRED: socket/network-client lowering needs sockets + the deferred FFI ABI
-# and lands with the http server runtime (WS3-017). Parity now is this contract:
-# the typed surface + capability/effect shape (§8, §28.5) app code typechecks
-# against. (todos WS3-104)
+# R-062: socket/network-client lowering is runtime-backed. The low-level
+# net.connect/send/receive/close surface is backed by ss_net sockets, and the
+# high-level net.fetchText surface is backed by the same runtime's HTTP client.
 
 netSig is semsig
 netSig version "1.0"
@@ -42,6 +41,7 @@ netReceive target net.receive
 netReceive arg socket NetSocket
 netReceive out received String
 netReceive catch NetError
+netReceive owns received cleanedBy net.freeTextBody
 netReceive async yes
 netReceive purpose "Receive bytes from a connected socket"
 

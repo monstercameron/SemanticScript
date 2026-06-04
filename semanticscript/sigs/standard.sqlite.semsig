@@ -13,11 +13,11 @@ SqlText typeTrust validated
 SqlText purpose "A SQL statement string that is intended for sqlite.* interpreter calls"
 
 SqliteDatabase is alias
-SqliteDatabase for Int64
+SqliteDatabase for OpaquePointer
 SqliteDatabase purpose "Opaque sqlite database handle"
 
 SqliteStatement is alias
-SqliteStatement for Int64
+SqliteStatement for OpaquePointer
 SqliteStatement purpose "Opaque sqlite prepared-statement handle"
 
 SqliteStepResult is alias

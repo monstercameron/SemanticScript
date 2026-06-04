@@ -1,8 +1,8 @@
 /*
  * ss_libc.c — explicit libc shims for the `c.*` intrinsics (APP-RUN-6). Each
- * takes/returns Int64 for OpaquePointer handles and const char* for String, so
- * the EAV-declared arg/out types line up with the symbol exactly and the
- * compiler performs no implicit coercion. The one explicit pointer<->String
+ * entry points keep the old Int64 handle ABI for stable runtime tracking; the
+ * compiler bridges source-visible OpaquePointer/FileHandle values explicitly at
+ * those call sites. The one explicit pointer<->String
  * reinterpret an app needs (e.g. viewing a freshly written byte buffer as a
  * NUL-terminated string) is ss_c_cstring, surfaced as `c.cString`.
  */
@@ -12,6 +12,16 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>  /* R-175: strict ss_c_atoll overflow detection */
+#ifdef _WIN32
+#include <windows.h>
+#include <conio.h>
+#include <io.h>
+#else
+#include <unistd.h>
+#include <termios.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#endif
 #include "ss_runtime_export.h"
 
 /*
@@ -317,14 +327,174 @@ SS_EXPORT long long ss_c_memmove(long long dest, long long src, long long count)
                                         (void *)(intptr_t)src, (size_t)count);
 }
 
+#define SS_C_KEY_LEFT 1000
+#define SS_C_KEY_RIGHT 1001
+#define SS_C_KEY_UP 1002
+#define SS_C_KEY_DOWN 1003
+#define SS_C_KEY_DELETE 1004
+
 /* `c.terminalReadKey` headless contract (APP-RUN-2): read one key from stdin so
  * the TUI state machine is driveable by a scripted keystroke stream in tests and
  * pipes. Input exhaustion (EOF) reports Esc (27) so the read loop quits cleanly
- * rather than spinning on a sentinel. */
+ * rather than spinning on a sentinel.
+ *
+ * R-029: interactive terminals get real platform behavior. Windows uses _getch
+ * extended-key decoding; POSIX uses termios raw mode, read(2), and ANSI escape
+ * sequence decoding. Non-TTY stdin deliberately keeps the byte-at-a-time stdio
+ * path so scripts and CI remain deterministic. */
+#ifdef _WIN32
 SS_EXPORT int ss_c_terminalReadKey(void) {
-    int key = getchar();
+    if (!_isatty(_fileno(stdin))) {
+        int piped = getchar();
+        return piped == EOF ? 27 : piped;
+    }
+    int key = _getch();
+    if (key == 0 || key == 224) {
+        int ext = _getch();
+        switch (ext) {
+            case 75: return SS_C_KEY_LEFT;
+            case 77: return SS_C_KEY_RIGHT;
+            case 72: return SS_C_KEY_UP;
+            case 80: return SS_C_KEY_DOWN;
+            case 83: return SS_C_KEY_DELETE;
+            default: return 0;
+        }
+    }
     return key == EOF ? 27 : key;
 }
+
+static int ss_c_terminal_dimension(int want_columns) {
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info)) {
+        int value = want_columns
+            ? (int)(info.srWindow.Right - info.srWindow.Left + 1)
+            : (int)(info.srWindow.Bottom - info.srWindow.Top + 1);
+        if (value > 0) {
+            return value;
+        }
+    }
+    return want_columns ? 80 : 24;
+}
+
+SS_EXPORT int ss_c_terminalColumns(void) {
+    return ss_c_terminal_dimension(1);
+}
+
+SS_EXPORT int ss_c_terminalRows(void) {
+    return ss_c_terminal_dimension(0);
+}
+#else
+static struct termios ss_c_terminal_saved;
+static int ss_c_terminal_raw_enabled = 0;
+
+static void ss_c_terminal_restore(void) {
+    if (ss_c_terminal_raw_enabled) {
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &ss_c_terminal_saved);
+        ss_c_terminal_raw_enabled = 0;
+    }
+}
+
+static int ss_c_terminal_enable_raw(void) {
+    if (!isatty(STDIN_FILENO)) {
+        return 0;
+    }
+    if (ss_c_terminal_raw_enabled) {
+        return 1;
+    }
+    if (tcgetattr(STDIN_FILENO, &ss_c_terminal_saved) != 0) {
+        return 0;
+    }
+    struct termios raw = ss_c_terminal_saved;
+    raw.c_lflag &= (tcflag_t)~(ECHO | ICANON);
+    raw.c_iflag &= (tcflag_t)~(IXON | ICRNL);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0) {
+        return 0;
+    }
+    ss_c_terminal_raw_enabled = 1;
+    atexit(ss_c_terminal_restore);
+    return 1;
+}
+
+static int ss_c_terminal_read_byte_timeout(unsigned char *out, int timeout_ms) {
+    fd_set set;
+    FD_ZERO(&set);
+    FD_SET(STDIN_FILENO, &set);
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    int ready = select(STDIN_FILENO + 1, &set, NULL, NULL, &tv);
+    if (ready <= 0) {
+        return 0;
+    }
+    return read(STDIN_FILENO, out, 1) == 1;
+}
+
+static int ss_c_terminal_decode_escape(void) {
+    unsigned char second = 0;
+    unsigned char third = 0;
+    if (!ss_c_terminal_read_byte_timeout(&second, 25)) {
+        return 27;
+    }
+    if (second != '[' && second != 'O') {
+        return 27;
+    }
+    if (!ss_c_terminal_read_byte_timeout(&third, 25)) {
+        return 27;
+    }
+    switch (third) {
+        case 'A': return SS_C_KEY_UP;
+        case 'B': return SS_C_KEY_DOWN;
+        case 'C': return SS_C_KEY_RIGHT;
+        case 'D': return SS_C_KEY_LEFT;
+        case '3': {
+            unsigned char tilde = 0;
+            if (ss_c_terminal_read_byte_timeout(&tilde, 25) && tilde == '~') {
+                return SS_C_KEY_DELETE;
+            }
+            return 27;
+        }
+        default:
+            return 27;
+    }
+}
+
+SS_EXPORT int ss_c_terminalReadKey(void) {
+    if (!isatty(STDIN_FILENO) || !ss_c_terminal_enable_raw()) {
+        int key = getchar();
+        return key == EOF ? 27 : key;
+    }
+    unsigned char key = 0;
+    if (read(STDIN_FILENO, &key, 1) != 1) {
+        return 27;
+    }
+    if (key == 27) {
+        return ss_c_terminal_decode_escape();
+    }
+    return (int)key;
+}
+
+SS_EXPORT int ss_c_terminalColumns(void) {
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+        return (int)ws.ws_col;
+    }
+    const char *cols = getenv("COLUMNS");
+    int value = cols ? atoi(cols) : 0;
+    return value > 0 ? value : 80;
+}
+
+SS_EXPORT int ss_c_terminalRows(void) {
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0) {
+        return (int)ws.ws_row;
+    }
+    const char *rows = getenv("LINES");
+    int value = rows ? atoi(rows) : 0;
+    return value > 0 ? value : 24;
+}
+#endif
 
 /* Explicit reinterpret: an OpaquePointer byte buffer viewed as a String. The
  * `c.cString` intrinsic maps to the method name verbatim (ss_c_ + "cString"),

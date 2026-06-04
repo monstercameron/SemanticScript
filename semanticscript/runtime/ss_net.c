@@ -1,19 +1,101 @@
 /*
  * ss_net.c — minimal blocking HTTP/1.1 GET client for the `net.fetchText`
  * intrinsic (APP-RUN-1). Parses an `http://host[:port]/path` URL, performs a
- * GET over a winsock TCP socket, strips the response headers, and returns a
+ * GET over a TCP socket, strips the response headers, and returns a
  * heap-owned copy of the body (released by ss_net_free_text). HTTPS/TLS and
  * chunked transfer-encoding are out of scope; chunked responses fail closed
  * rather than exposing wire framing as body text.
  */
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#endif
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <limits.h>
 #include "ss_runtime_export.h"
+
+#ifdef _WIN32
+typedef SOCKET ss_net_socket_t;
+typedef int ss_net_socklen_t;
+#define SS_NET_INVALID_SOCKET INVALID_SOCKET
+static int ss_net_socket_startup(void) {
+    static int wsa_started = 0;
+    if (!wsa_started) {
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return -1;
+        wsa_started = 1;
+    }
+    return 0;
+}
+static int ss_net_close_socket(ss_net_socket_t socket) { return closesocket(socket); }
+static int ss_net_set_nonblocking(ss_net_socket_t socket, int enabled) {
+    u_long mode = enabled ? 1 : 0;
+    return ioctlsocket(socket, FIONBIO, &mode);
+}
+static int ss_net_connect_in_progress(void) {
+    int err = WSAGetLastError();
+    return err == WSAEWOULDBLOCK || err == WSAEINPROGRESS ||
+           err == WSAEALREADY || err == WSAEINVAL;
+}
+static int ss_net_select_nfds(ss_net_socket_t socket) {
+    (void)socket;
+    return 0;
+}
+static int ss_net_set_socket_timeouts(ss_net_socket_t socket, long long timeout_ms) {
+    DWORD tv = (DWORD)timeout_ms;
+    int ok = 1;
+    ok = ok && setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO,
+                          (const char *)&tv, sizeof tv) == 0;
+    ok = ok && setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO,
+                          (const char *)&tv, sizeof tv) == 0;
+    return ok ? 0 : -1;
+}
+#else
+typedef int ss_net_socket_t;
+typedef socklen_t ss_net_socklen_t;
+#define SS_NET_INVALID_SOCKET (-1)
+static int ss_net_socket_startup(void) { return 0; }
+static int ss_net_close_socket(ss_net_socket_t socket) { return close(socket); }
+static int ss_net_set_nonblocking(ss_net_socket_t socket, int enabled) {
+    int flags = fcntl(socket, F_GETFL, 0);
+    if (flags < 0) return -1;
+    flags = enabled ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+    return fcntl(socket, F_SETFL, flags);
+}
+static int ss_net_connect_in_progress(void) {
+    return errno == EINPROGRESS || errno == EWOULDBLOCK || errno == EALREADY;
+}
+static int ss_net_select_nfds(ss_net_socket_t socket) { return socket + 1; }
+static int ss_net_set_socket_timeouts(ss_net_socket_t socket, long long timeout_ms) {
+    struct timeval tv;
+    tv.tv_sec = (long)(timeout_ms / 1000);
+    tv.tv_usec = (long)((timeout_ms % 1000) * 1000);
+    int ok = 1;
+    ok = ok && setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO,
+                          &tv, sizeof tv) == 0;
+    ok = ok && setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO,
+                          &tv, sizeof tv) == 0;
+    return ok ? 0 : -1;
+}
+#endif
+
+typedef struct {
+    ss_net_socket_t socket;
+    int live;
+} ss_net_socket_handle;
 
 /*
  * R-204: net.fetchText returns a heap-owned body as a String-shaped char*. The
@@ -184,6 +266,7 @@ static char *ss_net_response_body_from_wire(const char *response) {
 
 #define SS_NET_DEFAULT_TIMEOUT_MS 5000LL
 #define SS_NET_MAX_TIMEOUT_MS 0x7fffffffLL
+#define SS_NET_DEFAULT_RECEIVE_CAP ((size_t)1024 * 1024)
 
 static long long ss_net_effective_timeout_ms(long long timeout_ms) {
     if (timeout_ms <= 0) {
@@ -195,22 +278,18 @@ static long long ss_net_effective_timeout_ms(long long timeout_ms) {
     return timeout_ms;
 }
 
-static int ss_net_connect_with_timeout(SOCKET sock, const struct sockaddr *addr,
+static int ss_net_connect_with_timeout(ss_net_socket_t sock, const struct sockaddr *addr,
                                        int addrlen, long long timeout_ms) {
-    u_long nonblocking = 1;
-    u_long blocking = 0;
-    if (ioctlsocket(sock, FIONBIO, &nonblocking) != 0) {
+    if (ss_net_set_nonblocking(sock, 1) != 0) {
         return -1;
     }
 
     if (connect(sock, addr, addrlen) == 0) {
-        return ioctlsocket(sock, FIONBIO, &blocking) == 0 ? 0 : -1;
+        return ss_net_set_nonblocking(sock, 0) == 0 ? 0 : -1;
     }
 
-    int err = WSAGetLastError();
-    if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS &&
-            err != WSAEALREADY && err != WSAEINVAL) {
-        ioctlsocket(sock, FIONBIO, &blocking);
+    if (!ss_net_connect_in_progress()) {
+        ss_net_set_nonblocking(sock, 0);
         return -1;
     }
 
@@ -224,21 +303,21 @@ static int ss_net_connect_with_timeout(SOCKET sock, const struct sockaddr *addr,
     struct timeval timeout;
     timeout.tv_sec = (long)(timeout_ms / 1000);
     timeout.tv_usec = (long)((timeout_ms % 1000) * 1000);
-    int ready = select(0, NULL, &write_set, &except_set, &timeout);
+    int ready = select(ss_net_select_nfds(sock), NULL, &write_set, &except_set, &timeout);
     if (ready <= 0) {
-        ioctlsocket(sock, FIONBIO, &blocking);
+        ss_net_set_nonblocking(sock, 0);
         return -1;
     }
 
     int so_error = 0;
-    int so_error_len = (int)sizeof so_error;
+    ss_net_socklen_t so_error_len = (ss_net_socklen_t)sizeof so_error;
     if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error,
                    &so_error_len) != 0 || so_error != 0) {
-        ioctlsocket(sock, FIONBIO, &blocking);
+        ss_net_set_nonblocking(sock, 0);
         return -1;
     }
 
-    return ioctlsocket(sock, FIONBIO, &blocking) == 0 ? 0 : -1;
+    return ss_net_set_nonblocking(sock, 0) == 0 ? 0 : -1;
 }
 
 /* Split "http://host[:port]/path" into host, port, path. 0 on success. */
@@ -320,6 +399,175 @@ static int ss_net_parse_url(const char *url, char *host, size_t hostcap,
     return 0;
 }
 
+static int ss_net_parse_endpoint(const char *endpoint, char *host, size_t hostcap,
+                                 char *port, size_t portcap) {
+    if (endpoint == NULL || hostcap == 0 || portcap == 0) {
+        return -1;
+    }
+    const char *p = endpoint;
+    if (strncmp(p, "tcp://", 6) == 0) {
+        p += 6;
+    }
+    const char *host_start = p;
+    const char *host_end = NULL;
+    const char *port_start = NULL;
+    if (*p == '[') {
+        const char *rb = strchr(p, ']');
+        if (rb == NULL || rb == p + 1 || rb[1] != ':') {
+            return -1;
+        }
+        host_start = p + 1;
+        host_end = rb;
+        port_start = rb + 2;
+    } else {
+        const char *colon = strrchr(p, ':');
+        if (colon == NULL || colon == p) {
+            return -1;
+        }
+        host_end = colon;
+        port_start = colon + 1;
+    }
+    if (port_start == NULL || *port_start == 0) {
+        return -1;
+    }
+    char *endp = NULL;
+    long pv = strtol(port_start, &endp, 10);
+    if (*endp != 0 || pv < 1 || pv > 65535) {
+        return -1;
+    }
+    size_t hlen = (size_t)(host_end - host_start);
+    size_t plen = strlen(port_start);
+    if (hlen == 0 || hlen >= hostcap || plen == 0 || plen >= portcap) {
+        return -1;
+    }
+    memcpy(host, host_start, hlen);
+    host[hlen] = 0;
+    memcpy(port, port_start, plen + 1);
+    return 0;
+}
+
+SS_EXPORT void *ss_net_connect(const char *endpoint) {
+    if (ss_net_socket_startup() != 0) return NULL;
+    char host[256];
+    char port[16];
+    if (ss_net_parse_endpoint(endpoint, host, sizeof host, port, sizeof port) != 0) {
+        return NULL;
+    }
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, port, &hints, &res) != 0) return NULL;
+
+    ss_net_socket_t s = SS_NET_INVALID_SOCKET;
+    struct addrinfo *ai;
+    for (ai = res; ai != NULL; ai = ai->ai_next) {
+        s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (s == SS_NET_INVALID_SOCKET) {
+            continue;
+        }
+        if (ss_net_connect_with_timeout(s, ai->ai_addr, (int)ai->ai_addrlen,
+                                        SS_NET_DEFAULT_TIMEOUT_MS) == 0) {
+            break;
+        }
+        ss_net_close_socket(s);
+        s = SS_NET_INVALID_SOCKET;
+    }
+    freeaddrinfo(res);
+    if (s == SS_NET_INVALID_SOCKET) return NULL;
+    ss_net_set_socket_timeouts(s, SS_NET_DEFAULT_TIMEOUT_MS);
+
+    ss_net_socket_handle *handle =
+        (ss_net_socket_handle *)calloc(1, sizeof(ss_net_socket_handle));
+    if (handle == NULL) {
+        ss_net_close_socket(s);
+        return NULL;
+    }
+    handle->socket = s;
+    handle->live = 1;
+    return handle;
+}
+
+SS_EXPORT long long ss_net_send(void *socket_handle, const char *payload) {
+    ss_net_socket_handle *handle = (ss_net_socket_handle *)socket_handle;
+    if (handle == NULL || !handle->live || payload == NULL) {
+        return -1;
+    }
+    size_t len = strlen(payload);
+    size_t sent = 0;
+    while (sent < len) {
+        int n = send(handle->socket, payload + sent, (int)(len - sent), 0);
+        if (n <= 0) {
+            return -1;
+        }
+        sent += (size_t)n;
+    }
+    return (long long)sent;
+}
+
+SS_EXPORT char *ss_net_receive(void *socket_handle) {
+    ss_net_socket_handle *handle = (ss_net_socket_handle *)socket_handle;
+    if (handle == NULL || !handle->live) {
+        return NULL;
+    }
+    size_t cap = 256;
+    size_t len = 0;
+    char *buf = (char *)malloc(cap);
+    if (buf == NULL) {
+        return NULL;
+    }
+    for (;;) {
+        if (len + 256 + 1 > cap) {
+            size_t ncap = cap * 2;
+            if (ncap > SS_NET_DEFAULT_RECEIVE_CAP + 1) {
+                ncap = SS_NET_DEFAULT_RECEIVE_CAP + 1;
+            }
+            if (ncap <= cap) {
+                free(buf);
+                return NULL;
+            }
+            char *grown = (char *)realloc(buf, ncap);
+            if (grown == NULL) {
+                free(buf);
+                return NULL;
+            }
+            buf = grown;
+            cap = ncap;
+        }
+        int n = recv(handle->socket, buf + len, 256, 0);
+        if (n == 0) {
+            break;
+        }
+        if (n < 0) {
+            free(buf);
+            return NULL;
+        }
+        len += (size_t)n;
+        if (len > SS_NET_DEFAULT_RECEIVE_CAP) {
+            free(buf);
+            return NULL;
+        }
+    }
+    buf[len] = 0;
+    char *out = ss_net_strdup(buf, len);
+    free(buf);
+    return out;
+}
+
+SS_EXPORT int ss_net_close(void *socket_handle) {
+    ss_net_socket_handle *handle = (ss_net_socket_handle *)socket_handle;
+    if (handle == NULL) {
+        return 0;
+    }
+    int closed = 0;
+    if (handle->live) {
+        closed = ss_net_close_socket(handle->socket) == 0 ? 1 : 0;
+        handle->live = 0;
+    }
+    free(handle);
+    return closed;
+}
+
 /* R-092: the high-level signature's HttpRequestPolicy (timeoutMillis, maxBodyBytes,
  * redirectLimit) is now passed through and enforced. `redirect_limit` is accepted
  * but trivially honored: this client never follows redirects (a 3xx body is
@@ -335,12 +583,7 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
     if (ss_net_parse_url(url, host, sizeof host, &port, path, sizeof path) != 0)
         return NULL;
 
-    static int wsa_started = 0;
-    if (!wsa_started) {
-        WSADATA wsa;
-        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return NULL;
-        wsa_started = 1;
-    }
+    if (ss_net_socket_startup() != 0) return NULL;
 
     struct addrinfo hints, *res = NULL;
     memset(&hints, 0, sizeof hints);
@@ -351,29 +594,27 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
     if (getaddrinfo(host, portstr, &hints, &res) != 0) return NULL;
 
     long long effective_timeout_ms = ss_net_effective_timeout_ms(timeout_ms);
-    SOCKET s = INVALID_SOCKET;
+    ss_net_socket_t s = SS_NET_INVALID_SOCKET;
     struct addrinfo *ai;
     for (ai = res; ai != NULL; ai = ai->ai_next) {
         s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-        if (s == INVALID_SOCKET) {
+        if (s == SS_NET_INVALID_SOCKET) {
             continue;
         }
         if (ss_net_connect_with_timeout(s, ai->ai_addr, (int)ai->ai_addrlen,
                                         effective_timeout_ms) == 0) {
             break;
         }
-        closesocket(s);
-        s = INVALID_SOCKET;
+        ss_net_close_socket(s);
+        s = SS_NET_INVALID_SOCKET;
     }
     freeaddrinfo(res);
-    if (s == INVALID_SOCKET) return NULL;
+    if (s == SS_NET_INVALID_SOCKET) return NULL;
 
     /* R-092: enforce the policy/default timeout on every transport phase.
      * connect() uses nonblocking select(), and SO_RCVTIMEO/SO_SNDTIMEO bound
      * send() and recv() so a slow/stalled peer can't hang the call forever. */
-    DWORD tv = (DWORD)effective_timeout_ms;
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
-    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof tv);
+    ss_net_set_socket_timeouts(s, effective_timeout_ms);
 
     char req[1600];
     int reqlen = snprintf(req, sizeof req,
@@ -385,7 +626,7 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
      * so reject truncation outright. */
     if (reqlen <= 0 || reqlen >= (int)sizeof req
             || send(s, req, reqlen, 0) != reqlen) {
-        closesocket(s);
+        ss_net_close_socket(s);
         return NULL;
     }
 
@@ -402,29 +643,29 @@ SS_EXPORT char *ss_net_fetch_text(const char *url, long long timeout_ms,
     }
     size_t cap = 4096, len = 0;
     char *buf = (char *)malloc(cap);
-    if (!buf) { closesocket(s); return NULL; }
+    if (!buf) { ss_net_close_socket(s); return NULL; }
     for (;;) {
         if (len + 2048 + 1 > cap) {
             size_t ncap = cap * 2;
             /* never grow far past the response cap (+slack for the final NUL) */
             if (ncap > resp_cap + 2048 + 1) ncap = resp_cap + 2048 + 1;
-            if (ncap <= cap) { free(buf); closesocket(s); return NULL; }
+            if (ncap <= cap) { free(buf); ss_net_close_socket(s); return NULL; }
             char *nb = (char *)realloc(buf, ncap);
-            if (!nb) { free(buf); closesocket(s); return NULL; }
+            if (!nb) { free(buf); ss_net_close_socket(s); return NULL; }
             buf = nb;
             cap = ncap;
         }
         int n = recv(s, buf + len, 2048, 0);
         if (n == 0) break;                 /* peer closed -> body complete */
         if (n < 0) {                       /* R-092: timeout/error -> fail closed */
-            free(buf); closesocket(s); return NULL;
+            free(buf); ss_net_close_socket(s); return NULL;
         }
         len += (size_t)n;
         if (len > resp_cap) {              /* R-092: over the policy/hard limit */
-            free(buf); closesocket(s); return NULL;
+            free(buf); ss_net_close_socket(s); return NULL;
         }
     }
-    closesocket(s);
+    ss_net_close_socket(s);
     buf[len] = 0;
 
     char *out = ss_net_response_body_from_wire(buf);

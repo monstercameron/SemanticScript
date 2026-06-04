@@ -4,8 +4,9 @@
  * (APP-RUN-6). The native document API returns a status int and writes the
  * produced handle/cursor through a `*out` pointer; the EAV side wants a plain
  * `args -> single return`, so each entry here performs the out-param dance and
- * returns the handle/cursor/string directly. Documents + cursors cross the EAV
- * boundary as Int64 (OpaquePointer / JsonCursor).
+ * returns the handle/cursor/string directly. Documents + cursors are
+ * source-visible OpaquePointer / JsonCursor handles; this legacy shim still
+ * returns integer handle IDs and the compiler bridges explicitly.
  */
 #include "sem_json_runtime.h"
 #include "ss_runtime_export.h"

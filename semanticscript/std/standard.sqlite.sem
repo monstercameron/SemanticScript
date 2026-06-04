@@ -7,11 +7,10 @@
 # third_party/sqlite). The compiler lowers each op to an extern call to that
 # symbol; this module owns the typed contract (README ss11/ss26/ss34).
 #
-# Handles (SqliteDatabase, SqliteStatement) are OpaquePointer; on x86-64 the
-# pointer and an i64 share the ABI register, so the OpaquePointer lowering is
-# exact. Strings returned by the ss_sqlite shim are copied before crossing the
-# EAV boundary, so columnText/columnName/errorMessage results survive later
-# statement steps and helper/module returns.
+# Handles (SqliteDatabase, SqliteStatement) are OpaquePointer and lower as native
+# pointer handles. Strings returned by the ss_sqlite shim are copied before
+# crossing the EAV boundary, so columnText/columnName/errorMessage results
+# survive later statement steps and helper/module returns.
 
 standardSqlite is module
 standardSqlite path standard.sqlite
