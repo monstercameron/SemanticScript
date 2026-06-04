@@ -5759,15 +5759,14 @@ def _lint_loop_no_progress(program: Program) -> list:
     helper-mediated progress: re-running a guard-producing call, rebinding its
     `out`, or mutating any of that call's input args all keep the loop live."""
     diags: list = []
-    for n in program.order:
-        op = program.entities[n]
-        if op.kind not in ("operation", "function"):
-            continue
+    owned_by = _calls_by_owner(program)
+    label_indexes = program.labels_by_owner()
+    for op in program.of_kind("operation"):
         rows = op.rows
-        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        labels = label_indexes.get(op.name, {})
         if not labels:
             continue
-        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
+        owned = {e.name: e for e in owned_by.get(op.name, ())}
         # R-082: map each owned call to its input arg value names, so a guard
         # recomputed via a helper whose inputs are mutated each turn counts as
         # progress even when the guard's own `out` name is not directly rebound.
@@ -6755,15 +6754,14 @@ def _lint_collection_iterator_invalidation(program: Program) -> list:
         inv = call.fact("invokes")
         return inv.payload[0] if inv and inv.payload else ""
 
-    for n in program.order:
-        op = program.entities[n]
-        if op.kind not in ("operation", "function"):
-            continue
+    owned_by = _calls_by_owner(program)
+    label_indexes = program.labels_by_owner()
+    for op in program.of_kind("operation"):
         rows = op.rows
-        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        labels = label_indexes.get(op.name, {})
         if not labels:
             continue
-        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
+        owned = {e.name: e for e in owned_by.get(op.name, ())}
         reported: set = set()
         for gi, r in enumerate(rows):
             if r.predicate == "goto" and r.payload:
@@ -6820,15 +6818,14 @@ def _lint_string_accumulator_in_loop(program: Program) -> list:
         inv = call.fact("invokes")
         return inv.payload[0] if inv and inv.payload else ""
 
-    for n in program.order:
-        op = program.entities[n]
-        if op.kind not in ("operation", "function"):
-            continue
+    owned_by = _calls_by_owner(program)
+    label_indexes = program.labels_by_owner()
+    for op in program.of_kind("operation"):
         rows = op.rows
-        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        labels = label_indexes.get(op.name, {})
         if not labels:
             continue
-        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
+        owned = {e.name: e for e in owned_by.get(op.name, ())}
         reported: set = set()
         for gi, r in enumerate(rows):
             if r.predicate == "goto" and r.payload:
@@ -7562,8 +7559,7 @@ def _lint_ownership_and_entry_export(program: Program) -> list:
     `ifOut` on a fallible call before its error is handled."""
     out: list[Diagnostic] = []
     exported = _exported_names(program)
-    for n in program.order:
-        ent = program.entities[n]
+    for ent in program.entities_in_order():
         if ent.kind in ("call", "task"):
             if ent.fact("owns") is not None and ent.fact("cleanedBy") is None:
                 out.append(Diagnostic("SS3900", "warning",
@@ -7580,8 +7576,8 @@ def _lint_ownership_and_entry_export(program: Program) -> list:
                                               f"(README §17 #36)", row.line, ent.name))
     module_exports = {
         ex.payload[0]
-        for n in program.order if program.entities[n].kind == "module"
-        for ex in program.entities[n].facts("exports") if ex.payload
+        for ent in program.of_kind("module")
+        for ex in ent.facts("exports") if ex.payload
     }
     for proj in program.of_kind("project"):
         entry = proj.fact("entry")
@@ -7598,16 +7594,13 @@ def _lint_gates(program: Program) -> list:
     gate value must name a target declared by the project, or a declared
     platform entity."""
     targets: set = set()
-    for n in program.order:
-        ent = program.entities[n]
-        if ent.kind == "project":
-            for t in ent.facts("target"):
-                if t.payload:
-                    targets.add(t.payload[0])
-    platforms = {n for n in program.order if program.entities[n].kind == "platform"}
+    for ent in program.of_kind("project"):
+        for t in ent.facts("target"):
+            if t.payload:
+                targets.add(t.payload[0])
+    platforms = {ent.name for ent in program.of_kind("platform")}
     out: list[Diagnostic] = []
-    for n in program.order:
-        ent = program.entities[n]
+    for ent in program.entities_in_order():
         for row in ent.facts("forTarget"):
             if row.payload and row.payload[0] not in targets:
                 out.append(Diagnostic("SS3010", "error",
@@ -9292,13 +9285,13 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
     out: list[Diagnostic] = []
     std_aliases = {
         "JsonText": "String",
-        "JsonDocument": "Int64",
-        "JsonCursor": "Int64",
+        "JsonDocument": "OpaquePointer",
+        "JsonCursor": "OpaquePointer",
         "JsonCapacityBytes": "Int64",
         "JsonValueKind": "Int32",
         "SqlText": "String",
-        "SqliteDatabase": "Int64",
-        "SqliteStatement": "Int64",
+        "SqliteDatabase": "OpaquePointer",
+        "SqliteStatement": "OpaquePointer",
         "SqliteStepResult": "Int32",
         "SqliteOpenMode": "Int32",
         "SqliteText": "String",
@@ -9319,7 +9312,8 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
         "Decimal": "Int64",
         "Money": "Int64",
         "ByteCount": "Int64",
-        "OpaquePointer": "Int64",
+        "OpaquePointer": "OpaquePointer",
+        "FileHandle": "OpaquePointer",
         "ExitCode": "Int32",
     }
 
@@ -9418,24 +9412,26 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
         if sig is None:
             continue
         # W2-B: the `out` binding's value kind must match the target's declared
-        # return kind. Binding an owned handle (OpaquePointer/i64, e.g.
-        # bcrypt.hashPasswordOwned) to `out X String` (i8*) passes the structural
-        # check but crashes the code generator with `i8* != i64`. Catch the
-        # String<->handle confusion here, at check, with a c.cString repair hint.
+        # return kind. Binding an owned handle (OpaquePointer, e.g.
+        # bcrypt.hashPasswordOwned) to `out X String` passes the structural check
+        # but crashes the code generator with a handle/String mismatch. Catch the
+        # confusion here, at check, with a c.cString repair hint.
         out_w2b = ent.fact("out")
         if (out_w2b and len(out_w2b.payload) >= 2 and sig.get("out")):
             def _value_kind(t: str):
                 c = canon_type(t)
                 if c == "String":
                     return "string"
+                if c == "OpaquePointer":
+                    return "handle"
                 if c in _FLOAT_TYPE_NAMES:
                     return "float"
                 if c in _INT_WIDTHS or c in ("Int32", "Int64", "Bool", "ExitCode"):
                     return "int"
                 return None
             sk, bk = _value_kind(sig["out"]), _value_kind(out_w2b.payload[1])
-            if sk and bk and {sk, bk} == {"string", "int"}:
-                if sk == "int":
+            if sk and bk and {sk, bk} in ({"string", "handle"}, {"string", "int"}):
+                if sk in ("handle", "int"):
                     fix = (f"a {sig['out']} is an opaque handle, not text — bind "
                            f"`out {out_w2b.payload[0]} {sig['out']}` and, for a "
                            f"NUL-terminated C-string handle, convert it with "
@@ -12029,21 +12025,20 @@ def _validate_untrusted_loop_bounds(program: Program) -> None:
     fire. A loop over a trusted/internal size, a fixed capacity, or a validated
     length never trips this, so existing fixed-capacity buffer loops stay legal."""
     untrusted_types = {
-        program.entities[n].name for n in program.order
-        for r in program.entities[n].facts("typeTrust")
+        ent.name for ent in program.entities_in_order()
+        for r in ent.facts("typeTrust")
         if r.payload and r.payload[0] in ("rawExternal", "secret")
     }
     if not untrusted_types:
         return  # no untrusted-typed values exist -> nothing to bound
-    for n in program.order:
-        op = program.entities[n]
-        if op.kind not in ("operation", "function"):
-            continue
+    owned_by = _calls_by_owner(program)
+    label_indexes = program.labels_by_owner()
+    for op in program.of_kind("operation"):
         rows = op.rows
-        labels = {r.label: i for i, r in enumerate(rows) if r.label is not None}
+        labels = label_indexes.get(op.name, {})
         if not labels:
             continue
-        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
+        owned = {e.name: e for e in owned_by.get(op.name, ())}
         # value -> declared type, from inputs, lets, and owned-call outputs.
         value_type: dict = {}
         for r in op.facts("in"):
@@ -13257,11 +13252,80 @@ def _validate_html_trust(program: Program) -> None:
                 )
 
 
+_GUI_BACKENDS = frozenset({"headless", "win32", "winui3"})
+
+
+def _project_target_values(project: Entity) -> list[str]:
+    return [r.payload[0] for r in project.facts("target") if r.payload]
+
+
+def _project_gui_backend(project: Entity) -> Optional[str]:
+    rows = project.facts("guiBackend")
+    if len(rows) != 1 or len(rows[0].payload) != 1:
+        return None
+    return rows[0].payload[0]
+
+
+def gui_backend_readiness(program: Program, platform: Optional[str] = None) -> dict:
+    """R-042: machine-readable readiness for a project's GUI backend."""
+    projects = program.of_kind("project")
+    if not projects:
+        return {"target": None, "backend": None, "platform": platform,
+                "ok": True, "status": "no-project"}
+    project = projects[0]
+    targets = _project_target_values(project) or ["console"]
+    if "windowsGui" not in targets:
+        return {"target": targets[0], "backend": None, "platform": platform,
+                "ok": True, "status": "not-gui"}
+    backend = _project_gui_backend(project)
+    platform = platform or _host_platform_name()
+    if backend == "headless":
+        return {"target": "windowsGui", "backend": backend, "platform": platform,
+                "ok": True, "status": "ok", "runtime": "ss_widgets"}
+    if backend == "win32":
+        ok = platform == "windows"
+        return {"target": "windowsGui", "backend": backend, "platform": platform,
+                "ok": ok, "status": "ok" if ok else "unsupported-platform",
+                "runtime": "ss_gui" if ok else None,
+                "reason": None if ok else "win32 GUI backend requires Windows"}
+    if backend == "winui3":
+        return {"target": "windowsGui", "backend": backend, "platform": platform,
+                "ok": False, "status": "unsupported-backend", "runtime": None,
+                "reason": "winui3 GUI backend has no runtime implementation yet"}
+    return {"target": "windowsGui", "backend": backend, "platform": platform,
+            "ok": False, "status": "invalid-backend"}
+
+
 def _validate_reserved_targets(program: Program) -> None:
     """README ss7/ss27 / WS3-044: `target windowsGui` is reserved but unspecified
     in v0.3 — using it is a hard compile error (GUI module not defined), not a
     silent fallthrough."""
     for proj in program.of_kind("project"):
+        targets = _project_target_values(proj)
+        gui_rows = proj.facts("guiBackend")
+        has_gui_target = "windowsGui" in targets
+        if has_gui_target:
+            if len(gui_rows) != 1 or len(gui_rows[0].payload) != 1:
+                raise EavError(
+                    f"project {proj.name!r} targets `windowsGui` and needs exactly "
+                    f"one `guiBackend headless|win32|winui3` row (README ss27, R-042)",
+                    (gui_rows[0].line if gui_rows else proj.line), code="SS0744",
+                )
+            backend = gui_rows[0].payload[0]
+            if backend not in _GUI_BACKENDS:
+                raise EavError(
+                    f"project {proj.name!r} declares unsupported guiBackend "
+                    f"{backend!r}; expected headless, win32, or winui3 "
+                    f"(README ss27, R-042)",
+                    gui_rows[0].line, code="SS0745",
+                )
+        elif gui_rows:
+            raise EavError(
+                f"project {proj.name!r} declares `guiBackend` but does not target "
+                f"`windowsGui` (README ss27, R-042)",
+                gui_rows[0].line, code="SS0744",
+            )
+        continue
         for t in proj.facts("target"):
             if t.payload and t.payload[0] == "windowsGui":
                 raise EavError(
