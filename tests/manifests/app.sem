@@ -19,5 +19,5 @@ main async no
 main memory heap no
 main purpose "Return a clean exit code"
 main invariant "Always returns ExitCode 0"
-main return ok
 main let ok immutable ExitCode 0
+main return ok

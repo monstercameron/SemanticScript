@@ -98,6 +98,28 @@ def test_aq2_single_file_imported_capability_not_false_uncovered():
     assert "SS1708" not in _codes(_AQ2_IMPORTED)
 
 
+def test_aq3_single_file_imported_capability_not_shadowed_by_local_tail():
+    # AQ-3: a qualified imported capability in a one-module inspection view must
+    # be deferred to project composition even if this file has an unrelated local
+    # capability with the same tail. The old analyzer resolved `auth.stdoutWriter`
+    # to the local `stdoutWriter`, saw the wrong grants, and false-fired SS1708.
+    src = (
+        "storeModule is module\nstoreModule path app.store\n"
+        "storeModule imports auth app.auth\nstoreModule exports saveItem\n"
+        "storeModule purpose \"p\"\nstoreModule invariant \"i\"\n"
+        "ConsoleWriteError is error\nExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants read database.rows\n"
+        "saveItem is operation\nsaveItem out ExitCode\n"
+        "saveItem effect write console.stdout\nsaveItem uses auth.stdoutWriter\n"
+        "saveItem async no\nsaveItem purpose \"p\"\nsaveItem invariant \"i\"\n"
+        "saveItem let line immutable String \"saved\"\n"
+        "saveItem let z immutable ExitCode 0\nsaveItem do w\nsaveItem return z\n"
+        "w is call\nw in saveItem\nw invokes console.writeLine\nw arg text String line\n"
+        "w catch e ConsoleWriteError\n"
+    )
+    assert "SS1708" not in _codes(src)
+
+
 def test_aq2_unresolved_uses_without_imports_still_errors():
     # Remove the `imports` row: now the unresolved `uses auth.stdoutWriter` is not
     # a deferred import — it is a genuine coverage gap, so SS1708 still fires.

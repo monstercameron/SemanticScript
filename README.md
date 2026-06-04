@@ -177,8 +177,9 @@ I add X" from the source alone.
 
 Capabilities are a static source contract, not a runtime sandbox. Removing a
 `uses` row does not revoke a live OS permission; it changes what the source
-checker can authorize. A passing `check` means "static source lane passed," not
-"this program has been executed, tested, built, or sandboxed."
+checker can authorize. A passing `check` means parse, lint, and LLVM lowering
+passed; it does not mean "this program has been executed, tested, native-linked,
+or sandboxed."
 
 ---
 
@@ -247,11 +248,13 @@ a C compiler. Full setup, project layout, and editor integration:
 
 `semanticscript --help` lists all 50 commands.
 
-Use `check` to prove the source contract, then `verify`, `run`, `test`, or `build`
-to prove runtime behavior. The `sem.check.v1` envelope says this explicitly: it
-includes `lane: "static-source"`, warning counts, the active strict policy, and
-replayable next commands for run/build verification. `verify --strict <path>`
-packages the common check+test+run gate behind one `sem.verify.v1` envelope.
+Use `check` to prove the source contract and that the compiler can lower it to
+LLVM IR, then `verify`, `run`, `test`, or `build` to prove runtime behavior. The
+`sem.check.v1` envelope says this explicitly: it includes
+`lane: "static-source"`, `canCompile`, `compileProof`, warning counts, the active
+strict policy, and replayable next commands for run/build verification.
+`verify --strict <path>` packages the common check+test+run gate behind one
+`sem.verify.v1` envelope.
 
 ---
 

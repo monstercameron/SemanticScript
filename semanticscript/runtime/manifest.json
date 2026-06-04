@@ -4,7 +4,7 @@
   "libraries": [
     {
       "name": "ss_string",
-      "comment": "X-200: byte-string comparison/(in)equality/find helpers (standard.string), bound via the generic runtimeBinding seam (no compiler change).",
+      "comment": "X-200/STDLIB-1: byte-string comparison/(in)equality/find helpers (standard.string), reachable through public string.* targets and runtimeBinding wrappers.",
       "provides": [
         "ss_string_"
       ],

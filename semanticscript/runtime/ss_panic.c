@@ -26,10 +26,11 @@ SS_NORETURN void ss_panic(const char *code, const char *kind, const char *op,
     fprintf(stderr,
             "\nEAV PANIC %s %s\n"
             "  op:       %s\n"
+            "  path:     %s\n"
             "  at line:  %d\n"
             "  reason:   %s\n"
             "  operands: left=%lld right=%lld\n",
-            code ? code : "", kind ? kind : "", op ? op : "", (int)row,
+            code ? code : "", kind ? kind : "", op ? op : "", op ? op : "", (int)row,
             reason ? reason : "", (long long)left, (long long)right);
     fflush(stderr);
     _Exit(134);

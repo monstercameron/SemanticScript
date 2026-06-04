@@ -777,7 +777,7 @@ DIAGNOSTICS.update({
                         "segment (`//` or a trailing slash other than root `/`).",
                "suggested": "Write absolute paths like `/`, `/users`, `/users/:id` (README §14)."},
     "SS2606": {"tier": "T1", "summary": "Invalid webServer host.",
-               "found": "A `host` whose payload is empty or contains whitespace.",
+               "found": "A `host` whose payload is empty, contains whitespace, or uses an unsupported alias such as `home`.",
                "suggested": "Write a bare/quoted host like `127.0.0.1` or `0.0.0.0` (README §14)."},
     "SS2607": {"tier": "T1", "summary": "webServer route count over the maximum.",
                "found": "A webServer with more than the documented maximum number of routes.",
@@ -906,6 +906,12 @@ DIAGNOSTICS.update({
     "SS1542": {"tier": "T1", "summary": "cleanup onFailure without a worker catch.",
                "found": "A cleanup `onFailure` whose worker call has no `catch`.",
                "suggested": "Add a `catch` to the worker, or drop onFailure (§17 #42)."},
+    "SS1545": {"tier": "T1", "summary": "Invalid cleanup ordering policy.",
+               "found": "A cleanup `order` row names a policy other than `reverseCreation`.",
+               "suggested": "Use `cleanupName order reverseCreation` so cleanup order is inspectable (§15.6/§33.8)."},
+    "SS1546": {"tier": "T1", "summary": "Invalid cleanup onExit path.",
+               "found": "A cleanup `onExit` row names a path outside success/error/panic.",
+               "suggested": "Use only `success`, `error`, and/or `panic` in the `onExit` row (§15.6/§33.8)."},
     "SS1203": {"tier": "T1", "summary": "`let` forward-references a later binding.",
                "found": "A `let` initializer naming a `let` declared later.",
                "suggested": "Reorder so the referenced binding comes first (§12)."},
@@ -927,6 +933,9 @@ DIAGNOSTICS.update({
     "SS1518": {"tier": "T1", "summary": "`onFailure propagate` with no Result to chain.",
                "found": "A propagating cleanup whose operation doesn't return Result.",
                "suggested": "Make the operation `out Result …`, or use logAndSuppress (§15.6)."},
+    "SS2810": {"tier": "T1", "summary": "Invalid project panic tier.",
+               "found": "A project `panic` row names a tier outside full/minimal/off.",
+               "suggested": "Use `panic full`, `panic minimal`, or `panic off` in build/project rows (§28.1)."},
     "SS1345": {"tier": "T1", "summary": "Ordering comparison on Bool/enum.",
                "found": "A compare.lessThan/greaterThan on a Bool or enum operand.",
                "suggested": "Bool/enum are equals-only; use equal/notEqual (README §17 #45)."},
@@ -3790,13 +3799,13 @@ _ADDITIONAL_DEFECT_LEDGER = [
      "note": "bounds-checked Buffer/Slice with view lifetimes; buffer runtime pending"},
     {"vuln": "Owned-resource leak (file/db/handle)", "asset": "reliability",
      "todo": "WS1-114", "code": "SS1503", "status": "covered",
-     "note": "owns/cleanedBy + defer on every path; explicit ordering rows pending (WS1-114)"},
+     "note": "owns/cleanedBy + defer on every path; cleanup order/onExit rows are explicit"},
     {"vuln": "Divergence / infinite loop", "asset": "correctness",
      "todo": "X-100", "code": "SS0950", "status": "covered",
      "note": "no-progress / no-exit-path loop lint"},
     {"vuln": "Source-observable nondeterminism", "asset": "correctness",
-     "todo": "X-094", "code": None, "status": "partial",
-     "note": "clock/random-as-capability + capturedOutputReplay done; collection ordering pends the collections runtime"},
+     "todo": "X-094", "code": None, "status": "covered",
+     "note": "clock/random-as-capability + capturedOutputReplay done; list/map handles use deterministic insertion-order behavior"},
     {"vuln": "Unchecked pre/postconditions", "asset": "correctness",
      "todo": "X-092", "code": None, "status": "partial",
      "note": "invariant/guarantee are metadata; statically-discharged/trapping requires/ensures pending"},
@@ -3804,8 +3813,8 @@ _ADDITIONAL_DEFECT_LEDGER = [
      "todo": "X-091", "code": "SS1564", "status": "partial",
      "note": "resource open/use/close + move lifecycle enforced; general typestate machine pending"},
     {"vuln": "Error-context loss on propagate", "asset": "reliability",
-     "todo": "X-099", "code": None, "status": "partial",
-     "note": "onFailure propagate exists; causedBy provenance chaining pending"},
+     "todo": "X-099", "code": None, "status": "covered",
+     "note": "onFailure propagate wraps the visible cleanup error with causedBy provenance metadata"},
     {"vuln": "Data race / TOCTOU outside guards", "asset": "correctness",
      "todo": None, "code": None, "status": "out-of-language",
      "note": "single-thread backend is race-free; the concurrent backend gates X-082/X-090; race-to-trust outside guards is app discipline + review"},
@@ -4089,6 +4098,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "configProfile", "configValue", "requiredSecret", "deploymentTarget",
         "migrationHook",
         "resolved", "toolchainResolved", "effectSurface", "runtimeSandbox", "optOut",
+        "panic",
     },
     "module": {
         "path", "imports", "exports",
@@ -4159,7 +4169,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "timeout", "budget",                  # X-078 DoS bounds
         "regexEngine",                        # R-079 regex linearity
     },
-    "cleanup": {"in", "call", "onFailure", "because", "cleans"},
+    "cleanup": {"in", "call", "onFailure", "because", "cleans", "order", "onExit"},
     "storage": {
         "scope", "type", "mutability", "value", "body", "literalSource",
         "literalDigest", "literalEncoding",  # WS2-084 embed encoding row
@@ -4182,6 +4192,9 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "semsig": {"version", "generatedBy", "describes"},
     "operationType": {"in", "out", "effect"},  # WS2-092: effect bound (§33.9)
 }
+
+_VALID_PANIC_TIERS = frozenset({"full", "minimal", "off"})
+_CLEANUP_ON_EXIT_PATHS = frozenset({"success", "error", "panic"})
 
 
 @dataclass
@@ -7946,7 +7959,7 @@ def scaffold(pattern: str) -> str:
             "httpResponder is capability\n"
             "httpResponder grants write http.response\n\n"
             "api is webServer\n"
-            "api host home\n"
+            "api host 0.0.0.0\n"
             "api port 8080\n"
             "api route GET /health healthHandler\n\n"
             "healthHandler is operation\n"
@@ -8212,7 +8225,8 @@ def rename_entity(source: str, old: str, new: str) -> str:
     return _rename_program_source(program, old, new)
 
 
-def _rename_program_source(program: Program, old: str, new: str) -> str:
+def _rename_program_source(program: Program, old: str, new: str, *,
+                           validate: bool = True) -> str:
     """Rename exact EAV tokens inside an already parsed program."""
     def rename_token(token: str) -> str:
         if token == old:
@@ -8235,7 +8249,7 @@ def _rename_program_source(program: Program, old: str, new: str) -> str:
         program.entities[new] = ent
         program.order = [new if n == old else n for n in program.order]
     out = format_program(program)
-    parse(out)  # the rename must still parse (validity preserved)
+    parse(out, validate=validate)  # the rename must still parse (validity preserved)
     return out
 
 
@@ -8273,8 +8287,8 @@ def rename_project_sources(root: str, old: str, new: str) -> dict[str, str]:
         raise EavError(f"rename target {new!r} already exists in project {root!r}")
     rewritten: dict[str, str] = {}
     for path in paths:
-        program = parse(sources[path])
-        rewritten[path] = _rename_program_source(program, old, new)
+        program = parse(sources[path], validate=False)
+        rewritten[path] = _rename_program_source(program, old, new, validate=False)
     parse("\n".join(rewritten[p] for p in paths))
     return rewritten
 
@@ -10344,6 +10358,17 @@ def _validate_program(program: Program) -> None:
     """
     alias_map = program.alias_map()
     for ent in program.entities_in_order():
+        if ent.kind == "project":
+            panic = ent.fact("panic")
+            if panic and panic.payload:
+                tier = panic.payload[0]
+                if tier not in _VALID_PANIC_TIERS:
+                    raise EavError(
+                        f"project {ent.name!r} panic tier {tier!r} must be one "
+                        f"of full, minimal, off (README ss28.1)",
+                        panic.line,
+                        code="SS2810",
+                    )
         if ent.kind == "call" and ent.fact("async") is not None:
             # README ss5/ss15.5: `async` on a call is tolerated-deprecated; it
             # promotes to a `task` on fmt. Parse it, but record the deprecation.
@@ -10378,6 +10403,26 @@ def _validate_program(program: Program) -> None:
                             r.line, code="SS3201",
                         )
                     seen_routes.add(key)
+        elif ent.kind == "cleanup":
+            order = ent.fact("order")
+            if order and order.payload:
+                if order.payload != ["reverseCreation"]:
+                    raise EavError(
+                        f"cleanup {ent.name!r} order must be `reverseCreation` "
+                        f"(README ss15.6/ss33.8)",
+                        order.line,
+                        code="SS1545",
+                    )
+            for row in ent.facts("onExit"):
+                invalid = [p for p in row.payload if p not in _CLEANUP_ON_EXIT_PATHS]
+                if invalid:
+                    raise EavError(
+                        f"cleanup {ent.name!r} onExit contains invalid path "
+                        f"{invalid[0]!r}; use success, error, panic "
+                        f"(README ss15.6/ss33.8)",
+                        row.line,
+                        code="SS1546",
+                    )
         elif ent.kind == "storage":
             scope = ent.fact("scope")
             value = ent.fact("value")
@@ -11230,6 +11275,8 @@ def _validate_effect_coverage(program: Program) -> None:
     # to the project-level compose instead of false-erroring SS1708.
     import_aliases = {imp.payload[0] for e in program.entities.values()
                       if e.kind == "module" for imp in e.facts("imports") if imp.payload}
+    module_count = sum(1 for e in program.entities.values() if e.kind == "module")
+    single_module_fragment = module_count <= 1 and bool(import_aliases)
     has_imports = bool(import_aliases)
     for name in program.order:
         op = program.entities[name]
@@ -11252,9 +11299,13 @@ def _validate_effect_coverage(program: Program) -> None:
                 continue
             nm = u.payload[0]
             tail = nm.rsplit(".", 1)[-1] if "." in nm else nm
-            if cap_grants.get(nm) is None and cap_grants.get(tail) is None:
-                prefix = nm.split(".", 1)[0] if "." in nm else None
-                if (prefix in import_aliases) or has_imports:
+            exact_grants = cap_grants.get(nm)
+            tail_grants = cap_grants.get(tail)
+            prefix = nm.split(".", 1)[0] if "." in nm else None
+            qualified_import = prefix in import_aliases
+            if exact_grants is None and (
+                    tail_grants is None or (qualified_import and single_module_fragment)):
+                if qualified_import or has_imports:
                     deferred_imported = True
                     break
         if deferred_imported:
@@ -11775,11 +11826,11 @@ def _validate_cleanup(program: Program) -> None:
                         ent.line,
                         code="SS1518",
                     )
-                # README ss29 #2d / WS2-053: conflict resolution is **REPLACE** —
-                # a propagating cleanup error *replaces* the in-flight error and
-                # becomes the operation's error result (causedBy provenance
-                # wrapping is deferred). Under replace, the propagated worker error
-                # must fit the operation's Result error slot.
+                # X-099 / WS2-053: conflict resolution is **WRAP**. A
+                # propagating cleanup error becomes the visible Result error and
+                # preserves the in-flight reason as causedBy provenance. The
+                # visible worker error must still fit the operation's Result
+                # error slot.
                 worker_c = program.entities.get(calls[0].payload[0]) if calls[0].payload else None
                 catch_row = worker_c.fact("catch") if worker_c else None
                 if (catch_row and len(catch_row.payload) >= 2 and len(out.payload) >= 3
@@ -11787,8 +11838,8 @@ def _validate_cleanup(program: Program) -> None:
                     raise EavError(
                         f"cleanup {ent.name!r} propagates {catch_row.payload[1]!r} but "
                         f"{owner.name!r} returns Result error {out.payload[2]!r}; under "
-                        f"replace semantics the propagated error must match the "
-                        f"operation's error slot (README ss29 #2d, WS2-053)",
+                        f"causedBy wrapping the visible propagated error must "
+                        f"match the operation's error slot (README ss29 #2d, WS2-053)",
                         ent.line, code="SS1519",
                     )
             # README ss17 #42: onFailure is meaningful only if the worker can
@@ -12144,70 +12195,13 @@ def _lint_console_arg_types(program: Program) -> list:
 
 
 def _lint_console_unlowerable_errors(program: Program) -> list:
-    """DX-01: two error-handling constructs pass the structural `check` but the
-    console code generator cannot lower, so they only fail at `run`/`build` (the
-    false-green that traps an agent in a check-passes/run-fails loop). Reject both
-    at check, mirroring the exact conditions the lowering fails on:
+    """Legacy hook for lints that mirror unlowerable error constructs.
 
-      1. Data-carrying error-case construction — `invokes <Error>.<case>` where the
-         case declares a `payload` row AND the call passes a value arg. The payload
-         is not lowered (R-054), so the value would be silently dropped; lowering
-         fails closed with SS3047. Hoisted here so `check` rejects it.
-      2. `branch ifVariant … <case>` matching an `errorCase`. ifVariant narrows
-         ENUM variants; an error case is unknown across enums, so lowering fails
-         with SS1352. Steer to `catch`/`branch ifError` at check (SS1355)."""
+    Data-carrying error-case construction and `ifVariant` over error cases now
+    lower successfully. Keep this active hook empty so future backend boundaries
+    have a named home without rejecting constructs the compiler already supports.
+    """
     return []
-    out: list[Diagnostic] = []
-    errorcase_names = {program.entities[n].name for n in program.order
-                       if program.entities[n].kind == "errorCase"}
-    enum_variants: set = set()
-    for n in program.order:
-        e = program.entities[n]
-        if e.kind == "enum":
-            for v in e.facts("variant"):
-                if v.payload:
-                    enum_variants.add(v.payload[0])
-
-    for n in program.order:
-        ent = program.entities[n]
-        # (1) data-carrying error-case construction with a value arg
-        if ent.kind in ("call", "task"):
-            inv = ent.fact("invokes")
-            target = inv.payload[0] if inv and inv.payload else ""
-            head, _, tail = target.rpartition(".")           # mirrors the lowering
-            owner = program.entities.get(head) if head else None
-            case_ent = program.entities.get(tail) if tail else None
-            if (owner is not None and owner.kind == "error"
-                    and case_ent is not None and case_ent.kind == "errorCase"
-                    and (case_ent.fact("of") or Row("", "", [], 0)).payload[:1] == [head]
-                    and case_ent.fact("payload") is not None
-                    and any(len(a.payload) >= 3 for a in ent.facts("arg"))):
-                out.append(Diagnostic(
-                    "SS3047", "error",
-                    f"call {ent.name!r} constructs the data-carrying error case "
-                    f"{target!r} with a payload arg, but data-carrying error cases are "
-                    f"not yet lowered — the payload would be silently dropped at run. "
-                    f"Use a data-carrying enum variant (`variant <name> <Type>`) for a "
-                    f"value-bearing case, or construct the case without a payload "
-                    f"(README §9, R-054).",
-                    ent.line, ent.name))
-        # (2) ifVariant matching an error case (the console codegen lowers enums only)
-        if ent.kind in ("operation", "function"):
-            for r in ent.rows:
-                if (r.predicate == "branch" and r.payload
-                        and r.payload[0] == "ifVariant" and len(r.payload) >= 3):
-                    variant = r.payload[2]
-                    if variant in errorcase_names and variant not in enum_variants:
-                        out.append(Diagnostic(
-                            "SS1355", "error",
-                            f"`branch ifVariant` in {ent.name!r} matches the error case "
-                            f"{variant!r}; ifVariant narrows enum variants and the console "
-                            f"code generator does not lower error-variant matching (it "
-                            f"fails at run with SS1352). Handle the error with `catch` / "
-                            f"`branch ifError`, or model the cases as a data-carrying "
-                            f"`enum` (README §9/§17).",
-                            r.line, ent.name))
-    return out
 
 
 def _lint_result_nil_error_loss(program: Program) -> list:
@@ -13539,10 +13533,12 @@ def _validate_webserver_abi(program: Program) -> None:
         host_row = ws.fact("host")
         if host_row and host_row.payload:
             host = _unquote(host_row.payload[0])
-            if host == "" or any(c.isspace() for c in host):
+            if host == "" or any(c.isspace() for c in host) or host == "home":
                 raise EavError(
-                    f"webServer {ws.name!r} host {host_row.payload[0]!r} is empty or "
-                    f"contains whitespace (README ss14)",
+                    f"webServer {ws.name!r} host {host_row.payload[0]!r} is empty, "
+                    f"contains whitespace, or uses unsupported alias `home`; use "
+                    f"`0.0.0.0` to bind all interfaces or `127.0.0.1` for loopback "
+                    f"(README ss14)",
                     host_row.line, code="SS2606",
                 )
         # R-147: bound the route count in the source lane so the lowered entry's
@@ -13746,6 +13742,40 @@ def _validate_ownership_edges(program: Program) -> None:
                             f"WS2-044)",
                             row.line, code="SS3044C",
                         )
+
+
+def error_context_chains(program: Program) -> list[dict]:
+    """Return cleanup-propagation causedBy chains (X-099)."""
+    chains = []
+    for ent in program.entities_in_order():
+        if ent.kind != "cleanup":
+            continue
+        onfail = ent.fact("onFailure")
+        if not (onfail and onfail.payload and onfail.payload[0] == "propagate"):
+            continue
+        call = ent.fact("call")
+        owner_row = ent.fact("in")
+        worker = program.entities.get(call.payload[0]) if call and call.payload else None
+        owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+        worker_catch = worker.fact("catch") if worker else None
+        owner_out = owner.fact("out") if owner else None
+        chains.append({
+            "cleanup": ent.name,
+            "operation": owner.name if owner else None,
+            "worker": worker.name if worker else None,
+            "visibleError": (
+                worker_catch.payload[1]
+                if worker_catch and len(worker_catch.payload) >= 2 else None
+            ),
+            "resultError": (
+                owner_out.payload[2]
+                if owner_out and len(owner_out.payload) >= 3 and owner_out.payload[0] == "Result"
+                else None
+            ),
+            "causedBy": "in-flight-error",
+            "policy": "wrap",
+        })
+    return chains
 
 
 def _validate_islands(program: Program) -> None:
@@ -17509,6 +17539,7 @@ class EavCodegen:
         }
         self.functions: dict[str, ir.Function] = {}
         self._runtime: dict[str, ir.Function] = {}
+        self.panic_tier = _program_panic_tier(program)
         # README ss28.1 / WS3-041: project constants are project-global read-only
         # values, visible by bare name in any module.
         self.project_constants = {
@@ -19819,7 +19850,7 @@ class EavCodegen:
                 builder.store(builder.trunc(value, ir.IntType(8)),
                               builder.inttoptr(addr, i8ptr))
         elif _family_intrinsic(target) is not None:
-            # APP-RUN-6: sqlite/json/bcrypt/log intrinsic -> a native/shim symbol.
+            # APP-RUN-6: sqlite/json/bcrypt/log/string intrinsic -> a native/shim symbol.
             symbol, retkind, arg_idx = _family_intrinsic(target)
             arg_rows = list(call.facts("arg"))
             if arg_idx is not None:  # resolve only the selected args (skip e.g. unused mode)
@@ -20577,7 +20608,17 @@ class EavCodegen:
         # must be a registered runtime diagnostic (so `explain` always resolves
         # it and the band stays complete).
         assert code in RUNTIME_DIAGNOSTICS, f"unregistered runtime code {code!r}"
+        if self.panic_tier == "off":
+            b.call(self.runtime("trap"), [])
+            return
         i32, i64 = ir.IntType(32), ir.IntType(64)
+
+        if self.panic_tier == "minimal":
+            site = _panic_site_id(code, op_name, int(line))
+            kind = "site-id"
+            reason = f"panic site {site}; symbolicate with the .panicmap sidecar"
+            op_name = site
+            line = 0
 
         def s(text):
             return self.global_string(text.encode("utf-8") + b"\x00")
@@ -22059,6 +22100,15 @@ _FAMILY_RT = {
         "logWarn": ("ss_log_warn", "i", None),
         "openLogFile": ("ss_log_set_path", "i", None),
     },
+    "string": {
+        "compareBytewise": ("ss_string_compare", "i", None),
+        "bytesEqual": ("ss_string_equal", "i", None),
+        "bytesNotEqual": ("ss_string_not_equal", "i", None),
+        "findSubstring": ("ss_string_find", "h", None),
+        "findCharFirst": ("ss_string_find_char_first", "h", None),
+        "findCharLast": ("ss_string_find_char_last", "h", None),
+        "byteLength": ("ss_string_length", "h", None),
+    },
     "document": {
         "createNode": ("dom_create_node", "i", None),
         "setValue": ("dom_set_value", "i", None),
@@ -22307,6 +22357,86 @@ RUNTIME_DIAGNOSTICS = {
                           "contract means the release is the last use."},
 }
 
+
+def _program_panic_tier(program: Program) -> str:
+    """Project-level panic richness policy (WS1-133)."""
+    for ent in program.entities.values():
+        if ent.kind == "project":
+            row = ent.fact("panic")
+            if row and row.payload:
+                return row.payload[0]
+    return "full"
+
+
+def _panic_site_id(code: str, op: str, row: int) -> str:
+    import hashlib
+    return hashlib.sha256(f"{code}:{op}:{row}".encode("utf-8")).hexdigest()[:12]
+
+
+def _panicmap_for_program(program: Program, ir_hash: Optional[str] = None) -> dict:
+    """Build a release symbolication map for compiler guard sites (WS1-134)."""
+    sites = []
+    for ent in program.entities_in_order():
+        if ent.kind in ("operation", "function"):
+            for row in ent.facts("do"):
+                if row.payload and row.payload[0] == ent.name:
+                    code = "SSR0013"
+                    sites.append({
+                        "siteId": _panic_site_id(code, ent.name, ent.line),
+                        "code": code,
+                        "kind": RUNTIME_DIAGNOSTICS[code]["kind"],
+                        "op": ent.name,
+                        "row": ent.line,
+                        "purpose": "recursive call depth guard",
+                        "fixHint": RUNTIME_DIAGNOSTICS[code]["repair"],
+                    })
+        if ent.kind == "call":
+            inv = ent.fact("invokes")
+            target = inv.payload[0] if inv and inv.payload else ""
+            owner = ent.fact("in")
+            op_name = owner.payload[0] if owner and owner.payload else ent.name
+            code = None
+            purpose = None
+            if target in {"math.divideInt64", "math.moduloInt64"}:
+                code = "SSR0010"
+                purpose = "integer divide/modulo runtime guard"
+            elif target.startswith("convert.toInt") or target.startswith("convert.toUInt"):
+                code = "SSR0012"
+                purpose = "numeric narrowing runtime guard"
+            if code is not None:
+                sites.append({
+                    "siteId": _panic_site_id(code, op_name, ent.line),
+                    "code": code,
+                    "kind": RUNTIME_DIAGNOSTICS[code]["kind"],
+                    "op": op_name,
+                    "row": ent.line,
+                    "target": target,
+                    "purpose": purpose,
+                    "fixHint": RUNTIME_DIAGNOSTICS[code]["repair"],
+                })
+    return {
+        "surface": "sem.panicmap.v1",
+        "irSha256": ir_hash,
+        "panicTier": _program_panic_tier(program),
+        "sites": sites,
+    }
+
+
+def _panicmap_path(out_path: str, ir_hash: Optional[str]) -> str:
+    import os
+    base, _ext = os.path.splitext(out_path)
+    suffix = (ir_hash or "unknown")[:16]
+    return f"{base}-{suffix}.panicmap"
+
+
+def _write_panicmap(program: Program, out_path: str, ir_hash: Optional[str]) -> str:
+    import json
+    path = _panicmap_path(out_path, ir_hash)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(_panicmap_for_program(program, ir_hash), fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    return path
+
 # WS1-131: logical recursion-depth bound. A statically-recursive operation
 # increments a shared depth counter on entry and traps with a structured
 # `ss_panic` (SSR0013) past this limit — a runaway-recursion signal that fires
@@ -22333,6 +22463,7 @@ def _ss_panic_py(code, kind, op, row, reason, left, right) -> None:
     report = (
         f"\nEAV PANIC {d(code)} {d(kind)}\n"
         f"  op:       {d(op)}\n"
+        f"  path:     {d(op)}\n"
         f"  at line:  {row}\n"
         f"  reason:   {d(reason)}\n"
         f"  operands: left={left} right={right}\n"
@@ -24844,8 +24975,10 @@ _SCAFFOLD_RECIPE_BODIES = {
     "handler-route": (
         "Composition recipe (webServer + typed handler): `semanticscript scaffold "
         "handler-route` declares a route bound to a (request, response) -> Int32 "
-        "handler with the §14 ABI. Cross-request state must come from module storage "
-        "opened per-request, NOT a startup-owned handle (see SS2616)."),
+        "handler with the §14 ABI and uses `0.0.0.0` as the bind-all host. Use "
+        "`127.0.0.1` when the server should only accept loopback traffic. "
+        "Cross-request state must come from module storage opened per-request, NOT "
+        "a startup-owned handle (see SS2616)."),
 }
 
 
@@ -25427,6 +25560,7 @@ def _parse_panic(stderr: str) -> Optional[dict]:
         "code": code,
         "kind": kind,
         "op": field("op"),
+        "path": field("path"),
         "row": int(row) if row and row.isdigit() else row,
         "reason": field("reason"),
         "operands": {
@@ -25871,19 +26005,19 @@ def _check_lane_fields(errors: list, warnings: list, strict: bool) -> dict:
         )
     if warning_count and not strict:
         note = (
-            f"check is static-only; {warning_count} warning(s) reported but not "
-            "enforced. Run with --strict to block T3 warnings, then run/test/build "
-            "to prove behavior."
+            f"check includes parse+lint+LLVM-lowering proof; {warning_count} "
+            "warning(s) reported but not enforced. Run with --strict to block T3 "
+            "warnings, then run/test/build to prove runtime behavior."
         )
     elif warning_count:
         note = (
-            f"check is static-only; {warning_count} advisory warning(s) remain. "
-            "Run/test/build to prove behavior."
+            f"check includes parse+lint+LLVM-lowering proof; {warning_count} "
+            "advisory warning(s) remain. Run/test/build to prove runtime behavior."
         )
     else:
         note = (
-            "check is static-only parse+lint; it is not an execution, test, build, "
-            "or runtime authorization proof."
+            "check proves parse+lint and LLVM lowering; it is not an execution, "
+            "test, native-link, or runtime authorization proof."
         )
     return {
         "lane": "static-source",
@@ -25894,6 +26028,47 @@ def _check_lane_fields(errors: list, warnings: list, strict: bool) -> dict:
         "runtimeProof": "not-run",
         "note": note,
     }
+
+
+def _compile_exception_diagnostic(exc: BaseException) -> Diagnostic:
+    """Normalize backend/lowering failures into the same diagnostic shape as lint."""
+    if isinstance(exc, EavError):
+        return Diagnostic(
+            exc.code or "SS5001",
+            "error",
+            exc.message,
+            exc.line,
+            None,
+        )
+    return Diagnostic("SS5001", "error", str(exc), None, None)
+
+
+def _check_compile_proof(program: Program) -> tuple[bool, Optional[Diagnostic]]:
+    """Return whether a check-clean program reaches the compiler backend.
+
+    This is the command-level trust contract: `check ok:true` must imply the
+    program can lower to LLVM IR. Native linking/build still belongs to `build`
+    because it depends on host toolchain state.
+    """
+    try:
+        lower_to_llvm(program)
+    except EavError as exc:
+        return False, _compile_exception_diagnostic(exc)
+    except RuntimeError as exc:
+        return False, _compile_exception_diagnostic(exc)
+    return True, None
+
+
+def _compile_status_fields(can_compile: bool, proof: str,
+                           diag: Optional[Diagnostic] = None) -> dict:
+    fields = {
+        "canCompile": bool(can_compile),
+        "cantCompile": not bool(can_compile),
+        "compileProof": proof,
+    }
+    if diag is not None:
+        fields["compileDiagnostic"] = _structured_diags([diag])[0]
+    return fields
 
 
 def _check_program_status(path: str, strict: bool = False) -> dict:
@@ -25908,16 +26083,31 @@ def _check_program_status(path: str, strict: bool = False) -> dict:
         return {
             "status": "compiler-error", "ok": False, "diagnostics": [str(exc)],
             **_check_lane_fields([exc], [], strict),
+            **_compile_status_fields(False, "blocked-by-parse"),
         }
     diags = lint(program)
     diags = _filter_diagnostics_strict(diags, strict)
     errors = [d for d in diags if d.severity == "error"]
     warnings = [d for d in diags if d.severity == "warning"]
-    status = ("lint-diagnostics" if errors
-              else "ok-with-warnings" if warnings else "ok")
+    compile_fields = _compile_status_fields(False, "blocked-by-lint")
+    if errors:
+        status = "lint-diagnostics"
+    else:
+        can_compile, compile_diag = _check_compile_proof(program)
+        if not can_compile:
+            status = "codegen-error"
+            if compile_diag is not None:
+                diags.append(compile_diag)
+                errors.append(compile_diag)
+            compile_fields = _compile_status_fields(
+                False, "codegen-error", compile_diag)
+        else:
+            status = "ok-with-warnings" if warnings else "ok"
+            compile_fields = _compile_status_fields(True, "lowered-llvm")
     return {"status": status, "ok": status in ("ok", "ok-with-warnings"),
             "diagnostics": [d.render() for d in diags],
-            **_check_lane_fields(errors, warnings, strict)}
+            **_check_lane_fields(errors, warnings, strict),
+            **compile_fields}
 
 
 def check_workspace(root: str, strict: bool = False) -> dict:
@@ -25942,13 +26132,17 @@ def check_workspace(root: str, strict: bool = False) -> dict:
         summaries.append({"name": child["name"].replace("\\", "/"),
                           "kind": child["kind"], "status": result["status"],
                           "ok": result["ok"],
+                          "canCompile": result.get("canCompile", False),
                           "diagnostics": result["diagnostics"],
                           "errorCount": result.get("errorCount", 0),
                           "warningCount": result.get("warningCount", 0)})
     fields = _check_lane_fields([None] * error_count, [None] * warning_count, strict)
     return {"status": "workspace", "ok": all_ok,
             "diagnostics": [], "typedComments": [], "nextCommands": [],
-            "childCount": len(summaries), "children": summaries, **fields}
+            "childCount": len(summaries), "children": summaries, **fields,
+            **_compile_status_fields(
+                all_ok,
+                "workspace-children-lowered" if all_ok else "workspace-child-blocked")}
 
 
 def _check_proof_next_commands(path: str, program: Program, has_tests: bool) -> list:
@@ -25958,13 +26152,13 @@ def _check_proof_next_commands(path: str, program: Program, has_tests: bool) -> 
     commands: list[dict] = []
     if "wasm" in targets and not any(t in targets for t in ("console", "webServer")):
         commands.append(_next_command_for_source(
-            ["wasm", path], "compile to WebAssembly; check is static-only", path))
+            ["wasm", path], "compile to WebAssembly", path))
         if has_tests:
             commands.append(_next_command_for_source(
                 ["test", path], "run the test operations", path))
         return commands
     commands.append(_next_command_for_source(
-        ["run", path], "execute the program; check is static-only", path))
+        ["run", path], "execute the program", path))
     if has_tests:
         commands.append(_next_command_for_source(
             ["test", path], "run the test operations", path))
@@ -25997,14 +26191,28 @@ def cmd_check(args) -> int:
         sys.stdout.write(_json_envelope(
             "sem.check.v1", status="compiler-error", ok=False,
             diagnostics=[str(exc)],
-            **_check_lane_fields([exc], [], strict)) + "\n")
+            **_check_lane_fields([exc], [], strict),
+            **_compile_status_fields(False, "blocked-by-parse")) + "\n")
         return 1  # R-093: a compiler error is a nonzero exit, matching the workspace lane
     diags = lint(program)
     diags = _filter_diagnostics_strict(diags, strict)
     errors = [d for d in diags if d.severity == "error"]
     warnings = [d for d in diags if d.severity == "warning"]
-    status = ("lint-diagnostics" if errors
-              else "ok-with-warnings" if warnings else "ok")
+    compile_fields = _compile_status_fields(False, "blocked-by-lint")
+    if errors:
+        status = "lint-diagnostics"
+    else:
+        can_compile, compile_diag = _check_compile_proof(program)
+        if not can_compile:
+            status = "codegen-error"
+            if compile_diag is not None:
+                diags.append(compile_diag)
+                errors.append(compile_diag)
+            compile_fields = _compile_status_fields(
+                False, "codegen-error", compile_diag)
+        else:
+            status = "ok-with-warnings" if warnings else "ok"
+            compile_fields = _compile_status_fields(True, "lowered-llvm")
     # README §24/§32.3 #20: machine-facing next steps. Only recommend `test` when
     # the program actually has `tag test` operations — under the R-158/R-173
     # no-tests gate a `test` run that discovers nothing exits 1 (no vacuous pass),
@@ -26024,6 +26232,10 @@ def cmd_check(args) -> int:
     if status == "lint-diagnostics":
         nxt = [_next_command_for_source(["fix", args.path, "--plan"],
                                         "derive a repair plan for the errors", args.path)]
+    elif status == "codegen-error":
+        nxt = [_next_command_for_source(
+            ["compensate", args.path, "--mode", "codegen", "--json"],
+            "localize the backend lowering failure", args.path)]
     elif status == "ok-with-warnings":
         nxt = [_next_command_for_source(["fix", args.path, "--plan", "--include-warnings"],
                                         "review warning cleanup", args.path)]
@@ -26038,10 +26250,11 @@ def cmd_check(args) -> int:
     sys.stdout.write(_json_envelope(
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
         diagnostics=_structured_diags(diags), typedComments=typed,
-        nextCommands=nxt, **_check_lane_fields(errors, warnings, strict)) + "\n")
+        nextCommands=nxt, **_check_lane_fields(errors, warnings, strict),
+        **compile_fields) + "\n")
     # R-093: error-severity diagnostics (incl. --strict-promoted warnings) exit
     # nonzero; clean and warning-only single files stay 0, matching the workspace lane.
-    return 1 if status == "lint-diagnostics" else 0
+    return 0 if status in ("ok", "ok-with-warnings") else 1
 
 
 def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
@@ -26062,19 +26275,34 @@ def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
                              "line": exc.line, "entity": None,
                              "message": exc.message,
                              "rendered": f"semanticscript: {exc}"}],
+            **_compile_status_fields(False, "blocked-by-parse"),
         }
         return {"status": "blocked", "path": path, "strict": strict, "lanes": lanes}, 1
 
     diags = _filter_diagnostics_strict(lint(program), strict)
     errors = [d for d in diags if d.severity == "error"]
     warnings = [d for d in diags if d.severity == "warning"]
-    check_status = ("lint-diagnostics" if errors
-                    else "ok-with-warnings" if warnings else "ok")
+    compile_fields = _compile_status_fields(False, "blocked-by-lint")
+    if errors:
+        check_status = "lint-diagnostics"
+    else:
+        can_compile, compile_diag = _check_compile_proof(program)
+        if not can_compile:
+            check_status = "codegen-error"
+            if compile_diag is not None:
+                diags.append(compile_diag)
+                errors.append(compile_diag)
+            compile_fields = _compile_status_fields(
+                False, "codegen-error", compile_diag)
+        else:
+            check_status = "ok-with-warnings" if warnings else "ok"
+            compile_fields = _compile_status_fields(True, "lowered-llvm")
     lanes["check"] = {
-        "ok": not errors,
+        "ok": check_status in ("ok", "ok-with-warnings"),
         "status": check_status,
         "diagnostics": _structured_diags(diags),
         **_check_lane_fields(errors, warnings, strict),
+        **compile_fields,
     }
     if errors:
         lanes["test"] = {"ok": True, "status": "skipped", "reason": "check failed"}
@@ -26562,6 +26790,45 @@ def cmd_runtime_config(args) -> int:
     return 0 if config["ready"] else 1
 
 
+def cmd_explain_panic(args) -> int:
+    """Symbolicate a compact panic site id from a .panicmap sidecar (WS1-134)."""
+    import json
+    try:
+        data = json.loads(open(args.panicmap, encoding="utf-8").read())
+    except (OSError, json.JSONDecodeError) as exc:
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.explainPanic.v1", ok=False, status="invalid-panicmap",
+                message=str(exc)) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 2
+    site = None
+    for item in data.get("sites", []):
+        if item.get("siteId") == args.site_id or item.get("code") == args.site_id:
+            site = item
+            break
+    if site is None:
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.explainPanic.v1", ok=False, status="not-found",
+                siteId=args.site_id, panicmap=args.panicmap) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: panic site {args.site_id!r} not found\n")
+        return 1
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.explainPanic.v1", ok=True, status="ok", site=site,
+            irSha256=data.get("irSha256")) + "\n")
+    else:
+        sys.stdout.write(
+            f"{site.get('siteId')} {site.get('code')} {site.get('kind')} "
+            f"{site.get('op')}:{site.get('row')}\n")
+        if site.get("fixHint"):
+            sys.stdout.write(site["fixHint"] + "\n")
+    return 0
+
+
 def _build_identity(program: Program, platform: Optional[str] = None) -> dict:
     """FIX-2: a content-addressed identity for a built artifact - the sha256 of the
     lowered LLVM IR plus the contract/release version. Surfacing it lets a consumer
@@ -26642,6 +26909,11 @@ def cmd_build(args) -> int:
         # bad/unwritable output dir, missing toolchain binary, etc. — a structured
         # io-error, not a traceback (R-235).
         return _build_failed("io-error", str(exc), platform=platform, output=out_path)
+    try:
+        panicmap = _write_panicmap(program, exe, identity.get("irSha256"))
+    except OSError as exc:
+        return _build_failed("io-error", str(exc), platform=platform, output=out_path)
+    identity = {**identity, "panicmap": panicmap}
     if want_json:
         sys.stdout.write(_json_envelope(
             "sem.build.v1", ok=True, status="ok", output=exe,
@@ -27672,9 +27944,11 @@ def cmd_targets(args) -> int:
                     f"(run `targets` to list the modeled vocabulary)\n")
             return 2
         if want_json:
+            enriched = _signature_with_maturity(sig)
+            target_status = enriched.pop("status", None)
             sys.stdout.write(_json_envelope(
                 "sem.targetSignature.v1", ok=True, status="ok",
-                **_signature_with_maturity(sig)) + "\n")
+                targetStatus=target_status, **enriched) + "\n")
         else:
             print(sig["target"])
             for a in sig["args"]:
@@ -27998,7 +28272,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_eval.add_argument("--json", action="store_true")
     sp_eval.set_defaults(func=cmd_eval)
 
-    sp_check = sub.add_parser("check", help="source lane: parse + lint status")
+    sp_check = sub.add_parser("check", help="parse + lint + LLVM-lowering trust gate")
     sp_check.add_argument("path", help="EAV/compact source file, or - for stdin")
     sp_check.add_argument("--json", action="store_true")
     sp_check.add_argument("--strict", action="store_true",
@@ -28084,6 +28358,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--profile", help="declared runtime config profile to select")
     sp_runtime_config.add_argument("--json", action="store_true")
     sp_runtime_config.set_defaults(func=cmd_runtime_config)
+
+    sp_explain_panic = sub.add_parser(
+        "explain-panic", help="symbolicate a compact panic site id from a .panicmap")
+    sp_explain_panic.add_argument("panicmap", help=".panicmap sidecar path")
+    sp_explain_panic.add_argument("site_id", help="panic site id or SSR code")
+    sp_explain_panic.add_argument("--json", action="store_true")
+    sp_explain_panic.set_defaults(func=cmd_explain_panic)
 
     sp_build = sub.add_parser("build", help="compile a program to a native exe")
     sp_build.add_argument("path", help="EAV/compact source file, or - for stdin")

@@ -2385,6 +2385,12 @@ def test_agent_tool_scaffold_expanded_patterns_and_json(capsys):
     assert not [d for d in env["diagnostics"] if d["severity"] == "error"]
 
 
+def test_handler_route_scaffold_uses_bindable_host():
+    src = semanticscript.scaffold("handler-route")
+    assert "api host 0.0.0.0" in src
+    assert "api host home" not in src
+
+
 def test_scaffold_console_program_runs():
     prog = semanticscript.parse(semanticscript.scaffold("console-program"))
     ir_text = str(semanticscript.lower_to_llvm(prog))
@@ -2531,7 +2537,7 @@ def test_agent_tool_diff_json_semantic_dimensions(tmp_path, capsys):
         "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
         "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
         "ByteCount is alias\nByteCount for Int64\n"
-        "api is webServer\napi host home\napi port 8080\n"
+        "api is webServer\napi host 0.0.0.0\napi port 8080\n"
         "handler is operation\nhandler in request HttpRequest\n"
         "handler in response HttpResponse\nhandler out Int32\nhandler async no\n"
         'handler purpose "p"\nhandler invariant "i"\n'
@@ -6374,7 +6380,7 @@ def _webserver_program(route_row, handler_block):
         "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
         "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
         "NextMiddleware is alias\nNextMiddleware for OpaquePointer\n"
-        "api is webServer\napi host home\napi port 8080\n" + route_row +
+        "api is webServer\napi host 0.0.0.0\napi port 8080\n" + route_row +
         handler_block
     )
 
@@ -6528,7 +6534,7 @@ def test_webserver_route_policies_lower_to_dispatcher_table():
         "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
         "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
         "NextMiddleware is alias\nNextMiddleware for OpaquePointer\n"
-        "api is webServer\napi host home\napi port 8080\n"
+        "api is webServer\napi host 0.0.0.0\napi port 8080\n"
         "api route GET /health healthHandler\n"
         "api middleware /health authMiddleware\n"
         "api routeTimeout /health 250ms\n"
@@ -13961,6 +13967,8 @@ def test_webserver_host_port_route_path_validation():
     assert code_for(base.replace('"/api/todos/:id"', '"/api//todos"')) == "SS2605"
     # a whitespace host
     assert code_for(base.replace('srv host "127.0.0.1"', 'srv host "bad host"')) == "SS2606"
+    # the old scaffold alias parsed but does not bind a socket in the runtime
+    assert code_for(base.replace('srv host "127.0.0.1"', 'srv host home')) == "SS2606"
     # root `/` and the bare `*` catch-all remain valid (already in the base fixture)
     assert not [d.render() for d in semanticscript.lint(
         semanticscript.parse(base.replace('"/api/todos/:id"', '"/"')))
@@ -14871,6 +14879,62 @@ def test_e2e_string_concat():
     # Harness-style example (computes a real value, asserts it, guards
     # against the no-op 0): a clean run reports zero failures.
     assert "0 failed" in proc.stdout, proc.stdout
+
+
+def test_string_stdlib_surface_has_signatures_and_direct_lowering():
+    # STDLIB-1: existing ss_string.c helpers must be reachable as public
+    # string.* targets, not hidden behind per-example runtimeBinding wrappers.
+    for target in (
+        "string.compareBytewise",
+        "string.bytesEqual",
+        "string.bytesNotEqual",
+        "string.findSubstring",
+        "string.findCharFirst",
+        "string.findCharLast",
+        "string.byteLength",
+    ):
+        sig = semanticscript._builtin_target_signature(target)
+        assert sig is not None, target
+        assert sig["args"], target
+        assert sig["out"] in {"Int32", "Int64"}, target
+
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main purpose \"exercise direct string intrinsics\"\n"
+        "main invariant \"string helpers run and main returns zero\"\n"
+        "main let text immutable String \"abcabc\"\n"
+        "main let needle immutable String \"bc\"\n"
+        "main let byteA immutable Int32 97\n"
+        "main let ok immutable ExitCode 0\n"
+        "main do getLength\nmain do findNeedle\nmain do findFirstA\n"
+        "main do compareSame\nmain return ok\n"
+        "getLength is call\ngetLength in main\ngetLength invokes string.byteLength\n"
+        "getLength arg text String text\ngetLength out lengthValue Int64\n"
+        "findNeedle is call\nfindNeedle in main\nfindNeedle invokes string.findSubstring\n"
+        "findNeedle arg haystack String text\nfindNeedle arg needle String needle\n"
+        "findNeedle out needleOffset Int64\n"
+        "findFirstA is call\nfindFirstA in main\nfindFirstA invokes string.findCharFirst\n"
+        "findFirstA arg text String text\nfindFirstA arg byte Int32 byteA\n"
+        "findFirstA out firstAOffset Int64\n"
+        "compareSame is call\ncompareSame in main\ncompareSame invokes string.bytesEqual\n"
+        "compareSame arg left String text\ncompareSame arg right String text\n"
+        "compareSame out isEqual Int32\n"
+    )
+    prog = semanticscript.parse(src)
+    refs = semanticscript._referenced_runtime_symbols(prog)
+    assert {"ss_string_length", "ss_string_find", "ss_string_find_char_first",
+            "ss_string_equal"} <= refs
+    ir_text = str(semanticscript.lower_to_llvm(prog))
+    assert '@"ss_string_length"' in ir_text
+    assert '@"ss_string_find"' in ir_text
+    assert '@"ss_string_find_char_first"' in ir_text
+    assert '@"ss_string_equal"' in ir_text
+    out, err, code = semanticscript._record_run_full(src)
+    assert code == 0, err
+
 
 def test_string_concat_lowers_via_libc():
     ir_text = _ir_for("string_concat.sem")

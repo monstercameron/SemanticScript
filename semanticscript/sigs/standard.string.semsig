@@ -9,3 +9,51 @@ stringConcat arg left String
 stringConcat arg right String
 stringConcat out joined String
 stringConcat purpose "Heap-concatenate two NUL-terminated strings"
+
+stringCompareBytewise is intrinsic
+stringCompareBytewise target string.compareBytewise
+stringCompareBytewise arg left String
+stringCompareBytewise arg right String
+stringCompareBytewise out ordering Int32
+stringCompareBytewise purpose "Compare two NUL-terminated strings bytewise; negative, zero, or positive"
+
+stringBytesEqual is intrinsic
+stringBytesEqual target string.bytesEqual
+stringBytesEqual arg left String
+stringBytesEqual arg right String
+stringBytesEqual out equal Int32
+stringBytesEqual purpose "Return 1 when two NUL-terminated strings have identical bytes"
+
+stringBytesNotEqual is intrinsic
+stringBytesNotEqual target string.bytesNotEqual
+stringBytesNotEqual arg left String
+stringBytesNotEqual arg right String
+stringBytesNotEqual out different Int32
+stringBytesNotEqual purpose "Return 1 when two NUL-terminated strings differ"
+
+stringFindSubstring is intrinsic
+stringFindSubstring target string.findSubstring
+stringFindSubstring arg haystack String
+stringFindSubstring arg needle String
+stringFindSubstring out offset Int64
+stringFindSubstring purpose "Find the first byte offset of a substring, or -1 when absent"
+
+stringFindCharFirst is intrinsic
+stringFindCharFirst target string.findCharFirst
+stringFindCharFirst arg text String
+stringFindCharFirst arg byte Int32
+stringFindCharFirst out offset Int64
+stringFindCharFirst purpose "Find the first byte offset of a character byte, or -1 when absent"
+
+stringFindCharLast is intrinsic
+stringFindCharLast target string.findCharLast
+stringFindCharLast arg text String
+stringFindCharLast arg byte Int32
+stringFindCharLast out offset Int64
+stringFindCharLast purpose "Find the last byte offset of a character byte, or -1 when absent"
+
+stringByteLength is intrinsic
+stringByteLength target string.byteLength
+stringByteLength arg text String
+stringByteLength out byteCount Int64
+stringByteLength purpose "Return the NUL-terminated string length in bytes"

@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""DX-01: `check` catches error-handling constructs the console codegen can't lower.
+"""DX-01: error constructs are either lint-blocked or proven lowerable.
 
-Two constructs passed the structural `check` but failed only at `run`/`build`
-(the false-green that traps an agent in a check-passes / run-fails loop):
-
-  1. Data-carrying error-case construction — `invokes <Error>.<case>` where the
-     case declares a `payload` and the call passes a value arg. The payload is not
-     lowered (R-054); lowering fails closed with SS3047. Now rejected at check.
-  2. `branch ifVariant … <errorCase>` — ifVariant narrows enum variants, so an
-     error case is unknown across enums and lowering fails with SS1352. Now
-     rejected at check with SS1355, steering to catch / branch ifError.
+The original DX-01 false-green was a source shape that passed `check` but failed
+only at backend lowering. Data-carrying error-case construction and `ifVariant`
+over error cases are now supported by codegen, so the trust regression is that
+they stay lint-clean *and* lower successfully.
 """
 import importlib
 
@@ -19,6 +14,13 @@ semanticscript = importlib.import_module("semanticscript")
 def _codes(src):
     return {d.code for d in semanticscript.lint(semanticscript.parse(src))
             if d.severity == "error"}
+
+
+def _assert_check_clean_lowers(src):
+    program = semanticscript.parse(src)
+    errors = [d for d in semanticscript.lint(program) if d.severity == "error"]
+    assert errors == []
+    semanticscript.lower_to_llvm(program)
 
 
 _HEAD = (
@@ -37,9 +39,8 @@ def _ctor_program(extra_case_rows, ctor_arg_rows):
         "mk is call\nmk in op\nmk invokes MyErr.BadThing\n" + ctor_arg_rows + "mk out e MyErr\n")
 
 
-def test_data_carrying_error_construction_rejected_at_check():
-    # payload row + a value arg -> SS3047 at check (was check-passes / run-SS3047)
-    assert "SS3047" in _codes(
+def test_data_carrying_error_construction_check_clean_and_lowers():
+    _assert_check_clean_lowers(
         _ctor_program("BadThing payload Int64\n", "mk arg detail Int64 n\n"))
 
 
@@ -48,14 +49,14 @@ def test_payloadless_error_construction_clean():
     assert "SS3047" not in _codes(_ctor_program("", ""))
 
 
-def test_ifvariant_on_error_case_rejected_at_check():
+def test_ifvariant_on_error_case_check_clean_and_lowers():
     src = _HEAD + (
         "MyErr is error\nCaseA is errorCase\nCaseA of MyErr\n"
         "op is operation\nop out ExitCode\nop async no\nop purpose \"p\"\nop invariant \"i\"\n"
         "op let okc immutable ExitCode 0\n"
         "op do mk\nop branch ifVariant e CaseA goto isA\nop return okc\nop at isA return okc\n"
         "mk is call\nmk in op\nmk invokes MyErr.CaseA\nmk out e MyErr\n")
-    assert "SS1355" in _codes(src)
+    _assert_check_clean_lowers(src)
 
 
 def test_ifvariant_on_enum_clean():

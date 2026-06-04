@@ -8,6 +8,7 @@ TaskApp module taskApp
 TaskApp target console
 TaskApp target wasm
 TaskApp entry main
+TaskApp platform browserWasm
 TaskApp mode capturedOutputReplay
 TaskApp languageVersion "1.0"
 TaskApp toolchain "sem1.0"
@@ -27,3 +28,7 @@ linuxX64 output "bin/taskapp"
 linuxX64 nativeLibrary "sqlite3"
 linuxX64 nativeLinkFlag "-lpthread"
 linuxX64 purpose "Linux x86-64 native build target"
+
+browserWasm is platform
+browserWasm targetRuntime wasm
+browserWasm purpose "Browser WebAssembly build target"
