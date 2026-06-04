@@ -19752,6 +19752,15 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
                     status = "timeout"
                 elif run_status == "crashed" or panic is not None:
                     status = "error"
+                elif run_status == "compile-failed":
+                    # TEST-1/AQ-4: an op that cannot even compile/run in isolation
+                    # (a `semanticscript:` parse/check error -> exit 2) is an ERROR,
+                    # not a failed assertion. Collapsing it into `fail` mis-graded
+                    # every passing harness test whose isolated entry didn't build
+                    # (R-16): the agent read "fail" as broken test logic when the
+                    # op never executed. `fail` is reserved for a real run whose
+                    # assertions failed (a nonzero test.summary failure count).
+                    status = "error"
                 else:
                     status = "fail"
                 rec = {"name": op, "lane": lane_name, "status": status, "exitCode": code}

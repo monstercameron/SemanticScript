@@ -77,6 +77,67 @@ def test_test2_all_declared_lanes_are_discoverable():
         assert lane in lanes and lanes[lane], f"lane {lane!r} not realized: {lanes}"
 
 
+# --- TEST-1 / AQ-4: the runner's verdict is correct (pass/fail/error distinct) ---
+
+def _harness_test_op(name, truth_literal):
+    """A standard.test harness op: assertTrue then test.summary, returning the
+    failure-count ExitCode. `truth_literal` drives pass (`true`) vs assertion
+    failure (`false`) vs can't-isolate (`yes`, an invalid Bool literal)."""
+    return (f"{name} is operation\n{name} out ExitCode\n{name} async no\n"
+            f"{name} purpose \"p\"\n{name} invariant \"i\"\n{name} tag test\n"
+            f"{name} let nm immutable String \"{name}\"\n"
+            f"{name} let truth immutable Bool {truth_literal}\n"
+            f"{name} do {name}A\n{name} do {name}S\n{name} return {name}C\n"
+            f"{name}A is call\n{name}A in {name}\n{name}A invokes test.assertTrue\n"
+            f"{name}A arg name String nm\n{name}A arg value Bool truth\n"
+            f"{name}S is call\n{name}S in {name}\n{name}S invokes test.summary\n"
+            f"{name}S out {name}C ExitCode\n")
+
+
+def _run_harness_project(tmp_path, ops_src):
+    proj = tmp_path / "proj"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "Harn is project\nHarn module harn\nHarn target console\nHarn entry main\n",
+        encoding="utf-8")
+    (proj / "src" / "harn.sem").write_text(
+        "harn is module\nharn path src.harn\nharn exports main\n"
+        "harn purpose \"p\"\nharn invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+        "main invariant \"i\"\nmain let z immutable ExitCode 0\nmain return z\n",
+        encoding="utf-8")
+    (proj / "src" / "harn.test.sem").write_text(
+        "harnTest is module\nharnTest path src.harnTest\n"
+        "harnTest imports test standard.test\n"
+        "harnTest exports " + " ".join(name for name, _ in ops_src) + "\n"
+        "harnTest purpose \"t\"\nharnTest invariant \"i\"\n"
+        + "".join(_harness_test_op(name, lit) for name, lit in ops_src),
+        encoding="utf-8")
+    report = semanticscript.run_tests(semanticscript.load_test_project(str(proj)))
+    return {t["name"]: t for t in report["tests"]}
+
+
+def test_test1_runner_distinguishes_pass_fail_and_cant_run(tmp_path):
+    """TEST-1/AQ-4 (R-16): a passing `tag test` harness op must grade `pass`, a
+    real assertion failure must grade `fail`, and an op that cannot compile/run in
+    isolation must grade `error` (with the reason) — NOT `fail`. Previously every
+    op that exited 2 because it couldn't be isolated was mis-graded as a failed
+    assertion, so passing tests showed `exitCode 2 / fail`."""
+    # a passing op and a genuinely-failing op (valid source) grade independently.
+    good = _run_harness_project(tmp_path / "ok", [("tPass", "true"), ("tFail", "false")])
+    assert good["tPass"]["status"] == "pass" and good["tPass"]["exitCode"] == 0
+    # a real assertion failure: test.summary returns failure count 1 -> exit 1.
+    assert good["tFail"]["status"] == "fail" and good["tFail"]["exitCode"] == 1
+    # an op that cannot compile/run in isolation (invalid Bool literal -> SS parse
+    # error, exit 2) grades `error` (with the reason surfaced), NOT `fail` — the
+    # core R-16 mis-grade. Isolated in its own project so its bad source can't
+    # poison the others' shared formatted run source.
+    bad = _run_harness_project(tmp_path / "err", [("tErr", "yes")])
+    assert bad["tErr"]["status"] == "error", bad["tErr"]
+    assert "semanticscript:" in (bad["tErr"].get("error") or "")
+
+
 # --- AQ-7: every trusted/validated type has a reachable constructor ---
 
 # Trusted types constructed by a source-level construct (a trust-typed literal /
