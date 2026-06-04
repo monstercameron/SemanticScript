@@ -26716,6 +26716,11 @@ def cmd_scaffold(args) -> int:
     want_json = getattr(args, "json", False)
     try:
         source = scaffold(args.pattern)
+        # R-17: emit the *canonical* form (the command's own contract — its docstring
+        # says "canonical"). Scaffold templates are authored for readability and drift
+        # from fmt's entity/row order, so a freshly-scaffolded, check-green program
+        # would otherwise fail `fmt --check` — breaking the scaffold->check->fmt loop.
+        source = format_program(parse(source))
         if want_json:
             prog = parse(source)
             diags = lint(prog)
