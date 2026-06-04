@@ -5252,7 +5252,7 @@ They are contract requirements, not optional polish.
 | 13 | **Spec coherence** — normative/informative labeling, single source of truth, glossary | Absent | all | (cross-cutting) |
 | 14 | **Runtime value semantics** — numeric overflow/trap, IEEE float, equality/ordering, eval order, value lifetime/memory model | Thin (source contract §10.6; backend mechanism open) | 3 | §10.6, §13 |
 | 15 | **Agent edit loop + diagnostic source-mapping** — check→fix→patch→verify on SemanticScript; lints on canonical SemanticScript mapped back to the author's compact/current line | Absent | 4 | §17, §23, §24 |
-| 16 | **Human-authoring validation** — learnability of the reserved-word/predicate surface, reviewability of large handlers, compact-profile ergonomics | Absent | 6 | §0, §23 |
+| 16 | **Human-authoring validation** — learnability of the reserved-word/predicate surface, reviewability of large handlers, compact-profile ergonomics | Protocol ready; session pending | 6 | §0, §23 |
 | 17 | **Existing-corpus migration** — whether stdlib + apps convert to SemanticScript, codemod correctness, permanent coexistence | Thin | 6 | §20, §28 |
 | 18 | **Runtime observability & debugging** — logging/metrics/spans/correlation IDs; breakpoints, stepping, stack traces under goto control flow, trap/panic formatting, and mapping a runtime failure back to its SemanticScript/current source span; how `sem trace` relates to live debugging | Absent | 5 | §24, §30.1.1 |
 | 19 | **Security threat model** — assets/adversaries (authority, trust, supply chain), distinct from the #10 enforcement algorithm | Thin | 5 | §8, §16, §28.5 |
@@ -5274,9 +5274,10 @@ lifetime); the open part is the backend *mechanism* (region / arena / refcount).
 #15 *agent loop + diagnostic mapping*: the "agent-safe IR" payoff needs the
 check→fix→patch→verify loop specified against the `sem.*.v1` surfaces, plus a
 rule that a diagnostic computed on canonical SemanticScript maps back to the author's
-compact/current source span. #16 *human-authoring validation* and #20 *success
-criteria* are evidence gaps — run a real human-authoring session and define the
-win condition (vs. hardening current syntax; vs. the competitor framing) before
+compact/current source span. #16 *human-authoring validation* has a protocol in
+`docs/human-authoring-validation.md` but remains an evidence gap until a real
+participant session is recorded; #20 *success criteria* defines the win
+condition (vs. hardening current syntax; vs. the competitor framing) before
 SemanticScript is made mandatory (§21). #17 *existing-corpus migration*: decide whether the
 stdlib and apps convert, prove the codemod, or commit to permanent coexistence.
 #18 *runtime observability* and #19 *security threat model* (§8) round out the

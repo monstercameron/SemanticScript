@@ -15,8 +15,10 @@ compact/current span. Stub: diagnostics carry a line + code (`Diagnostic`),
 which is the anchor a source-map would extend (WS2-004).
 
 ## #16 — Human-authoring validation session (X-032)
-Status: deferred. Direction: measure learnability/reviewability/compact
-ergonomics with real authors. Stub: scaffold/fmt/describe lower authoring cost.
+Status: protocol ready; participant session pending. Direction: measure
+learnability/reviewability/compact ergonomics with real authors. Protocol:
+`docs/human-authoring-validation.md`. Stub: scaffold/fmt/describe lower
+authoring cost.
 
 ## #17 — Existing-corpus migration (X-033)
 Status: deferred. Direction: codemod the stdlib + apps; prove coexistence.
