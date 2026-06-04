@@ -26968,6 +26968,61 @@ def _fix_edits_for(diag, program) -> list:
         return [{"op": "formatSource", "code": "SS1340",
                  "rationale": "canonicalize ifValue/ifOut sugar to compare + "
                               "`branch if` via fmt (style-tier repair)"}]
+    # R-09: a fallible call with a `catch` but no `branch ifError` (SS3501) is
+    # repaired by wiring the canonical error path (the eav-fallible-operation idiom):
+    # `branch ifError <call> goto <label>` after the `do`, a failure label that
+    # returns a nonzero code after the normal return, and a failure-code `let` (reuse
+    # an existing nonzero one if present). Scoped to an integer-resolvable out type so
+    # a nonzero failure value is synthesizable; other out types stay advisory.
+    if diag.code == "SS3501" and diag.entity:
+        op = program.entities.get(diag.entity)
+        m = re.search(r"fallible call '([^']+)'", diag.message or "")
+        call_name = m.group(1) if m else None
+        if op is None or op.kind not in ("operation", "function") or not call_name:
+            return []
+        alias_map = program.alias_map()
+        out_row = op.fact("out")
+        out_type = out_row.payload[0] if out_row and out_row.payload else None
+        if not out_type or _resolve_alias(out_type, alias_map) not in _INT_RANGES:
+            return []
+        do_row = next((r for r in op.facts("do")
+                       if r.payload and r.payload[0] == call_name), None)
+        ret_row = next((r for r in op.facts("return")), None)
+        if do_row is None or ret_row is None:
+            return []
+        label = f"{call_name}Failed"
+        if label in {r.payload[0] for r in op.facts("at") if r.payload}:
+            return []
+        fail_binding = None
+        for r in op.facts("let"):
+            p = r.payload
+            if len(p) >= 4 and _resolve_alias(p[2], alias_map) in _INT_RANGES:
+                try:
+                    if _parse_int_literal_value(p[3]) != 0:
+                        fail_binding = p[0]
+                        break
+                except (ValueError, EavError):
+                    pass
+        edits = []
+        if fail_binding is None:
+            fail_binding = f"{call_name}FailCode"
+            first_let = next((r for r in op.facts("let") if r.payload), None)
+            if first_let is None:
+                return []
+            edits.append({
+                "op": "replaceRow", "code": "SS3501", "old": row_text(first_let),
+                "new": f"{op.name} let {fail_binding} immutable {out_type} 1\n"
+                       f"{row_text(first_let)}",
+                "rationale": f"add a nonzero failure code for {op.name!r}"})
+        edits.append({
+            "op": "replaceRow", "code": "SS3501", "old": row_text(do_row),
+            "new": f"{row_text(do_row)}\n{op.name} branch ifError {call_name} goto {label}",
+            "rationale": f"route {call_name!r} errors to a failure path"})
+        edits.append({
+            "op": "replaceRow", "code": "SS3501", "old": row_text(ret_row),
+            "new": f"{row_text(ret_row)}\n{op.name} at {label} return {fail_binding}",
+            "rationale": f"return the failure code on the {call_name!r} error path"})
+        return edits
     return []
 
 

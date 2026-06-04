@@ -65,6 +65,52 @@ def test_r08_valid_variant_and_binding_ref_are_accepted():
     assert not [c for c, _ in _lint_codes(src) if c == "SS1033"]
 
 
+# --- R-09: `fix`/`patch` auto-inserts the missing `branch ifError` error path ---
+
+_SS3501_PROG = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "ConsoleWriteError is error\n"
+    "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+    "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+    "main uses stdoutWriter\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+    "main let greeting immutable String \"hi\"\nmain let okCode immutable ExitCode 0\n"
+    "main do writeIt\nmain return okCode\n"
+    "writeIt is call\nwriteIt in main\nwriteIt invokes console.writeLine\n"
+    "writeIt arg text String greeting\nwriteIt catch werr ConsoleWriteError\n")
+
+
+def test_r09_fix_plan_emits_the_missing_branch_iferror_edits():
+    prog = semanticscript.parse(_SS3501_PROG)
+    diag = next(d for d in semanticscript.lint(prog) if d.code == "SS3501")
+    edits = semanticscript._fix_edits_for(diag, prog)
+    blob = " ".join(e.get("new", "") for e in edits)
+    assert "branch ifError writeIt goto writeItFailed" in blob
+    assert "at writeItFailed return" in blob
+    assert any("FailCode" in e.get("new", "") for e in edits), "no failure code synthesized"
+
+
+def test_r09_fix_then_patch_resolves_ss3501_and_stays_lowerable(tmp_path):
+    p = tmp_path / "fallible.sem"
+    p.write_text(_SS3501_PROG, encoding="utf-8")
+    fix = subprocess.run([sys.executable, SC, "fix", str(p), "--include-warnings",
+                          "--json"], capture_output=True, text=True, encoding="utf-8")
+    plan = json.loads(fix.stdout)
+    assert plan.get("planUsable") is True
+    planpath = tmp_path / "plan.json"
+    planpath.write_text(fix.stdout, encoding="utf-8")
+    patch = subprocess.run([sys.executable, SC, "patch", str(planpath), "--apply"],
+                           capture_output=True, text=True, encoding="utf-8")
+    assert patch.returncode == 0, patch.stdout
+    # SS3501 is gone and the repaired program is check-clean AND lowers.
+    repaired = semanticscript.parse(p.read_text(encoding="utf-8"))
+    diags = semanticscript.lint(repaired)
+    assert not any(d.code == "SS3501" for d in diags)
+    assert not [d for d in diags if d.severity == "error"]
+    semanticscript.lower_to_llvm(repaired)
+
+
 @pytest.mark.parametrize("pattern", SCAFFOLDS)
 def test_r17_scaffold_output_is_fmt_canonical(pattern):
     """R-17: `cmd_scaffold` advertises "canonical" output, but emitted templates in
