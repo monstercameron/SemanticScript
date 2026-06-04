@@ -2165,6 +2165,18 @@ def _signature_doc_entry(sig: dict) -> dict:
     }
 
 
+def _catalog_doc_entries() -> list:
+    """R1: the builtin/stdlib signature CATALOG as docs entries (same shape as a
+    program's _doc_entries). Lets `docs` with no path list/get/search the
+    documented API surface - previously reachable only via `docs search --db`."""
+    out = []
+    for target in sorted(_modeled_signature_target_names()):
+        sig = _builtin_target_signature(target)
+        if sig is not None:
+            out.append(_signature_doc_entry(sig))
+    return out
+
+
 def _signature_family_doc_entry(pattern: str, signatures: list[dict]) -> dict:
     return {
         "name": pattern,
@@ -22001,11 +22013,14 @@ def cmd_docs(args) -> int:
         sys.stdout.write(_json_envelope("sem.docsSearch.v1", **payload) + "\n")
         return 0
     if not args.path:
-        sys.stdout.write(_json_envelope(
-            "sem.docsIndex.v1", ok=False, status="missing-path",
-            hint="usage: docs <path> [--get NAME|--search QUERY]") + "\n")
-        return 2
-    entries = _doc_entries(parse_compact(_read_program_source(args.path)))
+        # R1: no path -> browse the builtin/stdlib CATALOG (list/get/search), the
+        # surface `docs --help` advertises, instead of erroring missing-path. The
+        # catalog was otherwise reachable only through `docs search --db`.
+        entries = _catalog_doc_entries()
+        _docs_source = "catalog"
+    else:
+        entries = _doc_entries(parse_compact(_read_program_source(args.path)))
+        _docs_source = args.path
     if getattr(args, "search", None):
         terms = [t for t in args.search.lower().split() if t]
         scored = []
@@ -22016,7 +22031,8 @@ def cmd_docs(args) -> int:
                 scored.append({**e, "score": score})
         scored.sort(key=lambda x: (-x["score"], x["name"]))
         sys.stdout.write(_json_envelope(
-            "sem.docsSearch.v1", query=args.search, results=scored[:10]) + "\n")
+            "sem.docsSearch.v1", query=args.search, source=_docs_source,
+            results=scored[:10]) + "\n")
     elif getattr(args, "get", None):
         match = next((e for e in entries if e["name"] == args.get), None)
         fuzzy = False
@@ -22037,10 +22053,10 @@ def cmd_docs(args) -> int:
                 fuzzy = True
         sys.stdout.write(_json_envelope(
             "sem.docs.v1", ok=(match is not None), fuzzyMatch=fuzzy,
-            entity=match) + "\n")
+            source=_docs_source, entity=match) + "\n")
     else:
         sys.stdout.write(_json_envelope(
-            "sem.docsIndex.v1", count=len(entries),
+            "sem.docsIndex.v1", count=len(entries), source=_docs_source,
             entries=[{"name": e["name"], "kind": e["kind"]} for e in entries]) + "\n")
     return 0
 
