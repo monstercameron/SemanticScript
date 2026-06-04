@@ -4,7 +4,8 @@
 
 DesktopWindowSmoke is project
 DesktopWindowSmoke module appDesktopWindowSmoke
-DesktopWindowSmoke target console
+DesktopWindowSmoke target windowsGui
+DesktopWindowSmoke guiBackend headless
 DesktopWindowSmoke entry main
 DesktopWindowSmoke languageVersion "1.0"
 DesktopWindowSmoke toolchain "semanticscript"

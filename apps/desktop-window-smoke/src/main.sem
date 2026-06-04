@@ -1,4 +1,4 @@
-# desktop-window-smoke — EAV port (apps/desktop-window-smoke, semsc v0.1).
+# desktop-window-smoke - EAV port (apps/desktop-window-smoke, semsc v0.1).
 #
 # FULL 1:1 port of the 4-operation Windows GUI smoke app: the main composition
 # operation that builds one window (title label, greeting text box, three
@@ -10,11 +10,10 @@
 # `set storage HANDLE VALUE` becomes a create call whose `out` rebinds the
 # mutable module-storage handle (README §12).
 #
-# GUI *execution* is deferred: `target windowsGui` is reserved and hard-errors
-# (SS0744, §27), so the original's `entry console main` is preserved and the
-# gui.* targets stay external (unlowered). The whole app parses + lints clean;
-# when a GUI runtime module is specified, the gui.* intrinsics gain bodies and
-# this source runs unchanged. (X-045)
+# GUI execution uses the first-class `target windowsGui` plus `guiBackend headless`.
+# The headless backend lowers gui.* calls to the ss_widget_* runtime so the full
+# control tree, event wiring, and loop run in CI; the native Win32 bridge is
+# tracked separately by the ss_gui health check. (R-042)
 
 
 appDesktopWindowSmoke is module
