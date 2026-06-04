@@ -25630,6 +25630,23 @@ def cmd_eval(args) -> int:
     offset = _EVAL_SCAFFOLD.count("\n") if wrapped else 0
     if wrapped:
         src = _EVAL_SCAFFOLD + src
+        # R-19: an exploratory eval snippet shouldn't need full exported-op metadata.
+        # Inject a default purpose/invariant for any operation lacking them so the
+        # wrapped program doesn't trip MD1011/MD1012 (which gate exported/entry ops)
+        # and fail an otherwise-runnable snippet. Appended after the snippet so the
+        # snippet's own line numbers (and `offset`) are unchanged.
+        try:
+            _extra = []
+            for _op in parse(src, validate=False).entities_in_order():
+                if _op.kind in ("operation", "function"):
+                    if not _op.fact("purpose"):
+                        _extra.append(f'{_op.name} purpose "eval snippet"')
+                    if not _op.fact("invariant"):
+                        _extra.append(f'{_op.name} invariant "eval snippet"')
+            if _extra:
+                src = src + "\n" + "\n".join(_extra) + "\n"
+        except EavError:
+            pass
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
         try:
@@ -25655,16 +25672,25 @@ def cmd_eval(args) -> int:
         err = _unscaffold_lines(err, offset)
         if panic is not None and isinstance(panic.get("row"), int):
             panic = {**panic, "row": panic["row"] - offset}
+    # R-19: a *wrapped* exploratory snippet that ran cleanly but returned a nonzero
+    # value is a successful evaluation, not a failure — the agent wants the result,
+    # and the value is surfaced as `resultValue`. Only a crash / compile error / a
+    # real program's nonzero exit is `ok:false`. An unwrapped program keeps the
+    # convention that its exit code is meaningful (ok iff 0).
+    clean_value = wrapped and status == "nonzero-exit"
     payload = dict(
-        ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
+        ok=(code == 0) or clean_value, status=status, exitCode=code, wrapped=wrapped,
         stdout=out, stderr=err,
         stdoutLines=_stdout_lines(out))  # R-127
+    if clean_value:
+        payload["resultValue"] = code
     if panic is not None:
         payload["panic"] = panic
     sys.stdout.write(_json_envelope("sem.eval.v1", **payload) + "\n")
-    # R-100: process exit mirrors the program exit (0 iff ok); the program's
-    # own exit code is preserved in the envelope's `exitCode` for the consumer.
-    return code
+    # R-100/R-19: process exit is 0 iff the evaluation is `ok` (a wrapped snippet's
+    # clean nonzero return is a successful eval); the program's own value stays in
+    # the envelope's `exitCode`/`resultValue` for the consumer.
+    return 0 if payload["ok"] else code
 
 
 def cmd_deps(args) -> int:

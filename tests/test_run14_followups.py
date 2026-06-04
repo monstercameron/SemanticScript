@@ -65,6 +65,44 @@ def test_r08_valid_variant_and_binding_ref_are_accepted():
     assert not [c for c, _ in _lint_codes(src) if c == "SS1033"]
 
 
+# --- R-19: eval is forgiving — exploratory snippets and value-returns succeed ---
+
+def _eval(tmp_path, snippet, name="s.sem"):
+    p = tmp_path / name
+    p.write_text(snippet, encoding="utf-8")
+    r = subprocess.run([sys.executable, SC, "eval", str(p)],
+                       capture_output=True, text=True, encoding="utf-8")
+    return json.loads(r.stdout)
+
+
+def test_r19_snippet_without_metadata_runs(tmp_path):
+    """R-19: an exploratory snippet whose `main` lacks purpose/invariant should run,
+    not fail on MD1011/MD1012 (which gate exported/entry ops). eval injects defaults."""
+    d = _eval(tmp_path,
+              "main is operation\nmain out ExitCode\nmain async no\n"
+              "main let n immutable Int64 42\nmain let okCode immutable ExitCode 0\n"
+              "main do show\nmain return okCode\n"
+              "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+              "show arg value Int64 n\n")
+    assert d["ok"] is True and d["status"] == "ok" and d["stdoutLines"] == ["42"]
+
+
+def test_r19_clean_nonzero_return_is_a_result_not_a_failure(tmp_path):
+    """R-19: a wrapped snippet that runs cleanly but returns a nonzero value is a
+    successful evaluation — the value is surfaced as `resultValue`, ok is True."""
+    d = _eval(tmp_path,
+              "main is operation\nmain out ExitCode\nmain async no\n"
+              "main let v immutable ExitCode 7\nmain return v\n")
+    assert d["ok"] is True and d["exitCode"] == 7 and d.get("resultValue") == 7
+
+
+def test_r19_genuine_error_is_still_not_ok(tmp_path):
+    """Forgiving must not mean blind: a real compile error is still ok:false."""
+    d = _eval(tmp_path,
+              "main is operation\nmain out ExitCode\nmain return undefinedBinding\n")
+    assert d["ok"] is False and d["status"] in ("compile-failed", "crashed")
+
+
 # --- R-04: `scaffold --name` re-homes the project/module to match `new <Name>` ---
 
 def test_r04_scaffold_name_rehomes_project_and_module():
