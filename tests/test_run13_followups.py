@@ -56,6 +56,63 @@ def test_fix2_build_identity_unit():
     assert ident["contractVersion"] == semanticscript.CONTRACT_VERSION
 
 
+# --- NS-1/AQ-1: identical duplicate type declarations compose across modules ---
+
+def _two_module_project(tmp_path, b_exitcode_base):
+    proj = tmp_path / "p"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "Proj is project\nProj module modA\nProj target console\nProj entry main\n",
+        encoding="utf-8")
+    (proj / "src" / "a.sem").write_text(
+        "modA is module\nmodA path src.a\nmodA imports modB src.b\n"
+        "modA exports main\nmodA purpose \"p\"\nmodA invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+        "main invariant \"i\"\nmain let z immutable ExitCode 0\nmain return z\n",
+        encoding="utf-8")
+    (proj / "src" / "b.sem").write_text(
+        "modB is module\nmodB path src.b\nmodB exports helper\n"
+        "modB purpose \"p\"\nmodB invariant \"i\"\n"
+        f"ExitCode is alias\nExitCode for {b_exitcode_base}\n"
+        "helper is operation\nhelper out ExitCode\nhelper async no\n"
+        "helper purpose \"p\"\nhelper invariant \"i\"\n"
+        "helper let z immutable ExitCode 0\nhelper return z\n",
+        encoding="utf-8")
+    return proj
+
+
+def test_ns1_identical_duplicate_type_decls_compose(tmp_path):
+    """NS-1/AQ-1 (R-006): two modules that each declare the SAME standard type
+    (`ExitCode is alias for Int32` — the scaffold-taught alias pain) must compose:
+    identical declarations name the same type, so the flat-namespace `duplicate is`
+    error is wrong. The composed project checks clean."""
+    proj = _two_module_project(tmp_path, "Int32")
+    src = semanticscript.load_project(str(proj))
+    # the dedup elides the byte-identical second ExitCode block.
+    assert src.count("ExitCode is alias") == 1
+    prog = semanticscript.parse(src)
+    assert not [d for d in semanticscript.lint(prog) if d.severity == "error"]
+
+
+def test_ns1_conflicting_redeclaration_still_errors(tmp_path):
+    """A *differing* redeclaration (ExitCode for Int64 vs Int32) is a genuine
+    conflict and must still reach the duplicate-`is` hard error — the dedup only
+    elides byte-identical copies, never merges conflicting ones."""
+    proj = _two_module_project(tmp_path, "Int64")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(semanticscript.load_project(str(proj)))
+    assert "duplicate `is` row" in str(exc.value)
+
+
+def test_ns1_dedup_is_a_noop_without_duplicates():
+    """Blast-radius guard: a source with no duplicate type declarations passes
+    through unchanged (so every existing project's composition is byte-identical)."""
+    src = ("m is module\nm path m\nExitCode is alias\nExitCode for Int32\n"
+           "Other is alias\nOther for Int64\nmain is operation\nmain out ExitCode\n")
+    assert semanticscript._dedupe_identical_type_declarations(src) == src
+
+
 # --- WEB-1: startup-owned handle that can't reach handlers is flagged (R-9) ---
 
 def _webserver_with_startup(owns_cleanup: bool):

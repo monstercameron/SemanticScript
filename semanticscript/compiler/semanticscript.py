@@ -1343,6 +1343,60 @@ def is_project_root(root: str) -> bool:
             or os.path.isdir(os.path.join(root, "src")))
 
 
+_DEDUPE_TYPE_KINDS = frozenset({"alias", "enum", "error", "record"})
+
+
+def _dedupe_identical_type_declarations(source: str) -> str:
+    """NS-1 / R-006: tolerate byte-identical duplicate *type* declarations across a
+    project's modules.
+
+    A flat (project-global) namespace makes two modules that each declare the same
+    standard type — `ExitCode is alias\\nExitCode for Int32`, the scaffold-taught
+    `SqlText`/`JsonDocument` aliases — collide on a hard `duplicate is row` error,
+    even though the declarations are identical and therefore name the same type
+    (R-006/R-010). Drop a later type block that is textually identical to one
+    already seen, so identical redeclarations compose cleanly. A type block that
+    redeclares a name with a *different* body is left in place, so a genuine
+    conflict still reaches the duplicate-`is` error downstream.
+
+    Conservative by construction: only `alias/enum/error/record` blocks (which have
+    no indentation islands) are considered, and ONLY a provably byte-identical
+    duplicate is removed — so a project with no such duplicates is returned
+    unchanged (the common case is a no-op). This never merges or rewrites; it only
+    elides a redundant identical copy.
+    """
+    lines = source.split("\n")
+    seen: dict[str, tuple] = {}
+    out: list[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        toks = lines[i].split()
+        # a type-block start is exactly `<name> is <type-kind>`.
+        if (len(toks) == 3 and toks[1] == "is" and toks[2] in _DEDUPE_TYPE_KINDS
+                and _IDENT_RE.match(toks[0])):
+            name = toks[0]
+            block = [lines[i]]
+            j = i + 1
+            while j < n:
+                bt = lines[j].split()
+                if bt and bt[0] == name:        # contiguous rows for this entity
+                    block.append(lines[j])
+                    j += 1
+                else:
+                    break
+            sig = tuple(b.strip() for b in block)
+            if seen.get(name) == sig:
+                i = j                            # identical duplicate -> elide it
+                continue
+            seen.setdefault(name, sig)           # first wins; a differing later
+            out.extend(block)                    # block is kept -> conflict errors
+            i = j
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def load_project(root: str) -> str:
     """Project driver (README §28.2/§28.3): compose the runtime program of a
     project directory. The `project` entity lives in `build.sem` (the manifest,
@@ -1376,7 +1430,9 @@ def load_project(root: str) -> str:
     if not files and not parts:
         raise EavError(f"no source .sem files found under {root!r} (README ss28.2)")
     parts.extend(open(f, encoding="utf-8").read() for f in files)
-    return "\n".join(parts)
+    # NS-1/R-006: elide byte-identical duplicate type declarations across modules
+    # (a no-op unless such a duplicate exists, so existing projects are unchanged).
+    return _dedupe_identical_type_declarations("\n".join(parts))
 
 
 # R-003: directories that hold build/cache/asset output, not checkable source.
@@ -1575,7 +1631,10 @@ def _read_program_source_with_cache_key(path: str) -> tuple[str, str]:
             digest.update(hashlib.sha256(data).digest())
             digest.update(b"\0")
             parts.append(data.decode("utf-8"))
-        return "\n".join(parts), "project:" + digest.hexdigest()
+        # NS-1/R-006: same elision of byte-identical duplicate type declarations as
+        # load_project, so the cached project read path composes them identically.
+        return (_dedupe_identical_type_declarations("\n".join(parts)),
+                "project:" + digest.hexdigest())
     source = _read_source(path)
     digest.update(b"stdin" if path == "-" else os.path.abspath(path).encode(
         "utf-8", "surrogateescape"))
