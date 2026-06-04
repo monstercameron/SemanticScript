@@ -8912,6 +8912,97 @@ def _lint_unknown_enum_variant(program: Program) -> list:
     return diags
 
 
+def _lint_enum_typed_value(program: Program) -> list:
+    """Root-A / R-08 / R-10: a `let`/`arg` whose declared type is a user enum must
+    hold either a declared variant of that enum or an in-scope binding. A bare token
+    that is neither (a typo'd or undeclared variant — `let openMode SqliteOpenMode
+    purple`) used to pass `check` (it slips past the numeric/string literal checks)
+    and then crash codegen with "'purple' is not in scope (expected an integer
+    binding)" — a check-clean program that doesn't lower. Reject it at check time
+    (SS1033) and name the legal variants (R-08). Mirrors the resolution codegen does
+    in `_literal_or_ref`: binding-ref, else module storage / project constant, else a
+    declared variant of the *declared* enum type (not the repr-flattened one)."""
+    enum_members: dict = {}
+    for e in program.entities.values():
+        if e.kind == "enum":
+            enum_members.setdefault(e.name, set()).update(
+                v.payload[0] for v in e.facts("variant") if v.payload)
+    if not enum_members:
+        return []
+    # names resolvable as a binding without per-op scope: module storage + project
+    # constants (read by bare name anywhere, README §12/§28.1).
+    global_names = {st.name for st in program.of_kind("storage")}
+    global_names |= {st.name for st in program.of_kind("sharedState")}
+    for proj in program.of_kind("project"):
+        for r in proj.facts("constant"):
+            if r.payload:
+                global_names.add(r.payload[0])
+    calls_by_owner: dict = {}
+    for e in program.entities.values():
+        if e.kind in ("call", "task"):
+            owner = e.fact("in")
+            if owner and owner.payload:
+                calls_by_owner.setdefault(owner.payload[0], []).append(e)
+
+    def _is_variant_position(typ: str, val: str, bindings: set) -> bool:
+        # a quoted string / numeric literal is not a variant token; only a bare
+        # identifier that is NOT a known binding must resolve as a variant.
+        if not val or val[0] in '"-' or val[0].isdigit():
+            return False
+        return val not in bindings and val not in global_names
+
+    diags: list = []
+    for op in program.entities.values():
+        if op.kind not in ("operation", "function"):
+            continue
+        bindings = {r.payload[0] for r in op.facts("let") if r.payload}
+        bindings |= {r.payload[0] for r in op.facts("in") if r.payload}
+        for c in calls_by_owner.get(op.name, []):
+            bindings |= {o.payload[0] for o in c.facts("out") if o.payload}
+            cat = c.fact("catch")
+            if cat and cat.payload:
+                bindings.add(cat.payload[0])
+        for r in op.facts("let"):
+            p = r.payload
+            if len(p) == 4 and p[2] in enum_members:   # name mutability Type value
+                typ, val = p[2], p[3]
+                if (_is_variant_position(typ, val, bindings)
+                        and val not in enum_members[typ]):
+                    valid = ", ".join(sorted(enum_members[typ])) or "none"
+                    diags.append(Diagnostic(
+                        "SS1033", "error",
+                        f"let {p[0]!r} value {val!r} is not a variant of enum {typ!r} "
+                        f"(declared: {valid}) nor an in-scope binding "
+                        f"(README §9/§10.5)", r.line, op.name))
+    for c in program.entities.values():
+        if c.kind not in ("call", "task"):
+            continue
+        owner_row = c.fact("in")
+        owner = program.entities.get(owner_row.payload[0]) if owner_row and owner_row.payload else None
+        bindings = set()
+        if owner is not None:
+            bindings = {r.payload[0] for r in owner.facts("let") if r.payload}
+            bindings |= {r.payload[0] for r in owner.facts("in") if r.payload}
+            for sib in calls_by_owner.get(owner.name, []):
+                bindings |= {o.payload[0] for o in sib.facts("out") if o.payload}
+                cat = sib.fact("catch")
+                if cat and cat.payload:
+                    bindings.add(cat.payload[0])
+        for a in c.facts("arg"):
+            p = a.payload  # slot Type value
+            if len(p) == 3 and p[1] in enum_members:
+                typ, val = p[1], p[2]
+                if (_is_variant_position(typ, val, bindings)
+                        and val not in enum_members[typ]):
+                    valid = ", ".join(sorted(enum_members[typ])) or "none"
+                    diags.append(Diagnostic(
+                        "SS1033", "error",
+                        f"call {c.name!r} arg {p[0]!r} value {val!r} is not a variant "
+                        f"of enum {typ!r} (declared: {valid}) nor an in-scope binding "
+                        f"(README §9/§10.5)", a.line, c.name))
+    return diags
+
+
 def _enum_variant_payload_decl(program: Program, enum_ent: Entity, variant: str) -> Optional[str]:
     for row in enum_ent.facts("variant"):
         if row.payload and row.payload[0] == variant:
@@ -9732,6 +9823,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_collection_iterator_invalidation(program))
     diags.extend(_lint_string_accumulator_in_loop(program))
     diags.extend(_lint_unknown_enum_variant(program))
+    diags.extend(_lint_enum_typed_value(program))
     diags.extend(_lint_constructor_payload_shape(program))
     diags.extend(_lint_generic_instantiation_arity(program))
     diags.extend(_lint_handle_equality_contract(program))

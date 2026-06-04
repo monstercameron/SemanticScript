@@ -21,6 +21,50 @@ SCAFFOLDS = list(getattr(semanticscript, "SCAFFOLD_PATTERNS", ()))
 
 # --- R-17: `scaffold` output is canonical (passes `fmt --check`) ---
 
+_ENUM_PROG = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "Color is enum\nColor variant red\nColor variant green\n"
+    "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+    "main invariant \"i\"\n{LET}\nmain let z immutable ExitCode 0\nmain return z\n")
+
+
+def _lint_codes(src):
+    prog = semanticscript.parse(src)
+    return [(d.code, d.message) for d in semanticscript.lint(prog) if d.severity == "error"]
+
+
+# --- R-08 / R-10 / Root-A: an invalid enum variant is a check error (not a false green) ---
+
+def test_r08_invalid_enum_variant_in_let_is_check_error_listing_legal_values():
+    """R-08/R-10 (Root A): `let x Color purple` where `purple` isn't a Color variant
+    passed `check` then crashed codegen ("not in scope"). It must be a check-time
+    error that NAMES the legal variants (R-08)."""
+    codes = _lint_codes(_ENUM_PROG.format(LET="main let hue immutable Color purple"))
+    bad = [m for c, m in codes if c == "SS1033" and "not a variant of enum 'Color'" in m]
+    assert bad, f"invalid enum variant not rejected: {codes}"
+    assert "green, red" in bad[0], "diagnostic must list the legal variants (R-08)"
+
+
+def test_r08_invalid_enum_variant_in_call_arg_is_check_error():
+    src = (_ENUM_PROG.format(LET="main let hue immutable Color red\nmain do useColor")
+           + "useColor is call\nuseColor in main\nuseColor invokes console.writeLine\n"
+             "useColor arg text Color purple\n")
+    codes = _lint_codes(src)
+    assert any(c == "SS1033" and "value 'purple'" in m for c, m in codes), codes
+
+
+def test_r08_valid_variant_and_binding_ref_are_accepted():
+    """A declared variant and a genuine binding reference must NOT be flagged."""
+    assert not [c for c, _ in _lint_codes(
+        _ENUM_PROG.format(LET="main let hue immutable Color green")) if c == "SS1033"]
+    # a binding that holds a Color, referenced by another let, is not a variant typo.
+    src = _ENUM_PROG.format(
+        LET="main let baseHue immutable Color red\nmain let hue immutable Color baseHue")
+    assert not [c for c, _ in _lint_codes(src) if c == "SS1033"]
+
+
 @pytest.mark.parametrize("pattern", SCAFFOLDS)
 def test_r17_scaffold_output_is_fmt_canonical(pattern):
     """R-17: `cmd_scaffold` advertises "canonical" output, but emitted templates in
