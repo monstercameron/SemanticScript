@@ -56,6 +56,26 @@ def test_fix2_build_identity_unit():
     assert ident["contractVersion"] == semanticscript.CONTRACT_VERSION
 
 
+# --- ERG-3: `bench` on a webServer is server-aware, not a silent skip ---
+
+def test_erg3_bench_on_webserver_is_server_aware(tmp_path):
+    """ERG-3 (R-12): `bench` skips the in-process run lane for a webServer (it
+    doesn't terminate), but must not leave a silent `runMsBest: null` the agent
+    reads as "unmeasurable". It now reports `serverAware` + the bounded
+    serve->probe->stop lane and the exact commands that DO measure request
+    latency."""
+    app = os.path.join(ROOT, "apps", "http-runtime-gauntlet")
+    if not os.path.isdir(app):
+        pytest.skip("http-runtime-gauntlet app fixture not present")
+    r = subprocess.run([sys.executable, SC, "bench", app, "--runs", "1", "--json"],
+                       capture_output=True, text=True, encoding="utf-8")
+    d = json.loads(r.stdout)
+    assert d.get("runnable") is False and d.get("serverAware") is True
+    assert d.get("serverLane") == "serve-probe-stop"
+    assert d.get("serverLaneCommands"), "no actionable commands to measure latency"
+    assert "latency" in (d.get("note") or "")
+
+
 # --- TRUE-1: `task` with no template lists templates (self-describing surface) ---
 
 def test_true1_task_with_no_template_lists_the_catalog():

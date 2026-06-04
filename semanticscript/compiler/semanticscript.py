@@ -20532,6 +20532,19 @@ def cmd_bench(args) -> int:
             "parseMsBest": ms(parse_t), "lowerMsBest": ms(lower_t),
             "runMsBest": ms(run_t),
         }
+        # ERG-3: a webServer target can't be timed by the in-process JIT run lane
+        # (it doesn't terminate), so the run phase is skipped. Don't leave that a
+        # silent `runMsBest: null` the agent reads as "unmeasurable" — name the
+        # server-aware serve->probe->stop lane and the exact commands that DO
+        # measure request latency, so the limitation is truthful and actionable.
+        if not runnable and _program_target(program_for_probe) == "webServer":
+            perf = _devx_perf_surface(program_for_probe, args.path)
+            result["serverAware"] = True
+            result["serverLane"] = perf["lane"]
+            result["serverLaneCommands"] = perf["commands"]
+            result["note"] = ("request latency is not measured by the in-process "
+                              "run lane; drive the server through the bounded "
+                              "serve->probe->stop lane above (or `devx --mode perf`)")
         totals = [v for v in (result["parseMsBest"], result["lowerMsBest"],
                               result["runMsBest"]) if v is not None]
         result["totalMsBest"] = round(sum(totals), 3)
@@ -20542,6 +20555,9 @@ def cmd_bench(args) -> int:
                 run_s = f" run {result['runMsBest']}ms"
             elif runnable:
                 run_s = f" (run skipped: {run_status or 'not-run'})"
+            elif result.get("serverAware"):
+                run_s = (f" (server: time request latency via the "
+                         f"{result['serverLane']} lane — see `devx --mode perf`)")
             else:
                 run_s = " (run skipped)"
             payload = (f"bench {args.path} (best of {runs}): "
