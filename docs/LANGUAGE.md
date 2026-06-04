@@ -534,16 +534,19 @@ and a `webServer` for the `webServer` target, so the gate sits on whichever enti
 error. An unqualified `entry` is the default for every target with no
 target-specific entry.
 
-`target` values: `console`, `webServer`, `wasm` — the **program model and entry
+`target` values: `console`, `webServer`, `wasm`, `windowsGui` - the **program model and entry
 ABI** (§11). A `target` is distinct from a *runtime* and a *platform*: `target`
 is what kind of program is built; a `platform`'s `targetRuntime` (`native` |
 `wasm`) is the execution substrate; the `platform` (os/arch/runtime) is where it
-runs. `target wasm` implies `targetRuntime wasm`; `console`/`webServer` targets
-build on native platforms. There is no separate `runtime` predicate.
+runs. `target wasm` implies `targetRuntime wasm`; `console`/`webServer`/
+`windowsGui` targets build on native platforms. There is no separate `runtime`
+predicate.
 
-`windowsGui` is a reserved target token for future use. GUI entity kinds,
-message-loop structure, and handler ABIs are not specified in v0.3. Using
-`target windowsGui` produces a compile error until the GUI module is defined.
+`target windowsGui` requires exactly one project `guiBackend` row. The shipped
+`guiBackend headless` lane lowers `standard.gui` calls through the non-interactive
+`ss_widget_*` runtime so GUI apps can run in CI. `guiBackend win32` is a Windows
+native backend health lane; `guiBackend winui3` is recognized but reports
+unsupported readiness until a runtime owner lands.
 
 Modules declare their own imports, exports, and required metadata:
 
@@ -3570,9 +3573,9 @@ row_increase = (v0.3_rows - v0.1_rows) / v0.1_rows × 100
 ```
 
 A single module with +30% is a gate failure even if the overall codebase
-averages +15%. Use `sem lower --to canonical` (proposed; §24 — today use the closest
-existing surface, `sem migrate-syntax`) to get the canonical row count; count
-the output with:
+averages +15%. Use `sem migrate-syntax --from current --to canonical FILE`
+to emit canonical SemanticScript; `--preview` reports the row-count delta and
+`--json` includes the output/source line map. Count the canonical output with:
 
 ```bash
 grep -Ev '^[[:space:]]*$|^#' FILE | wc -l
@@ -3873,13 +3876,14 @@ SemanticScript.
 > for the `sem` CLI. They define the target DevX contract — not a description of
 > what is currently implemented. The current `sem` CLI **already implements**
 > `fmt`, `check`, `lint`, `slice`, `graph`, `doctor`, `deps`, `test`, `explain`,
-> `fix`, and `patch` — but with **code- and path-scoped argument shapes**, not the
+> `fix`, `patch`, `query`, `trace`, `add`, `rename`, `normalize`, `pack`, `diff`,
+> `verify-patch`, `scaffold`, `inventory`, and `migrate-syntax` - but with
+> **code- and path-scoped argument shapes**, not the
 > entity-scoped SemanticScript forms shown here (today `explain` takes a diagnostic code,
 > `graph`/`slice` take a path, `doctor` takes no `--op`). What is genuinely
 > **proposed** (not yet implemented) is: the entity-scoped / `--for-edit`
-> argument shapes; `fmt --surface`; and the new commands `query`, `trace`, `add`,
-> `rename`, `normalize`, `pack`, `diff`, `verify-patch`, `scaffold`, `summarize`,
-> `inventory`, and `lint --explain`. Each block notes whether it evolves an
+> argument shapes; `slice --for-edit`; richer `summarize`; and the full
+> entity-first forms shown below. Each block notes whether it evolves an
 > existing command's shape or is new; see the project roadmap.
 
 `sem` is the SemanticScript CLI. All commands operate on the current project
@@ -4101,10 +4105,24 @@ sem rename binding healthHandler countText openCountText
 `sem add` validates the operation signature before inserting. It will refuse to
 add a call whose arg types do not match declared bindings.
 
-### `sem normalize` — preview conversion
+### `sem migrate-syntax` - current/compact to canonical conversion
 
 ```bash
-sem normalize --to canonical --preview healthHandler
+sem migrate-syntax app.sem --from current --to canonical
+sem migrate-syntax app.sem --operation healthHandler --json
+```
+
+The full-file form emits canonical SemanticScript. The operation form emits a
+canonical edit slice for one operation plus activated calls/tasks and referenced
+capabilities. The JSON surface is `sem.migrateSyntax.v1` and includes
+`sourceRows`, `canonicalRows`, `rowDelta`, `editLocality`, `sourceMap`, mapped
+diagnostics, and the canonical text. `--write` rewrites a full file; operation
+slices are output-only.
+
+### `sem normalize` - preview conversion
+
+```bash
+sem normalize app.sem --preview
 ```
 
 Output:
@@ -4631,9 +4649,10 @@ native source/link args, and similar ABI-role wrappers). These are stdlib-define
 `alias` types, not additional primitives.
 - *Interim (v0.3):* drop to a primitive with `operation body runtimeBinding
   <target>` / `body intrinsic <name>` (§11) and declare the foreign signature as
-  an `intrinsic` in a `.semsig` (§26). Treat `OpaquePointer` as `UInt64` until the
-  FFI spec lands. These hooks already exist; only the ABI-role *type catalog* and
-  native link/source declarations are missing.
+  an `intrinsic` in a `.semsig` (§26). `OpaquePointer` and `FileHandle` lower as
+  opaque pointer handles; legacy integer-handle C shims must bridge explicitly at
+  the runtime boundary. These hooks already exist; only the full ABI-role *type
+  catalog* and native link/source declarations are missing.
 - *Planned:* a `standard.ffi` module supplying the ABI-role aliases, plus
   `native` link/source declarations attached to the build manifest (§28), not to
   source rows.
@@ -4658,16 +4677,17 @@ in v0.3; user records/enums and stdlib types may not take type parameters.
   `Box of Task`. No `<...>` angle syntax (consistent with no-symbols); variance
   and constraints are a later increment.
 
-**Concurrency primitives.** Channels, mutexes, select, task groups, intervals,
-worker pools, and wait-sets are not in v0.3.
-- *Interim (v0.3):* the cooperative `task` lifecycle — `start`/`join`/`poll`/
-  `cancel`/`detach` (§13) — on the single-thread backend (fan-out-shaped but
-  sequential; §13 backend semantics). Shared state uses module `storage` with the
-  `effect write storage.<name>` + capability model (§12), race-free under the
-  single-thread backend.
-- *Planned:* new entity kinds (`channel`, `mutex`, `taskGroup`, `interval`,
-  `workerPool`) in a `standard.concurrent` module, gated on a concurrent backend
-  (v0.5+). They reuse the entity/predicate row model, not new operators.
+**Concurrency primitives.** `standard.concurrent` is the typed facade over the
+libuv event-loop runtime. It exposes task-group-style futures, bounded channels,
+mutex guard handles, intervals, and worker-pool value submissions through
+`ss_async_*` runtime bindings. The backend is cooperative and single-loop today,
+not preemptive SemanticScript threads.
+- *Current (v0.3):* task-group start/join, channel create/produce/receive/close,
+  mutex create/lock/unlock/close, interval create/tick/close, and worker-pool
+  create/submit/join/close all have module and `.semsig` contracts.
+- Guard ordering is static: `sharedState guardRank` plus SS3085 rejects acquiring
+  lower-ranked guarded state after higher-ranked state, even on the single-loop
+  backend.
 
 **Collections (lists, arrays, maps).** `listType`/`arrayType`/`sliceType`/
 `mapType`, collection literals, indexing, and iteration contracts are not in
@@ -4694,9 +4714,10 @@ cancellation are modeled by `standard.async` (`withTimeout`, `cancel`,
   expand to the same lowering, so larger programs can reuse policy data instead
   of repeating literals on each call.
 
-**GUI target.** `windowsGui` is reserved; `standard.gui`, `guiBackend`, and
-Win32 native bridge support are not in v0.3. `target windowsGui` is a compile
-error until a GUI spec is approved.
+**GUI target.** `windowsGui` is a first-class native target when paired with a
+project `guiBackend` row. `headless` is the portable/non-interactive backend used
+by `desktop-window-smoke`; `win32` is backed by the native GUI health-check lane on
+Windows; `winui3` is recognized but not runnable yet.
 
 **Route policy rows.** `routeTimeout`, `routeTimeoutOptOut`, and
 `routeMiddlewareOptOut` are part of the `webServer` entity (see §14).
@@ -4749,19 +4770,18 @@ module's complete API is its `.semsig` (§26) plus generated docs, versioned wit
 the module (§28.4/§28.6) and queried with `sem docs`. The language spec fixes the
 *contract shape*, not the catalog.
 
-**System APIs** — filesystem, process, environment, clock, random, network
-clients. Not yet shipped as stdlib modules, but they need **no new language
-feature**: each is a `standard.*` module whose targets are capability-gated
-effects (e.g. `effect read filesystem.path` + a covering capability, §8) with
-`.semsig` signatures. Planned namespaces: `standard.fs`, `standard.process`,
-`standard.environment`, `standard.clock`, `standard.random`, `standard.net`.
-Until they ship, only the targets already used in examples (`console.*`,
-`sqlite.*`, `http.*`, `html.*`, `convert.*`, `compare.*`) are available.
+**System APIs** - filesystem, process, environment, clock, random, network
+clients. They need no new language feature: each is a `standard.*` module whose
+targets are capability-gated effects (e.g. `effect read filesystem.path` plus a
+covering capability, §8) with `.semsig` signatures. Planned or growing namespaces
+include `standard.fs`, `standard.process`, `standard.environment`, `standard.clock`,
+`standard.random`, and `standard.net`.
 
-**GUI, browser DOM, and JSON codecs** (the `standard.gui`/`windowsGui`,
-`standard.document`/wasm-DOM, and JSON-codec/validation items) share this
-disposition: stdlib plus target-ABI work, gated behind the capability/effect and
-`.semsig` model and specified when their modules are. JSON in particular is an
+**Browser DOM and JSON codecs** (`standard.document`/wasm-DOM and
+JSON-codec/validation items) share this disposition: stdlib plus target-ABI work,
+gated behind the capability/effect and `.semsig` model and specified when their
+modules are. `standard.gui` has moved into the `windowsGui`/`guiBackend` target
+model above. JSON in particular is an
 application pattern over `standard.json` (§16), not core syntax; record JSON
 metadata rows (`jsonName`/`omitWhen`/`unknownFieldPolicy`) are specified in §10
 and exposed by `sem query json-codecs`.
@@ -4946,7 +4966,18 @@ PROJECT effectSurface <path> <action> <resource>     # aggregated capability sur
 Like every build row, lock rows are subject-anchored SemanticScript — predicates on the
 `project` entity, not verb-led records. The lock is parsed as ordinary SemanticScript
 (typed, lintable, queryable), but `sem` refuses hand edits and regenerates it
-(`sem mod tidy`, proposed — §28.4).
+with `sem mod tidy` (§28.4).
+
+When `PROJECT replace <path> "<localPath>"` points at an existing local
+directory, `sem mod tidy` hashes the actual local artifact content (`*.sem` and
+`*.semsig`) into the corresponding `resolved ... sha256 <digest>` row. Supply-
+chain verification recomputes that digest before `run`/`build`; a stale or
+tampered local replacement lock is SS2804. Verification also recomputes the
+local artifact's declared `effect`/`grants` rows and requires every one to
+appear in `effectSurface`; an omission is SS2805. `sem vendor` materializes
+local replacements through a content-addressed module cache before copying them
+into `vendor/`. Remote registry fetch and provenance attestations remain registry
+work for the rest of the R-081 surface.
 
 **Platform entities (§28.1).** `PROJECT platform <name>` references a `platform`
 entity declared in `build.sem` — not a bare string — so OS/arch/runtime/output are
@@ -4974,6 +5005,14 @@ order). Exact duplicates — same library name, same header path, same flag stri
 preserved (linker flags are order-sensitive). Library names carry no version, so
 there is no version conflict; reconciling two header paths is the author's
 responsibility (the resolver does not reorder).
+
+The native linker is rendered from a normalized driver plan, not from hard-coded
+GNU flags. Driver families are `gnu`, `clang`, `zig`, `clang-cl`, and `msvc`.
+Structured `nativeLibrary`/manifest `libs` entries are library names: GNU-like
+drivers render them as `-l<name>`, while `clang-cl`/MSVC render `<name>.lib`.
+Raw linker switches belong only in `nativeLinkFlag`/manifest `linkFlags`.
+Frameworks are explicit framework entries and render as `-framework <name>` on
+GNU-like Apple plans; they are not smuggled through library names.
 
 **Package manifest metadata.** `publisher`, `productName`, `packageId`, and
 `packageVersion` are single-valued project identity rows. `profile <name>`
@@ -5090,14 +5129,13 @@ churn.
   resolved tree into `vendor/` and the build prefers it.
 - **`replace`** redirects a dependency to a local path for multi-repo dev.
 
-Commands (proposals, per §24's spec-status note — the current CLI exposes
-`sem deps ...` for dependency inspection and does **not** yet implement
-`sem get`/`sem mod`/`sem vendor` or `sem test --lane`):
+Commands (current local-first dependency workflow; remote registry fetch remains
+future R-081 work):
 
 ```bash
-sem get github.com/foo/markdown@v2.1.0   # add/upgrade a dependency        (proposed)
-sem mod tidy                             # resolve, write build.sem.lock    (proposed)
-sem vendor                               # materialize vendor/ for hermetic builds (proposed)
+sem get github.com/foo/markdown@v2.1.0   # add/upgrade a dependency
+sem mod tidy                             # resolve, write build.sem.lock
+sem vendor                               # materialize vendor/ for hermetic builds
 ```
 
 ### 28.5 Capability-scoped dependencies
@@ -5635,9 +5673,10 @@ PROJECT nativeHeader "<path>"     # header included for signature checking
 PROJECT nativeLinkFlag "<flag>"   # raw linker flag, e.g. "-L/usr/local/lib"
 ```
 
-The full FFI type-mapping (`OpaquePointer`, `FileHandle`, struct/by-value ABI) is
-deferred (§27), but the mechanism is fixed: **intrinsic + `.semsig` +
-`build.sem` native-link rows, no new core syntax.**
+The full FFI type-mapping (struct/by-value ABI, calling-convention metadata, and
+the complete role-type catalog) is deferred (§27), but the handle mechanism is
+fixed for `OpaquePointer`/`FileHandle`: **intrinsic + `.semsig` + `build.sem`
+native-link rows, no new core syntax.**
 
 #### 30.4.2 C-callable exports
 
