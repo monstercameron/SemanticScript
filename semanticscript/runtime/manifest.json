@@ -130,7 +130,7 @@
     },
     {
       "name": "ss_libc",
-      "comment": "APP-RUN-6/APP-RUN-2 libc shims (c.*) with Int64/const char* signatures so the app's declared types match exactly (no compiler coercion). Variadic printf/fprintf/snprintf forward to their v*-counterparts; terminalReadKey reads stdin headlessly.",
+      "comment": "APP-RUN-6/APP-RUN-2 libc shims (c.*) with Int64/const char* signatures so the app's declared types match exactly (no compiler coercion). Variadic printf/fprintf/snprintf forward to their v*-counterparts; terminalReadKey is headless-safe and uses _getch/termios for interactive terminals.",
       "provides": [
         "ss_c_"
       ],
@@ -227,27 +227,21 @@
     },
     {
       "name": "ss_net",
-      "comment": "APP-RUN-1 HTTP-GET client (net.fetchText): a self-contained winsock GET, no legacy/third-party deps.",
+      "comment": "R-062/APP-RUN-1 TCP socket primitives plus HTTP-GET client (net.connect/send/receive/close and net.fetchText): self-contained sockets, no legacy/third-party deps.",
       "provides": [
         "ss_net_"
+      ],
+      "sources": [
+        "ss_net.c"
       ],
       "defines": [
         "_CRT_SECURE_NO_WARNINGS"
       ],
       "platforms": {
         "windows": {
-          "sources": [
-            "ss_net.c"
-          ],
           "libs": [
             "ws2_32"
           ]
-        },
-        "linux": {
-          "unsupported": "standard.net's current ss_net.c backend is Winsock-only; use Windows or add the POSIX socket backend from R-062/R-092."
-        },
-        "macos": {
-          "unsupported": "standard.net's current ss_net.c backend is Winsock-only; use Windows or add the POSIX socket backend from R-062/R-092."
         },
         "wasi": {
           "unsupported": "standard.net has no WASI socket backend yet."

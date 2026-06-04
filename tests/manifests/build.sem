@@ -13,7 +13,7 @@ TaskApp languageVersion "1.0"
 TaskApp toolchain "sem1.0"
 TaskApp require github.com/ss-lang/sqlite v2.1.0
 TaskApp require github.com/ss-lang/http v1.4.0-rc.1
-TaskApp replace github.com/ss-lang/sqlite "../sqlite"
+TaskApp replace github.com/ss-lang/sqlite "vendor/github.com/ss-lang/sqlite"
 TaskApp allowEffect read database
 TaskApp allowEffect write console.stdout
 TaskApp constant buildTag "release"
