@@ -289,6 +289,35 @@ def test_bin6_correctly_typed_numeric_arg_is_clean():
     assert "SS3112" not in _codes(_MATH_ARG.replace("{ATYPE}", "Int64"))
 
 
+_CMP = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path x\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+    "main invariant \"i\"\nmain let a immutable {VT} {AV}\nmain let b immutable {VT} {BV}\n"
+    "main do cmp\nmain return z\n"
+    "z is storage\nz scope module\nz type Int32\nz value 0\n"
+    "cmp is call\ncmp in main\ncmp invokes {TGT}\n"
+    "cmp arg left {DT} a\ncmp arg right {DT} b\ncmp out r Bool\n"
+)
+
+
+def test_type1_compare_text_family_bridges_to_string():
+    # compare.equalText declares the unconstructible `Text`; a String value must
+    # compose (both lower to i8*), instead of forcing the `*String` sibling.
+    src = (_CMP.replace("{TGT}", "compare.equalText").replace("{DT}", "String")
+           .replace("{VT}", "String").replace("{AV}", "\"x\"").replace("{BV}", "\"y\""))
+    assert "SS1201" not in _codes(src)
+
+
+def test_type1_bridge_does_not_accept_nontext_in_text_compare():
+    # the bridge is text<->text only: an Int32-declared arg to a text compare is
+    # still rejected (no silent cross-family acceptance).
+    src = (_CMP.replace("{TGT}", "compare.equalString").replace("{DT}", "Int32")
+           .replace("{VT}", "Int32").replace("{AV}", "1").replace("{BV}", "2"))
+    assert "SS1201" in _codes(src)
+
+
 def test_bin6_numeric_ir_kind_groups_by_lowered_scalar():
     prog = semanticscript.parse(_MATH_ARG.replace("{ATYPE}", "Int64"))
     k = semanticscript._numeric_ir_kind

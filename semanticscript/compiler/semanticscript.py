@@ -9966,6 +9966,17 @@ def _lint_intrinsic_arg_slots(program: Program) -> list:
                 or got_c in ("Bool", "ExitCode")
                 or (got_ent is not None and got_ent.kind in ("enum", "error"))
             )
+        # TYPE-1: bridge the parallel TEXT compare family. `compare.*Text` declares
+        # an opaque `Text` that has no constructor, while every text value is a
+        # `String` (or a String-alias like JsonText/FileText). Both lower to i8*,
+        # so a text comparison accepts either - `compare.equalText` composes with
+        # Strings instead of forcing the unconstructible `Text` or the sibling
+        # `compare.equalString`. Scoped to compare.* so other families stay exact.
+        if target.startswith("compare."):
+            want_is_text = want == "Text" or want_c == "String"
+            got_is_text = got == "Text" or got_c == "String"
+            if want_is_text and got_is_text:
+                return True
         if target == "sqlite.openDatabase" and slot == "mode":
             return got_c in ("String", "Int32") and want_c == "Int32"
         if target == "json.setObjectFieldBool" and slot == "value":
