@@ -365,6 +365,18 @@ DIAGNOSTICS.update({
     "SS3111": {"tier": "T1", "summary": "Constant integer UB (div-by-zero / over-wide shift).",
                "found": "A divide/modulo by a constant 0, or a shift by a constant >= the operand width.",
                "suggested": "Constant division/modulo by zero and shifts >= the type width are rejected before lowering. Fix the constant; to exercise the runtime divide/modulo guard, make the divisor a non-constant value that may be zero (README §10.6/§33.5)."},
+    "SS3112": {"tier": "T1", "summary": "Numeric arg coercion (declared type != value type).",
+               "found": "A call arg whose declared type and the value binding's actual "
+                        "type are different numeric IR types (e.g. `arg left Int64 a` "
+                        "where `a` is Int32, or an int passed where a float is "
+                        "declared). The declared type matches the signature so the "
+                        "arg-slot check passes, but i32!=i64 (or int!=float) then "
+                        "fails the code generator (SS5001) — numeric coercion is a "
+                        "TYPE-SYSTEM rule, not a late codegen reject (BIN-6).",
+               "suggested": "EAV has no implicit numeric coercion: convert the value "
+                            "explicitly (e.g. `convert.toInt64 <value>`) so the arg's "
+                            "width/sign-kind is exact, then pass the converted result "
+                            "(README §10.6)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -7274,6 +7286,410 @@ def _lint_unhandled_value_read(program: Program) -> list:
     return out
 
 
+def _call_target(ent: Entity) -> str:
+    inv = ent.fact("invokes")
+    return inv.payload[0] if inv and inv.payload else ""
+
+
+def _call_arg_value(ent: Entity, slot: str):
+    for row in ent.facts("arg"):
+        if len(row.payload) >= 3 and row.payload[0] == slot:
+            return row.payload[2]
+    return None
+
+
+def _call_out_rows(ent: Entity) -> list[Row]:
+    return [row for row in ent.facts("out") if row.payload]
+
+
+def _is_numeric_literal_token(tok: str) -> bool:
+    text = tok.lstrip("-")
+    return text.isdigit()
+
+
+_WS2_RAW_RESOURCE_PRODUCERS = frozenset({
+    "c.fopen",
+    "c.malloc",
+    "sqlite.openDatabase",
+    "sqlite.openInMemory",
+    "sqlite.prepareStatement",
+    "sqlite.query",
+    "json.createDocument",
+    "json.parse",
+    "buffer.create",
+    "list.create",
+    "map.create",
+    "bcrypt.hashPasswordOwned",
+    "bcrypt.sessionTokenOwned",
+})
+_WS2_RAW_ALLOC_TARGETS = frozenset({
+    "c.malloc",
+    "buffer.create",
+    "list.create",
+    "map.create",
+    "json.createDocument",
+})
+
+
+def _lint_resource_cleanup_parity(program: Program) -> list:
+    """WS2-081: catch raw resource sources that have no ownership contract at all.
+
+    Explicit malformed cleanup contracts remain hard errors in `_validate_cleanup`.
+    This pass covers the inverse footgun: direct raw handle/heap producers whose
+    call site has an `out` but no `owns`/`cleanedBy` metadata, plus dynamic raw
+    heap sizes with no maximumBytes/budget row.
+    """
+    out: list[Diagnostic] = []
+    owner_ops: dict[str, Entity] = {}
+    for op in program.of_kind("operation"):
+        for call in _calls_by_owner(program).get(op.name, ()):
+            owner_ops[call.name] = op
+
+    def has_size_budget(call: Entity) -> bool:
+        for row in call.rows:
+            if row.predicate == "limit" and row.payload[:1] in (["maximumBytes"], ["maxBytes"]):
+                return True
+            if row.predicate in ("budget", "timeout"):
+                return True
+        return False
+
+    def op_const_literals(op: Optional[Entity]) -> dict[str, str]:
+        if op is None:
+            return {}
+        return {
+            row.payload[0]: row.payload[3]
+            for row in op.facts("let")
+            if len(row.payload) >= 4 and row.payload[1] == "immutable"
+        }
+
+    for ent in program.entities_in_order():
+        if ent.kind not in ("call", "task"):
+            continue
+        target = _call_target(ent)
+        if target in _WS2_RAW_RESOURCE_PRODUCERS and _call_out_rows(ent):
+            if ent.fact("owns") is None and ent.fact("cleanedBy") is None:
+                out.append(Diagnostic(
+                    "SS1810", "warning",
+                    f"{ent.kind} {ent.name!r} invokes raw resource producer "
+                    f"{target!r} and binds an out value but declares no `owns`/"
+                    f"`cleanedBy` cleanup contract (README ss15.6/WS2-081)",
+                    ent.line, ent.name))
+        if target == "c.malloc" and not has_size_budget(ent):
+            size_value = _call_arg_value(ent, "size")
+            if size_value is None:
+                continue
+            literal = op_const_literals(owner_ops.get(ent.name)).get(size_value, size_value)
+            if not _is_numeric_literal_token(literal):
+                out.append(Diagnostic(
+                    "SS1811", "warning",
+                    f"raw heap allocation {ent.name!r} uses dynamic size {size_value!r} "
+                    "with no `limit maximumBytes` or budget row (README ss1J/WS2-081)",
+                    ent.line, ent.name))
+    return out
+
+
+def _lint_async_concurrency_parity(program: Program) -> list:
+    """WS2-082: async calls need an explicit boundary, and futures need a sink."""
+    out: list[Diagnostic] = []
+    async_ops = {
+        ent.name
+        for ent in program.of_kind("operation")
+        for row in [ent.fact("async")]
+        if row and row.payload and row.payload[0] == "yes"
+    }
+    owned_by = _calls_by_owner(program)
+    for op in program.of_kind("operation"):
+        calls = {call.name: call for call in owned_by.get(op.name, ())}
+        produced_futures: dict[str, tuple[Entity, int]] = {}
+        consumed: set[str] = set()
+        for idx, row in enumerate(op.rows):
+            if row.predicate in ("do", "start", "join", "poll") and row.payload:
+                call = calls.get(row.payload[0])
+                if call is None:
+                    continue
+                target = _call_target(call)
+                if call.kind == "call" and target in async_ops:
+                    out.append(Diagnostic(
+                        "SS1820", "warning",
+                        f"call {call.name!r} invokes async operation {target!r} "
+                        "through a synchronous `do`; use a task/start boundary and "
+                        "await/join/cancel it (README ss13/WS2-082)",
+                        call.line, call.name))
+                for arg in call.facts("arg"):
+                    if len(arg.payload) >= 3:
+                        consumed.add(arg.payload[2])
+                target_l = target.lower()
+                for out_row in _call_out_rows(call):
+                    out_type = out_row.payload[1] if len(out_row.payload) >= 2 else ""
+                    if ("future" in out_type.lower() or "taskgroup" in out_type.lower()
+                            or target_l.endswith("start") or "submit" in target_l):
+                        produced_futures[out_row.payload[0]] = (call, idx)
+            elif row.predicate == "return":
+                consumed.update(row.payload)
+            elif row.predicate == "branch":
+                consumed.update(_row_refs(row, calls))
+        for name, (call, _idx) in produced_futures.items():
+            if name in consumed or call.fact("discards") is not None:
+                continue
+            out.append(Diagnostic(
+                "SS1821", "warning",
+                f"future-like value {name!r} produced by {call.name!r} is never "
+                "awaited, joined, canceled, closed, returned, or otherwise consumed "
+                "(README ss13/WS2-082)",
+                call.line, call.name))
+    return out
+
+
+def _lint_json_sql_codec_parity(program: Program) -> list:
+    """WS2-087: parity checks that sit above signature validation."""
+    out: list[Diagnostic] = []
+    trusted_body_types = {
+        "JsonText": "json",
+        "SqlText": "sql",
+        "HtmlTemplate": "html",
+    }
+    for ent in program.entities_in_order():
+        if ent.kind == "storage":
+            typ = ent.fact("type")
+            value = ent.fact("value")
+            if (typ and typ.payload and typ.payload[0] in trusted_body_types
+                    and value is not None):
+                out.append(Diagnostic(
+                    "SS1870", "error",
+                    f"storage {ent.name!r} has type {typ.payload[0]} but uses a "
+                    "`value` literal; use a `body "
+                    f"{trusted_body_types[typ.payload[0]]}` island instead "
+                    "(README ss16/WS2-087)",
+                    value.line, ent.name))
+
+    owned_by = _calls_by_owner(program)
+    for op in program.of_kind("operation"):
+        calls = {call.name: call for call in owned_by.get(op.name, ())}
+        saw_insert = False
+        for row in op.rows:
+            if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
+                continue
+            call = calls.get(row.payload[0])
+            if call is None:
+                continue
+            target = _call_target(call)
+            if target.startswith("json.setObjectField") or target.startswith("json.find"):
+                out.append(Diagnostic(
+                    "SS1872", "error",
+                    f"call {call.name!r} uses deprecated JSON target {target!r}; "
+                    "use the current standard.json cursor/builder API "
+                    "(README ss16/WS2-087)",
+                    call.line, call.name))
+            if target.startswith("sqlite."):
+                sql_arg = next(
+                    (a for a in call.facts("arg")
+                     if len(a.payload) >= 3 and a.payload[0] == "sql"),
+                    None,
+                )
+                if sql_arg is not None and sql_arg.payload[2].startswith('"'):
+                    out.append(Diagnostic(
+                        "SS1871", "warning",
+                        f"call {call.name!r} passes inline SQL literal directly to "
+                        f"{target!r}; use SqlText storage with `body sql` "
+                        "(README ss16/WS2-087)",
+                        sql_arg.line, call.name))
+                sql_text = None
+                if sql_arg is not None:
+                    sql_text = program.islands.get((sql_arg.payload[2], "sql"))
+                verb = _sql_first_verb("\n".join(sql_text) if sql_text else "")
+                if target in ("sqlite.exec", "sqlite.prepareStatement", "sqlite.query"):
+                    if verb in ("INSERT", "REPLACE"):
+                        saw_insert = True
+                if target == "sqlite.lastInsertRowId" and not saw_insert:
+                    out.append(Diagnostic(
+                        "SS1873", "warning",
+                        f"call {call.name!r} reads sqlite.lastInsertRowId before a "
+                        "visible INSERT/REPLACE in the same operation "
+                        "(README ss19/WS2-087)",
+                        call.line, call.name))
+    return out
+
+
+_HTTP_BODY_WRITERS = frozenset({
+    "http.responseText",
+    "http.responseBytes",
+    "http.responseFile",
+    "http.responseSseEvent",
+    "http.respond",
+})
+
+
+def _lint_http_web_html_parity(program: Program) -> list:
+    """WS2-088: HTTP ordering/effect and unused-template checks."""
+    out: list[Diagnostic] = []
+    rendered_templates: set[str] = set()
+    owned_by = _calls_by_owner(program)
+    for op in program.of_kind("operation"):
+        calls = {call.name: call for call in owned_by.get(op.name, ())}
+        wrote_body_for: dict[str, int] = {}
+        wrote_response = False
+        for row in op.rows:
+            if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
+                continue
+            call = calls.get(row.payload[0])
+            if call is None:
+                continue
+            target = _call_target(call)
+            if target == "html.render":
+                template = _call_arg_value(call, "template")
+                if template:
+                    rendered_templates.add(template)
+            if target in _HTTP_BODY_WRITERS:
+                response = _call_arg_value(call, "response") or "*"
+                wrote_body_for.setdefault(response, row.line)
+                wrote_response = True
+            elif target == "http.responseHeader":
+                response = _call_arg_value(call, "response") or "*"
+                if response in wrote_body_for or "*" in wrote_body_for:
+                    first_line = wrote_body_for.get(response, wrote_body_for.get("*", row.line))
+                    out.append(Diagnostic(
+                        "SS2613", "error",
+                        f"call {call.name!r} sets a response header after a body "
+                        f"writer already ran at line {first_line}; set headers "
+                        "before body writes (README ss14/WS2-088)",
+                        call.line, call.name))
+                wrote_response = True
+        if wrote_response:
+            has_effect = any(
+                len(effect.payload) >= 2
+                and effect.payload[0] == "write"
+                and effect.payload[1] == "http.response"
+                for effect in op.facts("effect")
+            )
+            if not has_effect:
+                out.append(Diagnostic(
+                    "SS2614", "warning",
+                    f"operation {op.name!r} writes an HTTP response but declares "
+                    "no `effect write http.response` row (README ss8/ss14/WS2-088)",
+                    op.line, op.name))
+    for tmpl in program.of_kind("htmlTemplate"):
+        if tmpl.name not in rendered_templates:
+            out.append(Diagnostic(
+                "SS2615", "warning",
+                f"htmlTemplate {tmpl.name!r} is never referenced by an html.render "
+                "call (README ss16/WS2-088)",
+                tmpl.line, tmpl.name))
+    return out
+
+
+def _lint_structural_build_parity(program: Program) -> list:
+    """WS2-089 remaining structural/build papercuts."""
+    out: list[Diagnostic] = []
+    for mod in program.of_kind("module"):
+        path = mod.fact("path")
+        if not (path and path.payload):
+            continue
+        raw = _unquote_token(path.payload[0])
+        low = raw.lower()
+        if ("todo" in low or "placeholder" in low or "..." in raw
+                or "<" in raw or ">" in raw):
+            out.append(Diagnostic(
+                "SS1199M", "error",
+                f"module {mod.name!r} path {raw!r} still looks like a placeholder "
+                "(README ss7/WS2-089)",
+                path.line, mod.name))
+
+    owned_by = _calls_by_owner(program)
+    label_indexes = program.labels_by_owner()
+    for op in program.of_kind("operation"):
+        rows = op.rows
+        labels = label_indexes.get(op.name, {})
+        if not labels:
+            continue
+        calls = {call.name: call for call in owned_by.get(op.name, ())}
+        reported: set[tuple[str, int]] = set()
+        for gi, row in enumerate(rows):
+            if row.predicate == "goto" and row.payload:
+                target_label = row.payload[0]
+            elif row.predicate == "branch":
+                target_label = _branch_goto_target_and_guards(row, calls)[0]
+            else:
+                target_label = None
+            li = labels.get(target_label) if target_label is not None else None
+            if li is None or li > gi:
+                continue
+            for body_row in rows[li:gi + 1]:
+                if body_row.predicate not in ("do", "start", "join", "poll") or not body_row.payload:
+                    continue
+                call = calls.get(body_row.payload[0])
+                if call is None or _call_target(call) not in _WS2_RAW_ALLOC_TARGETS:
+                    continue
+                key = (call.name, body_row.line)
+                if key in reported:
+                    continue
+                reported.add(key)
+                out.append(Diagnostic(
+                    "SS1036", "warning",
+                    f"raw allocation call {call.name!r} ({_call_target(call)}) is "
+                    "inside a back-edge loop body (README ss13/WS2-089)",
+                    body_row.line, op.name))
+    return out
+
+
+def _numeric_ir_kind(program: Program, type_name: str):
+    """BIN-6: the IR-level numeric kind of a type, or None if non-numeric. Two
+    types share a kind iff they lower to the same IR scalar: ints by width
+    (Int32/UInt32/ExitCode -> ('i',32)), floats by width. Aliases resolve to their
+    base, so a Decimal/Money (Int64-backed) reads as ('i',64)."""
+    c = _resolve_through_aliases(program, type_name)
+    if c in _INT_WIDTHS:
+        return ("i", _INT_WIDTHS[c])
+    if c in _FLOAT_TYPE_NAMES:
+        return ("f", 32 if c == "Float32" else 64)
+    return None
+
+
+def _validate_numeric_arg_coercion(program: Program) -> list:
+    """BIN-6: numeric coercion is a TYPE-SYSTEM rule, not a codegen reject. A call
+    arg whose declared type and the value binding's ACTUAL type are different
+    numeric IR kinds (`arg left Int64 a` where `a` is Int32; an int where a float
+    is declared) matches the signature so the slot check passes, but i32!=i64 then
+    crashes the code generator (SS5001). Catch it here with a clear convert.* hint
+    instead. Same-IR-kind differences (Int32 vs UInt32, an alias vs its base) are
+    NOT flagged — they lower to the same scalar and need no conversion."""
+    out: list = []
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        owner = ent.fact("in")
+        if not (owner and owner.payload):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        # Scope to the strict-IR numeric intrinsics (math.*), whose codegen builds
+        # an exact-width IR call from the declared arg types and so REJECTS a
+        # width/kind mismatch. Other targets (pointer.storeByte, set, console.*,
+        # sqlite/json binds) explicitly width-coerce (zext/trunc), so a numeric
+        # mismatch there lowers fine and must NOT be flagged (e.g. taskforge-tui
+        # stores an Int32 byte into an Int64 column slot, which is legal).
+        if not target.startswith("math."):
+            continue
+        types = _fmt_binding_types(program, owner.payload[0])
+        for a in ent.facts("arg"):
+            if len(a.payload) < 3:
+                continue
+            decl, value = a.payload[1], a.payload[2]
+            actual = types.get(value)
+            if actual is None:
+                continue  # a literal / unresolved value — out of scope
+            dk, ak = _numeric_ir_kind(program, decl), _numeric_ir_kind(program, actual)
+            if dk is not None and ak is not None and dk != ak:
+                out.append(Diagnostic(
+                    "SS3112", "error",
+                    f"call {ent.name!r} passes {value!r} (type {actual}) as arg "
+                    f"{a.payload[0]!r} declared {decl} — those are different "
+                    f"numeric types and EAV has no implicit coercion; convert "
+                    f"explicitly (e.g. `convert.to{decl} {value}`) so width/kind "
+                    f"is exact (README ss10.6)", a.line, ent.name))
+    return out
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -7350,6 +7766,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_console_unlowerable_errors(program))
     diags.extend(_lint_result_nil_error_loss(program))
     diags.extend(_lint_intrinsic_arg_slots(program))
+    diags.extend(_validate_numeric_arg_coercion(program))
     diags.extend(_lint_unhandled_value_read(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))

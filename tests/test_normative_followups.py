@@ -262,3 +262,39 @@ def test_bin3_cstring_view_escaping_its_handle_is_rejected():
 
 def test_bin3_cstring_seeded_as_noescape_view_builtin():
     assert "c.cString" in semanticscript._INTRINSIC_VIEW_NOESCAPE_BUILTINS
+
+
+# --- BIN-6: numeric coercion is a type-system rule, not a codegen reject ---
+
+_MATH_ARG = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path x\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+    "main invariant \"i\"\nmain let a immutable {ATYPE} 5\nmain let b immutable Int64 7\n"
+    "main do addCall\nmain return z\n"
+    "z is storage\nz scope module\nz type Int32\nz value 0\n"
+    "addCall is call\naddCall in main\naddCall invokes math.addInt64\n"
+    "addCall arg left Int64 a\naddCall arg right Int64 b\naddCall out r Int64\n"
+)
+
+
+def test_bin6_mislabeled_numeric_arg_is_a_check_error_not_codegen_reject():
+    # `arg left Int64 a` where a is Int32: passes the slot check (declared Int64
+    # matches the sig) but i32!=i64 crashes codegen — now SS3112 at check time.
+    assert "SS3112" in _codes(_MATH_ARG.replace("{ATYPE}", "Int32"))
+
+
+def test_bin6_correctly_typed_numeric_arg_is_clean():
+    assert "SS3112" not in _codes(_MATH_ARG.replace("{ATYPE}", "Int64"))
+
+
+def test_bin6_numeric_ir_kind_groups_by_lowered_scalar():
+    prog = semanticscript.parse(_MATH_ARG.replace("{ATYPE}", "Int64"))
+    k = semanticscript._numeric_ir_kind
+    # same lowered scalar -> same kind (no spurious coercion error)
+    assert k(prog, "Int32") == k(prog, "UInt32") == k(prog, "ExitCode") == ("i", 32)
+    assert k(prog, "Int64") == ("i", 64)
+    assert k(prog, "Float32") == ("f", 32) and k(prog, "Float64") == ("f", 64)
+    assert k(prog, "Int32") != k(prog, "Int64")        # width differs -> flagged
+    assert k(prog, "String") is None                   # non-numeric -> ignored
