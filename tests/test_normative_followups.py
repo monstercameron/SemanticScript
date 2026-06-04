@@ -64,11 +64,47 @@ def test_aq2_qualified_imported_capability_covers_effect():
 
 
 def test_aq2_genuinely_missing_capability_still_uncovered():
-    # a qualified name whose tail names no capability stays uncovered (sound).
-    # SS1708 is a deny-tier hard error, raised (not returned) by lint.
+    # a qualified name whose tail names no capability stays uncovered (sound) —
+    # this fixture declares NO imports, so an unresolved `uses` is a real error,
+    # not a deferred import. SS1708 is a deny-tier hard error, raised by lint.
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.lint(semanticscript.parse(
             _AQ2.replace("{USES}", "authMod.noSuchCap")))
+    assert exc.value.code == "SS1708"
+
+
+# AQ-2 (the pervasive case): single-file inspection of a module that USES a
+# capability defined in another module (imported) must not false-error SS1708 —
+# the capability is genuinely absent from the single file, so coverage is deferred
+# to the project-level compose.
+_AQ2_IMPORTED = (
+    "storeModule is module\nstoreModule path app.store\n"
+    "storeModule imports auth app.auth\nstoreModule exports saveItem\n"
+    "storeModule purpose \"p\"\nstoreModule invariant \"i\"\n"
+    "ConsoleWriteError is error\nExitCode is alias\nExitCode for Int32\n"
+    "saveItem is operation\nsaveItem out ExitCode\n"
+    "saveItem effect write console.stdout\nsaveItem uses auth.stdoutWriter\n"
+    "saveItem async no\nsaveItem purpose \"p\"\nsaveItem invariant \"i\"\n"
+    "saveItem let line immutable String \"saved\"\n"
+    "saveItem let z immutable ExitCode 0\nsaveItem do w\nsaveItem return z\n"
+    "w is call\nw in saveItem\nw invokes console.writeLine\nw arg text String line\n"
+    "w catch e ConsoleWriteError\n"
+)
+
+
+def test_aq2_single_file_imported_capability_not_false_uncovered():
+    # `uses auth.stdoutWriter` — auth is a declared import alias; the capability
+    # lives in module app.auth, absent in this single file. Must NOT raise SS1708.
+    assert "SS1708" not in _codes(_AQ2_IMPORTED)
+
+
+def test_aq2_unresolved_uses_without_imports_still_errors():
+    # Remove the `imports` row: now the unresolved `uses auth.stdoutWriter` is not
+    # a deferred import — it is a genuine coverage gap, so SS1708 still fires.
+    no_imports = _AQ2_IMPORTED.replace(
+        "storeModule imports auth app.auth\n", "")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.lint(semanticscript.parse(no_imports))
     assert exc.value.code == "SS1708"
 
 

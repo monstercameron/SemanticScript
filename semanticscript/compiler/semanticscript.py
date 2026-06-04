@@ -8705,6 +8705,14 @@ def _validate_effect_coverage(program: Program) -> None:
     uncovered effect — including one introduced by an activated call — is a
     deny-tier error (WS2-090)."""
     cap_grants = _capability_grants(program)
+    # AQ-2: a module being inspected in ISOLATION may `uses` a capability that
+    # lives in another module (imported). Those capabilities are absent from the
+    # single-file program, so their coverage cannot be decided locally. Collect
+    # the declared import aliases so an unresolved-but-imported `uses` is deferred
+    # to the project-level compose instead of false-erroring SS1708.
+    import_aliases = {imp.payload[0] for e in program.entities.values()
+                      if e.kind == "module" for imp in e.facts("imports") if imp.payload}
+    has_imports = bool(import_aliases)
     for name in program.order:
         op = program.entities[name]
         if op.kind not in ("operation", "function"):
@@ -8715,6 +8723,24 @@ def _validate_effect_coverage(program: Program) -> None:
         if _op_body_kind(op) in ("runtimeBinding", "intrinsic"):
             continue
         own = _op_capability_grants(op, cap_grants)
+        # AQ-2: defer coverage for an op that `uses` a capability resolving to
+        # nothing here but plausibly imported (qualified by a declared import
+        # alias, or this is a module fragment with imports). The project-level
+        # check (load_project), where the imported capability IS present,
+        # enforces it; a single-file view must not hard-error on what it cannot see.
+        deferred_imported = False
+        for u in op.facts("uses"):
+            if not u.payload:
+                continue
+            nm = u.payload[0]
+            tail = nm.rsplit(".", 1)[-1] if "." in nm else nm
+            if cap_grants.get(nm) is None and cap_grants.get(tail) is None:
+                prefix = nm.split(".", 1)[0] if "." in nm else None
+                if (prefix in import_aliases) or has_imports:
+                    deferred_imported = True
+                    break
+        if deferred_imported:
+            continue
         for action, resource in sorted(_effective_effects(program, op, set())):
             if not _effect_path_covers(own, action, resource):
                 raise EavError(
