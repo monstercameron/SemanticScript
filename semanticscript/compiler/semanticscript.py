@@ -1797,6 +1797,10 @@ def _synthetic_codegen_signatures() -> dict:
         risk="Traps on null pointer")
     add("c.terminalReadKey", [], "Int32", "keyCode",
         purpose="Read one terminal key code; EOF maps to the Escape key")
+    add("c.terminalColumns", [], "Int32", "columns",
+        purpose="Return the terminal width in columns, with a deterministic fallback")
+    add("c.terminalRows", [], "Int32", "rows",
+        purpose="Return the terminal height in rows, with a deterministic fallback")
     add("c.putchar", [("character", "Int32")], "Int32", "status",
         purpose="Write one byte/character to stdout")
     add("c.puts", [("text", "String")], "Int32", "status",
