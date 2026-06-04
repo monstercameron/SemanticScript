@@ -24673,6 +24673,59 @@ def _install_subsystem_recipe_skills() -> None:
 _install_subsystem_recipe_skills()
 
 
+# AQ-9 / S4: every scaffold pattern — especially the multi-subsystem composition
+# ones (db-roundtrip = sqlite+SqlText+cleanup, json-output = json doc build,
+# logged-op = op+log effect, handler-route = webServer+handler) — must be reachable
+# from `skills`, not only `scaffold <name>`. The recurring DX dead-end was a
+# composition idiom that "belongs in a cookbook not reachable from the tool"; this
+# makes the proven (check-clean + lowerable, guarded by the TRUST-2 corpus) scaffolds
+# discoverable as recipes too.
+_SCAFFOLD_RECIPE_BODIES = {
+    "db-roundtrip": (
+        "Composition recipe (sqlite + SqlText + owned cleanup): "
+        "`semanticscript scaffold db-roundtrip` opens an in-memory db, runs DDL + "
+        "insert + select with `SqlText` body islands, reads a column back, and "
+        "releases the db/statement handles via `owns ... cleanedBy`. Copy it, then "
+        "`check --strict` and `verify`/`build` (sqlite is native-runtime — prove via "
+        "`build`, not JIT)."),
+    "json-output": (
+        "Composition recipe (json document build + serialize): "
+        "`semanticscript scaffold json-output` creates a json document, serializes "
+        "it through a scratch buffer, and prints it, releasing the document + scratch. "
+        "Set fields with `targets --signature json.* --json` (the write surface is "
+        "mid-migration — check the signed targets before relying on a setter)."),
+    "logged-op": (
+        "Composition recipe (operation + log effect + capability): "
+        "`semanticscript scaffold logged-op` wires a `log.*` call with its covering "
+        "`effect`/`uses` capability rows. Copy it, then `check --strict`; logging is "
+        "native-runtime, so prove output with `build`/`verify`."),
+    "handler-route": (
+        "Composition recipe (webServer + typed handler): `semanticscript scaffold "
+        "handler-route` declares a route bound to a (request, response) -> Int32 "
+        "handler with the §14 ABI. Cross-request state must come from module storage "
+        "opened per-request, NOT a startup-owned handle (see SS2616)."),
+}
+
+
+def _install_scaffold_recipe_skills() -> None:
+    for pattern in SCAFFOLD_PATTERNS:
+        key = f"eav-scaffold-{pattern}"
+        if key in EAV_SKILLS:
+            continue
+        body = _SCAFFOLD_RECIPE_BODIES.get(
+            pattern,
+            f"Runnable {pattern} template: `semanticscript scaffold {pattern}` emits a "
+            f"complete, check-clean, lowerable program. Copy it, then `check --strict`, "
+            f"`fmt --check`, and `verify`/`run`/`build` to prove behavior.")
+        EAV_SKILLS[key] = {
+            "summary": f"Runnable {pattern} scaffold recipe (composition idiom).",
+            "body": body,
+        }
+
+
+_install_scaffold_recipe_skills()
+
+
 def _next_command(argv: list, description: str, replayable: bool = True) -> dict:
     """A machine-facing next-step descriptor (README §24/§32.3 #20)."""
     return {"argv": argv, "command": "semanticscript " + " ".join(argv),
