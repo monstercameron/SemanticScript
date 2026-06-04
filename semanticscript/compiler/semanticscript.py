@@ -619,6 +619,9 @@ DIAGNOSTICS.update({
     "SS2502": {"tier": "T1", "summary": "Binding used before it is in scope.",
                "found": "A call result used before its `do`, or a catch var on the success path.",
                "suggested": "Reference the binding only after it is produced (README §25)."},
+    "SS3306": {"tier": "T1", "summary": "String literal bound to a non-text type.",
+               "found": "A quoted `\"...\"` literal initializing a `let`/`arg` whose type resolves to a non-String type (e.g. `ExitCode \"\"`).",
+               "suggested": "Use a literal of the declared type (an integer/enum/bool), or change the type to String/a text alias (README ss2/ss10; TRUST-1/R-7)."},
     "SS3390": {"tier": "T1", "summary": "Indirect-call arity mismatch.",
                "found": "An `invokes <binding>` with the wrong number of args for its operationType.",
                "suggested": "Pass exactly the operationType's input count (README §33.10)."},
@@ -4143,6 +4146,22 @@ def _validate_value_literal(
     led by a digit is an integer literal (README ss2/ss33.1); when the annotated
     type is an integer primitive, the literal is range-checked (README ss33.6)."""
     if not tok:
+        return
+    # TRUST-1 (R-7): a quoted string literal only initializes a String/text-backed
+    # type. Bound to a non-text type (e.g. `let codeVal ExitCode ""`) it slips past
+    # the numeric/identifier checks below — which skip strings — yet crashes codegen
+    # ("'\"\"' is not in scope, expected an integer binding"): a check-clean program
+    # that doesn't lower. Codegen accepts a `"..."` literal ONLY when the type
+    # resolves to String, so reject any other target at check time (check ⊇ codegen).
+    if tok[0] == '"' and type_name is not None:
+        resolved = _resolve_alias(type_name, alias_map or {})
+        if resolved != "String":
+            raise EavError(
+                f"string literal {tok!r} cannot initialize a value of type "
+                f"{type_name!r} (resolves to {resolved!r}); a quoted literal is "
+                f"valid only for a String/text type (README ss2/ss10)",
+                line, code="SS3306",
+            )
         return
     core = tok
     if tok[0] == "-":

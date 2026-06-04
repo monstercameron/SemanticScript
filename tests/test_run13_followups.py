@@ -98,6 +98,33 @@ def test_trust1_enum_shadowing_builtin_role_type_lowers():
     semanticscript.lower_to_llvm(prog)
 
 
+def test_trust1_string_literal_to_nontext_type_is_a_check_error():
+    """TRUST-1 (R-7): a quoted string literal bound to a non-text type (`let codeVal
+    ExitCode ""`) used to pass `check` — the numeric/identifier validators skip
+    strings — then crash codegen ("not in scope, expected an integer binding"). It
+    must now be a check-time error (SS3306), and a String/text target still accepts
+    the literal."""
+    bad = ("P is project\nP module m\nP target console\nP entry main\n"
+           "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+           "ExitCode is alias\nExitCode for Int32\n"
+           "g is operation\ng out ExitCode\ng async no\ng purpose \"p\"\ng invariant \"i\"\n"
+           "g let codeVal immutable ExitCode \"\"\ng return codeVal\n"
+           "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+           "main invariant \"i\"\nmain let z immutable ExitCode 0\nmain return z\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(bad)
+    assert exc.value.code == "SS3306"
+    # a String/text target still accepts a string literal — clean parse.
+    semanticscript.parse(
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "g is operation\ng out String\ng async no\ng purpose \"p\"\ng invariant \"i\"\n"
+        "g let s immutable String \"\"\ng return s\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+        "main invariant \"i\"\nmain let z immutable ExitCode 0\nmain return z\n")
+
+
 def test_trust1_json_output_scaffold_checks_clean_and_lowers():
     """The json-output scaffold (a documented, agent-reachable idiom) must not be a
     false green: it builds a `JsonValueKind` enum + `json.createEmptyDocument` and
