@@ -613,6 +613,9 @@ DIAGNOSTICS.update({
     "SS2616": {"tier": "T2", "summary": "webServer startup-owned handle cannot reach request handlers.",
                "found": "A `startup`/`shutdown` handler owns a resource (e.g. an opened DB) with no cleanup; request handlers receive only (request, response) (README §14), so a startup-opened handle/connection cannot propagate to them — yielding a silent fresh/0-byte resource per request (WEB-1/R-9).",
                "suggested": "Share cross-request state through module `storage`/`sharedState` (a connection path/config) and open the resource per-request in the handler, or release the startup-owned handle before `startup` returns (README §14)."},
+    "SS2617": {"tier": "T1", "summary": "webServer handler names an undefined operation.",
+               "found": "A webServer `route`/`notFound`/`methodNotAllowed`/`startup`/`shutdown`/`middleware` row references a handler that is not a declared operation (a typo'd or missing handler).",
+               "suggested": "Declare the handler operation, or fix the name to a defined one — every handler reference is resolved at check from the same registry codegen uses (README §14; R-11)."},
     "SS1810": {"tier": "T3", "summary": "Raw resource producer lacks ownership metadata.",
                "found": "A direct raw-resource target creates a handle or allocation but "
                         "the call declares no `owns`/`cleanedBy` contract.",
@@ -9003,6 +9006,52 @@ def _lint_enum_typed_value(program: Program) -> list:
     return diags
 
 
+def _lint_webserver_handler_resolution(program: Program) -> list:
+    """R-11 (Root A): a webServer handler reference must resolve to a declared
+    operation at CHECK time. An undefined `route`/`notFound`/`methodNotAllowed`/
+    `startup`/`shutdown`/`middleware` handler slipped past the static lint and was
+    caught only at codegen ("build, not check") — a typo'd handler name was a false
+    green. Resolve every handler from the same entity registry codegen uses; an
+    unresolved one is SS2617 at check."""
+    # R-15: defer on a partial multi-module view. A single-file check of an app whose
+    # webServer lives in one module but whose handlers live in sibling modules would
+    # otherwise false-flag every cross-module handler. If the program imports a
+    # non-stdlib module that is not itself present, a handler may legitimately be
+    # defined there — only the composed project (every module present) resolves them.
+    present_paths = {p.payload[0] for m in program.of_kind("module")
+                     for p in (m.fact("path"),) if p and p.payload}
+    for m in program.of_kind("module"):
+        for imp in m.facts("imports"):
+            if (len(imp.payload) >= 2 and not imp.payload[1].startswith("standard.")
+                    and imp.payload[1] not in present_paths):
+                return []
+    ops = {n for n, e in program.entities.items()
+           if e.kind in ("operation", "function")}
+    diags: list = []
+    for ws in program.of_kind("webServer"):
+        for r in ws.facts("route"):                 # route METHOD path handler
+            if len(r.payload) >= 3 and r.payload[2] not in ops:
+                diags.append(Diagnostic(
+                    "SS2617", "error",
+                    f"webServer {ws.name!r} route {r.payload[0]} {r.payload[1]} names "
+                    f"handler {r.payload[2]!r}, which is not a defined operation "
+                    f"(README §14)", r.line, ws.name))
+        for pred in ("notFound", "methodNotAllowed", "startup", "shutdown"):
+            for r in ws.facts(pred):                 # <pred> handler
+                if r.payload and r.payload[0] not in ops:
+                    diags.append(Diagnostic(
+                        "SS2617", "error",
+                        f"webServer {ws.name!r} {pred} handler {r.payload[0]!r} is not "
+                        f"a defined operation (README §14)", r.line, ws.name))
+        for r in ws.facts("middleware"):             # middleware <name> handler
+            if len(r.payload) >= 2 and r.payload[1] not in ops:
+                diags.append(Diagnostic(
+                    "SS2617", "error",
+                    f"webServer {ws.name!r} middleware handler {r.payload[1]!r} is not "
+                    f"a defined operation (README §14)", r.line, ws.name))
+    return diags
+
+
 def _enum_variant_payload_decl(program: Program, enum_ent: Entity, variant: str) -> Optional[str]:
     for row in enum_ent.facts("variant"):
         if row.payload and row.payload[0] == variant:
@@ -9824,6 +9873,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_string_accumulator_in_loop(program))
     diags.extend(_lint_unknown_enum_variant(program))
     diags.extend(_lint_enum_typed_value(program))
+    diags.extend(_lint_webserver_handler_resolution(program))
     diags.extend(_lint_constructor_payload_shape(program))
     diags.extend(_lint_generic_instantiation_arity(program))
     diags.extend(_lint_handle_equality_contract(program))

@@ -65,6 +65,46 @@ def test_r08_valid_variant_and_binding_ref_are_accepted():
     assert not [c for c, _ in _lint_codes(src) if c == "SS1033"]
 
 
+# --- R-11: an undefined webServer route handler is a check (not codegen) error ---
+
+def _webserver(route_handler, extra="", imports=""):
+    return (
+        "W is project\nW module m\nW target webServer\nW entry api\n"
+        "m is module\nm path m\nm exports api\nm purpose \"p\"\nm invariant \"i\"\n"
+        + imports +
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "api is webServer\napi host \"0.0.0.0\"\napi port 8080\n"
+        f"api route GET \"/x\" {route_handler}\n" + extra)
+
+
+_REAL_HANDLER = (
+    "realHandler is operation\nrealHandler in request HttpRequest\n"
+    "realHandler in response HttpResponse\nrealHandler out Int32\n"
+    "realHandler async no\nrealHandler purpose \"p\"\nrealHandler invariant \"i\"\n"
+    "realHandler let st immutable Int32 200\nrealHandler return st\n")
+
+
+def test_r11_undefined_route_handler_is_a_check_error():
+    """R-11 (Root A): an undefined route handler was caught only at codegen
+    ("build, not check") — a false green. It is now SS2617 in the static lint."""
+    codes = _lint_codes(_webserver("missingHandler"))
+    assert any(c == "SS2617" and "missingHandler" in m for c, m in codes), codes
+    # a defined handler resolves cleanly.
+    assert not [c for c, _ in _lint_codes(
+        _webserver("realHandler", extra=_REAL_HANDLER)) if c == "SS2617"]
+
+
+def test_r11_defers_on_a_partial_multi_module_view():
+    """R-15: a single-file check of an app whose handler lives in an imported sibling
+    module must NOT false-flag it — the handler resolves only in the composed
+    project. A non-stdlib import of an absent module defers the check."""
+    src = _webserver("homePageHandler",
+                     imports="m imports pages app.demo.pages\n")
+    assert not [c for c, _ in _lint_codes(src) if c == "SS2617"], \
+        "must defer when the handler may live in an absent imported module"
+
+
 # --- R-09: `fix`/`patch` auto-inserts the missing `branch ifError` error path ---
 
 _SS3501_PROG = (
