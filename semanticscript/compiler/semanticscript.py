@@ -3063,16 +3063,23 @@ def mod_tidy(build_program: Program) -> str:
     tc = proj.fact("toolchain")
     if tc and tc.payload:
         lines.append(f"{proj.name} toolchainResolved {tc.payload[0]}")
+    effect_surface: set[tuple[str, str]] = set()
     for repo in sorted(selected):
         ver = selected[repo]
-        local = (_resolve_local_replace(root, replacements[repo])
-                 if repo in replacements else None)
-        digest = (_local_artifact_digest(local) if local is not None
-                  else sha256_hex(f"{repo}@{ver}".encode("utf-8")))  # deterministic stub
+        artifact = _resolve_dependency_artifact(
+            root, repo, ver, replacement=replacements.get(repo))
+        if artifact is None:
+            raise EavError(
+                f"dependency {repo!r}@{ver} has no materialized artifact; "
+                f"add a replace row, populate the module cache, or vendor it "
+                f"before running mod tidy (README ss28.4/R-081)",
+                code="SS2804",
+            )
+        artifact_path, digest = artifact
+        effect_surface.update(_local_artifact_effects(artifact_path))
         lines.append(f"{proj.name} resolved {repo} {ver} sha256 {digest}")
-    for r in proj.facts("allowEffect"):
-        if len(r.payload) >= 2:
-            lines.append(f"{proj.name} effectSurface {r.payload[0]} {r.payload[1]}")
+    for action, target in sorted(effect_surface):
+        lines.append(f"{proj.name} effectSurface {action} {target}")
     return "\n".join(lines) + "\n"
 
 
@@ -3093,27 +3100,18 @@ def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
         if len(r.payload) >= 2
     ]
     surface_set = set(surface)
-    resolved_digests = _resolved_digest_by_repo(lock_program)
+    resolved_deps = _resolved_dependencies(lock_program)
     root = _manifest_source_root(build_program)
     for proj in builds:
-        for repo, replacement in _manifest_replace_map(proj).items():
-            local = _resolve_local_replace(root, replacement)
-            if local is None:
-                continue
-            actual_digest = _local_artifact_digest(local)
-            locked_digest = resolved_digests.get(repo)
-            if locked_digest != actual_digest:
-                raise EavError(
-                    f"resolved dependency {repo!r} digest is stale or tampered: "
-                    f"lock has {locked_digest!r}, local artifact is "
-                    f"sha256 {actual_digest} (README ss28.4/R-081)",
-                    code="SS2804",
-                )
-            missing_effects = sorted(_local_artifact_effects(local) - surface_set)
+        replacements = _manifest_replace_map(proj)
+        for repo, (version, digest) in sorted(resolved_deps.items()):
+            artifact_path, _actual_digest = _prove_dependency_artifact(
+                root, repo, version, digest, replacement=replacements.get(repo))
+            missing_effects = sorted(_local_artifact_effects(artifact_path) - surface_set)
             if missing_effects:
                 raise EavError(
                     f"dependency {repo!r} lock effectSurface omits effects "
-                    f"{missing_effects} present in the local replacement artifact "
+                    f"{missing_effects} present in the materialized artifact "
                     f"(README ss28.5/R-081)",
                     code="SS2805",
                 )
@@ -5167,6 +5165,163 @@ def normalize_preview(source: str) -> dict:
     }
 
 
+def _line_origin_map_for_output(output: str, expanded_eav: str,
+                                expanded_line_map: list[int]) -> list[dict]:
+    """Map formatted canonical output lines back to the source line that produced
+    the equivalent expanded EAV row. Formatting may reorder entities/rows, so the
+    map is content-based with per-row queues rather than positional."""
+    from collections import defaultdict, deque
+
+    origins: dict[str, deque] = defaultdict(deque)
+    for idx, line in enumerate(expanded_eav.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        origin = expanded_line_map[idx - 1] if idx - 1 < len(expanded_line_map) else idx
+        origins[line].append(origin)
+
+    mapped: list[dict] = []
+    for idx, line in enumerate(output.splitlines(), start=1):
+        source_line = None
+        if line.strip():
+            queue = origins.get(line)
+            if queue:
+                source_line = queue.popleft()
+        mapped.append({"outputLine": idx, "sourceLine": source_line, "text": line})
+    return mapped
+
+
+def _mapped_lint_diagnostics(program: Program, expanded_line_map: list[int]) -> list[dict]:
+    """Lint diagnostics with both expanded-EAV and original-source line numbers.
+    This is the migration-time source-map proof agents need when reviewing a
+    converted current/compact file."""
+    out: list[dict] = []
+    for diag in lint(program):
+        source_line = None
+        if diag.line is not None and 1 <= diag.line <= len(expanded_line_map):
+            source_line = expanded_line_map[diag.line - 1]
+        out.append({
+            "code": diag.code,
+            "severity": diag.severity,
+            "line": diag.line,
+            "sourceLine": source_line,
+            "entity": diag.entity,
+            "message": diag.message,
+            "rendered": diag.render(),
+        })
+    return out
+
+
+def _migration_operation_slice(program: Program, name: str) -> str:
+    """Canonical edit slice for migrating one operation. Unlike the general
+    `slice` helper, migration must remain parse-valid on its own, so referenced
+    capabilities are included with the operation and activated call/task rows."""
+    root = program.entities.get(name)
+    if root is None or root.kind not in ("operation", "function"):
+        raise EavError(f"no operation named {name!r}")
+    included = [name]
+    seen = {name}
+
+    def add(entity_name: str) -> None:
+        if entity_name in program.entities and entity_name not in seen:
+            seen.add(entity_name)
+            included.append(entity_name)
+
+    for row in root.rows:
+        if row.predicate in _STEP_SPLIT and row.payload:
+            ref = program.entities.get(row.payload[0])
+            if ref is None:
+                continue
+            add(ref.name)
+            if ref.kind == "cleanup":
+                cr = ref.fact("call")
+                if cr and cr.payload:
+                    add(cr.payload[0])
+    for entity_name in list(included):
+        ent = program.entities[entity_name]
+        for row in ent.facts("uses"):
+            if row.payload:
+                add(row.payload[0])
+
+    blocks = [
+        format_entity(program.entities[entity_name], program)
+        for entity_name in sorted(
+            included,
+            key=lambda n: (_kind_rank(program.entities[n].kind), program.order.index(n)),
+        )
+    ]
+    return "\n\n".join(blocks) + "\n"
+
+
+def migrate_syntax(source: str, from_surface: str = "auto",
+                   to_surface: str = "canonical",
+                   operation: Optional[str] = None,
+                   role: str = "source") -> dict:
+    """Convert the compact/current authoring surface to canonical EAV.
+
+    `current` is the historical verb-led profile now parsed by the compact
+    expander. The result carries row-count/edit-locality deltas plus a formatted
+    output -> original-source line map, so migration diagnostics stay reviewable.
+    """
+    if to_surface not in ("canonical", "eav"):
+        raise EavError(f"unsupported migration target {to_surface!r}; expected canonical")
+    if from_surface not in ("auto", "current", "compact", "eav"):
+        raise EavError(f"unsupported migration source {from_surface!r}")
+
+    if from_surface == "eav":
+        expanded_eav = source.replace("\r\n", "\n").replace("\r", "\n")
+        expanded_line_map = list(range(1, len(expanded_eav.split("\n")) + 1))
+    else:
+        expanded_eav, expanded_line_map = expand_compact_to_eav(source)
+
+    program = parse(expanded_eav)
+    if operation:
+        canonical = _migration_operation_slice(program, operation)
+        scope = "operation"
+    else:
+        canonical = format_program(program, role=role)
+        scope = "whole-file"
+
+    reparsed = parse(canonical)
+    reformatted = format_program(reparsed, role=role)
+    output_map = _line_origin_map_for_output(canonical, expanded_eav, expanded_line_map)
+    mapped_source_lines = sorted({
+        entry["sourceLine"] for entry in output_map if entry["sourceLine"] is not None
+    })
+    source_rows_in_scope = sum(
+        1 for line_no in mapped_source_lines
+        if 1 <= line_no <= len(source.splitlines())
+        and source.splitlines()[line_no - 1].strip()
+        and not source.splitlines()[line_no - 1].lstrip().startswith("#")
+    )
+    if not operation:
+        source_rows_in_scope = _authoring_row_count(source)
+
+    canonical_rows = _logical_row_count(reparsed)
+    return {
+        "ok": True,
+        "status": "ok",
+        "fromSurface": from_surface,
+        "toSurface": "canonical",
+        "scope": scope,
+        "operation": operation,
+        "sourceRows": _authoring_row_count(source),
+        "sourceRowsInScope": source_rows_in_scope,
+        "canonicalRows": canonical_rows,
+        "rowDelta": canonical_rows - source_rows_in_scope,
+        "changed": canonical.strip() != source.strip(),
+        "roundTripPreserved": reformatted == canonical,
+        "editLocality": {
+            "scope": scope,
+            "sourceLineCount": len(mapped_source_lines),
+            "outputLineCount": len(canonical.splitlines()),
+            "mappedSourceLines": mapped_source_lines,
+        },
+        "sourceMap": output_map,
+        "diagnostics": _mapped_lint_diagnostics(program, expanded_line_map),
+        "canonical": canonical,
+    }
+
+
 ADOPTION_GATE_THRESHOLDS = {
     "compact": 20.0,
     "current": 20.0,
@@ -6247,8 +6402,8 @@ def scaffold(pattern: str) -> str:
             'dbRoundtripModule invariant "The selected value comes from sqlite"\n\n'
             "ExitCode is alias\nExitCode for Int32\n"
             "SqlText is alias\nSqlText for String\nSqlText typeTrust validated\n"
-            "SqliteDatabase is alias\nSqliteDatabase for Int64\n"
-            "SqliteStatement is alias\nSqliteStatement for Int64\n"
+            "SqliteDatabase is alias\nSqliteDatabase for OpaquePointer\n"
+            "SqliteStatement is alias\nSqliteStatement for OpaquePointer\n"
             "SqliteStepResult is alias\nSqliteStepResult for Int32\n\n"
             "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
             "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
@@ -19933,27 +20088,17 @@ def cmd_profile(args) -> int:
     return 0
 
 
-def cmd_repin(args) -> int:
-    """Re-pin dependencies: regenerate `build.sem.lock` from a `build.sem`
-    manifest via MVS (deterministic). `--check` verifies the existing lock is
-    current without writing (CI gate). (TOOL-7; sem.repin.v1)
-
-    The network/registry-dependent legacy ops (download/get/latest/update/self)
-    are deferred until a package registry exists (no remote fetch in beta)."""
+def _lock_command(path: str, *, check: bool = False, want_json: bool = False,
+                  surface: str = "sem.repin.v1") -> int:
     import os
-    path = args.path
-    if os.path.isdir(path):
-        build_path = os.path.join(path, "build.sem")
-    else:
-        build_path = path  # a build.sem manifest (or any project manifest)
-    want_json = getattr(args, "json", False)
+    build_path = _build_manifest_path(path)
 
     def _repin_fail(msg, status):
         # R-115: a repin failure is a sem.repin.v1 envelope under --json, not a
         # plaintext stderr line an agent can't parse.
         if want_json:
             sys.stdout.write(_json_envelope(
-                "sem.repin.v1", ok=False, status=status, error=msg) + "\n")
+                surface, ok=False, status=status, error=msg) + "\n")
         else:
             sys.stderr.write(f"semanticscript: {msg}\n")
         return 2
@@ -19977,10 +20122,10 @@ def cmd_repin(args) -> int:
             existing = fh.read()
     up_to_date = existing == lock_text
 
-    if getattr(args, "check", False):
-        if getattr(args, "json", False):
+    if check:
+        if want_json:
             sys.stdout.write(_json_envelope(
-                "sem.repin.v1", ok=up_to_date,
+                surface, ok=up_to_date,
                 status="up-to-date" if up_to_date else "stale",
                 lockPath=lock_path, upToDate=up_to_date, wrote=False) + "\n")
         else:
@@ -19988,22 +20133,182 @@ def cmd_repin(args) -> int:
                   f"{lock_path}")
         return 0 if up_to_date else 1
 
-    # R-115: write the lock atomically (temp + fsync + replace) so a crash or a
-    # concurrent run can never truncate the existing lock that future checks treat
-    # as a source-of-truth input.
-    _tmp = f"{lock_path}.tmp{os.getpid()}"
-    with open(_tmp, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(lock_text)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(_tmp, lock_path)
+    # R-115/R-047: write the lock atomically (temp + fsync + replace) so a crash
+    # or concurrent run can never truncate the source-of-truth lock file.
+    _write_text_atomic(lock_path, lock_text)
     if want_json:
         sys.stdout.write(_json_envelope(
-            "sem.repin.v1", lockPath=lock_path, upToDate=True,
+            surface, lockPath=lock_path, upToDate=True,
             wrote=not up_to_date) + "\n")
     else:
         print(f"{'unchanged' if up_to_date else 'wrote'} {lock_path}")
     return 0
+
+
+def cmd_get(args) -> int:
+    """Add or upgrade a dependency requirement in build.sem (R-047).
+
+    This is local manifest surgery only; fetching content is outside this
+    command. `mod tidy` and `vendor` consume already-materialized replacement,
+    module-cache, or vendored artifacts.
+    """
+    import os
+    build_path = _build_manifest_path(args.path)
+    want_json = getattr(args, "json", False)
+    try:
+        repo, version = _parse_dependency_spec(args.dependency)
+        with open(build_path, encoding="utf-8") as fh:
+            original = fh.read()
+        program = parse(original)
+        projects = program.of_kind("project")
+        if not projects:
+            raise EavError("no `project` entity in build.sem")
+        project = projects[0]
+        new_row = f"{project.name} require {repo} {version}"
+        lines = original.splitlines()
+        replaced = False
+        out = []
+        for line in lines:
+            try:
+                toks = tokenize_line(line)
+            except EavError:
+                toks = []
+            if (len(toks) >= 4 and toks[0] == project.name
+                    and toks[1] == "require" and toks[2] == repo):
+                if not replaced:
+                    out.append(new_row)
+                    replaced = True
+                continue
+            out.append(line)
+        if not replaced:
+            if out and out[-1].strip():
+                out.append(new_row)
+            else:
+                out[-1:] = [new_row] if out else [new_row]
+        new_text = "\n".join(out) + "\n"
+        changed = new_text != original
+        if changed:
+            _write_text_atomic(build_path, new_text)
+    except (EavError, OSError) as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.get.v1", ok=False, status="failed", error=str(exc)) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 2
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.get.v1", status="updated" if changed else "unchanged",
+            buildPath=os.path.abspath(build_path), repo=repo, version=version,
+            changed=changed) + "\n")
+    else:
+        print(f"{'updated' if changed else 'unchanged'} {build_path}: {repo} {version}")
+    return 0
+
+
+def cmd_mod(args) -> int:
+    if args.mod_command == "tidy":
+        return _lock_command(
+            args.path,
+            check=getattr(args, "check", False),
+            want_json=getattr(args, "json", False),
+            surface="sem.modTidy.v1",
+        )
+    sys.stderr.write(f"semanticscript: unsupported mod command {args.mod_command!r}\n")
+    return 2
+
+
+def cmd_vendor(args) -> int:
+    """Materialize replacement or cache-backed dependencies into vendor/."""
+    import os
+    import shutil
+    build_path = _build_manifest_path(args.path)
+    want_json = getattr(args, "json", False)
+    try:
+        with open(build_path, encoding="utf-8") as fh:
+            build_program = parse(fh.read())
+        root = os.path.dirname(os.path.abspath(build_path))
+        build_program.source_root = root
+        projects = build_program.of_kind("project")
+        if not projects:
+            raise EavError("no `project` entity in build.sem")
+        project = projects[0]
+        replacements = _manifest_replace_map(project)
+        selected = mvs_select([
+            (r.payload[0], r.payload[1]) for r in project.facts("require")
+            if len(r.payload) >= 2
+        ])
+        lock_digests = {}
+        lock_path = os.path.join(root, "build.sem.lock")
+        if os.path.isfile(lock_path):
+            with open(lock_path, encoding="utf-8") as fh:
+                lock_digests = _resolved_digest_by_repo(parse(fh.read()))
+        vendor_root = os.path.realpath(os.path.join(root, "vendor"))
+        os.makedirs(vendor_root, exist_ok=True)
+        copied = []
+        unresolved = []
+        for repo, version in sorted(selected.items()):
+            source = None
+            digest = None
+            if repo in replacements:
+                source = _resolve_local_replace(root, replacements[repo])
+                if source is not None:
+                    digest = _local_artifact_digest(source)
+                    cache_path = os.path.realpath(_module_cache_path(repo, version, digest))
+                    cache_root = _module_cache_root()
+                    if not (cache_path == cache_root or cache_path.startswith(cache_root + os.sep)):
+                        raise EavError(f"module cache destination escapes cache root for {repo!r}")
+                    _copy_artifact_tree(source, cache_path)
+                    source = cache_path
+            else:
+                digest = lock_digests.get(repo)
+                if digest is not None:
+                    artifact = _resolve_dependency_artifact(
+                        root, repo, version, digest=digest, include_vendor=False)
+                    if artifact is not None:
+                        source, digest = artifact
+            if source is None or digest is None:
+                unresolved.append(repo)
+                continue
+            dest = os.path.realpath(os.path.join(vendor_root, repo.replace("/", os.sep)))
+            if not (dest == vendor_root or dest.startswith(vendor_root + os.sep)):
+                raise EavError(f"vendor destination escapes vendor root for {repo!r}")
+            _copy_artifact_tree(source, dest)
+            copied.append({
+                "repo": repo, "version": version, "path": dest,
+                "cachePath": os.path.realpath(_module_cache_path(repo, version, digest)),
+                "sha256": digest,
+            })
+        if unresolved:
+            raise EavError(
+                "cannot vendor dependencies without local replace rows or cached artifacts: "
+                + ", ".join(sorted(unresolved)))
+    except (EavError, OSError, shutil.Error) as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.vendor.v1", ok=False, status="failed", error=str(exc)) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 2
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.vendor.v1", status="ok", vendorRoot=vendor_root,
+            copied=copied) + "\n")
+    else:
+        print(f"vendored {len(copied)} dependenc{'y' if len(copied) == 1 else 'ies'} to {vendor_root}")
+    return 0
+
+
+def cmd_repin(args) -> int:
+    """Re-pin dependencies: regenerate `build.sem.lock` from a `build.sem`
+    manifest via MVS (deterministic). `--check` verifies the existing lock is
+    current without writing (CI gate). (TOOL-7; sem.repin.v1)"""
+    return _lock_command(
+        args.path,
+        check=getattr(args, "check", False),
+        want_json=getattr(args, "json", False),
+        surface="sem.repin.v1",
+    )
 
 
 def _is_trap_returncode(rc: int) -> bool:
@@ -20371,7 +20676,7 @@ SEM_SURFACES = (
     "sem.bench.v1", "sem.profile.v1", "sem.adoptionGate.v1",
     "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
     "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
-    "sem.search.v1", "sem.status.v1",
+    "sem.search.v1", "sem.status.v1", "sem.migrateSyntax.v1",
     # WS3-110: the generated stdlib readiness ledger.
     "sem.stdlibReadiness.v1",
     # R-097: the documented "this command has no JSON surface" status, returned
@@ -22447,6 +22752,51 @@ def cmd_normalize(args) -> int:
     return 0
 
 
+def cmd_migrate_syntax(args) -> int:
+    """Convert compact/current source to canonical EAV with source-map metadata."""
+    try:
+        src = _read_source(args.path)
+        role = classify_sem_file(args.path) if args.path != "-" else "source"
+        report = migrate_syntax(
+            src,
+            from_surface=getattr(args, "from_surface", "auto"),
+            to_surface=getattr(args, "to_surface", "canonical"),
+            operation=getattr(args, "operation", None),
+            role=role,
+        )
+        if getattr(args, "write", False):
+            if args.path == "-":
+                raise EavError("migrate-syntax --write needs a file path, not stdin")
+            if report["operation"]:
+                raise EavError("migrate-syntax --write cannot rewrite an operation slice")
+            with open(args.path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(report["canonical"])
+            report["written"] = True
+        else:
+            report["written"] = False
+    except (EavError, OSError) as exc:
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.migrateSyntax.v1", ok=False, status="compiler-error",
+                diagnostics=[{"message": str(exc)}]) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 2
+
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.migrateSyntax.v1", **report) + "\n")
+    elif getattr(args, "preview", False):
+        sys.stdout.write(
+            f"migrate-syntax {report['scope']}: {report['status']}\n"
+            f"rows {report['sourceRowsInScope']} -> {report['canonicalRows']} "
+            f"(delta {report['rowDelta']:+d})\n"
+            f"round-trip preserved: {report['roundTripPreserved']}\n"
+        )
+    else:
+        sys.stdout.write(report["canonical"])
+    return 0
+
+
 def cmd_adoption_gate(args) -> int:
     """R-069: compare current vs converted row count against adoption thresholds."""
     current = _read_program_source(args.current)
@@ -23344,6 +23694,28 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_profile.add_argument("--json", action="store_true")
     sp_profile.set_defaults(func=cmd_profile)
 
+    # R-047/R-081: dependency workflow commands. Remote registry fetch is still
+    # out of scope; these operate on build.sem plus replacement, module-cache,
+    # and vendored artifacts.
+    sp_get = sub.add_parser("get", help="add or upgrade a build.sem dependency requirement")
+    sp_get.add_argument("dependency", help="dependency spec repo/path@vMAJOR.MINOR.PATCH")
+    sp_get.add_argument("path", nargs="?", default=".", help="project directory or build.sem manifest")
+    sp_get.add_argument("--json", action="store_true")
+    sp_get.set_defaults(func=cmd_get)
+
+    sp_mod = sub.add_parser("mod", help="module dependency commands")
+    mod_sub = sp_mod.add_subparsers(dest="mod_command", required=True)
+    sp_mod_tidy = mod_sub.add_parser("tidy", help="resolve and write build.sem.lock")
+    sp_mod_tidy.add_argument("path", nargs="?", default=".", help="project directory or build.sem manifest")
+    sp_mod_tidy.add_argument("--check", action="store_true", help="verify the lock is current, do not write")
+    sp_mod_tidy.add_argument("--json", action="store_true")
+    sp_mod_tidy.set_defaults(func=cmd_mod)
+
+    sp_vendor = sub.add_parser("vendor", help="materialize replacement/cache dependencies under vendor/")
+    sp_vendor.add_argument("path", nargs="?", default=".", help="project directory or build.sem manifest")
+    sp_vendor.add_argument("--json", action="store_true")
+    sp_vendor.set_defaults(func=cmd_vendor)
+
     # TOOL-7: re-pin dependencies (regenerate build.sem.lock via MVS)
     sp_repin = sub.add_parser("repin", help="regenerate build.sem.lock from build.sem (MVS)")
     sp_repin.add_argument("path", help="project directory or build.sem manifest")
@@ -23575,6 +23947,28 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_norm.add_argument("--preview", action="store_true", help="(default) preview only")
     sp_norm.set_defaults(func=cmd_normalize)
 
+    sp_migrate = sub.add_parser(
+        "migrate-syntax",
+        help="convert compact/current source to canonical EAV",
+    )
+    sp_migrate.add_argument("path", help="EAV/compact/current source file, or - for stdin")
+    sp_migrate.add_argument("--from", dest="from_surface",
+                            choices=("auto", "current", "compact", "eav"),
+                            default="auto",
+                            help="input surface; current is the legacy verb-led compact profile")
+    sp_migrate.add_argument("--to", dest="to_surface",
+                            choices=("canonical", "eav"), default="canonical",
+                            help="output surface (canonical EAV)")
+    sp_migrate.add_argument("--operation", "--op", dest="operation",
+                            help="emit only one operation's canonical edit slice")
+    sp_migrate.add_argument("--preview", action="store_true",
+                            help="print row/locality summary instead of canonical text")
+    sp_migrate.add_argument("--write", "-w", action="store_true",
+                            help="rewrite the source file with the canonical full-file form")
+    sp_migrate.add_argument("--json", action="store_true",
+                            help="emit sem.migrateSyntax.v1 with source-map metadata")
+    sp_migrate.set_defaults(func=cmd_migrate_syntax)
+
     sp_adopt = sub.add_parser("adoption-gate",
                               help="compare current vs converted row-count thresholds")
     sp_adopt.add_argument("current", help="current/baseline source file or project")
@@ -23637,7 +24031,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     # (handled centrally below) instead of running with the flag silently ignored.
     _json_native = frozenset(
         name for name, sp in sub.choices.items()
-        if "--json" in sp._option_string_actions)
+        if "--json" in sp._option_string_actions) | {"mod"}
     for _name, _sp in sub.choices.items():
         if "--json" not in _sp._option_string_actions:
             _sp.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
