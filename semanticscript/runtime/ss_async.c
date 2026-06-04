@@ -10,7 +10,7 @@
  *
  * Each entry point is a plain `args -> single return` (or out-param) function so
  * it binds through the compiler's `body runtimeBinding <symbol>` seam. Handles
- * flow through EAV as OpaquePointer (i64).
+ * flow through EAV as pointer-typed OpaquePointer values.
  */
 #include "sem_async_runtime.h"
 #include "ss_runtime_export.h"
@@ -47,6 +47,8 @@ typedef struct { void **items; size_t count; size_t cap; } ss_async_registry;
 static ss_async_registry g_async_jobs;
 static ss_async_registry g_async_channels;
 static ss_async_registry g_async_intervals;
+static ss_async_registry g_async_mutexes;
+static ss_async_registry g_async_worker_pools;
 
 static int ss_async_track(ss_async_registry *r, void *handle) {
     if (r->count == r->cap) {
@@ -219,6 +221,74 @@ SS_EXPORT int32_t ss_async_await_result(void *handle, int64_t *out) {
 /* Run one turn of the loop without blocking; 0 on success. */
 SS_EXPORT int32_t ss_async_run_once(void) {
     return ss_async_loop_run_once(ss_async_get_loop());
+}
+
+/* ---- standard.concurrent facade primitives ----
+ * The current concurrency backend is a single libuv event loop. A mutex is
+ * therefore a typed guard handle: lock/unlock validate liveness and ordering is
+ * enforced statically by sharedState guardRank (SS3085), not by blocking a second
+ * OS thread. Worker pools are a named facade over immediate futures until the
+ * language can pass function pointers/work closures into libuv's threadpool.
+ */
+typedef struct {
+    int locked;
+} ss_concurrent_mutex;
+
+SS_EXPORT void *ss_async_mutex_create(void) {
+    ss_concurrent_mutex *m = (ss_concurrent_mutex *)calloc(1, sizeof(ss_concurrent_mutex));
+    if (m && !ss_async_track(&g_async_mutexes, m)) { free(m); return NULL; }
+    return m;
+}
+
+SS_EXPORT int32_t ss_async_mutex_lock(void *handle) {
+    ss_concurrent_mutex *m = (ss_concurrent_mutex *)handle;
+    if (!m || !ss_async_is_live(&g_async_mutexes, m)) return -1;
+    m->locked = 1;
+    return 0;
+}
+
+SS_EXPORT int32_t ss_async_mutex_unlock(void *handle) {
+    ss_concurrent_mutex *m = (ss_concurrent_mutex *)handle;
+    if (!m || !ss_async_is_live(&g_async_mutexes, m)) return -1;
+    m->locked = 0;
+    return 0;
+}
+
+SS_EXPORT int32_t ss_async_mutex_close(void *handle) {
+    if (!handle || !ss_async_untrack(&g_async_mutexes, handle)) return 0;
+    free(handle);
+    return 0;
+}
+
+typedef struct {
+    int64_t workers;
+    int closed;
+} ss_worker_pool;
+
+SS_EXPORT void *ss_async_worker_pool_create(int64_t workers) {
+    ss_worker_pool *p = (ss_worker_pool *)calloc(1, sizeof(ss_worker_pool));
+    if (!p) return NULL;
+    p->workers = workers < 1 ? 1 : workers;
+    if (!ss_async_track(&g_async_worker_pools, p)) { free(p); return NULL; }
+    return p;
+}
+
+SS_EXPORT void *ss_async_worker_submit_value(void *pool, int64_t value) {
+    ss_worker_pool *p = (ss_worker_pool *)pool;
+    if (!p || !ss_async_is_live(&g_async_worker_pools, p) || p->closed) return NULL;
+    return ss_async_new(0, value);
+}
+
+SS_EXPORT int64_t ss_async_worker_join(void *future) {
+    return ss_async_await(future);
+}
+
+SS_EXPORT int32_t ss_async_worker_pool_close(void *pool) {
+    ss_worker_pool *p = (ss_worker_pool *)pool;
+    if (!p || !ss_async_untrack(&g_async_worker_pools, p)) return 0;
+    p->closed = 1;
+    free(p);
+    return 0;
 }
 
 /* ---- async channel: a bounded FIFO with loop-scheduled producers ----

@@ -1,9 +1,10 @@
 /*
  * ss_event.c — in-process event stream / pub-sub runtime for the `event.*`
  * intrinsics (APP-RUN-3). A stream owns a growable queue of monotonic event
- * ids; each subscription holds a read cursor over its stream. Opaque handles
- * cross the EAV boundary as Int64 (OpaquePointer), so every entry point takes
- * and returns `long long` (the pointer reinterpreted), matching the i64 ABI.
+ * ids; each subscription holds a read cursor over its stream. Source-visible
+ * handles are pointer-typed OpaquePointer values; this legacy C shim still
+ * takes/returns `long long`, and the compiler bridges explicitly at the call
+ * boundary.
  * Single-threaded, allocation-backed; the out-buffer args of receive are
  * ignored (the smoke reads only the returned event id).
  */

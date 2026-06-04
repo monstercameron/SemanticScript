@@ -9,10 +9,11 @@
 # (README ss11/ss26/ss34), exactly as standard.sqlite does for the SQLite engine.
 #
 # An AsyncFuture is OpaquePointer (a handle scheduled on the process-wide loop);
-# on x86-64 the pointer and an i64 share the ABI register, so the lowering is
-# exact. A future is created and armed by `delay`; nothing runs until the loop is
-# driven by `await` (which blocks the calling fiber, cooperatively, until ready)
-# or `runOnce` (which turns the loop one step without blocking).
+# the language value lowers as an opaque pointer handle, while legacy shims bridge
+# explicitly if they expose integer handles internally. A future is created and
+# armed by `delay`; nothing runs until the loop is driven by `await` (which blocks
+# the calling fiber, cooperatively, until ready) or `runOnce` (which turns the
+# loop one step without blocking).
 
 standardAsync is module
 standardAsync path standard.async

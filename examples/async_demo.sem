@@ -1,6 +1,7 @@
 # async_demo — async task on the single-thread backend (README ss13):
 # Expected output: 42
-# `start` runs eagerly, `ifReady` is always taken, the pending path never runs.
+# `start` records the task as pending, `poll` marks it ready, and `ifReady`
+# follows that explicit task state.
 # Doubles 21 -> 42 in a task and prints it. (todos WS1-107, WS1-065, WS3-003)
 
 AsyncDemo is project
@@ -12,7 +13,7 @@ examplesAsyncDemo is module
 examplesAsyncDemo path examples.asyncDemo
 examplesAsyncDemo exports main
 examplesAsyncDemo purpose "Start a task, poll it ready, and print its result"
-examplesAsyncDemo invariant "On the single-thread backend the task completes at start"
+examplesAsyncDemo invariant "On the single-thread backend poll makes the started task ready"
 
 ExitCode is alias
 ExitCode for Int32
@@ -47,7 +48,7 @@ main uses stdoutWriter
 main memory heap no
 main async yes
 main purpose "Start the double task, await readiness, print the result"
-main invariant "Prints 42; the pending branch is unreachable on single-thread"
+main invariant "Prints 42 after poll transitions the task to ready"
 main let seed immutable Int64 21
 main let okCode immutable ExitCode 0
 main let harnessName immutable String "async_demo"

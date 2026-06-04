@@ -1,0 +1,167 @@
+# standard.concurrent - facade over the libuv event-loop concurrency runtime.
+#
+# The implementation reuses the ss_async_* ABI from standard.async. It provides
+# the names app authors expect (task groups, channels, mutexes, intervals, worker
+# pools) while keeping the current backend explicit: one cooperative libuv event
+# loop, not preemptive SemanticScript threads.
+
+standardConcurrent is module
+standardConcurrent path standard.concurrent
+standardConcurrent exports taskGroupStart
+standardConcurrent exports taskGroupJoin
+standardConcurrent exports channelCreate
+standardConcurrent exports channelProduce
+standardConcurrent exports channelReceive
+standardConcurrent exports channelClose
+standardConcurrent exports mutexCreate
+standardConcurrent exports mutexLock
+standardConcurrent exports mutexUnlock
+standardConcurrent exports mutexClose
+standardConcurrent exports intervalCreate
+standardConcurrent exports intervalTick
+standardConcurrent exports intervalClose
+standardConcurrent exports workerPoolCreate
+standardConcurrent exports workerPoolSubmitValue
+standardConcurrent exports workerPoolJoin
+standardConcurrent exports workerPoolClose
+standardConcurrent purpose "Typed standard.concurrent facade over the libuv event-loop async runtime"
+standardConcurrent invariant "Every operation lowers through ss_async_* runtimeBinding symbols"
+
+ConcurrentFuture is alias
+ConcurrentFuture for OpaquePointer
+ConcurrentFuture purpose "A future scheduled on the libuv loop"
+
+ConcurrentChannel is alias
+ConcurrentChannel for OpaquePointer
+ConcurrentChannel purpose "A bounded FIFO channel handle"
+
+ConcurrentMutex is alias
+ConcurrentMutex for OpaquePointer
+ConcurrentMutex purpose "A typed mutex/guard handle for the single-threaded event-loop backend"
+
+ConcurrentInterval is alias
+ConcurrentInterval for OpaquePointer
+ConcurrentInterval purpose "A periodic interval handle"
+
+WorkerPool is alias
+WorkerPool for OpaquePointer
+WorkerPool purpose "A named worker-pool facade over future-producing work submissions"
+
+ConcurrentMillis is alias
+ConcurrentMillis for Int64
+ConcurrentMillis purpose "A non-negative millisecond delay"
+
+WorkerCount is alias
+WorkerCount for Int64
+WorkerCount purpose "Requested worker count; clamped to at least one by the current runtime"
+
+taskGroupStart is operation
+taskGroupStart in delayMs ConcurrentMillis
+taskGroupStart in value Int64
+taskGroupStart out ConcurrentFuture
+taskGroupStart async yes
+taskGroupStart body runtimeBinding ss_async_delay_start
+taskGroupStart purpose "Start one task-group work item that resolves with value after delayMs"
+
+taskGroupJoin is operation
+taskGroupJoin in future ConcurrentFuture
+taskGroupJoin out Int64
+taskGroupJoin async yes
+taskGroupJoin body runtimeBinding ss_async_await
+taskGroupJoin purpose "Join one task-group future and return its value"
+
+channelCreate is operation
+channelCreate out ConcurrentChannel
+channelCreate body runtimeBinding ss_async_channel_create
+channelCreate purpose "Create an empty bounded FIFO channel"
+
+channelProduce is operation
+channelProduce in channel ConcurrentChannel
+channelProduce in delayMs ConcurrentMillis
+channelProduce in value Int64
+channelProduce out Int32
+channelProduce async yes
+channelProduce body runtimeBinding ss_async_channel_produce
+channelProduce purpose "Schedule a value to be sent to a channel after delayMs"
+
+channelReceive is operation
+channelReceive in channel ConcurrentChannel
+channelReceive out Int64
+channelReceive async yes
+channelReceive body runtimeBinding ss_async_channel_receive
+channelReceive purpose "Receive the next available channel value, driving the event loop"
+
+channelClose is operation
+channelClose in channel ConcurrentChannel
+channelClose out Int32
+channelClose body runtimeBinding ss_async_channel_close
+channelClose purpose "Close and release a channel handle"
+
+mutexCreate is operation
+mutexCreate out ConcurrentMutex
+mutexCreate body runtimeBinding ss_async_mutex_create
+mutexCreate purpose "Create a typed mutex/guard handle"
+
+mutexLock is operation
+mutexLock in mutex ConcurrentMutex
+mutexLock out Int32
+mutexLock body runtimeBinding ss_async_mutex_lock
+mutexLock purpose "Acquire a mutex handle in the single-threaded backend"
+
+mutexUnlock is operation
+mutexUnlock in mutex ConcurrentMutex
+mutexUnlock out Int32
+mutexUnlock body runtimeBinding ss_async_mutex_unlock
+mutexUnlock purpose "Release a mutex handle in the single-threaded backend"
+
+mutexClose is operation
+mutexClose in mutex ConcurrentMutex
+mutexClose out Int32
+mutexClose body runtimeBinding ss_async_mutex_close
+mutexClose purpose "Close and release a mutex handle"
+
+intervalCreate is operation
+intervalCreate in periodMs ConcurrentMillis
+intervalCreate out ConcurrentInterval
+intervalCreate body runtimeBinding ss_async_interval_create
+intervalCreate purpose "Create a periodic interval"
+
+intervalTick is operation
+intervalTick in interval ConcurrentInterval
+intervalTick out Int64
+intervalTick async yes
+intervalTick body runtimeBinding ss_async_interval_tick
+intervalTick purpose "Wait one interval period and return the running tick count"
+
+intervalClose is operation
+intervalClose in interval ConcurrentInterval
+intervalClose out Int32
+intervalClose body runtimeBinding ss_async_interval_close
+intervalClose purpose "Close and release an interval handle"
+
+workerPoolCreate is operation
+workerPoolCreate in workers WorkerCount
+workerPoolCreate out WorkerPool
+workerPoolCreate body runtimeBinding ss_async_worker_pool_create
+workerPoolCreate purpose "Create a worker-pool facade"
+
+workerPoolSubmitValue is operation
+workerPoolSubmitValue in pool WorkerPool
+workerPoolSubmitValue in value Int64
+workerPoolSubmitValue out ConcurrentFuture
+workerPoolSubmitValue async yes
+workerPoolSubmitValue body runtimeBinding ss_async_worker_submit_value
+workerPoolSubmitValue purpose "Submit a value-producing work item and return its future"
+
+workerPoolJoin is operation
+workerPoolJoin in future ConcurrentFuture
+workerPoolJoin out Int64
+workerPoolJoin async yes
+workerPoolJoin body runtimeBinding ss_async_worker_join
+workerPoolJoin purpose "Join a worker-pool future"
+
+workerPoolClose is operation
+workerPoolClose in pool WorkerPool
+workerPoolClose out Int32
+workerPoolClose body runtimeBinding ss_async_worker_pool_close
+workerPoolClose purpose "Close and release a worker-pool facade"
