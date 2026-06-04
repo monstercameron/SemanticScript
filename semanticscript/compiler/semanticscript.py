@@ -27156,6 +27156,20 @@ def cmd_scaffold(args) -> int:
         # from fmt's entity/row order, so a freshly-scaffolded, check-green program
         # would otherwise fail `fmt --check` — breaking the scaffold->check->fmt loop.
         source = format_program(parse(source))
+        # R-04: a scaffold ships a hardcoded project name (`JsonOutputScaffold`) that
+        # collides with the agent's `new <Name>` project. `--name <Name>` re-homes the
+        # scaffold's project/module to match (project -> Name, module -> name, the
+        # `new` convention) so the two compose instead of clashing on two `project`s.
+        name = getattr(args, "name", None)
+        if name:
+            prog = parse(source)
+            projs, mods = prog.of_kind("project"), prog.of_kind("module")
+            mod_name = name[0].lower() + name[1:] if name else name
+            if projs:
+                source = rename_entity(source, projs[0].name, name)
+            if mods:
+                source = rename_entity(source, mods[0].name, mod_name)
+            source = format_program(parse(source))
         if want_json:
             prog = parse(source)
             diags = lint(prog)
@@ -28447,6 +28461,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
     sp_scaffold.add_argument("--json", action="store_true",
                              help="emit a sem.scaffold.v1 envelope")
+    sp_scaffold.add_argument("--name", help="rename the scaffold's project/module to "
+                             "this name so it matches a `new <Name>` project (R-04)")
     sp_scaffold.set_defaults(func=cmd_scaffold)
 
     sp_verify = sub.add_parser("verify-patch", help="verify a program is sound")

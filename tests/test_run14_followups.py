@@ -65,6 +65,29 @@ def test_r08_valid_variant_and_binding_ref_are_accepted():
     assert not [c for c, _ in _lint_codes(src) if c == "SS1033"]
 
 
+# --- R-04: `scaffold --name` re-homes the project/module to match `new <Name>` ---
+
+def test_r04_scaffold_name_rehomes_project_and_module():
+    """R-04: a scaffold ships a hardcoded project name (`JsonOutputScaffold`) that
+    collides with the agent's `new <Name>` project. `scaffold --name <Name>` renames
+    the project to <Name> and the module to <name> (the `new` convention), so the
+    scaffold composes with the project instead of clashing on two `project` rows. The
+    result is still check-green; without `--name` the original name is preserved."""
+    out = subprocess.run([sys.executable, SC, "scaffold", "json-output", "--name", "Myapp"],
+                         capture_output=True, text=True, encoding="utf-8").stdout
+    assert "Myapp is project" in out and "Myapp module myapp" in out
+    assert "myapp is module" in out
+    assert "JsonOutputScaffold" not in out and "jsonOutputModule" not in out
+    # still check-green
+    chk = subprocess.run([sys.executable, SC, "check", "-", "--json"],
+                         input=out, capture_output=True, text=True, encoding="utf-8")
+    assert json.loads(chk.stdout).get("errorCount") == 0
+    # default (no --name) keeps the original project name.
+    default = subprocess.run([sys.executable, SC, "scaffold", "json-output"],
+                             capture_output=True, text=True, encoding="utf-8").stdout
+    assert "JsonOutputScaffold is project" in default
+
+
 # --- R-05: `--json` parity (describe gains a structured envelope) ---
 
 _DESC_PROG = (
