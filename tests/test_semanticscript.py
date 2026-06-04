@@ -2093,6 +2093,196 @@ def test_semantic_diff_detects_changes():
     assert "~ a: out" in text
 
 
+def test_devx_author_surface_enumerates_signature_next_moves():
+    prog = semanticscript.Program()
+    call = semanticscript.Entity("addCall", "call", 1)
+    call.rows.extend([
+        semanticscript.Row("addCall", "invokes", ["math.addInt64"], 2),
+        semanticscript.Row("addCall", "arg", ["left", "Int64", "left"], 3),
+        semanticscript.Row("addCall", "arg", ["right", "Int64", "right"], 4),
+    ])
+    prog.add(call)
+    payload = semanticscript._devx_author_surface(
+        prog, "addCall", "add two int64 values")
+    assert payload["continuousValidity"] is True
+    assert any(m["op"] == "bindOut" and m["type"] == "Int64"
+               for m in payload["nextMoves"])
+    assert any(c["kind"] in ("task-template", "scaffold")
+               for c in payload["intentCandidates"])
+
+
+def test_devx_contract_mock_authority_surfaces_are_machine_readable():
+    src = _charge_program("", "chargeCall arg amount Int64 7\n")
+    prog = semanticscript.parse(src)
+    contracts = semanticscript._devx_contract_surface(prog)
+    charge = next(o for o in contracts["operations"] if o["operation"] == "charge")
+    assert "positive amount" in charge["requires"]
+    mock = semanticscript._devx_mock_surface(prog, source=src)
+    assert mock["recordReplay"]["available"] is False
+    authority = semanticscript._devx_authority_surface(prog)
+    assert "operations" in authority and authority["status"] == "ok"
+
+
+def test_devx_diff_cli_emits_structured_semantic_diff(tmp_path, capsys):
+    import json as _json
+    old = tmp_path / "old.sem"
+    new = tmp_path / "new.sem"
+    old.write_text(
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let ok immutable ExitCode 0\nmain return ok\n",
+        encoding="utf-8",
+    )
+    new.write_text(
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main effect write console.stdout\nmain uses stdoutWriter\n"
+        "main let ok immutable ExitCode 0\nmain return ok\n",
+        encoding="utf-8",
+    )
+    rc = semanticscript.main([
+        "devx", str(old), "--mode", "diff", "--compare", str(new), "--json"])
+    out = capsys.readouterr().out
+    env = _json.loads(out)
+    assert rc == 0
+    assert env["surface"] == "sem.devx.v1"
+    assert any(c["kind"] == "effect-added" and c["entity"] == "main"
+               for c in env["changes"])
+
+
+def test_devx_mcp_tool_is_discoverable_and_callable(tmp_path):
+    import json as _json
+    src = tmp_path / "main.sem"
+    src.write_text(semanticscript.scaffold("console-program"), encoding="utf-8")
+    tools = semanticscript.mcp_handle({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert any(t["name"] == "devx" for t in tools["result"]["tools"])
+    resp = semanticscript.mcp_handle({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {
+            "name": "devx",
+            "arguments": {"path": str(src), "mode": "contracts"},
+        },
+    })
+    payload = _json.loads(resp["result"]["content"][0]["text"])
+    assert payload["surface"] == "sem.devx.v1"
+    assert payload["mode"] == "contracts"
+
+
+def test_devx_all_surface_covers_repl_improve_adversarial_and_perf():
+    src = semanticscript.scaffold("console-program")
+    prog = semanticscript.parse(src)
+    class Args:
+        focus = None
+        intent = "console app"
+        record_replay = False
+    payload = semanticscript._devx_payload("all", "demo.sem", prog, src, Args())
+    assert payload["repl"]["typedRuntimeLinked"] is True
+    assert payload["improve"]["nextCommands"]
+    assert "reviewQuestions" in payload["adversarial"]
+    assert payload["perf"]["serverAware"] is True
+    assert payload["perf"]["lane"] == "bench-run"
+
+
+def test_compensate_codegen_localizes_to_source_row(tmp_path, capsys):
+    import json as _json
+    src = tmp_path / "bad.sem"
+    src.write_text("bad_name is operation\n", encoding="utf-8")
+    rc = semanticscript.main([
+        "compensate", str(src), "--mode", "codegen", "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.compensate.v1"
+    assert env["boundary"] == "parse"
+    assert env["localized"]["line"] == 1
+    assert env["localized"]["row"] == "bad_name is operation"
+    assert env["localized"]["suggestedFix"]
+
+
+def test_compensate_maturity_surfaces_known_broken_targets_and_search(capsys):
+    import json as _json
+    catalog = semanticscript._target_catalog()
+    json_targets = [
+        row for row in catalog["targets"]
+        if row["target"].startswith("json.")
+    ]
+    assert json_targets and all(row["knownBroken"] for row in json_targets)
+    assert all(row["maturity"] == "known-broken" for row in json_targets)
+
+    semanticscript.main([
+        "search", "json codec", "--source", "target", "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert env["surface"] == "sem.search.v1"
+    assert any(m.get("knownBroken") and m.get("maturity") == "known-broken"
+               for m in env["matches"])
+
+
+def test_compensate_cost_flags_sqlite_ddl_on_request_path():
+    src = (
+        "schemaSql is storage\nschemaSql scope module\nschemaSql type SqlText\n"
+        "schemaSql mutability immutable\nschemaSql body sql\n"
+        "    CREATE TABLE users(id INTEGER)\n\n"
+        "main is operation\nmain in request HttpRequest\n"
+        "main in db SqliteDatabase\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do createSchema\nmain return okCode\n\n"
+        "createSchema is call\ncreateSchema in main\n"
+        "createSchema invokes sqlite.exec\n"
+        "createSchema arg database SqliteDatabase db\n"
+        "createSchema arg sql SqlText schemaSql\n"
+        'createSchema discards "schema setup"\n'
+    )
+    prog = semanticscript.parse(src)
+    payload = semanticscript._comp_cost_surface(prog)
+    main = next(op for op in payload["operations"] if op["operation"] == "main")
+    assert main["requestPath"] is True
+    assert main["counts"]["sqliteDdl"] == 1
+    assert main["footguns"][0]["kind"] == "ddl-on-request-path"
+
+
+def test_compensate_all_covers_memory_env_checkpoint_and_alternatives(tmp_path, capsys):
+    import json as _json
+    src = tmp_path / "main.sem"
+    src.write_text(semanticscript.scaffold("console-program"), encoding="utf-8")
+    rc = semanticscript.main([
+        "compensate", str(src), "--mode", "all", "--query", "console write",
+        "--attempt", "compare.equalText lhs rhs",
+        "--attempt", "compare.equalText left right",
+        "--attempt", "compare.equalText String",
+        "--json",
+    ])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.compensate.v1"
+    assert env["codegen"]["status"] == "ok"
+    assert "main" in env["memory"]["learned"]["namesTaken"]
+    assert env["env"]["staleBinaries"] == []
+    assert env["checkpoint"]["snapshot"]["entityCount"] > 0
+    assert env["alternatives"]["stuckSignal"]["active"] is True
+
+
+def test_compensate_mcp_tool_is_discoverable_and_callable(tmp_path):
+    import json as _json
+    src = tmp_path / "main.sem"
+    src.write_text(semanticscript.scaffold("console-program"), encoding="utf-8")
+    tools = semanticscript.mcp_handle({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    assert any(t["name"] == "compensate" for t in tools["result"]["tools"])
+    resp = semanticscript.mcp_handle({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {
+            "name": "compensate",
+            "arguments": {"path": str(src), "mode": "maturity"},
+        },
+    })
+    payload = _json.loads(resp["result"]["content"][0]["text"])
+    assert payload["surface"] == "sem.compensate.v1"
+    assert payload["mode"] == "maturity"
+    assert payload["knownBrokenTargets"]
+
+
 def test_describe_entity_summary():
     prog = semanticscript.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
     text = semanticscript.describe(prog, "addTwoValues")
@@ -2123,12 +2313,76 @@ def test_graph_control_and_mermaid():
     assert mer.startswith("graph TD")
 
 
+def test_agent_tool_trace_multi_path_branch_json(tmp_path, capsys):
+    import json as _json
+    src = tmp_path / "branch.sem"
+    src.write_text(
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main let failCode immutable ExitCode 1\n"
+        "main let shouldPass immutable Bool true\n"
+        "main branch ifTrue shouldPass goto success\n"
+        "main return failCode\n"
+        "main at success return okCode\n",
+        encoding="utf-8",
+    )
+    rc = semanticscript.main([
+        "trace", str(src), "main", "--multi-path", "--branch-aware", "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.trace.v1"
+    assert env["branchAware"] is True and env["multiPath"] is True
+    assert env["pathCount"] == 2
+    branch = next(e for p in env["paths"] for e in p["events"] if e["kind"] == "branch")
+    assert "shouldPass" in branch["liveBindings"]
+    assert branch["deferStack"] == []
+
+
+def test_agent_tool_graph_expanded_dimensions():
+    cleanup_prog = semanticscript.parse(semanticscript.scaffold("cleanup"))
+    assert '"allocateBuffer" -> "cleanup:releaseBuffer";' in semanticscript.graph(
+        cleanup_prog, "cleanup", "dot")
+
+    async_prog = semanticscript.parse(semanticscript.scaffold("async-fanout"))
+    async_edges = semanticscript.graph_edges(async_prog, "async")
+    assert ("main", "start:firstTask") in async_edges
+    assert ("firstTask", "math.addInt64") in async_edges
+
+    effects_prog = semanticscript.parse(semanticscript.scaffold("html-template"))
+    effect_edges = semanticscript.graph_edges(effects_prog, "effects")
+    assert ("main", "effect:write console.stdout") in effect_edges
+    assert ("stdoutWriter", "effect:write console.stdout") in effect_edges
+
+    binding_edges = semanticscript.graph_edges(
+        semanticscript.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()),
+        "bindings")
+    assert any(edge[0] == "binding:leftInput" and edge[1] == "answerCall.leftValue"
+               for edge in binding_edges)
+
+
 @pytest.mark.parametrize("pattern", list(semanticscript.SCAFFOLD_PATTERNS))
 def test_scaffold_parses_and_lints_clean(pattern):
     # WS4-021: scaffold output parses and lints with no error-severity diagnostics.
     prog = semanticscript.parse(semanticscript.scaffold(pattern))
     diags = semanticscript.lint(prog)
     assert not any(d.severity == "error" for d in diags), [d.render() for d in diags]
+
+
+def test_agent_tool_scaffold_expanded_patterns_and_json(capsys):
+    import json as _json
+    expected = {
+        "handler-route", "cleanup", "sqlite-query", "html-template", "async-fanout",
+    }
+    assert expected <= set(semanticscript.SCAFFOLD_PATTERNS)
+    rc = semanticscript.main(["scaffold", "sqlite-query", "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.scaffold.v1"
+    assert env["pattern"] == "sqlite-query"
+    assert env["parseable"] is True
+    assert not [d for d in env["diagnostics"] if d["severity"] == "error"]
 
 
 def test_scaffold_console_program_runs():
@@ -2219,6 +2473,20 @@ def test_pack_respects_budget_and_has_sections():
     assert len(clipped) <= 80
 
 
+def test_agent_tool_pack_json_budget_and_metadata(capsys):
+    import json as _json
+    src = os.path.join(EXAMPLES, "add_two.sem")
+    rc = semanticscript.main(["pack", src, "main", "--budget", "220", "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.pack.v1"
+    assert env["budget"]["requestedChars"] == 220
+    assert env["budget"]["emittedChars"] <= 220
+    assert env["cachedPrefix"]["entityCount"] >= 3
+    assert env["slice"]["refs"]["outgoing"]
+    assert env["editContract"]
+
+
 def test_slice_includes_activated_calls():
     # WS4-010: a slice of an op includes the calls it activates (with defs).
     prog = semanticscript.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
@@ -2235,6 +2503,72 @@ def test_slice_reparses():
     text = semanticscript.slice_entity(prog, "main")
     re = semanticscript.parse(text)
     assert "main" in re.entities and "checkGoing" in re.entities
+
+
+def test_agent_tool_slice_modes_refs_and_edit_anchors(capsys):
+    import json as _json
+    src = os.path.join(EXAMPLES, "add_two.sem")
+    rc = semanticscript.main([
+        "slice", src, "main", "--format", "json", "--refs", "--for-edit"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert env["surface"] == "sem.slice.v1"
+    assert env["refs"]["outgoing"]
+    assert any(a["entity"] == "answerCall" and a["producer"]
+               for a in env["editAnchors"])
+
+    rc = semanticscript.main(["slice", src, "main", "--format", "prompt"])
+    prompt = capsys.readouterr().out
+    assert rc == 0
+    assert "Edit anchors:" in prompt
+    assert "main is operation" in prompt
+
+
+def test_agent_tool_diff_json_semantic_dimensions(tmp_path, capsys):
+    import json as _json
+    base = (
+        "ExitCode is alias\nExitCode for Int32\n"
+        "HttpRequest is alias\nHttpRequest for OpaquePointer\n"
+        "HttpResponse is alias\nHttpResponse for OpaquePointer\n"
+        "ByteCount is alias\nByteCount for Int64\n"
+        "api is webServer\napi host home\napi port 8080\n"
+        "handler is operation\nhandler in request HttpRequest\n"
+        "handler in response HttpResponse\nhandler out Int32\nhandler async no\n"
+        'handler purpose "p"\nhandler invariant "i"\n'
+        "handler let ok immutable Int32 0\nhandler return ok\n"
+        "allocCall is call\nallocCall in main\nallocCall invokes c.malloc\n"
+        "allocCall arg size ByteCount size\nallocCall out ptr OpaquePointer\n"
+        "allocCall owns ptr\nallocCall cleanedBy release\n"
+        "worker is call\nworker in main\nworker invokes c.free\n"
+        "worker arg pointer OpaquePointer ptr\n"
+        'worker discards "cleanup"\n'
+        "release is cleanup\nrelease in main\nrelease call worker\nrelease cleans ptr\n"
+        "firstTask is task\nfirstTask in main\nfirstTask invokes math.addInt64\n"
+        "firstTask arg left Int64 one\nfirstTask arg right Int64 two\n"
+        "firstTask out firstValue Int64\n"
+        "main is operation\nmain out ExitCode\nmain async yes\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let size immutable ByteCount 64\n"
+        "main let one immutable Int64 1\nmain let two immutable Int64 2\n"
+        "main let ok immutable ExitCode 0\n"
+    )
+    old = tmp_path / "old.sem"
+    new = tmp_path / "new.sem"
+    old.write_text(base + "main do allocCall\nmain defer release\nmain return ok\n",
+                   encoding="utf-8")
+    new.write_text(
+        base
+        + "api route GET /health handler\n"
+        + 'release because "free the owned pointer"\n'
+        + "main do allocCall\nmain start firstTask\nmain join firstTask\n"
+        + "main defer release\nmain return ok\n",
+        encoding="utf-8",
+    )
+    rc = semanticscript.main(["diff", str(old), str(new), "--json"])
+    env = _json.loads(capsys.readouterr().out)
+    assert rc == 0
+    kinds = {c["kind"] for c in env["changes"]}
+    assert {"route-added", "async-lifecycle-added", "cleanup-contract-added"} <= kinds
 
 
 def test_lsp_completions_per_kind():
@@ -2759,6 +3093,8 @@ def _write_literal_asset_project(root, asset_text="project asset"):
         'assetModule invariant "Embeds a project-relative asset"\n\n'
         "ExitCode is alias\n"
         "ExitCode for Int32\n\n"
+        "stdoutWriter is capability\n"
+        "stdoutWriter grants write console.stdout\n\n"
         "bannerText is storage\n"
         "bannerText scope module\n"
         "bannerText type String\n"
@@ -2769,6 +3105,7 @@ def _write_literal_asset_project(root, asset_text="project asset"):
         "main is operation\n"
         "main out ExitCode\n"
         "main effect write console.stdout\n"
+        "main uses stdoutWriter\n"
         "main async no\n"
         'main purpose "Print the asset"\n'
         'main invariant "The asset comes from literalSource"\n'
@@ -4178,29 +4515,88 @@ def test_errorcase_enumeration_by_of():
     assert cases == ["A", "B"]
 
 
-def test_data_carrying_error_case_construction_with_payload_rejected():
-    # R-054: the grammar accepts an errorCase `payload` row (so a payload-declared
-    # case still parses/lints — the fallible-write scaffold uses one), but data-
-    # carrying ERROR cases are not lowered with payload storage yet. CONSTRUCTING
-    # one WITH a payload arg would silently DROP the value, so the codegen fails
-    # closed (SS3047) at that drop site instead of mis-lowering. A payloadless
-    # construction of the same case stays legal.
-    head = (
-        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
-        "MyErr is error\nBadThing is errorCase\nBadThing of MyErr\nBadThing payload Int64\n"
-        "op is operation\nop out MyErr\nop async no\nop let n immutable Int64 42\n"
+def _data_error_payload_src(extra_main: str = "", case_payload: str = "ExitCode",
+                            calls: str = "") -> str:
+    main_rows = extra_main or (
+        "main branch ifVariant err BadThing bind code goto matched\n"
+        "main return fallback\n"
+        "main at matched return code\n"
     )
-    # constructing WITH a payload arg -> SS3047 at lowering (the silent-drop site)
-    with_payload = head + (
-        "op do mk\nop return e\n"
-        "mk is call\nmk in op\nmk invokes MyErr.BadThing\nmk arg detail Int64 n\nmk out e MyErr\n")
+    return (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm exports main\nm purpose "p"\nm invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "MyErr is error\n"
+        "BadThing is errorCase\nBadThing of MyErr\n"
+        f"{'BadThing payload ' + case_payload + chr(10) if case_payload else ''}"
+        f"{calls}"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "return payload"\nmain invariant "payload reaches return only on matched arm"\n'
+        "main let expected immutable ExitCode 42\n"
+        "main let fallback immutable ExitCode 9\n"
+        "main do mk\n"
+        f"{main_rows}"
+    )
+
+
+def test_data_carrying_error_case_construct_match_and_return_payload(tmp_path):
+    # R-054: error cases now mirror data-carrying enums. The constructor stores
+    # the payload and ifVariant bind extracts it on the matched label path.
+    src = _data_error_payload_src(calls=(
+        "mk is call\nmk in main\nmk invokes MyErr.BadThing\n"
+        "mk arg value ExitCode expected\nmk out err MyErr\n"
+    ))
+    path = tmp_path / "error_payload.sem"
+    path.write_text(src, encoding="utf-8")
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", str(path)],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 42, proc.stderr
+
+
+def test_data_carrying_error_case_constructor_shape_rejected():
+    missing_payload = _data_error_payload_src(calls=(
+        "mk is call\nmk in main\nmk invokes MyErr.BadThing\nmk out err MyErr\n"
+    ))
+    diags = semanticscript.lint(semanticscript.parse(missing_payload))
+    assert "SS1035" in {d.code for d in diags}
     with pytest.raises(semanticscript.EavError) as exc:
-        semanticscript.lower_to_llvm(semanticscript.parse(with_payload))
-    assert getattr(exc.value, "code", None) == "SS3047"
-    # a payload-declared errorCase still PARSES/LINTS clean (shipped surface intact)
-    assert "BadThing" in semanticscript.parse(
-        "MyErr is error\nBadThing is errorCase\nBadThing of MyErr\nBadThing payload Int64\n"
-    ).entities
+        semanticscript.lower_to_llvm(semanticscript.parse(missing_payload))
+    assert getattr(exc.value, "code", None) == "SS1035"
+
+    wrong_type = _data_error_payload_src(case_payload="Int64", calls=(
+        "mk is call\nmk in main\nmk invokes MyErr.BadThing\n"
+        "mk arg value ExitCode expected\nmk out err MyErr\n"
+    ))
+    assert "SS1035" in {d.code for d in semanticscript.lint(semanticscript.parse(wrong_type))}
+
+
+def test_ifvariant_error_payload_binding_off_path_rejected():
+    src = _data_error_payload_src(
+        "main branch ifVariant err BadThing bind code goto matched\n"
+        "main do useOffPath\n"
+        "main return fallback\n"
+        "main at matched return code\n"
+        ,
+        calls=(
+        "mk is call\nmk in main\nmk invokes MyErr.BadThing\n"
+        "mk arg value ExitCode expected\nmk out err MyErr\n"
+        "useOffPath is call\nuseOffPath in main\n"
+        "useOffPath invokes console.writeIntegerLine\n"
+        "useOffPath arg value ExitCode code\n"
+        )
+    )
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1356"
+
+
+def test_ifvariant_payloadless_error_case_bind_rejected():
+    src = _data_error_payload_src(case_payload="", calls=(
+        "mk is call\nmk in main\nmk invokes MyErr.BadThing\nmk out err MyErr\n"
+    ))
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1354"
 
 
 def test_parse_result_arity_enforced():
@@ -5163,8 +5559,8 @@ def test_ifvariant_unknown_or_ambiguous_rejected():
         "Status is enum\nStatus variant open\nStatus variant done\n"
     )
 
-    def expect_ss1352(extra_enums: str, variant: str) -> None:
-        src = (
+    def source(extra_enums: str, variant: str, out_type: str = "Status") -> str:
+        return (
             base
             + extra_enums
             + "main is operation\nmain out ExitCode\nmain async no\n"
@@ -5175,17 +5571,21 @@ def test_ifvariant_unknown_or_ambiguous_rejected():
             + "main return okCode\n"
             + "main at matched return okCode\n"
             + "makeStatus is call\nmakeStatus in main\n"
-            + "makeStatus invokes Status.done\nmakeStatus out currentStatus Status\n"
+            + f"makeStatus invokes Status.done\nmakeStatus out currentStatus {out_type}\n"
+        )
+
+    def expect_ss1352(extra_enums: str, variant: str, out_type: str = "Status") -> None:
+        src = (
+            source(extra_enums, variant, out_type)
         )
         with pytest.raises(semanticscript.EavError) as exc:
             semanticscript.lower_to_llvm(semanticscript.parse(src))
         assert getattr(exc.value, "code", None) == "SS1352"
 
     expect_ss1352("", "missing")
-    expect_ss1352(
-        "OtherStatus is enum\nOtherStatus variant done\nOtherStatus variant failed\n",
-        "done",
-    )
+    duplicate_done = "OtherStatus is enum\nOtherStatus variant done\nOtherStatus variant failed\n"
+    expect_ss1352(duplicate_done, "done", out_type="OpaquePointer")
+    semanticscript.lower_to_llvm(semanticscript.parse(source(duplicate_done, "done")))
 
 
 def test_variant_match_golden_is_exhaustive_no_warning():
@@ -6475,7 +6875,7 @@ def test_r031_c_compile_renderer_driver_shapes():
     assert msvc == ["cl", "/O2", "/c", "x.c", "/Fox.obj", "/Iinc", "/DFEATURE=1"]
 
 
-def test_r050_agent_tool_subfeature_backlog_is_explicit():
+def test_r050_agent_tool_subfeature_backlog_is_closed_with_metadata():
     text = open(os.path.join(ROOT, "docs", "todos.md"), encoding="utf-8").read()
     assert "- [x] R-050" in text
     assert "### Agent-tool subfeature backlog (split out by R-050)" in text
@@ -6488,10 +6888,11 @@ def test_r050_agent_tool_subfeature_backlog_is_explicit():
         "AGENT-TOOL-006": ["pack", "diagnostics", "budget"],
     }
     for item, markers in required.items():
-        assert item in text
-        line = next(line for line in text.splitlines() if item in line)
+        assert f"- [x] {item}" in text
+        start = text.index(item)
+        window = text[start:start + 700]
         for marker in markers:
-            assert marker in line
+            assert marker in window
 
 
 def test_r151_runtime_manifest_keeps_windows_sources_out_of_posix_plans():
@@ -6742,8 +7143,8 @@ def test_r097_every_command_accepts_json(tmp_path, capsys):
     # passing --json may never exit 2 with raw argparse "unrecognized arguments"
     # usage. A JSON-native command emits its sem.*.v1 envelope; a non-native one
     # emits the documented sem.unsupported.v1 status. Previously parse/lower/
-    # inventory/doctor/emit-ir/build/wasm/fmt/scaffold/verify-patch/trace/normalize
-    # /diff/rename/add/pack/describe/explain all rejected --json.
+    # inventory/doctor/emit-ir/build/wasm/fmt/verify-patch/normalize
+    # /rename/add/describe/explain all rejected --json.
     import json as _json
     src = os.path.join(EXAMPLES, "hello_world.sem")
     exe = str(tmp_path / ("h" + (".exe" if sys.platform == "win32" else "")))
@@ -6751,10 +7152,10 @@ def test_r097_every_command_accepts_json(tmp_path, capsys):
     non_native = [
         ["lex", src], ["parse", src], ["lower", src], ["inventory", src],
         ["doctor", src], ["emit-ir", src],
-        ["wasm", src], ["fmt", src], ["scaffold", "console-program"],
-        ["verify-patch", src], ["trace", src, "main"], ["normalize", src],
-        ["diff", src, src], ["rename", src, "main", "main2"], ["add", src, "extra"],
-        ["pack", src, "main"], ["describe", src, "main"], ["explain", "SS1502"],
+        ["wasm", src], ["fmt", src],
+        ["verify-patch", src], ["normalize", src],
+        ["rename", src, "main", "main2"], ["add", src, "extra"],
+        ["describe", src, "main"], ["explain", "SS1502"],
     ]
     for argv in non_native:
         rc = semanticscript.main(argv + ["--json"])
@@ -6766,7 +7167,9 @@ def test_r097_every_command_accepts_json(tmp_path, capsys):
         assert rc == 2, argv
     # JSON-native commands still pass --json through to their own envelope
     for argv in (["check", src], ["lint", src], ["query", "effects", src],
-                 ["graph", src], ["inspect-ir", src],
+                 ["graph", src], ["scaffold", "console-program"],
+                 ["trace", src, "main"], ["diff", src, src], ["pack", src, "main"],
+                 ["inspect-ir", src],
                  ["build", src, "-o", exe], ["migrate-syntax", src]):
         semanticscript.main(argv + ["--json"])
         body = _json.loads(capsys.readouterr().out)
@@ -6784,6 +7187,191 @@ def _test_program(test_ops):
         "main return okCode\n"
     )
     return base + test_ops
+
+
+def _ws2_program(main_rows="", extra_entities="", module_path="a.b"):
+    return (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        f"m is module\nm path {module_path}\n"
+        'm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        + main_rows
+        + "main return okCode\n"
+        + extra_entities
+    )
+
+
+def _ws2_lint_codes(src):
+    return [d.code for d in semanticscript.lint(semanticscript.parse(src))]
+
+
+def test_ws2_073_runtime_backstop_traps_ub_classes():
+    rep = semanticscript.run_tests(semanticscript.parse(_test_program(
+        "checkDivTrap is operation\ncheckDivTrap out ExitCode\ncheckDivTrap async no\n"
+        'checkDivTrap tag test\ncheckDivTrap purpose "p"\ncheckDivTrap invariant "i"\n'
+        "checkDivTrap let a immutable Int64 1\ncheckDivTrap let one immutable Int64 1\n"
+        "checkDivTrap let ok immutable ExitCode 0\ncheckDivTrap do makeZero\n"
+        "checkDivTrap do divC\n"
+        "checkDivTrap return ok\n"
+        "makeZero is call\nmakeZero in checkDivTrap\nmakeZero invokes math.subtractInt64\n"
+        "makeZero arg left Int64 one\nmakeZero arg right Int64 one\nmakeZero out z Int64\n"
+        "divC is call\ndivC in checkDivTrap\ndivC invokes math.divideInt64\n"
+        "divC arg left Int64 a\ndivC arg right Int64 z\ndivC out q Int64\n"
+    )))
+    assert (rep["tests"][0].get("panic") or {}).get("code") == "SSR0010"
+
+    ptr_src = _ws2_program(
+        'main unsafe yes\n'
+        'main rationale "negative runtime test intentionally exercises raw pointer trap"\n'
+        "main memory heap yes\n"
+        "main let zero immutable Int64 0\n"
+        "main do rawLoad\n",
+        "rawLoad is call\n"
+        "rawLoad in main\n"
+        "rawLoad invokes pointer.loadByte\n"
+        "rawLoad arg buffer OpaquePointer zero\n"
+        "rawLoad arg offset ByteCount zero\n"
+        "rawLoad out value Int32\n",
+    )
+    proc = subprocess.run([sys.executable, SEMANTICSCRIPT, "run", "-"],
+                          input=ptr_src, capture_output=True, text=True,
+                          encoding="utf-8")
+    assert proc.returncode != 0
+    assert "SSR0021" in (proc.stderr + proc.stdout)
+
+
+def test_ws2_081_resource_cleanup_parity_regressions():
+    src = _ws2_program(
+        "main let requestedBytes mutable ByteCount\n"
+        "main do allocDynamic\n",
+        "allocDynamic is call\n"
+        "allocDynamic in main\n"
+        "allocDynamic invokes c.malloc\n"
+        "allocDynamic arg size ByteCount requestedBytes\n"
+        "allocDynamic out ptr OpaquePointer\n"
+        "",
+    )
+    codes = _ws2_lint_codes(src)
+    assert "SS1810" in codes
+    assert "SS1811" in codes
+
+
+def test_ws2_082_async_concurrency_parity_regressions():
+    src = _ws2_program(
+        "main do callSlow\n"
+        "main do makeFutureCall\n",
+        "slow is operation\n"
+        "slow out Int64\n"
+        "slow async yes\n"
+        'slow purpose "p"\n'
+        "slow let one immutable Int64 1\n"
+        "slow return one\n"
+        "callSlow is call\n"
+        "callSlow in main\n"
+        "callSlow invokes slow\n"
+        "callSlow out value Int64\n"
+        "makeFuture is operation\n"
+        "makeFuture out AsyncFuture\n"
+        "makeFuture async no\n"
+        'makeFuture purpose "p"\n'
+        "makeFuture let zero immutable AsyncFuture 0\n"
+        "makeFuture return zero\n"
+        "makeFutureCall is call\n"
+        "makeFutureCall in main\n"
+        "makeFutureCall invokes makeFuture\n"
+        "makeFutureCall out f AsyncFuture\n",
+    )
+    codes = _ws2_lint_codes(src)
+    assert "SS1820" in codes
+    assert "SS1821" in codes
+
+
+def test_ws2_087_json_sql_codec_parity_regressions():
+    src = _ws2_program(
+        "main let db immutable SqliteDatabase 1\n"
+        "main do inlineSql\n"
+        "main do oldJson\n",
+        "payload is storage\n"
+        "payload scope module\n"
+        "payload type JsonText\n"
+        "payload mutability immutable\n"
+        'payload value "{\\"ok\\":1}"\n'
+        "inlineSql is call\n"
+        "inlineSql in main\n"
+        "inlineSql invokes sqlite.exec\n"
+        "inlineSql arg database SqliteDatabase db\n"
+        'inlineSql arg sql SqlText "SELECT 1"\n'
+        'inlineSql discards "inline SQL fixture"\n'
+        "oldJson is call\n"
+        "oldJson in main\n"
+        "oldJson invokes json.setObjectFieldInt64\n"
+        'oldJson discards "deprecated JSON fixture"\n',
+    )
+    codes = _ws2_lint_codes(src)
+    assert "SS1870" in codes
+    assert "SS1871" in codes
+    assert "SS1872" in codes
+
+
+def test_ws2_088_http_web_html_parity_regressions():
+    src = _ws2_program(
+        "",
+        "handler is operation\n"
+        "handler in request HttpRequest\n"
+        "handler in response HttpResponse\n"
+        "handler out Int32\n"
+        "handler async no\n"
+        'handler purpose "p"\n'
+        "handler let ok immutable Int32 0\n"
+        "handler let status immutable Int32 200\n"
+        'handler let responseBody immutable String "ok"\n'
+        'handler let headerName immutable String "X-Test"\n'
+        'handler let headerValue immutable String "late"\n'
+        "handler do writeBody\n"
+        "handler do lateHeader\n"
+        "handler return ok\n"
+        "writeBody is call\n"
+        "writeBody in handler\n"
+        "writeBody invokes http.responseText\n"
+        "writeBody arg response HttpResponse response\n"
+        "writeBody arg status Int32 status\n"
+        "writeBody arg body String responseBody\n"
+        'writeBody discards "response status ignored"\n'
+        "lateHeader is call\n"
+        "lateHeader in handler\n"
+        "lateHeader invokes http.responseHeader\n"
+        "lateHeader arg response HttpResponse response\n"
+        "lateHeader arg name String headerName\n"
+        "lateHeader arg value String headerValue\n"
+        'lateHeader discards "response status ignored"\n'
+        "unusedTemplate is htmlTemplate\n"
+        "unusedTemplate body html\n"
+        "  <p>unused</p>\n",
+    )
+    codes = _ws2_lint_codes(src)
+    assert "SS2613" in codes
+    assert "SS2614" in codes
+    assert "SS2615" in codes
+
+
+def test_ws2_089_remaining_structural_build_parity_regressions():
+    placeholder = _ws2_lint_codes(_ws2_program(module_path="TODO.placeholder"))
+    assert "SS1199M" in placeholder
+
+    loop_alloc = _ws2_program(
+        "main let size immutable ByteCount 8\n"
+        "main at loop do alloc\n"
+        "main goto loop\n",
+        "alloc is call\n"
+        "alloc in main\n"
+        "alloc invokes c.malloc\n"
+        "alloc arg size ByteCount size\n"
+        "alloc out ptr OpaquePointer\n",
+    )
+    assert "SS1036" in _ws2_lint_codes(loop_alloc)
 
 
 def test_test_runner_executes_tag_test_ops():
@@ -7857,18 +8445,25 @@ def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
 
 
 def test_build_output_defaults_to_dist(tmp_path):
-    """R-014: a project-directory build defaults under the gitignored dist/ dir,
-    not the project root. The old default was <dir>/app.exe, which .gitignore
-    (only `dist/`) does not cover. This is compiler-free (path logic only)."""
+    """R-014/WS3-150: project builds default under gitignored dist/ and can carry
+    a content-addressed IR hash when the caller supplies the build identity."""
     suffix = ".exe" if sys.platform == "win32" else ""
     proj = str(tmp_path / "proj")
     os.makedirs(proj)
     assert semanticscript._default_build_output(proj, None) == os.path.join(proj, "dist", "app" + suffix)
+    ir_hash = "0123456789abcdef0123456789abcdef"
+    assert semanticscript._default_build_output(proj, None, ir_hash) == os.path.join(
+        proj, "dist", "app-0123456789abcdef" + suffix)
     # a single-file build sits beside its source, not in dist/
     single = str(tmp_path / "solo.sem")
     assert semanticscript._default_build_output(single, None) == str(tmp_path / "solo") + suffix
+    assert semanticscript._default_build_output(single, None, ir_hash) == str(
+        tmp_path / "solo-0123456789abcdef") + suffix
     # explicit --output always wins
-    assert semanticscript._default_build_output(proj, "custom/bin") == "custom/bin"
+    explicit = os.path.normpath("custom/bin")
+    if suffix:
+        explicit += suffix
+    assert semanticscript._default_build_output(proj, "custom/bin", ir_hash) == explicit
 
 
 def test_build_lands_in_ignored_dist(tmp_path):
@@ -7880,7 +8475,8 @@ def test_build_lands_in_ignored_dist(tmp_path):
     assert semanticscript.main(["new", str(root)]) == 0
     assert semanticscript.main(["build", str(root)]) == 0
     suffix = ".exe" if sys.platform == "win32" else ""
-    assert (root / "dist" / ("app" + suffix)).is_file()
+    built = list((root / "dist").glob("app-*" + suffix))
+    assert len(built) == 1
     # no generated binary sits directly in the project root
     assert not (root / ("app" + suffix)).exists()
     # .gitignore covers dist/
@@ -9586,6 +10182,52 @@ def _fetch_src_with_cap(url, cap_rows):
     )
 
 
+def _fetch_record_src(url, cap_rows=""):
+    cap_def = ("netCap is capability\n" + cap_rows) if cap_rows else ""
+    uses_row = "fetchIt uses netCap\n" if cap_rows else ""
+    return (
+        "Url is alias\nUrl for String\n"
+        "NetworkTimeoutMilliseconds is alias\nNetworkTimeoutMilliseconds for Int64\n"
+        "ResponseBodyLimitBytes is alias\nResponseBodyLimitBytes for Int64\n"
+        "HttpRedirectLimit is alias\nHttpRedirectLimit for Int64\n"
+        "HttpClientBodyText is alias\nHttpClientBodyText for String\n"
+        "HttpRequestPolicy is record\n"
+        "HttpRequestPolicy field timeoutMillis NetworkTimeoutMilliseconds\n"
+        "HttpRequestPolicy field maxBodyBytes ResponseBodyLimitBytes\n"
+        "HttpRequestPolicy field redirectLimit HttpRedirectLimit\n"
+        "HttpGetRequest is record\n"
+        "HttpGetRequest field url Url\n"
+        "HttpGetRequest field policy HttpRequestPolicy\n"
+        "HttpTextResponse is record\n"
+        "HttpTextResponse field body HttpClientBodyText\n"
+        f"{cap_def}"
+        "fetchIt is operation\nfetchIt out ExitCode\nfetchIt async no\n"
+        f"{uses_row}"
+        'fetchIt purpose "p"\nfetchIt invariant "i"\n'
+        f'fetchIt let endpoint immutable Url "{url}"\n'
+        "fetchIt let timeoutMillis immutable NetworkTimeoutMilliseconds 1000\n"
+        "fetchIt let maxBodyBytes immutable ResponseBodyLimitBytes 4096\n"
+        "fetchIt let redirectLimit immutable HttpRedirectLimit 0\n"
+        "fetchIt let okCode immutable ExitCode 0\n"
+        "fetchIt do buildPolicy\nfetchIt do buildRequest\nfetchIt do fetch\n"
+        "fetchIt return okCode\n"
+        "buildPolicy is call\nbuildPolicy in fetchIt\n"
+        "buildPolicy invokes HttpRequestPolicy.new\n"
+        "buildPolicy arg timeoutMillis NetworkTimeoutMilliseconds timeoutMillis\n"
+        "buildPolicy arg maxBodyBytes ResponseBodyLimitBytes maxBodyBytes\n"
+        "buildPolicy arg redirectLimit HttpRedirectLimit redirectLimit\n"
+        "buildPolicy out policy HttpRequestPolicy\n"
+        "buildRequest is call\nbuildRequest in fetchIt\n"
+        "buildRequest invokes HttpGetRequest.new\n"
+        "buildRequest arg url Url endpoint\n"
+        "buildRequest arg policy HttpRequestPolicy policy\n"
+        "buildRequest out request HttpGetRequest\n"
+        "fetch is call\nfetch in fetchIt\nfetch invokes net.fetchText\n"
+        "fetch arg request HttpGetRequest request\n"
+        "fetch out response HttpTextResponse\n"
+    )
+
+
 def test_ssrf_internal_address_rejected():
     # X-075 / §8: an outbound request to a loopback/metadata address is SSRF.
     with pytest.raises(semanticscript.EavError) as exc:
@@ -9600,9 +10242,27 @@ def test_ssrf_localhost_rejected():
     assert getattr(exc.value, "code", None) == "SS3075"
 
 
+def test_ssrf_loopback_requires_exact_capability_and_rationale():
+    cap = "netCap grants connect net.http.127.0.0.1\n"
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_fetch_src_with_cap("http://127.0.0.1:8080/admin", cap))
+    assert getattr(exc.value, "code", None) == "SS3075"
+    ok_cap = cap + 'netCap rationale "local integration probe"\n'
+    assert "fetchIt" in semanticscript.parse(
+        _fetch_src_with_cap("http://127.0.0.1:8080/admin", ok_cap)
+    ).entities
+
+
 def test_ssrf_external_host_accepted():
-    # X-075: an external host is fine (the runtime allowlist refines this further).
-    prog = semanticscript.parse(_fetch_src("http://api.example.com/v1/users"))
+    # R-078: an external host is fine only when an exact scheme+host authority is
+    # visible on the caller.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_fetch_src("http://api.example.com/v1/users"))
+    assert getattr(exc.value, "code", None) == "SS3075"
+    prog = semanticscript.parse(_fetch_src_with_cap(
+        "http://api.example.com/v1/users",
+        "netCap grants connect net.http.api.example.com\n",
+    ))
     assert "fetchIt" in prog.entities
 
 
@@ -9616,6 +10276,23 @@ def test_ssrf_specific_network_capability_allowlist():
     with pytest.raises(semanticscript.EavError) as exc:
         semanticscript.parse(
             _fetch_src_with_cap("http://other.example.com/v1/users", cap)
+        )
+    assert getattr(exc.value, "code", None) == "SS3075"
+
+
+def test_ssrf_request_record_url_uses_same_allowlist():
+    # R-078: net.fetchText receives a request record; the checker must inspect
+    # the record constructor's url field, not only direct url arguments.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_fetch_record_src("http://api.example.com/v1/users"))
+    assert getattr(exc.value, "code", None) == "SS3075"
+    cap = "netCap grants connect net.http.api.example.com\n"
+    assert "fetchIt" in semanticscript.parse(
+        _fetch_record_src("http://api.example.com/v1/users", cap)
+    ).entities
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(
+            _fetch_record_src("http://other.example.com/v1/users", cap)
         )
     assert getattr(exc.value, "code", None) == "SS3075"
 
@@ -9668,9 +10345,13 @@ def test_ssrf_obfuscated_internal_hosts_rejected():
             semanticscript.parse(_fetch_src(url))
         assert getattr(exc.value, "code", None) == "SS3075", url
     # legitimate external hosts (name + public IP + port) still accept — no FP
-    for url in ("http://api.example.com/v1/users", "http://8.8.8.8/",
-                "http://example.org:8080/x"):
-        assert "fetchIt" in semanticscript.parse(_fetch_src(url)).entities
+    for url, host in (
+        ("http://api.example.com/v1/users", "api.example.com"),
+        ("http://8.8.8.8/", "8.8.8.8"),
+        ("http://example.org:8080/x", "example.org"),
+    ):
+        src = _fetch_src_with_cap(url, f"netCap grants connect net.http.{host}\n")
+        assert "fetchIt" in semanticscript.parse(src).entities
 
 
 def _untrusted_fetch_src(bound_row=""):
@@ -9694,10 +10375,12 @@ def test_unbounded_untrusted_external_call_rejected():
     assert getattr(exc.value, "code", None) == "SS3078"
 
 
-def test_bounded_untrusted_external_call_accepted():
-    # X-078: a `timeout` row bounds the call.
-    prog = semanticscript.parse(_untrusted_fetch_src("fetch timeout 5000ms\n"))
-    assert "proxy" in prog.entities
+def test_bounded_untrusted_url_still_rejected_by_ssrf():
+    # X-078: a `timeout` row bounds the call, but R-078 still rejects an
+    # attacker-controlled URL because no runtime URL-policy channel exists.
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_untrusted_fetch_src("fetch timeout 5000ms\n"))
+    assert getattr(exc.value, "code", None) == "SS3075"
 
 
 def test_request_body_read_requires_byte_cap():
@@ -13426,25 +14109,28 @@ def test_net_fetch_passes_request_policy_to_runtime():
     # R-092: net.fetchText must pass the request's HttpRequestPolicy (timeoutMillis,
     # maxBodyBytes, redirectLimit) to the runtime, not just the url — so the runtime
     # can enforce transport limits instead of ignoring them. The lowered call takes
-    # 4 args (url + 3 i64 policy fields), and the policy values are EXTRACTED from
-    # the request record (extractvalue), not hardcoded zero.
+    # 5 args (url + 3 i64 policy fields + the R-078 allow_private bit), and the
+    # policy values are EXTRACTED from the request record (extractvalue), not
+    # hardcoded zero.
     import llvmlite.binding as llvm
     semanticscript._ensure_native_init()
     prog = semanticscript.parse(semanticscript.load_project(
         os.path.join(APPS, "taskforge-api-client")))
     ir = str(semanticscript.lower_to_llvm(prog))
     llvm.parse_assembly(ir).verify()
-    # the extern is the 4-arg policy-carrying ABI
-    assert 'declare i8* @"ss_net_fetch_text"(i8* %".1", i64 %".2", i64 %".3", i64 %".4")' in ir
-    # every fetch call site passes 4 args, and the policy operands are SSA values
-    # (extractvalue from the record), never constant `i64 0`
+    # the extern is the 5-arg policy-carrying ABI
+    assert 'declare i8* @"ss_net_fetch_text"(i8* %".1", i64 %".2", i64 %".3", i64 %".4", i64 %".5")' in ir
+    # every fetch call site passes 5 args, the policy operands are SSA values
+    # (extractvalue from the record), and TaskForge's exact loopback capability
+    # sets allow_private to 1.
     import re
     calls = re.findall(r'call i8\* @"ss_net_fetch_text"\(([^)]*)\)', ir)
     assert calls, "no net fetch call lowered"
     for argstr in calls:
         parts = [a.strip() for a in argstr.split(",")]
-        assert len(parts) == 4, argstr
-        assert all("i64 %" in p for p in parts[1:]), ("policy not extracted", argstr)
+        assert len(parts) == 5, argstr
+        assert all("i64 %" in p for p in parts[1:4]), ("policy not extracted", argstr)
+        assert parts[4] == "i64 1", ("private-resolution bit not set", argstr)
 
 
 def test_net_fetch_runtime_bounds_connect_send_and_recv():
@@ -13463,6 +14149,17 @@ def test_net_fetch_runtime_bounds_connect_send_and_recv():
     assert "ss_net_connect_with_timeout(s, ai->ai_addr" in src
     assert "ss_net_set_socket_timeouts" in src
     assert "SO_RCVTIMEO" in src and "SO_SNDTIMEO" in src
+
+
+def test_net_fetch_runtime_rejects_private_dns_without_authority():
+    # R-078: a public host allowlist is still unsafe if DNS resolution returns a
+    # private address. The runtime skips those answers unless codegen proved an
+    # exact private/loopback capability and passed allow_private.
+    src = open(os.path.join(ROOT, "semanticscript", "runtime", "ss_net.c"),
+               encoding="utf-8").read()
+    assert "long long allow_private" in src
+    assert "static int ss_net_sockaddr_is_private" in src
+    assert "if (!allow_private && ss_net_sockaddr_is_private(ai->ai_addr))" in src
 
 
 def test_async_setup_failures_dont_hang():
@@ -15183,13 +15880,27 @@ def test_native_build_noop_reuses_content_hash_sidecar(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     semanticscript.build_executable(prog, str(out))
-    link_calls = [cmd for cmd in calls if "-o" in cmd and cmd[cmd.index("-o") + 1] == str(out)]
-    assert len(link_calls) == 1
+    link_outputs = [
+        cmd[cmd.index("-o") + 1]
+        for cmd in calls
+        if "-o" in cmd
+        and os.path.dirname(os.path.abspath(cmd[cmd.index("-o") + 1])) == str(tmp_path)
+        and os.path.basename(cmd[cmd.index("-o") + 1]).startswith(".app.link.")
+    ]
+    assert len(link_outputs) == 1
+    assert link_outputs[0] != str(out)
+    assert os.path.exists(out)
     assert os.path.exists(semanticscript._native_build_sidecar_path(str(out)))
 
     semanticscript.build_executable(prog, str(out))
-    link_calls = [cmd for cmd in calls if "-o" in cmd and cmd[cmd.index("-o") + 1] == str(out)]
-    assert len(link_calls) == 1
+    link_outputs = [
+        cmd[cmd.index("-o") + 1]
+        for cmd in calls
+        if "-o" in cmd
+        and os.path.dirname(os.path.abspath(cmd[cmd.index("-o") + 1])) == str(tmp_path)
+        and os.path.basename(cmd[cmd.index("-o") + 1]).startswith(".app.link.")
+    ]
+    assert len(link_outputs) == 1
 
 
 def test_runtime_lib_cache_lives_in_cache_dir(tmp_path, monkeypatch):
@@ -17916,14 +18627,93 @@ def test_ws2_094_linter_parity():
     assert not [d for d in semanticscript.lint(prog) if d.code in {"SS5000", "SS1708"}]
 
 
-def test_ws2_095_linter_parity():
-    "`WS2-095 linter parity test."
-    assert True
+def test_ws2_095_runtime_effect_sandbox_blocks_hidden_runtime_effect(tmp_path):
+    """WS2-095: the runtime backstop catches a dotted target effect the static
+    effect union cannot see. The source declares/authorizes only stdout, so the
+    normal compile gate is green; enabling `runtimeSandbox effectSurface` blocks
+    the hidden sqlite open before JIT/codegen."""
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "P runtimeSandbox effectSurface\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "SqliteDatabase is alias\nSqliteDatabase for OpaquePointer\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main effect write console.stdout\nmain uses stdoutWriter\n"
+        "main let ok immutable ExitCode 0\nmain do hiddenDb\nmain return ok\n"
+        "hiddenDb is call\nhiddenDb in main\nhiddenDb invokes sqlite.openInMemory\n"
+        'hiddenDb discards "exercise the WS2 runtime boundary"\n'
+    )
+    program = semanticscript.parse(src)
+    semanticscript.compile_gate(program)
+
+    policy = semanticscript.runtime_effect_sandbox_policy(program)
+    assert policy["enabled"] is True
+    assert policy["ok"] is False
+    assert policy["violations"][0]["target"] == "sqlite.openInMemory"
+    assert policy["violations"][0]["effect"] == {
+        "action": "readWrite",
+        "resource": "database",
+    }
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.enforce_runtime_effect_sandbox(program)
+    assert exc.value.code == "SS2810"
+
+    path = tmp_path / "sandbox_hidden_db.sem"
+    path.write_text(src, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "effect-sandbox", "--json", str(path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    import json as _json
+    env = _json.loads(proc.stdout)
+    assert proc.returncode == 1
+    assert env["surface"] == "sem.effectSandbox.v1"
+    assert env["status"] == "effect-sandbox-error"
+    assert env["violations"][0]["target"] == "sqlite.openInMemory"
+
+    run_proc = subprocess.run(
+        [sys.executable, SEMANTICSCRIPT, "run", "--json", str(path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    run_env = _json.loads(run_proc.stdout)
+    assert run_proc.returncode == 1
+    assert run_env["surface"] == "sem.run.v1"
+    assert run_env["status"] == "effect-sandbox-error"
+    assert any(d["code"] == "SS2810" for d in run_env["diagnostics"])
 
 
-def test_ws2_096_linter_parity():
-    "`WS2-096 linter parity test."
-    assert True
+def test_ws2_096_soundness_report_has_runtime_trace_subset_capstone():
+    """WS2-096: capturedOutputReplay now carries the capstone property that the
+    modeled runtime effect trace is a subset of the proven declared union."""
+    src = open(os.path.join(EXAMPLES, "replay_demo.sem"), encoding="utf-8").read()
+    result = semanticscript.captured_output_replay(src)
+    soundness = result["soundness"]
+    assert soundness["ok"] is True
+    assert soundness["runtimeEffectTraceSubset"]["ok"] is True
+    assert any(
+        event["target"] == "console.writeLine"
+        and {"action": "write", "resource": "console.stdout"} in event["effects"]
+        for event in soundness["runtimeEffectTrace"]
+    )
+    assert {"action": "write", "resource": "console.stdout"} in soundness["provenEffects"]
+    clauses = {clause["name"]: clause for clause in soundness["clauses"]}
+    assert set(clauses) == {
+        "no undeclared effect",
+        "no undefined behavior",
+        "total control",
+        "no implicit ambient behavior",
+    }
+    assert clauses["no undeclared effect"]["gateCodes"] == [
+        "SS1705", "SS1706", "SS1707", "SS1708",
+    ]
+    assert "SS2810" in clauses["no implicit ambient behavior"]["gateCodes"]
 
 
 def test_ws3_100():
@@ -17952,8 +18742,87 @@ def test_ws3_109():
 
 
 def test_ws3_150():
-    "`WS3-150 test."
-    assert True
+    """WS3-150: default native artifact names can carry the IR hash."""
+    suffix = ".exe" if sys.platform == "win32" else ""
+    assert semanticscript._default_build_output(
+        "program.sem", None, "abcdef0123456789fedcba") == "program-abcdef0123456789" + suffix
+
+
+def test_ws3_platform_profile_covers_open_stdlib_todos():
+    """WS3-111..131: broad stdlib rows are tool-reachable profile data."""
+    profile = semanticscript.ws3_platform_profile()
+    rows = profile["rows"]
+    expected = {f"WS3-{i}" for i in range(111, 120)}
+    expected |= {f"WS3-{i}" for i in range(121, 129)}
+    expected |= {"WS3-130", "WS3-131"}
+    assert set(profile["ids"]) == expected
+    assert len(rows) == len(expected)
+    for row in rows:
+        assert row["title"]
+        assert row["modules"]
+        assert row["acceptance"]
+        assert set(row["evidence"]) == set(row["modules"])
+        assert row["status"] in {
+            "ready-profiled",
+            "profiled-with-deferred-modules",
+            "blocked",
+        }
+        assert row["blockers"] == []
+        for evidence in row["evidence"].values():
+            assert "status" in evidence
+            assert evidence["unbackedPublic"] is False
+
+
+def test_ws3_162_asset_policy_lints_embed_and_runtime_load_shapes(tmp_path):
+    """WS3-162: explicit embed/runtime-load policy is checked as source data."""
+    asset = tmp_path / "asset.txt"
+    asset.write_text("asset", encoding="utf-8")
+    digest = "f" * 64
+
+    def codes(source: str) -> set[str]:
+        program = semanticscript.parse(source, validate=False)
+        program.source_root = str(tmp_path)
+        return {diag.code for diag in semanticscript.lint(program)}
+
+    missing_digest = f"""
+app is project
+app embed declared
+asset is storage
+asset literalSource "{asset.name}"
+"""
+    assert "SS3162" in codes(missing_digest)
+
+    external_with_embed = f"""
+app is project
+app embed external
+asset is storage
+asset literalSource "{asset.name}"
+asset literalDigest sha256 {digest}
+"""
+    assert "SS3162" in codes(external_with_embed)
+
+    runtime_load_hermetic = """
+app is project
+app embed all
+main is operation
+main do readAsset
+readAsset is call
+readAsset in main
+readAsset invokes fs.readTextLimit
+"""
+    assert "SS3162" in codes(runtime_load_hermetic)
+
+    declared_external_asset = """
+app is project
+app embed declared
+app externalAsset "asset.txt"
+main is operation
+main do readAsset
+readAsset is call
+readAsset in main
+readAsset invokes fs.readTextLimit
+"""
+    assert "SS3162" not in codes(declared_external_asset)
 
 
 def test_x_010():

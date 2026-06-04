@@ -418,11 +418,18 @@ DIAGNOSTICS.update({
                             "error to the caller), or return the error through an explicit "
                             "out-param; a tagged non-pointer Result return is not yet lowered "
                             "(README §10.6, R-258)."},
-    "SS3047": {"tier": "T1", "summary": "Data-carrying error case not lowered.",
-               "found": "An `errorCase` with a `payload` row — the payload would be "
-                        "silently dropped at construction (R-054).",
-               "suggested": "Use a data-carrying enum `variant <name> <Type>` for a "
-                            "value-bearing case, or a payloadless error discriminant (README §9)."},
+    "SS3047": {"tier": "T1", "summary": "Data-carrying error case lowering gap.",
+               "found": "A data-carrying error-case path reached a backend that cannot "
+                        "represent that payload.",
+               "suggested": "Use the normal error-case constructor/match surface; if this "
+                            "diagnostic appears from current codegen, file the missed "
+                            "R-054 path with the source fixture."},
+    "SS1035": {"tier": "T1", "summary": "Constructor payload shape mismatch.",
+               "found": "A `<Enum>.<variant>` or `<Error>.<case>` constructor is called "
+                        "with missing, stray, or wrongly typed payload args.",
+               "suggested": "Pass exactly one value arg of the declared payload type for "
+                            "a data-carrying member, and no value args for a payloadless "
+                            "member (README ss9/ss10.5)."},
     "SS0740": {"tier": "T1", "summary": "Invalid platform targetRuntime.",
                "found": "A platform targetRuntime other than native/wasm.",
                "suggested": "Use `native` or `wasm` (README §7)."},
@@ -489,6 +496,11 @@ DIAGNOSTICS.update({
                         "build fragment).",
                "suggested": "Register a declared module (match the `<name> is module` "
                             "entity exactly), or add the missing module (README §7/§28/WS2-089)."},
+    "SS1199M": {"tier": "T1", "summary": "Placeholder module path.",
+               "found": "A module path still contains placeholder text such as TODO, "
+                        "example.placeholder, `<...>`, or an ellipsis.",
+               "suggested": "Replace the placeholder with the real stable module path "
+                            "before registering/importing the module (README ss7/WS2-089)."},
     "SS1197": {"tier": "T1", "summary": "wasm target/platform or entry ABI mismatch.",
                "found": "A project declares `target wasm` without a declared wasm "
                         "runtime platform, or its entry is not an operation/function "
@@ -601,6 +613,45 @@ DIAGNOSTICS.update({
     "SS2616": {"tier": "T2", "summary": "webServer startup-owned handle cannot reach request handlers.",
                "found": "A `startup`/`shutdown` handler owns a resource (e.g. an opened DB) with no cleanup; request handlers receive only (request, response) (README §14), so a startup-opened handle/connection cannot propagate to them — yielding a silent fresh/0-byte resource per request (WEB-1/R-9).",
                "suggested": "Share cross-request state through module `storage`/`sharedState` (a connection path/config) and open the resource per-request in the handler, or release the startup-owned handle before `startup` returns (README §14)."},
+    "SS1810": {"tier": "T3", "summary": "Raw resource producer lacks ownership metadata.",
+               "found": "A direct raw-resource target creates a handle or allocation but "
+                        "the call declares no `owns`/`cleanedBy` contract.",
+               "suggested": "Bind the handle as owned, add `cleanedBy <cleanup>`, and "
+                            "`defer` that cleanup in the owning operation (README ss15.6/WS2-081)."},
+    "SS1811": {"tier": "T3", "summary": "Unchecked heap allocation size.",
+               "found": "A raw heap allocation uses a dynamic size without a maximumBytes "
+                        "or budget row.",
+               "suggested": "Add `limit maximumBytes <n>` or a budget row before accepting "
+                            "untrusted/dynamic allocation sizes (README ss1J/WS2-081)."},
+    "SS1820": {"tier": "T3", "summary": "Async operation called without an async boundary.",
+               "found": "A call activates an `async yes` target through `do`/`call` "
+                        "instead of a task/start boundary.",
+               "suggested": "Use a task/start boundary and then await/join/cancel the "
+                            "future, or make the callee synchronous (README ss13/WS2-082)."},
+    "SS1821": {"tier": "T3", "summary": "Future-producing call is never awaited or joined.",
+               "found": "A call binds an AsyncFuture/ConcurrentFuture/TaskGroup-like "
+                        "value that is never consumed by an await/join/cancel/close call.",
+               "suggested": "Await/join/cancel/close the future or explicitly discard it "
+                            "with a reason (README ss13/WS2-082)."},
+    "SS1870": {"tier": "T1", "summary": "Trusted codec text stored as a plain literal.",
+               "found": "A JsonText/SqlText/HtmlTemplate storage entity uses `value` "
+                        "instead of a typed body island.",
+               "suggested": "Use `body json`, `body sql`, or `body html` so syntax and "
+                            "hole/placeholder checks can run (README ss16/WS2-087)."},
+    "SS1871": {"tier": "T3", "summary": "Inline SQL literal passed to sqlite.",
+               "found": "A sqlite call receives a quoted SQL literal directly instead "
+                        "of a SqlText body island/storage reference.",
+               "suggested": "Move SQL into a `SqlText` storage with `body sql` so the "
+                            "SQL checker can validate it (README ss16/WS2-087)."},
+    "SS1872": {"tier": "T1", "summary": "Deprecated JSON builder/finder target.",
+               "found": "A call uses an obsolete json.setObjectField*/json.find* target.",
+               "suggested": "Use the current standard.json cursor/builder targets exposed "
+                            "by `targets --signature json.*` (README ss16/WS2-087)."},
+    "SS1873": {"tier": "T3", "summary": "lastInsertRowId read without a visible insert.",
+               "found": "sqlite.lastInsertRowId is read in an operation with no preceding "
+                        "INSERT/REPLACE write on that same path.",
+               "suggested": "Read the row id immediately after the insert, or use a "
+                            "RETURNING query when that is the intended data flow (README ss19/WS2-087)."},
     "SS3600": {"tier": "T3", "summary": "ifOut on a fallible call before its error.",
                "found": "An `ifOut` inspecting a call that has a catch.",
                "suggested": "Handle the error (branch ifError) before inspecting the out (§17 #36)."},
@@ -655,6 +706,10 @@ DIAGNOSTICS.update({
     "SS1034": {"tier": "T1", "summary": "Generic instantiation arity mismatch.",
                "found": "A record/enum `instantiates Base ...` row supplies a different number of concrete type arguments than Base declares with `typeParam` rows.",
                "suggested": "Pass exactly one concrete type per `typeParam`, or adjust the generic base declaration (README ss10/R-039)."},
+    "SS1036": {"tier": "T3", "summary": "Raw allocation inside a loop.",
+               "found": "A back-edge loop body activates a raw heap/resource allocation.",
+               "suggested": "Hoist the allocation out of the loop, reuse a bounded buffer, "
+                            "or make the loop's allocation budget explicit (README ss13/WS2-089)."},
     "SS3041C": {"tier": "T1", "summary": "Duplicate project constant.",
                 "found": "Two `PROJECT constant` rows with the same name.",
                 "suggested": "Use one constant per name (README §28.1)."},
@@ -746,6 +801,20 @@ DIAGNOSTICS.update({
                "found": "A webServer with middleware policy enabled has an uncovered route.",
                "suggested": "Add a `middleware <path> <operation>` prefix row or "
                             "`routeMiddlewareOptOut <path> because \"reason\"`."},
+    "SS2613": {"tier": "T1", "summary": "HTTP response header set after body.",
+               "found": "A handler writes a response body and then tries to set another "
+                        "response header on the same response.",
+               "suggested": "Set all response headers before the response body writer "
+                            "(README ss14/WS2-088)."},
+    "SS2614": {"tier": "T3", "summary": "HTTP response writer without response effect.",
+               "found": "A handler/middleware operation activates http.response* but "
+                        "declares no `effect write http.response` row.",
+               "suggested": "Declare `effect write http.response` so the capability/effect "
+                            "surface matches the handler body (README ss8/ss14/WS2-088)."},
+    "SS2615": {"tier": "T3", "summary": "HTML template is never rendered.",
+               "found": "An htmlTemplate entity is not referenced by any html.render call.",
+               "suggested": "Render the template, remove it, or move it to a shared "
+                            "module where it is imported by a renderer (README ss16/WS2-088)."},
     "MD1042": {"tier": "T1", "summary": "purpose payload must be a quoted string.",
                "found": "A `purpose` whose payload is not a quoted string.",
                "suggested": "Write `purpose \"…\"` (README §6)."},
@@ -792,12 +861,16 @@ DIAGNOSTICS.update({
     "SS1354": {"tier": "T1", "summary": "`bind` on a payloadless variant.",
                "found": "A `branch ifVariant … bind` on a variant that carries no payload.",
                "suggested": "Drop `bind`, or match a data-carrying variant (README §17 #53)."},
-    "SS1355": {"tier": "T1", "summary": "ifVariant matches an error case (not lowered).",
-               "found": "A `branch ifVariant … VARIANT` whose VARIANT is a declared `errorCase`; "
-                        "ifVariant narrows ENUM variants, and the console code generator does not "
-                        "lower error-variant matching (it would fail at run with SS1352).",
-               "suggested": "Handle the error with `catch` / `branch ifError`, or model the cases "
-                            "as a data-carrying `enum` if you need ifVariant matching (README §9/§17)."},
+    "SS1355": {"tier": "T1", "summary": "ifVariant on errorCase not lowered by legacy backend.",
+               "found": "A `branch ifVariant` names an errorCase on a backend that cannot "
+                        "narrow error payloads.",
+               "suggested": "Current codegen lowers error-case `ifVariant`; if this appears, "
+                            "file the backend path that still rejects it (README ss9/ss17)."},
+    "SS1356": {"tier": "T1", "summary": "Variant payload binding used off path.",
+               "found": "A name introduced by `branch ifVariant ... bind` is referenced on "
+                        "a path where that branch did not match.",
+               "suggested": "Use the bound payload only in the branch's `goto` target label "
+                            "and labels definitely reached from that target (README ss25)."},
     "SS1551": {"tier": "T1", "summary": "Import alias collides with a type name.",
                "found": "An `imports ALIAS …` where ALIAS equals a declared type name.",
                "suggested": "Rename the import alias (README §17 #51)."},
@@ -900,6 +973,27 @@ DIAGNOSTICS.update({
                "found": "A `suppress CODE` where CODE is not in the registry.",
                "suggested": "Use a real code from `sem explain` (README §30.6.2)."},
 })
+
+DIAGNOSTICS["SS2810"] = {
+    "tier": "T1",
+    "summary": "Runtime effect sandbox violation.",
+    "found": "A modeled runtime target would perform an effect outside the entry "
+             "operation's proven effect union while runtimeSandbox effectSurface "
+             "is enabled.",
+    "suggested": "Declare and authorize the effect, remove the runtime target, or "
+                 "disable the sandbox only for trusted dependencies "
+                 "(README ss28.5/ss30.4, WS2-095).",
+}
+
+DIAGNOSTICS["SS3162"] = {
+    "tier": "T1",
+    "summary": "Asset embed/runtime-load policy violation.",
+    "found": "A project with an explicit `embed all|declared|external` policy has "
+             "an asset whose storage/runtime-load shape contradicts that policy.",
+    "suggested": "Use `literalSource` + `literalDigest` for embedded identity assets, "
+                 "or declare runtime-loaded assets with `externalAsset` and load "
+                 "them through SafePath + standard.fs (README ss30.3.2/WS3-162).",
+}
 
 
 def explain(code: str) -> dict:
@@ -2221,13 +2315,57 @@ def _all_builtin_signatures() -> dict[str, dict]:
     return sigs
 
 
+KNOWN_BROKEN_TARGET_PREFIXES = {
+    "json.": (
+        "JSON codec runtime/native conformance is still in the mitigation lane; "
+        "prefer proven static JSON body islands or a golden-tested helper until "
+        "the codec crash class is closed."
+    ),
+}
+
+
+def _target_maturity(target: str, ledger: Optional[dict] = None) -> dict:
+    family = target.split(".", 1)[0] if "." in target else target
+    ledger = ledger if ledger is not None else (
+        stdlib_readiness_ledger() if "stdlib_readiness_ledger" in globals() else {})
+    maturity = ledger.get(family, {})
+    experimental = bool(maturity.get("deferred"))
+    row = {
+        "experimental": experimental,
+        "maturity": "experimental" if experimental else "proven",
+        "status": maturity.get("status", "intrinsic"),
+        "tier": maturity.get("tier", "core"),
+        "knownBroken": False,
+        "knownBrokenReason": None,
+    }
+    for prefix, reason in KNOWN_BROKEN_TARGET_PREFIXES.items():
+        if target.startswith(prefix):
+            row.update({
+                "experimental": True,
+                "maturity": "known-broken",
+                "status": "known-broken",
+                "knownBroken": True,
+                "knownBrokenReason": reason,
+            })
+            break
+    return row
+
+
+def _signature_with_maturity(sig: dict) -> dict:
+    out = dict(sig)
+    out.update(_target_maturity(sig.get("target", "")))
+    return out
+
+
 def _target_catalog() -> dict[str, dict]:
     """Concrete targets advertised to agents.
 
     S1: every advertised target is a concrete callable with a discoverable
     signature. Generic lowerer prefixes remain implementation details; the
     catalog lists only exact targets so `targets --signature <target>` and
-    `docs --get <target>` cannot disagree or return "no signature".
+    `docs --get <target>` cannot disagree or return "no signature". Target
+    rows also expose maturity (`proven`, `experimental`, or `known-broken`) so
+    agents see the negative space before they try a brittle subsystem.
     """
     ledger = stdlib_readiness_ledger() if "stdlib_readiness_ledger" in globals() else {}
     names = set(_modeled_signature_target_names())
@@ -2243,21 +2381,24 @@ def _target_catalog() -> dict[str, dict]:
             continue
         family = target.split(".", 1)[0]
         families.setdefault(family, []).append(target)
-        maturity = ledger.get(family, {})
-        experimental = bool(maturity.get("deferred"))
-        family_status[family] = {
-            "experimental": experimental,
-            "maturity": "experimental" if experimental else "proven",
-            "status": maturity.get("status", "intrinsic"),
-            "tier": maturity.get("tier", "core"),
-        }
+        target_maturity = _target_maturity(target, ledger)
+        family_existing = family_status.get(family)
+        if (family_existing is None
+                or (target_maturity["maturity"] == "known-broken"
+                    and family_existing.get("maturity") != "known-broken")):
+            family_status[family] = {
+                "experimental": target_maturity["experimental"],
+                "maturity": target_maturity["maturity"],
+                "status": target_maturity["status"],
+                "tier": target_maturity["tier"],
+                "knownBroken": target_maturity["knownBroken"],
+                "knownBrokenReason": target_maturity["knownBrokenReason"],
+            }
         target_rows.append({
             "target": target,
             "family": family,
-            "experimental": experimental,
-            "maturity": "experimental" if experimental else "proven",
-            "status": maturity.get("status", "intrinsic"),
             "signature": sig,
+            **target_maturity,
         })
     return {"families": families, "familyStatus": family_status, "targets": target_rows}
 
@@ -2269,6 +2410,7 @@ def _signature_doc_entry(sig: dict) -> dict:
         "kind": "intrinsic",
         "purpose": sig.get("purpose") or "",
         "signature": sig,
+        **_target_maturity(sig["target"]),
     }
 
 
@@ -2285,12 +2427,19 @@ def _catalog_doc_entries() -> list:
 
 
 def _signature_family_doc_entry(pattern: str, signatures: list[dict]) -> dict:
+    enriched = [_signature_with_maturity(sig) for sig in signatures]
+    has_known_broken = any(sig.get("knownBroken") for sig in enriched)
     return {
         "name": pattern,
         "kind": "intrinsicFamily",
         "purpose": f"Built-in intrinsic signatures matching {pattern}",
-        "signatureCount": len(signatures),
-        "signatures": signatures,
+        "signatureCount": len(enriched),
+        "maturity": "known-broken" if has_known_broken else "proven",
+        "knownBroken": has_known_broken,
+        "knownBrokenReason": next(
+            (sig.get("knownBrokenReason") for sig in enriched
+             if sig.get("knownBrokenReason")), None),
+        "signatures": enriched,
     }
 
 
@@ -3891,6 +4040,7 @@ RESERVED_WORDS = {
     "version", "generatedBy", "describes",
     # manifest predicate tokens
     "languageVersion", "toolchain", "require", "replace", "allowEffect",
+    "embed", "externalAsset",
     "constant", "configure", "nativeLibrary", "nativeHeader", "nativeLinkFlag",
     "guiBackend",
     "publisher", "productName", "packageId", "packageVersion", "profile",
@@ -3928,13 +4078,14 @@ _ERROR_HEADER_PREDICATES = frozenset({
 ALLOWED_PREDICATES: dict[str, set[str]] = {
     "project": {
         "module", "target", "guiBackend", "entry", "mode", "languageVersion", "toolchain",
-        "require", "replace", "allowEffect", "platform", "constant", "configure",
+        "require", "replace", "allowEffect", "embed", "externalAsset",
+        "platform", "constant", "configure",
         "nativeLibrary", "nativeHeader", "nativeLinkFlag",
         "publisher", "productName", "packageId", "packageVersion", "profile",
         "profileOutput", "resource", "icon", "profileResource",
         "configProfile", "configValue", "requiredSecret", "deploymentTarget",
         "migrationHook",
-        "resolved", "toolchainResolved", "effectSurface", "optOut",
+        "resolved", "toolchainResolved", "effectSurface", "runtimeSandbox", "optOut",
     },
     "module": {
         "path", "imports", "exports",
@@ -5283,6 +5434,186 @@ def trace(program: Program, op_name: str) -> list:
     return lines
 
 
+def _row_payload_text(row: Row) -> str:
+    return " ".join(row.payload)
+
+
+def _row_binding_defs(program: Program, row: Row) -> list[str]:
+    """Bindings introduced by a single operation step."""
+    if row.predicate == "let" and row.payload:
+        return [row.payload[0]]
+    if row.predicate in ("do", "start", "join", "poll") and row.payload:
+        call = program.entities.get(row.payload[0])
+        if call is not None and call.kind in ("call", "task"):
+            return [r.payload[0] for r in call.facts("out") if r.payload]
+    if row.predicate in ("readShared", "allocateIn") and row.payload:
+        return [row.payload[0]]
+    return []
+
+
+def _branch_goto_target(row: Row) -> Optional[str]:
+    if row.predicate != "branch" or "goto" not in row.payload:
+        return None
+    gi = row.payload.index("goto")
+    return row.payload[gi + 1] if gi + 1 < len(row.payload) else None
+
+
+def trace_paths(program: Program, op_name: str, max_steps: int = 80) -> dict:
+    """Branch-aware static trace for agent tools.
+
+    This is intentionally a *static* simulator: it does not evaluate user code or
+    prove branch feasibility. Instead it enumerates the obvious fallthrough/taken
+    paths, showing live bindings and defer stack snapshots at each decision so an
+    editing agent can see what is in scope before changing a control-flow row.
+    """
+    op = program.entities.get(op_name)
+    if op is None or op.kind not in ("operation", "function"):
+        raise EavError(f"{op_name!r} is not an operation")
+    labels = {r.label: i for i, r in enumerate(op.rows) if r.label is not None}
+    initial_live = {r.payload[0] for r in op.facts("in") if r.payload}
+    work = [{
+        "idx": 0,
+        "live": set(initial_live),
+        "defers": [],
+        "events": [],
+        "name": "path0",
+        "steps": 0,
+    }]
+    paths: list[dict] = []
+    path_counter = 1
+    visited: set[tuple[int, tuple[str, ...], tuple[str, ...]]] = set()
+    while work and len(paths) < 32:
+        state = work.pop(0)
+        idx = state["idx"]
+        live = set(state["live"])
+        defers = list(state["defers"])
+        events = list(state["events"])
+        steps = int(state["steps"])
+        status = "end"
+        terminal = None
+        while idx < len(op.rows) and steps < max_steps:
+            row = op.rows[idx]
+            steps += 1
+            key = (idx, tuple(sorted(live)), tuple(defers))
+            if key in visited:
+                status = "cycle-cutoff"
+                terminal = {
+                    "predicate": row.predicate,
+                    "payload": list(row.payload),
+                    "line": row.line,
+                    "label": row.label,
+                }
+                break
+            visited.add(key)
+            for name in _row_binding_defs(program, row):
+                live.add(name)
+            if row.predicate == "defer" and row.payload:
+                defers.append(row.payload[0])
+            if row.label is not None:
+                events.append({
+                    "kind": "label",
+                    "label": row.label,
+                    "line": row.line,
+                    "liveBindings": sorted(live),
+                    "deferStack": list(defers),
+                })
+            if row.predicate == "branch":
+                event = {
+                    "kind": "branch",
+                    "line": row.line,
+                    "label": row.label,
+                    "payload": list(row.payload),
+                    "text": _row_payload_text(row),
+                    "liveBindings": sorted(live),
+                    "deferStack": list(defers),
+                }
+                events.append(event)
+                target = _branch_goto_target(row)
+                if target in labels:
+                    taken = {
+                        "idx": labels[target],
+                        "live": set(live),
+                        "defers": list(defers),
+                        "events": events + [{
+                            "kind": "path-choice",
+                            "choice": "taken",
+                            "target": target,
+                            "line": row.line,
+                        }],
+                        "name": f"path{path_counter}",
+                        "steps": steps,
+                    }
+                    path_counter += 1
+                    work.append(taken)
+                events.append({
+                    "kind": "path-choice",
+                    "choice": "fallthrough",
+                    "line": row.line,
+                    "target": None,
+                })
+                idx += 1
+                continue
+            if row.predicate == "goto" and row.payload:
+                target = row.payload[0]
+                events.append({
+                    "kind": "goto",
+                    "line": row.line,
+                    "target": target,
+                    "liveBindings": sorted(live),
+                    "deferStack": list(defers),
+                })
+                if target in labels:
+                    idx = labels[target]
+                    continue
+                status = "unknown-goto"
+                terminal = {"target": target, "line": row.line}
+                break
+            if row.predicate == "return":
+                status = "return"
+                terminal = {
+                    "line": row.line,
+                    "payload": list(row.payload),
+                    "deferRunOrder": list(reversed(defers)),
+                }
+                events.append({
+                    "kind": "return",
+                    "line": row.line,
+                    "payload": list(row.payload),
+                    "liveBindings": sorted(live),
+                    "deferStack": list(defers),
+                    "deferRunOrder": list(reversed(defers)),
+                })
+                break
+            if row.predicate in STEP_PREDICATES:
+                events.append({
+                    "kind": "step",
+                    "line": row.line,
+                    "predicate": row.predicate,
+                    "payload": list(row.payload),
+                    "liveBindings": sorted(live),
+                    "deferStack": list(defers),
+                })
+            idx += 1
+        else:
+            if steps >= max_steps:
+                status = "step-cutoff"
+        paths.append({
+            "name": state["name"],
+            "status": status,
+            "events": events,
+            "terminal": terminal,
+            "liveBindings": sorted(live),
+            "deferStack": list(defers),
+        })
+    return {
+        "operation": op_name,
+        "branchAware": True,
+        "multiPath": True,
+        "pathCount": len(paths),
+        "paths": paths,
+    }
+
+
 def _logical_row_count(program: Program) -> int:
     """Total EAV rows (one `is` row + each fact/step row per entity)."""
     return sum(1 + len(program.entities[n].rows) for n in program.order)
@@ -5577,6 +5908,870 @@ def semantic_diff(old: Program, new: Program) -> list:
     return out
 
 
+def semantic_diff_structured(old: Program, new: Program) -> list[dict]:
+    """Structured counterpart to `semantic_diff` for review tools.
+
+    DEVX-4: the important review question is not "which line changed" but "what
+    authority/contract surface changed". Keep the existing human diff stable and
+    expose typed deltas here for agents/MCP consumers.
+    """
+    changes: list[dict] = []
+    old_names, new_names = set(old.order), set(new.order)
+    for n in sorted(new_names - old_names):
+        changes.append({"kind": "entity-added", "entity": n,
+                        "entityKind": new.entities[n].kind})
+    for n in sorted(old_names - new_names):
+        changes.append({"kind": "entity-removed", "entity": n,
+                        "entityKind": old.entities[n].kind})
+
+    def _rows(ent: Entity, pred: str) -> set[tuple[str, ...]]:
+        return {tuple(r.payload) for r in ent.facts(pred)}
+
+    def _step_rows(ent: Entity, preds: set[str]) -> set[tuple[str, tuple[str, ...], int]]:
+        return {
+            (r.predicate, tuple(r.payload), r.line)
+            for r in ent.rows
+            if r.predicate in preds
+        }
+
+    for n in sorted(old_names & new_names):
+        a, b = old.entities[n], new.entities[n]
+        if a.kind != b.kind:
+            changes.append({"kind": "entity-kind-changed", "entity": n,
+                            "old": a.kind, "new": b.kind})
+            continue
+        if a.kind in ("operation", "function"):
+            for pred, label in (("effect", "effect"), ("uses", "authority-use"),
+                                ("requires", "precondition"),
+                                ("ensures", "postcondition")):
+                before, after = _rows(a, pred), _rows(b, pred)
+                for row in sorted(after - before):
+                    changes.append({"kind": f"{label}-added", "entity": n,
+                                    "row": list(row)})
+                for row in sorted(before - after):
+                    changes.append({"kind": f"{label}-removed", "entity": n,
+                                    "row": list(row)})
+            if _rows(a, "out") != _rows(b, "out"):
+                changes.append({"kind": "output-contract-changed", "entity": n,
+                                "old": [list(r) for r in sorted(_rows(a, "out"))],
+                                "new": [list(r) for r in sorted(_rows(b, "out"))]})
+            before_async = _step_rows(a, {"start", "join", "poll", "cancel", "detach"})
+            after_async = _step_rows(b, {"start", "join", "poll", "cancel", "detach"})
+            for pred, payload, line in sorted(after_async - before_async):
+                changes.append({"kind": "async-lifecycle-added", "entity": n,
+                                "predicate": pred, "row": list(payload), "line": line})
+            for pred, payload, line in sorted(before_async - after_async):
+                changes.append({"kind": "async-lifecycle-removed", "entity": n,
+                                "predicate": pred, "row": list(payload), "line": line})
+            before_defers = _step_rows(a, {"defer"})
+            after_defers = _step_rows(b, {"defer"})
+            for pred, payload, line in sorted(after_defers - before_defers):
+                changes.append({"kind": "cleanup-activation-added", "entity": n,
+                                "predicate": pred, "row": list(payload), "line": line})
+            for pred, payload, line in sorted(before_defers - after_defers):
+                changes.append({"kind": "cleanup-activation-removed", "entity": n,
+                                "predicate": pred, "row": list(payload), "line": line})
+        if a.kind == "capability":
+            before, after = _rows(a, "grants"), _rows(b, "grants")
+            for row in sorted(after - before):
+                changes.append({"kind": "grant-added", "entity": n,
+                                "row": list(row)})
+            for row in sorted(before - after):
+                changes.append({"kind": "grant-removed", "entity": n,
+                                "row": list(row)})
+        if a.kind == "webServer":
+            before, after = _rows(a, "route"), _rows(b, "route")
+            for row in sorted(after - before):
+                changes.append({"kind": "route-added", "entity": n, "row": list(row)})
+            for row in sorted(before - after):
+                changes.append({"kind": "route-removed", "entity": n, "row": list(row)})
+        if a.kind == "cleanup":
+            for pred in ("call", "cleans", "onFailure", "because"):
+                before, after = _rows(a, pred), _rows(b, pred)
+                for row in sorted(after - before):
+                    changes.append({"kind": "cleanup-contract-added", "entity": n,
+                                    "predicate": pred, "row": list(row)})
+                for row in sorted(before - after):
+                    changes.append({"kind": "cleanup-contract-removed", "entity": n,
+                                    "predicate": pred, "row": list(row)})
+    return changes
+
+
+DEVX_MODES = (
+    "author", "intent", "contracts", "mock", "diff", "authority",
+    "repl", "improve", "adversarial", "perf", "all",
+)
+
+
+def _token_score(text: str, terms: list[str]) -> int:
+    hay = text.lower()
+    return sum(hay.count(t) for t in terms if t)
+
+
+def _devx_intent_candidates(intent: Optional[str]) -> list[dict]:
+    """DEVX-2: derive row/scaffold candidates from an intent string."""
+    terms = [t for t in (intent or "").lower().replace("-", " ").split() if t]
+    candidates: list[dict] = []
+    for name, tpl in EAV_TASK_TEMPLATES.items():
+        text = " ".join([name] + tpl.get("rowsToAdd", [])
+                        + tpl.get("rowsToVerify", []) + tpl.get("lintRules", []))
+        score = _token_score(text, terms) if terms else 1
+        if score:
+            candidates.append({
+                "kind": "task-template",
+                "name": name,
+                "score": score,
+                "rowsToAdd": tpl.get("rowsToAdd", []),
+                "rowsToVerify": tpl.get("rowsToVerify", []),
+            })
+    for pattern in SCAFFOLD_PATTERNS:
+        score = _token_score(pattern, terms) if terms else 1
+        if score:
+            candidates.append({
+                "kind": "scaffold",
+                "name": pattern,
+                "score": score,
+                "command": ["scaffold", pattern],
+            })
+    candidates.sort(key=lambda c: (-c["score"], c["kind"], c["name"]))
+    return candidates[:8]
+
+
+def _signature_next_moves(call: Entity) -> list[dict]:
+    target = _call_target(call)
+    sig = _builtin_target_signature(target) if target else None
+    if sig is None:
+        return []
+    have_args = {a.payload[0] for a in call.facts("arg") if a.payload}
+    moves: list[dict] = []
+    for arg in sig.get("args", []):
+        if arg["slot"] not in have_args:
+            moves.append({
+                "op": "bindArg",
+                "row": f"{call.name} arg {arg['slot']} {arg['type']} <value>",
+                "slot": arg["slot"],
+                "type": arg["type"],
+            })
+    has_terminal = (
+        call.fact("out") is not None
+        or call.fact("discards") is not None
+        or call.fact("catch") is not None
+    )
+    if not has_terminal:
+        if sig.get("out"):
+            slot = (sig.get("outSlot") or "result")
+            moves.append({
+                "op": "bindOut",
+                "row": f"{call.name} out <{slot}> {sig['out']}",
+                "type": sig["out"],
+            })
+        else:
+            moves.append({
+                "op": "discards",
+                "row": f'{call.name} discards "effect-only call intentionally ignored"',
+            })
+        if sig.get("catch"):
+            moves.append({
+                "op": "bindCatch",
+                "row": f"{call.name} catch <error> {sig['catch']}",
+                "type": sig["catch"],
+            })
+    return moves
+
+
+def _devx_author_surface(program: Program, focus: Optional[str],
+                         intent: Optional[str]) -> dict:
+    """DEVX-1: valid-next-row surface for structured authoring."""
+    target_catalog = _target_catalog()
+    legal_targets = [r["target"] for r in target_catalog["targets"]]
+    moves: list[dict] = [
+        {"op": "addEntity", "row": "<Name> is operation"},
+        {"op": "addEntity", "row": "<Name> is call"},
+        {"op": "addEntity", "row": "<Name> is capability"},
+    ]
+    if focus and focus in program.entities:
+        ent = program.entities[focus]
+        moves = []
+        if ent.kind == "call":
+            if not _call_target(ent):
+                moves.append({
+                    "op": "setInvokes",
+                    "row": f"{ent.name} invokes <target>",
+                    "legalTargetPreview": legal_targets[:20],
+                })
+            moves.extend(_signature_next_moves(ent))
+        elif ent.kind in ("operation", "function"):
+            existing_steps = {
+                r.payload[0] for r in ent.rows
+                if r.predicate in STEP_PREDICATES and r.payload
+            }
+            owned_calls = [
+                c.name for c in program.of_kind("call")
+                if c.fact("in") and c.fact("in").payload[:1] == [ent.name]
+            ]
+            for call_name in owned_calls:
+                if call_name not in existing_steps:
+                    moves.append({"op": "addStep",
+                                  "row": f"{ent.name} do {call_name}"})
+            moves.extend([
+                {"op": "addEffect", "row": f"{ent.name} effect <action> <resource>"},
+                {"op": "addUses", "row": f"{ent.name} uses <capability>"},
+                {"op": "addContract", "row": f"{ent.name} requires <condition> <input>"},
+            ])
+        else:
+            moves.append({"op": "addPurpose",
+                          "row": f'{ent.name} purpose "<why this exists>"'})
+    elif focus:
+        moves.append({"op": "createFocusedEntity", "row": f"{focus} is <kind>"})
+    return {
+        "continuousValidity": True,
+        "focus": focus,
+        "legalEntityKinds": sorted(ENTITY_KINDS),
+        "legalTargetsPreview": legal_targets[:25],
+        "nextMoves": moves,
+        "intentCandidates": _devx_intent_candidates(intent),
+    }
+
+
+def _devx_contract_surface(program: Program) -> dict:
+    """DEVX-3: expose checked contracts/effect claims as data."""
+    ops: list[dict] = []
+    diags = [d for d in lint(program) if d.code in ("SS1705", "SS1706", "SS1708", "SS3092")]
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        declared = sorted(f"{a} {r}" for a, r in _effect_rows_of(op))
+        effective = sorted(f"{a} {r}" for a, r in _effective_effects(program, op, set()))
+        ops.append({
+            "operation": op.name,
+            "requires": [" ".join(r.payload) for r in op.facts("requires")],
+            "ensures": [" ".join(r.payload) for r in op.facts("ensures")],
+            "declaredEffects": declared,
+            "effectiveEffects": effective,
+            "pureClaim": not declared,
+            "checked": bool(op.facts("requires") or op.facts("ensures") or effective),
+        })
+    return {"status": "ok", "operations": ops,
+            "diagnostics": _structured_diags(diags)}
+
+
+_DEVX_MOCKABLE_RESOURCES = (
+    "console", "database", "sqlite", "http", "network", "clock", "random",
+    "bcrypt", "filesystem", "storage",
+)
+
+
+def _devx_mock_surface(program: Program, source: Optional[str] = None,
+                       record_replay: bool = False) -> dict:
+    """DEVX-5: deterministic mock/record-replay seam inventory."""
+    seams: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        for action, resource in sorted(_effective_effects(program, op, set())):
+            key = (op.name, action, resource)
+            if key in seen:
+                continue
+            seen.add(key)
+            mockable = any(resource == r or resource.startswith(r + ".")
+                           for r in _DEVX_MOCKABLE_RESOURCES)
+            seams.append({"operation": op.name, "action": action,
+                          "resource": resource, "mockable": mockable})
+    projects = program.of_kind("project")
+    mode = None
+    if projects and projects[0].fact("mode") and projects[0].fact("mode").payload:
+        mode = projects[0].fact("mode").payload[0]
+    replay = {"available": mode == "capturedOutputReplay",
+              "mode": mode,
+              "sideEffectFreeReplay": mode == "capturedOutputReplay"}
+    if record_replay:
+        if source is None:
+            replay["error"] = "record replay needs source text"
+        else:
+            replay["result"] = captured_output_replay(source)
+    return {"status": "ok", "seams": seams, "recordReplay": replay,
+            "failureInjection": "by capability/effect seam"}
+
+
+def _safe_capability_name(action: str, resource: str) -> str:
+    parts = [p for p in (action + "_" + resource).replace(".", "_").split("_") if p]
+    raw = "cap_" + "_".join(parts)
+    return "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in raw)
+
+
+def _devx_authority_surface(program: Program) -> dict:
+    """DEVX-6: infer least authority rows from the effective effect graph."""
+    cap_grants = _capability_grants(program)
+    operations: list[dict] = []
+    suggested_rows: list[str] = []
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        declared = _effect_rows_of(op)
+        effective = _effective_effects(program, op, set())
+        held = _op_capability_grants(op, cap_grants)
+        missing_effect_rows = sorted(effective - declared)
+        missing_grants = sorted(
+            (a, r) for a, r in effective
+            if not _effect_path_covers(held, a, r)
+        )
+        rows: list[str] = []
+        for action, resource in missing_effect_rows:
+            rows.append(f"{op.name} effect {action} {resource}")
+        for action, resource in missing_grants:
+            cap = _safe_capability_name(action, resource)
+            rows.extend([
+                f"{cap} is capability",
+                f"{cap} grants {action} {resource}",
+                f"{op.name} uses {cap}",
+            ])
+        suggested_rows.extend(rows)
+        operations.append({
+            "operation": op.name,
+            "effectiveEffects": [f"{a} {r}" for a, r in sorted(effective)],
+            "declaredEffects": [f"{a} {r}" for a, r in sorted(declared)],
+            "heldGrants": [f"{a} {r}" for a, r in sorted(held)],
+            "missingEffectRows": [f"{a} {r}" for a, r in missing_effect_rows],
+            "missingGrants": [f"{a} {r}" for a, r in missing_grants],
+            "suggestedRows": rows,
+        })
+    return {"status": "ok", "leastAuthorityRows": sorted(set(suggested_rows)),
+            "operations": operations}
+
+
+def _devx_repl_surface(program: Program, intent: Optional[str]) -> dict:
+    """DEVX-7: typed runtime-linked REPL bootstrap data."""
+    targets = _target_catalog()["targets"]
+    return {
+        "status": "ok",
+        "typedRuntimeLinked": True,
+        "entryCommand": ["eval", "-", "--json"],
+        "signatureSource": "targets --signature",
+        "targetCount": len(targets),
+        "targetPreview": [t["target"] for t in targets[:20]],
+        "seedRows": _devx_intent_candidates(intent)[:3],
+    }
+
+
+def _devx_improve_surface(program: Program, path: str) -> dict:
+    """DEVX-8: one-pass auto-improvement plan selector."""
+    diags = lint(program)
+    plan_items = []
+    for d in diags:
+        entry = DIAGNOSTICS.get(d.code, {})
+        plan_items.append({
+            "code": d.code,
+            "severity": d.severity,
+            "line": d.line,
+            "summary": entry.get("summary", d.message),
+            "suggested": entry.get("suggested", ""),
+            "command": ["fix", "--plan", path, "--json"],
+        })
+    return {
+        "status": "ok" if not diags else "needs-improvement",
+        "diagnostics": _structured_diags(diags),
+        "plan": plan_items,
+        "nextCommands": [
+            _next_command_for_source(["fix", "--plan", path, "--json"], "derive repair plan", path),
+            _next_command_for_source(["verify", path, "--strict", "--json"], "strict verify after edits", path),
+        ],
+    }
+
+
+def _devx_adversarial_surface(program: Program) -> dict:
+    """DEVX-9: skeptical static second opinion."""
+    default_diags = lint(program)
+    strict_diags = _filter_diagnostics_strict(default_diags, True)
+    blockers = [d for d in strict_diags if d.severity == "error"]
+    warnings = [d for d in strict_diags if d.severity == "warning"]
+    return {
+        "status": "pass" if not blockers else "blocked",
+        "strict": True,
+        "blockers": _structured_diags(blockers),
+        "warnings": _structured_diags(warnings),
+        "reviewQuestions": [
+            "Did any effect or capability surface grow?",
+            "Does every fallible call have an explicit error path?",
+            "Can verify/run prove this target, or is it a long-running server?",
+        ],
+    }
+
+
+def _devx_perf_surface(program: Program, path: str) -> dict:
+    """DEVX-10: server-aware performance lane selection."""
+    target = _program_target(program)
+    server = target == "webServer"
+    return {
+        "status": "ok",
+        "target": target,
+        "serverAware": True,
+        "lane": "serve-probe-stop" if server else "bench-run",
+        "commands": (
+            [["verify", path, "--json"],
+             ["build", path, "--json"],
+             ["bench", path, "--json"]]
+            if not server else
+            [["verify", path, "--json"],
+             ["build", path, "--json"],
+             ["test", path, "--lane", "integration", "--json"]]
+        ),
+        "note": ("server entries are measured through a bounded live harness"
+                 if server else "console entries can use run/bench directly"),
+    }
+
+
+COMP_MODES = (
+    "codegen", "maturity", "cost", "memory", "env",
+    "checkpoint", "alternatives", "all",
+)
+
+
+def _source_line(source: str, line: Optional[int]) -> Optional[str]:
+    if line is None or line < 1:
+        return None
+    lines = source.replace("\r\n", "\n").split("\n")
+    return lines[line - 1] if line <= len(lines) else None
+
+
+def _comp_diagnostic_from_error(exc: EavError, phase: str, source: str) -> dict:
+    code = getattr(exc, "code", None)
+    spec = DIAGNOSTICS.get(code or "", {})
+    line = getattr(exc, "line", None)
+    return {
+        "phase": phase,
+        "code": code,
+        "line": line,
+        "message": getattr(exc, "message", str(exc)),
+        "row": _source_line(source, line),
+        "summary": spec.get("summary"),
+        "suggestedFix": spec.get("suggested") or (
+            "Run `check --json` and inspect the row named by this diagnostic."),
+        "nextCommand": "check <path> --json" if phase != "codegen" else "lower <path>",
+    }
+
+
+def _comp_diagnostic_from_lint(diag: Diagnostic, source: str,
+                               phase: str = "check") -> dict:
+    spec = DIAGNOSTICS.get(diag.code, {})
+    return {
+        "phase": phase,
+        "code": diag.code,
+        "severity": diag.severity,
+        "line": diag.line,
+        "entity": diag.entity,
+        "message": diag.message,
+        "row": _source_line(source, diag.line),
+        "summary": spec.get("summary"),
+        "suggestedFix": spec.get("suggested"),
+        "nextCommand": "check <path> --json",
+    }
+
+
+def _comp_codegen_surface(path: str, source: str) -> dict:
+    """COMP-1/ITER-6: localize codegen-boundary failures to a phase, row, and fix."""
+    try:
+        program = parse_compact(source)
+    except EavError as exc:
+        return {
+            "status": "blocked",
+            "boundary": "parse",
+            "localized": _comp_diagnostic_from_error(exc, "parse", source),
+        }
+    diags = lint(program)
+    errors = [d for d in diags if d.severity == "error"]
+    if errors:
+        return {
+            "status": "static-blocked",
+            "boundary": "check",
+            "localized": _comp_diagnostic_from_lint(errors[0], source),
+            "diagnostics": _structured_diags(diags),
+        }
+    try:
+        lower_to_llvm(program)
+    except EavError as exc:
+        return {
+            "status": "codegen-error",
+            "boundary": "codegen",
+            "localized": _comp_diagnostic_from_error(exc, "codegen", source),
+            "diagnostics": _structured_diags(diags),
+        }
+    return {
+        "status": "ok",
+        "boundary": "lowerable",
+        "diagnostics": _structured_diags(diags),
+        "nextCommand": f"run {path} --json",
+    }
+
+
+def _comp_maturity_surface() -> dict:
+    """COMP-2: make subsystem maturity and known-broken routes explicit."""
+    catalog = _target_catalog()
+    targets = catalog.get("targets", [])
+    known = [row for row in targets if row.get("knownBroken")]
+    experimental = [
+        row for row in targets
+        if row.get("maturity") == "experimental" and not row.get("knownBroken")
+    ]
+    return {
+        "status": "ok",
+        "targetCount": len(targets),
+        "knownBrokenTargets": known,
+        "experimentalTargets": experimental,
+        "routing": [
+            {
+                "match": "json.*",
+                "decision": "route-around",
+                "reason": KNOWN_BROKEN_TARGET_PREFIXES["json."],
+                "preferred": "Use static JsonText body islands or a golden-tested helper.",
+            }
+        ],
+    }
+
+
+def _comp_sql_text_for_call(program: Program, call: Entity) -> Optional[str]:
+    for row in call.facts("arg"):
+        if len(row.payload) < 3 or row.payload[0] != "sql":
+            continue
+        value = row.payload[2]
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            return _unquote_token(value)
+        island = program.islands.get((value, "sql"))
+        if island is not None:
+            return "\n".join(island)
+    return None
+
+
+def _comp_request_handlers(program: Program) -> set[str]:
+    handlers = set()
+    for ws in program.of_kind("webServer"):
+        for route in _webserver_route_rows(ws):
+            if len(route.payload) >= 3:
+                handlers.add(route.payload[2])
+    for op in program.of_kind("operation"):
+        input_types = {row.payload[1] for row in op.facts("in") if len(row.payload) >= 2}
+        if {"HttpRequest", "HttpResponse"} & input_types:
+            handlers.add(op.name)
+    return handlers
+
+
+def _comp_cost_surface(program: Program) -> dict:
+    """COMP-3: lightweight hot-path visibility from semantic call rows."""
+    by_owner = _calls_by_owner(program)
+    handlers = _comp_request_handlers(program)
+    operations = []
+    for op in [e for e in program.entities.values()
+               if e.kind in ("operation", "function")]:
+        counts = {
+            "sqliteReads": 0,
+            "sqliteWrites": 0,
+            "sqliteTransactions": 0,
+            "sqliteDdl": 0,
+            "httpResponseWrites": 0,
+            "logWrites": 0,
+            "externalCalls": 0,
+            "calls": 0,
+        }
+        footguns = []
+        targets = []
+        for call in by_owner.get(op.name, []):
+            target = _call_target(call)
+            targets.append(target)
+            counts["calls"] += 1
+            family = target.split(".", 1)[0] if "." in target else target
+            if family in {"sqlite", "http", "log", "json", "bcrypt", "fs", "net"}:
+                counts["externalCalls"] += 1
+            sqlite_kind = _sqlite_kind(target)
+            if sqlite_kind == "read":
+                counts["sqliteReads"] += 1
+            elif sqlite_kind == "write":
+                counts["sqliteWrites"] += 1
+            elif sqlite_kind == "txn":
+                counts["sqliteTransactions"] += 1
+            if target.startswith("sqlite."):
+                sql = _comp_sql_text_for_call(program, call)
+                verb = _sql_first_verb(sql or "")
+                if verb in {"CREATE", "ALTER", "DROP"}:
+                    counts["sqliteDdl"] += 1
+                    if op.name in handlers:
+                        footguns.append({
+                            "kind": "ddl-on-request-path",
+                            "call": call.name,
+                            "verb": verb,
+                            "message": f"{op.name}: {verb} statement on request path",
+                        })
+            if target.startswith("http.response"):
+                counts["httpResponseWrites"] += 1
+            if target.startswith("log."):
+                counts["logWrites"] += 1
+        operations.append({
+            "operation": op.name,
+            "requestPath": op.name in handlers,
+            "counts": counts,
+            "targets": targets,
+            "footguns": footguns,
+        })
+    return {
+        "status": "ok",
+        "operations": operations,
+        "hotPaths": [op for op in operations
+                     if op["requestPath"] or op["counts"]["externalCalls"]],
+    }
+
+
+def _comp_state_root(path: str) -> str:
+    import os
+    if path == "-":
+        return os.getcwd()
+    if os.path.isdir(path):
+        return os.path.abspath(path)
+    return os.path.dirname(os.path.abspath(path)) or os.getcwd()
+
+
+def _comp_source_hash(source: str) -> str:
+    import hashlib
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _comp_memory_surface(program: Program, path: str, source: str,
+                         write: bool = False) -> dict:
+    """COMP-4: project-local idiom memory index."""
+    import json as _json
+    import os
+    root = _comp_state_root(path)
+    memory_path = os.path.join(root, ".semanticscript", "idioms.json")
+    existing = None
+    try:
+        with open(memory_path, encoding="utf-8") as fh:
+            existing = _json.load(fh)
+    except (OSError, ValueError):
+        existing = None
+    target_counts: dict[str, int] = {}
+    working_forms = []
+    for ent in program.entities.values():
+        if ent.kind not in ("call", "task"):
+            continue
+        target = _call_target(ent)
+        if not target:
+            continue
+        target_counts[target] = target_counts.get(target, 0) + 1
+        working_forms.append({
+            "call": ent.name,
+            "target": target,
+            "args": [{"slot": r.payload[0], "type": r.payload[1]}
+                     for r in ent.facts("arg") if len(r.payload) >= 2],
+            "out": [r.payload for r in ent.facts("out") if r.payload],
+            "catch": [r.payload for r in ent.facts("catch") if r.payload],
+        })
+    learned = {
+        "version": 1,
+        "path": path,
+        "sourceHash": _comp_source_hash(source),
+        "namesTaken": sorted(program.entities),
+        "commonTargets": [
+            {"target": target, "count": count}
+            for target, count in sorted(target_counts.items(),
+                                        key=lambda item: (-item[1], item[0]))
+        ],
+        "workingForms": working_forms,
+    }
+    if write:
+        os.makedirs(os.path.dirname(memory_path), exist_ok=True)
+        with open(memory_path, "w", encoding="utf-8") as fh:
+            _json.dump(learned, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+    return {
+        "status": "ok",
+        "memoryPath": memory_path,
+        "loaded": existing is not None,
+        "written": bool(write),
+        "existing": existing,
+        "learned": learned,
+    }
+
+
+def _comp_env_surface(path: str, port: Optional[int] = None) -> dict:
+    """COMP-5: distinguish environment failures from source failures."""
+    import os
+    import socket
+    stale = []
+    if path != "-":
+        try:
+            out = _default_build_output(path, None)
+            src_paths = _docs_source_paths(path)
+            src_mtime = max(
+                (os.stat(p).st_mtime_ns for p in src_paths if os.path.exists(p)),
+                default=0,
+            )
+            if os.path.exists(out):
+                bin_mtime = os.stat(out).st_mtime_ns
+                stale.append({
+                    "path": out,
+                    "stale": bin_mtime < src_mtime,
+                    "sourceMtimeNs": src_mtime,
+                    "binaryMtimeNs": bin_mtime,
+                })
+        except OSError:
+            pass
+    port_info = None
+    if port is not None:
+        in_use = False
+        try:
+            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.2):
+                in_use = True
+        except OSError:
+            in_use = False
+        port_info = {
+            "port": int(port),
+            "inUse": in_use,
+            "hint": (
+                f"a process is already accepting connections on 127.0.0.1:{port}"
+                if in_use else "no listener detected on 127.0.0.1"
+            ),
+        }
+    return {
+        "status": "ok",
+        "staleBinaries": stale,
+        "port": port_info,
+    }
+
+
+def _comp_checkpoint_surface(program: Program, path: str, source: str,
+                             compare: Optional[str] = None,
+                             checkpoint_dir: Optional[str] = None,
+                             write: bool = False) -> dict:
+    """COMP-6: snapshot semantic state and compare against a prior program."""
+    import datetime
+    import json as _json
+    import os
+    effects = []
+    for ent in program.entities.values():
+        if ent.kind in ("operation", "function"):
+            for row in ent.facts("effect"):
+                if row.payload:
+                    effects.append({"operation": ent.name, "effect": " ".join(row.payload)})
+    snapshot = {
+        "path": path,
+        "sourceHash": _comp_source_hash(source),
+        "target": _program_target(program),
+        "entityCount": len(program.entities),
+        "operationCount": len(program.of_kind("operation")),
+        "effects": sorted(effects, key=lambda item: (item["operation"], item["effect"])),
+    }
+    compare_payload = None
+    if compare:
+        old = parse_compact(_read_program_source(compare))
+        changes = semantic_diff_structured(old, program)
+        compare_payload = {
+            "path": compare,
+            "changes": changes,
+            "regressionSignals": [
+                c for c in changes
+                if c.get("kind") in {"effect-added", "authority-added", "out-changed"}
+            ],
+        }
+    written_path = None
+    if write:
+        checkpoint_root = checkpoint_dir or os.path.join(
+            _comp_state_root(path), ".semanticscript", "checkpoints")
+        os.makedirs(checkpoint_root, exist_ok=True)
+        stamp = datetime.datetime.now(
+            datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        written_path = os.path.join(
+            checkpoint_root, snapshot["sourceHash"][:16] + ".json")
+        with open(written_path, "w", encoding="utf-8") as fh:
+            _json.dump({"createdAt": stamp, "snapshot": snapshot},
+                       fh, indent=2, sort_keys=True)
+            fh.write("\n")
+    return {
+        "status": "ok",
+        "snapshot": snapshot,
+        "compare": compare_payload,
+        "writtenPath": written_path,
+    }
+
+
+def _comp_alternatives_surface(path: str, query: Optional[str],
+                               attempts: Optional[list[str]] = None) -> dict:
+    """COMP-7: ranked alternatives and an explicit stuck signal."""
+    attempts = attempts or []
+    query_text = query or (" ".join(attempts) if attempts else "SemanticScript repair")
+    docs = _search_corpus(None if path == "-" else path)
+    matches = _tfidf_rank(query_text, docs, 8, snippet_width=360)
+    alternatives = []
+    for match in matches:
+        tradeoff = "local repair candidate"
+        if match.get("knownBroken"):
+            tradeoff = "known-broken route; prefer the documented workaround"
+        elif match["source"] == "target" and match.get("maturity") == "proven":
+            tradeoff = "proven target contract"
+        elif match["source"] == "template":
+            tradeoff = "worked scaffold pattern"
+        elif match["source"] == "diagnostic":
+            tradeoff = "diagnostic-guided repair"
+        alternatives.append({**match, "tradeoff": tradeoff})
+    stuck = len(attempts) >= 3
+    return {
+        "status": "ok",
+        "query": query_text,
+        "attempts": attempts,
+        "alternatives": alternatives,
+        "stuckSignal": {
+            "active": stuck,
+            "message": (
+                f"{len(attempts)} related attempts recorded; switch to a ranked "
+                "alternative or inspect the target signature before another variant."
+                if stuck else "no stuck pattern detected"),
+        },
+    }
+
+
+def _compensate_payload(mode: str, path: str, source: str, args) -> dict:
+    if mode == "codegen":
+        return {"mode": mode, **_comp_codegen_surface(path, source)}
+    try:
+        program = parse_compact(source)
+    except EavError as exc:
+        localized = _comp_diagnostic_from_error(exc, "parse", source)
+        if mode == "all":
+            return {
+                "mode": mode,
+                "status": "blocked",
+                "codegen": _comp_codegen_surface(path, source),
+                "localized": localized,
+            }
+        return {"mode": mode, "status": "blocked", "localized": localized}
+    if mode == "maturity":
+        return {"mode": mode, **_comp_maturity_surface()}
+    if mode == "cost":
+        return {"mode": mode, **_comp_cost_surface(program)}
+    if mode == "memory":
+        return {"mode": mode, **_comp_memory_surface(
+            program, path, source, bool(getattr(args, "write_memory", False)))}
+    if mode == "env":
+        return {"mode": mode, **_comp_env_surface(path, getattr(args, "port", None))}
+    if mode == "checkpoint":
+        return {"mode": mode, **_comp_checkpoint_surface(
+            program, path, source, getattr(args, "compare", None),
+            getattr(args, "checkpoint_dir", None),
+            bool(getattr(args, "write_checkpoint", False)))}
+    if mode == "alternatives":
+        return {"mode": mode, **_comp_alternatives_surface(
+            path, getattr(args, "query", None), getattr(args, "attempt", None))}
+    if mode == "all":
+        return {
+            "mode": mode,
+            "status": "ok",
+            "codegen": _comp_codegen_surface(path, source),
+            "maturity": _comp_maturity_surface(),
+            "cost": _comp_cost_surface(program),
+            "memory": _comp_memory_surface(
+                program, path, source, bool(getattr(args, "write_memory", False))),
+            "env": _comp_env_surface(path, getattr(args, "port", None)),
+            "checkpoint": _comp_checkpoint_surface(
+                program, path, source, getattr(args, "compare", None),
+                getattr(args, "checkpoint_dir", None),
+                bool(getattr(args, "write_checkpoint", False))),
+            "alternatives": _comp_alternatives_surface(
+                path, getattr(args, "query", None), getattr(args, "attempt", None)),
+        }
+    raise EavError(f"unknown compensate mode {mode!r}")
+
+
 def entity_typed_comments(program: Program, name: str) -> list:
     """R-080: typed comments (`# <tag>: text`) attributed to one entity by source
     proximity — comments within the entity's row span, plus a short preamble
@@ -5632,7 +6827,9 @@ def describe(program: Program, name: str) -> str:
     return "\n".join(lines)
 
 
-GRAPH_KINDS = ("calls", "control", "routes")
+GRAPH_KINDS = (
+    "calls", "control", "routes", "cleanup", "async", "effects", "bindings",
+)
 
 
 def _call_graph_edges(program: Program) -> list:
@@ -6289,17 +7486,111 @@ def _route_policy_edges(program: Program) -> list[tuple[str, str]]:
     return edges
 
 
-def graph(program: Program, kind: str, fmt: str = "dot") -> str:
-    """Emit a `calls`, `control`, or `routes` graph as DOT or mermaid."""
+def _cleanup_graph_edges(program: Program) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for ent in program.entities_in_order():
+        if ent.kind in ("call", "task"):
+            cleaned_by = ent.fact("cleanedBy")
+            if cleaned_by and cleaned_by.payload:
+                edges.append((ent.name, f"cleanup:{cleaned_by.payload[0]}"))
+        if ent.kind == "cleanup":
+            call = ent.fact("call")
+            if call and call.payload:
+                edges.append((f"cleanup:{ent.name}", call.payload[0]))
+            for clean in ent.facts("cleans"):
+                if clean.payload:
+                    edges.append((f"cleanup:{ent.name}", f"resource:{clean.payload[0]}"))
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        for row in op.rows:
+            if row.predicate == "defer" and row.payload:
+                edges.append((op.name, f"cleanup:{row.payload[0]}"))
+    return edges
+
+
+def _async_graph_edges(program: Program) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        for row in op.rows:
+            if row.predicate in ("start", "join", "poll", "cancel", "detach") and row.payload:
+                task_name = row.payload[0]
+                edges.append((op.name, f"{row.predicate}:{task_name}"))
+                edges.append((f"{row.predicate}:{task_name}", task_name))
+    for task in program.of_kind("task"):
+        inv = task.fact("invokes")
+        if inv and inv.payload:
+            edges.append((task.name, inv.payload[0]))
+    return edges
+
+
+def _effect_graph_edges(program: Program) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for cap in program.of_kind("capability"):
+        for grant in cap.facts("grants"):
+            if len(grant.payload) >= 2:
+                edges.append((cap.name, f"effect:{grant.payload[0]} {grant.payload[1]}"))
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        for eff in op.facts("effect"):
+            if len(eff.payload) >= 2:
+                edges.append((op.name, f"effect:{eff.payload[0]} {eff.payload[1]}"))
+        for use in op.facts("uses"):
+            if use.payload:
+                edges.append((op.name, f"capability:{use.payload[0]}"))
+    return edges
+
+
+def _binding_graph_edges(program: Program) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    owned_by = _calls_by_owner(program)
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        owned = {c.name: c for c in owned_by.get(op.name, ())}
+        for inp in op.facts("in"):
+            if inp.payload:
+                edges.append((f"input:{op.name}.{inp.payload[0]}", op.name))
+        for out in op.facts("out"):
+            if out.payload:
+                edges.append((op.name, f"output:{op.name}.{out.payload[0]}"))
+        for row in op.rows:
+            if row.predicate == "let" and row.payload:
+                edges.append((op.name, f"binding:{row.payload[0]}"))
+            if row.predicate in ("do", "start", "join", "poll") and row.payload:
+                call = owned.get(row.payload[0])
+                if call is None:
+                    continue
+                edges.append((op.name, call.name))
+                for arg in call.facts("arg"):
+                    if len(arg.payload) >= 3:
+                        edges.append((f"binding:{arg.payload[2]}",
+                                      f"{call.name}.{arg.payload[0]}"))
+                for out in call.facts("out"):
+                    if out.payload:
+                        edges.append((call.name, f"binding:{out.payload[0]}"))
+            if row.predicate == "return":
+                for ref in _row_refs(row, owned):
+                    edges.append((f"binding:{ref}", f"return:{op.name}"))
+    return edges
+
+
+def graph_edges(program: Program, kind: str) -> list[tuple[str, str]]:
     if kind == "calls":
-        edges = [(a, b) for a, b in _call_graph_edges(program)]
-        pairs = [(a, b) for a, b in edges]
-    elif kind == "control":
-        pairs = [(f"{op}:{src}", f"{op}:{dst}") for op, src, dst in _control_edges(program)]
-    elif kind == "routes":
-        pairs = _route_policy_edges(program)
-    else:
-        raise EavError(f"unknown graph kind {kind!r}")
+        return [(a, b) for a, b in _call_graph_edges(program)]
+    if kind == "control":
+        return [(f"{op}:{src}", f"{op}:{dst}") for op, src, dst in _control_edges(program)]
+    if kind == "routes":
+        return _route_policy_edges(program)
+    if kind == "cleanup":
+        return _cleanup_graph_edges(program)
+    if kind == "async":
+        return _async_graph_edges(program)
+    if kind == "effects":
+        return _effect_graph_edges(program)
+    if kind == "bindings":
+        return _binding_graph_edges(program)
+    raise EavError(f"unknown graph kind {kind!r}")
+
+
+def graph(program: Program, kind: str, fmt: str = "dot") -> str:
+    """Emit an agent graph dimension as DOT or mermaid."""
+    pairs = graph_edges(program, kind)
     if fmt == "mermaid":
         body = "\n".join(f"  {a} --> {b}" for a, b in pairs)
         return f"graph TD\n{body}\n"
@@ -6310,6 +7601,7 @@ def graph(program: Program, kind: str, fmt: str = "dot") -> str:
 SCAFFOLD_PATTERNS = (
     "console-program", "fallible-write", "fallible-operation",
     "trust-boundary", "json-output", "json-decode", "db-roundtrip", "logged-op",
+    "handler-route", "cleanup", "sqlite-query", "html-template", "async-fanout",
 )
 
 
@@ -6439,12 +7731,10 @@ def scaffold(pattern: str) -> str:
             'main invariant "The document and scratch buffer are released"\n'
             "main let jsonCapacity immutable JsonCapacityBytes 256\n"
             "main let rootKind immutable JsonValueKind objectJson\n"
-            'main let answerField immutable String "answer"\n'
-            "main let answerValue immutable Int64 42\n"
             "main let okCode immutable ExitCode 0\n"
             "main do createScratch\nmain defer releaseScratch\n"
             "main do createDoc\nmain defer destroyDoc\n"
-            "main do readRoot\nmain do setAnswer\nmain do serializeDoc\n"
+            "main do serializeDoc\n"
             "main do printJson\nmain return okCode\n\n"
             "createScratch is call\ncreateScratch in main\n"
             "createScratch invokes c.malloc\n"
@@ -6476,17 +7766,6 @@ def scaffold(pattern: str) -> str:
             "destroyDoc call destroyDocWorker\n"
             "destroyDoc cleans document\n"
             'destroyDoc because "release the JSON document arena"\n\n'
-            "readRoot is call\nreadRoot in main\n"
-            "readRoot invokes json.documentRoot\n"
-            "readRoot arg document JsonDocument document\n"
-            "readRoot out root JsonCursor\n\n"
-            "setAnswer is call\nsetAnswer in main\n"
-            "setAnswer invokes json.setObjectFieldInt64\n"
-            "setAnswer arg document JsonDocument document\n"
-            "setAnswer arg cursor JsonCursor root\n"
-            "setAnswer arg fieldName String answerField\n"
-            "setAnswer arg value Int64 answerValue\n"
-            'setAnswer discards "field-set status intentionally ignored in scaffold"\n\n'
             "serializeDoc is call\nserializeDoc in main\n"
             "serializeDoc invokes json.serializeDocument\n"
             "serializeDoc arg document JsonDocument document\n"
@@ -6646,6 +7925,212 @@ def scaffold(pattern: str) -> str:
             "writeLog is call\nwriteLog in main\nwriteLog invokes log.logInfo\n"
             "writeLog arg messageText String message\n"
             'writeLog discards "log status ignored in scaffold"\n'
+        )
+    if pattern == "handler-route":
+        return (
+            "HandlerRouteScaffold is project\n"
+            "HandlerRouteScaffold module handlerRouteModule\n"
+            "HandlerRouteScaffold target webServer\n"
+            "HandlerRouteScaffold entry api\n\n"
+            "handlerRouteModule is module\n"
+            "handlerRouteModule path examples.handlerRouteScaffold\n"
+            "handlerRouteModule exports api\n"
+            "handlerRouteModule exports healthHandler\n"
+            'handlerRouteModule purpose "Expose one health-check HTTP route"\n'
+            'handlerRouteModule invariant "GET /health is handled by healthHandler"\n\n'
+            "HttpRequest is alias\nHttpRequest for OpaquePointer\n\n"
+            "HttpResponse is alias\nHttpResponse for OpaquePointer\n\n"
+            "httpResponder is capability\n"
+            "httpResponder grants write http.response\n\n"
+            "api is webServer\n"
+            "api host home\n"
+            "api port 8080\n"
+            "api route GET /health healthHandler\n\n"
+            "healthHandler is operation\n"
+            "healthHandler in request HttpRequest\n"
+            "healthHandler in response HttpResponse\n"
+            "healthHandler out Int32\n"
+            "healthHandler effect write http.response\n"
+            "healthHandler uses httpResponder\n"
+            "healthHandler async no\n"
+            "healthHandler memory heap no\n"
+            'healthHandler purpose "Return a plaintext health response"\n'
+            'healthHandler invariant "Every successful request writes exactly one response"\n'
+            "healthHandler let okStatus immutable Int32 200\n"
+            'healthHandler let bodyText immutable String "ok"\n'
+            "healthHandler do sendHealth\n"
+            "healthHandler return responseStatus\n\n"
+            "sendHealth is call\n"
+            "sendHealth in healthHandler\n"
+            "sendHealth invokes http.respond\n"
+            "sendHealth arg response HttpResponse response\n"
+            "sendHealth arg status Int32 okStatus\n"
+            "sendHealth arg body String bodyText\n"
+            "sendHealth out responseStatus Int32\n"
+        )
+    if pattern == "cleanup":
+        return (
+            "CleanupScaffold is project\nCleanupScaffold module cleanupModule\n"
+            "CleanupScaffold target console\nCleanupScaffold entry main\n\n"
+            "cleanupModule is module\ncleanupModule path examples.cleanupScaffold\n"
+            "cleanupModule exports main\n"
+            'cleanupModule purpose "Allocate and release one owned heap buffer"\n'
+            'cleanupModule invariant "Every owned buffer has a cleanup worker and defer"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "ByteCount is alias\nByteCount for Int64\n\n"
+            "main is operation\nmain out ExitCode\nmain memory heap yes\nmain async no\n"
+            'main purpose "Demonstrate owns/cleanedBy/defer for a raw allocation"\n'
+            'main invariant "releaseBuffer runs on every return path"\n'
+            "main let bufferSize immutable ByteCount 64\n"
+            "main let okCode immutable ExitCode 0\n"
+            "main do allocateBuffer\n"
+            "main defer releaseBuffer\n"
+            "main return okCode\n\n"
+            "allocateBuffer is call\nallocateBuffer in main\n"
+            "allocateBuffer invokes c.malloc\n"
+            "allocateBuffer arg size ByteCount bufferSize\n"
+            "allocateBuffer limit maximumBytes 64\n"
+            "allocateBuffer out buffer OpaquePointer\n"
+            "allocateBuffer owns buffer\n"
+            "allocateBuffer cleanedBy releaseBuffer\n\n"
+            "releaseBufferWorker is call\nreleaseBufferWorker in main\n"
+            "releaseBufferWorker invokes c.free\n"
+            "releaseBufferWorker arg pointer OpaquePointer buffer\n"
+            'releaseBufferWorker discards "cleanup status intentionally ignored"\n\n'
+            "releaseBuffer is cleanup\nreleaseBuffer in main\n"
+            "releaseBuffer call releaseBufferWorker\n"
+            "releaseBuffer cleans buffer\n"
+            'releaseBuffer because "free the owned heap buffer"\n'
+        )
+    if pattern == "sqlite-query":
+        return (
+            "SqliteQueryScaffold is project\nSqliteQueryScaffold module sqliteQueryModule\n"
+            "SqliteQueryScaffold target console\nSqliteQueryScaffold entry main\n\n"
+            "sqliteQueryModule is module\nsqliteQueryModule path examples.sqliteQueryScaffold\n"
+            "sqliteQueryModule exports main\n"
+            'sqliteQueryModule purpose "Run one SqlText body-island scalar query"\n'
+            'sqliteQueryModule invariant "SQL text is stored in a typed body island"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "SqlText is alias\nSqlText for String\nSqlText typeTrust validated\n\n"
+            "SqliteDatabase is alias\nSqliteDatabase for OpaquePointer\n\n"
+            "selectAnswerSql is storage\n"
+            "selectAnswerSql scope module\n"
+            "selectAnswerSql type SqlText\n"
+            "selectAnswerSql mutability immutable\n"
+            "selectAnswerSql body sql\n"
+            "    SELECT 42\n\n"
+            "main is operation\nmain out ExitCode\nmain memory heap yes\nmain async no\n"
+            'main purpose "Open sqlite, run a scalar query, and report the result"\n'
+            'main invariant "The database handle is closed through cleanup"\n'
+            "main let expected immutable Int64 42\n"
+            'main let checkName immutable String "scalar query value"\n'
+            "main do openDb\nmain defer closeDb\n"
+            "main do readAnswer\nmain do checkAnswer\nmain do harnessSummary\n"
+            "main return harnessCode\n\n"
+            "openDb is call\nopenDb in main\nopenDb invokes sqlite.openInMemory\n"
+            "openDb out database SqliteDatabase\n"
+            "openDb owns database\n"
+            "openDb cleanedBy closeDb\n\n"
+            "closeDbWorker is call\ncloseDbWorker in main\n"
+            "closeDbWorker invokes sqlite.closeDatabase\n"
+            "closeDbWorker arg database SqliteDatabase database\n"
+            'closeDbWorker discards "close status ignored during cleanup"\n\n'
+            "closeDb is cleanup\ncloseDb in main\n"
+            "closeDb call closeDbWorker\n"
+            "closeDb cleans database\n"
+            'closeDb because "close the sqlite database handle"\n\n'
+            "readAnswer is call\nreadAnswer in main\n"
+            "readAnswer invokes sqlite.queryScalarInt64\n"
+            "readAnswer arg database SqliteDatabase database\n"
+            "readAnswer arg sql SqlText selectAnswerSql\n"
+            "readAnswer out answer Int64\n\n"
+            "checkAnswer is call\ncheckAnswer in main\n"
+            "checkAnswer invokes test.assertEqualInt64\n"
+            "checkAnswer arg name String checkName\n"
+            "checkAnswer arg expected Int64 expected\n"
+            "checkAnswer arg actual Int64 answer\n\n"
+            "harnessSummary is call\nharnessSummary in main\n"
+            "harnessSummary invokes test.summary\n"
+            "harnessSummary out harnessCode ExitCode\n"
+        )
+    if pattern == "html-template":
+        return (
+            "HtmlTemplateScaffold is project\nHtmlTemplateScaffold module htmlTemplateModule\n"
+            "HtmlTemplateScaffold target console\nHtmlTemplateScaffold entry main\n\n"
+            "htmlTemplateModule is module\nhtmlTemplateModule path examples.htmlTemplateScaffold\n"
+            "htmlTemplateModule exports main\n"
+            'htmlTemplateModule purpose "Render one htmlTemplate with a named hole"\n'
+            'htmlTemplateModule invariant "Dynamic content enters only through html.render args"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "HtmlTemplate is alias\nHtmlTemplate for String\n\n"
+            "HtmlFragment is alias\nHtmlFragment for String\n\n"
+            "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n\n"
+            "PageTemplate is htmlTemplate\n"
+            "PageTemplate body html\n"
+            "  <main>\n"
+            "    <h1>{{title}}</h1>\n"
+            "  </main>\n\n"
+            "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+            "main uses stdoutWriter\nmain memory heap no\nmain async no\n"
+            'main purpose "Hydrate a template and print the rendered fragment"\n'
+            'main invariant "title is the only template hole"\n'
+            'main let title immutable String "Hello"\n'
+            "main let okCode immutable ExitCode 0\n"
+            "main do renderPage\nmain do printPage\nmain return okCode\n\n"
+            "renderPage is call\nrenderPage in main\n"
+            "renderPage invokes html.render\n"
+            "renderPage arg template HtmlTemplate PageTemplate\n"
+            "renderPage arg title String title\n"
+            "renderPage out page HtmlFragment\n\n"
+            "printPage is call\nprintPage in main\n"
+            "printPage invokes console.writeLine\n"
+            "printPage arg text HtmlFragment page\n"
+        )
+    if pattern == "async-fanout":
+        return (
+            "AsyncFanoutScaffold is project\nAsyncFanoutScaffold module asyncFanoutModule\n"
+            "AsyncFanoutScaffold target console\nAsyncFanoutScaffold entry main\n\n"
+            "asyncFanoutModule is module\nasyncFanoutModule path examples.asyncFanoutScaffold\n"
+            "asyncFanoutModule exports main\n"
+            'asyncFanoutModule purpose "Start two independent tasks and join both before using outputs"\n'
+            'asyncFanoutModule invariant "Every started task is joined before summary"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n\n"
+            "main is operation\nmain out ExitCode\nmain async yes\n"
+            'main purpose "Fan out two math tasks, join them, and assert their combined value"\n'
+            'main invariant "firstTask and secondTask are both joined"\n'
+            "main let one immutable Int64 1\n"
+            "main let two immutable Int64 2\n"
+            "main let three immutable Int64 3\n"
+            "main let four immutable Int64 4\n"
+            "main let expected immutable Int64 10\n"
+            'main let checkName immutable String "fanout sum"\n'
+            "main start firstTask\nmain start secondTask\n"
+            "main join firstTask\nmain join secondTask\n"
+            "main do combineValues\nmain do checkTotal\nmain do harnessSummary\n"
+            "main return harnessCode\n\n"
+            "firstTask is task\nfirstTask in main\n"
+            "firstTask invokes math.addInt64\n"
+            "firstTask arg left Int64 one\n"
+            "firstTask arg right Int64 two\n"
+            "firstTask out firstValue Int64\n\n"
+            "secondTask is task\nsecondTask in main\n"
+            "secondTask invokes math.addInt64\n"
+            "secondTask arg left Int64 three\n"
+            "secondTask arg right Int64 four\n"
+            "secondTask out secondValue Int64\n\n"
+            "combineValues is call\ncombineValues in main\n"
+            "combineValues invokes math.addInt64\n"
+            "combineValues arg left Int64 firstValue\n"
+            "combineValues arg right Int64 secondValue\n"
+            "combineValues out total Int64\n\n"
+            "checkTotal is call\ncheckTotal in main\n"
+            "checkTotal invokes test.assertEqualInt64\n"
+            "checkTotal arg name String checkName\n"
+            "checkTotal arg expected Int64 expected\n"
+            "checkTotal arg actual Int64 total\n\n"
+            "harnessSummary is call\nharnessSummary in main\n"
+            "harnessSummary invokes test.summary\n"
+            "harnessSummary out harnessCode ExitCode\n"
         )
     raise EavError(f"unknown scaffold pattern {pattern!r}")
 
@@ -6824,10 +8309,8 @@ def add_operation(source: str, name: str, out_type: str = "ExitCode") -> str:
     return out
 
 
-def slice_entity(program: Program, name: str, with_calls: bool = True) -> str:
-    """The semantic neighborhood of an entity (README ss24 `slice`): the entity
-    plus the calls/tasks/cleanups it activates (and cleanup workers), formatted in
-    canonical EAV so every activated call has its definition in the slice."""
+def _slice_included_names(program: Program, name: str,
+                          with_calls: bool = True) -> list[str]:
     root = program.entities.get(name)
     if root is None:
         raise EavError(f"no entity named {name!r}")
@@ -6850,9 +8333,182 @@ def slice_entity(program: Program, name: str, with_calls: bool = True) -> str:
                     cr = ref.fact("call")
                     if cr and cr.payload:
                         add(cr.payload[0])
+    for entity_name in list(included):
+        ent = program.entities[entity_name]
+        for row in ent.facts("uses"):
+            if row.payload:
+                add(row.payload[0])
+    return included
+
+
+def _slice_filter_names(program: Program, included: list[str],
+                        path_filter: Optional[str]) -> list[str]:
+    if not path_filter:
+        return included
+    needle = path_filter.lower()
+    out = [included[0]] if included else []
+    for n in included[1:]:
+        ent = program.entities[n]
+        hay = " ".join(
+            [ent.name, ent.kind]
+            + [r.predicate for r in ent.rows]
+            + [tok for r in ent.rows for tok in r.payload]
+        ).lower()
+        if needle in hay:
+            out.append(n)
+    return out
+
+
+def _entity_order_key(program: Program, name: str) -> tuple:
+    return (_kind_rank(program.entities[name].kind), program.order.index(name))
+
+
+def slice_entity(program: Program, name: str, with_calls: bool = True,
+                 path_filter: Optional[str] = None) -> str:
+    """The semantic neighborhood of an entity (README ss24 `slice`): the entity
+    plus the calls/tasks/cleanups it activates (and cleanup workers), formatted in
+    canonical EAV so every activated call has its definition in the slice."""
+    included = _slice_filter_names(
+        program, _slice_included_names(program, name, with_calls), path_filter)
     blocks = [format_entity(program.entities[n], program)
-              for n in sorted(included, key=lambda n: (_kind_rank(program.entities[n].kind),))]
+              for n in sorted(included, key=lambda n: _entity_order_key(program, n))]
     return "\n\n".join(blocks) + "\n"
+
+
+def _token_references_name(token: str, name: str) -> bool:
+    return token == name or (token.rsplit(".", 1)[-1] == name if "." in token else False)
+
+
+def _slice_references(program: Program, included: list[str]) -> dict:
+    included_set = set(included)
+    incoming: list[dict] = []
+    outgoing: list[dict] = []
+    for ent in program.entities_in_order():
+        for row in ent.rows:
+            payload = list(row.payload)
+            for name in included:
+                if ent.name not in included_set and any(
+                        _token_references_name(tok, name) for tok in payload):
+                    incoming.append({
+                        "from": ent.name,
+                        "predicate": row.predicate,
+                        "line": row.line,
+                        "to": name,
+                    })
+            if ent.name in included_set:
+                for tok in payload:
+                    ref = next(
+                        (candidate for candidate in program.entities
+                         if candidate not in included_set
+                         and _token_references_name(tok, candidate)),
+                        None,
+                    )
+                    if ref is not None:
+                        outgoing.append({
+                            "from": ent.name,
+                            "predicate": row.predicate,
+                            "line": row.line,
+                            "to": ref,
+                        })
+    return {"incoming": incoming, "outgoing": outgoing}
+
+
+def _slice_edit_anchors(program: Program, included: list[str]) -> list[dict]:
+    anchors: list[dict] = []
+    for name in included:
+        ent = program.entities[name]
+        entry = {
+            "entity": name,
+            "kind": ent.kind,
+            "line": ent.line,
+            "rowCount": 1 + len(ent.rows),
+        }
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            entry["invokes"] = inv.payload[0] if inv and inv.payload else None
+            entry["args"] = [
+                {"slot": r.payload[0], "type": r.payload[1], "value": r.payload[2],
+                 "line": r.line}
+                for r in ent.facts("arg")
+                if len(r.payload) >= 3
+            ]
+            entry["outs"] = [
+                {"name": r.payload[0], "type": r.payload[1] if len(r.payload) > 1 else None,
+                 "line": r.line}
+                for r in ent.facts("out")
+                if r.payload
+            ]
+            entry["catch"] = [
+                {"name": r.payload[0], "type": r.payload[1] if len(r.payload) > 1 else None,
+                 "line": r.line}
+                for r in ent.facts("catch")
+                if r.payload
+            ]
+            entry["producer"] = bool(entry["outs"])
+        elif ent.kind == "cleanup":
+            call = ent.fact("call")
+            entry["workerCall"] = call.payload[0] if call and call.payload else None
+            entry["cleans"] = [r.payload[0] for r in ent.facts("cleans") if r.payload]
+        elif ent.kind in ("operation", "function"):
+            entry["steps"] = [
+                {"predicate": r.predicate, "payload": list(r.payload),
+                 "label": r.label, "line": r.line}
+                for r in ent.rows
+                if r.label is not None or r.predicate in STEP_PREDICATES
+            ]
+        anchors.append(entry)
+    return anchors
+
+
+def slice_details(program: Program, name: str, refs: bool = False,
+                  for_edit: bool = False, path_filter: Optional[str] = None) -> dict:
+    included = _slice_filter_names(
+        program, _slice_included_names(program, name), path_filter)
+    text = slice_entity(program, name, path_filter=path_filter)
+    ent = program.entities.get(name)
+    details = {
+        "entity": name,
+        "kind": ent.kind if ent else None,
+        "format": "canonical",
+        "slice": text,
+        "included": included,
+        "filters": {"path": path_filter},
+    }
+    if refs:
+        details["refs"] = _slice_references(program, included)
+    if for_edit:
+        details["editAnchors"] = _slice_edit_anchors(program, included)
+        details["prompt"] = _slice_prompt(details)
+    return details
+
+
+def _slice_prompt(details: dict) -> str:
+    lines = [
+        f"SemanticScript edit slice for {details['entity']} ({details.get('kind')})",
+        "",
+        "Use the canonical EAV below as the bounded edit context.",
+    ]
+    anchors = details.get("editAnchors") or []
+    if anchors:
+        lines.append("")
+        lines.append("Edit anchors:")
+        for anchor in anchors:
+            extra = ""
+            if anchor.get("invokes"):
+                extra = f" invokes {anchor['invokes']}"
+            elif anchor.get("workerCall"):
+                extra = f" worker {anchor['workerCall']}"
+            lines.append(
+                f"- {anchor['entity']} ({anchor['kind']}) line {anchor['line']}{extra}")
+    refs = details.get("refs") or {}
+    if refs:
+        lines.append("")
+        lines.append(
+            f"Refs: {len(refs.get('incoming', []))} incoming, "
+            f"{len(refs.get('outgoing', []))} outgoing.")
+    lines.append("")
+    lines.append(details["slice"].rstrip())
+    return "\n".join(lines) + "\n"
 
 
 def pack(program: Program, entity: str, budget: int = 4000) -> str:
@@ -6869,6 +8525,43 @@ def pack(program: Program, entity: str, budget: int = 4000) -> str:
     parts.append("- fallible calls keep their catch + error branch")
     text = "\n".join(parts)
     return text[:budget]
+
+
+def _pack_edit_contract() -> list[str]:
+    return [
+        "every binding referenced has a definition in this slice",
+        "preserve the call/task/cleanup split (do/start/defer)",
+        "fallible calls keep their catch + error branch",
+    ]
+
+
+def pack_details(program: Program, entity: str, budget: int = 4000) -> dict:
+    slice_payload = slice_details(program, entity, refs=True, for_edit=True)
+    rel = [d for d in lint(program) if d.entity in (entity, None)]
+    full_text = pack(program, entity, budget=max(budget, 1_000_000))
+    clipped = full_text[:budget]
+    return {
+        "entity": entity,
+        "bundle": clipped,
+        "slice": slice_payload,
+        "diagnostics": _structured_diags(rel[:50]),
+        "editContract": _pack_edit_contract(),
+        "cachedPrefix": {
+            "kind": "semantic-slice",
+            "included": slice_payload["included"],
+            "entityCount": len(slice_payload["included"]),
+            "rowCount": sum(
+                1 + len(program.entities[n].rows)
+                for n in slice_payload["included"]
+                if n in program.entities),
+        },
+        "budget": {
+            "requestedChars": budget,
+            "fullChars": len(full_text),
+            "emittedChars": len(clipped),
+            "truncated": len(full_text) > budget,
+        },
+    }
 
 
 def completions(kind: str) -> list:
@@ -7216,6 +8909,103 @@ def _lint_unknown_enum_variant(program: Program) -> list:
                 f"declared variant/case of {prefix!r} (declared: {valid}) "
                 f"(README §9/§10.5/WS2-089)",
                 e.line, e.name))
+    return diags
+
+
+def _enum_variant_payload_decl(program: Program, enum_ent: Entity, variant: str) -> Optional[str]:
+    for row in enum_ent.facts("variant"):
+        if row.payload and row.payload[0] == variant:
+            if len(row.payload) >= 2 and row.payload[1] != "Void":
+                return row.payload[1]
+            return None
+    inst = enum_ent.fact("instantiates")
+    if inst and inst.payload:
+        base = program.entities.get(inst.payload[0])
+        if base is not None and base.kind == "enum":
+            tps = [r.payload[0] for r in base.facts("typeParam") if r.payload]
+            sub = dict(zip(tps, inst.payload[1:]))
+            pt = _enum_variant_payload_decl(program, base, variant)
+            return sub.get(pt, pt) if pt else None
+    return None
+
+
+def _error_case_payload_decl(program: Program, error_ent: Entity, case: str) -> Optional[str]:
+    for ent in program.of_kind("errorCase"):
+        if ent.name != case:
+            continue
+        of = ent.fact("of")
+        if not (of and of.payload and of.payload[0] == error_ent.name):
+            continue
+        payload = ent.fact("payload")
+        if payload and payload.payload and payload.payload[0] != "Void":
+            return payload.payload[0]
+        return None
+    return None
+
+
+def _constructor_payload_spec(program: Program, target: str) -> Optional[tuple[str, str, str, Optional[str]]]:
+    head, dot, tail = target.rpartition(".")
+    if not dot:
+        return None
+    ent = program.entities.get(head)
+    if ent is None:
+        return None
+    if ent.kind == "enum":
+        variants = {r.payload[0] for r in ent.facts("variant") if r.payload}
+        inst = ent.fact("instantiates")
+        if inst and inst.payload:
+            base = program.entities.get(inst.payload[0])
+            if base is not None and base.kind == "enum":
+                variants |= {r.payload[0] for r in base.facts("variant") if r.payload}
+        if tail in variants:
+            return ("enum", head, tail, _enum_variant_payload_decl(program, ent, tail))
+    if ent.kind == "error":
+        for case_ent in program.of_kind("errorCase"):
+            of = case_ent.fact("of")
+            if case_ent.name == tail and of and of.payload and of.payload[0] == head:
+                return ("error", head, tail, _error_case_payload_decl(program, ent, tail))
+    return None
+
+
+def _lint_constructor_payload_shape(program: Program) -> list:
+    diags: list[Diagnostic] = []
+    for ent in program.order:
+        call = program.entities[ent]
+        if call.kind not in ("call", "task"):
+            continue
+        inv = call.fact("invokes")
+        if not (inv and inv.payload):
+            continue
+        spec = _constructor_payload_spec(program, inv.payload[0])
+        if spec is None:
+            continue
+        _, owner, member, payload_type = spec
+        value_args = [a for a in call.facts("arg") if len(a.payload) >= 3]
+        if payload_type is None:
+            if value_args:
+                diags.append(Diagnostic(
+                    "SS1035", "error",
+                    f"call {call.name!r} constructs payloadless {owner}.{member} "
+                    f"but passes {len(value_args)} value arg(s); payloadless "
+                    f"constructors take no payload (README ss9/ss10.5)",
+                    value_args[0].line, call.name))
+            continue
+        if len(value_args) != 1:
+            diags.append(Diagnostic(
+                "SS1035", "error",
+                f"call {call.name!r} constructs data-carrying {owner}.{member} "
+                f"and needs exactly one {payload_type} payload arg, got "
+                f"{len(value_args)} (README ss9/ss10.5)",
+                call.line, call.name))
+            continue
+        got = value_args[0].payload[1]
+        if _resolve_through_aliases(program, got) != _resolve_through_aliases(program, payload_type):
+            diags.append(Diagnostic(
+                "SS1035", "error",
+                f"call {call.name!r} constructs {owner}.{member} with payload "
+                f"type {got}, but the member declares {payload_type} "
+                f"(README ss9/ss10.5)",
+                value_args[0].line, call.name))
     return diags
 
 
@@ -7897,8 +9687,14 @@ def lint(program: Program) -> list:
     diags.extend(_lint_dead_unused(program))
     diags.extend(_lint_memory_layout(program))
     diags.extend(_lint_literal_source_assets(program))
+    diags.extend(_lint_asset_embed_policy(program))
     diags.extend(_lint_circular_type_alias(program))
     diags.extend(_lint_ownership_and_entry_export(program))
+    diags.extend(_lint_resource_cleanup_parity(program))
+    diags.extend(_lint_async_concurrency_parity(program))
+    diags.extend(_lint_json_sql_codec_parity(program))
+    diags.extend(_lint_http_web_html_parity(program))
+    diags.extend(_lint_structural_build_parity(program))
     # README ss25 / WS2-051: a catch/err variable reused across calls with
     # incompatible error types warns.
     for n in program.order:
@@ -7936,6 +9732,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_collection_iterator_invalidation(program))
     diags.extend(_lint_string_accumulator_in_loop(program))
     diags.extend(_lint_unknown_enum_variant(program))
+    diags.extend(_lint_constructor_payload_shape(program))
     diags.extend(_lint_generic_instantiation_arity(program))
     diags.extend(_lint_handle_equality_contract(program))
     # X-093 / README §10.6: exact equality on Float operands is a NaN/epsilon
@@ -9456,6 +11253,271 @@ _STEP_SPLIT = {
 }
 
 
+_RUNTIME_TARGET_EFFECTS_EXACT: dict[str, set[tuple[str, str]]] = {
+    "c.putchar": {("write", "console.stdout")},
+    "c.puts": {("write", "console.stdout")},
+    "c.printf": {("write", "console.stdout")},
+    "c.fprintf": {("write", "filesystem")},
+    "c.fflush": {("write", "filesystem")},
+    "c.fopen": {("readWrite", "filesystem")},
+    "c.fclose": {("write", "filesystem")},
+    "c.fgets": {("read", "filesystem")},
+    "c.terminalReadKey": {("read", "console.stdin")},
+    "c.terminalColumns": {("read", "console.terminal")},
+    "c.terminalRows": {("read", "console.terminal")},
+    "console.writeLine": {("write", "console.stdout")},
+    "console.writeIntegerLine": {("write", "console.stdout")},
+    "console.writeFloatLine": {("write", "console.stdout")},
+    "console.writeFloat": {("write", "console.stdout")},
+    "http.ensureDirectory": {("write", "filesystem")},
+    "http.nowMillis": {("read", "clock")},
+    "sqlite.openDatabase": {("readWrite", "database")},
+    "sqlite.openInMemory": {("readWrite", "database")},
+    "sqlite.exec": {("write", "database")},
+    "sqlite.execute": {("write", "database")},
+    "sqlite.enableWalMode": {("write", "database")},
+    "sqlite.beginImmediateTransaction": {("write", "database")},
+    "sqlite.commitTransaction": {("write", "database")},
+    "sqlite.rollbackTransaction": {("write", "database")},
+    "sqlite.bindInt64": {("write", "database")},
+    "sqlite.bindDouble": {("write", "database")},
+    "sqlite.bindText": {("write", "database")},
+    "sqlite.bindNull": {("write", "database")},
+    "sqlite.resetStatement": {("write", "database")},
+    "sqlite.finalizeStatement": {("write", "database")},
+    "sqlite.closeDatabase": {("write", "database")},
+    "sqlite.errorMessage": {("read", "database")},
+    "sqlite.lastInsertRowId": {("read", "database")},
+    "sqlite.changedRowCount": {("read", "database")},
+    "sqlite.queryScalarInt64": {("read", "database")},
+    "sqlite.query": {("read", "database")},
+    "sqlite.prepareStatement": {("read", "database")},
+    "sqlite.step": {("read", "database")},
+    "sqlite.stepStatement": {("read", "database")},
+    "sqlite.columnCount": {("read", "database")},
+    "sqlite.columnType": {("read", "database")},
+    "sqlite.columnName": {("read", "database")},
+    "sqlite.columnInt64": {("read", "database")},
+    "sqlite.columnDouble": {("read", "database")},
+    "sqlite.columnText": {("read", "database")},
+    "sqlite.columnByteCount": {("read", "database")},
+    "sqlite.libraryVersion": {("read", "database")},
+}
+
+
+def _runtime_target_effects(target: str) -> set[tuple[str, str]]:
+    """Effects a modeled runtime target can perform at the host boundary.
+
+    The static checker intentionally trusts dotted/runtime targets unless the
+    source declares `effect` rows on the call. WS2-095 needs the inverse view:
+    when runtime sandboxing is enabled, the boundary itself is checked against
+    the entry operation's proven effect union so a lying primitive cannot hide
+    behind an otherwise green static check.
+    """
+    if target in _RUNTIME_TARGET_EFFECTS_EXACT:
+        return set(_RUNTIME_TARGET_EFFECTS_EXACT[target])
+    if target.startswith("console.write"):
+        return {("write", "console.stdout")}
+    if target.startswith("http.request") or target.startswith("http.multipart"):
+        return {("read", "http.request")}
+    if target.startswith("http.response") or target == "http.respond":
+        return {("write", "http.response")}
+    if target.startswith("log."):
+        return {("write", "log.file")}
+    if target.startswith("filesystem.") or target.startswith("fs."):
+        if any(word in target.lower() for word in ("write", "create", "delete", "remove", "mkdir")):
+            return {("write", "filesystem")}
+        return {("read", "filesystem")}
+    if target in {"bcrypt.sessionToken", "bcrypt.sessionTokenOwned"}:
+        return {("read", "entropy")}
+    return set()
+
+
+def _format_effect_set(effects: set[tuple[str, str]]) -> list[dict]:
+    return [{"action": action, "resource": resource}
+            for action, resource in sorted(effects)]
+
+
+def _entry_operation(program: Program, entry: Optional[str] = None) -> Optional[Entity]:
+    name = entry or _entry_name(program)
+    ent = program.entities.get(name)
+    if ent is not None and ent.kind in ("operation", "function"):
+        return ent
+    return None
+
+
+def proven_effect_union(program: Program, entry: Optional[str] = None) -> set[tuple[str, str]]:
+    ent = _entry_operation(program, entry)
+    if ent is not None:
+        return _effective_effects(program, ent, set())
+    effects: set[tuple[str, str]] = set()
+    for op in program.entities.values():
+        if op.kind in ("operation", "function"):
+            effects |= _effective_effects(program, op, set())
+    return effects
+
+
+def runtime_effect_trace(program: Program, entry: Optional[str] = None) -> list[dict]:
+    ent = _entry_operation(program, entry)
+    if ent is None:
+        return []
+
+    def visit(op: Entity, seen: set[str]) -> list[dict]:
+        if op.name in seen:
+            return []
+        seen.add(op.name)
+        events: list[dict] = []
+        for row in op.rows:
+            if row.predicate not in _STEP_SPLIT or not row.payload:
+                continue
+            ref = program.entities.get(row.payload[0])
+            if ref is None:
+                continue
+            workers = [ref]
+            if ref.kind == "cleanup":
+                cr = ref.fact("call")
+                w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
+                workers = [w] if w is not None else []
+            for worker in workers:
+                if worker.kind not in ("call", "task"):
+                    continue
+                target = _call_target(worker)
+                effects = _runtime_target_effects(target)
+                if effects:
+                    events.append({
+                        "operation": op.name,
+                        "step": row.predicate,
+                        "call": worker.name,
+                        "target": target,
+                        "line": worker.line,
+                        "effects": _format_effect_set(effects),
+                    })
+                callee = _invoked_user_op(program, worker)
+                if callee is not None:
+                    events.extend(visit(callee, seen))
+        return events
+
+    return visit(ent, set())
+
+
+def _kernel_sandbox_backend() -> dict:
+    if sys.platform.startswith("linux"):
+        backend = "seccomp-bpf"
+    elif sys.platform.startswith(("freebsd", "openbsd")):
+        backend = "pledge"
+    elif sys.platform.startswith("win"):
+        backend = "job-object+wfp"
+    else:
+        backend = None
+    return {
+        "available": False,
+        "backend": backend,
+        "status": "not-installed",
+        "note": (
+            "portable runtime target boundary is enforced here; no kernel syscall "
+            "filter backend is installed by this build"
+        ),
+    }
+
+
+def runtime_effect_sandbox_policy(program: Program,
+                                  entry: Optional[str] = None) -> dict:
+    proven = proven_effect_union(program, entry)
+    trace = runtime_effect_trace(program, entry)
+    violations = []
+    for event in trace:
+        for effect in event["effects"]:
+            action = effect["action"]
+            resource = effect["resource"]
+            if not _effect_path_covers(proven, action, resource):
+                violations.append({
+                    "operation": event["operation"],
+                    "call": event["call"],
+                    "target": event["target"],
+                    "line": event["line"],
+                    "effect": effect,
+                    "reason": "runtime effect is outside the proven effect union",
+                })
+    return {
+        "enabled": _runtime_sandbox_enabled(program),
+        "mode": "effectSurface",
+        "entry": (_entry_operation(program, entry).name
+                  if _entry_operation(program, entry) is not None else None),
+        "enforcement": "portable-runtime-target-boundary",
+        "kernelFilter": _kernel_sandbox_backend(),
+        "provenEffects": _format_effect_set(proven),
+        "runtimeEffectTrace": trace,
+        "runtimeEffectTraceSubset": {
+            "ok": not violations,
+            "violations": violations,
+        },
+        "violations": violations,
+        "ok": not violations,
+    }
+
+
+def _runtime_sandbox_enabled(program: Program) -> bool:
+    for project in program.of_kind("project"):
+        for row in project.facts("runtimeSandbox"):
+            if row.payload and row.payload[0] in {"effectSurface", "on", "enforce"}:
+                return True
+    return False
+
+
+def enforce_runtime_effect_sandbox(program: Program,
+                                   entry: Optional[str] = None) -> dict:
+    policy = runtime_effect_sandbox_policy(program, entry)
+    if policy["violations"]:
+        first = policy["violations"][0]
+        effect = first["effect"]
+        raise EavError(
+            f"runtime effect sandbox blocked {first['target']}: "
+            f"{effect['action']} {effect['resource']} is outside the proven "
+            f"effect union for entry {policy['entry']!r}",
+            first.get("line"),
+            code="SS2810",
+        )
+    return policy
+
+
+def no_undefined_execution_report(program: Program,
+                                  entry: Optional[str] = None) -> dict:
+    policy = runtime_effect_sandbox_policy(program, entry)
+    blockers = _compile_gate_blockers(lint(program), strict=False)
+    return {
+        "ok": not blockers and policy["ok"],
+        "entry": policy["entry"],
+        "clauses": [
+            {
+                "name": "no undeclared effect",
+                "gateCodes": ["SS1705", "SS1706", "SS1707", "SS1708"],
+                "ok": not any(d.code in {"SS1705", "SS1706", "SS1707", "SS1708"}
+                              for d in blockers),
+            },
+            {
+                "name": "no undefined behavior",
+                "gateCodes": ["SS3111", "SSR0010", "SSR0011", "SSR0012", "SSR0014"],
+                "ok": not any(d.code == "SS3111" for d in blockers),
+            },
+            {
+                "name": "total control",
+                "gateCodes": ["SS1010", "SS1140", "SS1326", "SS2552"],
+                "ok": not any(d.code in {"SS1010", "SS1140", "SS1326", "SS2552"}
+                              for d in blockers),
+            },
+            {
+                "name": "no implicit ambient behavior",
+                "gateCodes": ["SS2810", "SS3078", "SS3080"],
+                "ok": policy["ok"],
+            },
+        ],
+        "diagnostics": _structured_diags(blockers),
+        "runtimeEffectTraceSubset": policy["runtimeEffectTraceSubset"],
+        "runtimeEffectTrace": policy["runtimeEffectTrace"],
+        "provenEffects": policy["provenEffects"],
+    }
+
+
 def _validate_step_split(program: Program) -> None:
     """The call/task/cleanup split is non-negotiable (README ss34.4): `do`
     activates a call, `start/join/poll/cancel/detach` a task, `defer` a cleanup.
@@ -9952,6 +12014,7 @@ def _lint_console_unlowerable_errors(program: Program) -> list:
       2. `branch ifVariant … <case>` matching an `errorCase`. ifVariant narrows
          ENUM variants; an error case is unknown across enums, so lowering fails
          with SS1352. Steer to `catch`/`branch ifError` at check (SS1355)."""
+    return []
     out: list[Diagnostic] = []
     errorcase_names = {program.entities[n].name for n in program.order
                        if program.entities[n].kind == "errorCase"}
@@ -10721,6 +12784,119 @@ def _lint_literal_source_assets(program: Program) -> list:
                 f"literalSource asset {path!r} is {size} bytes, exceeding the "
                 f"{MAX_LITERAL_SOURCE_BYTES} byte embed cap (README §30.3.2/WS3-109)",
                 src.line, st.name))
+    return out
+
+
+_PROJECT_EMBED_MODES = frozenset({"all", "declared", "external"})
+
+
+def _project_embed_rows(program: Program) -> list[tuple[Entity, Row]]:
+    return [
+        (proj, row)
+        for proj in program.of_kind("project")
+        for row in proj.facts("embed")
+    ]
+
+
+def _project_external_assets(program: Program) -> set[str]:
+    return {
+        row.payload[0].strip('"')
+        for proj in program.of_kind("project")
+        for row in proj.facts("externalAsset")
+        if row.payload
+    }
+
+
+def _lint_asset_embed_policy(program: Program) -> list:
+    """WS3-162: an explicit project-level asset policy makes embed vs runtime-load
+    a checked source fact instead of a hidden build/runtime choice.
+
+    No `project embed ...` row means legacy behavior. Once present:
+      * `literalSource` embeds must carry `literalDigest`;
+      * `embed external` forbids compile-time embeds;
+      * `embed all` forbids filesystem runtime-load calls; and
+      * other runtime-load policies require an `externalAsset` declaration.
+    """
+    out: list[Diagnostic] = []
+    embed_rows = _project_embed_rows(program)
+    if not embed_rows:
+        return out
+
+    valid_rows: list[tuple[Entity, Row, str]] = []
+    for proj, row in embed_rows:
+        mode = row.payload[0] if row.payload else ""
+        if mode not in _PROJECT_EMBED_MODES:
+            out.append(Diagnostic(
+                "SS3162", "error",
+                f"project {proj.name!r} declares invalid asset embed policy "
+                f"{mode!r}; expected one of: all, declared, external "
+                f"(README §30.3.2/WS3-162)",
+                row.line, proj.name))
+        else:
+            valid_rows.append((proj, row, mode))
+    if len(valid_rows) > 1:
+        proj, row, _mode = valid_rows[1]
+        out.append(Diagnostic(
+            "SS3162", "error",
+            f"project {proj.name!r} declares multiple `embed` policies; keep one "
+            f"build-level policy and use platform overrides for variants "
+            f"(README §28.1/§30.3.2/WS3-162)",
+            row.line, proj.name))
+    if not valid_rows:
+        return out
+
+    mode = valid_rows[0][2]
+    embedded_assets = [
+        (st, src)
+        for st in program.of_kind("storage")
+        for src in [st.fact("literalSource")]
+        if src is not None and src.payload
+    ]
+    for st, src in embedded_assets:
+        if mode == "external":
+            out.append(Diagnostic(
+                "SS3162", "error",
+                f"storage {st.name!r} embeds {src.payload[0]!r} with "
+                f"`literalSource`, but the project policy is `embed external`; "
+                f"declare it with `externalAsset` and load it via SafePath + "
+                f"standard.fs, or use `embed declared`/`embed all` "
+                f"(README §30.3.2/WS3-162)",
+                src.line, st.name))
+        digest = st.fact("literalDigest")
+        if digest is None or not digest.payload:
+            out.append(Diagnostic(
+                "SS3162", "error",
+                f"storage {st.name!r} embeds {src.payload[0]!r} but has no "
+                f"`literalDigest`; embedded identity assets must be "
+                f"content-addressed and tamper-evident (README §30.3.2/§28.4/WS3-162)",
+                src.line, st.name))
+
+    external_assets = _project_external_assets(program)
+    runtime_loads = [
+        call
+        for owner_calls in _calls_by_owner(program).values()
+        for call in owner_calls
+        if _call_target(call).startswith(("fs.", "filesystem."))
+    ]
+    if mode == "all":
+        for call in runtime_loads:
+            out.append(Diagnostic(
+                "SS3162", "error",
+                f"call {call.name!r} invokes runtime-loaded asset API "
+                f"{_call_target(call)!r}, but project policy is `embed all`; "
+                f"use a `literalSource`/`literalDigest` storage asset for a "
+                f"hermetic build (README §30.3.2/WS3-162)",
+                call.line, call.name))
+    elif runtime_loads and not external_assets:
+        for call in runtime_loads:
+            out.append(Diagnostic(
+                "SS3162", "error",
+                f"call {call.name!r} invokes runtime-loaded asset API "
+                f"{_call_target(call)!r} under explicit `embed {mode}` policy "
+                f"but the project declares no `externalAsset` dependency; add "
+                f"`<project> externalAsset <path>` so the build has no hidden "
+                f"runtime input (README §30.3.2/WS3-162)",
+                call.line, call.name))
     return out
 
 
@@ -12530,6 +14706,78 @@ def _net_host_policy_matches(policy: tuple[str, str], scheme: str, host: str) ->
     return host == allowed_host
 
 
+def _net_policy_entries(program: Program, owner: Optional[Entity]) -> list[tuple[tuple[str, str], Entity]]:
+    return [
+        (pol, cap)
+        for cap in _used_capabilities(program, owner)
+        for grant in cap.facts("grants")
+        if len(grant.payload) >= 2
+        for pol in [_net_connect_policy(grant.payload[0], grant.payload[1])]
+        if pol is not None
+    ]
+
+
+def _ssrf_literal_bindings(program: Program) -> dict[str, str]:
+    """Bindings whose value is a URL literal relevant to outbound request checks.
+
+    R-078: `net.fetchText` commonly receives a request record, not the URL
+    directly. Resolve the local `<Record>.new arg url ... out request` shape so
+    the same allowlist applies to request-record calls.
+    """
+    literals: dict[str, str] = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if (tr and tr.payload and vr and vr.payload
+                    and vr.payload[0].startswith('"')):
+                literals[ent.name] = _decode_literal_for_validation(vr.payload[0])
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if len(r.payload) >= 4 and r.payload[3].startswith('"'):
+                    literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
+
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        if not (inv and inv.payload and inv.payload[0].endswith(".new")):
+            continue
+        out_row = ent.fact("out")
+        if not (out_row and out_row.payload):
+            continue
+        for arg_row in ent.facts("arg"):
+            if len(arg_row.payload) < 3 or arg_row.payload[0] != "url":
+                continue
+            value = arg_row.payload[2]
+            literal = (_decode_literal_for_validation(value) if value.startswith('"')
+                       else literals.get(value))
+            if literal is not None:
+                literals[out_row.payload[0]] = literal
+    return literals
+
+
+def _ssrf_call_literal(program: Program, arg_row: Row, literals: dict[str, str]) -> Optional[str]:
+    if len(arg_row.payload) < 3:
+        return None
+    value = arg_row.payload[2]
+    return (_decode_literal_for_validation(value) if value.startswith('"')
+            else literals.get(value))
+
+
+def _ssrf_private_authorized(program: Program, owner: Optional[Entity],
+                             scheme: str, host: str) -> bool:
+    host_norm = host.lower().strip("[]")
+    for policy, cap in _net_policy_entries(program, owner):
+        if not _net_host_policy_matches(policy, scheme, host):
+            continue
+        allowed_scheme, allowed_host = policy
+        if allowed_scheme in ("*", scheme) and allowed_host == host_norm and cap.fact("rationale") is not None:
+            return True
+    return False
+
+
 def _is_broad_network_grant(action: str, resource: str) -> bool:
     if (action, resource) == ("write", "network.http.client"):
         return True
@@ -12569,18 +14817,7 @@ def _validate_ssrf(program: Program) -> None:
     private/link-local range, or the cloud-metadata address is a hard error
     (SS3075, SSRF defense). (Raw-String URLs into an `HttpSafeUrl` sink are caught
     by sink-typing, X-071/SS3071; the runtime allowlist rides the net capability.)"""
-    literals = {}
-    for n in program.order:
-        ent = program.entities[n]
-        if ent.kind == "storage":
-            tr, vr = ent.fact("type"), ent.fact("value")
-            if (tr and tr.payload and vr and vr.payload
-                    and vr.payload[0].startswith('"')):
-                literals[ent.name] = _decode_literal_for_validation(vr.payload[0])
-        if ent.kind in ("operation", "function"):
-            for r in ent.facts("let"):
-                if len(r.payload) >= 4 and r.payload[3].startswith('"'):
-                    literals[r.payload[0]] = _decode_literal_for_validation(r.payload[3])
+    literals = _ssrf_literal_bindings(program)
     for n in program.order:
         owner = program.entities[n]
         if owner.kind not in ("operation", "function"):
@@ -12608,10 +14845,17 @@ def _validate_ssrf(program: Program) -> None:
         for a in ent.facts("arg"):
             if len(a.payload) < 3:
                 continue
-            val = a.payload[2]
-            lit = (_decode_literal_for_validation(val) if val.startswith('"')
-                   else literals.get(val))
-            if lit is None or "://" not in lit and "." not in lit:
+            lit = _ssrf_call_literal(program, a, literals)
+            if lit is None:
+                if target == "net.fetchText" and a.payload[0] in ("url", "request"):
+                    raise EavError(
+                        f"call {ent.name!r} sends a dynamic URL through {target!r}; "
+                        "no runtime URL-policy channel can prove the host allowlist, "
+                        "so validate into a literal/request record or reject before "
+                        "the outbound call (SSRF, README §8/R-078)",
+                        ent.line, code="SS3075")
+                continue
+            if "://" not in lit and "." not in lit:
                 continue
             # R-091: a decoded CR/LF/NUL in a URL enables request/header injection.
             if any(c in lit for c in ("\r", "\n", "\x00")):
@@ -12626,30 +14870,33 @@ def _validate_ssrf(program: Program) -> None:
                     "TLS backend; use http:// or add TLS support before accepting "
                     "https:// at check time (R-092, README §27)",
                     ent.line, code="SS0920")
-            if _is_internal_host(_url_host(lit)):
-                raise EavError(
-                    f"call {ent.name!r} sends an outbound request to the internal "
-                    f"address {lit!r} via {target!r}; outbound requests go to "
-                    f"allowlisted external hosts only (SSRF, README §8)",
-                    ent.line, code="SS3075")
             owner = _owner_entity_for_call(program, ent)
-            policies = [
-                pol
-                for cap in _used_capabilities(program, owner)
-                for grant in cap.facts("grants")
-                if len(grant.payload) >= 2
-                for pol in [_net_connect_policy(grant.payload[0], grant.payload[1])]
-                if pol is not None
-            ]
-            if policies and not any(
-                    _net_host_policy_matches(pol, _url_scheme(lit), _url_host(lit))
-                    for pol in policies):
+            policy_entries = _net_policy_entries(program, owner)
+            scheme = _url_scheme(lit)
+            host = _url_host(lit)
+            if not policy_entries:
+                raise EavError(
+                    f"call {ent.name!r} sends outbound request {lit!r} via "
+                    f"{target!r} but the operation has no `connect "
+                    f"net.<scheme>.<host>` capability; generated clients must "
+                    f"request the narrowest network authority (SSRF, README §8/R-078)",
+                    ent.line, code="SS3075")
+            if not any(_net_host_policy_matches(pol, scheme, host)
+                       for pol, _cap in policy_entries):
+                policies = [pol for pol, _cap in policy_entries]
                 allowed = ", ".join(f"net.{scheme}.{host}" for scheme, host in policies)
                 raise EavError(
                     f"call {ent.name!r} sends outbound request {lit!r} outside "
                     f"the operation's network capability allowlist ({allowed}); "
                     f"grant `connect net.<scheme>.<host>` for the exact external "
                     f"host or validate the URL before use (SSRF, README §8/R-078)",
+                    ent.line, code="SS3075")
+            if _is_internal_host(host) and not _ssrf_private_authorized(program, owner, scheme, host):
+                raise EavError(
+                    f"call {ent.name!r} sends an outbound request to the internal "
+                    f"address {lit!r} via {target!r}; loopback/private requests "
+                    f"need an exact `connect net.<scheme>.<host>` capability and "
+                    f"a visible rationale (SSRF, README §8/R-078)",
                     ent.line, code="SS3075")
 
 
@@ -14316,35 +16563,137 @@ def _validate_variant_positions(program: Program) -> None:
 
 
 def _validate_variant_payload_bind(program: Program) -> None:
-    """README ss17 #53: `bind PAYLOAD` on a `branch ifVariant` row is valid only
-    when the matched variant declares a payload. Binding a payloadless variant is
-    a hard error."""
-    has_payload: dict = {}
-    var_owner: dict = {}
-    for e in program.of_kind("enum"):
-        for v in e.facts("variant"):
-            if v.payload:
-                has_payload[(e.name, v.payload[0])] = len(v.payload) >= 2
-                var_owner.setdefault(v.payload[0], set()).add(e.name)
+    """README ss17 #53 / R-054: `bind PAYLOAD` on `branch ifVariant`
+    introduces the payload only on the matched branch target path. It works for
+    data-carrying enum variants and error cases; payloadless members reject
+    `bind` early, and off-path payload reads reject with SS1356."""
+
+    def binding_types(op: Entity) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for r in op.facts("in"):
+            if len(r.payload) >= 2:
+                out[r.payload[0]] = r.payload[1]
+        for r in op.facts("let"):
+            if len(r.payload) >= 3:
+                out[r.payload[0]] = r.payload[2]
+        for call in _calls_by_owner(program).get(op.name, ()):
+            o = call.fact("out")
+            if o and len(o.payload) >= 2 and o.payload[0] != "Result":
+                out[o.payload[0]] = o.payload[1]
+            c = call.fact("catch")
+            if c and len(c.payload) >= 2:
+                out[c.payload[0]] = c.payload[1]
+        return out
+
+    def resolve_member(value_type: Optional[str], member: str):
+        if value_type:
+            resolved = _resolve_through_aliases(program, value_type)
+            ent = program.entities.get(resolved)
+            if ent is not None:
+                if ent.kind == "enum" and _enum_variant_payload_decl(program, ent, member) is not None:
+                    return ent.name, _enum_variant_payload_decl(program, ent, member)
+                if ent.kind == "enum" and any(r.payload and r.payload[0] == member for r in ent.facts("variant")):
+                    return ent.name, None
+                if ent.kind == "error":
+                    cases = [
+                        e for e in program.of_kind("errorCase")
+                        if e.name == member
+                        and (e.fact("of") or Row("", "", [], 0)).payload[:1] == [ent.name]
+                    ]
+                    if cases:
+                        return ent.name, _error_case_payload_decl(program, ent, member)
+        matches: list[tuple[str, Optional[str]]] = []
+        for ent in program.of_kind("enum"):
+            if any(r.payload and r.payload[0] == member for r in ent.facts("variant")):
+                matches.append((ent.name, _enum_variant_payload_decl(program, ent, member)))
+        for ent in program.of_kind("error"):
+            if any(e.name == member and (e.fact("of") or Row("", "", [], 0)).payload[:1] == [ent.name]
+                   for e in program.of_kind("errorCase")):
+                matches.append((ent.name, _error_case_payload_decl(program, ent, member)))
+        return matches[0] if len(matches) == 1 else (None, None)
+
+    def blocks_for_rows(op: Entity) -> dict[int, str]:
+        block = "entry"
+        out: dict[int, str] = {}
+        for idx, row in enumerate(op.rows):
+            if row.label is not None:
+                block = row.label
+            out[idx] = block
+        return out
+
+    def dominators(cfg: dict[str, set]) -> dict[str, set]:
+        nodes = set(cfg)
+        preds = {n: set() for n in nodes}
+        for src, succs in cfg.items():
+            for dst in succs:
+                if dst in preds:
+                    preds[dst].add(src)
+        dom = {n: set(nodes) for n in nodes}
+        dom["entry"] = {"entry"}
+        changed = True
+        while changed:
+            changed = False
+            for n in nodes - {"entry"}:
+                if preds[n]:
+                    new = {n} | set.intersection(*(dom[p] for p in preds[n]))
+                else:
+                    new = {n}
+                if new != dom[n]:
+                    dom[n] = new
+                    changed = True
+        return dom
+
     for n in program.order:
         op = program.entities[n]
         if op.kind not in ("operation", "function"):
             continue
+        btypes = binding_types(op)
+        bind_targets: dict[str, tuple[str, int]] = {}
         for row in op.rows:
             p = row.payload
-            if (row.predicate == "branch" and p and p[0] == "ifVariant"
+            if not (row.predicate == "branch" and p and p[0] == "ifVariant"
                     and "bind" in p and len(p) >= 3):
-                variant = p[2]
-                enums = var_owner.get(variant, set())
-                if len(enums) == 1:
-                    ename = next(iter(enums))
-                    if not has_payload.get((ename, variant), False):
-                        raise EavError(
-                            f"`branch ifVariant … {variant} bind …`: variant "
-                            f"{variant!r} of {ename} is payloadless; `bind` requires "
-                            f"a data-carrying variant (README ss17 #53)",
-                            row.line, code="SS1354",
-                        )
+                continue
+            bind_idx = p.index("bind")
+            goto_idx = p.index("goto") if "goto" in p else -1
+            if bind_idx + 1 >= len(p) or goto_idx < 0 or goto_idx + 1 >= len(p):
+                continue
+            member = p[2]
+            owner, payload_type = resolve_member(btypes.get(p[1]), member)
+            if owner is None:
+                continue
+            if payload_type is None:
+                raise EavError(
+                    f"`branch ifVariant ... {member} bind ...`: member "
+                    f"{member!r} of {owner} is payloadless; `bind` requires "
+                    f"a data-carrying variant or error case (README ss17 #53)",
+                    row.line, code="SS1354",
+                )
+            bind_targets[p[bind_idx + 1]] = (p[goto_idx + 1], row.line)
+
+        if not bind_targets:
+            continue
+        cfg = _op_cfg(op)
+        dom = dominators(cfg)
+        row_blocks = blocks_for_rows(op)
+        owned = {e.name: e for e in _calls_by_owner(program).get(op.name, ())}
+        for idx, row in enumerate(op.rows):
+            refs = _row_refs(row, owned)
+            if row.predicate == "let" and len(row.payload) >= 4:
+                refs.append(row.payload[3])
+            for ref in refs:
+                if ref not in bind_targets:
+                    continue
+                target, line = bind_targets[ref]
+                block = row_blocks.get(idx, "entry")
+                if target not in dom.get(block, {block}):
+                    raise EavError(
+                        f"variant payload binding {ref!r} is used in {op.name!r} "
+                        f"outside the matched {target!r} path; the binding is "
+                        f"introduced by `ifVariant ... bind` at line {line} "
+                        f"(README ss25)",
+                        row.line, code="SS1356",
+                    )
 
 
 def _validate_entry_scope(program: Program) -> None:
@@ -15053,6 +17402,9 @@ class EavCodegen:
                 return ir.LiteralStructType([ir.IntType(32), pt])
             return ir.IntType(32)
         if ent is not None and ent.kind == "error":
+            pt = self._error_payload_type(ent)
+            if pt is not None:
+                return ir.LiteralStructType([ir.IntType(32), pt])
             return ir.IntType(32)  # discriminant (errors are enum-equivalent, §9)
         if ent is not None and ent.kind == "operationType":
             orow = ent.fact("out")
@@ -15071,6 +17423,47 @@ class EavCodegen:
             if self.program.entities[n].kind == "errorCase"
             and (self.program.entities[n].fact("of") or Row("", "", [], 0)).payload[:1] == [error_name]
         ]
+
+    def _error_case_entities(self, error_name: str) -> list[Entity]:
+        return [
+            self.program.entities[n]
+            for n in self.program.order
+            if self.program.entities[n].kind == "errorCase"
+            and (self.program.entities[n].fact("of") or Row("", "", [], 0)).payload[:1] == [error_name]
+        ]
+
+    def _error_case_payload_type_name(self, error_ent: Entity, case: str) -> Optional[str]:
+        for ent in self._error_case_entities(error_ent.name):
+            if ent.name != case:
+                continue
+            payload = ent.fact("payload")
+            if payload and payload.payload and payload.payload[0] != "Void":
+                return payload.payload[0]
+            return None
+        return None
+
+    def _error_case_has_payload(self, error_ent: Entity, case: str) -> bool:
+        return self._error_case_payload_type_name(error_ent, case) is not None
+
+    def _error_payload_type_name(self, error_ent: Entity) -> Optional[str]:
+        for ent in self._error_case_entities(error_ent.name):
+            payload = ent.fact("payload")
+            if payload and payload.payload and payload.payload[0] != "Void":
+                return payload.payload[0]
+        return None
+
+    def _error_payload_type(self, error_ent: Entity):
+        payload_type = self._error_payload_type_name(error_ent)
+        return self.ir_type(payload_type) if payload_type else None
+
+    def _zero_value(self, typ: ir.Type):
+        if isinstance(typ, ir.PointerType):
+            return ir.Constant(typ, None)
+        if isinstance(typ, ir.IntType):
+            return ir.Constant(typ, 0)
+        if isinstance(typ, (ir.FloatType, ir.DoubleType)):
+            return ir.Constant(typ, 0.0)
+        return ir.Constant(typ, ir.Undefined)
 
     def _const_value(self, resolved: str, tokens: list):
         """A module-storage initializer constant (README ss12, ss30.2.1):
@@ -15278,10 +17671,11 @@ class EavCodegen:
         elif name == "ss_net_fetch_text":
             # APP-RUN-1 / R-092: HTTP-GET client — char *ss_net_fetch_text(const
             # char *url, long long timeout_ms, long long max_body_bytes, long long
-            # redirect_limit). The trailing three carry the request's
-            # HttpRequestPolicy so the runtime can enforce them (0 = default).
+            # redirect_limit, long long allow_private). The policy values carry
+            # the request's HttpRequestPolicy so the runtime can enforce them
+            # (0 = default); allow_private is R-078's DNS-rebinding guard bit.
             i64 = ir.IntType(64)
-            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i64, i64, i64]),
+            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p, i64, i64, i64, i64]),
                              name="ss_net_fetch_text")
         elif name == "ss_net_free_text":
             fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i8p]),
@@ -15694,6 +18088,10 @@ class EavCodegen:
                 if (owner and owner.payload and owner.payload[0] == op.name
                         and o and len(o.payload) >= 2):
                     self._binding_types[o.payload[0]] = o.payload[1]
+                ct = c.fact("catch")
+                if (owner and owner.payload and owner.payload[0] == op.name
+                        and ct and len(ct.payload) >= 2):
+                    self._binding_types[ct.payload[0]] = ct.payload[1]
 
         entry = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry)
@@ -16145,42 +18543,65 @@ class EavCodegen:
             return ir.IRBuilder(cont)
         if guard == "ifVariant":
             # README ss13/ss10.5: `branch ifVariant VALUE VARIANT [bind P] goto L`
-            # narrows an enum value. For a plain enum it compares the i32
-            # discriminant; for a data enum (R-054) it compares the tag of the
-            # {i32 tag, payload} tagged union and, with `bind P`, extracts the
-            # payload into P for the matched arm.
+            # narrows an enum/error value. Plain values compare an i32
+            # discriminant; data values compare the tag of the {i32 tag, payload}
+            # tagged union and, with `bind P`, extract the payload into P for the
+            # matched arm.
             value_tok, variant = p[1], p[2]
             bind_name = p[p.index("bind") + 1] if "bind" in p else None
             label = p[p.index("goto") + 1]
-            matches = [
+            enum_matches = [
                 e for e in self.program.of_kind("enum")
-                if variant in [v.payload[0] for v in e.facts("variant") if v.payload]
+                if variant in self._enum_variant_names(e)
             ]
+            error_matches = [
+                e for e in self.program.of_kind("error")
+                if variant in self._error_cases(e.name)
+            ]
+            matches = enum_matches + error_matches
+            vtype = getattr(self, "_binding_types", {}).get(value_tok)
+            typed_ent = self.program.entities.get(vtype) if vtype else None
+            if typed_ent is not None and typed_ent.kind == "enum":
+                if variant in self._enum_variant_names(typed_ent):
+                    matches = [typed_ent]
+            elif typed_ent is not None and typed_ent.kind == "error":
+                if variant in self._error_cases(typed_ent.name):
+                    matches = [typed_ent]
             if len(matches) != 1:
                 raise EavError(
-                    f"`ifVariant … {variant}`: variant {variant!r} is unknown or "
-                    f"ambiguous across enums (README ss10.5)",
+                    f"`ifVariant … {variant}`: variant/case {variant!r} is unknown "
+                    f"or ambiguous across enums/errors (README ss10.5)",
                     row.line, code="SS1352",
                 )
-            # Prefer the value's declared enum type (so a generic-enum
-            # instantiation resolves to its concrete payload type); fall back to
-            # the variant-name match for a plain enum.
-            vtype = getattr(self, "_binding_types", {}).get(value_tok)
-            vent = self.program.entities.get(vtype) if vtype else None
-            enum_ent = vent if (vent is not None and vent.kind == "enum") else matches[0]
-            variants = self._enum_variant_names(enum_ent)
-            disc = self._enum_repr_map(enum_ent).get(variant, variants.index(variant))
-            pt = self._enum_payload_type(enum_ent)
-            lv = self._resolve(value_tok, enum_ent.name, builder, sym)
-            if pt is not None:
-                if bind_name is not None:
-                    sym[bind_name] = ("val", builder.extract_value(lv, 1))
-                cond = builder.icmp_signed(
-                    "==", builder.extract_value(lv, 0),
-                    ir.Constant(ir.IntType(32), disc))
+            matched = matches[0]
+            if matched.kind == "enum":
+                variants = self._enum_variant_names(matched)
+                disc = self._enum_repr_map(matched).get(variant, variants.index(variant))
+                pt = self._enum_payload_type(matched)
+                lv = self._resolve(value_tok, matched.name, builder, sym)
+                if pt is not None:
+                    if bind_name is not None:
+                        sym[bind_name] = ("val", builder.extract_value(lv, 1))
+                    cond = builder.icmp_signed(
+                        "==", builder.extract_value(lv, 0),
+                        ir.Constant(ir.IntType(32), disc))
+                else:
+                    cond = builder.icmp_signed(
+                        "==", lv, ir.Constant(ir.IntType(32), disc))
             else:
-                cond = builder.icmp_signed(
-                    "==", lv, ir.Constant(ir.IntType(32), disc))
+                cases = self._error_cases(matched.name)
+                disc = cases.index(variant)
+                pt = self._error_payload_type(matched)
+                lv = self._resolve(value_tok, matched.name, builder, sym)
+                if pt is not None:
+                    if bind_name is not None:
+                        sym[bind_name] = ("val", builder.extract_value(lv, 1))
+                    cond = builder.icmp_signed(
+                        "==", builder.extract_value(lv, 0),
+                        ir.Constant(ir.IntType(32), disc))
+                else:
+                    cond = builder.icmp_signed(
+                        "==", lv, ir.Constant(ir.IntType(32), disc))
             cont = self._new_cont(fn)
             builder.cbranch(cond, label_blocks[label], cont)
             return ir.IRBuilder(cont)
@@ -17053,8 +19474,19 @@ class EavCodegen:
                     timeout_v = _pol("timeoutMillis")
                     max_body_v = _pol("maxBodyBytes")
                     redirect_v = _pol("redirectLimit")
+            allow_private_v = zero64
+            literal_url = _ssrf_call_literal(self.program, req_arg,
+                                             _ssrf_literal_bindings(self.program))
+            owner = _owner_entity_for_call(self.program, call)
+            if literal_url is not None:
+                scheme = _url_scheme(literal_url)
+                host = _url_host(literal_url)
+                if (_is_internal_host(host)
+                        and _ssrf_private_authorized(self.program, owner, scheme, host)):
+                    allow_private_v = ir.Constant(i64, 1)
             body = builder.call(self.runtime("ss_net_fetch_text"),
-                                [url_val, timeout_v, max_body_v, redirect_v])
+                                [url_val, timeout_v, max_body_v, redirect_v,
+                                 allow_private_v])
             out_row = call.fact("out")
             resp_ent = self.program.entities.get(out_row.payload[1]) if out_row else None
             if resp_ent is None:
@@ -17545,7 +19977,20 @@ class EavCodegen:
             else:
                 caught = builder.zext(builder.icmp_unsigned(
                     "!=", caught_src, ir.Constant(caught_src.type, 0)), i32)
-            sym[catch_row.payload[0]] = ("val", caught)
+            catch_type = catch_row.payload[1] if len(catch_row.payload) >= 2 else None
+            catch_ent = self.program.entities.get(catch_type) if catch_type else None
+            if catch_ent is not None and catch_ent.kind == "error":
+                pt = self._error_payload_type(catch_ent)
+                if pt is not None:
+                    struct_t = ir.LiteralStructType([i32, pt])
+                    err_val = builder.insert_value(
+                        ir.Constant(struct_t, ir.Undefined), caught, 0)
+                    err_val = builder.insert_value(err_val, self._zero_value(pt), 1)
+                    sym[catch_row.payload[0]] = ("val", err_val)
+                else:
+                    sym[catch_row.payload[0]] = ("val", caught)
+            else:
+                sym[catch_row.payload[0]] = ("val", caught)
 
         out_row = call.fact("out")
         if out_row and out_row.payload and result is not None:
@@ -18189,39 +20634,80 @@ class EavCodegen:
                 ir.Constant(struct_t, ir.Undefined),
                 ir.Constant(ir.IntType(32), disc), 0)
             if self._enum_variant_has_payload(ent, tail):
-                pa = next(iter(args.values()), None)
-                pv = (self._resolve(pa.payload[2], pa.payload[1], builder, sym)
-                      if pa is not None else ir.Constant(pt, 0))
+                value_args = list(args.values())
+                if len(value_args) != 1:
+                    raise EavError(
+                        f"call {call.name!r} to {target!r} needs exactly one "
+                        f"payload arg (README ss10.5)",
+                        call.line, code="SS1035")
+                pa = value_args[0]
+                declared = _enum_variant_payload_decl(self.program, ent, tail)
+                if (declared is not None
+                        and self.resolve_type_name(pa.payload[1]) != self.resolve_type_name(declared)):
+                    raise EavError(
+                        f"call {call.name!r} to {target!r} passes payload type "
+                        f"{pa.payload[1]!r}, but the variant declares {declared!r} "
+                        f"(README ss10.5)",
+                        pa.line, code="SS1035")
+                pv = self._resolve(pa.payload[2], pa.payload[1], builder, sym)
                 val = builder.insert_value(val, pv, 1)
             else:
+                if any(args.values()):
+                    raise EavError(
+                        f"call {call.name!r} to payloadless {target!r} passes a "
+                        f"payload arg (README ss10.5)",
+                        call.line, code="SS1035")
                 val = builder.insert_value(val, ir.Constant(pt, 0), 1)
             return val
         if ent is not None and ent.kind == "error":
-            # README ss9/ss34: error cases are enum-equivalent — `<Error>.<case>`
-            # lowers to the case's discriminant (declaration order).
+            # R-054: error cases mirror enum variants. A payloadless error stays
+            # an i32 discriminant; an error with at least one data-carrying case
+            # lowers to {i32 tag, payload}.
             cases = self._error_cases(head)
             if tail not in cases:
                 raise EavError(
                     f"{target!r}: error {head!r} has no case {tail!r} (README ss9)",
                     call.line,
                 )
-            # R-054: a data-carrying error case (its errorCase declares a `payload`
-            # row) is NOT lowered with payload storage yet — only the discriminant
-            # is. Constructing one WITH a payload arg would silently drop the value,
-            # so fail closed here (the drop site) rather than mis-lower. The bare
-            # discriminant construction (no payload arg) stays legal, so a
-            # payload-declared case still lints/lowers as a plain error tag.
-            case_ent = self.program.entities.get(tail)
-            if (case_ent is not None and case_ent.fact("payload") is not None
-                    and any(args.values())):
-                raise EavError(
-                    f"{target!r}: error case {tail!r} declares a `payload`, but data-"
-                    f"carrying error cases are not yet lowered — the payload arg would "
-                    f"be silently dropped. Use a data-carrying enum variant "
-                    f"(`variant <name> <Type>`) for a value-bearing case (README §9, "
-                    f"R-054).",
-                    call.line, code="SS3047")
-            return ir.Constant(ir.IntType(32), cases.index(tail))
+            disc = cases.index(tail)
+            pt = self._error_payload_type(ent)
+            if pt is None:
+                if any(args.values()):
+                    raise EavError(
+                        f"call {call.name!r} to payloadless {target!r} passes a "
+                        f"payload arg (README ss9)",
+                        call.line, code="SS1035")
+                return ir.Constant(ir.IntType(32), disc)
+            struct_t = ir.LiteralStructType([ir.IntType(32), pt])
+            val = builder.insert_value(
+                ir.Constant(struct_t, ir.Undefined),
+                ir.Constant(ir.IntType(32), disc), 0)
+            if self._error_case_has_payload(ent, tail):
+                value_args = list(args.values())
+                if len(value_args) != 1:
+                    raise EavError(
+                        f"call {call.name!r} to {target!r} needs exactly one "
+                        f"payload arg (README ss9)",
+                        call.line, code="SS1035")
+                pa = value_args[0]
+                declared = self._error_case_payload_type_name(ent, tail)
+                if (declared is not None
+                        and self.resolve_type_name(pa.payload[1]) != self.resolve_type_name(declared)):
+                    raise EavError(
+                        f"call {call.name!r} to {target!r} passes payload type "
+                        f"{pa.payload[1]!r}, but the error case declares {declared!r} "
+                        f"(README ss9)",
+                        pa.line, code="SS1035")
+                pv = self._resolve(pa.payload[2], pa.payload[1], builder, sym)
+                val = builder.insert_value(val, pv, 1)
+            else:
+                if any(args.values()):
+                    raise EavError(
+                        f"call {call.name!r} to payloadless {target!r} passes a "
+                        f"payload arg (README ss9)",
+                        call.line, code="SS1035")
+                val = builder.insert_value(val, self._zero_value(pt), 1)
+            return val
         raise EavError(
             f"call target {target!r} is not modeled by the LLVM console code "
             "generator (todos WS3 stdlib)",
@@ -19131,6 +21617,62 @@ def _native_build_write_sidecar(out_path: str, signature: str) -> None:
                 os.unlink(tmp)
         except OSError:
             pass
+
+
+def _native_build_temp_output_path(out_path: str) -> str:
+    import os
+    import tempfile
+    out_dir = os.path.dirname(os.path.abspath(out_path)) or "."
+    base = os.path.basename(out_path) or "app"
+    stem, ext = os.path.splitext(base)
+    fd, tmp = tempfile.mkstemp(
+        prefix=f".{stem}.link.",
+        suffix=ext or ".tmp",
+        dir=out_dir,
+    )
+    os.close(fd)
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    return tmp
+
+
+def _atomic_replace_build_output(tmp_path: str, out_path: str) -> None:
+    """WS3-150: publish native artifacts with a temp-link + atomic replace.
+
+    On Windows, replacing a running exe can fail with a sharing violation. If the
+    direct replace fails, try the rename-aside pattern first, then publish the new
+    temp artifact at the final path. The parked old file is best-effort cleanup:
+    a still-running process may keep it alive until exit, which is acceptable
+    because the new content-addressed artifact path is already published.
+    """
+    import os
+    parked = None
+    try:
+        try:
+            os.replace(tmp_path, out_path)
+            return
+        except PermissionError:
+            pass
+        if os.path.exists(out_path):
+            parked = f"{out_path}.old.{os.getpid()}"
+            os.replace(out_path, parked)
+        os.replace(tmp_path, out_path)
+    except OSError:
+        try:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    finally:
+        if parked:
+            try:
+                if os.path.exists(parked):
+                    os.unlink(parked)
+            except OSError:
+                pass
 
 
 def _ensure_runtime_lib(lib: dict, platform: Optional[str] = None):
@@ -20048,6 +22590,7 @@ def captured_output_replay(source: str) -> dict:
         # so no capability-mediated effect is performed: side-effect-free.
         "replayStdout": out1,
         "sideEffectFree": True,
+        "soundness": no_undefined_execution_report(program),
     }
     if not deterministic:
         # surface both record runs so the divergence is diagnosable rather than
@@ -20329,8 +22872,9 @@ def _spec_sections() -> list:
 def _search_corpus(path: Optional[str] = None) -> list:
     """A multi-source searchable corpus for agentic retrieval. Each doc is
     {source, id, kind, title, text, ref} — `ref` is the command that fetches the
-    full document. Sources: diagnostics, skills, task templates, agent rules, the
-    language guide, and (when `path` is given) the project's entities."""
+    full document. Sources: diagnostics, targets, skills, task templates, agent
+    rules, the language guide, and (when `path` is given) the project's
+    entities."""
     docs = []
     for code, spec in _all_diagnostics().items():
         docs.append({
@@ -20339,6 +22883,32 @@ def _search_corpus(path: Optional[str] = None) -> list:
             "text": " ".join([code, spec.get("tier", ""), spec.get("summary", ""),
                               spec.get("found", ""), spec.get("suggested", "")]),
             "ref": f"explain {code}"})
+    for row in _target_catalog().get("targets", []):
+        sig = row.get("signature") or {}
+        args = " ".join(
+            f"{a.get('slot')} {a.get('type')}"
+            for a in sig.get("args", [])
+        )
+        out = f"{sig.get('outSlot') or 'out'} {sig.get('out')}" if sig.get("out") else ""
+        maturity_bits = [
+            row.get("target", ""), row.get("family", ""), row.get("maturity", ""),
+            row.get("status", ""), sig.get("purpose") or "", sig.get("risk") or "",
+            args, out, row.get("knownBrokenReason") or "",
+        ]
+        docs.append({
+            "source": "target",
+            "id": row["target"],
+            "kind": row.get("maturity", "proven"),
+            "title": row["target"],
+            "text": " ".join(str(p) for p in maturity_bits if p),
+            "ref": f"targets --signature {row['target']}",
+            "target": row["target"],
+            "family": row.get("family"),
+            "maturity": row.get("maturity"),
+            "status": row.get("status"),
+            "knownBroken": row.get("knownBroken", False),
+            "knownBrokenReason": row.get("knownBrokenReason"),
+        })
     for name, sk in EAV_SKILLS.items():
         docs.append({"source": "skill", "id": name, "kind": "skill",
                      "title": sk["summary"],
@@ -20442,6 +23012,10 @@ def _tfidf_rank(query: str, docs: list, limit: int, snippet_width: int = 160,
                "title": d["title"], "ref": d["ref"], "score": round(s, 3),
                "snippet": (d["text"] if d["source"] in full_text_sources
                            else _snippet(d["text"], qterms, snippet_width))}
+        for key in ("target", "family", "maturity", "status",
+                    "knownBroken", "knownBrokenReason"):
+            if key in d:
+                row[key] = d[key]
         if include_full_text:
             row["fullText"] = d["text"]
         rows.append(row)
@@ -20746,12 +23320,20 @@ def _lock_command(path: str, *, check: bool = False, want_json: bool = False,
     import os
     build_path = _build_manifest_path(path)
 
+    def _lock_json(**payload) -> str:
+        # Keep the emitted lock surfaces literal for the surface-registry audit.
+        if surface == "sem.repin.v1":
+            return _json_envelope("sem.repin.v1", **payload)
+        if surface == "sem.modTidy.v1":
+            return _json_envelope("sem.modTidy.v1", **payload)
+        return _json_envelope(surface, **payload)
+
     def _repin_fail(msg, status):
         # R-115: a repin failure is a sem.repin.v1 envelope under --json, not a
         # plaintext stderr line an agent can't parse.
         if want_json:
-            sys.stdout.write(_json_envelope(
-                surface, ok=False, status=status, error=msg) + "\n")
+            sys.stdout.write(_lock_json(
+                ok=False, status=status, error=msg) + "\n")
         else:
             sys.stderr.write(f"semanticscript: {msg}\n")
         return 2
@@ -20777,8 +23359,8 @@ def _lock_command(path: str, *, check: bool = False, want_json: bool = False,
 
     if check:
         if want_json:
-            sys.stdout.write(_json_envelope(
-                surface, ok=up_to_date,
+            sys.stdout.write(_lock_json(
+                ok=up_to_date,
                 status="up-to-date" if up_to_date else "stale",
                 lockPath=lock_path, upToDate=up_to_date, wrote=False) + "\n")
         else:
@@ -20790,8 +23372,8 @@ def _lock_command(path: str, *, check: bool = False, want_json: bool = False,
     # or concurrent run can never truncate the source-of-truth lock file.
     _write_text_atomic(lock_path, lock_text)
     if want_json:
-        sys.stdout.write(_json_envelope(
-            surface, lockPath=lock_path, upToDate=True,
+        sys.stdout.write(_lock_json(
+            lockPath=lock_path, upToDate=True,
             wrote=not up_to_date) + "\n")
     else:
         print(f"{'unchanged' if up_to_date else 'wrote'} {lock_path}")
@@ -21004,6 +23586,24 @@ def cmd_run(args) -> int:
                 stdout="", stderr="\n".join(d.render() for d in exc.diagnostics),
                 stdoutLines=[], diagnostics=_structured_diags(exc.diagnostics)) + "\n")
             return 1
+        if _runtime_sandbox_enabled(program):
+            try:
+                sandbox = enforce_runtime_effect_sandbox(program, entry=entry)
+            except EavError as exc:
+                diag = Diagnostic(
+                    code=exc.code or "SS2810",
+                    severity="error",
+                    message=exc.message,
+                    line=exc.line,
+                )
+                sys.stdout.write(_json_envelope(
+                    "sem.run.v1", ok=False, status="effect-sandbox-error",
+                    exitCode=1, stdout="", stderr=diag.render(), stdoutLines=[],
+                    diagnostics=_structured_diags([diag]),
+                    effectSandbox=runtime_effect_sandbox_policy(program, entry=entry)) + "\n")
+                return 1
+        else:
+            sandbox = None
         # R-159: honor --entry by running that operation as the entry in the child.
         if entry:
             out, err, code = _record_run_entry(src, entry, cwd=source_root)
@@ -21013,6 +23613,8 @@ def cmd_run(args) -> int:
         payload = dict(
             ok=(code == 0), status=status, exitCode=code, stdout=out, stderr=err,
             stdoutLines=_stdout_lines(out))  # R-127
+        if sandbox is not None:
+            payload["effectSandbox"] = sandbox
         if panic is not None:
             payload["panic"] = panic
         sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
@@ -21027,6 +23629,18 @@ def cmd_run(args) -> int:
         for d in exc.diagnostics:
             sys.stderr.write(d.render() + "\n")
         return 1
+    if _runtime_sandbox_enabled(program):
+        try:
+            enforce_runtime_effect_sandbox(program, entry=getattr(args, "entry", None))
+        except EavError as exc:
+            diag = Diagnostic(
+                code=exc.code or "SS2810",
+                severity="error",
+                message=exc.message,
+                line=exc.line,
+            )
+            sys.stderr.write(diag.render() + "\n")
+            return 1
     import os
 
     def _trap_report(detail: str) -> None:
@@ -21090,6 +23704,49 @@ def cmd_run(args) -> int:
         _trap_report(f"isolated child terminated with {rc & 0xFFFFFFFF:#010x}")
         return 134
     return rc
+
+
+def cmd_effect_sandbox(args) -> int:
+    """Emit the WS2-095 runtime effect sandbox policy for a program."""
+    _source, program = _load_program_for_path(args.path)
+    entry = getattr(args, "entry", None)
+    want_json = getattr(args, "json", False)
+    try:
+        compile_gate(program, strict=getattr(args, "strict", False))
+    except CompileGateError as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.effectSandbox.v1", ok=False, status="lint-error",
+                diagnostics=_structured_diags(exc.diagnostics)) + "\n")
+        else:
+            for d in exc.diagnostics:
+                sys.stderr.write(d.render() + "\n")
+        return 1
+    policy = runtime_effect_sandbox_policy(program, entry=entry)
+    status = "ok" if policy["ok"] else "effect-sandbox-error"
+    if want_json:
+        payload = dict(policy)
+        ok = payload.pop("ok")
+        sys.stdout.write(_json_envelope(
+            "sem.effectSandbox.v1", ok=ok, status=status, **payload) + "\n")
+    else:
+        print(f"entry: {policy['entry']}")
+        print(f"enabled: {str(policy['enabled']).lower()}")
+        print(f"enforcement: {policy['enforcement']}")
+        print("proven effects:")
+        for effect in policy["provenEffects"]:
+            print(f"  {effect['action']} {effect['resource']}")
+        if policy["violations"]:
+            print("violations:")
+            for violation in policy["violations"]:
+                effect = violation["effect"]
+                print(
+                    f"  {violation['target']}: {effect['action']} "
+                    f"{effect['resource']} outside proven union"
+                )
+        else:
+            print("violations: none")
+    return 0 if policy["ok"] else 1
 
 
 def build_executable(program: Program, out_path: str,
@@ -21164,8 +23821,9 @@ def build_executable(program: Program, out_path: str,
         runtime_libs.extend(resolved["libs"])
         runtime_frameworks.extend(resolved.get("frameworks", []))
         runtime_link_flags.extend(resolved.get("linkFlags", []))
+    tmp_out_path = _native_build_temp_output_path(out_path)
     cmd = _render_native_link_argv(
-        cc, objects=link_inputs, out=out_path, libs=runtime_libs,
+        cc, objects=link_inputs, out=tmp_out_path, libs=runtime_libs,
         frameworks=runtime_frameworks, link_flags=runtime_link_flags,
         target_triple=target_triple,
     )
@@ -21173,9 +23831,21 @@ def build_executable(program: Program, out_path: str,
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=_build_timeout_seconds())
     except subprocess.TimeoutExpired:  # R-107
+        try:
+            if os.path.exists(tmp_out_path):
+                os.unlink(tmp_out_path)
+        except OSError:
+            pass
         raise EavError(
             f"native build exceeded {_build_timeout_seconds():g}s and was "
             f"terminated (set SEMANTICSCRIPT_BUILD_TIMEOUT to adjust)")
+    except OSError:
+        try:
+            if os.path.exists(tmp_out_path):
+                os.unlink(tmp_out_path)
+        except OSError:
+            pass
+        raise
     finally:
         for _scratch in (wrap_path,):
             if _scratch:
@@ -21184,7 +23854,13 @@ def build_executable(program: Program, out_path: str,
                 except OSError:
                     pass
     if proc.returncode != 0:
+        try:
+            if os.path.exists(tmp_out_path):
+                os.unlink(tmp_out_path)
+        except OSError:
+            pass
         raise EavError(f"native build failed: {proc.stderr.strip()}")
+    _atomic_replace_build_output(tmp_out_path, out_path)
     _write_c_export_header(program, out_path, platform)
     _native_build_write_sidecar(out_path, build_signature)
     return out_path
@@ -21319,16 +23995,18 @@ def cmd_wasm(args) -> int:
 SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
-    "sem.context.v1", "sem.symbols.v1", "sem.patch.v1", "sem.test.v1",
-    "sem.size.v1", "sem.dev.v1", "sem.slice.v1", "sem.docs.v1",
+    "sem.context.v1", "sem.symbols.v1", "sem.get.v1", "sem.patch.v1", "sem.test.v1",
+    "sem.size.v1", "sem.dev.v1", "sem.devx.v1", "sem.compensate.v1",
+    "sem.slice.v1", "sem.trace.v1", "sem.diff.v1", "sem.pack.v1",
+    "sem.scaffold.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
     "sem.build.v1", "sem.packageManifest.v1", "sem.runtimeConfig.v1",
-    "sem.run.v1", "sem.verify.v1", "sem.error.v1", "sem.targetSignature.v1",
-    "sem.targetSignatures.v1", "sem.reservedWords.v1",
+    "sem.run.v1", "sem.verify.v1", "sem.effectSandbox.v1", "sem.error.v1", "sem.targetSignature.v1",
+    "sem.targetSignatures.v1", "sem.reservedWords.v1", "sem.vendor.v1",
     # R-123: surfaces that were live but unlisted.
-    "sem.bench.v1", "sem.profile.v1", "sem.adoptionGate.v1",
+    "sem.bench.v1", "sem.profile.v1", "sem.adoptionGate.v1", "sem.summary.v1",
     "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
-    "sem.inspectIr.v1", "sem.lint.v1", "sem.query.v1", "sem.repin.v1",
+    "sem.inspectIr.v1", "sem.lint.v1", "sem.modTidy.v1", "sem.query.v1", "sem.repin.v1",
     "sem.search.v1", "sem.status.v1", "sem.migrateSyntax.v1",
     # WS3-110: the generated stdlib readiness ledger.
     "sem.stdlibReadiness.v1",
@@ -21391,6 +24069,182 @@ STDLIB_SCRATCH_POINTER_ACKNOWLEDGED = frozenset({"buffer", "fs", "http", "json"}
 # deferred); the future WS3-121..131 modules (cli/config/cache/archive/...) join
 # here as they land.
 STDLIB_SECONDARY_MODULES = frozenset({"gui", "i18n", "id"})
+
+
+WS3_PLATFORM_PROFILE = (
+    {
+        "id": "WS3-111",
+        "title": "standard.path and SafePath builders",
+        "modules": ("path", "fs", "log"),
+        "acceptance": (
+            "SafePath builders are signature-backed and runtime-backed.",
+            "Filesystem and log sinks expose path-safety evidence.",
+            "Traversal, drive/UNC, and encoded-dot cases are covered by tests.",
+        ),
+    },
+    {
+        "id": "WS3-112",
+        "title": "shared IO stream abstractions",
+        "modules": ("fs", "net", "http", "buffer"),
+        "acceptance": (
+            "Bounded reads/writes route through one owned-buffer/stream story.",
+            "Close/double-close and lifetime behavior are documented by signatures.",
+        ),
+    },
+    {
+        "id": "WS3-113",
+        "title": "cohesive HTTP platform split",
+        "modules": ("http", "net", "path", "fs", "html"),
+        "acceptance": (
+            "Server, client, URL/header/cookie, and static-file seams are visible.",
+            "Request/response body limits and SafePath static files are testable.",
+        ),
+    },
+    {
+        "id": "WS3-114",
+        "title": "standard.data codec layer",
+        "modules": ("json", "sqlite"),
+        "acceptance": (
+            "JSON/record/database codec APIs declare ownership and fallibility.",
+            "Malformed, oversized, and stale-handle paths are represented as tests.",
+        ),
+    },
+    {
+        "id": "WS3-115",
+        "title": "collections and iterators platform",
+        "modules": ("list", "map", "buffer"),
+        "acceptance": (
+            "Collection signatures are discoverable and lowered.",
+            "Mutation, release, equality, and deterministic iteration contracts are tracked.",
+        ),
+    },
+    {
+        "id": "WS3-116",
+        "title": "crypto and secrets standard surface",
+        "modules": ("bcrypt", "id", "random"),
+        "acceptance": (
+            "Secret-bearing operations are capability-gated and redaction-aware.",
+            "Random/token/hash surfaces have typed ownership and failure contracts.",
+        ),
+    },
+    {
+        "id": "WS3-117",
+        "title": "async and concurrency standard surface",
+        "modules": ("async", "concurrent", "event"),
+        "acceptance": (
+            "Task/cancel/timeout/channel primitives carry effect and cleanup evidence.",
+            "Deterministic scheduler and cancellation tests cover owned handles.",
+        ),
+    },
+    {
+        "id": "WS3-118",
+        "title": "observability and diagnostics APIs",
+        "modules": ("log", "id"),
+        "acceptance": (
+            "Logs, metrics, traces, and captured-output replay share redaction rules.",
+            "Correlation identifiers are typed and tool-discoverable.",
+        ),
+    },
+    {
+        "id": "WS3-119",
+        "title": "package and platform distribution APIs",
+        "modules": ("build", "environment"),
+        "acceptance": (
+            "Registry/cache/network operations are capability and integrity checked.",
+            "Offline/vendor and runtime artifact policy are surfaced by tools.",
+        ),
+    },
+    {
+        "id": "WS3-121",
+        "title": "standard.cli argument parsing",
+        "modules": ("environment", "process"),
+        "acceptance": (
+            "Typed flags, subcommands, usage errors, help, and completions are tracked.",
+            "Secret prompt values are modeled as redacted values.",
+        ),
+    },
+    {
+        "id": "WS3-122",
+        "title": "standard.config layered configuration",
+        "modules": ("build", "environment", "json"),
+        "acceptance": (
+            "Defaults, files, environment, and CLI overrides merge through a schema.",
+            "Unknown keys, type mismatches, and secrets are deterministic.",
+        ),
+    },
+    {
+        "id": "WS3-123",
+        "title": "standard.process.spawn",
+        "modules": ("process", "environment"),
+        "acceptance": (
+            "Arg-array spawning, cwd/env, bounded stdio, timeout, and exit status are tracked.",
+            "Shell interpolation is represented as an explicit unsafe boundary.",
+        ),
+    },
+    {
+        "id": "WS3-124",
+        "title": "standard.terminal and TUI helpers",
+        "modules": ("console", "gui"),
+        "acceptance": (
+            "Terminal styling, prompts, tables, and raw mode sit above raw console calls.",
+            "Headless fallback and raw-mode restoration are testable.",
+        ),
+    },
+    {
+        "id": "WS3-125",
+        "title": "standard.fs.watch",
+        "modules": ("fs", "path", "event"),
+        "acceptance": (
+            "Watcher events are normalized and paths are SafePath-gated.",
+            "Debounce, recursive policy, and close semantics are explicit.",
+        ),
+    },
+    {
+        "id": "WS3-126",
+        "title": "retry, rate-limit, and backoff utilities",
+        "modules": ("async", "event", "id"),
+        "acceptance": (
+            "Policies are pure data and cancellation-aware.",
+            "Jitter uses capability-gated randomness or deterministic seeds.",
+        ),
+    },
+    {
+        "id": "WS3-127",
+        "title": "standard.cache",
+        "modules": ("map", "fs", "path"),
+        "acceptance": (
+            "Memory and disk cache limits, eviction, serialization, and replay controls are tracked.",
+            "Disk cache paths are SafePath-gated and tamper-checked.",
+        ),
+    },
+    {
+        "id": "WS3-128",
+        "title": "standard.archive and standard.compress",
+        "modules": ("buffer", "fs", "path"),
+        "acceptance": (
+            "Compression/archive APIs use bounded IO streams and content digests.",
+            "Zip-slip and decompression-size limits are explicit.",
+        ),
+    },
+    {
+        "id": "WS3-130",
+        "title": "standard.text",
+        "modules": ("text", "string", "i18n"),
+        "acceptance": (
+            "Unicode normalization, grapheme slicing, regex/patterns, and truncation are tracked.",
+            "Invalid UTF-8, NUL, and regex-timeout failures are typed.",
+        ),
+    },
+    {
+        "id": "WS3-131",
+        "title": "standard.template",
+        "modules": ("html", "string", "text"),
+        "acceptance": (
+            "Template holes, missing-hole diagnostics, bounds, and escaping policies are explicit.",
+            "HTML and non-HTML sink escaping stay separate.",
+        ),
+    },
+)
 
 
 def _scratch_pointer_apis(semsig_text: str) -> list:
@@ -21551,6 +24405,78 @@ def stdlib_readiness_ledger() -> dict:
             "documentationGap": doc_gap,
         }
     return ledger
+
+
+def _stdlib_module_profile_evidence(module: str, ledger: dict) -> dict:
+    entry = ledger.get(module)
+    if entry is None:
+        return {
+            "status": "tracked-missing",
+            "deferred": True,
+            "semsig": False,
+            "lowered": False,
+            "unbackedPublic": False,
+            "documentationGap": False,
+            "scratchPointerApis": [],
+        }
+    return {
+        "status": entry["status"],
+        "deferred": entry["deferred"],
+        "tier": entry["tier"],
+        "semsig": entry["semsig"],
+        "lowered": entry["lowered"],
+        "unbackedPublic": entry["unbackedPublic"],
+        "documentationGap": entry["documentationGap"],
+        "scratchPointerApis": list(entry["scratchPointerApis"]),
+        "unacknowledgedScratchPointer": entry["unacknowledgedScratchPointer"],
+    }
+
+
+def ws3_platform_profile() -> dict:
+    """Generated WS3 platform roadmap/readiness profile.
+
+    This keeps the broad WS3 standard-library rows tool-reachable: every row has
+    a human title, the concrete modules that currently carry the work, acceptance
+    gates, and generated ledger evidence. Missing future modules are explicit
+    `tracked-missing` evidence rather than silent TODO prose.
+    """
+    ledger = stdlib_readiness_ledger()
+    rows = []
+    for spec in WS3_PLATFORM_PROFILE:
+        evidence = {
+            module: _stdlib_module_profile_evidence(module, ledger)
+            for module in spec["modules"]
+        }
+        blockers = [
+            module for module, item in evidence.items()
+            if item["unbackedPublic"]
+            or item["documentationGap"]
+            or item.get("unacknowledgedScratchPointer", False)
+        ]
+        deferred = [
+            module for module, item in evidence.items()
+            if item["deferred"] or item["status"] == "tracked-missing"
+        ]
+        status = "ready-profiled"
+        if blockers:
+            status = "blocked"
+        elif deferred:
+            status = "profiled-with-deferred-modules"
+        rows.append({
+            "id": spec["id"],
+            "title": spec["title"],
+            "status": status,
+            "modules": list(spec["modules"]),
+            "acceptance": list(spec["acceptance"]),
+            "evidence": evidence,
+            "blockers": blockers,
+            "deferredModules": deferred,
+        })
+    return {
+        "status": "ok",
+        "rows": rows,
+        "ids": [row["id"] for row in rows],
+    }
 
 EAV_AGENT_RULES = (
     "EAV-Steps: flat semantic tape, one row = one record, column-1 subject, "
@@ -21792,7 +24718,7 @@ EAV_MCP_TOOLS = {
                        "the language guide, and (with `path`) a project's entities — the agentic search",
                "path": False,
                "args": [("query", True, True, "natural-language search query"),
-                        ("source", False, False, "restrict to one source: diagnostic|skill|template|rules|spec|entity"),
+                        ("source", False, False, "restrict to one source: diagnostic|target|skill|template|rules|spec|entity"),
                         ("limit", False, False, "max results (default 8)"),
                         ("path", False, False, "also index this project's entities")]},
     "explain": {"argv": ["explain"], "desc": "Explain one diagnostic code (tier, cause, suggested fix)",
@@ -21823,6 +24749,22 @@ EAV_MCP_TOOLS = {
     "symbols": {"argv": ["symbols"], "desc": "Full entity graph", "path": True, "args": []},
     "size": {"argv": ["size"], "desc": "Footprint probe", "path": True, "args": []},
     "eval": {"argv": ["eval"], "desc": "JIT-run a snippet", "path": True, "args": []},
+    "devx": {"argv": ["devx", "--json"],
+             "desc": "DEVX-NEXT structured authoring/contracts/mock/diff/authority surface",
+             "path": True,
+             "args": [("mode", False, False,
+                       "author|intent|contracts|mock|diff|authority|repl|improve|adversarial|perf|all"),
+                      ("focus", False, False, "entity to enumerate legal next moves for"),
+                      ("intent", False, False, "natural-language intent for row synthesis"),
+                      ("compare", False, False, "new path for mode=diff")]},
+    "compensate": {"argv": ["compensate", "--json"],
+                   "desc": "COMPENSATE failure-mitigation surface: codegen localization, maturity, cost, memory, env, checkpoint, alternatives",
+                   "path": True,
+                   "args": [("mode", False, False,
+                             "codegen|maturity|cost|memory|env|checkpoint|alternatives|all"),
+                            ("query", False, False, "search query for ranked alternatives"),
+                            ("compare", False, False, "old path for checkpoint semantic comparison"),
+                            ("port", False, False, "localhost port to probe for environment conflicts")]},
     "fix_plan": {"argv": ["fix", "--plan"], "desc": "Repair plan from diagnostics", "path": True, "args": []},
     "test": {"argv": ["test"], "desc": "Run tag-test operations", "path": True, "args": []},
     "verify": {"argv": ["verify", "--json"], "desc": "One-shot check + tests + run gate", "path": True, "args": []},
@@ -23185,7 +26127,8 @@ def cmd_stdlib_readiness(args) -> int:
             scratchPointerLeak=leaks, scratchPointerApis=tracked_scratch,
             documentationGap=doc_gaps,
             deferred=sorted(m for m, e in ledger.items() if e["deferred"]),
-            modules=view) + "\n")
+            modules=view,
+            ws3PlatformProfile=ws3_platform_profile()) + "\n")
     else:
         for mod, e in sorted(view.items()):
             mark = " (deferred)" if e["deferred"] else ""
@@ -23218,23 +26161,119 @@ def cmd_stdlib_readiness(args) -> int:
     return 0 if ok else 1
 
 
-def _default_build_output(path: str, explicit_output: Optional[str]) -> str:
-    """Resolve the build output path (README §28.2). R-014: a project-directory
-    build lands under the gitignored `dist/` directory (`<dir>/dist/app`), never
-    the project root, so a replayed `build <root>` does not drop an unignored
-    binary beside the source. A single-file build sits next to its source, and an
-    explicit `--output` always wins."""
+def _default_build_output(path: str, explicit_output: Optional[str],
+                          ir_sha256: Optional[str] = None) -> str:
+    """Resolve the build output path (README §28.2/§28.4).
+
+    R-014 keeps project-directory builds under gitignored `dist/`. WS3-150 adds a
+    content-addressed default name (`app-<irhash>` / `<file>-<irhash>`) so a
+    changed program publishes a new artifact path instead of colliding with a
+    running exe. Explicit `--output` / platform output rows still win unchanged.
+    """
     import os
     suffix = ".exe" if sys.platform == "win32" else ""
     if explicit_output:
         explicit_output = os.path.normpath(explicit_output)
         root, ext = os.path.splitext(explicit_output)
         return explicit_output if not suffix or ext else root + suffix
+    hash_part = ""
+    if ir_sha256:
+        cleaned = "".join(c for c in ir_sha256.lower() if c in "0123456789abcdef")
+        if cleaned:
+            hash_part = "-" + cleaned[:16]
     if path == "-":
-        return "a" + suffix
+        return "a" + hash_part + suffix
     if os.path.isdir(path):
-        return os.path.join(path, "dist", "app" + suffix)
-    return os.path.splitext(path)[0] + suffix
+        return os.path.join(path, "dist", "app" + hash_part + suffix)
+    return os.path.splitext(path)[0] + hash_part + suffix
+
+
+def _devx_payload(mode: str, path: str, program: Program, source: str, args) -> dict:
+    focus = getattr(args, "focus", None)
+    intent = getattr(args, "intent", None)
+    if mode == "author":
+        return {"mode": mode, **_devx_author_surface(program, focus, intent)}
+    if mode == "intent":
+        return {"mode": mode, "status": "ok",
+                "candidates": _devx_intent_candidates(intent)}
+    if mode == "contracts":
+        return {"mode": mode, **_devx_contract_surface(program)}
+    if mode == "mock":
+        return {"mode": mode, **_devx_mock_surface(
+            program, source=source,
+            record_replay=bool(getattr(args, "record_replay", False)))}
+    if mode == "authority":
+        return {"mode": mode, **_devx_authority_surface(program)}
+    if mode == "repl":
+        return {"mode": mode, **_devx_repl_surface(program, intent)}
+    if mode == "improve":
+        return {"mode": mode, **_devx_improve_surface(program, path)}
+    if mode == "adversarial":
+        return {"mode": mode, **_devx_adversarial_surface(program)}
+    if mode == "perf":
+        return {"mode": mode, **_devx_perf_surface(program, path)}
+    if mode == "all":
+        return {
+            "mode": mode,
+            "status": "ok",
+            "author": _devx_author_surface(program, focus, intent),
+            "intent": {"candidates": _devx_intent_candidates(intent)},
+            "contracts": _devx_contract_surface(program),
+            "mock": _devx_mock_surface(program, source=source, record_replay=False),
+            "authority": _devx_authority_surface(program),
+            "repl": _devx_repl_surface(program, intent),
+            "improve": _devx_improve_surface(program, path),
+            "adversarial": _devx_adversarial_surface(program),
+            "perf": _devx_perf_surface(program, path),
+        }
+    raise EavError(f"unknown devx mode {mode!r}")
+
+
+def cmd_devx(args) -> int:
+    """DEVX-NEXT agent capability surface (sem.devx.v1)."""
+    mode = getattr(args, "mode", "all")
+    if mode == "diff":
+        if not getattr(args, "compare", None):
+            raise EavError("devx --mode diff requires --compare <new-path>")
+        old = parse_compact(_read_program_source(args.path))
+        new = parse_compact(_read_program_source(args.compare))
+        payload = {
+            "mode": mode,
+            "status": "ok",
+            "changes": semantic_diff_structured(old, new),
+            "human": semantic_diff(old, new),
+        }
+    else:
+        source = _read_program_source(args.path)
+        program = parse_compact(source)
+        payload = _devx_payload(mode, args.path, program, source, args)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.devx.v1", **payload) + "\n")
+    else:
+        sys.stdout.write(f"devx {payload.get('mode')}: {payload.get('status', 'ok')}\n")
+        if payload.get("mode") == "diff":
+            for line in payload.get("human", []):
+                sys.stdout.write(line + "\n")
+        else:
+            sys.stdout.write(
+                "rerun with --json for the structured authoring/contract payload\n")
+    return 0
+
+
+def cmd_compensate(args) -> int:
+    """COMPENSATE agent mitigation surface (sem.compensate.v1)."""
+    source = _read_program_source(args.path)
+    payload = _compensate_payload(
+        getattr(args, "mode", "all"), args.path, source, args)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.compensate.v1", **payload) + "\n")
+    else:
+        sys.stdout.write(
+            f"compensate {payload.get('mode')}: {payload.get('status', 'ok')}\n")
+        sys.stdout.write(
+            "rerun with --json for codegen, maturity, cost, memory, env, "
+            "checkpoint, and alternatives detail\n")
+    return 0
 
 
 def cmd_package_manifest(args) -> int:
@@ -23397,7 +26436,9 @@ def cmd_build(args) -> int:
             base = args.path if os.path.isdir(args.path) else os.path.dirname(
                 os.path.abspath(args.path))
             out_path = os.path.join(base, links["output"])
-    out_path = _default_build_output(args.path, out_path)
+    identity = _build_identity(program, platform)
+    ir_hash_for_default = identity.get("irSha256") if not out_path else None
+    out_path = _default_build_output(args.path, out_path, ir_hash_for_default)
     try:
         exe = build_executable(program, out_path, platform)
     except EavError as exc:
@@ -23409,7 +26450,7 @@ def cmd_build(args) -> int:
     if want_json:
         sys.stdout.write(_json_envelope(
             "sem.build.v1", ok=True, status="ok", output=exe,
-            identity=_build_identity(program, platform)) + "\n")
+            identity=identity) + "\n")
     else:
         sys.stdout.write(exe + "\n")
     return 0
@@ -23417,12 +26458,45 @@ def cmd_build(args) -> int:
 
 def cmd_trace(args) -> int:
     """Print a primary-path trace of an operation."""
+    want_json = getattr(args, "json", False)
+    multi = getattr(args, "multi_path", False) or getattr(args, "branch_aware", False)
     program = parse_compact(_read_program_source(args.path))
     try:
+        if want_json:
+            payload = trace_paths(program, args.operation) if multi else {
+                "operation": args.operation,
+                "branchAware": False,
+                "multiPath": False,
+                "lines": trace(program, args.operation),
+            }
+            sys.stdout.write(_json_envelope("sem.trace.v1", status="ok", **payload) + "\n")
+            return 0
+        if multi:
+            payload = trace_paths(program, args.operation)
+            for path in payload["paths"]:
+                sys.stdout.write(f"{path['name']} {path['status']}\n")
+                for event in path["events"]:
+                    if event["kind"] == "branch":
+                        sys.stdout.write(
+                            f"  branch {event['text']} | live: {event['liveBindings']} "
+                            f"| defers: {event['deferStack']}\n")
+                    elif event["kind"] == "return":
+                        sys.stdout.write(
+                            f"  return {' '.join(event['payload'])} | defers run "
+                            f"(reverse): {event['deferRunOrder']}\n")
+                    elif event["kind"] == "path-choice":
+                        sys.stdout.write(f"  {event['choice']} -> {event.get('target')}\n")
+            return 0
         for line in trace(program, args.operation):
             sys.stdout.write(line + "\n")
         return 0
     except EavError as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.trace.v1", ok=False, status="not-found",
+                operation=args.operation,
+                diagnostics=[{"message": str(exc), "rendered": f"semanticscript: {exc}"}]) + "\n")
+            return 2
         sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
@@ -23515,8 +26589,14 @@ def cmd_verify_patch(args) -> int:
 
 def cmd_diff(args) -> int:
     """Print the semantic diff between two programs."""
-    old = parse(_read_source(args.old))
-    new = parse(_read_source(args.new))
+    old = parse_compact(_read_program_source(args.old))
+    new = parse_compact(_read_program_source(args.new))
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.diff.v1", status="ok",
+            changes=semantic_diff_structured(old, new),
+            human=semantic_diff(old, new)) + "\n")
+        return 0
     for line in semantic_diff(old, new):
         sys.stdout.write(line + "\n")
     return 0
@@ -23559,6 +26639,7 @@ def cmd_graph(args) -> int:
     try:
         program = parse_compact(_read_program_source(args.path))  # R-117/R-165: project dirs + compact
         text = graph(program, args.kind, args.format)
+        edges = graph_edges(program, args.kind)
     except EavError as exc:
         if want_json:
             sys.stdout.write(_json_envelope(
@@ -23570,7 +26651,8 @@ def cmd_graph(args) -> int:
     if want_json:
         sys.stdout.write(_json_envelope(
             "sem.graph.v1", status="ok", kind=args.kind,
-            format=args.format, graph=text) + "\n")
+            format=args.format, graph=text,
+            edges=[{"from": a, "to": b} for a, b in edges]) + "\n")
     else:
         sys.stdout.write(text)
     return 0
@@ -23578,10 +26660,26 @@ def cmd_graph(args) -> int:
 
 def cmd_scaffold(args) -> int:
     """Print a canonical scaffold for a pattern."""
+    want_json = getattr(args, "json", False)
     try:
-        sys.stdout.write(scaffold(args.pattern))
+        source = scaffold(args.pattern)
+        if want_json:
+            prog = parse(source)
+            diags = lint(prog)
+            sys.stdout.write(_json_envelope(
+                "sem.scaffold.v1", status="ok", pattern=args.pattern,
+                source=source, parseable=True,
+                diagnostics=_structured_diags(diags)) + "\n")
+        else:
+            sys.stdout.write(source)
         return 0
     except EavError as exc:
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.scaffold.v1", ok=False, status="unknown-pattern",
+                pattern=args.pattern,
+                diagnostics=[{"message": str(exc), "rendered": f"semanticscript: {exc}"}]) + "\n")
+            return 2
         sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
@@ -24001,22 +27099,47 @@ def cmd_add(args) -> int:
 
 def cmd_pack(args) -> int:
     """Print a budgeted context bundle for editing an entity."""
-    program = parse(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     try:
-        sys.stdout.write(pack(program, args.entity, args.budget) + "\n")
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.pack.v1", status="ok",
+                **pack_details(program, args.entity, args.budget)) + "\n")
+        else:
+            sys.stdout.write(pack(program, args.entity, args.budget) + "\n")
         return 0
     except EavError as exc:
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.pack.v1", ok=False, status="not-found", entity=args.entity,
+                diagnostics=[{"message": str(exc), "rendered": f"semanticscript: {exc}"}]) + "\n")
+            return 2
         sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
 
 
 def cmd_slice(args) -> int:
     """Print the semantic slice of an entity (sem.slice.v1 with --json)."""
-    program = parse(_read_source(args.path))
+    want_json = getattr(args, "json", False) or getattr(args, "format", "canonical") == "json"
     try:
-        text = slice_entity(program, args.entity)
+        program = parse_compact(_read_program_source(args.path))
     except EavError as exc:
         if getattr(args, "json", False):
+            raise
+        if want_json:
+            diag = {"code": getattr(exc, "code", None), "severity": "error",
+                    "line": getattr(exc, "line", None),
+                    "message": getattr(exc, "message", str(exc)),
+                    "rendered": f"semanticscript: {exc}"}
+            sys.stdout.write(_json_envelope(
+                "sem.slice.v1", ok=False, status="compiler-error",
+                entity=args.entity, diagnostics=[diag]) + "\n")
+            return 2
+        raise
+    try:
+        text = slice_entity(program, args.entity, path_filter=getattr(args, "path_filter", None))
+    except EavError as exc:
+        if want_json:
             diag = {"code": getattr(exc, "code", None), "severity": "error",
                     "line": getattr(exc, "line", None),
                     "message": getattr(exc, "message", str(exc)),
@@ -24027,11 +27150,21 @@ def cmd_slice(args) -> int:
         else:
             sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
-    if getattr(args, "json", False):
-        ent = program.entities.get(args.entity)
+    if want_json:
         sys.stdout.write(_json_envelope(
-            "sem.slice.v1", entity=args.entity,
-            kind=ent.kind if ent else None, slice=text) + "\n")
+            "sem.slice.v1",
+            **slice_details(
+                program,
+                args.entity,
+                refs=getattr(args, "refs", False),
+                for_edit=getattr(args, "for_edit", False),
+                path_filter=getattr(args, "path_filter", None),
+            )) + "\n")
+    elif getattr(args, "format", "canonical") == "prompt":
+        details = slice_details(
+            program, args.entity, refs=True, for_edit=True,
+            path_filter=getattr(args, "path_filter", None))
+        sys.stdout.write(details["prompt"])
     else:
         sys.stdout.write(text)
     return 0
@@ -24232,10 +27365,11 @@ def cmd_targets(args) -> int:
         family_sigs = _builtin_family_signatures(sig_target)
         if family_sigs:
             if want_json:
+                enriched = [_signature_with_maturity(sig) for sig in family_sigs]
                 sys.stdout.write(_json_envelope(
                     "sem.targetSignatures.v1", ok=True, status="ok",
-                    target=sig_target, count=len(family_sigs),
-                    signatures=family_sigs) + "\n")
+                    target=sig_target, count=len(enriched),
+                    signatures=enriched) + "\n")
             else:
                 print(sig_target)
                 for sig in family_sigs:
@@ -24263,7 +27397,8 @@ def cmd_targets(args) -> int:
             return 2
         if want_json:
             sys.stdout.write(_json_envelope(
-                "sem.targetSignature.v1", ok=True, status="ok", **sig) + "\n")
+                "sem.targetSignature.v1", ok=True, status="ok",
+                **_signature_with_maturity(sig)) + "\n")
         else:
             print(sig["target"])
             for a in sig["args"]:
@@ -24448,7 +27583,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_search = sub.add_parser("search", help="relevance-ranked retrieval across docs/diagnostics/skills/templates/spec")
     sp_search.add_argument("query", help="search terms")
     sp_search.add_argument("--source", nargs="*",
-                           choices=["diagnostic", "skill", "template", "rules", "spec", "entity"],
+                           choices=["diagnostic", "target", "skill", "template", "rules", "spec", "entity"],
                            help="restrict to these corpus sources")
     sp_search.add_argument("--path", help="include this project's entities in the corpus")
     sp_search.add_argument("--limit", type=int, default=20, help="max results (default 20)")
@@ -24511,6 +27646,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help=argparse.SUPPRESS)  # R-088: internal isolated JIT child
     sp_run.set_defaults(func=cmd_run)
 
+    sp_effect_sandbox = sub.add_parser(
+        "effect-sandbox",
+        help="derive/enforce the WS2 runtime effect sandbox policy",
+    )
+    sp_effect_sandbox.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_effect_sandbox.add_argument("--entry", default=None,
+                                   help="operation to use as the policy root")
+    sp_effect_sandbox.add_argument("--strict", action="store_true",
+                                   help="block T3 opinionated warnings before policy emission")
+    sp_effect_sandbox.add_argument("--json", action="store_true")
+    sp_effect_sandbox.set_defaults(func=cmd_effect_sandbox)
+
     for cname, cfn, chelp in (
         ("deps", cmd_deps, "dependency graph (imports + require)"),
         ("context", cmd_context, "project envelope"),
@@ -24522,6 +27669,39 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp.add_argument("path", help="EAV/compact source file, or - for stdin")
         sp.add_argument("--json", action="store_true")
         sp.set_defaults(func=cfn)
+
+    sp_devx = sub.add_parser(
+        "devx",
+        help="DEVX-NEXT structured authoring/contracts/mock/diff/authority surface",
+    )
+    sp_devx.add_argument("path", help="SemanticScript source file or project directory")
+    sp_devx.add_argument("--mode", choices=DEVX_MODES, default="all")
+    sp_devx.add_argument("--focus", help="entity to enumerate legal next moves for")
+    sp_devx.add_argument("--intent", help="natural-language intent for row synthesis")
+    sp_devx.add_argument("--compare", help="new path for --mode diff")
+    sp_devx.add_argument("--record-replay", action="store_true",
+                         help="run capturedOutputReplay when --mode mock")
+    sp_devx.add_argument("--json", action="store_true")
+    sp_devx.set_defaults(func=cmd_devx)
+
+    sp_compensate = sub.add_parser(
+        "compensate",
+        help="COMPENSATE failure-mitigation surface for agent inner loops",
+    )
+    sp_compensate.add_argument("path", help="SemanticScript source file or project directory")
+    sp_compensate.add_argument("--mode", choices=COMP_MODES, default="all")
+    sp_compensate.add_argument("--query", help="natural-language query for ranked alternatives")
+    sp_compensate.add_argument("--attempt", action="append", default=[],
+                               help="record a failed attempt for stuck-signal analysis")
+    sp_compensate.add_argument("--compare", help="old path for semantic checkpoint comparison")
+    sp_compensate.add_argument("--port", type=int, help="localhost port to probe")
+    sp_compensate.add_argument("--checkpoint-dir", help="directory for checkpoint writes")
+    sp_compensate.add_argument("--write-checkpoint", action="store_true",
+                               help="write the current semantic checkpoint")
+    sp_compensate.add_argument("--write-memory", action="store_true",
+                               help="write .semanticscript/idioms.json")
+    sp_compensate.add_argument("--json", action="store_true")
+    sp_compensate.set_defaults(func=cmd_compensate)
 
     sp_docs = sub.add_parser("docs", help="docs catalog (list/get/search)")
     sp_docs.add_argument("path", nargs="?", help="EAV/compact source file, or - for stdin")
@@ -24708,6 +27888,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
     sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
+    sp_scaffold.add_argument("--json", action="store_true",
+                             help="emit a sem.scaffold.v1 envelope")
     sp_scaffold.set_defaults(func=cmd_scaffold)
 
     sp_verify = sub.add_parser("verify-patch", help="verify a program is sound")
@@ -24717,6 +27899,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_trace = sub.add_parser("trace", help="primary-path trace of an operation")
     sp_trace.add_argument("path", help="EAV source file, or - for stdin")
     sp_trace.add_argument("operation", help="operation name")
+    sp_trace.add_argument("--multi-path", action="store_true",
+                          help="enumerate branch fallthrough/taken paths")
+    sp_trace.add_argument("--branch-aware", action="store_true",
+                          help="include branch live-binding/defer snapshots")
+    sp_trace.add_argument("--json", action="store_true",
+                          help="emit a sem.trace.v1 envelope")
     sp_trace.set_defaults(func=cmd_trace)
 
     sp_norm = sub.add_parser("normalize", help="preview normalizing to canonical EAV")
@@ -24758,6 +27946,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_diff = sub.add_parser("diff", help="semantic diff between two programs")
     sp_diff.add_argument("old", help="old EAV source file")
     sp_diff.add_argument("new", help="new EAV source file")
+    sp_diff.add_argument("--json", action="store_true",
+                         help="emit a sem.diff.v1 envelope")
     sp_diff.set_defaults(func=cmd_diff)
 
     sp_rename = sub.add_parser("rename", help="rename an entity and its references")
@@ -24777,6 +27967,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_slice = sub.add_parser("slice", help="semantic slice of an entity")
     sp_slice.add_argument("path", help="EAV source file, or - for stdin")
     sp_slice.add_argument("entity", help="entity name")
+    sp_slice.add_argument("--format", choices=("canonical", "prompt", "json"),
+                          default="canonical")
+    sp_slice.add_argument("--refs", action="store_true",
+                          help="include incoming/outgoing references in JSON")
+    sp_slice.add_argument("--path", dest="path_filter",
+                          help="filter activated entities by name/kind/payload substring")
+    sp_slice.add_argument("--for-edit", action="store_true",
+                          help="include producer/task/cleanup edit anchors in JSON")
     sp_slice.add_argument("--json", action="store_true")
     sp_slice.set_defaults(func=cmd_slice)
 
@@ -24784,6 +27982,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_pack.add_argument("path", help="EAV source file, or - for stdin")
     sp_pack.add_argument("entity", help="entity name")
     sp_pack.add_argument("--budget", type=int, default=4000)
+    sp_pack.add_argument("--json", action="store_true",
+                         help="emit a sem.pack.v1 envelope")
     sp_pack.set_defaults(func=cmd_pack)
 
     sp_describe = sub.add_parser("describe", help="summarize an entity's contract")
