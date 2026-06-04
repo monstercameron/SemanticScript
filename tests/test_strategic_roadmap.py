@@ -130,9 +130,9 @@ def test_project_parse_cache_reuses_unchanged_file_graph(tmp_path, monkeypatch):
     real_parse = ss.parse
     calls = []
 
-    def counted_parse(source):
+    def counted_parse(source, **kwargs):
         calls.append(source)
-        return real_parse(source)
+        return real_parse(source, **kwargs)
 
     monkeypatch.setattr(ss, "parse", counted_parse)
     _source, first = ss._load_program_for_path(str(project))
