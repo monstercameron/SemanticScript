@@ -65,6 +65,42 @@ def test_r08_valid_variant_and_binding_ref_are_accepted():
     assert not [c for c, _ in _lint_codes(src) if c == "SS1033"]
 
 
+# --- R-05: `--json` parity (describe gains a structured envelope) ---
+
+_DESC_PROG = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    "m is module\nm path m\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+    "ExitCode is alias\nExitCode for Int32\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    "main purpose \"the main op\"\nmain invariant \"i\"\n"
+    "main let z immutable ExitCode 0\nmain return z\n")
+
+
+def test_r05_describe_has_json_parity(tmp_path):
+    """R-05: `describe` emitted plain text only — no `--json`. It now has parity: a
+    `sem.describe.v1` envelope for a program entity, a builtin signature, and an
+    unknown entity, while the plain form is unchanged."""
+    p = tmp_path / "d.sem"
+    p.write_text(_DESC_PROG, encoding="utf-8")
+
+    def describe_json(entity):
+        r = subprocess.run([sys.executable, SC, "describe", str(p), entity, "--json"],
+                           capture_output=True, text=True, encoding="utf-8")
+        return r.returncode, json.loads(r.stdout)
+
+    rc, d = describe_json("main")
+    assert rc == 0 and d["surface"] == "sem.describe.v1"
+    assert d["kind"] == "operation" and d.get("description")
+    rc, d = describe_json("math.divideInt64")
+    assert rc == 0 and d["kind"] == "intrinsic" and d["source"] == "signature"
+    rc, d = describe_json("nope")
+    assert rc == 2 and d.get("ok") is False and d["status"] == "unknown-entity"
+    # plain (non-json) form unchanged.
+    plain = subprocess.run([sys.executable, SC, "describe", str(p), "main"],
+                           capture_output=True, text=True, encoding="utf-8")
+    assert plain.returncode == 0 and "operation" in plain.stdout
+
+
 # --- R-11: an undefined webServer route handler is a check (not codegen) error ---
 
 def _webserver(route_handler, extra="", imports=""):

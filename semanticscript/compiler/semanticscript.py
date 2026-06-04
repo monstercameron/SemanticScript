@@ -26802,15 +26802,36 @@ def cmd_describe(args) -> int:
     program but IS a built-in/stdlib target (e.g. `math.divideInt64`), describe its
     declared signature from the .semsig instead of erroring — so `describe` doubles
     as a built-in lookup."""
+    want_json = getattr(args, "json", False)  # R-05: --json parity
     program = parse(_read_source(args.path))
     try:
-        sys.stdout.write(describe(program, args.entity) + "\n")
+        text = describe(program, args.entity)
+        if want_json:
+            ent = program.entities.get(args.entity)
+            sys.stdout.write(_json_envelope(
+                "sem.describe.v1", status="ok", entity=args.entity,
+                kind=ent.kind if ent else None, source="program",
+                description=text) + "\n")
+        else:
+            sys.stdout.write(text + "\n")
         return 0
     except EavError as exc:
         sig = _builtin_target_signature(args.entity)
         if sig is None:
+            if want_json:
+                sys.stdout.write(_json_envelope(
+                    "sem.describe.v1", ok=False, status="unknown-entity",
+                    entity=args.entity, note=str(exc)) + "\n")
+                return 2
             sys.stderr.write(f"semanticscript: {exc}\n")
             return 2
+        if want_json:
+            sys.stdout.write(_json_envelope(
+                "sem.describe.v1", status="ok", entity=args.entity,
+                kind="intrinsic", source="signature",
+                signature=_signature_doc_entry(sig) if "_signature_doc_entry"
+                in globals() else sig) + "\n")
+            return 0
         lines = [f"intrinsic {sig['target']}"]
         for a in sig["args"]:
             lines.append(f"  arg {a['slot']} {a['type']}")
@@ -28244,6 +28265,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_describe = sub.add_parser("describe", help="summarize an entity's contract")
     sp_describe.add_argument("path", help="EAV source file, or - for stdin")
     sp_describe.add_argument("entity", help="entity name")
+    sp_describe.add_argument("--json", action="store_true")  # R-05: --json parity
     sp_describe.set_defaults(func=cmd_describe)
 
     sp_graph = sub.add_parser("graph", help="emit a calls/control graph")
