@@ -1,0 +1,20 @@
+# standard.convert.semsig — compiler-built-in conversion namespace (README ss26).
+convertSig is semsig
+convertSig version "1.0"
+convertSig generatedBy "semanticscript 0.1"
+convertSig describes standard.convert
+convertToFloat64 is intrinsic
+convertToFloat64 target convert.toFloat64
+convertToFloat64 arg value Int64
+convertToFloat64 out converted Float64
+convertToFloat64 purpose "Widen an Int64 to a Float64"
+convertToInt64 is intrinsic
+convertToInt64 target convert.toInt64
+convertToInt64 arg value Float64
+convertToInt64 out converted Int64
+convertToInt64 purpose "Truncate a Float64 to an Int64"
+convertToString is intrinsic
+convertToString target convert.toString
+convertToString arg value Int64
+convertToString out converted String
+convertToString purpose "Format an Int64 as a decimal String"

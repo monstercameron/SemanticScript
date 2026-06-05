@@ -1,0 +1,1261 @@
+# http-runtime-gauntlet — EAV port (apps/http-runtime-gauntlet, semsc v0.1).
+#
+# FULL 1:1 port of the 27-operation native-HTTP conformance harness: the
+# `webServer` entity with all 24 routes + 23 path-scoped middleware bindings,
+# the two helper ops (addGauntletHeaders, writeTextResponse), all 23 route
+# handlers, and the two middleware. Every http.* request-read / response-write /
+# multipart / SSE call is converted; the v0.1 `webServer`/`serverHost`/
+# `serverPort`/`route`/`routeMiddleware` keywords become the subject-anchored
+# EAV webServer entity (`X is webServer` / `X host` / `X port` / `X route` /
+# `X middleware`, README §14).
+#
+# Server *execution* is deferred: `target webServer` lowering is out of scope in
+# v0.3 (§27), so this parses + lints clean (handler ABIs validated, routes
+# exact-match-checked, middleware/effect coverage checked) but is not codegen'd.
+# When webServer lowering lands, every route becomes an executable golden.
+# (X-044)
+#
+# Conversions / language differences:
+#   - middleware uses EAV's §14 ABI `(request, response, next NextMiddleware)
+#     -> Bool` (true continues, false short-circuits) instead of the v0.1
+#     `MiddlewareControl` enum: continueMiddlewareControl -> Bool true,
+#     shortCircuitMiddlewareControl -> Bool false.
+#   - `warning` -> the universal `risk` metadata predicate; the semsc-specific
+#     `pinsNullBodyFailurePath` / `responseBodyForwarder` / `routeTimeoutOptOut`
+#     linter-contract verbs become `rationale` rows (EAV has no SS3603/SS3602
+#     equivalents).
+#   - inline `call`/`argument`/`run`/`bind`/`ignore` records -> first-class
+#     `call` entities with `arg`/`out`/`discards` (the §20 split).
+
+
+appHttpRuntimeGauntlet is module
+appHttpRuntimeGauntlet path apps.httpRuntimeGauntlet
+appHttpRuntimeGauntlet exports httpRuntimeGauntletServer
+appHttpRuntimeGauntlet exports httpRequestReader
+appHttpRuntimeGauntlet exports httpResponseWriter
+appHttpRuntimeGauntlet exports indexHandler
+appHttpRuntimeGauntlet exports healthHandler
+appHttpRuntimeGauntlet exports methodReflectHandler
+appHttpRuntimeGauntlet exports pathReflectHandler
+appHttpRuntimeGauntlet exports headerReflectHandler
+appHttpRuntimeGauntlet exports requiredHeaderHandler
+appHttpRuntimeGauntlet exports queryReflectHandler
+appHttpRuntimeGauntlet exports queryEmptyHandler
+appHttpRuntimeGauntlet exports queryRepeatHandler
+appHttpRuntimeGauntlet exports bodyReflectHandler
+appHttpRuntimeGauntlet exports bodyBytesReflectHandler
+appHttpRuntimeGauntlet exports bodySizeHandler
+appHttpRuntimeGauntlet exports multipartTextHandler
+appHttpRuntimeGauntlet exports multipartFileNameHandler
+appHttpRuntimeGauntlet exports multipartFileTypeHandler
+appHttpRuntimeGauntlet exports multipartFileBytesHandler
+appHttpRuntimeGauntlet exports sseOneEventHandler
+appHttpRuntimeGauntlet exports capabilitiesOptionsHandler
+appHttpRuntimeGauntlet exports customContentHandler
+appHttpRuntimeGauntlet exports redirectHandler
+appHttpRuntimeGauntlet exports emptyDeleteHandler
+appHttpRuntimeGauntlet exports patchHandler
+appHttpRuntimeGauntlet exports shortCircuitProbeHandler
+appHttpRuntimeGauntlet exports shortCircuitProbeMiddleware
+appHttpRuntimeGauntlet exports gauntletMiddleware
+appHttpRuntimeGauntlet exports writeTextResponse
+appHttpRuntimeGauntlet exports addGauntletHeaders
+appHttpRuntimeGauntlet purpose "Native HTTP adapter conformance harness exercising every routing, request-read, response-write, multipart, SSE, and middleware edge"
+appHttpRuntimeGauntlet invariant "Every dispatched route either guards nullable http.request* reads with pointer.isNull and returns 400 on absence, or pins the legacy null-body 500 contract (requiredHeaderHandler)"
+
+HttpContentType is alias
+HttpContentType for String
+HttpContentType purpose "An HTTP response Content-Type value"
+
+ByteCount is alias
+ByteCount for Int64
+ByteCount purpose "A byte length measured by the native adapter"
+
+NextMiddleware is alias
+NextMiddleware for OpaquePointer
+NextMiddleware purpose "An opaque continuation to the next middleware/handler in the chain"
+
+httpRequestReader is capability
+httpRequestReader grants read http.request
+httpRequestReader grants read http.request.method
+httpRequestReader grants read http.request.path
+httpRequestReader grants read http.request.header
+httpRequestReader grants read http.request.query
+httpRequestReader grants read http.request.body
+httpRequestReader grants read http.request.multipart
+httpRequestReader purpose "Authority to inspect request method, path, header, query, body, and multipart values (EAV grants are exact-match, so each narrower read path is enumerated; the v0.1 source relied on hierarchical http.request coverage)"
+
+httpResponseWriter is capability
+httpResponseWriter grants write http.response
+httpResponseWriter purpose "Authority to write status, body, content type, and custom response headers"
+
+okStatus is storage module immutable Int32 200
+createdStatus is storage module immutable Int32 201
+noContentStatus is storage module immutable Int32 204
+redirectStatus is storage module immutable Int32 302
+badRequestStatus is storage module immutable Int32 400
+largeBodyThreshold is storage module immutable ByteCount 12
+largeBodyThreshold purpose "Split body-size tests between the small fixture and the large fixture"
+
+indexBody is storage module immutable String "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware\n"
+indexBody purpose "Static index response listing the HTTP Runtime Gauntlet routes and pinned edge-case behavior"
+
+httpRuntimeGauntletServer is webServer
+httpRuntimeGauntletServer host "127.0.0.1"
+httpRuntimeGauntletServer port 18082
+httpRuntimeGauntletServer route GET "/" indexHandler
+httpRuntimeGauntletServer route GET "/health" healthHandler
+httpRuntimeGauntletServer route GET "/reflect/method" methodReflectHandler
+httpRuntimeGauntletServer route GET "/reflect/path" pathReflectHandler
+httpRuntimeGauntletServer route GET "/reflect/header" headerReflectHandler
+httpRuntimeGauntletServer route GET "/reflect/required-header-or-fail" requiredHeaderHandler
+httpRuntimeGauntletServer route GET "/reflect/query" queryReflectHandler
+httpRuntimeGauntletServer route GET "/reflect/query-empty" queryEmptyHandler
+httpRuntimeGauntletServer route GET "/reflect/query-repeat" queryRepeatHandler
+httpRuntimeGauntletServer route POST "/reflect/body" bodyReflectHandler
+httpRuntimeGauntletServer route POST "/reflect/body-bytes" bodyBytesReflectHandler
+httpRuntimeGauntletServer route POST "/reflect/body-size" bodySizeHandler
+httpRuntimeGauntletServer route PUT "/reflect/body-size" bodySizeHandler
+httpRuntimeGauntletServer route POST "/multipart/text" multipartTextHandler
+httpRuntimeGauntletServer route POST "/multipart/file-name" multipartFileNameHandler
+httpRuntimeGauntletServer route POST "/multipart/file-type" multipartFileTypeHandler
+httpRuntimeGauntletServer route POST "/multipart/file-bytes" multipartFileBytesHandler
+httpRuntimeGauntletServer route GET "/events/one" sseOneEventHandler
+httpRuntimeGauntletServer route OPTIONS "/capabilities" capabilitiesOptionsHandler
+httpRuntimeGauntletServer route GET "/content/custom" customContentHandler
+httpRuntimeGauntletServer route GET "/redirect" redirectHandler
+httpRuntimeGauntletServer route DELETE "/empty" emptyDeleteHandler
+httpRuntimeGauntletServer route PATCH "/patch" patchHandler
+httpRuntimeGauntletServer route GET "/middleware-short-circuit" shortCircuitProbeHandler
+httpRuntimeGauntletServer middleware "/" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/health" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/method" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/path" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/header" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/required-header-or-fail" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/query" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/query-empty" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/query-repeat" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/body" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/body-bytes" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/reflect/body-size" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/multipart/text" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/multipart/file-name" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/multipart/file-type" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/multipart/file-bytes" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/events/one" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/capabilities" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/content/custom" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/redirect" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/empty" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/patch" gauntletMiddleware
+httpRuntimeGauntletServer middleware "/middleware-short-circuit" shortCircuitProbeMiddleware
+httpRuntimeGauntletServer purpose "Challenge every currently implemented native HTTP request, response, routing, and middleware edge"
+httpRuntimeGauntletServer rationale "routeTimeout opt-out dropped: EAV webServer carries no per-route deadline; the Python harness owns request timeouts"
+
+addGauntletHeaders is operation
+addGauntletHeaders in response HttpResponse
+addGauntletHeaders effect write http.response
+addGauntletHeaders uses httpResponseWriter
+addGauntletHeaders memory arena request
+addGauntletHeaders async no
+addGauntletHeaders purpose "Attach common response headers (X-Gauntlet-App, X-Gauntlet-Version) for cross-route identification"
+addGauntletHeaders invariant "All header names/values are static; the op is Void because there is no caller-actionable status"
+addGauntletHeaders let appHeaderName immutable String "X-Gauntlet-App"
+addGauntletHeaders let appHeaderValue immutable String "http-runtime-gauntlet"
+addGauntletHeaders let versionHeaderName immutable String "X-Gauntlet-Version"
+addGauntletHeaders let versionHeaderValue immutable String "1"
+addGauntletHeaders do appHeaderCall
+addGauntletHeaders do versionHeaderCall
+addGauntletHeaders return void
+
+appHeaderCall is call
+appHeaderCall in addGauntletHeaders
+appHeaderCall invokes http.responseHeader
+appHeaderCall arg response HttpResponse response
+appHeaderCall arg name String appHeaderName
+appHeaderCall arg value String appHeaderValue
+appHeaderCall discards "per-header write status is ignored; failure surfaces at per-route assertions"
+
+versionHeaderCall is call
+versionHeaderCall in addGauntletHeaders
+versionHeaderCall invokes http.responseHeader
+versionHeaderCall arg response HttpResponse response
+versionHeaderCall arg name String versionHeaderName
+versionHeaderCall arg value String versionHeaderValue
+versionHeaderCall discards "per-header write status is ignored; failure surfaces at per-route assertions"
+
+writeTextResponse is operation
+writeTextResponse in response HttpResponse
+writeTextResponse in status Int32
+writeTextResponse in body String
+writeTextResponse out Int32
+writeTextResponse effect write http.response
+writeTextResponse uses httpResponseWriter
+writeTextResponse memory arena request
+writeTextResponse async no
+writeTextResponse purpose "Write a plain text response through the adapter, with the gauntlet's common headers attached first"
+writeTextResponse invariant "The body argument is forwarded unchanged to http.responseText; the caller ensures it is non-null"
+writeTextResponse rationale "responseBodyForwarder(body): callers of this helper inherit the null-guard contract of http.responseText"
+writeTextResponse do commonHeaderCall
+writeTextResponse do writeTextResponseCall
+writeTextResponse return writeTextResponseStatus
+
+commonHeaderCall is call
+commonHeaderCall in writeTextResponse
+commonHeaderCall invokes addGauntletHeaders
+commonHeaderCall arg response HttpResponse response
+
+writeTextResponseCall is call
+writeTextResponseCall in writeTextResponse
+writeTextResponseCall invokes http.responseText
+writeTextResponseCall arg response HttpResponse response
+writeTextResponseCall arg status Int32 status
+writeTextResponseCall arg body String body
+writeTextResponseCall out writeTextResponseStatus Int32
+
+indexHandler is operation
+indexHandler in request HttpRequest
+indexHandler in response HttpResponse
+indexHandler out Int32
+indexHandler effect write http.response
+indexHandler uses httpResponseWriter
+indexHandler memory arena request
+indexHandler async no
+indexHandler purpose "Return a compact route map for the gauntlet so operators and tests can discover the surface"
+indexHandler invariant "The route map lists every current API family; the trailing note distinguishes the 400-on-missing-input contract from the one 500-pinning route"
+indexHandler do indexResponseCall
+indexHandler return indexResponseStatus
+
+indexResponseCall is call
+indexResponseCall in indexHandler
+indexResponseCall invokes writeTextResponse
+indexResponseCall arg response HttpResponse response
+indexResponseCall arg status Int32 okStatus
+indexResponseCall arg body String indexBody
+indexResponseCall out indexResponseStatus Int32
+
+healthHandler is operation
+healthHandler in request HttpRequest
+healthHandler in response HttpResponse
+healthHandler out Int32
+healthHandler effect write http.response
+healthHandler uses httpResponseWriter
+healthHandler memory arena request
+healthHandler async no
+healthHandler purpose "Return a minimal readiness body so external probes can poll for server liveness"
+healthHandler invariant "Readiness stays static and side-effect free"
+healthHandler let healthBody immutable String "ok\n"
+healthHandler do healthResponseCall
+healthHandler return healthResponseStatus
+
+healthResponseCall is call
+healthResponseCall in healthHandler
+healthResponseCall invokes writeTextResponse
+healthResponseCall arg response HttpResponse response
+healthResponseCall arg status Int32 okStatus
+healthResponseCall arg body String healthBody
+healthResponseCall out healthResponseStatus Int32
+
+methodReflectHandler is operation
+methodReflectHandler in request HttpRequest
+methodReflectHandler in response HttpResponse
+methodReflectHandler out Int32
+methodReflectHandler effect read http.request.method
+methodReflectHandler effect write http.response
+methodReflectHandler uses httpRequestReader
+methodReflectHandler uses httpResponseWriter
+methodReflectHandler memory arena request
+methodReflectHandler async no
+methodReflectHandler purpose "Return the exact request method string seen by the adapter"
+methodReflectHandler invariant "http.requestMethod returns a non-null string for any dispatched request, so no null guard is needed"
+methodReflectHandler do methodReadCall
+methodReflectHandler do methodResponseCall
+methodReflectHandler return methodResponseStatus
+
+methodReadCall is call
+methodReadCall in methodReflectHandler
+methodReadCall invokes http.requestMethod
+methodReadCall arg request HttpRequest request
+methodReadCall out requestMethod String
+
+methodResponseCall is call
+methodResponseCall in methodReflectHandler
+methodResponseCall invokes writeTextResponse
+methodResponseCall arg response HttpResponse response
+methodResponseCall arg status Int32 okStatus
+methodResponseCall arg body String requestMethod
+methodResponseCall out methodResponseStatus Int32
+
+pathReflectHandler is operation
+pathReflectHandler in request HttpRequest
+pathReflectHandler in response HttpResponse
+pathReflectHandler out Int32
+pathReflectHandler effect read http.request.path
+pathReflectHandler effect write http.response
+pathReflectHandler uses httpRequestReader
+pathReflectHandler uses httpResponseWriter
+pathReflectHandler memory arena request
+pathReflectHandler async no
+pathReflectHandler purpose "Return the route path after query stripping"
+pathReflectHandler invariant "http.requestPath returns a non-null pointer for any dispatched request, so no null guard is needed"
+pathReflectHandler do pathReadCall
+pathReflectHandler do pathResponseCall
+pathReflectHandler return pathResponseStatus
+
+pathReadCall is call
+pathReadCall in pathReflectHandler
+pathReadCall invokes http.requestPath
+pathReadCall arg request HttpRequest request
+pathReadCall out requestPath String
+
+pathResponseCall is call
+pathResponseCall in pathReflectHandler
+pathResponseCall invokes writeTextResponse
+pathResponseCall arg response HttpResponse response
+pathResponseCall arg status Int32 okStatus
+pathResponseCall arg body String requestPath
+pathResponseCall out pathResponseStatus Int32
+
+headerReflectHandler is operation
+headerReflectHandler in request HttpRequest
+headerReflectHandler in response HttpResponse
+headerReflectHandler out Int32
+headerReflectHandler effect read http.request.header
+headerReflectHandler effect write http.response
+headerReflectHandler uses httpRequestReader
+headerReflectHandler uses httpResponseWriter
+headerReflectHandler memory arena request
+headerReflectHandler async no
+headerReflectHandler purpose "Return the X-Gauntlet-Token request header when present, or a 400 with a static reason body when absent"
+headerReflectHandler invariant "Token absent => http.requestHeader returns null => pointer.isNull guard branches to 400; present => 200 with the raw value"
+headerReflectHandler risk "The 400-on-missing-token contract is part of the route's tested surface; do not switch back to the null-body 500 path"
+headerReflectHandler let tokenHeaderName immutable String "x-gauntlet-token"
+headerReflectHandler let tokenMissingBody immutable String "missing header: X-Gauntlet-Token\n"
+headerReflectHandler do headerReadCall
+headerReflectHandler do tokenMissingCheckCall
+headerReflectHandler branch if tokenMissing goto headerMissingPath
+headerReflectHandler do headerResponseCall
+headerReflectHandler return headerResponseStatus
+headerReflectHandler at headerMissingPath do headerMissingResponseCall
+headerReflectHandler return headerMissingResponseStatus
+
+headerReadCall is call
+headerReadCall in headerReflectHandler
+headerReadCall invokes http.requestHeader
+headerReadCall arg request HttpRequest request
+headerReadCall arg name String tokenHeaderName
+headerReadCall out tokenHeaderValue String
+
+tokenMissingCheckCall is call
+tokenMissingCheckCall in headerReflectHandler
+tokenMissingCheckCall invokes pointer.isNull
+tokenMissingCheckCall arg pointer OpaquePointer tokenHeaderValue
+tokenMissingCheckCall out tokenMissing Bool
+tokenMissingCheckCall rationale "pointer.isNull is the only typed null detector; it emits a real icmp eq ptr,null so the branch has a real Bool"
+
+headerResponseCall is call
+headerResponseCall in headerReflectHandler
+headerResponseCall invokes writeTextResponse
+headerResponseCall arg response HttpResponse response
+headerResponseCall arg status Int32 okStatus
+headerResponseCall arg body String tokenHeaderValue
+headerResponseCall out headerResponseStatus Int32
+
+headerMissingResponseCall is call
+headerMissingResponseCall in headerReflectHandler
+headerMissingResponseCall invokes writeTextResponse
+headerMissingResponseCall arg response HttpResponse response
+headerMissingResponseCall arg status Int32 badRequestStatus
+headerMissingResponseCall arg body String tokenMissingBody
+headerMissingResponseCall out headerMissingResponseStatus Int32
+
+requiredHeaderHandler is operation
+requiredHeaderHandler in request HttpRequest
+requiredHeaderHandler in response HttpResponse
+requiredHeaderHandler out Int32
+requiredHeaderHandler effect read http.request.header
+requiredHeaderHandler effect write http.response
+requiredHeaderHandler uses httpRequestReader
+requiredHeaderHandler uses httpResponseWriter
+requiredHeaderHandler memory arena request
+requiredHeaderHandler async no
+requiredHeaderHandler purpose "Negative-test route: 200 with the required header value when present, intentionally 500 (null body) when absent"
+requiredHeaderHandler invariant "The gauntlet's one route that intentionally omits a pointer.isNull guard, pinning the adapter's null-body 500 path"
+requiredHeaderHandler rationale "pinsNullBodyFailurePath: deliberate coverage of the adapter's null-body 500 path; do NOT add a pointer.isNull guard here"
+requiredHeaderHandler risk "The 500-on-missing-X-Gauntlet-Required behavior is externally asserted; do not silence it by adding a guard"
+requiredHeaderHandler let requiredHeaderName immutable String "x-gauntlet-required"
+requiredHeaderHandler do requiredHeaderReadCall
+requiredHeaderHandler do requiredHeaderResponseCall
+requiredHeaderHandler return requiredHeaderResponseStatus
+
+requiredHeaderReadCall is call
+requiredHeaderReadCall in requiredHeaderHandler
+requiredHeaderReadCall invokes http.requestHeader
+requiredHeaderReadCall arg request HttpRequest request
+requiredHeaderReadCall arg name String requiredHeaderName
+requiredHeaderReadCall out requiredHeaderValue String
+
+requiredHeaderResponseCall is call
+requiredHeaderResponseCall in requiredHeaderHandler
+requiredHeaderResponseCall invokes writeTextResponse
+requiredHeaderResponseCall arg response HttpResponse response
+requiredHeaderResponseCall arg status Int32 okStatus
+requiredHeaderResponseCall arg body String requiredHeaderValue
+requiredHeaderResponseCall out requiredHeaderResponseStatus Int32
+
+queryReflectHandler is operation
+queryReflectHandler in request HttpRequest
+queryReflectHandler in response HttpResponse
+queryReflectHandler out Int32
+queryReflectHandler effect read http.request.query
+queryReflectHandler effect write http.response
+queryReflectHandler uses httpRequestReader
+queryReflectHandler uses httpResponseWriter
+queryReflectHandler memory arena request
+queryReflectHandler async no
+queryReflectHandler purpose "Return the raw name query parameter when present, or a 400 with a static reason body when absent"
+queryReflectHandler invariant "Distinguishes ?name=foo (verbatim 200) from absent (null bind => 400) and ?name= (empty string, 200)"
+queryReflectHandler let nameQueryName immutable String "name"
+queryReflectHandler let nameQueryMissingBody immutable String "missing query parameter: name\n"
+queryReflectHandler do queryReadCall
+queryReflectHandler do queryMissingCheckCall
+queryReflectHandler branch if queryMissing goto queryReflectMissingPath
+queryReflectHandler do queryResponseCall
+queryReflectHandler return queryResponseStatus
+queryReflectHandler at queryReflectMissingPath do queryReflectMissingResponseCall
+queryReflectHandler return queryReflectMissingResponseStatus
+
+queryReadCall is call
+queryReadCall in queryReflectHandler
+queryReadCall invokes http.requestQueryParam
+queryReadCall arg request HttpRequest request
+queryReadCall arg name String nameQueryName
+queryReadCall out queryValue String
+
+queryMissingCheckCall is call
+queryMissingCheckCall in queryReflectHandler
+queryMissingCheckCall invokes pointer.isNull
+queryMissingCheckCall arg pointer OpaquePointer queryValue
+queryMissingCheckCall out queryMissing Bool
+
+queryResponseCall is call
+queryResponseCall in queryReflectHandler
+queryResponseCall invokes writeTextResponse
+queryResponseCall arg response HttpResponse response
+queryResponseCall arg status Int32 okStatus
+queryResponseCall arg body String queryValue
+queryResponseCall out queryResponseStatus Int32
+
+queryReflectMissingResponseCall is call
+queryReflectMissingResponseCall in queryReflectHandler
+queryReflectMissingResponseCall invokes writeTextResponse
+queryReflectMissingResponseCall arg response HttpResponse response
+queryReflectMissingResponseCall arg status Int32 badRequestStatus
+queryReflectMissingResponseCall arg body String nameQueryMissingBody
+queryReflectMissingResponseCall out queryReflectMissingResponseStatus Int32
+
+queryEmptyHandler is operation
+queryEmptyHandler in request HttpRequest
+queryEmptyHandler in response HttpResponse
+queryEmptyHandler out Int32
+queryEmptyHandler effect read http.request.query
+queryEmptyHandler effect write http.response
+queryEmptyHandler uses httpRequestReader
+queryEmptyHandler uses httpResponseWriter
+queryEmptyHandler memory arena request
+queryEmptyHandler async no
+queryEmptyHandler purpose "Return the empty value for a query key with no equals sign (?empty), or 400 when the key is absent entirely"
+queryEmptyHandler invariant "?empty => empty string 200; ?empty=value => value 200; absent => null bind => 400"
+queryEmptyHandler let emptyQueryName immutable String "empty"
+queryEmptyHandler let emptyQueryMissingBody immutable String "missing query parameter: empty\n"
+queryEmptyHandler do emptyQueryReadCall
+queryEmptyHandler do emptyQueryMissingCheckCall
+queryEmptyHandler branch if emptyQueryMissing goto queryEmptyMissingPath
+queryEmptyHandler do emptyQueryResponseCall
+queryEmptyHandler return emptyQueryResponseStatus
+queryEmptyHandler at queryEmptyMissingPath do queryEmptyMissingResponseCall
+queryEmptyHandler return queryEmptyMissingResponseStatus
+
+emptyQueryReadCall is call
+emptyQueryReadCall in queryEmptyHandler
+emptyQueryReadCall invokes http.requestQueryParam
+emptyQueryReadCall arg request HttpRequest request
+emptyQueryReadCall arg name String emptyQueryName
+emptyQueryReadCall out emptyQueryValue String
+
+emptyQueryMissingCheckCall is call
+emptyQueryMissingCheckCall in queryEmptyHandler
+emptyQueryMissingCheckCall invokes pointer.isNull
+emptyQueryMissingCheckCall arg pointer OpaquePointer emptyQueryValue
+emptyQueryMissingCheckCall out emptyQueryMissing Bool
+
+emptyQueryResponseCall is call
+emptyQueryResponseCall in queryEmptyHandler
+emptyQueryResponseCall invokes writeTextResponse
+emptyQueryResponseCall arg response HttpResponse response
+emptyQueryResponseCall arg status Int32 okStatus
+emptyQueryResponseCall arg body String emptyQueryValue
+emptyQueryResponseCall out emptyQueryResponseStatus Int32
+
+queryEmptyMissingResponseCall is call
+queryEmptyMissingResponseCall in queryEmptyHandler
+queryEmptyMissingResponseCall invokes writeTextResponse
+queryEmptyMissingResponseCall arg response HttpResponse response
+queryEmptyMissingResponseCall arg status Int32 badRequestStatus
+queryEmptyMissingResponseCall arg body String emptyQueryMissingBody
+queryEmptyMissingResponseCall out queryEmptyMissingResponseStatus Int32
+
+queryRepeatHandler is operation
+queryRepeatHandler in request HttpRequest
+queryRepeatHandler in response HttpResponse
+queryRepeatHandler out Int32
+queryRepeatHandler effect read http.request.query
+queryRepeatHandler effect write http.response
+queryRepeatHandler uses httpRequestReader
+queryRepeatHandler uses httpResponseWriter
+queryRepeatHandler memory arena request
+queryRepeatHandler async no
+queryRepeatHandler purpose "Return the first name query parameter when the request repeats the key, or 400 when absent"
+queryRepeatHandler invariant "The native adapter's query lookup returns the FIRST matching key"
+queryRepeatHandler let repeatQueryName immutable String "name"
+queryRepeatHandler let repeatQueryMissingBody immutable String "missing query parameter: name\n"
+queryRepeatHandler do repeatQueryReadCall
+queryRepeatHandler do repeatQueryMissingCheckCall
+queryRepeatHandler branch if repeatQueryMissing goto queryRepeatMissingPath
+queryRepeatHandler do repeatQueryResponseCall
+queryRepeatHandler return repeatQueryResponseStatus
+queryRepeatHandler at queryRepeatMissingPath do queryRepeatMissingResponseCall
+queryRepeatHandler return queryRepeatMissingResponseStatus
+
+repeatQueryReadCall is call
+repeatQueryReadCall in queryRepeatHandler
+repeatQueryReadCall invokes http.requestQueryParam
+repeatQueryReadCall arg request HttpRequest request
+repeatQueryReadCall arg name String repeatQueryName
+repeatQueryReadCall out repeatQueryValue String
+
+repeatQueryMissingCheckCall is call
+repeatQueryMissingCheckCall in queryRepeatHandler
+repeatQueryMissingCheckCall invokes pointer.isNull
+repeatQueryMissingCheckCall arg pointer OpaquePointer repeatQueryValue
+repeatQueryMissingCheckCall out repeatQueryMissing Bool
+
+repeatQueryResponseCall is call
+repeatQueryResponseCall in queryRepeatHandler
+repeatQueryResponseCall invokes writeTextResponse
+repeatQueryResponseCall arg response HttpResponse response
+repeatQueryResponseCall arg status Int32 okStatus
+repeatQueryResponseCall arg body String repeatQueryValue
+repeatQueryResponseCall out repeatQueryResponseStatus Int32
+
+queryRepeatMissingResponseCall is call
+queryRepeatMissingResponseCall in queryRepeatHandler
+queryRepeatMissingResponseCall invokes writeTextResponse
+queryRepeatMissingResponseCall arg response HttpResponse response
+queryRepeatMissingResponseCall arg status Int32 badRequestStatus
+queryRepeatMissingResponseCall arg body String repeatQueryMissingBody
+queryRepeatMissingResponseCall out queryRepeatMissingResponseStatus Int32
+
+bodyReflectHandler is operation
+bodyReflectHandler in request HttpRequest
+bodyReflectHandler in response HttpResponse
+bodyReflectHandler out Int32
+bodyReflectHandler effect read http.request.body
+bodyReflectHandler effect write http.response
+bodyReflectHandler uses httpRequestReader
+bodyReflectHandler uses httpResponseWriter
+bodyReflectHandler memory arena request
+bodyReflectHandler async no
+bodyReflectHandler purpose "Echo the POST body back with status 201 (Created), or 400 when the body is empty/absent"
+bodyReflectHandler invariant "http.requestBodyText returns null for a zero-length body, mapped to 400; 201 matches create-from-body semantics"
+bodyReflectHandler let bodyMissingBody immutable String "missing request body\n"
+bodyReflectHandler do bodyReadCall
+bodyReflectHandler do bodyMissingCheckCall
+bodyReflectHandler branch if bodyMissing goto bodyReflectMissingPath
+bodyReflectHandler do bodyResponseCall
+bodyReflectHandler return bodyResponseStatus
+bodyReflectHandler at bodyReflectMissingPath do bodyReflectMissingResponseCall
+bodyReflectHandler return bodyReflectMissingResponseStatus
+
+bodyReadCall is call
+bodyReadCall in bodyReflectHandler
+bodyReadCall invokes http.requestBodyText
+bodyReadCall limit maximumBytes 1048576
+bodyReadCall arg request HttpRequest request
+bodyReadCall out bodyText String
+
+bodyMissingCheckCall is call
+bodyMissingCheckCall in bodyReflectHandler
+bodyMissingCheckCall invokes pointer.isNull
+bodyMissingCheckCall arg pointer OpaquePointer bodyText
+bodyMissingCheckCall out bodyMissing Bool
+
+bodyResponseCall is call
+bodyResponseCall in bodyReflectHandler
+bodyResponseCall invokes writeTextResponse
+bodyResponseCall arg response HttpResponse response
+bodyResponseCall arg status Int32 createdStatus
+bodyResponseCall arg body String bodyText
+bodyResponseCall out bodyResponseStatus Int32
+
+bodyReflectMissingResponseCall is call
+bodyReflectMissingResponseCall in bodyReflectHandler
+bodyReflectMissingResponseCall invokes writeTextResponse
+bodyReflectMissingResponseCall arg response HttpResponse response
+bodyReflectMissingResponseCall arg status Int32 badRequestStatus
+bodyReflectMissingResponseCall arg body String bodyMissingBody
+bodyReflectMissingResponseCall out bodyReflectMissingResponseStatus Int32
+
+bodyBytesReflectHandler is operation
+bodyBytesReflectHandler in request HttpRequest
+bodyBytesReflectHandler in response HttpResponse
+bodyBytesReflectHandler out Int32
+bodyBytesReflectHandler effect read http.request.body
+bodyBytesReflectHandler effect write http.response
+bodyBytesReflectHandler uses httpRequestReader
+bodyBytesReflectHandler uses httpResponseWriter
+bodyBytesReflectHandler memory arena request
+bodyBytesReflectHandler async no
+bodyBytesReflectHandler purpose "Echo the raw request body bytes with an explicit response length, or 400 when the body is absent"
+bodyBytesReflectHandler invariant "The success length comes from http.requestBodyLength (not strlen), preserving embedded NUL bytes round-trip"
+bodyBytesReflectHandler let bodyBytesMissingBody immutable String "missing request body\n"
+bodyBytesReflectHandler let binaryContentType immutable String "application/octet-stream"
+bodyBytesReflectHandler do bodyBytesCommonHeadersCall
+bodyBytesReflectHandler do bodyBytesReadCall
+bodyBytesReflectHandler do bodyBytesMissingCheckCall
+bodyBytesReflectHandler branch if bodyBytesMissing goto bodyBytesMissingPath
+bodyBytesReflectHandler do bodyBytesLengthCall
+bodyBytesReflectHandler do bodyBytesResponseCall
+bodyBytesReflectHandler return bodyBytesResponseStatus
+bodyBytesReflectHandler at bodyBytesMissingPath do bodyBytesMissingResponseCall
+bodyBytesReflectHandler return bodyBytesMissingResponseStatus
+
+bodyBytesCommonHeadersCall is call
+bodyBytesCommonHeadersCall in bodyBytesReflectHandler
+bodyBytesCommonHeadersCall invokes addGauntletHeaders
+bodyBytesCommonHeadersCall arg response HttpResponse response
+
+bodyBytesReadCall is call
+bodyBytesReadCall in bodyBytesReflectHandler
+bodyBytesReadCall invokes http.requestBodyBytes
+bodyBytesReadCall limit maximumBytes 1048576
+bodyBytesReadCall arg request HttpRequest request
+bodyBytesReadCall out bodyBytePointer OpaquePointer
+
+bodyBytesMissingCheckCall is call
+bodyBytesMissingCheckCall in bodyBytesReflectHandler
+bodyBytesMissingCheckCall invokes pointer.isNull
+bodyBytesMissingCheckCall arg pointer OpaquePointer bodyBytePointer
+bodyBytesMissingCheckCall out bodyBytesMissing Bool
+
+bodyBytesLengthCall is call
+bodyBytesLengthCall in bodyBytesReflectHandler
+bodyBytesLengthCall invokes http.requestBodyLength
+bodyBytesLengthCall arg request HttpRequest request
+bodyBytesLengthCall out bodyByteCount ByteCount
+
+bodyBytesResponseCall is call
+bodyBytesResponseCall in bodyBytesReflectHandler
+bodyBytesResponseCall invokes http.responseBytes
+bodyBytesResponseCall arg response HttpResponse response
+bodyBytesResponseCall arg status Int32 okStatus
+bodyBytesResponseCall arg body OpaquePointer bodyBytePointer
+bodyBytesResponseCall arg bodyLength ByteCount bodyByteCount
+bodyBytesResponseCall arg contentType String binaryContentType
+bodyBytesResponseCall out bodyBytesResponseStatus Int32
+
+bodyBytesMissingResponseCall is call
+bodyBytesMissingResponseCall in bodyBytesReflectHandler
+bodyBytesMissingResponseCall invokes http.responseText
+bodyBytesMissingResponseCall arg response HttpResponse response
+bodyBytesMissingResponseCall arg status Int32 badRequestStatus
+bodyBytesMissingResponseCall arg body String bodyBytesMissingBody
+bodyBytesMissingResponseCall out bodyBytesMissingResponseStatus Int32
+
+bodySizeHandler is operation
+bodySizeHandler in request HttpRequest
+bodySizeHandler in response HttpResponse
+bodySizeHandler out Int32
+bodySizeHandler effect read http.request.body
+bodySizeHandler effect write http.response
+bodySizeHandler uses httpRequestReader
+bodySizeHandler uses httpResponseWriter
+bodySizeHandler memory arena request
+bodySizeHandler async no
+bodySizeHandler purpose "Classify request bodies by adapter-reported byte length, consistent across POST/PUT and small/large bodies"
+bodySizeHandler invariant "Length is measured before dispatch; a zero-byte body reports as small body; http.requestBodyLength is non-nullable"
+bodySizeHandler risk "Registered against BOTH POST and PUT /reflect/body-size; one handler keeps size-classification logic in one place"
+bodySizeHandler let smallBodyMessage immutable String "small body\n"
+bodySizeHandler let largeBodyMessage immutable String "large body\n"
+bodySizeHandler do bodyLengthCall
+bodySizeHandler do largeBodyCheckCall
+bodySizeHandler branch if isLargeBody goto writeLargeBody
+bodySizeHandler do smallBodyResponseCall
+bodySizeHandler return smallBodyResponseStatus
+bodySizeHandler at writeLargeBody do largeBodyResponseCall
+bodySizeHandler return largeBodyResponseStatus
+
+bodyLengthCall is call
+bodyLengthCall in bodySizeHandler
+bodyLengthCall invokes http.requestBodyLength
+bodyLengthCall arg request HttpRequest request
+bodyLengthCall out bodyLength ByteCount
+
+largeBodyCheckCall is call
+largeBodyCheckCall in bodySizeHandler
+largeBodyCheckCall invokes math.greaterThanOrEqualInt64
+largeBodyCheckCall arg left Int64 bodyLength
+largeBodyCheckCall arg right Int64 largeBodyThreshold
+largeBodyCheckCall out isLargeBody Bool
+
+smallBodyResponseCall is call
+smallBodyResponseCall in bodySizeHandler
+smallBodyResponseCall invokes writeTextResponse
+smallBodyResponseCall arg response HttpResponse response
+smallBodyResponseCall arg status Int32 okStatus
+smallBodyResponseCall arg body String smallBodyMessage
+smallBodyResponseCall out smallBodyResponseStatus Int32
+
+largeBodyResponseCall is call
+largeBodyResponseCall in bodySizeHandler
+largeBodyResponseCall invokes writeTextResponse
+largeBodyResponseCall arg response HttpResponse response
+largeBodyResponseCall arg status Int32 okStatus
+largeBodyResponseCall arg body String largeBodyMessage
+largeBodyResponseCall out largeBodyResponseStatus Int32
+
+multipartTextHandler is operation
+multipartTextHandler in request HttpRequest
+multipartTextHandler in response HttpResponse
+multipartTextHandler out Int32
+multipartTextHandler effect read http.request.multipart
+multipartTextHandler effect write http.response
+multipartTextHandler uses httpRequestReader
+multipartTextHandler uses httpResponseWriter
+multipartTextHandler memory arena request
+multipartTextHandler async no
+multipartTextHandler purpose "Read the text multipart field named description, or 400 when the field is absent"
+multipartTextHandler invariant "Multipart parsing is boundary-based and arena-allocated; httpRequestReader covers the narrower http.request.multipart read"
+multipartTextHandler let descriptionPartName immutable String "description"
+multipartTextHandler let descriptionMissingBody immutable String "missing multipart field: description\n"
+multipartTextHandler do descriptionPartReadCall
+multipartTextHandler do descriptionMissingCheckCall
+multipartTextHandler branch if descriptionMissing goto multipartTextMissingPath
+multipartTextHandler do descriptionPartResponseCall
+multipartTextHandler return descriptionPartResponseStatus
+multipartTextHandler at multipartTextMissingPath do multipartTextMissingResponseCall
+multipartTextHandler return multipartTextMissingResponseStatus
+
+descriptionPartReadCall is call
+descriptionPartReadCall in multipartTextHandler
+descriptionPartReadCall invokes http.multipartPartText
+descriptionPartReadCall arg request HttpRequest request
+descriptionPartReadCall arg name String descriptionPartName
+descriptionPartReadCall out descriptionPartText String
+
+descriptionMissingCheckCall is call
+descriptionMissingCheckCall in multipartTextHandler
+descriptionMissingCheckCall invokes pointer.isNull
+descriptionMissingCheckCall arg pointer OpaquePointer descriptionPartText
+descriptionMissingCheckCall out descriptionMissing Bool
+
+descriptionPartResponseCall is call
+descriptionPartResponseCall in multipartTextHandler
+descriptionPartResponseCall invokes writeTextResponse
+descriptionPartResponseCall arg response HttpResponse response
+descriptionPartResponseCall arg status Int32 okStatus
+descriptionPartResponseCall arg body String descriptionPartText
+descriptionPartResponseCall out descriptionPartResponseStatus Int32
+
+multipartTextMissingResponseCall is call
+multipartTextMissingResponseCall in multipartTextHandler
+multipartTextMissingResponseCall invokes writeTextResponse
+multipartTextMissingResponseCall arg response HttpResponse response
+multipartTextMissingResponseCall arg status Int32 badRequestStatus
+multipartTextMissingResponseCall arg body String descriptionMissingBody
+multipartTextMissingResponseCall out multipartTextMissingResponseStatus Int32
+
+multipartFileNameHandler is operation
+multipartFileNameHandler in request HttpRequest
+multipartFileNameHandler in response HttpResponse
+multipartFileNameHandler out Int32
+multipartFileNameHandler effect read http.request.multipart
+multipartFileNameHandler effect write http.response
+multipartFileNameHandler uses httpRequestReader
+multipartFileNameHandler uses httpResponseWriter
+multipartFileNameHandler memory arena request
+multipartFileNameHandler async no
+multipartFileNameHandler purpose "Return the original filename metadata of the multipart upload part, or 400 when absent"
+multipartFileNameHandler invariant "Exposes filename metadata without writing uploaded bytes to disk; a missing upload part is a client 400"
+multipartFileNameHandler let uploadPartName immutable String "upload"
+multipartFileNameHandler let uploadFileNameMissingBody immutable String "missing multipart field: upload (filename)\n"
+multipartFileNameHandler do uploadFileNameReadCall
+multipartFileNameHandler do uploadFileNameMissingCheckCall
+multipartFileNameHandler branch if uploadFileNameMissing goto multipartFileNameMissingPath
+multipartFileNameHandler do uploadFileNameResponseCall
+multipartFileNameHandler return uploadFileNameResponseStatus
+multipartFileNameHandler at multipartFileNameMissingPath do multipartFileNameMissingResponseCall
+multipartFileNameHandler return multipartFileNameMissingResponseStatus
+
+uploadFileNameReadCall is call
+uploadFileNameReadCall in multipartFileNameHandler
+uploadFileNameReadCall invokes http.multipartPartFilename
+uploadFileNameReadCall arg request HttpRequest request
+uploadFileNameReadCall arg name String uploadPartName
+uploadFileNameReadCall out uploadFileName String
+
+uploadFileNameMissingCheckCall is call
+uploadFileNameMissingCheckCall in multipartFileNameHandler
+uploadFileNameMissingCheckCall invokes pointer.isNull
+uploadFileNameMissingCheckCall arg pointer OpaquePointer uploadFileName
+uploadFileNameMissingCheckCall out uploadFileNameMissing Bool
+
+uploadFileNameResponseCall is call
+uploadFileNameResponseCall in multipartFileNameHandler
+uploadFileNameResponseCall invokes writeTextResponse
+uploadFileNameResponseCall arg response HttpResponse response
+uploadFileNameResponseCall arg status Int32 okStatus
+uploadFileNameResponseCall arg body String uploadFileName
+uploadFileNameResponseCall out uploadFileNameResponseStatus Int32
+
+multipartFileNameMissingResponseCall is call
+multipartFileNameMissingResponseCall in multipartFileNameHandler
+multipartFileNameMissingResponseCall invokes writeTextResponse
+multipartFileNameMissingResponseCall arg response HttpResponse response
+multipartFileNameMissingResponseCall arg status Int32 badRequestStatus
+multipartFileNameMissingResponseCall arg body String uploadFileNameMissingBody
+multipartFileNameMissingResponseCall out multipartFileNameMissingResponseStatus Int32
+
+multipartFileTypeHandler is operation
+multipartFileTypeHandler in request HttpRequest
+multipartFileTypeHandler in response HttpResponse
+multipartFileTypeHandler out Int32
+multipartFileTypeHandler effect read http.request.multipart
+multipartFileTypeHandler effect write http.response
+multipartFileTypeHandler uses httpRequestReader
+multipartFileTypeHandler uses httpResponseWriter
+multipartFileTypeHandler memory arena request
+multipartFileTypeHandler async no
+multipartFileTypeHandler purpose "Return the Content-Type of the multipart upload part, or 400 when absent"
+multipartFileTypeHandler invariant "Absent part => null => 400; present part without Content-Type => empty string (not null)"
+multipartFileTypeHandler let uploadTypePartName immutable String "upload"
+multipartFileTypeHandler let uploadFileTypeMissingBody immutable String "missing multipart field: upload (content-type)\n"
+multipartFileTypeHandler do uploadFileTypeReadCall
+multipartFileTypeHandler do uploadFileTypeMissingCheckCall
+multipartFileTypeHandler branch if uploadFileTypeMissing goto multipartFileTypeMissingPath
+multipartFileTypeHandler do uploadFileTypeResponseCall
+multipartFileTypeHandler return uploadFileTypeResponseStatus
+multipartFileTypeHandler at multipartFileTypeMissingPath do multipartFileTypeMissingResponseCall
+multipartFileTypeHandler return multipartFileTypeMissingResponseStatus
+
+uploadFileTypeReadCall is call
+uploadFileTypeReadCall in multipartFileTypeHandler
+uploadFileTypeReadCall invokes http.multipartPartContentType
+uploadFileTypeReadCall arg request HttpRequest request
+uploadFileTypeReadCall arg name String uploadTypePartName
+uploadFileTypeReadCall out uploadFileType String
+
+uploadFileTypeMissingCheckCall is call
+uploadFileTypeMissingCheckCall in multipartFileTypeHandler
+uploadFileTypeMissingCheckCall invokes pointer.isNull
+uploadFileTypeMissingCheckCall arg pointer OpaquePointer uploadFileType
+uploadFileTypeMissingCheckCall out uploadFileTypeMissing Bool
+
+uploadFileTypeResponseCall is call
+uploadFileTypeResponseCall in multipartFileTypeHandler
+uploadFileTypeResponseCall invokes writeTextResponse
+uploadFileTypeResponseCall arg response HttpResponse response
+uploadFileTypeResponseCall arg status Int32 okStatus
+uploadFileTypeResponseCall arg body String uploadFileType
+uploadFileTypeResponseCall out uploadFileTypeResponseStatus Int32
+
+multipartFileTypeMissingResponseCall is call
+multipartFileTypeMissingResponseCall in multipartFileTypeHandler
+multipartFileTypeMissingResponseCall invokes writeTextResponse
+multipartFileTypeMissingResponseCall arg response HttpResponse response
+multipartFileTypeMissingResponseCall arg status Int32 badRequestStatus
+multipartFileTypeMissingResponseCall arg body String uploadFileTypeMissingBody
+multipartFileTypeMissingResponseCall out multipartFileTypeMissingResponseStatus Int32
+
+multipartFileBytesHandler is operation
+multipartFileBytesHandler in request HttpRequest
+multipartFileBytesHandler in response HttpResponse
+multipartFileBytesHandler out Int32
+multipartFileBytesHandler effect read http.request.multipart
+multipartFileBytesHandler effect write http.response
+multipartFileBytesHandler uses httpRequestReader
+multipartFileBytesHandler uses httpResponseWriter
+multipartFileBytesHandler memory arena request
+multipartFileBytesHandler async no
+multipartFileBytesHandler purpose "Echo the uploaded file bytes from multipart upload with that part's content type, or 400 when absent"
+multipartFileBytesHandler invariant "Success length comes from http.multipartPartLength (not strlen); the runtime defaults a null contentType to application/octet-stream"
+multipartFileBytesHandler let uploadBytesPartName immutable String "upload"
+multipartFileBytesHandler let uploadBytesMissingBody immutable String "missing multipart field: upload (bytes)\n"
+multipartFileBytesHandler do uploadFileCommonHeadersCall
+multipartFileBytesHandler do uploadFileBytesReadCall
+multipartFileBytesHandler do uploadFileBytesMissingCheckCall
+multipartFileBytesHandler branch if uploadFileBytesMissing goto multipartFileBytesMissingPath
+multipartFileBytesHandler do uploadFileLengthReadCall
+multipartFileBytesHandler do uploadFileContentTypeReadCall
+multipartFileBytesHandler do uploadFileBytesResponseCall
+multipartFileBytesHandler return uploadFileBytesResponseStatus
+multipartFileBytesHandler at multipartFileBytesMissingPath do multipartFileBytesMissingResponseCall
+multipartFileBytesHandler return multipartFileBytesMissingResponseStatus
+
+uploadFileCommonHeadersCall is call
+uploadFileCommonHeadersCall in multipartFileBytesHandler
+uploadFileCommonHeadersCall invokes addGauntletHeaders
+uploadFileCommonHeadersCall arg response HttpResponse response
+
+uploadFileBytesReadCall is call
+uploadFileBytesReadCall in multipartFileBytesHandler
+uploadFileBytesReadCall invokes http.multipartPartBytes
+uploadFileBytesReadCall arg request HttpRequest request
+uploadFileBytesReadCall arg name String uploadBytesPartName
+uploadFileBytesReadCall out uploadFileBytes OpaquePointer
+
+uploadFileBytesMissingCheckCall is call
+uploadFileBytesMissingCheckCall in multipartFileBytesHandler
+uploadFileBytesMissingCheckCall invokes pointer.isNull
+uploadFileBytesMissingCheckCall arg pointer OpaquePointer uploadFileBytes
+uploadFileBytesMissingCheckCall out uploadFileBytesMissing Bool
+
+uploadFileLengthReadCall is call
+uploadFileLengthReadCall in multipartFileBytesHandler
+uploadFileLengthReadCall invokes http.multipartPartLength
+uploadFileLengthReadCall arg request HttpRequest request
+uploadFileLengthReadCall arg name String uploadBytesPartName
+uploadFileLengthReadCall out uploadFileLength ByteCount
+
+uploadFileContentTypeReadCall is call
+uploadFileContentTypeReadCall in multipartFileBytesHandler
+uploadFileContentTypeReadCall invokes http.multipartPartContentType
+uploadFileContentTypeReadCall arg request HttpRequest request
+uploadFileContentTypeReadCall arg name String uploadBytesPartName
+uploadFileContentTypeReadCall out uploadFileContentType String
+
+uploadFileBytesResponseCall is call
+uploadFileBytesResponseCall in multipartFileBytesHandler
+uploadFileBytesResponseCall invokes http.responseBytes
+uploadFileBytesResponseCall arg response HttpResponse response
+uploadFileBytesResponseCall arg status Int32 okStatus
+uploadFileBytesResponseCall arg body OpaquePointer uploadFileBytes
+uploadFileBytesResponseCall arg bodyLength ByteCount uploadFileLength
+uploadFileBytesResponseCall arg contentType String uploadFileContentType
+uploadFileBytesResponseCall out uploadFileBytesResponseStatus Int32
+
+multipartFileBytesMissingResponseCall is call
+multipartFileBytesMissingResponseCall in multipartFileBytesHandler
+multipartFileBytesMissingResponseCall invokes http.responseText
+multipartFileBytesMissingResponseCall arg response HttpResponse response
+multipartFileBytesMissingResponseCall arg status Int32 badRequestStatus
+multipartFileBytesMissingResponseCall arg body String uploadBytesMissingBody
+multipartFileBytesMissingResponseCall out multipartFileBytesMissingResponseStatus Int32
+
+sseOneEventHandler is operation
+sseOneEventHandler in request HttpRequest
+sseOneEventHandler in response HttpResponse
+sseOneEventHandler out Int32
+sseOneEventHandler effect write http.response
+sseOneEventHandler uses httpResponseWriter
+sseOneEventHandler memory arena request
+sseOneEventHandler async no
+sseOneEventHandler purpose "Return one server-sent-event frame (text/event-stream) so tests can verify SSE framing"
+sseOneEventHandler invariant "Current SSE support is one-shot event-stream formatting; Cache-Control: no-cache prevents intermediary caching"
+sseOneEventHandler let sseCacheHeaderName immutable String "Cache-Control"
+sseOneEventHandler let sseCacheHeaderValue immutable String "no-cache"
+sseOneEventHandler let sseEventName immutable String "gauntlet"
+sseOneEventHandler let sseEventData immutable String "connected"
+sseOneEventHandler do sseCommonHeadersCall
+sseOneEventHandler do sseCacheHeaderCall
+sseOneEventHandler do sseEventResponseCall
+sseOneEventHandler return sseEventResponseStatus
+
+sseCommonHeadersCall is call
+sseCommonHeadersCall in sseOneEventHandler
+sseCommonHeadersCall invokes addGauntletHeaders
+sseCommonHeadersCall arg response HttpResponse response
+
+sseCacheHeaderCall is call
+sseCacheHeaderCall in sseOneEventHandler
+sseCacheHeaderCall invokes http.responseHeader
+sseCacheHeaderCall arg response HttpResponse response
+sseCacheHeaderCall arg name String sseCacheHeaderName
+sseCacheHeaderCall arg value String sseCacheHeaderValue
+sseCacheHeaderCall discards "per-header write status is ignored"
+
+sseEventResponseCall is call
+sseEventResponseCall in sseOneEventHandler
+sseEventResponseCall invokes http.responseSseEvent
+sseEventResponseCall arg response HttpResponse response
+sseEventResponseCall arg status Int32 okStatus
+sseEventResponseCall arg event String sseEventName
+sseEventResponseCall arg data String sseEventData
+sseEventResponseCall out sseEventResponseStatus Int32
+
+capabilitiesOptionsHandler is operation
+capabilitiesOptionsHandler in request HttpRequest
+capabilitiesOptionsHandler in response HttpResponse
+capabilitiesOptionsHandler out Int32
+capabilitiesOptionsHandler effect write http.response
+capabilitiesOptionsHandler uses httpResponseWriter
+capabilitiesOptionsHandler memory arena request
+capabilitiesOptionsHandler async no
+capabilitiesOptionsHandler purpose "Respond to OPTIONS /capabilities with Allow + a machine-readable capabilities list"
+capabilitiesOptionsHandler invariant "Allow lists the dispatcher's accepted methods; X-Gauntlet-Methods duplicates it in a non-standard header for independent assertion"
+capabilitiesOptionsHandler let allowHeaderName immutable String "Allow"
+capabilitiesOptionsHandler let allowHeaderValue immutable String "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+capabilitiesOptionsHandler let methodsHeaderName immutable String "X-Gauntlet-Methods"
+capabilitiesOptionsHandler let methodsHeaderValue immutable String "GET POST PUT PATCH DELETE OPTIONS"
+capabilitiesOptionsHandler let capabilitiesBody immutable String "capabilities: method path header query body bodyBytes bodyLength multipart responseHeader responseBytes sse middleware\n"
+capabilitiesOptionsHandler do capabilityHeadersCall
+capabilitiesOptionsHandler do allowHeaderCall
+capabilitiesOptionsHandler do methodsHeaderCall
+capabilitiesOptionsHandler do capabilitiesResponseCall
+capabilitiesOptionsHandler return capabilitiesResponseStatus
+
+capabilityHeadersCall is call
+capabilityHeadersCall in capabilitiesOptionsHandler
+capabilityHeadersCall invokes addGauntletHeaders
+capabilityHeadersCall arg response HttpResponse response
+
+allowHeaderCall is call
+allowHeaderCall in capabilitiesOptionsHandler
+allowHeaderCall invokes http.responseHeader
+allowHeaderCall arg response HttpResponse response
+allowHeaderCall arg name String allowHeaderName
+allowHeaderCall arg value String allowHeaderValue
+allowHeaderCall discards "per-header write status is ignored"
+
+methodsHeaderCall is call
+methodsHeaderCall in capabilitiesOptionsHandler
+methodsHeaderCall invokes http.responseHeader
+methodsHeaderCall arg response HttpResponse response
+methodsHeaderCall arg name String methodsHeaderName
+methodsHeaderCall arg value String methodsHeaderValue
+methodsHeaderCall discards "per-header write status is ignored"
+
+capabilitiesResponseCall is call
+capabilitiesResponseCall in capabilitiesOptionsHandler
+capabilitiesResponseCall invokes http.responseText
+capabilitiesResponseCall arg response HttpResponse response
+capabilitiesResponseCall arg status Int32 okStatus
+capabilitiesResponseCall arg body String capabilitiesBody
+capabilitiesResponseCall out capabilitiesResponseStatus Int32
+
+customContentHandler is operation
+customContentHandler in request HttpRequest
+customContentHandler in response HttpResponse
+customContentHandler out Int32
+customContentHandler effect write http.response
+customContentHandler uses httpResponseWriter
+customContentHandler memory arena request
+customContentHandler async no
+customContentHandler purpose "Return a static body with a non-default content type via http.responseText's optional contentType arg"
+customContentHandler invariant "The content type is supplied through responseText's contentType argument rather than via http.responseHeader"
+customContentHandler let customContentType immutable HttpContentType "application/x-gauntlet; charset=utf-8"
+customContentHandler let customContentBody immutable String "custom content\n"
+customContentHandler do customHeaderCall
+customContentHandler do customContentResponseCall
+customContentHandler return customContentResponseStatus
+
+customHeaderCall is call
+customHeaderCall in customContentHandler
+customHeaderCall invokes addGauntletHeaders
+customHeaderCall arg response HttpResponse response
+
+customContentResponseCall is call
+customContentResponseCall in customContentHandler
+customContentResponseCall invokes http.responseText
+customContentResponseCall arg response HttpResponse response
+customContentResponseCall arg status Int32 okStatus
+customContentResponseCall arg body String customContentBody
+customContentResponseCall arg contentType HttpContentType customContentType
+customContentResponseCall out customContentResponseStatus Int32
+
+redirectHandler is operation
+redirectHandler in request HttpRequest
+redirectHandler in response HttpResponse
+redirectHandler out Int32
+redirectHandler effect write http.response
+redirectHandler uses httpResponseWriter
+redirectHandler memory arena request
+redirectHandler async no
+redirectHandler purpose "Return a 302 with a Location header pointing at /health so tests can verify status/header ordering"
+redirectHandler invariant "Location must be emitted BEFORE the body is sent or it lands in the trailer slot"
+redirectHandler let locationHeaderName immutable String "Location"
+redirectHandler let locationHeaderValue immutable String "/health"
+redirectHandler let redirectBody immutable String "redirecting\n"
+redirectHandler do redirectCommonHeadersCall
+redirectHandler do locationHeaderCall
+redirectHandler do redirectResponseCall
+redirectHandler return redirectResponseStatus
+
+redirectCommonHeadersCall is call
+redirectCommonHeadersCall in redirectHandler
+redirectCommonHeadersCall invokes addGauntletHeaders
+redirectCommonHeadersCall arg response HttpResponse response
+
+locationHeaderCall is call
+locationHeaderCall in redirectHandler
+locationHeaderCall invokes http.responseHeader
+locationHeaderCall arg response HttpResponse response
+locationHeaderCall arg name String locationHeaderName
+locationHeaderCall arg value String locationHeaderValue
+locationHeaderCall discards "per-header write status is ignored"
+
+redirectResponseCall is call
+redirectResponseCall in redirectHandler
+redirectResponseCall invokes http.responseText
+redirectResponseCall arg response HttpResponse response
+redirectResponseCall arg status Int32 redirectStatus
+redirectResponseCall arg body String redirectBody
+redirectResponseCall out redirectResponseStatus Int32
+
+emptyDeleteHandler is operation
+emptyDeleteHandler in request HttpRequest
+emptyDeleteHandler in response HttpResponse
+emptyDeleteHandler out Int32
+emptyDeleteHandler effect write http.response
+emptyDeleteHandler uses httpResponseWriter
+emptyDeleteHandler memory arena request
+emptyDeleteHandler async no
+emptyDeleteHandler purpose "Return a 204 (No Content) with an empty body, exercising the zero-length body path on DELETE"
+emptyDeleteHandler invariant "An empty static body produces Content-Length 0; calling http.responseText directly keeps the framing intact"
+emptyDeleteHandler let emptyBody immutable String ""
+emptyDeleteHandler do emptyHeaderCall
+emptyDeleteHandler do emptyResponseCall
+emptyDeleteHandler return emptyResponseStatus
+
+emptyHeaderCall is call
+emptyHeaderCall in emptyDeleteHandler
+emptyHeaderCall invokes addGauntletHeaders
+emptyHeaderCall arg response HttpResponse response
+
+emptyResponseCall is call
+emptyResponseCall in emptyDeleteHandler
+emptyResponseCall invokes http.responseText
+emptyResponseCall arg response HttpResponse response
+emptyResponseCall arg status Int32 noContentStatus
+emptyResponseCall arg body String emptyBody
+emptyResponseCall out emptyResponseStatus Int32
+
+patchHandler is operation
+patchHandler in request HttpRequest
+patchHandler in response HttpResponse
+patchHandler out Int32
+patchHandler effect write http.response
+patchHandler uses httpResponseWriter
+patchHandler memory arena request
+patchHandler async no
+patchHandler purpose "Exercise a PATCH route with exact method matching so the dispatcher distinguishes PATCH from POST/PUT"
+patchHandler invariant "PATCH is ordinary exact-method metadata; no PATCH-specific runtime path"
+patchHandler let patchBody immutable String "patched\n"
+patchHandler do patchResponseCall
+patchHandler return patchResponseStatus
+
+patchResponseCall is call
+patchResponseCall in patchHandler
+patchResponseCall invokes writeTextResponse
+patchResponseCall arg response HttpResponse response
+patchResponseCall arg status Int32 okStatus
+patchResponseCall arg body String patchBody
+patchResponseCall out patchResponseStatus Int32
+
+shortCircuitProbeHandler is operation
+shortCircuitProbeHandler in request HttpRequest
+shortCircuitProbeHandler in response HttpResponse
+shortCircuitProbeHandler out Int32
+shortCircuitProbeHandler effect write http.response
+shortCircuitProbeHandler uses httpResponseWriter
+shortCircuitProbeHandler memory arena request
+shortCircuitProbeHandler async no
+shortCircuitProbeHandler purpose "Negative-test handler whose body MUST NEVER run — the route's middleware short-circuits"
+shortCircuitProbeHandler invariant "If a test observes this handler's body, the short-circuit contract has regressed"
+shortCircuitProbeHandler risk "Do not call this handler from other ops; it exists to prove the dispatcher honors a false-returning middleware by NOT calling it"
+shortCircuitProbeHandler let handlerRanStatus immutable Int32 200
+shortCircuitProbeHandler let handlerRanBody immutable String "handler ran (this body should NEVER appear at the client when middleware short-circuits)\n"
+shortCircuitProbeHandler do shortCircuitProbeHandlerWriteCall
+shortCircuitProbeHandler return shortCircuitProbeHandlerWriteStatus
+
+shortCircuitProbeHandlerWriteCall is call
+shortCircuitProbeHandlerWriteCall in shortCircuitProbeHandler
+shortCircuitProbeHandlerWriteCall invokes writeTextResponse
+shortCircuitProbeHandlerWriteCall arg response HttpResponse response
+shortCircuitProbeHandlerWriteCall arg status Int32 handlerRanStatus
+shortCircuitProbeHandlerWriteCall arg body String handlerRanBody
+shortCircuitProbeHandlerWriteCall out shortCircuitProbeHandlerWriteStatus Int32
+
+shortCircuitProbeMiddleware is operation
+shortCircuitProbeMiddleware in request HttpRequest
+shortCircuitProbeMiddleware in response HttpResponse
+shortCircuitProbeMiddleware in next NextMiddleware
+shortCircuitProbeMiddleware out Bool
+shortCircuitProbeMiddleware effect write http.response
+shortCircuitProbeMiddleware uses httpResponseWriter
+shortCircuitProbeMiddleware memory arena request
+shortCircuitProbeMiddleware async no
+shortCircuitProbeMiddleware purpose "Write a teapot response then return false (short-circuit) so the route's handler is skipped"
+shortCircuitProbeMiddleware invariant "Returns false unconditionally; the bound handler MUST NEVER run when this middleware fires"
+shortCircuitProbeMiddleware risk "Do not bind this middleware to any other route; it would 418 every request"
+shortCircuitProbeMiddleware let teapotStatus immutable Int32 418
+shortCircuitProbeMiddleware let shortCircuitBody immutable String "middleware short-circuited; handler skipped by dispatcher\n"
+shortCircuitProbeMiddleware let shortCircuitContentType immutable HttpContentType "text/plain; charset=utf-8"
+shortCircuitProbeMiddleware let shortCircuitDecision immutable Bool false
+shortCircuitProbeMiddleware do shortCircuitWriteCall
+shortCircuitProbeMiddleware return shortCircuitDecision
+
+shortCircuitWriteCall is call
+shortCircuitWriteCall in shortCircuitProbeMiddleware
+shortCircuitWriteCall invokes http.responseText
+shortCircuitWriteCall arg response HttpResponse response
+shortCircuitWriteCall arg status Int32 teapotStatus
+shortCircuitWriteCall arg body String shortCircuitBody
+shortCircuitWriteCall arg contentType HttpContentType shortCircuitContentType
+shortCircuitWriteCall discards "the teapot write status is not the middleware decision"
+
+gauntletMiddleware is operation
+gauntletMiddleware in request HttpRequest
+gauntletMiddleware in response HttpResponse
+gauntletMiddleware in next NextMiddleware
+gauntletMiddleware out Bool
+gauntletMiddleware effect read http.request.path
+gauntletMiddleware effect write http.response
+gauntletMiddleware uses httpRequestReader
+gauntletMiddleware uses httpResponseWriter
+gauntletMiddleware memory arena request
+gauntletMiddleware async no
+gauntletMiddleware purpose "Set diagnostic response headers (X-Gauntlet-Middleware, X-Gauntlet-Path) before each path-scoped handler runs"
+gauntletMiddleware invariant "Always returns true (continue) so every route's handler runs after the diagnostic headers are stamped"
+gauntletMiddleware risk "Returning false (short-circuit) requires writing a complete response first, or the dispatcher maps a null body to a 500"
+gauntletMiddleware let middlewareHeaderName immutable String "X-Gauntlet-Middleware"
+gauntletMiddleware let middlewareHeaderValue immutable String "active"
+gauntletMiddleware let middlewarePathHeaderName immutable String "X-Gauntlet-Path"
+gauntletMiddleware let continueDecision immutable Bool true
+gauntletMiddleware do middlewareHeaderCall
+gauntletMiddleware do middlewarePathReadCall
+gauntletMiddleware do middlewarePathHeaderCall
+gauntletMiddleware return continueDecision
+
+middlewareHeaderCall is call
+middlewareHeaderCall in gauntletMiddleware
+middlewareHeaderCall invokes http.responseHeader
+middlewareHeaderCall arg response HttpResponse response
+middlewareHeaderCall arg name String middlewareHeaderName
+middlewareHeaderCall arg value String middlewareHeaderValue
+middlewareHeaderCall discards "per-header write status is ignored"
+
+middlewarePathReadCall is call
+middlewarePathReadCall in gauntletMiddleware
+middlewarePathReadCall invokes http.requestPath
+middlewarePathReadCall arg request HttpRequest request
+middlewarePathReadCall out middlewareRequestPath String
+
+middlewarePathHeaderCall is call
+middlewarePathHeaderCall in gauntletMiddleware
+middlewarePathHeaderCall invokes http.responseHeader
+middlewarePathHeaderCall arg response HttpResponse response
+middlewarePathHeaderCall arg name String middlewarePathHeaderName
+middlewarePathHeaderCall arg value String middlewareRequestPath
+middlewarePathHeaderCall discards "per-header write status is ignored"

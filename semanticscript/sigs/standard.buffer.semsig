@@ -1,0 +1,76 @@
+# standard.buffer.semsig — generated signature sidecar (README §10.6, §29 #14).
+# Runtime (WS1-119): bounds-checked buffers/slices, lowered + JIT-run. A `Buffer`
+# carries
+# its length; element access is `buffer.get index` -> Result (byte or
+# BufferBoundsError) — there is NO indexing/offset syntax in app source, so an
+# out-of-bounds access is a checked error, never UB. `buffer.slice` returns a
+# `Slice` that *borrows* the buffer (a WS1-111 view with the buffer's lifetime).
+
+bufferSig is semsig
+bufferSig version "1.0"
+bufferSig generatedBy "semanticscript 0.1"
+bufferSig describes standard.buffer
+
+Buffer is alias
+Buffer for OpaquePointer
+Buffer purpose "A length-carrying byte buffer; element access is bounds-checked"
+
+Slice is alias
+Slice for OpaquePointer
+Slice purpose "A non-owning view into a Buffer (borrows it, with the buffer's lifetime)"
+
+ByteCount is alias
+ByteCount for Int64
+ByteCount purpose "A length / index measured in bytes"
+
+BufferBoundsError is error
+BufferBoundsError purpose "An index or range outside a buffer's length (never UB)"
+
+bufferCreate is intrinsic
+bufferCreate target buffer.create
+bufferCreate arg size ByteCount
+bufferCreate out buffer Buffer
+bufferCreate owns Buffer
+bufferCreate cleanedBy buffer.release
+bufferCreate purpose "Allocate a zeroed, length-carrying buffer of `size` bytes (deferred runtime)"
+
+bufferLength is intrinsic
+bufferLength target buffer.length
+bufferLength arg buffer Buffer
+bufferLength out length ByteCount
+bufferLength purpose "The buffer's length in bytes (deferred runtime)"
+
+bufferGet is intrinsic
+bufferGet target buffer.get
+bufferGet arg buffer Buffer
+bufferGet arg index ByteCount
+bufferGet out value Byte
+bufferGet catch BufferBoundsError
+bufferGet purpose "Read one byte by index; out-of-bounds is a BufferBoundsError, never UB (deferred runtime)"
+
+bufferSet is intrinsic
+bufferSet target buffer.set
+bufferSet arg buffer Buffer
+bufferSet arg index ByteCount
+bufferSet arg value Byte
+bufferSet out written Int32
+bufferSet catch BufferBoundsError
+bufferSet purpose "Write one byte by index; out-of-bounds is a BufferBoundsError (deferred runtime)"
+
+bufferSlice is intrinsic
+bufferSlice target buffer.slice
+bufferSlice arg buffer Buffer
+bufferSlice arg start ByteCount
+bufferSlice arg length ByteCount
+bufferSlice out window Slice
+bufferSlice catch BufferBoundsError
+bufferSlice borrows buffer
+bufferSlice lifetime buffer
+bufferSlice mayEscape no
+bufferSlice purpose "A bounds-checked sub-view that borrows the buffer (a non-owning Slice; deferred runtime)"
+
+bufferRelease is intrinsic
+bufferRelease target buffer.release
+bufferRelease arg buffer Buffer
+bufferRelease out released Int32
+bufferRelease purpose "R-207: free a buffer's heap allocation; the owns/cleanedBy contract on bufferCreate makes this the buffer's single deferred cleanup (deferred runtime)"

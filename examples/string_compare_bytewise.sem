@@ -1,0 +1,69 @@
+# string_compare_bytewise — bytewise string comparison via standard.string
+# (X-200). `compareBytewise` binds ss_string_compare: equal strings -> 0. Self-
+# checked via the standard.test harness.
+# Expected output: a PASS line for 0 then "---- N passed, 0 failed ----".
+
+StringCompareBytewise is project
+StringCompareBytewise module examplesStringCompareBytewise
+StringCompareBytewise target console
+StringCompareBytewise entry main
+
+examplesStringCompareBytewise is module
+examplesStringCompareBytewise path examples.stringCompareBytewise
+examplesStringCompareBytewise exports main
+examplesStringCompareBytewise purpose "Bytewise-compare two equal strings via standard.string"
+examplesStringCompareBytewise invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+compareBytewise is operation
+compareBytewise in left String
+compareBytewise in right String
+compareBytewise out Int32
+compareBytewise memory heap no
+compareBytewise async no
+compareBytewise purpose "Bytewise compare: 0 when equal"
+compareBytewise invariant "Pure byte comparison; performs no effects"
+compareBytewise body runtimeBinding ss_string_compare
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compare 'abc' with 'abc' and assert equality (0)"
+main invariant "All assertions hold"
+main let leftText immutable String "abc"
+main let rightText immutable String "abc"
+main let harnessExpected immutable Int32 0
+main let harnessName immutable String "string_compare_bytewise"
+main do cmpCall
+main do checkResult
+main do harnessReport
+main return harnessSummaryCode
+
+cmpCall is call
+cmpCall in main
+cmpCall invokes compareBytewise
+cmpCall arg left String leftText
+cmpCall arg right String rightText
+cmpCall out cmpResult Int32
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 cmpResult
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

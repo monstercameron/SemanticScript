@@ -1,0 +1,67 @@
+# module_storage — a module-scope `storage` entity lowered to an LLVM global,
+# Expected output: 7
+# read from an operation by bare name (README ss12/ss25). Prints 7.
+# (todos WS1-082)
+
+ModuleStorage is project
+ModuleStorage module examplesModuleStorage
+ModuleStorage target console
+ModuleStorage entry main
+
+examplesModuleStorage is module
+examplesModuleStorage path examples.moduleStorage
+examplesModuleStorage exports main
+examplesModuleStorage purpose "Read a module-scope constant and print it"
+examplesModuleStorage invariant "The constant is visible to main as a global"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+answerConstant is storage
+answerConstant scope module
+answerConstant type Int64
+answerConstant mutability immutable
+answerConstant value 7
+answerConstant purpose "A module-global constant read across operations"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print the module-scope answerConstant"
+main invariant "Writes exactly one integer line: 7"
+main let harnessName immutable String "module_storage"
+main let harnessExpected immutable Int64 7
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "module_storage: real result (not the no-op 0)"
+main do writeIt
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+writeIt is call
+writeIt in main
+writeIt invokes test.assertEqualInt64
+writeIt arg name String harnessName
+writeIt arg expected Int64 harnessExpected
+writeIt arg actual Int64 answerConstant
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answerConstant
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

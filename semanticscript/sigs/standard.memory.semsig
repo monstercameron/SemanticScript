@@ -1,0 +1,62 @@
+# standard.memory.semsig — generated signature sidecar (README §8, §29 #14).
+# The SAFE allocator/region API agents allocate through (WS1-118): regions, views,
+# owned buffers, and the allocator-as-capability model. Raw c.malloc/c.free is a
+# stdlib-internal `unsafe` binding (WS1-116) — never app source. The in-language
+# impl is the `region` construct (WS1-112): `allocateIn`/`releaseRegion` lower to a
+# real arena (malloc-many / free-once) and JIT-run; this contract documents the
+# types + capabilities the linter checks (allocate needs a capability, SS1563).
+
+memorySig is semsig
+memorySig version "1.0"
+memorySig generatedBy "semanticscript 0.1"
+memorySig describes standard.memory
+
+Region is alias
+Region for OpaquePointer
+Region purpose "An allocation arena; everything allocated in it is freed once at releaseRegion"
+
+View is alias
+View for OpaquePointer
+View purpose "A non-owning view of memory allocated in a Region (borrows the region's lifetime)"
+
+OwnedBuffer is alias
+OwnedBuffer for OpaquePointer
+OwnedBuffer purpose "A heap buffer owned by the caller, released by memory.releaseBuffer"
+
+ByteCount is alias
+ByteCount for Int64
+ByteCount purpose "A size/length in bytes"
+
+AllocationFailure is error
+AllocationFailure purpose "Out-of-memory / capacity-exceeded from an allocator"
+
+# The allocator capabilities are declared app-side, not in this sidecar (a .semsig
+# carries only intrinsics + the types they reference): the app grants
+# `allocate heap.<region>` / `free heap.<region>` and `uses` them (SS1563).
+
+memoryOpenRegion is intrinsic
+memoryOpenRegion target memory.openRegion
+memoryOpenRegion arg strategy String
+memoryOpenRegion arg capacity ByteCount
+memoryOpenRegion out region Region
+memoryOpenRegion catch AllocationFailure
+memoryOpenRegion owns region
+memoryOpenRegion cleanedBy memory.releaseRegion
+memoryOpenRegion purpose "Open an allocation region (arena|fixedBuffer|general); released by memory.releaseRegion (deferred runtime — the `region` construct is the in-language form)"
+
+memoryAllocateIn is intrinsic
+memoryAllocateIn target memory.allocateIn
+memoryAllocateIn arg region Region
+memoryAllocateIn arg bytes ByteCount
+memoryAllocateIn out view View
+memoryAllocateIn catch AllocationFailure
+memoryAllocateIn borrows region
+memoryAllocateIn lifetime region
+memoryAllocateIn mayEscape no
+memoryAllocateIn purpose "Allocate `bytes` in the region, returning a View that borrows it (deferred runtime)"
+
+memoryReleaseRegion is intrinsic
+memoryReleaseRegion target memory.releaseRegion
+memoryReleaseRegion arg region Region
+memoryReleaseRegion out released Int32
+memoryReleaseRegion purpose "Free the whole region at once (every View into it becomes invalid) (deferred runtime)"

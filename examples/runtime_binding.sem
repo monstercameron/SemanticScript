@@ -1,0 +1,76 @@
+# runtime_binding — generic `body runtimeBinding <symbol>` lowering (README ss11/ss26).
+# Expected output: 7
+# The compiler is domain-agnostic: a runtimeBinding operation lowers to a bare
+# extern declaration named after the bound ABI symbol, and calls to it become
+# direct calls to that symbol. Here `cAbs` binds the libc `abs` symbol (resolved
+# in-process by the JIT), so abs(-7) == 7 is computed through real machine code,
+# not a compiler-special-cased target. This is the seam stdlib `.sem` modules use
+# to reach C ABIs (sqlite/http/…) without per-library knowledge in the compiler.
+# (todos WS3-016 foundation; full sqlite/http runtime is blocked on the deferred
+# FFI ABI for C out-params, README ss27.)
+
+RuntimeBindingDemo is project
+RuntimeBindingDemo module examplesRuntimeBinding
+RuntimeBindingDemo target console
+RuntimeBindingDemo entry main
+
+examplesRuntimeBinding is module
+examplesRuntimeBinding path examples.runtimeBinding
+examplesRuntimeBinding exports main
+examplesRuntimeBinding purpose "Call a libc ABI symbol through a runtimeBinding op"
+examplesRuntimeBinding invariant "Prints the absolute value computed by libc abs"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status: 0 for success, non-zero for failure"
+
+cAbs is operation
+cAbs in n Int32
+cAbs out Int32
+cAbs body runtimeBinding abs
+cAbs purpose "Absolute value via the libc abs ABI symbol"
+cAbs invariant "Returns the non-negative magnitude of n"
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Compute abs(-7) through a runtimeBinding op and print it"
+main invariant "Prints 7 and exits zero"
+main let negativeInput immutable Int32 -7
+main let harnessName immutable String "runtime_binding"
+main let harnessExpected immutable Int64 7
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "runtime_binding: real result (not the no-op 0)"
+main do computeAbs
+main do showAbs
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+computeAbs is call
+computeAbs in main
+computeAbs invokes cAbs
+computeAbs arg n Int32 negativeInput
+computeAbs out absoluteValue Int32
+computeAbs purpose "Compute the magnitude of the input"
+
+showAbs is call
+showAbs in main
+showAbs invokes test.assertEqualInt64
+showAbs arg name String harnessName
+showAbs arg expected Int64 harnessExpected
+showAbs arg actual Int64 absoluteValue
+showAbs purpose "Print the computed magnitude"
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 absoluteValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

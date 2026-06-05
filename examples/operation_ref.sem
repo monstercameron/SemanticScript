@@ -1,0 +1,92 @@
+# operation_ref — operationType (function-pointer type) + indirect call
+# Expected output: 42
+# (README ss33.9). Binds `double` as an Int64->Int64 operation reference and
+# invokes it indirectly to compute 21 -> 42. (todos WS1-036, WS1-056)
+
+OperationRef is project
+OperationRef module examplesOperationRef
+OperationRef target console
+OperationRef entry main
+
+examplesOperationRef is module
+examplesOperationRef path examples.operationRef
+examplesOperationRef exports main
+examplesOperationRef purpose "Invoke an operation indirectly through an operationType binding"
+examplesOperationRef invariant "main is the only entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Int64Endo is operationType
+Int64Endo in Int64
+Int64Endo out Int64
+Int64Endo purpose "A function from Int64 to Int64"
+
+double is operation
+double in n Int64
+double out Int64
+double memory heap no
+double async no
+double purpose "Return n doubled"
+double invariant "Result is 2*n"
+double let two immutable Int64 2
+double do mulCall
+double return doubled
+
+mulCall is call
+mulCall in double
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 two
+mulCall out doubled Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Bind double as an Int64Endo and invoke it indirectly on 21"
+main invariant "Writes 42"
+main let seed immutable Int64 21
+main let fn immutable Int64Endo double
+main let harnessName immutable String "operation_ref"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "operation_ref: real result (not the no-op 0)"
+main do applyFn
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+applyFn is call
+applyFn in main
+applyFn invokes fn
+applyFn arg n Int64 seed
+applyFn out answer Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

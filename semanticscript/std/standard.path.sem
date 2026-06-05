@@ -1,0 +1,91 @@
+# standard.path - SafePath builders and portable path helpers (WS3-111).
+#
+# This module is the first-class path boundary used by filesystem, logging, and
+# static-asset APIs. All constructors normalize separators, iteratively
+# percent-decode path segments, and reject absolute paths, drive/UNC prefixes,
+# `..` traversal, and overlong paths before minting SafePath.
+
+standardPath is module
+standardPath path standard.path
+standardPath exports fromLiteral
+standardPath exports joinUnderRoot
+standardPath exports normalize
+standardPath exports basename
+standardPath exports extension
+standardPath exports parent
+standardPath exports isChildOf
+standardPath exports separator
+standardPath exports releasePath
+standardPath purpose "SafePath builders and portable path helpers"
+standardPath invariant "SafePath values are normalized relative paths; absolute roots, drive prefixes, UNC paths, traversal, malformed percent escapes, and overlong paths fail closed"
+standardPath note "Symlink/reparse traversal policy is explicit: this module performs lexical SafePath validation; filesystem sinks must still canonicalize the final opened path against their approved root before touching the OS."
+
+SafePath is alias
+SafePath for String
+SafePath typeTrust validated
+SafePath purpose "A normalized, root-confined relative filesystem path"
+
+PathError is error
+PathError purpose "Invalid, escaping, absolute, malformed, or overlong path input"
+
+fromLiteral is operation
+fromLiteral in literal String
+fromLiteral out SafePath
+fromLiteral outParam
+fromLiteral body runtimeBinding ss_path_from_literal
+fromLiteral purpose "Validate and normalize a source/runtime string as a SafePath"
+
+joinUnderRoot is operation
+joinUnderRoot in root SafePath
+joinUnderRoot in child String
+joinUnderRoot out SafePath
+joinUnderRoot outParam
+joinUnderRoot body runtimeBinding ss_path_join_under_root
+joinUnderRoot purpose "Join a SafePath root and child segment while rejecting escapes"
+
+normalize is operation
+normalize in input String
+normalize out SafePath
+normalize outParam
+normalize body runtimeBinding ss_path_normalize
+normalize purpose "Normalize separators and dot segments while rejecting absolute/traversal paths"
+
+basename is operation
+basename in input SafePath
+basename out String
+basename outParam
+basename body runtimeBinding ss_path_basename
+basename purpose "Return the final normalized path component"
+
+extension is operation
+extension in input SafePath
+extension out String
+extension outParam
+extension body runtimeBinding ss_path_extension
+extension purpose "Return the final component extension including the leading dot, or empty"
+
+parent is operation
+parent in input SafePath
+parent out SafePath
+parent outParam
+parent body runtimeBinding ss_path_parent
+parent purpose "Return the normalized parent path, or . for a root-level file"
+
+isChildOf is operation
+isChildOf in root SafePath
+isChildOf in child SafePath
+isChildOf out Int32
+isChildOf outParam
+isChildOf body runtimeBinding ss_path_is_child_of
+isChildOf purpose "Return 1 when child is strictly under root, 0 otherwise"
+
+separator is operation
+separator out String
+separator body runtimeBinding ss_path_separator
+separator purpose "Return the host platform path separator as a one-character string"
+
+releasePath is operation
+releasePath in path String
+releasePath out Int32
+releasePath body runtimeBinding ss_path_release
+releasePath purpose "Release a string allocated by standard.path; foreign or stale values are ignored"

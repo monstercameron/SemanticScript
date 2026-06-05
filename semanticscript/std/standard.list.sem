@@ -1,0 +1,27 @@
+# standard.list (pure predicates) — EAV-native, deferred-collections companion.
+#
+# The opaque-handle list surface (create/append/get/length/release) is the
+# DEFERRED collections runtime — its contract is sigs/standard.list.semsig. The
+# length/capacity *predicates* need no element storage, so they are pure step-body
+# operations that lower today (README ss27). (todos WS3-105)
+
+standardListPure is module
+standardListPure path standard.list
+standardListPure purpose "Pure length/capacity predicates over a list length (deferred storage)"
+standardListPure invariant "These predicates compute from a length value and need no element storage"
+
+listIsEmpty is operation
+listIsEmpty in length Int64
+listIsEmpty out Bool
+listIsEmpty async no
+listIsEmpty purpose "Whether a list of the given length holds no elements"
+listIsEmpty let zeroLength immutable Int64 0
+listIsEmpty do compareLength
+listIsEmpty return emptyFlag
+
+compareLength is call
+compareLength in listIsEmpty
+compareLength invokes math.equalInt64
+compareLength arg left Int64 length
+compareLength arg right Int64 zeroLength
+compareLength out emptyFlag Bool

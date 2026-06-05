@@ -1,0 +1,78 @@
+# result_arity_ok_err -- exercise the OK/ERR arity of a fallible call (README s9/s18), converging the ok/err arms to a single
+# asserted `outcome` via the standard.test harness. The write succeeds, so the
+# no-error arm runs and outcome = 0.
+# Expected output (the fallible write prints its banner first):
+#   ok-path reached
+#   PASS  result_arity_ok_err  (expected 0, actual 0)
+#   ---- 1 passed, 0 failed ----
+
+ResultArityOkErr is project
+ResultArityOkErr module examplesResultArityOkErr
+ResultArityOkErr target console
+ResultArityOkErr entry main
+
+examplesResultArityOkErr is module
+examplesResultArityOkErr path examples.resultArityOkErr
+examplesResultArityOkErr exports main
+examplesResultArityOkErr purpose "exercise the OK/ERR arity of a fallible call"
+examplesResultArityOkErr invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+ConsoleWriteError is error
+ConsoleWriteError purpose "Represent failures from console output operations"
+
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "exercise the OK/ERR arity of a fallible call and assert the converged outcome"
+main invariant "Asserts the ok-arm outcome via the harness"
+main let outcome mutable Int64 1
+main let okMark immutable Int64 0
+main let bannerText immutable String "ok-path reached"
+main let harnessName immutable String "result_arity_ok_err"
+main let harnessExpected immutable Int64 0
+main let noopDecoy immutable Int64 1
+main let noopName immutable String "result_arity_ok_err: real result (not the no-op 1)"
+main do writeOk
+main branch ifError writeOk goto afterCheck
+main set outcome okMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+writeOk is call
+writeOk in main
+writeOk invokes console.writeLine
+writeOk arg text String bannerText
+writeOk catch writeError ConsoleWriteError
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

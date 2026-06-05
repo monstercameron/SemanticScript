@@ -1,12 +1,9 @@
 name: Deploy project website
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  # The project website (Vite/npm) belongs to the deprecated legacy product —
+  # package.json now lives under legacy/. Gated to manual-only so it no longer
+  # auto-fails on every push; rewire when the new compiler grows a website.
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,91 @@
+# add_two — user operation + value-returning call + integer output.
+# Exercises: user-op invocation, `out VALUE` binding (bind value), a second
+# operation, and console.writeIntegerLine. (todos WS1-040, WS1-050/051, WS1-105)
+#
+# Correctness observation: the sum is computed by a real math.addInt64 call
+# (NOT a hardcoded constant), so the program fails under a no-op lowering.
+# Expected output: 42
+
+AddTwo is project
+AddTwo module examplesAddTwo
+AddTwo target console
+AddTwo entry main
+
+examplesAddTwo is module
+examplesAddTwo path examples.addTwo
+examplesAddTwo exports main
+examplesAddTwo purpose "Add two integers and print the sum"
+examplesAddTwo invariant "main is the only project entry operation"
+
+addTwoValues is operation
+addTwoValues in leftValue Int64
+addTwoValues in rightValue Int64
+addTwoValues out Int64
+addTwoValues memory heap no
+addTwoValues async no
+addTwoValues purpose "Return the sum of two signed 64-bit integers"
+addTwoValues invariant "Performs no effects; pure arithmetic"
+addTwoValues do sumCall
+addTwoValues return sumValue
+
+sumCall is call
+sumCall in addTwoValues
+sumCall invokes math.addInt64
+sumCall arg left Int64 leftValue
+sumCall arg right Int64 rightValue
+sumCall out sumValue Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute 40 + 2 and write the result"
+main invariant "Writes exactly one integer line"
+main let leftInput immutable Int64 40
+main let rightInput immutable Int64 2
+main let harnessName immutable String "add_two"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "add_two: real result (not the no-op 0)"
+main do answerCall
+main do writeAnswer
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+answerCall is call
+answerCall in main
+answerCall invokes addTwoValues
+answerCall arg leftValue Int64 leftInput
+answerCall arg rightValue Int64 rightInput
+answerCall out answerValue Int64
+
+writeAnswer is call
+writeAnswer in main
+writeAnswer invokes test.assertEqualInt64
+writeAnswer arg name String harnessName
+writeAnswer arg expected Int64 harnessExpected
+writeAnswer arg actual Int64 answerValue
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answerValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

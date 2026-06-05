@@ -1,0 +1,76 @@
+# standard.fs.semsig - bounded filesystem reads over SafePath and Buffer.
+
+fsSig is semsig
+fsSig version "1.0"
+fsSig generatedBy "semanticscript 0.1"
+fsSig describes standard.fs
+
+SafePath is alias
+SafePath for String
+SafePath typeTrust validated
+SafePath purpose "A normalized, root-confined relative filesystem path"
+
+Buffer is alias
+Buffer for OpaquePointer
+Buffer purpose "A length-carrying byte buffer supplied by standard.buffer"
+
+ByteCount is alias
+ByteCount for Int64
+ByteCount purpose "A bounded byte count or byte offset"
+
+FileHandle is alias
+FileHandle for OpaquePointer
+FileHandle purpose "An opaque, live read-only file handle"
+
+FileText is alias
+FileText for String
+FileText purpose "A heap-owned bounded text file payload"
+
+FileError is error
+FileError purpose "A filesystem open/read/close/limit failure"
+
+openRead is intrinsic
+openRead target fs.openRead
+openRead arg path SafePath
+openRead out file FileHandle
+openRead catch FileError
+openRead owns file cleanedBy fs.close
+openRead purpose "Open a SafePath for read-only bounded filesystem access"
+
+readChunk is intrinsic
+readChunk target fs.readChunk
+readChunk arg file FileHandle
+readChunk arg buffer Buffer
+readChunk arg maximumBytes ByteCount
+readChunk out read ByteCount
+readChunk catch FileError
+readChunk purpose "Read at most maximumBytes and at most the Buffer length into the caller-owned Buffer"
+
+size is intrinsic
+size target fs.size
+size arg file FileHandle
+size out bytes ByteCount
+size catch FileError
+size purpose "Return the current file size without loading file contents"
+
+close is intrinsic
+close target fs.close
+close arg file FileHandle
+close out status Int32
+close catch FileError
+close purpose "Close a FileHandle; stale or double-close handles fail closed"
+
+readTextLimit is intrinsic
+readTextLimit target fs.readTextLimit
+readTextLimit arg path SafePath
+readTextLimit arg maximumBytes ByteCount
+readTextLimit out text FileText
+readTextLimit catch FileError
+readTextLimit owns text cleanedBy fs.releaseText
+readTextLimit purpose "Read a whole text file only when its size is at or below maximumBytes"
+
+releaseText is intrinsic
+releaseText target fs.releaseText
+releaseText arg text FileText
+releaseText out released Int32
+releaseText purpose "Release a FileText allocated by fs.readTextLimit; foreign or stale values are ignored"

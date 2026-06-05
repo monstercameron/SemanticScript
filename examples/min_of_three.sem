@@ -1,0 +1,81 @@
+# min_of_three — (repurposed from database_index_create: semanticscript has no index
+# runtime). Pick the minimum of three integers with nested math.minInt64 calls
+# (README §10.6). The result is computed, not a constant.
+#
+# Correctness observation: min(min(8, 3), 5) = 3.
+# Expected output: 3
+
+MinOfThree is project
+MinOfThree module examplesMinOfThree
+MinOfThree target console
+MinOfThree entry main
+
+examplesMinOfThree is module
+examplesMinOfThree path examples.minOfThree
+examplesMinOfThree exports main
+examplesMinOfThree purpose "Compute the minimum of three integers"
+examplesMinOfThree invariant "Result is the smallest of the three inputs"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute min(8,3,5) and print it"
+main invariant "Writes exactly one integer line: 3"
+main let firstValue immutable Int64 8
+main let secondValue immutable Int64 3
+main let thirdValue immutable Int64 5
+main let harnessName immutable String "min_of_three"
+main let harnessExpected immutable Int64 3
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "min_of_three: real result (not the no-op 0)"
+main do minFirstTwo
+main do minAll
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+minFirstTwo is call
+minFirstTwo in main
+minFirstTwo invokes math.minInt64
+minFirstTwo arg left Int64 firstValue
+minFirstTwo arg right Int64 secondValue
+minFirstTwo out partialMin Int64
+
+minAll is call
+minAll in main
+minAll invokes math.minInt64
+minAll arg left Int64 partialMin
+minAll arg right Int64 thirdValue
+minAll out smallest Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 smallest
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 smallest
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

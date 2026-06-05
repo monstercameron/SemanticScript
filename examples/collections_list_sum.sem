@@ -1,0 +1,175 @@
+# collections_list_sum — iterate a list with a goto-loop (EAV is goto-based; no
+# `each` sugar needed). Build [10,20,30,40,50,60] on the list runtime, then walk
+# indices 0..length-1 with the canonical `at loopHead`/`branch`/`goto` pattern,
+# summing each element read back via list.get. This proves collection iteration
+# is fully expressible over the list runtime using only gotos.
+# Expected output: 2 PASS lines then  ---- 2 passed, 0 failed ----
+
+CollectionsListSum is project
+CollectionsListSum module examplesCollectionsListSum
+CollectionsListSum target console
+CollectionsListSum entry main
+
+examplesCollectionsListSum is module
+examplesCollectionsListSum path examples.collectionsListSum
+examplesCollectionsListSum exports main
+examplesCollectionsListSum purpose "Sum a list by iterating it with a goto-loop"
+examplesCollectionsListSum invariant "The sum comes from iterating the list, not a constant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+ListHandle is alias
+ListHandle for OpaquePointer
+ListHandle purpose "An opaque growable-list handle"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Build a six-element list and sum it with a goto-loop"
+main invariant "Loop terminates at index == length; sum is 210"
+main let v10 immutable Int64 10
+main let v20 immutable Int64 20
+main let v30 immutable Int64 30
+main let v40 immutable Int64 40
+main let v50 immutable Int64 50
+main let v60 immutable Int64 60
+main let total mutable Int64 0
+main let idx mutable Int64 0
+main let one immutable Int64 1
+main let expectSum immutable Int64 210
+main let zeroGuard immutable Int64 0
+main let tnSum immutable String "iterating the list sums to 210"
+main let tnNonZero immutable String "the iterated sum is real (not the initial 0)"
+main do mk
+main do app0
+main do app1
+main do app2
+main do app3
+main do app4
+main do app5
+main do lenCall
+main at loopHead do checkGoing
+main branch ifFalse going goto loopExit
+main do getElem
+main do addElem
+main do incIdx
+main goto loopHead
+main at loopExit do checkSum
+main do checkNonZero
+main do rel
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes list.create
+mk out theList ListHandle
+
+app0 is call
+app0 in main
+app0 invokes list.append
+app0 arg list ListHandle theList
+app0 arg value Int64 v10
+app0 discards "append status ignored in collection example"
+
+app1 is call
+app1 in main
+app1 invokes list.append
+app1 arg list ListHandle theList
+app1 arg value Int64 v20
+app1 discards "append status ignored in collection example"
+
+app2 is call
+app2 in main
+app2 invokes list.append
+app2 arg list ListHandle theList
+app2 arg value Int64 v30
+app2 discards "append status ignored in collection example"
+
+app3 is call
+app3 in main
+app3 invokes list.append
+app3 arg list ListHandle theList
+app3 arg value Int64 v40
+app3 discards "append status ignored in collection example"
+
+app4 is call
+app4 in main
+app4 invokes list.append
+app4 arg list ListHandle theList
+app4 arg value Int64 v50
+app4 discards "append status ignored in collection example"
+
+app5 is call
+app5 in main
+app5 invokes list.append
+app5 arg list ListHandle theList
+app5 arg value Int64 v60
+app5 discards "append status ignored in collection example"
+
+lenCall is call
+lenCall in main
+lenCall invokes list.length
+lenCall arg list ListHandle theList
+lenCall out listLen Int64
+
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.lessThanInt64
+checkGoing arg left Int64 idx
+checkGoing arg right Int64 listLen
+checkGoing out going Bool
+
+getElem is call
+getElem in main
+getElem invokes list.get
+getElem arg list ListHandle theList
+getElem arg index Int64 idx
+getElem out elem Int64
+
+addElem is call
+addElem in main
+addElem invokes math.addInt64
+addElem arg left Int64 total
+addElem arg right Int64 elem
+addElem out total Int64
+
+incIdx is call
+incIdx in main
+incIdx invokes math.addInt64
+incIdx arg left Int64 idx
+incIdx arg right Int64 one
+incIdx out idx Int64
+
+checkSum is call
+checkSum in main
+checkSum invokes test.assertEqualInt64
+checkSum arg name String tnSum
+checkSum arg expected Int64 expectSum
+checkSum arg actual Int64 total
+
+checkNonZero is call
+checkNonZero in main
+checkNonZero invokes test.assertNotEqualInt64
+checkNonZero arg name String tnNonZero
+checkNonZero arg expected Int64 zeroGuard
+checkNonZero arg actual Int64 total
+
+rel is call
+rel in main
+rel invokes list.release
+rel arg list ListHandle theList
+rel discards "release status ignored during cleanup"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,0 +1,85 @@
+# compound -- A AND B as two sequential guards, converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  compound  (expected 1, actual 1)
+#   ---- 1 passed, 0 failed ----
+
+Compound is project
+Compound module examplesCompound
+Compound target console
+Compound entry main
+
+examplesCompound is module
+examplesCompound path examples.compound
+examplesCompound exports main
+examplesCompound purpose "A AND B as two sequential guards"
+examplesCompound invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "A AND B as two sequential guards and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "compound"
+main let harnessExpected immutable Int64 1
+main let outcome mutable Int64 0
+main let oneMark immutable Int64 1
+main let aVal immutable Int64 3
+main let bVal immutable Int64 4
+main let zero immutable Int64 0
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "compound: real result (not the no-op 0)"
+main do checkA
+main branch ifFalse aPos goto afterCheck
+main do checkB
+main branch ifFalse bPos goto afterCheck
+main set outcome oneMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkA is call
+checkA in main
+checkA invokes math.greaterThanInt64
+checkA arg left Int64 aVal
+checkA arg right Int64 zero
+checkA out aPos Bool
+
+checkB is call
+checkB in main
+checkB invokes math.greaterThanInt64
+checkB arg left Int64 bVal
+checkB arg right Int64 zero
+checkB out bPos Bool
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

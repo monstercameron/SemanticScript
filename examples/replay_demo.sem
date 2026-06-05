@@ -1,0 +1,57 @@
+# replay_demo — `mode capturedOutputReplay` determinism mode (README §30.1.1).
+# Expected output: replay me
+# Same console slice as hello_world, but the project opts into capture/replay:
+# every capability-mediated console write is routed through a transcript, so a
+# replay run is deterministic and side-effect-free. (todos WS3-004)
+
+ReplayDemo is project
+ReplayDemo module examplesReplayDemo
+ReplayDemo target console
+ReplayDemo entry main
+ReplayDemo mode capturedOutputReplay
+
+examplesReplayDemo is module
+examplesReplayDemo path examples.replayDemo
+examplesReplayDemo exports main
+examplesReplayDemo purpose "Contain the capture/replay console entry operation"
+examplesReplayDemo invariant "Exports main as the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status: 0 for success, non-zero for failure"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+stdoutWriter invariant "Only grants write access to console.stdout"
+
+ConsoleWriteError is error
+ConsoleWriteError purpose "Represent failures from console output operations"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Write a deterministic line under capturedOutputReplay"
+main invariant "All stdout writes go through stdoutWriter"
+main invariant "Returns writeFailedExitCode on any write failure"
+
+main let replayText immutable String "replay me"
+main let successExitCode immutable ExitCode 0
+main let writeFailedExitCode immutable ExitCode 1
+
+main do writeLine
+main branch ifError writeLine goto failed
+main return successExitCode
+
+main at failed return writeFailedExitCode
+
+writeLine is call
+writeLine in main
+writeLine invokes console.writeLine
+writeLine arg text String replayText
+writeLine catch writeError ConsoleWriteError
+writeLine purpose "Write the deterministic line to stdout"
+writeLine risk "May fail if stdout is closed or unavailable"

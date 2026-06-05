@@ -1,0 +1,87 @@
+# standard.string — byte-string operations beyond `string.concat` (README §26).
+#
+# Bytewise comparison, (in)equality, substring search, and length over
+# NUL-terminated UTF-8 String values. Each operation is a runtimeBinding seam to
+# an ss_string_* helper (runtime/ss_string.c); the typed home for these primitives
+# is this module. (X-200)
+
+standardString is module
+standardString path standard.string
+standardString exports compareBytewise
+standardString exports bytesEqual
+standardString exports bytesNotEqual
+standardString exports findSubstring
+standardString exports findCharFirst
+standardString exports findCharLast
+standardString exports byteLength
+standardString purpose "Byte-string comparison, equality, search, and length"
+standardString invariant "Every operation is a runtimeBinding to an ss_string_* helper; no string logic lives in the compiler"
+
+compareBytewise is operation
+compareBytewise in left String
+compareBytewise in right String
+compareBytewise out Int32
+compareBytewise memory heap no
+compareBytewise async no
+compareBytewise purpose "Bytewise compare: negative if left<right, 0 if equal, positive if left>right"
+compareBytewise invariant "Pure byte comparison; performs no effects"
+compareBytewise body runtimeBinding ss_string_compare
+
+bytesEqual is operation
+bytesEqual in left String
+bytesEqual in right String
+bytesEqual out Int32
+bytesEqual memory heap no
+bytesEqual async no
+bytesEqual purpose "Return 1 if the two byte strings are equal, 0 otherwise"
+bytesEqual invariant "Pure byte comparison; performs no effects"
+bytesEqual body runtimeBinding ss_string_equal
+
+bytesNotEqual is operation
+bytesNotEqual in left String
+bytesNotEqual in right String
+bytesNotEqual out Int32
+bytesNotEqual memory heap no
+bytesNotEqual async no
+bytesNotEqual purpose "Return 1 if the two byte strings differ, 0 if equal"
+bytesNotEqual invariant "Pure byte comparison; performs no effects"
+bytesNotEqual body runtimeBinding ss_string_not_equal
+
+findSubstring is operation
+findSubstring in haystack String
+findSubstring in needle String
+findSubstring out Int64
+findSubstring memory heap no
+findSubstring async no
+findSubstring purpose "Byte offset of the first occurrence of needle in haystack, or -1"
+findSubstring invariant "Pure byte search; performs no effects"
+findSubstring body runtimeBinding ss_string_find
+
+findCharFirst is operation
+findCharFirst in text String
+findCharFirst in byte Int32
+findCharFirst out Int64
+findCharFirst memory heap no
+findCharFirst async no
+findCharFirst purpose "Byte offset of the first occurrence of `byte` in text, or -1"
+findCharFirst invariant "Pure byte search; performs no effects"
+findCharFirst body runtimeBinding ss_string_find_char_first
+
+findCharLast is operation
+findCharLast in text String
+findCharLast in byte Int32
+findCharLast out Int64
+findCharLast memory heap no
+findCharLast async no
+findCharLast purpose "Byte offset of the last occurrence of `byte` in text, or -1"
+findCharLast invariant "Pure byte search; performs no effects"
+findCharLast body runtimeBinding ss_string_find_char_last
+
+byteLength is operation
+byteLength in text String
+byteLength out Int64
+byteLength memory heap no
+byteLength async no
+byteLength purpose "Number of bytes in the NUL-terminated string"
+byteLength invariant "Pure; performs no effects"
+byteLength body runtimeBinding ss_string_length

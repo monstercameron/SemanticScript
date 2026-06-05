@@ -1,0 +1,139 @@
+# generics_record — generic records via named monomorphic instantiation (R-039).
+# `Holder` is a generic record parameterized by `typeParam T` with a field typed
+# `T`. A named instantiation `HolderInt instantiates Holder Int64` (and
+# `HolderFloat … Float64`) takes Holder's fields with T substituted by the
+# concrete type, so one record definition yields correctly-laid-out concrete
+# records per type (EAV is single-token, so instantiations are named rather than
+# written `Holder of Int64`). This exercises:
+#   * two record instantiations of one generic definition (Int64 and Float64);
+#   * build + field-read round-trip through the substituted layout;
+#   * real fields, not constants (two Int64 holders with different content).
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+GenericsRecord is project
+GenericsRecord module examplesGenericsRecord
+GenericsRecord target console
+GenericsRecord entry main
+
+examplesGenericsRecord is module
+examplesGenericsRecord path examples.genericsRecord
+examplesGenericsRecord exports main
+examplesGenericsRecord purpose "Instantiate a generic record at two types and assert its fields"
+examplesGenericsRecord invariant "One generic record is monomorphized per concrete type"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Holder is record
+Holder typeParam T
+Holder field content T
+Holder purpose "A generic one-field holder, parameterized by the field type"
+
+HolderInt is record
+HolderInt instantiates Holder Int64
+HolderInt purpose "Holder monomorphized at Int64"
+
+HolderFloat is record
+HolderFloat instantiates Holder Float64
+HolderFloat purpose "Holder monomorphized at Float64"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Build Int64 and Float64 holders, read their fields, and assert"
+main invariant "All four assertions hold"
+main let fortyTwo immutable Int64 42
+main let seven immutable Int64 7
+main let pointFive immutable Float64 3.5
+main let tnInt immutable String "generic HolderInt holds and returns 42 (Int64 instantiation)"
+main let tnInt2 immutable String "generic HolderInt holds and returns 7 (Int64 instantiation reused)"
+main let tnFloat immutable String "generic HolderFloat holds and returns 3.5 (Float64 instantiation)"
+main let tnReal immutable String "the field read is real, not a constant (42 != 7)"
+main do mkA
+main do rdA
+main do mkB
+main do rdB
+main do mkF
+main do rdF
+main do checkA
+main do checkB
+main do checkF
+main do checkReal
+main do harnessReport
+main return harnessSummaryCode
+
+mkA is call
+mkA in main
+mkA invokes HolderInt.new
+mkA arg content Int64 fortyTwo
+mkA out holderA HolderInt
+
+rdA is call
+rdA in main
+rdA invokes HolderInt.content
+rdA arg record HolderInt holderA
+rdA out fieldA Int64
+
+mkB is call
+mkB in main
+mkB invokes HolderInt.new
+mkB arg content Int64 seven
+mkB out holderB HolderInt
+
+rdB is call
+rdB in main
+rdB invokes HolderInt.content
+rdB arg record HolderInt holderB
+rdB out fieldB Int64
+
+mkF is call
+mkF in main
+mkF invokes HolderFloat.new
+mkF arg content Float64 pointFive
+mkF out holderF HolderFloat
+
+rdF is call
+rdF in main
+rdF invokes HolderFloat.content
+rdF arg record HolderFloat holderF
+rdF out fieldF Float64
+
+checkA is call
+checkA in main
+checkA invokes test.assertEqualInt64
+checkA arg name String tnInt
+checkA arg expected Int64 fortyTwo
+checkA arg actual Int64 fieldA
+
+checkB is call
+checkB in main
+checkB invokes test.assertEqualInt64
+checkB arg name String tnInt2
+checkB arg expected Int64 seven
+checkB arg actual Int64 fieldB
+
+checkF is call
+checkF in main
+checkF invokes test.assertEqualFloat64
+checkF arg name String tnFloat
+checkF arg expected Float64 pointFive
+checkF arg actual Float64 fieldF
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 fieldA
+checkReal arg actual Int64 fieldB
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

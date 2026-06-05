@@ -1,0 +1,93 @@
+# running_sum_fold — (repurposed from codec_streaming_parse: semanticscript has no codec
+# runtime). A real fold/accumulate loop: sum 1..5 with a mutable accumulator and
+# a decrement-driven loop (README §13). The total comes from the loop, not a
+# constant, so it fails under a no-op lowering.
+#
+# Correctness observation: 1 + 2 + 3 + 4 + 5 = 15.
+# Expected output: 15
+
+RunningSumFold is project
+RunningSumFold module examplesRunningSumFold
+RunningSumFold target console
+RunningSumFold entry main
+
+examplesRunningSumFold is module
+examplesRunningSumFold path examples.runningSumFold
+examplesRunningSumFold exports main
+examplesRunningSumFold purpose "Accumulate 1..5 in a loop and print the total"
+examplesRunningSumFold invariant "Loop terminates when the counter reaches zero"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Fold 1..5 into a running sum and print it"
+main invariant "Writes exactly one integer line: 15"
+main let counter mutable Int64 5
+main let total mutable Int64 0
+main let zero immutable Int64 0
+main let oneStep immutable Int64 1
+main let harnessName immutable String "running_sum_fold"
+main let harnessExpected immutable Int64 15
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "running_sum_fold: real result (not the no-op 0)"
+main at loopHead do checkDone
+main branch ifFalse stillGoing goto loopExit
+main do addToTotal
+main do decrement
+main goto loopHead
+main at loopExit do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkDone is call
+checkDone in main
+checkDone invokes math.greaterThanInt64
+checkDone arg left Int64 counter
+checkDone arg right Int64 zero
+checkDone out stillGoing Bool
+
+addToTotal is call
+addToTotal in main
+addToTotal invokes math.addInt64
+addToTotal arg left Int64 total
+addToTotal arg right Int64 counter
+addToTotal out total Int64
+
+decrement is call
+decrement in main
+decrement invokes math.subtractInt64
+decrement arg left Int64 counter
+decrement arg right Int64 oneStep
+decrement out counter Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

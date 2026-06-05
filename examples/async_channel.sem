@@ -1,0 +1,183 @@
+# async_channel — an async channel on the libuv loop (R-040). A bounded FIFO
+# channel whose producers are libuv timers scheduled on the event loop; the
+# consumer `receive` drives the loop until an item is available, so values arrive
+# in completion order. This is the channel concurrency primitive expressed on the
+# standard.async runtime. The ops are inlined; their typed home is
+# std/standard.async.sem.
+#   * three producers (delays 10/20/30ms sending 20/30/100) and three receives;
+#   * arrival order: the first receive returns the earliest producer's value (20);
+#   * the join: 20 + 30 + 100 == 150.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+AsyncChannel is project
+AsyncChannel module examplesAsyncChannel
+AsyncChannel target console
+AsyncChannel entry main
+
+examplesAsyncChannel is module
+examplesAsyncChannel path examples.asyncChannel
+examplesAsyncChannel exports main
+examplesAsyncChannel purpose "Fan three timer-scheduled producers into a channel and receive them in order"
+examplesAsyncChannel invariant "Receive drives the loop; values arrive in producer-completion order"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+AsyncChannelHandle is alias
+AsyncChannelHandle for OpaquePointer
+AsyncChannelHandle purpose "An opaque bounded async channel handle"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+chanCreate is operation
+chanCreate out AsyncChannelHandle
+chanCreate body runtimeBinding ss_async_channel_create
+
+chanProduce is operation
+chanProduce in channel AsyncChannelHandle
+chanProduce in delayMs Int64
+chanProduce in value Int64
+chanProduce out Int32
+chanProduce async yes
+chanProduce body runtimeBinding ss_async_channel_produce
+
+chanReceive is operation
+chanReceive in channel AsyncChannelHandle
+chanReceive out Int64
+chanReceive async yes
+chanReceive body runtimeBinding ss_async_channel_receive
+
+chanClose is operation
+chanClose in channel AsyncChannelHandle
+chanClose out Int32
+chanClose body runtimeBinding ss_async_channel_close
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Produce three values with staggered delays and receive them in arrival order"
+main invariant "All three assertions hold"
+main let delayEarly immutable Int64 10
+main let delayMid immutable Int64 20
+main let delayLate immutable Int64 30
+main let valEarly immutable Int64 20
+main let valMid immutable Int64 30
+main let valLate immutable Int64 100
+main let expectFirst immutable Int64 20
+main let expectSum immutable Int64 150
+main let tnFirst immutable String "the first receive returns the earliest producer's value (20)"
+main let tnSum immutable String "all three channel values join to 20 + 30 + 100 == 150"
+main let tnReal immutable String "first and last received values differ (real ordering)"
+main do mk
+main do produceEarly
+main do produceMid
+main do produceLate
+main do recv1
+main do recv2
+main do recv3
+main do sum12
+main do sum123
+main do checkFirst
+main do checkSum
+main do checkReal
+main do closeChan
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes chanCreate
+mk out theChannel AsyncChannelHandle
+
+produceEarly is call
+produceEarly in main
+produceEarly invokes chanProduce
+produceEarly arg channel AsyncChannelHandle theChannel
+produceEarly arg delayMs Int64 delayEarly
+produceEarly arg value Int64 valEarly
+produceEarly discards "status intentionally unused in this demonstration"
+
+produceMid is call
+produceMid in main
+produceMid invokes chanProduce
+produceMid arg channel AsyncChannelHandle theChannel
+produceMid arg delayMs Int64 delayMid
+produceMid arg value Int64 valMid
+produceMid discards "status intentionally unused in this demonstration"
+
+produceLate is call
+produceLate in main
+produceLate invokes chanProduce
+produceLate arg channel AsyncChannelHandle theChannel
+produceLate arg delayMs Int64 delayLate
+produceLate arg value Int64 valLate
+produceLate discards "status intentionally unused in this demonstration"
+
+recv1 is call
+recv1 in main
+recv1 invokes chanReceive
+recv1 arg channel AsyncChannelHandle theChannel
+recv1 out first Int64
+
+recv2 is call
+recv2 in main
+recv2 invokes chanReceive
+recv2 arg channel AsyncChannelHandle theChannel
+recv2 out second Int64
+
+recv3 is call
+recv3 in main
+recv3 invokes chanReceive
+recv3 arg channel AsyncChannelHandle theChannel
+recv3 out third Int64
+
+sum12 is call
+sum12 in main
+sum12 invokes math.addInt64
+sum12 arg left Int64 first
+sum12 arg right Int64 second
+sum12 out partial Int64
+
+sum123 is call
+sum123 in main
+sum123 invokes math.addInt64
+sum123 arg left Int64 partial
+sum123 arg right Int64 third
+sum123 out total Int64
+
+checkFirst is call
+checkFirst in main
+checkFirst invokes test.assertEqualInt64
+checkFirst arg name String tnFirst
+checkFirst arg expected Int64 expectFirst
+checkFirst arg actual Int64 first
+
+checkSum is call
+checkSum in main
+checkSum invokes test.assertEqualInt64
+checkSum arg name String tnSum
+checkSum arg expected Int64 expectSum
+checkSum arg actual Int64 total
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 first
+checkReal arg actual Int64 third
+
+closeChan is call
+closeChan in main
+closeChan invokes chanClose
+closeChan arg channel AsyncChannelHandle theChannel
+closeChan discards "status intentionally unused in this demonstration"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

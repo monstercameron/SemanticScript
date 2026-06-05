@@ -1,0 +1,9 @@
+# R-080: an island whose later line dedents below the first body line (the
+# anchor) is a visually ambiguous paste, not deeper nesting — rejected (SS3024I).
+q is storage
+q scope module
+q type SqlText
+q mutability immutable
+q body sql
+    SELECT id
+  FROM tasks

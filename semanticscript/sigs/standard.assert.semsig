@@ -1,0 +1,16 @@
+# standard.assert.semsig — test-assertion namespace (README ss26, ss30.5).
+assertSig is semsig
+assertSig version "1.0"
+assertSig generatedBy "semanticscript 0.1"
+assertSig describes standard.assert
+assertEqualInt64 is intrinsic
+assertEqualInt64 target assert.equalInt64
+assertEqualInt64 arg left Int64
+assertEqualInt64 arg right Int64
+assertEqualInt64 out passed Bool
+assertEqualInt64 purpose "Assert two Int64 values are equal"
+assertTrue is intrinsic
+assertTrue target assert.true
+assertTrue arg value Bool
+assertTrue out passed Bool
+assertTrue purpose "Assert a Bool condition holds"

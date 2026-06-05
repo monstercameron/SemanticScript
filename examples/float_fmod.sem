@@ -1,0 +1,75 @@
+# float_fmod -- (repurposed: tls_session_resumption already deleted). Real float op math.fmodFloat64 (README s10.6).
+# Expected output: 2
+
+FloatFmod is project
+FloatFmod module examplesFloatFmod
+FloatFmod target console
+FloatFmod entry main
+
+examplesFloatFmod is module
+examplesFloatFmod path examples.floatFmod
+examplesFloatFmod exports main
+examplesFloatFmod purpose "Compute floatFmod at runtime"
+examplesFloatFmod invariant "Result is computed at runtime"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute math.fmodFloat64 and print it"
+main invariant "Writes exactly one float line: 2"
+main let operandA immutable Float64 17.0
+main let operandB immutable Float64 5.0
+main let harnessName immutable String "float_fmod"
+main let harnessExpected immutable Float64 2.0
+main let zeroFloatGuard immutable Float64 0.0
+main let noopName immutable String "float_fmod: real result (not the no-op 0.0)"
+main do calc
+main do writeResult
+main do noopZeroCmp
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calc is call
+calc in main
+calc invokes math.fmodFloat64
+calc arg left Float64 operandA
+calc arg right Float64 operandB
+calc out outValue Float64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualFloat64
+writeResult arg name String harnessName
+writeResult arg expected Float64 harnessExpected
+writeResult arg actual Float64 outValue
+
+
+noopZeroCmp is call
+noopZeroCmp in main
+noopZeroCmp invokes math.equalFloat64
+noopZeroCmp arg left Float64 outValue
+noopZeroCmp arg right Float64 zeroFloatGuard
+noopZeroCmp out noopIsZero Bool
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertFalse
+noopCheck arg name String noopName
+noopCheck arg value Bool noopIsZero
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

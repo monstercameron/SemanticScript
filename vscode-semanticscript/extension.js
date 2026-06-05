@@ -1212,7 +1212,8 @@ let linterRunMode = 'onSave';
 let linterPythonPath = 'python';
 let linterConfiguredPath = '';
 let linterSkipFutureSyntax = false;
-let linterEngine = 'semlint';
+let linterEngine = 'semanticscript';
+let fixPlanOutputChannel = null;
 let compilerPythonPath = 'python';
 let compilerConfiguredPath = '';
 let compilerOutputDirectory = '';
@@ -2961,6 +2962,19 @@ const provideDocumentSemanticTokens = (document) => {
 };
 
 const registerSemanticTokens = (context) => {
+  // The semantic-token provider is predicate-first (it classifies token[0] as the
+  // verb), which mis-colors the current subject-first `<subject> <predicate>
+  // <payload>` syntax and would override the correct TextMate grammar colors.
+  // It is off by default until reworked + live-tested; the grammar is the
+  // reliable highlighter. Re-enable via semanticScript.semanticHighlighting.enabled.
+  const enabled = vscode.workspace
+    .getConfiguration('semanticScript')
+    .get('semanticHighlighting.enabled', false);
+
+  if (!enabled) {
+    return;
+  }
+
   const provider = {
     provideDocumentSemanticTokens,
   };
@@ -4703,13 +4717,144 @@ const provideCompletions = (document, position) => {
   return symbolCompletionItems(document, position);
 };
 
+const rangeForToken = (lineIndex, token) => (
+  new vscode.Range(
+    lineIndex,
+    token.start,
+    lineIndex,
+    token.start + token.length
+  )
+);
+
+const validRenameName = (name) => (
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+  && !declarationVerbs.has(name)
+  && !contextVerbs.has(name)
+  && !actionVerbs.has(name)
+  && !controlVerbs.has(name)
+  && !schemaValues.has(name)
+);
+
+const renameInfoAtPosition = (document, position) => {
+  const tokenInfo = getTokenAtPosition(document, position);
+
+  if (!tokenInfo || tokenInfo.tokenIndex === 0) {
+    return null;
+  }
+
+  const text = tokenInfo.token.text;
+
+  if (!isSymbolLike(text) || schemaValues.has(text)) {
+    return null;
+  }
+
+  const index = getDocumentSymbolIndex(document);
+  const currentOperation = index.lineOperations.get(position.line) || null;
+  const entry = index.symbols.get(text);
+  const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+  if (!declaration) {
+    return null;
+  }
+
+  return {
+    text,
+    declaration,
+    range: rangeForToken(position.line, tokenInfo.token),
+  };
+};
+
+const prepareRename = (document, position) => {
+  const info = renameInfoAtPosition(document, position);
+
+  if (!info) {
+    return null;
+  }
+
+  return {
+    range: info.range,
+    placeholder: info.text,
+  };
+};
+
+const provideRenameEdits = (document, position, newName) => {
+  const info = renameInfoAtPosition(document, position);
+
+  if (!info) {
+    throw new Error('No SemanticScript symbol at this position can be renamed.');
+  }
+
+  if (!validRenameName(newName)) {
+    throw new Error('SemanticScript rename targets must be non-reserved identifiers.');
+  }
+
+  const edit = new vscode.WorkspaceEdit();
+  const index = getDocumentSymbolIndex(document);
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const tokens = tokenizeLine(document.lineAt(lineIndex).text);
+    const currentOperation = index.lineOperations.get(lineIndex) || null;
+
+    tokens.forEach((token, tokenIndex) => {
+      if (tokenIndex === 0 || token.text !== info.text || !isSymbolLike(token.text)) {
+        return;
+      }
+
+      const entry = index.symbols.get(token.text);
+      const declaration = chooseSymbolDeclaration(entry, currentOperation);
+
+      if (declaration === info.declaration) {
+        edit.replace(document.uri, rangeForToken(lineIndex, token), newName);
+      }
+    });
+  }
+
+  return edit;
+};
+
+const inlayHint = (lineIndex, token, label, kind) => (
+  new vscode.InlayHint(
+    new vscode.Position(lineIndex, token.start + token.length),
+    label,
+    kind
+  )
+);
+
+const provideInlayHints = (document, range) => {
+  const hints = [];
+  const startLine = Math.max(0, range ? range.start.line : 0);
+  const endLine = Math.min(document.lineCount - 1, range ? range.end.line : document.lineCount - 1);
+
+  for (let lineIndex = startLine; lineIndex <= endLine; lineIndex += 1) {
+    const tokens = tokenizeLine(document.lineAt(lineIndex).text);
+    const verb = tokenAt(tokens, 0);
+
+    if ((verb === 'const' || verb === 'var' || verb === 'let') && tokens[1] && tokens[2]) {
+      hints.push(inlayHint(lineIndex, tokens[1], `: ${tokens[2].text}`, vscode.InlayHintKind.Type));
+    } else if ((verb === 'bind' || verb === 'bindOk' || verb === 'bindError') && tokens[1] && tokens[2]) {
+      hints.push(inlayHint(lineIndex, tokens[1], `: ${tokens[2].text}`, vscode.InlayHintKind.Type));
+    } else if (verb === 'input') {
+      const parts = inputParts(tokens);
+      if (tokens[parts.nameIndex] && tokens[parts.typeIndex]) {
+        hints.push(inlayHint(lineIndex, tokens[parts.nameIndex], `: ${tokens[parts.typeIndex].text}`, vscode.InlayHintKind.Type));
+      }
+    } else if (verb === 'call' && tokens[1] && tokens[2]) {
+      hints.push(inlayHint(lineIndex, tokens[1], ` -> ${tokens[2].text}`, vscode.InlayHintKind.Parameter));
+    }
+  }
+
+  return hints;
+};
+
 const registerLanguageNavigation = (context) => {
   const selector = { language: 'semanticscript' };
 
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(selector, { provideDefinition }),
     vscode.languages.registerDocumentSymbolProvider(selector, { provideDocumentSymbols }),
-    vscode.languages.registerCompletionItemProvider(selector, { provideCompletionItems: provideCompletions }, '.', '"')
+    vscode.languages.registerCompletionItemProvider(selector, { provideCompletionItems: provideCompletions }, '.', '"'),
+    vscode.languages.registerRenameProvider(selector, { prepareRename, provideRenameEdits }),
+    vscode.languages.registerInlayHintsProvider(selector, { provideInlayHints })
   );
 };
 
@@ -4904,68 +5049,9 @@ const documentUsesFutureSyntax = (document) => {
   });
 };
 
-const linterScriptName = () => 'semlint.py';
-
-const candidateLinterPaths = (document) => {
-  const candidates = [];
-  const workspaceFolder = document ? vscode.workspace.getWorkspaceFolder(document.uri) : null;
-  const scriptName = linterScriptName();
-  const addAncestorCandidates = (startPath) => {
-    let currentPath = path.resolve(startPath);
-    const rootPath = path.parse(currentPath).root;
-
-    while (currentPath && currentPath !== rootPath) {
-      candidates.push(path.join(currentPath, 'SemanticScript', 'linter', scriptName));
-      candidates.push(path.join(currentPath, 'linter', scriptName));
-      currentPath = path.dirname(currentPath);
-    }
-  };
-
-  if (linterConfiguredPath) {
-    if (path.isAbsolute(linterConfiguredPath)) {
-      candidates.push(linterConfiguredPath);
-    } else if (workspaceFolder) {
-      candidates.push(path.join(workspaceFolder.uri.fsPath, linterConfiguredPath));
-    }
-  }
-
-  const workspaceFolders = vscode.workspace.workspaceFolders || [];
-  workspaceFolders.forEach((folder) => {
-    candidates.push(path.join(folder.uri.fsPath, 'SemanticScript', 'linter', scriptName));
-    candidates.push(path.join(folder.uri.fsPath, 'linter', scriptName));
-    candidates.push(path.join(folder.uri.fsPath, '..', 'SemanticScript', 'linter', scriptName));
-    addAncestorCandidates(folder.uri.fsPath);
-  });
-
-  if (document && document.fileName) {
-    addAncestorCandidates(path.dirname(document.fileName));
-  }
-
-  candidates.push(path.join(__dirname, 'tools', scriptName));
-
-  return candidates;
-};
-
-const findLinterPath = (document) => {
-  const seen = new Set();
-  const candidates = candidateLinterPaths(document);
-
-  for (const candidate of candidates) {
-    const normalized = path.normalize(candidate);
-
-    if (seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-
-    if (fs.existsSync(normalized)) {
-      return normalized;
-    }
-  }
-
-  return null;
-};
+// The compiler IS the linter now: `semanticscript check --json` is the
+// structured-diagnostics surface, so the linter resolves the same script.
+const findLinterPath = (document) => findCompilerPath(document);
 
 const severityFromLinter = (severity) => {
   if (severity === 'error') {
@@ -4997,41 +5083,6 @@ const diagnosticRange = (document, lineNumber, columnNumber) => {
   );
 };
 
-const semlintMessage = (record) => {
-  const parts = [];
-
-  if (record.code || record.kind) {
-    parts.push([record.code, record.kind].filter(Boolean).join(' '));
-  }
-
-  if (record.intentSlogan) {
-    parts.push(record.intentSlogan);
-  } else if (record.invariantRule) {
-    parts.push(record.invariantRule);
-  }
-
-  if (record.subjectName) {
-    parts.push(`${record.subjectKind || 'subject'}: ${record.subjectName}`);
-  }
-
-  if (record.gapEdge) {
-    parts.push(`gap: ${record.gapEdge}`);
-  }
-
-  return parts.join(' - ') || 'SemanticScript lint diagnostic';
-};
-
-const linterRecordKey = (record) => {
-  const primary = record && record.primary ? record.primary : {};
-  return [
-    record.code || '',
-    record.kind || '',
-    primary.path || '',
-    primary.line || 0,
-    primary.column || 0,
-  ].join(':');
-};
-
 const resolveLinterRecordPath = (document, lintCwd, recordPath) => {
   if (!recordPath) {
     return null;
@@ -5057,66 +5108,17 @@ const resolveLinterRecordPath = (document, lintCwd, recordPath) => {
   return candidates[0] || null;
 };
 
-const relatedInformationFromSemlintRecord = (document, record, lintCwd) => {
-  const relatedSpans = Array.isArray(record.related) ? record.related : [];
-
-  return relatedSpans.map((span) => {
-    const absolutePath = resolveLinterRecordPath(document, lintCwd, span.path);
-
-    if (!absolutePath || !fs.existsSync(absolutePath)) {
-      return null;
-    }
-
-    const lineIndex = Math.max(0, (span.line || 1) - 1);
-    const characterIndex = Math.max(0, (span.column || 1) - 1);
-    const location = new vscode.Location(
-      vscode.Uri.file(absolutePath),
-      new vscode.Position(lineIndex, characterIndex)
-    );
-
-    return new vscode.DiagnosticRelatedInformation(
-      location,
-      span.role || 'related SemanticScript source'
-    );
-  }).filter(Boolean);
-};
-
-const diagnosticFromSemlintRecord = (document, record, lintCwd) => {
-  const primary = record.primary || {};
-  const diagnostic = new vscode.Diagnostic(
-    diagnosticRange(document, primary.line, primary.column),
-    semlintMessage(record),
-    severityFromLinter(record.severity)
-  );
-  diagnostic.source = 'semlint';
-  diagnostic.code = record.code || undefined;
-  diagnostic.relatedInformation = relatedInformationFromSemlintRecord(document, record, lintCwd);
-  diagnostic._semanticScriptRecordKey = linterRecordKey(record);
-  return diagnostic;
-};
-
-const diagnosticFromSimpleSemlintRecord = (document, record) => {
-  const diagnostic = new vscode.Diagnostic(
-    diagnosticRange(document, record.line, record.column),
-    record.message || String(record.rule || 'SemanticScript lint diagnostic'),
-    severityFromLinter(record.severity)
-  );
-  diagnostic.source = 'semlint';
-  diagnostic.code = record.rule || undefined;
-  return diagnostic;
-};
-
-const parseLinterDiagnostics = (document, stdout, lintCwd) => {
-  let records;
+const parseLinterDiagnostics = (document, stdout, _lintCwd) => {
+  let payload;
 
   try {
-    records = JSON.parse(stdout || '[]');
+    payload = JSON.parse(stdout || '{}');
   } catch (_error) {
     return {
       diagnostics: [
         new vscode.Diagnostic(
           new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
-          `${linterEngine} returned invalid JSON diagnostics.`,
+          'semanticscript check returned invalid JSON diagnostics.',
           vscode.DiagnosticSeverity.Error
         ),
       ],
@@ -5124,21 +5126,25 @@ const parseLinterDiagnostics = (document, stdout, lintCwd) => {
     };
   }
 
-  if (!Array.isArray(records)) {
-    return { diagnostics: [], recordsByKey: new Map() };
-  }
+  // sem.check.v1: { ok, diagnostics: [{ code, severity, line, message, entity }] }.
+  // Tolerate a bare array too. Diagnostics anchor to the reported line; quick
+  // fixes are routed through `semanticscript fix --plan`.
+  const records = Array.isArray(payload)
+    ? payload
+    : (Array.isArray(payload.diagnostics) ? payload.diagnostics : []);
 
-  const recordsByKey = new Map();
   const diagnostics = records.map((record) => {
-    if (record && record.primary) {
-      recordsByKey.set(linterRecordKey(record), record);
-      return diagnosticFromSemlintRecord(document, record, lintCwd);
-    }
-
-    return diagnosticFromSimpleSemlintRecord(document, record || {});
+    const diagnostic = new vscode.Diagnostic(
+      diagnosticRange(document, record.line, record.column),
+      record.message || record.rendered || 'SemanticScript diagnostic',
+      severityFromLinter(record.severity)
+    );
+    diagnostic.source = 'semanticscript';
+    diagnostic.code = record.code || undefined;
+    return diagnostic;
   });
 
-  return { diagnostics, recordsByKey };
+  return { diagnostics, recordsByKey: new Map() };
 };
 
 const setLinterStatus = (text, tooltip) => {
@@ -5206,7 +5212,9 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
   }
 
   setLinterStatus('$(sync~spin) SemanticScript lint', document.fileName);
-  const linterArgs = [linterPath, document.fileName, '--format', 'json'];
+  // New compiler: `semanticscript check --json <file>` emits the sem.check.v1
+  // structured-diagnostics surface.
+  const linterArgs = [linterPath, 'check', '--json', document.fileName];
   const linterCwd = projectRootForDocument(document)
     || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
     || path.dirname(document.fileName);
@@ -5300,7 +5308,96 @@ const scheduleLinterRun = (document, delayMilliseconds = 350) => {
   }, delayMilliseconds));
 };
 
-const codeActionsFromSemlintDiagnostic = (document, diagnostic) => {
+const runFixPlanForDocument = async (document) => {
+  if (!document || !isSemanticScriptDocument(document)) {
+    vscode.window.showInformationMessage('Open a SemanticScript file to derive a fix plan.');
+    return;
+  }
+
+  syncConfiguration();
+
+  if (document.isDirty) {
+    await document.save();
+  }
+
+  const linterPath = findLinterPath(document);
+
+  if (!linterPath) {
+    vscode.window.showWarningMessage('SemanticScript compiler not found. Set semanticScript.linter.path or open the SemanticScript repo root.');
+    return;
+  }
+
+  const cwd = projectRootForDocument(document)
+    || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+    || path.dirname(document.fileName);
+  const args = [linterPath, 'fix', document.fileName, '--plan', '--json'];
+
+  fixPlanOutputChannel.clear();
+  fixPlanOutputChannel.appendLine(`SemanticScript fix plan: ${document.fileName}`);
+  fixPlanOutputChannel.appendLine(`${linterPythonPath} ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`);
+
+  const fixProcess = childProcess.spawn(
+    linterPythonPath,
+    args,
+    {
+      cwd,
+      windowsHide: true,
+    }
+  );
+
+  let stdout = '';
+  let stderr = '';
+
+  fixProcess.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  fixProcess.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  fixProcess.on('error', (error) => {
+    fixPlanOutputChannel.show(true);
+    fixPlanOutputChannel.appendLine(`error: ${error.message}`);
+    vscode.window.showErrorMessage(`SemanticScript fix plan failed: ${error.message}`);
+  });
+
+  fixProcess.on('close', (code) => {
+    if (stdout.trim()) {
+      fixPlanOutputChannel.appendLine('stdout:');
+      fixPlanOutputChannel.appendLine(stdout.trim());
+    }
+
+    if (stderr.trim()) {
+      fixPlanOutputChannel.appendLine('stderr:');
+      fixPlanOutputChannel.appendLine(stderr.trim());
+    }
+
+    fixPlanOutputChannel.show(true);
+
+    if (code === 0) {
+      vscode.window.showInformationMessage('SemanticScript fix plan generated.');
+    } else {
+      vscode.window.showErrorMessage(`SemanticScript fix plan failed with exit code ${code}.`);
+    }
+  });
+};
+
+const codeActionsFromSemanticScriptDiagnostic = (document, diagnostic) => {
+  if (diagnostic && diagnostic.source === 'semanticscript' && diagnostic.code) {
+    const action = new vscode.CodeAction(
+      `SemanticScript: Run fix --plan for ${diagnostic.code}`,
+      vscode.CodeActionKind.QuickFix
+    );
+    action.command = {
+      command: 'semanticscript.runFixPlan',
+      title: 'Run SemanticScript fix plan',
+      arguments: [document],
+    };
+    action.diagnostics = [diagnostic];
+    return [action];
+  }
+
   const cacheEntry = lintRecordCache.get(document.uri.toString());
 
   if (!cacheEntry || !diagnostic || diagnostic.source !== 'semlint' || !diagnostic._semanticScriptRecordKey) {
@@ -5351,11 +5448,12 @@ const codeActionsFromSemlintDiagnostic = (document, diagnostic) => {
 };
 
 const registerLinter = (context) => {
-  diagnosticCollection = vscode.languages.createDiagnosticCollection('semlint');
+  diagnosticCollection = vscode.languages.createDiagnosticCollection('semanticscript');
   lintStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   lintStatusBarItem.command = 'semanticscript.runLinter';
+  fixPlanOutputChannel = vscode.window.createOutputChannel('SemanticScript Fix Plan');
 
-  context.subscriptions.push(diagnosticCollection, lintStatusBarItem);
+  context.subscriptions.push(diagnosticCollection, lintStatusBarItem, fixPlanOutputChannel);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('semanticscript.runLinter', () => {
@@ -5371,12 +5469,19 @@ const registerLinter = (context) => {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('semanticscript.runFixPlan', async (document) => {
+      const targetDocument = document && document.uri
+        ? document
+        : vscode.window.activeTextEditor?.document;
+
+      await runFixPlanForDocument(targetDocument);
+    }),
     vscode.languages.registerCodeActionsProvider(
       { language: 'semanticscript' },
       {
         provideCodeActions(document, _range, contextForActions) {
           return contextForActions.diagnostics.flatMap((diagnostic) => (
-            codeActionsFromSemlintDiagnostic(document, diagnostic)
+            codeActionsFromSemanticScriptDiagnostic(document, diagnostic)
           ));
         },
       },
@@ -5431,8 +5536,8 @@ const candidateCompilerPaths = (document) => {
     const rootPath = path.parse(currentPath).root;
 
     while (currentPath && currentPath !== rootPath) {
-      candidates.push(path.join(currentPath, 'SemanticScript', 'compiler', 'semsc.py'));
-      candidates.push(path.join(currentPath, 'compiler', 'semsc.py'));
+      candidates.push(path.join(currentPath, 'semanticscript', 'compiler', 'semanticscript.py'));
+      candidates.push(path.join(currentPath, 'compiler', 'semanticscript.py'));
       currentPath = path.dirname(currentPath);
     }
   };
@@ -5447,9 +5552,9 @@ const candidateCompilerPaths = (document) => {
 
   const workspaceFolders = vscode.workspace.workspaceFolders || [];
   workspaceFolders.forEach((folder) => {
-    candidates.push(path.join(folder.uri.fsPath, 'SemanticScript', 'compiler', 'semsc.py'));
-    candidates.push(path.join(folder.uri.fsPath, 'compiler', 'semsc.py'));
-    candidates.push(path.join(folder.uri.fsPath, '..', 'SemanticScript', 'compiler', 'semsc.py'));
+    candidates.push(path.join(folder.uri.fsPath, 'semanticscript', 'compiler', 'semanticscript.py'));
+    candidates.push(path.join(folder.uri.fsPath, 'compiler', 'semanticscript.py'));
+    candidates.push(path.join(folder.uri.fsPath, '..', 'semanticscript', 'compiler', 'semanticscript.py'));
     addAncestorCandidates(folder.uri.fsPath);
   });
 
@@ -5457,7 +5562,8 @@ const candidateCompilerPaths = (document) => {
     addAncestorCandidates(path.dirname(document.fileName));
   }
 
-  candidates.push(path.join(__dirname, 'tools', 'semsc.py'));
+  // Fallback: the compiler shipped beside this extension in the repo tree.
+  candidates.push(path.join(__dirname, '..', 'semanticscript', 'compiler', 'semanticscript.py'));
 
   return candidates;
 };
@@ -5527,72 +5633,15 @@ const runCompilerForDocument = async (document) => {
   }
 
   const buildTapePath = findNearestBuildTapePath(document.fileName);
-  const compileSourcePath = buildTapePath || document.fileName;
-  const useCompilerManagedOutput = Boolean(buildTapePath) || isBuildTapePath(document.fileName);
-  const outputPath = useCompilerManagedOutput ? null : compilerOutputPath(document);
+  // The new compiler builds a project directory (when a build.sem is present)
+  // or a single source file. Its `build` takes only `<path> [-o OUT] [--platform]`
+  // — the legacy --build-profile/--opt-level/--cpu-* flags no longer exist.
+  const compileSourcePath = buildTapePath ? path.dirname(buildTapePath) : document.fileName;
+  const outputPath = compilerOutputPath(document);
   const cwd = buildTapePath
     ? path.dirname(buildTapePath)
     : (vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.fileName));
-  const args = [
-    compilerPath,
-    compileSourcePath,
-    '--emit-exe',
-    '--build-profile',
-    compilerBuildProfile,
-    '--persist-llvm-ir',
-    compilerPersistLlvmIr,
-  ];
-
-  if (outputPath) {
-    args.splice(3, 0, outputPath);
-  }
-
-  if (compilerRuntimeChecks !== 'default') {
-    args.push('--runtime-checks', compilerRuntimeChecks);
-  }
-
-  if (compilerOptLevel !== 'default') {
-    args.push('--opt-level', String(compilerOptLevel));
-  }
-
-  if (compilerEmitLlvmIr) {
-    args.push('--emit-ir');
-  }
-
-  if (compilerEmitOptimizedLlvmIr) {
-    args.push('--emit-optimized-ir');
-  }
-
-  if (compilerCpuBaseline !== 'default') {
-    args.push('--cpu-baseline', compilerCpuBaseline);
-  }
-
-  if (compilerCpuTune) {
-    args.push('--cpu-tune', compilerCpuTune);
-  }
-
-  if (compilerCpuFeatureCheck !== 'default') {
-    args.push('--cpu-feature-check', compilerCpuFeatureCheck);
-  }
-
-  if (compilerBuildDir) {
-    args.push('--build-dir', compilerBuildDir);
-  } else {
-    if (compilerBuildRoot) {
-      args.push('--build-root', compilerBuildRoot);
-    }
-    if (compilerBuildFolderName) {
-      args.push('--build-folder-name', compilerBuildFolderName);
-    }
-  }
-
-  if (compilerKeepResources) {
-    args.push('--keep-resources');
-  }
-
-  if (compilerResourceDir) {
-    args.push('--resource-dir', compilerResourceDir);
-  }
+  const args = [compilerPath, 'build', compileSourcePath, '-o', outputPath];
 
   compilerOutputChannel.clear();
   compilerOutputChannel.appendLine(`SemanticScript compile: ${compileSourcePath}`);

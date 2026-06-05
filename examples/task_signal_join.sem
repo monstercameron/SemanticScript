@@ -1,0 +1,88 @@
+# task_signal_join — (repurposed from event_signal_wait: semanticscript has no event/signal
+# runtime). The semanticscript-real "wait for a signal" is joining a task: start it, join,
+# read its computed output (README §13/§15.5). Value is the task's real result.
+#
+# Correctness observation: a task computes 9 * 9 = 81; main joins and prints it.
+# Expected output: 81
+
+TaskSignalJoin is project
+TaskSignalJoin module examplesTaskSignalJoin
+TaskSignalJoin target console
+TaskSignalJoin entry main
+
+examplesTaskSignalJoin is module
+examplesTaskSignalJoin path examples.taskSignalJoin
+examplesTaskSignalJoin exports main
+examplesTaskSignalJoin purpose "Join a task and read its signalled result"
+examplesTaskSignalJoin invariant "The joined value is the task's real output"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+square is operation
+square in n Int64
+square out Int64
+square memory heap no
+square async no
+square purpose "Return n * n"
+square invariant "Result is exactly n*n"
+square do mulCall
+square return squared
+
+mulCall is call
+mulCall in square
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 n
+mulCall out squared Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Start a square task, join it, print the result"
+main invariant "Writes exactly one integer line: 81"
+main let seed immutable Int64 9
+main let harnessName immutable String "task_signal_join"
+main let harnessExpected immutable Int64 81
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "task_signal_join: real result (not the no-op 0)"
+main start signalTask
+main join signalTask
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+signalTask is task
+signalTask in main
+signalTask invokes square
+signalTask arg n Int64 seed
+signalTask out answer Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

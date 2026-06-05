@@ -1,0 +1,69 @@
+# square_value — (repurposed from string_format_parse). math.squareInt64 returns
+# n*n (README §10.6). Computed, not a constant.
+#
+# Correctness observation: square(7) = 49.
+# Expected output: 49
+
+SquareValue is project
+SquareValue module examplesSquareValue
+SquareValue target console
+SquareValue entry main
+
+examplesSquareValue is module
+examplesSquareValue path examples.squareValue
+examplesSquareValue exports main
+examplesSquareValue purpose "Square an integer"
+examplesSquareValue invariant "Result is n*n"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute square(7) and print it"
+main invariant "Writes exactly one integer line: 49"
+main let baseValue immutable Int64 7
+main let harnessName immutable String "square_value"
+main let harnessExpected immutable Int64 49
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "square_value: real result (not the no-op 0)"
+main do squareCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+squareCall is call
+squareCall in main
+squareCall invokes math.squareInt64
+squareCall arg value Int64 baseValue
+squareCall out squared Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 squared
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 squared
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,0 +1,175 @@
+# list_find_max — find the maximum element of a growable list by iterating it
+# (README §27 collections). Builds a six-element list, walks it with a goto-loop
+# (index < length), and folds the running maximum with math.maxInt64. The result
+# comes from the iteration, not a constant, so it fails under a no-op lowering.
+#
+# Correctness observation: max(10, 50, 30, 60, 20, 40) == 60, by iteration.
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+ListFindMax is project
+ListFindMax module examplesListFindMax
+ListFindMax target console
+ListFindMax entry main
+
+examplesListFindMax is module
+examplesListFindMax path examples.listFindMax
+examplesListFindMax exports main
+examplesListFindMax purpose "Find a list's maximum by iterating it with a goto-loop"
+examplesListFindMax invariant "The max comes from iterating the list, not a constant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+ListHandle is alias
+ListHandle for OpaquePointer
+ListHandle purpose "An opaque growable-list handle"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Build a six-element list and find its maximum with a goto-loop"
+main invariant "Loop terminates at index == length; max is 60"
+main let v10 immutable Int64 10
+main let v50 immutable Int64 50
+main let v30 immutable Int64 30
+main let v60 immutable Int64 60
+main let v20 immutable Int64 20
+main let v40 immutable Int64 40
+main let maxSoFar mutable Int64 0
+main let idx mutable Int64 0
+main let one immutable Int64 1
+main let expectMax immutable Int64 60
+main let zeroGuard immutable Int64 0
+main let tnMax immutable String "iterating the list finds max 60"
+main let tnNonZero immutable String "the iterated max is real (not the initial 0)"
+main do mk
+main do app0
+main do app1
+main do app2
+main do app3
+main do app4
+main do app5
+main do lenCall
+main at loopHead do checkGoing
+main branch ifFalse going goto loopExit
+main do getElem
+main do foldMax
+main do incIdx
+main goto loopHead
+main at loopExit do checkMax
+main do checkNonZero
+main do rel
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes list.create
+mk out theList ListHandle
+
+app0 is call
+app0 in main
+app0 invokes list.append
+app0 arg list ListHandle theList
+app0 arg value Int64 v10
+app0 discards "append status ignored in collection example"
+
+app1 is call
+app1 in main
+app1 invokes list.append
+app1 arg list ListHandle theList
+app1 arg value Int64 v50
+app1 discards "append status ignored in collection example"
+
+app2 is call
+app2 in main
+app2 invokes list.append
+app2 arg list ListHandle theList
+app2 arg value Int64 v30
+app2 discards "append status ignored in collection example"
+
+app3 is call
+app3 in main
+app3 invokes list.append
+app3 arg list ListHandle theList
+app3 arg value Int64 v60
+app3 discards "append status ignored in collection example"
+
+app4 is call
+app4 in main
+app4 invokes list.append
+app4 arg list ListHandle theList
+app4 arg value Int64 v20
+app4 discards "append status ignored in collection example"
+
+app5 is call
+app5 in main
+app5 invokes list.append
+app5 arg list ListHandle theList
+app5 arg value Int64 v40
+app5 discards "append status ignored in collection example"
+
+lenCall is call
+lenCall in main
+lenCall invokes list.length
+lenCall arg list ListHandle theList
+lenCall out listLen Int64
+
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.lessThanInt64
+checkGoing arg left Int64 idx
+checkGoing arg right Int64 listLen
+checkGoing out going Bool
+
+getElem is call
+getElem in main
+getElem invokes list.get
+getElem arg list ListHandle theList
+getElem arg index Int64 idx
+getElem out elem Int64
+
+foldMax is call
+foldMax in main
+foldMax invokes math.maxInt64
+foldMax arg left Int64 maxSoFar
+foldMax arg right Int64 elem
+foldMax out maxSoFar Int64
+
+incIdx is call
+incIdx in main
+incIdx invokes math.addInt64
+incIdx arg left Int64 idx
+incIdx arg right Int64 one
+incIdx out idx Int64
+
+checkMax is call
+checkMax in main
+checkMax invokes test.assertEqualInt64
+checkMax arg name String tnMax
+checkMax arg expected Int64 expectMax
+checkMax arg actual Int64 maxSoFar
+
+checkNonZero is call
+checkNonZero in main
+checkNonZero invokes test.assertNotEqualInt64
+checkNonZero arg name String tnNonZero
+checkNonZero arg expected Int64 zeroGuard
+checkNonZero arg actual Int64 maxSoFar
+
+rel is call
+rel in main
+rel invokes list.release
+rel arg list ListHandle theList
+rel discards "release status ignored during cleanup"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

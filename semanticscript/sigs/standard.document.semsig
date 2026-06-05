@@ -1,0 +1,49 @@
+# standard.document.semsig - wasm host DOM contract (R-037 / WS3-161).
+# These targets lower to wasm host imports (`dom_*`). A browser or JS harness
+# supplies the imports; the generated fallback runner stubs them as no-ops.
+
+documentSig is semsig
+documentSig version "1.0"
+documentSig generatedBy "semanticscript 0.1"
+documentSig describes standard.document
+
+DocumentNode is alias
+DocumentNode for Int32
+DocumentNode purpose "A host-owned DOM node id passed across the wasm boundary"
+
+DocumentStatus is alias
+DocumentStatus for Int32
+DocumentStatus purpose "A host adapter status code where 0 means success"
+
+DocumentValue is alias
+DocumentValue for Int32
+DocumentValue purpose "A small scalar DOM value used by the wasm host smoke adapter"
+
+DocumentText is alias
+DocumentText for String
+DocumentText purpose "UTF-8 text passed to the browser DOM host adapter"
+
+createNode is intrinsic
+createNode target document.createNode
+createNode out node DocumentNode
+createNode purpose "Ask the wasm host adapter to create a DOM node and return its id"
+
+setValue is intrinsic
+setValue target document.setValue
+setValue arg node DocumentNode
+setValue arg value DocumentValue
+setValue out status DocumentStatus
+setValue purpose "Set a scalar value on a host DOM node through the wasm adapter"
+
+getValue is intrinsic
+getValue target document.getValue
+getValue arg node DocumentNode
+getValue out value DocumentValue
+getValue purpose "Read a scalar value from a host DOM node through the wasm adapter"
+
+setText is intrinsic
+setText target document.setText
+setText arg node DocumentNode
+setText arg text DocumentText
+setText out status DocumentStatus
+setText purpose "Set text content on a host DOM node through the browser adapter"

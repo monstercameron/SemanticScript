@@ -1,0 +1,97 @@
+# enum_discriminant — discriminate an enum with branch ifVariant (README s10.5/s13),
+# stress-tested with positive AND negative assertions via the standard.test
+# harness: StatusCode.error DOES match the `error` variant (outcome 1), and a
+# DIFFERENT value StatusCode.ok does NOT match it (outcome stays 0). This proves
+# ifVariant actually discriminates rather than always taking the arm.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+EnumDiscriminant is project
+EnumDiscriminant module examplesEnumDiscriminant
+EnumDiscriminant target console
+EnumDiscriminant entry main
+
+examplesEnumDiscriminant is module
+examplesEnumDiscriminant path examples.enumDiscriminant
+examplesEnumDiscriminant exports main
+examplesEnumDiscriminant purpose "Assert ifVariant matches one variant and not another"
+examplesEnumDiscriminant invariant "Matching and non-matching arms both behave"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+StatusCode is enum
+StatusCode variant ok
+StatusCode variant error
+StatusCode variant pending
+StatusCode purpose "A small status discriminant"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Match error against error, and ok against error, then assert"
+main invariant "All assertions hold"
+main let outcomeMatched mutable Int64 0
+main let outcomeNonMatch mutable Int64 0
+main let oneMark immutable Int64 1
+main let expOne immutable Int64 1
+main let expZero immutable Int64 0
+main let tn1 immutable String "StatusCode.error matches the error variant"
+main let tn2 immutable String "StatusCode.ok does NOT match the error variant"
+main let tn3 immutable String "matched and non-matched outcomes differ"
+main do makeError
+main branch ifVariant errVal error goto matchedArm
+main goto afterMatched
+main at matchedArm set outcomeMatched oneMark
+main at afterMatched do makeOk
+main branch ifVariant okVal error goto wrongArm
+main goto afterNonMatch
+main at wrongArm set outcomeNonMatch oneMark
+main at afterNonMatch do check1
+main do check2
+main do check3
+main do harnessReport
+main return harnessSummaryCode
+
+makeError is call
+makeError in main
+makeError invokes StatusCode.error
+makeError out errVal StatusCode
+
+makeOk is call
+makeOk in main
+makeOk invokes StatusCode.ok
+makeOk out okVal StatusCode
+
+check1 is call
+check1 in main
+check1 invokes test.assertEqualInt64
+check1 arg name String tn1
+check1 arg expected Int64 expOne
+check1 arg actual Int64 outcomeMatched
+
+check2 is call
+check2 in main
+check2 invokes test.assertEqualInt64
+check2 arg name String tn2
+check2 arg expected Int64 expZero
+check2 arg actual Int64 outcomeNonMatch
+
+check3 is call
+check3 in main
+check3 invokes test.assertNotEqualInt64
+check3 arg name String tn3
+check3 arg expected Int64 outcomeMatched
+check3 arg actual Int64 outcomeNonMatch
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

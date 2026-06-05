@@ -1,0 +1,82 @@
+# bit_shift — left/right bit shifts via math.shiftLeftInt64 / math.shiftRightInt64
+# (README §10.6). These ops were wired into codegen as part of the alpha stress
+# test (the linter already guarded over-wide constant shifts). The result is
+# computed by real shift instructions, not a constant.
+#
+# Correctness observation: (2 << 3) = 16, then (16 >> 1) = 8.
+# Expected output: 8
+
+BitShift is project
+BitShift module examplesBitShift
+BitShift target console
+BitShift entry main
+
+examplesBitShift is module
+examplesBitShift path examples.bitShift
+examplesBitShift exports main
+examplesBitShift purpose "Shift an integer left then right and print the result"
+examplesBitShift invariant "(2 << 3) >> 1 = 8"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute (2 << 3) >> 1 and print it"
+main invariant "Writes exactly one integer line: 8"
+main let base immutable Int64 2
+main let leftAmount immutable Int64 3
+main let rightAmount immutable Int64 1
+main let harnessName immutable String "bit_shift"
+main let harnessExpected immutable Int64 8
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "bit_shift: real result (not the no-op 0)"
+main do shiftLeftCall
+main do shiftRightCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+shiftLeftCall is call
+shiftLeftCall in main
+shiftLeftCall invokes math.shiftLeftInt64
+shiftLeftCall arg left Int64 base
+shiftLeftCall arg right Int64 leftAmount
+shiftLeftCall out shifted Int64
+
+shiftRightCall is call
+shiftRightCall in main
+shiftRightCall invokes math.shiftRightInt64
+shiftRightCall arg left Int64 shifted
+shiftRightCall arg right Int64 rightAmount
+shiftRightCall out result Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 result
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 result
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

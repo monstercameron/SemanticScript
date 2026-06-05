@@ -1,0 +1,74 @@
+# decimal_equal_compare — exact equality of two scaled decimals (README §27,
+# R-067). Decimal is a scale-2 Int64 (raw = amount*100), so equality is an exact
+# integer compare: 10.00 == 10.00 is decimal.equal(1000, 1000) -> true (1). No
+# float epsilon — money compares exactly.
+#
+# Correctness observation: decimal.equal(1000, 1000) == true (1).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+DecimalEqualCompare is project
+DecimalEqualCompare module examplesDecimalEqualCompare
+DecimalEqualCompare target console
+DecimalEqualCompare entry main
+
+examplesDecimalEqualCompare is module
+examplesDecimalEqualCompare path examples.decimalEqualCompare
+examplesDecimalEqualCompare exports main
+examplesDecimalEqualCompare purpose "Compare two scaled decimals for exact equality"
+examplesDecimalEqualCompare invariant "Equality is an exact integer compare"
+
+ExitCode is alias
+ExitCode for Int32
+
+Decimal is alias
+Decimal for Int64
+Decimal purpose "Fixed-scale value: the raw Int64 is the amount * 100 (scale 2)"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Assert 10.00 == 10.00 exactly via decimal.equal"
+main invariant "Writes the test harness summary"
+main let priceA immutable Decimal 1000
+main let priceB immutable Decimal 1000
+main let harnessName immutable String "decimal_equal_compare"
+main let trueValue immutable Int64 1
+main let falseDecoy immutable Int64 0
+main let noopName immutable String "decimal_equal_compare: real true (not the no-op false)"
+main do compareEqual
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+compareEqual is call
+compareEqual in main
+compareEqual invokes decimal.equal
+compareEqual arg left Decimal priceA
+compareEqual arg right Decimal priceB
+compareEqual out areEqual Bool
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 trueValue
+writeResult arg actual Int64 areEqual
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 falseDecoy
+noopCheck arg actual Int64 areEqual
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

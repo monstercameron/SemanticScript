@@ -1,0 +1,245 @@
+# concurrent_facade - standard.concurrent facade smoke (R-040).
+# Exercises task-group-style futures, a mutex-protected shared state update, and
+# a worker-pool value submission through the ss_async_* runtime symbols.
+
+ConcurrentFacade is project
+ConcurrentFacade module examplesConcurrentFacade
+ConcurrentFacade target console
+ConcurrentFacade entry main
+
+examplesConcurrentFacade is module
+examplesConcurrentFacade path examples.concurrentFacade
+examplesConcurrentFacade exports main
+examplesConcurrentFacade purpose "Exercise standard.concurrent facade primitives"
+examplesConcurrentFacade invariant "Task-group futures, mutex guard, and worker-pool facade all produce expected values"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+ConcurrentFuture is alias
+ConcurrentFuture for OpaquePointer
+ConcurrentFuture purpose "A future scheduled on the libuv loop"
+
+ConcurrentMutex is alias
+ConcurrentMutex for OpaquePointer
+ConcurrentMutex purpose "A mutex/guard handle"
+
+WorkerPool is alias
+WorkerPool for OpaquePointer
+WorkerPool purpose "A worker-pool facade handle"
+
+counter is sharedState
+counter scope module
+counter type Int64
+counter mutability mutable
+counter value 0
+counter guard counterLock
+counter guardRank 1
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+taskGroupStart is operation
+taskGroupStart in delayMs Int64
+taskGroupStart in value Int64
+taskGroupStart out ConcurrentFuture
+taskGroupStart async yes
+taskGroupStart body runtimeBinding ss_async_delay_start
+
+taskGroupJoin is operation
+taskGroupJoin in future ConcurrentFuture
+taskGroupJoin out Int64
+taskGroupJoin async yes
+taskGroupJoin body runtimeBinding ss_async_await
+
+mutexCreate is operation
+mutexCreate out ConcurrentMutex
+mutexCreate body runtimeBinding ss_async_mutex_create
+
+mutexLock is operation
+mutexLock in mutex ConcurrentMutex
+mutexLock out Int32
+mutexLock body runtimeBinding ss_async_mutex_lock
+
+mutexUnlock is operation
+mutexUnlock in mutex ConcurrentMutex
+mutexUnlock out Int32
+mutexUnlock body runtimeBinding ss_async_mutex_unlock
+
+mutexClose is operation
+mutexClose in mutex ConcurrentMutex
+mutexClose out Int32
+mutexClose body runtimeBinding ss_async_mutex_close
+
+workerPoolCreate is operation
+workerPoolCreate in workers Int64
+workerPoolCreate out WorkerPool
+workerPoolCreate body runtimeBinding ss_async_worker_pool_create
+
+workerPoolSubmitValue is operation
+workerPoolSubmitValue in pool WorkerPool
+workerPoolSubmitValue in value Int64
+workerPoolSubmitValue out ConcurrentFuture
+workerPoolSubmitValue async yes
+workerPoolSubmitValue body runtimeBinding ss_async_worker_submit_value
+
+workerPoolJoin is operation
+workerPoolJoin in future ConcurrentFuture
+workerPoolJoin out Int64
+workerPoolJoin async yes
+workerPoolJoin body runtimeBinding ss_async_worker_join
+
+workerPoolClose is operation
+workerPoolClose in pool WorkerPool
+workerPoolClose out Int32
+workerPoolClose body runtimeBinding ss_async_worker_pool_close
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Run concurrent facade primitives and report assertion results"
+main invariant "All assertions pass"
+main let zeroDelay immutable Int64 0
+main let shortDelay immutable Int64 5
+main let two immutable Int64 2
+main let ten immutable Int64 10
+main let thirtyTwo immutable Int64 32
+main let fortyTwo immutable Int64 42
+main let workerCount immutable Int64 2
+main let workerValue immutable Int64 9
+main let expectedTaskSum immutable Int64 42
+main let expectedWorker immutable Int64 9
+main let tnTaskGroup immutable String "task group futures join to 10 + 32 == 42"
+main let tnMutex immutable String "mutex-protected shared state read returns 42"
+main let tnWorker immutable String "worker-pool facade returns submitted value"
+main do startA
+main do startB
+main do joinA
+main do joinB
+main do sumTasks
+main do checkTaskGroup
+main do createMutex
+main do lockMutex
+main setShared counter sum protectedBy counterLock
+main readShared currentCounter Int64 counter protectedBy counterLock
+main do unlockMutex
+main do closeMutex
+main do checkMutex
+main do createPool
+main do submitWorker
+main do joinWorker
+main do closePool
+main do checkWorker
+main do harnessReport
+main return harnessSummaryCode
+
+startA is call
+startA in main
+startA invokes taskGroupStart
+startA arg delayMs Int64 shortDelay
+startA arg value Int64 ten
+startA out futA ConcurrentFuture
+
+startB is call
+startB in main
+startB invokes taskGroupStart
+startB arg delayMs Int64 zeroDelay
+startB arg value Int64 thirtyTwo
+startB out futB ConcurrentFuture
+
+joinA is call
+joinA in main
+joinA invokes taskGroupJoin
+joinA arg future ConcurrentFuture futA
+joinA out gotA Int64
+
+joinB is call
+joinB in main
+joinB invokes taskGroupJoin
+joinB arg future ConcurrentFuture futB
+joinB out gotB Int64
+
+sumTasks is call
+sumTasks in main
+sumTasks invokes math.addInt64
+sumTasks arg left Int64 gotA
+sumTasks arg right Int64 gotB
+sumTasks out sum Int64
+
+checkTaskGroup is call
+checkTaskGroup in main
+checkTaskGroup invokes test.assertEqualInt64
+checkTaskGroup arg name String tnTaskGroup
+checkTaskGroup arg expected Int64 expectedTaskSum
+checkTaskGroup arg actual Int64 sum
+
+createMutex is call
+createMutex in main
+createMutex invokes mutexCreate
+createMutex out lock ConcurrentMutex
+
+lockMutex is call
+lockMutex in main
+lockMutex invokes mutexLock
+lockMutex arg mutex ConcurrentMutex lock
+lockMutex discards "lock status is not part of the assertion"
+
+unlockMutex is call
+unlockMutex in main
+unlockMutex invokes mutexUnlock
+unlockMutex arg mutex ConcurrentMutex lock
+unlockMutex discards "unlock status is not part of the assertion"
+
+closeMutex is call
+closeMutex in main
+closeMutex invokes mutexClose
+closeMutex arg mutex ConcurrentMutex lock
+closeMutex discards "close status is not part of the assertion"
+
+checkMutex is call
+checkMutex in main
+checkMutex invokes test.assertEqualInt64
+checkMutex arg name String tnMutex
+checkMutex arg expected Int64 fortyTwo
+checkMutex arg actual Int64 currentCounter
+
+createPool is call
+createPool in main
+createPool invokes workerPoolCreate
+createPool arg workers Int64 workerCount
+createPool out pool WorkerPool
+
+submitWorker is call
+submitWorker in main
+submitWorker invokes workerPoolSubmitValue
+submitWorker arg pool WorkerPool pool
+submitWorker arg value Int64 workerValue
+submitWorker out workerFuture ConcurrentFuture
+
+joinWorker is call
+joinWorker in main
+joinWorker invokes workerPoolJoin
+joinWorker arg future ConcurrentFuture workerFuture
+joinWorker out workerResult Int64
+
+closePool is call
+closePool in main
+closePool invokes workerPoolClose
+closePool arg pool WorkerPool pool
+closePool discards "close status is not part of the assertion"
+
+checkWorker is call
+checkWorker in main
+checkWorker invokes test.assertEqualInt64
+checkWorker arg name String tnWorker
+checkWorker arg expected Int64 expectedWorker
+checkWorker arg actual Int64 workerResult
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

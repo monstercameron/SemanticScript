@@ -1,0 +1,115 @@
+# recursion_sum — (repurposed from deep_recursion_trap, which was malformed and
+# would only crash the JIT). A real bounded recursion: sumTo(n) = n + sumTo(n-1)
+# with a base case at n <= 0 (README §33.3). Exercises a self-calling operation
+# to a non-trivial depth and returns a computed total.
+#
+# Correctness observation: sumTo(100) = 100*101/2 = 5050.
+# Expected output: 5050
+
+RecursionSum is project
+RecursionSum module examplesRecursionSum
+RecursionSum target console
+RecursionSum entry main
+
+examplesRecursionSum is module
+examplesRecursionSum path examples.recursionSum
+examplesRecursionSum exports main
+examplesRecursionSum purpose "Sum 1..n by direct recursion"
+examplesRecursionSum invariant "sumTo(n) terminates at the n <= 0 base case"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+sumTo is operation
+sumTo in n Int64
+sumTo out Int64
+sumTo memory heap no
+sumTo async no
+sumTo purpose "Return n + (n-1) + ... + 1 via recursion"
+sumTo invariant "Recurses on n-1 until n <= 0"
+sumTo let zero immutable Int64 0
+sumTo let one immutable Int64 1
+sumTo do baseCheck
+sumTo branch if isBase goto base
+sumTo do decCall
+sumTo do recCall
+sumTo do addCall
+sumTo return total
+sumTo at base return zero
+
+baseCheck is call
+baseCheck in sumTo
+baseCheck invokes math.lessThanOrEqualInt64
+baseCheck arg left Int64 n
+baseCheck arg right Int64 zero
+baseCheck out isBase Bool
+
+decCall is call
+decCall in sumTo
+decCall invokes math.subtractInt64
+decCall arg left Int64 n
+decCall arg right Int64 one
+decCall out nMinusOne Int64
+
+recCall is call
+recCall in sumTo
+recCall invokes sumTo
+recCall arg n Int64 nMinusOne
+recCall out subTotal Int64
+
+addCall is call
+addCall in sumTo
+addCall invokes math.addInt64
+addCall arg left Int64 n
+addCall arg right Int64 subTotal
+addCall out total Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print sumTo(100)"
+main invariant "Writes exactly one integer line: 5050"
+main let hundred immutable Int64 100
+main let harnessName immutable String "recursion_sum"
+main let harnessExpected immutable Int64 5050
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "recursion_sum: real result (not the no-op 0)"
+main do compute
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+compute is call
+compute in main
+compute invokes sumTo
+compute arg n Int64 hundred
+compute out answer Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

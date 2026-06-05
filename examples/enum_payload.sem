@@ -1,0 +1,111 @@
+# enum_payload — data-carrying enum variants (R-054). `Maybe` is a tagged union
+# `none | some Int64`: a data variant lowers to {i32 tag, payload}, so
+# `Maybe.some 42` carries a value and `branch ifVariant v some bind p` matches
+# the tag AND extracts the payload into `p` on the matched arm. Payloadless enums
+# are unchanged (still a bare i32 discriminant). This exercises:
+#   * construction + extraction: some(42) round-trips its payload back as 42;
+#   * the some arm is taken for a some value;
+#   * a none value does NOT match the some arm (real tag discrimination);
+#   * the extracted payload is real (not the 0 fallback).
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+EnumPayload is project
+EnumPayload module examplesEnumPayload
+EnumPayload target console
+EnumPayload entry main
+
+examplesEnumPayload is module
+examplesEnumPayload path examples.enumPayload
+examplesEnumPayload exports main
+examplesEnumPayload purpose "Construct and pattern-match a data-carrying enum, asserting the payload"
+examplesEnumPayload invariant "A data variant carries its payload; tags discriminate correctly"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Maybe is enum
+Maybe variant none
+Maybe variant some Int64
+Maybe purpose "An optional Int64: none, or some carrying a value"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Build some(42) and none, match them, and assert the payload and tags"
+main invariant "All four assertions hold"
+main let fortyTwo immutable Int64 42
+main let one immutable Int64 1
+main let zeroGuard immutable Int64 0
+main let extracted mutable Int64 0
+main let someMatched mutable Int64 0
+main let noneMatchedSome mutable Int64 0
+main let tnExtract immutable String "some(42) carries and extracts the payload 42"
+main let tnSomeArm immutable String "a some value takes the some arm"
+main let tnNoneArm immutable String "a none value does NOT take the some arm (tag discrimination)"
+main let tnReal immutable String "the extracted payload is real (not the 0 fallback)"
+main do mkSome
+main do mkNone
+main branch ifVariant someVal some bind payloadOut goto someArm
+main goto afterSome
+main at someArm set someMatched one
+main at afterSome set extracted payloadOut
+main branch ifVariant noneVal some bind unusedPayload goto wrongArm
+main goto afterNone
+main at wrongArm set noneMatchedSome one
+main at afterNone do checkExtract
+main do checkSomeArm
+main do checkNoneArm
+main do checkReal
+main do harnessReport
+main return harnessSummaryCode
+
+mkSome is call
+mkSome in main
+mkSome invokes Maybe.some
+mkSome arg content Int64 fortyTwo
+mkSome out someVal Maybe
+
+mkNone is call
+mkNone in main
+mkNone invokes Maybe.none
+mkNone out noneVal Maybe
+
+checkExtract is call
+checkExtract in main
+checkExtract invokes test.assertEqualInt64
+checkExtract arg name String tnExtract
+checkExtract arg expected Int64 fortyTwo
+checkExtract arg actual Int64 extracted
+
+checkSomeArm is call
+checkSomeArm in main
+checkSomeArm invokes test.assertEqualInt64
+checkSomeArm arg name String tnSomeArm
+checkSomeArm arg expected Int64 one
+checkSomeArm arg actual Int64 someMatched
+
+checkNoneArm is call
+checkNoneArm in main
+checkNoneArm invokes test.assertEqualInt64
+checkNoneArm arg name String tnNoneArm
+checkNoneArm arg expected Int64 zeroGuard
+checkNoneArm arg actual Int64 noneMatchedSome
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 zeroGuard
+checkReal arg actual Int64 extracted
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

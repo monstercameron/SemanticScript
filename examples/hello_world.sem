@@ -1,0 +1,55 @@
+# Hello World — canonical EAV-Steps v0.3 (README §18).
+# Expected output: hello world
+# This is the keystone vertical slice: parse -> lower -> run (todos WS1-101).
+# Writes via console.writeLine (-> puts) and returns exit 1 on a write failure.
+
+HelloWorld is project
+HelloWorld module examplesHelloWorld
+HelloWorld target console
+HelloWorld entry main
+
+examplesHelloWorld is module
+examplesHelloWorld path examples.helloWorld
+examplesHelloWorld exports main
+examplesHelloWorld purpose "Contain the Hello World console entry operation"
+examplesHelloWorld invariant "Exports main as the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status: 0 for success, non-zero for failure"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+stdoutWriter invariant "Only grants write access to console.stdout"
+
+ConsoleWriteError is error
+ConsoleWriteError purpose "Represent failures from console output operations"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Write hello world and return a process exit code"
+main invariant "All stdout writes go through stdoutWriter"
+main invariant "Returns writeFailedExitCode on any write failure"
+
+main let helloText immutable String "hello world"
+main let successExitCode immutable ExitCode 0
+main let writeFailedExitCode immutable ExitCode 1
+
+main do writeHello
+main branch ifError writeHello goto failed
+main return successExitCode
+
+main at failed return writeFailedExitCode
+
+writeHello is call
+writeHello in main
+writeHello invokes console.writeLine
+writeHello arg text String helloText
+writeHello catch writeError ConsoleWriteError
+writeHello purpose "Write the greeting text to stdout"
+writeHello risk "May fail if stdout is closed or unavailable"

@@ -1,0 +1,97 @@
+# string_find_char — first/last byte search via standard.string (X-200).
+# findCharFirst/findCharLast bind ss_string_find_char_*: byte 'l' (108) in
+# "hello" is first at offset 2, last at offset 3. Self-checked via standard.test.
+# Expected output: PASS lines for 2 and 3 then "---- N passed, 0 failed ----".
+
+StringFindChar is project
+StringFindChar module examplesStringFindChar
+StringFindChar target console
+StringFindChar entry main
+
+examplesStringFindChar is module
+examplesStringFindChar path examples.stringFindChar
+examplesStringFindChar exports main
+examplesStringFindChar purpose "Find first/last occurrence of a byte via standard.string"
+examplesStringFindChar invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+findCharFirst is operation
+findCharFirst in text String
+findCharFirst in byte Int32
+findCharFirst out Int64
+findCharFirst memory heap no
+findCharFirst async no
+findCharFirst purpose "First offset of byte in text, or -1"
+findCharFirst invariant "Pure byte search; performs no effects"
+findCharFirst body runtimeBinding ss_string_find_char_first
+
+findCharLast is operation
+findCharLast in text String
+findCharLast in byte Int32
+findCharLast out Int64
+findCharLast memory heap no
+findCharLast async no
+findCharLast purpose "Last offset of byte in text, or -1"
+findCharLast invariant "Pure byte search; performs no effects"
+findCharLast body runtimeBinding ss_string_find_char_last
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Find first and last 'l' in 'hello' and assert the offsets"
+main invariant "All assertions hold"
+main let textValue immutable String "hello"
+main let targetByte immutable Int32 108
+main let expectFirst immutable Int64 2
+main let expectLast immutable Int64 3
+main let nameFirst immutable String "string_find_char: first 'l' at 2"
+main let nameLast immutable String "string_find_char: last 'l' at 3"
+main do firstCall
+main do lastCall
+main do checkFirst
+main do checkLast
+main do harnessReport
+main return harnessSummaryCode
+
+firstCall is call
+firstCall in main
+firstCall invokes findCharFirst
+firstCall arg text String textValue
+firstCall arg byte Int32 targetByte
+firstCall out firstOffset Int64
+
+lastCall is call
+lastCall in main
+lastCall invokes findCharLast
+lastCall arg text String textValue
+lastCall arg byte Int32 targetByte
+lastCall out lastOffset Int64
+
+checkFirst is call
+checkFirst in main
+checkFirst invokes test.assertEqualInt64
+checkFirst arg name String nameFirst
+checkFirst arg expected Int64 expectFirst
+checkFirst arg actual Int64 firstOffset
+
+checkLast is call
+checkLast in main
+checkLast invokes test.assertEqualInt64
+checkLast arg name String nameLast
+checkLast arg expected Int64 expectLast
+checkLast arg actual Int64 lastOffset
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

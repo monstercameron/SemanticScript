@@ -1,35 +1,45 @@
-# HTML Template Lab
+# html-template-lab (SemanticScript port) — COMPLETE (X-040 / X-047)
 
-First-class HTML syntax demo that renders a complete HTML document to stdout. This is the small, readable showcase for `html template`, inferred bare/dotted holes, `html body template`, and module-split HTML fragments.
+Full multi-module SemanticScript port of `apps/html-template-lab` (the v0.1
+first-class HTML/SSX showcase), in the §28.2 project layout. It **JIT-runs and
+builds to a native exe**, printing the complete server-rendered todo dashboard.
 
-## Source Layout
+## Layout (README §28.2)
 
-```text
-apps/html-template-lab/
-  build.sem
-  main.sem
-  modules/
-    shared/
-    todo-domain/
-    todo-components/
-    todo-pages/
+```
+html-template-lab/
+  build.sem            # project manifest: target console, entry main
+  build.sem.lock
+  src/
+    main.sem           # console entrypoint op `main` — render the page, print it
+    shared/main.sem    # 6 shared presentation constants (title, intro, row classes)
+    todo-domain/main.sem    # 9 todo constants (titles/statuses/classes; classes alias shared)
+    todo-components/main.sem # `renderTodoListFragment` + the TodoListTemplate htmlTemplate
+    todo-pages/main.sem      # `renderTodoDashboardPage` + the TodoDashboardPageTemplate
 ```
 
-The app keeps reusable text helpers, todo data, row/card components, and page assembly in separate registered modules. It is intentionally a console executable so the generated HTML can be checked without running a browser or server.
+## Parity — 3 operations across 5 modules, runs
 
-## Build And Run
+Op-count matches the v0.1 source exactly (3 ops: `main`,
+`renderTodoDashboardPage`, `renderTodoListFragment`). The composed project lints
+clean (0 errors / 0 warnings) and JIT-runs:
 
-From the repository root:
+- `main` (src/main.sem) calls `renderTodoDashboardPage` **across modules** and
+  writes the hydrated `HtmlDocument` to stdout.
+- `renderTodoDashboardPage` (todo-pages) calls `renderTodoListFragment`
+  (todo-components) and nests the returned `HtmlFragment` into its page template
+  as a **raw** hole — already-escaped markup is not double-escaped.
+- `renderTodoListFragment` (todo-components) hydrates the fixed three-row list
+  from explicit inputs via `html.render`.
+- The todo-domain row classes are initialized by **aliasing** the shared row
+  classes (cross-module storage initializer, README §12).
 
-```powershell
-python SemanticScript\compiler\semsc.py apps\html-template-lab\build.sem --emit-exe --quiet
-.\apps\html-template-lab\build\html-template-lab.exe
-```
+### semanticscript features this port exercised (each with a no-op-failing test)
 
-Expected output starts with `<!doctype html>` and includes the `TaskForge TUI HTML Template Lab` page title.
+- `html.render` nests `HtmlFragment`/`HtmlTrustedFragment` holes raw (escaping
+  only plain-text holes) — `test_html_render_fragment_hole_inserted_raw`.
+- A module-storage constant may alias another constant's value —
+  `test_cross_module_storage_initializer_resolves`.
 
-## Why This Stays
-
-- It is compact enough to read end to end.
-- It shows the revised inferred-hole model without a separate declared-parameter layer.
-- It exercises multi-module build registration without the noise of HTTP, sqlite, or auth.
+Validated end-to-end by `test_app_html_template_lab_jit_runs` (+ the native-exe
+build test) and the X-047 parity guard.

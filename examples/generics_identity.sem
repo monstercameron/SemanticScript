@@ -1,0 +1,112 @@
+# generics_identity — user-defined generics via monomorphization (R-039). `genId`
+# is one generic operation parameterized by `typeParam T`; each call instantiates
+# it at a concrete type inferred from the arg, and the compiler emits a separate
+# monomorphized clone per instantiation (genId__Int64, genId__Float64) with T
+# substituted — so the same source serves both Int64 and Float64 with correct
+# per-type lowering (i64 vs f64). This exercises:
+#   * two instantiations of one definition (Int64 and Float64);
+#   * reuse of the Int64 instantiation at two call sites (42 and 7);
+#   * real identity, not a constant (genId(42) != genId(7)).
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+GenericsIdentity is project
+GenericsIdentity module examplesGenericsIdentity
+GenericsIdentity target console
+GenericsIdentity entry main
+
+examplesGenericsIdentity is module
+examplesGenericsIdentity path examples.genericsIdentity
+examplesGenericsIdentity exports main
+examplesGenericsIdentity purpose "Instantiate a generic identity op at two types and assert it"
+examplesGenericsIdentity invariant "One definition is monomorphized per concrete type"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+genId is operation
+genId typeParam T
+genId in x T
+genId out T
+genId purpose "Generic identity: returns its argument at any type"
+genId invariant "Monomorphized per concrete instantiation; returns x unchanged"
+genId return x
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Call the generic identity at Int64 (twice) and Float64, then assert"
+main invariant "All four assertions hold"
+main let fortyTwo immutable Int64 42
+main let seven immutable Int64 7
+main let pointFive immutable Float64 3.5
+main let tnInt immutable String "generic genId(42) returns 42 (Int64 instantiation)"
+main let tnInt2 immutable String "generic genId(7) returns 7 (Int64 instantiation reused)"
+main let tnFloat immutable String "generic genId(3.5) returns 3.5 (Float64 instantiation)"
+main let tnReal immutable String "genId is real identity, not a constant (genId(42) != genId(7))"
+main do callA
+main do callB
+main do callF
+main do checkA
+main do checkB
+main do checkF
+main do checkReal
+main do harnessReport
+main return harnessSummaryCode
+
+callA is call
+callA in main
+callA invokes genId
+callA arg x Int64 fortyTwo
+callA out ra Int64
+
+callB is call
+callB in main
+callB invokes genId
+callB arg x Int64 seven
+callB out rb Int64
+
+callF is call
+callF in main
+callF invokes genId
+callF arg x Float64 pointFive
+callF out rf Float64
+
+checkA is call
+checkA in main
+checkA invokes test.assertEqualInt64
+checkA arg name String tnInt
+checkA arg expected Int64 fortyTwo
+checkA arg actual Int64 ra
+
+checkB is call
+checkB in main
+checkB invokes test.assertEqualInt64
+checkB arg name String tnInt2
+checkB arg expected Int64 seven
+checkB arg actual Int64 rb
+
+checkF is call
+checkF in main
+checkF invokes test.assertEqualFloat64
+checkF arg name String tnFloat
+checkF arg expected Float64 pointFive
+checkF arg actual Float64 rf
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 ra
+checkReal arg actual Int64 rb
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

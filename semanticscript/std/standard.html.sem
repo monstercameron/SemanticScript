@@ -1,0 +1,18 @@
+# standard.html (render) — EAV-native HTML rendering over the runtime.
+#
+# §16's htmlTemplate `{{hole}}` rendering needs a named-data model EAV does not
+# yet have (deferred), so the running form (X-011 migration direction) renders by
+# composing escaped values with string.concat. `escapeText` binds the runtime's
+# context-aware HTML escaper (ss_http_html_escape_str) through the runtimeBinding
+# seam — the compiler stays domain-agnostic.
+
+standardHtmlRender is module
+standardHtmlRender path standard.html
+standardHtmlRender purpose "HTML escaping + string-composed rendering over the runtime"
+standardHtmlRender invariant "Dynamic values are escaped before composition; assembly uses string.concat"
+
+escapeText is operation
+escapeText in text String
+escapeText out String
+escapeText body runtimeBinding ss_http_html_escape_str
+escapeText purpose "Escape text for safe interpolation into HTML element/attribute content"

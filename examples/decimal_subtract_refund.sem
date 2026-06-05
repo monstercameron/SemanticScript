@@ -1,0 +1,74 @@
+# decimal_subtract_refund — exact money subtraction via Decimal (README §27/§30.5,
+# X-093). Money/Decimal is a scaled Int64 (scale 2: the raw value is amount*100),
+# so a $15.75 charge minus a $5.25 refund leaves $10.50, computed EXACTLY as
+# 1575 - 525 = 1050 with `decimal.subtract` — no binary-float rounding error.
+#
+# Correctness observation: 1575 - 525 == 1050 ($15.75 - $5.25 = $10.50).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+DecimalSubtractRefund is project
+DecimalSubtractRefund module examplesDecimalSubtractRefund
+DecimalSubtractRefund target console
+DecimalSubtractRefund entry main
+
+examplesDecimalSubtractRefund is module
+examplesDecimalSubtractRefund path examples.decimalSubtractRefund
+examplesDecimalSubtractRefund exports main
+examplesDecimalSubtractRefund purpose "Subtract a refund from a charge exactly with Decimal"
+examplesDecimalSubtractRefund invariant "Scaled-integer money subtracts without float error"
+
+ExitCode is alias
+ExitCode for Int32
+
+Decimal is alias
+Decimal for Int64
+Decimal purpose "Fixed-scale money: the raw Int64 is the amount * 100 (scale 2)"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute $15.75 - $5.25 exactly and assert $10.50"
+main invariant "Writes the test harness summary"
+main let charge immutable Decimal 1575
+main let refund immutable Decimal 525
+main let harnessName immutable String "decimal_subtract_refund"
+main let harnessExpected immutable Decimal 1050
+main let noopDecoy immutable Decimal 0
+main let noopName immutable String "decimal_subtract_refund: real remainder (not the no-op 0)"
+main do subtractRefund
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+subtractRefund is call
+subtractRefund in main
+subtractRefund invokes decimal.subtract
+subtractRefund arg left Decimal charge
+subtractRefund arg right Decimal refund
+subtractRefund out remaining Decimal
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 remaining
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 remaining
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

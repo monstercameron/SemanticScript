@@ -1,0 +1,236 @@
+# standard.sqlite — EAV-native binding to the vendored SQLite engine.
+#
+# Parity surface with the original semsc.py `standard.sqlite`, but expressed the
+# EAV way: there is NO sqlite knowledge in the compiler. Each operation is a
+# `body runtimeBinding <symbol>` over the ss_sqlite_* C ABI (runtime/ss_sqlite.c,
+# a thin return-value shim on SemanticScript/runtime/native_sqlite over
+# third_party/sqlite). The compiler lowers each op to an extern call to that
+# symbol; this module owns the typed contract (README ss11/ss26/ss34).
+#
+# Handles (SqliteDatabase, SqliteStatement) are OpaquePointer and lower as native
+# pointer handles. Strings returned by the ss_sqlite shim are copied before
+# crossing the EAV boundary, so columnText/columnName/errorMessage results
+# survive later statement steps and helper/module returns.
+
+standardSqlite is module
+standardSqlite path standard.sqlite
+standardSqlite purpose "Typed EAV contract over the vendored SQLite engine via the ss_sqlite_* runtime ABI"
+standardSqlite invariant "Every operation is a runtimeBinding to an ss_sqlite_* symbol; no sqlite logic lives in the compiler"
+
+SqliteDatabase is alias
+SqliteDatabase for OpaquePointer
+SqliteDatabase purpose "Opaque database handle from openDatabase, released by closeDatabase"
+
+SqliteStatement is alias
+SqliteStatement for OpaquePointer
+SqliteStatement purpose "Opaque prepared-statement handle from prepareStatement, released by finalizeStatement"
+
+SqlText is alias
+SqlText for String
+SqlText purpose "Null-terminated SQL source; dynamic values use ? placeholders plus bind* rows"
+
+SqliteText is alias
+SqliteText for String
+SqliteText purpose "Copied sqlite text returned by columnText/columnName/errorMessage"
+
+SqliteStepResult is enum
+SqliteStepResult variant rowStep
+SqliteStepResult variant doneStep
+SqliteStepResult repr rowStep 100
+SqliteStepResult repr doneStep 101
+SqliteStepResult purpose "stepStatement outcome: a row is available (100) or iteration finished (101)"
+
+SqliteColumnType is enum
+SqliteColumnType variant integerColumn
+SqliteColumnType variant floatColumn
+SqliteColumnType variant textColumn
+SqliteColumnType variant blobColumn
+SqliteColumnType variant nullColumn
+SqliteColumnType repr integerColumn 1
+SqliteColumnType repr floatColumn 2
+SqliteColumnType repr textColumn 3
+SqliteColumnType repr blobColumn 4
+SqliteColumnType repr nullColumn 5
+SqliteColumnType purpose "Column value class returned by columnType, aligned with SQLITE_INTEGER..NULL"
+
+openDatabase is operation
+openDatabase in path String
+openDatabase out SqliteDatabase
+openDatabase body runtimeBinding ss_sqlite_open
+openDatabase purpose "Open (creating if needed) a read-write database file; returns a null handle on failure"
+
+openInMemory is operation
+openInMemory out SqliteDatabase
+openInMemory body runtimeBinding ss_sqlite_open_memory
+openInMemory purpose "Open an anonymous in-memory database; returns a null handle on failure"
+
+closeDatabase is operation
+closeDatabase in database SqliteDatabase
+closeDatabase out Int32
+closeDatabase body runtimeBinding ss_sqlite_close
+closeDatabase purpose "Close a database handle; returns 0 on success, an error code if statements remain"
+
+errorMessage is operation
+errorMessage in database SqliteDatabase
+errorMessage out SqliteText
+errorMessage body runtimeBinding ss_sqlite_errmsg
+errorMessage purpose "Human-readable detail of the last failure on the database"
+
+lastInsertRowId is operation
+lastInsertRowId in database SqliteDatabase
+lastInsertRowId out Int64
+lastInsertRowId body runtimeBinding ss_sqlite_last_insert_rowid
+lastInsertRowId purpose "Row id of the most recent successful INSERT on the connection"
+
+changedRowCount is operation
+changedRowCount in database SqliteDatabase
+changedRowCount out Int32
+changedRowCount body runtimeBinding ss_sqlite_changes
+changedRowCount purpose "Number of rows changed by the most recent INSERT/UPDATE/DELETE"
+
+enableWalMode is operation
+enableWalMode in database SqliteDatabase
+enableWalMode out Int32
+enableWalMode body runtimeBinding ss_sqlite_enable_wal
+enableWalMode purpose "Switch the database journal to write-ahead logging; returns 0 on success"
+
+exec is operation
+exec in database SqliteDatabase
+exec in sql String
+exec out Int32
+exec body runtimeBinding ss_sqlite_exec
+exec purpose "Run one-shot parameterless SQL (CREATE/INSERT literals/PRAGMA); returns 0 on success"
+
+queryScalarInt64 is operation
+queryScalarInt64 in database SqliteDatabase
+queryScalarInt64 in sql String
+queryScalarInt64 out Int64
+queryScalarInt64 body runtimeBinding ss_sqlite_query_scalar
+queryScalarInt64 purpose "Read a single Int64 from column 0 of a parameterless query (COUNT(*)/EXISTS)"
+
+beginImmediateTransaction is operation
+beginImmediateTransaction in database SqliteDatabase
+beginImmediateTransaction out Int32
+beginImmediateTransaction body runtimeBinding ss_sqlite_begin_immediate
+beginImmediateTransaction purpose "Open an IMMEDIATE write transaction; returns 0 on success"
+
+commitTransaction is operation
+commitTransaction in database SqliteDatabase
+commitTransaction out Int32
+commitTransaction body runtimeBinding ss_sqlite_commit
+commitTransaction purpose "Commit the current transaction; returns 0 on success"
+
+rollbackTransaction is operation
+rollbackTransaction in database SqliteDatabase
+rollbackTransaction out Int32
+rollbackTransaction body runtimeBinding ss_sqlite_rollback
+rollbackTransaction purpose "Roll back the current transaction; returns 0 on success"
+
+prepareStatement is operation
+prepareStatement in database SqliteDatabase
+prepareStatement in sql String
+prepareStatement out SqliteStatement
+prepareStatement body runtimeBinding ss_sqlite_prepare
+prepareStatement purpose "Compile SQL into a reusable prepared statement; returns a null handle on failure"
+
+finalizeStatement is operation
+finalizeStatement in statement SqliteStatement
+finalizeStatement out Int32
+finalizeStatement body runtimeBinding ss_sqlite_finalize
+finalizeStatement purpose "Release a prepared statement; returns 0 on success"
+
+resetStatement is operation
+resetStatement in statement SqliteStatement
+resetStatement out Int32
+resetStatement body runtimeBinding ss_sqlite_reset
+resetStatement purpose "Reset a prepared statement for re-execution; returns 0 on success"
+
+stepStatement is operation
+stepStatement in statement SqliteStatement
+stepStatement out Int32
+stepStatement body runtimeBinding ss_sqlite_step
+stepStatement purpose "Advance a prepared statement; returns 100 when a row is ready, 101 when done"
+
+bindInt64 is operation
+bindInt64 in statement SqliteStatement
+bindInt64 in parameterIndex Int32
+bindInt64 in value Int64
+bindInt64 out Int32
+bindInt64 body runtimeBinding ss_sqlite_bind_int64
+bindInt64 purpose "Bind an Int64 to a 1-based statement parameter; returns 0 on success"
+
+bindDouble is operation
+bindDouble in statement SqliteStatement
+bindDouble in parameterIndex Int32
+bindDouble in value Float64
+bindDouble out Int32
+bindDouble body runtimeBinding ss_sqlite_bind_double
+bindDouble purpose "Bind a Float64 to a 1-based statement parameter; returns 0 on success"
+
+bindText is operation
+bindText in statement SqliteStatement
+bindText in parameterIndex Int32
+bindText in value String
+bindText out Int32
+bindText body runtimeBinding ss_sqlite_bind_text
+bindText purpose "Bind a copied String to a 1-based statement parameter; returns 0 on success"
+
+bindNull is operation
+bindNull in statement SqliteStatement
+bindNull in parameterIndex Int32
+bindNull out Int32
+bindNull body runtimeBinding ss_sqlite_bind_null
+bindNull purpose "Bind NULL to a 1-based statement parameter; returns 0 on success"
+
+columnCount is operation
+columnCount in statement SqliteStatement
+columnCount out Int32
+columnCount body runtimeBinding ss_sqlite_column_count
+columnCount purpose "Number of result columns in the current row"
+
+columnType is operation
+columnType in statement SqliteStatement
+columnType in columnIndex Int32
+columnType out Int32
+columnType body runtimeBinding ss_sqlite_column_type
+columnType purpose "Value class (SqliteColumnType repr) of a 0-based result column"
+
+columnName is operation
+columnName in statement SqliteStatement
+columnName in columnIndex Int32
+columnName out SqliteText
+columnName body runtimeBinding ss_sqlite_column_name
+columnName purpose "Declared name of a 0-based result column"
+
+columnInt64 is operation
+columnInt64 in statement SqliteStatement
+columnInt64 in columnIndex Int32
+columnInt64 out Int64
+columnInt64 body runtimeBinding ss_sqlite_column_int64
+columnInt64 purpose "Read a 0-based result column as Int64"
+
+columnDouble is operation
+columnDouble in statement SqliteStatement
+columnDouble in columnIndex Int32
+columnDouble out Float64
+columnDouble body runtimeBinding ss_sqlite_column_double
+columnDouble purpose "Read a 0-based result column as Float64"
+
+columnText is operation
+columnText in statement SqliteStatement
+columnText in columnIndex Int32
+columnText out SqliteText
+columnText body runtimeBinding ss_sqlite_column_text
+columnText purpose "Read a copied 0-based result column as text"
+
+columnByteCount is operation
+columnByteCount in statement SqliteStatement
+columnByteCount in columnIndex Int32
+columnByteCount out Int64
+columnByteCount body runtimeBinding ss_sqlite_column_bytes
+columnByteCount purpose "Byte length of a 0-based text/blob result column"
+
+libraryVersion is operation
+libraryVersion out SqliteText
+libraryVersion body runtimeBinding ss_sqlite_library_version
+libraryVersion purpose "The linked SQLite engine version string, e.g. 3.45.3"

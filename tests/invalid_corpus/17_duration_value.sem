@@ -1,0 +1,2 @@
+main is operation
+main let d immutable Duration 50ms

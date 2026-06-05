@@ -1,0 +1,70 @@
+# overflow — signed Int64 addition wraps two's-complement (README ss10.6).
+# Expected output: -9223372036854775808
+# INT64_MAX + 1 == INT64_MIN (-9223372036854775808). Proves the backend `add`
+# wraps rather than saturating or trapping. (todos WS1-090)
+
+Overflow is project
+Overflow module examplesOverflow
+Overflow target console
+Overflow entry main
+
+examplesOverflow is module
+examplesOverflow path examples.overflow
+examplesOverflow exports main
+examplesOverflow purpose "Show two's-complement wraparound on Int64 addition"
+examplesOverflow invariant "Prints INT64_MIN, the wrapped result of INT64_MAX + 1"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Add one to the maximum Int64 and print the wrapped result"
+main invariant "Output is INT64_MIN, demonstrating wraparound"
+main let intMax immutable Int64 9223372036854775807
+main let one immutable Int64 1
+main let harnessName immutable String "overflow"
+main let harnessExpected immutable Int64 -9223372036854775808
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "overflow: real result (not the no-op 0)"
+main do wrapCall
+main do writeWrapped
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+wrapCall is call
+wrapCall in main
+wrapCall invokes math.addInt64
+wrapCall arg left Int64 intMax
+wrapCall arg right Int64 one
+wrapCall out wrapped Int64
+
+writeWrapped is call
+writeWrapped in main
+writeWrapped invokes test.assertEqualInt64
+writeWrapped arg name String harnessName
+writeWrapped arg expected Int64 harnessExpected
+writeWrapped arg actual Int64 wrapped
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 wrapped
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

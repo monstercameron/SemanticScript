@@ -1,0 +1,50 @@
+# standard.list.semsig — generated signature sidecar (README ss26, ss27).
+# DEFERRED collections: List is an opaque stdlib handle; element storage +
+# iteration runtime land with the collections gap. Parity now is this contract
+# + the pure length/capacity predicates (std/standard.list.sem). (todos WS3-105)
+
+listSig is semsig
+listSig version "1.0"
+listSig generatedBy "semanticscript 0.1"
+listSig describes standard.list
+
+ListHandle is alias
+ListHandle for OpaquePointer
+ListHandle purpose "An opaque list handle (planned form: List of T), released by listRelease"
+
+ListError is error
+ListError purpose "Represent allocation / out-of-bounds list failures"
+
+listCreate is intrinsic
+listCreate target list.create
+listCreate out list ListHandle
+listCreate catch ListError
+listCreate owns list cleanedBy list.release
+listCreate purpose "Create an empty list handle"
+
+listAppend is intrinsic
+listAppend target list.append
+listAppend arg list ListHandle
+listAppend arg value Int64
+listAppend out appended Int32
+listAppend purpose "Append an element to a list"
+
+listGet is intrinsic
+listGet target list.get
+listGet arg list ListHandle
+listGet arg index Int64
+listGet out value Int64
+listGet catch ListError
+listGet purpose "Read the element at a 0-based index"
+
+listLength is intrinsic
+listLength target list.length
+listLength arg list ListHandle
+listLength out length Int64
+listLength purpose "Number of elements in the list"
+
+listRelease is intrinsic
+listRelease target list.release
+listRelease arg list ListHandle
+listRelease out released Int32
+listRelease purpose "Release a list handle"

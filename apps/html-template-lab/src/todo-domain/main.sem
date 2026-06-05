@@ -1,0 +1,32 @@
+# html-template-lab/todo-domain — EAV port (apps/html-template-lab/modules/todo-domain).
+#
+# Demo todo domain copy shaped after app.todo's active-todo concepts: static
+# titles, status labels, and row classes used by page assembly as component
+# inputs. Each row preserves the title + done/open idea but stays immutable for
+# deterministic demo output. The class-name constants alias the shared row
+# classes (cross-module storage initializer, README ss12).
+
+appHtmlTemplateLabTodoDomain is module
+appHtmlTemplateLabTodoDomain path apps.htmlTemplateLab.todoDomain
+appHtmlTemplateLabTodoDomain imports shared apps.htmlTemplateLab.shared
+appHtmlTemplateLabTodoDomain exports firstTodoTitleText
+appHtmlTemplateLabTodoDomain exports firstTodoStatusText
+appHtmlTemplateLabTodoDomain exports firstTodoClassName
+appHtmlTemplateLabTodoDomain exports secondTodoTitleText
+appHtmlTemplateLabTodoDomain exports secondTodoStatusText
+appHtmlTemplateLabTodoDomain exports secondTodoClassName
+appHtmlTemplateLabTodoDomain exports thirdTodoTitleText
+appHtmlTemplateLabTodoDomain exports thirdTodoStatusText
+appHtmlTemplateLabTodoDomain exports thirdTodoClassName
+appHtmlTemplateLabTodoDomain purpose "Demo todo domain copy (titles, statuses, row classes) for page assembly"
+appHtmlTemplateLabTodoDomain invariant "Todo rows preserve title plus done/open state but stay immutable for deterministic output"
+
+firstTodoTitleText is storage module immutable String "Wire native webserver"
+firstTodoStatusText is storage module immutable String "done"
+firstTodoClassName is storage module immutable String doneTodoClassName
+secondTodoTitleText is storage module immutable String "Split HTML rendering into modules"
+secondTodoStatusText is storage module immutable String "open"
+secondTodoClassName is storage module immutable String openTodoClassName
+thirdTodoTitleText is storage module immutable String "Keep template inputs explicit"
+thirdTodoStatusText is storage module immutable String "open"
+thirdTodoClassName is storage module immutable String openTodoClassName

@@ -1,0 +1,651 @@
+# TaskCrud — a full-CRUD web server in EAV-Steps v0.3 (shape demo).
+#
+# Purpose: exercise the canonical EAV shape end to end so we can fine-tune it.
+# Object: a Task (id, title, status) stored in sqlite.
+#
+# Notes on v0.3 constraints this demo deliberately surfaces:
+#   - Route params (`/tasks/:id`) are deferred (§27): routes are exact-match and
+#     the id/title arrive in the request body as plain text (body-as-value).
+#   - Collections are deferred (§27): listing uses the sqlite step-loop interim
+#     (prepare → step → column → goto), accumulating a plain-text String.
+#   - JSON codec is external/deferred (§16/§27): responses are text/plain.
+#   - Project/module/server rows are inlined here (like the §18/§19 worked
+#     examples); in a real project they live in build.sem (§28).
+#   - sqlite.* / http.* / convert.* / string.* are assumed standard-library
+#     targets; their exact signatures live in their .semsig (§26). The `?`
+#     placeholders in the SqlText islands bind positionally to the executing
+#     call's parameter args (§16).
+
+# == project + module ==
+
+TaskCrud is project
+TaskCrud module taskCrud
+TaskCrud target webServer
+TaskCrud entry taskServer
+
+taskCrud is module
+taskCrud path app.taskCrud
+taskCrud imports sqlite standard.sqlite
+taskCrud imports http standard.http
+taskCrud imports convert standard.convert
+taskCrud imports string standard.string
+taskCrud exports taskServer
+taskCrud purpose "Serve full CRUD over Task objects backed by sqlite"
+taskCrud invariant "Every database access goes through the databaseAccess capability"
+taskCrud invariant "Every handler returns 0 on success and writes a status response on every path"
+
+# == capabilities ==
+
+databaseAccess is capability
+databaseAccess grants readWrite database
+databaseAccess purpose "Allow read and write access to the task database"
+databaseAccess invariant "Only grants access to the task database resource"
+
+responseWriter is capability
+responseWriter grants write http.response
+responseWriter purpose "Allow writing HTTP responses to clients"
+
+# == types (schema context; runtime dataflow stays scalar, §10/§16) ==
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process/handler exit status: 0 success, non-zero failure"
+
+TaskStatus is enum
+TaskStatus variant open
+TaskStatus variant done
+TaskStatus purpose "Lifecycle state of a task"
+
+Task is record
+Task field id Int64
+Task field title String
+Task field status TaskStatus
+Task purpose "A single work item; schema for the tasks table"
+
+# == SQL islands (module storage, §12/§16; ? binds positionally, §16) ==
+
+schemaSql is storage
+schemaSql scope module
+schemaSql type SqlText
+schemaSql mutability immutable
+schemaSql purpose "Create the tasks table if absent"
+schemaSql body sql
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL
+    )
+
+createTaskSql is storage
+createTaskSql scope module
+createTaskSql type SqlText
+createTaskSql mutability immutable
+createTaskSql purpose "Insert a new open task; ? binds the title"
+createTaskSql body sql
+    INSERT INTO tasks (title, status) VALUES (?, 'open')
+
+listTasksSql is storage
+listTasksSql scope module
+listTasksSql type SqlText
+listTasksSql mutability immutable
+listTasksSql purpose "Select all tasks ordered by id"
+listTasksSql body sql
+    SELECT id, title, status FROM tasks ORDER BY id
+
+markDoneSql is storage
+markDoneSql scope module
+markDoneSql type SqlText
+markDoneSql mutability immutable
+markDoneSql purpose "Mark a task done by id; ? binds the id"
+markDoneSql body sql
+    UPDATE tasks SET status = 'done' WHERE id = ?
+
+deleteTaskSql is storage
+deleteTaskSql scope module
+deleteTaskSql type SqlText
+deleteTaskSql mutability immutable
+deleteTaskSql purpose "Delete a task by id; ? binds the id"
+deleteTaskSql body sql
+    DELETE FROM tasks WHERE id = ?
+
+# == web server ==
+
+taskServer is webServer
+taskServer host "127.0.0.1"
+taskServer port 8080
+taskServer startup startupHandler
+taskServer shutdown shutdownHandler
+taskServer notFound notFoundHandler
+taskServer route POST "/tasks" createTaskHandler
+taskServer route GET "/tasks" listTasksHandler
+taskServer route POST "/tasks/done" markDoneHandler
+taskServer route POST "/tasks/delete" deleteTaskHandler
+taskServer purpose "Route CRUD requests to their handlers (exact-match routes only)"
+
+# == startup: create the schema ==
+
+databasePath is storage module immutable String "tasks.db"
+textType is storage module immutable HttpContentType "text/plain; charset=utf-8"
+okStatus is storage module immutable HttpStatusCode 200
+
+startupHandler is operation
+startupHandler in serverContext ServerContext
+startupHandler out ExitCode
+startupHandler effect readWrite database
+startupHandler uses databaseAccess
+startupHandler memory heap no
+startupHandler async no
+startupHandler purpose "Open the database and ensure the tasks table exists"
+startupHandler invariant "Returns 0 only after the schema is created; non-zero halts startup"
+startupHandler let okCode immutable ExitCode 0
+startupHandler let failCode immutable ExitCode 1
+startupHandler do openStartupDb
+startupHandler branch ifError openStartupDb goto startupFailed
+startupHandler defer closeStartupDbCleanup
+startupHandler do createSchema
+startupHandler branch ifError createSchema goto startupFailed
+startupHandler return okCode
+startupHandler at startupFailed return failCode
+
+openStartupDb is call
+openStartupDb in startupHandler
+openStartupDb invokes sqlite.openDatabase
+openStartupDb arg path String databasePath
+openStartupDb arg mode SqliteOpenMode readWriteCreate
+openStartupDb out db SqliteDatabase
+openStartupDb catch openErr SqliteDatabaseOpenFailure
+openStartupDb owns db
+openStartupDb cleanedBy closeStartupDbCleanup
+
+closeStartupDbCleanup is cleanup
+closeStartupDbCleanup in startupHandler
+closeStartupDbCleanup call closeStartupDb
+closeStartupDbCleanup onFailure logAndSuppress
+closeStartupDbCleanup because "startup database handle must close even if schema creation fails"
+closeStartupDbCleanup cleans db
+
+closeStartupDb is call
+closeStartupDb in startupHandler
+closeStartupDb invokes sqlite.closeDatabase
+closeStartupDb arg database SqliteDatabase db
+closeStartupDb catch closeErr SqliteDatabaseCloseFailure
+
+createSchema is call
+createSchema in startupHandler
+createSchema invokes sqlite.execute
+createSchema arg database SqliteDatabase db
+createSchema arg sql SqlText schemaSql
+createSchema catch schemaErr SqliteQueryFailure
+
+# == shutdown: nothing to release (handlers own their own connections) ==
+
+shutdownHandler is operation
+shutdownHandler in serverContext ServerContext
+shutdownHandler out ExitCode
+shutdownHandler memory heap no
+shutdownHandler async no
+shutdownHandler purpose "Clean shutdown; per-request connections are already closed"
+shutdownHandler invariant "Always returns 0"
+shutdownHandler let okCode immutable ExitCode 0
+shutdownHandler return okCode
+
+# == not found ==
+
+notFoundHandler is operation
+notFoundHandler in request HttpRequest
+notFoundHandler in response HttpResponse
+notFoundHandler out Int32
+notFoundHandler effect write http.response
+notFoundHandler uses responseWriter
+notFoundHandler memory heap no
+notFoundHandler async no
+notFoundHandler purpose "Write a 404 plain-text response for unmatched routes"
+notFoundHandler invariant "Always writes a 404 status"
+notFoundHandler let notFoundStatus immutable HttpStatusCode 404
+notFoundHandler let notFoundBody immutable HttpTextBody "Not Found"
+notFoundHandler let okCode immutable Int32 0
+notFoundHandler do writeNotFound
+notFoundHandler return okCode
+
+writeNotFound is call
+writeNotFound in notFoundHandler
+writeNotFound invokes http.responseText
+writeNotFound arg response HttpResponse response
+writeNotFound arg status HttpStatusCode notFoundStatus
+writeNotFound arg body HttpTextBody notFoundBody
+writeNotFound arg contentType HttpContentType textType
+writeNotFound discards "response-write status intentionally unused in this demo"
+
+# == shared 500 helper (invoked by every handler's failure label) ==
+
+writeServerError is operation
+writeServerError in response HttpResponse
+writeServerError out Int32
+writeServerError effect write http.response
+writeServerError uses responseWriter
+writeServerError memory heap no
+writeServerError async no
+writeServerError purpose "Write a 500 Internal Server Error plain-text response"
+writeServerError invariant "Always writes a 500 status and returns the write result"
+writeServerError let failStatus immutable HttpStatusCode 500
+writeServerError let errorBody immutable HttpTextBody "Internal Server Error"
+writeServerError do writeFail
+writeServerError return writeFailResult
+
+writeFail is call
+writeFail in writeServerError
+writeFail invokes http.responseText
+writeFail arg response HttpResponse response
+writeFail arg status HttpStatusCode failStatus
+writeFail arg body HttpTextBody errorBody
+writeFail arg contentType HttpContentType textType
+writeFail out writeFailResult Int32
+
+# == CREATE: POST /tasks  (body = title) ==
+
+createTaskHandler is operation
+createTaskHandler in request HttpRequest
+createTaskHandler in response HttpResponse
+createTaskHandler out Int32
+createTaskHandler effect readWrite database
+createTaskHandler effect write http.response
+createTaskHandler uses databaseAccess
+createTaskHandler uses responseWriter
+createTaskHandler memory heap no
+createTaskHandler async no
+createTaskHandler purpose "Create a task from the request body and return its new id"
+createTaskHandler invariant "Responds 201 with the new id on success, 500 on any failure"
+createTaskHandler let createdStatus immutable HttpStatusCode 201
+createTaskHandler let createdPrefix immutable String "created task #"
+createTaskHandler let okCode immutable Int32 0
+createTaskHandler do readTitle
+createTaskHandler do openCreateDb
+createTaskHandler branch ifError openCreateDb goto createFailed
+createTaskHandler defer closeCreateDbCleanup
+createTaskHandler do insertTask
+createTaskHandler branch ifError insertTask goto createFailed
+createTaskHandler do readNewId
+createTaskHandler do formatNewId
+createTaskHandler branch ifError formatNewId goto createFailed
+createTaskHandler do buildCreatedBody
+createTaskHandler do writeCreated
+createTaskHandler return okCode
+createTaskHandler at createFailed do reportCreateError
+createTaskHandler return createErrorResult
+
+readTitle is call
+readTitle in createTaskHandler
+readTitle invokes http.bodyText
+readTitle arg request HttpRequest request
+readTitle out titleText String
+
+openCreateDb is call
+openCreateDb in createTaskHandler
+openCreateDb invokes sqlite.openDatabase
+openCreateDb arg path String databasePath
+openCreateDb arg mode SqliteOpenMode readWriteCreate
+openCreateDb out db SqliteDatabase
+openCreateDb catch openErr SqliteDatabaseOpenFailure
+openCreateDb owns db
+openCreateDb cleanedBy closeCreateDbCleanup
+
+closeCreateDbCleanup is cleanup
+closeCreateDbCleanup in createTaskHandler
+closeCreateDbCleanup call closeCreateDb
+closeCreateDbCleanup onFailure logAndSuppress
+closeCreateDbCleanup because "request database handle must close on every exit path"
+closeCreateDbCleanup cleans db
+
+closeCreateDb is call
+closeCreateDb in createTaskHandler
+closeCreateDb invokes sqlite.closeDatabase
+closeCreateDb arg database SqliteDatabase db
+closeCreateDb catch closeErr SqliteDatabaseCloseFailure
+
+insertTask is call
+insertTask in createTaskHandler
+insertTask invokes sqlite.execute
+insertTask arg database SqliteDatabase db
+insertTask arg sql SqlText createTaskSql
+insertTask arg title String titleText
+insertTask catch insertErr SqliteQueryFailure
+
+readNewId is call
+readNewId in createTaskHandler
+readNewId invokes sqlite.lastInsertRowId
+readNewId arg database SqliteDatabase db
+readNewId out newId Int64
+
+formatNewId is call
+formatNewId in createTaskHandler
+formatNewId invokes convert.convertSignedInt64ToString
+formatNewId arg inputValue Int64 newId
+formatNewId out newIdText String
+formatNewId catch formatErr ConversionError
+
+buildCreatedBody is call
+buildCreatedBody in createTaskHandler
+buildCreatedBody invokes string.concat
+buildCreatedBody arg left String createdPrefix
+buildCreatedBody arg right String newIdText
+buildCreatedBody out createdBody String
+
+writeCreated is call
+writeCreated in createTaskHandler
+writeCreated invokes http.responseText
+writeCreated arg response HttpResponse response
+writeCreated arg status HttpStatusCode createdStatus
+writeCreated arg body HttpTextBody createdBody
+writeCreated arg contentType HttpContentType textType
+writeCreated discards "response-write status intentionally unused in this demo"
+
+reportCreateError is call
+reportCreateError in createTaskHandler
+reportCreateError invokes writeServerError
+reportCreateError arg response HttpResponse response
+reportCreateError out createErrorResult Int32
+
+# == READ (list): GET /tasks  (step-loop over rows, §16 interim) ==
+
+listTasksHandler is operation
+listTasksHandler in request HttpRequest
+listTasksHandler in response HttpResponse
+listTasksHandler out Int32
+listTasksHandler effect readWrite database
+listTasksHandler effect write http.response
+listTasksHandler uses databaseAccess
+listTasksHandler uses responseWriter
+listTasksHandler memory heap no
+listTasksHandler async no
+listTasksHandler purpose "List every task title as a plain-text body"
+listTasksHandler invariant "Responds 200 with one title per line on success, 500 on any failure"
+listTasksHandler invariant "Finalizes the statement before closing the database (reverse-order cleanup)"
+listTasksHandler let newlineText immutable String "\n"
+listTasksHandler let okCode immutable Int32 0
+listTasksHandler let responseAccumulator mutable String "tasks:\n"
+listTasksHandler do openListDb
+listTasksHandler branch ifError openListDb goto listFailed
+listTasksHandler defer closeListDbCleanup
+listTasksHandler do queryTasks
+listTasksHandler branch ifError queryTasks goto listFailed
+listTasksHandler defer finalizeStmtCleanup
+listTasksHandler at listLoop do stepRow
+listTasksHandler branch ifError stepRow goto listFailed
+listTasksHandler do rowIsAvailable
+listTasksHandler branch ifFalse hasRow goto listDone
+listTasksHandler do readRowTitle
+listTasksHandler do buildRowLine
+listTasksHandler do appendRowLine
+listTasksHandler goto listLoop
+listTasksHandler at listDone do writeList
+listTasksHandler return okCode
+listTasksHandler at listFailed do reportListError
+listTasksHandler return listErrorResult
+
+openListDb is call
+openListDb in listTasksHandler
+openListDb invokes sqlite.openDatabase
+openListDb arg path String databasePath
+openListDb arg mode SqliteOpenMode readWriteCreate
+openListDb out db SqliteDatabase
+openListDb catch openErr SqliteDatabaseOpenFailure
+openListDb owns db
+openListDb cleanedBy closeListDbCleanup
+
+closeListDbCleanup is cleanup
+closeListDbCleanup in listTasksHandler
+closeListDbCleanup call closeListDb
+closeListDbCleanup onFailure logAndSuppress
+closeListDbCleanup because "request database handle must close on every exit path"
+closeListDbCleanup cleans db
+
+closeListDb is call
+closeListDb in listTasksHandler
+closeListDb invokes sqlite.closeDatabase
+closeListDb arg database SqliteDatabase db
+closeListDb catch closeErr SqliteDatabaseCloseFailure
+
+queryTasks is call
+queryTasks in listTasksHandler
+queryTasks invokes sqlite.query
+queryTasks arg database SqliteDatabase db
+queryTasks arg sql SqlText listTasksSql
+queryTasks out statement SqliteStatement
+queryTasks catch queryErr SqliteQueryFailure
+queryTasks owns statement
+queryTasks cleanedBy finalizeStmtCleanup
+
+finalizeStmtCleanup is cleanup
+finalizeStmtCleanup in listTasksHandler
+finalizeStmtCleanup call finalizeStmt
+finalizeStmtCleanup cleans statement
+
+finalizeStmt is call
+finalizeStmt in listTasksHandler
+finalizeStmt invokes sqlite.finalizeStatement
+finalizeStmt arg statement SqliteStatement statement
+
+stepRow is call
+stepRow in listTasksHandler
+stepRow invokes sqlite.step
+stepRow arg statement SqliteStatement statement
+stepRow out stepResult SqliteStepResult
+stepRow catch stepErr SqliteQueryFailure
+
+rowIsAvailable is call
+rowIsAvailable in listTasksHandler
+rowIsAvailable invokes sqlite.stepResultIsRow
+rowIsAvailable arg stepResult SqliteStepResult stepResult
+rowIsAvailable out hasRow Bool
+
+readRowTitle is call
+readRowTitle in listTasksHandler
+readRowTitle invokes sqlite.columnText
+readRowTitle arg statement SqliteStatement statement
+readRowTitle arg index Int32 1
+readRowTitle out rowTitle String
+
+buildRowLine is call
+buildRowLine in listTasksHandler
+buildRowLine invokes string.concat
+buildRowLine arg left String rowTitle
+buildRowLine arg right String newlineText
+buildRowLine out rowLine String
+
+appendRowLine is call
+appendRowLine in listTasksHandler
+appendRowLine invokes string.concat
+appendRowLine arg left String responseAccumulator
+appendRowLine arg right String rowLine
+appendRowLine out responseAccumulator String
+
+writeList is call
+writeList in listTasksHandler
+writeList invokes http.responseText
+writeList arg response HttpResponse response
+writeList arg status HttpStatusCode okStatus
+writeList arg body HttpTextBody responseAccumulator
+writeList arg contentType HttpContentType textType
+writeList discards "response-write status intentionally unused in this demo"
+
+reportListError is call
+reportListError in listTasksHandler
+reportListError invokes writeServerError
+reportListError arg response HttpResponse response
+reportListError out listErrorResult Int32
+
+# == UPDATE: POST /tasks/done  (body = id) ==
+
+markDoneHandler is operation
+markDoneHandler in request HttpRequest
+markDoneHandler in response HttpResponse
+markDoneHandler out Int32
+markDoneHandler effect readWrite database
+markDoneHandler effect write http.response
+markDoneHandler uses databaseAccess
+markDoneHandler uses responseWriter
+markDoneHandler memory heap no
+markDoneHandler async no
+markDoneHandler purpose "Mark the task named by the request body as done"
+markDoneHandler invariant "Responds 200 on success, 500 on any failure (including a non-numeric id)"
+markDoneHandler let doneBody immutable HttpTextBody "task marked done"
+markDoneHandler let okCode immutable Int32 0
+markDoneHandler do readDoneId
+markDoneHandler do parseDoneId
+markDoneHandler branch ifError parseDoneId goto doneFailed
+markDoneHandler do openDoneDb
+markDoneHandler branch ifError openDoneDb goto doneFailed
+markDoneHandler defer closeDoneDbCleanup
+markDoneHandler do updateStatus
+markDoneHandler branch ifError updateStatus goto doneFailed
+markDoneHandler do writeDone
+markDoneHandler return okCode
+markDoneHandler at doneFailed do reportDoneError
+markDoneHandler return doneErrorResult
+
+readDoneId is call
+readDoneId in markDoneHandler
+readDoneId invokes http.bodyText
+readDoneId arg request HttpRequest request
+readDoneId out doneIdText String
+
+parseDoneId is call
+parseDoneId in markDoneHandler
+parseDoneId invokes convert.parseSignedInt64
+parseDoneId arg text String doneIdText
+parseDoneId out doneId Int64
+parseDoneId catch parseErr ConversionError
+
+openDoneDb is call
+openDoneDb in markDoneHandler
+openDoneDb invokes sqlite.openDatabase
+openDoneDb arg path String databasePath
+openDoneDb arg mode SqliteOpenMode readWriteCreate
+openDoneDb out db SqliteDatabase
+openDoneDb catch openErr SqliteDatabaseOpenFailure
+openDoneDb owns db
+openDoneDb cleanedBy closeDoneDbCleanup
+
+closeDoneDbCleanup is cleanup
+closeDoneDbCleanup in markDoneHandler
+closeDoneDbCleanup call closeDoneDb
+closeDoneDbCleanup onFailure logAndSuppress
+closeDoneDbCleanup because "request database handle must close on every exit path"
+closeDoneDbCleanup cleans db
+
+closeDoneDb is call
+closeDoneDb in markDoneHandler
+closeDoneDb invokes sqlite.closeDatabase
+closeDoneDb arg database SqliteDatabase db
+closeDoneDb catch closeErr SqliteDatabaseCloseFailure
+
+updateStatus is call
+updateStatus in markDoneHandler
+updateStatus invokes sqlite.execute
+updateStatus arg database SqliteDatabase db
+updateStatus arg sql SqlText markDoneSql
+updateStatus arg id Int64 doneId
+updateStatus catch updateErr SqliteQueryFailure
+
+writeDone is call
+writeDone in markDoneHandler
+writeDone invokes http.responseText
+writeDone arg response HttpResponse response
+writeDone arg status HttpStatusCode okStatus
+writeDone arg body HttpTextBody doneBody
+writeDone arg contentType HttpContentType textType
+writeDone discards "response-write status intentionally unused in this demo"
+
+reportDoneError is call
+reportDoneError in markDoneHandler
+reportDoneError invokes writeServerError
+reportDoneError arg response HttpResponse response
+reportDoneError out doneErrorResult Int32
+
+# == DELETE: POST /tasks/delete  (body = id) ==
+
+deleteTaskHandler is operation
+deleteTaskHandler in request HttpRequest
+deleteTaskHandler in response HttpResponse
+deleteTaskHandler out Int32
+deleteTaskHandler effect readWrite database
+deleteTaskHandler effect write http.response
+deleteTaskHandler uses databaseAccess
+deleteTaskHandler uses responseWriter
+deleteTaskHandler memory heap no
+deleteTaskHandler async no
+deleteTaskHandler purpose "Delete the task named by the request body"
+deleteTaskHandler invariant "Responds 200 on success, 500 on any failure (including a non-numeric id)"
+deleteTaskHandler let deletedBody immutable HttpTextBody "task deleted"
+deleteTaskHandler let okCode immutable Int32 0
+deleteTaskHandler do readDeleteId
+deleteTaskHandler do parseDeleteId
+deleteTaskHandler branch ifError parseDeleteId goto deleteFailed
+deleteTaskHandler do openDeleteDb
+deleteTaskHandler branch ifError openDeleteDb goto deleteFailed
+deleteTaskHandler defer closeDeleteDbCleanup
+deleteTaskHandler do deleteTask
+deleteTaskHandler branch ifError deleteTask goto deleteFailed
+deleteTaskHandler do writeDeleted
+deleteTaskHandler return okCode
+deleteTaskHandler at deleteFailed do reportDeleteError
+deleteTaskHandler return deleteErrorResult
+
+readDeleteId is call
+readDeleteId in deleteTaskHandler
+readDeleteId invokes http.bodyText
+readDeleteId arg request HttpRequest request
+readDeleteId out deleteIdText String
+
+parseDeleteId is call
+parseDeleteId in deleteTaskHandler
+parseDeleteId invokes convert.parseSignedInt64
+parseDeleteId arg text String deleteIdText
+parseDeleteId out deleteId Int64
+parseDeleteId catch parseErr ConversionError
+
+openDeleteDb is call
+openDeleteDb in deleteTaskHandler
+openDeleteDb invokes sqlite.openDatabase
+openDeleteDb arg path String databasePath
+openDeleteDb arg mode SqliteOpenMode readWriteCreate
+openDeleteDb out db SqliteDatabase
+openDeleteDb catch openErr SqliteDatabaseOpenFailure
+openDeleteDb owns db
+openDeleteDb cleanedBy closeDeleteDbCleanup
+
+closeDeleteDbCleanup is cleanup
+closeDeleteDbCleanup in deleteTaskHandler
+closeDeleteDbCleanup call closeDeleteDb
+closeDeleteDbCleanup onFailure logAndSuppress
+closeDeleteDbCleanup because "request database handle must close on every exit path"
+closeDeleteDbCleanup cleans db
+
+closeDeleteDb is call
+closeDeleteDb in deleteTaskHandler
+closeDeleteDb invokes sqlite.closeDatabase
+closeDeleteDb arg database SqliteDatabase db
+closeDeleteDb catch closeErr SqliteDatabaseCloseFailure
+
+deleteTask is call
+deleteTask in deleteTaskHandler
+deleteTask invokes sqlite.execute
+deleteTask arg database SqliteDatabase db
+deleteTask arg sql SqlText deleteTaskSql
+deleteTask arg id Int64 deleteId
+deleteTask catch deleteErr SqliteQueryFailure
+
+writeDeleted is call
+writeDeleted in deleteTaskHandler
+writeDeleted invokes http.responseText
+writeDeleted arg response HttpResponse response
+writeDeleted arg status HttpStatusCode okStatus
+writeDeleted arg body HttpTextBody deletedBody
+writeDeleted arg contentType HttpContentType textType
+writeDeleted discards "response-write status intentionally unused in this demo"
+
+reportDeleteError is call
+reportDeleteError in deleteTaskHandler
+reportDeleteError invokes writeServerError
+reportDeleteError arg response HttpResponse response
+reportDeleteError out deleteErrorResult Int32

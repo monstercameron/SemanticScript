@@ -1,0 +1,54 @@
+# html-template-lab/main — EAV port (apps/html-template-lab, semsc v0.1 §16 showcase).
+#
+# Console entrypoint for the first-class HTML/SSX demo: render the dashboard page
+# (assembled by the todo-pages module from the shared + todo-domain copy and the
+# todo-components fragment) and print the hydrated HtmlDocument to stdout. The
+# §16 html-template form (htmlTemplate islands + html.render) JIT-runs and builds
+# to a native exe, printing the full hydrated document across the module graph.
+#
+# Multi-module §28.2 port: src/main.sem (this) + src/shared + src/todo-domain +
+# src/todo-components + src/todo-pages, composed by the toolchain (X-040/X-047).
+
+appHtmlTemplateLab is module
+appHtmlTemplateLab path apps.htmlTemplateLab
+appHtmlTemplateLab imports todoPages apps.htmlTemplateLab.todoPages
+appHtmlTemplateLab exports main
+appHtmlTemplateLab purpose "Console entrypoint: render the todo dashboard HTML and print it"
+appHtmlTemplateLab invariant "The entry op attempts exactly one console.writeLine of one fully hydrated HtmlDocument"
+
+ExitCode is alias
+ExitCode for Int32
+
+ConsoleWriteError is error
+ConsoleWriteError purpose "Console write failure"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main memory heap no
+main purpose "Render the enterprise-style todo dashboard HTML and print it to the console"
+main invariant "The rendered HtmlDocument is bound before console.writeLine; write failure returns a non-zero exit code"
+main let okCode immutable ExitCode 0
+main let writeFailedCode immutable ExitCode 1
+main do renderDashboardPage
+main do writeDashboardHtml
+main branch ifError writeDashboardHtml goto writeDashboardHtmlFailed
+main return okCode
+main at writeDashboardHtmlFailed return writeFailedCode
+
+renderDashboardPage is call
+renderDashboardPage in main
+renderDashboardPage invokes renderTodoDashboardPage
+renderDashboardPage out dashboardHtml HtmlDocument
+
+writeDashboardHtml is call
+writeDashboardHtml in main
+writeDashboardHtml invokes console.writeLine
+writeDashboardHtml arg text String dashboardHtml
+writeDashboardHtml catch writeDashboardHtmlError ConsoleWriteError

@@ -1,643 +1,166 @@
 # Changelog
 
-## 2026-05-28
+All notable changes to SemanticScript are recorded here. This file covers the
+restructured `semanticscript/` package era; the detailed dated history from
+before the repository reorganization (the AgentScript → EAV → SemanticScript
+lineage, ~700 commits) lives in [`legacy/CHANGELOG.md`](legacy/CHANGELOG.md).
 
-- Unreleased SemanticScript field-feedback sweep
-  - Adds P5-P8 closure docs for language ergonomics, build-tape/source-module boundaries, template island braces, optimization/runtime limits, testing boundaries, contract stability, and diagnostic-code URLs.
-  - Extends `sem fix --plan` naming codemods to `SS4002` and `SS4003`, adds `sem.version.v1.emittedSchemas`, improves build-tape diagnostics for source-only webServer rows, and verifies focused compiler/linter/CLI/MCP/dependency tests.
+The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
+No versioned releases have been cut yet; the source compatibility contract is
+tracked separately as `CONTRACT_VERSION` (currently `eav-0.3.1`).
 
-## 2026-05-25
+## 0.4.0-beta.1 (unreleased)
 
-- `1b68d606855eeec8ab27938e938630368febb996` - `feat(agent): smooth MCP onboarding workflows`
-  - Expands `sem` and MCP onboarding with richer bootstrap/help flows, agent-facing docs, command-contract coverage, and packaging metadata updates.
-  - Refreshes language and native HTTP docs around role-alias APIs, onboarding guidance, and single-executable/MCP distribution details.
-- `b0ea755e6e55713f5a526017e762ab5ec11c2d01` - `Smooth agent-facing compiler, linter and toolchain edges from DevX feedback`
-  - Improves agent-facing compiler, linter, and `sem` diagnostics, including build integration coverage, console encoding helpers, and native HTTP/runtime documentation refinements.
-  - Adds regression coverage for DevX feedback around feature tests, CLI behavior, semantic diagnostics, and linter precision.
-- `3f06d443d4325c55556e5bbb7537130da7411818` - `feat(eval): zero-setup JIT eval surface (sem eval + MCP eval tool)`
-  - Adds `sem eval` and MCP `eval` so snippets can be auto-wrapped, JIT-compiled, run, timed, and reported through the stable JSON tool surface.
-  - Documents the REPL/eval workflow and adds focused test coverage for stdout/stderr capture, execution status, timing, and compiler/linter notes.
-- `eb718a1db2499526a70216d82e53be298cdbcf4e` - `feat(agent): add MCP bootstrap and getting-started skill (#43)`
-  - Adds MCP bootstrap and getting-started support across `sem`, `sem_mcp`, PyInstaller packaging, release workflows, and command-contract tests.
-  - Introduces `docs/getting-started.md` and refreshes release, toolchain, and agent documentation for first-run MCP setup.
-- `b667c8fde37271475e2a935ed353bd1bdbc058fc` - `Toolchain: stdlib-vs-C benchmarks + SS3208 lint rule + linter precision fixes (#41)`
-  - Adds stdlib-vs-C benchmark pairs for string length, byte hashing, and insertion sort, using production build profiles and more stable best-of-N timing gates.
-  - Adds SS3208 loop-invariant pure-call linting and fixes false positives for dead stores, attached branch-else reachability, SQLite bind hidden failures, and required error bind slots.
-- `f836a30b443bc81953669efb9271ff2ea98925b9` - `feat(wasm): browser/wasm build target + standard.document DOM library (#40)`
-  - Adds a browser/WebAssembly build path through Emscripten, including `tools/build_wasm.py`, wasm retargeting, Asyncify support, and on-demand emsdk setup.
-  - Adds `standard.document` DOM capabilities, JavaScript adapter support, jsdom-backed integration tests, wasm console/compute tests, and toolchain/editor/docs coverage.
-- `ee1f3d439dc72ae2d0cb6a436854a147c18b21c6` - `Add semantic docs API index and search (#38)`
-  - Adds semantic docs API indexing and search surfaces so local API documentation can be indexed, queried, and reused by agent/tooling workflows.
-  - Fixes SQLite handle cleanup for the docs index path.
+### Apps — all seven `apps/` now run end-to-end
 
-## 2026-05-24
+The X-040…047 application ports went from "lints/lowers" to "actually runs",
+each verified by `tests/test_apps.py` (run → assert real behavior, not just a
+clean parse):
 
-- `bfaa16f24f75b83055ec0c3811a6d981e5a8cc45` - `Compile-time security enforcement: arithmetic UB, crypto, injection & hard-coded secrets (#37)`
-  - Adds compiler and linter security enforcement for provable divide/modulo-by-zero, invalid shifts, weak bcrypt cost, insecure PRNGs, non-constant system commands, hard-coded secrets, SQL injection, and format-string injection.
-  - Adds security rule explain/docs coverage, compiler/linter parity tests, clean source-read diagnostics for invalid UTF-8 and unterminated strings, and research notes mapping root causes to enforcement layers.
-- `5b111b460ac13b4d927046314fb137a26390ba8a` - `fix: harden taskforge dev proxy cookies (#36)`
-  - Hardens the TaskForge API client development proxy cookie handling and updates the proxy contract tests and README guidance.
-- `24763a9f8742a6bc172ce5953737cc8311d1a104` - `fix: harden code scanning alert paths (#34)`
-  - Tightens dependency GitHub source validation in the compiler and linter, including owner/repository syntax checks and safer `github.com` source detection.
-  - Hardens the TaskForge development proxy against unsafe origins, path traversal, invalid static path segments, header injection, and unsafe API request targets, with matching compiler/linter/proxy tests.
-- `137cd1ac1da49b43f83e70a521df30fe6ac49195` - `feat(deps): external dependency resolution for SemanticScript (#33)`
-  - Adds external dependency resolution for `build.sem` dependency rows, including `semdeps.py`, `sem.lock` verification, path/local and GitHub/HTTP materialization, offline import resolution through the compiler, and `sem deps sync|verify|list|cache|purge` workflows.
-  - Hardens dependency fetching with GitHub source validation, HTTPS-only redirects, SSRF and archive traversal protections, cache repair flows, network-gated tests, `sem new` scaffold guidance, package-dependency skills, and MCP `deps`/`help` tool integration.
-- `f3f7063ae40d7ce613d883f7fc9307e6962b1f2a` - `Refine GitHub Pages technical design (#24)`
-  - Refines the GitHub Pages site implementation, updating the main React application and stylesheet for the technical project presentation.
-- `b45a66c817bcd66343b5133800b819aa442c8e9a` - `feat(mcp): add MCP server, single-exe packaging, and distribution channels (#32)`
-  - Adds `sem mcp`, a FastMCP-based Model Context Protocol server that exposes stable `sem` JSON surfaces over stdio or streamable HTTP and is bundled into the frozen `sem.exe`.
-  - Adds MCP Desktop Extension, MCP registry, Scoop, and WinGet packaging manifests, release manifest stamping, optional Azure Trusted Signing, scoped mypy/pre-commit tooling, CI tests, and docs for adding MCP tools.
-- `33cf023db22cc1f00f15a6d33b0ffafdd6f6f5cb` - `ci: automate release preparation (#31)`
-  - Adds manual Prepare Release and Publish Release workflows so maintainers can generate version/notes PRs, dispatch CI for bot-created release branches, validate merged release commits, create tags, and invoke the reusable release build.
-  - Extends release tooling, tests, and docs around major/minor/patch version bumps, VS Code package-lock synchronization, curated release notes, previous-tag commit ranges, artifact manifests, and prerelease defaults.
-- `958544cfbf2a9c1dcebf04334d16323273ccf79f` - `chore(deps): bump actions/upload-pages-artifact from 3.0.1 to 5.0.0 (#30)`
-  - Updates the Pages workflow to use `actions/upload-pages-artifact` v5.0.0.
-- `08bdf935eb6de6eb54e9a969b3f9c801cee38454` - `chore(deps): bump actions/checkout from 4 to 6 (#29)`
-  - Updates the CI workflow to use `actions/checkout` v6.
-- `d798f91539ada538af84abe4c958f305d8fd0fca` - `chore(deps): bump github/codeql-action from 3.36.0 to 4.36.0 (#28)`
-  - Updates the CodeQL workflow to use `github/codeql-action` v4.36.0.
-- `6016811158611936a69cb0c31efb801fc65dde96` - `chore(deps): bump actions/setup-python from 5 to 6 (#27)`
-  - Updates the CI workflow to use `actions/setup-python` v6.
-- `256d71a9e8519df21a56bc2f0285113e7ffbab57` - `chore(deps): bump actions/deploy-pages from 4.0.5 to 5.0.0 (#26)`
-  - Updates the Pages workflow to use `actions/deploy-pages` v5.0.0.
-- `5bc5205045d47e9540072f3ffdba7d76694fd4ec` - `chore: harden gitignore artifact coverage (#25)`
-  - Expands `.gitignore` coverage for generated artifacts and local build/test outputs.
-- `859469efd87b826d3126ef103ee5c928c22ccf4d` - `docs: explain binary output size vs C and the Zero sub-10KiB claim (#23)`
-  - Adds a measured binary-size analysis showing SemanticScript output matches equivalent clang C output, Windows MSVC CRT linkage dominates artifact size, and sub-10 KiB numbers come from runtime/target choices rather than LLVM avoidance.
-- `ea2cd61d793eb56d6e4fbfd0482b338e47407744` - `docs: sharpen README review path (#22)`
-  - Refines the README review path so evaluators can find the project pitch, runnable surfaces, release downloads, and deeper technical docs more quickly.
-- `b8c83431c7c3efa8b45e8cdf189fae3c1e825bd3` - `chore: harden remaining workflows and add CodeQL scanning (#21)`
-  - Pins the GitHub Pages workflow actions, scopes Pages and id-token permissions to the deploy job, aligns the Pages Node version with CI, and adds root npm Dependabot coverage.
-  - Adds a SHA-pinned CodeQL workflow covering Python and JavaScript/TypeScript.
-- `0eac7a46707fadd1b4d446d88ce98a9b6ae5f4fe` - `test: full multi-lane + compiler-grade coverage (finds 7 compiler bugs) (#20)`
-  - Adds golden native E2E tests, native parity checks, feature-corpus compile/runtime harnesses, parser fuzzing, syntax-inventory proof mapping, stdlib coverage guards, tooling corpus smoke tests, and ASan/UBSan runtime coverage.
-  - Wires the new lanes into the suite and CI, documents the coverage map and known runtime discrepancies, and fixes clean compiler diagnostics for non-UTF-8 and unterminated-string sources.
-- `81a031e2d062add8525c5b870949e725a9a0ac8a` - `docs: add SemanticScript brand images (#19)`
-  - Adds SemanticScript logo/mascot image assets and surfaces them in the README and GitHub Pages site.
-- `98e457aa0e9cd238713f1d2750f1f4497d9b4f7e` - `docs: refine project pages content (#18)`
-  - Refines the GitHub Pages application content, layout, and styling for the public SemanticScript project site.
-- `198c63562f03c0ae5140e73b6b0ec4c52f7f4855` - `docs: add project site link to readme (#17)`
-  - Adds the hosted project-site link to the root README.
-- `403acbb23e152174240e35519c4e40f6e47b2aef` - `docs: make releases the default install path (#16)`
-  - Reorients install docs around GitHub release downloads, updates release policy references, and adds LLVM compiler installation guidance.
-- `4b36210eb8590fd0d06a2c700b80de3a20de6fef` - `docs: define and enforce the type/kebab-description branch-name convention (#14)`
-  - Documents the `type/kebab-description` branch naming convention in `CONTRIBUTING.md`, enforces it in pull-request CI, and adds a matching opt-in pre-push hook with LF protection for hook files.
-- `c684fa881d866ae8a66e987a9bc04d720891af76` - `feat(compiler): add SSRUN002 native-fault crash reporting with call stack (#12)`
-  - Adds development-mode native-fault reporting that emits SSRUN002 diagnostics with semantic operation/call-stack context before re-raising the original fault.
-  - Adds `sem run --explain-crash` parsing for structured crash reports, plus compiler tests and docs for the native-fault surface.
-- `5228fce78b6eaa17e04f036782b6004dc7e68b03` - `ci: fix main prerelease creation (#15)`
-  - Adjusts the compiler executable workflow so main-branch prerelease creation and asset updates work reliably.
-- `53b6c7eecfcbcc4c24d5a454b87885cf73021a7b` - `ci: publish main merge release assets (#13)`
-  - Extends the compiler executable workflow to build and publish continuous `main-<short-sha>` prerelease assets, including merge-release manifests and download metadata.
-  - Updates release hygiene and single-executable toolchain docs for the merge-prerelease handoff path.
-- `43c2215de0142f2bc64e843391123394f85d8d05` - `Add project website (#10)`
-  - Adds the Vite-based GitHub Pages site, Pages workflow, website package metadata, and site source files.
-  - Starts the compiler executable artifact workflow and refreshes single-executable packaging docs around the website/release surface.
-- `5fc8fee4404ee11f6fffe3f7a9e95843cd7c0b44` - `chore: harden repository hygiene (#11)`
-  - Adds public repository hygiene files and docs including the code of conduct, VS Code package-lock metadata, release hygiene updates, and workflow refinements.
-- `1ef3205c0537b43a7bcb804006220dc38566628e` - `Add cross-language benchmark suite (C / JS / Python / SemanticScript) (#9)`
-  - Adds C, JavaScript, Python, and SemanticScript implementations for Fibonacci, Collatz, Sieve of Eratosthenes, and Mandelbrot with shared checksum contracts and a multi-run benchmark harness.
-  - Documents benchmark methodology, variance, assembly proof notes, workload sizing, and language-specific optimization caveats.
-- `81bc75660c45772fa2d56d6d8d95c40c119d3c60` - `chore: refine public repository hygiene (#8)`
-  - Adds PyInstaller single-file packaging support, release download validation, release metadata output, public docs cleanup, roadmap/overview pages, and archived release backlog handling.
-- `321d22f79457dec95f968a412b0618ebbb151894` - `docs: add root agent guides (#7)`
-  - Adds root `AGENTS.md` and `CLAUDE.md` guides and replaces the old docs-only agent guide surface.
-- `51007db3c234ac3cb5523e6f849cd4acd1fcc8fb` - `chore(deps): bump actions/upload-artifact from 4 to 7`
-  - Updates the release workflow to use `actions/upload-artifact` v7.
-- `08dd4e11b6b48d08c95f24f3d6c203080f8d4fd7` - `chore(deps): bump actions/setup-python from 5 to 6`
-  - Updates CI and release workflows to use `actions/setup-python` v6.
-- `a5b4a84dd61476a687564a123621b8e70e75a727` - `chore(deps): bump actions/setup-node from 4 to 6`
-  - Updates CI and release workflows to use `actions/setup-node` v6.
-- `e9a15455738f2a45061abe494cd021f28198ddd5` - `chore: polish public repository surface`
-  - Removes retired Python comparison sidecars, moves the release backlog under `docs/reference`, updates release/security docs, expands generated-artifact ignores, and completes SemanticScript third-party notice naming.
-- `f2e6cade72e600f08ad9522da16ad0d0afa25700` - `chore(deps): bump actions/checkout from 4 to 6`
-  - Updates CI and release workflows to use `actions/checkout` v6.
-- `021c89cf84444bda4e4a65d43da2b043a8cb281f` - `docs: refresh repo standards and syntax inventory`
-  - Adds repository standards files and GitHub templates, moves the syntax inventory into `docs/reference`, introduces shared repository version helpers, expands `sem` release/version command coverage, and refreshes docs for the current SemanticScript surface.
+- **APP-RUN-0** `html-template-lab` — e2e-tested; established the extensible app
+  harness (console / server-backed / webServer / CRUD / TUI runners).
+- **APP-RUN-1** `taskforge-api-client` — a self-contained winsock HTTP-GET client
+  (`net.fetchText`); runs against a local fixture server.
+- **APP-RUN-2** `taskforge-tui` — the interactive TODO TUI renders its table and
+  saves+exits cleanly under a scripted keystroke stream. `ss_c_terminalReadKey`
+  reads one byte from stdin and reports Esc on EOF so the state machine runs
+  headlessly.
+- **APP-RUN-3** `event-stream-smoke` — an in-process pub/sub event runtime
+  (`event.*`: stream queue + per-subscription cursor).
+- **APP-RUN-4** `desktop-window-smoke` — a headless widget runtime (`gui.*`) so
+  the control tree + event wiring run non-interactively.
+- **APP-RUN-5** `http-runtime-gauntlet` — the `webServer` codegen target: the
+  lowered `webServer` entity synthesizes the route table and serves real HTTP.
+- **APP-RUN-6** `taskforge-web` — the full JSON REST API runs a live
+  register → login → create-todo → list round-trip against real sqlite + bcrypt
+  + json + log.
 
-## 2026-05-23
+### Added
 
-- `a4ba68808193ac78be4e8a537f447a65f9df4c09` - `Normalize Windows release path assertions`
-  - Normalizes release-path assertions in the test suite so Windows path behavior matches the release harness expectations.
-- `250ce24a8cecfadcc517c65f527b055fe118ffcc` - `Relax auction runtime contract assertions`
-  - Relaxes auction runtime contract assertions in command-contract coverage to match the executable runtime surface.
-- `dad8b899f63ad2f903bb224b5e2e091f49f0ff49` - `Make CI Windows-only`
-  - Narrows the CI workflow to Windows and aligns sem CLI tests with the Windows runner contract.
-- `42eb5c99911c460a4a6b81016f7b72af5c01abf2` - `Fix sem command contracts for CI`
-  - Adjusts sem command-contract tests so they pass under the CI invocation and environment.
-- `685add5ba2b7e9e6977e47da25b3c4cd9b971074` - `Cut over repo to canonical primitive types`
-  - Migrates the compiler, linter, formatter tests, examples, feature corpus, stdlib, apps, docs, and VS Code support from legacy primitive spellings to canonical `Int64`, `Float64`, `Bool`, and related type names.
-  - Adds `standard.buffer`, `standard.bytes`, `standard.list`, `standard.map`, and related companion tests while keeping changelog and syntax references aligned with the type cutover.
-- `63318b755dc466d21e443b68ea1bf1ba99a878fb` - `docs: align root docs with runtime surfaces`
-  - Updates the root README and first-party docs index to include Realtime Auction Arena, native async/event support, outbound `standard.net`, blocking SSE primitives, and shutdown drain-state support.
-  - Refreshes concurrency, outbound network, and compatibility docs so they distinguish synchronous fallback rows from executable native async, `standard.event`, and prototype HTTP client surfaces.
-- `378a0f288bbf121b1a06fbf9ac70243435d369e4` - `experiments: align auction docs with executable contracts`
-  - Updates the Realtime Auction Arena README, server README, and API contract so protected metrics, production JWT secret validation, chat/audit routes, request logs, rate limits, and opt-in SSE replay match the executable server.
-  - Aligns source-level route/auth contract text with the bound `authReadyHandler`, `protectedMetricsHandler`, and admin-or-auctioneer command guard behavior.
-- `d3454aa89567136ef103e402adb80f1f712f5bcf` - `experiments: harden auction metrics and config contracts`
-  - Routes readiness and metrics through auth-owned handlers so production JWT secret validation is enforced on readiness/login and `/metrics` is admin-only with 401/403/200 coverage.
-  - Extends auction E2E/API docs and tests around protected metrics behavior, production auth readiness, and positive request-log duration assertions.
-- `97cf00de2dadfcce97a4f83357c43892100a8f6b` - `runtime: harden durable event stream docs and tests`
-  - Documents async cancel-token tombstones and durable stream locked append-log semantics, including torn-tail recovery, bounded retained tails, and queue-gap behavior.
-  - Expands native event runtime tests for bounded durable replay, filtered cursor gaps, torn-write recovery, and cross-process writer IDs.
-- `f243d4c0a89578cddb1e1c9a2ebb203acfec1733` - `experiments: normalize auction request log durations`
-  - Normalizes persisted Realtime Auction Arena request durations so completed request-log rows always record a positive `duration_ms`, using timestamp-derived values when available and a one-millisecond floor otherwise.
-- `ecd5df735f0fa45829fd4de729bb241385323d81` - `tests: cover auction production auth config`
-  - Extends the Realtime Auction Arena E2E smoke harness to boot with explicit environment overrides and assert that production profile mode fails closed when the JWT secret is missing or too short, while still reporting ready once a valid secret is supplied.
-- `9f410169214d8e9f278fe7a53b89b77f6296ffbc` - `runtime: reload durable event stream records`
-  - Reloads durable event-store records before append, subscribe, open, and receive paths so durable streams stay synchronized with persisted events and surface queue-gap failures correctly for filtered subscribers.
-- `dc3111ee2c6977f27e85d332312984ba56c6190d` - `experiments: gate auction readiness on auth config`
-  - Makes the Realtime Auction Arena treat `AUCTION_ARENA_PROFILE=production` as a hard requirement for non-demo JWT secret material, returning a shared configuration failure envelope instead of falling back to the demo secret.
-  - Routes readiness through auth configuration validation so `/ready` and login stay unavailable until production auth is configured safely.
-- `4ae8cd15ab30c023ee7b2045df75046098340b05` - `docs: refresh runtime status surfaces`
-  - Refreshes runtime status docs across `SYNTAX.md`, `SemanticScript/README.md`, native async/native HTTP references, compiler docs, and TODO tracking so the documented gaps match the current implementation state.
-- `38801a5a268afc6e4c37a39132e9e2990bc676db` - `runtime: dedupe event store helpers`
-  - Removes duplicated event-store helpers from `sem_event_runtime.c` after the shared runtime path landed, reducing redundant native code in the event runtime.
-- `856cebe00378286139a3afdce41e74846f9fa66f` - `experiments: add auction SSR client and SSE replay`
-  - Rebuilds the Realtime Auction Arena browser client as a SemanticScript SSR app, adds SSE streaming and replay support on the server, and expands the surrounding auction/auth/observability/persistence coverage around the new event flow.
-- `997d8e404799418729026de398b00074e8c54858` - `tools: expand sem workflows and test lanes`
-  - Extends `sem` workflow coverage, adds dedicated suite, clean, and release-version tests, widens CI lanes, and refreshes agent/test documentation for the expanded command surface.
-  - Expands ignore patterns and coverage configuration for the new Python and Node-backed test surfaces.
-- `91d5e3ffdf501a6b4a62dad3032d13eca933cd1a` - `runtime+stdlib: add event streams and HTTP helpers`
-  - Adds the `std.event` surface, native event runtime support, HTTP/runtime helper expansion, and the `apps/event-stream-smoke` sample.
-  - Extends compiler, linter, stdlib, and native runtime coverage around event streams, async runtime behavior, native HTTP handling, JWT helpers, and supporting stdlib modules.
-- `9bcdfbfc65e1bc713922417c6764e5903ce38992` - `experiments: add bounded auction audit replay`
-  - Adds bounded audit replay support to the Realtime Auction Arena server, including audit context wiring, route/API docs, runtime-gap notes, and API/E2E coverage.
+- **`webServer` codegen target** — a `webServer` entity lowers to an `i32()`
+  entry that builds parallel method/path/handler route arrays and calls
+  `ss_http_serve_routes`, which assembles the server config and runs the socket
+  loop.
+- **`pointer.*` intrinsics** — `pointer.offset` / `pointer.loadByte` /
+  `pointer.storeByte`: byte-addressed reads/writes over an `OpaquePointer`
+  (Int64 address).
+- **`c.*` libc seam shims** (`semanticscript/runtime/ss_libc.c`) — `malloc`,
+  `free`, `memset`, `memmove`, `strcmp`, `strlen`, `atoll`, `cString`,
+  `putchar`, `puts`, `fflush`, `fopen`, `fclose`, `fgets`, `terminalReadKey`,
+  plus variadic `printf` / `fprintf` / `snprintf` forwarding to their
+  `v*`-counterparts. Declared with explicit `Int64` / `const char*` signatures
+  so app types match exactly (no implicit coercion).
+- **Family + low-level runtime shims** — direct-return shims over the native
+  out-param APIs for JSON (`ss_json.c`) and structured logging, plus
+  password-hashing / CSPRNG / base64url (`ss_bcrypt`), an event pub/sub runtime
+  (`ss_event.c`), and a headless widget runtime (`ss_widget.c`).
+- **`JsonText` `body json` islands** now embed their indented text as a String
+  constant (static JSON response bodies).
+- **App e2e harness** (`tests/test_apps.py`) — console, server-backed,
+  webServer-probe, stateful CRUD round-trip, and scripted-TUI runners.
+- **Release engineering** — `version.json` (release version source-of-truth,
+  distinct from the `CONTRACT_VERSION` source-compat contract),
+  `THIRD_PARTY_LICENSES.md` (SQLite / libuv / crypt_blowfish / llvmlite+LLVM /
+  CPython attribution), and this `CHANGELOG.md`.
+- **Agentic toolchain (TOOL-0…8)** — the legacy `sem` agent tools ported and
+  upgraded to the EAV language: `emit-ir`/`inspect-ir`, `status`/`clean`,
+  `index`, `bench`, `repin`, and a unified **`search`** — relevance-ranked
+  (TF-IDF) retrieval across the diagnostics, skills, task templates, the language
+  guide, and a project's entities (the real agentic-coding search). Every agent
+  surface returns a versioned `sem.<tool>.v1` JSON envelope (the legacy response
+  structures, preserved).
+- **MCP server expanded to 19 tools** — the stdio JSON-RPC server now exposes
+  `search`, `explain`, `graph`, `query`, `index`, and `status` alongside the
+  original set; the registry is data-driven so the advertised `inputSchema` and
+  the argv it builds can't drift. Driven by `tests/test_mcp.py`.
+- **Test gates** — `tests/test_cli_surface.py` (all 49 commands run + emit their
+  documented shape), `tests/test_agent_tools.py` (the agent JSON tools), and
+  `tests/test_mcp.py`, all wired into CI alongside the example/pytest/app suites.
 
-## 2026-05-22
+### Changed
 
-- `2a244f814c55b8dccff683f336cea43574ed5efb` - `docs: clarify sem-first agent workflow`
-  - Adds a top-level sem-first quick path, explains each agent-facing command's role in the edit loop, and refreshes README, agents, workflow, release, and TODO guidance around compact JSON, green fixture validation, patch safety, semantic preflight, and formatter checks.
-- `96ab80e960a44777aed1f12386639aa15de5ef95` - `experiments: cover chat report audit payload`
-  - Clarifies that chat reports persist the request reason in audit payloads and asserts the E2E database row records the reported reason.
-- `eab23ee43cf9a8474a522922d8129d1fe4d0ee9d` - `experiments: fix chat report audit payload`
-  - Persists the finalized chat report response body text as the chat report audit payload.
-- `6ab39e9c2550753715898b1f28491cf673aa4e36` - `experiments: persist auction auth and chat moderation`
-  - Adds durable refresh-token insert/rotation/revocation helpers, enabled-user checks across auth/session paths, and refresh/logout/session audit rows for the Realtime Auction Arena experiment.
-  - Makes chat report/delete routes execute durable SQLite moderation flows with idempotency replay/conflict handling, audit/request/event rows, route/chat/auth contract updates, and E2E assertions.
-- `e6020239dfd8936537e36d30fed0fe7ec3d77f1e` - `tests: align auction shutdown contract assertion`
-  - Updates the enterprise runtime-gap check to assert the native HTTP process-signal accept-loop shutdown contract.
-- `e2aa4775593713bcab8f2fba7fcfd1917fe9a112` - `runtime: handle native HTTP signal shutdown`
-  - Adds SIGINT/SIGTERM-driven shutdown to the native HTTP fallback accept loop, including polling, listener cleanup, compiled-route cleanup, and documented one-shot SSE limitations.
-  - Covers the shutdown/SSE contract with auction server docs, SemanticScript test-plan text, and a Python contract test that pins process-level shutdown without claiming handler-visible cancellation.
-- `c26dbd9fb9e4bec55701b88aedb496cef12df7e6` - `tools: harden sem agent command contracts`
-  - Normalizes compiler diagnostics into `sem check`, adds compact default JSON windows for large check/fix/graph/slice payloads, and makes `sem skills get --json` summary-first with `--full` for raw bodies.
-  - Tightens fix/patch/test/dev behavior with actionable plan statuses, UTF-8 BOM plan loading, structured patch errors and rollback, semantic preflight-aware tests, concrete `nextCommands`, and a green agent CLI demo fixture.
-- `d6b54697bc13b83987d53bdd9cf7aa2b52524395` - `tests: raise HTTP oversized body smoke`
-  - Updates the HTTP runtime gauntlet oversized-body request to exceed the 1 MiB request-body ceiling explicitly before asserting the 413 response.
-- `3a6c47bd972d38b2330cab32c3bd99e3e2ad2644` - `compiler: fix wait-set reachability traversal`
-  - Treats inline `case` and `done` rows as local successors while preserving label successors when those rows are reached directly, so strict reachability can walk wait-set blocks without skipping sequential rows.
-- `b909b3f77cb96a961b632f359dbea5140f339d11` - `tools: add next command hints`
-  - Adds `nextCommands` guidance to core `sem` JSON payloads for check, readiness, explain, fix plans, patch execution, and test results so agents can follow the repair loop directly from tool output.
-  - Covers the new hints in sem CLI and subprocess command-contract tests, and documents the contract in the README, agent workflow guide, and TODO status.
-- `afd5312fdb05efad2ee9d5c7ccebe14d91320611` - `docs: document and validate agent workflows`
-  - Documents the stable `sem` agent loop in the README, agent docs, workflow guide, and release checklist, including JSON schema inventory, skill aliases, semantic retrieval, fix/patch, readiness, dev, and test commands.
-  - Wires sem CLI and command-contract validation plus JSON smoke commands into CI, adds `skills get sem --json` alias contract coverage, and updates TODO status for the completed agent command workstream.
-- `2175950fbca38785b619f76868e7c694934cd1f7` - `tools: expose skill aliases and auth graph`
-  - Adds canonical skill aliases and an `aliasIndex` to `sem skills` JSON payloads, enriches normalized diagnostics with expected/actual/repair/explain metadata, and keeps metadata repairs marked for human review.
-  - Adds `sem graph --kind auth` authority/capability edges and extends sem CLI plus command-contract tests for alias discovery, diagnostic metadata, and auth graph output.
-- `1bbc7388ee62f96e11acd2ac6a7acbf2cd6057d3` - `tools: add readiness dev and test commands`
-  - Adds `sem readiness`, `sem dev`, and `sem test` JSON command surfaces, embeds readiness in `sem check`, and reports runtime/toolchain readiness, watch plans, interface fingerprints, and structured test results.
-  - Extends sem CLI and subprocess command-contract coverage plus TODO status for readiness, dev, test, size, patch preconditions, and the implemented agent tooling pass.
-- `0ba6ca4f2dbbabd5e8ea685bcd924c4ab51ab718` - `tools: cover agent command contracts`
-  - Adds unit and subprocess contract coverage for the new `sem` agent surfaces, including version, doctor, skills, check, explain, graph, slice, fix, patch, and size JSON payloads.
-  - Refines `sem check` status reporting, curated diagnostic explainers, skill aliases, patch-plan precondition hashes, `sem size`, global `--version --json`, and TODO status for the implemented agent tooling pass.
-- `d3f922d01a21d448ed8556a2dce3acb1cb289433` - `tools: relax fix and patch dry-run status`
-  - Makes `sem fix --plan` succeed even when no repairs are available, reports `repairCount`, and avoids running verification for `sem patch --dry-run`.
-- `a9dc21910861109a62e388693da1330ce6995684` - `tools: add agent contract command surfaces`
-  - Seeds the `sem` agent command layer with version-matched skills, diagnostic explain data, `sem check --json`, graph/slice payload builders, fix-plan and patch-plan helpers, plus CLI commands for version, graph, slice, explain, fix, patch, and skills.
-  - Adds TODO tracking for agent product contract parity, repair-loop contracts, semantic slicing, command snapshots, release validation, and external platform weakness research.
-- `ef5fe2aec07731a26bb242c201a6c1121b0995c4` - `experiments: fix auction SQLite command flows`
-  - Converts Realtime Auction Arena SQL constants and prepare calls to `SqlText`/`sql body`, uses SQLite `RETURNING` for auction, bid, chat, and login rate-limit writes, drains `RETURNING` before commit, caches the JWT signing secret, and transacts login rate-limit updates.
-  - Simplifies chat event/idempotency persistence, reuses replay timestamps consistently, and expands E2E coverage for rate-limit persistence plus chat idempotency replay/conflict behavior.
-- `2afaba61431768fbc795a3b2f19adf8a0faa4b16` - `compiler: tighten strict SQLite diagnostics`
-  - Adds strict compiler and semlint diagnostics for `SqlText`-backed SQL, SQLite round-trip/transaction hazards, `RETURNING` drain requirements, `last_insert_rowid`, uncached `getenv`, repeated request timestamps, idempotency replay classification, large local static literals, and unreachable operation rows.
-  - Expands compiler/linter coverage and migrates SQLite samples plus TaskForge SQL constants to `SqlText` `sql body` / `literalSource` usage.
-- `c97c21564408ce8700fd9e9e0d3f790591ea28ea` - `experiments: adjust auction chat guard smoke`
-  - Updates the Realtime Auction Arena E2E smoke contract for chat delete guards: bidder tokens are denied before missing-message lookup, while auctioneer tokens still receive `message_not_found`.
-- `b29f6a602039877f8e80c1a71354d85389f552a5` - `experiments: refresh auction route smoke coverage`
-  - Updates the Realtime Auction Arena static API index envelope and API tests for extend, close, event, and chat routes, and tightens the E2E chat-create assertion to verify the returned message auction id.
-- `9bc704f56335625dd656de336865f09247e27041` - `experiments: align auction E2E chat events`
-  - Updates the Realtime Auction Arena E2E smoke expectations for `chat.message.created` event replay and invokes the registered method guard matrix from the script entrypoint.
-- `7be76cb5cb03d79da7481b1b8341188e9ffc1858` - `experiments: cover auction method guard matrix`
-  - Expands the Realtime Auction Arena E2E smoke harness to derive registered method-not-allowed routes from `main.sem`, assert their 405 envelopes, and cover chat create plus delete/report guard assertions.
-- `52ecfc4428dc1dbaf0f3a379d9e8f5852a9780fa` - `experiments: refactor auction server contexts`
-  - Splits the Realtime Auction Arena server from a monolithic route implementation into focused server, auth, observability, auction, event, chat, and HTTP helper context modules, with build registration and unit-plan coverage.
-  - Expands executable behavior for lifecycle extend/close, bounded event replay, chat create, request ids, method guards, login rate limits, JWT secret/time claims, metrics/audit/request logs, and rejected-bid persistence, with docs, demo/load scripts, API/E2E coverage, enterprise contracts, and SQLite persistence tests.
-- `295f41d853ba86aa737367c82755da005efb4862` - `compiler: tighten async work validation`
-  - Makes compiler and linter fallible-call checks source-order aware and wait-set-handler aware, including mixed `runChecked`/unchecked execution and private case-result escapes through defers.
-  - Validates `submitWork` worker pools, ordered work declarations and `workArg` rows, preserves imported `literalSource` origin paths, expands compiler/linter coverage, and tightens the TaskForge async overlap threshold.
-- `318bac845317d814b94102cf113a005d8089048e` - `experiments: rename auction API version build field`
-  - Renames the Realtime Auction Arena build-plan constants field from `apiVersion` to `projectApiVersion` so the schema and JSON body avoid the generic API name collision.
-- `d98c7e76f8a4c5611d075e2006148b6596e1de03` - `experiments: implement SQLite auction flow`
-  - Adds SQLite schema initialization, runtime constants, SQL query modules, wire envelopes, and executable auction list/create/snapshot/start/bid/event-replay handlers for the Realtime Auction Arena experiment.
-  - Covers scoped idempotency, seeded demo principals, persisted events, accepted-command audit rows, role checks, docs/API updates, Python smoke coverage, and local SQLite artifact ignores.
-- `d482d06b1a9a4ac4059c153fba9aeedab27ec70a` - `linter: cover checked fallible work rows`
-  - Adds semlint coverage for `runChecked` fallible disposition, heap allocation handled through checked calls, and `submitWork` target validation.
-- `9b9d74995a437c124813b4ec1c715742c0f0d51a` - `std: generalize JWT native helpers`
-  - Replaces demo access-token helpers with generic HS256 payload signing, signature verification, bearer envelope formatting, exported JWT status constants, native payload-template validation, and a `standard.jwt` smoke test module.
-- `4c10124c1bccd672cf5f7b513269e9373cb0576d` - `compiler: add SQL body and wait-set checks`
-  - Adds `SqlText` SQL body islands across the compiler, linter, formatter, docs, and VS Code extension, including SQL body storage binding, sqlite prepare/exec validation, placeholder checks, and interpolation rejection.
-  - Expands await wait-set diagnostics/tests and aligns the TaskForge async client with stricter wait-set handler discipline.
-- `0163d96c2a6eb85f9f49b5d30277d6e30b3e4556` - `docs+vscode: refresh syntax and release references`
-  - Refreshes README, release notes, syntax/reference docs, TODO status, and VS Code coverage for wait sets, `guiBackend`, async/runtime selectors, HTML/JSON/native HTTP surfaces, runtimeBinding policy boundaries, and local VSIX release posture.
-- `c364a8ef4127dc496fa2dff9be28988687add221` - `experiments: tighten auction auth contracts`
-  - Aligns the Realtime Auction Arena server docs and auth contract with executable HS256 claim checks, bcrypt's 72-byte guard, JSON write-route guardrails, idempotency-key enforcement, and remaining production-auth gaps.
-- `88949f3f9d28b696be3749f99bdb0b119eda2979` - `compiler: validate wait sets before lowering`
-  - Adds a pre-lowering wait-set validation pass so malformed `await`/`case`/`done` blocks, repeated case consumption, and labels declared before their structural row fail before any partial IR is emitted.
-- `384e835ace3379cf46925fa224fed0f5813f439a` - `experiments: add realtime auction arena scaffold`
-  - Adds the Realtime Auction Arena experiment with a SemanticScript native webserver scaffold, browser SSE client, Win32 auctioneer scaffold, API/runtime-gap docs, Python E2E harnesses, and JWT claim-bearing demo auth support.
-- `023137ce81610287ef8f3b28d00b768551e161df` - `app: update async client and GUI smoke`
-  - Updates the TaskForge async API client to print `/health`, `/api/version`, and `/api/todos` in completion order through `await nextTaskForgeFetch`, expands its generated-IR and real-backend harnesses, and refreshes the desktop GUI smoke sample naming/metadata.
-- `31741f041a8e56692edaba16530dbd6af2f2f93f` - `compiler+runtime: expand async and web surfaces`
-  - Adds `await WAIT_SET` / `case CALL LABEL` / `done LABEL` lowering over fetch and generic user-operation futures, plus focused compiler/linter/fuzz coverage and the manual timer completion-order demo.
-  - Extends native/runtime surfaces for fetch readiness/body-copy helpers, JSON primitive parse/stringify helpers, `http.responseHtml`, Win32 GUI polish, `guiBackend win32|winui3` selection, non-ABI runtimeBinding rejection, and the `standard.jwt` HS256 adapter.
-- `4a3a06843fdd094c7c90756a11489479aa370b91` - `app: add TaskForge async API client`
-  - Adds the real SemanticScript app entry for `apps/taskforge-api-client`: `build.sem` plus `main.sem`, where `main.sem` starts three `standard.net` `net.fetchText` requests to the running `taskforge-web` server before awaiting any response.
-  - Wires the outbound HTTP client surface through `standard.net`, compiler/linter lowering, native async/libuv and native HTTP client/libcurl runtime adapters, docs, tests, and a real-backend build harness.
-  - Adds `scripts/build_async_client.py --run` and `scripts/test_taskforge_async_client.py --real-backend`, which build the generated SemanticScript client against actual libuv/libcurl and verify `/health`, `/api/version`, and protected `/api/todos` responses from TaskForge.
-- `7ee77dee86a9d098583acf42afea20bfd04c819d` - `app: add TaskForge API todo client`
-  - Adds `apps/taskforge-api-client`, a standalone browser todo app that consumes the existing `taskforge-web` JSON API through relative `/api/*` calls.
-  - Adds a local Python same-origin proxy so browser auth cookies work without CORS changes while forwarding `/api/version`, auth, list, create, complete, uncomplete, and delete routes to the TaskForge backend.
-  - Documents run/test flow, source layout, API coverage, and verifies the proxy contract with a fake TaskForge API harness covering login, cookie forwarding, todo fetch, create, complete, and delete.
-- `7314c788ed63fa8d11f7cc83e62eb33309d00358` - `docs: refresh syntax and runtime references`
-  - Refreshes syntax and runtime documentation around the current app layout, async/runtime surfaces, and release references.
-- `136f37e6c6f94ecb90be395f300ed3ad522dcc98` - `chore: cut over project layout and syntax cleanup`
-  - Renames the retained demo set from `app/` into the polished `apps/` tree: `desktop-window-smoke`, `html-template-lab`, `http-runtime-gauntlet`, `taskforge-tui`, and `taskforge-web`. Parks the Kilo port under `experiments/kilo-port`, removes retired todo/web/demo folders, deletes the old raw `samples/` mirrors and syntax fixture `.sem` files, and moves the durable language notes into `docs/`.
-  - Removes the stale SemanticScript bootstrap/compiler-parity tree and old feature-coverage scripts from the active release surface, while keeping the Python reference compiler as the supported implementation path. Moves shared call-contract data under `SemanticScript/shared/`, refreshes repo docs around release hygiene and current folders, and updates CI/tests for the new app paths.
-  - Renames the VS Code TextMate grammar file to `syntaxes/semanticscript.tm-language.json`, expands generated-artifact ignores, and keeps the curated app/runtime smoke tests aligned with the revised `apps/` layout.
-- `4fb343e06b39f37af02600640ae186cf6b39e2c1` - `Port SemanticScript to revised syntax`
-  - Cuts the language corpus over to the revised row shapes: `argument CALL ARG TYPE VALUE`, `bind value/ok/error`, `ignore value/ok`, `branch if/error/else`, `jump target`, `return value/ok/error/void`, and `storage local/module` in place of the older `arg`, camelCase bind/branch/return, and `const` / `var` spellings.
-  - Updates the Python compiler, formatter, linter, VS Code extension, standard library, feature corpus, benchmarks, runtime smokes, and app sources to parse, format, lint, migrate, and execute the revised syntax. Adds `SemanticScript/tools/syntax_migration.py` plus compiler/linter/CLI/app-runtime tests so the cutover is repeatable and guarded.
-  - Adds the `research/` documentation set that distills the four syntax experiments into durable findings, then uses those findings to justify the agent-oriented syntax changes and preserve the evidence after raw experiment data is removed.
+- **Repository restructured** into a scalable layout: the compiler now lives in
+  `semanticscript/{compiler,runtime,std,sigs,packaging}` with `examples/`,
+  `apps/`, `tests/`, `docs/` as siblings. The previous implementation moved to
+  `legacy/`.
+- **Renamed throughout** — the tool/CLI/toolchain/env var `eavc` → `semanticscript`;
+  the runtime symbol prefix `eav_` → `ss_`.
+- **The native runtime is self-contained** — ported out of `legacy/` into
+  `semanticscript/runtime/native_*` (sqlite, http, async, win32_gui, json,
+  bcrypt, log) so the compiler no longer reaches into the deprecated tree (zero
+  `legacy/` references in the runtime manifest).
+- **"EAV" branding removed from all documentation** (kept in source code where
+  it is the row model's name); docs say "SemanticScript".
+- **Docs restructured around a front-door README** — `README.md` is now a
+  user-facing landing page (the pitch, a runnable hello-world, core-concept
+  intros, an ideas section, quickstart, and an honest beta-status block); the
+  full language specification moved to [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
+  The search corpus, governance map, grammar pointer, and drift-guard test were
+  repointed accordingly.
+- **GitHub Actions wired** to the new compiler; legacy-product workflows no
+  longer auto-run.
+- **Release pipeline consolidated** to a single cross-platform `release.yml`
+  (build the PyInstaller binary per-OS via `package.py`, smoke-test, publish with
+  `SHA256SUMS`), replacing the legacy `prepare-release`/`publish-release`/`release`
+  workflows that targeted the removed `vscode-semanticscript`/`sem.spec`/`mcpb`
+  toolchain.
+- **`compare.<op>Int32`** resolves an enum-variant operand (e.g.
+  `ScreenMode EditMode`) by its declared type → the i32 discriminant, instead of
+  forcing the suffix `Int32` hint.
 
-## 2026-05-19
+### Fixed
 
-- `a346f208dcf5e6c9e0e9bd0ce3952965aae2e22a` - `experiments: add syntax design comparison fixtures`
-  - Adds syntax comparison fixtures so the production syntax, maximal controlled-English proposal, and refined agent-oriented hybrid can be reviewed side by side. Those raw fixtures were later retired; the durable findings now live under `research/`.
-- `dd336e28fbed10dc401964ade1e63e4df907c51d` - `vscode: refresh strict and JSON syntax support`
-  - Updates VS Code highlighting and hovers for `runChecked`, reserved ownership/non-null rows, and the public `json.parse.*` / `json.stringify.*` target spellings.
-- `93b1319b2ca87b1966ff74bffc576c57cf8994cd` - `docs: define compatibility and release policies`
-  - Adds the 1.0 compatibility contract, install/version policy, package-management and dependency-cache policy, release-manifest/version-matrix guidance, project-layout rules, JSON body/codec status updates, and third-party packaging notes.
-- `4d24afb61c58b53e91f14392790297378f044559` - `tools: expand sem driver workflows`
-  - Extends `sem.py` with `emit-ir`, `clean`, `lint`, `fmt`, `doctor`, `context`, and `symbols`; adds release-version reporting, formatter examples and coverage, a CI formatter check, generated-artifact ignore patterns, and agent workflow docs.
-- `f2f6a1872640ca2154b6eb8c5d35afeec40d44c4` - `tests: cover JSON parse and stringify flows`
-  - Migrates JSON primitive fixtures to `json.stringify.*` / `json.parse.*`, updates bootstrap lowering for string constants and string stringify, refreshes JSON runtime smokes around the document/cursor API, and adds compiler coverage for record-typed `jsonBody`, record stringify/parse, missing-field, wrong-type, syntax-validation, and oversize-error paths.
-- `07c17ab272bde77bea76ce5d511933e9a9f16016` - `lint: validate jsonBody literal islands`
-  - Teaches `semlint` to parse `jsonBody` islands, validate strict JSON syntax, require a matching immutable storage target, type-check record bodies including nested records, JSON field names, and omit policies, and report SS3626 diagnostics for malformed literal bodies.
-- `c2584c904a5d6a3b77a8f0aafdb0c615f552f098` - `compiler: register buildConstant values on prog.consts (the dedicated handler was dead code)`
-  - Fixes build-constant registration so `buildConstant` rows are available through the compiler constant table instead of being parsed by a dead handler path.
-- `4e41d40ee60359d6695765410de78f5f31d62b7c` - `security: fix policy + memory issues in taskforge-web, add SS3320/3403/3411/3415`
-  - Hardens TaskForge Web security and memory handling, adds new lint checks for the related bug classes, and updates policy/runtime coverage so the app no longer relies on the unsafe patterns.
-- `bf5fdb0a4b4f2d1983ee8d014863444c7152a32c` - `lint: clean apps/taskforge-web from 187 warnings to 3 advisories`
-  - Refactors TaskForge Web, stdlib contracts, and compiler support so the app's linter output drops from broad warning noise to three remaining advisories.
-- `a90ed1fe2a1c36c3a2180e72126b26fe8f4adf4b` - `docs: mark strict fallible-call TODOs covered by SS3201`
-  - Marks the strict fallible-call disposition checklist items covered by the SS3201 rule family and records the remaining migration status in `TODO.md`.
-- `6352bd0db4abd64a5860f14ce7ed02d25e77d54e` - `docs: update changelog for bootstrap JSON parse`
-  - Adds changelog coverage for the bootstrap JSON parse follow-up.
-- `207e3e34b2c65fe1c5e44e25a75e6eb1ed9813d3` - `bootstrap: lower JSON document parse round trip`
-  - Teaches the bootstrap compiler to lower `json.createDocument` through `ss_json_document_create_from_text`, aligns bootstrap string-constant slot lookup with pass1 for quoted `JsonText` / `JsonPath` aliases, removes the xfail marker from the JSON document parse round-trip feature fixture, marks the matching TODO checkpoints complete, and adds an operations/dataflow JSON CRUD example without moving app-specific behavior into the compiler.
-- `c4716f34f976f5b4f6a1130bf21ffdfef0a708e9` - `tests: document bootstrap JSON and enum feature gaps`
-  - Adds the JSON document parse round-trip feature fixture and marks it plus the enum domain-method fixture as expected bootstrap gaps instead of red non-xfail failures.
-- `ab31fd479c0ed80a5df68b787e323a6082b975d8` - `docs: update changelog for JSON migration TODOs`
-  - Adds changelog coverage for the JSON migration and feature TODO follow-up.
-- `d5433a347d34daf0fd187637c901495bc120e8ad` - `docs: mark JSON feature and migration TODOs complete`
-  - Marks the completed JSON feature-test, documentation, Todo Web migration, deprecation-lint, and semlint edge-case checklist items in `TODO.md`.
-- `c7ae8b4355e12a38bc9a10e0937a69745fdc2490` - `docs: update changelog for JSON TODO status`
-  - Adds changelog coverage for the JSON TODO-status follow-up.
-- `6c1c4b4645f0e93e071c8a6e5c1240f87d129ef1` - `docs: mark JSON lint and syntax TODOs complete`
-  - Marks the completed primitive `json.stringify` / `json.parse` reuse, JSON semlint rules, and syntax-row checklist items in `TODO.md`.
-- `d4c057d544434ed96af3759b9435acc2ca62ca71` - `docs: update changelog for JSON verb status`
-  - Adds changelog coverage for the JSON verb-index status follow-up.
-- `ba4fa855a4984f26314130421647b4920fd6bc75` - `docs: mark JSON CRUD verbs lowered`
-  - Updates the verb index so JSON document lifecycle, navigation, cursor-reader, mutator, and delete/clear call rows are listed as lowered rather than proposed.
-- `54f725d1a8038d42fb70aa6696d35d35428b8f50` - `docs: update changelog for JSON syntax status`
-  - Adds changelog coverage for the JSON syntax-status and strict-rollout documentation follow-ups.
-- `a2845b7b4d380f9dfc7438d9334d4ff9118c81de` - `docs: mark JSON CRUD syntax implemented`
-  - Promotes the JSON document lifecycle, navigation, cursor-reader, mutator, and delete/clear rows in `SYNTAX.md` from Proposed to Impl'd now that the native runtime and compiler dispatch are wired.
-- `d165a4429a33a05cb40b686ae547737d2400fc41` - `docs: correct strict rollout changelog`
-  - Replaces the stale changelog placeholder hash and corrects the strict rollout wording to match the implemented opt-in `languageMode strictExecutable` / `--strict` behavior.
-- `c2976bb11ca35236efce632f715d2d5af989ba50` - `docs: mark JSON compiler TODOs complete`
-  - Marks the completed native JSON compiler-lowering and `jsonBody` checklist items now covered by the compiler, linter, VS Code grammar, semfmt preservation, and feature fixtures.
-- `2fac9cb43181f1ba00dddc45fa1bd576c4fad514` - `docs: mark native JSON document CRUD TODO items complete`
-  - Marks native JSON document CRUD checklist items complete after the runtime, stdlib, compiler, linter, formatter, and docs coverage landed.
-- `332df106861186861bec25c46fae3e1765a11c74` - `docs: roll up changelog for strict wall + JSON CRUD + perf refines`
-  - Captures the day's four committed groups below: native JSON document CRUD runtime, strictExecutable bug-class checks, taskforge-web perf/cache refines + strict-clean apps, and docs/IDE refresh for the new surface.
-- `666d5488a7688025cf375f3b80377efc7ece8d24` - `docs+vscode: refresh syntax/reference/optimization + IDE`
-  - Updates `SYNTAX.md`, `TODO.md`, the `docs/language/*` and `docs/reference/*` pages, and `docs/optimization-guide.md` for the strict executable wall, the `runChecked` verb, the SS33xx/SS34xx/SS36xx/SS39xx diagnostic roster, the native_json document CRUD surface, and the project-level `languageMode permissiveExecutable PROJECT` build.sem opt-out. `docs/optimization-guide.md` documents the arena and prepared-statement-cache patterns surfaced by the new SS3318 / SS3319 lint advisories; the VS Code extension picks up matching syntax, hover, and completion coverage.
-- `a5bad6806fc8ade503bdd3191d3448f2ca8abddd` - `app+runtime: taskforge-web perf refines, strict-clean apps, sem driver`
-  - Refines TaskForge Web for performance and cache layout: `todosListBufferCapacity` drops from 64 KiB to 32 KiB so the list response lives in a smaller malloc size class while keeping ~60% headroom; `cookieHeaderCapacity` drops from 256 to 128 bytes to match the actual ~102-char Set-Cookie payload; register and login no longer carry duplicate `"session=...; Path=...; Max-Age=..."` literals and instead compose the header through a shared `cookieHeaderTripleFormat` plus the existing `cookieNameEquals` and `cookieAttributeSuffix` module constants; `schemaApplyFailed` now wires `sqlite.closeDatabase` with the executable `bindError` + `branchIfError` shape that strict mode requires. The `sem` driver forwards build.sem `languageMode` rows via a new `--language-mode` CLI flag, the native HTTP runtime gets cookie/file/utility helper refinements, the AS-written compiler bootstrap and bench parity advance, and kilo-port / desktop-window-smoke / html-template-lab / retired web demos pick up the small refines needed for strictExecutable coverage.
-- `02a73badcaa655b43ea3ebac476ee8b02c91c725` - `compiler+linter: default strict executable wall + bug-class checks`
-  - Adds the strict executable wall behind explicit `languageMode strictExecutable` or the compiler `--strict` flag while keeping refined-syntax metadata permissive unless strict vocabulary is requested. Adds the `runChecked` verb that folds `run` + `bindOk` + `bindError` + `branchIfError` into one row. New bug-class checks: SS3309 use-after-free, SS3310 format-string-must-be-constant, SS3313 reject `c.strcat`/`c.strcpy`/`c.sprintf`/`c.strncat`/`c.gets`, SS3402 unchecked size/timestamp arithmetic, SS3408 shared-state mutex requirement, SS3614 handler-must-write-response, SS3615 bcrypt cost minimum, SS3911 SQL-must-be-constant, SS3912 sqlite step-result disposition. Existing SS3303 now accepts ownership transfer via `returnOk`/`returnValue`. Two performance advisories also added in lint mode: SS3318 many-small-mallocs-suggest-arena and SS3319 repeated-prepareStatement-suggest-statement-cache. Shared call/route facts moved into `SemanticScript/shared/call_contracts.py` so the compiler and `semlint` stay aligned. `semlint` mirrors the strict checks under `--strict`, the formatter knows the new `runChecked` verb, `test_compiler` + `test_semlint` cover the new diagnostics, and `docs/toolchain/{compiler,linter}.md` reflects the flag matrix and SS-code roster.
-- `62f480d27d3b3b64ec63cfb87512d0abd61d94e1` - `runtime+stdlib: native JSON document CRUD API`
-  - Adds the in-process JSON document runtime under `native_json`. `sem_json_runtime.{c,h}` implement `createDocument` / `destroyDocument` / `documentRoot` / `findString` / `findInteger` / object + array open / add / close builders / value-kind / iterate / typed parse + stringify primitives with bounded scratch buffers and explicit overflow returns. `CMakeLists.txt` wires the new translation unit into the runtime archive; `health_demo.c` exercises the round-trip surface. `standard.json` (`SemanticScript/std/json/main.sem`) registers the public contracts for `JsonDocument`, `JsonCursor`, `JsonPath`, `JsonValueKind`, `JsonAccessError`, `JsonEncodeError`, and `JsonDecodeError` plus matching call signatures; `std/README.md` catalogs the new exports; `docs/language/json-crud.md` documents contracts and current status; `sem/feature_tests/163` and `164` cover the typed stringify/parse aliases and the document CRUD round trip.
-- `5252146e7773e8be90968cb160510627803735e1` - `docs: refresh README pitch`
-  - Reworks the root README around the SemanticScript sell, benefits by role, current executable apps, more syntax examples, and the context maxxing design concept while removing stale retired `const` / `var` examples and dead documentation references.
-- `df1e2c80b6027243f358d993e8207569860949d4` - `app: add todo web structured logging`
-  - Imports `standard.log` in TaskForge Web, initializes `logs/log.log` during server bootstrap, and records structured app events for startup, register/login/logout, and todo create/complete/uncomplete/delete flows.
-- `0c44e9fe42a3c3069e93b8f5156f297729defdea` - `stdlib: add structured log module`
-  - Adds the pure SemanticScript `standard.log` module with append-mode file logging, JSON-line envelope helpers, info/warn/error shorthands, JSON string escaping, exported status constants, and a compiler import-context fix so `webServer` declarations are not mis-attributed after importing stdlib modules.
+- **JIT runtime-DLL keepalive** — `_register_runtime_symbols` loaded each native
+  library into a local `ctypes.CDLL` that was garbage-collected on return, so on
+  Windows the DLL was unmapped before `finalize_object` baked the addresses into
+  the call sites, leaving runtime symbols resolved to **null** (a webServer entry
+  observably "called 0x0"). DLLs are now held for the process lifetime.
+- **`c.snprintf` / `printf` / `fprintf` resolution on Windows** — the UCRT
+  versions are header inlines with no exported symbol, so a direct MCJIT
+  relocation could not resolve and its failure cascaded, zeroing nearby call
+  sites. These now bind to exported `ss_c_*` shims.
+- **`c.cString` symbol mismatch** — emitted as `ss_c_cString` but the shim was
+  `ss_c_cstring`.
+- **`ss_json_read_string`** returns `""` (never `NULL`) for an absent optional
+  field, so an optional value can't propagate a null into a `NOT NULL` bind.
+- **`return nil` on a `Result` op** returns the OK-type null sentinel rather than
+  the Err value (which is a different IR type than the function result).
+- **Owned-resource handles** are backed by an entry-block stack slot so a
+  deferred cleanup re-emitted at multiple return points dominates every exit.
+- **`fmt -` over a pipe** corrupted non-ASCII source on Windows (cp1252) because
+  the child's `sys.stdin` was not UTF-8-reconfigured.
+- **Native `build` of a `webServer` target** failed with `subsystem must be
+  defined` — the entry isn't named `main`, so the linker couldn't infer the
+  console subsystem. `build_executable` now emits a tiny C `main` that tail-calls
+  the named entry.
+- **Native `build` of console programs that print integers/floats** failed with
+  `undefined symbol: printf` — Windows UCRT exposes `printf` only as a header
+  inline (no exported symbol), so the IR's direct call was unresolved. A small
+  always-linked anchor (`ss_native_libc.c`) provides a real `printf` that
+  delegates to the exported `__stdio_common_vfprintf` (JIT path unaffected).
 
-## 2026-05-18
+### Known gaps (pre-release)
 
-- `b51bb28cea1a50c5fbd66c2e1b090621951821d3` - `runtime: keep access logging out of native HTTP`
-  - Removes the automatic access-log implementation from the native HTTP dispatcher so logging remains a separate runtime/stdlib concern through `native_log`.
-- `c130da08d545a2912664f6698458c5fb5800c120` - `docs: record native HTTP log split`
-  - Records the split between native HTTP dispatch and application-owned structured logging.
-- `c1d5d5d39ae4b7d67c39d2214da6372f6d3ebc5f` - `runtime: keep HTTP log helpers internal`
-  - Removes the native HTTP header declarations for HTTP-specific log helper functions while the reusable public logging C ABI lives in the new `native_log` adapter.
-- `de3383c1a844d44c265a657ae1b99e4f98097539` - `docs: record HTTP log helper cleanup`
-  - Documents that HTTP log helpers are internal while reusable log functionality is provided through the native log adapter.
-- `43d24ca8780bfe85404db506c122986849a9779d` - `app: expand todo web dashboard flow`
-  - Adds the TaskForge Web dashboard shell, reusable HTML component module, dashboard JavaScript, login flow, logout/session validation coverage, todo create/list/complete/uncomplete/delete flows, seeded demo data under `sql/schema.sql`, and expanded end-to-end route tests.
-- `aebc47b52b5d4966d8b0d1923d0e2cd0bed02809` - `app: add SemanticScript kilo port`
-  - Adds a native-executable SemanticScript port of antirez/kilo with editor row storage, file load/save, rendering, navigation, search, tab handling, JavaScript highlighting, parity notes, and executable smoke coverage. The retired demo now lives under `experiments/kilo-port/`.
-- `fccfbcb2213240f586356558fd7880cc7372e96b` - `runtime: extend native app support surfaces`
-  - Adds generic native terminal runtime support and compiler/linter registration for terminal calls, extends native HTTP with form-field parsing and not-found fallback handlers, adds a native log runtime adapter, improves backend error excerpts, and introduces `buildConstant` build-tape values for shared app configuration.
-- `3d0541d8e0bd6c9aa318f008a29d5c6e7b9ba0b8` - `app: seed todo web demo data`
-  - Seeds the TaskForge Web SQLite schema with a demo user and sample todos and updates the schema literal byte count so the app can compile the expanded schema asset consistently.
-- `0c8fdc92ad078c76da1fbde97d4fd91437dcdfae` - `app: serve todo web home assets`
-  - Moves the TaskForge Web home-page JavaScript into `apps/taskforge-web/assets/home.js`, serves `/assets/:filename` through `http.responseFile`, copies assets beside the built executable in the app harness, and covers the HTML shell plus script route in the end-to-end test.
-- `02e3f5ce254de12cb54fd4e6efe1f8209b7f931e` - `compiler: strip module docs from imports`
-  - Filters module-level documentation rows such as `modulePurpose`, `moduleOwns`, and `moduleInvariant` when source imports are inlined, so imported std/app modules do not leak metadata rows into the caller's current operation body.
-- `50ff186a810d4f2e056c8f7135e74cb0137118a8` - `vscode: add SemanticScript icons`
-  - Bumps the VS Code extension to `1.0.3`, adds the gallery icon, file icons, and `SemanticScript Icons` file icon theme, removes editor support for retired declarative `gui*` rows, and refreshes GUI target hovers/completions around normal `gui.*` call targets.
-- `d08597fb7f7b2403ff198545644729b4cd724111` - `docs: refresh syntax for storage and gui calls`
-  - Updates `SYNTAX.md`, `TODO.md`, language docs, agent notes, and the verb index for the current `entry console main` + `standard.gui` function surface, documents HTTP cookie/file/utility targets and bcrypt/std aliases, and removes legacy `var` / `const` syntax wording in favor of `memory` and `storage`.
-- `abfb7d8e92190c822f584df03922d5fc3b5391e6` - `runtime: wire native app support surfaces`
-  - Adds the native bcrypt adapter and vendored crypt_blowfish sources, expands native HTTP with cookies, file responses, directory creation, and millisecond time, converts the Win32 GUI path to builder-style `gui.*` calls, adds the `standard.bcrypt` module and smoke fixture, and introduces the `taskforge-web` web app plus updated `desktop-window-smoke` sample.
-- `5ca668e18d9c0d9cc5cc71510adaf88bdc84d8b4` - `docs: document GUI, HTML, JSON, and module/dependency syntax`
-  - Refreshes `SYNTAX.md` with the `standard.gui` `gui.*` function surface plus `html*` / `json*` / `sqlite*` / qualified-import / dependency rows and their implementation statuses, expands `TODO.md` with the Windows GUI plan and dependency-cache work items, and brings `docs/agents`, `docs/language/program-structure`, `docs/language/project-layout-build-sem`, `docs/reference/verb-index`, and `docs/toolchain/compiler` in line with the committed surfaces.
-- `367f9a2ce99098885d04525f2e18d74a1b18a88c` - `vscode: highlight GUI, HTML, JSON, and qualified-import syntax`
-  - Bumps the VS Code extension to `1.0.2` with TextMate, semantic-token, hover, completion, and document-symbol coverage for `target windowsGui` and `gui*` metadata; `htmlTemplate` / `htmlArg` / `htmlBody` (including embedded HTML/SSX markup islands and `{{name}}` holes); `standard.json` builder/finder targets; the new singular `import*` and `dependency*` build tape rows; and same-file completions for `html.hydrate.TemplateName` targets declared by local `htmlTemplate` rows.
-- `8224c969186c82ff4b6b715595eab020b9538628` - `app: add desktop-window-smoke and html-template-lab samples`
-  - `desktop-window-smoke` is the minimal Windows GUI smoke exercising `target windowsGui`, a normal `entry console main`, and `standard.gui` `gui.*` function calls that build and run one native window. `html-template-lab` is a first-class HTML/SSX showcase that splits `htmlTemplate` / `htmlArg` / `htmlBody` across registered `todo-domain` / `todo-components` / `todo-pages` / `shared` modules and prints hydrated output to stdout. Both apps come with `build.sem` entries matching the project-mode build-tape schema.
-- `5fd95495c8df92108f9b811b3871b26893aafeda` - `stdlib: migrate stdlib_sem to std/<module>/main.sem layout`
-  - Moves every `stdlib_sem/*.sscript` module and `*.test.sscript` companion to the canonical `std/<module>/main.sem` + `main.test.sem` pair. Adds the new `std/gui`, `std/html`, `std/http`, `std/json`, and `std/sqlite` modules that wrap the matching native runtime adapters in declarative SemanticScript form, plus a top-level `std/module.sem` registration tape. Updates `test_stdlib.py` to walk `std/<module>/main.test.sem`, and refreshes the comment references in `bootstrap_general`, the `sem/` smokes, and the two READMEs.
-- `e45eca4959df92884497b4b5f10b18b4d567b8a5` - `linter: cover GUI, HTML, JSON, qualified imports, and dependency rows`
-  - Expands `semlint` with structured diagnostics for `gui*` application/window/control/event metadata (missing rows, duplicate tab indexes, accessibility-name gaps, event-token allowlists per control kind); `htmlTemplate` / `htmlArg` / `htmlBody` sink-context coverage and orphan-hole detection; `standard.json` builder/finder use; alias-first `importModule` / `importOperation` / `importType` / `importError` / `importCapability` / `importConstant` project-import shapes; and the new `dependency`, `dependencyFetch`, `dependencyCache`, and `dependencyLock` build-tape rows. Pairs with companion `test_semlint` coverage for the new tier-classified diagnostics.
-- `513d73d84efe2ceb6abbdfb92e2dce8ccdd549c7` - `compiler: wire GUI, HTML, JSON, and qualified-import lowerings`
-  - Extends `semsc` with `target windowsGui` + `targetRuntime PROJECT windowsGui` build-tape support that emits the native Win32 GUI link/codegen bridge; `gui*` metadata rows (application, window, per-kind controls, control state, events) that lower through the `standard.gui` descriptor; `htmlTemplate` + `htmlArg` + `htmlBody` indentation-sensitive island parsing with sink-context checks for `String` / `HtmlSafeUrl` / `HtmlFragment` / `HtmlDocument` and generated `html.hydrate.*` targets; `standard.json` builder/finder primitive lowerings against the native_json runtime; alias-first `importModule ALIAS DOTTED.PATH` plus singular `importOperation` / `importType` / `importError` / `importCapability` / `importConstant` project imports; new `dependency*` build tape rows; and new `SqliteOpenMode` / `SqliteStepResult` / `SqliteColumnType` built-in enums. Adds matching compiler test coverage plus `json_runtime_smoke` and `json_runtime_adversarial` fixtures.
-- `df43279cf968cd2c012f1a3dec7d0e1f6b227737` - `runtime: capture HTTP route path parameters`
-  - Adds parametric route matching to the native HTTP runtime. Routes declared with `:name` segments capture the corresponding URL pieces into a per-request scratch buffer; `ss_http_request_path_param` looks the value up by name for handlers. Literal routes still win over parametric ones when declared first, matching the documented registration-order contract. Includes the `path_param_smoke` fixture that round-trips a slug through the dispatcher.
-- `2f64ae4e959e41d32617cb61bec060661eeedb78` - `runtime: add native Win32 GUI adapter`
-  - Adds the initial desktop GUI runtime adapter at `SemanticScript/runtime/native_win32_gui/`. The adapter exposes a small backend-neutral `ss_gui_*` C ABI over lowered application/window/control/event tables; `HWND`, `WPARAM`, and message-loop details stay inside the Win32 implementation. Includes CMake target, health demo, and the `SemanticScript/runtime/README.md` entry.
-- `79160caf1c958be7064d7e8dff26dbe6d75e8479` - `runtime: add native JSON adapter`
-  - Adds the native JSON C ABI adapter, CMake target, and health demo under `SemanticScript/runtime/native_json/`. The adapter exposes the small `ss_json_*` builder/finder surface that `standard.json` compiles against.
-- `3df86ee796ce6543fbd7bcf9920d1f7f9e343276` - `tests: add sqlite round trip feature fixture`
-  - Adds an expected-fail SQLite feature corpus fixture that documents the bootstrap compiler gap while the Python compiler owns the native SQLite end-to-end coverage.
-- `aaf0eaf3af20627fc38185236590b43855a2345e` - `compiler: reload sqlite defer handles from slots`
-  - Re-loads SQLite cleanup handles from entry-block slots so deferred close/finalize calls use values that dominate failure-label and success-return cleanup sites.
-- `9d6997a4f3975a8f9221d3512db2edc459ddd20d` - `docs: mark completed tooling todos`
-  - Marks completed build-tape parser/discovery/project-mode, VS Code, project-layout, `semfmt`, and `sem` driver checklist items while leaving unresolved dependency-cache, LSP, and advanced formatter work open.
-- `06f7f80cacd8da8b4f772a370bc58b8007ba16e6` - `vscode: expose cpu build settings`
-  - Documents CPU build-tape rows and compiler CLI flags, adds CPU examples, and exposes CPU settings, hovers, document symbols, and grammar highlighting in the VS Code extension.
-- `f02b566d03c19d2e0daf8d816ebe4533770e5026` - `compiler: lower sqlite defers safely`
-  - Routes SQLite cleanup defers through native runtime symbols only on paths where the defer has been registered and adds deep SQLite IR, unsupported-target, and native end-to-end compiler tests.
-- `aac3630b39684ec0a5cd18866eb08feb2c63e22c` - `compiler: wire sqlite and cpu build surfaces`
-  - Adds SQLite built-in enum/type/lowering support, linter visibility for SQLite built-ins, CPU build-tape/CLI lowering flags with tests, and app build-tape CPU defaults.
-- `e6349d282566588e5b7c4102211bd080f579ec96` - `docs: mark build tape TODOs complete`
-  - Marks the completed build-tape schema, parser, tooling integration, and documentation checklist items in the root TODO.
-- `f8d4736ee5fe287f8884bf0b4c2fb25c5e00ab69` - `app: refresh todo build tape notes`
-  - Updates the Todo build tape header comment now that `semsc.py` validates the tape and reads build-output / LLVM defaults directly from it.
-- `4dafc0e75e65e3a4abb011c401f71be7fa57abb6` - `vscode: support build tape project commands`
-  - Teaches the VS Code extension about the expanded build-tape verb set, runs lint/compile commands from the nearest `build.sem` project root, exposes build-output / LLVM compiler settings, and refreshes extension docs and grammar coverage.
-- `ed9e6093f7538b3672bc3bb13a65fc15bc089292` - `docs: document build tape compiler defaults`
-  - Clarifies `--opt-level` help/docs, maps build-tape artifact / LLVM rows to their CLI equivalents, documents strict build-tape diagnostics, and notes that CLI flags override build-tape defaults.
-- `9ccf2f93013c2842f0bd02f58cb1a9d85f532998` - `docs: index build tape verbs`
-  - Adds the project build-tape verbs to the reference verb index so the expanded schema is discoverable.
-- `7b9474511332796f06b5ee04632d653934e083ca` - `docs: clarify build tape syntax rows`
-  - Tightens strict build-tape wording and clarifies LLVM IR output path resolution in `SYNTAX.md`.
-- `17e2844ee3fd787800997116e7ffa18df370a189` - `tools: add sem project driver`
-  - Adds `SemanticScript/tools/sem.py` with `build`, `run`, and `check` commands that discover `build.sem` and delegate to `semsc.py`, plus compiler coverage and docs / TODO updates.
-- `54a1c46ab4eb6d48bdc3d65b8ec37a26deff3f5c` - `docs: expand build tape schema examples`
-  - Adds optional build-tape rows to app samples and expands project-layout docs with schema reference, native webserver, and library examples.
-- `541717bba5aa593c4d2229b9827e29619282a9ac` - `docs: add sqlite syntax sample`
-  - Adds a proposed `standard.sqlite` refined-syntax sample covering the future SQLite type / call surface, capabilities, failure paths, and parser / linter compatibility declarations.
-- `f863cc04991e58a5ea3933140c2e9d89d44a63b2` - `compiler: enforce build tape schema`
-  - Adds strict compiler / linter validation for `build.sem`, build-tape CLI defaults for build dirs / LLVM outputs / opt level, fixture and app updates, and schema tests.
-- `920c16d7732789effd2ee03618bc91758d88c53f` - `runtime: add native sqlite adapter`
-  - Adds the native SQLite C ABI adapter, CMake target, health demo, and docs, with Zig / CMake smoke coverage.
-- `982017930f34190b7a8017ebbc18df0097734a1a` - `vendor: add sqlite amalgamation`
-  - Vendors SQLite 3.53.1 amalgamation and documents pinned version / source id, upgrade flow, and third-party layout.
-- `70fc7f873ce7d90a98f28158fb8cec1eb5af48ec` - `ci: drop obsolete semlint smoke flag`
-  - Removes the retired `--fail-on none` argument from CI linter smoke commands so the workflow matches the current `semlint.py` CLI while preserving non-strict summary output.
-- `975cd5a8bd16fb736199ec063446916849d253b2` - `docs: document project layout and build artifacts`
-  - Adds the project-layout / `build.sem` language guide, expands project-layout TODO planning, documents artifact/resource behavior, clears stale `semlint2` references, updates linter command examples, and records `.semcache/` as an ignored future dependency cache.
-- `90cadc9f61c9b69534c6a2fa5cc7e9635491ad04` - `license: move project to MIT`
-  - Replaces the rights-reserved license notice with the MIT License and updates release/security/contributing guidance for public MIT distribution.
-- `470f0555fef3062fc919f5a0e21bffd09d8646a6` - `linter: catch missing build tape main files`
-  - Adds SS3614 `buildTape.mainFileMustExist`, unit coverage for missing/renamed `mainFile` rows, resource-retention syntax docs, and tighter compiler token validation for icon formats, depths, and platforms.
-- `bad683d4239aa5da0c7cf45cee222736d64e1b51` - `app: move http gauntlet to build tape layout`
-  - Moves the HTTP gauntlet source to `main.sem`, relocates Python/PowerShell gauntlet checks under `scripts/`, points `build.sem` at the new module file, and updates smoke scripts for the guarded-header and middleware short-circuit contracts.
-- `14ca44db4ce1b56d6e3c5fb9c63d21f97503556b` - `vscode: add compiler command and navigation tooling`
-  - Adds same-file definitions, document symbols, completions, canonical `semlint.py` diagnostics, a compile-current-file command, expanded syntax highlighting for project/web/resource verbs, and MIT package metadata for the VS Code extension.
-- `557178d18f190d75bcf4cc156f5371ce46c3dfec` - `app: move todo sample to build tape layout`
-  - Moves the TaskForge TUI sample to `build.sem` plus `main.sem`, adds app icon assets, documents compiler-managed build output, and ignores nested `build/` artifact folders.
-- `871bd6fe487e9aaa9794270675cb81ae71d1053c` - `compiler: add build tape metadata and middleware control`
-  - Adds build-tape module registration, project metadata/resource plumbing, managed build-output paths, `returnVoid`, built-in `MiddlewareControl`, middleware short-circuit runtime handling, HTTP gauntlet coverage, and compiler/linter tests.
-- `a9bbf9db8aaff22c5a21e61a0be1cef8a5569f60` - `linter: consolidate structured diagnostics into semlint`
-  - Makes `semlint.py` the canonical structured diagnostics linter, removes `semlint2.py`, updates CI/docs/tooling references, and keeps the structured linter unit suite passing under the consolidated name.
-- `e19d4cb22514ed4eb502217bcf27ff9a35a42988` - `ci: run semfmt unit tests`
-  - Adds the `semfmt` unittest suite to the Python validation workflow so formatter behavior is checked on Windows and Ubuntu.
-- `641ef000e3b0aed674556e0f7b8860aee014fb0e` - `formatter: add semfmt source formatter`
-  - Adds the conservative Python `semfmt` formatter package with row-spacing normalization, string literal preservation, comment-heading cleanup, blank-line cleanup, `--check`, `--diff`, stdin support, corpus/idempotence tests, and compiler-parse compatibility coverage.
-- `844fd05cf52d4c619c524e5ad4b7bb85e1ec87c0` - `docs: document web metadata syntax`
-  - Adds syntax-catalog rows for route timeout/middleware opt-outs, null-body failure-path declarations, response-body forwarders, and call-level rationale metadata.
-- `c31104f377583ca2a03a5b8730eb809aeb3162bc` - `app: attach gauntlet null-check rationale`
-  - Replaces a proximity rationale comment in the HTTP Runtime Gauntlet with call-attached `rationale` metadata for the nullable header guard.
-- `bd131ca85f6423385b19bfdffd3be4b6b9882205` - `linter: cover rationale metadata checks`
-  - Adds semlint tests for call-level rationale metadata, missing rationale text, unknown rationale call references, and broad-to-narrow capability hierarchy coverage.
-- `ecb0957eec727a576558270ae69cfd08e2c2ba98` - `linter: document rationale diagnostics`
-  - Documents the semlint `SS3608` rationale diagnostics in the diagnostic-code map for call-level rationale metadata.
-- `14c43065ff720d9d5cc1bfb285f7bffc6d6cb1bf` - `linter: track call-level rationales`
-  - Adds semlint support for `rationale CALL "text"` metadata so diagnostics can cite call-specific rationale records in addition to operation-level rationale comments.
-- `ec1f24db27d45dd54cda9d060002249bd776f015` - `linter: cover route metadata drift checks`
-  - Adds semlint coverage for missing `routeTimeout` / `routeMiddleware` metadata and explicit opt-out cases so web route coverage drift remains visible in tests.
-- `cbb8963386448af1bcd56758156ded1428796cad` - `docs: refresh web runtime and release guidance`
-  - Refreshes the README, syntax catalog, TODO plan, optimization guidance, language docs, reference docs, toolchain docs, and sample documentation around the native HTTP runtime and 1.0 release posture.
-- `60c4c2aeac068cc5cae613d324c70d1ac8d367e2` - `vscode: mark extension package as 1.0.0`
-  - Bumps the VS Code extension package metadata to `1.0.0` and updates its release-readiness notes for the current private/source-available distribution state.
-- `55b8827490e0e42b947d80d0a721c46dd1385ea6` - `app: add native web demos and HTTP gauntlet`
-  - Adds the basic Todo web server, advanced Todo web API demo, HTTP Runtime Gauntlet, PowerShell/Python gauntlet checks, terminal Todo refinements, and the Todo preview asset.
-- `3b0f8c9274af855dadc222f7531f87de454d2a80` - `linter: expand HTTP and app validation`
-  - Extends semlint diagnostics with native HTTP call ABI checks, nullable reader flow checks, route/app validation, stricter app-scale diagnostics, and companion unit coverage.
-- `775eb3057a25745b3f6aa8580120e888b5c448e1` - `compiler: harden typed lowering and web support`
-  - Hardens output-contract checks, enum lowering, exact-width math conversions, pointer byte loads, unsupported `http.*` diagnostics, native web route/middleware lowering, and related compiler tests.
-- `475623ca37c6303fdd1cad106d0b913c12d9d540` - `runtime: add native HTTP adapter`
-  - Adds the native HTTP runtime adapter, CMake/demo files, request/response/multipart/SSE helpers, middleware support, and native HTTP API/runtime documentation.
-- `945b5fa3e36a303f9be447a56659a1a2d7fe2afd` - `vendor: add h2o third-party module`
-  - Adds the H2O repository as a third-party submodule with `.gitmodules` metadata and repository notes under `third_party/`.
-- `8b7a6fb7ccadd5a052218259dccf6b29375d7e5e` - `chore: add release hygiene and artifact ignores`
-  - Adds root license/distribution notice, release hygiene notes, updated release/security/contribution guidance, and broader ignores for virtualenv, CMake, and native build artifacts.
-- `85705d6c19af7cf43133d0de636b0b148c26b392` - `docs: document SemanticScript 1.0 release readiness`
-  - Adds the release-readiness checklist, CI workflow, dependency metadata, release process notes, support matrix docs, SECURITY / CONTRIBUTING files, and folder-level documentation. Marks completed 1.0 tasks while leaving license, publisher, and final artifact decisions explicit.
-- `248e5a76e73d94ce4dd56ad0ae690c3c45230c8d` - `app: add SemanticScript todo TUI sample`
-  - Adds the console todo TUI sample now curated as `apps/taskforge-tui`, including JSON persistence, keyboard navigation, native executable build notes, and app workspace documentation.
-- `44bee3a1afecdc46f82f4bd0873f13574f33a7b6` - `vscode: add extension release checks`
-  - Documents VS Code extension release metadata decisions, adds JSON/package syntax checks, adds a local VSIX packaging script, and records editor-tooling readiness notes.
-- `0ff5fa051c207c84bddef41bd866fb65bbcd4c60` - `tests: stabilize parity and feature coverage`
-  - Adds `.sem` alias fixtures and parity coverage, fixes sample output drift, stabilizes long-running webserver parity by avoiding fixed-port collisions, and brings feature coverage to 130 pass / 30 expected xfail / 0 fail.
-- `514dac28d71ab664637ab1ccc7a6b3c51a1ba7f5` - `linter: expand SemanticScript validation coverage`
-  - Extends semlint coverage for current SemanticScript forms, storage and memory metadata, raw libc return escapes, branch/read analysis, opaque dependency inputs, and companion tests.
-- `73c4a2bfd1766f6f503fc77a2b2c572ea48489a2` - `compiler: add agent-focused diagnostics and runtime profiles`
-  - Adds structured compiler diagnostics, source-oriented SemanticScript stack traces, runtime panic/trap profiles, LLVM IR persistence controls, success-message tests, and the libc registry updates needed for native linking.
-- `b4fcd79c9c7867b2e69d39218f685bb83519406f` - `chore: update SemanticScript VS Code extension`
-  - Refreshes the VS Code extension after the SemanticScript rename, including extension metadata and editor support files.
-- `398eb79907e1e724dd5ea77e9c201a45e335f772` - `refactor: rebrand toolchain to SemanticScript`
-  - Renames the toolchain, source tree, compiler/linter entrypoints, stdlib, tests, samples, and docs from the AgentScript-era layout to SemanticScript.
-- `666b911d34e58bbe534ce53a6dca337f558b1db8` - `chore: drop generated build artifacts`
-  - Removes generated build artifacts from source control and tightens the matching ignore rules.
-- `3703414b757fa2e84872a9719751f29b71d5a351` - `stdlib: move smokes into companion test files`
-  - Moves inline stdlib smoke / unit-test programs into sibling `main.test.sem` files, keeps implementation modules focused on exported operations, and updates `tests/test_stdlib.py` to run companions including `stdio/main.test.sem`. Verified with `python SemanticScript\tests\test_stdlib.py` (28/28 passing).
-- `c49db3a27d9ed74fdca8a81a141b363832ac1c82` - `docs: refresh README and companion test guidance`
-  - Expands the project README and documents the `std/<module>/main.sem` + `main.test.sem` companion-file pattern, including import rules, capability placement, and harness fallback behavior.
-- `e002003a1a41ecfcdf49fcac41657a103ac1a485` - `docs: add SemanticScript rebrand migration plan`
-  - Adds a granular per-file `TODO.md` checklist for the SemanticScript -> SemanticScript rebrand: `.sscript` / `.sem`, `semsc`, `semlint`, semantic tape wording, docs, tooling, VS Code, tests, and final legacy-string gates.
-- `87b26c4908c7be546d7fb597ef78af569807635a` - `chore: expand generated artifact ignores`
-  - Broadens ignore coverage for Python caches, native build products, Node / VS Code outputs, generated feature-coverage trees, future SemanticScript build artifacts, and scratch `.sscript` / `.sem` files.
-- `14e063c23de5d4683b40317c2d2ede54f06ecd7a` - `vscode-semanticscript: 0.1.6 -> 0.1.9 with semlint integration`
-  - Bumps the extension version 0.1.6 -> 0.1.9 with context-aware hovers for every refined-syntax line shape (effect / useCapability / bindError / branchIf / makeError / domainLiteral / capability / feature / runtimeBinding) plus same-file symbol hovers for declared operations / consts / vars / binds / labels / capabilities. Adds linter-engine settings and surfaces the structured semlint diagnostic payload through the Problems view. Operation-metadata fold ranges collapse every line scoped to `operation NAME` under the operation header. Extended TextMate grammar covers refined-syntax verbs landed since 0.1.6 (storage local mutable, defer + deferRunOn, useRetry, taskGroup, channel slots, sharedState, runtimeBinding, domainLiteral, intrinsicName, fieldGet / fieldSet on records, etc.).
-- `c7abff33ab5ef15fd9aa4c3c850488b171e72b21` - `reference examples: add host-language comparisons`
-  - Adds host-language comparison programs and the `python/` tree. The split makes the repo root cleaner and signals these are reference oracles for cross-language behavior, not SemanticScript source. Python additions cover concurrency / async patterns (threaded pipeline, asyncio orchestrator, hybrid thread/process orchestration, race-condition showcase, reader-writer cache, watchdog supervisor, priority scheduler with cancellation, deadlock avoidance) and a multi-file math-API coverage suite mirrored across exponents/logs, special functions, trig/hyperbolic, vectors/precision, etc.
-- `77e87b7577e10c9e04153203c1c60d14b5388b5c` - `docs: consolidate maintainable documentation under docs/`
-  - Moves the documentation surface from scattered top-level / nested files into a single `docs/` tree organized by audience: `docs/README.md` (entry point + map), `docs/agents.md` (guidance for AI coding agents), `docs/language/` (specification-grade docs: program-structure / lexical-model / types-values / operations-dataflow / errors-effects-capabilities / memory-state / concurrency-time-cleanup / records-codecs-boundaries), `docs/reference/` (verb-index / call-targets / maintenance), `docs/toolchain/` (compiler / linter / vscode-extension). Deletes superseded standalone docs: the old implementation changelog path, the retired implementation README, STDLIB.md, STDLIB_RENAME_PROPOSALS.md, and the retired refined-syntax research artifacts.
-- `bf79558ec25fe78ba22ac9b3c361e36f9cf7341d` - `stdlib: library-only numeric.as with companion numeric.test.as smoke`
-  - Moves numeric module smoke coverage into a companion test file so the implementation module stays library-only.
-- `8d3318da418bdd60acdd3586f31143e7c935bb13` - `tests: stdlib_import_smoke*.as now pass aslint2 with zero diagnostics`
-  - Cleans the stdlib import smoke fixtures so they pass the structured linter without diagnostics.
-- `900c0721f5c713fbf3b5de5418fce70107cfa452` - `stdlib: clear AS3201 / AS4001 / AS0107 in array / convert / numeric / string`
-  - Removes remaining stdlib diagnostics in array, convert, numeric, and string modules.
-- `2884bbbecbfb9421c17c818d52496d2a695baf7b` - `stdlib: library-only bool / bit / compare with companion .test.as smokes`
-  - Splits bool, bit, and compare smoke programs into companion test files.
-- `f8a615e632416335f7d82fc5475490dd985c31bb` - `stdlib: smoke-test writeByteToStandardOutput in stdio.as`
-  - Adds stdio smoke coverage for byte-oriented stdout writing.
-- `21e974817264894c9ed152129a2768b4459573c3` - `docs: agents.md notes the absence of a stdlib c.free wrapper`
-  - Documents the heap-cleanup edge that generic buffers still use `c.free` directly when no domain-specific release wrapper exists.
-- `bb43fff305892f3e0179ad04d691acd0f6854152` - `chore: ignore .tmp_*.as subagent scratch files`
-  - Adds ignore coverage for temporary subagent scratch files.
-- `25bfed0e60220a4acd58e2cb4e39328ff4c14a25` - `tests + docs: per-test timing in test_stdlib + agents.md heap edge note`
-  - Adds per-test stdlib timing output and documents the heap cleanup edge in agent guidance.
-- `7fd3f141660252ebb34cbb1d6a5f532a45f9c24e` - `tests: complete stdlib import coverage - final 12 modules across 2 smokes`
-  - Completes stdlib import smoke coverage across the remaining modules.
-- `3d9d5f3f3cacb26866f12c4d0b4c6cdf5a5627cf` - `tests: AS unit tests verifying stdlib_as modules import + use end-to-end`
-  - Adds end-to-end stdlib import/use fixtures and compiler support needed by those tests.
-- `64c258b54e175b3f8d04d6f9fa4cc34ab55585b3` - `stdlib: refine math_float.as + string.as - final two modules`
-  - Refines math_float and string stdlib contracts as the last modules in the typed stdlib pass.
-- `166a2a80f3de21b69d32f0de2fb2dfc4acbeefab` - `stdlib: refine math.as with Bool predicates + total CSignedInt64 returns`
-  - Refines math predicates and total signed-integer helper return contracts.
-- `318923d40a51aee1af2d7bffd291ac2ec883d284` - `stdlib: refine stdlib.as with NumericArithmeticError + total helpers`
-  - Adds numeric arithmetic errors and total helper contracts to the core stdlib module.
-- `b1d666b928ea1186abb7bf0b0d7df1901f55f712` - `stdlib: refine stdio.as with IoWriteError + total CByteCount writers`
-  - Refines stdio write failures and byte-count writer contracts.
-- `d347178e51526939f2d2d3e1dc2bb7ca2b27fa5f` - `stdlib: refine random.as with RandomStateError + total LCG operations`
-  - Refines random-state failures and deterministic random operations.
-- `674f8f0b2bbae1daeffcbbb0b03622a2441c62a4` - `stdlib: refine memory.as with total CByteCount returns + read/write effects per buffer`
-  - Refines memory helper return types and buffer read/write effects.
-- `be4b344802fe92b91837b7560746fc7b4640f7a2` - `stdlib: refine sort.as with Bool predicate + total CByteCount returns`
-  - Refines sort predicates and byte-count return contracts.
-- `49740e3d4efd720beeab1c4d4e2de53530f81182` - `stdlib: refine numeric.as + array.as with typed errors + Bool predicates`
-  - Adds typed errors and Bool predicates across numeric and array helpers.
-- `196d7f57b44a09d894383d047767798aec676e6b` - `stdlib: refine process / time / assert with typed errors + Bool`
-  - Refines process, time, and assert modules with typed errors and Bool-returning predicates.
-- `256fa1b41169b5c00e797b5fb62811ee14064fc1` - `stdlib: refine convert.as with total CSignedInt32/64/Float64/pointer conversions`
-  - Refines conversion helpers with total signed-integer, floating-point, and pointer conversion contracts.
-- `b251bd23ce9dfed845c2a4c2341ff48255cdfda3` - `stdlib: extended unit tests for inttypes.sscript smoke`
-  - Covers absoluteMaxWidthSignedInt over positive / negative / zero, divideMaxWidthSignedIntQuotient / Remainder happy + zero-divisor failure path (asserting both the typed `DivisionByZeroAttempted` variant and that the success path returns the correct sign), parsePositiveBinaryCStringToSignedInt64 across empty / "0" / "1" / "1101" / junk-suffix inputs, and parsePositiveOctalCStringToSignedInt64 across "0" / "7" / "755" / mixed-junk inputs.
-- `ff6fb84d0137f19fe185dd622613f8819407d190` - `stdlib: extended unit tests for iso646.sscript smoke`
-  - Adds coverage for every iso646 keyword the original smoke skipped: and / or / not over every (zero, non-zero) operand pair, xor on all four combinations (proving self-inverse for matching pairs), equal / notEqual on positive / negative / boundary Int64 inputs.
-- `30cc229c715f13d6fc01dbcaf4e71224058e418f` - `stdlib: extended unit tests for assert.sscript smoke`
-  - Adds smoke coverage for the `require*` operations the original smoke skipped: requireConditionTrue (success + failure leg), requireSignedInt64LeftGreaterThanRight, requireSignedInt64LeftLessThanRight, requireSignedInt64ValueWithinInclusiveRange (boundary + outside), requireOpaquePointerNotNull (positive + negative), plus AssertionError-variant routing tests confirming each predicate surfaces its documented variant (ConditionWasFalse / ValuesWereNotEqual / OrderingViolated / OutOfRange / PointerWasNull).
-- `9af4a0dabc7bd874e28efdfbeadd7530276b49eb` - `stdlib: extended unit tests for random.sscript / stdlib.sscript / time.sscript smokes`
-  - random.sscript exercises the second LCG draw (1 → 48271 → 182605794 MINSTD canonical sequence), seed-normalization round-trips for 0 and -1, and readDeterministicRandomState invariants. stdlib.sscript covers parseHexCStringToSignedInt64 with `0x` prefix and mixed-case digits, parseDecimalCStringToSignedInt64 with leading whitespace + sign, absoluteSignedInt64 boundary / INT64_MIN, integerPowerSignedInt64 negative-exponent error path, clampSignedInt64 boundaries, plus gcd(0,0) == 0 convention. time.sscript exercises every conversion helper (seconds <-> minutes / hours / days, all four leap-year rule paths) plus monotonic non-decrease assertions on readProcessCpuClockTicks / readCurrentUnixEpochSeconds.
-- `86801ce3fe4f56efbe20db08984a8b7b7633ade3` - `stdlib: extended unit tests for bool.sscript and memory.sscript smokes`
-  - bool.sscript adds missing-case unit tests the original smoke skipped: negate(true) == false, and(false,false) == false, or(false,false) / or(true,true), xor over all four (Bool, Bool) pairs, equivalent over all four pairs, plus the involution / commutativity / de Morgan property tests called out in the operation invariants — bringing the smoke from 4 assertions to ~20. memory.sscript adds the operations the original smoke skipped: zeroMemoryBytes, moveMemoryBytesAllowOverlap (overlap-correct copy), hashMemoryBytesWithFnv1a (determinism check), countSignedByteValueInBuffer, plus zero-length-buffer boundary cases for sum / find / count / copy.
-- `02862fae2e65120d4faad11651e95f741fd60b73` - `stdlib: every std file passes semlint with zero diagnostics`
-  - All 28 std modules now lint cleanly under semlint AND all 28 smoke tests continue to pass via `test_stdlib.py`. Per-file additions: module-scope capabilities (`stdoutWriteCapability` / `heapAllocationCapability` / `heapFreeCapability` / `processLifecycleCapability` / `processSignalCapability` / `clockCpuReadCapability` / `clockRealTimeReadCapability` / `memoryBufferReadCapability` / `memoryBufferWriteCapability`) wired to every operation via `useCapability`; gold console.writeLine smoke pattern (ignoreOk + bindError + branchIfError + typed MainError.ConsoleWriteFailed translation handler carrying the raw negative status as the makeError SOURCE_VALUE cause); defer-based heap cleanup (every c.malloc → bindError + branchIfError + `defer releaseXCall c.free <pointerBind>`); dead-store false-positive workaround via self-branchIf inserted between disjoint-branch sets; missing-invariant lines describing actual iteration / numerical bounds; removed unused errorCase variants, unused consts, and parameter-as-channel effect declarations.
-- `ca6be4c785bd49f81a474e4700e43de7b8c30810` - `linter: add semlint with relaxed primitive-type equivalence`
-  - First commit of `SemanticScript/linter/semlint.py` (the structured-diagnostics linter — every warning ships subject / gap / invariant / citations / fix candidates / spec anchor / pass provenance / agent hint, tier-classified T1 spec / T2 contract / T3 refinement / T4 naming) plus the companion `test_semlint.py` suite. Primitive-type equivalence groups merge widths the compiler already auto-coerces: signed integers + Bool (Int8/Int16/Int32/Int64 + C* aliases + ByteCount + Bool) and 8-byte pointer-shaped types (String / OpaquePointer / FileHandle / String). Without this widening SS4301 fires on every byte-load + write pattern in the stdlib that the compiler accepts via sext/trunc/zext/bitcast.
-- `49ce86303b0fcaaccfb100ca7ce7acf4574a7fbf` - `compiler: branchIfError distinguishes pointer vs integer failure`
-  - The default `branchIfError` convention emitted `icmp slt result, 0` unconditionally, which clang rejects when the call's result is a pointer (e.g. `c.malloc` returning `i8*`). New behavior: integer return → `icmp slt result, 0` (negative = failure); pointer return → `icmp eq result, null` (NULL = failure). Required so stdlib smoke tests can wire bindError + branchIfError on `c.malloc` for proper out-of-memory handling.
-
-## 2026-05-17
-
-- `85367357d10cb5669de51cea984aad6f1e850bf1` - `stdlib: refine bit.as with Bool predicate + total CSignedInt64 ops`
-  - Refines bit helpers with Bool predicate outputs and total signed-integer operations.
-- `2344766735ebefd00adac39f9a5e7fe12ce961e3` - `stdlib: refine signal / signal_more / errno / errno_more`
-  - Refines signal and errno stdlib modules with typed metadata and tighter operation contracts.
-- `81456f926c6b13e06ba22a8adcf8ccf04033ac94` - `stdlib: refine iso646 / stddef / limits / constants / inttypes`
-  - Refines foundational stdlib modules for constants, limits, integer types, and C compatibility helpers.
-- `9864dd292e1a058fe23534ee2fe5acae4c817256` - `stdlib: refine bool / compare / ctype / char with Bool + typed metadata`
-  - Refines bool, compare, ctype, and char modules with Bool predicates and typed metadata.
-- `9790232c4c0b188095616c7544c5945016b82d23` - `docs: add STDLIB.md documenting the standard library`
-  - Adds the original standard-library reference document for exported modules and operations.
-- `b14564e55d9c98b77748f5e0c654e2816615e835` - `stdlib: rename all operation signatures per STDLIB_RENAME_PROPOSALS.md`
-  - Renames stdlib operation signatures according to the reviewed standard-library naming proposal.
-- `f70a692e867768cfd5463b3876c497e249c3134b` - `docs: add stdlib rename proposal with spec/AST gap review`
-  - Adds the standard-library rename proposal and captures the spec/AST gap review that drove the rename.
-- `e6ce9d0d502f40161b2b4fb6092d36c730db85a9` - `tests: align stdio.sscript expected output with stdlib operation rename`
-  - Updated the expected-stdout fixture in `tests/test_stdlib.py` to use the new `writeCStringToStandardOutput` / `writeCStringLineToStandardOutput` names instead of the pre-rename `putString` / `putLine`.
-- `b35d8e6f71af1bdb9ec2724eb8395dcdaee3fb19` - `examples + docs: refined-syntax migration demos and ast.md surface`
-  - Added 20 V0-to-refined `*_refined.sscript` ports (hello, hello_world, fizzbuzz, factorial, sum_of_squares, countdown, async_workflow, event_workflow, esoteric_trampoline, esoteric_church_encoding, counterintuitive_closure_capture, simple_calculator, smoke_c_io / math / string / classifiers, smoke_camelcase_libc, hello_via_helper, hello_via_c_printf, webserver_console) plus `refined_syntax_demo.sscript`; expanded `docs/ast.md` §2.12.5 with the refined-syntax declarative surface; added rolling `TODO.md`.
-- `ad41a1300afc76691bebfddd6c4158efa9793026` - `tests: feature_tests 127-160 verify refined-syntax runtime semantics`
-  - Added 34 new feature tests (127–160) plus three `_modules/external_greeting_*.txt` fixtures. Each test is designed to fail under a no-op lowering; covers storage mutability, defer reverse-order + `deferRunOn` filter + error-branch fire, useRetry boundary/exhaustion/first-success, channel value pass + overwrite + distinct slots, start/await sharedState visibility, taskGroup + workerPool dispatch, lock/unlock around state, Float64 / Bool storage, two-distinct-literalSource + missing-path graceful, json.encode / decode primitives, interval / select no-op fall-through, and a comprehensive metadata-cluster smoke.
-- `4620462d898c7e9ef26310938458aefe9c35bbcc` - `docs: SYNTAX.md catalog with implementation status per row`
-  - Added the root-level `SYNTAX.md`: every SemanticScript syntax row with one of four statuses (`Impl'd`/`Partial`/`Not impl'd`/`Proposed`) and a description that names the specific lowering. Histogram: 255 Impl'd / 7 Partial / 0 Not impl'd; remaining Partials are runtime gaps (HTTP server, codec runtime for record JSON, dynamic-collection runtime).
-- `c2ceaff20a856fb95fe8cbd67ee6c0b758a075a6` - `compiler: real execution semantics for refined-syntax verbs`
-  - Promoted storage mutability (`local`/`module`/`sharedState mutable` → real alloca / LLVM global; `set` → real store), defer cleanup (reverse-registration emission at every exit; `deferRunOn` filter), `useRetry` retry loops (alloca attempt counter + materialized result slot), `startInGroup` / `submitWork` real dispatch, channel single-slot pass via per-channel alloca, `literalSource` asset loading at compile time, `console.writeFloatLine` (was missing in semsc.py), `_bool_token_to_int` Bool init helper, and `json.encode` / `json.decode` primitives (Int64 / Bool / Float64 / String). CHANGELOG.md inside SemanticScript/ documents each lowering shape.
-- `95ee860eee081322b6c5ef988d1f21ad48ad015b` - `chore: ignore generated bootstrap IR`
-  - Ignored the generated `SemanticScript/bootstrap/bootstrap_general.ll` artifact so feature and bootstrap runs do not leave generated IR in source status.
-- `0c9fa948fe69704878ae2ee8a7b4d7d24f4b737d` - `docs: add refined syntax research artifacts`
-  - Added the project-wide README plus the refined syntax research notes, broad syntax showcase, and Mermaid graph under the retired research folder.
-- `877ba635319a40ce4cc01d22ed1f81e0f6d4f845` - `tooling: support refined SemanticScript syntax in VS Code`
-  - Expanded the VS Code extension for refined syntax verbs, schema values, generated codec targets, aggregate/guard/defer families, and future-syntax linter skipping.
-- `87106e17207b60ecd728f26e3a5cc91d1ac40dc2` - `tests: cover records imports and C call edges`
-  - Added feature tests 109-126 plus a helper module covering records, record parameters, imports, pointer/C call paths, signal registration, `c.printf` arity, and a documented nested-record xfail.
-- `e64a973ad9d05872b49d60649c91a99a9c85d5a2` - `bootstrap: add record and import lowering paths`
-  - Expanded `bootstrap_general.sscript` with record field discovery/emission, record-typed call argument handling, import inlining, signal declaration support, and safer empty-body fallback output.
-- `029db476b000dfbc6cb0c8a10d0947982d6e2f02` - `compiler: support imports and external web targets`
-  - Added import resolution, web-server target stubs, external-module call fallbacks, structural reserved-verb no-ops needed by current tooling, and optional traceback diagnostics.
-- `ddaa8fe29a56e3fc5e66576a0ca056b2d0be4b46` - `good progress`
-  - Expanded the SemanticScript-written compiler and feature corpus for pointer, float, libc, recursion, multi-argument calls, and broader generated-IR coverage.
-- `961418918c97db7f0269e666995b79e30dbbc4f0` - `docs: update dated changelog`
-  - Added the previous compiler, stdlib, and feature-coverage commits to the date-grouped repository changelog.
-- `ccf15e44ec38e097c7beb2070d1fcb0e2d4073ae` - `bootstrap: expand general compiler lowering`
-  - Expanded `bootstrap_general.sscript` to lower more real SemanticScript behavior through the SemanticScript-written compiler, including user operations, recursion, float and pointer flows, libc calls, return-error payloads, and broader executable control-flow cases.
-- `75c77115bac7a2184ee510e0114233a28d5950c7` - `stdlib: tighten SemanticScript self-test names`
-  - Cleaned up stdlib self-test source so float initialization and call naming stay compatible with the stricter SemanticScript-written compiler path.
-- `aab0648164ed1ebc7f2296a227328b21c7b85fad` - `tests: add SemanticScript compiler feature coverage`
-  - Added 61 focused SemanticScript feature programs plus `tests/feature_coverage.py`, and ignored generated feature-coverage build outputs.
-
-## 2026-05-16
-
-- `a3c90973c1b1d20f040fa05a1138d10a26db59a4` - `chore: add repository ignore rules`
-  - Added repository ignores for generated Python bytecode, native build outputs, VSIX packages, and OS metadata.
-- `5b95e35c8a45d46afc2a03f192288021c4385feb` - `docs: define SemanticScript language and AST`
-  - Added the root SemanticScript specification, AST reference, and implementation README.
-- `0e6e9b6526e0c450dde8fd0570452e9959b3d73c` - `compiler: add LLVM compiler and validation tooling`
-  - Added the LLVM compiler, libc registry, linter, tests, benchmark sources, bootstrap chain, and reference IR artifacts.
-- `e4659c4345b28907f20cedf741014c382a66e64e` - `examples: add SemanticScript programs and language oracles`
-  - Added SemanticScript sample programs plus JavaScript and Python comparison/oracle programs.
-- `92a8d243671fe9e6d52ee8b8a23be929a237a406` - `tooling: add VS Code SemanticScript extension`
-  - Added the VS Code extension source for SemanticScript syntax highlighting and language configuration.
-- `105cb214ce28d50576728e44897dbdd0f6e39f14` - `tooling: polish compiler and linter CLIs`
-  - Added version reporting, clearer success and failure messages, quiet mode, and stable CLI exit codes for the compiler and linter.
-- `1e97d63e4f4118f8d5d7aa5a48c37178960e0d5c` - `bootstrap: add input-scaled SemanticScript compiler stages`
-  - Added bootstrap stage 6, the general SemanticScript-written compiler, stage 6 input and reference IR, and extended the bootstrap-chain runner and docs.
-- `5c118f6cfb2cfd1d7d8497799ec031ea451ccb22` - `tests: add SemanticScript compiler parity coverage`
-  - Added compiler unit tests, SemanticScript-written compiler parity checks, and ignored generated parity build outputs.
-- `6582e5f2f760bd1b07457c8fe3037cbe1f66ab89` - `docs: document SemanticScript 1.0 toolchain`
-  - Refreshed the implementation README and added SemanticScript-specific release notes for the 1.0 toolchain.
-- `8359bc1d2068eb1b05ff23bd2de590c14ca48f9f` - `docs: update dated changelog`
-  - Added the latest logical source commits to this date-grouped changelog.
-- `19bfd1a1762a464cd2ff18b38082c083f553810f` - `compiler: support typed SemanticScript helper operations`
-  - Added typed same-file user-operation returns, lazy `puts` / `printf` extern declarations, integer/float conversion lowering, and stdlib-style helper use in `bootstrap_general.sscript`.
-- `1f9e7f5e38c18c4a8d6664e07636ec8f62eab4c1` - `stdlib: add SemanticScript standard library self-tests`
-  - Added 28 standalone `std` modules, a stdlib sanity smoke program, and a test harness that compiles and runs every stdlib module.
-- `da23a5d46a7a678892efb21ee44d5a8b173d690e` - `docs: refresh SemanticScript project state`
-  - Refreshed the README, AST, bootstrap, linter, release-note, stdlib, and `sem_python` documentation to match the current project state.
-- `3f70221ac5fd4f29a2b0faaef369beb279dc25de` - `docs: update dated changelog`
-  - Added the compiler, stdlib, and documentation commits from the previous logical grouping pass to this changelog.
-- `0f262d9054a080a965b5081bb14cf467b40ae114` - `Good progress`
-  - Expanded `bootstrap_general.sscript` toward full oracle parity, added `bootstrap/exit_code_probe.sscript`, and grew SemanticScript-written compiler parity coverage.
+- Validated on Windows/ARM64 only; the Linux/macOS test matrix has not been run.
+  CI is Windows-only and has not yet run green on GitHub (the branch needs a push
+  with the `workflow` scope). The runtime workarounds are Windows-toolchain
+  specific (UCRT inlines `printf`/`snprintf`); POSIX exports them, so they are
+  harmless no-ops there, but this is unverified.
+- The single-file release pipeline (`release.yml` → `package.py`, with
+  `version.json` + `SHA256SUMS` + `THIRD_PARTY_LICENSES.md`) is wired but has not
+  yet run on a tag. There is no `pip`-installable package (the distribution model
+  is the frozen single-file binary).
+- Toolchain parity with the legacy `sem` is functionally complete (TOOL-0..8:
+  MCP + agentic CLI tools, `emit-ir`/`inspect-ir`, `status`/`clean`,
+  `index`/`search`, `bench`, `repin`). Of the legacy-only commands, `get`/`list`/
+  `help`/`reference`/`bootstrap` are superseded by better-shaped new surfaces
+  (`docs --get`/`describe`, `index`/`symbols`, `agent-docs`/`task`,
+  `skills`/`search`), and `migrate-syntax` is obsolete. Still genuinely open: the
+  **network/registry ops** (`download`/`latest`/`self`/`update`) — they need a
+  package registry that doesn't exist yet; the offline pieces (`deps`,
+  `repin`/`mod_tidy` with MVS + a lock) are in place — plus two niche utilities
+  (`compare-profiles`, `literal`).
+- The broader language-completeness roadmap (crash-report tiers, non-bypassable
+  compile gate + syscall sandbox, linter parity, the ≥150-app conformance
+  corpus, the value-model free/move runtime) is tracked in
+  [`docs/todos.md`](docs/todos.md).

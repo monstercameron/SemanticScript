@@ -1,0 +1,68 @@
+# bit_shift_left_demo -- (repurposed: tls_renegotiation already deleted). Real integer op math.shiftLeftInt64 (README s10.6).
+# Expected output: 48
+
+BitShiftLeftDemo is project
+BitShiftLeftDemo module examplesBitShiftLeftDemo
+BitShiftLeftDemo target console
+BitShiftLeftDemo entry main
+
+examplesBitShiftLeftDemo is module
+examplesBitShiftLeftDemo path examples.bitShiftLeftDemo
+examplesBitShiftLeftDemo exports main
+examplesBitShiftLeftDemo purpose "Compute bitShiftLeftDemo at runtime"
+examplesBitShiftLeftDemo invariant "Result is computed at runtime"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute math.shiftLeftInt64 and print it"
+main invariant "Writes exactly one integer line: 48"
+main let operandA immutable Int64 3
+main let operandB immutable Int64 4
+main let harnessName immutable String "bit_shift_left_demo"
+main let harnessExpected immutable Int64 48
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "bit_shift_left_demo: real result (not the no-op 0)"
+main do calc
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calc is call
+calc in main
+calc invokes math.shiftLeftInt64
+calc arg left Int64 operandA
+calc arg right Int64 operandB
+calc out outValue Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 outValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

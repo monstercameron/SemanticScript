@@ -1,0 +1,82 @@
+# standard.path.semsig - SafePath builders and portable path helpers.
+
+pathSig is semsig
+pathSig version "1.0"
+pathSig generatedBy "semanticscript 0.1"
+pathSig describes standard.path
+
+SafePath is alias
+SafePath for String
+SafePath typeTrust validated
+SafePath purpose "A normalized, root-confined relative filesystem path"
+
+PathError is error
+PathError purpose "Invalid, escaping, absolute, malformed, or overlong path input"
+
+fromLiteral is intrinsic
+fromLiteral target path.fromLiteral
+fromLiteral arg literal String
+fromLiteral out path SafePath
+fromLiteral catch PathError
+fromLiteral owns path cleanedBy path.release
+fromLiteral purpose "Validate and normalize a source/runtime string as a SafePath"
+
+joinUnderRoot is intrinsic
+joinUnderRoot target path.joinUnderRoot
+joinUnderRoot arg root SafePath
+joinUnderRoot arg child String
+joinUnderRoot out path SafePath
+joinUnderRoot catch PathError
+joinUnderRoot owns path cleanedBy path.release
+joinUnderRoot purpose "Join a SafePath root and child segment while rejecting escapes"
+
+normalize is intrinsic
+normalize target path.normalize
+normalize arg input String
+normalize out path SafePath
+normalize catch PathError
+normalize owns path cleanedBy path.release
+normalize purpose "Normalize separators and dot segments while rejecting absolute/traversal paths"
+
+basename is intrinsic
+basename target path.basename
+basename arg input SafePath
+basename out name String
+basename catch PathError
+basename owns name cleanedBy path.release
+basename purpose "Return the final normalized path component"
+
+extension is intrinsic
+extension target path.extension
+extension arg input SafePath
+extension out ext String
+extension catch PathError
+extension owns ext cleanedBy path.release
+extension purpose "Return the final component extension including the leading dot, or empty"
+
+parent is intrinsic
+parent target path.parent
+parent arg input SafePath
+parent out path SafePath
+parent catch PathError
+parent owns path cleanedBy path.release
+parent purpose "Return the normalized parent path, or . for a root-level file"
+
+isChildOf is intrinsic
+isChildOf target path.isChildOf
+isChildOf arg root SafePath
+isChildOf arg child SafePath
+isChildOf out childOf Int32
+isChildOf catch PathError
+isChildOf purpose "Return 1 when child is strictly under root, 0 otherwise"
+
+separator is intrinsic
+separator target path.separator
+separator out sep String
+separator purpose "Return the host platform path separator as a one-character string"
+
+release is intrinsic
+release target path.release
+release arg path String
+release out released Int32
+release purpose "Release a string allocated by standard.path; foreign or stale values are ignored"

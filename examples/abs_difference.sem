@@ -1,0 +1,72 @@
+# abs_difference — (repurposed from string_compare: semanticscript has no string-compare
+# builtin). Absolute difference of two integers via math.absDiffInt64 (README
+# §10.6). Result computed, not a constant.
+#
+# Correctness observation: |10 - 25| = 15.
+# Expected output: 15
+
+AbsDifference is project
+AbsDifference module examplesAbsDifference
+AbsDifference target console
+AbsDifference entry main
+
+examplesAbsDifference is module
+examplesAbsDifference path examples.absDifference
+examplesAbsDifference exports main
+examplesAbsDifference purpose "Compute the absolute difference of two integers"
+examplesAbsDifference invariant "Result is non-negative"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute |10-25| and print it"
+main invariant "Writes exactly one integer line: 15"
+main let firstValue immutable Int64 10
+main let secondValue immutable Int64 25
+main let harnessName immutable String "abs_difference"
+main let harnessExpected immutable Int64 15
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "abs_difference: real result (not the no-op 0)"
+main do diffCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+diffCall is call
+diffCall in main
+diffCall invokes math.absDiffInt64
+diffCall arg left Int64 firstValue
+diffCall arg right Int64 secondValue
+diffCall out gap Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 gap
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 gap
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

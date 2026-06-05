@@ -1,0 +1,74 @@
+# exit_code_status -- choose a status code from a computed equality check, converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  exit_code_status  (expected 1, actual 1)
+#   ---- 1 passed, 0 failed ----
+
+ExitCodeStatus is project
+ExitCodeStatus module examplesExitCodeStatus
+ExitCodeStatus target console
+ExitCodeStatus entry main
+
+examplesExitCodeStatus is module
+examplesExitCodeStatus path examples.exitCodeStatus
+examplesExitCodeStatus exports main
+examplesExitCodeStatus purpose "choose a status code from a computed equality check"
+examplesExitCodeStatus invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "choose a status code from a computed equality check and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "exit_code_status"
+main let harnessExpected immutable Int64 1
+main let outcome mutable Int64 0
+main let trueMark immutable Int64 1
+main let probe immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "exit_code_status: real result (not the no-op 0)"
+main do eq
+main branch ifFalse isEq goto afterCheck
+main set outcome trueMark
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+eq is call
+eq in main
+eq invokes math.equalInt64
+eq arg left Int64 probe
+eq arg right Int64 probe
+eq out isEq Bool
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

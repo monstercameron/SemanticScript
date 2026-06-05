@@ -1,0 +1,86 @@
+# effect_pure_helper — purity proof for a side-effect-free operation (WS2-093,
+# README §10.6/§30.3.2). `doubleValue` declares NO effect rows, so it asserts it
+# is pure: it only computes (math.multiplyInt64) and returns. `main` is impure
+# (it drives the test harness, which writes to stdout under a capability), but the
+# pure helper it calls introduces no effect to cover.
+#
+# Correctness observation: double(21) == 42, computed (not the no-op 0).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+EffectPureHelper is project
+EffectPureHelper module examplesEffectPureHelper
+EffectPureHelper target console
+EffectPureHelper entry main
+
+examplesEffectPureHelper is module
+examplesEffectPureHelper path examples.effectPureHelper
+examplesEffectPureHelper exports main
+examplesEffectPureHelper purpose "Prove a no-effect operation is pure"
+examplesEffectPureHelper invariant "doubleValue declares no effect and only computes"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+doubleValue is operation
+doubleValue in n Int64
+doubleValue out Int64
+doubleValue memory heap no
+doubleValue async no
+doubleValue purpose "Double an integer with no side effects (pure)"
+doubleValue invariant "Returns 2*n; declares no effect"
+doubleValue let two immutable Int64 2
+doubleValue do scale
+doubleValue return scaled
+scale is call
+scale in doubleValue
+scale invokes math.multiplyInt64
+scale arg left Int64 n
+scale arg right Int64 two
+scale out scaled Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Call the pure helper and assert its result"
+main invariant "Writes the test harness summary"
+main let seed immutable Int64 21
+main let harnessName immutable String "effect_pure_helper"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "effect_pure_helper: real result (not the no-op 0)"
+main do computeDouble
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+computeDouble is call
+computeDouble in main
+computeDouble invokes doubleValue
+computeDouble arg n Int64 seed
+computeDouble out doubled Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 doubled
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 doubled
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
