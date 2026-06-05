@@ -72,13 +72,22 @@ def main():
                 failures.append((label, "missing %r in output" % expect))
 
     # repin needs a build.sem fixture: round-trip (write then --check) in a temp dir.
+    # The dependency must be *materializable* (SS2804/R-081): a bare `require` with
+    # no registry, replace, or vendored artifact cannot be locked, so the fixture
+    # materializes it via a local `replace` pointing at an in-tree dep module.
     import tempfile
     total = len(CASES) + 1
     with tempfile.TemporaryDirectory() as td:
+        os.makedirs(os.path.join(td, "dep"), exist_ok=True)
+        with open(os.path.join(td, "dep", "dep.sem"), "w", encoding="utf-8") as fh:
+            fh.write("ExitCode is alias\nExitCode for Int32\n"
+                     "depOp is operation\ndepOp out ExitCode\ndepOp async no\n"
+                     'depOp purpose "p"\ndepOp invariant "i"\n')
         with open(os.path.join(td, "build.sem"), "w", encoding="utf-8") as fh:
             fh.write("RepinDemo is project\nRepinDemo module m\n"
                      "RepinDemo target console\nRepinDemo entry main\n"
-                     "RepinDemo require example.org/u v1.0.0\n")
+                     "RepinDemo require example.org/u v1.0.0\n"
+                     'RepinDemo replace example.org/u "dep"\n')
         write = subprocess.run([sys.executable, SEM, "repin", td, "--json"],
                                capture_output=True, text=True, cwd=ROOT, timeout=60)
         chk = subprocess.run([sys.executable, SEM, "repin", td, "--check", "--json"],

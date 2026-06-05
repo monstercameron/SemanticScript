@@ -291,7 +291,7 @@ def test_bench_reports_run_timing_for_native_runtime_sqlite():
     assert payload["runMsBest"] is not None
 
 
-def test_assert_equal_int64_cannot_be_discarded():
+def test_assert_equal_int64_can_be_a_step_assertion():
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
         'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
@@ -301,11 +301,10 @@ def test_assert_equal_int64_cannot_be_discarded():
         "main let okc immutable ExitCode 0\nmain do checkIt\nmain return okc\n"
         "checkIt is call\ncheckIt in main\ncheckIt invokes assert.equalInt64\n"
         "checkIt arg left Int64 left\ncheckIt arg right Int64 right\n"
-        "checkIt discards \"assertions should not fail the test\"\n"
     )
-    with pytest.raises(ss.EavError) as exc:
-        ss.parse(src)
-    assert getattr(exc.value, "code", None) == "SS1204"
+    program = ss.parse(src)
+    assert "SS1204" not in {d.code for d in ss.lint(program)}
+    ss.lower_to_llvm(program)
 
 
 def test_builtin_sqlite_sql_slot_requires_sqltext_not_string():
@@ -341,3 +340,101 @@ def test_builtin_sqlite_sql_slot_requires_sqltext_not_string():
         rc = ss.main(["scaffold", "db-roundtrip"])
     assert rc == 0
     assert "SqlText typeTrust validated" in stdout.getvalue()
+
+
+def test_run_wraps_operation_only_snippet(tmp_path):
+    src = tmp_path / "snippet.sem"
+    src.write_text(
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let ok immutable ExitCode 0\nmain return ok\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "semanticscript", "compiler", "semanticscript.py"),
+         "run", str(src), "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["surface"] == "sem.run.v1"
+    assert payload["ok"] is True
+    assert payload["wrapped"] is True
+
+
+def test_doctor_without_path_reports_env_health(capsys):
+    assert ss.main(["doctor", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["surface"] == "sem.doctor.v1"
+    assert payload["status"] in ("env-only", "ok", "diagnostics")
+    assert "env" in payload
+    assert "cCompilerAvailable" in payload["env"]
+
+
+def test_resource_producer_returned_outward_needs_no_local_cleanup_warning():
+    src = (
+        "SqliteDatabase is alias\nSqliteDatabase for OpaquePointer\n"
+        "openDb is operation\nopenDb out SqliteDatabase\n"
+        "openDb do openCall\nopenDb return db\n"
+        "openCall is call\nopenCall in openDb\n"
+        "openCall invokes sqlite.openInMemory\n"
+        "openCall out db SqliteDatabase\n"
+    )
+    codes = {d.code for d in ss.lint(ss.parse(src))}
+    assert "SS1810" not in codes
+
+
+def test_last_insert_rowid_sees_inline_sqltext_insert():
+    src = (
+        "SqlText is alias\nSqlText for String\nSqlText typeTrust validated\n"
+        "SqliteDatabase is alias\nSqliteDatabase for OpaquePointer\n"
+        "main is operation\nmain out Int64\n"
+        "main let db immutable SqliteDatabase 0\n"
+        "main let insertSql immutable SqlText \"INSERT INTO todos(title) VALUES('x')\"\n"
+        "main do insertRow\nmain do readId\nmain return rowId\n"
+        "insertRow is call\ninsertRow in main\ninsertRow invokes sqlite.exec\n"
+        "insertRow arg database SqliteDatabase db\n"
+        "insertRow arg sql SqlText insertSql\n"
+        "insertRow discards \"insert status ignored in fixture\"\n"
+        "readId is call\nreadId in main\nreadId invokes sqlite.lastInsertRowId\n"
+        "readId arg database SqliteDatabase db\nreadId out rowId Int64\n"
+    )
+    codes = {d.code for d in ss.lint(ss.parse(src))}
+    assert "SS1873" not in codes
+
+
+def test_storage_init_alias_is_accepted_for_sqltext_constants():
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+        "SqlText is alias\nSqlText for String\nSqlText typeTrust validated\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "query is storage\nquery scope module\nquery type SqlText\nquery init \"SELECT 1\"\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main let ok immutable ExitCode 0\nmain return ok\n"
+    )
+    program = ss.parse(src)
+    assert program.entities["query"].fact("value").payload == ['"SELECT 1"']
+    assert program.entities["query"].fact("init") is None
+    ss.lower_to_llvm(program)
+
+
+def test_json_owned_serializer_signature_avoids_scratch():
+    sig = ss._builtin_target_signature("json.serializeDocumentOwned")
+    assert sig is not None
+    assert [a["slot"] for a in sig["args"]] == ["document"]
+    assert sig["out"] == "JsonText"
+    assert sig["catch"] == "JsonAccessError"
+
+
+def test_webserver_probe_target_uses_first_get_route():
+    program = ss.parse(
+        "P is project\nP target webServer\nP entry api\n"
+        "api is webServer\napi host \"127.0.0.1\"\napi port 9099\n"
+        "api route POST \"/skip\" create\n"
+        "api route GET \"/items/:id\" show\n"
+    )
+    target = ss._webserver_probe_target(program)
+    assert target["url"] == "http://127.0.0.1:9099/items/1"

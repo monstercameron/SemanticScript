@@ -41,3 +41,20 @@ def test_fix3_fmt_is_total_and_idempotent_over_the_corpus():
         assert once == twice, f"{os.path.relpath(path, ROOT)}: fmt is not idempotent"
         checked += 1
     assert checked >= 100, f"expected to format many examples, got {checked}"
+
+
+def test_fix3_fmt_write_dedupes_identical_type_declarations(tmp_path, capsys):
+    path = tmp_path / "dup.sem"
+    path.write_text(
+        "ExitCode is alias\nExitCode for Int32\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let z immutable ExitCode 0\nmain return z\n",
+        encoding="utf-8",
+    )
+
+    assert semanticscript.main(["fmt", "-w", str(path)]) == 0
+    capsys.readouterr()
+    out = path.read_text(encoding="utf-8")
+    assert out.count("ExitCode is alias") == 1
+    semanticscript.parse(out)

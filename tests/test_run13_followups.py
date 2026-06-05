@@ -73,6 +73,26 @@ def test_aq9_every_scaffold_has_a_reachable_skill_recipe():
         assert skills[key].get("body"), f"skill {key} has no body"
         # the recipe must point back at the runnable template.
         assert p in skills[key]["body"], f"skill {key} does not name `scaffold {p}`"
+        guards = skills[key].get("guards") or []
+        assert guards, f"skill {key} has no executable guard references"
+        assert "Executable guards:" in skills[key]["body"]
+        for guard in guards:
+            guard_file = guard.split("::", 1)[0].replace("/", os.sep)
+            assert os.path.exists(os.path.join(ROOT, guard_file)), guard
+    assert any("golden" in g for g in
+               skills["eav-scaffold-db-roundtrip"]["guards"])
+
+
+def test_w2g1_subsystem_cookbook_recipes_carry_guard_sources():
+    """W2-G1: cookbook recipes must name the tests/goldens that keep them true."""
+    for family in ["json", "sqlite", "log", "assert", "test"]:
+        key = f"eav-subsystem-{family}"
+        skill = semanticscript.EAV_SKILLS[key]
+        assert "Executable guards:" in skill["body"]
+        assert skill.get("guards"), key
+        for guard in skill["guards"]:
+            guard_file = guard.split("::", 1)[0].replace("/", os.sep)
+            assert os.path.exists(os.path.join(ROOT, guard_file)), guard
 
 
 def test_aq9_scaffold_skill_is_served_by_the_skills_command():
@@ -83,6 +103,7 @@ def test_aq9_scaffold_skill_is_served_by_the_skills_command():
     d = json.loads(proc.stdout)
     blob = json.dumps(d)
     assert "db-roundtrip" in blob and "sqlite" in blob.lower()
+    assert any("golden" in g for g in d["skills"][0]["guards"])
 
 
 # --- NS-1/AQ-1: identical duplicate type declarations compose across modules ---
@@ -140,6 +161,142 @@ def test_ns1_dedup_is_a_noop_without_duplicates():
     src = ("m is module\nm path m\nExitCode is alias\nExitCode for Int32\n"
            "Other is alias\nOther for Int64\nmain is operation\nmain out ExitCode\n")
     assert semanticscript._dedupe_identical_type_declarations(src) == src
+
+
+# --- NS-1/AQ-1: module-private operation names are module-scoped, not flat ---
+
+def _two_module_private_helper_project(tmp_path):
+    """A project whose two modules each declare a DIFFERENT module-private helper
+    operation under the same bare name `openDb`, each invoked in-module — the
+    run-15 case the flat namespace rejected with `duplicate is row`."""
+    proj = tmp_path / "p"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "Proj is project\nProj module modA\nProj module modB\n"
+        "Proj target console\nProj entry main\n", encoding="utf-8")
+    (proj / "src" / "a.sem").write_text(
+        "modA is module\nmodA path src.a\nmodA exports main\n"
+        "modA purpose \"p\"\nmodA invariant \"i\"\nExitCode is alias\nExitCode for Int32\n"
+        "openDb is operation\nopenDb out Int32\nopenDb async no\nopenDb purpose \"A open\"\n"
+        "openDb invariant \"i\"\nopenDb let z immutable Int32 7\nopenDb return z\n"
+        "main is operation\nmain out ExitCode\nmain async no\nmain purpose \"p\"\n"
+        "main invariant \"i\"\nmain let z immutable ExitCode 0\nmain do c1\nmain return z\n"
+        "c1 is call\nc1 in main\nc1 invokes openDb\nc1 out r Int32\n", encoding="utf-8")
+    (proj / "src" / "b.sem").write_text(
+        "modB is module\nmodB path src.b\nmodB exports helper\n"
+        "modB purpose \"p\"\nmodB invariant \"i\"\n"
+        "openDb is operation\nopenDb out Int32\nopenDb async no\nopenDb purpose \"B open\"\n"
+        "openDb invariant \"i\"\nopenDb let z immutable Int32 9\nopenDb return z\n"
+        "helper is operation\nhelper out Int32\nhelper async no\nhelper purpose \"p\"\n"
+        "helper invariant \"i\"\nhelper let z immutable Int32 0\nhelper do c2\nhelper return z\n"
+        "c2 is call\nc2 in helper\nc2 invokes openDb\nc2 out r Int32\n", encoding="utf-8")
+    return proj
+
+
+def test_ns1_module_private_operation_name_reused_across_modules(tmp_path):
+    """NS-1/AQ-1: two modules may each define a module-private operation `openDb`
+    with different bodies; the project composes, checks clean, and each module's
+    in-module `invokes openDb` resolves to ITS OWN definition — not the other
+    module's (the flat-namespace bug that forced manual prefixing of every helper)."""
+    proj = _two_module_private_helper_project(tmp_path)
+    prog = semanticscript.parse(semanticscript.load_project(str(proj)))
+    assert not [d for d in semanticscript.lint(prog) if d.severity == "error"]
+    # The first module keeps the bare symbol; the second is module-qualified.
+    a_target = prog.entities["c1"].fact("invokes").payload[0]
+    b_target = prog.entities["c2"].fact("invokes").payload[0]
+    assert a_target != b_target, "both calls collapsed onto one openDb (flat namespace)"
+    assert prog.entities[a_target].fact("purpose").payload == ['"A open"']
+    assert prog.entities[b_target].fact("purpose").payload == ['"B open"']
+
+
+def test_ns1_same_module_duplicate_operation_still_errors():
+    """Per-module uniqueness is still enforced: re-declaring `openDb` inside ONE
+    module is a genuine duplicate, not a module-scoped distinct operation."""
+    src = ("m is module\nm path m\nm purpose \"p\"\nm invariant \"i\"\n"
+           "openDb is operation\nopenDb out Int32\nopenDb async no\n"
+           "openDb purpose \"a\"\nopenDb invariant \"i\"\nopenDb let z immutable Int32 0\nopenDb return z\n"
+           "openDb is operation\nopenDb out Int32\nopenDb async no\n"
+           "openDb purpose \"b\"\nopenDb invariant \"i\"\nopenDb let z immutable Int32 1\nopenDb return z\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src, validate=False)
+    assert "duplicate `is` row" in str(exc.value)
+
+
+def test_ns1_exported_operation_collision_still_errors():
+    """Scoping is for module-PRIVATE helpers only. An *exported* operation is part
+    of the module's public API (importers resolve it by its bare name), so a
+    cross-module clash on an exported name is a real conflict and still errors —
+    it is not silently renamed out from under its importers."""
+    src = ("a is module\na path a\na exports openDb\na purpose \"p\"\na invariant \"i\"\n"
+           "openDb is operation\nopenDb out Int32\nopenDb async no\n"
+           "openDb purpose \"a\"\nopenDb invariant \"i\"\nopenDb let z immutable Int32 0\nopenDb return z\n"
+           "b is module\nb path b\nb exports openDb\nb purpose \"p\"\nb invariant \"i\"\n"
+           "openDb is operation\nopenDb out Int32\nopenDb async no\n"
+           "openDb purpose \"b\"\nopenDb invariant \"i\"\nopenDb let z immutable Int32 1\nopenDb return z\n")
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(src, validate=False)
+    assert "duplicate `is` row" in str(exc.value)
+
+
+def test_ns1_single_module_namespace_is_unchanged():
+    """Blast-radius guard: with no cross-module reuse, no symbol is renamed — every
+    entity keeps its bare name, so existing single-module programs are untouched."""
+    src = ("m is module\nm path m\n"
+           "openDb is operation\nopenDb out Int32\nopenDb async no\n"
+           "openDb purpose \"a\"\nopenDb invariant \"i\"\nopenDb let z immutable Int32 0\nopenDb return z\n")
+    prog = semanticscript.parse(src, validate=False)
+    assert sorted(prog.entities) == ["m", "openDb"]
+    assert prog.entity_module == {"m": "m", "openDb": "m"}
+
+
+def test_ns1_module_private_operation_names_build_and_run_distinct_symbols(tmp_path):
+    """The namespace fix reaches native codegen: two private `openDb` helpers with
+    different module owners both lower and link, then main observes both values."""
+    if semanticscript._find_c_compiler() is None:
+        pytest.skip("no C compiler available for native namespace build")
+    proj = tmp_path / "p"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "Proj is project\nProj module modA\nProj module modB\n"
+        "Proj target console\nProj entry main\n", encoding="utf-8")
+    (proj / "src" / "a.sem").write_text(
+        "modA is module\nmodA path src.a\nmodA imports modB src.b\n"
+        "modA exports main\nmodA purpose \"p\"\nmodA invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "openDb is operation\nopenDb out Int64\nopenDb async no\n"
+        "openDb purpose \"A open\"\nopenDb invariant \"i\"\n"
+        "openDb let z immutable Int64 7\nopenDb return z\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main effect write console.stdout\nmain uses stdoutWriter\n"
+        "main purpose \"p\"\nmain invariant \"i\"\n"
+        "main let ok immutable ExitCode 0\n"
+        "main do aCall\nmain do bCall\nmain do addCall\nmain do writeCall\n"
+        "main return ok\n"
+        "aCall is call\naCall in main\naCall invokes openDb\naCall out aValue Int64\n"
+        "bCall is call\nbCall in main\nbCall invokes modB.helper\nbCall out bValue Int64\n"
+        "addCall is call\naddCall in main\naddCall invokes math.addInt64\n"
+        "addCall arg left Int64 aValue\naddCall arg right Int64 bValue\n"
+        "addCall out totalValue Int64\n"
+        "writeCall is call\nwriteCall in main\nwriteCall invokes console.writeIntegerLine\n"
+        "writeCall arg value Int64 totalValue\n", encoding="utf-8")
+    (proj / "src" / "b.sem").write_text(
+        "modB is module\nmodB path src.b\nmodB exports helper\n"
+        "modB purpose \"p\"\nmodB invariant \"i\"\n"
+        "openDb is operation\nopenDb out Int64\nopenDb async no\n"
+        "openDb purpose \"B open\"\nopenDb invariant \"i\"\n"
+        "openDb let z immutable Int64 9\nopenDb return z\n"
+        "helper is operation\nhelper out Int64\nhelper async no\nhelper purpose \"p\"\n"
+        "helper invariant \"i\"\nhelper do c2\nhelper return r\n"
+        "c2 is call\nc2 in helper\nc2 invokes openDb\nc2 out r Int64\n",
+        encoding="utf-8")
+    out = proj / ("p.exe" if os.name == "nt" else "p")
+    rc = semanticscript.main(["build", str(proj), "--output", str(out), "--json"])
+    assert rc == 0
+    proc = subprocess.run([str(out)], capture_output=True, text=True,
+                          encoding="utf-8")
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "16"
 
 
 # --- WEB-1: startup-owned handle that can't reach handlers is flagged (R-9) ---
@@ -471,6 +628,34 @@ def test_aq11_summary_command_is_registered_and_runs():
     assert d.get("surface") == "sem.summary.v1" and d.get("target") == "console"
 
 
+def test_w2g3_explain_program_reports_touches_authority_and_failures(tmp_path):
+    p = tmp_path / "prog.sem"
+    p.write_text(
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path x\nm exports main\nm purpose \"p\"\nm invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "ConsoleWriteError is error\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses stdoutWriter\nmain async no\nmain purpose \"p\"\nmain invariant \"i\"\n"
+        "main let h immutable String \"hi\"\nmain let z immutable ExitCode 0\n"
+        "main do w\nmain return z\n"
+        "w is call\nw in main\nw invokes console.writeLine\nw arg text String h\n"
+        "w catch e ConsoleWriteError\n",
+        encoding="utf-8")
+    proc = subprocess.run([sys.executable, SC, "explain-program", str(p), "--json"],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["surface"] == "sem.programExplain.v1"
+    assert payload["touches"]["target"] == "console"
+    assert "console.writeLine" in payload["touches"]["runtimeTargets"]
+    assert payload["authority"]["declaredEffects"] == ["write console.stdout"]
+    assert payload["authority"]["capabilityGrants"][0]["name"] == "stdoutWriter"
+    fallible = [m for m in payload["failureModes"] if m["kind"] == "fallible-calls"]
+    assert fallible and fallible[0]["calls"][0]["error"] == "ConsoleWriteError"
+
+
 # --- ERG-2: analysis commands accept a project directory, not only a file ---
 
 def test_erg2_analysis_commands_accept_a_project_directory(tmp_path):
@@ -546,3 +731,48 @@ def test_aq3_rename_rewrites_entity_and_refs_across_the_project(tmp_path):
     txt = (proj / "src" / "main.sem").read_text(encoding="utf-8")
     assert "helperValue" not in txt
     assert "answerValue is storage" in txt and "main return answerValue" in txt
+
+
+def test_w23_rename_rewrites_imported_capability_and_reverifies_project(tmp_path):
+    proj = tmp_path / "p"
+    (proj / "src").mkdir(parents=True)
+    (proj / "build.sem").write_text(
+        "App is project\nApp module mainModule\nApp module authModule\n"
+        "App target console\nApp entry main\n",
+        encoding="utf-8")
+    (proj / "src" / "main.sem").write_text(
+        "mainModule is module\nmainModule path app.main\n"
+        "mainModule imports auth app.auth\nmainModule exports main\n"
+        "mainModule purpose \"p\"\nmainModule invariant \"i\"\n"
+        "ExitCode is alias\nExitCode for Int32\nConsoleWriteError is error\n"
+        "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses auth.stdoutWriter\nmain async no\n"
+        "main purpose \"p\"\nmain invariant \"i\"\n"
+        "main let text immutable String \"hi\"\n"
+        "main let ok immutable ExitCode 0\nmain do w\nmain return ok\n"
+        "w is call\nw in main\nw invokes console.writeLine\n"
+        "w arg text String text\nw catch e ConsoleWriteError\n",
+        encoding="utf-8")
+    (proj / "src" / "auth.sem").write_text(
+        "authModule is module\nauthModule path app.auth\n"
+        "authModule exports stdoutWriter\n"
+        "authModule purpose \"p\"\nauthModule invariant \"i\"\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
+        "stdoutWriter purpose \"p\"\n",
+        encoding="utf-8")
+
+    r = subprocess.run([sys.executable, SC, "rename", str(proj),
+                        "stdoutWriter", "consoleWriter", "--write"],
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    main_txt = (proj / "src" / "main.sem").read_text(encoding="utf-8")
+    auth_txt = (proj / "src" / "auth.sem").read_text(encoding="utf-8")
+    assert "main uses auth.consoleWriter" in main_txt
+    assert "authModule exports consoleWriter" in auth_txt
+    assert "consoleWriter is capability" in auth_txt
+    assert "stdoutWriter" not in main_txt + auth_txt
+
+    verify = subprocess.run([sys.executable, SC, "verify", str(proj), "--json"],
+                            capture_output=True, text=True, encoding="utf-8")
+    assert verify.returncode == 0, verify.stdout + verify.stderr
+    assert json.loads(verify.stdout)["status"] == "ok"

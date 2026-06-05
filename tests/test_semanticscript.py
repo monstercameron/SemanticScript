@@ -513,6 +513,43 @@ def test_wasm_entry_rejects_non_scalar_export_type():
     assert "SS1197" in {d.code for d in semanticscript.lint(semanticscript.parse(src))}
 
 
+def test_wasm_accepts_project_root_and_uses_project_output(tmp_path, monkeypatch, capsys):
+    (tmp_path / "build.sem").write_text(
+        "Demo is project\nDemo module demoMod\nDemo target wasm\n"
+        "Demo entry main\nDemo platform browserWasm\n",
+        encoding="utf-8",
+    )
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "main.sem").write_text(
+        "demoMod is module\ndemoMod path demo\ndemoMod exports main\n"
+        "browserWasm is platform\nbrowserWasm targetRuntime wasm\n"
+        "main is operation\nmain out Int32\nmain async no\n"
+        "main let z immutable Int32 0\nmain return z\n",
+        encoding="utf-8",
+    )
+    seen = {}
+
+    def fake_build_wasm(program, out_path):
+        seen["entities"] = set(program.entities)
+        seen["sourceRoot"] = getattr(program, "source_root", None)
+        seen["outPath"] = out_path
+        with open(out_path, "wb") as fh:
+            fh.write(b"\0asm\x01\0\0\0")
+        return out_path, "main"
+
+    monkeypatch.setattr(semanticscript, "build_wasm", fake_build_wasm)
+    rc = semanticscript.main(["wasm", str(tmp_path)])
+    out = capsys.readouterr().out
+
+    expected = os.path.join(str(tmp_path), f"{tmp_path.name}.wasm")
+    assert rc == 0
+    assert seen["outPath"] == expected
+    assert seen["sourceRoot"] == str(tmp_path)
+    assert {"Demo", "demoMod", "main"} <= seen["entities"]
+    assert f"wasm:   {expected}" in out
+
+
 def test_export_c_duplicate_symbol_rejected():
     # WS3-054 / README §30.4.2: export symbols must be unique C identifiers.
     src = (
@@ -2178,7 +2215,9 @@ def test_devx_all_surface_covers_repl_improve_adversarial_and_perf():
         intent = "console app"
         record_replay = False
     payload = semanticscript._devx_payload("all", "demo.sem", prog, src, Args())
-    assert payload["repl"]["typedRuntimeLinked"] is True
+    assert payload["repl"]["entryCommand"][0] == "repl"
+    assert "nativeBuild" in payload["repl"]["executionLanes"]
+    assert payload["repl"]["jitSnippetCommand"][0] == "eval"
     assert payload["improve"]["nextCommands"]
     assert "reviewQuestions" in payload["adversarial"]
     assert payload["perf"]["serverAware"] is True
@@ -2200,21 +2239,22 @@ def test_compensate_codegen_localizes_to_source_row(tmp_path, capsys):
     assert env["localized"]["suggestedFix"]
 
 
-def test_compensate_maturity_surfaces_known_broken_targets_and_search(capsys):
+def test_compensate_maturity_surfaces_json_as_proven_after_codec_fix(capsys):
     import json as _json
     catalog = semanticscript._target_catalog()
     json_targets = [
         row for row in catalog["targets"]
         if row["target"].startswith("json.")
     ]
-    assert json_targets and all(row["knownBroken"] for row in json_targets)
-    assert all(row["maturity"] == "known-broken" for row in json_targets)
+    assert json_targets and not any(row["knownBroken"] for row in json_targets)
+    assert all(row["maturity"] == "proven" for row in json_targets)
 
     semanticscript.main([
         "search", "json codec", "--source", "target", "--json"])
     env = _json.loads(capsys.readouterr().out)
     assert env["surface"] == "sem.search.v1"
-    assert any(m.get("knownBroken") and m.get("maturity") == "known-broken"
+    assert any((not m.get("knownBroken")) and m.get("maturity") == "proven"
+               and str(m.get("id", "")).startswith("json.")
                for m in env["matches"])
 
 
@@ -2280,7 +2320,7 @@ def test_compensate_mcp_tool_is_discoverable_and_callable(tmp_path):
     payload = _json.loads(resp["result"]["content"][0]["text"])
     assert payload["surface"] == "sem.compensate.v1"
     assert payload["mode"] == "maturity"
-    assert payload["knownBrokenTargets"]
+    assert "knownBrokenTargets" in payload
 
 
 def test_describe_entity_summary():
@@ -2775,6 +2815,8 @@ def test_mcp_registry_is_authoritative_and_errors_are_protocol_errors():
             "code": "SS1502",
             "dimension": "effects",
             "db": docs_db,
+            "edit": {"op": "addLet", "operation": "main",
+                     "name": "registryTemp", "type": "Int64", "value": "1"},
         }
         # `explain` is a text tool (not a sem.* JSON envelope); everything else is JSON.
         text_tools = {"explain"}
@@ -3834,22 +3876,24 @@ def test_lint_explain_cli_registry_backed():
 
 
 def test_lint_module_metadata_required():
-    # README §6: modules require purpose + invariant (MD1001/MD1002).
+    # README §6: modules require purpose; missing invariant is advisory.
     prog = semanticscript.parse("m is module\nm path a.b\n")
     diags = semanticscript.lint(prog)
-    codes = {d.code for d in diags}
+    codes = {d.code: d for d in diags}
     assert "MD1001" in codes and "MD1002" in codes
-    assert all(d.severity == "error" for d in diags if d.code in ("MD1001", "MD1002"))
+    assert codes["MD1001"].severity == "error"
+    assert codes["MD1002"].severity == "warning"
 
 
 def test_lint_exported_op_metadata_required():
-    # README §6: an exported operation needs purpose + invariant (MD1011/1012).
+    # README §6: an exported operation needs purpose; invariant is advisory.
     src = (
         "m is module\nm path a.b\nm purpose \"x\"\nm invariant \"y\"\nm exports run\n"
         "run is operation\nrun out Int64\n"
     )
-    codes = {d.code for d in semanticscript.lint(semanticscript.parse(src))}
-    assert "MD1011" in codes and "MD1012" in codes
+    codes = {d.code: d for d in semanticscript.lint(semanticscript.parse(src))}
+    assert codes["MD1011"].severity == "error"
+    assert codes["MD1012"].severity == "warning"
 
 
 def test_lint_private_op_missing_purpose_is_warning_not_error():
@@ -4358,10 +4402,22 @@ def test_parse_valid_camelcase_name_ok():
 
 
 def test_parse_reserved_word_as_entity_name_rejected():
-    # README ss2/ss23: `path is record` errors (path is a reserved predicate).
+    # Core control syntax remains reserved.
     with pytest.raises(semanticscript.EavError) as exc:
-        semanticscript.parse("path is record\n")
+        semanticscript.parse("branch is record\n")
     assert "reserved word" in exc.value.message
+
+
+def test_common_predicate_words_allowed_as_names():
+    prog = semanticscript.parse(
+        "path is record\n"
+        "mode is enum\n"
+        "mode variant fast\n"
+        "main is operation\n"
+        "main let tag immutable String \"v1\"\n"
+    )
+    assert {"path", "mode", "main"} <= set(prog.entities)
+    assert prog.entities["main"].fact("let").payload[0] == "tag"
 
 
 def test_parse_reserved_word_as_variable_rejected():
@@ -7307,13 +7363,13 @@ def test_ws2_087_json_sql_codec_parity_regressions():
         'payload value "{\\"ok\\":1}"\n'
         "inlineSql is call\n"
         "inlineSql in main\n"
-        "inlineSql invokes sqlite.exec\n"
+        "inlineSql invokes sqlite.legacyExec\n"
         "inlineSql arg database SqliteDatabase db\n"
-        'inlineSql arg sql SqlText "SELECT 1"\n'
+        'inlineSql arg sql String "SELECT 1"\n'
         'inlineSql discards "inline SQL fixture"\n'
         "oldJson is call\n"
         "oldJson in main\n"
-        "oldJson invokes json.setObjectFieldInt64\n"
+        "oldJson invokes json.findString\n"
         'oldJson discards "deprecated JSON fixture"\n',
     )
     codes = _ws2_lint_codes(src)
@@ -12657,12 +12713,13 @@ def test_void_console_write_needs_no_discards():
 
 
 def test_dotted_type_only_in_alias_for():
-    # README §7/§17 #37: dotted type only valid in an alias `for` row.
-    with pytest.raises(semanticscript.EavError) as exc:
-        semanticscript.parse("main is operation\nmain let x immutable api.Thing 0\n")
-    assert exc.value.code == "SS3700"
-    # alias `for` may be dotted (import-alias disambiguation, WS1-038)
-    prog = semanticscript.parse("MyErr is alias\nMyErr for api.RequestError\n")
+    # Dotted type refs now mirror dotted call targets.
+    prog = semanticscript.parse(
+        "Thing is alias\nThing for Int64\n"
+        "main is operation\nmain let x immutable api.Thing 0\n"
+        "MyErr is alias\nMyErr for api.RequestError\n"
+    )
+    assert prog.entities["main"].fact("let").payload[2] == "api.Thing"
     assert prog.entities["MyErr"].fact("for").payload == ["api.RequestError"]
 
 
@@ -13975,6 +14032,86 @@ def test_webserver_host_port_route_path_validation():
         if d.severity == "error"]
 
 
+def test_webserver_lifecycle_hooks_lower_around_native_server_call():
+    # R-12/24: `check` + eval/JIT can look green while a native webServer build
+    # silently skips process startup work. In particular, opening the log file in
+    # a startup hook must lower into the synthesized webServer entry before the
+    # blocking ss_http_serve_routes call.
+    src = """
+LifecycleLogWeb is project
+LifecycleLogWeb module lifecycleLogModule
+LifecycleLogWeb target webServer
+LifecycleLogWeb entry api
+
+lifecycleLogModule is module
+lifecycleLogModule path tests.lifecycleLogWeb
+lifecycleLogModule exports api
+lifecycleLogModule exports initLogging
+lifecycleLogModule exports shutdownLogging
+lifecycleLogModule exports healthHandler
+lifecycleLogModule purpose "Exercise webServer lifecycle lowering"
+lifecycleLogModule invariant "Startup and shutdown hooks surround serve"
+
+ExitCode is alias
+ExitCode for Int32
+ServerContext is alias
+ServerContext for OpaquePointer
+
+api is webServer
+api host "127.0.0.1"
+api port 8080
+api startup initLogging
+api shutdown shutdownLogging
+api route GET "/health" healthHandler
+
+initLogging is operation
+initLogging in serverContext ServerContext
+initLogging out ExitCode
+initLogging async no
+initLogging purpose "Open the access log before accepting requests"
+initLogging invariant "Returns zero after configuring logging"
+initLogging let logPath immutable String "logs/web-startup.log"
+initLogging let okCode immutable ExitCode 0
+initLogging do openAccessLog
+initLogging return okCode
+
+openAccessLog is call
+openAccessLog in initLogging
+openAccessLog invokes log.openLogFile
+openAccessLog arg filePath String logPath
+openAccessLog discards "startup surfaces failure through future status policy"
+
+shutdownLogging is operation
+shutdownLogging in serverContext ServerContext
+shutdownLogging out ExitCode
+shutdownLogging async no
+shutdownLogging purpose "Lifecycle shutdown hook"
+shutdownLogging invariant "Returns zero"
+shutdownLogging let okCode immutable ExitCode 0
+shutdownLogging return okCode
+
+healthHandler is operation
+healthHandler in request HttpRequest
+healthHandler in response HttpResponse
+healthHandler out Int32
+healthHandler async no
+healthHandler purpose "HTTP health handler"
+healthHandler invariant "Returns zero"
+healthHandler let okStatus immutable Int32 0
+healthHandler return okStatus
+"""
+    prog = semanticscript.parse(src)
+    assert not [d.render() for d in semanticscript.lint(prog) if d.severity == "error"]
+
+    ir = str(semanticscript.lower_to_llvm(prog))
+    startup_call = ir.find('call i32 @"initLogging"')
+    serve_call = ir.find('call i32 @"ss_http_serve_routes"')
+    shutdown_call = ir.find('call i32 @"shutdownLogging"')
+    assert -1 not in (startup_call, serve_call, shutdown_call)
+    assert startup_call < serve_call < shutdown_call
+    assert 'call i32 @"ss_log_set_path"' in ir
+
+
 def test_app_taskforge_web_project_layout():
     # X-043: taskforge-web uses the §28.2 build.sem + src/ layout — the project
     # manifest in build.sem, modules under src/ (root + components/ + pages/
@@ -14844,7 +14981,12 @@ def test_builtin_targets_need_no_import():
     src = (
         "P is project\nP module m\nP target console\nP entry main\n"
         "m is module\nm path a.b\n"  # note: no imports rows at all
+        'm purpose "math/console targets need no import"\n'
+        'm invariant "adds two integers and prints the sum"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
         "main is operation\nmain out ExitCode\nmain effect write console.stdout\n"
+        "main uses stdoutWriter\n"
         "main let a immutable Int64 2\nmain let b immutable Int64 3\n"
         "main let okCode immutable ExitCode 0\n"
         "main do sumCall\nmain do writeIt\nmain return okCode\n"
@@ -15532,6 +15674,8 @@ def test_secret_arithmetic_add_not_flagged_as_timing_leak():
 _CODEGEN_PROGRAM_HEAD = (
     "P is project\nP module m\nP target console\nP entry main\n"
     "m is module\nm path a.b\nm exports main\n"
+    'm purpose "exercise a codegen-modeled target end to end"\n'
+    'm invariant "prints exactly the computed value"\n'
     "ExitCode is alias\nExitCode for Int32\n"
     "stdoutWriter is capability\nstdoutWriter grants write console.stdout\n"
 )

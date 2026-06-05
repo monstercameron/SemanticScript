@@ -8,6 +8,9 @@ scaffolds, and fmt -w.
 """
 import importlib
 import json
+import socket
+
+import pytest
 
 ss = importlib.import_module("semanticscript")
 
@@ -32,7 +35,7 @@ def test_targets_catalog_is_concrete_signed_and_labeled(capsys):
             assert ss._builtin_target_signature(target) is not None
             row = row_by_target[target]
             assert row["family"] == family
-            assert row["maturity"] in ("proven", "experimental")
+            assert row["maturity"] in ("proven", "experimental", "known-broken")
             assert "signature" in row
 
 
@@ -50,6 +53,24 @@ def test_docs_and_targets_signature_families_agree_for_catalog_families(capsys):
         assert [s["target"] for s in docs_payload["entity"]["signatures"]] == [
             s["target"] for s in target_payload["signatures"]
         ]
+
+
+def test_targets_signature_accepts_comma_separated_batch(capsys):
+    assert ss.main([
+        "targets", "--signature",
+        "math.addInt64,log.logInfo,json.serializeDocumentOwned",
+        "--json",
+    ]) == 0
+    payload = _read_json(capsys)
+    assert payload["surface"] == "sem.targetSignatures.v1"
+    assert payload["ok"] is True
+    assert payload["count"] == 3
+    assert payload["unknownTargets"] == []
+    assert {sig["target"] for sig in payload["signatures"]} == {
+        "math.addInt64",
+        "log.logInfo",
+        "json.serializeDocumentOwned",
+    }
 
 
 def test_broad_builtin_prefix_without_signature_is_check_error():
@@ -90,6 +111,31 @@ def test_verify_one_shot_runs_check_tests_and_run(tmp_path, capsys):
     assert payload["lanes"]["check"]["status"] == "ok"
     assert payload["lanes"]["test"]["status"] == "skipped"
     assert payload["lanes"]["run"]["stdoutLines"] == ["edit me"]
+    assert payload["lanes"]["drive"]["status"] == "skipped"
+
+
+def test_verify_probe_server_builds_drives_and_stops_webserver(tmp_path, capsys):
+    if ss._find_c_compiler() is None:
+        pytest.skip("no C compiler available for native webServer probe")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    path = tmp_path / "handler_route.sem"
+    path.write_text(
+        ss.scaffold("handler-route").replace("api port 8080", f"api port {port}"),
+        encoding="utf-8",
+    )
+    assert ss.main([
+        "verify", str(path), "--json", "--probe-server",
+        "--probe-path", "/health", "--probe-runs", "1", "--probe-timeout", "10",
+    ]) == 0
+    payload = _read_json(capsys)
+    assert payload["surface"] == "sem.verify.v1"
+    assert payload["ok"] is True
+    assert payload["lanes"]["run"]["status"] == "skipped"
+    assert payload["lanes"]["drive"]["status"] == "probed"
+    assert payload["lanes"]["drive"]["probe"]["httpStatus"] == 200
+    assert payload["lanes"]["drive"]["probe"]["requestMsBest"] is not None
 
 
 def test_verify_watch_emits_bounded_snapshot(tmp_path, capsys):
@@ -107,7 +153,7 @@ def test_verify_watch_emits_bounded_snapshot(tmp_path, capsys):
     assert payload["lanes"]["run"]["stdoutLines"] == ["edit me"]
 
 
-def test_project_parse_cache_reuses_unchanged_file_graph(tmp_path, monkeypatch):
+def test_project_parse_cache_reuses_unchanged_file_graph(tmp_path, monkeypatch, capsys):
     project = tmp_path / "app"
     src_dir = project / "src"
     src_dir.mkdir(parents=True)
@@ -126,6 +172,7 @@ def test_project_parse_cache_reuses_unchanged_file_graph(tmp_path, monkeypatch):
     main_path.write_text(main_source, encoding="utf-8")
     ss._PARSE_COMPACT_CACHE.clear()
     ss._PARSE_COMPACT_CACHE_ORDER.clear()
+    ss._SOURCE_FILE_CACHE.clear()
 
     real_parse = ss.parse
     calls = []
@@ -136,19 +183,38 @@ def test_project_parse_cache_reuses_unchanged_file_graph(tmp_path, monkeypatch):
 
     monkeypatch.setattr(ss, "parse", counted_parse)
     _source, first = ss._load_program_for_path(str(project))
+    assert first.source_cache["fileCount"] == 2
+    assert first.source_cache["filesLoaded"] == 2
+    assert first.source_cache["fileCacheHits"] == 0
+    assert first.source_cache["parseCache"] == "miss"
+
     _source, second = ss._load_program_for_path(str(project))
     assert len(calls) == 1
     assert first is not second
+    assert second.source_cache["fileCacheHits"] == 2
+    assert second.source_cache["filesLoaded"] == 0
+    assert second.source_cache["parseCache"] == "hit"
 
     first.entities["main"].kind = "mutated"
     _source, third = ss._load_program_for_path(str(project))
     assert third.entities["main"].kind == "operation"
     assert len(calls) == 1
+    assert third.source_cache["parseCache"] == "hit"
 
     main_path.write_text(main_source.replace("ExitCode 0", "ExitCode 1"), encoding="utf-8")
     _source, changed = ss._load_program_for_path(str(project))
     assert changed.entities["main"].fact("let").payload[-1] == "1"
     assert len(calls) == 2
+    assert changed.source_cache["fileCacheHits"] == 1
+    assert changed.source_cache["filesLoaded"] == 1
+    assert changed.source_cache["filesChanged"] == 1
+    assert changed.source_cache["parseCache"] == "miss"
+
+    assert ss.main(["check", str(project), "--json"]) == 0
+    payload = _read_json(capsys)
+    assert payload["sourceCache"]["mode"] == "project"
+    assert payload["sourceCache"]["fileCount"] == 2
+    assert payload["sourceCache"]["parseCache"] == "hit"
 
 
 def test_verify_blocks_static_errors_before_runtime(tmp_path, capsys):

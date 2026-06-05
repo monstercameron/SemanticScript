@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -57,12 +58,19 @@ def main():
         return 1
 
     # Build a tools/call per tool, supplying a value for every required input the
-    # advertised schema declares (path + any positional like query/code/dimension).
+    # advertised schema declares (path + any positional like query/code/dimension,
+    # plus the persistent-docs-index `db` that docs_index/docs_search_index need).
+    # docs_index is advertised before docs_search_index, so the index is created
+    # before it is searched (same db path).
+    db_path = os.path.join(tempfile.mkdtemp(prefix="mcp-smoke-"), "docs.sqlite")
     ARG_FIXTURES = {
         "path": FIXTURE,
         "query": "cleanup a database handle",  # search
         "code": "SS1502",                       # explain
         "dimension": "effects",                 # query
+        "db": db_path,                          # docs_index / docs_search_index
+        "edit": {"op": "addLet", "operation": "main",
+                 "name": "mcpSmokeTemp", "type": "Int64", "value": "1"},
     }
     frames = [init]
     idmap = {}

@@ -4,12 +4,6 @@
 A scaffold the agent reaches for must produce code that passes `check` (and thus
 lower/run), or the tool is teaching incoherent code. This guards every scaffold
 pattern.
-
-Known-blocked: `json-output` currently emits `json.setObjectFieldInt64`, which the
-WS2-087 json-deprecation lint (SS1872) flags — that migration is in flight and the
-scaffold must move to the cursor/builder API once it is finalized. Marked xfail
-(non-strict) so it flips to a visible xpass the moment the scaffold is updated,
-rather than silently masking the gap.
 """
 import importlib
 import os
@@ -39,9 +33,5 @@ def _scaffold_error_count(pattern):
 
 @pytest.mark.parametrize("pattern", PATTERNS)
 def test_fix1_scaffold_checks_clean(pattern):
-    if pattern == "json-output":
-        pytest.xfail("blocked on the WS2-087 json-deprecation migration (SS1872): "
-                     "the json-output scaffold uses json.setObjectFieldInt64; move "
-                     "it to the cursor/builder API once finalized")
     errc, src = _scaffold_error_count(pattern)
     assert errc == 0, f"scaffold {pattern!r} does not check clean ({errc} errors):\n{src[:300]}"

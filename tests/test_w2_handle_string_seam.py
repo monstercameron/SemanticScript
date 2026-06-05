@@ -79,6 +79,83 @@ def test_w2g_cstring_signature_is_discoverable():
     assert "c.cString" in entry.get("suggested", "")
 
 
+# --- R-06 (SEAM-1): own a borrowed C-string view with string.fromCString --------
+#
+# The composition tax: `c.cString` is a borrowed view (mayEscape no), so an op that
+# produces a session token / hash and tries to RETURN it tripped SS1560 — forcing
+# the agent to collapse produce+consume into one fat op. The fix is a first-class
+# owning copy (`string.fromCString`) plus a signature that says "borrowed" up front
+# and an SS1560 that names the owning call.
+
+# An operation that produces an owned handle, views it, and tries to return the view.
+_LEAK_OP = (
+    "Tok is project\nTok module m\nTok target console\nTok entry borrow\n"
+    "m is module\nm path tok\nm exports borrow\n"
+    "borrow is operation\nborrow out String\nborrow async no\n"
+    'borrow purpose "produce a session token string"\nborrow invariant "i"\n'
+    "borrow do tokenCall\nborrow do viewCall\nborrow return tokStr\n"
+    "tokenCall is call\ntokenCall in borrow\n"
+    "tokenCall invokes bcrypt.sessionTokenOwned\ntokenCall out tok OpaquePointer\n"
+    "viewCall is call\nviewCall in borrow\nviewCall invokes c.cString\n"
+    "viewCall arg pointer OpaquePointer tok\nviewCall out tokStr String\n"
+)
+
+
+def test_r06_returning_cstring_view_is_ss1560_naming_fromcstring():
+    # Returning the borrowed c.cString view out of the op is the escape SS1560
+    # guards — and the diagnostic must hand the agent the owning call.
+    import pytest
+    with pytest.raises(semanticscript.EavError) as exc:
+        semanticscript.parse(_LEAK_OP)
+    assert getattr(exc.value, "code", None) == "SS1560"
+    assert "string.fromCString" in str(exc.value)
+
+
+def test_r06_fromcstring_owns_the_view_so_it_escapes():
+    # The blessed fix: copy the handle into an OWNED String with string.fromCString;
+    # that result escapes the op, so no SS1560. This is the composition the tax used
+    # to forbid — produce in one op, return the string, consume elsewhere.
+    src = (
+        "Tok is project\nTok module m\nTok target console\nTok entry borrow\n"
+        "m is module\nm path tok\nm exports borrow\n"
+        "borrow is operation\nborrow out String\nborrow async no\n"
+        'borrow purpose "produce a session token string"\nborrow invariant "i"\n'
+        "borrow do tokenCall\nborrow do ownCall\nborrow return owned\n"
+        "tokenCall is call\ntokenCall in borrow\n"
+        "tokenCall invokes bcrypt.sessionTokenOwned\ntokenCall out tok OpaquePointer\n"
+        "ownCall is call\nownCall in borrow\nownCall invokes string.fromCString\n"
+        "ownCall arg pointer OpaquePointer tok\nownCall out owned String\n"
+    )
+    # Parses (the view checker runs at parse) and SS1560 is absent from lint.
+    assert "SS1560" not in _codes(src)
+
+
+def test_r06_fromcstring_signature_is_owned_and_modeled():
+    sig = semanticscript._builtin_target_signature("string.fromCString")
+    assert sig is not None, "string.fromCString must have a discoverable signature"
+    assert sig.get("out") == "String"
+    assert sig.get("ownership") == "owned"
+    assert [(a["slot"], a["type"]) for a in sig["args"]] == [("pointer", "OpaquePointer")]
+    # Modeled by the code generator (in the runnable vocabulary), not a false green.
+    assert semanticscript._codegen_modeled_target(
+        "string.fromCString", semanticscript.parse(
+            "P is project\nP module m\nP target console\nP entry main\n"
+            "m is module\nm path m\n"))
+
+
+def test_r06_cstring_signature_marks_out_borrowed():
+    # AQ-6: the lifetime lives in the signature, discoverable via targets/describe,
+    # not learned by tripping SS1560.
+    sig = semanticscript._builtin_target_signature("c.cString")
+    assert sig.get("ownership") == "borrowed"
+
+
+def test_r06_ss1560_repair_names_fromcstring():
+    entry = semanticscript.DIAGNOSTICS.get("SS1560")
+    assert entry is not None
+    assert "string.fromCString" in entry.get("suggested", "")
+
+
 def test_w2h_verify_skips_run_lane_for_webserver_target():
     # _program_target drives the run-lane skip; a webServer entry must not be
     # run to exit (it never terminates).

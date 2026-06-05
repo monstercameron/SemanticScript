@@ -142,12 +142,19 @@ def special(td):
                 "canon rc=%d (want 0), drift rc=%d (want !=0)"
                 % (clean.returncode, drift.returncode)))
 
-    # repin: write a lock, then --check reports up-to-date
+    # repin: write a lock, then --check reports up-to-date. The dependency must be
+    # materializable (SS2804/R-081) — a bare `require` with no registry/replace/
+    # vendor artifact can't be locked — so it is satisfied by a local `replace`.
     bld = os.path.join(td, "rp")
-    os.makedirs(bld, exist_ok=True)
+    os.makedirs(os.path.join(bld, "dep"), exist_ok=True)
+    with open(os.path.join(bld, "dep", "dep.sem"), "w", encoding="utf-8") as fh:
+        fh.write("ExitCode is alias\nExitCode for Int32\n"
+                 "depOp is operation\ndepOp out ExitCode\ndepOp async no\n"
+                 'depOp purpose "p"\ndepOp invariant "i"\n')
     with open(os.path.join(bld, "build.sem"), "w", encoding="utf-8") as fh:
         fh.write("RepinDemo is project\nRepinDemo module m\nRepinDemo target console\n"
-                 "RepinDemo entry main\nRepinDemo require example.org/u v1.0.0\n")
+                 "RepinDemo entry main\nRepinDemo require example.org/u v1.0.0\n"
+                 'RepinDemo replace example.org/u "dep"\n')
     w = run(["repin", bld, "--json"])
     c = run(["repin", bld, "--check", "--json"])
     try:

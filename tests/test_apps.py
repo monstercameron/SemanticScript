@@ -158,6 +158,7 @@ def _run_webserver_crud(app, port):
     import json
     appdir = os.path.join(ROOT, "apps", app)
     db = os.path.join(appdir, "taskforge_web.db")
+    log_file = os.path.join(appdir, "logs", "log.log")
 
     def _rmdb():
         # Remove the SQLite database AND its WAL/SHM sidecars. In WAL mode the
@@ -172,8 +173,15 @@ def _run_webserver_crud(app, port):
                     os.remove(path)
                 except OSError:
                     pass
+    def _rmlog():
+        if os.path.exists(log_file):
+            try:
+                os.remove(log_file)
+            except OSError:
+                pass
 
     _rmdb()
+    _rmlog()
     proc = subprocess.Popen(
         [sys.executable, SEMANTICSCRIPT, "run", "."],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=appdir)
@@ -220,12 +228,24 @@ def _run_webserver_crud(app, port):
         if st != 200 or not cookie:
             return False, "login bad: %s cookie=%r" % (st, cookie)
         sess = cookie.split(";")[0]
+        st, _, body = call("POST", "/api/todos", {"body": "missing title"}, cookie=sess)
+        if st != 400 or "titleMissing" not in body:
+            return False, "missing title should be 400: %s %r" % (st, body[:90])
+        st, _, body = call("POST", "/api/todos", {"title": ""}, cookie=sess)
+        if st != 400 or "titleMissing" not in body:
+            return False, "empty title should be 400: %s %r" % (st, body[:90])
         st, _, body = call("POST", "/api/todos", {"title": "first todo"}, cookie=sess)
         if st != 201 or '"title":"first todo"' not in body:
             return False, "create bad: %s %r" % (st, body[:90])
         st, _, body = call("GET", "/api/todos", cookie=sess)
         if st != 200 or '"count":1' not in body or "first todo" not in body:
             return False, "list bad: %s %r" % (st, body[:90])
+        if not os.path.exists(log_file):
+            return False, "log file was not created by native webServer startup"
+        with open(log_file, encoding="utf-8") as fh:
+            log_body = fh.read()
+        if "todo.created" not in log_body:
+            return False, "log file missing todo.created record: %r" % log_body[:120]
         return True, "register->login->create->list round-trip persisted"
     finally:
         proc.terminate()
@@ -234,6 +254,7 @@ def _run_webserver_crud(app, port):
         except Exception:
             proc.kill()
         _rmdb()
+        _rmlog()
 
 
 # webServer apps driven by a stateful CRUD round-trip: (name, port).
