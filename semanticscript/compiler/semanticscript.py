@@ -139,7 +139,7 @@ DIAGNOSTICS: dict[str, dict] = {
         "tier": "T0",
         "summary": "Borrowed view escapes its lifetime.",
         "found": "A `mayEscape no` view's out value is returned out of its operation.",
-        "suggested": "Return an owned value, or mark the view `mayEscape yes` only if the borrowed source truly outlives the call (README §32.1 #9).",
+        "suggested": "Own it instead of returning the borrowed view: copy a C-string view with `string.fromCString` (R-06). In general, return an owned value, or mark the view `mayEscape yes` only if the borrowed source truly outlives the call (README §32.1 #9).",
     },
     "SS1566": {
         "tier": "T0",
@@ -161,13 +161,13 @@ DIAGNOSTICS.update({
     "MD1001": {"tier": "T1", "summary": "Module is missing a `purpose`.",
                "found": "A module with no purpose row.",
                "suggested": "Add `<module> purpose \"…\"` (README §6)."},
-    "MD1002": {"tier": "T1", "summary": "Module is missing an `invariant`.",
+    "MD1002": {"tier": "T3", "summary": "Module is missing an `invariant`.",
                "found": "A module with no invariant row.",
                "suggested": "Add `<module> invariant \"…\"` (README §6)."},
     "MD1011": {"tier": "T1", "summary": "Exported/entry operation missing `purpose`.",
                "found": "A public operation with no purpose.",
                "suggested": "Add a `purpose` row (README §6 tiers)."},
-    "MD1012": {"tier": "T1", "summary": "Exported/entry operation missing `invariant`.",
+    "MD1012": {"tier": "T3", "summary": "Exported/entry operation missing `invariant`.",
                "found": "A public operation with no invariant.",
                "suggested": "Add an `invariant` row (README §6 tiers)."},
     "MD1021": {"tier": "T3", "summary": "Private operation has no `purpose` (recommended).",
@@ -646,8 +646,8 @@ DIAGNOSTICS.update({
                         "of a SqlText body island/storage reference.",
                "suggested": "Move SQL into a `SqlText` storage with `body sql` so the "
                             "SQL checker can validate it (README ss16/WS2-087)."},
-    "SS1872": {"tier": "T1", "summary": "Deprecated JSON builder/finder target.",
-               "found": "A call uses an obsolete json.setObjectField*/json.find* target.",
+    "SS1872": {"tier": "T3", "summary": "Deprecated JSON finder target.",
+               "found": "A call uses an obsolete json.find* target.",
                "suggested": "Use the current standard.json cursor/builder targets exposed "
                             "by `targets --signature json.*` (README ss16/WS2-087)."},
     "SS1873": {"tier": "T3", "summary": "lastInsertRowId read without a visible insert.",
@@ -655,6 +655,14 @@ DIAGNOSTICS.update({
                         "INSERT/REPLACE write on that same path.",
                "suggested": "Read the row id immediately after the insert, or use a "
                             "RETURNING query when that is the intended data flow (README ss19/WS2-087)."},
+    "SS1880": {"tier": "T1", "summary": "Checked metadata claim is contradicted.",
+               "found": "An `invariant`/`guarantee` row contains a machine-checkable "
+                        "claim such as `pure`, `no network`, `async no`, `no heap`, "
+                        "`returns 0`, or `never divides by zero`, and the operation "
+                        "body contradicts it.",
+               "suggested": "Update the code so the claim is true, or change/remove "
+                            "the metadata row; checked claims are compile-time "
+                            "contracts, not documentation."},
     "SS3600": {"tier": "T3", "summary": "ifOut on a fallible call before its error.",
                "found": "An `ifOut` inspecting a call that has a catch.",
                "suggested": "Handle the error (branch ifError) before inspecting the out (§17 #36)."},
@@ -824,6 +832,9 @@ DIAGNOSTICS.update({
     "MD1043": {"tier": "T1", "summary": "invariant payload must be a quoted string.",
                "found": "An `invariant` whose payload is not a quoted string.",
                "suggested": "Write `invariant \"…\"` (README §6)."},
+    "MD1048": {"tier": "T1", "summary": "guarantee payload must be a quoted string.",
+               "found": "A `guarantee` whose payload is not a quoted string.",
+               "suggested": "Write `guarantee \"...\"` (README ss6)."},
     "MD1045": {"tier": "T1", "summary": "deprecated payload must be a quoted string.",
                "found": "A `deprecated` whose payload is not a quoted string.",
                "suggested": "Write `deprecated \"…\"` (README §6)."},
@@ -1486,6 +1497,9 @@ def _dedupe_identical_type_declarations(source: str) -> str:
             while j < n:
                 bt = lines[j].split()
                 if bt and bt[0] == name:        # contiguous rows for this entity
+                    if (len(bt) == 3 and bt[1] == "is"
+                            and bt[2] in _DEDUPE_TYPE_KINDS):
+                        break                    # adjacent duplicate block
                     block.append(lines[j])
                     j += 1
                 else:
@@ -1713,6 +1727,71 @@ def _read_program_source(path: str) -> str:
     return _read_source(path)
 
 
+_SOURCE_FILE_CACHE: dict[str, dict] = {}
+_LAST_SOURCE_CACHE_STATS: dict = {
+    "mode": "none",
+    "path": None,
+    "fileCount": 0,
+    "fileCacheHits": 0,
+    "filesLoaded": 0,
+    "filesChanged": 0,
+    "parseCache": "not-used",
+    "cacheKey": None,
+}
+
+
+def _source_cache_stats(path: str, mode: str) -> dict:
+    return {
+        "mode": mode,
+        "path": path,
+        "fileCount": 0,
+        "fileCacheHits": 0,
+        "filesLoaded": 0,
+        "filesChanged": 0,
+        "parseCache": "pending",
+        "cacheKey": None,
+    }
+
+
+def _last_source_cache_stats() -> dict:
+    return dict(_LAST_SOURCE_CACHE_STATS)
+
+
+def _read_cached_source_file(filename: str, stats: dict) -> tuple[str, bytes]:
+    """Read one source file with same-process, content-addressed reuse.
+
+    The cache still keys the composed project by SHA-256 content. mtime/size are
+    only a fast path for reusing the previously-read bytes inside long-lived
+    loops such as `verify --watch`; when either changes, the file is re-read and
+    re-hashed before composing the program.
+    """
+    import hashlib
+    import os
+    full = os.path.abspath(filename)
+    st = os.stat(filename)
+    entry = _SOURCE_FILE_CACHE.get(full)
+    if (entry is not None
+            and entry.get("mtimeNs") == st.st_mtime_ns
+            and entry.get("size") == st.st_size):
+        stats["fileCacheHits"] += 1
+        return entry["text"], entry["digestBytes"]
+
+    with open(filename, "rb") as fh:
+        data = fh.read()
+    digest_bytes = hashlib.sha256(data).digest()
+    text = data.decode("utf-8")
+    if entry is not None and entry.get("digestBytes") != digest_bytes:
+        stats["filesChanged"] += 1
+    stats["filesLoaded"] += 1
+    _SOURCE_FILE_CACHE[full] = {
+        "mtimeNs": st.st_mtime_ns,
+        "size": st.st_size,
+        "digestBytes": digest_bytes,
+        "text": text,
+    }
+    return text, digest_bytes
+
+
 def _read_program_source_with_cache_key(path: str) -> tuple[str, str]:
     """Read a program and return a content-addressed key for in-process reuse.
 
@@ -1724,29 +1803,42 @@ def _read_program_source_with_cache_key(path: str) -> tuple[str, str]:
     """
     import hashlib
     import os
+    global _LAST_SOURCE_CACHE_STATS
     digest = hashlib.sha256()
     if path != "-" and os.path.isdir(path):
+        stats = _source_cache_stats(path, "project")
         parts: list[str] = []
         for filename in _project_source_paths(path):
+            stats["fileCount"] += 1
             full = os.path.abspath(filename)
-            with open(filename, "rb") as fh:
-                data = fh.read()
+            text, file_digest = _read_cached_source_file(filename, stats)
             digest.update(b"file\0")
             digest.update(full.encode("utf-8", "surrogateescape"))
             digest.update(b"\0")
-            digest.update(hashlib.sha256(data).digest())
+            digest.update(file_digest)
             digest.update(b"\0")
-            parts.append(data.decode("utf-8"))
+            parts.append(text)
+        cache_key = "project:" + digest.hexdigest()
+        stats["cacheKey"] = cache_key
+        _LAST_SOURCE_CACHE_STATS = stats
         # NS-1/R-006: same elision of byte-identical duplicate type declarations as
         # load_project, so the cached project read path composes them identically.
         return (_dedupe_identical_type_declarations("\n".join(parts)),
-                "project:" + digest.hexdigest())
+                cache_key)
+    stats = _source_cache_stats(path, "file")
     source = _read_source(path)
     digest.update(b"stdin" if path == "-" else os.path.abspath(path).encode(
         "utf-8", "surrogateescape"))
     digest.update(b"\0")
     digest.update(source.encode("utf-8"))
-    return source, "file:" + digest.hexdigest()
+    cache_key = "file:" + digest.hexdigest()
+    stats.update({
+        "fileCount": 0 if path == "-" else 1,
+        "filesLoaded": 0 if path == "-" else 1,
+        "cacheKey": cache_key,
+    })
+    _LAST_SOURCE_CACHE_STATS = stats
+    return source, cache_key
 
 
 def _program_source_root_for_path(path: str) -> Optional[str]:
@@ -1762,6 +1854,7 @@ def _load_program_for_path(path: str) -> tuple[str, "Program"]:
     source, cache_key = _read_program_source_with_cache_key(path)
     program = _parse_compact_cached(source, cache_key)
     program.source_root = _program_source_root_for_path(path)
+    program.source_cache = _last_source_cache_stats()
     return source, program
 
 
@@ -1878,6 +1971,9 @@ def _semsig_signatures_for_module(module: str) -> dict:
             "purpose": _txt("purpose"),
             "risk": _txt("risk"),
             "optionalSlots": optional_slots,
+            # R-06/AQ-6: out-slot lifetime lives in the signature, not tribal
+            # knowledge — `owned` (escapes) vs `borrowed` (a view, may not escape).
+            "ownership": _txt("ownership"),
         }
     _SEMSIG_SIG_CACHE[module] = result
     return result
@@ -2210,11 +2306,18 @@ def _synthetic_codegen_signatures() -> dict:
     # by the SS1205 repair hint. The handle stays owned (free it with its own
     # cleanup, e.g. bcrypt.freeString); the String is a borrowed view of it.
     add("c.cString", [("pointer", "OpaquePointer")], "String", "text",
+        # R-06/AQ-6: the out slot is a BORROWED view — surfaced in the signature
+        # (`targets --signature c.cString`) so the lifetime is discoverable up front
+        # and not learned by tripping SS1560. Own it with `string.fromCString` to
+        # escape the op.
+        ownership="borrowed",
         purpose="View an owned NUL-terminated C-string handle (OpaquePointer) as "
                 "a String for persistence/SQL binding; the handle keeps its own "
-                "ownership and cleanup",
+                "ownership and cleanup. The view may NOT escape its operation "
+                "(return/persist) — copy it with `string.fromCString` to own it",
         risk="The String is a borrowed view of the handle — do not use it after "
-             "the handle is freed")
+             "the handle is freed, and do not return it out of its operation "
+             "(SS1560); own it with `string.fromCString` to let it escape")
 
     _SYNTHETIC_SIG_CACHE = sigs
     return sigs
@@ -2327,13 +2430,7 @@ def _all_builtin_signatures() -> dict[str, dict]:
     return sigs
 
 
-KNOWN_BROKEN_TARGET_PREFIXES = {
-    "json.": (
-        "JSON codec runtime/native conformance is still in the mitigation lane; "
-        "prefer proven static JSON body islands or a golden-tested helper until "
-        "the codec crash class is closed."
-    ),
-}
+KNOWN_BROKEN_TARGET_PREFIXES = {}
 
 
 def _target_maturity(target: str, ledger: Optional[dict] = None) -> dict:
@@ -3807,8 +3904,9 @@ _ADDITIONAL_DEFECT_LEDGER = [
      "todo": "X-094", "code": None, "status": "covered",
      "note": "clock/random-as-capability + capturedOutputReplay done; list/map handles use deterministic insertion-order behavior"},
     {"vuln": "Unchecked pre/postconditions", "asset": "correctness",
-     "todo": "X-092", "code": None, "status": "partial",
-     "note": "invariant/guarantee are metadata; statically-discharged/trapping requires/ensures pending"},
+     "todo": "X-092", "code": "SS1880", "status": "partial",
+     "note": "requires preconditions are checked; bounded invariant/guarantee "
+             "claims produce SS1880 when contradicted"},
     {"vuln": "Protocol/typestate misuse", "asset": "correctness",
      "todo": "X-091", "code": "SS1564", "status": "partial",
      "note": "resource open/use/close + move lifecycle enforced; general typestate machine pending"},
@@ -4017,7 +4115,7 @@ RESERVED_WORDS = {
     "semsig",
     # structural predicate tokens
     "in", "out", "effect", "uses", "memory", "async", "let", "label",
-    "field", "variant", "repr", "for", "of", "path", "imports", "exports",
+    "field", "variant", "repr", "for", "of", "imports", "exports",
     "importOperation", "importType", "importError", "importCapability",
     "importConstant",
     "jsonName", "omitWhen", "unknownFieldPolicy",
@@ -4025,7 +4123,7 @@ RESERVED_WORDS = {
     "literalDigest", "literalEncoding",  # WS2-084 embed encoding/digest rows
     "align", "layout", "inlineCapacity", "arrayLength",  # WS2-084 layout rows
     "grants", "invokes", "arg", "discards", "catch",
-    "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "purpose", "invariant", "guarantee", "note", "rationale", "risk", "example",
     "optionalSlot",
     "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
     "borrows", "lifetime", "mayEscape",  # WS1-111 borrowed-view rows
@@ -4047,7 +4145,7 @@ RESERVED_WORDS = {
     "maxIterations",                       # R-082 loop iteration bound
     "clientResponse", "errorBoundary",     # X-079 error-disclosure rows
     "optOut",                              # X-080 protection opt-out row
-    "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
+    "trustConstraint", "using", "forTarget", "forPlatform", "suppress",
     "macro", "reflection", "reflect", "metaprogram", "metaprogramming",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -4072,7 +4170,7 @@ RESERVED_WORDS = {
 # Universal metadata predicates (README ss6) + universal ss30 declaration
 # predicates, valid on every entity kind.
 UNIVERSAL_PREDICATES = {
-    "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "purpose", "invariant", "guarantee", "note", "rationale", "risk", "example", "tag",
     "deprecated", "owner", "forTarget", "forPlatform", "suppress",
 }
 
@@ -4171,7 +4269,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     },
     "cleanup": {"in", "call", "onFailure", "because", "cleans", "order", "onExit"},
     "storage": {
-        "scope", "type", "mutability", "value", "body", "literalSource",
+        "scope", "type", "mutability", "value", "init", "body", "literalSource",
         "literalDigest", "literalEncoding",  # WS2-084 embed encoding row
     },
     "htmlTemplate": {"body"},
@@ -4187,6 +4285,7 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
     "intrinsic": {"target", "arg", "out", "catch", "async", "owns",
                   "trustConstraint", "clientResponse",
                   "borrows", "lifetime", "mayEscape",  # WS1-111 view rows on a sig
+                  "ownership",  # R-06/AQ-6: out-slot lifetime (owned|borrowed)
                   "unsafe", "wrapsAs", "allocator", "cleanedBy",
                   "optionalSlot"},  # WS1-116 FFI + signature metadata
     "semsig": {"version", "generatedBy", "describes"},
@@ -4270,6 +4369,10 @@ class Program:
         default=None, init=False, repr=False)
     _entity_tuple_cache: Optional[tuple[Entity, ...]] = field(
         default=None, init=False, repr=False)
+    # NS-1/AQ-1: entity key -> owning module (None outside any module). Recovered
+    # by source order at parse, so module-private operation names can be scoped to
+    # their module instead of the project-global flat namespace (README §7).
+    entity_module: dict[str, Optional[str]] = field(default_factory=dict)
 
     def add(self, entity: Entity) -> None:
         self.entities[entity.name] = entity
@@ -4358,8 +4461,14 @@ _INT_RANGES = {
 }
 
 
+def _type_ref_basename(type_name: str) -> str:
+    """Resolve a dotted type token to the project-global entity spelling."""
+    return type_name.rsplit(".", 1)[-1] if "." in type_name else type_name
+
+
 def _resolve_alias(type_name: str, alias_map: dict) -> str:
     seen: set = set()
+    type_name = type_name if type_name in alias_map else _type_ref_basename(type_name)
     while type_name in alias_map and type_name not in seen:
         seen.add(type_name)
         type_name = alias_map[type_name]
@@ -4530,6 +4639,69 @@ def _leading_spaces(raw: str) -> int:
     return n
 
 
+def _is_module_export(program: "Program", module_name: Optional[str], name: str) -> bool:
+    """True when `name` is named in an `exports` row of `module_name` (NS-1/AQ-1).
+
+    An exported operation is part of the module's public API — importers resolve
+    it by its bare name through `imports`/`importOperation` (README §7) — so it is
+    never auto-renamed; a cross-module clash on an exported name stays a hard
+    duplicate. The module entity is declared before its operations (source order),
+    so its `exports` rows are already present when an operation's `is` row parses.
+    """
+    if module_name is None:
+        return False
+    mod = program.entities.get(module_name)
+    if mod is None or mod.kind != "module":
+        return False
+    return any(r.payload and r.payload[0] == name for r in mod.facts("exports"))
+
+
+def _mangle_module_symbol(module_name: Optional[str], name: str, taken) -> str:
+    """Mint a unique camelCase symbol for a module-private operation whose bare
+    name is already taken by another module (NS-1/AQ-1). camelCase is required of
+    every entity name (SS0002), so the qualifier is concatenated, not underscored;
+    a numeric suffix disambiguates the rare double clash."""
+    base = (module_name or "global") + name[:1].upper() + name[1:]
+    cand, k = base, 2
+    while cand in taken:
+        cand, k = f"{base}{k}", k + 1
+    return cand
+
+
+# NS-1/AQ-1: bare-name → entity reference positions per predicate. A renamed
+# module-private operation is reachable only from within its own module, at these
+# sites (every place that resolves an operation by bare name; dotted/imported
+# targets carry a "." and are skipped). `exports` is listed for completeness —
+# exported operations are not renamed, so it is a no-op in practice.
+_INMODULE_REF_POSITIONS = {
+    "invokes": (0,),            # a call/task target
+    "exports": (0,),            # a module's exported operation
+    "route": (2,),              # webServer: route METHOD path HANDLER
+    "notFound": (0,),
+    "methodNotAllowed": (0,),
+    "startup": (0,),
+    "shutdown": (0,),
+    "middleware": (1,),         # webServer: middleware NAME HANDLER
+}
+
+
+def _scope_inmodule_references(program: "Program", module_renames: dict) -> None:
+    """NS-1/AQ-1: remap in-module references to module-private operations that
+    were renamed to unique symbols at parse. Only rows belonging to the SAME
+    module as a renamed operation are touched, so each module resolves to its own
+    definition while other modules and dotted/imported targets are untouched."""
+    for ent in list(program.entities.values()):
+        renames = module_renames.get(program.entity_module.get(ent.name))
+        if not renames:
+            continue
+        for row in ent.rows:
+            for idx in _INMODULE_REF_POSITIONS.get(row.predicate, ()):
+                if idx < len(row.payload):
+                    tok = row.payload[idx]
+                    if "." not in tok and tok in renames:
+                        row.payload[idx] = renames[tok]
+
+
 def parse(source_text: str, *, validate: bool = True) -> Program:
     """Parse EAV-Steps source into a Program (README ss1, ss5).
 
@@ -4556,6 +4728,12 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
     n = len(raw_lines)
     current_kind_of: dict[str, str] = {}
     pending_lead: list[str] = []  # R-086: buffered full-line `# ...` comments
+    # NS-1/AQ-1: module-scoped entity namespace recovered by source order. Each
+    # `is module` row opens a scope; a module-private operation name is unique per
+    # module, not project-global, so two modules may each define e.g. `openDb`.
+    current_module: Optional[str] = None
+    local_key: dict[tuple, str] = {}            # (module, bare name) -> entity key
+    module_renames: dict = {}                   # module -> {bare name: minted key}
     while i < n:
         raw = raw_lines[i]
         lineno = i + 1
@@ -4632,16 +4810,41 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
                     f"canonical spelling per name, README ss2){_did_you_mean}",
                     lineno, code="SS0002",
                 )
-            if subject in program.entities:
+            owning_module = subject if kind == "module" else current_module
+            # NS-1/AQ-1: a name reused inside the SAME module is always a hard
+            # duplicate; the per-module namespace makes uniqueness module-local.
+            if (owning_module, subject) in local_key:
                 raise EavError(
                     f"duplicate `is` row for entity {subject!r} (README ss17 #1)",
                     lineno,
                 )
-            program.add(Entity(name=subject, kind=kind, line=lineno))
+            entity_key = subject
+            if subject in program.entities:
+                # The name is already taken by an entity in another module. A
+                # module-private operation/function is genuinely module-scoped, so
+                # mint a unique module-qualified symbol and remap its in-module
+                # references post-parse (README §7). Any other kind — and an
+                # *exported* operation, which importers resolve by its bare name —
+                # stays a hard duplicate so a real conflict still errors.
+                if (kind in ("operation", "function")
+                        and not _is_module_export(program, owning_module, subject)):
+                    entity_key = _mangle_module_symbol(
+                        owning_module, subject, program.entities)
+                    module_renames.setdefault(owning_module, {})[subject] = entity_key
+                else:
+                    raise EavError(
+                        f"duplicate `is` row for entity {subject!r} (README ss17 #1)",
+                        lineno,
+                    )
+            program.add(Entity(name=entity_key, kind=kind, line=lineno))
+            program.entity_module[entity_key] = owning_module
+            local_key[(owning_module, subject)] = entity_key
             current_kind_of[subject] = kind
+            if kind == "module":
+                current_module = subject
             # R-086: full-line comments preceding this entity become its header
             # block; a trailing comment on the `is` line is preserved in place.
-            _new_ent = program.entities[subject]
+            _new_ent = program.entities[entity_key]
             _new_ent.lead = list(pending_lead)
             _new_ent.comment = line_cmt
             pending_lead.clear()
@@ -4653,25 +4856,33 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
             # `NAME scope/type/mutability/value` on its own line) stays valid.
             if kind == "storage" and len(payload) > 1:
                 inline = payload[1:]
-                ent = program.entities[subject]
+                ent = program.entities[entity_key]
                 slots = ("scope", "mutability", "type")
                 for idx, slot_pred in enumerate(slots):
                     if idx < len(inline):
-                        ent.rows.append(Row(subject, slot_pred, [inline[idx]], lineno))
+                        ent.rows.append(Row(entity_key, slot_pred, [inline[idx]], lineno))
                 if len(inline) > 3:
-                    ent.rows.append(Row(subject, "value", inline[3:], lineno))
+                    ent.rows.append(Row(entity_key, "value", inline[3:], lineno))
             i += 1
             continue
 
         # Any non-`is` row requires the subject's `is` row to have come first.
-        if subject not in program.entities:
+        # NS-1/AQ-1: resolve the subject within the current module scope — a
+        # module-private operation may carry a unique renamed symbol (see above) —
+        # before falling back to the bare name for module-less single-file source.
+        entity_key = local_key.get((current_module, subject), subject)
+        if entity_key not in program.entities:
             raise EavError(
                 f"first row for entity {subject!r} must be its `is` row "
                 f"(README ss1, ss17 #1); saw predicate {predicate!r} first",
                 lineno,
             )
 
-        entity = program.entities[subject]
+        entity = program.entities[entity_key]
+        if entity.kind == "storage" and predicate == "init":
+            # `init` is the author-facing alias; keep the internal row canonical
+            # so formatter, lints, and lowering reuse the established value path.
+            predicate = "value"
 
         # Labeled step row: `<op> at <label> <stepPred> <payload...>`
         if predicate == "at":
@@ -4697,7 +4908,7 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
             if pending_lead:  # R-086
                 entity.lead.extend(pending_lead)
                 pending_lead.clear()
-            _lr = Row(subject, step_pred, payload[2:], lineno, label=label)
+            _lr = Row(entity_key, step_pred, payload[2:], lineno, label=label)
             _lr.comment = line_cmt
             entity.rows.append(_lr)
             i += 1
@@ -4765,11 +4976,11 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
                 body_lines = [b[base:] if b.strip() else "" for b in body_lines]
             while body_lines and not body_lines[-1].strip():
                 body_lines.pop()
-            program.islands[(subject, island_kind)] = body_lines
+            program.islands[(entity_key, island_kind)] = body_lines
             if pending_lead:  # R-086
                 entity.lead.extend(pending_lead)
                 pending_lead.clear()
-            _ir = Row(subject, predicate, payload, lineno)
+            _ir = Row(entity_key, predicate, payload, lineno)
             _ir.comment = line_cmt
             entity.rows.append(_ir)
             i = j
@@ -4778,7 +4989,7 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
         if pending_lead:  # R-086
             entity.lead.extend(pending_lead)
             pending_lead.clear()
-        _gr = Row(subject, predicate, payload, lineno)
+        _gr = Row(entity_key, predicate, payload, lineno)
         _gr.comment = line_cmt
         entity.rows.append(_gr)
         i += 1
@@ -4786,6 +4997,11 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
     # R-086: full-line comments trailing the final entity (no following row).
     if pending_lead and program.order:
         program.entities[program.order[-1]].trailing.extend(pending_lead)
+    # NS-1/AQ-1: remap in-module references to any module-private operation that
+    # was renamed to a unique symbol (a no-op unless a cross-module name reuse
+    # occurred, so single-module programs are untouched).
+    if module_renames:
+        _scope_inmodule_references(program, module_renames)
     if validate:
         _validate_program(program)
     return program
@@ -4794,7 +5010,7 @@ def parse(source_text: str, *, validate: bool = True) -> Program:
 # Formatter ordering (README ss22). Metadata + universal gate rows sort after an
 # entity's structural rows; entities sort by kind then document order.
 _META_PREDS = (
-    "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "purpose", "invariant", "guarantee", "note", "rationale", "risk", "example", "tag",
     "deprecated", "owner",
 )
 _GATE_PREDS = ("forTarget", "forPlatform", "suppress")
@@ -5337,17 +5553,31 @@ def _parse_compact_cached(source: str, cache_key: Optional[str] = None) -> "Prog
     """
     import copy
     import hashlib
+    global _LAST_SOURCE_CACHE_STATS
     key = cache_key or ("source:" + hashlib.sha256(
         source.encode("utf-8")).hexdigest())
     cached = _PARSE_COMPACT_CACHE.get(key)
     if cached is not None:
-        return copy.deepcopy(cached)
+        _LAST_SOURCE_CACHE_STATS = {
+            **_LAST_SOURCE_CACHE_STATS,
+            "parseCache": "hit",
+            "cacheKey": key,
+        }
+        program = copy.deepcopy(cached)
+        program.source_cache = _last_source_cache_stats()
+        return program
     program = parse_compact(source)
     _PARSE_COMPACT_CACHE[key] = copy.deepcopy(program)
     _PARSE_COMPACT_CACHE_ORDER.append(key)
     while len(_PARSE_COMPACT_CACHE_ORDER) > _PARSE_COMPACT_CACHE_LIMIT:
         old = _PARSE_COMPACT_CACHE_ORDER.pop(0)
         _PARSE_COMPACT_CACHE.pop(old, None)
+    _LAST_SOURCE_CACHE_STATS = {
+        **_LAST_SOURCE_CACHE_STATS,
+        "parseCache": "miss",
+        "cacheKey": key,
+    }
+    program.source_cache = _last_source_cache_stats()
     return program
 
 
@@ -6053,6 +6283,315 @@ def _devx_intent_candidates(intent: Optional[str]) -> list[dict]:
     return candidates[:8]
 
 
+def _synth_binding_name(slot: Optional[str], fallback: str) -> str:
+    raw = slot or fallback
+    cleaned = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in raw)
+    if not cleaned or cleaned in RESERVED_WORDS or not cleaned[0].isalpha():
+        cleaned = "value_" + cleaned
+    return cleaned
+
+
+def _synth_rows_for_target(target: str, operation: str, call: str,
+                           include_operation: bool = True) -> dict:
+    """DEVX-2: derive a typed call skeleton from a target signature."""
+    sig = _builtin_target_signature(target)
+    if sig is None:
+        raise EavError(
+            f"cannot synthesize rows for unknown target {target!r}; "
+            "run `targets --signature <target> --json` first")
+    rows: list[str] = []
+    if include_operation:
+        rows.extend([
+            f"{operation} is operation",
+            f"{operation} async {sig.get('async') or 'no'}",
+            f'{operation} purpose "Synthesized {target} call"',
+            f'{operation} invariant "All required {target} slots are explicit"',
+        ])
+    rows.extend([
+        f"{call} is call",
+        f"{call} in {operation}",
+        f"{call} invokes {target}",
+    ])
+    placeholders = []
+    for arg in sig.get("args", []):
+        slot = arg["slot"]
+        typ = arg["type"]
+        value = _synth_binding_name(slot, "arg")
+        placeholders.append({"slot": slot, "type": typ, "binding": value})
+        rows.append(f"{call} arg {slot} {typ} <{value}>")
+    if sig.get("out"):
+        out_name = _synth_binding_name(sig.get("outSlot"), f"{call}Result")
+        rows.append(f"{call} out {out_name} {sig['out']}")
+    else:
+        rows.append(f'{call} discards "effect-only call intentionally ignored"')
+    if sig.get("catch"):
+        rows.append(f"{call} catch <error> {sig['catch']}")
+    if include_operation:
+        rows.append(f"{operation} do {call}")
+    return {
+        "status": "ok",
+        "target": target,
+        "operation": operation,
+        "call": call,
+        "signature": _signature_with_maturity(sig),
+        "rows": rows,
+        "placeholders": placeholders,
+        "lowerableWhenPlaceholdersBound": True,
+    }
+
+
+def _sem_edit_moves(edit_payload) -> list[dict]:
+    if isinstance(edit_payload, str):
+        try:
+            edit_payload = json.loads(edit_payload)
+        except json.JSONDecodeError as exc:
+            raise EavError(f"sem-edit --edit must be JSON: {exc.msg}")
+    if isinstance(edit_payload, dict):
+        return [edit_payload]
+    if isinstance(edit_payload, list) and all(isinstance(e, dict) for e in edit_payload):
+        return list(edit_payload)
+    raise EavError("sem-edit edit must be an object or an array of objects")
+
+
+def _sem_edit_identifier(value, label: str) -> str:
+    name = str(value or "")
+    if not _IDENT_RE.match(name) or name in RESERVED_WORDS:
+        raise EavError(f"{label} must be a non-reserved identifier, got {name!r}")
+    return name
+
+
+def _sem_edit_token(value, label: str) -> str:
+    token = str(value if value is not None else "")
+    if not token or token.startswith("<") or token.endswith(">"):
+        raise EavError(f"{label} must be a concrete token, got {token!r}")
+    if any(ch.isspace() for ch in token) and not (token.startswith('"') and token.endswith('"')):
+        raise EavError(f"{label} must be a single token or quoted string, got {token!r}")
+    return token
+
+
+def _sem_edit_quoted(value) -> str:
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _sem_edit_line(program: Program) -> int:
+    line = 1
+    for ent in program.entities.values():
+        line = max(line, ent.line)
+        for row in ent.rows:
+            line = max(line, row.line)
+    return line + 1
+
+
+def _sem_edit_entity(program: Program, name: str, kinds: tuple[str, ...],
+                     label: str) -> Entity:
+    ent = program.entities.get(name)
+    if ent is None or ent.kind not in kinds:
+        expected = "|".join(kinds)
+        raise EavError(f"{label} {name!r} must name an existing {expected}")
+    return ent
+
+
+def _sem_edit_insert_op_row(op: Entity, predicate: str, payload: list[str]) -> Row:
+    row = Row(op.name, predicate, payload, op.line)
+    insert_at = len(op.rows)
+    for idx, existing in enumerate(op.rows):
+        if existing.predicate == "return":
+            insert_at = idx
+            break
+    op.rows.insert(insert_at, row)
+    return row
+
+
+def _sem_edit_append_row(ent: Entity, predicate: str, payload: list[str]) -> Row:
+    row = Row(ent.name, predicate, payload, ent.line)
+    ent.rows.append(row)
+    return row
+
+
+def _sem_edit_signature(target: str) -> dict:
+    sig = _builtin_target_signature(target)
+    if sig is None:
+        raise EavError(
+            f"sem-edit addCall requires a concrete known target, got {target!r}; "
+            "use `targets --signature <target> --json` first")
+    return sig
+
+
+def _sem_edit_add_call(program: Program, move: dict) -> list[str]:
+    operation = _sem_edit_identifier(move.get("operation"), "operation")
+    op = _sem_edit_entity(program, operation, ("operation", "function"), "operation")
+    call_name = _sem_edit_identifier(
+        move.get("call") or f"{operation}Call", "call")
+    if call_name in program.entities:
+        raise EavError(f"call entity {call_name!r} already exists")
+    target = _sem_edit_token(move.get("target"), "target")
+    sig = _sem_edit_signature(target)
+    args = move.get("args") or {}
+    if not isinstance(args, dict):
+        raise EavError("addCall args must be an object mapping slot -> binding")
+    required_slots = [arg["slot"] for arg in sig.get("args", [])]
+    missing = [slot for slot in required_slots if slot not in args]
+    if missing:
+        raise EavError(
+            f"addCall {call_name!r} missing required arg slot(s): "
+            + ", ".join(missing))
+    unknown = sorted(set(args) - set(required_slots))
+    if unknown:
+        raise EavError(
+            f"addCall {call_name!r} has unknown arg slot(s): "
+            + ", ".join(unknown))
+
+    call = Entity(call_name, "call", _sem_edit_line(program))
+    program.add(call)
+    rows = [f"{call_name} is call"]
+    for pred, payload in (
+        ("in", [operation]),
+        ("invokes", [target]),
+    ):
+        _sem_edit_append_row(call, pred, payload)
+        rows.append(f"{call_name} {pred} {' '.join(payload)}")
+    for arg in sig.get("args", []):
+        value = _sem_edit_token(args[arg["slot"]], f"arg {arg['slot']}")
+        payload = [arg["slot"], arg["type"], value]
+        _sem_edit_append_row(call, "arg", payload)
+        rows.append(f"{call_name} arg {' '.join(payload)}")
+    if sig.get("out"):
+        if move.get("discard"):
+            reason = move.get("discardReason") or "result intentionally discarded"
+            payload = [_sem_edit_quoted(reason)]
+            _sem_edit_append_row(call, "discards", payload)
+            rows.append(f"{call_name} discards {payload[0]}")
+        else:
+            out_name = _sem_edit_identifier(move.get("out"), "out")
+            payload = [out_name, sig["out"]]
+            _sem_edit_append_row(call, "out", payload)
+            rows.append(f"{call_name} out {' '.join(payload)}")
+    else:
+        reason = move.get("discardReason") or "effect-only call intentionally ignored"
+        payload = [_sem_edit_quoted(reason)]
+        _sem_edit_append_row(call, "discards", payload)
+        rows.append(f"{call_name} discards {payload[0]}")
+    if move.get("catch"):
+        err = _sem_edit_identifier(move.get("catch"), "catch")
+        payload = [err, sig.get("catch") or "Error"]
+        _sem_edit_append_row(call, "catch", payload)
+        rows.append(f"{call_name} catch {' '.join(payload)}")
+    if move.get("activate", True):
+        _sem_edit_insert_op_row(op, "do", [call_name])
+        rows.append(f"{operation} do {call_name}")
+    return rows
+
+
+def _sem_edit_apply_move(program: Program, move: dict) -> list[str]:
+    op_name = str(move.get("op") or "")
+    if op_name == "addLet":
+        operation = _sem_edit_identifier(move.get("operation"), "operation")
+        op = _sem_edit_entity(program, operation, ("operation", "function"), "operation")
+        name = _sem_edit_identifier(move.get("name"), "let name")
+        mutability = _sem_edit_token(move.get("mutability") or "immutable", "mutability")
+        typ = _sem_edit_token(move.get("type"), "type")
+        value = _sem_edit_token(move.get("value"), "value")
+        row = _sem_edit_insert_op_row(op, "let", [name, mutability, typ, value])
+        return [f"{row.subject} let {' '.join(row.payload)}"]
+    if op_name == "addCall":
+        return _sem_edit_add_call(program, move)
+    if op_name == "bindArg":
+        call = _sem_edit_entity(
+            program, _sem_edit_identifier(move.get("call"), "call"),
+            ("call", "task"), "call")
+        sig = _sem_edit_signature(_call_target(call))
+        slot = _sem_edit_token(move.get("slot"), "slot")
+        by_slot = {arg["slot"]: arg for arg in sig.get("args", [])}
+        if slot not in by_slot:
+            raise EavError(f"slot {slot!r} is not valid for target {_call_target(call)!r}")
+        if any(r.payload and r.payload[0] == slot for r in call.facts("arg")):
+            raise EavError(f"call {call.name!r} already has arg slot {slot!r}")
+        value = _sem_edit_token(move.get("value"), "value")
+        payload = [slot, by_slot[slot]["type"], value]
+        _sem_edit_append_row(call, "arg", payload)
+        return [f"{call.name} arg {' '.join(payload)}"]
+    if op_name == "bindOut":
+        call = _sem_edit_entity(
+            program, _sem_edit_identifier(move.get("call"), "call"),
+            ("call", "task"), "call")
+        sig = _sem_edit_signature(_call_target(call))
+        if not sig.get("out"):
+            raise EavError(f"target {_call_target(call)!r} has no out value")
+        if call.fact("out") or call.fact("discards"):
+            raise EavError(f"call {call.name!r} already has an out/discards row")
+        out_name = _sem_edit_identifier(move.get("name") or move.get("out"), "out")
+        payload = [out_name, sig["out"]]
+        _sem_edit_append_row(call, "out", payload)
+        return [f"{call.name} out {' '.join(payload)}"]
+    if op_name == "addEffect":
+        operation = _sem_edit_identifier(move.get("operation"), "operation")
+        op = _sem_edit_entity(program, operation, ("operation", "function"), "operation")
+        action = _sem_edit_token(move.get("action"), "action")
+        resource = _sem_edit_token(move.get("resource"), "resource")
+        row = _sem_edit_append_row(op, "effect", [action, resource])
+        return [f"{row.subject} effect {' '.join(row.payload)}"]
+    if op_name == "addUses":
+        operation = _sem_edit_identifier(move.get("operation"), "operation")
+        op = _sem_edit_entity(program, operation, ("operation", "function"), "operation")
+        capability = _sem_edit_token(move.get("capability"), "capability")
+        row = _sem_edit_append_row(op, "uses", [capability])
+        return [f"{row.subject} uses {' '.join(row.payload)}"]
+    if op_name == "addStep":
+        operation = _sem_edit_identifier(move.get("operation"), "operation")
+        op = _sem_edit_entity(program, operation, ("operation", "function"), "operation")
+        step = _sem_edit_token(move.get("step") or "do", "step")
+        ref = _sem_edit_identifier(move.get("ref"), "ref")
+        expected = _STEP_SPLIT.get(step)
+        if expected is None:
+            raise EavError(f"step {step!r} is not an activation step")
+        _sem_edit_entity(program, ref, (expected,), "ref")
+        row = _sem_edit_insert_op_row(op, step, [ref])
+        return [f"{row.subject} {step} {ref}"]
+    raise EavError(
+        "unknown sem-edit op {!r}; use addLet, addCall, bindArg, bindOut, "
+        "addEffect, addUses, or addStep".format(op_name))
+
+
+def _sem_edit_payload(path: str, edit_payload, apply: bool = False) -> dict:
+    import os
+    if apply and (path == "-" or os.path.isdir(path)):
+        raise EavError("sem-edit --apply requires a single writable source file")
+    source = _read_source(path)
+    program = parse_compact(source)
+    moves = _sem_edit_moves(edit_payload)
+    rows_added: list[str] = []
+    for index, move in enumerate(moves):
+        rows_added.extend(_sem_edit_apply_move(program, move))
+        formatted = format_program(program)
+        validated = parse_compact(formatted)
+        diags = lint(validated)
+        errors = [d for d in diags if d.severity == "error"]
+        if errors:
+            err = errors[0]
+            raise EavError(
+                f"sem-edit move {index} produced diagnostic {err.code}: "
+                f"{err.message}", err.line, err.code)
+        program = validated
+    canonical = format_program(program)
+    diagnostics = lint(program)
+    if apply:
+        _atomic_write_text(path, canonical)
+    focus = None
+    if moves:
+        focus = moves[-1].get("operation") or moves[-1].get("call")
+    next_moves = _devx_author_surface(program, focus, None).get("nextMoves", [])
+    return {
+        "status": "applied" if apply else "planned",
+        "applied": bool(apply),
+        "path": path,
+        "moveCount": len(moves),
+        "rowsAdded": rows_added,
+        "canonical": canonical,
+        "diagnostics": _structured_diags(diagnostics),
+        "nextMoves": next_moves,
+    }
+
+
 def _signature_next_moves(call: Entity) -> list[dict]:
     target = _call_target(call)
     sig = _builtin_target_signature(target) if target else None
@@ -6152,7 +6691,11 @@ def _devx_author_surface(program: Program, focus: Optional[str],
 def _devx_contract_surface(program: Program) -> dict:
     """DEVX-3: expose checked contracts/effect claims as data."""
     ops: list[dict] = []
-    diags = [d for d in lint(program) if d.code in ("SS1705", "SS1706", "SS1708", "SS3092")]
+    diags = [d for d in lint(program) if d.code in ("SS1705", "SS1706", "SS1708", "SS1880", "SS3092")]
+    claims = _checked_contract_claims(program)
+    claims_by_op: dict[str, list[dict]] = {}
+    for claim in claims:
+        claims_by_op.setdefault(claim["operation"], []).append(claim)
     for op in program.of_kind("operation") + program.of_kind("function"):
         declared = sorted(f"{a} {r}" for a, r in _effect_rows_of(op))
         effective = sorted(f"{a} {r}" for a, r in _effective_effects(program, op, set()))
@@ -6160,12 +6703,17 @@ def _devx_contract_surface(program: Program) -> dict:
             "operation": op.name,
             "requires": [" ".join(r.payload) for r in op.facts("requires")],
             "ensures": [" ".join(r.payload) for r in op.facts("ensures")],
+            "invariants": [_metadata_claim_text(r) for r in op.facts("invariant")],
+            "guarantees": [_metadata_claim_text(r) for r in op.facts("guarantee")],
+            "checkedClaims": claims_by_op.get(op.name, []),
             "declaredEffects": declared,
             "effectiveEffects": effective,
             "pureClaim": not declared,
-            "checked": bool(op.facts("requires") or op.facts("ensures") or effective),
+            "checked": bool(op.facts("requires") or op.facts("ensures")
+                            or claims_by_op.get(op.name) or effective),
         })
     return {"status": "ok", "operations": ops,
+            "checkedClaims": claims,
             "diagnostics": _structured_diags(diags)}
 
 
@@ -6253,15 +6801,259 @@ def _devx_authority_surface(program: Program) -> dict:
 def _devx_repl_surface(program: Program, intent: Optional[str]) -> dict:
     """DEVX-7: typed runtime-linked REPL bootstrap data."""
     targets = _target_catalog()["targets"]
+    compiler = _find_c_compiler()
     return {
         "status": "ok",
-        "typedRuntimeLinked": True,
-        "entryCommand": ["eval", "-", "--json"],
+        "typedRuntimeLinked": bool(compiler),
+        "entryCommand": ["repl", "<path>", "--json"],
+        "jitSnippetCommand": ["eval", "-", "--json"],
+        "nativeCommand": ["repl", "<path>", "--native", "--json"],
+        "runtimeBoundary": (
+            "eval/run exercise the JIT lane for console snippets; native-runtime "
+            "families such as sqlite, bcrypt, log, http, json, and c must be "
+            "proved through the nativeBuild lane."
+        ),
         "signatureSource": "targets --signature",
+        "executionLanes": _repl_execution_lanes(program, "<path>", None),
         "targetCount": len(targets),
         "targetPreview": [t["target"] for t in targets[:20]],
         "seedRows": _devx_intent_candidates(intent)[:3],
     }
+
+
+_REPL_NATIVE_FAMILIES = frozenset({"sqlite", "bcrypt", "log", "http", "json", "c"})
+
+
+def _repl_target_family(target: str) -> str:
+    return target.split(".", 1)[0] if "." in target else target
+
+
+def _repl_target_signature(target: Optional[str]) -> Optional[dict]:
+    if not target:
+        return None
+    sig = _builtin_target_signature(target)
+    if sig is None:
+        raise EavError(
+            f"repl target {target!r} is not in the live signature catalog; "
+            "run `targets --signature <target> --json` first")
+    return _signature_with_maturity(sig)
+
+
+def _repl_invoked_targets(program: Program) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for call in program.of_kind("call"):
+        row = call.fact("invokes")
+        if row and row.payload:
+            target = row.payload[0]
+            if target not in seen:
+                seen.add(target)
+                out.append(target)
+    return out
+
+
+def _repl_native_targets(program: Program, selected_target: Optional[str]) -> list[dict]:
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for target in ([selected_target] if selected_target else []) + _repl_invoked_targets(program):
+        if not target or target in seen:
+            continue
+        seen.add(target)
+        sig = _builtin_target_signature(target)
+        mature = _signature_with_maturity(sig) if sig else {}
+        family = _repl_target_family(target)
+        status = mature.get("status")
+        if family in _REPL_NATIVE_FAMILIES or status in ("native", "known-broken"):
+            rows.append({
+                "target": target,
+                "family": family,
+                "status": status or "unknown",
+                "maturity": mature.get("maturity"),
+                "knownBroken": bool(mature.get("knownBroken")),
+            })
+    return rows
+
+
+def _repl_execution_lanes(program: Program, path: str,
+                          selected_target: Optional[str]) -> dict:
+    program_target = _program_target(program)
+    compiler = _find_c_compiler()
+    signature = _repl_target_signature(selected_target)
+    native_targets = _repl_native_targets(program, selected_target)
+    if signature and signature.get("status") == "intrinsic":
+        jit_note = "selected target is modeled by the LLVM/JIT lane"
+    elif signature and signature.get("status") in ("native", "known-broken"):
+        jit_note = "selected target is native-runtime-backed; prove behavior with nativeBuild"
+    else:
+        jit_note = "JIT is a console lane and may not cover native runtime subsystems"
+    return {
+        "jit": {
+            "available": program_target == "console",
+            "status": "available" if program_target == "console" else "not-applicable",
+            "command": ["run", path, "--json"],
+            "scope": "console target only",
+            "note": jit_note,
+        },
+        "nativeBuild": {
+            "available": bool(compiler),
+            "status": "available" if compiler else "missing-compiler",
+            "command": ["build", path, "--json"],
+            "compiler": " ".join(compiler) if compiler else None,
+            "coversTargets": native_targets,
+            "note": (
+                "Use this lane for sqlite/bcrypt/log/http/json/c runtime behavior; "
+                "it catches check/eval false-greens."
+            ),
+        },
+        "webServerDrive": {
+            "available": program_target == "webServer" and bool(compiler),
+            "status": (
+                "available" if program_target == "webServer" and compiler
+                else "not-applicable"
+            ),
+            "command": ["http-drive", path, "--json"],
+            "scope": "native webServer request lifecycle",
+        },
+    }
+
+
+def _repl_jit_probe(source: str, program: Program, timeout: float) -> dict:
+    if _program_target(program) != "console":
+        return {
+            "status": "skipped",
+            "reason": "JIT run probe only applies to target console",
+        }
+    try:
+        compile_gate(program, strict=False)
+    except CompileGateError as exc:
+        return {
+            "status": "lint-error",
+            "ok": False,
+            "exitCode": 1,
+            "diagnostics": _structured_diags(exc.diagnostics),
+        }
+    out, err, code = _record_run_full(
+        source, timeout=timeout, cwd=getattr(program, "source_root", None))
+    status, panic = _classify_run(out, err, code)
+    payload = {
+        "status": status,
+        "ok": code == 0,
+        "exitCode": code,
+        "stdout": out,
+        "stderr": err,
+        "stdoutLines": _stdout_lines(out),
+    }
+    if panic is not None:
+        payload["panic"] = panic
+    return payload
+
+
+def _repl_native_probe(program: Program, timeout: float, run: bool) -> dict:
+    import os
+    import subprocess
+    import sys as _sys
+    import tempfile
+    compiler = _find_c_compiler()
+    if compiler is None:
+        return {
+            "status": "missing-compiler",
+            "ok": False,
+            "reason": "set SEMANTICSCRIPT_CC, or install clang/zig",
+        }
+    with tempfile.TemporaryDirectory(prefix="sem-repl-") as td:
+        exe = os.path.join(td, "session.exe" if _sys.platform == "win32" else "session")
+        try:
+            build_executable(program, exe)
+        except EavError as exc:
+            return {"status": "build-error", "ok": False,
+                    "diagnostic": str(exc), "code": exc.code}
+        payload = {"status": "built", "ok": True, "artifact": "temporary",
+                   "compiler": " ".join(compiler)}
+        if not run:
+            return payload
+        if _program_target(program) != "console":
+            payload["run"] = {
+                "status": "skipped",
+                "reason": "native --run is only automatic for target console; use http-drive for webServer",
+            }
+            return payload
+        try:
+            proc = subprocess.run(
+                [exe],
+                cwd=getattr(program, "source_root", None) or None,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=timeout,
+            )
+            payload["run"] = {
+                "status": "ok" if proc.returncode == 0 else "nonzero-exit",
+                "ok": proc.returncode == 0,
+                "exitCode": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+                "stdoutLines": _stdout_lines(proc.stdout),
+            }
+        except subprocess.TimeoutExpired as exc:
+            payload["run"] = {
+                "status": "timed-out",
+                "ok": False,
+                "exitCode": 124,
+                "stdout": exc.stdout or "",
+                "stderr": exc.stderr or "",
+            }
+        return payload
+
+
+def _repl_payload(path: str, target: Optional[str], intent: Optional[str],
+                  run: bool, native: bool, timeout: float) -> dict:
+    import os
+    source, program = _load_program_for_path(path)
+    selected_signature = _repl_target_signature(target)
+    payload = {
+        "status": "ok",
+        "path": os.path.abspath(path) if path != "-" else "-",
+        "typedSession": True,
+        "signatureLive": True,
+        "programTarget": _program_target(program),
+        "entry": _entry_name(program),
+        "target": target,
+        "signature": selected_signature,
+        "runtimeLinked": bool(_find_c_compiler()),
+        "executionLanes": _repl_execution_lanes(program, path, target),
+        "nextCommands": [
+            ["targets", "--signature", target or "<target>", "--json"],
+            ["synth", "--target", target or "<target>", "--json"],
+            ["sem-edit", path, "--edit", "<json>", "--json"],
+            ["repl", path, "--run", "--json"],
+            ["repl", path, "--native", "--json"],
+        ],
+    }
+    if target:
+        payload["callSkeleton"] = _synth_rows_for_target(
+            target,
+            "main",
+            _synth_binding_name(target.split(".")[-1], "call") + "Call",
+            include_operation=False,
+        )
+    else:
+        payload["seedRows"] = _devx_intent_candidates(intent)[:3]
+    if run:
+        payload["run"] = _repl_jit_probe(source, program, max(0.1, timeout))
+    if native:
+        payload["nativeProbe"] = _repl_native_probe(
+            program, max(0.1, timeout), run=run)
+    return payload
+
+
+def _devx_improvement_rows(program: Program) -> list[str]:
+    rows: list[str] = []
+    for ent in program.of_kind("module") + program.of_kind("operation") + program.of_kind("function"):
+        if ent.fact("purpose") is None:
+            rows.append(f'{ent.name} purpose "Autogenerated purpose for {ent.name}"')
+        if ent.fact("invariant") is None:
+            rows.append(f'{ent.name} invariant "Autogenerated invariant for {ent.name}"')
+    return rows
 
 
 def _devx_improve_surface(program: Program, path: str) -> dict:
@@ -6278,28 +7070,117 @@ def _devx_improve_surface(program: Program, path: str) -> dict:
             "suggested": entry.get("suggested", ""),
             "command": ["fix", "--plan", path, "--json"],
         })
+    canonical_rows = _devx_improvement_rows(program)
+    next_commands = [
+        _next_command_for_source(["fix", "--plan", path, "--json"], "derive repair plan", path),
+        _next_command_for_source(["verify", path, "--strict", "--json"], "strict verify after edits", path),
+    ]
+    if canonical_rows and path != "-":
+        command = _next_command_for_source(
+            ["improve", path, "--apply", "--json"],
+            "apply canonical metadata improvements",
+            path,
+        )
+        command["replayable"] = True
+        next_commands.insert(0, command)
     return {
-        "status": "ok" if not diags else "needs-improvement",
+        "status": "ok" if not diags and not canonical_rows else "needs-improvement",
         "diagnostics": _structured_diags(diags),
         "plan": plan_items,
-        "nextCommands": [
-            _next_command_for_source(["fix", "--plan", path, "--json"], "derive repair plan", path),
-            _next_command_for_source(["verify", path, "--strict", "--json"], "strict verify after edits", path),
-        ],
+        "canonicalEdits": [{"kind": "add-row", "row": row} for row in canonical_rows],
+        "applyable": bool(canonical_rows),
+        "nextCommands": next_commands,
     }
 
 
+def _devx_failure_path_checks(program: Program) -> list[dict]:
+    checks: list[dict] = []
+    for call in program.of_kind("call"):
+        catch = call.fact("catch")
+        owner = call.fact("in")
+        if catch is None or owner is None or not owner.payload:
+            continue
+        op = program.entities.get(owner.payload[0])
+        branches = []
+        if op is not None:
+            branches = [
+                r for r in op.facts("branch")
+                if len(r.payload) >= 2
+                and r.payload[0] == "ifError"
+                and r.payload[1] == call.name
+            ]
+        checks.append({
+            "call": call.name,
+            "operation": owner.payload[0],
+            "errorType": catch.payload[-1] if catch.payload else None,
+            "hasBranchIfError": bool(branches),
+            "status": "covered" if branches else "missing-branch-ifError",
+            "line": call.line,
+        })
+    return checks
+
+
+_ADVERSARIAL_EDGE_VALUES = {
+    "Bool": ["false", "true"],
+    "Int32": ["0", "1", "-1", "2147483647", "-2147483648"],
+    "Int64": ["0", "1", "-1", "9223372036854775807", "-9223372036854775808"],
+    "String": ["\"\"", "\" \"", "\"../\"", "\"' OR 1=1 --\""],
+}
+
+
+def _devx_edge_probe_plan(program: Program, limit: int = 20) -> list[dict]:
+    probes: list[dict] = []
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        for row in op.facts("in"):
+            if len(row.payload) >= 2 and row.payload[1] in _ADVERSARIAL_EDGE_VALUES:
+                probes.append({
+                    "operation": op.name,
+                    "kind": "input",
+                    "name": row.payload[0],
+                    "type": row.payload[1],
+                    "values": _ADVERSARIAL_EDGE_VALUES[row.payload[1]],
+                })
+        for row in op.facts("let"):
+            if len(row.payload) >= 3 and row.payload[2] in _ADVERSARIAL_EDGE_VALUES:
+                probes.append({
+                    "operation": op.name,
+                    "kind": "binding",
+                    "name": row.payload[0],
+                    "type": row.payload[2],
+                    "values": _ADVERSARIAL_EDGE_VALUES[row.payload[2]],
+                })
+        if len(probes) >= limit:
+            return probes[:limit]
+    return probes[:limit]
+
+
 def _devx_adversarial_surface(program: Program) -> dict:
-    """DEVX-9: skeptical static second opinion."""
+    """DEVX-9: skeptical static second opinion plus typed probe plan."""
     default_diags = lint(program)
     strict_diags = _filter_diagnostics_strict(default_diags, True)
     blockers = [d for d in strict_diags if d.severity == "error"]
     warnings = [d for d in strict_diags if d.severity == "warning"]
+    failure_path_checks = _devx_failure_path_checks(program)
+    missing_failure_paths = [
+        c for c in failure_path_checks if c["status"] != "covered"
+    ]
+    status = "blocked" if blockers or missing_failure_paths else "pass"
     return {
-        "status": "pass" if not blockers else "blocked",
+        "status": status,
         "strict": True,
         "blockers": _structured_diags(blockers),
         "warnings": _structured_diags(warnings),
+        "failurePathChecks": failure_path_checks,
+        "edgeProbePlan": _devx_edge_probe_plan(program),
+        "findings": [
+            {
+                "kind": "missing-failure-path",
+                "call": c["call"],
+                "operation": c["operation"],
+                "message": "caught call has no visible branch ifError path",
+            }
+            for c in missing_failure_paths
+        ],
         "reviewQuestions": [
             "Did any effect or capability surface grow?",
             "Does every fallible call have an explicit error path?",
@@ -6324,7 +7205,8 @@ def _devx_perf_surface(program: Program, path: str) -> dict:
             if not server else
             [["verify", path, "--json"],
              ["build", path, "--json"],
-             ["test", path, "--lane", "integration", "--json"]]
+             ["bench", path, "--probe-server", "--json"],
+             ["http-drive", path, "--json"]]
         ),
         "note": ("server entries are measured through a bounded live harness"
                  if server else "console entries can use run/bench directly"),
@@ -6430,11 +7312,12 @@ def _comp_maturity_surface() -> dict:
         "experimentalTargets": experimental,
         "routing": [
             {
-                "match": "json.*",
+                "match": prefix + "*",
                 "decision": "route-around",
-                "reason": KNOWN_BROKEN_TARGET_PREFIXES["json."],
-                "preferred": "Use static JsonText body islands or a golden-tested helper.",
+                "reason": reason,
+                "preferred": "Use a proven target or a golden-tested helper.",
             }
+            for prefix, reason in sorted(KNOWN_BROKEN_TARGET_PREFIXES.items())
         ],
     }
 
@@ -7618,6 +8501,8 @@ SCAFFOLD_PATTERNS = (
     "console-program", "fallible-write", "fallible-operation",
     "trust-boundary", "json-output", "json-decode", "db-roundtrip", "logged-op",
     "handler-route", "cleanup", "sqlite-query", "html-template", "async-fanout",
+    "crud-endpoint", "migration", "audit-log", "pagination", "test-fixture",
+    "http-drive-test",
 )
 
 
@@ -7705,7 +8590,7 @@ def scaffold(pattern: str) -> str:
             "validateBody out SafeBody\nvalidateBody async no\n"
             'validateBody purpose "Trust boundary from RawBody to SafeBody"\n'
             'validateBody invariant "Only returns SafeBody after validation has accepted raw"\n'
-            'validateBody let accepted immutable SafeBody "client body"\n'
+            "validateBody let accepted immutable SafeBody raw\n"
             "validateBody return accepted\n\n"
             "writeSafeBody is operation\nwriteSafeBody in line SafeBody\n"
             "writeSafeBody out ExitCode\nwriteSafeBody async no\n"
@@ -7747,16 +8632,19 @@ def scaffold(pattern: str) -> str:
             'main invariant "The document and scratch buffer are released"\n'
             "main let jsonCapacity immutable JsonCapacityBytes 256\n"
             "main let rootKind immutable JsonValueKind objectJson\n"
+            'main let answerField immutable String "answer"\n'
+            "main let answerValue immutable Int64 42\n"
             "main let okCode immutable ExitCode 0\n"
             "main do createScratch\nmain defer releaseScratch\n"
             "main do createDoc\nmain defer destroyDoc\n"
+            "main do rootCursor\n"
+            "main do setAnswer\n"
             "main do serializeDoc\n"
             "main do printJson\nmain return okCode\n\n"
             "createScratch is call\ncreateScratch in main\n"
             "createScratch invokes c.malloc\n"
             "createScratch arg size ByteCount jsonCapacity\n"
             "createScratch out scratch OpaquePointer\n"
-            "createScratch catch scratchError OpaquePointer\n"
             "createScratch owns scratch\n"
             "createScratch cleanedBy releaseScratch\n\n"
             "releaseScratchWorker is call\nreleaseScratchWorker in main\n"
@@ -7782,6 +8670,17 @@ def scaffold(pattern: str) -> str:
             "destroyDoc call destroyDocWorker\n"
             "destroyDoc cleans document\n"
             'destroyDoc because "release the JSON document arena"\n\n'
+            "rootCursor is call\nrootCursor in main\n"
+            "rootCursor invokes json.documentRoot\n"
+            "rootCursor arg document JsonDocument document\n"
+            "rootCursor out root JsonCursor\n\n"
+            "setAnswer is call\nsetAnswer in main\n"
+            "setAnswer invokes json.setObjectFieldInt64\n"
+            "setAnswer arg document JsonDocument document\n"
+            "setAnswer arg cursor JsonCursor root\n"
+            "setAnswer arg fieldName String answerField\n"
+            "setAnswer arg value Int64 answerValue\n"
+            "setAnswer discards \"set field status ignored in scaffold\"\n\n"
             "serializeDoc is call\nserializeDoc in main\n"
             "serializeDoc invokes json.serializeDocument\n"
             "serializeDoc arg document JsonDocument document\n"
@@ -8148,20 +9047,208 @@ def scaffold(pattern: str) -> str:
             "harnessSummary invokes test.summary\n"
             "harnessSummary out harnessCode ExitCode\n"
         )
+    if pattern == "crud-endpoint":
+        return scaffold("handler-route") + (
+            "\nSqlText is alias\nSqlText for String\n\n"
+            "Todo is record\nTodo field id Int64\nTodo field title String\n"
+            "Todo field done Bool\n\n"
+            "handlerRouteModule exports insertTodoSql\n"
+            "handlerRouteModule exports listTodoSql\n\n"
+            "insertTodoSql is storage\ninsertTodoSql scope module\n"
+            "insertTodoSql type SqlText\ninsertTodoSql body sql\n"
+            "    INSERT INTO todos(title, done) VALUES (?, ?)\n\n"
+            "listTodoSql is storage\nlistTodoSql scope module\n"
+            "listTodoSql type SqlText\nlistTodoSql body sql\n"
+            "    SELECT id, title, done FROM todos ORDER BY id LIMIT ? OFFSET ?\n"
+        )
+    if pattern == "migration":
+        return (
+            "MigrationScaffold is project\nMigrationScaffold module migrationModule\n"
+            "MigrationScaffold target console\nMigrationScaffold entry main\n\n"
+            "migrationModule is module\nmigrationModule path examples.migration\n"
+            "migrationModule exports main\n"
+            "migrationModule exports schemaMigration001\n"
+            'migrationModule purpose "Run an idempotent schema migration"\n'
+            'migrationModule invariant "Migrations are ordered and repeatable"\n\n'
+            "ExitCode is alias\nExitCode for Int32\nSqlText is alias\nSqlText for String\n\n"
+            "schemaMigration001 is storage\nschemaMigration001 scope module\n"
+            "schemaMigration001 type SqlText\nschemaMigration001 body sql\n"
+            "    CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER)\n\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            'main purpose "Migration placeholder"\nmain invariant "Returns success after migration planning"\n'
+            "main let ok immutable ExitCode 0\nmain return ok\n"
+        )
+    if pattern == "audit-log":
+        return (
+            "AuditLogScaffold is project\nAuditLogScaffold module auditModule\n"
+            "AuditLogScaffold target console\nAuditLogScaffold entry main\n\n"
+            "auditModule is module\nauditModule path examples.audit\n"
+            "auditModule exports main\n"
+            'auditModule purpose "Declare an audit entry contract"\n'
+            'auditModule invariant "Every mutation can produce an AuditEntry"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n"
+            "AuditEntry is record\nAuditEntry field entity String\n"
+            "AuditEntry field action String\nAuditEntry field actor String\n"
+            "AuditEntry field occurredAt Int64\n\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            'main purpose "Audit scaffold placeholder"\nmain invariant "Contract-only scaffold is parseable"\n'
+            "main let ok immutable ExitCode 0\nmain return ok\n"
+        )
+    if pattern == "pagination":
+        return (
+            "PaginationScaffold is project\nPaginationScaffold module pageModule\n"
+            "PaginationScaffold target console\nPaginationScaffold entry main\n\n"
+            "pageModule is module\npageModule path examples.pagination\n"
+            "pageModule exports main\n"
+            'pageModule purpose "Declare pagination/filter/sort contracts"\n'
+            'pageModule invariant "List endpoints use bounded page requests"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n"
+            "PageRequest is record\nPageRequest field limit Int64\n"
+            "PageRequest field offset Int64\nPageRequest field sortBy String\n"
+            "PageRequest field filterText String\n\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            'main purpose "Pagination scaffold placeholder"\nmain invariant "Contract-only scaffold is parseable"\n'
+            "main let ok immutable ExitCode 0\nmain return ok\n"
+        )
+    if pattern == "test-fixture":
+        return (
+            "TestFixtureScaffold is project\nTestFixtureScaffold module fixtureModule\n"
+            "TestFixtureScaffold target console\nTestFixtureScaffold entry main\n\n"
+            "fixtureModule is module\nfixtureModule path examples.fixture\n"
+            "fixtureModule exports main\n"
+            'fixtureModule purpose "Run isolated table-driven tests"\n'
+            'fixtureModule invariant "Each case starts from a fresh in-memory fixture"\n\n'
+            "ExitCode is alias\nExitCode for Int32\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            'main purpose "Fixture scaffold"\nmain invariant "Summary exit code reflects assertions"\n'
+            'main let caseName immutable String "fixture row count"\n'
+            "main let expected immutable Int64 1\nmain let actual immutable Int64 1\n"
+            "main do rowCountCheck\nmain do summary\nmain return failures\n\n"
+            "rowCountCheck is call\nrowCountCheck in main\n"
+            "rowCountCheck invokes test.assertRowCount\n"
+            "rowCountCheck arg name String caseName\n"
+            "rowCountCheck arg expected Int64 expected\n"
+            "rowCountCheck arg actual Int64 actual\n\n"
+            "summary is call\nsummary in main\nsummary invokes test.summary\n"
+            "summary out failures ExitCode\n"
+        )
+    if pattern == "http-drive-test":
+        return (
+            "HttpDriveTestScaffold is project\nHttpDriveTestScaffold module httpDriveModule\n"
+            "HttpDriveTestScaffold target console\nHttpDriveTestScaffold entry main\n\n"
+            "httpDriveModule is module\nhttpDriveModule path examples.httpDrive\n"
+            "httpDriveModule exports main\n"
+            'httpDriveModule purpose "Assert an HTTP drive result"\n'
+            'httpDriveModule invariant "Status assertion controls the exit code"\n\n'
+            "ExitCode is alias\nExitCode for Int32\nHttpStatus is alias\nHttpStatus for Int64\n\n"
+            "main is operation\nmain out ExitCode\nmain async no\n"
+            'main purpose "HTTP drive assertion scaffold"\nmain invariant "Summary exit code reflects assertions"\n'
+            'main let caseName immutable String "GET /health status"\n'
+            "main let expectedStatus immutable HttpStatus 200\n"
+            "main let actualStatus immutable HttpStatus 200\n"
+            "main do statusCheck\nmain do summary\nmain return failures\n\n"
+            "statusCheck is call\nstatusCheck in main\n"
+            "statusCheck invokes test.assertStatusIs\n"
+            "statusCheck arg name String caseName\n"
+            "statusCheck arg expected Int64 expectedStatus\n"
+            "statusCheck arg actual Int64 actualStatus\n\n"
+            "summary is call\nsummary in main\nsummary invokes test.summary\n"
+            "summary out failures ExitCode\n"
+        )
     raise EavError(f"unknown scaffold pattern {pattern!r}")
 
 
 QUERY_DIMENSIONS = (
     "effects", "uses", "labels", "calls", "types", "ownership-leaked",
-    "json-codecs",
+    "json-codecs", "usages", "api-docs",
 )
 
 
-def query(program: Program, dimension: str) -> list:
+def _record_fields_for(ent: Entity) -> list[dict]:
+    fields = []
+    for row in ent.facts("field"):
+        if len(row.payload) >= 2:
+            fields.append({"name": row.payload[0], "type": row.payload[1],
+                           "line": row.line})
+    return fields
+
+
+def _sql_type_for(type_name: str) -> str:
+    base = _type_ref_basename(type_name)
+    if base in ("Int64", "Int32", "Bool"):
+        return "INTEGER"
+    if base in ("Float64", "Float32"):
+        return "REAL"
+    if base in ("String", "JsonText", "SqlText"):
+        return "TEXT"
+    return "BLOB"
+
+
+def _json_setter_for(type_name: str) -> str:
+    base = _type_ref_basename(type_name)
+    if base in ("Int64", "Int32"):
+        return "json.setObjectFieldInt64"
+    if base == "Bool":
+        return "json.setObjectFieldBool"
+    return "json.setObjectFieldString"
+
+
+def _derive_record_contract(program: Program, record_name: str) -> dict:
+    ent = program.entities.get(record_name)
+    if ent is None or ent.kind != "record":
+        raise EavError(f"derive needs a record entity, got {record_name!r}")
+    fields = _record_fields_for(ent)
+    table = record_name[:1].lower() + record_name[1:]
+    columns = [{"name": f["name"], "type": f["type"], "sqlType": _sql_type_for(f["type"])}
+               for f in fields]
+    return {
+        "record": record_name,
+        "fields": fields,
+        "jsonCodec": {
+            "encodeCalls": [
+                {"field": f["name"], "target": _json_setter_for(f["type"]),
+                 "jsonName": f["name"], "type": f["type"]}
+                for f in fields
+            ],
+            "decodePolicy": "validate required fields before handler body",
+        },
+        "sql": {
+            "table": table,
+            "createTableSql": (
+                f"CREATE TABLE IF NOT EXISTS {table} ("
+                + ", ".join(f"{c['name']} {c['sqlType']}" for c in columns)
+                + ")"
+            ),
+            "insertSql": (
+                f"INSERT INTO {table} ("
+                + ", ".join(c["name"] for c in columns)
+                + ") VALUES ("
+                + ", ".join("?" for _ in columns)
+                + ")"
+            ),
+            "bindColumns": columns,
+            "readColumns": columns,
+        },
+        "handler": {
+            "requestRecord": record_name,
+            "validation": [
+                {"field": f["name"], "rule": "required", "type": f["type"]}
+                for f in fields
+            ],
+            "responseSerialization": "derive from jsonCodec.encodeCalls",
+        },
+        "testControls": {
+            "clock": "accept an injected nowMillis binding for expiry/TTL tests",
+            "rng": "accept an injected seed binding for token/random tests",
+        },
+    }
+
+
+def query(program: Program, dimension: str, name: Optional[str] = None) -> list:
     """Answer a structural query over a program (README ss24 `query`)."""
     rows: list[str] = []
-    for name in program.order:
-        ent = program.entities[name]
+    for entity_name in program.order:
+        ent = program.entities[entity_name]
         if dimension == "effects" and ent.kind in ("operation", "function"):
             for e in ent.facts("effect"):
                 if len(e.payload) >= 2:
@@ -8208,6 +9295,26 @@ def query(program: Program, dimension: str) -> list:
         elif dimension == "ownership-leaked" and ent.kind in ("call", "task"):
             if ent.fact("owns") is not None and ent.fact("cleanedBy") is None:
                 rows.append(f"{ent.name} owns without cleanedBy")
+        elif dimension == "usages":
+            needle = name
+            if needle is None:
+                continue
+            for row in ent.rows:
+                if row.subject == needle or row.predicate == needle or needle in row.payload:
+                    rows.append(f"{ent.name}:{row.line} {row.predicate} {' '.join(row.payload)}")
+        elif dimension == "api-docs":
+            if ent.kind == "webServer":
+                for route in ent.facts("route"):
+                    if len(route.payload) >= 3:
+                        rows.append(
+                            f"route {route.payload[0]} {route.payload[1]} -> {route.payload[2]}")
+            elif ent.kind in ("operation", "function"):
+                effects = [" ".join(r.payload) for r in ent.facts("effect") if r.payload]
+                if effects:
+                    rows.append(f"operation {ent.name} effects {', '.join(effects)}")
+            elif ent.kind == "record":
+                fields = ", ".join(f"{f['name']}:{f['type']}" for f in _record_fields_for(ent))
+                rows.append(f"record {ent.name} fields {fields}")
     return rows
 
 
@@ -8674,6 +9781,36 @@ def _structured_diags(diags: list) -> list:
              "entity": d.entity, "message": d.message, "rendered": d.render(),
              **meta(d.code)}
             for d in diags]
+
+
+def _diagnostic_next_commands(path: Optional[str], diag: dict) -> list[dict]:
+    """CYC-47: every structured diagnostic carries replayable next commands."""
+    if not path:
+        return []
+    commands = [
+        _next_command_for_source(
+            ["fix", path, "--plan", "--json"],
+            "derive a replayable repair plan",
+            path,
+        )
+    ]
+    code = diag.get("code")
+    if code:
+        commands.append(_next_command_for_source(
+            ["lint", path, "--explain", code, "--json"],
+            "explain this diagnostic and its required repair",
+            path,
+        ))
+    for command in commands:
+        command["replayable"] = True
+    return commands
+
+
+def _structured_diags_with_next(diags: list, path: Optional[str]) -> list:
+    out = _structured_diags(diags)
+    for diag in out:
+        diag["nextCommands"] = _diagnostic_next_commands(path, diag)
+    return out
 
 
 def diagnostics_json(diags: list) -> str:
@@ -9430,17 +10567,35 @@ def _lint_resource_cleanup_parity(program: Program) -> list:
             if len(row.payload) >= 4 and row.payload[1] == "immutable"
         }
 
+    def returned_by_owner(call: Entity) -> bool:
+        op = owner_ops.get(call.name)
+        if op is None:
+            return False
+        outs = {
+            row.payload[0]
+            for row in _call_out_rows(call)
+            if row.payload
+        }
+        if not outs:
+            return False
+        return any(
+            row.predicate == "return" and bool(outs.intersection(row.payload))
+            for row in op.rows
+        )
+
     for ent in program.entities_in_order():
         if ent.kind not in ("call", "task"):
             continue
         target = _call_target(ent)
         if target in _WS2_RAW_RESOURCE_PRODUCERS and _call_out_rows(ent):
-            if ent.fact("owns") is None and ent.fact("cleanedBy") is None:
+            if (ent.fact("owns") is None and ent.fact("cleanedBy") is None
+                    and not returned_by_owner(ent)):
                 out.append(Diagnostic(
                     "SS1810", "warning",
                     f"{ent.kind} {ent.name!r} invokes raw resource producer "
                     f"{target!r} and binds an out value but declares no `owns`/"
-                    f"`cleanedBy` cleanup contract (README ss15.6/WS2-081)",
+                    f"`cleanedBy` cleanup contract and does not return it "
+                    f"(README ss15.6/WS2-081)",
                     ent.line, ent.name))
         if target == "c.malloc" and not has_size_budget(ent):
             size_value = _call_arg_value(ent, "size")
@@ -9533,6 +10688,11 @@ def _lint_json_sql_codec_parity(program: Program) -> list:
     owned_by = _calls_by_owner(program)
     for op in program.of_kind("operation"):
         calls = {call.name: call for call in owned_by.get(op.name, ())}
+        const_literals = {
+            row.payload[0]: row.payload[3]
+            for row in op.facts("let")
+            if len(row.payload) >= 4 and row.payload[1] == "immutable"
+        }
         saw_insert = False
         for row in op.rows:
             if row.predicate not in ("do", "start", "join", "poll") or not row.payload:
@@ -9541,9 +10701,9 @@ def _lint_json_sql_codec_parity(program: Program) -> list:
             if call is None:
                 continue
             target = _call_target(call)
-            if target.startswith("json.setObjectField") or target.startswith("json.find"):
+            if target.startswith("json.find"):
                 out.append(Diagnostic(
-                    "SS1872", "error",
+                    "SS1872", "warning",
                     f"call {call.name!r} uses deprecated JSON target {target!r}; "
                     "use the current standard.json cursor/builder API "
                     "(README ss16/WS2-087)",
@@ -9564,7 +10724,12 @@ def _lint_json_sql_codec_parity(program: Program) -> list:
                 sql_text = None
                 if sql_arg is not None:
                     sql_text = program.islands.get((sql_arg.payload[2], "sql"))
-                verb = _sql_first_verb("\n".join(sql_text) if sql_text else "")
+                sql_source = "\n".join(sql_text) if sql_text else ""
+                if not sql_source and sql_arg is not None:
+                    literal = const_literals.get(sql_arg.payload[2])
+                    if literal and literal.startswith('"'):
+                        sql_source = _unquote_token(literal)
+                verb = _sql_first_verb(sql_source)
                 if target in ("sqlite.exec", "sqlite.prepareStatement", "sqlite.query"):
                     if verb in ("INSERT", "REPLACE"):
                         saw_insert = True
@@ -9758,6 +10923,212 @@ def _validate_numeric_arg_coercion(program: Program) -> list:
     return out
 
 
+_CHECKED_CLAIM_PREDICATES = ("invariant", "guarantee")
+
+
+def _metadata_claim_text(row: Row) -> str:
+    return " ".join(_unquote_token(tok) for tok in row.payload).strip()
+
+
+def _operation_literal_values(program: Program, op: Entity) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for ent in program.of_kind("storage"):
+        tr, vr = ent.fact("type"), ent.fact("value")
+        if tr and vr and vr.payload:
+            values[ent.name] = vr.payload[0]
+    for row in op.facts("let"):
+        if len(row.payload) >= 4 and row.payload[1] == "immutable":
+            values[row.payload[0]] = row.payload[3]
+    return values
+
+
+def _claim_literal_is_zero(token: str, values: dict[str, str]) -> bool:
+    seen: set[str] = set()
+    current = token
+    while current in values and current not in seen:
+        seen.add(current)
+        current = values[current]
+    normalized = _unquote_token(current).strip()
+    return normalized in ("0", "+0", "-0", "0.0", "+0.0", "-0.0")
+
+
+def _operation_returns_zero(program: Program, op: Entity) -> bool:
+    returns = op.facts("return")
+    if not returns:
+        return False
+    values = _operation_literal_values(program, op)
+    for row in returns:
+        if not row.payload:
+            return False
+        returned = row.payload[0]
+        if returned in ("ok", "success") and len(row.payload) > 1:
+            returned = row.payload[1]
+        if not _claim_literal_is_zero(returned, values):
+            return False
+    return True
+
+
+def _operation_async_no(op: Entity) -> bool:
+    row = op.fact("async")
+    return bool(row and row.payload and row.payload[0] == "no")
+
+
+def _operation_heap_no(op: Entity) -> bool:
+    for row in op.facts("memory"):
+        if len(row.payload) >= 2 and row.payload[0] == "heap":
+            return row.payload[1] == "no"
+    return False
+
+
+def _networkish_effect(action: str, resource: str) -> bool:
+    text = f"{action} {resource}".lower()
+    return any(part in text for part in ("network", "socket", "http"))
+
+
+def _operation_activated_targets(program: Program, op: Entity) -> list[str]:
+    targets: list[str] = []
+    for row in op.rows:
+        if row.predicate not in _STEP_SPLIT or not row.payload:
+            continue
+        ref = program.entities.get(row.payload[0])
+        workers = [ref] if ref is not None else []
+        if ref is not None and ref.kind == "cleanup":
+            cr = ref.fact("call")
+            w = program.entities.get(cr.payload[0]) if cr and cr.payload else None
+            if w is not None:
+                workers.append(w)
+        for worker in workers:
+            if worker is not None and worker.kind in ("call", "task"):
+                target = _call_target(worker)
+                if target:
+                    targets.append(target)
+    return targets
+
+
+def _operation_has_network_surface(program: Program, op: Entity) -> bool:
+    for action, resource in _effective_effects(program, op, set()):
+        if _networkish_effect(action, resource):
+            return True
+    for target in _operation_activated_targets(program, op):
+        low = target.lower()
+        if low.startswith(("http.", "net.", "network.", "socket.")):
+            return True
+    return False
+
+
+def _operation_has_direct_zero_divisor(program: Program, op: Entity) -> bool:
+    active = {
+        row.payload[0]
+        for row in op.rows
+        if row.predicate in _STEP_SPLIT and row.payload
+    }
+    values = _operation_literal_values(program, op)
+    for call in _calls_by_owner(program).get(op.name, []):
+        if call.name not in active:
+            continue
+        target = _call_target(call).lower()
+        if "divide" not in target and "modulo" not in target and "fmod" not in target:
+            continue
+        for slot in ("right", "divisor", "denominator", "by"):
+            value = _call_arg_value(call, slot)
+            if value is not None and _claim_literal_is_zero(value, values):
+                return True
+    return False
+
+
+def _checked_claim_kind(text: str) -> Optional[str]:
+    low = text.lower()
+    if re.search(r"\b(always\s+)?returns?\s+(exitcode\s+)?0\b", low):
+        return "returnsZero"
+    if "never divides by zero" in low or "no divide by zero" in low:
+        return "noDivideByZero"
+    if "async no" in low or "not async" in low or "synchronous" in low:
+        return "asyncNo"
+    if "no heap" in low or "heap no" in low or "without heap" in low:
+        return "heapNo"
+    if "no network" in low or "without network" in low or "performs no network" in low:
+        return "noNetwork"
+    if re.search(r"\b(pure|side[- ]effect[- ]free|no effects?)\b", low):
+        return "pure"
+    return None
+
+
+def _check_metadata_claim(program: Program, op: Entity, kind: str) -> tuple[str, str]:
+    if kind == "returnsZero":
+        ok = _operation_returns_zero(program, op)
+        return ("proved", "all return rows resolve to literal zero") if ok else (
+            "contradicted", "not every return row resolves to literal zero")
+    if kind == "noDivideByZero":
+        bad = _operation_has_direct_zero_divisor(program, op)
+        return ("contradicted", "an activated divide/modulo call uses literal zero") if bad else (
+            "proved", "no activated divide/modulo call uses a literal zero divisor")
+    if kind == "asyncNo":
+        ok = _operation_async_no(op)
+        return ("proved", "`async no` row is present") if ok else (
+            "contradicted", "`async no` row is missing or contradicted")
+    if kind == "heapNo":
+        ok = _operation_heap_no(op)
+        return ("proved", "`memory heap no` row is present") if ok else (
+            "contradicted", "`memory heap no` row is missing or contradicted")
+    if kind == "noNetwork":
+        bad = _operation_has_network_surface(program, op)
+        return ("contradicted", "operation activates a network/http/socket surface") if bad else (
+            "proved", "no effective network/http/socket surface is visible")
+    if kind == "pure":
+        effects = sorted(_effective_effects(program, op, set()))
+        if effects:
+            action, resource = effects[0]
+            return "contradicted", f"effective effect `{action} {resource}` is visible"
+        return "proved", "effective effect set is empty"
+    return "unchecked", "claim shape is not machine-checkable"
+
+
+def _checked_contract_claims(program: Program) -> list[dict]:
+    claims: list[dict] = []
+    for op in program.of_kind("operation") + program.of_kind("function"):
+        for predicate in _CHECKED_CLAIM_PREDICATES:
+            for row in op.facts(predicate):
+                text = _metadata_claim_text(row)
+                kind = _checked_claim_kind(text)
+                if kind is None:
+                    claims.append({
+                        "operation": op.name,
+                        "predicate": predicate,
+                        "line": row.line,
+                        "text": text,
+                        "claim": None,
+                        "machineCheckable": False,
+                        "status": "unchecked",
+                        "detail": "free-form metadata",
+                    })
+                    continue
+                status, detail = _check_metadata_claim(program, op, kind)
+                claims.append({
+                    "operation": op.name,
+                    "predicate": predicate,
+                    "line": row.line,
+                    "text": text,
+                    "claim": kind,
+                    "machineCheckable": True,
+                    "status": status,
+                    "detail": detail,
+                })
+    return claims
+
+
+def _lint_checked_metadata_claims(program: Program) -> list:
+    out: list[Diagnostic] = []
+    for claim in _checked_contract_claims(program):
+        if claim.get("status") != "contradicted":
+            continue
+        out.append(Diagnostic(
+            "SS1880", "error",
+            f"{claim['predicate']} on operation {claim['operation']!r} claims "
+            f"{claim['text']!r}, but {claim['detail']} (DEVX-3 checked contract)",
+            claim["line"], claim["operation"]))
+    return out
+
+
 def lint(program: Program) -> list:
     """Collect metadata/lint diagnostics without bailing on the first (README
     ss6, ss17, ss29 #12). Parse-time *hard errors* are raised by `parse`; this
@@ -9776,7 +11147,7 @@ def lint(program: Program) -> list:
                                         f"module {ent.name!r} is missing a purpose",
                                         ent.line, ent.name))
             if ent.fact("invariant") is None:
-                diags.append(Diagnostic("MD1002", "error",
+                diags.append(Diagnostic("MD1002", "warning",
                                         f"module {ent.name!r} is missing an invariant",
                                         ent.line, ent.name))
         elif ent.kind in ("operation", "function"):
@@ -9793,7 +11164,7 @@ def lint(program: Program) -> list:
                                             f"operation {ent.name!r} has no purpose (recommended)",
                                             ent.line, ent.name))
             if public and ent.fact("invariant") is None:
-                diags.append(Diagnostic("MD1012", "error",
+                diags.append(Diagnostic("MD1012", "warning",
                                         f"exported/entry operation {ent.name!r} is missing an invariant",
                                         ent.line, ent.name))
     # README ss17 #50: a primitive (runtimeBinding/intrinsic) body belongs in a
@@ -9838,6 +11209,7 @@ def lint(program: Program) -> list:
     diags.extend(_lint_unhandled_value_read(program))
     diags.extend(_lint_multitarget_entry(program))
     diags.extend(_lint_operationtype_effect_bound(program))
+    diags.extend(_lint_checked_metadata_claims(program))
     diags.extend(_lint_dead_unused(program))
     diags.extend(_lint_memory_layout(program))
     diags.extend(_lint_literal_source_assets(program))
@@ -9933,7 +11305,8 @@ def lint(program: Program) -> list:
     # README ss6 / WS2-035: metadata payload-shape checks. Free-text metadata
     # (purpose/invariant/deprecated) carries a quoted string; identifier metadata
     # (tag/owner) carries a bare identifier.
-    _QUOTED_META = {"purpose": "MD1042", "invariant": "MD1043", "deprecated": "MD1045"}
+    _QUOTED_META = {"purpose": "MD1042", "invariant": "MD1043",
+                    "guarantee": "MD1048", "deprecated": "MD1045"}
     _IDENT_META = {"tag": "MD1044", "owner": "MD1047"}
     for n in program.order:
         ent = program.entities[n]
@@ -10639,16 +12012,15 @@ def _validate_html(program: Program) -> None:
 
 
 def _check_dotted_types(ent: Entity) -> None:
-    """A dotted type reference is valid only in an alias `for` row (README ss3,
-    ss7, ss17 #37). Elsewhere — let/arg/in/out/catch/field type positions — a
-    dotted type name is a hard error."""
+    """Dotted type references are accepted in every type position.
+
+    The language already requires dotted call targets for imported operations;
+    allowing the same spelling for imported/cross-module types removes the old
+    SS3700 asymmetry. The current namespace is still flat, so later type
+    resolution normalizes `module.Type` to `Type` when lowering/comparing types.
+    """
     def check(tok, line):
-        if "." in tok:
-            raise EavError(
-                f"dotted type {tok!r} is only valid in an alias `for` row; "
-                f"type references are otherwise bare (README ss3, ss17 #37)",
-                line, code="SS3700",
-            )
+        return None
     for r in ent.facts("let"):
         if len(r.payload) >= 3:
             check(r.payload[2], r.line)
@@ -12068,7 +13440,8 @@ _CODEGEN_MODELED_EXACT = frozenset({
     "console.writeFloat", "test.and", "test.summary", "assert.equalInt64",
     "assert.true", "html.render", "math.popcountInt64", "net.connect",
     "net.send", "net.receive", "net.close", "net.fetchText",
-    "net.freeTextBody", "string.concat", "pointer.isNull", "pointer.offset",
+    "net.freeTextBody", "string.concat", "string.fromCString",
+    "pointer.isNull", "pointer.offset",
     "pointer.loadByte", "pointer.storeByte", "sqlite.stepResultIsDone",
     "sqlite.stepResultIsRow", "convert.toString", "convert.to.string",
     "event.openProcessStream", "event.subscribeStream",
@@ -13166,21 +14539,14 @@ def _validate_calls(program: Program) -> None:
         # README ss17 #25: a non-void result that is neither bound (`out`),
         # caught (`catch`), nor explicitly `discards`-ed is an error.
         nonvoid = _target_is_nonvoid(target, program)
-        if nonvoid and not (
+        assert_step = target.startswith("assert.")
+        if nonvoid and not assert_step and not (
             ent.fact("out") or ent.fact("catch") or ent.fact("discards")
         ):
             raise EavError(
                 f"call {ent.name!r} drops the non-void result of {target!r}; add "
                 f"`out`, `catch`, or `discards \"reason\"` (README ss17 #25)",
                 ent.line,
-            )
-        if target.startswith("assert.") and ent.fact("discards") is not None:
-            raise EavError(
-                f"call {ent.name!r} discards the boolean result of {target!r}; "
-                "bind it with `out` and branch/combine it, or use a `test.assert*` "
-                "harness target that records the failure",
-                ent.line,
-                code="SS1204",
             )
         if "." in target:
             continue  # imported / compiler-derived / intrinsic — external
@@ -16352,11 +17718,16 @@ def _validate_view_lifetimes(program: Program) -> None:
                 continue
             for row in op.rows:
                 if row.predicate == "return" and view_value in row.payload:
+                    # R-06 (SEAM-1): a C-string view has a first-class owning copy;
+                    # name it so the agent reaches for the fix, not a workaround.
+                    own_hint = (
+                        f" — own it with `string.fromCString` to escape the op"
+                        if target in ("c.cString", "c.cstring") else "")
                     raise EavError(
                         f"view {view_value!r} from {target!r} is a borrowed view "
                         f"(`mayEscape no` in its contract) but is returned out of "
-                        f"{op.name!r}; it would outlive its borrowed source "
-                        f"(README §32.1 #9)",
+                        f"{op.name!r}; it would outlive its borrowed source"
+                        f"{own_hint} (README §32.1 #9)",
                         row.line, code="SS1560")
 
 
@@ -17555,6 +18926,7 @@ class EavCodegen:
     # -- types --
     def resolve_type_name(self, name: str) -> str:
         seen: set[str] = set()
+        name = name if name in self.aliases else _type_ref_basename(name)
         while name in self.aliases and name not in seen:
             seen.add(name)
             name = self.aliases[name]
@@ -18043,7 +19415,10 @@ class EavCodegen:
         after the project entry (jit_run/build_executable call it). It builds the
         route table (parallel method/path/handler arrays — handlers are the
         lowered `int(request,response)` ops) and calls ss_http_serve_routes, which
-        assembles the SSHttpServerConfig and blocks in the server loop."""
+        assembles the SSHttpServerConfig and blocks in the server loop. Lifecycle
+        hooks declared on the webServer run around that blocking call; otherwise a
+        check-clean startup hook such as `log.openLogFile` is silently skipped in
+        native webServer builds while still working under eval/JIT probes."""
         servers = self.program.of_kind("webServer")
         ws = next((s for s in servers if s.name == self.entry_name),
                   servers[0] if servers else None)
@@ -18062,6 +19437,19 @@ class EavCodegen:
             if row is None or len(row.payload) < 2:
                 return 0
             return _duration_literal_to_millis(row.payload[1]) or 0
+        def _lifecycle_function(pred: str):
+            row = ws.fact(pred)
+            if row is None or not row.payload:
+                return None
+            handler_name = row.payload[0]
+            lfn = self.functions.get(handler_name)
+            if lfn is None:
+                raise EavError(
+                    f"webServer {ws.name!r} {pred} handler {handler_name!r} is "
+                    "not a defined operation (README §14)",
+                    row.line,
+                )
+            return lfn
         host_row, port_row = ws.fact("host"), ws.fact("port")
         host = _unquote(host_row.payload[0]) if host_row and host_row.payload else "127.0.0.1"
         port = int(port_row.payload[0]) if port_row and port_row.payload else 8080
@@ -18069,6 +19457,21 @@ class EavCodegen:
         n = len(routes)
         fn = ir.Function(self.module, ir.FunctionType(i32, []), name=self.entry_name)
         b = ir.IRBuilder(fn.append_basic_block("entry"))
+        def _call_lifecycle(handler):
+            context_type = handler.args[0].type if handler.args else i8p
+            status = b.call(handler, [self._zero_value(context_type)])
+            return self._coerce_value(b, status, i32)
+        startup_fn = _lifecycle_function("startup")
+        shutdown_fn = _lifecycle_function("shutdown")
+        if startup_fn is not None:
+            startup_status = _call_lifecycle(startup_fn)
+            serve_bb = fn.append_basic_block("webServerServe")
+            startup_failed_bb = fn.append_basic_block("webServerStartupFailed")
+            b.cbranch(b.icmp_signed("!=", startup_status, i32(0)),
+                      startup_failed_bb, serve_bb)
+            b.position_at_end(startup_failed_bb)
+            b.ret(startup_status)
+            b.position_at_end(serve_bb)
         methods = b.alloca(ir.ArrayType(i8p, n))
         paths = b.alloca(ir.ArrayType(i8p, n))
         handlers = b.alloca(ir.ArrayType(i8p, n))
@@ -18107,7 +19510,12 @@ class EavCodegen:
                     b.bitcast(methods, i8pp), b.bitcast(paths, i8pp),
                     b.bitcast(handlers, i8pp), b.bitcast(middlewares, i8pp),
                     b.bitcast(timeouts, i32p)])
-        b.ret(r)
+        if shutdown_fn is not None:
+            shutdown_status = _call_lifecycle(shutdown_fn)
+            failed = b.icmp_signed("!=", r, i32(0))
+            b.ret(b.select(failed, r, shutdown_status))
+        else:
+            b.ret(r)
 
     def _signature(self, op: Entity):
         out_row = op.fact("out")
@@ -18329,7 +19737,7 @@ class EavCodegen:
                 )
 
         if not builder.block.is_terminated:
-            self._emit_defers(builder, sym)
+            builder = self._emit_defers(builder, sym)
             ret = fn.function_type.return_type
             if isinstance(ret, ir.VoidType):
                 builder.ret_void()
@@ -18513,7 +19921,7 @@ class EavCodegen:
                     "(README ss34.4)",
                     row.line,
                 )
-            self._emit_call(call, builder, sym, let_mut)
+            builder = self._emit_call(call, builder, sym, let_mut)
             return builder
         if pred == "goto":
             builder.branch(label_blocks[p[0]])
@@ -18599,7 +20007,7 @@ class EavCodegen:
             # ready, cancel marks canceled, and branch guards read the state slot.
             task = self.program.entities.get(p[0]) if p else None
             if task is not None and task.kind == "task":
-                self._emit_call(task, builder, sym, let_mut)
+                builder = self._emit_call(task, builder, sym, let_mut)
                 state = self._task_states.get(task.name)
                 if state is not None:
                     builder.store(ir.Constant(ir.IntType(32), 1), state[1])
@@ -18632,7 +20040,7 @@ class EavCodegen:
             row.line,
         )
 
-    def _emit_defers(self, builder, sym) -> None:
+    def _emit_defers(self, builder, sym):
         """Run registered defers' worker calls in reverse order (README ss15.6,
         ss33.8). Called immediately before each return / fallthrough exit. For a
         recursion-guarded op it also decrements the WS1-131 depth counter, so the
@@ -18645,12 +20053,13 @@ class EavCodegen:
             cr = cleanup.fact("call")
             worker = self.program.entities.get(cr.payload[0]) if cr and cr.payload else None
             if worker is not None and worker.kind in ("call", "task"):
-                self._emit_call(worker, builder, sym, {})
+                builder = self._emit_call(worker, builder, sym, {})
+        return builder
 
     def _emit_return(self, op, fn, row, builder, sym):
         p = row.payload
         ret_ty = fn.function_type.return_type
-        self._emit_defers(builder, sym)
+        builder = self._emit_defers(builder, sym)
         if not p or (len(p) == 1 and p[0] == "void"):
             builder.ret_void()
             return builder
@@ -18898,6 +20307,21 @@ class EavCodegen:
         builder.call(self.runtime("strcat"), [buf, right])
         return buf
 
+    def _from_c_string(self, builder, pointer, line=0):
+        """R-06 (SEAM-1): copy a NUL-terminated C-string handle into a fresh OWNED
+        String. `c.cString` only *views* the source handle (a borrowed view that
+        may not escape its op — SS1560); this allocates an independent copy so the
+        result can be returned/persisted while the source keeps its own lifetime.
+        The OpaquePointer arrives as an i64 handle, so coerce it to i8* before the
+        libc string ops. R-136: the malloc is null-guarded (OOM -> SSR0022 trap)."""
+        src = self._as_i8p(builder, pointer)
+        n = builder.call(self.runtime("strlen"), [src])
+        total = builder.add(n, ir.Constant(ir.IntType(64), 1))  # + NUL
+        buf = builder.call(self.runtime("malloc"), [total])
+        self._guard_alloc(builder, buf, "string.fromCString", line)
+        builder.call(self.runtime("strcpy"), [buf, src])
+        return buf
+
     def _emit_html_render(self, call, args, builder, sym):
         """Lower `html.render`: interleave the template's literal segments with
         its hole values (text holes auto-escaped, HtmlSafeUrl passed through),
@@ -19023,6 +20447,20 @@ class EavCodegen:
             fmt = self.global_string(b"%s  %s  (expected != %lld, actual %lld)\n\x00")
             return builder.call(self.runtime("printf"),
                                 [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.assertStatusIs":
+            exp = self._widen_to_i64(builder, arg("expected", "Int64"), arg_type("expected"))
+            act = self._widen_to_i64(builder, arg("actual", "Int64"), arg_type("actual"))
+            status = self._test_tally(builder, builder.icmp_signed("==", exp, act))
+            fmt = self.global_string(b"%s  %s  (expected status %lld, actual %lld)\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
+        if target == "test.assertRowCount":
+            exp = self._widen_to_i64(builder, arg("expected", "Int64"), arg_type("expected"))
+            act = self._widen_to_i64(builder, arg("actual", "Int64"), arg_type("actual"))
+            status = self._test_tally(builder, builder.icmp_signed("==", exp, act))
+            fmt = self.global_string(b"%s  %s  (expected rows %lld, actual %lld)\n\x00")
+            return builder.call(self.runtime("printf"),
+                                [fmt, status, arg("name", "String"), exp, act])
         if target == "test.assertEqualText":
             exp, act = arg("expected", "String"), arg("actual", "String")
             cmp = builder.call(self.runtime("strcmp"), [exp, act])
@@ -19089,7 +20527,7 @@ class EavCodegen:
             ir.Constant(i64, values["maxElements"]),
         ]
 
-    def _emit_call(self, call, builder, sym, let_mut) -> None:
+    def _emit_call(self, call, builder, sym, let_mut):
         try:
             return self._emit_call_impl(call, builder, sym, let_mut)
         except EavError:
@@ -19598,6 +21036,11 @@ class EavCodegen:
             # README ss30.2.2: heap-concatenate two NUL-terminated strings.
             result = self._concat(builder, arg("left", "String"),
                                    arg("right", "String"), call.line)
+        elif target == "string.fromCString":
+            # R-06 (SEAM-1): own a borrowed C-string handle by copying it into a
+            # fresh String that may escape the op (the escape c.cString can't make).
+            result = self._from_c_string(
+                builder, arg("pointer", "OpaquePointer"), call.line)
         elif target == "html.render":
             # README ss16: render an htmlTemplate island, auto-escaping `{{holes}}`
             # by sink context. Split the template on holes and concat the literal
@@ -20165,6 +21608,32 @@ class EavCodegen:
             else:
                 sym[catch_row.payload[0]] = ("val", caught)
 
+        if target.startswith("assert.") and call.fact("out") is None and result is not None:
+            fn = builder.function
+            ok_bb = fn.append_basic_block(call.name + ".assertOk")
+            fail_bb = fn.append_basic_block(call.name + ".assertFailed")
+            i64 = ir.IntType(64)
+            left = right = ir.Constant(i64, 0)
+            if target == "assert.equalInt64":
+                if "left" in args and "right" in args:
+                    left = self._resolve(
+                        args["left"].payload[2], args["left"].payload[1], builder, sym)
+                    right = self._resolve(
+                        args["right"].payload[2], args["right"].payload[1], builder, sym)
+            elif target == "assert.true":
+                if "value" in args:
+                    left = self._resolve(
+                        args["value"].payload[2], args["value"].payload[1], builder, sym)
+                right = ir.Constant(i64, 1)
+            builder.cbranch(result, ok_bb, fail_bb)
+            fb = ir.IRBuilder(fail_bb)
+            self._emit_panic(
+                fb, "SSR0025", "assertion-failed",
+                f"assertion {target} evaluated false", call.name, call.line,
+                left, right)
+            fb.unreachable()
+            builder = ir.IRBuilder(ok_bb)
+
         out_row = call.fact("out")
         if out_row and out_row.payload and result is not None:
             name = out_row.payload[0]
@@ -20203,6 +21672,7 @@ class EavCodegen:
                 sym[name] = ("ptr", slot, typ_tok)
             else:
                 sym[name] = ("val", result)
+        return builder
 
 
     _CMP_OPS = {
@@ -22008,6 +23478,11 @@ def _referenced_runtime_symbols(program: Program) -> set:
                     out.add(_http_intrinsic(target)[0])
                 elif _family_intrinsic(target) is not None:  # APP-RUN-6 families
                     out.add(_family_intrinsic(target)[0])
+                    if ent.fact("catch") is not None and "." in target:
+                        fam, meth = target.split(".", 1)
+                        status_spec = _JSON_STATUS_OUTPARAM_RT.get((fam, meth))
+                        if status_spec is not None:
+                            out.add(status_spec[0])
                 elif target.startswith("c."):
                     out.add("ss_c_" + target[len("c."):])  # libc shims (incl. snprintf)
             if ent.fact("retryBackoffMs") is not None:
@@ -22072,6 +23547,8 @@ _FAMILY_RT = {
         "documentRoot": ("ss_json_root", "h", None),
         "destroyDocument": ("ss_json_destroy", "v", None),
         "serializeDocument": ("ss_json_serialize", "s", None),
+        "serializeDocumentOwned": ("ss_json_serialize_owned", "s", None),
+        "freeString": ("ss_json_free_string", "v", None),
         "setObjectFieldString": ("ss_json_set_field_string", "i", None),
         "setObjectFieldInt64": ("ss_json_set_field_int64", "i", None),
         "setObjectFieldBool": ("ss_json_set_field_bool", "i", None),
@@ -22123,6 +23600,7 @@ _JSON_STATUS_OUTPARAM_RT = {
     ("json", "createDocument"): ("ss_json_from_text_status", "h"),
     ("json", "documentRoot"): ("ss_json_root_status", "h"),
     ("json", "serializeDocument"): ("ss_json_serialize_status", "s"),
+    ("json", "serializeDocumentOwned"): ("ss_json_serialize_owned_status", "s"),
     ("json", "setObjectFieldObject"): ("ss_json_set_field_object_status", "h"),
     ("json", "setObjectFieldArray"): ("ss_json_set_field_array_status", "h"),
     ("json", "appendArrayElementObject"): ("ss_json_append_object_status", "h"),
@@ -22355,6 +23833,10 @@ RUNTIME_DIAGNOSTICS = {
                 "summary": "A list/map handle was used after list.release/map.release (R-206).",
                 "repair": "Do not touch a collection after releasing it; the `owns ... cleanedBy` "
                           "contract means the release is the last use."},
+    "SSR0025": {"kind": "assertion-failed",
+                "summary": "An unbound assert.* step evaluated false at runtime.",
+                "repair": "Fix the asserted condition, or bind the Bool with `out` "
+                          "when you want to branch/combine it manually."},
 }
 
 
@@ -22634,22 +24116,72 @@ def _self_cli_argv() -> list[str]:
     return [sys.executable, os.path.abspath(__file__)]
 
 
-def _record_run_entry(source: str, entry: str, cwd: Optional[str] = None):
-    """R-102: run one operation as the entry in an isolated child, returning
-    (stdout, stderr, exitCode). A test op that traps (ss_panic -> 134) or hangs
-    kills only the child — the test runner survives and records the result."""
-    import os
+def _is_harness_startup_failure(out: str, err: str, code: int) -> bool:
+    """True when a spawned `run` child crashed inside the Python interpreter
+    *before* the SemanticScript program ran — a raw interpreter traceback with no
+    structured `semanticscript:` diagnostic, no `ss_panic` trap, and no program
+    output. The non-frozen child re-reads + recompiles the large compiler source
+    on every spawn; on Windows a concurrent (or AV-interrupted) read of that file
+    can surface as a transient SyntaxError/OSError at import/compile time. Such a
+    child never executed the operation, so its result is a *harness* flake, not a
+    program/test outcome: it is safe to retry, and if it persists it is an `error`
+    (broken harness), never a test `fail` (which is reserved for a run whose
+    assertions failed). Kept deliberately narrow — a real SS diagnostic
+    (`semanticscript:`) or an `ss_panic` trap is a legitimate result and excluded."""
+    if code == 0 or out.strip():
+        return False  # the program produced output / exited clean — it ran
+    e = err or ""
+    if "Traceback (most recent call last):" not in e:
+        return False  # not a raw interpreter crash
+    if e.startswith("semanticscript:") or "\nsemanticscript:" in e:
+        return False  # a structured compile/check diagnostic is a real result
+    if _parse_panic(e) is not None:
+        return False  # an ss_panic trap is a legitimate (crashed) result
+    return True
+
+
+# A transient harness-startup crash (above) is retried this many extra times
+# before being reported, with a short backoff between attempts. The happy path
+# (the child ran) never sleeps or retries.
+_HARNESS_SPAWN_RETRIES = 2
+
+
+def _run_child_with_retry(argv_tail: list, source: str, cwd: Optional[str],
+                          timeout: float):
+    """`subprocess.run` for a spawned `semanticscript` child over `source`,
+    retrying a transient harness-startup crash (`_is_harness_startup_failure`) so
+    a flake is not mis-recorded as a program/test result. A `TimeoutExpired`
+    propagates to the caller unchanged (each surface crafts its own timeout
+    message) and is never retried — the eval budget already bounds it."""
     import subprocess
-    try:
+    import time
+    proc = None
+    for attempt in range(_HARNESS_SPAWN_RETRIES + 1):
         proc = subprocess.run(
-            _self_cli_argv() + ["run", "-", "--entry", entry],
+            _self_cli_argv() + argv_tail,
             input=source, capture_output=True, text=True, encoding="utf-8",
             errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
             #                     to fd 1/2 (trivial on Windows); decode defensively
             #                     so a lone bad byte yields a result, not a crash.
-            cwd=cwd,
-            timeout=_eval_timeout_seconds(),
-        )
+            cwd=cwd, timeout=timeout)
+        if not _is_harness_startup_failure(proc.stdout, proc.stderr,
+                                           proc.returncode):
+            break
+        if attempt < _HARNESS_SPAWN_RETRIES:
+            time.sleep(0.05 * (attempt + 1))
+    return proc
+
+
+def _record_run_entry(source: str, entry: str, cwd: Optional[str] = None):
+    """R-102: run one operation as the entry in an isolated child, returning
+    (stdout, stderr, exitCode). A test op that traps (ss_panic -> 134) or hangs
+    kills only the child — the test runner survives and records the result. A
+    transient harness-startup crash in the child is retried (see
+    `_run_child_with_retry`) so it is not mis-graded as a test failure."""
+    import subprocess
+    try:
+        proc = _run_child_with_retry(
+            ["run", "-", "--entry", entry], source, cwd, _eval_timeout_seconds())
     except subprocess.TimeoutExpired as exc:
         err = _decode_stream(exc.stderr) + (
             f"\nsemanticscript: eval timeout — test '{entry}' exceeded "
@@ -22680,7 +24212,16 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
                 out, err, code = _record_run_entry(
                     source, op, cwd=getattr(program, "source_root", None))
                 run_status, panic = _classify_run(out, err, code)
-                if run_status == "ok":
+                harness_failed = _is_harness_startup_failure(out, err, code)
+                if harness_failed:
+                    # The isolation child crashed in the interpreter before the op
+                    # ran (e.g. a transient read of the compiler source under
+                    # concurrency on Windows), and survived the spawn retries. The
+                    # op never executed, so this is a broken-harness `error`, not a
+                    # test `fail` — `fail` is reserved for a run whose assertions
+                    # failed. Mis-grading it `fail` would read as broken test logic.
+                    status = "error"
+                elif run_status == "ok":
                     status = "pass"
                 elif run_status == "timed-out":
                     status = "timeout"
@@ -22718,7 +24259,14 @@ def run_tests(program: Program, lane: Optional[str] = None) -> dict:
                         rec["status"] = "fail"
                 if panic is not None:
                     rec["panic"] = panic
-                if status in ("error", "timeout") and err.strip():
+                if harness_failed:
+                    # Distinguish a harness crash from a test-logic error and avoid
+                    # surfacing the raw interpreter traceback's last line (e.g. a
+                    # transient "SyntaxError") as if the op itself were malformed.
+                    rec["harness"] = "child failed to start before the op ran"
+                    if err.strip():
+                        rec["error"] = err.strip().splitlines()[-1][:200]
+                elif status in ("error", "timeout") and err.strip():
                     rec["error"] = err.strip().splitlines()[-1][:200]
                 tests.append(rec)
     # R-158/R-173: a selected population that discovers zero tests is `no-tests`,
@@ -22808,15 +24356,7 @@ def _record_run_full(source: str, timeout: Optional[float] = None,
     # cp1252 on Windows and the child fails to decode it.
     timeout = timeout or _eval_timeout_seconds()
     try:
-        proc = subprocess.run(
-            _self_cli_argv() + ["run", "-"],
-            input=source, capture_output=True, text=True, encoding="utf-8",
-            errors="replace",  # R-233: the JIT'd child can write non-UTF-8 bytes
-            #                     to fd 1/2 (trivial on Windows); decode defensively
-            #                     so a lone bad byte yields a result, not a crash.
-            cwd=cwd,
-            timeout=timeout,
-        )
+        proc = _run_child_with_retry(["run", "-"], source, cwd, timeout)
     except subprocess.TimeoutExpired as exc:
         err = _decode_stream(exc.stderr)
         err += (f"\nsemanticscript: eval timeout — execution exceeded {timeout:g}s "
@@ -22907,8 +24447,12 @@ def cmd_parse(args) -> int:
 
 
 def cmd_lower(args) -> int:
-    """Emit textual LLVM IR for the program."""
-    program = parse(_read_source(args.path))
+    """Emit textual LLVM IR for the program.
+
+    R-21: accept a project directory (compose it via the same loader `emit-ir`
+    uses, which also sets `source_root` so project-relative asset embeds resolve)
+    instead of rejecting it as a single file."""
+    _source, program = _load_program_for_path(args.path)
     sys.stdout.write(str(lower_to_llvm(program)))
     return 0
 
@@ -23389,6 +24933,198 @@ def _flush_c_runtime_stdio() -> None:
             pass
 
 
+def _webserver_probe_target(program: Program, probe_path: Optional[str] = None) -> dict:
+    servers = program.of_kind("webServer")
+    ws = next((s for s in servers if s.name == _entry_name(program)),
+              servers[0] if servers else None)
+    if ws is None:
+        raise EavError("webServer benchmark probe needs a webServer entity")
+    host_row = ws.fact("host")
+    port_row = ws.fact("port")
+    host = _unquote_token(host_row.payload[0]) if host_row and host_row.payload else "127.0.0.1"
+    port = int(_unquote_token(port_row.payload[0])) if port_row and port_row.payload else 8080
+    path = probe_path
+    if path is None:
+        for row in _webserver_route_rows(ws):
+            method = row.payload[0]
+            candidate = _unquote_token(row.payload[1])
+            if method == "GET" and candidate != "*":
+                parts = [
+                    ("1" if segment.startswith(":") or segment == "*" else segment)
+                    for segment in candidate.split("/")
+                ]
+                path = "/".join(parts) or "/"
+                break
+    if not path:
+        path = "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    probe_host = "127.0.0.1" if host == "0.0.0.0" else host
+    return {"host": host, "probeHost": probe_host, "port": port, "path": path,
+            "url": f"http://{probe_host}:{port}{path}"}
+
+
+def _http_probe_once(url: str, timeout: float) -> int:
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        response.read()
+        return int(getattr(response, "status", response.getcode()))
+
+
+def _http_probe_capture(url: str, timeout: float, *, method: str = "GET",
+                        body: Optional[str] = None) -> dict:
+    import urllib.error
+    import urllib.request
+    data = body.encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method.upper())
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            raw = response.read()
+            return {
+                "status": int(getattr(response, "status", response.getcode())),
+                "body": raw.decode("utf-8", "replace"),
+            }
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        return {"status": int(exc.code), "body": raw.decode("utf-8", "replace")}
+
+
+def _http_drive_program(program: Program, path: str, source_root: Optional[str],
+                        *, method: str, request_path: Optional[str],
+                        body: Optional[str], expect_status: Optional[int],
+                        expect_body: Optional[str], timeout: float) -> dict:
+    import os
+    import subprocess
+    import tempfile
+    import time
+
+    target = _webserver_probe_target(program, request_path)
+    with tempfile.TemporaryDirectory(prefix="sem-http-drive-",
+                                     ignore_cleanup_errors=True) as td:
+        exe = os.path.join(td, "server" + (".exe" if sys.platform == "win32" else ""))
+        build_executable(program, exe)
+        proc = subprocess.Popen(
+            [exe],
+            cwd=source_root or None,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            deadline = time.perf_counter() + timeout
+            last_error = ""
+            while time.perf_counter() < deadline:
+                if proc.poll() is not None:
+                    return {**target, "ok": False, "status": "server-exited",
+                            "exitCode": proc.returncode}
+                try:
+                    _http_probe_once(target["url"], min(1.0, timeout))
+                    break
+                except Exception as exc:
+                    last_error = str(exc)
+                    time.sleep(0.05)
+            else:
+                return {**target, "ok": False, "status": "not-ready",
+                        "error": last_error or "server did not become ready"}
+            started = time.perf_counter()
+            response = _http_probe_capture(
+                target["url"], timeout, method=method, body=body)
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+            checks = []
+            if expect_status is not None:
+                checks.append({
+                    "kind": "status",
+                    "expected": expect_status,
+                    "actual": response["status"],
+                    "ok": response["status"] == expect_status,
+                })
+            if expect_body is not None:
+                checks.append({
+                    "kind": "body-contains",
+                    "expected": expect_body,
+                    "ok": expect_body in response["body"],
+                })
+            ok = all(c["ok"] for c in checks) if checks else True
+            return {**target, "ok": ok, "status": "ok" if ok else "assertion-failed",
+                    "method": method.upper(), "response": response,
+                    "checks": checks, "requestMs": elapsed_ms}
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+
+
+def _bench_webserver_probe(program: Program, path: str, source_root: Optional[str],
+                           runs: int, probe_path: Optional[str],
+                           timeout: float) -> dict:
+    import os
+    import subprocess
+    import tempfile
+    import time
+
+    target = _webserver_probe_target(program, probe_path)
+    latencies: list[float] = []
+    with tempfile.TemporaryDirectory(prefix="sem-bench-web-",
+                                     ignore_cleanup_errors=True) as td:
+        exe = os.path.join(td, "server" + (".exe" if sys.platform == "win32" else ""))
+        build_executable(program, exe)
+        proc = subprocess.Popen(
+            [exe],
+            cwd=source_root or None,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            deadline = time.perf_counter() + timeout
+            last_error = ""
+            while time.perf_counter() < deadline:
+                if proc.poll() is not None:
+                    return {
+                        **target,
+                        "status": "server-exited",
+                        "exitCode": proc.returncode,
+                        "requestMsBest": None,
+                        "error": "server exited before accepting probe requests",
+                    }
+                try:
+                    _http_probe_once(target["url"], min(1.0, timeout))
+                    break
+                except Exception as exc:
+                    last_error = str(exc)
+                    time.sleep(0.05)
+            else:
+                return {
+                    **target,
+                    "status": "not-ready",
+                    "requestMsBest": None,
+                    "error": last_error or "server did not accept probe requests before timeout",
+                }
+            for _ in range(max(1, runs)):
+                t0 = time.perf_counter()
+                status = _http_probe_once(target["url"], timeout)
+                latencies.append(time.perf_counter() - t0)
+            return {
+                **target,
+                "status": "ok",
+                "httpStatus": status,
+                "requests": len(latencies),
+                "requestMsBest": round(min(latencies) * 1000, 3),
+            }
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=2)
+
+
 def cmd_bench(args) -> int:
     """Benchmark the pipeline — parse / lower / end-to-end JIT-run — reporting the
     best of N runs in milliseconds (sem.bench.v1). The run phase is skipped for a
@@ -23421,6 +25157,7 @@ def cmd_bench(args) -> int:
         if os.path.isdir(args.path) and is_project_root(args.path):
             os.chdir(args.path)
         program_for_probe = parse_compact(src)
+        program_for_probe.source_root = source_root
         runnable = _program_target(program_for_probe) == "console"
         # R-108: a runtime trap in the JIT'd program would hard-exit (ss_panic ->
         # 134) and take the whole bench process with it, before sem.bench.v1 is
@@ -23477,11 +25214,25 @@ def cmd_bench(args) -> int:
             result["serverAware"] = True
             result["serverLane"] = perf["lane"]
             result["serverLaneCommands"] = perf["commands"]
-            result["note"] = ("request latency is not measured by the in-process "
-                              "run lane; drive the server through the bounded "
-                              "serve->probe->stop lane above (or `devx --mode perf`)")
+            result["serverProbeAvailable"] = True
+            if getattr(args, "probe_server", False):
+                probe_runs = max(1, getattr(args, "probe_runs", None) or runs)
+                probe_timeout = max(0.1, float(getattr(args, "probe_timeout", None) or 5.0))
+                probe = _bench_webserver_probe(
+                    program_for_probe, args.path, source_root, probe_runs,
+                    getattr(args, "probe_path", None), probe_timeout)
+                result["serverProbe"] = probe
+                result["requestMsBest"] = probe.get("requestMsBest")
+                result["serverProbeStatus"] = probe.get("status")
+            else:
+                result["requestMsBest"] = None
+                result["serverProbeStatus"] = "not-run"
+            result["note"] = ("request latency is measured by `bench --probe-server`; "
+                              "without that flag the in-process run lane is skipped "
+                              "because a webServer does not terminate")
         totals = [v for v in (result["parseMsBest"], result["lowerMsBest"],
-                              result["runMsBest"]) if v is not None]
+                              result["runMsBest"], result.get("requestMsBest"))
+                  if v is not None]
         result["totalMsBest"] = round(sum(totals), 3)
         if getattr(args, "json", False):
             payload = _json_envelope("sem.bench.v1", **result) + "\n"
@@ -23491,8 +25242,10 @@ def cmd_bench(args) -> int:
             elif runnable:
                 run_s = f" (run skipped: {run_status or 'not-run'})"
             elif result.get("serverAware"):
-                run_s = (f" (server: time request latency via the "
-                         f"{result['serverLane']} lane — see `devx --mode perf`)")
+                if result.get("requestMsBest") is not None:
+                    run_s = f" request {result['requestMsBest']}ms"
+                else:
+                    run_s = " (server: add --probe-server to measure request latency)"
             else:
                 run_s = " (run skipped)"
             payload = (f"bench {args.path} (best of {runs}): "
@@ -23585,6 +25338,135 @@ def cmd_profile(args) -> int:
               f"{ir['instructions']} instrs, {ir['textBytes']} bytes")
         print(f"  source: {result['source']['entities']} entities, "
               f"{result['source']['rows']} rows")
+    return 0
+
+
+def cmd_http_drive(args) -> int:
+    """Build/start/request/assert/stop a webServer target (CYC-40)."""
+    _source, program = _load_program_for_path(args.path)
+    if _program_target(program) != "webServer":
+        raise EavError("http-drive requires a project with target webServer")
+    result = _http_drive_program(
+        program, args.path, getattr(program, "source_root", None),
+        method=getattr(args, "method", "GET"),
+        request_path=getattr(args, "request_path", None),
+        body=getattr(args, "body", None),
+        expect_status=getattr(args, "expect_status", None),
+        expect_body=getattr(args, "expect_body", None),
+        timeout=max(0.1, float(getattr(args, "timeout", 5.0) or 5.0)),
+    )
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.httpDrive.v1", **result) + "\n")
+    else:
+        response = result.get("response", {})
+        sys.stdout.write(
+            f"{result.get('method', 'GET')} {result.get('path', '')}: "
+            f"{response.get('status', result.get('status'))}\n")
+        if response.get("body"):
+            sys.stdout.write(response["body"] + "\n")
+    return 0 if result.get("ok") else 1
+
+
+def _checkpoint_source_paths(path: str) -> tuple[str, list[str]]:
+    import os
+    if path == "-":
+        raise EavError("checkpoint needs a file or project path, not stdin")
+    abs_path = os.path.abspath(path)
+    if os.path.isdir(abs_path):
+        if not is_project_root(abs_path):
+            raise EavError("checkpoint needs a project root or a source file")
+        return abs_path, [os.path.abspath(p) for p in _project_source_paths(abs_path)]
+    if not os.path.isfile(abs_path):
+        raise EavError(f"checkpoint source path not found: {path!r}")
+    return os.path.dirname(abs_path), [abs_path]
+
+
+def _checkpoint_name(name: Optional[str]) -> str:
+    import re
+    import time
+    raw = name or time.strftime("%Y%m%d-%H%M%S")
+    clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw).strip(".-")
+    return clean or "checkpoint"
+
+
+def cmd_checkpoint(args) -> int:
+    """Snapshot source files into .semanticscript/checkpoints (CYC-46)."""
+    import hashlib
+    import json
+    import os
+    import shutil
+    root, paths = _checkpoint_source_paths(args.path)
+    name = _checkpoint_name(getattr(args, "name", None))
+    checkpoint_dir = os.path.join(root, ".semanticscript", "checkpoints", name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    files = []
+    for source_path in paths:
+        rel = os.path.relpath(source_path, root)
+        dest = os.path.join(checkpoint_dir, "files", rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy2(source_path, dest)
+        data = open(source_path, "rb").read()
+        files.append({
+            "path": rel,
+            "bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        })
+    manifest = {
+        "surface": "sem.checkpointManifest.v1",
+        "sourceRoot": root,
+        "name": name,
+        "files": files,
+    }
+    manifest_path = os.path.join(checkpoint_dir, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(manifest, fh, indent=2)
+        fh.write("\n")
+    payload = {
+        "status": "ok", "name": name, "checkpoint": checkpoint_dir,
+        "manifest": manifest_path, "files": files,
+    }
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.checkpoint.v1", **payload) + "\n")
+    else:
+        sys.stdout.write(f"checkpoint {name}: {checkpoint_dir}\n")
+    return 0
+
+
+def cmd_undo(args) -> int:
+    """Restore a checkpoint created by `checkpoint` (CYC-46)."""
+    import json
+    import os
+    import shutil
+    checkpoint_dir = os.path.abspath(args.checkpoint)
+    manifest_path = os.path.join(checkpoint_dir, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        raise EavError(f"no checkpoint manifest at {manifest_path!r}")
+    with open(manifest_path, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    root = manifest.get("sourceRoot")
+    if not root or not os.path.isdir(root):
+        raise EavError("checkpoint manifest has no readable sourceRoot")
+    restored = []
+    for item in manifest.get("files", []) or []:
+        rel = item.get("path")
+        if not rel:
+            continue
+        source = os.path.abspath(os.path.join(checkpoint_dir, "files", rel))
+        dest = os.path.abspath(os.path.join(root, rel))
+        root_abs = os.path.abspath(root)
+        if not dest.startswith(root_abs + os.sep) and dest != root_abs:
+            raise EavError(f"checkpoint path escapes sourceRoot: {rel!r}")
+        if not os.path.isfile(source):
+            raise EavError(f"checkpoint file missing: {source!r}")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy2(source, dest)
+        restored.append(rel)
+    payload = {"status": "ok", "checkpoint": checkpoint_dir,
+               "sourceRoot": root, "restored": restored}
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.undo.v1", **payload) + "\n")
+    else:
+        sys.stdout.write(f"restored {len(restored)} file(s) from {checkpoint_dir}\n")
     return 0
 
 
@@ -23846,8 +25728,7 @@ def cmd_run(args) -> int:
     # stdout/stderr/exitCode into a sem.run.v1 envelope (with a structured panic
     # on a trap) instead of streaming raw output past the `--json` request.
     if getattr(args, "json", False):
-        src, program = _load_program_for_path(args.path)
-        source_root = program.source_root
+        src, program, source_root, wrapped, offset = _load_runnable_source_for_path(args.path)
         entry = getattr(args, "entry", None)
         # WS2-070/R-162: default `run` blocks deny-tier lint before lowering;
         # --strict additionally promotes T3 warnings into blockers.
@@ -23883,8 +25764,13 @@ def cmd_run(args) -> int:
         else:
             out, err, code = _record_run_full(src, cwd=source_root)
         status, panic = _classify_run(out, err, code)
+        if offset:
+            err = _unscaffold_lines(err, offset)
+            if panic is not None and isinstance(panic.get("row"), int):
+                panic = {**panic, "row": panic["row"] - offset}
         payload = dict(
-            ok=(code == 0), status=status, exitCode=code, stdout=out, stderr=err,
+            ok=(code == 0), status=status, exitCode=code, wrapped=wrapped,
+            stdout=out, stderr=err,
             stdoutLines=_stdout_lines(out))  # R-127
         if sandbox is not None:
             payload["effectSandbox"] = sandbox
@@ -23893,7 +25779,7 @@ def cmd_run(args) -> int:
         sys.stdout.write(_json_envelope("sem.run.v1", **payload) + "\n")
         return code
 
-    source, program = _load_program_for_path(args.path)
+    source, program, source_root, wrapped, _offset = _load_runnable_source_for_path(args.path)
     # WS2-070/071: block deny-tier lint before any JIT/codegen path; --strict
     # additionally blocks T3 warnings.
     try:
@@ -23953,7 +25839,7 @@ def cmd_run(args) -> int:
     sys.stdout.flush()
     tmp_path = None
     try:
-        if args.path == "-":
+        if args.path == "-" or wrapped:
             # R-103: the isolated child re-reads its source from a path, so write
             # the stdin program to a temp file and point the child at it.
             fd, tmp_path = tempfile.mkstemp(suffix=".sem")
@@ -24239,8 +26125,14 @@ def build_wasm(program: Program, out_path: str):
 def cmd_wasm(args) -> int:
     """Compile a pure-compute program to a `.wasm` module + a node runner."""
     import os
-    program = parse_compact(_read_program_source(args.path))
-    out = getattr(args, "output", None) or (os.path.splitext(args.path)[0] + ".wasm")
+    _source, program = _load_program_for_path(args.path)
+    out = getattr(args, "output", None)
+    if not out:
+        if args.path != "-" and os.path.isdir(args.path):
+            root = os.path.abspath(args.path)
+            out = os.path.join(root, os.path.basename(root) + ".wasm")
+        else:
+            out = os.path.splitext(args.path)[0] + ".wasm"
     wasm_path, entry = build_wasm(program, out)
     runner = os.path.splitext(wasm_path)[0] + ".run.cjs"
     with open(runner, "w", encoding="utf-8") as fh:
@@ -24269,13 +26161,18 @@ SEM_SURFACES = (
     "sem.version.v1", "sem.agentDocs.v1", "sem.skills.v1", "sem.check.v1",
     "sem.readiness.v1", "sem.eval.v1", "sem.deps.v1", "sem.fixPlan.v1",
     "sem.context.v1", "sem.symbols.v1", "sem.get.v1", "sem.patch.v1", "sem.test.v1",
-    "sem.size.v1", "sem.dev.v1", "sem.devx.v1", "sem.compensate.v1",
+    "sem.size.v1", "sem.dev.v1", "sem.devx.v1", "sem.repl.v1", "sem.semEdit.v1",
+    "sem.improve.v1", "sem.synth.v1",
+    "sem.compensate.v1", "sem.specCheck.v1",
     "sem.slice.v1", "sem.trace.v1", "sem.diff.v1", "sem.pack.v1",
-    "sem.scaffold.v1", "sem.docs.v1",
+    "sem.scaffold.v1", "sem.derive.v1", "sem.docs.v1",
     "sem.docsIndex.v1", "sem.docsSearch.v1", "sem.task.v1", "sem.new.v1",
     "sem.build.v1", "sem.packageManifest.v1", "sem.runtimeConfig.v1",
     "sem.run.v1", "sem.verify.v1", "sem.effectSandbox.v1", "sem.error.v1", "sem.targetSignature.v1",
-    "sem.targetSignatures.v1", "sem.reservedWords.v1", "sem.vendor.v1",
+    "sem.targetSignatures.v1", "sem.targets.v1", "sem.reservedWords.v1", "sem.vendor.v1",
+    "sem.doctor.v1", "sem.describe.v1", "sem.explainPanic.v1",
+    "sem.programExplain.v1",
+    "sem.httpDrive.v1", "sem.checkpoint.v1", "sem.undo.v1",
     # R-123: surfaces that were live but unlisted.
     "sem.bench.v1", "sem.profile.v1", "sem.adoptionGate.v1", "sem.summary.v1",
     "sem.clean.v1", "sem.codeIndex.v1", "sem.graph.v1",
@@ -24765,7 +26662,9 @@ EAV_AGENT_RULES = (
     "worked apps live in `apps/`; start at docs/getting-started.md (the full "
     "language guide is docs/LANGUAGE.md). Agent surface: `agent-docs`, `skills "
     "[name]`, `search <query>` (ranked retrieval), `explain <CODE>`, `check --json`, "
-    "`eval`, `docs <file>`, and the stdio `mcp` server (22 tools)."
+    "`verify --adversarial`, `improve`, `eval`, `repl`, `docs <file>`, `synth`, "
+    "`sem-edit`, `spec-check`, and the stdio `mcp` server "
+    "(inspect the live tool list with MCP `tools/list`)."
 )
 
 # name -> {summary, body}. `skills` (no arg) lists summaries; `skills <name>`
@@ -24782,7 +26681,9 @@ EAV_SKILLS = {
             "(entity graph + project envelope), `graph`/`slice` (dependencies), `size` "
             "(footprint). Edit with the stable loop: `check` -> `fix --plan` (repair "
             "plan from diagnostics) -> `patch` only when `planUsable:true` -> "
-            "`fmt --check` -> `test` -> `run`/`build`. "
+            "`fmt --check` -> `test` -> `run`/`build`; use `improve` to plan/apply "
+            "canonical cleanup, and add `verify --adversarial` "
+            "for the skeptical strict review lane. "
             "Never hand-edit IR; the compiler owns lowering."),
     },
     "eav-syntax": {
@@ -24824,13 +26725,12 @@ EAV_SKILLS = {
             "across diagnostics/skills/templates/the language guide/a project — the "
             "agentic search), `explain <CODE>`, `docs <file>` (per-file entity docs/get/"
             "search; `docs --get <builtin>` also returns stdlib signatures), "
-            "`query <dim>`, `index`, `status`, `fix --plan` + `patch`/"
-            "`verify-patch`, `scaffold`/`new`. Structured output is a versioned "
+            "`query <dim>`, `index`, `status`, `improve`, `verify --adversarial`, `repl`, `synth`, `sem-edit`, `compensate`, `spec-check`, "
+            "`fix --plan` + `patch`/`verify-patch`, `scaffold`/`new`. Structured "
+            "output is a versioned "
             "`sem.<tool>.v1` JSON envelope (pass `--json` where offered). The `mcp` "
-            "subcommand is a stdio JSON-RPC server exposing 22 tools — version, "
-            "agent_docs, skills, readiness, status, index, search, explain, docs, check, "
-            "docs_index, docs_search_index, graph, query, deps, context, symbols, size, "
-            "eval, fix_plan, test, verify."),
+            "subcommand is a stdio JSON-RPC server; inspect the live tool list with "
+            "MCP `tools/list` rather than relying on a fixed count."),
     },
     "eav-apps": {
         "summary": "Worked patterns under apps/ (web API, TUI, HTTP).",
@@ -24925,6 +26825,34 @@ _SUBSYSTEM_RECIPE_BODIES = {
 }
 
 
+_SUBSYSTEM_RECIPE_GUARDS = {
+    "json": [
+        "tests/test_fix1_scaffold_coherence.py::test_fix1_scaffold_checks_clean",
+        "tests/test_run13_followups.py::test_trust1_json_output_scaffold_checks_clean_and_lowers",
+    ],
+    "sqlite": [
+        "tests/test_fix1_scaffold_coherence.py::test_fix1_scaffold_checks_clean",
+        "tests/test_bin_codegen_conformance.py",
+    ],
+    "log": [
+        "tests/test_fix1_scaffold_coherence.py::test_fix1_scaffold_checks_clean",
+        "tests/test_codegen_runtime_error_envelope.py",
+    ],
+    "assert": [
+        "tests/test_cyc31_48.py::test_new_scaffold_patterns_parse_and_rich_assertions_run",
+    ],
+    "test": [
+        "tests/test_cyc31_48.py::test_new_scaffold_patterns_parse_and_rich_assertions_run",
+    ],
+}
+
+
+def _recipe_with_guards(body: str, guards: list) -> str:
+    if not guards:
+        return body
+    return body.rstrip() + "\n\nExecutable guards: " + "; ".join(guards) + "."
+
+
 def _install_subsystem_recipe_skills() -> None:
     for family in sorted(_target_catalog()["families"]):
         key = f"eav-subsystem-{family}"
@@ -24937,9 +26865,13 @@ def _install_subsystem_recipe_skills() -> None:
             f"the exact arg slots/types shown there. A clean `check` is static-only; "
             f"prove behavior with `semanticscript verify <path>` or run/build."
         )
+        guards = _SUBSYSTEM_RECIPE_GUARDS.get(family, [
+            "tests/test_agent_tools.py::test_agent_surface_command",
+        ])
         EAV_SKILLS[key] = {
             "summary": f"Runnable {family} subsystem recipe and signature lookup.",
-            "body": body,
+            "body": _recipe_with_guards(body, guards),
+            "guards": guards,
         }
 
 
@@ -24982,6 +26914,42 @@ _SCAFFOLD_RECIPE_BODIES = {
 }
 
 
+_SCAFFOLD_RECIPE_COMMON_GUARDS = [
+    "tests/test_fix1_scaffold_coherence.py::test_fix1_scaffold_checks_clean",
+    "tests/test_scaffold_strict_clean.py::test_scaffold_is_strict_clean",
+    "tests/test_run14_followups.py::test_r17_scaffold_output_is_fmt_canonical",
+]
+
+
+_SCAFFOLD_RECIPE_EXTRA_GUARDS = {
+    "db-roundtrip": [
+        "tests/test_bin_codegen_conformance.py",
+        "tests/test_composition_golden.py::test_seam2_register_login_tasks_round_trip_golden",
+    ],
+    "json-output": [
+        "tests/test_run13_followups.py::test_trust1_json_output_scaffold_checks_clean_and_lowers",
+    ],
+    "logged-op": [
+        "tests/test_codegen_runtime_error_envelope.py",
+    ],
+    "handler-route": [
+        "tests/test_semanticscript.py::test_handler_route_scaffold_uses_bindable_host",
+        "tests/test_http_route_dispatch.py",
+    ],
+    "test-fixture": [
+        "tests/test_cyc31_48.py::test_new_scaffold_patterns_parse_and_rich_assertions_run",
+    ],
+    "http-drive-test": [
+        "tests/test_cyc31_48.py::test_http_drive_builds_requests_asserts_and_stops",
+    ],
+}
+
+
+def _scaffold_recipe_guards(pattern: str) -> list:
+    return list(_SCAFFOLD_RECIPE_COMMON_GUARDS) + list(
+        _SCAFFOLD_RECIPE_EXTRA_GUARDS.get(pattern, ()))
+
+
 def _install_scaffold_recipe_skills() -> None:
     for pattern in SCAFFOLD_PATTERNS:
         key = f"eav-scaffold-{pattern}"
@@ -24992,9 +26960,11 @@ def _install_scaffold_recipe_skills() -> None:
             f"Runnable {pattern} template: `semanticscript scaffold {pattern}` emits a "
             f"complete, check-clean, lowerable program. Copy it, then `check --strict`, "
             f"`fmt --check`, and `verify`/`run`/`build` to prove behavior.")
+        guards = _scaffold_recipe_guards(pattern)
         EAV_SKILLS[key] = {
             "summary": f"Runnable {pattern} scaffold recipe (composition idiom).",
-            "body": body,
+            "body": _recipe_with_guards(body, guards),
+            "guards": guards,
         }
 
 
@@ -25018,6 +26988,134 @@ def _json_envelope(surface: str, **payload) -> str:
     return json.dumps(body, indent=2)
 
 
+def _repo_root() -> str:
+    import os
+    return os.path.dirname(_bundle_dir())
+
+
+def _spec_check_cases() -> list[dict]:
+    """SPEC-1: executable docs smoke cases for advertised agent surfaces."""
+    import os
+    hello = os.path.join(_repo_root(), "examples", "hello_world.sem")
+    return [
+        {"id": "version-json", "argv": ["version", "--json"],
+         "surface": "sem.version.v1", "doc": "agent-docs"},
+        {"id": "agent-docs-json", "argv": ["agent-docs", "--json"],
+         "surface": "sem.agentDocs.v1", "doc": "agent-docs"},
+        {"id": "skills-json", "argv": ["skills", "--json"],
+         "surface": "sem.skills.v1", "doc": "agent-docs"},
+        {"id": "search-json", "argv": ["search", "stable loop", "--json"],
+         "surface": "sem.search.v1", "doc": "agent-docs"},
+        {"id": "targets-signature-json",
+         "argv": ["targets", "--signature", "math.addInt64", "--json"],
+         "surface": "sem.targetSignature.v1", "doc": "skills/eav-toolchain"},
+        {"id": "docs-get-json",
+         "argv": ["docs", hello, "--get", "main", "--json"],
+         "surface": "sem.docs.v1", "doc": "skills/eav-toolchain"},
+        {"id": "synth-json",
+         "argv": ["synth", "--target", "math.addInt64", "--json"],
+         "surface": "sem.synth.v1", "doc": "devx"},
+        {"id": "sem-edit-json",
+         "argv": ["sem-edit", hello, "--edit",
+                  '{"op":"addLet","operation":"main","name":"specTemp","type":"Int64","value":"1"}',
+                  "--json"],
+         "surface": "sem.semEdit.v1", "doc": "devx"},
+        {"id": "repl-json",
+         "argv": ["repl", hello, "--target", "math.addInt64", "--json"],
+         "surface": "sem.repl.v1", "doc": "devx"},
+        {"id": "improve-json", "argv": ["improve", hello, "--json"],
+         "surface": "sem.improve.v1", "doc": "devx"},
+        {"id": "scaffold-json",
+         "argv": ["scaffold", "console-program", "--json"],
+         "surface": "sem.scaffold.v1", "doc": "skills/eav-toolchain"},
+        {"id": "check-json", "argv": ["check", hello, "--json"],
+         "surface": "sem.check.v1", "doc": "stable-loop"},
+        {"id": "verify-json", "argv": ["verify", hello, "--json"],
+         "surface": "sem.verify.v1", "doc": "stable-loop"},
+        {"id": "verify-adversarial-json",
+         "argv": ["verify", hello, "--adversarial", "--json"],
+         "surface": "sem.verify.v1", "doc": "stable-loop"},
+        {"id": "run-json", "argv": ["run", hello, "--json"],
+         "surface": "sem.run.v1", "doc": "stable-loop"},
+        {"id": "lint-explain", "argv": ["lint", "--explain", "SS1502"],
+         "contains": "SS1502", "doc": "agent-docs"},
+    ]
+
+
+def _spec_check_current(argv: list[str]) -> tuple[int, str, str]:
+    import contextlib
+    import io
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = main(list(argv))
+    return int(rc or 0), out.getvalue(), err.getvalue()
+
+
+def _spec_check_external(exe: str, argv: list[str], timeout: float) -> tuple[int, str, str]:
+    import os
+    import subprocess
+    command = [exe, *argv]
+    if exe.endswith(".py"):
+        command = [sys.executable, exe, *argv]
+    proc = subprocess.run(
+        command,
+        cwd=_repo_root(),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def _spec_check_run(*, exe: Optional[str] = None,
+                    timeout: float = 30.0) -> dict:
+    import json
+    cases = _spec_check_cases()
+    results = []
+    ok = True
+    for case in cases:
+        argv = list(case["argv"])
+        if exe:
+            try:
+                rc, out, err = _spec_check_external(exe, argv, timeout)
+            except Exception as exc:
+                rc, out, err = 127, "", str(exc)
+        else:
+            rc, out, err = _spec_check_current(argv)
+        passed = rc == int(case.get("rc", 0))
+        got_surface = None
+        if passed and case.get("surface"):
+            try:
+                got_surface = json.loads(out).get("surface")
+            except json.JSONDecodeError:
+                got_surface = None
+            passed = got_surface == case["surface"]
+        if passed and case.get("contains"):
+            passed = case["contains"] in out
+        ok = ok and passed
+        results.append({
+            "id": case["id"],
+            "doc": case.get("doc"),
+            "argv": argv,
+            "ok": passed,
+            "exitCode": rc,
+            "expectedSurface": case.get("surface"),
+            "surface": got_surface,
+            "expectedContains": case.get("contains"),
+            "stdoutPreview": out[:240],
+            "stderrPreview": err[:240],
+        })
+    return {
+        "status": "ok" if ok else "drift",
+        "runner": "external" if exe else "current-process",
+        "exe": exe,
+        "caseCount": len(results),
+        "passed": sum(1 for r in results if r["ok"]),
+        "failed": sum(1 for r in results if not r["ok"]),
+        "results": results,
+    }
+
+
 # MCP tool registry. Each entry is data-driven so tools/list (the advertised
 # inputSchema) and _mcp_dispatch (the argv it builds) never drift:
 #   argv : the CLI prefix (usually `--json` so the agent gets a sem.<tool>.v1 body)
@@ -25032,6 +27130,11 @@ EAV_MCP_TOOLS = {
                 "path": False, "args": []},
     "agent_docs": {"argv": ["agent-docs"], "desc": "Version-matched SemanticScript agent rules",
                    "path": False, "args": []},
+    "spec_check": {"argv": ["spec-check", "--json"],
+                   "desc": "SPEC-1 executable-docs drift gate for CLI/MCP surfaces",
+                   "path": False,
+                   "args": [("exe", False, False, "external packaged semanticscript executable to verify"),
+                            ("timeout", False, False, "seconds per executable-docs case")]},
     "skills": {"argv": ["skills"], "desc": "SemanticScript agent skills (list; pass `skill` for a body)",
                "path": False, "args": [("skill", True, False, "skill name to fetch its full body")]},
     "readiness": {"argv": ["readiness", "--json"], "desc": "Environment lane status",
@@ -25085,6 +27188,30 @@ EAV_MCP_TOOLS = {
                       ("focus", False, False, "entity to enumerate legal next moves for"),
                       ("intent", False, False, "natural-language intent for row synthesis"),
                       ("compare", False, False, "new path for mode=diff")]},
+    "improve": {"argv": ["improve", "--json"],
+                "desc": "DEVX-8 plan/apply canonical idiom cleanup",
+                "path": True,
+                "args": [("apply", False, False, "write mechanically safe canonical improvements")]},
+    "synth": {"argv": ["synth", "--json"],
+              "desc": "DEVX-2 intent/target-to-rows synthesis from signatures",
+              "path": False,
+              "args": [("target", False, False, "builtin target to synthesize, e.g. math.addInt64"),
+                       ("intent", False, False, "natural-language intent for row synthesis"),
+                       ("operation", False, False, "owning operation name"),
+                       ("call", False, False, "call entity name")]},
+    "sem_edit": {"argv": ["sem-edit", "--json"],
+                 "desc": "DEVX-1 structured semantic edit API with continuous validation",
+                 "path": True,
+                 "args": [("edit", False, True, "structured edit object or array"),
+                          ("apply", False, False, "write the validated canonical source")]},
+    "repl": {"argv": ["repl", "--json"],
+             "desc": "DEVX-7 typed runtime-linked session surface with live signatures and native/JIT lanes",
+             "path": True,
+             "args": [("target", False, False, "builtin target to inspect, e.g. sqlite.openDatabase"),
+                      ("intent", False, False, "natural-language intent for seed rows"),
+                      ("run", False, False, "probe the JIT run lane"),
+                      ("native", False, False, "probe the native build lane"),
+                      ("timeout", False, False, "seconds for run probes")]},
     "compensate": {"argv": ["compensate", "--json"],
                    "desc": "COMPENSATE failure-mitigation surface: codegen localization, maturity, cost, memory, env, checkpoint, alternatives",
                    "path": True,
@@ -25095,7 +27222,8 @@ EAV_MCP_TOOLS = {
                             ("port", False, False, "localhost port to probe for environment conflicts")]},
     "fix_plan": {"argv": ["fix", "--plan"], "desc": "Repair plan from diagnostics", "path": True, "args": []},
     "test": {"argv": ["test"], "desc": "Run tag-test operations", "path": True, "args": []},
-    "verify": {"argv": ["verify", "--json"], "desc": "One-shot check + tests + run gate", "path": True, "args": []},
+    "verify": {"argv": ["verify", "--json"], "desc": "One-shot check + tests + run gate", "path": True,
+               "args": [("adversarial", False, False, "run the skeptical strict review lane")]},
 }
 
 
@@ -25118,7 +27246,14 @@ def _mcp_dispatch(tool: str, arguments: dict):
     # then flag args.
     for name, positional, _req, _desc in spec["args"]:
         if not positional and arguments.get(name) is not None:
-            argv += [f"--{name}", str(arguments[name])]
+            value = arguments[name]
+            if isinstance(value, bool):
+                if value:
+                    argv.append(f"--{name}")
+            elif isinstance(value, (dict, list)):
+                argv += [f"--{name}", json.dumps(value)]
+            else:
+                argv += [f"--{name}", str(value)]
     out_buf, err_buf, rc = io.StringIO(), io.StringIO(), 0
     try:
         with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
@@ -25166,7 +27301,17 @@ def mcp_handle(request: dict):
                     else "SemanticScript source file or project directory")}
                 required.append("path")
             for argname, _positional, req, desc in spec["args"]:
-                props[argname] = {"type": "string", "description": desc}
+                if name == "sem_edit" and argname == "edit":
+                    props[argname] = {
+                        "oneOf": [{"type": "object"}, {"type": "array"}],
+                        "description": desc,
+                    }
+                elif name == "sem_edit" and argname == "apply":
+                    props[argname] = {"type": "boolean", "description": desc}
+                elif argname in {"apply", "run", "native", "adversarial", "record_replay"}:
+                    props[argname] = {"type": "boolean", "description": desc}
+                else:
+                    props[argname] = {"type": "string", "description": desc}
                 if req:
                     required.append(argname)
             schema = {"type": "object", "properties": props}
@@ -25477,6 +27622,26 @@ def cmd_agent_docs(args) -> int:
     return 0
 
 
+def cmd_spec_check(args) -> int:
+    """Executable-docs drift gate (sem.specCheck.v1)."""
+    report = _spec_check_run(
+        exe=getattr(args, "exe", None),
+        timeout=max(1.0, float(getattr(args, "timeout", 30.0) or 30.0)),
+    )
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.specCheck.v1", ok=report["status"] == "ok", **report) + "\n")
+    else:
+        sys.stdout.write(
+            f"spec-check {report['status']}: "
+            f"{report['passed']}/{report['caseCount']} passed\n")
+        for result in report["results"]:
+            if not result["ok"]:
+                sys.stdout.write(
+                    f"  FAIL {result['id']}: {' '.join(result['argv'])}\n")
+    return 0 if report["status"] == "ok" else 1
+
+
 def cmd_skills(args) -> int:
     """List EAV agent skills, or get full skill bodies by name (sem.skills.v1).
 
@@ -25488,8 +27653,11 @@ def cmd_skills(args) -> int:
         for k in names:
             spec = EAV_SKILLS.get(k)
             if spec is not None:
-                items.append({"name": k, "summary": spec["summary"],
-                              "body": spec["body"]})
+                item = {"name": k, "summary": spec["summary"],
+                        "body": spec["body"]}
+                if spec.get("guards"):
+                    item["guards"] = spec["guards"]
+                items.append(item)
             else:
                 missing.append(k)
         if missing:
@@ -25611,6 +27779,40 @@ def _unscaffold_lines(text: str, offset: int) -> str:
     return re.sub(r"\bline (\d+)", fix, text)
 
 
+def _wrap_eval_source_if_needed(src: str) -> tuple[str, bool, int]:
+    """Wrap operation-only snippets in a minimal console project."""
+    wrapped = bool(src.strip()) and not _source_declares_project(src)
+    offset = _EVAL_SCAFFOLD.count("\n") if wrapped else 0
+    if not wrapped:
+        return src, wrapped, offset
+    src = _EVAL_SCAFFOLD + src
+    try:
+        extra = []
+        for op in parse(src, validate=False).entities_in_order():
+            if op.kind in ("operation", "function"):
+                if not op.fact("purpose"):
+                    extra.append(f'{op.name} purpose "eval snippet"')
+                if not op.fact("invariant"):
+                    extra.append(f'{op.name} invariant "eval snippet"')
+        if extra:
+            src = src + "\n" + "\n".join(extra) + "\n"
+    except EavError:
+        pass
+    return src, wrapped, offset
+
+
+def _load_runnable_source_for_path(path: str) -> tuple[str, "Program", Optional[str], bool, int]:
+    """Load a run/eval source, wrapping operation-only snippets before parsing."""
+    src = _read_program_source(path)
+    source_root = _program_source_root_for_path(path)
+    src, wrapped, offset = _wrap_eval_source_if_needed(src)
+    if wrapped:
+        source_root = None
+    program = parse_compact(src)
+    program.source_root = source_root
+    return src, program, source_root, wrapped, offset
+
+
 def cmd_eval(args) -> int:
     """Run a snippet through the JIT without scaffolding (sem.eval.v1): if the
     source declares no `project` entity, wrap it in a minimal console program,
@@ -25622,31 +27824,12 @@ def cmd_eval(args) -> int:
     instead of a bare `ok:false` with the diagnostic dropped.
 
     WS2-071: --strict blocks T3 warnings before running."""
-    src = _read_source(args.path)
-    wrapped = not _source_declares_project(src)
+    original = _read_source(args.path)
+    src = _dedupe_identical_type_declarations(original)
     # R-112: when the snippet is wrapped, the scaffold shifts every line number;
     # rewrite diagnostics/panic rows back to the user's snippet coordinates so an
     # editor or agent points its repair at the right line.
-    offset = _EVAL_SCAFFOLD.count("\n") if wrapped else 0
-    if wrapped:
-        src = _EVAL_SCAFFOLD + src
-        # R-19: an exploratory eval snippet shouldn't need full exported-op metadata.
-        # Inject a default purpose/invariant for any operation lacking them so the
-        # wrapped program doesn't trip MD1011/MD1012 (which gate exported/entry ops)
-        # and fail an otherwise-runnable snippet. Appended after the snippet so the
-        # snippet's own line numbers (and `offset`) are unchanged.
-        try:
-            _extra = []
-            for _op in parse(src, validate=False).entities_in_order():
-                if _op.kind in ("operation", "function"):
-                    if not _op.fact("purpose"):
-                        _extra.append(f'{_op.name} purpose "eval snippet"')
-                    if not _op.fact("invariant"):
-                        _extra.append(f'{_op.name} invariant "eval snippet"')
-            if _extra:
-                src = src + "\n" + "\n".join(_extra) + "\n"
-        except EavError:
-            pass
+    src, wrapped, offset = _wrap_eval_source_if_needed(src)
     # WS2-071: --strict blocks T3 warnings
     if getattr(args, "strict", False):
         try:
@@ -25695,7 +27878,7 @@ def cmd_eval(args) -> int:
 
 def cmd_deps(args) -> int:
     """Dependency graph (sem.deps.v1): module imports + project require rows."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     imports, selective_imports, requires = [], [], []
     for n in program.order:
         ent = program.entities[n]
@@ -25737,7 +27920,7 @@ def cmd_deps(args) -> int:
 
 def cmd_context(args) -> int:
     """Project envelope (sem.context.v1): target(s), entry, mode, modules."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     projects = program.of_kind("project")
     proj = projects[0] if projects else None
 
@@ -25760,7 +27943,7 @@ def cmd_context(args) -> int:
 
 def cmd_symbols(args) -> int:
     """Full source graph (sem.symbols.v1): every entity with kind + row count."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     symbols = [
         {"name": program.entities[n].name, "kind": program.entities[n].kind,
          "rows": len(program.entities[n].rows), "line": program.entities[n].line}
@@ -25933,6 +28116,22 @@ def cmd_docs(args) -> int:
             limit=getattr(args, "limit", None) or 10)
         sys.stdout.write(_json_envelope("sem.docsSearch.v1", **payload) + "\n")
         return 0
+    if getattr(args, "get", None):
+        # Builtin target/family docs are catalog data, so they must not depend on
+        # the optional path existing. This keeps `docs <path> --get log.*` aligned
+        # with `targets --signature log.*` even from a different working dir.
+        family_sigs = _builtin_family_signatures(args.get)
+        if family_sigs:
+            sys.stdout.write(_json_envelope(
+                "sem.docs.v1", ok=True, fuzzyMatch=False, source="catalog",
+                entity=_signature_family_doc_entry(args.get, family_sigs)) + "\n")
+            return 0
+        sig = _builtin_target_signature(args.get)
+        if sig is not None:
+            sys.stdout.write(_json_envelope(
+                "sem.docs.v1", ok=True, fuzzyMatch=False, source="catalog",
+                entity=_signature_doc_entry(sig)) + "\n")
+            return 0
     if not args.path:
         # R1: no path -> browse the builtin/stdlib CATALOG (list/get/search), the
         # surface `docs --help` advertises, instead of erroring missing-path. The
@@ -25940,7 +28139,8 @@ def cmd_docs(args) -> int:
         entries = _catalog_doc_entries()
         _docs_source = "catalog"
     else:
-        entries = _doc_entries(parse_compact(_read_program_source(args.path)))
+        _source, program = _load_program_for_path(args.path)
+        entries = _doc_entries(program)
         _docs_source = args.path
     if getattr(args, "search", None):
         terms = [t for t in args.search.lower().split() if t]
@@ -25985,7 +28185,7 @@ def cmd_docs(args) -> int:
 def cmd_dev(args) -> int:
     """Dev contract (sem.dev.v1): one check+runnability cycle reporting whether
     the surface is close to runnable (a single tick of the watch/restart loop)."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     diags = lint(program)
     errors = [d for d in diags if d.severity == "error"]
     projects = program.of_kind("project")
@@ -26005,7 +28205,7 @@ def cmd_dev(args) -> int:
 
 def cmd_size(args) -> int:
     """Cheap footprint probe (sem.size.v1): entity + row counts by kind."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     by_kind: dict = {}
     rows = 0
     for n in program.order:
@@ -26136,7 +28336,7 @@ def _check_program_status(path: str, strict: bool = False) -> dict:
             **compile_fields}
 
 
-def check_workspace(root: str, strict: bool = False) -> dict:
+def check_workspace(root: str, strict: bool = False, jobs: int = 1) -> dict:
     """R-003: check a *workspace* directory (not itself a project root) by checking
     each child independently and never composing unrelated fixtures into one
     program. Each app/example/std/signature/manifest child gets its own source
@@ -26146,26 +28346,39 @@ def check_workspace(root: str, strict: bool = False) -> dict:
     one program and reported a misleading `compiler-error` from a negative
     fixture's `=` token."""
     children = discover_workspace(root)
-    summaries = []
+    jobs = max(1, int(jobs or 1))
+
+    def check_child(child: dict) -> dict:
+        result = _check_program_status(child["path"], strict)
+        return {"name": child["name"].replace("\\", "/"),
+                "kind": child["kind"], "status": result["status"],
+                "ok": result["ok"],
+                "canCompile": result.get("canCompile", False),
+                "diagnostics": result["diagnostics"],
+                "errorCount": result.get("errorCount", 0),
+                "warningCount": result.get("warningCount", 0)}
+
+    if jobs > 1 and len(children) > 1:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(jobs, len(children))) as pool:
+            summaries = list(pool.map(check_child, children))
+        execution_mode = "parallel"
+    else:
+        summaries = [check_child(child) for child in children]
+        execution_mode = "serial"
     all_ok = True
     error_count = 0
     warning_count = 0
-    for child in children:
-        result = _check_program_status(child["path"], strict)
-        all_ok = all_ok and result["ok"]
-        error_count += int(result.get("errorCount", 0))
-        warning_count += int(result.get("warningCount", 0))
-        summaries.append({"name": child["name"].replace("\\", "/"),
-                          "kind": child["kind"], "status": result["status"],
-                          "ok": result["ok"],
-                          "canCompile": result.get("canCompile", False),
-                          "diagnostics": result["diagnostics"],
-                          "errorCount": result.get("errorCount", 0),
-                          "warningCount": result.get("warningCount", 0)})
+    for summary in summaries:
+        all_ok = all_ok and summary["ok"]
+        error_count += int(summary.get("errorCount", 0))
+        warning_count += int(summary.get("warningCount", 0))
     fields = _check_lane_fields([None] * error_count, [None] * warning_count, strict)
     return {"status": "workspace", "ok": all_ok,
             "diagnostics": [], "typedComments": [], "nextCommands": [],
-            "childCount": len(summaries), "children": summaries, **fields,
+            "childCount": len(summaries), "children": summaries,
+            "executionMode": execution_mode, "workerCount": jobs, **fields,
             **_compile_status_fields(
                 all_ok,
                 "workspace-children-lowered" if all_ok else "workspace-child-blocked")}
@@ -26206,10 +28419,13 @@ def cmd_check(args) -> int:
     program and surfacing a misleading compiler error from a negative fixture."""
     import os
     strict = getattr(args, "strict", False)
+    jobs = max(1, int(getattr(args, "jobs", 1) or 1))
     if (args.path != "-" and os.path.isdir(args.path)
             and not is_project_root(args.path)):
-        report = check_workspace(args.path, strict)
-        sys.stdout.write(_json_envelope("sem.check.v1", **report) + "\n")
+        report = check_workspace(args.path, strict, jobs)
+        sys.stdout.write(_json_envelope(
+            "sem.check.v1", requestedJobs=jobs, parallelEligible=jobs > 1,
+            **report) + "\n")
         return 0 if report["ok"] else 1
     try:
         _source, program = _load_program_for_path(args.path)
@@ -26217,6 +28433,7 @@ def cmd_check(args) -> int:
         sys.stdout.write(_json_envelope(
             "sem.check.v1", status="compiler-error", ok=False,
             diagnostics=[str(exc)],
+            requestedJobs=jobs, parallelEligible=jobs > 1,
             **_check_lane_fields([exc], [], strict),
             **_compile_status_fields(False, "blocked-by-parse")) + "\n")
         return 1  # R-093: a compiler error is a nonzero exit, matching the workspace lane
@@ -26275,7 +28492,9 @@ def cmd_check(args) -> int:
              for (t, txt, ln) in program.typed_comments]
     sys.stdout.write(_json_envelope(
         "sem.check.v1", status=status, ok=(status in ("ok", "ok-with-warnings")),
-        diagnostics=_structured_diags(diags), typedComments=typed,
+        diagnostics=_structured_diags_with_next(diags, args.path), typedComments=typed,
+        requestedJobs=jobs, parallelEligible=jobs > 1,
+        sourceCache=getattr(program, "source_cache", _last_source_cache_stats()),
         nextCommands=nxt, **_check_lane_fields(errors, warnings, strict),
         **compile_fields) + "\n")
     # R-093: error-severity diagnostics (incl. --strict-promoted warnings) exit
@@ -26283,13 +28502,29 @@ def cmd_check(args) -> int:
     return 0 if status in ("ok", "ok-with-warnings") else 1
 
 
-def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
+def _verify_probe_options(args) -> dict:
+    return {
+        "probe_server": bool(getattr(args, "probe_server", False)),
+        "probe_path": getattr(args, "probe_path", None),
+        "probe_runs": getattr(args, "probe_runs", None),
+        "probe_timeout": getattr(args, "probe_timeout", None),
+    }
+
+
+def _verify_once_payload(path: str, strict: bool = False, *,
+                         probe_server: bool = False,
+                         probe_path: Optional[str] = None,
+                         probe_runs: Optional[int] = None,
+                         probe_timeout: Optional[float] = None,
+                         adversarial: bool = False) -> tuple[dict, int]:
     """Build one sem.verify.v1 payload and return (payload, process_exit_code)."""
     import os
     lanes = {
         "check": {"ok": False, "status": "not-run"},
         "test": {"ok": True, "status": "not-run"},
         "run": {"ok": False, "status": "not-run"},
+        "drive": {"ok": True, "status": "not-run"},
+        "adversarial": {"ok": True, "status": "not-run"},
     }
     try:
         source, program = _load_program_for_path(path)
@@ -26333,7 +28568,21 @@ def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
     if errors:
         lanes["test"] = {"ok": True, "status": "skipped", "reason": "check failed"}
         lanes["run"] = {"ok": True, "status": "skipped", "reason": "check failed"}
+        lanes["drive"] = {"ok": True, "status": "skipped", "reason": "check failed"}
+        lanes["adversarial"] = {
+            "ok": True,
+            "status": "skipped",
+            "reason": "check failed",
+        }
         return {"status": "blocked", "path": path, "strict": strict, "lanes": lanes}, 1
+
+    if adversarial:
+        review = _devx_adversarial_surface(program)
+        lanes["adversarial"] = {
+            "ok": review.get("status") == "pass",
+            "status": review.get("status"),
+            **review,
+        }
 
     try:
         if path != "-" and os.path.isdir(path) and is_project_root(path):
@@ -26384,6 +28633,34 @@ def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
                        f"with a live/integration harness"),
             "target": run_target,
         }
+        if run_target == "webServer":
+            if probe_server:
+                runs = max(1, int(probe_runs or 1))
+                timeout = max(0.1, float(probe_timeout or 5.0))
+                probe = _bench_webserver_probe(
+                    program, path, getattr(program, "source_root", None),
+                    runs, probe_path, timeout)
+                lanes["drive"] = {
+                    "ok": probe.get("status") == "ok",
+                    "status": "probed" if probe.get("status") == "ok" else "failed",
+                    "target": run_target,
+                    "mode": "server-probe",
+                    "probe": probe,
+                }
+            else:
+                lanes["drive"] = {
+                    "ok": True,
+                    "status": "skipped",
+                    "target": run_target,
+                    "reason": "add --probe-server to build/start/probe/stop this webServer",
+                }
+        else:
+            lanes["drive"] = {
+                "ok": True,
+                "status": "skipped",
+                "target": run_target,
+                "reason": "no drive lane is defined for this target",
+            }
     else:
         out, err, code = _record_run_full(
             source, cwd=getattr(program, "source_root", None))
@@ -26398,9 +28675,23 @@ def _verify_once_payload(path: str, strict: bool = False) -> tuple[dict, int]:
         }
         if panic is not None:
             lanes["run"]["panic"] = panic
+        lanes["drive"] = {
+            "ok": True,
+            "status": "skipped",
+            "target": run_target,
+            "reason": "console target is already proven by the run lane",
+        }
 
-    ok = bool(lanes["check"].get("ok") and lanes["test"].get("ok") and lanes["run"].get("ok"))
-    status = "ok" if ok else ("blocked" if lanes["test"].get("status") in ("blocked", "compiler-error") else "failed")
+    ok = bool(lanes["check"].get("ok")
+              and lanes["test"].get("ok")
+              and lanes["run"].get("ok")
+              and lanes["drive"].get("ok")
+              and lanes["adversarial"].get("ok"))
+    status = "ok" if ok else (
+        "blocked"
+        if (lanes["test"].get("status") in ("blocked", "compiler-error")
+            or lanes["adversarial"].get("status") == "blocked")
+        else "failed")
     return {"status": status, "path": path, "strict": strict, "lanes": lanes}, (0 if ok else 1)
 
 
@@ -26419,6 +28710,10 @@ def _emit_verify_payload(payload: dict, want_json: bool) -> None:
         exit_code = lanes["run"].get("exitCode")
         suffix = f" ({exit_code})" if exit_code is not None else ""
         sys.stdout.write(f"run: {lanes['run']['status']}{suffix}\n")
+        if "drive" in lanes and lanes["drive"].get("status") != "not-run":
+            sys.stdout.write(f"drive: {lanes['drive']['status']}\n")
+        if lanes.get("adversarial", {}).get("status") != "not-run":
+            sys.stdout.write(f"adversarial: {lanes['adversarial']['status']}\n")
 
 
 def _verify_watch_files(path: str) -> list[str]:
@@ -26482,7 +28777,10 @@ def _cmd_verify_watch(args) -> int:
         while True:
             digest, files = _verify_watch_digest(args.path)
             if digest != last_digest:
-                payload, rc = _verify_once_payload(args.path, strict)
+                payload, rc = _verify_once_payload(
+                    args.path, strict,
+                    adversarial=getattr(args, "adversarial", False),
+                    **_verify_probe_options(args))
                 emitted += 1
                 payload["watch"] = {
                     "mode": "watch",
@@ -26512,7 +28810,10 @@ def cmd_verify(args) -> int:
     """G3/G4: one-shot or watched check + test + run gate (sem.verify.v1)."""
     if getattr(args, "watch", False):
         return _cmd_verify_watch(args)
-    payload, rc = _verify_once_payload(args.path, getattr(args, "strict", False))
+    payload, rc = _verify_once_payload(
+        args.path, getattr(args, "strict", False),
+        adversarial=getattr(args, "adversarial", False),
+        **_verify_probe_options(args))
     _emit_verify_payload(payload, getattr(args, "json", False))
     return rc
 
@@ -26684,7 +28985,7 @@ def cmd_devx(args) -> int:
     if mode == "diff":
         if not getattr(args, "compare", None):
             raise EavError("devx --mode diff requires --compare <new-path>")
-        old = parse_compact(_read_program_source(args.path))
+        _old_source, old = _load_program_for_path(args.path)
         new = parse_compact(_read_program_source(args.compare))
         payload = {
             "mode": mode,
@@ -26706,6 +29007,144 @@ def cmd_devx(args) -> int:
         else:
             sys.stdout.write(
                 "rerun with --json for the structured authoring/contract payload\n")
+    return 0
+
+
+def cmd_improve(args) -> int:
+    """DEVX-8: apply canonical idiom cleanup where it is mechanically safe."""
+    import os
+    source = _read_program_source(args.path)
+    program = parse_compact(source)
+    payload = _devx_improve_surface(program, args.path)
+    canonical_rows = [e["row"] for e in payload.get("canonicalEdits", [])]
+    payload.update({
+        "path": os.path.abspath(args.path) if args.path != "-" else "-",
+        "applyRequested": bool(getattr(args, "apply", False)),
+        "applied": 0,
+    })
+    rc = 0
+    if getattr(args, "apply", False):
+        if args.path == "-" or os.path.isdir(args.path):
+            payload.update({
+                "status": "no-apply-target",
+                "note": "improve --apply currently writes a single source file; use devx --mode improve for project plans",
+            })
+            rc = 2
+        elif canonical_rows:
+            next_source = source.rstrip() + "\n\n" + "\n".join(canonical_rows) + "\n"
+            formatted = format_program(
+                parse_compact(next_source),
+                role=classify_sem_file(args.path),
+            )
+            with open(args.path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(formatted)
+            after = parse_compact(formatted)
+            payload.update({
+                "status": "applied",
+                "applied": len(canonical_rows),
+                "postDiagnostics": _structured_diags(lint(after)),
+            })
+        else:
+            payload.update({"status": "ok", "applied": 0})
+    if getattr(args, "json", False):
+        ok = payload.get("status") not in ("no-apply-target",)
+        sys.stdout.write(_json_envelope("sem.improve.v1", ok=ok, **payload) + "\n")
+    else:
+        sys.stdout.write(f"improve: {payload.get('status')}\n")
+        if payload.get("applied"):
+            sys.stdout.write(f"applied {payload['applied']} canonical edit(s)\n")
+        elif canonical_rows:
+            sys.stdout.write("rerun with --apply to write canonical metadata rows\n")
+    return rc
+
+
+def cmd_synth(args) -> int:
+    """DEVX-2 first-class intent/target-to-rows surface (sem.synth.v1)."""
+    target = getattr(args, "target", None)
+    intent = getattr(args, "intent", None)
+    if target:
+        payload = _synth_rows_for_target(
+            target,
+            getattr(args, "operation", None) or "main",
+            getattr(args, "call", None) or (
+                _synth_binding_name(target.split(".")[-1], "call") + "Call"),
+            include_operation=not bool(getattr(args, "call_only", False)),
+        )
+        payload["intentCandidates"] = _devx_intent_candidates(intent)
+    else:
+        payload = {
+            "status": "ok",
+            "intent": intent,
+            "candidates": _devx_intent_candidates(intent),
+            "note": "pass --target <builtin.target> to synthesize typed rows",
+        }
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.synth.v1", **payload) + "\n")
+    else:
+        for row in payload.get("rows", []):
+            sys.stdout.write(row + "\n")
+        if not payload.get("rows"):
+            for c in payload.get("candidates", []):
+                sys.stdout.write(f"{c['kind']} {c['name']} score={c['score']}\n")
+    return 0
+
+
+def cmd_repl(args) -> int:
+    """DEVX-7 typed runtime-linked session surface (sem.repl.v1)."""
+    want_json = getattr(args, "json", False)
+    try:
+        payload = _repl_payload(
+            args.path,
+            getattr(args, "target", None),
+            getattr(args, "intent", None),
+            bool(getattr(args, "run", False)),
+            bool(getattr(args, "native", False)),
+            float(getattr(args, "timeout", 5.0) or 5.0),
+        )
+        rc = 0
+    except (EavError, OSError, ValueError) as exc:
+        code = getattr(exc, "code", None) or "SSREPL"
+        payload = {
+            "ok": False,
+            "status": "error",
+            "diagnostics": _structured_diags([
+                Diagnostic(code=code, severity="error", message=str(exc))
+            ]),
+        }
+        rc = 1
+    if want_json:
+        sys.stdout.write(_json_envelope("sem.repl.v1", **payload) + "\n")
+    else:
+        sys.stdout.write(f"repl {payload.get('status', 'ok')}\n")
+        if payload.get("target"):
+            sys.stdout.write(f"target {payload['target']}\n")
+        for name, lane in payload.get("executionLanes", {}).items():
+            sys.stdout.write(
+                f"{name}: {lane.get('status')} {' '.join(lane.get('command', []))}\n")
+    return rc
+
+
+def cmd_sem_edit(args) -> int:
+    """DEVX-1 structured semantic edit surface (sem.semEdit.v1)."""
+    try:
+        payload = _sem_edit_payload(
+            args.path, getattr(args, "edit", None),
+            apply=bool(getattr(args, "apply", False)))
+    except EavError as exc:
+        if getattr(args, "json", False):
+            sys.stdout.write(_json_envelope(
+                "sem.semEdit.v1", ok=False, status="invalid-move",
+                diagnostics=[{"code": exc.code, "severity": "error",
+                              "line": exc.line, "entity": None,
+                              "message": exc.message,
+                              "rendered": f"semanticscript: {exc}"}]) + "\n")
+        else:
+            sys.stderr.write(f"semanticscript: {exc}\n")
+        return 1
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.semEdit.v1", **payload) + "\n")
+    else:
+        sys.stdout.write(payload["canonical"])
     return 0
 
 
@@ -26881,6 +29320,7 @@ def cmd_build(args) -> int:
     sem.build.v1 error."""
     import os
     want_json = getattr(args, "json", False)
+    jobs = max(1, int(getattr(args, "jobs", 1) or 1))
 
     def _build_failed(status, message, **extra):
         # R-235: every build failure shares the structured sem.build.v1 error
@@ -26943,7 +29383,8 @@ def cmd_build(args) -> int:
     if want_json:
         sys.stdout.write(_json_envelope(
             "sem.build.v1", ok=True, status="ok", output=exe,
-            identity=identity) + "\n")
+            identity=identity, requestedJobs=jobs, parallelEligible=jobs > 1,
+            sourceCache=getattr(program, "source_cache", _last_source_cache_stats())) + "\n")
     else:
         sys.stdout.write(exe + "\n")
     return 0
@@ -26953,7 +29394,7 @@ def cmd_trace(args) -> int:
     """Print a primary-path trace of an operation."""
     want_json = getattr(args, "json", False)
     multi = getattr(args, "multi_path", False) or getattr(args, "branch_aware", False)
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     try:
         if want_json:
             payload = trace_paths(program, args.operation) if multi else {
@@ -27101,7 +29542,7 @@ def cmd_describe(args) -> int:
     declared signature from the .semsig instead of erroring — so `describe` doubles
     as a built-in lookup."""
     want_json = getattr(args, "json", False)  # R-05: --json parity
-    program = parse(_read_source(args.path))
+    _source, program = _load_program_for_path(args.path)  # R-21: accept project dirs
     try:
         text = describe(program, args.entity)
         if want_json:
@@ -27151,7 +29592,7 @@ def cmd_graph(args) -> int:
     error becomes a compiler-error envelope, never an argparse/plaintext error)."""
     want_json = getattr(args, "json", False)
     try:
-        program = parse_compact(_read_program_source(args.path))  # R-117/R-165: project dirs + compact
+        _source, program = _load_program_for_path(args.path)  # R-117/R-165: project dirs + compact
         text = graph(program, args.kind, args.format)
         edges = graph_edges(program, args.kind)
     except EavError as exc:
@@ -27217,13 +29658,74 @@ def cmd_scaffold(args) -> int:
         return 2
 
 
+def _fmt_project(args) -> int:
+    """Format every source file of a project directory (R-21).
+
+    `fmt` is per-file and role-aware (a module, a `build.sem`, and a `.semsig`
+    canonicalize differently), so a project is formatted file-by-file rather than
+    by composing it into one program and re-emitting — composing would dedupe
+    cross-module declarations and could never round-trip back to the individual
+    files. R-11: `--check` MUST exit nonzero when ANY file drifts; a directory
+    check that printed a drift line but exited 0 was a CI false-green (a later
+    `fmt -w` would churn bytes the check claimed were clean)."""
+    surface = getattr(args, "surface", "eav")
+    paths = _project_source_paths(args.path)  # raises EavError if none -> main maps to exit 2
+    drifted: list[str] = []
+    rewritten: list[str] = []
+    outputs: list[str] = []
+    for path in paths:
+        original = _read_source(path)
+        src = _dedupe_identical_type_declarations(original)
+        # validate=False: a module that calls a sibling module's operation can't be
+        # validated in isolation (only the composed project resolves the reference) —
+        # fmt is structural and only needs the parse, like rename_project_sources.
+        program = parse_compact(src, validate=False)
+        role = classify_sem_file(path)
+        formatted = (format_compact(program) if surface == "compact"
+                     else format_program(program, role=role))
+        if getattr(args, "check", False):
+            if formatted != original:
+                drifted.append(path)
+        elif getattr(args, "write", False):
+            if formatted != original:
+                with open(path, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(formatted)
+                rewritten.append(path)
+        else:
+            outputs.append(formatted)
+    if getattr(args, "check", False):
+        if drifted:
+            sys.stderr.write(
+                f"semanticscript: fmt drift in {len(drifted)} of {len(paths)} file(s) "
+                f"under {args.path!r} — run `semanticscript fmt -w {args.path}` to "
+                f"canonicalize; {_canonical_order_hint()}\n")
+            for p in drifted:
+                sys.stderr.write(f"  {p}\n")
+            return 1
+        return 0
+    if getattr(args, "write", False):
+        sys.stdout.write(
+            f"semanticscript: formatted {len(rewritten)} of {len(paths)} file(s) "
+            f"under {args.path}\n")
+        return 0
+    sys.stdout.write("".join(outputs))
+    return 0
+
+
 def cmd_fmt(args) -> int:
     """Print a program in the requested surface (canonical EAV or compact).
 
     Input may be either canonical EAV or compact-profile source; compact is
     expanded first, so `fmt --surface eav` canonicalizes compact and
-    `fmt --surface compact` round-trips it (README ss23/ss24)."""
-    src = _read_source(args.path)
+    `fmt --surface compact` round-trips it (README ss23/ss24).
+
+    R-21: a project directory is accepted and formatted file-by-file
+    (`_fmt_project`) instead of being rejected as "not a single file"."""
+    import os
+    if args.path != "-" and os.path.isdir(args.path):
+        return _fmt_project(args)
+    original = _read_source(args.path)
+    src = _dedupe_identical_type_declarations(original)
     program = parse_compact(src)
     surface = getattr(args, "surface", "eav")
     role = classify_sem_file(args.path) if args.path != "-" else "source"
@@ -27234,9 +29736,9 @@ def cmd_fmt(args) -> int:
         # canonical. R-114: compare byte-for-byte (including boundary whitespace
         # and the terminal newline) so CI can't accept a file that a later `fmt`
         # or patch would churn while the check claimed the tree was clean.
-        if formatted != src:
+        if formatted != original:
             reason = ("fmt drift — boundary whitespace / terminal newline differs"
-                      if formatted.strip() == src.strip() else "fmt drift")
+                      if formatted.strip() == original.strip() else "fmt drift")
             sys.stderr.write(
                 f"semanticscript: {reason} — run `semanticscript fmt` to canonicalize; "
                 f"{_canonical_order_hint()}\n")
@@ -27431,7 +29933,7 @@ def cmd_fix(args) -> int:
     `edits` and sets `planUsable: true`, so `patch` can close the loop. Everything
     else stays advisory (suggestions-only)."""
     import os
-    program = parse_compact(_read_source(args.path))
+    _source, program = _load_program_for_path(args.path)  # R-21: accept project dirs
     diags = lint(program)
     targeted = (diags if getattr(args, "include_warnings", False)
                 else [d for d in diags if d.severity == "error"])
@@ -27446,10 +29948,36 @@ def cmd_fix(args) -> int:
     plan_usable = bool(edits)
     status = ("applyable" if plan_usable
               else "suggestions-only" if items else "ok")
-    sys.stdout.write(_json_envelope(
+    next_commands = []
+    if plan_usable and args.path != "-":
+        command = _next_command_for_source(
+            ["fix", args.path, "--apply", "--json"],
+            "apply every machine-safe repair in one validated pass",
+            args.path,
+        )
+        command["replayable"] = True
+        next_commands.append(command)
+    envelope = _json_envelope(
         "sem.fixPlan.v1", status=status, planUsable=plan_usable,
+        autofixAll=plan_usable,
         path=(os.path.abspath(args.path) if args.path != "-" else "-"),
-        edits=edits, diagnostics=items) + "\n")
+        edits=edits, diagnostics=items, nextCommands=next_commands)
+    if getattr(args, "apply", False) and plan_usable:
+        import argparse
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", suffix=".json", delete=False) as fh:
+            fh.write(envelope)
+            plan_path = fh.name
+        try:
+            return cmd_patch(argparse.Namespace(
+                plan=plan_path, dry_run=False, apply=True, json=True))
+        finally:
+            try:
+                os.unlink(plan_path)
+            except OSError:
+                pass
+    sys.stdout.write(envelope + "\n")
     return 0
 
 
@@ -27613,7 +30141,7 @@ def cmd_query(args) -> int:
     """Print the result of a structural query (`--dimension`)."""
     want_json = getattr(args, "json", False)
     try:
-        program = parse_compact(_read_program_source(args.path))  # R-117/R-165: project dirs + compact
+        _source, program = _load_program_for_path(args.path)  # R-117/R-165: project dirs + compact
     except EavError as exc:
         if want_json:
             sys.stdout.write(_json_envelope(
@@ -27634,7 +30162,7 @@ def cmd_query(args) -> int:
             f"{', '.join(QUERY_DIMENSIONS)}\n"
         )
         return 2
-    results = list(query(program, args.dimension))
+    results = list(query(program, args.dimension, getattr(args, "name", None)))
     if want_json:
         sys.stdout.write(_json_envelope(
             "sem.query.v1", status="ok", dimension=args.dimension,
@@ -27642,6 +30170,23 @@ def cmd_query(args) -> int:
     else:
         for line in results:
             sys.stdout.write(line + "\n")
+    return 0
+
+
+def cmd_derive(args) -> int:
+    """Derive boilerplate contracts from a record (CYC-31/32)."""
+    _source, program = _load_program_for_path(args.path)
+    contract = _derive_record_contract(program, args.record)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope(
+            "sem.derive.v1", ok=True, status="ok",
+            kind="record-contract", **contract) + "\n")
+    else:
+        sys.stdout.write(f"record {contract['record']}\n")
+        sys.stdout.write(contract["sql"]["createTableSql"] + "\n")
+        sys.stdout.write(contract["sql"]["insertSql"] + "\n")
+        for call in contract["jsonCodec"]["encodeCalls"]:
+            sys.stdout.write(f"{call['field']} -> {call['target']}\n")
     return 0
 
 
@@ -27687,7 +30232,7 @@ def cmd_add(args) -> int:
 
 def cmd_pack(args) -> int:
     """Print a budgeted context bundle for editing an entity."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     try:
         if getattr(args, "json", False):
             sys.stdout.write(_json_envelope(
@@ -27710,7 +30255,7 @@ def cmd_slice(args) -> int:
     """Print the semantic slice of an entity (sem.slice.v1 with --json)."""
     want_json = getattr(args, "json", False) or getattr(args, "format", "canonical") == "json"
     try:
-        program = parse_compact(_read_program_source(args.path))
+        _source, program = _load_program_for_path(args.path)
     except EavError as exc:
         if getattr(args, "json", False):
             raise
@@ -27773,7 +30318,7 @@ def cmd_test(args) -> int:
                 and is_project_root(args.path)):
             program = load_test_project(args.path)
         else:
-            program = parse_compact(_read_program_source(args.path))
+            _source, program = _load_program_for_path(args.path)
     except EavError as exc:
         sys.stdout.write(_json_envelope(
             "sem.test.v1", ok=False, status="compiler-error",
@@ -27824,9 +30369,79 @@ def cmd_test(args) -> int:
 
 def cmd_doctor(args) -> int:
     """Print a severity-grouped diagnostic report with suggested fixes."""
-    program = parse_compact(_read_program_source(args.path))
+    import os
+    import platform
+    import llvmlite
+    import llvmlite.binding as llvm
+    want_json = getattr(args, "json", False)
+    supplied_path = getattr(args, "path", None)
+    path = supplied_path or "."
+
+    _ensure_native_init()
+    cc = _find_c_compiler()
+    cache = _runtime_cache_dir(create=False)
+    env = {
+        "python": platform.python_version(),
+        "llvmlite": llvmlite.__version__,
+        "platform": _host_platform_name(),
+        "triple": llvm.Target.from_default_triple().triple,
+        "cCompiler": cc[0] if cc else None,
+        "cCompilerAvailable": cc is not None,
+        "runtimeCacheDir": cache,
+        "runtimeCacheUsable": not (os.path.exists(cache) and not os.path.isdir(cache)),
+    }
+    try:
+        program = parse_compact(_read_program_source(path))
+        project_status = "checked"
+    except EavError as exc:
+        if supplied_path:
+            if want_json:
+                sys.stdout.write(_json_envelope(
+                    "sem.doctor.v1", ok=False, status="compiler-error",
+                    path=path, projectStatus="compiler-error", env=env,
+                    diagnostics=[{"code": exc.code, "severity": "error",
+                                  "line": exc.line, "entity": None,
+                                  "message": exc.message,
+                                  "rendered": f"semanticscript: {exc}",
+                                  "nextCommands": []}]) + "\n")
+                return 1
+            raise
+        payload = {
+            "status": "env-only",
+            "path": os.path.abspath(path),
+            "projectStatus": "not-a-project",
+            "projectMessage": str(exc),
+            "env": env,
+            "diagnostics": [],
+            "groups": {"error": [], "warning": [], "info": []},
+        }
+        if want_json:
+            sys.stdout.write(_json_envelope("sem.doctor.v1", **payload) + "\n")
+        else:
+            sys.stdout.write("project: not checked (pass a file/project path)\n")
+            for key, value in env.items():
+                sys.stdout.write(f"{key}: {value}\n")
+        return 0
     groups = doctor(program)
     total = sum(len(v) for v in groups.values())
+    structured = _structured_diags_with_next(
+        [d for severity in ("error", "warning", "info")
+         for d in groups.get(severity, [])],
+        path,
+    )
+    if want_json:
+        sys.stdout.write(_json_envelope(
+            "sem.doctor.v1",
+            ok=not bool(groups.get("error")),
+            status="diagnostics" if total else "ok",
+            path=os.path.abspath(path) if path != "-" else "-",
+            projectStatus=project_status,
+            env=env,
+            diagnostics=structured,
+            groups={severity: [d for d in structured if d["severity"] == severity]
+                    for severity in ("error", "warning", "info")},
+        ) + "\n")
+        return 1 if groups.get("error") else 0
     for severity in ("error", "warning", "info"):
         for d in groups.get(severity, []):
             sys.stdout.write(d.render() + "\n")
@@ -27839,6 +30454,8 @@ def cmd_doctor(args) -> int:
                                  + json.dumps(add_argv) + "\n")
     if total == 0:
         sys.stdout.write("healthy: no diagnostics\n")
+    for key, value in env.items():
+        sys.stdout.write(f"{key}: {value}\n")
     return 1 if groups.get("error") else 0
 
 
@@ -27847,7 +30464,7 @@ def cmd_inventory(args) -> int:
     # ERG-2: an analysis command (like summary/graph/symbols/context/size) accepts a
     # project DIRECTORY, not only a single file - route through the dir-aware,
     # compact-aware loader so `inventory <project>` works like its peers.
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     counts = summarize(program)
     for kind in sorted(counts):
         sys.stdout.write(f"{counts[kind]:4d}  {kind}\n")
@@ -27858,6 +30475,20 @@ def cmd_inventory(args) -> int:
 def cmd_lint(args) -> int:
     """Lint a program: print all MD/lint diagnostics; exit 1 if any are errors.
     With `--explain CODE`, print the registry rationale + required pattern."""
+    if getattr(args, "fix", False):
+        import argparse
+        if not getattr(args, "path", None):
+            if getattr(args, "json", False):
+                sys.stdout.write(_json_envelope(
+                    "sem.lint.v1", ok=False, status="path-error",
+                    message="lint --fix needs a source path") + "\n")
+            else:
+                sys.stderr.write("semanticscript: lint --fix needs a source path\n")
+            return 2
+        return cmd_fix(argparse.Namespace(
+            path=args.path, plan=True, include_warnings=True,
+            json=getattr(args, "json", False),
+            apply=getattr(args, "apply", False)))
     if getattr(args, "explain", None):
         try:
             sys.stdout.write(format_repair(args.explain) + "\n")
@@ -27885,7 +30516,7 @@ def cmd_lint(args) -> int:
         sys.stderr.write(f"semanticscript: {exc}\n")
         return 2
     try:
-        program = parse_compact(_read_program_source(args.path))
+        _source, program = _load_program_for_path(args.path)
     except EavError as exc:
         # R-085: a parse error on `lint --json` must still be a versioned
         # `sem.lint.v1` envelope (never plaintext), so MCP/agent consumers can
@@ -27913,7 +30544,8 @@ def cmd_lint(args) -> int:
         sys.stdout.write(_json_envelope(
             "sem.lint.v1", status=status,
             ok=(status in ("ok", "ok-with-warnings")),
-            diagnostics=_structured_diags(diags)) + "\n")
+            diagnostics=_structured_diags_with_next(
+                diags, getattr(args, "path", None))) + "\n")
     else:
         for d in diags:
             sys.stdout.write(d.render() + "\n")
@@ -27939,9 +30571,9 @@ def cmd_reserved_words(args) -> int:
 def cmd_targets(args) -> int:
     """A9/S1: list the concrete call targets the LLVM console code generator
     models as the public runnable vocabulary. Every advertised target has a real
-    signature, and target rows carry the stdlib maturity label (`proven` or
-    `experimental`) so broad implementation prefixes are not mistaken for stable
-    call contracts.
+    signature, and target rows carry the stdlib maturity label (`proven`,
+    `experimental`, or `known-broken`) so broad implementation prefixes are not
+    mistaken for stable call contracts.
 
     DX-08: `targets --signature <target>` returns one built-in's declared signature
     (arg slot names + types + out) from standard.<module>.semsig or the generated
@@ -27950,6 +30582,45 @@ def cmd_targets(args) -> int:
     want_json = getattr(args, "json", False)
     sig_target = getattr(args, "signature", None)
     if sig_target:
+        batch = [part.strip() for part in sig_target.split(",") if part.strip()]
+        if len(batch) > 1:
+            signatures: list[dict] = []
+            unknown: list[str] = []
+            for item in batch:
+                family_sigs = _builtin_family_signatures(item)
+                if family_sigs:
+                    signatures.extend(_signature_with_maturity(sig) for sig in family_sigs)
+                    continue
+                sig = _builtin_target_signature(item)
+                if sig is None:
+                    unknown.append(item)
+                else:
+                    signatures.append(_signature_with_maturity(sig))
+            if want_json:
+                sys.stdout.write(_json_envelope(
+                    "sem.targetSignatures.v1",
+                    ok=not unknown,
+                    status="ok" if not unknown else "partial",
+                    targets=batch,
+                    unknownTargets=unknown,
+                    count=len(signatures),
+                    signatures=signatures) + "\n")
+            else:
+                for sig in signatures:
+                    print(sig["target"])
+                    for a in sig["args"]:
+                        print(f"  arg {a['slot']} {a['type']}")
+                    if sig["out"]:
+                        out_slot = (sig["outSlot"] + " ") if sig["outSlot"] else ""
+                        own = f" ({sig['ownership']})" if sig.get("ownership") else ""
+                        print(f"  out {out_slot}{sig['out']}{own}")
+                    if sig.get("purpose"):
+                        print(f"  purpose \"{sig['purpose']}\"")
+                for item in unknown:
+                    sys.stderr.write(
+                        f"semanticscript: no signature for target {item!r} "
+                        f"(run `targets` to list the modeled vocabulary)\n")
+            return 0 if not unknown else 2
         family_sigs = _builtin_family_signatures(sig_target)
         if family_sigs:
             if want_json:
@@ -27966,7 +30637,8 @@ def cmd_targets(args) -> int:
                         print(f"    arg {a['slot']} {a['type']}")
                     if sig["out"]:
                         out_slot = (sig["outSlot"] + " ") if sig["outSlot"] else ""
-                        print(f"    out {out_slot}{sig['out']}")
+                        own = f" ({sig['ownership']})" if sig.get("ownership") else ""
+                        print(f"    out {out_slot}{sig['out']}{own}")
                     if sig.get("purpose"):
                         print(f"    purpose \"{sig['purpose']}\"")
             return 0
@@ -27994,12 +30666,20 @@ def cmd_targets(args) -> int:
             for a in sig["args"]:
                 print(f"  arg {a['slot']} {a['type']}")
             if sig["out"]:
-                print(f"  out {(sig['outSlot'] + ' ') if sig['outSlot'] else ''}{sig['out']}")
+                out_slot = (sig["outSlot"] + " ") if sig["outSlot"] else ""
+                own = f" ({sig['ownership']})" if sig.get("ownership") else ""
+                print(f"  out {out_slot}{sig['out']}{own}")
             if sig.get("purpose"):
                 print(f"  purpose \"{sig['purpose']}\"")
         return 0
     catalog = _target_catalog()
     if want_json:
+        if getattr(args, "brief", False):
+            targets = sorted(row["target"] for row in catalog["targets"])
+            sys.stdout.write(_json_envelope(
+                "sem.targets.v1", status="ok", brief=True,
+                count=len(targets), targets=targets) + "\n")
+            return 0
         import json
         print(json.dumps({
             "surface": "sem.targets.v1",
@@ -28087,9 +30767,82 @@ def _program_summary(program: Program) -> dict:
     }
 
 
+def _program_explain(program: Program) -> dict:
+    """W2-G3: reviewer-facing whole-program explanation.
+
+    `summary` is the raw inventory. This adds the parts a reviewer or agent asks
+    first: what the program touches, what authority covers it, and where it can
+    fail.
+    """
+    summary = _program_summary(program)
+    diagnostics = lint(program)
+    invoked_targets = sorted({
+        target
+        for op in summary["operations"]
+        for target in op.get("invokes", [])
+    })
+    fallible = []
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind not in ("call", "task"):
+            continue
+        catch = ent.fact("catch")
+        if catch is None or len(catch.payload) < 2:
+            continue
+        fallible.append({
+            "name": ent.name,
+            "target": _call_target(ent),
+            "error": catch.payload[1],
+        })
+    diagnostic_counts = {
+        "error": sum(1 for d in diagnostics if d.severity == "error"),
+        "warning": sum(1 for d in diagnostics if d.severity == "warning"),
+        "info": sum(1 for d in diagnostics if d.severity == "info"),
+    }
+    touches = {
+        "target": summary["target"],
+        "runtimeTargets": invoked_targets,
+        "effects": summary["effects"],
+        "capabilities": [c["name"] for c in summary["capabilities"]],
+    }
+    failure_modes = []
+    if fallible:
+        failure_modes.append({
+            "kind": "fallible-calls",
+            "count": len(fallible),
+            "calls": fallible,
+        })
+    if diagnostic_counts["error"] or diagnostic_counts["warning"]:
+        failure_modes.append({
+            "kind": "diagnostics",
+            "counts": diagnostic_counts,
+        })
+    review = [
+        f"target={summary['target']}",
+        f"operations={len(summary['operations'])}",
+        f"runtime-targets={len(invoked_targets)}",
+        f"effects={len(summary['effects'])}",
+        f"capabilities={len(summary['capabilities'])}",
+        f"fallible-calls={len(fallible)}",
+    ]
+    return {
+        "target": summary["target"],
+        "touches": touches,
+        "authority": {
+            "declaredEffects": summary["effects"],
+            "capabilityGrants": summary["capabilities"],
+        },
+        "failureModes": failure_modes,
+        "diagnosticCounts": diagnostic_counts,
+        "diagnostics": _structured_diags(diagnostics),
+        "summary": summary,
+        "review": review,
+    }
+
+
 def cmd_summary(args) -> int:
     """AQ-11: emit a structured whole-program semantic summary (sem.summary.v1)."""
-    program = parse_compact(_read_program_source(args.path))
+    _source, program = _load_program_for_path(args.path)
     summary = _program_summary(program)
     if getattr(args, "json", False):
         sys.stdout.write(_json_envelope("sem.summary.v1", ok=True, **summary) + "\n")
@@ -28101,6 +30854,25 @@ def cmd_summary(args) -> int:
             f"operations: {len(summary['operations'])}, effects: "
             f"{len(summary['effects'])}, capabilities: {len(summary['capabilities'])}, "
             f"call-edges: {len(summary['callGraph'])}\n")
+    return 0
+
+
+def cmd_explain_program(args) -> int:
+    """W2-G3: explain what a whole program touches, how it can fail, and authority."""
+    _source, program = _load_program_for_path(args.path)
+    payload = _program_explain(program)
+    if getattr(args, "json", False):
+        sys.stdout.write(_json_envelope("sem.programExplain.v1", ok=True, **payload) + "\n")
+    else:
+        touches = payload["touches"]
+        sys.stdout.write(f"target: {payload['target']}\n")
+        sys.stdout.write("touches: " + ", ".join(touches["runtimeTargets"]) + "\n")
+        sys.stdout.write("effects: " + (", ".join(touches["effects"]) or "(none)") + "\n")
+        sys.stdout.write(
+            f"fallible-calls: {sum(m.get('count', 0) for m in payload['failureModes'] if m.get('kind') == 'fallible-calls')}\n")
+        counts = payload["diagnosticCounts"]
+        sys.stdout.write(
+            f"diagnostics: errors={counts['error']} warnings={counts['warning']} info={counts['info']}\n")
     return 0
 
 
@@ -28128,11 +30900,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("parse", cmd_parse),
         ("lower", cmd_lower),
         ("inventory", cmd_inventory),
-        ("doctor", cmd_doctor),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_doctor = sub.add_parser("doctor", help="diagnose a source file or project")
+    sp_doctor.add_argument("path", nargs="?", help="EAV/compact source file or project, or - for stdin")
+    sp_doctor.add_argument("--json", action="store_true")
+    sp_doctor.set_defaults(func=cmd_doctor)
 
     # TOOL-3: IR inspection — emit-ir (optionally optimized, -o aware) + inspect-ir
     sp_emit = sub.add_parser("emit-ir", help="emit textual LLVM IR (optionally optimized)")
@@ -28149,6 +30925,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_summary.add_argument("path", help="EAV/compact source file or project, or - for stdin")
     sp_summary.add_argument("--json", action="store_true")
     sp_summary.set_defaults(func=cmd_summary)
+    sp_explain_program = sub.add_parser(
+        "explain-program",
+        help="whole-program explanation: touches, authority, failure modes",
+    )
+    sp_explain_program.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_explain_program.add_argument("--json", action="store_true")
+    sp_explain_program.set_defaults(func=cmd_explain_program)
+
+    sp_derive = sub.add_parser(
+        "derive",
+        help="derive JSON/SQL/request contracts from a record",
+    )
+    sp_derive.add_argument("path", help="EAV/compact source file or project, or - for stdin")
+    sp_derive.add_argument("record", help="record entity to derive from")
+    sp_derive.add_argument("--json", action="store_true")
+    sp_derive.set_defaults(func=cmd_derive)
 
     # TOOL-4: toolchain self-diagnostic + cache clean
     sp_status = sub.add_parser("status", help="toolchain self-diagnostic (versions, C toolchain, cache, platform)")
@@ -28167,6 +30959,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_reserved.set_defaults(func=cmd_reserved_words)
     sp_targets = sub.add_parser("targets", help="list the runnable/codegen-modeled call targets (the vocabulary run/build can lower)")
     sp_targets.add_argument("--json", action="store_true")
+    sp_targets.add_argument("--brief", action="store_true",
+                            help="emit a compact target list under --json")
     sp_targets.add_argument("--signature", metavar="TARGET",
                             help="show one built-in target's arg slots/types + out (DX-08)")
     sp_targets.set_defaults(func=cmd_targets)
@@ -28184,8 +30978,27 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_bench = sub.add_parser("bench", help="benchmark parse/lower/JIT-run (best of N)")
     sp_bench.add_argument("path", help="EAV/compact source file or project, or - for stdin")
     sp_bench.add_argument("--runs", type=int, default=5, help="iterations (default 5)")
+    sp_bench.add_argument("--probe-server", action="store_true",
+                          help="for webServer targets, build/start/probe/stop and report request latency")
+    sp_bench.add_argument("--probe-path", help="HTTP path to probe for --probe-server (default: first GET route)")
+    sp_bench.add_argument("--probe-runs", type=int, help="HTTP requests to time for --probe-server")
+    sp_bench.add_argument("--probe-timeout", type=float, default=5.0,
+                          help="seconds to wait for server readiness/probe responses (default 5)")
     sp_bench.add_argument("--json", action="store_true")
     sp_bench.set_defaults(func=cmd_bench)
+
+    sp_http_drive = sub.add_parser(
+        "http-drive", help="build/start/request/assert/stop a webServer target")
+    sp_http_drive.add_argument("path", help="EAV/compact source file or project")
+    sp_http_drive.add_argument("--method", default="GET")
+    sp_http_drive.add_argument("--path", dest="request_path",
+                               help="HTTP request path (default: first GET route)")
+    sp_http_drive.add_argument("--body", help="request body")
+    sp_http_drive.add_argument("--expect-status", type=int)
+    sp_http_drive.add_argument("--expect-body")
+    sp_http_drive.add_argument("--timeout", type=float, default=5.0)
+    sp_http_drive.add_argument("--json", action="store_true")
+    sp_http_drive.set_defaults(func=cmd_http_drive)
 
     # R-057: performance/IR baseline (sem.profile.v1)
     sp_profile = sub.add_parser("profile", help="IR-quality + parse/lower timing baseline (sem.profile.v1)")
@@ -28193,6 +31006,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_profile.add_argument("--runs", type=int, default=5, help="iterations (default 5)")
     sp_profile.add_argument("--json", action="store_true")
     sp_profile.set_defaults(func=cmd_profile)
+
+    sp_checkpoint = sub.add_parser(
+        "checkpoint", help="snapshot source files for rollback")
+    sp_checkpoint.add_argument("path", help="EAV/compact source file or project")
+    sp_checkpoint.add_argument("--name", help="checkpoint name")
+    sp_checkpoint.add_argument("--json", action="store_true")
+    sp_checkpoint.set_defaults(func=cmd_checkpoint)
+
+    sp_undo = sub.add_parser("undo", help="restore a checkpoint")
+    sp_undo.add_argument("checkpoint", help="checkpoint directory")
+    sp_undo.add_argument("--json", action="store_true")
+    sp_undo.set_defaults(func=cmd_undo)
 
     # R-047/R-081: dependency workflow commands. Remote registry fetch is still
     # out of scope; these operate on build.sem plus replacement, module-cache,
@@ -28274,6 +31099,55 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_devx.add_argument("--json", action="store_true")
     sp_devx.set_defaults(func=cmd_devx)
 
+    sp_improve = sub.add_parser(
+        "improve",
+        help="plan or apply canonical idiom cleanup",
+    )
+    sp_improve.add_argument("path", help="SemanticScript source file or project directory")
+    sp_improve.add_argument("--apply", action="store_true",
+                            help="write mechanically safe single-file improvements")
+    sp_improve.add_argument("--json", action="store_true")
+    sp_improve.set_defaults(func=cmd_improve)
+
+    sp_synth = sub.add_parser(
+        "synth",
+        help="synthesize typed rows from an intent or target signature",
+    )
+    sp_synth.add_argument("--target", help="builtin target to synthesize, e.g. math.addInt64")
+    sp_synth.add_argument("--intent", help="natural-language intent for row synthesis")
+    sp_synth.add_argument("--operation", default="main", help="owning operation name")
+    sp_synth.add_argument("--call", help="call entity name")
+    sp_synth.add_argument("--call-only", action="store_true",
+                          help="emit only call rows, not an operation wrapper")
+    sp_synth.add_argument("--json", action="store_true")
+    sp_synth.set_defaults(func=cmd_synth)
+
+    sp_repl = sub.add_parser(
+        "repl",
+        help="typed runtime-linked session surface with live signatures",
+    )
+    sp_repl.add_argument("path", help="SemanticScript source file or project directory")
+    sp_repl.add_argument("--target", help="builtin target to inspect, e.g. sqlite.openDatabase")
+    sp_repl.add_argument("--intent", help="natural-language intent for seed rows")
+    sp_repl.add_argument("--run", action="store_true", help="probe the JIT run lane")
+    sp_repl.add_argument("--native", action="store_true", help="probe the native build lane")
+    sp_repl.add_argument("--timeout", type=float, default=5.0,
+                         help="seconds for run probes")
+    sp_repl.add_argument("--json", action="store_true")
+    sp_repl.set_defaults(func=cmd_repl)
+
+    sp_sem_edit = sub.add_parser(
+        "sem-edit",
+        help="apply structured semantic edits with validation",
+    )
+    sp_sem_edit.add_argument("path", help="SemanticScript source file")
+    sp_sem_edit.add_argument("--edit", required=True,
+                             help="JSON edit object or array of edit objects")
+    sp_sem_edit.add_argument("--apply", action="store_true",
+                             help="write the validated canonical source")
+    sp_sem_edit.add_argument("--json", action="store_true")
+    sp_sem_edit.set_defaults(func=cmd_sem_edit)
+
     sp_compensate = sub.add_parser(
         "compensate",
         help="COMPENSATE failure-mitigation surface for agent inner loops",
@@ -28317,6 +31191,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_check.add_argument("--json", action="store_true")
     sp_check.add_argument("--strict", action="store_true",
                           help="block T3 opinionated warnings (in addition to T0/T1/T2)")
+    sp_check.add_argument("--jobs", type=int, default=1,
+                          help="requested parallel jobs for project checks")
     sp_check.set_defaults(func=cmd_check)
 
     sp_verify_one = sub.add_parser("verify", help="one-shot check + test + run gate")
@@ -28330,6 +31206,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                                help="poll interval for --watch in seconds (default 1.0)")
     sp_verify_one.add_argument("--watch-count", type=int, default=None,
                                help=argparse.SUPPRESS)
+    sp_verify_one.add_argument("--probe-server", action="store_true",
+                               help="for webServer targets, build/start/probe/stop and report the live drive lane")
+    sp_verify_one.add_argument("--probe-path",
+                               help="HTTP path to probe for --probe-server (default: first GET route)")
+    sp_verify_one.add_argument("--probe-runs", type=int,
+                               help="HTTP requests to time for --probe-server")
+    sp_verify_one.add_argument("--probe-timeout", type=float, default=5.0,
+                               help="seconds to wait for server readiness/probe responses (default 5)")
+    sp_verify_one.add_argument("--adversarial", action="store_true",
+                               help="run the skeptical strict review lane")
     sp_verify_one.set_defaults(func=cmd_verify)
 
     sp_readiness = sub.add_parser("readiness", help="environment lane: toolchain status")
@@ -28369,6 +31255,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_agentdocs = sub.add_parser("agent-docs", help="emit version-matched agent rules")
     sp_agentdocs.add_argument("--json", action="store_true")
     sp_agentdocs.set_defaults(func=cmd_agent_docs)
+
+    sp_spec_check = sub.add_parser(
+        "spec-check",
+        help="run executable-docs drift checks against current process or --exe",
+    )
+    sp_spec_check.add_argument("--exe", help="packaged semanticscript executable to verify")
+    sp_spec_check.add_argument("--timeout", type=float, default=30.0,
+                               help="seconds per executable-docs case")
+    sp_spec_check.add_argument("--json", action="store_true")
+    sp_spec_check.set_defaults(func=cmd_spec_check)
 
     sp_skills = sub.add_parser("skills", help="list or get EAV agent skills")
     sp_skills.add_argument("names", nargs="*", help="optional skill names to filter")
@@ -28413,11 +31309,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                           "(triple/forPlatform/output); host default when omitted")
     sp_build.add_argument("--json", action="store_true",
                           help="emit a sem.build.v1 envelope for success and every failure (R-235)")
+    sp_build.add_argument("--jobs", type=int, default=1,
+                          help="requested parallel build jobs")
     sp_build.set_defaults(func=cmd_build)
 
     sp_wasm = sub.add_parser("wasm", help="compile a pure-compute program to a "
                              ".wasm module + node runner (WS3-161)")
-    sp_wasm.add_argument("path", help="EAV/compact source file, or - for stdin")
+    sp_wasm.add_argument("path", help="EAV/compact source file, project directory, or - for stdin")
     sp_wasm.add_argument("--output", "-o", help="output .wasm path")
     sp_wasm.set_defaults(func=cmd_wasm)
 
@@ -28437,6 +31335,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_fix.add_argument("path", help="EAV/compact source file, or - for stdin")
     sp_fix.add_argument("--plan", action="store_true", help="emit the plan (default)")
     sp_fix.add_argument("--include-warnings", action="store_true")
+    sp_fix.add_argument("--apply", action="store_true",
+                        help="apply every machine-safe repair in one validated pass")
     sp_fix.add_argument("--json", action="store_true")
     sp_fix.set_defaults(func=cmd_fix)
 
@@ -28458,6 +31358,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_lint.add_argument("--code", action="append",
                          help="only show this diagnostic code; repeatable")
     sp_lint.add_argument("--json", action="store_true", help="emit diagnostics as JSON")
+    sp_lint.add_argument("--fix", action="store_true",
+                         help="derive an autofix plan instead of printing diagnostics")
+    sp_lint.add_argument("--apply", action="store_true",
+                         help="with --fix, apply machine-safe repairs")
     sp_lint.set_defaults(func=cmd_lint)
 
     sp_explain = sub.add_parser("explain", help="explain a diagnostic code")
@@ -28479,6 +31383,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_query = sub.add_parser("query", help="structural query over a program")
     sp_query.add_argument("dimension", help=f"one of: {', '.join(QUERY_DIMENSIONS)}")
     sp_query.add_argument("path", help="EAV source file, or - for stdin")
+    sp_query.add_argument("--name", help="entity/target name for dimensions such as usages")
     sp_query.add_argument("--json", action="store_true",
                           help="emit a sem.query.v1 envelope (R-087)")
     sp_query.set_defaults(func=cmd_query)
@@ -28564,7 +31469,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_add.set_defaults(func=cmd_add)
 
     sp_slice = sub.add_parser("slice", help="semantic slice of an entity")
-    sp_slice.add_argument("path", help="EAV source file, or - for stdin")
+    sp_slice.add_argument("path", help="EAV source file, project directory, or - for stdin")
     sp_slice.add_argument("entity", help="entity name")
     sp_slice.add_argument("--format", choices=("canonical", "prompt", "json"),
                           default="canonical")

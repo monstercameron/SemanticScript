@@ -120,28 +120,28 @@ requestHeader target http.requestHeader
 requestHeader arg request HttpRequest
 requestHeader arg name String
 requestHeader out value String
-requestHeader purpose "Read a request header value by name"
+requestHeader purpose "Read a request header value by name; absent headers return the empty string, never null"
 
 requestQueryParam is intrinsic
 requestQueryParam target http.requestQueryParam
 requestQueryParam arg request HttpRequest
 requestQueryParam arg name String
 requestQueryParam out value String
-requestQueryParam purpose "Read a query parameter value by name"
+requestQueryParam purpose "Read a query parameter value by name; absent parameters return the empty string, never null"
 
 requestPathParam is intrinsic
 requestPathParam target http.requestPathParam
 requestPathParam arg request HttpRequest
 requestPathParam arg name String
 requestPathParam out value String
-requestPathParam purpose "Read a route path parameter value by name"
+requestPathParam purpose "Read a route path parameter value by name; absent path params return the empty string, never null"
 
 requestCookie is intrinsic
 requestCookie target http.requestCookie
 requestCookie arg request HttpRequest
 requestCookie arg cookieName String
 requestCookie out value String
-requestCookie purpose "Read a request cookie value by name"
+requestCookie purpose "Read a request cookie value by name; absent cookies return the empty string, never null"
 
 requestBodyText is intrinsic
 requestBodyText target http.requestBodyText

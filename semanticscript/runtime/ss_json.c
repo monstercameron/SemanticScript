@@ -11,6 +11,7 @@
 #include "sem_json_runtime.h"
 #include "ss_runtime_export.h"
 #include <stdint.h>
+#include <stdlib.h>
 
 #define DOC(h) ((SSJsonDocument *)(intptr_t)(h))
 
@@ -157,6 +158,45 @@ SS_EXPORT const char *ss_json_serialize(long long document, char *scratch,
     const char *out = "";
     ss_json_serialize_status(document, scratch, scratch_capacity, &out);
     return out != NULL ? out : ss_json_empty_string(scratch, scratch_capacity);
+}
+
+SS_EXPORT int ss_json_serialize_owned_status(
+    long long document,
+    const char **out
+) {
+    if (out == 0) return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
+    *out = ss_json_empty_string(NULL, 0);
+    if (!ss_json_valid_document(document)) {
+        return SS_JSON_ERR_DOCUMENT_NOT_MUTABLE;
+    }
+    long long capacity = SS_JSON_DEFAULT_BUILDER_CAPACITY;
+    for (int attempt = 0; attempt < 24; ++attempt) {
+        char *buffer = (char *)malloc((size_t)capacity);
+        if (buffer == NULL) return SS_JSON_ERR_ALLOCATION;
+        const char *tmp = NULL;
+        int rc = ss_json_serialize_status(document, buffer, capacity, &tmp);
+        if (rc == SS_JSON_OK && tmp != NULL) {
+            *out = buffer;
+            return SS_JSON_OK;
+        }
+        free(buffer);
+        if (rc != SS_JSON_ERR_SCRATCH_TOO_SMALL) return rc;
+        if (capacity > (1LL << 30)) return rc;
+        capacity *= 2;
+    }
+    return SS_JSON_ERR_SCRATCH_TOO_SMALL;
+}
+
+SS_EXPORT const char *ss_json_serialize_owned(long long document) {
+    const char *out = ss_json_empty_string(NULL, 0);
+    return ss_json_serialize_owned_status(document, &out) == SS_JSON_OK
+        ? out
+        : ss_json_empty_string(NULL, 0);
+}
+
+SS_EXPORT void ss_json_free_string(const char *text) {
+    if (text == NULL || text == ss_json_empty_string(NULL, 0)) return;
+    free((void *)text);
 }
 
 SS_EXPORT int ss_json_set_field_string(long long document, long long cursor,

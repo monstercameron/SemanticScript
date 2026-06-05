@@ -2961,6 +2961,9 @@ createTodoHandler do createTitleCursorCall
 createTodoHandler branch ifError createTitleCursorCall goto createBadRequestTitleMissed
 createTodoHandler do readCreateTitleCall
 createTodoHandler branch ifError readCreateTitleCall goto createBadRequestTitleMissed
+createTodoHandler do createTitleLengthCall
+createTodoHandler do createTitleEmptyCheckCall
+createTodoHandler branch if createTitleEmpty goto createBadRequestTitleMissed
 createTodoHandler do createBodyCursorCall
 createTodoHandler branch ifError createBodyCursorCall goto bodyResolved
 createTodoHandler do readCreateBodyCall
@@ -3155,6 +3158,19 @@ readCreateTitleCall arg scratch OpaquePointer createTitleScratch
 readCreateTitleCall arg scratchCapacity Int64 titleScratchCapacity
 readCreateTitleCall out createTitleText String
 readCreateTitleCall catch readCreateTitleError JsonAccessError
+
+createTitleLengthCall is call
+createTitleLengthCall in createTodoHandler
+createTitleLengthCall invokes c.strlen
+createTitleLengthCall arg s String createTitleText
+createTitleLengthCall out createTitleLength Int64
+
+createTitleEmptyCheckCall is call
+createTitleEmptyCheckCall in createTodoHandler
+createTitleEmptyCheckCall invokes math.equalInt64
+createTitleEmptyCheckCall arg left Int64 createTitleLength
+createTitleEmptyCheckCall arg right Int64 createZeroSentinel
+createTitleEmptyCheckCall out createTitleEmpty Bool
 
 createBodyCursorCall is call
 createBodyCursorCall in createTodoHandler

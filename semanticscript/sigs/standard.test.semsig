@@ -54,6 +54,18 @@ assertNotEqualInt64 arg name String
 assertNotEqualInt64 arg expected Int64
 assertNotEqualInt64 arg actual Int64
 assertNotEqualInt64 purpose "Negative assertion: assert two Int64 values differ; print a PASS/FAIL report line and tally it"
+assertStatusIs is intrinsic
+assertStatusIs target test.assertStatusIs
+assertStatusIs arg name String
+assertStatusIs arg expected Int64
+assertStatusIs arg actual Int64
+assertStatusIs purpose "Assert an HTTP status equals the expected status; print a PASS/FAIL report line and tally it"
+assertRowCount is intrinsic
+assertRowCount target test.assertRowCount
+assertRowCount arg name String
+assertRowCount arg expected Int64
+assertRowCount arg actual Int64
+assertRowCount purpose "Assert a database/query row count equals the expected count; print a PASS/FAIL report line and tally it"
 summary is intrinsic
 summary target test.summary
 summary out failures Int32

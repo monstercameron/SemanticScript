@@ -208,3 +208,17 @@ serializeDocument arg scratchCapacity JsonCapacityBytes
 serializeDocument out text JsonText
 serializeDocument catch JsonAccessError
 serializeDocument purpose "Serialize a document arena to JSON text in a caller scratch buffer"
+
+serializeDocumentOwned is intrinsic
+serializeDocumentOwned target json.serializeDocumentOwned
+serializeDocumentOwned arg document JsonDocument
+serializeDocumentOwned out text JsonText
+serializeDocumentOwned catch JsonAccessError
+serializeDocumentOwned owns text
+serializeDocumentOwned cleanedBy freeString
+serializeDocumentOwned purpose "Serialize a document arena to an owned JSON text buffer without caller scratch"
+
+freeString is intrinsic
+freeString target json.freeString
+freeString arg resource JsonText
+freeString purpose "Release an owned JSON text buffer returned by serializeDocumentOwned"

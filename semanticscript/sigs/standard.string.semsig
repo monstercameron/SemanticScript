@@ -57,3 +57,14 @@ stringByteLength target string.byteLength
 stringByteLength arg text String
 stringByteLength out byteCount Int64
 stringByteLength purpose "Return the NUL-terminated string length in bytes"
+
+# R-06 (SEAM-1): the owning counterpart to the borrowed `c.cString` view. Copies a
+# NUL-terminated C-string handle into a fresh, owned String so the result can ESCAPE
+# its operation (return it, persist it, hand it to another op) without aliasing — the
+# escape `c.cString` cannot make. The source handle keeps its own ownership/cleanup.
+stringFromCString is intrinsic
+stringFromCString target string.fromCString
+stringFromCString arg pointer OpaquePointer
+stringFromCString out text String
+stringFromCString ownership owned
+stringFromCString purpose "Copy a NUL-terminated C-string handle into a fresh OWNED String that may escape its operation (unlike the borrowed c.cString view); free the source handle separately"

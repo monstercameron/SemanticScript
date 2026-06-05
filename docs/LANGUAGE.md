@@ -1183,8 +1183,9 @@ intrinsics, `async` describes the required activation discipline for callers.
 For `call` entities, `async yes` is deprecated sugar; canonical SemanticScript uses `task`
 entities.
 
-All declaration rows are order-independent. The one exception: multiple `in`
-rows preserve parameter order by document order.
+Declaration rows are generally order-independent. Two shipped exceptions are
+document-order-sensitive: multiple `in` rows preserve parameter order, and a
+`let` initializer may only name bindings already in scope at that row (§12).
 
 ### Declarative failure surface
 
@@ -1321,9 +1322,10 @@ Lint: `out` naming an `immutable` binding that already exists in scope is a
 hard error. `out` naming a new name declares a fresh binding (immutable by
 default unless the corresponding `let` declared it mutable).
 
-`let` rows are declaration rows (order-independent within the operation).
-Convention: place all `let` rows after `in`/`out`/`effect`/`uses`/`memory`/
-`async`/`purpose`/`invariant` and before the first step row.
+`let` rows are declaration rows, but initialized `let` rows are not fully
+order-independent: initializer resolution follows document order. Convention:
+place all `let` rows after `in`/`out`/`effect`/`uses`/`memory`/`async`/
+`purpose`/`invariant` and before the first step row.
 
 **Initializer forward-reference rule.** A `let` row with an initializer value
 may only reference names that are already in scope at its point of declaration
@@ -3003,7 +3005,14 @@ lint error (e.g., passing `String` where `HtmlSafeUrl` is required for an
 
 ### Structural invariants
 
-1. Every entity has exactly one `is` row as its first row.
+1. Every entity has exactly one `is` row as its first row. Entity names are
+   unique *per module* (modules are delimited by source order — each `is module`
+   row opens a scope). Two different modules may each declare a **module-private**
+   `operation`/`function` under the same bare name (e.g. a helper `openDb`); a
+   bare `invokes` resolves to the caller's own module's definition. A same-module
+   redeclaration, an `exported` name reused across modules (it is public API,
+   resolved by importers under its bare name), and any reused non-operation name
+   (types, storage, …) remain a hard `duplicate is row` error (NS-1/AQ-1).
 2. Every `call` is activated exactly once in its owning operation: by `OP do
    NAME`, or — for a worker call named by a `cleanup` entity's `call NAME` row —
    by that cleanup's `OP defer CLEANUP` registration. A `call` is never the
@@ -3901,8 +3910,8 @@ highest-leverage loop is `sem doctor` → `sem slice --for-edit` → `sem add` �
 context bundle for one edit or analysis instead of sending a whole file. (The
 shipping CLI has a `sem slice`, but **path/operation-name-scoped with different
 flags**; the entity-scoped `--for-edit`/`--with-cleanup`/`--path`/`--refs` surface
-below is the **proposed** SemanticScript evolution — spec-status banner above. Likewise
-`sem test --lane` is proposed, §28.7.) Because
+below is the **proposed** SemanticScript evolution — spec-status banner above.
+The `sem test --lane` surface described in §28.7 is shipped. Because
 SemanticScript is row-heavy and `call`/`task`/`cleanup` are explicit entities, the slicer
 includes exactly the operation, bindings, types, capabilities, cleanup graph,
 task graph, and errors an edit needs — and nothing else. The model is: canonical
@@ -4770,6 +4779,13 @@ module's complete API is its `.semsig` (§26) plus generated docs, versioned wit
 the module (§28.4/§28.6) and queried with `sem docs`. The language spec fixes the
 *contract shape*, not the catalog.
 
+Current shipped status: `sem docs <path> --get <entity>`, `sem docs <path>
+--search <query>`, `sem docs --get <target>`, and `sem docs --get <family.*>`
+are implemented, and `docs index/search --db` provides a persistent project/spec
+search index. A separate static/generated full-site stdlib catalog is an
+external/not-yet distribution artifact; for shipped behavior, `targets
+--signature` and `sem docs --get` are authoritative.
+
 **System APIs** - filesystem, process, environment, clock, random, network
 clients. They need no new language feature: each is a `standard.*` module whose
 targets are capability-gated effects (e.g. `effect read filesystem.path` plus a
@@ -5188,8 +5204,8 @@ about a dependency from its compact `.semsig`, not its implementation.
 | golden / snapshot | `tests/golden/` | content-addressed expected output |
 
 - Tests are SemanticScript via a `standard.test` module plus a native
-  `sem test --lane <lane>` runner (the `--lane` flag is **proposed**; the current
-  CLI runs `sem test` without lanes) — not external Python harnesses. This keeps
+  `sem test --lane <lane>` runner (shipped; `sem test --discover --json` reports
+  discovered lanes without executing them) — not external Python harnesses. This keeps
   the test contract inside the language and aligns with the minimal-runtime /
   logic-in-stdlib principle. The concrete test-operation shape (the `tag test`
   row, `out TestResult`, `assert.*` targets) is specified in §30.5.1.
@@ -5708,6 +5724,11 @@ harness calls and Bool-result combinators (imported as `test` → `test.and` and
 `Bool`: pure `assert.*` calls compute a Bool, while `test.assert*` calls print
 PASS/FAIL rows and update the harness tally.
 
+Current shipped status: project test composition parses `.test.sem` fragments
+with validation deferred, merges them with the sibling runtime module, and then
+validates the composed program, so bare-name calls from a test to sibling
+operations are implemented rather than proposed.
+
 ```sem
 taskTests imports assert standard.assert
 taskTests imports test standard.test
@@ -5780,8 +5801,9 @@ assertion test returns its assert's `out` directly; a harness-style test uses
 
 **Lanes.** `tag test` marks the operation a test; an optional second tag selects
 its lane (`tag unit` | `tag integration` | `tag e2e`), defaulting to `unit`. The
-`sem test --lane <lane>` runner (proposed; §28.7) discovers `tag test` operations
-and groups them by that lane.
+shipped `sem test --lane <lane>` runner (§28.7) discovers `tag test` operations
+and groups them by that lane; an empty selected lane reports `no-tests` unless
+the caller explicitly passes `--allow-empty`.
 
 **Failure semantics.** An assertion mismatch produces a **failing `TestResult`**
 — it does not trap; the operation returns it and the runner records the failure
