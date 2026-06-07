@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.2",
-    "marked": "^18.0.4",
+    "marked": "^18.0.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "vite": "^8.0.14"
