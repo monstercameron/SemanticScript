@@ -3,5 +3,5 @@
   "version": "1.0.0",
   "private": true,
   "scripts": { "build:css": "tailwindcss -i ./input.css -o ./assets/app.css --minify" },
-  "devDependencies": { "@tailwindcss/cli": "^4.3.0", "tailwindcss": "^4.3.0" }
+  "devDependencies": { "@tailwindcss/cli": "^4.3.0", "tailwindcss": "^4.3.1" }
 }
