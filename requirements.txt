@@ -2,4 +2,4 @@
 # The rest of the Python tooling currently uses the standard library.
 # 0.44+ for the new pass-manager API used by `emit-ir --optimized`; the upper
 # bound admits 0.50, which ships Windows ARM64 wheels.
-llvmlite>=0.44,<0.51
+llvmlite>=0.50.0,<0.51
