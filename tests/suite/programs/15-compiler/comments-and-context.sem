@@ -19,7 +19,7 @@ main rationale "Kept tiny so only the comments vary"
 main risk timing "None; it returns at once"
 main note "Notes and todos are context rows"
 main todo "Nothing to do"
-main typeParam none   # a trailing comment after a row
+main typeParam none # a trailing comment after a row
 main input none
 main output ExitCode
 main outputOwner none

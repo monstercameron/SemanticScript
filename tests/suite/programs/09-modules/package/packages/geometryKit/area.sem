@@ -1,0 +1,35 @@
+area is module
+area purpose "Square areas, as a package another project requires"
+area path area
+area imports standard.math
+area imports standard.test
+area exports square
+
+square is operation
+square purpose "Return a side length times itself"
+square invariant sideTimesSide "Returns the side times itself"
+square typeParam none
+square input side Int64 value
+square output Int64
+square outputOwner none
+square raises none
+square effect none
+square uses none
+square memory heap false
+square async false
+square maxRecursion none
+square label begin loopKind none
+square label begin within none
+square at begin do multiply
+square at begin return ok product
+
+multiply is call
+multiply in square
+multiply invokes math.multiplyInt64
+multiply arg left Int64 side copy
+multiply arg right Int64 side copy
+multiply out product Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none

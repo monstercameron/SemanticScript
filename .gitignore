@@ -216,3 +216,6 @@ _build/
 
 # Stray runtime artifact when the taskforge-tui app is run from the repo root
 /todos.json
+
+# Refined compiler build cache
+.refined-cache/

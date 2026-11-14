@@ -1,5 +1,3 @@
-
-
 shapes is module
 shapes purpose "Hold the shape types the other modules share"
 shapes path geometry.shapes

@@ -78,7 +78,11 @@ SCOPED_RESOURCES = {
     "net.outbound": "prefix",  # scope "<host>:<port>" prefix; the literal is the address
     "fs.files": "prefix",  # scope is a directory prefix; the literal path starts with it
     "process.programs": "exact",  # scope is the program name; the literal equals it
+    "ffi.libraries": "exact",  # scope is the shared library's name; the literal equals it
 }
+
+# Types that may cross the foreign function interface: numbers and `Bool`, passed by the C ABI as is.
+FOREIGN_TYPES = {"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte", "Float64", "Bool"}
 
 
 def _bin(t: str, out: str) -> Sig:
@@ -246,6 +250,8 @@ LIBRARY: dict[str, dict] = {
             "ArgumentError": _err("process.ArgumentError", ("outOfRange", "Int64")),
             "RunError": _err("process.RunError", ("notFound", None), ("timedOut", None), ("failed", "Int32")),
             "Arguments": TypeInfo("process.Arguments", "opaque", False),
+            "Output": TypeInfo("process.Output", "record", False,
+                               fields=[("status", "ExitCode"), ("stdout", "Bytes"), ("stderr", "Bytes")]),
         },
         "targets": {
             "argumentCount": Sig((), "Int64", effects=E("read process.arguments")),
@@ -256,6 +262,11 @@ LIBRARY: dict[str, dict] = {
             "run": Sig((P("program", "String", "borrowed"), P("arguments", "process.Arguments", "borrowed"), _DL),
                        "ExitCode", raises="process.RunError", effects=E("spawn process.programs"), waits=True,
                        scoped="program"),
+            # run a program with `input` on its standard input, collecting what it writes (a pipe each way)
+            "runCaptured": Sig((P("program", "String", "borrowed"), P("arguments", "process.Arguments", "borrowed"),
+                                P("input", "Bytes", "borrowed"), _RG, P("maxBytes", "Int64", "value"), _DL),
+                               "process.Output", "region", "process.RunError", E("spawn process.programs"),
+                               waits=True, scoped="program"),
         },
     },
     "fs": {
@@ -282,6 +293,11 @@ LIBRARY: dict[str, dict] = {
             "listDirectory": Sig((P("path", "String", "borrowed"), _RG), "fs.DirectoryListing", "region",
                                  "fs.FileError", E("read fs.files"), scoped="path"),
             "entryCount": Sig((P("listing", "fs.DirectoryListing", "borrowed"),), "Int64"),
+            # an exclusive advisory lock on an open file, released by `unlock` or by closing the file
+            "lock": Sig((P("file", "fs.FileHandle", "borrowed"), _DL), raises="fs.FileError",
+                        effects=E("write fs.files"), waits=True),
+            "unlock": Sig((P("file", "fs.FileHandle", "borrowed"),), raises="fs.FileError",
+                          effects=E("write fs.files")),
             "entryName": Sig((P("listing", "fs.DirectoryListing", "borrowed"), P("index", "Int64", "value"), _RG),
                              "String", "region", "fs.EntryIndexError"),
             "read": Sig((P("file", "fs.FileHandle", "borrowed"), _RG, P("maxBytes", "Int64", "value"), _DL),
@@ -367,6 +383,110 @@ LIBRARY: dict[str, dict] = {
                                        ("cancelled", None))},
         "targets": {},
     },
+    "ffi": {
+        "types": {
+            "Library": TypeInfo("ffi.Library", "resource", False),
+            "Function": _generic("ffi.Function", ["F@any"]),
+            "LoadError": _err("ffi.LoadError", ("notFound", None), ("symbolMissing", None)),
+        },
+        "targets": {
+            # load a shared library by name ("c" is the platform's C runtime); release it with `close`
+            "open": Sig((P("name", "String", "borrowed"),), "ffi.Library", "caller", "ffi.LoadError",
+                        E("load ffi.libraries"), scoped="name"),
+            "close": Sig((P("library", "ffi.Library", "owned"),), effects=E("load ffi.libraries")),
+        },
+    },
+    "random": {
+        "types": {
+            "Generator": TypeInfo("random.Generator", "opaque", False),
+            "RangeError": _err("random.RangeError", ("emptyRange", None)),
+        },
+        "targets": {
+            # a fresh number from the operating system's entropy source, in [low, high]
+            "int64Between": Sig((P("low", "Int64", "value"), P("high", "Int64", "value")), "Int64",
+                                raises="random.RangeError", effects=E("read random.entropy")),
+            # a deterministic generator: the same seed gives the same numbers
+            "newGenerator": Sig((P("seed", "Int64", "value"), _RG), "random.Generator", "region"),
+            "nextInt64": Sig((P("generator", "random.Generator", "borrowedMutable"), P("low", "Int64", "value"),
+                              P("high", "Int64", "value")), "Int64", raises="random.RangeError"),
+        },
+    },
+    "crypto": {
+        "types": {},
+        "targets": {
+            "sha256": Sig((P("bytes", "Bytes", "borrowed"), _RG), "Bytes", "region"),
+            "hmacSha256": Sig((P("key", "Bytes", "borrowed"), P("message", "Bytes", "borrowed"), _RG), "Bytes",
+                              "region"),
+            "toHex": Sig((P("bytes", "Bytes", "borrowed"), _RG), "String", "region"),
+            "constantTimeEquals": Sig((P("left", "Bytes", "borrowed"), P("right", "Bytes", "borrowed")), "Bool"),
+        },
+    },
+    "log": {
+        "types": {"LogError": _err("log.LogError", ("failed", "Int32"))},
+        "targets": {
+            level: Sig((P("text", "String", "borrowed"),), raises="log.LogError", effects=E("write console.stderr"))
+            for level in ("debug", "info", "warn", "error")
+        },
+    },
+    "json": {
+        "types": {
+            "Value": TypeInfo("json.Value", "opaque", False),
+            "Kind": TypeInfo("json.Kind", "enum", True, variants=[
+                ("null", None), ("boolean", None), ("number", None), ("text", None), ("array", None),
+                ("object", None)]),
+            "ParseError": _err("json.ParseError", ("invalidAt", "Int64"), ("tooDeep", None)),
+            "AccessError": _err("json.AccessError", ("wrongKind", None), ("missing", None),
+                                ("outOfRange", "Int64"), ("notWhole", None)),
+        },
+        "targets": {
+            "parse": Sig((P("text", "String", "borrowed"), _RG), "json.Value", "region", "json.ParseError"),
+            "kind": Sig((P("value", "json.Value", "borrowed"),), "json.Kind"),
+            "asInt64": Sig((P("value", "json.Value", "borrowed"),), "Int64", raises="json.AccessError"),
+            "asBool": Sig((P("value", "json.Value", "borrowed"),), "Bool", raises="json.AccessError"),
+            "asText": Sig((P("value", "json.Value", "borrowed"), _RG), "String", "region", "json.AccessError"),
+            "length": Sig((P("value", "json.Value", "borrowed"),), "Int64", raises="json.AccessError"),
+            "item": Sig((P("value", "json.Value", "borrowed"), P("index", "Int64", "value"), _RG), "json.Value",
+                        "region", "json.AccessError"),
+            "field": Sig((P("value", "json.Value", "borrowed"), P("name", "String", "borrowed"), _RG), "json.Value",
+                         "region", "json.AccessError"),
+            "newObject": Sig((_RG,), "json.Value", "region"),
+            "newArray": Sig((_RG,), "json.Value", "region"),
+            "setInt64": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
+                             P("number", "Int64", "value")), raises="json.AccessError"),
+            "setText": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
+                            P("text", "String", "borrowed")), raises="json.AccessError"),
+            "setBool": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
+                            P("flag", "Bool", "value")), raises="json.AccessError"),
+            "setValue": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
+                             P("value", "json.Value", "borrowed")), raises="json.AccessError"),
+            "appendInt64": Sig((P("array", "json.Value", "borrowedMutable"), P("number", "Int64", "value")),
+                               raises="json.AccessError"),
+            "appendText": Sig((P("array", "json.Value", "borrowedMutable"), P("text", "String", "borrowed")),
+                              raises="json.AccessError"),
+            "stringify": Sig((P("value", "json.Value", "borrowed"), _RG), "String", "region"),
+        },
+    },
+    "secret": {
+        "types": {"Secret": TypeInfo("secret.Secret", "opaque", False)},
+        "targets": {
+            # a Secret has no conversion to text except `reveal`, which needs `read secret.values`
+            "fromText": Sig((P("text", "String", "borrowed"), _RG), "secret.Secret", "region"),
+            "fromEnvironment": Sig((P("name", "String", "borrowed"), _RG), "secret.Secret", "region",
+                                   "environment.MissingError", E("read environment.variables")),
+            "reveal": Sig((P("secret", "secret.Secret", "borrowed"), _RG), "String", "region",
+                          effects=E("read secret.values")),
+            "matches": Sig((P("secret", "secret.Secret", "borrowed"), P("candidate", "String", "borrowed")), "Bool"),
+            "length": Sig((P("secret", "secret.Secret", "borrowed"),), "Int64"),
+        },
+    },
+    "signal": {
+        "types": {"SignalError": _err("signal.SignalError", ("timedOut", None), ("cancelled", None))},
+        "targets": {
+            "interrupted": Sig((), "Bool", effects=E("read signal.interrupts")),
+            "waitForInterrupt": Sig((_DL,), raises="signal.SignalError", effects=E("read signal.interrupts"),
+                                    waits=True),
+        },
+    },
     "test": {
         "types": {},
         "targets": {
@@ -423,6 +543,10 @@ def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str
     if generic == "option.Option":
         item = args[0]
         return {"present": Sig((P("payload", item, own_mode(item)),), inst), "absent": Sig((), inst)}
+    if generic == "ffi.Function":
+        # `bind` looks a symbol up in a loaded library and gives it the declared operation type
+        return {"bind": Sig((P("library", "ffi.Library", "borrowed"), P("symbol", "String", "borrowed")), args[0],
+                            raises="ffi.LoadError", effects=E("load ffi.libraries"))}
     if generic == "channel.Channel":
         item = args[0]
         return {

@@ -30,7 +30,8 @@ BUILTIN_TYPES = frozenset({
     "Float32", "Float64", "Bool", "Byte", "String", "Bytes", "Region", "ExitCode",
 })
 
-EFFECT_VERBS = frozenset({"read", "write", "readWrite", "listen", "connect", "spawn"})
+# `load` (D-33): bringing native code into the process (the foreign function interface)
+EFFECT_VERBS = frozenset({"read", "write", "readWrite", "listen", "connect", "spawn", "load"})
 INPUT_MODES = frozenset({"value", "borrowed", "borrowedMutable", "owned"})
 ARG_MODES = frozenset({"copy", "lend", "lendMutable", "give"})
 MODE_PAIRS = {"value": "copy", "borrowed": "lend", "borrowedMutable": "lendMutable", "owned": "give"}
@@ -207,10 +208,15 @@ _CALL_SKELETON = [("in", "one"), ("invokes|invokesReference", "one"), ("arg", "s
                   ("ownedBy", "one"), ("cleanedBy", "one"), ("borrows", "one"), ("catch", "one")]
 
 KINDS: dict[str, dict] = {
+    # D-34: a project states its own version, the language and standard-library versions it is written for, and
+    # the local packages it requires with a version constraint each
     "project": {
-        "shapes": {"target": [(kw("console", "library"),)], "module": [("path",)],
+        "shapes": {"target": [(kw("console", "library"),)], "version": [("string",)],
+                   "language": [(kw("refined-1"),)], "standardLibrary": [("int",)],
+                   "requires": [(NONE,), ("name", "string", "string")], "module": [("path",)],
                    "entry": [(NONE,), ("target",)]},
-        "skeleton": [("target", "one"), ("module", "some"), ("entry", "one")],
+        "skeleton": [("target", "one"), ("version", "one"), ("language", "one"), ("standardLibrary", "one"),
+                     ("requires", "some"), ("module", "some"), ("entry", "one")],
     },
     "module": {
         "shapes": {"path": [("path",)], "imports": [(NONE,), ("path",)], "exports": [(NONE,), ("exportName",)]},

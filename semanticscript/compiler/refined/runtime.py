@@ -23,6 +23,8 @@ STACK_MARGIN_BYTES = 8 * 1024 * 1024
 _INITIALIZED = False
 # what `process.argumentCount` and `process.argument` read: the words after `--` on the command line
 PROGRAM_ARGUMENTS: list[str] = []
+# set by the first interrupt (Ctrl-C) while a program that reads `signal` runs; a second one exits
+INTERRUPTED = [False]
 
 
 @dataclass
@@ -52,7 +54,9 @@ def _bytes(ptr: int, length: int) -> bytes:
 
 @ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
 def _trap(ptr, length):
-    msg = b"trap: " + _bytes(ptr, length) + b"\n"
+    from . import tasks
+    trace = tasks.stack_trace()
+    msg = b"trap: " + _bytes(ptr, length) + b"\n" + "".join(line + "\n" for line in trace).encode("utf-8", "replace")
     if _session.capture:
         _session.stderr.append(msg)
         out = b"".join(_session.stdout)
@@ -146,7 +150,8 @@ def _region_alloc(handle, size):
 def _region_free(handle):
     reg = _regions.pop(handle, None)
     if reg is not None:
-        from . import host
+        from . import host, instrument
+        instrument.region_released(reg.label, reg.used, reg.capacity)
         for h in reg.handles:
             host.drop(h)
 
@@ -260,8 +265,8 @@ def _init() -> None:
         return
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
-    from . import tasks
-    for name, cb in {**_CALLBACKS, **tasks.CALLBACKS}.items():
+    from . import instrument, tasks
+    for name, cb in {**_CALLBACKS, **tasks.CALLBACKS, **instrument.CALLBACKS}.items():
         llvm.add_symbol(name, ctypes.cast(cb, ctypes.c_void_p).value)
     _INITIALIZED = True
 
@@ -274,6 +279,7 @@ def default_triple() -> str:
 class Engine:
     def __init__(self, ir_text: str):
         _init()
+        self.uses_signals = "signal.interrupted|" in ir_text or "signal.waitForInterrupt|" in ir_text
         mod = llvm.parse_assembly(ir_text)
         mod.verify()
         tm = llvm.Target.from_default_triple().create_target_machine()
@@ -302,13 +308,23 @@ class Engine:
             except BaseException as exc:  # re-raised on the calling thread
                 result["error"] = exc
 
+        if self.uses_signals:
+            import signal as _signal
+
+            def on_interrupt(_signum, _frame):
+                if INTERRUPTED[0]:
+                    os._exit(130)
+                INTERRUPTED[0] = True
+                tasks.notify()
+            _signal.signal(_signal.SIGINT, on_interrupt)
         previous = threading.stack_size(PROGRAM_STACK_BYTES)
         try:
             worker = threading.Thread(target=runner, name="refined-program")
             worker.start()
         finally:
             threading.stack_size(previous)
-        worker.join()
+        while worker.is_alive():  # short joins, so the main thread can take an interrupt
+            worker.join(0.1)
         if "error" in result:
             raise result["error"]
         return result.get("value")

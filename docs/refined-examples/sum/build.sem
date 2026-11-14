@@ -1,5 +1,9 @@
 sum is project
 sum purpose "Add the whole numbers from 1 to 5 and print the total"
 sum target console
+sum version "0.1.0"
+sum language refined-1
+sum standardLibrary 1
+sum requires none
 sum module sum
 sum entry sum.main

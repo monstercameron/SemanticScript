@@ -1,0 +1,315 @@
+# covers: 18 Foreign function interface (FFI)
+# covers: 18 C interoperability
+# covers: 18 Native library loading
+# covers: 18 Dynamic linking
+# covers: 18 Shared libraries
+# covers: 18 ABI compatibility
+# covers: 18 Calling conventions
+# covers: 18 Data structure marshaling
+# covers: 18 Cross-language error handling
+# covers: 18 Cross-language memory ownership
+# covers: 18 Native system APIs
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 5
+# stdout: 65
+# stdout: symbolMissing
+
+foreign is module
+foreign purpose "Call C's abs and toupper through the foreign function interface"
+foreign path foreign
+foreign imports standard.console
+foreign imports standard.ffi
+foreign imports standard.convert
+foreign exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+cRuntime is capability
+cRuntime purpose "Authority to load the C runtime and nothing else"
+cRuntime grants load ffi.libraries
+cRuntime scope "c"
+
+CAbs is operationType
+CAbs purpose "C's `int abs(int)`"
+CAbs input value Int32 value
+CAbs output Int32
+CAbs outputOwner none
+CAbs raises none
+CAbs effect none
+CAbs async false
+
+CToUpper is operationType
+CToUpper purpose "C's `int toupper(int)`"
+CToUpper input value Int32 value
+CToUpper output Int32
+CToUpper outputOwner none
+CToUpper raises none
+CToUpper effect none
+CToUpper async false
+
+AbsFunction is instance
+AbsFunction purpose "Binds a C symbol as CAbs"
+AbsFunction instantiates ffi.Function CAbs
+
+UpperFunction is instance
+UpperFunction purpose "Binds a C symbol as CToUpper"
+UpperFunction instantiates ffi.Function CToUpper
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect load ffi.libraries
+main effect write console.stdout
+main uses cRuntime
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label opened loopKind none
+main label opened within none
+main label callAbs loopKind none
+main label callAbs within none
+main label callUpper loopKind none
+main label callUpper within none
+main label missing loopKind none
+main label missing within none
+main label reportMissing loopKind none
+main label reportMissing within none
+main label failed loopKind none
+main label failed within none
+main let cName immutable String "c"
+main let absName immutable String "abs"
+main let upperName immutable String "toupper"
+main let missingName immutable String "semanticscriptNoSuchSymbol"
+main let minusFive immutable Int32 -5
+main let letterA immutable Int32 97
+main let missingText immutable String "symbolMissing"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do openC
+main at begin branch ifError openC goto failed else goto opened
+main at opened defer closeCCleanup
+main at opened do bindAbs
+main at opened branch ifError bindAbs goto failed else goto callAbs
+main at callAbs do runAbs
+main at callAbs do widenAbs
+main at callAbs do showAbs
+main at callAbs do bindUpper
+main at callAbs branch ifError bindUpper goto failed else goto callUpper
+main at callUpper do runUpper
+main at callUpper do widenUpper
+main at callUpper do showUpper
+main at callUpper do bindMissing
+main at callUpper branch ifError bindMissing goto missing else goto failed
+main at missing match missingError ffi.LoadError
+main at missing case ffi.LoadError.notFound bind none none goto failed
+main at missing case ffi.LoadError.symbolMissing bind none none goto reportMissing
+main at reportMissing do showMissing
+main at reportMissing return ok okCode
+main at failed return ok failCode
+
+openC is call
+openC in main
+openC invokes ffi.open
+openC arg name String cName lend
+openC out libc ffi.Library
+openC ownedBy main
+openC cleanedBy closeCCleanup
+openC borrows none
+openC catch openError ffi.LoadError
+
+closeCCleanup is cleanup
+closeCCleanup in main
+closeCCleanup call closeC
+closeCCleanup cleans libc
+closeCCleanup onFailure suppress
+closeCCleanup because "Releasing a library handle cannot fail"
+
+closeC is call
+closeC in main
+closeC invokes ffi.close
+closeC arg library ffi.Library libc give
+closeC out none
+closeC ownedBy none
+closeC cleanedBy none
+closeC borrows none
+closeC catch none
+
+bindAbs is call
+bindAbs in main
+bindAbs invokes AbsFunction.bind
+bindAbs arg library ffi.Library libc lend
+bindAbs arg symbol String absName lend
+bindAbs out absFn CAbs
+bindAbs ownedBy none
+bindAbs cleanedBy none
+bindAbs borrows none
+bindAbs catch absError ffi.LoadError
+
+runAbs is call
+runAbs in main
+runAbs invokesReference absFn
+runAbs arg value Int32 minusFive copy
+runAbs out absolute Int32
+runAbs ownedBy none
+runAbs cleanedBy none
+runAbs borrows none
+runAbs catch none
+
+widenAbs is call
+widenAbs in main
+widenAbs invokes convert.int32ToInt64
+widenAbs arg value Int32 absolute copy
+widenAbs out absoluteWide Int64
+widenAbs ownedBy none
+widenAbs cleanedBy none
+widenAbs borrows none
+widenAbs catch none
+
+showAbs is call
+showAbs in main
+showAbs invokes showInt
+showAbs arg value Int64 absoluteWide copy
+showAbs out none
+showAbs ownedBy none
+showAbs cleanedBy none
+showAbs borrows none
+showAbs catch none
+
+bindUpper is call
+bindUpper in main
+bindUpper invokes UpperFunction.bind
+bindUpper arg library ffi.Library libc lend
+bindUpper arg symbol String upperName lend
+bindUpper out upperFn CToUpper
+bindUpper ownedBy none
+bindUpper cleanedBy none
+bindUpper borrows none
+bindUpper catch upperError ffi.LoadError
+
+runUpper is call
+runUpper in main
+runUpper invokesReference upperFn
+runUpper arg value Int32 letterA copy
+runUpper out upper Int32
+runUpper ownedBy none
+runUpper cleanedBy none
+runUpper borrows none
+runUpper catch none
+
+widenUpper is call
+widenUpper in main
+widenUpper invokes convert.int32ToInt64
+widenUpper arg value Int32 upper copy
+widenUpper out upperWide Int64
+widenUpper ownedBy none
+widenUpper cleanedBy none
+widenUpper borrows none
+widenUpper catch none
+
+showUpper is call
+showUpper in main
+showUpper invokes showInt
+showUpper arg value Int64 upperWide copy
+showUpper out none
+showUpper ownedBy none
+showUpper cleanedBy none
+showUpper borrows none
+showUpper catch none
+
+bindMissing is call
+bindMissing in main
+bindMissing invokes UpperFunction.bind
+bindMissing arg library ffi.Library libc lend
+bindMissing arg symbol String missingName lend
+bindMissing out missingFn CToUpper
+bindMissing ownedBy none
+bindMissing cleanedBy none
+bindMissing borrows none
+bindMissing catch missingError ffi.LoadError
+
+showMissing is call
+showMissing in main
+showMissing invokes showText
+showMissing arg text String missingText lend
+showMissing out none
+showMissing ownedBy none
+showMissing cleanedBy none
+showMissing borrows none
+showMissing catch none

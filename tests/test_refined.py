@@ -220,6 +220,10 @@ def test_rule_fires(tmp_path, code, project, file, old, new):
 GENERIC_BUILD = """generics is project
 generics purpose "Exercise generic operations and record updates"
 generics target library
+generics version "0.1.0"
+generics language refined-1
+generics standardLibrary 1
+generics requires none
 generics module gen
 generics entry none
 """

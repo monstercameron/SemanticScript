@@ -7,7 +7,6 @@
 # The project entity (target console, entry main) lives in build.sem, not here.
 # Check: python semanticscript/compiler/refined check docs/refined-examples/server
 
-
 server is module
 server purpose "Serve a health route over HTTP on port 8080"
 server path server
@@ -26,7 +25,6 @@ connectionIo is capability
 connectionIo purpose "Authority to read from and write to an accepted connection"
 connectionIo grants readWrite net.connection
 connectionIo scope none
-
 
 HttpHandler is operationType
 HttpHandler purpose "The signature every route handler has: a request in, a response allocated in the given region out"

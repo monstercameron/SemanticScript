@@ -89,8 +89,13 @@ CALLBACKS = {
     "refined_group_free": ir.FunctionType(ir.VoidType(), [I64]),
     "refined_recursion_enter": ir.FunctionType(I32, [I64, I64, I64]),
     "refined_recursion_leave": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_frame_push": ir.FunctionType(ir.VoidType(), [PTR, I64]),
+    "refined_frame_pop": ir.FunctionType(ir.VoidType(), []),
+    # instrumentation (only when compiled with --trace, --coverage, or --debug): one call on entering each block,
+    # with the block's name, and for --debug the addresses and a description of the operation's values
+    "refined_block": ir.FunctionType(ir.VoidType(), [PTR, I64, PTR.as_pointer(), I64, PTR, I64]),
 }
-HOST_GENERICS = ("map.Map", "set.Set", "channel.Channel")
+HOST_GENERICS = ("map.Map", "set.Set", "channel.Channel", "ffi.Function")
 # list.List value: pointer to {length, capacity, data, region}
 LIST_HEADER = ir.LiteralStructType([I64, I64, PTR, PTR])
 LIST = LIST_HEADER.as_pointer()
@@ -107,8 +112,11 @@ def function_name(module: str, op: str) -> str:
 
 
 class Backend:
-    def __init__(self, world: World):
+    def __init__(self, world: World, options: Optional[dict] = None):
         self.world = world
+        self.options = dict(options or {})
+        self.instrument = bool(self.options.get("trace") or self.options.get("coverage") or self.options.get("debug"))
+        self.block_names: list[str] = []  # every block compiled, for coverage reports
         self.module = ir.Module(name="refined")
         self.module.triple = default_triple()
         self.functions: dict[tuple[str, str], ir.Function] = {}
@@ -391,8 +399,10 @@ class OpGen:
         b = ir.IRBuilder(entry)
         for name, bind in self.info.bindings.items():
             if bind.kind == "group":
-                continue  # tasks run when started, so a group holds nothing at run time
+                continue  # a group is a runtime handle (self.groups)
             self.allocas[name] = b.alloca(self.lt(bind.type, bind.line), name=name)
+            if self.be.options.get("debug"):  # the debugger reads every value, so none starts as garbage
+                b.store(ir.Constant(self.allocas[name].type.pointee, None), self.allocas[name])
         for name in self.cleanups:
             self.armed[name] = b.alloca(I1, name=f"{name}.armed")
             b.store(I1(0), self.armed[name])
@@ -441,6 +451,10 @@ class OpGen:
             with b.if_then(b.icmp_signed("==", status, I32(2)), likely=False):
                 self.trap(b, ent.line, f"`{ent.name}` ran out of stack before reaching maxRecursion "
                           f"{self.max_depth}; lower the bound or recurse less deeply")
+        # the shadow call stack a trap prints (stack traces): pushed here, popped at every `return`
+        file, line = self.where(ent.line)
+        frame_name = self.be.string(f"{self.m.short}.{ent.name} ({file.replace(chr(92), '/').rsplit('/', 1)[-1]}:{line})")
+        b.call(self.be.callbacks["refined_frame_push"], [b.extract_value(frame_name, 0), b.extract_value(frame_name, 1)])
         for lab in self.order:
             self.blocks[lab] = self.fn.append_basic_block(lab)
         b.branch(self.edge(None, "begin"))
@@ -492,8 +506,30 @@ class OpGen:
 
     # ------------------------------------------------------------ steps
 
+    def instrument_block(self, b: ir.IRBuilder, lab: str) -> None:
+        name = f"{self.m.short}.{self.ent.name}:{lab}"
+        self.be.block_names.append(name)
+        text = self.be.string(name)
+        count, values, desc = 0, ir.Constant(PTR.as_pointer(), None), self.be.string("")
+        if self.be.options.get("debug"):
+            shown = [(n, a) for n, a in self.allocas.items() if self.info.bindings.get(n) is not None]
+            kinds = []
+            for n, a in shown:
+                t = a.type.pointee
+                kind = ("i1" if t == I1 else f"i{t.width}" if isinstance(t, ir.IntType) else "f64" if t == F64
+                        else "str" if t == STR else "other")
+                kinds.append(f"{n}:{kind}:{self.t(self.info.bindings[n].type)}")
+            arr = self.fn_alloca(ir.ArrayType(PTR, max(len(shown), 1)), f"{lab}.debugValues")
+            for i, (_n, a) in enumerate(shown):
+                b.store(b.bitcast(a, PTR), b.gep(arr, [I32(0), I32(i)]))
+            count, values, desc = len(shown), b.gep(arr, [I32(0), I32(0)]), self.be.string(";".join(kinds))
+        b.call(self.be.callbacks["refined_block"], [b.extract_value(text, 0), b.extract_value(text, 1), values,
+                                                    I64(count), b.extract_value(desc, 0), b.extract_value(desc, 1)])
+
     def emit_block(self, lab: str) -> None:
         b = ir.IRBuilder(self.blocks[lab])
+        if self.be.instrument:
+            self.instrument_block(b, lab)
         steps = self.steps[lab]
         i = 0
         while i < len(steps):
@@ -598,6 +634,7 @@ class OpGen:
                 b.call(self.be.callbacks["refined_region_free"], [b.load(self.allocas[reg.name])])
         for g in self.groups.values():
             b.call(self.be.callbacks["refined_group_free"], [b.load(g)])
+        b.call(self.be.callbacks["refined_frame_pop"], [])
         if self.depth is not None:
             b.call(self.be.callbacks["refined_recursion_leave"], [I64(self.depth)])
         sig = self.info.sig
@@ -1319,9 +1356,14 @@ class OpGen:
         return phi
 
 
-def compile_roots(world: World, roots: list[tuple[str, str]]) -> tuple[Optional[ir.Module], list[Diagnostic]]:
-    be = Backend(world)
+def compile_roots(world: World, roots: list[tuple[str, str]],
+                  options: Optional[dict] = None) -> tuple[Optional[ir.Module], list[Diagnostic]]:
+    """`options`: `trace`, `coverage`, `debug` (instrumented builds). The module carries `refined_blocks`, the
+    name of every block compiled, for coverage reports."""
+    be = Backend(world, options)
     try:
-        return be.build(roots), []
+        module = be.build(roots)
+        module.refined_blocks = list(be.block_names)  # type: ignore[attr-defined]
+        return module, []
     except Unsupported as exc:
         return None, [Diagnostic("R901", f"the backend does not support {exc.message} yet", exc.file, exc.line)]

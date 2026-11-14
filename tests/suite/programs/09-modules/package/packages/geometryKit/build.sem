@@ -1,0 +1,9 @@
+geometryKit is project
+geometryKit purpose "A small library package of shape arithmetic"
+geometryKit target library
+geometryKit version "1.2.0"
+geometryKit language refined-1
+geometryKit standardLibrary 1
+geometryKit requires none
+geometryKit module area
+geometryKit entry none

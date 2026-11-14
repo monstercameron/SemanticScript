@@ -734,6 +734,418 @@ def _channel_close(p):
     return ok()
 
 
+# ---------------------------------------------------------------- random numbers
+
+class Generator:
+    def __init__(self, seed: int):
+        import random as _random
+        self.rng = _random.Random(seed)
+
+
+def _range(low: int, high: int) -> None:
+    if low > high:
+        fail("random.RangeError", "emptyRange")
+
+
+@target("random.int64Between")
+def _random_between(p):
+    import secrets
+    low, high = p[0][0], p[1][0]
+    _range(low, high)
+    return ok(low + secrets.randbelow(high - low + 1))
+
+
+@target("random.newGenerator")
+def _random_generator(p):
+    return ok(new_handle(Generator(p[0][0]), p[1][0]))
+
+
+@target("random.nextInt64")
+def _random_next(p):
+    gen, low, high = get(p[0][0], Generator), p[1][0], p[2][0]
+    _range(low, high)
+    return ok(gen.rng.randint(low, high))
+
+
+# ---------------------------------------------------------------- crypto
+
+@target("crypto.sha256")
+def _sha256(p):
+    import hashlib
+    return ok(*put(p[1][0], hashlib.sha256(data(p[0])).digest()))
+
+
+@target("crypto.hmacSha256")
+def _hmac(p):
+    import hashlib
+    import hmac
+    return ok(*put(p[2][0], hmac.new(data(p[0]), data(p[1]), hashlib.sha256).digest()))
+
+
+@target("crypto.toHex")
+def _to_hex(p):
+    return ok(*put(p[1][0], data(p[0]).hex().encode("ascii")))
+
+
+@target("crypto.constantTimeEquals")
+def _ct_equals(p):
+    import hmac
+    return ok(1 if hmac.compare_digest(data(p[0]), data(p[1])) else 0)
+
+
+# ---------------------------------------------------------------- logging
+
+def _log(level: str):
+    def write(p):
+        status = rt._session.write(2, f"[{level}] ".encode() + data(p[0]) + b"\n")
+        if status:
+            fail("log.LogError", "failed", status)
+        return ok()
+    return write
+
+
+for _level in ("debug", "info", "warn", "error"):
+    HANDLERS[f"log.{_level}"] = _log(_level)
+
+
+# ---------------------------------------------------------------- json
+
+class Json:
+    """A parsed or built JSON value; arrays and objects are shared, so `field` and `item` see changes."""
+    def __init__(self, value):
+        self.value = value
+
+
+_KINDS = ["null", "boolean", "number", "text", "array", "object"]
+
+
+def _kind_of(v) -> str:
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "boolean"
+    if isinstance(v, (int, float)):
+        return "number"
+    if isinstance(v, str):
+        return "text"
+    if isinstance(v, list):
+        return "array"
+    return "object"
+
+
+@target("json.parse")
+def _json_parse(p):
+    import json as _json
+    try:
+        value = _json.loads(data(p[0]).decode("utf-8", "surrogateescape"))
+    except _json.JSONDecodeError as exc:
+        fail("json.ParseError", "invalidAt", exc.pos)
+    except RecursionError:
+        fail("json.ParseError", "tooDeep")
+    return ok(new_handle(Json(value), p[1][0]))
+
+
+@target("json.kind")
+def _json_kind(p):
+    return ok(_KINDS.index(_kind_of(get(p[0][0], Json).value)), 0)
+
+
+def _expect(v, kind: str):
+    if _kind_of(v) != kind:
+        fail("json.AccessError", "wrongKind")
+
+
+@target("json.asInt64")
+def _json_int(p):
+    v = get(p[0][0], Json).value
+    _expect(v, "number")
+    if isinstance(v, float) and not v.is_integer():
+        fail("json.AccessError", "notWhole")
+    if not -(1 << 63) <= int(v) < (1 << 63):
+        fail("json.AccessError", "notWhole")
+    return ok(int(v))
+
+
+@target("json.asBool")
+def _json_bool(p):
+    v = get(p[0][0], Json).value
+    _expect(v, "boolean")
+    return ok(1 if v else 0)
+
+
+@target("json.asText")
+def _json_text(p):
+    v = get(p[0][0], Json).value
+    _expect(v, "text")
+    return ok(*put(p[1][0], v.encode("utf-8", "surrogateescape")))
+
+
+@target("json.length")
+def _json_length(p):
+    v = get(p[0][0], Json).value
+    if _kind_of(v) not in ("array", "object", "text"):
+        fail("json.AccessError", "wrongKind")
+    return ok(len(v))
+
+
+@target("json.item")
+def _json_item(p):
+    v, index = get(p[0][0], Json).value, p[1][0]
+    _expect(v, "array")
+    if not 0 <= index < len(v):
+        fail("json.AccessError", "outOfRange", index)
+    return ok(new_handle(Json(v[index]), p[2][0]))
+
+
+@target("json.field")
+def _json_field(p):
+    v, name = get(p[0][0], Json).value, text(p[1])
+    _expect(v, "object")
+    if name not in v:
+        fail("json.AccessError", "missing")
+    return ok(new_handle(Json(v[name]), p[2][0]))
+
+
+@target("json.newObject")
+def _json_object(p):
+    return ok(new_handle(Json({}), p[0][0]))
+
+
+@target("json.newArray")
+def _json_array(p):
+    return ok(new_handle(Json([]), p[0][0]))
+
+
+def _set(p, value):
+    obj = get(p[0][0], Json).value
+    _expect(obj, "object")
+    obj[text(p[1])] = value
+    return ok()
+
+
+@target("json.setInt64")
+def _json_set_int(p):
+    return _set(p, p[2][0])
+
+
+@target("json.setText")
+def _json_set_text(p):
+    return _set(p, text(p[2]))
+
+
+@target("json.setBool")
+def _json_set_bool(p):
+    return _set(p, bool(p[2][0]))
+
+
+@target("json.setValue")
+def _json_set_value(p):
+    return _set(p, get(p[2][0], Json).value)
+
+
+@target("json.appendInt64")
+def _json_append_int(p):
+    arr = get(p[0][0], Json).value
+    _expect(arr, "array")
+    arr.append(p[1][0])
+    return ok()
+
+
+@target("json.appendText")
+def _json_append_text(p):
+    arr = get(p[0][0], Json).value
+    _expect(arr, "array")
+    arr.append(text(p[1]))
+    return ok()
+
+
+@target("json.stringify")
+def _json_stringify(p):
+    import json as _json
+    out = _json.dumps(get(p[0][0], Json).value, separators=(",", ":"), ensure_ascii=False)
+    return ok(*put(p[1][0], out.encode("utf-8", "surrogateescape")))
+
+
+# ---------------------------------------------------------------- secrets
+
+class Secret:
+    """Text that no target turns back into a `String` except `reveal`, which needs `read secret.values`."""
+    def __init__(self, value: bytes):
+        self.value = value
+
+    def __repr__(self) -> str:  # never shows the value, even in a runtime error
+        return "Secret(<hidden>)"
+
+
+@target("secret.fromText")
+def _secret_text(p):
+    return ok(new_handle(Secret(data(p[0])), p[1][0]))
+
+
+@target("secret.fromEnvironment")
+def _secret_env(p):
+    value = os.environ.get(text(p[0]))
+    if value is None:
+        fail("environment.MissingError", "missing")
+    return ok(new_handle(Secret(value.encode("utf-8", "surrogateescape")), p[1][0]))
+
+
+@target("secret.reveal")
+def _secret_reveal(p):
+    return ok(*put(p[1][0], get(p[0][0], Secret).value))
+
+
+@target("secret.matches")
+def _secret_matches(p):
+    import hmac
+    return ok(1 if hmac.compare_digest(get(p[0][0], Secret).value, data(p[1])) else 0)
+
+
+@target("secret.length")
+def _secret_length(p):
+    return ok(len(get(p[0][0], Secret).value))
+
+
+# ---------------------------------------------------------------- signals
+
+@target("signal.interrupted")
+def _interrupted(_p):
+    return ok(1 if rt.INTERRUPTED[0] else 0)
+
+
+@target("signal.waitForInterrupt")
+def _wait_interrupt(p):
+    left = seconds_left(p[0][0])
+    outcome = tasks.wait_until(lambda: rt.INTERRUPTED[0], None if left is None else time.monotonic() + left,
+                               "a wait for an interrupt")
+    if outcome == "timedOut":
+        fail("signal.SignalError", "timedOut")
+    if outcome == "cancelled":
+        fail("signal.SignalError", "cancelled")
+    return ok()
+
+
+# ---------------------------------------------------------------- file locks and process pipes
+
+@target("fs.lock")
+def _lock(p):
+    f, deadline = get(p[0][0], File), p[1][0]
+    fd = f.fh.fileno()
+    while True:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                pos = f.fh.tell()
+                os.lseek(fd, 0, os.SEEK_SET)
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                finally:
+                    os.lseek(fd, pos, os.SEEK_SET)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            f.locked = True
+            return ok()
+        except OSError as exc:
+            if exc.errno not in (11, 13, 35, 36):  # EAGAIN, EACCES, EWOULDBLOCK, EDEADLOCK: held by someone else
+                _file_error(exc)
+        left = seconds_left(deadline)
+        if left is not None and left <= 0:
+            fail("fs.FileError", "timedOut")
+        if tasks.wait_until(lambda: False, time.monotonic() + 0.05, "a wait for a file lock") == "cancelled":
+            fail("fs.FileError", "timedOut")
+
+
+@target("fs.unlock")
+def _unlock(p):
+    f = get(p[0][0], File)
+    fd = f.fh.fileno()
+    try:
+        if os.name == "nt":
+            import msvcrt
+            pos = f.fh.tell()
+            os.lseek(fd, 0, os.SEEK_SET)
+            try:
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            finally:
+                os.lseek(fd, pos, os.SEEK_SET)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError as exc:
+        _file_error(exc)
+    f.locked = False
+    return ok()
+
+
+@target("process.runCaptured")
+def _run_captured(p):
+    program, arguments, stdin = text(p[0]), get(p[1][0], Arguments), data(p[2])
+    region, limit, deadline = p[3][0], p[4][0], p[5][0]
+    try:
+        proc = subprocess.run([program, *arguments], input=stdin, capture_output=True,
+                              timeout=seconds_left(deadline))
+    except FileNotFoundError:
+        fail("process.RunError", "notFound")
+    except subprocess.TimeoutExpired:
+        fail("process.RunError", "timedOut")
+    except OSError as exc:
+        fail("process.RunError", "failed", exc.errno or 1)
+    if len(proc.stdout) > limit or len(proc.stderr) > limit:
+        fail("process.RunError", "failed", -2)  # documented: output larger than maxBytes
+    return ok(proc.returncode, *put(region, proc.stdout), *put(region, proc.stderr))
+
+
+# ---------------------------------------------------------------- foreign functions
+
+class Library:
+    def __init__(self, lib):
+        self.lib = lib
+
+
+def _load(name: str):
+    import ctypes.util
+    if name == "c":
+        if os.name == "nt":
+            candidates = ["ucrtbase", "msvcrt"]
+        else:
+            candidates = [ctypes.util.find_library("c") or "libc.so.6"]
+    else:
+        candidates = [name, ctypes.util.find_library(name)]
+    for c in candidates:
+        if not c:
+            continue
+        try:
+            return ctypes.CDLL(c)
+        except OSError:
+            continue
+    return None
+
+
+@target("ffi.open")
+def _ffi_open(p):
+    lib = _load(text(p[0]))
+    if lib is None:
+        fail("ffi.LoadError", "notFound")
+    return ok(new_handle(Library(lib)))
+
+
+@target("ffi.close")
+def _ffi_close(p):
+    drop(p[0][0])  # the C runtime keeps the library loaded; the handle is released
+    return ok()
+
+
+@target("ffi.Function.bind")
+def _ffi_bind(p):
+    lib = get(p[0][0], Library)
+    try:
+        fn = getattr(lib.lib, text(p[1]))
+    except AttributeError:
+        fail("ffi.LoadError", "symbolMissing")
+    return ok(ctypes.cast(fn, ctypes.c_void_p).value)
+
+
 def dispatch(name: str, params: list[tuple]) -> tuple[int, tuple, int]:
     handler = HANDLERS.get(name)
     if handler is None:

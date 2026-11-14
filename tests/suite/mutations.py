@@ -50,6 +50,7 @@ STR = "08-strings-collections/strings"
 SORT = "08-strings-collections/sorting"
 TABLE = "08-strings-collections/table"
 MODS = "09-modules/project"
+PKG = "09-modules/package"
 ERR = "10-errors/errors"
 CONC = "11-concurrency/tasks-and-channels"
 CONS = "12-io/console"
@@ -278,6 +279,29 @@ MUTATIONS: list[Mutation] = [
       "app exports main", "app exports none", ("R601",), file="app.sem"),
     M("entry-missing", ("16 Entry-point discovery", "23 CLI compiler invocation"), MODS,
       "modulesDemo entry app.main", "modulesDemo entry app.start", ("R601", "R304"), file="build.sem"),
+    M("package-version-unmet", ("23 Version constraints", "23 Dependency resolution"), PKG,
+      'packageDemo requires geometryKit "packages/geometryKit" ">=1.0.0 <2.0.0"',
+      'packageDemo requires geometryKit "packages/geometryKit" ">=2.0.0"', ("R601",), file="build.sem"),
+    M("package-bad-constraint", ("23 Version constraints",), PKG,
+      'packageDemo requires geometryKit "packages/geometryKit" ">=1.0.0 <2.0.0"',
+      'packageDemo requires geometryKit "packages/geometryKit" "about one"', ("R601", "R404", "R401"),
+      file="build.sem"),
+    M("package-missing", ("23 Package management",), PKG,
+      'packageDemo requires geometryKit "packages/geometryKit" ">=1.0.0 <2.0.0"',
+      'packageDemo requires geometryKit "packages/elsewhere" ">=1.0.0 <2.0.0"', ("R601", "R404", "R401"),
+      file="build.sem"),
+    M("package-cycle", ("22 Circular dependencies", "23 Dependency resolution"), PKG,
+      "geometryKit requires none", 'geometryKit requires packageDemo "../.." "*"', ("R603",),
+      file="packages/geometryKit/build.sem"),
+    M("package-not-a-library", ("23 Package management",), PKG,
+      "geometryKit target library", "geometryKit target console", ("R601",),
+      file="packages/geometryKit/build.sem"),
+    M("standard-library-version", ("23 Standard library versioning",), PKG,
+      "packageDemo standardLibrary 1", "packageDemo standardLibrary 2", ("R601",), file="build.sem"),
+    M("language-version", ("23 Language feature versioning", "23 Backward compatibility"), PKG,
+      "packageDemo language refined-1", "packageDemo language refined-2", ("R205", "R302"), file="build.sem"),
+    M("project-version-format", ("23 Package management",), PKG,
+      'packageDemo version "0.1.0"', 'packageDemo version "one"', ("R601",), file="build.sem"),
     M("library-with-entry", ("23 Package management",), MODS,
       "modulesDemo target console", "modulesDemo target library", ("R601",), file="build.sem"),
     # ---------------------------------------------------------------- 10 errors

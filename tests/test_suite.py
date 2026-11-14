@@ -135,8 +135,8 @@ def test_a_single_edit_is_reported_on_its_own_line(tmp_path):
 def test_check_output_is_deterministic(tmp_path):
     m = next(m for m in MUTATIONS if m.id == "module-cycle")
     project = _mutated(m, tmp_path)
-    first = caselib.refined("check", project, "--json").stdout
-    second = caselib.refined("check", project, "--json").stdout
+    first = caselib.refined("check", project, "--json", "--no-cache").stdout
+    second = caselib.refined("check", project, "--json", "--no-cache").stdout
     assert first == second and json.loads(first)["errorCount"] > 0
 
 
@@ -161,7 +161,8 @@ def test_cli_check_json_shape():
     proc = caselib.refined("check", os.path.join(caselib.ROOT, "docs", "refined-examples", "hello"), "--json")
     payload = json.loads(proc.stdout)
     assert proc.returncode == 0
-    assert payload == {"surface": "refined.check.v1", "ok": True, "errorCount": 0, "diagnostics": []}
+    assert payload == {"surface": "refined.check.v1", "ok": True, "errorCount": 0, "diagnostics": [],
+                       "cached": payload["cached"]}
 
 
 def test_cli_run_refuses_a_library(tmp_path):
@@ -198,7 +199,8 @@ def _project(tmp_path, name: str, module_text: str, extra: dict[str, str] | None
     d.mkdir()
     mods = [name] + sorted(extra or {})
     rows = [f"{name}Project is project", f'{name}Project purpose "A generated stress program"',
-            f"{name}Project target {'console' if entry else 'library'}"]
+            f"{name}Project target {'console' if entry else 'library'}", f'{name}Project version "0.1.0"',
+            f"{name}Project language refined-1", f"{name}Project standardLibrary 1", f"{name}Project requires none"]
     rows += [f"{name}Project module {m}" for m in mods]
     rows.append(f"{name}Project entry {name + '.main' if entry else 'none'}")
     (d / "build.sem").write_text("\n".join(rows) + "\n", encoding="utf-8")

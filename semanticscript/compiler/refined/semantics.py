@@ -400,7 +400,7 @@ def check_module(world: World, m: Module) -> None:
             if p.startswith("standard."):
                 if short not in LIBRARY or p != f"standard.{short}":
                     sink.error("R404", r.line, f"there is no standard module `{p}`")
-            elif short not in world.modules or world.modules[short].path != p:
+            elif short not in world.modules or p not in _import_paths(world.modules[short], m):
                 sink.error("R404", r.line, f"module `{p}` is not part of this project")
         for r in me.facts("exports"):
             n = r.text(0)
@@ -553,6 +553,36 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
                 if a is not None and p.endswith("@plain") and not world.plain(a):
                     m.sink.error("R403", row.line, f"type parameter `{type_param_name(p)}` of `{row.text(0)}` is "
                                  f"`plain`; `{a}` is not a plain type")
+            if gen == "ffi.Function" and args and args[0] is not None:
+                _check_foreign(world, m, row, args[0])
+
+
+def _import_paths(target: Module, importer: Module) -> set:
+    """How `importer` may name `target`: by its full path, or by its path inside the package they share (D-34)."""
+    paths = {target.path}
+    if getattr(target, "package", "") == getattr(importer, "package", ""):
+        paths.add(getattr(target, "local_path", target.path))
+    return paths
+
+
+def _check_foreign(world: World, m: Module, row, canon: str) -> None:
+    """A foreign function's type is an operation type over numbers and `Bool` that raises nothing, waits for
+    nothing, and has no effects: only values the C ABI passes as they are cross the boundary."""
+    from .library import FOREIGN_TYPES
+    info = world.type_info(canon)
+    if info is None or info.kind != "operationType" or info.sig is None:
+        m.sink.error("R403", row.line, f"`ffi.Function` takes an operation type; `{canon}` is not one")
+        return
+    sig = info.sig
+    bad = [p.type for p in sig.inputs if p.type not in FOREIGN_TYPES or p.mode != "value"]
+    if sig.output is not None and sig.output not in FOREIGN_TYPES:
+        bad.append(sig.output)
+    if bad:
+        m.sink.error("R403", row.line, f"a foreign function takes and returns numbers or `Bool` by value; "
+                     f"`{canon}` uses {', '.join(f'`{b}`' for b in bad)}")
+    if sig.raises or sig.effects or sig.waits or sig.output_owner:
+        m.sink.error("R403", row.line, f"a foreign function's type raises nothing, has no effects, and waits for "
+                     f"nothing; `{canon}` does not say so")
 
 
 def _check_table(world: World, m: Module, ent: Entity) -> None:

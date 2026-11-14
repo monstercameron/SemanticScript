@@ -1,0 +1,1319 @@
+# covers: 19 Random number generation
+# covers: 19 Cryptographic primitives
+# covers: 19 Logging
+# covers: 19 JSON parsing
+# covers: 19 Serialization
+# covers: 17 Sensitive data handling
+# covers: 16 Signal handling
+# covers: 12 File locking
+# covers: 12 Stream piping
+# covers: 12 Process execution
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: true
+# stdout: true
+# stdout: true
+# stdout: emptyRange
+# stdout: ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+# stdout: 6e9ef29b75fffc5b7abae527d58fdadb2fe42e7219011976917343065f58ed4a
+# stdout: true
+# stdout: false
+# stdout: Ada
+# stdout: 3
+# stdout: 2
+# stdout: true
+# stdout: missing
+# stdout: 6
+# stdout: {"a":"x","n":5}
+# stdout: true
+# stdout: false
+# stdout: 6
+# stdout: hunter
+# stdout: false
+# stdout: timedOut
+# stdout: locked
+# stdout: ca043a44630cc1865f8f7d003429f3c66dfc444f
+# stderr: [info] logged once
+
+modules is module
+modules purpose "Use the random, crypto, log, json, secret, signal, file-lock, and pipe targets"
+modules path modules
+modules imports standard.console
+modules imports standard.random
+modules imports standard.crypto
+modules imports standard.log
+modules imports standard.json
+modules imports standard.secret
+modules imports standard.signal
+modules imports standard.fs
+modules imports standard.process
+modules imports standard.string
+modules imports standard.time
+modules imports standard.compare
+modules exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+entropy is capability
+entropy purpose "Authority to read random numbers from the operating system"
+entropy grants read random.entropy
+entropy scope none
+
+stderrWriter is capability
+stderrWriter purpose "Authority to write log lines to standard error"
+stderrWriter grants write console.stderr
+stderrWriter scope none
+
+secretReader is capability
+secretReader purpose "Authority to reveal secret values"
+secretReader grants read secret.values
+secretReader scope none
+
+interrupts is capability
+interrupts purpose "Authority to observe interrupts"
+interrupts grants read signal.interrupts
+interrupts scope none
+
+fileAccess is capability
+fileAccess purpose "Authority over files whose names start with suite-"
+fileAccess grants read fs.files
+fileAccess grants write fs.files
+fileAccess scope "suite-"
+
+gitRunner is capability
+gitRunner purpose "Authority to run git"
+gitRunner grants spawn process.programs
+gitRunner scope "git"
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read fs.files
+main effect read random.entropy
+main effect read secret.values
+main effect read signal.interrupts
+main effect spawn process.programs
+main effect write console.stderr
+main effect write console.stdout
+main effect write fs.files
+main uses entropy
+main uses fileAccess
+main uses gitRunner
+main uses interrupts
+main uses secretReader
+main uses stderrWriter
+main uses stdoutWriter
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label step1 loopKind none
+main label step1 within none
+main label step2 loopKind none
+main label step2 within none
+main label step3 loopKind none
+main label step3 within none
+main label step4 loopKind none
+main label step4 within none
+main label step5 loopKind none
+main label step5 within none
+main label step6 loopKind none
+main label step6 within none
+main label step7 loopKind none
+main label step7 within none
+main label step8 loopKind none
+main label step8 within none
+main label step9 loopKind none
+main label step9 within none
+main label step10 loopKind none
+main label step10 within none
+main label step11 loopKind none
+main label step11 within none
+main label step12 loopKind none
+main label step12 within none
+main label step13 loopKind none
+main label step13 within none
+main label step14 loopKind none
+main label step14 within none
+main label step15 loopKind none
+main label step15 within none
+main label step16 loopKind none
+main label step16 within none
+main label showBadAt loopKind none
+main label showBadAt within none
+main label step17 loopKind none
+main label step17 within none
+main label step18 loopKind none
+main label step18 within none
+main label step19 loopKind none
+main label step19 within none
+main label step20 loopKind none
+main label step20 within none
+main label step21 loopKind none
+main label step21 within none
+main label step22 loopKind none
+main label step22 within none
+main label step23 loopKind none
+main label step23 within none
+main label step24 loopKind none
+main label step24 within none
+main label step25 loopKind none
+main label step25 within none
+main label step26 loopKind none
+main label step26 within none
+main label failed loopKind none
+main label failed within none
+main let seed immutable Int64 42
+main let one immutable Int64 1
+main let six immutable Int64 6
+main let zero immutable Int64 0
+main let hundred immutable Int64 100
+main let five immutable Int64 5
+main let fifty immutable Int64 50
+main let forty immutable Int64 40
+main let limit immutable Int64 4096
+main let waitMs immutable Int64 30000
+main let emptyRangeText immutable String "emptyRange"
+main let abc immutable String "abc"
+main let keyText immutable String "key"
+main let messageText immutable String "message"
+main let logText immutable String "logged once"
+main let document immutable String "{\"name\":\"Ada\",\"tags\":[1,2,3],\"ok\":true}"
+main let badDocument immutable String "{\"a\": tru}"
+main let nameKey immutable String "name"
+main let tagsKey immutable String "tags"
+main let okKey immutable String "ok"
+main let absentKey immutable String "absent"
+main let missingText immutable String "missing"
+main let aKey immutable String "a"
+main let nKey immutable String "n"
+main let xText immutable String "x"
+main let password immutable String "hunter"
+main let timedOutText immutable String "timedOut"
+main let lockPath immutable String "suite-lock.txt"
+main let lockedText immutable String "locked"
+main let git immutable String "git"
+main let hashObject immutable String "hash-object"
+main let fromStdin immutable String "--stdin"
+main let piped immutable String "piped"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do makeDeadline
+main at begin do firstGenerator
+main at begin do secondGenerator
+main at begin do drawFirst
+main at begin branch ifError drawFirst goto failed else goto step1
+main at step1 do drawSecond
+main at step1 branch ifError drawSecond goto failed else goto step2
+main at step2 do sameDraw
+main at step2 do printRepeatable
+main at step2 do rollDie
+main at step2 branch ifError rollDie goto failed else goto step3
+main at step3 do atLeastOne
+main at step3 do atMostSix
+main at step3 do printAboveLow
+main at step3 do printBelowHigh
+main at step3 do emptyDraw
+main at step3 branch ifError emptyDraw goto step4 else goto failed
+main at step4 do printEmptyRange
+main at step4 do abcBytes
+main at step4 do hashAbc
+main at step4 do hexAbc
+main at step4 do printAbcHex
+main at step4 do keyBytes
+main at step4 do messageBytes
+main at step4 do signMessage
+main at step4 do hexSignature
+main at step4 do printSignature
+main at step4 do sameHash
+main at step4 do printHashSame
+main at step4 do hashVersusMac
+main at step4 do printHashIsMac
+main at step4 do logOnce
+main at step4 branch ifError logOnce goto failed else goto step5
+main at step5 do parseDocument
+main at step5 branch ifError parseDocument goto failed else goto step6
+main at step6 do nameField
+main at step6 branch ifError nameField goto failed else goto step7
+main at step7 do nameText
+main at step7 branch ifError nameText goto failed else goto step8
+main at step8 do printName
+main at step8 do tagsField
+main at step8 branch ifError tagsField goto failed else goto step9
+main at step9 do tagCount
+main at step9 branch ifError tagCount goto failed else goto step10
+main at step10 do printTagCount
+main at step10 do secondTag
+main at step10 branch ifError secondTag goto failed else goto step11
+main at step11 do tagNumber
+main at step11 branch ifError tagNumber goto failed else goto step12
+main at step12 do printTag
+main at step12 do okField
+main at step12 branch ifError okField goto failed else goto step13
+main at step13 do okFlag
+main at step13 branch ifError okFlag goto failed else goto step14
+main at step14 do printFlag
+main at step14 do absentField
+main at step14 branch ifError absentField goto step15 else goto failed
+main at step15 do printMissing
+main at step15 do parseBad
+main at step15 branch ifError parseBad goto step16 else goto failed
+main at step16 match badError json.ParseError
+main at step16 case json.ParseError.invalidAt bind badAt Int64 goto showBadAt
+main at step16 case json.ParseError.tooDeep bind none none goto failed
+main at showBadAt do printBadAt
+main at showBadAt do newObject
+main at showBadAt do setA
+main at showBadAt branch ifError setA goto failed else goto step17
+main at step17 do setN
+main at step17 branch ifError setN goto failed else goto step18
+main at step18 do serialize
+main at step18 do printSerialized
+main at step18 do makeSecret
+main at step18 do rightGuess
+main at step18 do printRight
+main at step18 do wrongGuess
+main at step18 do printWrong
+main at step18 do secretLength
+main at step18 do printHiddenLength
+main at step18 do revealIt
+main at step18 do printRevealed
+main at step18 do checkInterrupt
+main at step18 do printInterrupted
+main at step18 do shortDeadline
+main at step18 start awaitInterrupt
+main at step18 join awaitInterrupt
+main at step18 branch ifError awaitInterrupt goto step19 else goto failed
+main at step19 do printTimedOut
+main at step19 do lockedBytes
+main at step19 start writeLockFile
+main at step19 join writeLockFile
+main at step19 branch ifError writeLockFile goto failed else goto step20
+main at step20 do openLockFile
+main at step20 branch ifError openLockFile goto failed else goto step21
+main at step21 defer closeLockCleanup
+main at step21 start takeLock
+main at step21 join takeLock
+main at step21 branch ifError takeLock goto failed else goto step22
+main at step22 do printLocked
+main at step22 do releaseLock
+main at step22 branch ifError releaseLock goto failed else goto step23
+main at step23 do newArguments
+main at step23 do addhashObject
+main at step23 do addfromStdin
+main at step23 do pipedBytes
+main at step23 start runGit
+main at step23 join runGit
+main at step23 branch ifError runGit goto failed else goto step24
+main at step24 do readStdout
+main at step24 do stdoutText
+main at step24 branch ifError stdoutText goto failed else goto step25
+main at step25 do hashLength
+main at step25 do trimmedHash
+main at step25 branch ifError trimmedHash goto failed else goto step26
+main at step26 do printHash
+main at step26 return ok okCode
+main at failed return ok failCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+firstGenerator is call
+firstGenerator in main
+firstGenerator invokes random.newGenerator
+firstGenerator arg seed Int64 seed copy
+firstGenerator arg region Region store lend
+firstGenerator out first random.Generator
+firstGenerator ownedBy store
+firstGenerator cleanedBy none
+firstGenerator borrows none
+firstGenerator catch none
+
+secondGenerator is call
+secondGenerator in main
+secondGenerator invokes random.newGenerator
+secondGenerator arg seed Int64 seed copy
+secondGenerator arg region Region store lend
+secondGenerator out second random.Generator
+secondGenerator ownedBy store
+secondGenerator cleanedBy none
+secondGenerator borrows none
+secondGenerator catch none
+
+drawFirst is call
+drawFirst in main
+drawFirst invokes random.nextInt64
+drawFirst arg generator random.Generator first lendMutable
+drawFirst arg low Int64 one copy
+drawFirst arg high Int64 hundred copy
+drawFirst out firstDraw Int64
+drawFirst ownedBy none
+drawFirst cleanedBy none
+drawFirst borrows none
+drawFirst catch drawFirstError random.RangeError
+
+drawSecond is call
+drawSecond in main
+drawSecond invokes random.nextInt64
+drawSecond arg generator random.Generator second lendMutable
+drawSecond arg low Int64 one copy
+drawSecond arg high Int64 hundred copy
+drawSecond out secondDraw Int64
+drawSecond ownedBy none
+drawSecond cleanedBy none
+drawSecond borrows none
+drawSecond catch drawSecondError random.RangeError
+
+sameDraw is call
+sameDraw in main
+sameDraw invokes compare.equalInt64
+sameDraw arg left Int64 firstDraw copy
+sameDraw arg right Int64 secondDraw copy
+sameDraw out repeatable Bool
+sameDraw ownedBy none
+sameDraw cleanedBy none
+sameDraw borrows none
+sameDraw catch none
+
+printRepeatable is call
+printRepeatable in main
+printRepeatable invokes showBool
+printRepeatable arg flag Bool repeatable copy
+printRepeatable out none
+printRepeatable ownedBy none
+printRepeatable cleanedBy none
+printRepeatable borrows none
+printRepeatable catch none
+
+rollDie is call
+rollDie in main
+rollDie invokes random.int64Between
+rollDie arg low Int64 one copy
+rollDie arg high Int64 six copy
+rollDie out roll Int64
+rollDie ownedBy none
+rollDie cleanedBy none
+rollDie borrows none
+rollDie catch rollError random.RangeError
+
+atLeastOne is call
+atLeastOne in main
+atLeastOne invokes compare.greaterOrEqualInt64
+atLeastOne arg left Int64 roll copy
+atLeastOne arg right Int64 one copy
+atLeastOne out aboveLow Bool
+atLeastOne ownedBy none
+atLeastOne cleanedBy none
+atLeastOne borrows none
+atLeastOne catch none
+
+atMostSix is call
+atMostSix in main
+atMostSix invokes compare.lessOrEqualInt64
+atMostSix arg left Int64 roll copy
+atMostSix arg right Int64 six copy
+atMostSix out belowHigh Bool
+atMostSix ownedBy none
+atMostSix cleanedBy none
+atMostSix borrows none
+atMostSix catch none
+
+printAboveLow is call
+printAboveLow in main
+printAboveLow invokes showBool
+printAboveLow arg flag Bool aboveLow copy
+printAboveLow out none
+printAboveLow ownedBy none
+printAboveLow cleanedBy none
+printAboveLow borrows none
+printAboveLow catch none
+
+printBelowHigh is call
+printBelowHigh in main
+printBelowHigh invokes showBool
+printBelowHigh arg flag Bool belowHigh copy
+printBelowHigh out none
+printBelowHigh ownedBy none
+printBelowHigh cleanedBy none
+printBelowHigh borrows none
+printBelowHigh catch none
+
+emptyDraw is call
+emptyDraw in main
+emptyDraw invokes random.nextInt64
+emptyDraw arg generator random.Generator first lendMutable
+emptyDraw arg low Int64 six copy
+emptyDraw arg high Int64 one copy
+emptyDraw out neverDrawn Int64
+emptyDraw ownedBy none
+emptyDraw cleanedBy none
+emptyDraw borrows none
+emptyDraw catch emptyError random.RangeError
+
+printEmptyRange is call
+printEmptyRange in main
+printEmptyRange invokes showText
+printEmptyRange arg text String emptyRangeText lend
+printEmptyRange out none
+printEmptyRange ownedBy none
+printEmptyRange cleanedBy none
+printEmptyRange borrows none
+printEmptyRange catch none
+
+abcBytes is call
+abcBytes in main
+abcBytes invokes string.toBytes
+abcBytes arg text String abc lend
+abcBytes out abcData Bytes
+abcBytes ownedBy none
+abcBytes cleanedBy none
+abcBytes borrows abc
+abcBytes catch none
+
+hashAbc is call
+hashAbc in main
+hashAbc invokes crypto.sha256
+hashAbc arg bytes Bytes abcData lend
+hashAbc arg region Region store lend
+hashAbc out abcHash Bytes
+hashAbc ownedBy store
+hashAbc cleanedBy none
+hashAbc borrows none
+hashAbc catch none
+
+hexAbc is call
+hexAbc in main
+hexAbc invokes crypto.toHex
+hexAbc arg bytes Bytes abcHash lend
+hexAbc arg region Region store lend
+hexAbc out abcHex String
+hexAbc ownedBy store
+hexAbc cleanedBy none
+hexAbc borrows none
+hexAbc catch none
+
+printAbcHex is call
+printAbcHex in main
+printAbcHex invokes showText
+printAbcHex arg text String abcHex lend
+printAbcHex out none
+printAbcHex ownedBy none
+printAbcHex cleanedBy none
+printAbcHex borrows none
+printAbcHex catch none
+
+keyBytes is call
+keyBytes in main
+keyBytes invokes string.toBytes
+keyBytes arg text String keyText lend
+keyBytes out keyData Bytes
+keyBytes ownedBy none
+keyBytes cleanedBy none
+keyBytes borrows keyText
+keyBytes catch none
+
+messageBytes is call
+messageBytes in main
+messageBytes invokes string.toBytes
+messageBytes arg text String messageText lend
+messageBytes out messageData Bytes
+messageBytes ownedBy none
+messageBytes cleanedBy none
+messageBytes borrows messageText
+messageBytes catch none
+
+signMessage is call
+signMessage in main
+signMessage invokes crypto.hmacSha256
+signMessage arg key Bytes keyData lend
+signMessage arg message Bytes messageData lend
+signMessage arg region Region store lend
+signMessage out signature Bytes
+signMessage ownedBy store
+signMessage cleanedBy none
+signMessage borrows none
+signMessage catch none
+
+hexSignature is call
+hexSignature in main
+hexSignature invokes crypto.toHex
+hexSignature arg bytes Bytes signature lend
+hexSignature arg region Region store lend
+hexSignature out signatureHex String
+hexSignature ownedBy store
+hexSignature cleanedBy none
+hexSignature borrows none
+hexSignature catch none
+
+printSignature is call
+printSignature in main
+printSignature invokes showText
+printSignature arg text String signatureHex lend
+printSignature out none
+printSignature ownedBy none
+printSignature cleanedBy none
+printSignature borrows none
+printSignature catch none
+
+sameHash is call
+sameHash in main
+sameHash invokes crypto.constantTimeEquals
+sameHash arg left Bytes abcHash lend
+sameHash arg right Bytes abcHash lend
+sameHash out hashSame Bool
+sameHash ownedBy none
+sameHash cleanedBy none
+sameHash borrows none
+sameHash catch none
+
+printHashSame is call
+printHashSame in main
+printHashSame invokes showBool
+printHashSame arg flag Bool hashSame copy
+printHashSame out none
+printHashSame ownedBy none
+printHashSame cleanedBy none
+printHashSame borrows none
+printHashSame catch none
+
+hashVersusMac is call
+hashVersusMac in main
+hashVersusMac invokes crypto.constantTimeEquals
+hashVersusMac arg left Bytes abcHash lend
+hashVersusMac arg right Bytes signature lend
+hashVersusMac out hashIsMac Bool
+hashVersusMac ownedBy none
+hashVersusMac cleanedBy none
+hashVersusMac borrows none
+hashVersusMac catch none
+
+printHashIsMac is call
+printHashIsMac in main
+printHashIsMac invokes showBool
+printHashIsMac arg flag Bool hashIsMac copy
+printHashIsMac out none
+printHashIsMac ownedBy none
+printHashIsMac cleanedBy none
+printHashIsMac borrows none
+printHashIsMac catch none
+
+logOnce is call
+logOnce in main
+logOnce invokes log.info
+logOnce arg text String logText lend
+logOnce out none
+logOnce ownedBy none
+logOnce cleanedBy none
+logOnce borrows none
+logOnce catch logError log.LogError
+
+parseDocument is call
+parseDocument in main
+parseDocument invokes json.parse
+parseDocument arg text String document lend
+parseDocument arg region Region store lend
+parseDocument out doc json.Value
+parseDocument ownedBy store
+parseDocument cleanedBy none
+parseDocument borrows none
+parseDocument catch parseError json.ParseError
+
+nameField is call
+nameField in main
+nameField invokes json.field
+nameField arg value json.Value doc lend
+nameField arg name String nameKey lend
+nameField arg region Region store lend
+nameField out nameValue json.Value
+nameField ownedBy store
+nameField cleanedBy none
+nameField borrows none
+nameField catch nameError json.AccessError
+
+nameText is call
+nameText in main
+nameText invokes json.asText
+nameText arg value json.Value nameValue lend
+nameText arg region Region store lend
+nameText out name String
+nameText ownedBy store
+nameText cleanedBy none
+nameText borrows none
+nameText catch nameTextError json.AccessError
+
+printName is call
+printName in main
+printName invokes showText
+printName arg text String name lend
+printName out none
+printName ownedBy none
+printName cleanedBy none
+printName borrows none
+printName catch none
+
+tagsField is call
+tagsField in main
+tagsField invokes json.field
+tagsField arg value json.Value doc lend
+tagsField arg name String tagsKey lend
+tagsField arg region Region store lend
+tagsField out tags json.Value
+tagsField ownedBy store
+tagsField cleanedBy none
+tagsField borrows none
+tagsField catch tagsError json.AccessError
+
+tagCount is call
+tagCount in main
+tagCount invokes json.length
+tagCount arg value json.Value tags lend
+tagCount out tagsLength Int64
+tagCount ownedBy none
+tagCount cleanedBy none
+tagCount borrows none
+tagCount catch tagCountError json.AccessError
+
+printTagCount is call
+printTagCount in main
+printTagCount invokes showInt
+printTagCount arg value Int64 tagsLength copy
+printTagCount out none
+printTagCount ownedBy none
+printTagCount cleanedBy none
+printTagCount borrows none
+printTagCount catch none
+
+secondTag is call
+secondTag in main
+secondTag invokes json.item
+secondTag arg value json.Value tags lend
+secondTag arg index Int64 one copy
+secondTag arg region Region store lend
+secondTag out tagValue json.Value
+secondTag ownedBy store
+secondTag cleanedBy none
+secondTag borrows none
+secondTag catch tagError json.AccessError
+
+tagNumber is call
+tagNumber in main
+tagNumber invokes json.asInt64
+tagNumber arg value json.Value tagValue lend
+tagNumber out tag Int64
+tagNumber ownedBy none
+tagNumber cleanedBy none
+tagNumber borrows none
+tagNumber catch tagNumberError json.AccessError
+
+printTag is call
+printTag in main
+printTag invokes showInt
+printTag arg value Int64 tag copy
+printTag out none
+printTag ownedBy none
+printTag cleanedBy none
+printTag borrows none
+printTag catch none
+
+okField is call
+okField in main
+okField invokes json.field
+okField arg value json.Value doc lend
+okField arg name String okKey lend
+okField arg region Region store lend
+okField out okValue json.Value
+okField ownedBy store
+okField cleanedBy none
+okField borrows none
+okField catch okError json.AccessError
+
+okFlag is call
+okFlag in main
+okFlag invokes json.asBool
+okFlag arg value json.Value okValue lend
+okFlag out flag Bool
+okFlag ownedBy none
+okFlag cleanedBy none
+okFlag borrows none
+okFlag catch okFlagError json.AccessError
+
+printFlag is call
+printFlag in main
+printFlag invokes showBool
+printFlag arg flag Bool flag copy
+printFlag out none
+printFlag ownedBy none
+printFlag cleanedBy none
+printFlag borrows none
+printFlag catch none
+
+absentField is call
+absentField in main
+absentField invokes json.field
+absentField arg value json.Value doc lend
+absentField arg name String absentKey lend
+absentField arg region Region store lend
+absentField out absentValue json.Value
+absentField ownedBy store
+absentField cleanedBy none
+absentField borrows none
+absentField catch absentError json.AccessError
+
+printMissing is call
+printMissing in main
+printMissing invokes showText
+printMissing arg text String missingText lend
+printMissing out none
+printMissing ownedBy none
+printMissing cleanedBy none
+printMissing borrows none
+printMissing catch none
+
+parseBad is call
+parseBad in main
+parseBad invokes json.parse
+parseBad arg text String badDocument lend
+parseBad arg region Region store lend
+parseBad out badDoc json.Value
+parseBad ownedBy store
+parseBad cleanedBy none
+parseBad borrows none
+parseBad catch badError json.ParseError
+
+printBadAt is call
+printBadAt in main
+printBadAt invokes showInt
+printBadAt arg value Int64 badAt copy
+printBadAt out none
+printBadAt ownedBy none
+printBadAt cleanedBy none
+printBadAt borrows none
+printBadAt catch none
+
+newObject is call
+newObject in main
+newObject invokes json.newObject
+newObject arg region Region store lend
+newObject out built json.Value
+newObject ownedBy store
+newObject cleanedBy none
+newObject borrows none
+newObject catch none
+
+setA is call
+setA in main
+setA invokes json.setText
+setA arg object json.Value built lendMutable
+setA arg name String aKey lend
+setA arg text String xText lend
+setA out none
+setA ownedBy none
+setA cleanedBy none
+setA borrows none
+setA catch setAError json.AccessError
+
+setN is call
+setN in main
+setN invokes json.setInt64
+setN arg object json.Value built lendMutable
+setN arg name String nKey lend
+setN arg number Int64 five copy
+setN out none
+setN ownedBy none
+setN cleanedBy none
+setN borrows none
+setN catch setNError json.AccessError
+
+serialize is call
+serialize in main
+serialize invokes json.stringify
+serialize arg value json.Value built lend
+serialize arg region Region store lend
+serialize out serialized String
+serialize ownedBy store
+serialize cleanedBy none
+serialize borrows none
+serialize catch none
+
+printSerialized is call
+printSerialized in main
+printSerialized invokes showText
+printSerialized arg text String serialized lend
+printSerialized out none
+printSerialized ownedBy none
+printSerialized cleanedBy none
+printSerialized borrows none
+printSerialized catch none
+
+makeSecret is call
+makeSecret in main
+makeSecret invokes secret.fromText
+makeSecret arg text String password lend
+makeSecret arg region Region store lend
+makeSecret out hidden secret.Secret
+makeSecret ownedBy store
+makeSecret cleanedBy none
+makeSecret borrows none
+makeSecret catch none
+
+rightGuess is call
+rightGuess in main
+rightGuess invokes secret.matches
+rightGuess arg secret secret.Secret hidden lend
+rightGuess arg candidate String password lend
+rightGuess out right Bool
+rightGuess ownedBy none
+rightGuess cleanedBy none
+rightGuess borrows none
+rightGuess catch none
+
+printRight is call
+printRight in main
+printRight invokes showBool
+printRight arg flag Bool right copy
+printRight out none
+printRight ownedBy none
+printRight cleanedBy none
+printRight borrows none
+printRight catch none
+
+wrongGuess is call
+wrongGuess in main
+wrongGuess invokes secret.matches
+wrongGuess arg secret secret.Secret hidden lend
+wrongGuess arg candidate String abc lend
+wrongGuess out wrong Bool
+wrongGuess ownedBy none
+wrongGuess cleanedBy none
+wrongGuess borrows none
+wrongGuess catch none
+
+printWrong is call
+printWrong in main
+printWrong invokes showBool
+printWrong arg flag Bool wrong copy
+printWrong out none
+printWrong ownedBy none
+printWrong cleanedBy none
+printWrong borrows none
+printWrong catch none
+
+secretLength is call
+secretLength in main
+secretLength invokes secret.length
+secretLength arg secret secret.Secret hidden lend
+secretLength out hiddenLength Int64
+secretLength ownedBy none
+secretLength cleanedBy none
+secretLength borrows none
+secretLength catch none
+
+printHiddenLength is call
+printHiddenLength in main
+printHiddenLength invokes showInt
+printHiddenLength arg value Int64 hiddenLength copy
+printHiddenLength out none
+printHiddenLength ownedBy none
+printHiddenLength cleanedBy none
+printHiddenLength borrows none
+printHiddenLength catch none
+
+revealIt is call
+revealIt in main
+revealIt invokes secret.reveal
+revealIt arg secret secret.Secret hidden lend
+revealIt arg region Region store lend
+revealIt out revealed String
+revealIt ownedBy store
+revealIt cleanedBy none
+revealIt borrows none
+revealIt catch none
+
+printRevealed is call
+printRevealed in main
+printRevealed invokes showText
+printRevealed arg text String revealed lend
+printRevealed out none
+printRevealed ownedBy none
+printRevealed cleanedBy none
+printRevealed borrows none
+printRevealed catch none
+
+checkInterrupt is call
+checkInterrupt in main
+checkInterrupt invokes signal.interrupted
+checkInterrupt arg none
+checkInterrupt out wasInterrupted Bool
+checkInterrupt ownedBy none
+checkInterrupt cleanedBy none
+checkInterrupt borrows none
+checkInterrupt catch none
+
+printInterrupted is call
+printInterrupted in main
+printInterrupted invokes showBool
+printInterrupted arg flag Bool wasInterrupted copy
+printInterrupted out none
+printInterrupted ownedBy none
+printInterrupted cleanedBy none
+printInterrupted borrows none
+printInterrupted catch none
+
+shortDeadline is call
+shortDeadline in main
+shortDeadline invokes time.Deadline.after
+shortDeadline arg milliseconds Int64 fifty copy
+shortDeadline out soon time.Deadline
+shortDeadline ownedBy none
+shortDeadline cleanedBy none
+shortDeadline borrows none
+shortDeadline catch none
+
+awaitInterrupt is task
+awaitInterrupt in main
+awaitInterrupt invokes signal.waitForInterrupt
+awaitInterrupt arg deadline time.Deadline soon copy
+awaitInterrupt out none
+awaitInterrupt ownedBy none
+awaitInterrupt cleanedBy none
+awaitInterrupt borrows none
+awaitInterrupt catch interruptError signal.SignalError
+
+printTimedOut is call
+printTimedOut in main
+printTimedOut invokes showText
+printTimedOut arg text String timedOutText lend
+printTimedOut out none
+printTimedOut ownedBy none
+printTimedOut cleanedBy none
+printTimedOut borrows none
+printTimedOut catch none
+
+lockedBytes is call
+lockedBytes in main
+lockedBytes invokes string.toBytes
+lockedBytes arg text String abc lend
+lockedBytes out lockedData Bytes
+lockedBytes ownedBy none
+lockedBytes cleanedBy none
+lockedBytes borrows abc
+lockedBytes catch none
+
+writeLockFile is task
+writeLockFile in main
+writeLockFile invokes fs.writeAll
+writeLockFile arg path String lockPath lend
+writeLockFile arg bytes Bytes lockedData lend
+writeLockFile arg deadline time.Deadline deadline copy
+writeLockFile out none
+writeLockFile ownedBy none
+writeLockFile cleanedBy none
+writeLockFile borrows none
+writeLockFile catch writeLockError fs.FileError
+
+openLockFile is call
+openLockFile in main
+openLockFile invokes fs.openAppend
+openLockFile arg path String lockPath lend
+openLockFile out lockFile fs.FileHandle
+openLockFile ownedBy main
+openLockFile cleanedBy closeLockCleanup
+openLockFile borrows none
+openLockFile catch openLockError fs.FileError
+
+closeLockCleanup is cleanup
+closeLockCleanup in main
+closeLockCleanup call closeLock
+closeLockCleanup cleans lockFile
+closeLockCleanup onFailure suppress
+closeLockCleanup because "A failed close at exit has nobody to report to"
+
+closeLock is call
+closeLock in main
+closeLock invokes fs.close
+closeLock arg file fs.FileHandle lockFile give
+closeLock out none
+closeLock ownedBy none
+closeLock cleanedBy none
+closeLock borrows none
+closeLock catch closeLockError fs.FileError
+
+takeLock is task
+takeLock in main
+takeLock invokes fs.lock
+takeLock arg file fs.FileHandle lockFile lend
+takeLock arg deadline time.Deadline deadline copy
+takeLock out none
+takeLock ownedBy none
+takeLock cleanedBy none
+takeLock borrows none
+takeLock catch lockError fs.FileError
+
+printLocked is call
+printLocked in main
+printLocked invokes showText
+printLocked arg text String lockedText lend
+printLocked out none
+printLocked ownedBy none
+printLocked cleanedBy none
+printLocked borrows none
+printLocked catch none
+
+releaseLock is call
+releaseLock in main
+releaseLock invokes fs.unlock
+releaseLock arg file fs.FileHandle lockFile lend
+releaseLock out none
+releaseLock ownedBy none
+releaseLock cleanedBy none
+releaseLock borrows none
+releaseLock catch unlockError fs.FileError
+
+newArguments is call
+newArguments in main
+newArguments invokes process.newArguments
+newArguments arg region Region store lend
+newArguments out arguments process.Arguments
+newArguments ownedBy store
+newArguments cleanedBy none
+newArguments borrows none
+newArguments catch none
+
+addhashObject is call
+addhashObject in main
+addhashObject invokes process.addArgument
+addhashObject arg arguments process.Arguments arguments lendMutable
+addhashObject arg text String hashObject lend
+addhashObject out none
+addhashObject ownedBy none
+addhashObject cleanedBy none
+addhashObject borrows none
+addhashObject catch none
+
+addfromStdin is call
+addfromStdin in main
+addfromStdin invokes process.addArgument
+addfromStdin arg arguments process.Arguments arguments lendMutable
+addfromStdin arg text String fromStdin lend
+addfromStdin out none
+addfromStdin ownedBy none
+addfromStdin cleanedBy none
+addfromStdin borrows none
+addfromStdin catch none
+
+pipedBytes is call
+pipedBytes in main
+pipedBytes invokes string.toBytes
+pipedBytes arg text String piped lend
+pipedBytes out pipedData Bytes
+pipedBytes ownedBy none
+pipedBytes cleanedBy none
+pipedBytes borrows piped
+pipedBytes catch none
+
+runGit is task
+runGit in main
+runGit invokes process.runCaptured
+runGit arg program String git lend
+runGit arg arguments process.Arguments arguments lend
+runGit arg input Bytes pipedData lend
+runGit arg region Region store lend
+runGit arg maxBytes Int64 limit copy
+runGit arg deadline time.Deadline deadline copy
+runGit out gitOutput process.Output
+runGit ownedBy store
+runGit cleanedBy none
+runGit borrows none
+runGit catch runError process.RunError
+
+readStdout is call
+readStdout in main
+readStdout invokes process.Output.stdout
+readStdout arg record process.Output gitOutput lend
+readStdout out gitStdout Bytes
+readStdout ownedBy none
+readStdout cleanedBy none
+readStdout borrows gitOutput
+readStdout catch none
+
+stdoutText is call
+stdoutText in main
+stdoutText invokes string.fromBytes
+stdoutText arg bytes Bytes gitStdout lend
+stdoutText arg region Region store lend
+stdoutText out gitText String
+stdoutText ownedBy store
+stdoutText cleanedBy none
+stdoutText borrows none
+stdoutText catch stdoutError string.Utf8Error
+
+hashLength is call
+hashLength in main
+hashLength invokes string.byteLength
+hashLength arg text String gitText lend
+hashLength out gitLength Int64
+hashLength ownedBy none
+hashLength cleanedBy none
+hashLength borrows none
+hashLength catch none
+
+trimmedHash is call
+trimmedHash in main
+trimmedHash invokes string.slice
+trimmedHash arg text String gitText lend
+trimmedHash arg start Int64 zero copy
+trimmedHash arg length Int64 forty copy
+trimmedHash out hash String
+trimmedHash ownedBy none
+trimmedHash cleanedBy none
+trimmedHash borrows gitText
+trimmedHash catch trimError string.StringIndexError
+
+printHash is call
+printHash in main
+printHash invokes showText
+printHash arg text String hash lend
+printHash out none
+printHash ownedBy none
+printHash cleanedBy none
+printHash borrows none
+printHash catch none

@@ -1,0 +1,20 @@
+# covers: 23 Package management
+# covers: 23 Dependency resolution
+# covers: 23 Version constraints
+# covers: 23 Standard library versioning
+# covers: 23 Language feature versioning
+# covers: 9 Dependency management
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 49
+
+packageDemo is project
+packageDemo purpose "Use a local package that this project requires with a version constraint"
+packageDemo target console
+packageDemo version "0.1.0"
+packageDemo language refined-1
+packageDemo standardLibrary 1
+packageDemo requires geometryKit "packages/geometryKit" ">=1.0.0 <2.0.0"
+packageDemo module app
+packageDemo entry app.main

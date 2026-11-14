@@ -1,5 +1,3 @@
-
-
 area is module
 area purpose "Compute areas of the shared shapes"
 area path geometry.area

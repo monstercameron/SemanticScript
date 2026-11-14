@@ -149,7 +149,9 @@ def materialize(case: Case, workdir: str) -> str:
     console = re.search(rf"^{module} exports main$", text, re.M) is not None
     project = "case" + module[0].upper() + module[1:] if module else "case"
     rows = [f"{project} is project", f'{project} purpose "Run one test-suite case"',
-            f"{project} target {'console' if console else 'library'}", f"{project} module {dotted}",
+            f"{project} target {'console' if console else 'library'}", f'{project} version "0.1.0"',
+            f"{project} language refined-1", f"{project} standardLibrary 1", f"{project} requires none",
+            f"{project} module {dotted}",
             f"{project} entry {module + '.main' if console else 'none'}"]
     with open(os.path.join(dst, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(rows) + "\n")

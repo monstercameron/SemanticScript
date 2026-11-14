@@ -279,10 +279,52 @@ def _recursion_leave(op_id):
     _tls.depth[op_id] -= 1
 
 
+@ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
+def _frame_push(ptr, length):
+    frames = getattr(_tls, "frames", None)
+    if frames is None:
+        _tls.frames = frames = []
+    frames.append((ptr, length))
+    if PROFILING[0]:
+        from . import instrument
+        instrument.profile_push(ctypes.string_at(ptr, length).decode("utf-8", "replace"))
+
+
+@ctypes.CFUNCTYPE(None)
+def _frame_pop():
+    _tls.frames.pop()
+    if PROFILING[0]:
+        from . import instrument
+        instrument.profile_pop()
+
+
+PROFILING = [False]
+
+
+def stack_trace(limit: int = 12) -> list[str]:
+    """The calling thread's operations, innermost first (the names are constants in the compiled program)."""
+    frames = getattr(_tls, "frames", [])
+    names = [ctypes.string_at(p, n).decode("utf-8", "replace") for p, n in reversed(frames)]
+    runs: list[list] = []  # consecutive repeats (a recursion) collapse into one line with a count
+    for n in names:
+        if runs and runs[-1][0] == n:
+            runs[-1][1] += 1
+        else:
+            runs.append([n, 1])
+    task = current()
+    lines = [f"  in {n}" + (f" ({k} calls deep)" if k > 1 else "") for n, k in runs[:limit]]
+    if len(runs) > limit:
+        lines.append(f"  ... and {len(runs) - limit} more")
+    if task is not None:
+        lines.append("  (in a task started with `start`)")
+    return lines
+
+
 CALLBACKS = {
     "refined_task_frame": _task_frame, "refined_task_spawn": _task_spawn, "refined_task_join": _task_join,
     "refined_task_cancel": _task_cancel, "refined_task_release": _task_release,
     "refined_group_new": _group_new, "refined_group_await": _group_await, "refined_group_join": _group_join,
     "refined_group_cancel": _group_cancel, "refined_group_free": _group_free,
     "refined_recursion_enter": _recursion_enter, "refined_recursion_leave": _recursion_leave,
+    "refined_frame_push": _frame_push, "refined_frame_pop": _frame_pop,
 }

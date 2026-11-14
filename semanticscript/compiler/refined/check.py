@@ -44,10 +44,18 @@ class Result:
         return not self.diagnostics
 
 
+# Unsaved editor text by file (the language server sets it): checked in place of what is on disk.
+OVERLAY: dict[str, str] = {}
+
+
 def _read(path: str, sink: Sink) -> Optional[SourceFile]:
     try:
-        with open(path, encoding="utf-8") as fh:
-            text = fh.read()
+        key = os.path.normcase(os.path.abspath(path))
+        if key in OVERLAY:
+            text = OVERLAY[key]
+        else:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
     except UnicodeDecodeError:
         sink.error("R102", 1, "source is not valid UTF-8")
         return None
@@ -122,13 +130,13 @@ def check_modules(paths: list[str]) -> Result:
     return _run(World(), modules, sinks)
 
 
-def check_project(build_path: str) -> Result:
-    sinks: list[Sink] = []
+def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[str]):
+    """(project entity, its sink, its modules and those of every project it requires), or (None, sink, [])."""
     bsink = Sink(build_path)
     sinks.append(bsink)
     src = _read(build_path, bsink)
     if src is None:
-        return Result(diagnostics=list(bsink.items))
+        return None, bsink, []
     for e in src.entities:
         if e.kind is not None and e.kind != "project":
             bsink.error("R601", e.line, "build.sem holds only the project entity")
@@ -137,8 +145,9 @@ def check_project(build_path: str) -> Result:
     projects = [e for e in src.entities if e.kind == "project"]
     if len(projects) != 1:
         bsink.error("R601", 1, "build.sem declares exactly one `<name> is project` entity")
-        return Result(diagnostics=list(bsink.items))
+        return None, bsink, []
     proj = projects[0]
+    _check_versions(proj, bsink)
     root = os.path.dirname(os.path.abspath(build_path))
     modules = []
     for r in proj.facts("module"):
@@ -149,7 +158,46 @@ def check_project(build_path: str) -> Result:
             continue
         m = _load_module(dotted, file, sinks)
         if m is not None:
+            m.package, m.local_path = package, m.path  # type: ignore[attr-defined]
+            if package:
+                m.path = f"{package}.{m.path}"
             modules.append(m)
+    for r in proj.facts("requires"):
+        if r.text(0) == "none":
+            continue
+        name, rel, constraint = r.text(0), r.args[1].value, r.args[2].value
+        if not valid_constraint(constraint):
+            bsink.error("R601", r.line, f"`{constraint}` is not a version constraint; write comparators such as "
+                        "`>=1.2.0 <2.0.0`, `^1.2.0`, `=1.2.3`, or `*`")
+            continue
+        dep_build = os.path.normpath(os.path.join(root, rel, "build.sem"))
+        if not os.path.exists(dep_build):
+            bsink.error("R601", r.line, f"`{name}` is required from `{rel}`, which holds no build.sem")
+            continue
+        if dep_build in stack:
+            bsink.error("R603", r.line, f"projects require each other in a cycle through `{name}`")
+            continue
+        dep, _dep_sink, dep_modules = _load_project(dep_build, f"{package}.{name}" if package else name, sinks,
+                                                    stack + [dep_build])
+        if dep is None:
+            continue
+        if dep.name != name:
+            bsink.error("R601", r.line, f"`{rel}` holds project `{dep.name}`, not `{name}`")
+        if dep.value("target") != "library":
+            bsink.error("R601", r.line, f"a required project is a library; `{name}` is `{dep.value('target')}`")
+        version = dep.fact("version").args[0].value if dep.fact("version") is not None else "?"
+        if not satisfies(version, constraint):
+            bsink.error("R601", r.line, f"`{name}` is version {version}, which does not satisfy `{constraint}`")
+        modules += dep_modules
+    return proj, bsink, modules
+
+
+def check_project(build_path: str) -> Result:
+    sinks: list[Sink] = []
+    proj, bsink, modules = _load_project(build_path, "", sinks, [os.path.normpath(os.path.abspath(build_path))])
+    if proj is None:
+        return Result(diagnostics=_collect(sinks))
+    root = os.path.dirname(os.path.abspath(build_path))
     world = World()
     entry = proj.value("entry")
     if entry not in (None, "none") and "." in entry:
@@ -236,3 +284,53 @@ def _check_import_cycles(world: World, sink: Sink) -> None:
     for n in sorted(graph):
         if n not in color:
             visit(n, [n])
+
+
+# ---------------------------------------------------------------- versions and packages (D-34)
+
+LANGUAGE = "refined-1"
+STANDARD_LIBRARY_VERSION = 1
+
+
+def _semver(text: str):
+    parts = text.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return None
+    return tuple(int(p) for p in parts)
+
+
+def satisfies(version: str, constraint: str) -> bool:
+    """`constraint` is `*`, or comparators separated by spaces: `>=1.2.0 <2.0.0`, `=1.4.1`, `^1.2.0` (same major)."""
+    v = _semver(version)
+    if v is None:
+        return False
+    for part in constraint.split():
+        if part == "*":
+            continue
+        op = next((o for o in (">=", "<=", ">", "<", "=", "^") if part.startswith(o)), None)
+        want = _semver(part[len(op):]) if op else None
+        if op is None or want is None:
+            return False
+        ok = {">=": v >= want, "<=": v <= want, ">": v > want, "<": v < want, "=": v == want,
+              "^": v >= want and v[0] == want[0]}[op]
+        if not ok:
+            return False
+    return True
+
+
+def valid_constraint(constraint: str) -> bool:
+    return all(p == "*" or (any(p.startswith(o) for o in (">=", "<=", ">", "<", "=", "^")) and
+                            _semver(p.lstrip("<>=^")) is not None) for p in constraint.split()) and bool(constraint)
+
+
+def _check_versions(proj: Entity, sink: Sink) -> None:
+    row = proj.fact("version")
+    if row is not None and _semver(row.args[0].value) is None:
+        sink.error("R601", row.line, f"a project version is `MAJOR.MINOR.PATCH`, not `{row.args[0].value}`")
+    row = proj.fact("language")
+    if row is not None and row.text(0) != LANGUAGE:
+        sink.error("R601", row.line, f"this compiler reads `{LANGUAGE}`")
+    row = proj.fact("standardLibrary")
+    if row is not None and row.text(0) != str(STANDARD_LIBRARY_VERSION):
+        sink.error("R601", row.line, f"this compiler provides standard library version {STANDARD_LIBRARY_VERSION}, "
+                   f"not {row.text(0)}")

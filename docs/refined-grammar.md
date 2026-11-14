@@ -59,7 +59,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 
 | Predicate | Rows | Shape |
 | --- | --- | --- |
-| `grants` | one or more (`none` alone when empty) | `connect\|listen\|read\|readWrite\|spawn\|write <module.resource>` |
+| `grants` | one or more (`none` alone when empty) | `connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
 | `scope` | exactly one | `none`<br>`"<text>"` |
 
 ## `operationInstance`
@@ -76,7 +76,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwner` | exactly one | `none`<br>`caller`<br>`<name>` |
 | `raises` | exactly one | `none`<br>`<Type>` |
-| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|read\|readWrite\|spawn\|write <module.resource>` |
+| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
 | `async` | exactly one | `false\|true` |
 
 ## `operation`
@@ -88,7 +88,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwner` | exactly one | `none`<br>`caller`<br>`<name>` |
 | `raises` | exactly one | `none`<br>`<Type>` |
-| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|read\|readWrite\|spawn\|write <module.resource>` |
+| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
 | `uses` | one or more (`none` alone when empty) | `none`<br>`<name>` |
 | `memory` | exactly one | `heap false\|true` |
 | `async` | exactly one | `false\|true` |
@@ -106,7 +106,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwner` | exactly one | `none`<br>`caller`<br>`<name>` |
 | `raises` | exactly one | `none`<br>`<Type>` |
-| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|read\|readWrite\|spawn\|write <module.resource>` |
+| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
 | `uses` | one or more (`none` alone when empty) | `none`<br>`<name>` |
 | `memory` | exactly one | `heap false\|true` |
 | `async` | exactly one | `false\|true` |
