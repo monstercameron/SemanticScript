@@ -1,0 +1,14 @@
+# Conformance base for task-group failure (D-48): one task of a group fails, the
+# group's other tasks are cancelled, and `join` delivers the first error.
+
+groupFailure is project
+groupFailure purpose "Show a task group delivering its first failure and stopping its other tasks"
+groupFailure target console
+groupFailure version "0.1.0"
+groupFailure language refined 1
+groupFailure standardLibrary 1
+groupFailure allows write console.stdout none
+groupFailure allows read clock.monotonic none
+groupFailure requires none
+groupFailure includesModule groups
+groupFailure entry groups.main

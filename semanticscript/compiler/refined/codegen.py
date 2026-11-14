@@ -88,6 +88,9 @@ CALLBACKS = {
     "refined_group_join": ir.FunctionType(ir.VoidType(), [I64]),
     "refined_group_cancel": ir.FunctionType(ir.VoidType(), [I64]),
     "refined_group_free": ir.FunctionType(ir.VoidType(), [I64]),
+    # D-48: a failing task reports its error to its group (ignored outside a group); a group's join reads it back
+    "refined_task_fail": ir.FunctionType(ir.VoidType(), [PTR, I64]),
+    "refined_group_error": ir.FunctionType(I32, [I64, PTR, I64]),
     "refined_recursion_enter": ir.FunctionType(I32, [I64, I64, I64]),
     "refined_recursion_leave": ir.FunctionType(ir.VoidType(), [I64]),
     "refined_frame_push": ir.FunctionType(ir.VoidType(), [PTR, I64]),
@@ -412,6 +415,10 @@ class OpGen:
                 self.groups[o.name] = b.alloca(I64, name=f"{o.name}.group")
                 b.store(b.call(self.be.callbacks["refined_group_new"], [I64(int(o.value("maxTasks")))]),
                         self.groups[o.name])
+                crow = o.fact("catch")
+                if crow is not None and crow.text(0) != "none":
+                    self.failed[o.name] = b.alloca(I1, name=f"{o.name}.failed")
+                    b.store(I1(0), self.failed[o.name])
             elif o.kind == "task":
                 self.task_handles[o.name] = b.alloca(I64, name=f"{o.name}.task")
                 b.store(I64(0), self.task_handles[o.name])
@@ -543,6 +550,11 @@ class OpGen:
                 self.start_task(b, self.info.calls[a[0]], a[2] if a[2] != "none" else None, line)
             elif verb == "join" and a[0] in self.groups:
                 b.call(self.be.callbacks["refined_group_join"], [b.load(self.groups[a[0]])])
+                if a[0] in self.failed:
+                    err = self.allocas[self.info.owned[a[0]].fact("catch").text(0)]
+                    got = b.call(self.be.callbacks["refined_group_error"],
+                                 [b.load(self.groups[a[0]]), b.bitcast(err, PTR), self.sizeof(b, err.type.pointee)])
+                    b.store(b.icmp_signed("!=", got, I32(0)), self.failed[a[0]])
             elif verb == "join":
                 self.join_task(b, self.info.calls[a[0]])
             elif verb == "cancel" and a[0] in self.groups:
@@ -701,6 +713,10 @@ class OpGen:
             if ci.catch is not None:
                 b.store(b.load(self.failed[name]), b.gep(frame, [I32(0), I32(k)]))
                 b.store(b.load(self.allocas[ci.catch[0]]), b.gep(frame, [I32(0), I32(k + 1)]))
+                err = self.allocas[ci.catch[0]]
+                with b.if_then(b.load(self.failed[name]), likely=False):
+                    b.call(self.be.callbacks["refined_task_fail"],
+                           [b.bitcast(err, PTR), self.sizeof(b, err.type.pointee)])
             else:
                 b.store(I1(0), b.gep(frame, [I32(0), I32(k)]))
             b.ret_void()

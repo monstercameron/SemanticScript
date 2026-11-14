@@ -2111,6 +2111,25 @@ Decisions (by delegation):
   their time; `docs/refined-grammar.md`, generated from the shape table, is
   the current reference.
 
+- **D-48** Failure propagates through task groups. A group states the one
+  error type its tasks raise (`<group> catch <name> <Type>`, or `catch
+  none`); a fallible task may be started into it only if it raises that type
+  (R403). The first task to fail records its error in the group and cancels
+  the group's other tasks; `join <group>` waits for every task and delivers
+  that error, and is followed directly by `branch ifError <group>` (R506).
+  Later failures are dropped, since every task already stopped for the first.
+  (Replaces D-10's rule that grouped tasks state `catch none`.)
+- **D-49** Running out of a region is a safe trap, not a typed error. The
+  trap happens before any memory is written and names the region and its
+  capacity. A typed error would make every allocating target fallible,
+  so every string, list, and read would need an error branch for a limit the
+  program states itself; the program sizes its regions instead. (The goal's
+  item 6 allows typed errors or safe traps; this is the second.)
+- The authoring-syntax items of the same goal (inferred defaults, a concise
+  syntax over the rows) were replaced by the owner's instruction "dont
+  simplify syntax, make sure it has a consistent pattern"; D-47 is that
+  consistency pass.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.

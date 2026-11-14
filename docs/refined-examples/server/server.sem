@@ -103,6 +103,7 @@ main at listenFailed return ok failCode
 connections is taskGroup
 connections in main
 connections maxTasks 256
+connections catch none
 
 makeNoDeadline is call
 makeNoDeadline in main

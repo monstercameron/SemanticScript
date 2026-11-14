@@ -783,6 +783,11 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
             info.bindings[o.name] = Binding(o.name, "Region", "region", o.line)
         elif o.kind == "taskGroup":
             info.bindings[o.name] = Binding(o.name, None, "group", o.line)
+            crow = o.fact("catch")
+            if crow is not None and crow.text(0) != "none":
+                t = resolve_type(world, m, crow.text(1), crow.line)
+                info.bindings[crow.text(0)] = Binding(crow.text(0), t, "catch", crow.line)
+                claim(crow.text(0), crow.line, f"error of task group `{o.name}`")
     for o in info.owned.values():
         if o.kind in ("call", "task"):
             ci = _build_call(world, m, info, o)

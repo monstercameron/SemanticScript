@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.join(HERE, "conformance", "warehouse")
+BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups")}
 DOC = os.path.join(HERE, "..", "..", "docs", "safety-guarantees.md")
 
 W, P, B = "warehouse.sem", "pricing.sem", "build.sem"
@@ -32,6 +33,8 @@ class Check:
     edits: tuple = ()  # (file, old, new); old "<append>" appends `new` to the file
     codes: tuple = ()  # reject: the exact set of codes
     detail: str = ""  # reject: text of the rule's own diagnostic; trap: text in stderr; run: a stdout line
+    base: str = "warehouse"  # which program in tests/suite/conformance the edits apply to
+    exit: int = 0  # run: the exit code
 
 
 @dataclass(frozen=True)
@@ -217,8 +220,15 @@ GUARANTEES = (
         "its next wait. `join` waits for it to stop and delivers its outcome: its output, its error, or the "
         "`cancelled` variant of its error type (D-44).",
         "A task's failure is delivered only at its `join`, to the operation that started it, and must be branched "
-        "on there (R506). One task failing does not cancel its siblings: the parent decides, and must still join "
-        "each one. A trap in any task ends the program with the trap's stack trace.",
+        "on there (R506). One plain task failing does not cancel its siblings: the parent decides, and must still "
+        "join each one. A trap in any task ends the program with the trap's stack trace.",
+        "A task group states the one error type its tasks raise (`catch <name> <Type>`, or `catch none` when none "
+        "can fail; R403). The first task to fail records its error in the group and cancels the group's other "
+        "tasks; `join <group>` waits for all of them and delivers that error, followed directly by "
+        "`branch ifError <group>` (R506, D-48). A grouped task's own output is never read (R510).",
+        "Cancellation is observed at waits (channel operations, sleeps, accepts, reads, child processes, file "
+        "locks): the wait ends with the `cancelled` variant of its error. Computation between waits runs to its "
+        "end, so a cancelled task always finishes in a defined state.",
     ), (
         Check("cancel-without-join", "reject", "cancelling a task and returning without joining it",
               ((W, "main at stopDiscount join discountTask\nmain at stopDiscount branch ifError discountTask goto "
@@ -229,6 +239,18 @@ GUARANTEES = (
               ("R205", "R510"), "step row must be"),
         Check("runs", "run", "the program prices the order in two tasks and prints the report",
               (), (), "list=3750 discounted=3375"),
+        Check("group-first-failure", "run", "a group's failing task cancels a ten-second sibling; `join` delivers "
+              "its error at once (exit 3: stopped early)", (), (), "-3", base="groups", exit=3),
+        Check("group-catch-none", "reject", "a group that cannot receive its tasks' errors",
+              (("groups.sem", "checks catch checkError CheckError", "checks catch none"),),
+              ("R403", "R401", "R506"), "states `catch <name> groups.CheckError`", base="groups"),
+        Check("group-wrong-error-type", "reject", "a group catching a different error type than its tasks raise",
+              (("groups.sem", "checks catch checkError CheckError", "checks catch checkError console.WriteError"),),
+              ("R403",), "a group's tasks raise its one error type", base="groups"),
+        Check("group-join-unchecked", "reject", "joining a fallible group without branching on its error",
+              (("groups.sem", "main at begin branch ifError checks goto failed else goto allPassed",
+                "main at begin goto allPassed"),),
+              ("R506", "R511"), "`checks` can fail", base="groups"),
     ), ("mutation:task-not-joined", "mutation:group-not-joined", "mutation:join-twice",
         "mutation:start-in-loop-join-after", "mutation:task-wrong-loan-mode", "case:11-concurrency/cancellation",
         "case:11-concurrency/parallel", "case:11-concurrency/trap-channel-deadlock")),
@@ -464,12 +486,11 @@ def render() -> str:
             "does inside is outside the language's guarantees.",
             "- Standalone executables include only the core runtime; programs calling host-library targets are "
             "refused (R901) rather than built.",
-            "- Running out of a region is a trap, not a typed error: a program cannot recover from it, only size its "
+            "- Running out of a region is a safe trap (D-49), not a typed error: every allocation would otherwise be "
+            "fallible. The trap happens before any memory is written and names the region; a program sizes its "
             "regions for what it allocates.",
-            "- Cancellation is observed only at waits; a cancelled task in the middle of pure computation runs to its "
-            "end before its `join` returns.",
-            "- A task started into a task group states `result none` and `catch none`: its output and its failure are "
-            "not delivered to the parent. Use a plain task when the outcome matters.",
+            "- A grouped task's output is not delivered (`result none`); its failure is, through the group. Use a "
+            "plain task when the output matters.",
             "- There is no detached task; work that must outlive its operation is not expressible.", ""]
     return "\n".join(out)
 

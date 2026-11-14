@@ -481,6 +481,7 @@ main at begin return ok okCode
 pair is taskGroup
 pair in main
 pair maxTasks 2
+pair catch none
 
 mail is region
 mail in main

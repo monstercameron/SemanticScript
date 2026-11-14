@@ -188,15 +188,42 @@ void *refined_task_frame(int64_t size) {
     return p;
 }
 
+/* A task runs to its end when it is started, so `cancel` has nothing left to stop. A group keeps the first
+   error one of its tasks reports (D-48) until its `join` reads it. */
+#define MAX_GROUPS 4096
+static unsigned char *group_error_bytes[MAX_GROUPS];
+static int64_t group_error_size[MAX_GROUPS];
+static int64_t next_group = 0, current_group = 0;
+
 int64_t refined_task_spawn(void *thunk, void *frame, int64_t group) {
+    int64_t outer = current_group;
+    current_group = group;
     ((void (*)(void *))thunk)(frame);
-    (void)group;
+    current_group = outer;
+    return 1;
+}
+void refined_task_fail(void *error, int64_t size) {
+    if (current_group <= 0 || current_group >= MAX_GROUPS || group_error_bytes[current_group]) return;
+    group_error_bytes[current_group] = malloc((size_t)size);
+    if (!group_error_bytes[current_group]) trap_text("out of memory for a task group's error");
+    memcpy(group_error_bytes[current_group], error, (size_t)size);
+    group_error_size[current_group] = size;
+}
+int32_t refined_group_error(int64_t g, void *out, int64_t size) {
+    if (g <= 0 || g >= MAX_GROUPS || !group_error_bytes[g]) return 0;
+    memcpy(out, group_error_bytes[g], (size_t)(size < group_error_size[g] ? size : group_error_size[g]));
+    free(group_error_bytes[g]);
+    group_error_bytes[g] = NULL;
     return 1;
 }
 void refined_task_join(int64_t h) { (void)h; }
 void refined_task_cancel(int64_t h) { (void)h; }
 void refined_task_release(int64_t h) { (void)h; }
-int64_t refined_group_new(int64_t limit) { (void)limit; return 1; }
+int64_t refined_group_new(int64_t limit) {
+    (void)limit;
+    if (++next_group >= MAX_GROUPS) trap_text("too many task groups");
+    return next_group;
+}
 void refined_group_await(int64_t g) { (void)g; }
 void refined_group_join(int64_t g) { (void)g; }
 void refined_group_cancel(int64_t g) { (void)g; }

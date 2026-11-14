@@ -65,6 +65,7 @@ def _cancel_tree(task: "Task") -> None:
 class Group:
     def __init__(self, limit: int):
         self.limit, self.running, self.members, self.cancelled = limit, 0, [], False
+        self.error: Optional[bytes] = None  # the first failure of one of its tasks (D-48)
 
 
 def _new_id() -> int:
@@ -240,6 +241,35 @@ def _group_join(handle):
     group = _groups[handle]
     _wait_done(list(group.members), "a `join` waits for a task group")
     group.members = [t for t in group.members if not t.done]
+    group.cancelled = False  # a joined group starts afresh
+
+
+@ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
+def _task_fail(error_addr, size):
+    """D-48: the first task of a group to fail records its error there and cancels the group's other tasks, so
+    `join` returns soon and delivers that error. Outside a group the failure is read from the task's frame."""
+    task = current()
+    group = task.group if task is not None else None
+    if group is None:
+        return
+    with _sched:
+        if group.error is None:
+            group.error = ctypes.string_at(error_addr, size)
+            group.cancelled = True
+            for t in group.members:
+                if t is not task:
+                    _cancel_tree(t)
+        _sched.notify_all()
+
+
+@ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64)
+def _group_error(handle, out_addr, size):
+    group = _groups[handle]
+    if group.error is None:
+        return 0
+    ctypes.memmove(out_addr, group.error, min(size, len(group.error)))
+    group.error = None
+    return 1
 
 
 @ctypes.CFUNCTYPE(None, ctypes.c_int64)
@@ -324,6 +354,7 @@ CALLBACKS = {
     "refined_task_cancel": _task_cancel, "refined_task_release": _task_release,
     "refined_group_new": _group_new, "refined_group_await": _group_await, "refined_group_join": _group_join,
     "refined_group_cancel": _group_cancel, "refined_group_free": _group_free,
+    "refined_task_fail": _task_fail, "refined_group_error": _group_error,
     "refined_recursion_enter": _recursion_enter, "refined_recursion_leave": _recursion_leave,
     "refined_frame_push": _frame_push, "refined_frame_pop": _frame_pop,
 }

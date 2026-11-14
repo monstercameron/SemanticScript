@@ -1,0 +1,248 @@
+# Three tasks in one group: one checks 5, one checks -3 (and fails), one rests
+# for ten seconds. The failure cancels the resting task, so `join` returns at
+# once with the error. Prints the rejected value, then exits 3 if the group
+# stopped early (4 if it waited out the rest, 0 if nothing failed).
+
+groups is module
+groups purpose "Deliver the first failure of a task group and stop its other tasks"
+groups path groups
+groups imports standard.console
+groups imports standard.compare
+groups imports standard.math
+groups imports standard.clock
+groups imports standard.time
+groups exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+clockReader is capability
+clockReader purpose "Authority to read the monotonic clock to measure the group"
+clockReader grants read clock.monotonic none
+
+CheckError is enum
+CheckError purpose "Why a number was rejected, carrying the number"
+CheckError typeParameter none
+CheckError variant negative Int64
+
+checkPositive is operation
+checkPositive purpose "Accept a number that is zero or more"
+checkPositive invariant none
+checkPositive typeParameter none
+checkPositive input n Int64 copied
+checkPositive output none
+checkPositive outputOwnedBy none
+checkPositive raises CheckError
+checkPositive effect none
+checkPositive uses none
+checkPositive memoryHeap false
+checkPositive async false
+checkPositive maxRecursion none
+checkPositive label begin loopKind none
+checkPositive label begin within none
+checkPositive label reject loopKind none
+checkPositive label reject within none
+checkPositive label accept loopKind none
+checkPositive label accept within none
+checkPositive let zero Int64 0 immutable
+checkPositive at begin do isNegative
+checkPositive at begin branch if negative goto reject else goto accept
+checkPositive at reject do makeError
+checkPositive at reject return error rejected
+checkPositive at accept return ok none
+
+isNegative is call
+isNegative in checkPositive
+isNegative invokes compare.lessThanInt64
+isNegative argument left Int64 n copy
+isNegative argument right Int64 zero copy
+isNegative result negative Bool
+isNegative ownedBy none
+isNegative cleanedBy none
+isNegative borrows none
+isNegative catch none
+
+makeError is call
+makeError in checkPositive
+makeError invokes CheckError.negative
+makeError argument payload Int64 n copy
+makeError result rejected CheckError
+makeError ownedBy none
+makeError cleanedBy none
+makeError borrows none
+makeError catch none
+
+rest is operation
+rest purpose "Wait ten seconds, or less if cancelled"
+rest invariant none
+rest typeParameter none
+rest input none
+rest output none
+rest outputOwnedBy none
+rest raises none
+rest effect none
+rest uses none
+rest memoryHeap false
+rest async true
+rest maxRecursion none
+rest label begin loopKind none
+rest label begin within none
+rest let tenSeconds Int64 10000 immutable
+rest at begin start sleep into none
+rest at begin join sleep
+rest at begin return ok none
+
+sleep is task
+sleep in rest
+sleep invokes time.sleep
+sleep argument milliseconds Int64 tenSeconds copy
+sleep result none
+sleep ownedBy none
+sleep cleanedBy none
+sleep borrows none
+sleep catch none
+
+main is operation
+main purpose "Run the three checks as one group and report how it ended"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main effect read clock.monotonic
+main uses stdoutWriter
+main uses clockReader
+main memoryHeap false
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label failed loopKind none
+main label failed within none
+main label report loopKind none
+main label report within none
+main label printed loopKind none
+main label printed within none
+main label early loopKind none
+main label early within none
+main label late loopKind none
+main label late within none
+main label allPassed loopKind none
+main label allPassed within none
+main let five Int64 5 immutable
+main let minusThree Int64 -3 immutable
+main let fiveSeconds Int64 5000 immutable
+main let earlyCode ExitCode 3 immutable
+main let lateCode ExitCode 4 immutable
+main let passedCode ExitCode 0 immutable
+main at begin do clockBefore
+main at begin awaitSlot checks
+main at begin start checkFive into checks
+main at begin awaitSlot checks
+main at begin start checkMinus into checks
+main at begin awaitSlot checks
+main at begin start restLong into checks
+main at begin join checks
+main at begin branch ifError checks goto failed else goto allPassed
+main at failed match checkError CheckError
+main at failed case CheckError.negative bind value Int64 goto report
+main at report do printValue
+main at report branch ifError printValue goto printed else goto printed
+main at printed do clockAfter
+main at printed do elapsed
+main at printed do stoppedEarly
+main at printed branch if isEarly goto early else goto late
+main at early return ok earlyCode
+main at late return ok lateCode
+main at allPassed return ok passedCode
+
+checks is taskGroup
+checks in main
+checks maxTasks 3
+checks catch checkError CheckError
+
+clockBefore is call
+clockBefore in main
+clockBefore invokes clock.monotonic
+clockBefore argument none
+clockBefore result before Int64
+clockBefore ownedBy none
+clockBefore cleanedBy none
+clockBefore borrows none
+clockBefore catch none
+
+checkFive is task
+checkFive in main
+checkFive invokes checkPositive
+checkFive argument n Int64 five copy
+checkFive result none
+checkFive ownedBy none
+checkFive cleanedBy none
+checkFive borrows none
+checkFive catch fiveError CheckError
+
+checkMinus is task
+checkMinus in main
+checkMinus invokes checkPositive
+checkMinus argument n Int64 minusThree copy
+checkMinus result none
+checkMinus ownedBy none
+checkMinus cleanedBy none
+checkMinus borrows none
+checkMinus catch minusError CheckError
+
+restLong is task
+restLong in main
+restLong invokes rest
+restLong argument none
+restLong result none
+restLong ownedBy none
+restLong cleanedBy none
+restLong borrows none
+restLong catch none
+
+printValue is call
+printValue rationale "The exit code reports how the group ended even when the value cannot be printed"
+printValue in main
+printValue invokes console.writeIntegerLine
+printValue argument value Int64 value copy
+printValue result none
+printValue ownedBy none
+printValue cleanedBy none
+printValue borrows none
+printValue catch printError console.WriteError
+
+clockAfter is call
+clockAfter in main
+clockAfter invokes clock.monotonic
+clockAfter argument none
+clockAfter result after Int64
+clockAfter ownedBy none
+clockAfter cleanedBy none
+clockAfter borrows none
+clockAfter catch none
+
+elapsed is call
+elapsed in main
+elapsed invokes math.subtractInt64
+elapsed argument left Int64 after copy
+elapsed argument right Int64 before copy
+elapsed result took Int64
+elapsed ownedBy none
+elapsed cleanedBy none
+elapsed borrows none
+elapsed catch none
+
+stoppedEarly is call
+stoppedEarly in main
+stoppedEarly invokes compare.lessThanInt64
+stoppedEarly argument left Int64 took copy
+stoppedEarly argument right Int64 fiveSeconds copy
+stoppedEarly result isEarly Bool
+stoppedEarly ownedBy none
+stoppedEarly cleanedBy none
+stoppedEarly borrows none
+stoppedEarly catch none

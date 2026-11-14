@@ -277,9 +277,10 @@ KINDS: dict[str, dict] = {
                    "released": [(kw("atReturn", "atProcessExit"),)]},
         "skeleton": [("in", "one"), ("strategy", "one"), ("maxBytes", "one"), ("released", "one")],
     },
+    # D-48: the error a group's tasks may raise; `join <group>` delivers the first one
     "taskGroup": {
-        "shapes": {"in": [("name",)], "maxTasks": [("int",)]},
-        "skeleton": [("in", "one"), ("maxTasks", "one")],
+        "shapes": {"in": [("name",)], "maxTasks": [("int",)], "catch": [(NONE,), ("name", "Type")]},
+        "skeleton": [("in", "one"), ("maxTasks", "one"), ("catch", "one")],
     },
 }
 

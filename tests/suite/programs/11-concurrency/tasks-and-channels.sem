@@ -183,6 +183,7 @@ main at failed return ok failCode
 workers is taskGroup
 workers in main
 workers maxTasks 2
+workers catch none
 
 mail is region
 mail in main

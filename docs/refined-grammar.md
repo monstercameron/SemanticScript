@@ -173,4 +173,5 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | --- | --- | --- |
 | `in` | exactly one | `<name>` |
 | `maxTasks` | exactly one | `<integer>` |
+| `catch` | exactly one | `none`<br>`<name> <Type>` |
 

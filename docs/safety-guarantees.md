@@ -37,13 +37,19 @@ Also: `mutation:mutable-loan-of-read-loan`, `mutation:change-through-read-loan`,
 
 - Every task is started at most once per path and joined exactly once on every path to every return, whether or not it was cancelled; a task group is joined on every path (R510, R512). There is no detached task, so no task outlives the operation that started it, or anything it borrowed from it.
 - `cancel` asks a task (and every task it started) to stop and returns at once; the task sees `cancelled` at its next wait. `join` waits for it to stop and delivers its outcome: its output, its error, or the `cancelled` variant of its error type (D-44).
-- A task's failure is delivered only at its `join`, to the operation that started it, and must be branched on there (R506). One task failing does not cancel its siblings: the parent decides, and must still join each one. A trap in any task ends the program with the trap's stack trace.
+- A task's failure is delivered only at its `join`, to the operation that started it, and must be branched on there (R506). One plain task failing does not cancel its siblings: the parent decides, and must still join each one. A trap in any task ends the program with the trap's stack trace.
+- A task group states the one error type its tasks raise (`catch <name> <Type>`, or `catch none` when none can fail; R403). The first task to fail records its error in the group and cancels the group's other tasks; `join <group>` waits for all of them and delivers that error, followed directly by `branch ifError <group>` (R506, D-48). A grouped task's own output is never read (R510).
+- Cancellation is observed at waits (channel operations, sleeps, accepts, reads, child processes, file locks): the wait ends with the `cancelled` variant of its error. Computation between waits runs to its end, so a cancelled task always finishes in a defined state.
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
 | `cancel-without-join` | rejected: R512 | cancelling a task and returning without joining it |
 | `no-detach` | rejected: R205, R510 | `detach` is not a step |
 | `runs` | runs | the program prices the order in two tasks and prints the report |
+| `group-first-failure` | runs | a group's failing task cancels a ten-second sibling; `join` delivers its error at once (exit 3: stopped early) |
+| `group-catch-none` | rejected: R403, R401, R506 | a group that cannot receive its tasks' errors |
+| `group-wrong-error-type` | rejected: R403 | a group catching a different error type than its tasks raise |
+| `group-join-unchecked` | rejected: R506, R511 | joining a fallible group without branching on its error |
 
 Also: `mutation:task-not-joined`, `mutation:group-not-joined`, `mutation:join-twice`, `mutation:start-in-loop-join-after`, `mutation:task-wrong-loan-mode`, `case:11-concurrency/cancellation`, `case:11-concurrency/parallel`, `case:11-concurrency/trap-channel-deadlock`.
 
@@ -174,7 +180,6 @@ Also: `mutation:module-private-symbol`, `mutation:module-unexported-type`, `muta
 - Capability scopes on computed arguments are enforced at run time only.
 - Foreign functions (`ffi`) are limited to numbers and `Bool` with no shared memory; what the C code does inside is outside the language's guarantees.
 - Standalone executables include only the core runtime; programs calling host-library targets are refused (R901) rather than built.
-- Running out of a region is a trap, not a typed error: a program cannot recover from it, only size its regions for what it allocates.
-- Cancellation is observed only at waits; a cancelled task in the middle of pure computation runs to its end before its `join` returns.
-- A task started into a task group states `result none` and `catch none`: its output and its failure are not delivered to the parent. Use a plain task when the outcome matters.
+- Running out of a region is a safe trap (D-49), not a typed error: every allocation would otherwise be fallible. The trap happens before any memory is written and names the region; a program sizes its regions for what it allocates.
+- A grouped task's output is not delivered (`result none`); its failure is, through the group. Use a plain task when the output matters.
 - There is no detached task; work that must outlive its operation is not expressible.

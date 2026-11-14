@@ -537,6 +537,28 @@ class Flow:
 
     # ------------------------------------------------------------ activations
 
+    def _group_catch(self, name: str):
+        """(error name, type) a task group states with `catch`, or None (D-48)."""
+        g = self.op.owned.get(name)
+        row = g.fact("catch") if g is not None and g.kind == "taskGroup" else None
+        if row is None or row.text(0) == "none":
+            return None
+        b = self.op.bindings.get(row.text(0))
+        return row.text(0), b.type if b is not None else None
+
+    def _grouped_error(self, task: str, ci) -> None:
+        """D-48: a fallible task started into a group raises the error type the group states."""
+        for lab in self.order:
+            for st in self.blocks[lab]:
+                if st.verb == "start" and st.args[0] == task and st.args[2] != "none":
+                    caught = self._group_catch(st.args[2])
+                    if caught is None:
+                        self.err("R403", ci.entity.fact("catch").line, f"task `{task}` can fail, so group "
+                                 f"`{st.args[2]}` states `catch <name> {ci.catch[1]}` to receive its error")
+                    elif caught[1] is not None and ci.catch[1] != caught[1]:
+                        self.err("R403", ci.entity.fact("catch").line, f"task `{task}` raises `{ci.catch[1]}`, but "
+                                 f"group `{st.args[2]}` catches `{caught[1]}`; a group's tasks raise its one error type")
+
     @property
     def _grouped(self) -> set[str]:
         return {st.args[0] for lab in self.order for st in self.blocks[lab]
@@ -571,8 +593,10 @@ class Flow:
                     if g is None or g.kind != "taskGroup":
                         self.err("R402", st.line, f"`start ... into` names a task group; `{st.args[2]}` is not one")
                 ci = op.calls.get(target)
-                fallible = ci is not None and ci.catch is not None
-                if fallible and ((st.verb == "do" and ent.kind == "call") or (st.verb == "join" and ent.kind == "task")):
+                fallible = (ci is not None and ci.catch is not None) or \
+                    (ent.kind == "taskGroup" and self._group_catch(target) is not None)
+                if fallible and ((st.verb == "do" and ent.kind == "call") or
+                                 (st.verb == "join" and ent.kind in ("task", "taskGroup"))):
                     nxt = steps[i + 1] if i + 1 < len(steps) else None
                     if nxt is None or nxt.verb != "branch" or nxt.args[:2] != ["ifError", target]:
                         self.err("R506", st.line, f"`{target}` can fail, so `branch ifError {target} goto ... else "
@@ -597,9 +621,11 @@ class Flow:
                     if c.get("join") or c.get("cancel"):
                         self.err("R510", ent.line, f"task `{name}` is started into a group; join or cancel the group, "
                                  "not the task")
-                    if ci is not None and (ci.out is not None or ci.catch is not None):
+                    if ci is not None and ci.out is not None:
                         self.err("R510", ent.line, f"task `{name}` is started into a group, so its result cannot be "
-                                 f"read; it has `result none` and `catch none`")
+                                 f"read; it has `result none`")
+                    if ci is not None and ci.catch is not None:
+                        self._grouped_error(name, ci)
                 elif not c.get("join") and not c.get("cancel"):
                     self.err("R510", ent.line, f"task `{name}` is never joined or cancelled")
             elif ent.kind == "cleanup":
@@ -609,6 +635,15 @@ class Flow:
             for st in self.blocks[st_lab]:
                 if st.verb == "branch" and st.args[0] == "ifError":
                     ci = op.calls.get(st.args[1])
+                    group = op.owned.get(st.args[1])
+                    if group is not None and group.kind == "taskGroup":
+                        if self._group_catch(st.args[1]) is None:
+                            self.err("R506", st.line, f"task group `{st.args[1]}` cannot fail (`catch none`), so it has "
+                                     "no error branch")
+                        elif st.args[-4] == st.args[-1] and not group.facts("rationale"):
+                            self.err("R506", st.line, f"both arms go to `{st.args[-1]}`, which ignores the failure; "
+                                     f"`{st.args[1]}` needs a `rationale` row saying why")
+                        continue
                     if ci is None:
                         self.err("R401", st.line, f"`{st.args[1]}` is not a call or task of `{self.ent.name}`")
                     elif ci.catch is None:
@@ -690,6 +725,8 @@ class Flow:
                     self._call_uses(ci, cur, st.line, report)
             elif v == "join":
                 ci = op.calls.get(a[0])
+                if ci is None and self._group_catch(a[0]) is not None:
+                    pending_split = ({self._group_catch(a[0])[0]}, set())
                 if ci is not None:
                     gen = {ci.out[0]} if ci.out else set()
                     if ci.catch:

@@ -19,8 +19,8 @@ CHECKS = [(g, c) for g in conformance.GUARANTEES for c in g.checks]
 
 
 def _apply(tmp_path, check) -> str:
-    project = str(tmp_path / "warehouse")
-    shutil.copytree(conformance.BASE, project)
+    project = str(tmp_path / check.base)
+    shutil.copytree(conformance.BASES[check.base], project)
     for file, old, new in check.edits:
         path = os.path.join(project, file)
         with open(path, encoding="utf-8", newline="") as fh:
@@ -52,7 +52,7 @@ def test_conformance(g, check, tmp_path):
     if check.kind == "trap":
         assert proc.returncode == caselib.TRAP_EXIT_CODE and check.detail in proc.stderr, (proc.returncode, proc.stderr)
     else:
-        assert proc.returncode == 0, proc.stderr
+        assert proc.returncode == check.exit, (proc.returncode, proc.stderr)
         assert check.detail in proc.stdout.splitlines(), proc.stdout
 
 
@@ -85,7 +85,8 @@ def test_safety_guarantees_doc_is_current():
 
 def test_base_matches_the_example_syntax():
     """The frozen base checks clean, so every rejection above is caused by its edit alone."""
-    assert not caselib.check_path(conformance.BASE).diagnostics
+    for base in conformance.BASES.values():
+        assert not caselib.check_path(base).diagnostics, base
 
 
 def test_warehouse_example_runs_and_reports_both_failures(tmp_path):
