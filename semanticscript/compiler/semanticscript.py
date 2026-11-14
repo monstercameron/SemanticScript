@@ -24469,7 +24469,9 @@ def cmd_emit_ir(args) -> int:
             mod = llvm.parse_assembly(text)
             mod.verify()
             tm = llvm.Target.from_default_triple().create_target_machine()
-            pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0)
+            # llvmlite 0.50 dropped the `size_level` kwarg; it defaulted to 0
+            # in earlier releases, so passing only speed_level works on both.
+            pto = llvm.create_pipeline_tuning_options(speed_level=2)
             pb = llvm.create_pass_builder(tm, pto)
             pb.getModulePassManager().run(mod, pb)
             text = str(mod)
