@@ -410,7 +410,11 @@ def check_module(world: World, m: Module) -> None:
             n = r.text(0)
             if n == "none":
                 continue
-            if n not in m.ops and n not in m.types and n not in m.tables and n not in m.op_instances:
+            if n in m.capabilities:
+                sink.error("R402", r.line, f"`{n}` is a capability; capabilities are never exported. Each module "
+                           "declares the authority its own operations use, and build.sem bounds them all, so authority "
+                           "cannot be handed from one module to another")
+            elif n not in m.ops and n not in m.types and n not in m.tables and n not in m.op_instances:
                 sink.error("R401", r.line, f"`{n}` is exported but not declared in this module")
             elif n in m.ops and world.entry != (m.short, n):
                 inv = m.ops[n].facts("invariant")

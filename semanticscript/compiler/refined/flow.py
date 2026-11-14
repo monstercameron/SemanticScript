@@ -205,6 +205,14 @@ class Flow:
                 elif "over" in d and steps[0].args[1] != d["over"][1][0]:
                     self.err("R503", steps[0].line, f"`{lab}` is `over {d['over'][1][0]}` but its `ifNext` reads "
                              f"`{steps[0].args[1]}`")
+                # a table's rows are known when the program is checked, so its loop bound is checked then too;
+                # a list's length is known only at run time, where passing the bound traps (D-45)
+                table = self.m.tables.get(d["over"][1][0]) if "over" in d else None
+                if table is not None and bound is not None and S.INT.match(bound[1][0]):
+                    rows = len(table.facts("row"))
+                    if rows > int(bound[1][0]):
+                        self.err("R503", bound[0], f"`{lab}` reads table `{table.name}`, which has {rows} rows, but "
+                                 f"states `maxIterations {bound[1][0]}`; the bound covers every row")
         for lab, steps in self.blocks.items():
             for st in steps:
                 if st.verb == "branch" and st.args[0] == "ifNext" and self.kinds.get(lab) != "forEach":
@@ -821,7 +829,8 @@ class Flow:
         if not groups and not tasks:
             return
         # pending tasks: may-analysis; settled groups: must-analysis. A cancelled task is tracked as
-        # `cancelled:<name>` so a `join` after `cancel` is allowed, and a second `join` is not (D-39).
+        # `cancelled:<name>`: it may still be running until it is joined, so its loans stay live and the return
+        # still needs its `join` (D-39, D-44).
         PEND = {lab: set() for lab in self.order}
         SETT = {lab: (set() if lab == "begin" else set(groups)) for lab in self.order}
         succ: dict[str, list[str]] = {}
@@ -905,7 +914,7 @@ class Flow:
         """D-39: a running task's loans are live from `start` to `join` or `cancel`."""
         own = st.args[0] if st.verb == "start" else None
         live = []
-        for holder in sorted(p for p in pend if not p.startswith("cancelled:")):
+        for holder in sorted(p.split(":", 1)[-1] for p in pend):
             live += [(v, m, t) for v, m, t in self._loans_of(holder) if t != own]
         for value, how, line in self._step_uses(st):
             for lent, mode, task in live:
@@ -913,11 +922,11 @@ class Flow:
                     continue
                 if mode == "lendMutable":
                     self.err("R515", line, f"`{value}` is lent exclusively to task `{task}`, which may still be "
-                             f"running; join or cancel it before using `{value}`")
+                             f"running; join it (a `cancel` only asks it to stop) before using `{value}`")
                 elif how in ("lendMutable", "give", "set"):
                     verb = {"lendMutable": "lent exclusively", "give": "given away", "set": "changed"}[how]
                     self.err("R515", line, f"`{value}` is lent to task `{task}`, which may still be running, so it "
-                             f"cannot be {verb}; join or cancel `{task}` first")
+                             f"cannot be {verb}; join `{task}` first")
 
     def _settle_block(self, lab: str, pend: set, sett: set, report: bool, groups: set = frozenset()):
         for st in self.blocks[lab]:
@@ -931,17 +940,16 @@ class Flow:
                 else:
                     if report and a[0] in pend:
                         self.err("R510", st.line, f"task `{a[0]}` is started again while it may still be running; "
-                                 "join or cancel it before each new start")
+                                 "join it before each new start")
                     pend.add(a[0])
                     pend.discard(f"cancelled:{a[0]}")
             elif st.verb == "cancel":
                 if a[0] not in groups and report and a[0] not in pend:
                     self.err("R510", st.line, f"task `{a[0]}` is not running here; it was never started on this path, "
                              "or it was already joined or cancelled")
-                pend.discard(a[0])
                 if a[0] not in groups:
+                    pend.discard(a[0])
                     pend.add(f"cancelled:{a[0]}")
-                sett.add(a[0])
             elif st.verb == "join":
                 if (a[0] not in groups and report and a[0] not in pend and f"cancelled:{a[0]}" not in pend):
                     self.err("R510", st.line, f"task `{a[0]}` is not running here; it was never started on this path, "
@@ -952,10 +960,12 @@ class Flow:
             elif st.verb == "return" and report:
                 for t in sorted(pend - groups):
                     if t.startswith("cancelled:"):
-                        continue  # a cancelled task has stopped; a join to read its result is optional
-                    self.err("R512", st.line, f"task `{t}` may still be running at this return; join or cancel it "
-                             "on every path")
+                        self.err("R512", st.line, f"task `{t.split(':', 1)[1]}` was cancelled but is not joined on this "
+                                 "path; `cancel` only asks a task to stop, so `join` it to wait for it and see its outcome")
+                        continue
+                    self.err("R512", st.line, f"task `{t}` may still be running at this return; join it on every path "
+                             "(after a `cancel` if it should stop early)")
                 for g in sorted(groups - sett):
-                    self.err("R512", st.line, f"task group `{g}` is not joined or cancelled on every path to this "
-                             "return")
+                    self.err("R512", st.line, f"task group `{g}` is not joined on every path to this return; `cancel` "
+                             "only asks its tasks to stop, so `join` it to wait for them")
         return pend, sett

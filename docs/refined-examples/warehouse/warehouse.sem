@@ -373,7 +373,7 @@ closeReport catch closeError fs.FileError
 writeReport is task
 writeReport in main
 writeReport invokes fs.write
-writeReport arg file fs.FileHandle report lend
+writeReport arg file fs.FileHandle report lendMutable
 writeReport arg bytes Bytes reportBytes lend
 writeReport arg deadline time.Deadline deadline copy
 writeReport out none

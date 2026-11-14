@@ -211,7 +211,7 @@ closeClient catch closeClientError net.NetError
 acceptServer is task
 acceptServer in main
 acceptServer invokes net.accept
-acceptServer arg listener net.TcpListener listener lend
+acceptServer arg listener net.TcpListener listener lendMutable
 acceptServer arg deadline time.Deadline deadline copy
 acceptServer out server net.TcpConnection
 acceptServer ownedBy main
@@ -249,7 +249,7 @@ toBytes catch none
 sendPing is task
 sendPing in main
 sendPing invokes net.write
-sendPing arg connection net.TcpConnection client lend
+sendPing arg connection net.TcpConnection client lendMutable
 sendPing arg bytes Bytes messageBytes lend
 sendPing arg deadline time.Deadline deadline copy
 sendPing out none
@@ -261,7 +261,7 @@ sendPing catch sendError net.NetError
 readPing is task
 readPing in main
 readPing invokes net.read
-readPing arg connection net.TcpConnection server lend
+readPing arg connection net.TcpConnection server lendMutable
 readPing arg region Region io lend
 readPing arg maxBytes Int64 limit copy
 readPing arg deadline time.Deadline deadline copy

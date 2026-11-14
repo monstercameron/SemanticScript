@@ -299,7 +299,7 @@ bytes0 catch none
 append0 is task
 append0 in main
 append0 invokes fs.write
-append0 arg file fs.FileHandle log0 lend
+append0 arg file fs.FileHandle log0 lendMutable
 append0 arg bytes Bytes piece0 lend
 append0 arg deadline time.Deadline deadline copy
 append0 out none
@@ -352,7 +352,7 @@ bytes1 catch none
 append1 is task
 append1 in main
 append1 invokes fs.write
-append1 arg file fs.FileHandle log1 lend
+append1 arg file fs.FileHandle log1 lendMutable
 append1 arg bytes Bytes piece1 lend
 append1 arg deadline time.Deadline deadline copy
 append1 out none

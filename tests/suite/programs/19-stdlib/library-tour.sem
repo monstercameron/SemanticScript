@@ -1413,7 +1413,7 @@ newBytes catch none
 writeThrough is task
 writeThrough in main
 writeThrough invokes fs.write
-writeThrough arg file fs.FileHandle writer lend
+writeThrough arg file fs.FileHandle writer lendMutable
 writeThrough arg bytes Bytes freshBytes lend
 writeThrough arg deadline time.Deadline deadline copy
 writeThrough out none
@@ -1456,7 +1456,7 @@ openForRead catch openReadError fs.FileError
 readSome is task
 readSome in main
 readSome invokes fs.read
-readSome arg file fs.FileHandle reader lend
+readSome arg file fs.FileHandle reader lendMutable
 readSome arg region Region store lend
 readSome arg maxBytes Int64 sixtyFour copy
 readSome arg deadline time.Deadline deadline copy

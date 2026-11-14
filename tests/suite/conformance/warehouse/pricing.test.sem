@@ -1,0 +1,643 @@
+# Tests for pricing.sem: one test per invariant, each calling the operation it
+# verifies and asserting on what it returns.
+
+fullPriceTest is test
+fullPriceTest purpose "fullPrice charges 1234 cents as 1234 cents"
+fullPriceTest verifies fullPrice unchanged
+fullPriceTest typeParam none
+fullPriceTest input none
+fullPriceTest output none
+fullPriceTest outputOwner none
+fullPriceTest raises none
+fullPriceTest effect none
+fullPriceTest uses none
+fullPriceTest memory heap false
+fullPriceTest async false
+fullPriceTest maxRecursion none
+fullPriceTest label begin loopKind none
+fullPriceTest label begin within none
+fullPriceTest let amount immutable Int64 1234
+fullPriceTest at begin do runFull
+fullPriceTest at begin do expectSame
+fullPriceTest at begin return ok none
+
+runFull is call
+runFull in fullPriceTest
+runFull invokes fullPrice
+runFull arg cents Int64 amount copy
+runFull out charged Int64
+runFull ownedBy none
+runFull cleanedBy none
+runFull borrows none
+runFull catch none
+
+expectSame is call
+expectSame in fullPriceTest
+expectSame invokes test.assertEqualInt64
+expectSame arg expected Int64 amount copy
+expectSame arg actual Int64 charged copy
+expectSame out none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+
+bulkDiscountTest is test
+bulkDiscountTest purpose "bulkDiscount takes 1000 to 900 and rounds 15 down to 13"
+bulkDiscountTest verifies bulkDiscount tenPercentOff
+bulkDiscountTest typeParam none
+bulkDiscountTest input none
+bulkDiscountTest output none
+bulkDiscountTest outputOwner none
+bulkDiscountTest raises none
+bulkDiscountTest effect none
+bulkDiscountTest uses none
+bulkDiscountTest memory heap false
+bulkDiscountTest async false
+bulkDiscountTest maxRecursion none
+bulkDiscountTest label begin loopKind none
+bulkDiscountTest label begin within none
+bulkDiscountTest let thousand immutable Int64 1000
+bulkDiscountTest let nineHundred immutable Int64 900
+bulkDiscountTest let fifteen immutable Int64 15
+bulkDiscountTest let thirteen immutable Int64 13
+bulkDiscountTest at begin do discountRound
+bulkDiscountTest at begin do expectRound
+bulkDiscountTest at begin do discountOdd
+bulkDiscountTest at begin do expectRoundedDown
+bulkDiscountTest at begin return ok none
+
+discountRound is call
+discountRound in bulkDiscountTest
+discountRound invokes bulkDiscount
+discountRound arg cents Int64 thousand copy
+discountRound out roundResult Int64
+discountRound ownedBy none
+discountRound cleanedBy none
+discountRound borrows none
+discountRound catch none
+
+expectRound is call
+expectRound in bulkDiscountTest
+expectRound invokes test.assertEqualInt64
+expectRound arg expected Int64 nineHundred copy
+expectRound arg actual Int64 roundResult copy
+expectRound out none
+expectRound ownedBy none
+expectRound cleanedBy none
+expectRound borrows none
+expectRound catch none
+
+discountOdd is call
+discountOdd in bulkDiscountTest
+discountOdd invokes bulkDiscount
+discountOdd arg cents Int64 fifteen copy
+discountOdd out oddResult Int64
+discountOdd ownedBy none
+discountOdd cleanedBy none
+discountOdd borrows none
+discountOdd catch none
+
+expectRoundedDown is call
+expectRoundedDown in bulkDiscountTest
+expectRoundedDown invokes test.assertEqualInt64
+expectRoundedDown arg expected Int64 thirteen copy
+expectRoundedDown arg actual Int64 oddResult copy
+expectRoundedDown out none
+expectRoundedDown ownedBy none
+expectRoundedDown cleanedBy none
+expectRoundedDown borrows none
+expectRoundedDown catch none
+
+lineTotalTest is test
+lineTotalTest purpose "Four at 250 cents under bulkDiscount is 900 cents"
+lineTotalTest verifies lineTotal ruleOfGross
+lineTotalTest typeParam none
+lineTotalTest input none
+lineTotalTest output none
+lineTotalTest outputOwner none
+lineTotalTest raises none
+lineTotalTest effect none
+lineTotalTest uses none
+lineTotalTest memory heap false
+lineTotalTest async false
+lineTotalTest maxRecursion none
+lineTotalTest label begin loopKind none
+lineTotalTest label begin within none
+lineTotalTest label priced loopKind none
+lineTotalTest label priced within none
+lineTotalTest label refused loopKind none
+lineTotalTest label refused within none
+lineTotalTest let sku immutable Int64 7
+lineTotalTest let four immutable Int64 4
+lineTotalTest let unit immutable Int64 250
+lineTotalTest let nineHundred immutable Int64 900
+lineTotalTest let rule immutable PriceRule bulkDiscount
+lineTotalTest let refusedText immutable String "a valid line was refused"
+lineTotalTest at begin do makeLine
+lineTotalTest at begin do priceLine
+lineTotalTest at begin branch ifError priceLine goto refused else goto priced
+lineTotalTest at priced do expectCharge
+lineTotalTest at priced return ok none
+lineTotalTest at refused do failRefused
+lineTotalTest at refused return ok none
+
+makeLine is call
+makeLine in lineTotalTest
+makeLine invokes LineItem.new
+makeLine arg sku Int64 sku copy
+makeLine arg quantity Int64 four copy
+makeLine arg unitCents Int64 unit copy
+makeLine out line LineItem
+makeLine ownedBy none
+makeLine cleanedBy none
+makeLine borrows none
+makeLine catch none
+
+priceLine is call
+priceLine in lineTotalTest
+priceLine invokes lineTotal
+priceLine arg item LineItem line copy
+priceLine arg rule PriceRule rule copy
+priceLine out charged Int64
+priceLine ownedBy none
+priceLine cleanedBy none
+priceLine borrows none
+priceLine catch priceError PricingError
+
+expectCharge is call
+expectCharge in lineTotalTest
+expectCharge invokes test.assertEqualInt64
+expectCharge arg expected Int64 nineHundred copy
+expectCharge arg actual Int64 charged copy
+expectCharge out none
+expectCharge ownedBy none
+expectCharge cleanedBy none
+expectCharge borrows none
+expectCharge catch none
+
+failRefused is call
+failRefused in lineTotalTest
+failRefused invokes test.fail
+failRefused arg message String refusedText lend
+failRefused out none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+
+negativeLineTest is test
+negativeLineTest purpose "A line of -1 of sku 7 is refused with negativeQuantity carrying 7"
+negativeLineTest verifies lineTotal rejectsNegative
+negativeLineTest typeParam none
+negativeLineTest input none
+negativeLineTest output none
+negativeLineTest outputOwner none
+negativeLineTest raises none
+negativeLineTest effect none
+negativeLineTest uses none
+negativeLineTest memory heap false
+negativeLineTest async false
+negativeLineTest maxRecursion none
+negativeLineTest label begin loopKind none
+negativeLineTest label begin within none
+negativeLineTest label inspect loopKind none
+negativeLineTest label inspect within none
+negativeLineTest label rightSku loopKind none
+negativeLineTest label rightSku within none
+negativeLineTest label wrongVariant loopKind none
+negativeLineTest label wrongVariant within none
+negativeLineTest label accepted loopKind none
+negativeLineTest label accepted within none
+negativeLineTest let sku immutable Int64 7
+negativeLineTest let minusOne immutable Int64 -1
+negativeLineTest let unit immutable Int64 250
+negativeLineTest let rule immutable PriceRule fullPrice
+negativeLineTest let acceptedText immutable String "a negative quantity was priced"
+negativeLineTest let wrongText immutable String "a negative quantity gave the wrong error"
+negativeLineTest at begin do makeLine
+negativeLineTest at begin do priceLine
+negativeLineTest at begin branch ifError priceLine goto inspect else goto accepted
+negativeLineTest at inspect match priceError PricingError
+negativeLineTest at inspect case PricingError.negativeQuantity bind refusedSku Int64 goto rightSku
+negativeLineTest at inspect case PricingError.emptyOrder bind none none goto wrongVariant
+negativeLineTest at rightSku do expectSku
+negativeLineTest at rightSku return ok none
+negativeLineTest at wrongVariant do failWrong
+negativeLineTest at wrongVariant return ok none
+negativeLineTest at accepted do failAccepted
+negativeLineTest at accepted return ok none
+
+makeLine is call
+makeLine in negativeLineTest
+makeLine invokes LineItem.new
+makeLine arg sku Int64 sku copy
+makeLine arg quantity Int64 minusOne copy
+makeLine arg unitCents Int64 unit copy
+makeLine out line LineItem
+makeLine ownedBy none
+makeLine cleanedBy none
+makeLine borrows none
+makeLine catch none
+
+priceLine is call
+priceLine in negativeLineTest
+priceLine invokes lineTotal
+priceLine arg item LineItem line copy
+priceLine arg rule PriceRule rule copy
+priceLine out charged Int64
+priceLine ownedBy none
+priceLine cleanedBy none
+priceLine borrows none
+priceLine catch priceError PricingError
+
+expectSku is call
+expectSku in negativeLineTest
+expectSku invokes test.assertEqualInt64
+expectSku arg expected Int64 sku copy
+expectSku arg actual Int64 refusedSku copy
+expectSku out none
+expectSku ownedBy none
+expectSku cleanedBy none
+expectSku borrows none
+expectSku catch none
+
+failWrong is call
+failWrong in negativeLineTest
+failWrong invokes test.fail
+failWrong arg message String wrongText lend
+failWrong out none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+
+failAccepted is call
+failAccepted in negativeLineTest
+failAccepted invokes test.fail
+failAccepted arg message String acceptedText lend
+failAccepted out none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none
+
+orderTotalTest is test
+orderTotalTest purpose "Two lines, 2 at 300 and 1 at 50, total 650 at list price, by either route"
+orderTotalTest verifies orderTotal sumOfLines
+orderTotalTest verifies listTotal atListPrice
+orderTotalTest typeParam none
+orderTotalTest input none
+orderTotalTest output none
+orderTotalTest outputOwner none
+orderTotalTest raises none
+orderTotalTest effect none
+orderTotalTest uses none
+orderTotalTest memory heap true
+orderTotalTest async false
+orderTotalTest maxRecursion none
+orderTotalTest label begin loopKind none
+orderTotalTest label begin within none
+orderTotalTest label priced loopKind none
+orderTotalTest label priced within none
+orderTotalTest label listed loopKind none
+orderTotalTest label listed within none
+orderTotalTest label refused loopKind none
+orderTotalTest label refused within none
+orderTotalTest let one immutable Int64 1
+orderTotalTest let two immutable Int64 2
+orderTotalTest let threeHundred immutable Int64 300
+orderTotalTest let fifty immutable Int64 50
+orderTotalTest let sixHundredFifty immutable Int64 650
+orderTotalTest let rule immutable PriceRule fullPrice
+orderTotalTest let refusedText immutable String "a two-line order was refused"
+orderTotalTest at begin do makeLines
+orderTotalTest at begin do makeFirst
+orderTotalTest at begin do appendFirst
+orderTotalTest at begin do makeSecond
+orderTotalTest at begin do appendSecond
+orderTotalTest at begin do priceOrder
+orderTotalTest at begin branch ifError priceOrder goto refused else goto priced
+orderTotalTest at priced do expectTotal
+orderTotalTest at priced do priceList
+orderTotalTest at priced branch ifError priceList goto refused else goto listed
+orderTotalTest at listed do expectListTotal
+orderTotalTest at listed return ok none
+orderTotalTest at refused do failRefused
+orderTotalTest at refused return ok none
+
+store is region
+store in orderTotalTest
+store strategy arena
+store capacity 4096
+store released atReturn
+
+makeLines is call
+makeLines in orderTotalTest
+makeLines invokes Lines.new
+makeLines arg region Region store lend
+makeLines out lines Lines
+makeLines ownedBy store
+makeLines cleanedBy none
+makeLines borrows none
+makeLines catch none
+
+makeFirst is call
+makeFirst in orderTotalTest
+makeFirst invokes LineItem.new
+makeFirst arg sku Int64 one copy
+makeFirst arg quantity Int64 two copy
+makeFirst arg unitCents Int64 threeHundred copy
+makeFirst out first LineItem
+makeFirst ownedBy none
+makeFirst cleanedBy none
+makeFirst borrows none
+makeFirst catch none
+
+appendFirst is call
+appendFirst in orderTotalTest
+appendFirst invokes Lines.append
+appendFirst arg list Lines lines lendMutable
+appendFirst arg item LineItem first copy
+appendFirst out none
+appendFirst ownedBy none
+appendFirst cleanedBy none
+appendFirst borrows none
+appendFirst catch none
+
+makeSecond is call
+makeSecond in orderTotalTest
+makeSecond invokes LineItem.new
+makeSecond arg sku Int64 two copy
+makeSecond arg quantity Int64 one copy
+makeSecond arg unitCents Int64 fifty copy
+makeSecond out second LineItem
+makeSecond ownedBy none
+makeSecond cleanedBy none
+makeSecond borrows none
+makeSecond catch none
+
+appendSecond is call
+appendSecond in orderTotalTest
+appendSecond invokes Lines.append
+appendSecond arg list Lines lines lendMutable
+appendSecond arg item LineItem second copy
+appendSecond out none
+appendSecond ownedBy none
+appendSecond cleanedBy none
+appendSecond borrows none
+appendSecond catch none
+
+priceOrder is call
+priceOrder in orderTotalTest
+priceOrder invokes orderTotal
+priceOrder arg lines Lines lines lend
+priceOrder arg rule PriceRule rule copy
+priceOrder out total Int64
+priceOrder ownedBy none
+priceOrder cleanedBy none
+priceOrder borrows none
+priceOrder catch priceError PricingError
+
+expectTotal is call
+expectTotal in orderTotalTest
+expectTotal invokes test.assertEqualInt64
+expectTotal arg expected Int64 sixHundredFifty copy
+expectTotal arg actual Int64 total copy
+expectTotal out none
+expectTotal ownedBy none
+expectTotal cleanedBy none
+expectTotal borrows none
+expectTotal catch none
+
+priceList is call
+priceList in orderTotalTest
+priceList invokes listTotal
+priceList arg lines Lines lines lend
+priceList out listedTotal Int64
+priceList ownedBy none
+priceList cleanedBy none
+priceList borrows none
+priceList catch listError PricingError
+
+expectListTotal is call
+expectListTotal in orderTotalTest
+expectListTotal invokes test.assertEqualInt64
+expectListTotal arg expected Int64 sixHundredFifty copy
+expectListTotal arg actual Int64 listedTotal copy
+expectListTotal out none
+expectListTotal ownedBy none
+expectListTotal cleanedBy none
+expectListTotal borrows none
+expectListTotal catch none
+
+failRefused is call
+failRefused in orderTotalTest
+failRefused invokes test.fail
+failRefused arg message String refusedText lend
+failRefused out none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+
+discountOrderTest is test
+discountOrderTest purpose "One line of 3 at 1000 is 2700 with the bulk discount"
+discountOrderTest verifies discountTotal atDiscount
+discountOrderTest typeParam none
+discountOrderTest input none
+discountOrderTest output none
+discountOrderTest outputOwner none
+discountOrderTest raises none
+discountOrderTest effect none
+discountOrderTest uses none
+discountOrderTest memory heap true
+discountOrderTest async false
+discountOrderTest maxRecursion none
+discountOrderTest label begin loopKind none
+discountOrderTest label begin within none
+discountOrderTest label priced loopKind none
+discountOrderTest label priced within none
+discountOrderTest label refused loopKind none
+discountOrderTest label refused within none
+discountOrderTest let sku immutable Int64 9
+discountOrderTest let three immutable Int64 3
+discountOrderTest let thousand immutable Int64 1000
+discountOrderTest let expected immutable Int64 2700
+discountOrderTest let refusedText immutable String "a one-line order was refused"
+discountOrderTest at begin do makeLines
+discountOrderTest at begin do makeOnly
+discountOrderTest at begin do appendOnly
+discountOrderTest at begin do priceOrder
+discountOrderTest at begin branch ifError priceOrder goto refused else goto priced
+discountOrderTest at priced do expectTotal
+discountOrderTest at priced return ok none
+discountOrderTest at refused do failRefused
+discountOrderTest at refused return ok none
+
+store is region
+store in discountOrderTest
+store strategy arena
+store capacity 4096
+store released atReturn
+
+makeLines is call
+makeLines in discountOrderTest
+makeLines invokes Lines.new
+makeLines arg region Region store lend
+makeLines out lines Lines
+makeLines ownedBy store
+makeLines cleanedBy none
+makeLines borrows none
+makeLines catch none
+
+makeOnly is call
+makeOnly in discountOrderTest
+makeOnly invokes LineItem.new
+makeOnly arg sku Int64 sku copy
+makeOnly arg quantity Int64 three copy
+makeOnly arg unitCents Int64 thousand copy
+makeOnly out only LineItem
+makeOnly ownedBy none
+makeOnly cleanedBy none
+makeOnly borrows none
+makeOnly catch none
+
+appendOnly is call
+appendOnly in discountOrderTest
+appendOnly invokes Lines.append
+appendOnly arg list Lines lines lendMutable
+appendOnly arg item LineItem only copy
+appendOnly out none
+appendOnly ownedBy none
+appendOnly cleanedBy none
+appendOnly borrows none
+appendOnly catch none
+
+priceOrder is call
+priceOrder in discountOrderTest
+priceOrder invokes discountTotal
+priceOrder arg lines Lines lines lend
+priceOrder out total Int64
+priceOrder ownedBy none
+priceOrder cleanedBy none
+priceOrder borrows none
+priceOrder catch priceError PricingError
+
+expectTotal is call
+expectTotal in discountOrderTest
+expectTotal invokes test.assertEqualInt64
+expectTotal arg expected Int64 expected copy
+expectTotal arg actual Int64 total copy
+expectTotal out none
+expectTotal ownedBy none
+expectTotal cleanedBy none
+expectTotal borrows none
+expectTotal catch none
+
+failRefused is call
+failRefused in discountOrderTest
+failRefused invokes test.fail
+failRefused arg message String refusedText lend
+failRefused out none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+
+emptyOrderTest is test
+emptyOrderTest purpose "An order with no lines is refused with emptyOrder"
+emptyOrderTest verifies orderTotal rejectsEmpty
+emptyOrderTest typeParam none
+emptyOrderTest input none
+emptyOrderTest output none
+emptyOrderTest outputOwner none
+emptyOrderTest raises none
+emptyOrderTest effect none
+emptyOrderTest uses none
+emptyOrderTest memory heap true
+emptyOrderTest async false
+emptyOrderTest maxRecursion none
+emptyOrderTest label begin loopKind none
+emptyOrderTest label begin within none
+emptyOrderTest label inspect loopKind none
+emptyOrderTest label inspect within none
+emptyOrderTest label rightVariant loopKind none
+emptyOrderTest label rightVariant within none
+emptyOrderTest label wrongVariant loopKind none
+emptyOrderTest label wrongVariant within none
+emptyOrderTest label accepted loopKind none
+emptyOrderTest label accepted within none
+emptyOrderTest let rule immutable PriceRule fullPrice
+emptyOrderTest let refused immutable Bool true
+emptyOrderTest let acceptedText immutable String "an empty order was priced"
+emptyOrderTest let wrongText immutable String "an empty order gave the wrong error"
+emptyOrderTest at begin do makeLines
+emptyOrderTest at begin do priceOrder
+emptyOrderTest at begin branch ifError priceOrder goto inspect else goto accepted
+emptyOrderTest at inspect match priceError PricingError
+emptyOrderTest at inspect case PricingError.emptyOrder bind none none goto rightVariant
+emptyOrderTest at inspect case PricingError.negativeQuantity bind badSku Int64 goto wrongVariant
+emptyOrderTest at rightVariant do expectRefused
+emptyOrderTest at rightVariant return ok none
+emptyOrderTest at wrongVariant do failWrong
+emptyOrderTest at wrongVariant return ok none
+emptyOrderTest at accepted do failAccepted
+emptyOrderTest at accepted return ok none
+
+store is region
+store in emptyOrderTest
+store strategy arena
+store capacity 4096
+store released atReturn
+
+makeLines is call
+makeLines in emptyOrderTest
+makeLines invokes Lines.new
+makeLines arg region Region store lend
+makeLines out lines Lines
+makeLines ownedBy store
+makeLines cleanedBy none
+makeLines borrows none
+makeLines catch none
+
+priceOrder is call
+priceOrder in emptyOrderTest
+priceOrder invokes orderTotal
+priceOrder arg lines Lines lines lend
+priceOrder arg rule PriceRule rule copy
+priceOrder out total Int64
+priceOrder ownedBy none
+priceOrder cleanedBy none
+priceOrder borrows none
+priceOrder catch priceError PricingError
+
+expectRefused is call
+expectRefused in emptyOrderTest
+expectRefused invokes test.assertTrue
+expectRefused arg value Bool refused copy
+expectRefused out none
+expectRefused ownedBy none
+expectRefused cleanedBy none
+expectRefused borrows none
+expectRefused catch none
+
+failWrong is call
+failWrong in emptyOrderTest
+failWrong invokes test.fail
+failWrong arg message String wrongText lend
+failWrong out none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+
+failAccepted is call
+failAccepted in emptyOrderTest
+failAccepted invokes test.fail
+failAccepted arg message String acceptedText lend
+failAccepted out none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none

@@ -145,7 +145,7 @@ closeListener catch closeListenerError net.NetError
 acceptConnection is task
 acceptConnection in main
 acceptConnection invokes net.accept
-acceptConnection arg listener net.TcpListener listener lend
+acceptConnection arg listener net.TcpListener listener lendMutable
 acceptConnection arg deadline time.Deadline noDeadline copy
 acceptConnection out connection net.TcpConnection
 acceptConnection ownedBy main
@@ -251,7 +251,7 @@ makeReadDeadline catch none
 readRequest is task
 readRequest in handleConnection
 readRequest invokes net.read
-readRequest arg connection net.TcpConnection connection lend
+readRequest arg connection net.TcpConnection connection lendMutable
 readRequest arg region Region requestRegion lend
 readRequest arg maxBytes Int64 maxRequestBytes copy
 readRequest arg deadline time.Deadline readDeadline copy
@@ -320,7 +320,7 @@ writeResponse is task
 writeResponse rationale "A failed write means the client is gone; there is nobody to tell"
 writeResponse in handleConnection
 writeResponse invokes net.write
-writeResponse arg connection net.TcpConnection connection lend
+writeResponse arg connection net.TcpConnection connection lendMutable
 writeResponse arg bytes Bytes responseBytes lend
 writeResponse arg deadline time.Deadline readDeadline copy
 writeResponse out none

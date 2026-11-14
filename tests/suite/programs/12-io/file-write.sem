@@ -220,7 +220,7 @@ createIt catch createError fs.FileError
 writeIt is task
 writeIt in main
 writeIt invokes fs.write
-writeIt arg file fs.FileHandle file lend
+writeIt arg file fs.FileHandle file lendMutable
 writeIt arg bytes Bytes contentBytes lend
 writeIt arg deadline time.Deadline deadline copy
 writeIt out none

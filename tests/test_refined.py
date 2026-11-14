@@ -181,7 +181,7 @@ CASES = [
     ("R512", "server", "server.sem", "main at listenFailed join connections\n", ""),
     # ownership on every path, borrows, exclusive loans (LR-20, LR-31)
     ("R513", "server", "server.sem", "main at listening defer closeListenerCleanup\n", ""),
-    ("R513", "server", "server.sem", "acceptConnection arg listener net.TcpListener listener lend",
+    ("R513", "server", "server.sem", "acceptConnection arg listener net.TcpListener listener lendMutable",
      "acceptConnection arg listener net.TcpListener listener give"),
     ("R514", "server", "server.sem", "readPath arg record http.HttpRequest request lend",
      "readPath arg record http.HttpRequest request give"),

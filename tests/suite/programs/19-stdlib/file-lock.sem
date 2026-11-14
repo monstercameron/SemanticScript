@@ -174,7 +174,7 @@ closeLock catch closeLockError fs.FileError
 takeLock is task
 takeLock in main
 takeLock invokes fs.lock
-takeLock arg file fs.FileHandle lockFile lend
+takeLock arg file fs.FileHandle lockFile lendMutable
 takeLock arg deadline time.Deadline deadline copy
 takeLock out none
 takeLock ownedBy none
@@ -195,7 +195,7 @@ printLocked catch none
 releaseLock is call
 releaseLock in main
 releaseLock invokes fs.unlock
-releaseLock arg file fs.FileHandle lockFile lend
+releaseLock arg file fs.FileHandle lockFile lendMutable
 releaseLock out none
 releaseLock ownedBy none
 releaseLock cleanedBy none

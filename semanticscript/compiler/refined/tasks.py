@@ -12,10 +12,12 @@ reading a socket) still is, since the world outside can wake it. When no
 thread is active and no wait has a deadline, nothing can ever change again:
 that is a deadlock, and it traps instead of hanging.
 
-Cancellation is cooperative: `cancel` marks the task (or every task of a
-group), wakes every wait, and then waits for the task to finish. A marked task
-sees `cancelled` from its next channel wait, sleep, accept, or read; pure
-computation runs to its end.
+Cancellation is cooperative (D-44): `cancel` marks the task (or every task of
+a group) and the tasks it started, wakes every wait, and returns at once. A
+marked task sees `cancelled` from its next channel wait, sleep, accept, read,
+or child-process wait; pure computation runs to its end. `join` is what waits
+for a task to stop, and the checker requires a `join` after every `start`,
+cancelled or not, so no task outlives the operation that started it.
 
 Recursion depth and the stack floor are kept per thread (`recursion_enter`).
 """
@@ -212,7 +214,6 @@ def _task_cancel(handle):
     with _sched:
         _cancel_tree(task)
         _sched.notify_all()
-    _wait_done([task], "a `cancel` waits for a task to stop")
 
 
 @ctypes.CFUNCTYPE(None, ctypes.c_int64)
@@ -249,8 +250,6 @@ def _group_cancel(handle):
         for t in group.members:
             _cancel_tree(t)
         _sched.notify_all()
-    _wait_done(list(group.members), "a `cancel` waits for a task group to stop")
-    group.members = []
 
 
 @ctypes.CFUNCTYPE(None, ctypes.c_int64)

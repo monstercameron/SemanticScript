@@ -2064,6 +2064,26 @@ Decisions (by delegation):
   `process.runCaptured` output larger than `maxBytes` is
   `process.RunError.tooLarge`, not a numbered `failed`.
 
+- **D-43** A target that changes the state of the handle it is given (a
+  file's position or lock, a connection's stream, a listener's queue) takes
+  it `borrowedMutable`: `fs.read`, `fs.write`, `fs.lock`, `fs.unlock`,
+  `net.accept`, `net.read`, `net.write`. Two activations can never use one
+  handle at once. A channel stays a shared loan: it is a synchronized queue
+  that exists to be used by several tasks.
+- **D-44** `cancel` asks a task (and every task it started) to stop and
+  returns at once; `join` waits for it and delivers its outcome. Every
+  started task is joined on every path, cancelled or not, and its loans last
+  until that `join`. There is no detached task. (Replaces the part of D-31
+  where `cancel` waited.)
+- **D-45** A `forEach` over a table states a `maxIterations` at least the
+  table's row count, checked when the program is checked; over a list,
+  passing the bound traps at run time.
+- **D-46** Capabilities are never exported (R402).
+
+The guarantees these rules add up to are stated, with the executable checks
+that prove each one, in `docs/safety-guarantees.md`, generated from
+`tests/suite/conformance.py`.
+
 The `warehouse` example (`docs/refined-examples/warehouse`) uses these rules
 together: build.sem `allows`, a scoped file capability, a table loaded into
 a list, operation references, two tasks borrowing one list, cancellation on

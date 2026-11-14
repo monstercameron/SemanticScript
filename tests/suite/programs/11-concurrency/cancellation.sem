@@ -178,6 +178,7 @@ main let failCode immutable ExitCode 1
 main at begin do clockA
 main at begin start longPause
 main at begin cancel longPause
+main at begin join longPause
 main at begin do clockB
 main at begin do elapsed
 main at begin do stoppedEarly
