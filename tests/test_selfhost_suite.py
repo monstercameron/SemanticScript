@@ -22,9 +22,13 @@ sys.path.insert(0, SUITE)
 import caselib  # noqa: E402
 
 STAGE0 = os.path.join(caselib.ROOT, "docs", "refined-examples", "stage0")
+# what stage0 passes the C compiler after the C file: the runtime the C is linked with, and on Windows the library
+# the runtime needs for the command line
+LINK = [os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c")] + \
+    (["-lshell32"] if os.name == "nt" else [])
 EXE = ".exe" if os.name == "nt" else ""
 # the number of suite programs the self-hosted compiler builds correctly; raise it as the subset grows
-COVERAGE_FLOOR = 3
+COVERAGE_FLOOR = 11
 _LOCATED = re.compile(r"^[^\n:]+\.sem:\d+:\d+: .+\n$")
 
 
@@ -54,7 +58,7 @@ def test_selfhosted_compiler_on_the_suite(tmp_path):
         project = caselib.materialize(case, str(tmp_path / "cases" / case.name.replace("/", "_")))
         source = os.path.relpath(caselib.module_file(project), project).replace(os.sep, "/")
         name = os.path.basename(source)[:-4]
-        proc = subprocess.run([exe, source, f"build/{name}", CC], capture_output=True, text=True, cwd=project,
+        proc = subprocess.run([exe, source, f"build/{name}", CC, *LINK], capture_output=True, text=True, cwd=project,
                               timeout=300)
         if proc.returncode == 1:
             ok = proc.stdout == "" and _LOCATED.match(proc.stderr) is not None \

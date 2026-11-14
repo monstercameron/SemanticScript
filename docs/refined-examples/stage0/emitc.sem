@@ -87,54 +87,60 @@ cTargets row mathDivideInt64Spelling 8
 cTargets row mathRemainderInt64Spelling 9
 cTargets row mathNegateInt64Spelling 10
 cTargets row mathAbsoluteInt64Spelling 11
-cTargets row compareEqualInt64Spelling 12
-cTargets row compareNotEqualInt64Spelling 13
-cTargets row compareLessThanInt64Spelling 14
-cTargets row compareLessOrEqualInt64Spelling 15
-cTargets row compareGreaterThanInt64Spelling 16
-cTargets row compareGreaterOrEqualInt64Spelling 17
-cTargets row compareEqualByteSpelling 18
-cTargets row compareNotEqualByteSpelling 19
-cTargets row compareLessThanByteSpelling 20
-cTargets row compareLessOrEqualByteSpelling 21
-cTargets row compareGreaterThanByteSpelling 22
-cTargets row compareGreaterOrEqualByteSpelling 23
-cTargets row logicAndSpelling 24
-cTargets row logicOrSpelling 25
-cTargets row logicXorSpelling 26
-cTargets row logicNotSpelling 27
-cTargets row convertExitCodeToInt64Spelling 28
-cTargets row convertInt64ToExitCodeSpelling 29
-cTargets row convertByteToInt64Spelling 30
-cTargets row convertInt64ToByteSpelling 31
-cTargets row byteIsLetterSpelling 32
-cTargets row byteIsDigitSpelling 33
-cTargets row byteIsLetterOrDigitSpelling 34
-cTargets row byteIsSpaceSpelling 35
-cTargets row byteEqualsSpelling 36
-cTargets row stringByteLengthSpelling 37
-cTargets row stringEqualsSpelling 38
-cTargets row stringStartsWithSpelling 39
-cTargets row stringConcatSpelling 40
-cTargets row stringFromInt64Spelling 41
-cTargets row stringToInt64Spelling 42
-cTargets row stringSliceSpelling 43
-cTargets row stringByteAtSpelling 44
-cTargets row stringByteAtOrTrapSpelling 45
-cTargets row stringFindSpelling 46
-cTargets row stringToBytesSpelling 47
-cTargets row stringFromBytesSpelling 48
-cTargets row bufferNewSpelling 49
-cTargets row bufferAppendStringSpelling 50
-cTargets row bufferAppendByteSpelling 51
-cTargets row bufferAppendInt64Spelling 52
-cTargets row bufferLengthSpelling 53
-cTargets row bufferToStringSpelling 54
-cTargets row bufferToBytesSpelling 55
-cTargets row processArgumentCountSpelling 56
-cTargets row processArgumentSpelling 57
-cTargets row processNewArgumentsSpelling 58
-cTargets row processAddArgumentSpelling 59
+cTargets row mathPowerInt64Spelling 12
+cTargets row compareEqualInt64Spelling 13
+cTargets row compareNotEqualInt64Spelling 14
+cTargets row compareLessThanInt64Spelling 15
+cTargets row compareLessOrEqualInt64Spelling 16
+cTargets row compareGreaterThanInt64Spelling 17
+cTargets row compareGreaterOrEqualInt64Spelling 18
+cTargets row compareEqualByteSpelling 19
+cTargets row compareNotEqualByteSpelling 20
+cTargets row compareLessThanByteSpelling 21
+cTargets row compareLessOrEqualByteSpelling 22
+cTargets row compareGreaterThanByteSpelling 23
+cTargets row compareGreaterOrEqualByteSpelling 24
+cTargets row logicAndSpelling 25
+cTargets row logicOrSpelling 26
+cTargets row logicXorSpelling 27
+cTargets row logicNotSpelling 28
+cTargets row convertExitCodeToInt64Spelling 29
+cTargets row convertInt64ToExitCodeSpelling 30
+cTargets row convertByteToInt64Spelling 31
+cTargets row convertInt64ToByteSpelling 32
+cTargets row byteIsLetterSpelling 33
+cTargets row byteIsDigitSpelling 34
+cTargets row byteIsLetterOrDigitSpelling 35
+cTargets row byteIsSpaceSpelling 36
+cTargets row byteEqualsSpelling 37
+cTargets row stringByteLengthSpelling 38
+cTargets row stringEqualsSpelling 39
+cTargets row stringStartsWithSpelling 40
+cTargets row stringConcatSpelling 41
+cTargets row stringFromInt64Spelling 42
+cTargets row stringToInt64Spelling 43
+cTargets row stringSliceSpelling 44
+cTargets row stringByteAtSpelling 45
+cTargets row stringByteAtOrTrapSpelling 46
+cTargets row stringFindSpelling 47
+cTargets row stringToBytesSpelling 48
+cTargets row stringFromBytesSpelling 49
+cTargets row bufferNewSpelling 50
+cTargets row bufferAppendStringSpelling 51
+cTargets row bufferAppendByteSpelling 52
+cTargets row bufferAppendInt64Spelling 53
+cTargets row bufferLengthSpelling 54
+cTargets row bufferToStringSpelling 55
+cTargets row bufferToBytesSpelling 56
+cTargets row processArgumentCountSpelling 57
+cTargets row processArgumentSpelling 58
+cTargets row processNewArgumentsSpelling 59
+cTargets row processAddArgumentSpelling 60
+cTargets row timeSleepSpelling 61
+cTargets row logDebugSpelling 62
+cTargets row logInfoSpelling 63
+cTargets row logWarnSpelling 64
+cTargets row logErrorSpelling 65
 cTargets cell consoleWriteLineSpelling text "console.writeLine"
 cTargets cell consoleWriteLineSpelling before "ss_write_line("
 cTargets cell consoleWriteLineSpelling between ", "
@@ -223,6 +229,14 @@ cTargets cell mathAbsoluteInt64Spelling host false
 cTargets cell mathAbsoluteInt64Spelling key ""
 cTargets cell mathAbsoluteInt64Spelling slots 0
 cTargets cell mathAbsoluteInt64Spelling results 0
+cTargets cell mathPowerInt64Spelling text "math.powerInt64"
+cTargets cell mathPowerInt64Spelling before "ss_power("
+cTargets cell mathPowerInt64Spelling between ", "
+cTargets cell mathPowerInt64Spelling after ")"
+cTargets cell mathPowerInt64Spelling host false
+cTargets cell mathPowerInt64Spelling key ""
+cTargets cell mathPowerInt64Spelling slots 0
+cTargets cell mathPowerInt64Spelling results 0
 cTargets cell compareEqualInt64Spelling text "compare.equalInt64"
 cTargets cell compareEqualInt64Spelling before "("
 cTargets cell compareEqualInt64Spelling between " == "
@@ -607,6 +621,46 @@ cTargets cell processAddArgumentSpelling host true
 cTargets cell processAddArgumentSpelling key "process.addArgument|1,2|0"
 cTargets cell processAddArgumentSpelling slots 3
 cTargets cell processAddArgumentSpelling results 0
+cTargets cell timeSleepSpelling text "time.sleep"
+cTargets cell timeSleepSpelling before ""
+cTargets cell timeSleepSpelling between ""
+cTargets cell timeSleepSpelling after ""
+cTargets cell timeSleepSpelling host true
+cTargets cell timeSleepSpelling key "time.sleep|1|0"
+cTargets cell timeSleepSpelling slots 1
+cTargets cell timeSleepSpelling results 0
+cTargets cell logDebugSpelling text "log.debug"
+cTargets cell logDebugSpelling before ""
+cTargets cell logDebugSpelling between ""
+cTargets cell logDebugSpelling after ""
+cTargets cell logDebugSpelling host true
+cTargets cell logDebugSpelling key "log.debug|2|0"
+cTargets cell logDebugSpelling slots 2
+cTargets cell logDebugSpelling results 0
+cTargets cell logInfoSpelling text "log.info"
+cTargets cell logInfoSpelling before ""
+cTargets cell logInfoSpelling between ""
+cTargets cell logInfoSpelling after ""
+cTargets cell logInfoSpelling host true
+cTargets cell logInfoSpelling key "log.info|2|0"
+cTargets cell logInfoSpelling slots 2
+cTargets cell logInfoSpelling results 0
+cTargets cell logWarnSpelling text "log.warn"
+cTargets cell logWarnSpelling before ""
+cTargets cell logWarnSpelling between ""
+cTargets cell logWarnSpelling after ""
+cTargets cell logWarnSpelling host true
+cTargets cell logWarnSpelling key "log.warn|2|0"
+cTargets cell logWarnSpelling slots 2
+cTargets cell logWarnSpelling results 0
+cTargets cell logErrorSpelling text "log.error"
+cTargets cell logErrorSpelling before ""
+cTargets cell logErrorSpelling between ""
+cTargets cell logErrorSpelling after ""
+cTargets cell logErrorSpelling host true
+cTargets cell logErrorSpelling key "log.error|2|0"
+cTargets cell logErrorSpelling slots 2
+cTargets cell logErrorSpelling results 0
 
 cTypes is table
 cTypes purpose "The C spelling of every built-in type, numbered as subset numbers them"
@@ -648,7 +702,7 @@ cTypes cell bytesSpelling cType "ss_string"
 prelude is constant
 prelude purpose "The runtime every emitted program starts with"
 prelude type String
-prelude value "/* Generated by stage0, the first SemanticScript compiler written in SemanticScript. Link it with the runtime of\n   refined executables, semanticscript/compiler/refined/native_runtime.c, which writes output, traps, keeps\n   regions, and runs the host library, as it does for `refined build --kind executable`. */\n#include <stdbool.h>\n#include <stdint.h>\n#include <string.h>\n\nvoid refined_start(int argc, char **argv);\nvoid refined_trap(const char *p, int64_t n);\nint32_t refined_write(int32_t fd, const char *p, int64_t n, int32_t newline);\nint32_t refined_write_int(int32_t fd, int64_t v, int32_t newline);\nvoid *refined_region_new(int64_t capacity, const char *label, int64_t label_len);\nvoid *refined_region_alloc(void *handle, int64_t size);\nvoid refined_region_free(void *handle);\nvoid *refined_format_int(int64_t v, void *region, int64_t *out_len);\nint64_t refined_find(const char *h, int64_t hn, const char *nd, int64_t nn);\nint32_t refined_bytes_equal(const char *a, int64_t an, const char *b, int64_t bn);\nint32_t refined_parse_int(const char *p, int64_t n, int64_t *out);\nint32_t refined_host(const char *name, int64_t n, int64_t *args, int64_t *results, int64_t *payload);\n\n/* text: a pointer and a length in bytes, as the LLVM backend's {i8*, i64} */\ntypedef struct { const char *p; int64_t n; } ss_string;\n#define SS_TEXT(s) ((ss_string){ (s), (int64_t)(sizeof(s) - 1) })\n#define SS_STATIC(s) { (s), (int64_t)(sizeof(s) - 1) }\ntypedef void ss_region;\n\nstatic void ss_trap(const char *what) {\n  refined_trap(what, (int64_t)strlen(what));\n}\n\nstatic bool ss_write(ss_string text) {\n  return refined_write(1, text.p, text.n, 0) != 0;\n}\n\nstatic bool ss_write_line(ss_string text) {\n  return refined_write(1, text.p, text.n, 1) != 0;\n}\n\nstatic bool ss_write_integer_line(int64_t value) {\n  return refined_write_int(1, value, 1) != 0;\n}\n\nstatic bool ss_write_error(ss_string text) {\n  return refined_write(2, text.p, text.n, 1) != 0;\n}\n\nstatic bool ss_is_letter(uint8_t v) {\n  return (v >= 'a' && v <= 'z') || (v >= 'A' && v <= 'Z');\n}\n\nstatic bool ss_is_digit(uint8_t v) {\n  return v >= '0' && v <= '9';\n}\n\nstatic bool ss_is_letter_or_digit(uint8_t v) {\n  return ss_is_letter(v) || ss_is_digit(v);\n}\n\nstatic bool ss_is_space(uint8_t v) {\n  return v == 32 || v == 9 || v == 10 || v == 13;\n}\n\nstatic int64_t ss_add(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_add_overflow(left, right, &out)) ss_trap(\"math.addInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_subtract(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_sub_overflow(left, right, &out)) ss_trap(\"math.subtractInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_multiply(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_mul_overflow(left, right, &out)) ss_trap(\"math.multiplyInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_divide(int64_t left, int64_t right) {\n  if (right == 0) ss_trap(\"math.divideInt64 divided by zero\");\n  if (left == INT64_MIN && right == -1) ss_trap(\"math.divideInt64 overflowed Int64\");\n  return left / right;\n}\n\nstatic int64_t ss_remainder(int64_t left, int64_t right) {\n  if (right == 0) ss_trap(\"math.remainderInt64 divided by zero\");\n  if (left == INT64_MIN && right == -1) ss_trap(\"math.remainderInt64 overflowed Int64\");\n  return left % right;\n}\n\nstatic int64_t ss_negate(int64_t value) {\n  if (value == INT64_MIN) ss_trap(\"math.negateInt64 overflowed Int64\");\n  return -value;\n}\n\nstatic int64_t ss_absolute(int64_t value) {\n  if (value == INT64_MIN) ss_trap(\"math.absoluteInt64 overflowed Int64\");\n  return value < 0 ? -value : value;\n}\n\nstatic int ss_exit_code(int64_t value) {\n  if (value < 0 || value > 255) ss_trap(\"convert.int64ToExitCode was given a value outside 0 to 255\");\n  return (int)value;\n}\n\nstatic uint8_t ss_to_byte(int64_t value) {\n  if (value < 0 || value > 255) ss_trap(\"convert.int64ToByte was given a value outside 0 to 255\");\n  return (uint8_t)value;\n}\n\nstatic void ss_pass(int64_t *passes, int64_t bound, const char *label) {\n  *passes += 1;\n  if (*passes > bound) ss_trap(\"a loop returned to its header more often than its maxIterations\");\n  (void)label;\n}\n\nstatic void ss_deeper(int64_t *depth, int64_t bound, const char *name) {\n  *depth += 1;\n  if (*depth > bound) ss_trap(\"an operation called itself deeper than its maxRecursion\");\n  (void)name;\n}\n\n/* regions are the runtime's: every allocation is counted against maxBytes as the LLVM backend counts it */\nstatic ss_region *ss_region_new(int64_t capacity, const char *label) {\n  return refined_region_new(capacity, label, (int64_t)strlen(label));\n}\n\nstatic void *ss_alloc(ss_region *r, int64_t size) {\n  return refined_region_alloc(r, size);\n}\n\nstatic void ss_region_free(ss_region *r) {\n  refined_region_free(r);\n}\n\n/* text */\nstatic ss_string ss_relocate(ss_string text, ss_region *r) {\n  char *p = ss_alloc(r, text.n);\n  if (text.n) memcpy(p, text.p, (size_t)text.n);\n  return (ss_string){ p, text.n };\n}\n\nstatic ss_string ss_concat(ss_string left, ss_string right, ss_region *r) {\n  char *p = ss_alloc(r, left.n + right.n);\n  if (left.n) memcpy(p, left.p, (size_t)left.n);\n  if (right.n) memcpy(p + left.n, right.p, (size_t)right.n);\n  return (ss_string){ p, left.n + right.n };\n}\n\nstatic ss_string ss_from_int64(int64_t value, ss_region *r) {\n  int64_t n = 0;\n  const char *p = refined_format_int(value, r, &n);\n  return (ss_string){ p, n };\n}\n\nstatic bool ss_equals(ss_string left, ss_string right) {\n  return refined_bytes_equal(left.p, left.n, right.p, right.n) != 0;\n}\n\nstatic bool ss_starts_with(ss_string text, ss_string prefix) {\n  return text.n >= prefix.n && refined_bytes_equal(text.p, prefix.n, prefix.p, prefix.n) != 0;\n}\n\nstatic bool ss_to_int64(int64_t *out, ss_string text) {\n  return refined_parse_int(text.p, text.n, out) != 0;\n}\n\nstatic ss_string ss_to_bytes(ss_string text) {\n  return text;\n}\n\nstatic int64_t ss_byte_length(ss_string text) {\n  return text.n;\n}\n\nstatic bool ss_splits(ss_string text, int64_t at) {\n  return at >= 0 && at < text.n && ((unsigned char)text.p[at] & 0xC0) == 0x80;\n}\n\n/* string.slice: a view of whole characters inside the text, or the failure flag */\nstatic bool ss_slice(ss_string *out, ss_string text, int64_t start, int64_t length) {\n  if (start < 0 || length < 0 || start > text.n || length > text.n - start) return true;\n  if (ss_splits(text, start) || ss_splits(text, start + length)) return true;\n  *out = (ss_string){ text.p + start, length };\n  return false;\n}\n\nstatic bool ss_byte_at(uint8_t *out, ss_string text, int64_t index) {\n  if (index < 0 || index >= text.n) return true;\n  *out = (uint8_t)text.p[index];\n  return false;\n}\n\nstatic uint8_t ss_byte_at_or_trap(ss_string text, int64_t index) {\n  if (index < 0 || index >= text.n) ss_trap(\"string.byteAtOrTrap read a byte outside its text\");\n  return (uint8_t)text.p[index];\n}\n\nstatic bool ss_find(int64_t *out, ss_string text, ss_string needle) {\n  int64_t at = refined_find(text.p, text.n, needle.p, needle.n);\n  if (at < 0) return true;\n  *out = at;\n  return false;\n}\n\n/* lists: a header {length, capacity, data, region, identity} in the list's region, as the LLVM backend's, and a\n   data block that starts at four items and doubles */\ntypedef struct { int64_t length, capacity; void *data; ss_region *region; int64_t identity; } ss_list;\nstatic int64_t ss_lists;\n\nstatic ss_list *ss_list_new(ss_region *r) {\n  ss_list *list = ss_alloc(r, (int64_t)sizeof(ss_list));\n  memset(list, 0, sizeof(ss_list));\n  list->region = r;\n  ss_lists += 1;\n  list->identity = ss_lists;\n  return list;\n}\n\nstatic void *ss_list_slot(ss_list *list, int64_t size) {\n  if (list->length == list->capacity) {\n    int64_t capacity = list->capacity == 0 ? 4 : list->capacity * 2;\n    char *fresh = ss_alloc(list->region, capacity * size);\n    if (list->length) memcpy(fresh, list->data, (size_t)(list->length * size));\n    list->data = fresh;\n    list->capacity = capacity;\n  }\n  list->length += 1;\n  return (char *)list->data + (list->length - 1) * size;\n}\n\nstatic bool ss_list_outside(ss_list *list, int64_t index) {\n  return index < 0 || index >= list->length;\n}\n\nstatic void ss_list_trap(void) {\n  ss_trap(\"a list was read at a position outside it\");\n}\n\n"
+prelude value "/* Generated by stage0, the first SemanticScript compiler written in SemanticScript. Link it with the runtime of\n   refined executables, semanticscript/compiler/refined/native_runtime.c, which writes output, traps, keeps\n   regions, and runs the host library, as it does for `refined build --kind executable`. */\n#include <stdbool.h>\n#include <stdint.h>\n#include <string.h>\n\nvoid refined_start(int argc, char **argv);\nvoid refined_trap(const char *p, int64_t n);\nint32_t refined_write(int32_t fd, const char *p, int64_t n, int32_t newline);\nint32_t refined_write_int(int32_t fd, int64_t v, int32_t newline);\nvoid *refined_region_new(int64_t capacity, const char *label, int64_t label_len);\nvoid *refined_region_alloc(void *handle, int64_t size);\nvoid refined_region_free(void *handle);\nvoid *refined_format_int(int64_t v, void *region, int64_t *out_len);\nint64_t refined_find(const char *h, int64_t hn, const char *nd, int64_t nn);\nint32_t refined_bytes_equal(const char *a, int64_t an, const char *b, int64_t bn);\nint32_t refined_parse_int(const char *p, int64_t n, int64_t *out);\nint32_t refined_host(const char *name, int64_t n, int64_t *args, int64_t *results, int64_t *payload);\n\n/* text: a pointer and a length in bytes, as the LLVM backend's {i8*, i64} */\ntypedef struct { const char *p; int64_t n; } ss_string;\n#define SS_TEXT(s) ((ss_string){ (s), (int64_t)(sizeof(s) - 1) })\n#define SS_STATIC(s) { (s), (int64_t)(sizeof(s) - 1) }\ntypedef void ss_region;\n\nstatic void ss_trap(const char *what) {\n  refined_trap(what, (int64_t)strlen(what));\n}\n\nstatic bool ss_write(ss_string text) {\n  return refined_write(1, text.p, text.n, 0) != 0;\n}\n\nstatic bool ss_write_line(ss_string text) {\n  return refined_write(1, text.p, text.n, 1) != 0;\n}\n\nstatic bool ss_write_integer_line(int64_t value) {\n  return refined_write_int(1, value, 1) != 0;\n}\n\nstatic bool ss_write_error(ss_string text) {\n  return refined_write(2, text.p, text.n, 1) != 0;\n}\n\nstatic bool ss_is_letter(uint8_t v) {\n  return (v >= 'a' && v <= 'z') || (v >= 'A' && v <= 'Z');\n}\n\nstatic bool ss_is_digit(uint8_t v) {\n  return v >= '0' && v <= '9';\n}\n\nstatic bool ss_is_letter_or_digit(uint8_t v) {\n  return ss_is_letter(v) || ss_is_digit(v);\n}\n\nstatic bool ss_is_space(uint8_t v) {\n  return v == 32 || v == 9 || v == 10 || v == 13;\n}\n\nstatic int64_t ss_add(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_add_overflow(left, right, &out)) ss_trap(\"math.addInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_subtract(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_sub_overflow(left, right, &out)) ss_trap(\"math.subtractInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_multiply(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_mul_overflow(left, right, &out)) ss_trap(\"math.multiplyInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_divide(int64_t left, int64_t right) {\n  if (right == 0) ss_trap(\"math.divideInt64 divided by zero\");\n  if (left == INT64_MIN && right == -1) ss_trap(\"math.divideInt64 overflowed Int64\");\n  return left / right;\n}\n\nstatic int64_t ss_remainder(int64_t left, int64_t right) {\n  if (right == 0) ss_trap(\"math.remainderInt64 divided by zero\");\n  if (left == INT64_MIN && right == -1) ss_trap(\"math.remainderInt64 overflowed Int64\");\n  return left % right;\n}\n\nstatic int64_t ss_negate(int64_t value) {\n  if (value == INT64_MIN) ss_trap(\"math.negateInt64 overflowed Int64\");\n  return -value;\n}\n\nstatic int64_t ss_absolute(int64_t value) {\n  if (value == INT64_MIN) ss_trap(\"math.absoluteInt64 overflowed Int64\");\n  return value < 0 ? -value : value;\n}\n\n/* square and multiply, as the LLVM backend: an overflowing square happens only while exponent bits remain */\nstatic int64_t ss_power(int64_t base, int64_t exponent) {\n  int64_t result = 1;\n  if (exponent < 0) ss_trap(\"math.powerInt64 with a negative exponent\");\n  while (exponent > 0) {\n    if (exponent & 1) {\n      if (__builtin_mul_overflow(result, base, &result)) ss_trap(\"math.powerInt64 overflowed Int64\");\n    }\n    exponent >>= 1;\n    if (exponent > 0 && __builtin_mul_overflow(base, base, &base)) ss_trap(\"math.powerInt64 overflowed Int64\");\n  }\n  return result;\n}\n\nstatic int ss_exit_code(int64_t value) {\n  if (value < 0 || value > 255) ss_trap(\"convert.int64ToExitCode was given a value outside 0 to 255\");\n  return (int)value;\n}\n\nstatic uint8_t ss_to_byte(int64_t value) {\n  if (value < 0 || value > 255) ss_trap(\"convert.int64ToByte was given a value outside 0 to 255\");\n  return (uint8_t)value;\n}\n\nstatic void ss_pass(int64_t *passes, int64_t bound, const char *label) {\n  *passes += 1;\n  if (*passes > bound) ss_trap(\"a loop returned to its header more often than its maxIterations\");\n  (void)label;\n}\n\nstatic void ss_deeper(int64_t *depth, int64_t bound, const char *name) {\n  *depth += 1;\n  if (*depth > bound) ss_trap(\"an operation called itself deeper than its maxRecursion\");\n  (void)name;\n}\n\n/* regions are the runtime's: every allocation is counted against maxBytes as the LLVM backend counts it */\nstatic ss_region *ss_region_new(int64_t capacity, const char *label) {\n  return refined_region_new(capacity, label, (int64_t)strlen(label));\n}\n\nstatic void *ss_alloc(ss_region *r, int64_t size) {\n  return refined_region_alloc(r, size);\n}\n\nstatic void ss_region_free(ss_region *r) {\n  refined_region_free(r);\n}\n\n/* text */\nstatic ss_string ss_relocate(ss_string text, ss_region *r) {\n  char *p = ss_alloc(r, text.n);\n  if (text.n) memcpy(p, text.p, (size_t)text.n);\n  return (ss_string){ p, text.n };\n}\n\nstatic ss_string ss_concat(ss_string left, ss_string right, ss_region *r) {\n  char *p = ss_alloc(r, left.n + right.n);\n  if (left.n) memcpy(p, left.p, (size_t)left.n);\n  if (right.n) memcpy(p + left.n, right.p, (size_t)right.n);\n  return (ss_string){ p, left.n + right.n };\n}\n\nstatic ss_string ss_from_int64(int64_t value, ss_region *r) {\n  int64_t n = 0;\n  const char *p = refined_format_int(value, r, &n);\n  return (ss_string){ p, n };\n}\n\nstatic bool ss_equals(ss_string left, ss_string right) {\n  return refined_bytes_equal(left.p, left.n, right.p, right.n) != 0;\n}\n\nstatic bool ss_starts_with(ss_string text, ss_string prefix) {\n  return text.n >= prefix.n && refined_bytes_equal(text.p, prefix.n, prefix.p, prefix.n) != 0;\n}\n\nstatic bool ss_to_int64(int64_t *out, ss_string text) {\n  return refined_parse_int(text.p, text.n, out) != 0;\n}\n\nstatic ss_string ss_to_bytes(ss_string text) {\n  return text;\n}\n\nstatic int64_t ss_byte_length(ss_string text) {\n  return text.n;\n}\n\nstatic bool ss_splits(ss_string text, int64_t at) {\n  return at >= 0 && at < text.n && ((unsigned char)text.p[at] & 0xC0) == 0x80;\n}\n\n/* string.slice: a view of whole characters inside the text, or the failure flag */\nstatic bool ss_slice(ss_string *out, ss_string text, int64_t start, int64_t length) {\n  if (start < 0 || length < 0 || start > text.n || length > text.n - start) return true;\n  if (ss_splits(text, start) || ss_splits(text, start + length)) return true;\n  *out = (ss_string){ text.p + start, length };\n  return false;\n}\n\nstatic bool ss_byte_at(uint8_t *out, ss_string text, int64_t index) {\n  if (index < 0 || index >= text.n) return true;\n  *out = (uint8_t)text.p[index];\n  return false;\n}\n\nstatic uint8_t ss_byte_at_or_trap(ss_string text, int64_t index) {\n  if (index < 0 || index >= text.n) ss_trap(\"string.byteAtOrTrap read a byte outside its text\");\n  return (uint8_t)text.p[index];\n}\n\nstatic bool ss_find(int64_t *out, ss_string text, ss_string needle) {\n  int64_t at = refined_find(text.p, text.n, needle.p, needle.n);\n  if (at < 0) return true;\n  *out = at;\n  return false;\n}\n\n/* lists: a header {length, capacity, data, region, identity} in the list's region, as the LLVM backend's, and a\n   data block that starts at four items and doubles */\ntypedef struct { int64_t length, capacity; void *data; ss_region *region; int64_t identity; } ss_list;\nstatic int64_t ss_lists;\n\nstatic ss_list *ss_list_new(ss_region *r) {\n  ss_list *list = ss_alloc(r, (int64_t)sizeof(ss_list));\n  memset(list, 0, sizeof(ss_list));\n  list->region = r;\n  ss_lists += 1;\n  list->identity = ss_lists;\n  return list;\n}\n\nstatic void *ss_list_slot(ss_list *list, int64_t size) {\n  if (list->length == list->capacity) {\n    int64_t capacity = list->capacity == 0 ? 4 : list->capacity * 2;\n    char *fresh = ss_alloc(list->region, capacity * size);\n    if (list->length) memcpy(fresh, list->data, (size_t)(list->length * size));\n    list->data = fresh;\n    list->capacity = capacity;\n  }\n  list->length += 1;\n  return (char *)list->data + (list->length - 1) * size;\n}\n\nstatic bool ss_list_outside(ss_list *list, int64_t index) {\n  return index < 0 || index >= list->length;\n}\n\nstatic void ss_list_trap(void) {\n  ss_trap(\"a list was read at a position outside it\");\n}\n\n"
 
 # ---------------------------------------------------------------- names and types
 putValue is operation
@@ -9184,6 +9238,8 @@ putReturn at begin case subset.StepVerb.branchIfNext bind none none goto ok
 putReturn at begin case subset.StepVerb.matchValue bind none none goto ok
 putReturn at begin case subset.StepVerb.caseOf bind none none goto ok
 putReturn at begin case subset.StepVerb.returnOk bind none none goto ok
+putReturn at begin case subset.StepVerb.startTask bind none none goto ok
+putReturn at begin case subset.StepVerb.joinTask bind none none goto ok
 putReturn at error do doAppendString2
 putReturn at error do doPutWord
 putReturn at error do doAppendString3
@@ -9754,6 +9810,8 @@ putStep at begin case subset.StepVerb.matchValue bind none none goto done
 putStep at begin case subset.StepVerb.caseOf bind none none goto caseStep
 putStep at begin case subset.StepVerb.returnOk bind none none goto returnStep
 putStep at begin case subset.StepVerb.returnError bind none none goto returnStep
+putStep at begin case subset.StepVerb.startTask bind none none goto doStep
+putStep at begin case subset.StepVerb.joinTask bind none none goto done
 putStep at doStep do readCallTextStart
 putStep at doStep do readCallTextOffset
 putStep at doStep do readCallTextLength

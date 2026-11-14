@@ -3,11 +3,12 @@
 # `is` row; each of those rows has the entity's name as its subject (the
 # formatter's layout, which stage0 requires). An entity records its name, its
 # kind, and the run of rows it owns, and a map finds a module-level entity by
-# its name. Calls and regions are not in the map: each belongs to the
+# its name. Calls, tasks, and regions are not in the map: each belongs to the
 # operation its `in` row names, so the same name may serve several operations.
 #
 # Kinds are numbered by their row in the `kinds` table: 1 module, 2 capability,
-# 3 constant, 4 operation, 5 call, 6 record, 7 enum, 8 typeInstance, 9 region.
+# 3 constant, 4 operation, 5 call, 6 record, 7 enum, 8 typeInstance, 9 region,
+# 10 task.
 # Any other kind is outside the stage0 subset.
 
 model is module
@@ -44,6 +45,7 @@ kinds row recordRow 6
 kinds row enumRow 7
 kinds row typeInstanceRow 8
 kinds row regionRow 9
+kinds row taskRow 10
 kinds cell moduleRow text "module"
 kinds cell capabilityRow text "capability"
 kinds cell constantRow text "constant"
@@ -53,6 +55,7 @@ kinds cell recordRow text "record"
 kinds cell enumRow text "enum"
 kinds cell typeInstanceRow text "typeInstance"
 kinds cell regionRow text "region"
+kinds cell taskRow text "task"
 
 Entity is record
 Entity purpose "One entity: its name, its kind's number, and the run of rows it owns"
@@ -90,7 +93,7 @@ lookupKind label begin loopKind none
 lookupKind label begin within none
 lookupKind label scan loopKind forEach
 lookupKind label scan within none
-lookupKind label scan maxIterations 9
+lookupKind label scan maxIterations 10
 lookupKind label scan over kinds
 lookupKind label compare loopKind none
 lookupKind label compare within scan
@@ -165,7 +168,7 @@ makeMissing catch none
 makeMissing suppresses none
 
 ownsName is operation
-ownsName purpose "Decide whether an entity of a kind is entered in the name map: calls and regions belong to one operation, so their names repeat across operations"
+ownsName purpose "Decide whether an entity of a kind is entered in the name map: calls, tasks, and regions belong to one operation, so their names repeat across operations"
 ownsName invariant none
 ownsName typeParameter none
 ownsName input kind Int64 copied
@@ -181,9 +184,12 @@ ownsName label begin loopKind none
 ownsName label begin within none
 ownsName let callKind Int64 5 immutable
 ownsName let regionKind Int64 9 immutable
+ownsName let taskKind Int64 10 immutable
 ownsName at begin do callCheck
 ownsName at begin do regionCheck
+ownsName at begin do taskCheck
 ownsName at begin do eitherCheck
+ownsName at begin do anyCheck
 ownsName at begin do neitherCheck
 ownsName at begin return ok owns
 
@@ -211,6 +217,18 @@ regionCheck borrows none
 regionCheck catch none
 regionCheck suppresses none
 
+taskCheck is call
+taskCheck in ownsName
+taskCheck invokes compare.equalInt64
+taskCheck argument left Int64 kind copy
+taskCheck argument right Int64 taskKind copy
+taskCheck result isTask Bool
+taskCheck ownedBy none
+taskCheck cleanedBy none
+taskCheck borrows none
+taskCheck catch none
+taskCheck suppresses none
+
 eitherCheck is call
 eitherCheck in ownsName
 eitherCheck invokes logic.or
@@ -223,10 +241,22 @@ eitherCheck borrows none
 eitherCheck catch none
 eitherCheck suppresses none
 
+anyCheck is call
+anyCheck in ownsName
+anyCheck invokes logic.or
+anyCheck argument left Bool either copy
+anyCheck argument right Bool isTask copy
+anyCheck result owned Bool
+anyCheck ownedBy none
+anyCheck cleanedBy none
+anyCheck borrows none
+anyCheck catch none
+anyCheck suppresses none
+
 neitherCheck is call
 neitherCheck in ownsName
 neitherCheck invokes logic.not
-neitherCheck argument value Bool either copy
+neitherCheck argument value Bool owned copy
 neitherCheck result owns Bool
 neitherCheck ownedBy none
 neitherCheck cleanedBy none
@@ -370,8 +400,8 @@ enterName suppresses none
 
 buildModel is operation
 buildModel purpose "Group rows into entities by their `is` rows and enter each module-level entity's name in a map"
-buildModel invariant groupsEntities "\"Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5, record 6, enum 7, typeInstance 8, region 9\""
-buildModel invariant namesEntities "\"Each entity's name maps to its position in the entity list, except calls and regions, whose names belong to the operation they are in\""
+buildModel invariant groupsEntities "\"Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5, record 6, enum 7, typeInstance 8, region 9, task 10\""
+buildModel invariant namesEntities "\"Each entity's name maps to its position in the entity list, except calls, tasks, and regions, whose names belong to the operation they are in\""
 buildModel invariant rejectsOutsideModel "\"Another kind is unsupportedKind, a row whose subject is not the entity above it is strayRow, and a module-level name declared twice is duplicateName\""
 buildModel typeParameter none
 buildModel input source String borrowed

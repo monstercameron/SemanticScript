@@ -165,6 +165,8 @@ StepVerb variant matchValue none
 StepVerb variant caseOf none
 StepVerb variant returnOk none
 StepVerb variant returnError none
+StepVerb variant startTask none
+StepVerb variant joinTask none
 
 StepRow is record
 StepRow purpose "A step word and the verb it begins"
@@ -421,6 +423,8 @@ stepWords row branchStep 4
 stepWords row matchStep 5
 stepWords row caseStep 6
 stepWords row returnStep 7
+stepWords row startStep 8
+stepWords row joinStep 9
 stepWords cell doStep text "do"
 stepWords cell doStep verb StepVerb.doCall
 stepWords cell setStep text "set"
@@ -435,6 +439,10 @@ stepWords cell caseStep text "case"
 stepWords cell caseStep verb StepVerb.caseOf
 stepWords cell returnStep text "return"
 stepWords cell returnStep verb StepVerb.returnOk
+stepWords cell startStep text "start"
+stepWords cell startStep verb StepVerb.startTask
+stepWords cell joinStep text "join"
+stepWords cell joinStep verb StepVerb.joinTask
 
 factWords is table
 factWords purpose "The label facts of the stage0 subset"
@@ -506,54 +514,60 @@ builtinTargets row mathDivideInt64Target 8
 builtinTargets row mathRemainderInt64Target 9
 builtinTargets row mathNegateInt64Target 10
 builtinTargets row mathAbsoluteInt64Target 11
-builtinTargets row compareEqualInt64Target 12
-builtinTargets row compareNotEqualInt64Target 13
-builtinTargets row compareLessThanInt64Target 14
-builtinTargets row compareLessOrEqualInt64Target 15
-builtinTargets row compareGreaterThanInt64Target 16
-builtinTargets row compareGreaterOrEqualInt64Target 17
-builtinTargets row compareEqualByteTarget 18
-builtinTargets row compareNotEqualByteTarget 19
-builtinTargets row compareLessThanByteTarget 20
-builtinTargets row compareLessOrEqualByteTarget 21
-builtinTargets row compareGreaterThanByteTarget 22
-builtinTargets row compareGreaterOrEqualByteTarget 23
-builtinTargets row logicAndTarget 24
-builtinTargets row logicOrTarget 25
-builtinTargets row logicXorTarget 26
-builtinTargets row logicNotTarget 27
-builtinTargets row convertExitCodeToInt64Target 28
-builtinTargets row convertInt64ToExitCodeTarget 29
-builtinTargets row convertByteToInt64Target 30
-builtinTargets row convertInt64ToByteTarget 31
-builtinTargets row byteIsLetterTarget 32
-builtinTargets row byteIsDigitTarget 33
-builtinTargets row byteIsLetterOrDigitTarget 34
-builtinTargets row byteIsSpaceTarget 35
-builtinTargets row byteEqualsTarget 36
-builtinTargets row stringByteLengthTarget 37
-builtinTargets row stringEqualsTarget 38
-builtinTargets row stringStartsWithTarget 39
-builtinTargets row stringConcatTarget 40
-builtinTargets row stringFromInt64Target 41
-builtinTargets row stringToInt64Target 42
-builtinTargets row stringSliceTarget 43
-builtinTargets row stringByteAtTarget 44
-builtinTargets row stringByteAtOrTrapTarget 45
-builtinTargets row stringFindTarget 46
-builtinTargets row stringToBytesTarget 47
-builtinTargets row stringFromBytesTarget 48
-builtinTargets row bufferNewTarget 49
-builtinTargets row bufferAppendStringTarget 50
-builtinTargets row bufferAppendByteTarget 51
-builtinTargets row bufferAppendInt64Target 52
-builtinTargets row bufferLengthTarget 53
-builtinTargets row bufferToStringTarget 54
-builtinTargets row bufferToBytesTarget 55
-builtinTargets row processArgumentCountTarget 56
-builtinTargets row processArgumentTarget 57
-builtinTargets row processNewArgumentsTarget 58
-builtinTargets row processAddArgumentTarget 59
+builtinTargets row mathPowerInt64Target 12
+builtinTargets row compareEqualInt64Target 13
+builtinTargets row compareNotEqualInt64Target 14
+builtinTargets row compareLessThanInt64Target 15
+builtinTargets row compareLessOrEqualInt64Target 16
+builtinTargets row compareGreaterThanInt64Target 17
+builtinTargets row compareGreaterOrEqualInt64Target 18
+builtinTargets row compareEqualByteTarget 19
+builtinTargets row compareNotEqualByteTarget 20
+builtinTargets row compareLessThanByteTarget 21
+builtinTargets row compareLessOrEqualByteTarget 22
+builtinTargets row compareGreaterThanByteTarget 23
+builtinTargets row compareGreaterOrEqualByteTarget 24
+builtinTargets row logicAndTarget 25
+builtinTargets row logicOrTarget 26
+builtinTargets row logicXorTarget 27
+builtinTargets row logicNotTarget 28
+builtinTargets row convertExitCodeToInt64Target 29
+builtinTargets row convertInt64ToExitCodeTarget 30
+builtinTargets row convertByteToInt64Target 31
+builtinTargets row convertInt64ToByteTarget 32
+builtinTargets row byteIsLetterTarget 33
+builtinTargets row byteIsDigitTarget 34
+builtinTargets row byteIsLetterOrDigitTarget 35
+builtinTargets row byteIsSpaceTarget 36
+builtinTargets row byteEqualsTarget 37
+builtinTargets row stringByteLengthTarget 38
+builtinTargets row stringEqualsTarget 39
+builtinTargets row stringStartsWithTarget 40
+builtinTargets row stringConcatTarget 41
+builtinTargets row stringFromInt64Target 42
+builtinTargets row stringToInt64Target 43
+builtinTargets row stringSliceTarget 44
+builtinTargets row stringByteAtTarget 45
+builtinTargets row stringByteAtOrTrapTarget 46
+builtinTargets row stringFindTarget 47
+builtinTargets row stringToBytesTarget 48
+builtinTargets row stringFromBytesTarget 49
+builtinTargets row bufferNewTarget 50
+builtinTargets row bufferAppendStringTarget 51
+builtinTargets row bufferAppendByteTarget 52
+builtinTargets row bufferAppendInt64Target 53
+builtinTargets row bufferLengthTarget 54
+builtinTargets row bufferToStringTarget 55
+builtinTargets row bufferToBytesTarget 56
+builtinTargets row processArgumentCountTarget 57
+builtinTargets row processArgumentTarget 58
+builtinTargets row processNewArgumentsTarget 59
+builtinTargets row processAddArgumentTarget 60
+builtinTargets row timeSleepTarget 61
+builtinTargets row logDebugTarget 62
+builtinTargets row logInfoTarget 63
+builtinTargets row logWarnTarget 64
+builtinTargets row logErrorTarget 65
 builtinTargets cell consoleWriteLineTarget text "console.writeLine"
 builtinTargets cell consoleWriteLineTarget count 1
 builtinTargets cell consoleWriteLineTarget slot1 "text"
@@ -708,6 +722,20 @@ builtinTargets cell mathAbsoluteInt64Target mode3 0
 builtinTargets cell mathAbsoluteInt64Target output 2
 builtinTargets cell mathAbsoluteInt64Target raises 0
 builtinTargets cell mathAbsoluteInt64Target error ""
+builtinTargets cell mathPowerInt64Target text "math.powerInt64"
+builtinTargets cell mathPowerInt64Target count 2
+builtinTargets cell mathPowerInt64Target slot1 "base"
+builtinTargets cell mathPowerInt64Target type1 2
+builtinTargets cell mathPowerInt64Target mode1 1
+builtinTargets cell mathPowerInt64Target slot2 "exponent"
+builtinTargets cell mathPowerInt64Target type2 2
+builtinTargets cell mathPowerInt64Target mode2 1
+builtinTargets cell mathPowerInt64Target slot3 ""
+builtinTargets cell mathPowerInt64Target type3 0
+builtinTargets cell mathPowerInt64Target mode3 0
+builtinTargets cell mathPowerInt64Target output 2
+builtinTargets cell mathPowerInt64Target raises 0
+builtinTargets cell mathPowerInt64Target error ""
 builtinTargets cell compareEqualInt64Target text "compare.equalInt64"
 builtinTargets cell compareEqualInt64Target count 2
 builtinTargets cell compareEqualInt64Target slot1 "left"
@@ -1380,6 +1408,76 @@ builtinTargets cell processAddArgumentTarget mode3 0
 builtinTargets cell processAddArgumentTarget output 0
 builtinTargets cell processAddArgumentTarget raises 0
 builtinTargets cell processAddArgumentTarget error ""
+builtinTargets cell timeSleepTarget text "time.sleep"
+builtinTargets cell timeSleepTarget count 1
+builtinTargets cell timeSleepTarget slot1 "milliseconds"
+builtinTargets cell timeSleepTarget type1 2
+builtinTargets cell timeSleepTarget mode1 1
+builtinTargets cell timeSleepTarget slot2 ""
+builtinTargets cell timeSleepTarget type2 0
+builtinTargets cell timeSleepTarget mode2 0
+builtinTargets cell timeSleepTarget slot3 ""
+builtinTargets cell timeSleepTarget type3 0
+builtinTargets cell timeSleepTarget mode3 0
+builtinTargets cell timeSleepTarget output 0
+builtinTargets cell timeSleepTarget raises 0
+builtinTargets cell timeSleepTarget error ""
+builtinTargets cell logDebugTarget text "log.debug"
+builtinTargets cell logDebugTarget count 1
+builtinTargets cell logDebugTarget slot1 "text"
+builtinTargets cell logDebugTarget type1 1
+builtinTargets cell logDebugTarget mode1 2
+builtinTargets cell logDebugTarget slot2 ""
+builtinTargets cell logDebugTarget type2 0
+builtinTargets cell logDebugTarget mode2 0
+builtinTargets cell logDebugTarget slot3 ""
+builtinTargets cell logDebugTarget type3 0
+builtinTargets cell logDebugTarget mode3 0
+builtinTargets cell logDebugTarget output 0
+builtinTargets cell logDebugTarget raises 7
+builtinTargets cell logDebugTarget error "log.LogError"
+builtinTargets cell logInfoTarget text "log.info"
+builtinTargets cell logInfoTarget count 1
+builtinTargets cell logInfoTarget slot1 "text"
+builtinTargets cell logInfoTarget type1 1
+builtinTargets cell logInfoTarget mode1 2
+builtinTargets cell logInfoTarget slot2 ""
+builtinTargets cell logInfoTarget type2 0
+builtinTargets cell logInfoTarget mode2 0
+builtinTargets cell logInfoTarget slot3 ""
+builtinTargets cell logInfoTarget type3 0
+builtinTargets cell logInfoTarget mode3 0
+builtinTargets cell logInfoTarget output 0
+builtinTargets cell logInfoTarget raises 7
+builtinTargets cell logInfoTarget error "log.LogError"
+builtinTargets cell logWarnTarget text "log.warn"
+builtinTargets cell logWarnTarget count 1
+builtinTargets cell logWarnTarget slot1 "text"
+builtinTargets cell logWarnTarget type1 1
+builtinTargets cell logWarnTarget mode1 2
+builtinTargets cell logWarnTarget slot2 ""
+builtinTargets cell logWarnTarget type2 0
+builtinTargets cell logWarnTarget mode2 0
+builtinTargets cell logWarnTarget slot3 ""
+builtinTargets cell logWarnTarget type3 0
+builtinTargets cell logWarnTarget mode3 0
+builtinTargets cell logWarnTarget output 0
+builtinTargets cell logWarnTarget raises 7
+builtinTargets cell logWarnTarget error "log.LogError"
+builtinTargets cell logErrorTarget text "log.error"
+builtinTargets cell logErrorTarget count 1
+builtinTargets cell logErrorTarget slot1 "text"
+builtinTargets cell logErrorTarget type1 1
+builtinTargets cell logErrorTarget mode1 2
+builtinTargets cell logErrorTarget slot2 ""
+builtinTargets cell logErrorTarget type2 0
+builtinTargets cell logErrorTarget mode2 0
+builtinTargets cell logErrorTarget slot3 ""
+builtinTargets cell logErrorTarget type3 0
+builtinTargets cell logErrorTarget mode3 0
+builtinTargets cell logErrorTarget output 0
+builtinTargets cell logErrorTarget raises 7
+builtinTargets cell logErrorTarget error "log.LogError"
 
 # ---------------------------------------------------------------- what the checker collects
 TypeInfo is record
@@ -1666,7 +1764,7 @@ lookupStep label begin loopKind none
 lookupStep label begin within none
 lookupStep label scan loopKind forEach
 lookupStep label scan within none
-lookupStep label scan maxIterations 7
+lookupStep label scan maxIterations 9
 lookupStep label scan over stepWords
 lookupStep label compare loopKind none
 lookupStep label compare within scan
@@ -4254,7 +4352,7 @@ registerBuiltins label begin loopKind none
 registerBuiltins label begin within none
 registerBuiltins label eachTarget loopKind forEach
 registerBuiltins label eachTarget within none
-registerBuiltins label eachTarget maxIterations 59
+registerBuiltins label eachTarget maxIterations 65
 registerBuiltins label eachTarget over builtinTargets
 registerBuiltins label readEntry loopKind none
 registerBuiltins label readEntry within eachTarget
@@ -9241,8 +9339,14 @@ declareOperation label fixedNoneDone loopKind none
 declareOperation label fixedNoneDone within eachRow
 declareOperation label notAsync loopKind none
 declareOperation label notAsync within eachRow
-declareOperation label fixedFalseDone loopKind none
-declareOperation label fixedFalseDone within eachRow
+declareOperation label asyncShapeDone loopKind none
+declareOperation label asyncShapeDone within eachRow
+declareOperation label falseCheckDone loopKind none
+declareOperation label falseCheckDone within eachRow
+declareOperation label trueCheckDone loopKind none
+declareOperation label trueCheckDone within eachRow
+declareOperation label badAsync loopKind none
+declareOperation label badAsync within none
 declareOperation label inputFact loopKind none
 declareOperation label inputFact within eachRow
 declareOperation label inputNone loopKind none
@@ -9331,8 +9435,12 @@ declareOperation label findPredicateFailed loopKind none
 declareOperation label findPredicateFailed within none
 declareOperation label fixedNoneFailed loopKind none
 declareOperation label fixedNoneFailed within none
-declareOperation label fixedFalseFailed loopKind none
-declareOperation label fixedFalseFailed within none
+declareOperation label asyncShapeFailed loopKind none
+declareOperation label asyncShapeFailed within none
+declareOperation label falseCheckFailed loopKind none
+declareOperation label falseCheckFailed within none
+declareOperation label trueCheckFailed loopKind none
+declareOperation label trueCheckFailed within none
 declareOperation label inputFixedFailed loopKind none
 declareOperation label inputFixedFailed within none
 declareOperation label inputShapeFailed loopKind none
@@ -9382,9 +9490,10 @@ declareOperation let yes Bool true immutable
 declareOperation let rowIndex Int64 0 mutable
 declareOperation let one Int64 1 immutable
 declareOperation let noneWord String "none" immutable
-declareOperation let falseWord String "false" immutable
-declareOperation let three Int64 3 immutable
 declareOperation let two Int64 2 immutable
+declareOperation let three Int64 3 immutable
+declareOperation let falseWord String "false" immutable
+declareOperation let trueWord String "true" immutable
 declareOperation let five Int64 5 immutable
 declareOperation let four Int64 4 immutable
 declareOperation let callerWord String "caller" immutable
@@ -9445,9 +9554,17 @@ declareOperation at findPredicateDone case Predicate.releasedRow bind none none 
 declareOperation at noParameter do fixedNone
 declareOperation at noParameter branch ifError fixedNone goto fixedNoneFailed else goto fixedNoneDone
 declareOperation at fixedNoneDone goto nextRow
-declareOperation at notAsync do fixedFalse
-declareOperation at notAsync branch ifError fixedFalse goto fixedFalseFailed else goto fixedFalseDone
-declareOperation at fixedFalseDone goto nextRow
+declareOperation at notAsync do readAsyncWord
+declareOperation at notAsync do asyncShape
+declareOperation at notAsync branch ifError asyncShape goto asyncShapeFailed else goto asyncShapeDone
+declareOperation at asyncShapeDone do falseCheck
+declareOperation at asyncShapeDone branch ifError falseCheck goto falseCheckFailed else goto falseCheckDone
+declareOperation at falseCheckDone do trueCheck
+declareOperation at falseCheckDone branch ifError trueCheck goto trueCheckFailed else goto trueCheckDone
+declareOperation at trueCheckDone do flagCheck
+declareOperation at trueCheckDone branch if isFlag goto nextRow else goto badAsync
+declareOperation at badAsync do makeBadAsync
+declareOperation at badAsync return error badAsyncError
 declareOperation at inputFact do readInputCount
 declareOperation at inputFact do noInputCheck
 declareOperation at inputFact branch if noInput goto inputNone else goto inputSlot
@@ -9552,7 +9669,9 @@ declareOperation at refuse do makeRefused
 declareOperation at refuse return error refusedError
 declareOperation at findPredicateFailed return error findPredicateError
 declareOperation at fixedNoneFailed return error fixedNoneError
-declareOperation at fixedFalseFailed return error fixedFalseError
+declareOperation at asyncShapeFailed return error asyncShapeError
+declareOperation at falseCheckFailed return error falseCheckError
+declareOperation at trueCheckFailed return error trueCheckError
 declareOperation at inputFixedFailed return error inputFixedError
 declareOperation at inputShapeFailed return error inputShapeError
 declareOperation at findInputTypeFailed return error findInputTypeError
@@ -9704,19 +9823,80 @@ fixedNone borrows none
 fixedNone catch fixedNoneError syntax.Rejection
 fixedNone suppresses none
 
-fixedFalse is call
-fixedFalse in declareOperation
-fixedFalse invokes checkWord
-fixedFalse argument source String source lend
-fixedFalse argument words syntax.Words words lend
-fixedFalse argument row syntax.Row row copy
-fixedFalse argument text String falseWord lend
-fixedFalse result none
-fixedFalse ownedBy none
-fixedFalse cleanedBy none
-fixedFalse borrows none
-fixedFalse catch fixedFalseError syntax.Rejection
-fixedFalse suppresses none
+readAsyncWord is call
+readAsyncWord in declareOperation
+readAsyncWord invokes wordAt
+readAsyncWord argument words syntax.Words words lend
+readAsyncWord argument row syntax.Row row copy
+readAsyncWord argument offset Int64 two copy
+readAsyncWord result asyncWord syntax.Word
+readAsyncWord ownedBy none
+readAsyncWord cleanedBy none
+readAsyncWord borrows none
+readAsyncWord catch none
+readAsyncWord suppresses none
+
+asyncShape is call
+asyncShape in declareOperation
+asyncShape invokes expectCount
+asyncShape argument row syntax.Row row copy
+asyncShape argument count Int64 three copy
+asyncShape argument word syntax.Word asyncWord copy
+asyncShape result none
+asyncShape ownedBy none
+asyncShape cleanedBy none
+asyncShape borrows none
+asyncShape catch asyncShapeError syntax.Rejection
+asyncShape suppresses none
+
+falseCheck is call
+falseCheck in declareOperation
+falseCheck invokes syntax.isText
+falseCheck argument source String source lend
+falseCheck argument word syntax.Word asyncWord copy
+falseCheck argument text String falseWord lend
+falseCheck result isFalse Bool
+falseCheck ownedBy none
+falseCheck cleanedBy none
+falseCheck borrows none
+falseCheck catch falseCheckError syntax.Rejection
+falseCheck suppresses none
+
+trueCheck is call
+trueCheck in declareOperation
+trueCheck invokes syntax.isText
+trueCheck argument source String source lend
+trueCheck argument word syntax.Word asyncWord copy
+trueCheck argument text String trueWord lend
+trueCheck result isTrue Bool
+trueCheck ownedBy none
+trueCheck cleanedBy none
+trueCheck borrows none
+trueCheck catch trueCheckError syntax.Rejection
+trueCheck suppresses none
+
+flagCheck is call
+flagCheck in declareOperation
+flagCheck invokes logic.or
+flagCheck argument left Bool isFalse copy
+flagCheck argument right Bool isTrue copy
+flagCheck result isFlag Bool
+flagCheck ownedBy none
+flagCheck cleanedBy none
+flagCheck borrows none
+flagCheck catch none
+flagCheck suppresses none
+
+makeBadAsync is call
+makeBadAsync in declareOperation
+makeBadAsync invokes syntax.Rejection.unsupportedPayload
+makeBadAsync argument payload syntax.Word asyncWord copy
+makeBadAsync result badAsyncError syntax.Rejection
+makeBadAsync ownedBy none
+makeBadAsync cleanedBy none
+makeBadAsync borrows none
+makeBadAsync catch none
+makeBadAsync suppresses none
 
 readInputCount is call
 readInputCount in declareOperation
@@ -11093,6 +11273,7 @@ checkDeclarations let three Int64 3 immutable
 checkDeclarations let four Int64 4 immutable
 checkDeclarations let five Int64 5 immutable
 checkDeclarations let nine Int64 9 immutable
+checkDeclarations let ten Int64 10 immutable
 checkDeclarations let six Int64 6 immutable
 checkDeclarations let seven Int64 7 immutable
 checkDeclarations let minus1 Int64 -1 immutable
@@ -11117,6 +11298,8 @@ checkDeclarations at notConstant do operationCheck
 checkDeclarations at notConstant branch if isOperation goto operationEntity else goto notOperation
 checkDeclarations at notOperation do callCheck
 checkDeclarations at notOperation do regionCheck
+checkDeclarations at notOperation do taskCheck
+checkDeclarations at notOperation do callOrRegion
 checkDeclarations at notOperation do ownedCheck
 checkDeclarations at notOperation branch if isOwned goto ownedEntity else goto notOwned
 checkDeclarations at notOwned do countType
@@ -11310,11 +11493,35 @@ regionCheck borrows none
 regionCheck catch none
 regionCheck suppresses none
 
+taskCheck is call
+taskCheck in checkDeclarations
+taskCheck invokes compare.equalInt64
+taskCheck argument left Int64 kind copy
+taskCheck argument right Int64 ten copy
+taskCheck result isTask Bool
+taskCheck ownedBy none
+taskCheck cleanedBy none
+taskCheck borrows none
+taskCheck catch none
+taskCheck suppresses none
+
+callOrRegion is call
+callOrRegion in checkDeclarations
+callOrRegion invokes logic.or
+callOrRegion argument left Bool isCall copy
+callOrRegion argument right Bool isRegion copy
+callOrRegion result isCallOrRegion Bool
+callOrRegion ownedBy none
+callOrRegion cleanedBy none
+callOrRegion borrows none
+callOrRegion catch none
+callOrRegion suppresses none
+
 ownedCheck is call
 ownedCheck in checkDeclarations
 ownedCheck invokes logic.or
-ownedCheck argument left Bool isCall copy
-ownedCheck argument right Bool isRegion copy
+ownedCheck argument left Bool isCallOrRegion copy
+ownedCheck argument right Bool isTask copy
 ownedCheck result isOwned Bool
 ownedCheck ownedBy none
 ownedCheck cleanedBy none
@@ -16086,6 +16293,7 @@ collectOwned let zero Int64 0 immutable
 collectOwned let one Int64 1 immutable
 collectOwned let nine Int64 9 immutable
 collectOwned let five Int64 5 immutable
+collectOwned let ten Int64 10 immutable
 collectOwned at begin do countEntities
 collectOwned at begin goto eachRegion
 collectOwned at eachRegion branch ifNext entities bind regionEntity model.Entity goto readRegionOwner else goto regionsDone
@@ -16110,7 +16318,9 @@ collectOwned at readCallOwner do callMine
 collectOwned at readCallOwner branch if callIsMine goto callKind else goto eachCall
 collectOwned at callKind do readCallKind
 collectOwned at callKind do isCallCheck
-collectOwned at callKind branch if isCall goto enterCall else goto eachCall
+collectOwned at callKind do isTaskCheck
+collectOwned at callKind do callOrTask
+collectOwned at callKind branch if runs goto enterCall else goto eachCall
 collectOwned at enterCall do checkTheCall
 collectOwned at enterCall branch ifError checkTheCall goto checkTheCallFailed else goto checkTheCallDone
 collectOwned at checkTheCallDone goto eachCall
@@ -16262,6 +16472,30 @@ isCallCheck cleanedBy none
 isCallCheck borrows none
 isCallCheck catch none
 isCallCheck suppresses none
+
+isTaskCheck is call
+isTaskCheck in collectOwned
+isTaskCheck invokes compare.equalInt64
+isTaskCheck argument left Int64 callEntityKind copy
+isTaskCheck argument right Int64 ten copy
+isTaskCheck result isTask Bool
+isTaskCheck ownedBy none
+isTaskCheck cleanedBy none
+isTaskCheck borrows none
+isTaskCheck catch none
+isTaskCheck suppresses none
+
+callOrTask is call
+callOrTask in collectOwned
+callOrTask invokes logic.or
+callOrTask argument left Bool isCall copy
+callOrTask argument right Bool isTask copy
+callOrTask result runs Bool
+callOrTask ownedBy none
+callOrTask cleanedBy none
+callOrTask borrows none
+callOrTask catch none
+callOrTask suppresses none
 
 checkTheCall is call
 checkTheCall in collectOwned
@@ -16928,6 +17162,26 @@ checkStep label labelCheckDone loopKind none
 checkStep label labelCheckDone within none
 checkStep label findVerbDone loopKind none
 checkStep label findVerbDone within none
+checkStep label startStep loopKind none
+checkStep label startStep within none
+checkStep label startShapeDone loopKind none
+checkStep label startShapeDone within none
+checkStep label intoCheckDone loopKind none
+checkStep label intoCheckDone within none
+checkStep label slotCheckDone loopKind none
+checkStep label slotCheckDone within none
+checkStep label startTaskFound loopKind none
+checkStep label startTaskFound within none
+checkStep label findStartedDone loopKind none
+checkStep label findStartedDone within none
+checkStep label checkStartedValuesDone loopKind none
+checkStep label checkStartedValuesDone within none
+checkStep label joinStep loopKind none
+checkStep label joinStep within none
+checkStep label joinShapeDone loopKind none
+checkStep label joinShapeDone within none
+checkStep label findJoinedDone loopKind none
+checkStep label findJoinedDone within none
 checkStep label doStep loopKind none
 checkStep label doStep within none
 checkStep label doShapeDone loopKind none
@@ -17078,6 +17332,8 @@ checkStep label makeReturnError loopKind none
 checkStep label makeReturnError within none
 checkStep label unsupported loopKind none
 checkStep label unsupported within none
+checkStep label badStart loopKind none
+checkStep label badStart within none
 checkStep label immutable loopKind none
 checkStep label immutable within none
 checkStep label setWrongType loopKind none
@@ -17112,6 +17368,20 @@ checkStep label labelCheckFailed loopKind none
 checkStep label labelCheckFailed within none
 checkStep label findVerbFailed loopKind none
 checkStep label findVerbFailed within none
+checkStep label startShapeFailed loopKind none
+checkStep label startShapeFailed within none
+checkStep label intoCheckFailed loopKind none
+checkStep label intoCheckFailed within none
+checkStep label slotCheckFailed loopKind none
+checkStep label slotCheckFailed within none
+checkStep label findStartedFailed loopKind none
+checkStep label findStartedFailed within none
+checkStep label checkStartedValuesFailed loopKind none
+checkStep label checkStartedValuesFailed within none
+checkStep label joinShapeFailed loopKind none
+checkStep label joinShapeFailed within none
+checkStep label findJoinedFailed loopKind none
+checkStep label findJoinedFailed within none
 checkStep label doShapeFailed loopKind none
 checkStep label doShapeFailed within none
 checkStep label findTheCallFailed loopKind none
@@ -17191,19 +17461,20 @@ checkStep label errorCodeFailed within none
 checkStep let two Int64 2 immutable
 checkStep let five Int64 5 immutable
 checkStep let three Int64 3 immutable
+checkStep let seven Int64 7 immutable
 checkStep let four Int64 4 immutable
-checkStep let zero Int64 0 immutable
 checkStep let six Int64 6 immutable
+checkStep let intoText String "into" immutable
+checkStep let noneWord String "none" immutable
+checkStep let zero Int64 0 immutable
 checkStep let eleven Int64 11 immutable
 checkStep let ifText String "if" immutable
 checkStep let ifErrorText String "ifError" immutable
 checkStep let ifNextText String "ifNext" immutable
-checkStep let seven Int64 7 immutable
 checkStep let ten Int64 10 immutable
 checkStep let n14 Int64 14 immutable
 checkStep let n13 Int64 13 immutable
 checkStep let nine Int64 9 immutable
-checkStep let noneWord String "none" immutable
 checkStep let okText String "ok" immutable
 checkStep let one Int64 1 immutable
 checkStep let errorWord String "error" immutable
@@ -17223,9 +17494,35 @@ checkStep at findVerbDone case StepVerb.branchIf bind none none goto branchStep
 checkStep at findVerbDone case StepVerb.matchValue bind none none goto matchStep
 checkStep at findVerbDone case StepVerb.caseOf bind none none goto caseStep
 checkStep at findVerbDone case StepVerb.returnOk bind none none goto returnStep
+checkStep at findVerbDone case StepVerb.startTask bind none none goto startStep
+checkStep at findVerbDone case StepVerb.joinTask bind none none goto joinStep
 checkStep at findVerbDone case StepVerb.branchIfError bind none none goto unsupported
 checkStep at findVerbDone case StepVerb.branchIfNext bind none none goto unsupported
 checkStep at findVerbDone case StepVerb.returnError bind none none goto unsupported
+checkStep at startStep do startShape
+checkStep at startStep branch ifError startShape goto startShapeFailed else goto startShapeDone
+checkStep at startShapeDone do readStartedWord
+checkStep at startShapeDone do readIntoWord
+checkStep at startShapeDone do readSlotWord
+checkStep at startShapeDone do intoCheck
+checkStep at startShapeDone branch ifError intoCheck goto intoCheckFailed else goto intoCheckDone
+checkStep at intoCheckDone do slotCheck
+checkStep at intoCheckDone branch ifError slotCheck goto slotCheckFailed else goto slotCheckDone
+checkStep at slotCheckDone do bothCheck
+checkStep at slotCheckDone branch if startFits goto startTaskFound else goto badStart
+checkStep at startTaskFound do findStarted
+checkStep at startTaskFound branch ifError findStarted goto findStartedFailed else goto findStartedDone
+checkStep at findStartedDone do checkStartedValues
+checkStep at findStartedDone branch ifError checkStartedValues goto checkStartedValuesFailed else goto checkStartedValuesDone
+checkStep at checkStartedValuesDone do makeStart
+checkStep at checkStartedValuesDone return ok startDone
+checkStep at joinStep do joinShape
+checkStep at joinStep branch ifError joinShape goto joinShapeFailed else goto joinShapeDone
+checkStep at joinShapeDone do readJoinedWord
+checkStep at joinShapeDone do findJoined
+checkStep at joinShapeDone branch ifError findJoined goto findJoinedFailed else goto findJoinedDone
+checkStep at findJoinedDone do makeJoin
+checkStep at findJoinedDone return ok joinDone
 checkStep at doStep do doShape
 checkStep at doStep branch ifError doShape goto doShapeFailed else goto doShapeDone
 checkStep at doShapeDone do readCallWord
@@ -17423,6 +17720,8 @@ checkStep at makeReturnError do makeError
 checkStep at makeReturnError return ok errorDone
 checkStep at unsupported do makeUnsupported
 checkStep at unsupported return error unsupportedError
+checkStep at badStart do makeBadStart
+checkStep at badStart return error badStartError
 checkStep at immutable do makeImmutable
 checkStep at immutable return error immutableError
 checkStep at setWrongType do makeSetWrongType
@@ -17454,6 +17753,13 @@ checkStep at badReturn return error badReturnError
 checkStep at enoughWordsFailed return error enoughWordsError
 checkStep at labelCheckFailed return error labelCheckError
 checkStep at findVerbFailed return error findVerbError
+checkStep at startShapeFailed return error startShapeError
+checkStep at intoCheckFailed return error intoCheckError
+checkStep at slotCheckFailed return error slotCheckError
+checkStep at findStartedFailed return error findStartedError
+checkStep at checkStartedValuesFailed return error checkStartedValuesError
+checkStep at joinShapeFailed return error joinShapeError
+checkStep at findJoinedFailed return error findJoinedError
 checkStep at doShapeFailed return error doShapeError
 checkStep at findTheCallFailed return error findTheCallError
 checkStep at checkValuesFailed return error checkValuesError
@@ -17556,6 +17862,199 @@ findVerb cleanedBy none
 findVerb borrows none
 findVerb catch findVerbError syntax.Rejection
 findVerb suppresses none
+
+startShape is call
+startShape in checkStep
+startShape invokes expectCount
+startShape argument row syntax.Row row copy
+startShape argument count Int64 seven copy
+startShape argument word syntax.Word verbWord copy
+startShape result none
+startShape ownedBy none
+startShape cleanedBy none
+startShape borrows none
+startShape catch startShapeError syntax.Rejection
+startShape suppresses none
+
+readStartedWord is call
+readStartedWord in checkStep
+readStartedWord invokes wordAt
+readStartedWord argument words syntax.Words words lend
+readStartedWord argument row syntax.Row row copy
+readStartedWord argument offset Int64 four copy
+readStartedWord result startedWord syntax.Word
+readStartedWord ownedBy none
+readStartedWord cleanedBy none
+readStartedWord borrows none
+readStartedWord catch none
+readStartedWord suppresses none
+
+readIntoWord is call
+readIntoWord in checkStep
+readIntoWord invokes wordAt
+readIntoWord argument words syntax.Words words lend
+readIntoWord argument row syntax.Row row copy
+readIntoWord argument offset Int64 five copy
+readIntoWord result intoWord syntax.Word
+readIntoWord ownedBy none
+readIntoWord cleanedBy none
+readIntoWord borrows none
+readIntoWord catch none
+readIntoWord suppresses none
+
+readSlotWord is call
+readSlotWord in checkStep
+readSlotWord invokes wordAt
+readSlotWord argument words syntax.Words words lend
+readSlotWord argument row syntax.Row row copy
+readSlotWord argument offset Int64 six copy
+readSlotWord result slotWord syntax.Word
+readSlotWord ownedBy none
+readSlotWord cleanedBy none
+readSlotWord borrows none
+readSlotWord catch none
+readSlotWord suppresses none
+
+intoCheck is call
+intoCheck in checkStep
+intoCheck invokes syntax.isText
+intoCheck argument source String source lend
+intoCheck argument word syntax.Word intoWord copy
+intoCheck argument text String intoText lend
+intoCheck result saysInto Bool
+intoCheck ownedBy none
+intoCheck cleanedBy none
+intoCheck borrows none
+intoCheck catch intoCheckError syntax.Rejection
+intoCheck suppresses none
+
+slotCheck is call
+slotCheck in checkStep
+slotCheck invokes syntax.isText
+slotCheck argument source String source lend
+slotCheck argument word syntax.Word slotWord copy
+slotCheck argument text String noneWord lend
+slotCheck result noSlot Bool
+slotCheck ownedBy none
+slotCheck cleanedBy none
+slotCheck borrows none
+slotCheck catch slotCheckError syntax.Rejection
+slotCheck suppresses none
+
+bothCheck is call
+bothCheck in checkStep
+bothCheck invokes logic.and
+bothCheck argument left Bool saysInto copy
+bothCheck argument right Bool noSlot copy
+bothCheck result startFits Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+findStarted is call
+findStarted in checkStep
+findStarted invokes findCall
+findStarted argument source String source lend
+findStarted argument calls Calls calls lend
+findStarted argument word syntax.Word startedWord copy
+findStarted result startedInfo CallInfo
+findStarted ownedBy none
+findStarted cleanedBy none
+findStarted borrows none
+findStarted catch findStartedError syntax.Rejection
+findStarted suppresses none
+
+checkStartedValues is call
+checkStartedValues in checkStep
+checkStartedValues invokes checkCallValues
+checkStartedValues argument source String source lend
+checkStartedValues argument values Values values lend
+checkStartedValues argument constants Values constants lend
+checkStartedValues argument arguments Arguments arguments lend
+checkStartedValues argument info CallInfo startedInfo copy
+checkStartedValues result none
+checkStartedValues ownedBy none
+checkStartedValues cleanedBy none
+checkStartedValues borrows none
+checkStartedValues catch checkStartedValuesError syntax.Rejection
+checkStartedValues suppresses none
+
+makeStart is call
+makeStart in checkStep
+makeStart invokes Step.new
+makeStart argument label syntax.Word labelWord copy
+makeStart argument verb StepVerb verb copy
+makeStart argument subject syntax.Word startedWord copy
+makeStart argument target syntax.Word labelWord copy
+makeStart argument otherwise syntax.Word labelWord copy
+makeStart argument extra syntax.Word labelWord copy
+makeStart argument number Int64 zero copy
+makeStart argument code Int64 zero copy
+makeStart result startDone Step
+makeStart ownedBy none
+makeStart cleanedBy none
+makeStart borrows none
+makeStart catch none
+makeStart suppresses none
+
+joinShape is call
+joinShape in checkStep
+joinShape invokes expectCount
+joinShape argument row syntax.Row row copy
+joinShape argument count Int64 five copy
+joinShape argument word syntax.Word verbWord copy
+joinShape result none
+joinShape ownedBy none
+joinShape cleanedBy none
+joinShape borrows none
+joinShape catch joinShapeError syntax.Rejection
+joinShape suppresses none
+
+readJoinedWord is call
+readJoinedWord in checkStep
+readJoinedWord invokes wordAt
+readJoinedWord argument words syntax.Words words lend
+readJoinedWord argument row syntax.Row row copy
+readJoinedWord argument offset Int64 four copy
+readJoinedWord result joinedWord syntax.Word
+readJoinedWord ownedBy none
+readJoinedWord cleanedBy none
+readJoinedWord borrows none
+readJoinedWord catch none
+readJoinedWord suppresses none
+
+findJoined is call
+findJoined in checkStep
+findJoined invokes findCall
+findJoined argument source String source lend
+findJoined argument calls Calls calls lend
+findJoined argument word syntax.Word joinedWord copy
+findJoined result joinedInfo CallInfo
+findJoined ownedBy none
+findJoined cleanedBy none
+findJoined borrows none
+findJoined catch findJoinedError syntax.Rejection
+findJoined suppresses none
+
+makeJoin is call
+makeJoin in checkStep
+makeJoin invokes Step.new
+makeJoin argument label syntax.Word labelWord copy
+makeJoin argument verb StepVerb verb copy
+makeJoin argument subject syntax.Word joinedWord copy
+makeJoin argument target syntax.Word labelWord copy
+makeJoin argument otherwise syntax.Word labelWord copy
+makeJoin argument extra syntax.Word labelWord copy
+makeJoin argument number Int64 zero copy
+makeJoin argument code Int64 zero copy
+makeJoin result joinDone Step
+makeJoin ownedBy none
+makeJoin cleanedBy none
+makeJoin borrows none
+makeJoin catch none
+makeJoin suppresses none
 
 doShape is call
 doShape in checkStep
@@ -19021,6 +19520,17 @@ makeUnsupported borrows none
 makeUnsupported catch none
 makeUnsupported suppresses none
 
+makeBadStart is call
+makeBadStart in checkStep
+makeBadStart invokes syntax.Rejection.unsupportedStep
+makeBadStart argument payload syntax.Word slotWord copy
+makeBadStart result badStartError syntax.Rejection
+makeBadStart ownedBy none
+makeBadStart cleanedBy none
+makeBadStart borrows none
+makeBadStart catch none
+makeBadStart suppresses none
+
 makeImmutable is call
 makeImmutable in checkStep
 makeImmutable invokes syntax.Rejection.notMutable
@@ -19318,6 +19828,8 @@ collectSteps at checkTheStepDone case StepVerb.branchIfNext bind none none goto 
 collectSteps at checkTheStepDone case StepVerb.caseOf bind none none goto blockCheck
 collectSteps at checkTheStepDone case StepVerb.returnOk bind none none goto blockCheck
 collectSteps at checkTheStepDone case StepVerb.returnError bind none none goto blockCheck
+collectSteps at checkTheStepDone case StepVerb.startTask bind none none goto blockCheck
+collectSteps at checkTheStepDone case StepVerb.joinTask bind none none goto blockCheck
 collectSteps at rememberMatch do readMatched
 collectSteps at rememberMatch do readMatchedCode
 collectSteps at rememberMatch set matchValue matched
