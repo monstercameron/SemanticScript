@@ -1993,8 +1993,14 @@ Decisions (by delegation):
   between entities, the space before a trailing comment. Comment text is
   kept exactly.
 
-The one item left open is static linking into an executable: objects for any
-target exist, but there is no native runtime library or bundled linker yet.
+- **D-37** `refined build --kind executable` links the program's object, a C
+  runtime (`native_runtime.c`: output, regions, traps with stack traces, the
+  call stack, recursion and stack guards, tasks run when started), and a
+  generated `main` with the system C compiler, statically where the platform
+  allows. Library targets that need the operating system host stay in the JIT
+  runtime; in an executable they trap with the target's name.
+
+Every checklist item now has evidence or a stated reason.
 
 ## Explicitness audit (2026-11-13)
 

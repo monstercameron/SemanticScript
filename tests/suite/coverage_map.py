@@ -569,6 +569,7 @@ GENERATED: dict[str, list[str]] = {
     "test_cross_compiles_to_other_targets": ["23 Cross-compilation", "15 Code generation"],
     "test_webassembly_runs_under_node": ["18 WASM integration"],
     "test_program_sees_an_interrupt": ["16 Signal handling"],
+    "test_standalone_executables_match_the_jit": ["18 Static linking", "16 Program startup"],
     "test_every_operation_compiles": ["15 Code generation", "15 Intermediate representation generation"],
     "test_every_program_case_runs": ["20 End-to-end tests"],
     "test_program_case": ["20 End-to-end tests", "20 Golden-file tests", "20 Snapshot tests"],
@@ -737,9 +738,9 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "16 Runtime performance": (None, "`refined bench` times repeated runs; the stress tests bound sizes.", []),
     "17 Sensitive data handling": (None, "`secret.Secret` has no conversion to text except `reveal`, which needs a capability "
                                   "for `read secret.values`; `matches` compares in constant time.", []),
-    "18 Static linking": (GAP, "`refined build` emits object files for any target, but linking one into an executable "
-                         "needs a system linker and a native runtime library, and neither ships yet.",
-                         ["test_cross_compiles_to_other_targets"]),
+    "18 Static linking": (None, "`refined build --kind executable` links the program and a C runtime into a "
+                         "standalone executable; programs that call the host library trap there with "
+                         "the target's name.", []),
     "18 WASM integration": (None, "`refined build --kind wasm` emits WebAssembly; tests/suite/wasm_host.mjs runs it in Node.", []),
     "19 Random number generation": (None, "`random.int64Between` from the operating system, and seeded generators.", []),
     "19 Cryptographic primitives": (None, "`crypto.sha256`, `hmacSha256`, `toHex`, and `constantTimeEquals`.", []),

@@ -11,11 +11,11 @@ Run the suite with `python -m pytest tests/test_suite.py`. How cases are written
 
 | Status | Meaning | Items |
 | --- | --- | --- |
-| **tested** | a program runs (or traps, or its tests run) and its output is checked | 373 |
+| **tested** | a program runs (or traps, or its tests run) and its output is checked | 374 |
 | **rejected** | the language forbids it, and a negative case proves the checker reports it | 44 |
 | **static** | the checker accepts and checks it, but the backend refuses to run it yet (R901); the case asserts that refusal, so it fails as soon as the backend learns the feature | 0 |
 | **by design** | absent on purpose; the note says what to write instead | 31 |
-| **gap** | wanted, not there yet; the note says what is missing | 1 |
+| **gap** | wanted, not there yet; the note says what is missing | 0 |
 | **n/a** | does not apply to this language | 7 |
 | | total | 456 |
 
@@ -399,7 +399,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Program startup | tested | [console](../tests/suite/programs/12-io/console.sem) |   |
+| Program startup | tested | [console](../tests/suite/programs/12-io/console.sem), `test_standalone_executables_match_the_jit` |   |
 | Entry-point discovery | tested | [console](../tests/suite/programs/12-io/console.sem), `first-block-not-begin`, `entry-not-exported`, `entry-missing`, `test_cli_run_refuses_a_library` |   |
 | Program shutdown | tested | [console](../tests/suite/programs/12-io/console.sem) |   |
 | Runtime initialization | tested | [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
@@ -447,7 +447,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | C interoperability | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | Native library loading | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | Dynamic linking | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
-| Static linking | gap | `test_cross_compiles_to_other_targets` | `refined build` emits object files for any target, but linking one into an executable needs a system linker and a native runtime library, and neither ships yet. |
+| Static linking | tested | `test_standalone_executables_match_the_jit` | `refined build --kind executable` links the program and a C runtime into a standalone executable; programs that call the host library trap there with the target's name. |
 | ABI compatibility | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | Data structure marshaling | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | Cross-language error handling | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
@@ -596,4 +596,3 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 Every `gap` and `static` item, in checklist order: the list to fill next.
 
-- **18 Static linking** (gap): `refined build` emits object files for any target, but linking one into an executable needs a system linker and a native runtime library, and neither ships yet.

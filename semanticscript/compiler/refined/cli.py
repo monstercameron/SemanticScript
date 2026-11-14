@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("path")
     p.add_argument("--output", required=True)
     p.add_argument("--target", default=None, help="an LLVM target triple; the host's when omitted")
-    p.add_argument("--kind", choices=("object", "assembly", "wasm"), default="object")
+    p.add_argument("--kind", choices=("object", "assembly", "wasm", "executable"), default="object")
     p = sub.add_parser("stale")
     p.add_argument("path")
     p.add_argument("--base", required=True)
@@ -249,7 +249,8 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(str(module))
             return 0
         from .native import build
-        return build(str(module), args.output, args.target, args.kind)
+        entry = res.project.value("entry")
+        return build(str(module), args.output, args.target, args.kind, None if entry == "none" else entry)
 
     if args.command == "run-one-test":
         mod, test = args.test.split(".", 1)

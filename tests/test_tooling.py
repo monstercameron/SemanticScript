@@ -304,3 +304,35 @@ def test_program_sees_an_interrupt(tmp_path):
     proc.send_signal(signal.SIGINT)
     out, _ = proc.communicate(timeout=30)
     assert (proc.returncode, out.strip()) == (0, "interrupted")
+
+
+# ---------------------------------------------------------------- standalone executables
+
+def _has_cc() -> bool:
+    from refined.native import find_cc
+    return find_cc() is not None
+
+
+@pytest.mark.skipif(not _has_cc(), reason="linking an executable needs a C compiler")
+def test_standalone_executables_match_the_jit(tmp_path):
+    """18 Static linking, 16 Program startup: programs link with the C runtime into executables that run with no
+    Python and behave exactly as under `refined run` (output, exit code, traps). Programs that call the host
+    library trap with that target's name instead."""
+    linked = host_only = 0
+    for i, case in enumerate(c for c in CASES if c.mode in ("run", "trap") and not c.args and not c.stdin):
+        project = caselib.materialize(case, str(tmp_path / str(i)))
+        exe = os.path.join(project, "program.exe")
+        built = caselib.refined("build", project, "--kind", "executable", "--output", exe)
+        assert built.returncode == 0, (case.name, built.stdout)
+        proc = subprocess.run([exe], capture_output=True, text=True, cwd=project, timeout=120)
+        if "needs the host library" in proc.stderr:
+            assert proc.returncode == 70
+            host_only += 1
+            continue
+        if case.mode == "run":
+            assert proc.returncode == case.exit_code, (case.name, proc.stderr)
+            assert case.stdout is None or proc.stdout.splitlines() == case.stdout, case.name
+        else:
+            assert proc.returncode == 70 and case.detail in proc.stderr, (case.name, proc.stderr)
+        linked += 1
+    assert linked >= 30 and host_only >= 1

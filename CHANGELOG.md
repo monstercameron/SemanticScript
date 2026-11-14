@@ -34,7 +34,8 @@ have been cut yet.
 - Stack traces on traps.
 - Tools: `refined fmt`, `repl`, `lsp`, `bench`, a build cache, and
   `run --trace`, `--coverage`, `--profile`, and `--debug` with breakpoints.
-- `refined build` emits objects, assembly, or WebAssembly for any LLVM target.
+- `refined build` emits objects, assembly, or WebAssembly for any LLVM target,
+  or links a standalone executable with a C runtime.
 - build.sem states version, language, and standard-library versions, and
   requires local packages with version constraints.
 
