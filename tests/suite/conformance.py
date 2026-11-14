@@ -726,8 +726,10 @@ def render() -> str:
             "- Capability scopes on computed arguments are enforced at run time only.",
             "- Foreign functions (`ffi`) are limited to numbers and `Bool` with no shared memory; what the C code "
             "does inside is outside the language's guarantees.",
-            "- Standalone executables include only the core runtime; programs calling host-library targets are "
-            "refused (R901) rather than built.",
+            "- Standalone executables implement the host library natively except `net`, `http`, `channel`, `json`, "
+            "`crypto`, `secret`, `random`, `signal`, and `ffi`; programs calling those are refused (R901) rather "
+            "than built (D-81). In an executable a task runs to its end when started, so a waiting task is never "
+            "cancelled (D-83).",
             "- Running out of a region is a safe trap (D-49), not a typed error: every allocation would otherwise be "
             "fallible. The trap happens before any memory is written and names the region; a program sizes its "
             "regions for what it allocates.",

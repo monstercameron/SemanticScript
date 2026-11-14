@@ -2414,6 +2414,74 @@ D-92 and D-94 together: `bestOf<T>` reads a `list.List T` by `forEach`, judges
 items with a `Better T` passed in, and keeps the winner through `pick` at its
 own `T`; it runs at `Int64` and at `Byte`, under the JIT and as an executable.
 
+### Standalone executables with the host library (D-80 to D-85)
+
+Roadmap items 1, 2, 3, and 15 of `docs/self-hosting-gaps.md`: a program that
+reads its arguments and files, builds text, keeps maps, and runs a child
+process now builds with `refined build --kind executable` and runs with no
+Python. The `lexer`, `symbols`, and `warehouse` examples do, with the same
+output, errors, exit codes, and written files as `refined run`
+(`tests/test_native.py`).
+
+- **D-80** The host library is implemented twice, in `host.py` for the JIT
+  and in `native_runtime.c` for executables, behind the same callback:
+  compiled code calls `refined_host` with `<target>|<slots>|<results>` in
+  both, so code generation does not change and one IR serves both. The C side
+  parses each name once and caches it by the constant's address. Its
+  `TARGETS` table is the one list of what is native, with each target's
+  scoped parameter; `native.py` reads it, and a test checks it and every
+  error-variant number against `library.py` and `host.py`. Each target
+  matches `host.py` exactly: the same variants and payloads (errno as Python
+  classifies it, including Windows error codes mapped as Python maps them),
+  D-38 scope checks with links and `..` resolved as `os.path.realpath` does,
+  D-52 one writer per file, handles that trap by kind when used after
+  `close` or after their region is released, maps keyed by content for
+  `String` keys copied once into the map's region (D-61) and iterated in
+  first-put order (D-62), and the same accounting of region bytes, so
+  `arena.remaining` agrees. Why a second implementation rather than one
+  shared C library: the JIT's tasks are threads and its waits are
+  cancellable through the scheduler in Python; the executable's are not.
+- **D-81** What stays host-only, refused at build time with R901 naming the
+  targets: `net` and `http` (sockets and the scheduler-driven waits), `channel`
+  (a send or receive must wait for another task, which cannot happen when
+  tasks run when started), `json`, `crypto`, `secret` (large, and no compiler
+  needs them), `random` (`newGenerator` promises the JIT's exact sequence,
+  Python's Mersenne Twister), `signal` (needs asynchronous delivery), and
+  `ffi` (dynamic loading). Everything else in the library is native,
+  including `log`.
+- **D-82** The generated entry is `main(int argc, char **argv)`; it hands the
+  command line to `refined_start`, so `process.argument 0` is the first word
+  after the program's name, as after `--` under `refined run`. On Windows the
+  words come from the wide command line as UTF-8, and the standard streams
+  are binary, as Python makes them: a line ends with one `\n` byte. On POSIX
+  `SIGPIPE` is ignored, as in Python, and restored for child processes.
+- **D-83** Waiting in an executable. Tasks still run to their end when started
+  (D-37), so `cancelled` never happens and a sibling's failure cannot cut a
+  waiting task short (the conformance check `group-first-failure` therefore
+  runs under the JIT only). Deadlines hold as under the JIT: a file read or
+  write checks its deadline before it starts; standard input, child
+  processes, and locks wait at most until the deadline (`poll` and `waitpid`
+  on POSIX, wait functions and pipe threads on Windows) and then fail with
+  `timedOut`, stopping the child. Standard output is flushed before a child
+  starts and before anything is written to standard error, so the streams
+  interleave as the JIT's unbuffered writes do. A child is always waited for
+  before the program continues, so at a trap (D-51) only open files remain
+  to be released.
+- **D-84** A region in an executable allocates by bumping a pointer through
+  chunks (4 KiB doubling to 1 MiB; a block over 256 KiB gets its own chunk),
+  instead of one `calloc` and list node per allocation; memory still starts
+  zeroed and the capacity still counts the bytes asked for. The recursion
+  counter is a table indexed by each recursive operation's id that grows as
+  needed, where it was `depth[op & 4095]`, which aliased past 4,095 recursive
+  operations. A task starts with its own counters, as it does on its own
+  thread under the JIT.
+- **D-85** A trap prints the JIT's trace: the running task's operations only,
+  repeats collapsed with their depth however deep (the frame table grows; it
+  was capped at 65,536 entries), at most 12 lines then `... and N more`, then
+  a line naming the task inside a task, then the D-51 release
+  line. The C runtime is compiled once per compiler and source text and kept
+  in the temporary directory, so linking a program compiles only its `main`.
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.
@@ -2642,6 +2710,8 @@ enforcement steps because they build on the checked core:
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
+
+| 2026-11-14 | D-80 to D-85 | Native host library in standalone executables (files, arguments, environment, standard input, processes, deadlines, buffers, maps, sets, log), `main(argc, argv)`, chunked native regions, JIT-identical traps (by delegation) |
 
 ## Parking lot
 

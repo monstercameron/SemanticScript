@@ -373,27 +373,45 @@ def _has_cc() -> bool:
 @pytest.mark.skipif(not _has_cc(), reason="linking an executable needs a C compiler")
 def test_standalone_executables_match_the_jit(tmp_path):
     """18 Static linking, 16 Program startup: programs link with the C runtime into executables that run with no
-    Python and behave exactly as under `refined run` (output, exit code, traps). Programs that call the host
-    library are refused when they are built (R901), naming the targets, instead of trapping when they run."""
-    linked = host_only = 0
-    for i, case in enumerate(c for c in CASES if c.mode in ("run", "trap") and not c.args and not c.stdin):
+    Python and behave exactly as under `refined run` (output, errors, exit code, traps), with their command-line
+    arguments and standard input. The C runtime implements the host library natively (D-80); a program that calls
+    a target it does not (D-81: net, http, channel, json, crypto, random, secret, signal, ffi) is refused when it is
+    built (R901), naming the targets, instead of trapping when it runs."""
+    from concurrent.futures import ThreadPoolExecutor
+    from refined.native import native_targets
+    cases = [c for c in CASES if c.mode in ("run", "trap") and not c.missing_tools()]
+
+    def one(i):
+        case = cases[i]
         project = caselib.materialize(case, str(tmp_path / str(i)))
         exe = os.path.join(project, "program.exe")
         built = caselib.refined("build", project, "--kind", "executable", "--output", exe)
         if "R901" in built.stdout + built.stderr:
             assert built.returncode != 0 and "need the host library" in built.stdout + built.stderr, case.name
             assert not os.path.exists(exe), case.name
-            host_only += 1
-            continue
+            return "host_only"
         assert built.returncode == 0, (case.name, built.stdout)
-        proc = subprocess.run([exe], capture_output=True, text=True, cwd=project, timeout=120)
+        proc = subprocess.run([exe, *case.args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              cwd=project, input=case.stdin, timeout=120)
+        expected = case.stdout if case.stdout is not None else ([] if not case.stdout_any else None)
         if case.mode == "run":
             assert proc.returncode == case.exit_code, (case.name, proc.stderr)
-            assert case.stdout is None or proc.stdout.splitlines() == case.stdout, case.name
+            assert case.stderr is None or proc.stderr.splitlines() == case.stderr, (case.name, proc.stderr)
         else:
             assert proc.returncode == 70 and case.detail in proc.stderr, (case.name, proc.stderr)
-        linked += 1
-    assert linked >= 30 and host_only >= 1
+        assert expected is None or proc.stdout.splitlines() == expected, (case.name, proc.stdout)
+        position = 0
+        for wanted in case.stderr_contains:
+            found = proc.stderr.find(wanted, position)
+            assert found >= 0, (case.name, wanted, proc.stderr)
+            position = found + len(wanted)
+        return "linked"
+
+    with ThreadPoolExecutor(6) as pool:
+        outcomes = list(pool.map(one, range(len(cases))))
+    linked, host_only = outcomes.count("linked"), outcomes.count("host_only")
+    assert linked >= 4 * host_only and linked >= 50 and host_only >= 1, (linked, host_only)
+    assert {"fs.readAll", "process.argument", "map.Map.put", "buffer.toString"} <= set(native_targets())
 
 
 # ---------------------------------------------------------------- capability scopes at run time
@@ -442,3 +460,9 @@ def test_symlink_out_of_scope_traps(tmp_path):
     assert not caselib.diagnostics(str(d))
     proc = caselib.refined("run", str(d), "--no-cache", cwd=str(d))
     assert proc.returncode == 70 and "which no capability this operation uses allows" in proc.stderr, proc.stderr
+    if _has_cc():  # D-80: the executable resolves links and junctions the same way before it checks the scope
+        exe = str(d / "program.exe")
+        built = caselib.refined("build", str(d), "--kind", "executable", "--output", exe)
+        assert built.returncode == 0, built.stdout
+        ran = subprocess.run([exe], capture_output=True, text=True, cwd=str(d), timeout=120)
+        assert (ran.returncode, ran.stderr) == (70, proc.stderr), ran.stderr
