@@ -275,6 +275,8 @@ LIBRARY: dict[str, dict] = {
             "startsWith": Sig((P("text", "String", "borrowed"), P("prefix", "String", "borrowed")), "Bool"),
             "find": Sig((P("text", "String", "borrowed"), P("needle", "String", "borrowed")), "Int64",
                         raises="string.NotFound"),
+            # D-110: whether the needle occurs, as a value rather than an error
+            "contains": Sig((P("text", "String", "borrowed"), P("needle", "String", "borrowed")), "Bool"),
             "slice": Sig((P("text", "String", "borrowed"), P("start", "Int64", "copied"), P("length", "Int64", "copied")),
                          "String", raises="string.StringIndexError", borrows="text"),
             "concat": Sig((P("left", "String", "borrowed"), P("right", "String", "borrowed"), _RG), "String",
@@ -477,7 +479,9 @@ LIBRARY: dict[str, dict] = {
     },
     "list": {
         "types": {"List": _generic("list.List", ["T@any"]),
-                  "IndexOutOfRange": _err("list.IndexOutOfRange", ("outOfRange", "Int64"))},
+                  "IndexOutOfRange": _err("list.IndexOutOfRange", ("outOfRange", "Int64")),
+                  # D-111: no row of a table has the key
+                  "NotFound": _err("list.NotFound", ("absent", None))},
         "targets": {},
     },
     "map": {

@@ -2234,6 +2234,31 @@ Decisions (by delegation):
   where started tasks run on their own threads, only the first of two
   simultaneous traps is reported, as in an executable.
 
+Writing `stage0`, a compiler for a subset of the language in the language
+(`docs/refined-examples/stage0`), ranked what cost the most. D-110 to D-113
+answer it within the explicit rule:
+
+- **D-110** `string.contains` tells whether text holds a part, as a `Bool`.
+  `string.find` reports a missing part as an error, which made a membership
+  test a control-flow branch.
+- **D-111** `<table>.find` returns the first row whose first field equals a
+  key (`Int64`, `String`, `Byte`, or `Bool`), or raises `list.NotFound`. A
+  table's first field is its key; stage0 had written seven near-identical
+  scans to look words up.
+- **D-112** A module's test file may declare operations its tests share. A
+  helper states `invariant none` (the tests that call it are what check it,
+  R604), is never exported, and only tests and other helpers call it
+  (R402). Before, test-only code had to be exported from the module with
+  invariants and tests of its own.
+- **D-113** Error propagation stays explicit. Each fallible call keeps its
+  `catch` row, its `branch ifError` row, and a label that returns or
+  converts the error. A row that merged the branch and the return would be
+  the shorthand D-47 rules out, and the explicit form is what lets a reader
+  see every path an error takes. The volume is accepted; the remedies are
+  shared labels per operation and targets that do not fail (D-110). A
+  record's single field is already changed with `<Record>.with` (A10), so
+  no new form is needed for that either.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.
@@ -2732,6 +2757,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-48 to D-56 | Group failure propagation, region trap rationale, task state on every path, release on trap, one writer per file, approved authority, exact suppression, recoverable allocation, run-time loop bounds |
 | 2026-11-14 | D-100 to D-106 | Sound positions, trapping twins, stacks, module constants, table access, replace for nested values, linear checking |
 | 2026-11-14 | D-107 to D-109 | Collections keep what they store alive; adversarial review: results, errors, generics, `set`, and resource fields stay in their regions; approval, test runner, cache, and file identity read the program as the compiler does |
+| 2026-11-14 | D-110 to D-113 | From writing stage0: `string.contains`, `<table>.find`, helpers in test files; error propagation stays explicit |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

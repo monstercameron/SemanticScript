@@ -1,0 +1,229 @@
+# covers: 8 Collection searching
+# covers: 8 String comparison
+# covers: 1 Constants
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 30
+# stdout: 2
+# stdout: 1
+# stdout: 0
+
+keywords is module
+keywords purpose "Look keywords up in a constant table by their text, and test text for a part (D-110, D-111)"
+keywords path keywords
+keywords imports standard.console
+keywords imports standard.list
+keywords imports standard.string
+keywords exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParameter none
+showInt input value Int64 copied
+showInt output none
+showInt outputOwnedBy none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memoryHeap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt let none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+Keyword is record
+Keyword purpose "One keyword: its text is the table's key"
+Keyword typeParameter none
+Keyword field word String
+Keyword field code Int64
+
+reserved is table
+reserved purpose "The reserved words, keyed by their text"
+reserved rowType Keyword
+reserved row ifWord 1
+reserved row whileWord 2
+reserved row returnWord 3
+reserved cell ifWord word "if"
+reserved cell ifWord code 10
+reserved cell whileWord word "while"
+reserved cell whileWord code 30
+reserved cell returnWord word "return"
+reserved cell returnWord code 50
+
+main is operation
+main purpose "Find a keyword, miss one, and test text for a part"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label found loopKind none
+main label found within none
+main label missed loopKind none
+main label missed within none
+main label probe loopKind none
+main label probe within none
+main label yes loopKind none
+main label yes within none
+main label no loopKind none
+main label no within none
+main label done loopKind none
+main label done within none
+main let whileText String "while" immutable
+main let gotoText String "goto" immutable
+main let sourceText String "semantic" immutable
+main let partText String "man" immutable
+main let otherText String "xyz" immutable
+main let one Int64 1 immutable
+main let zero Int64 0 immutable
+main let two Int64 2 immutable
+main let okCode ExitCode 0 immutable
+main at begin do findWhile
+main at begin branch ifError findWhile goto missed else goto found
+main at found do readCode
+main at found do showCode
+main at found do findGoto
+main at found branch ifError findGoto goto missed else goto done
+main at missed do showTwo
+main at missed goto probe
+main at probe do hasPart
+main at probe branch if partFound goto yes else goto no
+main at yes do showOne
+main at yes do hasOther
+main at yes branch if otherFound goto done else goto no
+main at no do showZero
+main at no goto done
+main at done return ok okCode
+
+findWhile is call
+findWhile in main
+findWhile invokes reserved.find
+findWhile argument key String whileText lend
+findWhile result whileKeyword Keyword
+findWhile ownedBy none
+findWhile cleanedBy none
+findWhile borrows none
+findWhile catch whileMissing list.NotFound
+findWhile suppresses none
+
+readCode is call
+readCode in main
+readCode invokes Keyword.code
+readCode argument record Keyword whileKeyword lend
+readCode result whileCode Int64
+readCode ownedBy none
+readCode cleanedBy none
+readCode borrows none
+readCode catch none
+readCode suppresses none
+
+showCode is call
+showCode in main
+showCode invokes showInt
+showCode argument value Int64 whileCode copy
+showCode result none
+showCode ownedBy none
+showCode cleanedBy none
+showCode borrows none
+showCode catch none
+showCode suppresses none
+
+findGoto is call
+findGoto in main
+findGoto invokes reserved.find
+findGoto argument key String gotoText lend
+findGoto result gotoKeyword Keyword
+findGoto ownedBy none
+findGoto cleanedBy none
+findGoto borrows none
+findGoto catch gotoMissing list.NotFound
+findGoto suppresses none
+
+showTwo is call
+showTwo in main
+showTwo invokes showInt
+showTwo argument value Int64 two copy
+showTwo result none
+showTwo ownedBy none
+showTwo cleanedBy none
+showTwo borrows none
+showTwo catch none
+showTwo suppresses none
+
+hasPart is call
+hasPart in main
+hasPart invokes string.contains
+hasPart argument text String sourceText lend
+hasPart argument needle String partText lend
+hasPart result partFound Bool
+hasPart ownedBy none
+hasPart cleanedBy none
+hasPart borrows none
+hasPart catch none
+hasPart suppresses none
+
+hasOther is call
+hasOther in main
+hasOther invokes string.contains
+hasOther argument text String sourceText lend
+hasOther argument needle String otherText lend
+hasOther result otherFound Bool
+hasOther ownedBy none
+hasOther cleanedBy none
+hasOther borrows none
+hasOther catch none
+hasOther suppresses none
+
+showOne is call
+showOne in main
+showOne invokes showInt
+showOne argument value Int64 one copy
+showOne result none
+showOne ownedBy none
+showOne cleanedBy none
+showOne borrows none
+showOne catch none
+showOne suppresses none
+
+showZero is call
+showZero in main
+showZero invokes showInt
+showZero argument value Int64 zero copy
+showZero result none
+showZero ownedBy none
+showZero cleanedBy none
+showZero borrows none
+showZero catch none
+showZero suppresses none

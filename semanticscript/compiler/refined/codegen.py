@@ -905,6 +905,8 @@ class OpGen:
         g, n, rec = self.be.table(self.m, name)
         if member == "length":
             return I64(n), None, None
+        if member == "find":
+            return self.table_find(b, g, n, rec, args["key"], ci, line)
         row = args["position"]  # the row number as the table writes it: 1 to n (R306)
         inside = b.and_(b.icmp_signed(">=", row, I64(1)), b.icmp_signed("<=", row, I64(n)))
         err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), row, 1)
@@ -922,6 +924,42 @@ class OpGen:
         phi.add_incoming(value, body)
         phi.add_incoming(ir.Constant(rtype, None), start)
         return phi, b.not_(inside), err
+
+    def table_find(self, b: ir.IRBuilder, g, n: int, rec: str, key, ci: CallInfo, line: int):
+        """D-111: scan the table's constant rows for the first whose first field equals the key."""
+        rtype = self.be.ltype(rec, self.m.file, line)
+        start = b.block
+        head = self.fn.append_basic_block(f"{ci.entity.name}.scan")
+        body = self.fn.append_basic_block(f"{ci.entity.name}.compare")
+        step = self.fn.append_basic_block(f"{ci.entity.name}.next")
+        done = self.fn.append_basic_block(f"{ci.entity.name}.done")
+        b.branch(head)
+        hb = ir.IRBuilder(head)
+        i = hb.phi(I64)
+        i.add_incoming(I64(0), start)
+        hb.cbranch(hb.icmp_signed("<", i, I64(n)), body, done)
+        bb = ir.IRBuilder(body)
+        row = bb.load(bb.gep(g, [I32(0), i]))
+        field = bb.extract_value(row, 0)
+        if isinstance(key.type, ir.LiteralStructType) or key.type == STR:
+            eq = bb.call(self.be.callbacks["refined_bytes_equal"],
+                         [bb.extract_value(field, 0), bb.extract_value(field, 1),
+                          bb.extract_value(key, 0), bb.extract_value(key, 1)])
+            same = bb.icmp_signed("!=", eq, I32(0))
+        else:
+            same = bb.icmp_unsigned("==", field, key)
+        bb.cbranch(same, done, step)
+        sb = ir.IRBuilder(step)
+        i.add_incoming(sb.add(i, I64(1)), step)
+        sb.branch(head)
+        b.position_at_end(done)
+        value = b.phi(rtype)
+        value.add_incoming(row, body)
+        value.add_incoming(ir.Constant(rtype, None), head)
+        found = b.phi(ir.IntType(1))
+        found.add_incoming(ir.Constant(ir.IntType(1), 1), body)
+        found.add_incoming(ir.Constant(ir.IntType(1), 0), head)
+        return value, b.not_(found), ir.Constant(ENUM, [I32(0), I64(0)])
 
     def _instance(self, inv: str):
         """(module, generic operation, substitution) when `inv` names an `operationInstance`."""
@@ -1180,6 +1218,10 @@ class OpGen:
                 s = b.insert_value(s, b.select(ok, length, I64(0)), 1)
                 err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), start, 1)
                 return s, b.not_(ok), err
+            if name == "contains":
+                at = b.call(cb["refined_find"], [b.extract_value(a[0], 0), b.extract_value(a[0], 1),
+                                                 b.extract_value(a[1], 0), b.extract_value(a[1], 1)])
+                return b.icmp_signed(">=", at, I64(0)), None, None
             if name == "find":
                 at = b.call(cb["refined_find"], [b.extract_value(a[0], 0), b.extract_value(a[0], 1),
                                                  b.extract_value(a[1], 0), b.extract_value(a[1], 1)])

@@ -30,7 +30,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Variable reassignment | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-set-wrong-type` |   |
 | Immutable variables | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-set-immutable` |   |
 | Mutable variables | tested | [variables](../tests/suite/programs/01-variables/variables.sem) |   |
-| Constants | tested | [variables](../tests/suite/programs/01-variables/variables.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `var-set-immutable` |   |
+| Constants | tested | [variables](../tests/suite/programs/01-variables/variables.sem), [table-find](../tests/suite/programs/08-strings-collections/table-find.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `var-set-immutable` |   |
 | Variable shadowing | rejected | `var-shadowing` | A name is declared once per operation, across labels, values, and owned entities (R411). The same name in two operations is fine: each operation is its own scope. |
 | Variable scope | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-shadow-label`, `instance-states-owner`, `instance-parameter-needs-owner` |   |
 | Global variables | rejected | `var-global` | Modules hold no variables (R204); shared constant data lives in `table` entities. |
@@ -205,7 +205,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | String creation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | String concatenation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-owner-undeclared` |   |
-| String comparison | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem), `string-is-not-integer` |   |
+| String comparison | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [table-find](../tests/suite/programs/08-strings-collections/table-find.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem), `string-is-not-integer` |   |
 | String interpolation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | String slicing | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-slice-unchecked`, `string-borrow-undeclared`, `whole-character-slice-unchecked` |   |
 | Unicode support | tested | [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
@@ -221,7 +221,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Collection insertion | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [text-sets](../tests/suite/programs/08-strings-collections/text-sets.sem), `list-wrong-item-type` |   |
 | Collection removal | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem), [text-sets](../tests/suite/programs/08-strings-collections/text-sets.sem) |   |
 | Collection sorting | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
-| Collection searching | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [sorting](../tests/suite/programs/08-strings-collections/sorting.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem) |   |
+| Collection searching | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [sorting](../tests/suite/programs/08-strings-collections/sorting.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), [table-find](../tests/suite/programs/08-strings-collections/table-find.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem) |   |
 | Collection copying | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
 | Collection equality | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem) |   |
 | Nested collections | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |

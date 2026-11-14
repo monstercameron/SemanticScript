@@ -42,6 +42,8 @@ Ranked by cost, from the stage0 author's report; these drive the next refinement
 6. R411 makes names unique across labels, values, and calls in one operation, causing frequent collisions.
 7. `set` takes only names, not literals; `string.find` reports "not found" as an error; every `match` lists all variants, each binding a distinct name.
 
+Answered: 3 by `<table>.find` (D-111), 4 by helpers in test files (D-112), the `string.find` part of 7 by `string.contains` (D-110), and 5 already by `<Record>.with`. 1 is kept by design (D-113), as are 2 (every text lives in a named region) and 6 (no shadowing).
+
 ## Method
 
 Statuses come from reading `shapes.py`, `library.py`, `host.py`, `codegen.py`, `native.py`, `native_runtime.c`, `semantics.py`, `flow.py`, and the design record, and from probes run on scratch copies outside the repository. "Verified" below means a probe was run; "by reading" means the claim rests on the cited code only. Three levels are kept apart for every item:

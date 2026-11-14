@@ -76,6 +76,7 @@ class Module:
         self.types: dict[str, Entity] = {}
         self.ops: dict[str, Entity] = {}
         self.tests: dict[str, Entity] = {}
+        self.test_helpers: set[str] = set()  # D-112: operations declared in the module's test file
         self.tables: dict[str, Entity] = {}
         self.constants: dict[str, Entity] = {}  # D-103
         self.capabilities: dict[str, Entity] = {}
@@ -526,9 +527,16 @@ def index_module(world: World, m: Module, test_file_entities: set[int]) -> None:
         if ent.kind in S.OWNED_KINDS:
             m.owned.append(ent)
             continue
-        if id(ent) in test_file_entities and ent.kind != "test":
-            sink.error("R602", ent.line, f"a test file holds only tests and the entities they own; move `{ent.name}` "
-                       "to the module file")
+        if id(ent) in test_file_entities and ent.kind == "operation":
+            # D-112: a helper the module's tests share; only tests and other helpers call it
+            m.test_helpers.add(ent.name)
+            inv = ent.facts("invariant")
+            if not inv or inv[0].text(0) != "none":
+                sink.error("R604", ent.line, f"`{ent.name}` is a test helper (it is declared in the test file); it "
+                           "states `invariant none`, since the tests that call it are what it is checked by")
+        elif id(ent) in test_file_entities and ent.kind != "test":
+            sink.error("R602", ent.line, f"a test file holds only tests, the operations they share, and the "
+                       f"entities those own; move `{ent.name}` to the module file")
         if ent.kind == "test" and id(ent) not in test_file_entities:
             sink.error("R602", ent.line, f"test `{ent.name}` belongs in the `.test.sem` file beside this module")
         if ent.name in seen:
@@ -593,6 +601,9 @@ def check_module(world: World, m: Module) -> None:
                 sink.error("R402", r.line, f"`{n}` is a capability; capabilities are never exported. Each module "
                            "declares the authority its own operations use, and build.sem bounds them all, so authority "
                            "cannot be handed from one module to another")
+            elif n in m.test_helpers:
+                sink.error("R402", r.line, f"`{n}` is a test helper (declared in the test file); it is never "
+                           "exported (D-112)")
             elif n not in m.ops and n not in m.types and n not in m.tables and n not in m.op_instances:
                 sink.error("R401", r.line, f"`{n}` is exported but not declared in this module")
             elif n in m.ops and world.entry != (m.short, n):
@@ -1156,6 +1167,11 @@ def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = 
 
     parts = text.split(".")
     if len(parts) == 1:
+        if text in m.test_helpers:
+            owner = getattr(scope, "owner", None)
+            if owner not in m.tests and owner not in m.test_helpers:
+                return err("R402", f"`{text}` is a test helper (declared in the test file); only tests and other "
+                           "test helpers invoke it (D-112)")
         if text in m.ops:
             if type_params_of(m.ops[text]):
                 return err("R402", f"`{text}` is generic; call it through an `operationInstance` that names its "
@@ -1181,7 +1197,16 @@ def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = 
             return Sig((Param("position", "Int64", "copied"),), rec, raises="list.IndexOutOfRange"), None
         if parts[1] == "length":
             return Sig((), "Int64"), None
-        return err("R401", f"table `{parts[0]}` has the targets `rowAt` and `length`, not `{parts[1]}`")
+        if parts[1] == "find":
+            # D-111: the first row whose first field equals the key; the first field is the table's key
+            info = world.type_info(rec) if rec else None
+            key = info.fields[0][1] if info is not None and info.fields else None
+            if key not in ("Int64", "String", "Byte", "Bool"):
+                return err("R401", f"table `{parts[0]}` has no `find`: its first field is `{key}`, and `find` "
+                           "compares a key of `Int64`, `String`, `Byte`, or `Bool`")
+            return Sig((Param("key", key, "borrowed" if key == "String" else "copied"),), rec,
+                       raises="list.NotFound"), None
+        return err("R401", f"table `{parts[0]}` has the targets `rowAt`, `length`, and `find`, not `{parts[1]}`")
     if len(parts) == 2 and S.UPPER.match(parts[0]):
         canon = resolve_type(world, m, parts[0], line, scope, quiet=quiet)
         if canon is None:
