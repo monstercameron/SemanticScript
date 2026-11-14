@@ -555,6 +555,20 @@ GENERATED: dict[str, list[str]] = {
     "test_cli_rejects_unknown_command": ["23 CLI compiler invocation"],
     "test_check_reports_unreadable_source_encoding": ["22 Invalid source encoding", "15 Lexical analysis"],
     "test_mutation": ["20 Negative compilation tests"],
+    "test_formatter_repository_is_canonical": ["23 Formatter"],
+    "test_formatter_undoes_added_spacing": ["23 Formatter"],
+    "test_repl_checks_and_runs": ["23 REPL behavior"],
+    "test_language_server": ["23 Language Server Protocol (LSP)", "23 IDE integration"],
+    "test_build_cache_reuses_only_identical_projects": ["23 Build caching", "23 Incremental builds",
+                                                        "15 Incremental compilation"],
+    "test_bench_reports_timings": ["20 Performance benchmarks", "16 Runtime performance"],
+    "test_trace_coverage_and_profile": ["20 Execution tracing", "20 Code coverage", "20 CPU profiling",
+                                        "20 Memory profiling"],
+    "test_debugger_breakpoints_values_and_stack": ["20 Debugger integration", "20 Breakpoints",
+                                                   "20 Variable inspection", "20 Stack inspection"],
+    "test_cross_compiles_to_other_targets": ["23 Cross-compilation", "15 Code generation"],
+    "test_webassembly_runs_under_node": ["18 WASM integration"],
+    "test_program_sees_an_interrupt": ["16 Signal handling"],
     "test_every_operation_compiles": ["15 Code generation", "15 Intermediate representation generation"],
     "test_every_program_case_runs": ["20 End-to-end tests"],
     "test_program_case": ["20 End-to-end tests", "20 Golden-file tests", "20 Snapshot tests"],
@@ -606,8 +620,6 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "5 Tail calls": (None, "Tail recursion runs (fibonacci in the recursion case) but is not guaranteed to reuse "
                      "the frame; `maxRecursion` bounds the depth either way.", ["06-recursion/recursion"]),
     # 6
-    "6 Recursive resource cleanup": (GAP, "Cleanups run (the resources case), but no case passes an owned resource "
-                                     "down a recursion.", ["07-memory/resources"]),
     # 7
     "7 Reference counting": (BY_DESIGN, "Single owners and regions: a value has one owner (`ownedBy`), and "
                              "region-owned values are freed with their region.", []),
@@ -633,8 +645,6 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "10 Panic / Fatal errors": (None, "Run-time rule breaks (overflow, bounds of loops and recursion, region "
                                 "capacity) trap: the program stops with exit code 70 and a message naming the "
                                 "source line.", ["03-operators/trap-add-overflow", "04-control-flow/trap-loop-bound"]),
-    "10 Stack traces": (GAP, "A trap names the file, line, call, and operation where it happened, but not the "
-                        "chain of callers.", ["03-operators/trap-divide-by-zero"]),
     "10 Exception handling": (None, "No exceptions: an operation `raises` one error enum, and every fallible call is "
                               "followed by `branch ifError` (R506).", []),
     # 11
@@ -652,8 +662,6 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "11 Locks": (BY_DESIGN, "See mutexes: no shared mutable state, so no locks.", []),
     "11 Atomic operations": (BY_DESIGN, "See mutexes: no shared mutable state, so no atomics.", []),
     # 12
-    "12 File locking": (GAP, "The `fs` module has no locking target.", []),
-    "12 Stream piping": (GAP, "No pipes between processes or streams.", []),
     "12 HTTP requests": ("tested", "The worked server example runs and answers real HTTP requests "
                          "(`test_server_example_answers_http` in tests/test_refined.py). There is no HTTP client.",
                          []),
@@ -675,55 +683,31 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "15 Register allocation": (NA, "Done by LLVM.", []),
     "15 Linking": (BY_DESIGN, "`run` and `test` JIT-compile in process; there is no separate link step or "
                    "executable yet.", []),
-    "15 Incremental compilation": (GAP, "Every `check` reads the whole project.", []),
     "15 Abstract syntax tree generation": (None, "The model is rows grouped into entities; malformed rows are "
                                            "reported and dropped before later passes.", []),
     # 16
-    "16 Signal handling": (GAP, "No signal API; an interrupt ends the process.", []),
-    "16 Runtime performance": (GAP, "No benchmarks; the stress tests only bound sizes, not times.", []),
     "16 Cross-platform execution": (None, "CI runs this suite on Windows and Linux.", ["test_program_case"]),
     "16 Execution time limits": (None, "Every loop states `maxIterations` (or `unbounded` on a `forever` loop with "
                                  "a reason) and traps past it; there is no wall-clock limit.", []),
     # 17
     "17 Unsafe operation restrictions": (BY_DESIGN, "There are no unsafe operations: no pointers, casts, or "
                                          "unchecked arithmetic outside the `wrapping` targets.", []),
-    "17 Sensitive data handling": (GAP, "No secret type or redaction; nothing keeps a value out of messages.", []),
     "17 Denial-of-service resistance": (None, "Loops, recursion, and regions have stated bounds that trap; "
                                         "`powerInt64` takes at most 63 steps whatever the exponent.",
                                         ["04-control-flow/trap-loop-bound", "07-memory/trap-region-exhausted"]),
     # 18
-    **{f"18 {i}": (GAP, "No foreign function interface: the only native boundary is the runtime's own "
-                   "callbacks.", []) for i in ("Foreign function interface (FFI)", "C interoperability",
-                                                "Native library loading", "Dynamic linking", "Static linking",
-                                                "ABI compatibility", "Data structure marshaling",
-                                                "Cross-language error handling", "Cross-language memory ownership",
-                                                "Calling conventions", "Shared libraries")},
-    "18 WASM integration": (GAP, "The backend targets the host through LLVM MCJIT only.", []),
     "18 Native system APIs": (None, "Reached only through the standard library (`fs`, `net`, `process`, "
                               "`environment`, `clock`) under capabilities.", ["12-io/file-read", "12-io/process-run"]),
     # 19
     "19 Comparison functions": (None, "", ["03-operators/operators"]),
-    "19 Random number generation": (GAP, "No `random` module.", []),
-    "19 Cryptographic primitives": (GAP, "No `crypto` module.", []),
-    "19 Serialization": (GAP, "No serialization module beyond `buffer` and `string` conversions.", []),
-    "19 JSON parsing": (GAP, "No `json` module.", []),
     "19 Regular expressions": (BY_DESIGN, "No regex engine; `string.find`, `startsWith`, and byte classes cover "
                                "matching, written out explicitly.", []),
-    "19 Logging": (GAP, "No logging module; `console.writeError` writes diagnostics.", ["12-io/console"]),
     "19 Mathematical functions": (None, "", ["03-operators/operators"]),
     # 20
     "20 Compiler self-tests": ("tested", "tests/test_refined.py tests the checker on the worked examples, including a "
                                "lexer written in SemanticScript (docs/refined-examples/selfhost).", []),
     "20 Runtime failure tests": (None, "", ["03-operators/trap-divide-by-zero", "06-recursion/trap-recursion-depth",
                                             "20-testing/tests-fail"]),
-    "20 Performance benchmarks": (GAP, "None yet.", []),
-    "20 Memory profiling": (GAP, "None yet; regions report only exhaustion.", []),
-    "20 CPU profiling": (GAP, "None yet.", []),
-    "20 Code coverage": (GAP, "This map is checklist coverage; there is no line coverage of SemanticScript "
-                         "programs.", []),
-    **{f"20 {i}": (GAP, "No debugger support yet; traps report the source line.", [])
-       for i in ("Debugger integration", "Breakpoints", "Variable inspection", "Stack inspection",
-                 "Execution tracing")},
     # 22
     "22 Zero-length collections": (None, "Empty strings and a cleared list.", ["08-strings-collections/strings",
                                                                            "07-memory/region-list"]),
@@ -735,23 +719,98 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "22 Empty program": (None, "An empty module file is rejected: a module file declares one module entity.", []),
     # 23
     "23 Interpreter invocation": (BY_DESIGN, "There is no interpreter: `run` JIT-compiles the project.", []),
-    "23 REPL behavior": (GAP, "No REPL.", []),
-    "23 Package management": (GAP, "A project lists its modules in build.sem; there are no packages or a "
-                              "registry.", []),
-    "23 Version constraints": (GAP, "No packages, so no versions to constrain.", []),
-    "23 Incremental builds": (GAP, "Every command reads the whole project.", []),
-    "23 Build caching": (GAP, "No cache.", []),
-    "23 Cross-compilation": (GAP, "The backend JIT-compiles for the host only.", []),
-    "23 Formatter": (GAP, "No formatter; the row shapes leave little to format.", []),
     "23 Linter": (BY_DESIGN, "The checker is the linter: every rule it enforces is an error, not a warning.", []),
-    "23 Language Server Protocol (LSP)": (GAP, "The editor extension runs `check --json` on save; there is no "
-                                          "language server.", []),
     "23 Documentation generation": ("tested", "The grammar reference and the editor grammar are generated from the "
                                     "shape table; CI fails when they are stale.", []),
-    "23 Standard library versioning": (GAP, "The standard library is unversioned.", []),
     "23 Backward compatibility": (BY_DESIGN, "Not promised: the owner chose no compatibility layer while the "
                                   "language settles (language-refinement.md, Part 5).", []),
-    "23 Language feature versioning": (GAP, "No version row in build.sem yet.", []),
+    "6 Recursive resource cleanup": (None, "Each level of a recursion opens a file and releases it with a deferred cleanup.", []),
+    "10 Stack traces": (None, "A trap prints the operations it passed through, innermost first, with repeated frames "
+                        "collapsed into a count.", []),
+    "12 File locking": (None, "`fs.lock` takes an exclusive advisory lock on an open file; `fs.unlock` releases it.", []),
+    "12 Stream piping": (None, "`process.runCaptured` pipes bytes into a program and collects its standard output and "
+                          "error.", []),
+    "15 Incremental compilation": (None, "An unchanged project is neither checked nor compiled again (the build cache); a "
+                                  "change rechecks the whole project, since checks span modules.", []),
+    "16 Signal handling": (None, "`signal.interrupted` and `signal.waitForInterrupt`: the first interrupt goes to the "
+                          "program, a second ends it. The delivery test runs on POSIX systems.", ["19-stdlib/modules"]),
+    "16 Runtime performance": (None, "`refined bench` times repeated runs; the stress tests bound sizes.", []),
+    "17 Sensitive data handling": (None, "`secret.Secret` has no conversion to text except `reveal`, which needs a capability "
+                                  "for `read secret.values`; `matches` compares in constant time.", []),
+    "18 Static linking": (GAP, "`refined build` emits object files for any target, but linking one into an executable "
+                         "needs a system linker and a native runtime library, and neither ships yet.",
+                         ["test_cross_compiles_to_other_targets"]),
+    "18 WASM integration": (None, "`refined build --kind wasm` emits WebAssembly; tests/suite/wasm_host.mjs runs it in Node.", []),
+    "19 Random number generation": (None, "`random.int64Between` from the operating system, and seeded generators.", []),
+    "19 Cryptographic primitives": (None, "`crypto.sha256`, `hmacSha256`, `toHex`, and `constantTimeEquals`.", []),
+    "19 Serialization": (None, "`json` builds values and writes them with `stringify`.", []),
+    "19 JSON parsing": (None, "`json.parse` with typed access to fields and items, and error positions.", []),
+    "19 Logging": (None, "`log.debug`, `info`, `warn`, and `error` write levelled lines to standard error.", []),
+    "20 Performance benchmarks": (None, "`refined bench PATH --runs N`.", []),
+    "20 Memory profiling": (None, "`refined run --profile` reports each region's peak use against its capacity.", []),
+    "20 CPU profiling": (None, "`refined run --profile` reports calls and time per operation.", []),
+    "20 Code coverage": (None, "`refined run --coverage` reports which blocks ran and lists the ones that never did.", []),
+    "23 REPL behavior": (None, "`refined repl`: type rows, then `:check`, `:run`, `:undo`, `:show`.", []),
+    "23 Package management": (None, "Local packages: `requires <name> \"<path>\" \"<constraint>\"` in build.sem; there is no "
+                             "registry.", []),
+    "23 Version constraints": (None, "Comparators such as `>=1.0.0 <2.0.0`, `^1.2.0`, `=1.2.3`, or `*`.", []),
+    "23 Incremental builds": (None, "The build cache skips checking and code generation for an unchanged project.", []),
+    "23 Build caching": (None, "`.refined-cache` entries keyed by the compiler, every source, and the options.", []),
+    "23 Cross-compilation": (None, "`refined build --target <triple>` for any LLVM target.", []),
+    "23 Formatter": (None, "`refined fmt [--check]`: one layout; comments kept exactly.", []),
+    "23 Language Server Protocol (LSP)": (None, "`refined lsp`: diagnostics for unsaved text, hover, and formatting.", []),
+    "23 Standard library versioning": (None, "build.sem states `standardLibrary 1`; a different version is refused.", []),
+    "23 Language feature versioning": (None, "build.sem states `language refined-1`; anything else is refused.", []),
+    "20 Debugger integration": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "
+                   "`--trace` prints every block entered.", []),
+    "20 Breakpoints": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "
+                   "`--trace` prints every block entered.", []),
+    "20 Variable inspection": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "
+                   "`--trace` prints every block entered.", []),
+    "20 Stack inspection": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "
+                   "`--trace` prints every block entered.", []),
+    "20 Execution tracing": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "
+                   "`--trace` prints every block entered.", []),
+    "18 Foreign function interface (FFI)": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 C interoperability": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Native library loading": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Dynamic linking": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 ABI compatibility": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Data structure marshaling": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Cross-language error handling": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Cross-language memory ownership": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Calling conventions": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
+    "18 Shared libraries": (None, "`ffi.open` loads a shared library under a capability scoped to its name; "
+                   "`ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, "
+                   "called with the C calling convention. No pointers cross, so no memory is shared; a "
+                   "missing library or symbol is an error value.", []),
 }
 
 STATUS_ORDER = ["tested", "rejected", "static", BY_DESIGN, GAP, NA]

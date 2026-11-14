@@ -11,11 +11,11 @@ Run the suite with `python -m pytest tests/test_suite.py`. How cases are written
 
 | Status | Meaning | Items |
 | --- | --- | --- |
-| **tested** | a program runs (or traps, or its tests run) and its output is checked | 330 |
+| **tested** | a program runs (or traps, or its tests run) and its output is checked | 373 |
 | **rejected** | the language forbids it, and a negative case proves the checker reports it | 44 |
 | **static** | the checker accepts and checks it, but the backend refuses to run it yet (R901); the case asserts that refusal, so it fails as soon as the backend learns the feature | 0 |
 | **by design** | absent on purpose; the note says what to write instead | 31 |
-| **gap** | wanted, not there yet; the note says what is missing | 44 |
+| **gap** | wanted, not there yet; the note says what is missing | 1 |
 | **n/a** | does not apply to this language | 7 |
 | | total | 456 |
 
@@ -166,7 +166,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Recursion with mutable state | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
 | Recursion with error propagation | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem), `error-not-passed-up` |   |
 | Recursive generic functions | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem) |   |
-| Recursive resource cleanup | gap | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [resources](../tests/suite/programs/07-memory/resources.sem) | Cleanups run (the resources case), but no case passes an owned resource down a recursion. |
+| Recursive resource cleanup | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem) | Each level of a recursion opens a file and releases it with a deferred cleanup. |
 | Recursive function reentrancy | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
 
 ## 7. Memory Management
@@ -264,7 +264,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Error handling during recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
 | Cleanup after errors | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
 | Error context preservation | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [errors](../tests/suite/programs/10-errors/errors.sem) |   |
-| Stack traces | gap | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem), [trap-divide-by-zero](../tests/suite/programs/03-operators/trap-divide-by-zero.sem) | A trap names the file, line, call, and operation where it happened, but not the chain of callers. |
+| Stack traces | tested | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem) | A trap prints the operations it passed through, innermost first, with repeated frames collapsed into a count. |
 | Unhandled errors | rejected | `error-not-passed-up`, `catch-missing` |   |
 | Errors during resource cleanup | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-suppress-without-reason` |   |
 | Exit codes | tested | [errors](../tests/suite/programs/10-errors/errors.sem), [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
@@ -309,10 +309,10 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Directory operations | tested | [directories](../tests/suite/programs/12-io/directories.sem) | `fs.createDirectory`, `listDirectory`, `entryCount`, `entryName`, `removeDirectory`. |
 | File permissions | tested | [file-write](../tests/suite/programs/12-io/file-write.sem) | Access is governed by capabilities with a path-prefix scope; the case proves a path outside the scope is rejected. File-mode bits are not modelled. |
 | File-not-found handling | tested | [resources](../tests/suite/programs/07-memory/resources.sem) |   |
-| File locking | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | The `fs` module has no locking target. |
+| File locking | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `fs.lock` takes an exclusive advisory lock on an open file; `fs.unlock` releases it. |
 | Buffered I/O | tested | [file-read](../tests/suite/programs/12-io/file-read.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Stream operations | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem), [stdin](../tests/suite/programs/12-io/stdin.sem) |   |
-| Stream piping | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No pipes between processes or streams. |
+| Stream piping | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `process.runCaptured` pipes bytes into a program and collects its standard output and error. |
 | Network I/O | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem) |   |
 | Socket operations | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem) |   |
 | HTTP requests | tested |   | The worked server example runs and answers real HTTP requests (`test_server_example_answers_http` in tests/test_refined.py). There is no HTTP client. |
@@ -388,9 +388,9 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Tail-call optimization | n/a |   | Not promised; recursion depth is bounded by `maxRecursion` instead. |
 | Loop optimization | n/a |   | An optimisation inside LLVM; loop bounds are still enforced. |
 | Register allocation | n/a |   | Done by LLVM. |
-| Code generation | tested | `test_stress_thousands_of_values`, `test_every_operation_compiles` |   |
+| Code generation | tested | `test_stress_thousands_of_values`, `test_cross_compiles_to_other_targets`, `test_every_operation_compiles` |   |
 | Linking | by design |   | `run` and `test` JIT-compile in process; there is no separate link step or executable yet. |
-| Incremental compilation | gap |   | Every `check` reads the whole project. |
+| Incremental compilation | tested | `test_build_cache_reuses_only_identical_projects` | An unchanged project is neither checked nor compiled again (the build cache); a change rechecks the whole project, since checks span modules. |
 | Compiler error diagnostics | tested | `test_fuzz_checker_never_crashes`, `test_a_single_edit_is_reported_on_its_own_line` |   |
 | Source-location tracking | tested | [path-mismatch](../tests/suite/programs/09-modules/path-mismatch.sem), `test_fuzz_checker_never_crashes`, `test_diagnostics_point_at_real_lines`, `test_a_single_edit_is_reported_on_its_own_line` |   |
 | Compiler determinism | tested | `test_check_output_is_deterministic`, `test_emitted_ir_is_deterministic` |   |
@@ -408,14 +408,14 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Heap management | tested | `test_stress_very_large_collection` |   |
 | Function call stack | tested | `test_stress_thousands_of_operations`, `test_stress_deep_recursion` |   |
 | Runtime error handling | tested | [errors](../tests/suite/programs/10-errors/errors.sem), [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem) |   |
-| Signal handling | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No signal API; an interrupt ends the process. |
+| Signal handling | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem), `test_program_sees_an_interrupt` | `signal.interrupted` and `signal.waitForInterrupt`: the first interrupt goes to the program, a second ends it. The delivery test runs on POSIX systems. |
 | Process termination | tested | [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
 | Exit status reporting | tested | [errors](../tests/suite/programs/10-errors/errors.sem), [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
 | Runtime assertions | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem) |   |
 | Resource limits | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |
 | Execution time limits | tested | [trap-loop-bound](../tests/suite/programs/04-control-flow/trap-loop-bound.sem) | Every loop states `maxIterations` (or `unbounded` on a `forever` loop with a reason) and traps past it; there is no wall-clock limit. |
 | Deterministic execution | tested | `test_run_is_deterministic` |   |
-| Runtime performance | gap |   | No benchmarks; the stress tests only bound sizes, not times. |
+| Runtime performance | tested | `test_bench_reports_timings` | `refined bench` times repeated runs; the stress tests bound sizes. |
 | Cross-platform execution | tested | `test_program_case` | CI runs this suite on Windows and Linux. |
 
 ## 17. Security & Safety
@@ -436,25 +436,25 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Unsafe operation restrictions | by design |   | There are no unsafe operations: no pointers, casts, or unchecked arithmetic outside the `wrapping` targets. |
 | Module isolation | rejected | [standard-name](../tests/suite/programs/09-modules/standard-name.sem), `module-private-symbol` |   |
 | Secure error handling | tested | [errors](../tests/suite/programs/10-errors/errors.sem) |   |
-| Sensitive data handling | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No secret type or redaction; nothing keeps a value out of messages. |
+| Sensitive data handling | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `secret.Secret` has no conversion to text except `reveal`, which needs a capability for `read secret.values`; `matches` compares in constant time. |
 | Denial-of-service resistance | tested | `test_differential_integer_arithmetic`, [trap-loop-bound](../tests/suite/programs/04-control-flow/trap-loop-bound.sem), [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) | Loops, recursion, and regions have stated bounds that trap; `powerInt64` takes at most 63 steps whatever the exponent. |
 
 ## 18. Interoperability
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Foreign function interface (FFI) | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| C interoperability | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Native library loading | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Dynamic linking | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Static linking | gap |   | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| ABI compatibility | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Data structure marshaling | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Cross-language error handling | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Cross-language memory ownership | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Calling conventions | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| Shared libraries | gap | [foreign](../tests/suite/programs/18-interop/foreign.sem) | No foreign function interface: the only native boundary is the runtime's own callbacks. |
-| WASM integration | gap |   | The backend targets the host through LLVM MCJIT only. |
+| Foreign function interface (FFI) | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| C interoperability | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Native library loading | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Dynamic linking | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Static linking | gap | `test_cross_compiles_to_other_targets` | `refined build` emits object files for any target, but linking one into an executable needs a system linker and a native runtime library, and neither ships yet. |
+| ABI compatibility | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Data structure marshaling | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Cross-language error handling | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Cross-language memory ownership | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Calling conventions | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Shared libraries | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| WASM integration | tested | `test_webassembly_runs_under_node` | `refined build --kind wasm` emits WebAssembly; tests/suite/wasm_host.mjs runs it in Node. |
 | Native system APIs | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [process-run](../tests/suite/programs/12-io/process-run.sem) | Reached only through the standard library (`fs`, `net`, `process`, `environment`, `clock`) under capabilities. |
 
 ## 19. Standard Library
@@ -467,12 +467,12 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Collection utilities | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | File-system utilities | tested | [directories](../tests/suite/programs/12-io/directories.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Date and time | tested | [clock](../tests/suite/programs/12-io/clock.sem) |   |
-| Random number generation | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No `random` module. |
-| Cryptographic primitives | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No `crypto` module. |
-| Serialization | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No serialization module beyond `buffer` and `string` conversions. |
-| JSON parsing | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem) | No `json` module. |
+| Random number generation | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `random.int64Between` from the operating system, and seeded generators. |
+| Cryptographic primitives | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `crypto.sha256`, `hmacSha256`, `toHex`, and `constantTimeEquals`. |
+| Serialization | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `json` builds values and writes them with `stringify`. |
+| JSON parsing | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `json.parse` with typed access to fields and items, and error positions. |
 | Regular expressions | by design |   | No regex engine; `string.find`, `startsWith`, and byte classes cover matching, written out explicitly. |
-| Logging | gap | [modules](../tests/suite/programs/19-stdlib/modules.sem), [console](../tests/suite/programs/12-io/console.sem) | No logging module; `console.writeError` writes diagnostics. |
+| Logging | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `log.debug`, `info`, `warn`, and `error` write levelled lines to standard error. |
 | Networking | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem) |   |
 | Process management | tested | [process-run](../tests/suite/programs/12-io/process-run.sem) |   |
 | Environment utilities | tested | [environment](../tests/suite/programs/12-io/environment.sem) |   |
@@ -493,15 +493,15 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Compiler self-tests | tested |   | tests/test_refined.py tests the checker on the worked examples, including a lexer written in SemanticScript (docs/refined-examples/selfhost). |
 | Negative compilation tests | tested | `test_mutation` |   |
 | Runtime failure tests | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [trap-divide-by-zero](../tests/suite/programs/03-operators/trap-divide-by-zero.sem), [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem) |   |
-| Performance benchmarks | gap |   | None yet. |
-| Memory profiling | gap |   | None yet; regions report only exhaustion. |
-| CPU profiling | gap |   | None yet. |
-| Code coverage | gap |   | This map is checklist coverage; there is no line coverage of SemanticScript programs. |
-| Debugger integration | gap |   | No debugger support yet; traps report the source line. |
-| Breakpoints | gap |   | No debugger support yet; traps report the source line. |
-| Variable inspection | gap |   | No debugger support yet; traps report the source line. |
-| Stack inspection | gap | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem) | No debugger support yet; traps report the source line. |
-| Execution tracing | gap |   | No debugger support yet; traps report the source line. |
+| Performance benchmarks | tested | `test_bench_reports_timings` | `refined bench PATH --runs N`. |
+| Memory profiling | tested | `test_trace_coverage_and_profile` | `refined run --profile` reports each region's peak use against its capacity. |
+| CPU profiling | tested | `test_trace_coverage_and_profile` | `refined run --profile` reports calls and time per operation. |
+| Code coverage | tested | `test_trace_coverage_and_profile` | `refined run --coverage` reports which blocks ran and lists the ones that never did. |
+| Debugger integration | tested | `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
+| Breakpoints | tested | `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
+| Variable inspection | tested | `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
+| Stack inspection | tested | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem), `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
+| Execution tracing | tested | `test_trace_coverage_and_profile` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
 
 ## 21. Language-Specific Structural Validation
 
@@ -573,70 +573,27 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | CLI compiler invocation | tested | `entry-missing`, `test_cli_check_json_shape`, `test_cli_run_refuses_a_library`, `test_cli_run_refuses_a_module_file_without_project`, `test_cli_rejects_unknown_command` |   |
 | Interpreter invocation | by design |   | There is no interpreter: `run` JIT-compiles the project. |
-| REPL behavior | gap |   | No REPL. |
-| Package management | gap | [package](../tests/suite/programs/09-modules/package), `package-missing`, `package-not-a-library`, `project-version-format`, `library-with-entry` | A project lists its modules in build.sem; there are no packages or a registry. |
+| REPL behavior | tested | `test_repl_checks_and_runs` | `refined repl`: type rows, then `:check`, `:run`, `:undo`, `:show`. |
+| Package management | tested | [package](../tests/suite/programs/09-modules/package), `package-missing`, `package-not-a-library`, `project-version-format`, `library-with-entry` | Local packages: `requires <name> "<path>" "<constraint>"` in build.sem; there is no registry. |
 | Dependency resolution | tested | [package](../tests/suite/programs/09-modules/package), [project](../tests/suite/programs/09-modules/project), `module-unused-import`, `package-version-unmet`, `package-cycle` |   |
-| Version constraints | gap | [package](../tests/suite/programs/09-modules/package), `package-version-unmet`, `package-bad-constraint` | No packages, so no versions to constrain. |
+| Version constraints | tested | [package](../tests/suite/programs/09-modules/package), `package-version-unmet`, `package-bad-constraint` | Comparators such as `>=1.0.0 <2.0.0`, `^1.2.0`, `=1.2.3`, or `*`. |
 | Reproducible builds | tested | `test_check_output_is_deterministic`, `test_emitted_ir_is_deterministic` |   |
-| Incremental builds | gap |   | Every command reads the whole project. |
-| Build caching | gap |   | No cache. |
-| Cross-compilation | gap |   | The backend JIT-compiles for the host only. |
-| Formatter | gap |   | No formatter; the row shapes leave little to format. |
+| Incremental builds | tested | `test_build_cache_reuses_only_identical_projects` | The build cache skips checking and code generation for an unchanged project. |
+| Build caching | tested | `test_build_cache_reuses_only_identical_projects` | `.refined-cache` entries keyed by the compiler, every source, and the options. |
+| Cross-compilation | tested | `test_cross_compiles_to_other_targets` | `refined build --target <triple>` for any LLVM target. |
+| Formatter | tested | `test_formatter_repository_is_canonical`, `test_formatter_undoes_added_spacing` | `refined fmt [--check]`: one layout; comments kept exactly. |
 | Linter | by design |   | The checker is the linter: every rule it enforces is an error, not a warning. |
-| Language Server Protocol (LSP) | gap |   | The editor extension runs `check --json` on save; there is no language server. |
-| IDE integration | tested | `test_cli_check_json_shape` |   |
+| Language Server Protocol (LSP) | tested | `test_language_server` | `refined lsp`: diagnostics for unsaved text, hover, and formatting. |
+| IDE integration | tested | `test_cli_check_json_shape`, `test_language_server` |   |
 | Source maps | tested | `test_diagnostics_point_at_real_lines` |   |
 | Documentation generation | tested |   | The grammar reference and the editor grammar are generated from the shape table; CI fails when they are stale. |
 | Testing framework integration | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem) |   |
-| Standard library versioning | gap | [package](../tests/suite/programs/09-modules/package), `standard-library-version` | The standard library is unversioned. |
+| Standard library versioning | tested | [package](../tests/suite/programs/09-modules/package), `standard-library-version` | build.sem states `standardLibrary 1`; a different version is refused. |
 | Backward compatibility | by design | `language-version` | Not promised: the owner chose no compatibility layer while the language settles (language-refinement.md, Part 5). |
-| Language feature versioning | gap | [package](../tests/suite/programs/09-modules/package), `language-version` | No version row in build.sem yet. |
+| Language feature versioning | tested | [package](../tests/suite/programs/09-modules/package), `language-version` | build.sem states `language refined-1`; anything else is refused. |
 
 ## Open work
 
 Every `gap` and `static` item, in checklist order: the list to fill next.
 
-- **6 Recursive resource cleanup** (gap): Cleanups run (the resources case), but no case passes an owned resource down a recursion.
-- **10 Stack traces** (gap): A trap names the file, line, call, and operation where it happened, but not the chain of callers.
-- **12 File locking** (gap): The `fs` module has no locking target.
-- **12 Stream piping** (gap): No pipes between processes or streams.
-- **15 Incremental compilation** (gap): Every `check` reads the whole project.
-- **16 Signal handling** (gap): No signal API; an interrupt ends the process.
-- **16 Runtime performance** (gap): No benchmarks; the stress tests only bound sizes, not times.
-- **17 Sensitive data handling** (gap): No secret type or redaction; nothing keeps a value out of messages.
-- **18 Foreign function interface (FFI)** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 C interoperability** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Native library loading** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Dynamic linking** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Static linking** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 ABI compatibility** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Data structure marshaling** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Cross-language error handling** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Cross-language memory ownership** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Calling conventions** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 Shared libraries** (gap): No foreign function interface: the only native boundary is the runtime's own callbacks.
-- **18 WASM integration** (gap): The backend targets the host through LLVM MCJIT only.
-- **19 Random number generation** (gap): No `random` module.
-- **19 Cryptographic primitives** (gap): No `crypto` module.
-- **19 Serialization** (gap): No serialization module beyond `buffer` and `string` conversions.
-- **19 JSON parsing** (gap): No `json` module.
-- **19 Logging** (gap): No logging module; `console.writeError` writes diagnostics.
-- **20 Performance benchmarks** (gap): None yet.
-- **20 Memory profiling** (gap): None yet; regions report only exhaustion.
-- **20 CPU profiling** (gap): None yet.
-- **20 Code coverage** (gap): This map is checklist coverage; there is no line coverage of SemanticScript programs.
-- **20 Debugger integration** (gap): No debugger support yet; traps report the source line.
-- **20 Breakpoints** (gap): No debugger support yet; traps report the source line.
-- **20 Variable inspection** (gap): No debugger support yet; traps report the source line.
-- **20 Stack inspection** (gap): No debugger support yet; traps report the source line.
-- **20 Execution tracing** (gap): No debugger support yet; traps report the source line.
-- **23 REPL behavior** (gap): No REPL.
-- **23 Package management** (gap): A project lists its modules in build.sem; there are no packages or a registry.
-- **23 Version constraints** (gap): No packages, so no versions to constrain.
-- **23 Incremental builds** (gap): Every command reads the whole project.
-- **23 Build caching** (gap): No cache.
-- **23 Cross-compilation** (gap): The backend JIT-compiles for the host only.
-- **23 Formatter** (gap): No formatter; the row shapes leave little to format.
-- **23 Language Server Protocol (LSP)** (gap): The editor extension runs `check --json` on save; there is no language server.
-- **23 Standard library versioning** (gap): The standard library is unversioned.
-- **23 Language feature versioning** (gap): No version row in build.sem yet.
+- **18 Static linking** (gap): `refined build` emits object files for any target, but linking one into an executable needs a system linker and a native runtime library, and neither ships yet.

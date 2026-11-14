@@ -599,6 +599,8 @@ def test_every_checklist_item_has_evidence_or_a_reason():
 
 
 def test_generated_evidence_names_real_tests():
-    missing = sorted(name for name in coverage_map.GENERATED if not callable(globals().get(name)))
+    import test_tooling
+    missing = sorted(name for name in coverage_map.GENERATED
+                     if not callable(globals().get(name)) and not callable(getattr(test_tooling, name, None)))
     assert not missing, missing
 

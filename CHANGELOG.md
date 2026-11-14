@@ -27,6 +27,17 @@ have been cut yet.
   others); and the CI workflows that built and released them. All of it remains
   in git history before this change.
 
+### The checklist closed
+
+- Library modules `random`, `crypto`, `log`, `json`, `secret`, `signal`, and
+  `ffi`; file locks, append mode, directory operations, and process pipes.
+- Stack traces on traps.
+- Tools: `refined fmt`, `repl`, `lsp`, `bench`, a build cache, and
+  `run --trace`, `--coverage`, `--profile`, and `--debug` with breakpoints.
+- `refined build` emits objects, assembly, or WebAssembly for any LLVM target.
+- build.sem states version, language, and standard-library versions, and
+  requires local packages with version constraints.
+
 ### Everything compiles and runs
 
 - The backend now compiles generic operations, cleanups and `defer`, tasks,

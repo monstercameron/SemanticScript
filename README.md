@@ -120,6 +120,21 @@ target the backend has not implemented.
 Every item still open is listed at the end of
 [docs/test-suite.md](docs/test-suite.md).
 
+## Commands
+
+`refined` is `python semanticscript/compiler/refined`.
+
+| Command | What it does |
+| --- | --- |
+| `refined check PATH` | Check a project or a module file |
+| `refined run PATH [-- ARGS]` | Compile and run the entry (`--trace`, `--coverage`, `--profile`, `--debug --break M.OP`) |
+| `refined test PATH` | Run every test, each in its own process |
+| `refined bench PATH --runs N` | Time repeated runs |
+| `refined build PATH --output F` | Object, assembly, or WebAssembly (`--kind`), for any target (`--target`) |
+| `refined fmt PATH [--check]` | Format sources |
+| `refined repl` | Type rows, then check and run them |
+| `refined lsp` | Language server on stdin and stdout |
+
 ## Repository map
 
 ```text

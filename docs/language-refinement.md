@@ -1958,6 +1958,44 @@ compiles (`test_every_operation_compiles`), every program case runs
 (`test_every_program_case_runs`), and a tour calls every standard-library target
 no other case uses (`tests/suite/programs/19-stdlib/library-tour.sem`).
 
+## Part 9: the checklist closed (2026-11-14)
+
+After Part 8 the coverage map still listed 44 gaps. All but one are now
+implemented and tested; `docs/test-suite.md` has the evidence for each.
+
+- **Library:** `random`, `crypto`, `log`, `json` (parse, typed access, build,
+  `stringify`), `secret`, `signal`, `fs.lock`/`unlock`, `fs.openAppend` and
+  directory operations, `process.runCaptured` (pipes).
+- **Runtime:** parallel tasks (D-31); a trap prints the chain of callers.
+- **Tooling:** `refined fmt`, `repl`, `lsp`, `bench`, a build cache, and
+  `run --trace`, `--coverage`, `--profile`, `--debug --break`.
+- **Native:** `refined build` emits objects or assembly for any LLVM target,
+  or WebAssembly that `tests/suite/wasm_host.mjs` runs in Node.
+- **Interop:** the `ffi` module.
+- **Packages:** versions and local packages in build.sem.
+
+Decisions (by delegation):
+
+- **D-33** A new effect verb, `load`, for bringing native code into the
+  process. `ffi.open` needs `load ffi.libraries`, scoped by library name.
+  A foreign function's type is an `operationType` over numbers and `Bool`
+  that raises nothing, waits for nothing, and has no effects; only values the
+  C ABI passes as they are cross, so no memory is shared across the boundary.
+- **D-34** build.sem states `version "<MAJOR.MINOR.PATCH>"`, `language
+  refined-1`, `standardLibrary 1`, and `requires <name> "<path>"
+  "<constraint>"` (or `requires none`). A required project is a library whose
+  version satisfies the constraint; its modules are imported as
+  `<name>.<module path>`. Requirement cycles are R603.
+- **D-35** A `secret.Secret` has no route back to text but `reveal`, which
+  needs `read secret.values`; a program that must not leak a value keeps it a
+  Secret.
+- **D-36** The formatter changes layout only: token spacing, blank lines
+  between entities, the space before a trailing comment. Comment text is
+  kept exactly.
+
+The one item left open is static linking into an executable: objects for any
+target exist, but there is no native runtime library or bundled linker yet.
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.
@@ -2176,6 +2214,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-13 | Part 4 | Implementation started as a new front end beside the legacy compiler; decisions D-1 to D-15 recorded there (by delegation) |
 | 2026-11-13 | Part 5 | No bridge and no backwards compatibility (owner); the refined compiler has its own LLVM backend; every Part 4 open item enforced; decisions D-16 to D-23 (by delegation) |
 | 2026-11-13 | Part 6 | Earlier compiler, examples, runtime, vendored C, tests, docs, and CI lanes removed (owner); CI, editor, and docs point at the refined compiler |
+| 2026-11-14 | Part 9 | Library, tooling, native output, FFI, and packages; decisions D-33 to D-36 (by delegation) |
 | 2026-11-14 | Part 8 | Backend completed so every program compiles and runs; decisions D-27 to D-32 (by delegation; D-31 replaces D-27) |
 | 2026-11-14 | Part 7 | Test suite and generated coverage map (owner); fixes for what it found; decisions D-24 to D-26 (by delegation) |
 
