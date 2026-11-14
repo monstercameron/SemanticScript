@@ -12,6 +12,7 @@ channelDeadlock exports main
 
 Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers"
+Mailbox in none
 Mailbox instantiates channel.Channel Int64
 
 main is operation

@@ -156,6 +156,54 @@ int32_t refined_parse_int(const char *p, int64_t n, int64_t *out) {
     return 0;
 }
 
+/* D-91: a Float64 as the shortest text that reads back as it (as refined_write_float prints it) */
+void *refined_format_float(double v, void *region, int64_t *out_len) {
+    char buf[64];
+    for (int digits = 1; digits <= 17; digits++) {
+        snprintf(buf, sizeof buf, "%.*g", digits, v);
+        if (strtod(buf, NULL) == v) break;
+    }
+    if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'n') && !strchr(buf, 'i')) strcat(buf, ".0");
+    int64_t n = (int64_t)strlen(buf);
+    char *p = refined_region_alloc(region, n);
+    memcpy(p, buf, (size_t)n);
+    *out_len = n;
+    return p;
+}
+
+/* D-91: 0 parsed, 1 not a number, 2 too large for a Float64. The text is `-`? digits (`.` digits)?
+   ([eE] [+-]? digits)?, nothing else. */
+int32_t refined_parse_float(const char *p, int64_t n, double *out) {
+    *out = 0.0;
+    int64_t i = 0, start;
+    if (i < n && p[i] == '-') i++;
+    start = i;
+    while (i < n && p[i] >= '0' && p[i] <= '9') i++;
+    if (i == start) return 1;
+    if (i < n && p[i] == '.') {
+        start = ++i;
+        while (i < n && p[i] >= '0' && p[i] <= '9') i++;
+        if (i == start) return 1;
+    }
+    if (i < n && (p[i] == 'e' || p[i] == 'E')) {
+        i++;
+        if (i < n && (p[i] == '+' || p[i] == '-')) i++;
+        start = i;
+        while (i < n && p[i] >= '0' && p[i] <= '9') i++;
+        if (i == start) return 1;
+    }
+    if (i != n) return 1;
+    char *buf = malloc((size_t)n + 1);
+    if (!buf) trap_text("out of memory reading a number");
+    memcpy(buf, p, (size_t)n);
+    buf[n] = 0;
+    double v = strtod(buf, NULL);
+    free(buf);
+    if (v > 1.7976931348623157e308 || v < -1.7976931348623157e308) return 2;
+    *out = v;
+    return 0;
+}
+
 /* ---------------------------------------------------------------- tests (not part of an executable's run) */
 
 void refined_assert_int(int64_t e, int64_t a, const char *c, int64_t cn) {

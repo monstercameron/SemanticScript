@@ -27,10 +27,12 @@ LexError variant unexpectedByte Int64
 
 TokenList is typeInstance
 TokenList purpose "A growable list of tokens"
+TokenList in none
 TokenList instantiates list.List lexer.Token
 
 TokenKindOption is typeInstance
 TokenKindOption purpose "A token kind, or nothing"
+TokenKindOption in none
 TokenKindOption instantiates option.Option lexer.TokenKind
 
 # ---------------------------------------------------------------- tokenize

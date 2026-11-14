@@ -353,7 +353,8 @@ def test_stress_very_large_collection(tmp_path):
     p = sb.Prog("bigList", "Grow a list to half a million items",
                 imports=["standard.console", "standard.math", "standard.compare", "standard.list"])
     p.add(sb.STDOUT_CAP).add(sb.show_int())
-    p.add('Numbers is typeInstance\nNumbers purpose "A growable list of whole numbers"\nNumbers instantiates list.List Int64')
+    p.add('Numbers is typeInstance\nNumbers purpose "A growable list of whole numbers"\nNumbers in none\n'
+          'Numbers instantiates list.List Int64')
     p.add(sb.main_op([("begin", "do makeNumbers"), ("begin", "goto fill"),
                       ("fill", "do filled"), ("fill", "branch if isFilled goto report else goto appendStep"),
                       ("appendStep", "do appendIndex"), ("appendStep", "do advance"),

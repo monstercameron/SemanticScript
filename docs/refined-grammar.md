@@ -51,6 +51,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 
 | Predicate | Rows | Shape |
 | --- | --- | --- |
+| `in` | exactly one | `none`<br>`<name>` |
 | `instantiates` | exactly one | `<Type> <Type>...` |
 
 ## `constant`
@@ -78,13 +79,14 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 
 | Predicate | Rows | Shape |
 | --- | --- | --- |
+| `in` | exactly one | `none`<br>`<name>` |
 | `instantiates` | exactly one | `<name> <Type>...` |
 
 ## `operationType`
 
 | Predicate | Rows | Shape |
 | --- | --- | --- |
-| `typeParameter` | exactly one | `none` |
+| `typeParameter` | one or more (`none` alone when empty) | `none`<br>`<Type> any\|plain` |
 | `input` | one or more (`none` alone when empty) | `none`<br>`<name> <Type> borrowed\|borrowedMutable\|copied\|owned` |
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwnedBy` | exactly one | `none`<br>`caller`<br>`<name>` |

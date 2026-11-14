@@ -244,9 +244,11 @@ KINDS: dict[str, dict] = {
         "shapes": {"typeParameter": [(NONE,)], "aliasOf": [("Type",)], "indexes": [(NONE,), ("Type",)]},
         "skeleton": [("typeParameter", "one"), ("aliasOf", "one"), ("indexes", "one")],
     },
+    # D-92: `in none` for an instance of the module, `in <generic operation>` for one that names that operation's
+    # type parameters (usable only inside it)
     "typeInstance": {
-        "shapes": {"instantiates": [("Type", "Type+")]},
-        "skeleton": [("instantiates", "one")],
+        "shapes": {"in": [(NONE,), ("name",)], "instantiates": [("Type", "Type+")]},
+        "skeleton": [("in", "one"), ("instantiates", "one")],
     },
     # D-103: a named value of a module, read by every operation of the module as an immutable value
     "constant": {
@@ -263,13 +265,14 @@ KINDS: dict[str, dict] = {
         "skeleton": [("grants", "some")],
     },
     "operationInstance": {
-        "shapes": {"instantiates": [("name", "Type+")]},
-        "skeleton": [("instantiates", "one")],
+        "shapes": {"in": [(NONE,), ("name",)], "instantiates": [("name", "Type+")]},
+        "skeleton": [("in", "one"), ("instantiates", "one")],
     },
+    # D-94: an operation type may be generic, like a record; it is used through a `typeInstance`
     "operationType": {
-        "shapes": {"typeParameter": [(NONE,)],
+        "shapes": {"typeParameter": _TYPE_PARAMETER,
                    **{k: _OP_HEADER[k] for k in ("input", "output", "outputOwnedBy", "raises", "effect", "async")}},
-        "skeleton": [("typeParameter", "one"), ("input", "some"), ("output", "one"), ("outputOwnedBy", "one"),
+        "skeleton": [("typeParameter", "some"), ("input", "some"), ("output", "one"), ("outputOwnedBy", "one"),
                      ("raises", "one"), ("effect", "some"), ("async", "one")],
     },
     "operation": {"shapes": _OP_HEADER, "skeleton": _OP_SKELETON},

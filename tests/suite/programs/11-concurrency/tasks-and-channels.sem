@@ -68,6 +68,7 @@ writeValue suppresses console.WriteError.failed
 
 Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers between a producer and a consumer"
+Mailbox in none
 Mailbox instantiates channel.Channel Int64
 
 square is operation

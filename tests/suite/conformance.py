@@ -226,7 +226,7 @@ GUARANTEES = (
         Check("resource-in-collection", "reject", "a list of file handles",
               ((W, "warehouse imports pricing", "warehouse imports standard.list\nwarehouse imports pricing"),
                (W, "<append>", 'Handles is typeInstance\nHandles purpose "Open files kept in a list"\n'
-                               'Handles instantiates list.List fs.FileHandle')),
+                               'Handles in none\nHandles instantiates list.List fs.FileHandle')),
               ("R403",), "is a resource"),
     ), ("mutation:double-give", "mutation:give-borrowed", "mutation:use-after-give", "mutation:give-deferred",
         "mutation:owned-never-released", "mutation:leak-on-error-path", "mutation:return-owned-with-cleanup-none")),
@@ -594,7 +594,8 @@ GUARANTEES = (
               ((SE, "<append>", 'Branch is record\nBranch purpose "A tree node that holds its children directly"\n'
                 "Branch typeParameter none\nBranch field value Int64\nBranch field children Branches\n\n"
                 'Branches is typeInstance\nBranches purpose "The children of one branch"\n'
-                "Branches instantiates list.List Branch"),), ("R403",), "holds itself inside a collection",
+                "Branches in none\nBranches instantiates list.List Branch"),), ("R403",),
+              "holds itself inside a collection",
               base="symbols"),
         Check("table-changed-while-listed", "reject", "redefining a name while the listing reads the table",
               ((SM, "main at printValue do printValueLine", "main at printValue do redefineAgain\n"

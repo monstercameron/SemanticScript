@@ -846,10 +846,11 @@ class Flow:
             want = resolve_type(self.world, m, m.tables[coll].value("rowType"), line, quiet=True)
         elif coll in op.bindings:
             info = self.world.type_info(op.bindings[coll].type)
-            if info is None or info.generic not in ("list.List", "map.Map"):
-                self.err("R402", line, f"`ifNext` reads a table, a list, or a map; `{coll}` is none of them")
+            if info is None or info.generic not in ("list.List", "map.Map", "set.Set"):
+                self.err("R402", line, f"`ifNext` reads a table, a list, a map, or a set; `{coll}` is none of them")
                 return
-            want = info.args[0]  # a list's items; a map's keys, in the order they were first put (D-62)
+            # a list's items; a map's keys or a set's items, in the order they were first put (D-62, D-93)
+            want = info.args[0]
         else:
             self.err("R401", line, f"`{coll}` is not a table or a list in scope")
             return
@@ -874,7 +875,7 @@ class Flow:
             outs.append(((lab, target), cur | gen))
             if not report:
                 continue
-            v = resolve_variant(self.world, self.m, var_text, cs.line)
+            v = resolve_variant(self.world, self.m, var_text, cs.line, tparams=self.op.tparams)
             if v is None:
                 continue
             ecanon, vname, payload = v

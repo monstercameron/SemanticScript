@@ -24,6 +24,7 @@ LineItem field unitCents Int64
 
 Lines is typeInstance
 Lines purpose "The lines of one order, in the order they were added"
+Lines in none
 Lines instantiates list.List LineItem
 
 PricingError is enum

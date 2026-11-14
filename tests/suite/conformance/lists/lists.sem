@@ -80,6 +80,7 @@ writeValue suppresses console.WriteError.failed
 
 Cells is typeInstance
 Cells purpose "Values stored by position"
+Cells in none
 Cells instantiates list.List Int64
 
 CellId is alias
@@ -116,14 +117,17 @@ pairs cell secondPair value 20
 
 Stack is typeInstance
 Stack purpose "Whole numbers used as a stack"
+Stack in none
 Stack instantiates list.List Int64
 
 Names is typeInstance
 Names purpose "Text kept in a list, made by other operations in their own regions"
+Names in none
 Names instantiates list.List String
 
 Groups is typeInstance
 Groups purpose "Stacks kept in a list, each changed after it is stored"
+Groups in none
 Groups instantiates list.List Stack
 
 main is operation

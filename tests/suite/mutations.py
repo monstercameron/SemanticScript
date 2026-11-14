@@ -71,6 +71,10 @@ EFF = "13-capabilities/effects"
 GEN = "14-types-generics/generics"
 MIN = "22-edge/minimal"
 TESTS = "20-testing/tests-pass"
+WIDTHS = "03-operators/integer-types"
+TEXTB = "08-strings-collections/text-and-bytes"
+SETS = "08-strings-collections/text-sets"
+LAYER = "14-types-generics/layered-generics"
 
 M = Mutation
 MUTATIONS: list[Mutation] = [
@@ -157,7 +161,7 @@ MUTATIONS: list[Mutation] = [
       'Branch is record\nBranch purpose "A tree node that holds its children directly"\nBranch typeParameter none\n'
       "Branch field value Int64\nBranch field children Branches\n\n"
       'Branches is typeInstance\nBranches purpose "The children of one branch"\n'
-      "Branches instantiates list.List Branch\n\nNodes is typeInstance\n", ("R403",),
+      "Branches in none\nBranches instantiates list.List Branch\n\nNodes is typeInstance\n", ("R403",),
       primary="`Branch` holds itself inside a collection"),
     M("index-literal", ("2 Type aliases", "7 Dangling references"), TREES,
       "main let one Int64 1 immutable", "main let one Int64 1 immutable\nmain let forged NodeId 0 immutable",
@@ -175,7 +179,8 @@ MUTATIONS: list[Mutation] = [
     M("append-indexed-without-index", ("2 Type aliases",), TREES, "NodeId indexes Nodes", "NodeId indexes none",
       ("R401", "R403"), primary="type `Nodes` has no target `appendIndexed`"),
     M("map-key-not-plain", ("2 Maps / Dictionaries", "14 Generic constraints"), TREES, "Symbols is typeInstance\n",
-      'ByNode is typeInstance\nByNode purpose "Values keyed by whole nodes"\nByNode instantiates map.Map Expr Int64\n\n'
+      'ByNode is typeInstance\nByNode purpose "Values keyed by whole nodes"\nByNode in none\n'
+      'ByNode instantiates map.Map Expr Int64\n\n'
       "Symbols is typeInstance\n", ("R403",), primary="a key of `map.Map` is a plain value or a `String`"),
     M("map-text-key-copied", ("2 Maps / Dictionaries", "5 Parameter passing by reference"), TREES,
       "defineX argument key String xName lend", "defineX argument key String xName copy", ("R406",)),
@@ -590,7 +595,8 @@ MUTATIONS: list[Mutation] = [
       primary='operation `triple` has no invariant `timesFour`'),
     M('generic-constraint-isolated', ('14 Generic constraints', '14 Trait bounds'), GEN,
       'pickBool instantiates pick Bool',
-      'pickBool instantiates pick Bool\n\npickText is operationInstance\npickText purpose "Pick between two texts"\npickText instantiates pick String',
+      'pickBool instantiates pick Bool\n\npickText is operationInstance\npickText purpose "Pick between two texts"\n'
+      'pickText in none\npickText instantiates pick String',
       ('R403',),
       primary='type parameter `T` of `pick` is `plain`; `String` is not a plain type'),
     M('capability-missing-isolated', ('13 Unauthorized capability access',), CONS,
@@ -652,4 +658,40 @@ MUTATIONS: list[Mutation] = [
       "scale in double\nscale invokes applyTwice\nscale argument step IntStep double copy\n"
       "scale argument value Int64 value copy",
       ("R410",), primary="`applyTwice` can call itself"),
+    # D-90: each integer type has its own targets; an unsigned value is not a signed one
+    M("unsigned-not-signed", ("14 Type mismatch detection", "2 Unsigned integers"), WIDTHS,
+      "dropOne invokes math.subtractUInt64", "dropOne invokes math.subtractInt64", ("R403",),
+      primary="argument `left` is `Int64`, not `UInt64`"),
+    # D-91: a slice of bytes is a view of the bytes it cuts
+    M("bytes-slice-is-a-view", ("2 Byte arrays", "7 Dangling references"), TEXTB, "cutTail borrows raw",
+      "cutTail borrows none", ("R409",)),
+    # D-93: sets hold plain values or text, lend text, and are not changed while a loop reads them
+    M("set-item-not-key", ("2 Sets", "14 Generic constraints"), SETS, "Names instantiates set.Set String",
+      "Names instantiates set.Set Bytes", ("R403",), primary="an item of `set.Set` is a plain value or a `String`"),
+    M("set-text-item-lent", ("2 Sets", "5 Parameter passing by reference"), SETS,
+      "add0 argument item String beta lend", "add0 argument item String beta copy", ("R406",)),
+    M("set-changed-in-forEach", ("8 Collection iteration", "2 Sets"), SETS,
+      ("main at showName goto listNames", "main at listed do dropBeta\n"),
+      ("main at showName do dropBeta\nmain at showName goto listNames", ""), ("R515",),
+      primary="`names` is being iterated by loop `listNames`"),
+    # D-92: instances at a generic operation's type parameter belong to that operation
+    M("instance-states-owner", ("14 Generic functions", "1 Variable scope"), LAYER, "pickAt in bestOf\n", "",
+      ("R302", "R401"), primary="operationInstance `pickAt` has no `in` row"),
+    M("instance-parameter-needs-owner", ("14 Generic functions", "1 Variable scope"), LAYER, "pickAt in bestOf",
+      "pickAt in none", ("R401",), primary="unknown type `T`"),
+    M("instance-owner-not-generic", ("14 Generic functions",), LAYER, "pickAt in bestOf", "pickAt in larger",
+      ("R402",), primary="`larger` has no type parameters"),
+    M("scoped-type-used-elsewhere", ("14 Generic functions", "9 Visibility / Access modifiers"), LAYER,
+      "main let byLarger BetterNumber larger immutable", "main let byLarger BetterT larger immutable",
+      ("R402", "R403")),
+    M("scoped-instance-called-elsewhere", ("14 Generic functions", "9 Visibility / Access modifiers"), LAYER,
+      "compareNumbers invokes compare.greaterThanInt64", "compareNumbers invokes pickAt", ("R402",)),
+    M("scoped-instance-exported", ("9 Visibility / Access modifiers", "14 Generic functions"), LAYER,
+      "layeredGenerics exports main", "layeredGenerics exports main\nlayeredGenerics exports pickAt", ("R402",),
+      primary="belongs to the generic operation `bestOf`, so it is not exported"),
+    M("instance-signature-type-missing", ("14 Generic functions", "14 Type mismatch detection"), LAYER,
+      "bestByte instantiates bestOf Byte", "bestByte instantiates bestOf Int32", ("R403",)),
+    # D-94: a generic operation type, like a generic record, is used through a typeInstance
+    M("generic-type-unapplied", ("14 Generic structures", "2 Function types"), LAYER,
+      "bestOf input better BetterT copied", "bestOf input better Better copied", ("R402", "R403")),
 ]

@@ -48,6 +48,7 @@ Expr variant product Operands
 
 Nodes is typeInstance
 Nodes purpose "The nodes of one or more expression trees, in the order they were added"
+Nodes in none
 Nodes instantiates list.List Expr
 
 NodeId is alias
@@ -58,6 +59,7 @@ NodeId indexes Nodes
 
 Symbols is typeInstance
 Symbols purpose "The value of each defined name, in the order the names were first defined"
+Symbols in none
 Symbols instantiates map.Map String Int64
 
 EvalError is enum

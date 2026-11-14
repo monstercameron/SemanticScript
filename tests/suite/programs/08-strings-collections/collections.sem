@@ -120,18 +120,22 @@ writeFalse suppresses console.WriteError.failed
 
 Counts is typeInstance
 Counts purpose "Whole-number counts keyed by whole numbers"
+Counts in none
 Counts instantiates map.Map Int64 Int64
 
 Seen is typeInstance
 Seen purpose "A set of whole numbers already seen"
+Seen in none
 Seen instantiates set.Set Int64
 
 Row is typeInstance
 Row purpose "One row of a grid"
+Row in none
 Row instantiates list.List Int64
 
 Grid is typeInstance
 Grid purpose "Rows of whole numbers"
+Grid in none
 Grid instantiates list.List Row
 
 main is operation

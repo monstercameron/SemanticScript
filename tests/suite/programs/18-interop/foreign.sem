@@ -134,10 +134,12 @@ CToUpper async false
 
 AbsFunction is typeInstance
 AbsFunction purpose "Binds a C symbol as CAbs"
+AbsFunction in none
 AbsFunction instantiates ffi.Function CAbs
 
 UpperFunction is typeInstance
 UpperFunction purpose "Binds a C symbol as CToUpper"
+UpperFunction in none
 UpperFunction instantiates ffi.Function CToUpper
 
 main is operation

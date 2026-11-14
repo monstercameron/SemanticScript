@@ -272,6 +272,7 @@ pick at takeSecond return ok second
 
 pickInt is operationInstance
 pickInt purpose "Pick between two whole numbers"
+pickInt in none
 pickInt instantiates pick Int64
 
 useBoth is operation

@@ -94,12 +94,16 @@ class World:
         # every operation used as a value, by the operationType it was used as: an operation that invokes a
         # reference of that type may be calling any of them (the recursion check follows these edges)
         self.taken: dict[str, set[tuple[str, str]]] = {}
+        # D-92: instances at type arguments the backend put in (`concrete`), by their made-up names
+        self.synthetic: dict[str, Optional[TypeInfo]] = {}
 
     # ------------------------------------------------------------ types
 
     def type_info(self, canon: Optional[str]) -> Optional[TypeInfo]:
         if canon is None:
             return None
+        if canon in self.synthetic:
+            return self.synthetic[canon]
         if canon in BUILTINS:
             return BUILTINS[canon]
         if "@" in canon:  # a type parameter, `T@plain` or `T@any`
@@ -189,30 +193,105 @@ class World:
             return TypeInfo(canon, "alias", None, base=resolve_type(self, m, ent.value("aliasOf"), ent.line, quiet=True),
                             index=None if idx in (None, "none") else resolve_type(self, m, idx, ent.line, quiet=True))
         if ent.kind == "operationType":
-            return TypeInfo(canon, "operationType", True, sig=header_sig(self, m, ent, quiet=True))
+            return TypeInfo(canon, "operationType", True, sig=header_sig(self, m, ent, quiet=True),
+                            type_params=list(tparams.values()))
         if ent.kind == "typeInstance":
             row = ent.fact("instantiates")
             if row is None:
                 return None
-            gen = resolve_type(self, m, row.text(0), row.line, quiet=True)
-            args = [resolve_type(self, m, t.raw, row.line, quiet=True) for t in row.args[1:]]
-            ginfo = self.type_info(gen)
-            info = TypeInfo(canon, "instance", None, generic=gen, args=args)
-            if ginfo is not None and ginfo.kind in ("record", "enum") and ginfo.type_params:
-                sub = dict(zip(ginfo.type_params, args))
-                info.kind = ginfo.kind
-                info.fields = [(n, sub.get(t, t)) for n, t in ginfo.fields]
-                info.variants = [(n, sub.get(p, p) if p else None) for n, p in ginfo.variants]
-            elif ginfo is not None and ginfo.kind == "generic":
-                sub = dict(zip(ginfo.type_params, args))
-                info.variants = [(n, sub.get(p, p) if p else None) for n, p in ginfo.variants]
-                if gen == "list.List":
-                    info.index = self.index_alias(m, canon)
-                info.targets = generic_members(gen, canon, args, self.plain, info.index)
-                if gen != "option.Option":
-                    info.plain = False
+            scope = instance_scope(m, ent)
+            gen = resolve_type(self, m, row.text(0), row.line, quiet=True, generic=True)
+            args = [resolve_type(self, m, t.raw, row.line, scope, quiet=True) for t in row.args[1:]]
+            info = self.instance_info(m, canon, gen, args)
+            info.owner = instance_owner(ent)
             return info
         return None
+
+    def instance_info(self, m: Module, canon: str, gen: Optional[str], args: list) -> TypeInfo:
+        """The type a `typeInstance` names: generic `gen` at type arguments `args`."""
+        ginfo = self.type_info(gen)
+        info = TypeInfo(canon, "instance", None, generic=gen, args=args)
+        if ginfo is not None and ginfo.kind in ("record", "enum") and ginfo.type_params:
+            sub = dict(zip(ginfo.type_params, args))
+            info.kind = ginfo.kind
+            info.fields = [(n, sub.get(t, t)) for n, t in ginfo.fields]
+            info.variants = [(n, sub.get(p, p) if p else None) for n, p in ginfo.variants]
+        elif ginfo is not None and ginfo.kind == "operationType" and ginfo.type_params and ginfo.sig is not None:
+            # D-94: an instance of a generic operation type is an operation type
+            info.kind, info.plain = "operationType", True
+            info.sig = self.substitute(ginfo.sig, dict(zip(ginfo.type_params, args)))
+        elif ginfo is not None and ginfo.kind == "generic":
+            sub = dict(zip(ginfo.type_params, args))
+            info.variants = [(n, sub.get(p, p) if p else None) for n, p in ginfo.variants]
+            if gen == "list.List" and "<" not in canon:
+                info.index = self.index_alias(m, canon)
+            info.targets = generic_members(gen, canon, args, self.plain, info.index)
+            if gen != "option.Option":
+                info.plain = False
+        return info
+
+    # ------------------------------------------------------------ D-92: instances at a type parameter
+
+    def is_open(self, canon: Optional[str]) -> bool:
+        """Whether a type still names a type parameter: the parameter itself, or an instance stated
+        `in <operation>` whose arguments name one."""
+        if canon is None:
+            return False
+        if "@" in canon:
+            return True
+        info = self.type_info(canon)
+        return info is not None and info.owner is not None and any(self.is_open(a) for a in info.args)
+
+    def concrete(self, canon: Optional[str], sub: dict) -> Optional[str]:
+        """A type with the type arguments `sub` put in. An open instance becomes the instance of the same generic
+        at the arguments put in, named `<instance><arg,...>` (made once, kept in `synthetic`); the backend
+        compiles one copy of a generic operation per set of arguments, and uses these for its values."""
+        if canon is None or not sub:
+            return canon
+        if canon in sub:
+            return sub[canon]
+        if not self.is_open(canon):
+            return canon
+        info = self.type_info(canon)
+        args = [self.concrete(a, sub) for a in info.args]
+        name = f"{canon.split('<', 1)[0]}<{','.join(str(a) for a in args)}>"
+        if name not in self.synthetic:
+            mod = canon.split(".", 1)[0]
+            self.synthetic[name] = None  # cycle guard
+            made = self.instance_info(self.modules[mod], name, info.generic, args)
+            self.synthetic[name] = made
+        return name
+
+    def concrete_sig(self, sig: Sig, sub: dict) -> Sig:
+        t = lambda x: self.concrete(x, sub) if x else x  # noqa: E731
+        return Sig(tuple(Param(p.name, t(p.type), p.mode) for p in sig.inputs), t(sig.output), sig.output_owner,
+                   t(sig.raises), sig.effects, sig.waits, sig.borrows, sig.scoped)
+
+    def rescope(self, m: Module, canon: Optional[str], sub: dict, owner: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+        """D-92: a type of a generic operation's signature, seen from an instance of it. Type parameters become
+        the instance's arguments; an open instance of the generic operation becomes the instance of this module
+        that the caller declared for the same generic at the same arguments, in the caller's scope (`in none`, or
+        `in <owner>`). Returns (type, None), or (None, what is missing) when the caller declared none."""
+        if canon is None:
+            return None, None
+        if canon in sub:
+            return sub[canon], None
+        if not self.is_open(canon):
+            return canon, None
+        info = self.type_info(canon)
+        args = []
+        for a in info.args:
+            got, missing = self.rescope(m, a, sub, owner)
+            if missing is not None:
+                return None, missing
+            args.append(got)
+        for ent in m.types.values():
+            if ent.kind != "typeInstance" or instance_owner(ent) not in (None, owner):
+                continue
+            other = self.type_info(f"{m.short}.{ent.name}")
+            if other is not None and other.generic == info.generic and other.args == args:
+                return f"{m.short}.{ent.name}", None
+        return None, f"{type_param_name(info.generic or '?')} {' '.join(type_param_name(a or '?') for a in args)}"
 
     def index_aliases(self, m: Module, canon: str) -> list[Entity]:
         """D-60: the aliases of module `m` that state `indexes` naming the list type `canon`."""
@@ -261,13 +340,42 @@ class World:
 
 # ---------------------------------------------------------------- resolution helpers
 
-def type_params_of(ent: Entity) -> dict[str, str]:
+class TypeScope(dict):
+    """The type parameters names resolve against, and the operation they belong to (D-92): an instance stated
+    `in <operation>` is visible only where the scope's owner is that operation."""
+
+    def __init__(self, params: dict, owner: Optional[str] = None):
+        super().__init__(params)
+        self.owner = owner
+
+
+def type_params_of(ent: Entity) -> TypeScope:
     """`T typeParam plain` -> {"T": "T@plain"}."""
-    return {r.text(0): f"{r.text(0)}@{r.text(1)}" for r in ent.facts("typeParameter") if r.text(0) != "none"}
+    return TypeScope({r.text(0): f"{r.text(0)}@{r.text(1)}" for r in ent.facts("typeParameter") if r.text(0) != "none"},
+                     ent.name if ent.kind in ("operation", "test") else None)
 
 
-def resolve_type(world: World, m: Module, text: Optional[str], line: int, tparams=None, quiet: bool = False) -> Optional[str]:
-    tparams = tparams or {}
+def instance_owner(ent: Entity) -> Optional[str]:
+    """D-92: the generic operation an instance belongs to (`in <operation>`), or None for `in none`."""
+    if ent.kind not in ("typeInstance", "operationInstance"):
+        return None
+    v = ent.value("in")
+    return None if v in (None, "none") else v
+
+
+def instance_scope(m: "Module", ent: Entity) -> TypeScope:
+    """The type parameters an instance's type arguments may name: its operation's, for `in <operation>`."""
+    owner = instance_owner(ent)
+    if owner is not None and owner in m.ops:
+        return type_params_of(m.ops[owner])
+    return TypeScope({}, owner)
+
+
+def resolve_type(world: World, m: Module, text: Optional[str], line: int, tparams=None, quiet: bool = False,
+                 generic: bool = False) -> Optional[str]:
+    """`generic`: the name is the generic an `instantiates` row names; anywhere else a generic type is R402."""
+    if tparams is None:
+        tparams = {}
     if text is None:
         return None
     sink = m.sink
@@ -275,6 +383,17 @@ def resolve_type(world: World, m: Module, text: Optional[str], line: int, tparam
     def err(code, msg):
         if not quiet:
             sink.error(code, line, msg)
+
+    def unapplied(ent_or_info) -> None:
+        """D-94: a generic record, enum, or operation type, or a library generic, is used through a typeInstance
+        that names its type arguments."""
+        if generic:
+            return
+        params = (type_params_of(ent_or_info) if isinstance(ent_or_info, Entity) else
+                  ent_or_info.type_params if ent_or_info.kind == "generic" else [])
+        if params:
+            err("R402", f"`{text}` is generic; use it through a typeInstance that names its type arguments "
+                f"(`<Name> instantiates {text} <Type>...`)")
 
     if text in S.BUILTIN_TYPES:
         return text
@@ -292,6 +411,7 @@ def resolve_type(world: World, m: Module, text: Optional[str], line: int, tparam
             if name not in other.exports:
                 err("R404", f"type `{name}` is not exported by module `{mod}`")
                 return None
+            unapplied(other.types[name])
             return text
         lib = LIBRARY.get(mod)
         if lib is None:
@@ -300,10 +420,16 @@ def resolve_type(world: World, m: Module, text: Optional[str], line: int, tparam
         if name not in lib["types"]:
             err("R401", f"the standard module `{mod}` has no type `{name}`")
             return None
+        unapplied(lib["types"][name])
         return text
     if text in tparams:
         return tparams[text]
     if text in m.types:
+        owner = instance_owner(m.types[text])
+        if owner is not None and getattr(tparams, "owner", None) != owner:
+            err("R402", f"`{text}` belongs to the generic operation `{owner}` (`{text} in {owner}`): it names that "
+                "operation's type parameters, so only `" + owner + "` uses it (D-92)")
+        unapplied(m.types[text])
         return f"{m.short}.{text}"
     err("R401", f"unknown type `{text}`; built-in types are not prefixed, local types are declared in "
         f"this module, and imported types are written `module.Type`")
@@ -363,11 +489,11 @@ def literal_fits(world: World, tok, canon: Optional[str]) -> bool:
     return False
 
 
-def resolve_variant(world: World, m: Module, text: str, line: int, quiet: bool = False):
+def resolve_variant(world: World, m: Module, text: str, line: int, quiet: bool = False, tparams=None):
     """`Enum.variant` or `module.Enum.variant` -> (enum canon, variant, payload) or None."""
     parts = text.split(".")
     type_text = ".".join(parts[:-1])
-    canon = resolve_type(world, m, type_text, line, quiet=quiet)
+    canon = resolve_type(world, m, type_text, line, tparams, quiet=quiet)
     info = world.type_info(canon)
     if info is None:
         return None
@@ -544,24 +670,65 @@ def _check_op_instance(world: World, m: Module, ent: Entity) -> None:
     if not params:
         m.sink.error("R402", row.line, f"`{row.text(0)}` has no type parameters, so it is called directly")
         return
-    args = [resolve_type(world, m, t.raw, row.line) for t in row.args[1:]]
+    if not _check_instance_owner(m, ent):
+        return
+    args = [resolve_type(world, m, t.raw, row.line, instance_scope(m, ent)) for t in row.args[1:]]
     if len(args) != len(params):
         m.sink.error("R403", row.line, f"`{row.text(0)}` takes {len(params)} type argument(s), not {len(args)}")
         return
     for p, a in zip(params, args):
         if a is not None and p.endswith("@plain") and not world.plain(a):
             m.sink.error("R403", row.line, f"type parameter `{type_param_name(p)}` of `{row.text(0)}` is `plain`; "
-                         f"`{a}` is not a plain type")
+                         f"`{_show(a)}` is not a plain type")
+    if any(a is None for a in args):
+        return
+    # D-92: each instance of the generic operation's own types that its signature uses must be one the caller
+    # declared too, so a value passed in has a type the caller names
+    sig = header_sig(world, m, gen, quiet=True)
+    sub = dict(zip(params, args))
+    for t in [p.type for p in sig.inputs] + [sig.output, sig.raises]:
+        _got, missing = world.rescope(m, t, sub, instance_owner(ent))
+        if missing is not None:
+            where = f"in {instance_owner(ent)}" if instance_owner(ent) else "in none"
+            m.sink.error("R403", row.line, f"`{ent.name}` gives `{row.text(0)}` a signature that uses `{missing}`, "
+                         f"which this module does not name here; declare a typeInstance stated `{where}` that "
+                         f"instantiates `{missing}` (D-92)")
+            return
+
+
+def _check_instance_owner(m: Module, ent: Entity) -> bool:
+    """D-92: `<instance> in <operation>` names a generic operation of this module, and the instance is not exported."""
+    owner = instance_owner(ent)
+    if owner is None:
+        return True
+    row = ent.fact("in")
+    if owner not in m.ops:
+        m.sink.error("R401", row.line, f"`{ent.name} in {owner}`: `{owner}` is not an operation of this module")
+        return False
+    if not type_params_of(m.ops[owner]):
+        m.sink.error("R402", row.line, f"`{owner}` has no type parameters, so `{ent.name}` names concrete types "
+                     f"only and belongs to the module: `{ent.name} in none`")
+        return False
+    if ent.name in m.exports:
+        m.sink.error("R402", row.line, f"`{ent.name}` belongs to the generic operation `{owner}`, so it is not exported")
+    return True
 
 
 def instance_sig(world: World, m: Module, ent: Entity) -> Optional[Sig]:
+    """The signature an `operationInstance` gives its callers (D-92: in the caller's own types)."""
     row = ent.fact("instantiates")
     gen = m.ops.get(row.text(0)) if row is not None else None
     if gen is None:
         return None
     params = list(type_params_of(gen).values())
-    args = [resolve_type(world, m, t.raw, row.line, quiet=True) for t in row.args[1:]]
-    return world.substitute(header_sig(world, m, gen, quiet=True), dict(zip(params, args)))
+    args = [resolve_type(world, m, t.raw, row.line, instance_scope(m, ent), quiet=True) for t in row.args[1:]]
+    if any(a is None for a in args) or len(args) != len(params):
+        return None  # the instance's own row is reported; its callers are not checked against a guess
+    sub, owner = dict(zip(params, args)), instance_owner(ent)
+    sig = header_sig(world, m, gen, quiet=True)
+    t = lambda x: world.rescope(m, x, sub, owner)[0] if x else x  # noqa: E731
+    return Sig(tuple(Param(p.name, t(p.type), p.mode) for p in sig.inputs), t(sig.output), sig.output_owner,
+               t(sig.raises), sig.effects, sig.waits, sig.borrows, sig.scoped)
 
 
 def finish_module(m: Module) -> None:
@@ -610,10 +777,10 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
         _check_header(world, m, ent)
     if ent.kind == "typeInstance":
         row = ent.fact("instantiates")
-        if row is None:
+        if row is None or not _check_instance_owner(m, ent):
             return
-        gen = resolve_type(world, m, row.text(0), row.line)
-        args = [resolve_type(world, m, t.raw, row.line) for t in row.args[1:]]
+        gen = resolve_type(world, m, row.text(0), row.line, generic=True)
+        args = [resolve_type(world, m, t.raw, row.line, instance_scope(m, ent)) for t in row.args[1:]]
         ginfo = world.type_info(gen)
         if gen is not None and (ginfo is None or not ginfo.type_params):
             m.sink.error("R402", row.line, f"`{row.text(0)}` is not generic, so it cannot be instantiated")
@@ -626,8 +793,9 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
                     m.sink.error("R403", row.line, f"type parameter `{type_param_name(p)}` of `{row.text(0)}` is "
                                  f"`plain`; `{a}` is not a plain type")
                 elif a is not None and not fits_constraint(p, a, world.plain):
-                    m.sink.error("R403", row.line, f"a key of `{row.text(0)}` is a plain value or a `String`; `{a}` is "
-                                 "neither (D-61)")
+                    what = "an item" if gen == "set.Set" else "a key"
+                    m.sink.error("R403", row.line, f"{what} of `{row.text(0)}` is a plain value or a `String`; `{a}` "
+                                 "is neither (D-61, D-93)")
             if gen == "ffi.Function" and args and args[0] is not None:
                 _check_foreign(world, m, row, args[0])
             for a in args:
@@ -721,12 +889,13 @@ def _check_table(world: World, m: Module, ent: Entity) -> None:
                 sink.error("R306", ent.line, f"row `{rid}` has no cell for field `{fld}`")
 
 
-def _check_value_token(world: World, m: Module, tok, canon: Optional[str], line: int, what: str) -> None:
+def _check_value_token(world: World, m: Module, tok, canon: Optional[str], line: int, what: str,
+                       tparams=None) -> None:
     """A literal, a variant, or the name of a module operation (as an operation reference)."""
     if canon is None:
         return
     if tok.kind == "word" and S.is_variant(tok.raw):
-        v = resolve_variant(world, m, tok.raw, line)
+        v = resolve_variant(world, m, tok.raw, line, tparams=tparams)
         if v is not None and v[0] != canon:
             m.sink.error("R403", line, f"{what} is `{_show(canon)}`, but `{tok.raw}` is a `{_show(v[0])}`")
         if v is not None and v[2] is not None:
@@ -945,11 +1114,12 @@ def _build_call(world: World, m: Module, op: OpInfo, ent: Entity) -> CallInfo:
     sig, callee = None, None
     inv = ent.fact("invokes")
     if inv is not None:
-        sig, callee = resolve_target(world, m, inv.text(0), inv.line, args=args)
+        sig, callee = resolve_target(world, m, inv.text(0), inv.line, args=args, scope=tp)
     return CallInfo(ent, sig, args, out, catch, ref, callee)
 
 
-def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = False, args=None):
+def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = False, args=None, scope=None):
+    """`scope`: the type parameters of the operation the call belongs to (D-92: what its instances may name)."""
     sink = m.sink
 
     def err(code, msg):
@@ -973,8 +1143,13 @@ def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = 
                            "type arguments")
             return header_sig(world, m, m.ops[text], quiet=True), text
         if text in m.op_instances:
-            gen = m.op_instances[text].value("instantiates")
-            return instance_sig(world, m, m.op_instances[text]), gen
+            inst = m.op_instances[text]
+            owner = instance_owner(inst)
+            if owner is not None and getattr(scope, "owner", None) != owner:
+                return err("R402", f"`{text}` belongs to the generic operation `{owner}` (`{text} in {owner}`), so "
+                           f"only calls in `{owner}` invoke it (D-92)")
+            gen = inst.value("instantiates")
+            return instance_sig(world, m, inst), gen
         if text in m.tests:
             return err("R402", f"`{text}` is a test; tests are run by the test runner, not invoked")
         return err("R401", f"`{text}` is not an operation of this module")
@@ -989,7 +1164,7 @@ def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = 
             return Sig((), "Int64"), None
         return err("R401", f"table `{parts[0]}` has the targets `rowAt` and `length`, not `{parts[1]}`")
     if len(parts) == 2 and S.UPPER.match(parts[0]):
-        canon = resolve_type(world, m, parts[0], line, quiet=quiet)
+        canon = resolve_type(world, m, parts[0], line, scope, quiet=quiet)
         if canon is None:
             return None, None
         return member(canon, parts[1], parts[0])
@@ -1122,7 +1297,7 @@ def _check_let(world: World, m: Module, op: OpInfo, r: Row) -> None:
         else:
             m.sink.error("R401", r.line, f"`{tok.raw}` is not a value in `{op.entity.name}`")
         return
-    _check_value_token(world, m, tok, b.type, r.line, f"`{b.name}`")
+    _check_value_token(world, m, tok, b.type, r.line, f"`{b.name}`", op.tparams)
 
 
 def _reference_sig(world: World, m: Module, op: OpInfo, ci: CallInfo) -> Optional[Sig]:
