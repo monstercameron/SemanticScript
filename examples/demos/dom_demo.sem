@@ -1,0 +1,56 @@
+# dom_demo — DOM via wasm<->JS interop (WS3-161 / §document). EAV's DOM model
+# (std/document) compiles to wasm whose ss_dom_* operations are host functions
+# the JS/browser side supplies. This demo binds three such host operations
+# (dom_create_node / dom_set_value / dom_get_value) as runtimeBindings: under
+# `semanticscript wasm` they become wasm IMPORTS (the linker's --allow-undefined), and the
+# node host provides them backed by a JS-side node map — exactly the wasm<->JS
+# seam the real browser DOM adapter (ss_dom_runtime.js) uses, with a map standing
+# in for `document`. main creates a node, sets its value to 42 through JS, reads
+# it back through JS, and returns it; the host checks main() == 42, proving the
+# DOM-interop round-trip. (A real browser would back these with document; this
+# proves the codegen + interop without one.)
+
+DomDemo is project
+DomDemo module fix
+DomDemo target wasm
+DomDemo entry main
+DomDemo platform browserWasm
+
+fix is module
+fix path fix.mod
+fix exports main
+fix purpose "Host the DOM wasm-interop demo entry"
+fix invariant "Exposes main, which round-trips a value through JS DOM host functions"
+
+main is operation
+main out Int32
+main async no
+main purpose "Create a DOM node, set its value to 42 via JS, read it back, and return it"
+main invariant "Returns 42 round-tripped through the JS DOM host"
+main let theValue immutable Int32 42
+main do makeNode
+main do setNode
+main do getNode
+main return readBack
+
+makeNode is call
+makeNode in main
+makeNode invokes document.createNode
+makeNode out nodeId Int32
+
+setNode is call
+setNode in main
+setNode invokes document.setValue
+setNode arg node Int32 nodeId
+setNode arg value Int32 theValue
+setNode discards "the set-value host status is not needed"
+
+getNode is call
+getNode in main
+getNode invokes document.getValue
+getNode arg node Int32 nodeId
+getNode out readBack Int32
+
+browserWasm is platform
+browserWasm targetRuntime wasm
+browserWasm purpose "Wasm runtime platform for the DOM host adapter demo"

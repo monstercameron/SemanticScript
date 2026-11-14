@@ -1,0 +1,64 @@
+# capability_grant_use — capability declaration and use
+# (README §12). Tests effect declaration with matching capability: the write
+# effect is permitted only because main `uses` a capability that `grants` it.
+#
+# Correctness observation: the line is written through a capability-covered
+# effect; drop `uses stdoutWriter` and the gate rejects the program.
+# Expected output: Capability OK
+
+CapabilityGrantUse is project
+CapabilityGrantUse module examplesCapabilityGrantUse
+CapabilityGrantUse target console
+CapabilityGrantUse entry main
+
+examplesCapabilityGrantUse is module
+examplesCapabilityGrantUse path examples.capabilityGrantUse
+examplesCapabilityGrantUse exports main
+examplesCapabilityGrantUse purpose "Demonstrate capability declaration and use"
+examplesCapabilityGrantUse invariant "Capabilities match declared effects"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Use capability-backed effect"
+main invariant "Capability and effect match"
+
+main let message immutable String "Capability OK"
+main let harnessName immutable String "capability_grant_use"
+main let harnessExpected immutable String "Capability OK"
+main let emptyGuard immutable String ""
+main let noopName immutable String "capability_grant_use: real result (not the empty string)"
+
+main do writeMsg
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+writeMsg is call
+writeMsg in main
+writeMsg invokes test.assertEqualText
+writeMsg arg name String harnessName
+writeMsg arg expected String harnessExpected
+writeMsg arg actual String message
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String message
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

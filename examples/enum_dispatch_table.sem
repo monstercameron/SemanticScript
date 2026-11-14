@@ -1,0 +1,81 @@
+# enum_dispatch_table -- (repurposed from polymorphic_dispatch (no vtables)) construct an enum value and discriminate it with branch ifVariant
+# (README s10.5/s13), converging both arms to a single asserted outcome. Uses
+# the standard.test harness: prints a PASS/FAIL line and a summary, exit 0 iff
+# the assertion holds.
+#
+# Correctness observation: build Animal.dog; the matched arm sets outcome=7.
+# Expected output:
+#   PASS  enum_dispatch_table  (expected 7, actual 7)
+#   ---- 1 passed, 0 failed ----
+
+EnumDispatchTable is project
+EnumDispatchTable module examplesEnumDispatchTable
+EnumDispatchTable target console
+EnumDispatchTable entry main
+
+examplesEnumDispatchTable is module
+examplesEnumDispatchTable path examples.enumDispatchTable
+examplesEnumDispatchTable exports main
+examplesEnumDispatchTable purpose "Discriminate a Animal enum value and assert the outcome"
+examplesEnumDispatchTable invariant "Takes the matched arm only for the dog variant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Animal is enum
+Animal variant cat
+Animal variant dog
+Animal variant bird
+Animal purpose "An enum for variant discrimination"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Animal.dog, discriminate it, and assert the outcome"
+main invariant "Asserts the matched-arm outcome via the test harness"
+main let outcome mutable Int64 0
+main let chosenMark immutable Int64 7
+main let harnessName immutable String "enum_dispatch_table"
+main let harnessExpected immutable Int64 7
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "enum_dispatch_table: real result (not the no-op 0)"
+main do makeValue
+main branch ifVariant currentValue dog goto isChosen
+main goto afterMatch
+main at isChosen set outcome chosenMark
+main at afterMatch do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+makeValue is call
+makeValue in main
+makeValue invokes Animal.dog
+makeValue out currentValue Animal
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

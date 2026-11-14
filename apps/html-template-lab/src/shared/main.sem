@@ -1,0 +1,24 @@
+# html-template-lab/shared — EAV port (apps/html-template-lab/modules/shared).
+#
+# Shared presentation constants for the HTML console demo: static copy and class
+# names consumed by the todo-domain, components, and pages modules. Every value
+# is immutable module storage so downstream modules read stable demo copy.
+# (semsc v0.1 `exportConstant` -> EAV `exports` + single-line `storage`.)
+
+appHtmlTemplateLabShared is module
+appHtmlTemplateLabShared path apps.htmlTemplateLab.shared
+appHtmlTemplateLabShared exports todoDashboardPageTitleText
+appHtmlTemplateLabShared exports todoDashboardIntroText
+appHtmlTemplateLabShared exports shellClassName
+appHtmlTemplateLabShared exports panelClassName
+appHtmlTemplateLabShared exports openTodoClassName
+appHtmlTemplateLabShared exports doneTodoClassName
+appHtmlTemplateLabShared purpose "Shared presentation constants for the HTML console demo"
+appHtmlTemplateLabShared invariant "Every exported value is immutable module storage so downstream modules read stable demo copy"
+
+todoDashboardPageTitleText is storage module immutable String "TaskForge TUI HTML Template Lab"
+todoDashboardIntroText is storage module immutable String "Server-rendered HTML generated from first-class SemanticScript templates."
+shellClassName is storage module immutable String "todo-shell"
+panelClassName is storage module immutable String "todo-panel"
+openTodoClassName is storage module immutable String "todo-row todo-row-open"
+doneTodoClassName is storage module immutable String "todo-row todo-row-done"

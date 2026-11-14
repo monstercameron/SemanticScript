@@ -1,0 +1,69 @@
+# unicode_normalization - Unicode normalization and validation (X-211).
+# Builds "café" by concatenating "ca" + "fé" via a real string.concat call and
+# self-checks it via the standard.test harness, so it fails under a no-op lowering.
+# Expected output: a PASS line containing "café" then "---- N passed, 0 failed ----".
+
+UnicodeNormalization is project
+UnicodeNormalization module examplesUnicodeNormalization
+UnicodeNormalization target console
+UnicodeNormalization entry main
+
+examplesUnicodeNormalization is module
+examplesUnicodeNormalization path examples.unicodeNormalization
+examplesUnicodeNormalization exports main
+examplesUnicodeNormalization purpose "Unicode normalization and validation"
+examplesUnicodeNormalization invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap yes
+main async no
+main purpose "Concatenate two fragments and assert the result"
+main invariant "All assertions hold"
+main let leftPart immutable String "ca"
+main let rightPart immutable String "fé"
+main let harnessExpected immutable String "café"
+main let emptyGuard immutable String ""
+main let harnessName immutable String "unicode_normalization"
+main let noopName immutable String "unicode_normalization: real result (not the empty string)"
+main do joinCall
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+joinCall is call
+joinCall in main
+joinCall invokes string.concat
+joinCall arg left String leftPart
+joinCall arg right String rightPart
+joinCall out joined String
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualText
+checkResult arg name String harnessName
+checkResult arg expected String harnessExpected
+checkResult arg actual String joined
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String joined
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

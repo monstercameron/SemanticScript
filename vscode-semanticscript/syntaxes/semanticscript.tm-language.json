@@ -19,16 +19,7 @@
       "include": "#strings"
     },
     {
-      "include": "#declarationVerbs"
-    },
-    {
-      "include": "#contextVerbs"
-    },
-    {
-      "include": "#actionVerbs"
-    },
-    {
-      "include": "#controlVerbs"
+      "include": "#verbs"
     },
     {
       "include": "#numbers"
@@ -268,42 +259,6 @@
         }
       ]
     },
-    "declarationVerbs": {
-      "patterns": [
-        {
-          "name": "keyword.declaration.semanticscript",
-          "match": "^(\\s*)(guiBackend)\\b"
-        },
-        {
-          "name": "keyword.declaration.semanticscript",
-          "match": "^(\\s*)(section|project|target|runtime|entry|module|mode|languageMode|buildProject|modulePath|languageVersion|projectVersion|projectLicense|sourceRoot|registerModule|mainFile|mainOperation|testPattern|testRoot|dependencySource|dependencyFetch|dependencyCache|dependencyLock|dependencyIntegrity|targetRuntime|buildProfile|runtimeChecks|asyncRuntime|optLevel|persistLlvmIr|emitLlvmIr|llvmIrOutput|emitOptimizedLlvmIr|optimizedLlvmIrOutput|buildDir|buildRoot|buildFolderName|cpuBaseline|cpuTune|cpuFeature|cpuFeatureCheck|nativeOutput|keepResources|resourcesDir|nativeHttpHost|nativeHttpPort|formatterSetting|linterSetting|docsOutput|buildConstant|iconRoleDefinition|icon|iconRole|iconPurpose|iconImage|iconImageGroup|iconImagePath|iconImageFormat|iconImageWidth|iconImageHeight|iconImageScale|iconImageDepth|iconImagePlatform|iconImagePurpose|comptimeOperation|moduleFolder|modulePurpose|moduleOwns|moduleDoesNotOwn|moduleDependency|moduleWarning|moduleInvariant|moduleSecurity|moduleObservability|nativeRuntimeSource|nativeRuntimeLinkArg|exportType|exportError|exportOperation|exportCapability|exportConstant|version|publisher|description|copyright|productName|internalName|originalFilename|trademark|comments|metadata|dependency|dependencyEffect|dependencyExports|dependencyFunction|dependencyFunctionInput|dependencyFunctionOutput|dependencyFunctionEffect|dependencyFunctionAsync|import|importModule|importOperation|importType|importError|importCapability|importConstant|type|typeParameter|typeInvariant|typeRepresentation|typeTrust|typeMemory|typeLayout|typeLiteralEncoding|typeLiteralTerminator|record|recordLayout|recordAlign|field|fieldDefault|fieldInvariant|recordFieldJsonName|recordFieldJsonOmitWhen|enum|enumCase|error|errorCase|operation|webServer|serverHost|serverPort|route|routeNotFound|routeMethodNotAllowed|routeTimeout|routeMiddleware|routeTimeoutOptOut|routeMiddlewareOptOut|storage|sharedState|domainLiteral|json|jsonBody|literal|listLiteral|html|htmlTemplate|jsonCodec|policy|errorPolicy|validator|codec|schema|unknownFields|resource|resourceKey|resourceValue|resourceKind|adapter|boundary|mapper|retryPolicy|timeoutBudget|capability|authority|mutex|shared|channel|listType|arrayType|sliceType|smallListType|mapType|interval|workerPool|work|const|var|let|testCovers)\\b"
-        }
-      ]
-    },
-    "contextVerbs": {
-      "patterns": [
-        {
-          "name": "keyword.context.semanticscript",
-          "match": "^(\\s*)(input|output|effect|memory|memoryHeap|memoryArena|memoryAllocationSource|memoryStackLimit|async|operationBody|purpose|invariant|warning|precondition|failure|guarantee|security|timing|observability|pinsNullBodyFailurePath|responseBodyForwarder|htmlArg|htmlBody|rationale|dependencyPath|dependencyFailure|intrinsicName|runtimeBinding|runtimeBindingPrecondition|runtimeBindingFailure|runtimeBindingAsyncStart|runtimeBindingAsyncAwait|recordConstructor|recordConstructorFailure|recordBuildFailure|jsonCodecStrict|jsonCodecUnknownFields|jsonCodecDecodeTarget|jsonCodecEncodeTarget|jsonCodecRequiredField|jsonCodecInput|jsonCodecOutput|jsonCodecDecodeFailure|jsonCodecEncodeFailure|jsonCodecLimit|trustBoundary|trustBoundaryKind|trustBoundaryInput|trustBoundaryOutput|trustBoundaryValidator|trustBoundarySource|domainLiteralSource|domainLiteralTrust|domainLiteralValidation|literalBytes|literalDigest|literalPreview|literalSource|literalTrust|sharedStateOwner|sharedStateGuard|guardTokenSource|guardTokenOwner|guardTokenProtects|guardTokenRelease|listAllocator|arrayLength|smallListInlineCapacity|smallListSpillAllocator|mapKey|mapValue|mapAllocator|listLiteralLength|listLiteralIndexBase|listLiteralIndexPolicy|listLiteralItem|collectionOperation|collectionOperationArg|collectionOperationOutput|collectionOperationFailure|collectionOperationEffect|collectionOperationAllocation|collectionOperationMutation|collectionOperationIndexPolicy|collectionOperationLengthSource|collectionOperationBorrowSource|collectionOperationCapacitySource|collectionOperationSpillAllocator|collectionOperationSpillFailure|retryMaxAttempts|retryInitialDelay|retryMaximumDelay|retryJitter|group|groupPurpose|groupInput|groupOutput|groupError|groupFailure|groupTiming|deferLogSink|deferRunOn|deferOrder|deferFailurePolicy|deferConsumes|deferAwaitLogSink|deferAwaitTimeout|deferWhenExitLogSink|workArg)\\b"
-        }
-      ]
-    },
-    "actionVerbs": {
-      "patterns": [
-        {
-          "name": "keyword.action.semanticscript",
-          "match": "^(\\s*)(set|call|arg|argument|run|runChecked|start|await|case|done|bind|bindOk|bindError|bindOwned|bindOkOwned|ignore|ignoreOk|ignoreValue|ignoreError|declareFailure|makeError|requireNonNull|new|fieldGet|fieldSet|recordBuilder|recordSet|recordCopy|recordBuild|read|timeout|cancelOn|defer|deferLog|deferAwaitLog|deferWhenExitLog|select|selectCase|runSelect|taskGroup|startInGroup|awaitGroup|bindGroupError|send|receive|lock|unlock|useRetry|useCapability|startInterval|awaitIntervalTick|submitWork|awaitWork)\\b"
-        }
-      ]
-    },
-    "controlVerbs": {
-      "patterns": [
-        {
-          "name": "keyword.control.semanticscript",
-          "match": "^(\\s*)(label|branch|jump|branchIf|branchIfError|branchSelected|branchIfGroupError|branchIfChannelClosed|return|returnOk|returnError|returnValue|returnVoid)\\b"
-        }
-      ]
-    },
     "numbers": {
       "patterns": [
         {
@@ -377,6 +332,54 @@
         {
           "name": "variable.other.semanticscript",
           "match": "\\b[a-z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "verbs": {
+      "patterns": [
+        {
+          "match": "^(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s+)(is)\\b",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.semanticscript"
+            },
+            "4": {
+              "name": "keyword.declaration.semanticscript"
+            }
+          }
+        },
+        {
+          "match": "^(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s+)(branch|goto|label|at|return)\\b",
+          "captures": {
+            "2": {
+              "name": "variable.other.semanticscript"
+            },
+            "4": {
+              "name": "keyword.control.semanticscript"
+            }
+          }
+        },
+        {
+          "match": "^(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s+)(do|set|invokes|arg|start|join|poll|defer|owns|borrows|consumes|catch|discards|call|cleans|cleanedBy|takesOwnership|configure|instantiates|useRetry|detach|cancel|replace|suppress|readShared|setShared)\\b",
+          "captures": {
+            "2": {
+              "name": "variable.other.semanticscript"
+            },
+            "4": {
+              "name": "keyword.action.semanticscript"
+            }
+          }
+        },
+        {
+          "match": "^(\\s*)([A-Za-z_][A-Za-z0-9_]*)(\\s+)([a-z][A-Za-z0-9]*)\\b",
+          "captures": {
+            "2": {
+              "name": "variable.other.semanticscript"
+            },
+            "4": {
+              "name": "keyword.context.semanticscript"
+            }
+          }
         }
       ]
     }

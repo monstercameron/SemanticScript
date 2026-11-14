@@ -1,0 +1,73 @@
+# deep_recursion_trap — NEGATIVE test (X-202). Unbounded self-recursion with no
+# reachable base case: each call recurses on n+1, so the stack grows without
+# bound and the program traps (non-zero exit) instead of returning a value.
+# Expected: exit code != 0 (stack overflow / divergence trap).
+
+DeepRecursionTrap is project
+DeepRecursionTrap module examplesDeepRecursionTrap
+DeepRecursionTrap target console
+DeepRecursionTrap entry main
+
+examplesDeepRecursionTrap is module
+examplesDeepRecursionTrap path examples.deepRecursionTrap
+examplesDeepRecursionTrap exports main
+examplesDeepRecursionTrap purpose "Recurse without a base case to trip the stack-overflow trap"
+examplesDeepRecursionTrap invariant "diverge never returns; the program traps"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+diverge is operation
+diverge in n Int64
+diverge out Int64
+diverge memory heap no
+diverge async no
+diverge purpose "Recurse on n+1 forever, overflowing the call stack"
+diverge invariant "Has no reachable base case"
+diverge let one immutable Int64 1
+diverge do incCall
+diverge do recCall
+diverge return deeper
+
+incCall is call
+incCall in diverge
+incCall invokes math.addInt64
+incCall arg left Int64 n
+incCall arg right Int64 one
+incCall out nPlusOne Int64
+
+recCall is call
+recCall in diverge
+recCall invokes diverge
+recCall arg n Int64 nPlusOne
+recCall out deeper Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Start the unbounded recursion"
+main invariant "Never completes normally"
+main let seedValue immutable Int64 0
+main let okCode immutable ExitCode 0
+main do kickoff
+main do writeCall
+main return okCode
+
+kickoff is call
+kickoff in main
+kickoff invokes diverge
+kickoff arg n Int64 seedValue
+kickoff out result Int64
+
+writeCall is call
+writeCall in main
+writeCall invokes console.writeIntegerLine
+writeCall arg value Int64 result
