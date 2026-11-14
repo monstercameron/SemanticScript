@@ -1,0 +1,1277 @@
+# stage0: the first stage of a SemanticScript compiler written in SemanticScript.
+#
+#     cd docs/refined-examples/stage0
+#     refined run . -- samples/hello/hello.sem build/hello [cc|gcc|clang]
+#
+# It reads the module file named by the first argument, tokenizes it (lexer),
+# groups the tokens into rows of words (syntax), groups the rows into entities
+# (model), checks that the module is in the stage0 subset (subset), writes it
+# as C (emitc) to the second argument with `.c` added, and runs the C compiler
+# named by the third argument (gcc when there is none) to build the second
+# argument as an executable.
+#
+# Authority (build.sem, and the capabilities below): read the command line;
+# read files under the working directory; write files under `build/`; run a C
+# compiler named exactly `cc`, `gcc`, or `clang`. Paths come from the command
+# line, so their scopes are checked when the files are opened (D-38); a path
+# outside them stops the program before the file is touched.
+#
+# Exit codes: 0 built; 1 the source is refused, with a diagnostic
+# `path:line:column: message (word)` on standard error; 2 usage; 3 a file could
+# not be read or written, or the source is not UTF-8; 4 the C compiler could not
+# be run or failed; 5 standard output failed.
+
+stage0 is module
+stage0 purpose "Compile a SemanticScript module in the stage0 subset to C and build it with the C compiler"
+stage0 path stage0
+stage0 imports standard.console
+stage0 imports standard.process
+stage0 imports standard.fs
+stage0 imports standard.string
+stage0 imports standard.buffer
+stage0 imports standard.compare
+stage0 imports standard.convert
+stage0 imports standard.time
+stage0 imports lexer
+stage0 imports syntax
+stage0 imports model
+stage0 imports subset
+stage0 imports emitc
+stage0 exports main
+
+argumentReader is capability
+argumentReader purpose "Authority to read the source path, output name, and compiler name"
+argumentReader grants read process.arguments none
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to report what was built on standard output"
+stdoutWriter grants write console.stdout none
+
+stderrWriter is capability
+stderrWriter purpose "Authority to report diagnostics and problems on standard error"
+stderrWriter grants write console.stderr none
+
+sourceFiles is capability
+sourceFiles purpose "Authority to read source files under the working directory"
+sourceFiles grants read fs.files "./"
+
+buildFiles is capability
+buildFiles purpose "Authority to write the C file under build/ and to make that directory"
+buildFiles grants write fs.files "build/"
+
+cCompilers is capability
+cCompilers purpose "Authority to run a C compiler named exactly cc, gcc, or clang"
+cCompilers grants spawn process.programs "cc"
+cCompilers grants spawn process.programs "gcc"
+cCompilers grants spawn process.programs "clang"
+
+reportRejection is operation
+reportRejection purpose "Write a rejection on standard error as `path:line:column: message (word)`"
+reportRejection invariant none
+reportRejection typeParameter none
+reportRejection input path String borrowed
+reportRejection input source String borrowed
+reportRejection input rejection syntax.Rejection copied
+reportRejection output none
+reportRejection outputOwnedBy none
+reportRejection raises console.WriteError
+reportRejection effect write console.stderr
+reportRejection uses stderrWriter
+reportRejection memoryHeap true
+reportRejection async false
+reportRejection maxRecursion none
+reportRejection label begin loopKind none
+reportRejection label begin within none
+reportRejection label locate loopKind none
+reportRejection label locate within none
+reportRejection label plain loopKind none
+reportRejection label plain within none
+reportRejection label done loopKind none
+reportRejection label done within none
+reportRejection label locatedFailed loopKind none
+reportRejection label locatedFailed within none
+reportRejection label plainFailed loopKind none
+reportRejection label plainFailed within none
+reportRejection let colon Byte 58 immutable
+reportRejection at begin do describe
+reportRejection at begin do newText
+reportRejection at begin do putPath
+reportRejection at begin do putColon
+reportRejection at begin do putDescription
+reportRejection at begin do finishText
+reportRejection at begin branch ifError finishText goto plain else goto locate
+reportRejection at locate do writeLocated
+reportRejection at locate branch ifError writeLocated goto locatedFailed else goto done
+reportRejection at plain do writePlain
+reportRejection at plain branch ifError writePlain goto plainFailed else goto done
+reportRejection at done return ok none
+reportRejection at locatedFailed return error locatedError
+reportRejection at plainFailed return error plainError
+
+scratch is region
+scratch in reportRejection
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+describe is call
+describe in reportRejection
+describe invokes syntax.diagnostic
+describe argument source String source lend
+describe argument rejection syntax.Rejection rejection copy
+describe argument region Region scratch lend
+describe result described String
+describe ownedBy scratch
+describe cleanedBy none
+describe borrows none
+describe catch none
+describe suppresses none
+
+newText is call
+newText in reportRejection
+newText invokes buffer.new
+newText argument region Region scratch lend
+newText result text buffer.ByteBuffer
+newText ownedBy scratch
+newText cleanedBy none
+newText borrows none
+newText catch none
+newText suppresses none
+
+putPath is call
+putPath in reportRejection
+putPath invokes buffer.appendString
+putPath argument buffer buffer.ByteBuffer text lendMutable
+putPath argument text String path lend
+putPath result none
+putPath ownedBy none
+putPath cleanedBy none
+putPath borrows none
+putPath catch none
+putPath suppresses none
+
+putColon is call
+putColon in reportRejection
+putColon invokes buffer.appendByte
+putColon argument buffer buffer.ByteBuffer text lendMutable
+putColon argument value Byte colon copy
+putColon result none
+putColon ownedBy none
+putColon cleanedBy none
+putColon borrows none
+putColon catch none
+putColon suppresses none
+
+putDescription is call
+putDescription in reportRejection
+putDescription invokes buffer.appendString
+putDescription argument buffer buffer.ByteBuffer text lendMutable
+putDescription argument text String described lend
+putDescription result none
+putDescription ownedBy none
+putDescription cleanedBy none
+putDescription borrows none
+putDescription catch none
+putDescription suppresses none
+
+finishText is call
+finishText in reportRejection
+finishText invokes buffer.toString
+finishText argument buffer buffer.ByteBuffer text lend
+finishText argument region Region scratch lend
+finishText result located String
+finishText ownedBy scratch
+finishText cleanedBy none
+finishText borrows none
+finishText catch textError string.Utf8Error
+finishText suppresses none
+
+writeLocated is call
+writeLocated in reportRejection
+writeLocated invokes console.writeError
+writeLocated argument text String located lend
+writeLocated result none
+writeLocated ownedBy none
+writeLocated cleanedBy none
+writeLocated borrows none
+writeLocated catch locatedError console.WriteError
+writeLocated suppresses none
+
+writePlain is call
+writePlain in reportRejection
+writePlain invokes console.writeError
+writePlain argument text String described lend
+writePlain result none
+writePlain ownedBy none
+writePlain cleanedBy none
+writePlain borrows none
+writePlain catch plainError console.WriteError
+writePlain suppresses none
+
+main is operation
+main purpose "Compile the module file named by the first argument to C and build it with the C compiler"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect read process.arguments
+main effect write console.stdout
+main effect write console.stderr
+main effect read fs.files
+main effect write fs.files
+main effect spawn process.programs
+main uses argumentReader
+main uses stdoutWriter
+main uses stderrWriter
+main uses sourceFiles
+main uses buildFiles
+main uses cCompilers
+main memoryHeap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label readPaths loopKind none
+main label readPaths within none
+main label readOutput loopKind none
+main label readOutput within none
+main label compilerCheck loopKind none
+main label compilerCheck within none
+main label readCompiler loopKind none
+main label readCompiler within none
+main label chooseCompiler loopKind none
+main label chooseCompiler within none
+main label readSource loopKind none
+main label readSource within none
+main label decode loopKind none
+main label decode within none
+main label lex loopKind none
+main label lex within none
+main label groupSourceRows loopKind none
+main label groupSourceRows within none
+main label modelSource loopKind none
+main label modelSource within none
+main label checkSource loopKind none
+main label checkSource within none
+main label emit loopKind none
+main label emit within none
+main label save loopKind none
+main label save within none
+main label writeC loopKind none
+main label writeC within none
+main label build loopKind none
+main label build within none
+main label statusCheck loopKind none
+main label statusCheck within none
+main label summarize loopKind none
+main label summarize within none
+main label printSummary loopKind none
+main label printSummary within none
+main label finished loopKind none
+main label finished within none
+main label usage loopKind none
+main label usage within none
+main label usageDone loopKind none
+main label usageDone within none
+main label readFailed loopKind none
+main label readFailed within none
+main label notText loopKind none
+main label notText within none
+main label writeFailed loopKind none
+main label writeFailed within none
+main label fileDone loopKind none
+main label fileDone within none
+main label runFailed loopKind none
+main label runFailed within none
+main label compilerFailed loopKind none
+main label compilerFailed within none
+main label compilerDone loopKind none
+main label compilerDone within none
+main label outputFailed loopKind none
+main label outputFailed within none
+main label lexFailed loopKind none
+main label lexFailed within none
+main label invalidAt loopKind none
+main label invalidAt within none
+main label unterminatedAt loopKind none
+main label unterminatedAt within none
+main label tooLargeAt loopKind none
+main label tooLargeAt within none
+main label rowsRefused loopKind none
+main label rowsRefused within none
+main label modelRefused loopKind none
+main label modelRefused within none
+main label checkRefused loopKind none
+main label checkRefused within none
+main label emitRefused loopKind none
+main label emitRefused within none
+main label report loopKind none
+main label report within none
+main label refused loopKind none
+main label refused within none
+main let usageText String "usage: refined run <stage0> -- <source.sem> build/<name> [cc|gcc|clang]" immutable
+main let defaultCompiler String "gcc" immutable
+main let cSuffix String ".c" immutable
+main let outputFlag String "-o" immutable
+main let buildDirectory String "build" immutable
+main let notTextText String ": the source is not UTF-8 text" immutable
+main let readFailedText String ": cannot read the source file" immutable
+main let writeFailedText String ": cannot write the C file" immutable
+main let runFailedText String ": the C compiler could not be run: " immutable
+main let compilerFailedText String "stage0: the C compiler failed on " immutable
+main let builtLead String "stage0: " immutable
+main let builtMiddle String " -> " immutable
+main let lexText String "the lexer refused the source" immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let three Int64 3 immutable
+main let readLimit Int64 1048576 immutable
+main let waitMs Int64 120000 immutable
+main let okCode ExitCode 0 immutable
+main let refusedCode ExitCode 1 immutable
+main let usageCode ExitCode 2 immutable
+main let fileCode ExitCode 3 immutable
+main let compilerCode ExitCode 4 immutable
+main let outputCode ExitCode 5 immutable
+main let compiler String unset mutable
+main let rejection syntax.Rejection unset mutable
+main at begin do makeDeadline
+main at begin do countArguments
+main at begin do checkCount
+main at begin branch if tooFew goto usage else goto readPaths
+main at readPaths set compiler defaultCompiler
+main at readPaths do readSourcePath
+main at readPaths branch ifError readSourcePath goto usage else goto readOutput
+main at readOutput do readOutputName
+main at readOutput branch ifError readOutputName goto usage else goto compilerCheck
+main at compilerCheck do checkCompiler
+main at compilerCheck branch if namesCompiler goto readCompiler else goto readSource
+main at readCompiler do readCompilerName
+main at readCompiler branch ifError readCompilerName goto usage else goto chooseCompiler
+main at chooseCompiler set compiler compilerName
+main at chooseCompiler goto readSource
+main at readSource start readTask into none
+main at readSource join readTask
+main at readSource branch ifError readTask goto readFailed else goto decode
+main at decode do decodeSource
+main at decode branch ifError decodeSource goto notText else goto lex
+main at lex do tokenizeSource
+main at lex branch ifError tokenizeSource goto lexFailed else goto groupSourceRows
+main at groupSourceRows do newWords
+main at groupSourceRows do newRows
+main at groupSourceRows do groupSource
+main at groupSourceRows branch ifError groupSource goto rowsRefused else goto modelSource
+main at modelSource do newEntities
+main at modelSource do newNames
+main at modelSource do buildTheModel
+main at modelSource branch ifError buildTheModel goto modelRefused else goto checkSource
+main at checkSource do newValues
+main at checkSource do newCalls
+main at checkSource do newLabels
+main at checkSource do newSteps
+main at checkSource do checkTheSubset
+main at checkSource branch ifError checkTheSubset goto checkRefused else goto emit
+main at emit do newC
+main at emit do readAnchor
+main at emit do emitTheProgram
+main at emit branch ifError emitTheProgram goto emitRefused else goto save
+main at save do makeCPath
+main at save do makeBuildDirectory
+main at save branch ifError makeBuildDirectory goto writeC else goto writeC
+main at writeC do cBytes
+main at writeC start writeTask into none
+main at writeC join writeTask
+main at writeC branch ifError writeTask goto writeFailed else goto build
+main at build do newArguments
+main at build do addCPath
+main at build do addOutputFlag
+main at build do addOutputName
+main at build start runCompiler into none
+main at build join runCompiler
+main at build branch ifError runCompiler goto runFailed else goto statusCheck
+main at statusCheck do statusValue
+main at statusCheck do successCheck
+main at statusCheck branch if built goto summarize else goto compilerFailed
+main at summarize do newSummary
+main at summarize do putSummary0
+main at summarize do putSummary1
+main at summarize do putSummary2
+main at summarize do putSummary3
+main at summarize do putSummary4
+main at summarize do putSummary5
+main at summarize do finishSummary
+main at summarize branch ifError finishSummary goto outputFailed else goto printSummary
+main at printSummary do printIt
+main at printSummary branch ifError printIt goto outputFailed else goto finished
+main at finished return ok okCode
+main at usage do writeUsage
+main at usage branch ifError writeUsage goto usageDone else goto usageDone
+main at usageDone return ok usageCode
+main at readFailed do joinReadFailed
+main at readFailed do writeReadFailed
+main at readFailed branch ifError writeReadFailed goto fileDone else goto fileDone
+main at notText do joinNotText
+main at notText do writeNotText
+main at notText branch ifError writeNotText goto fileDone else goto fileDone
+main at writeFailed do joinWriteFailed
+main at writeFailed do writeWriteFailed
+main at writeFailed branch ifError writeWriteFailed goto fileDone else goto fileDone
+main at fileDone return ok fileCode
+main at runFailed do joinRunFailed
+main at runFailed do joinRunFailedPath
+main at runFailed do writeRunFailed
+main at runFailed branch ifError writeRunFailed goto compilerDone else goto compilerDone
+main at compilerFailed do joinCompilerFailed
+main at compilerFailed do writeCompilerFailed
+main at compilerFailed branch ifError writeCompilerFailed goto compilerDone else goto compilerDone
+main at compilerDone return ok compilerCode
+main at outputFailed return ok outputCode
+main at lexFailed match lexError lexer.LexError
+main at lexFailed case lexer.LexError.invalidByte bind badAt string.Position goto invalidAt
+main at lexFailed case lexer.LexError.unterminatedText bind openAt string.Position goto unterminatedAt
+main at lexFailed case lexer.LexError.integerTooLarge bind digitsAt string.Position goto tooLargeAt
+main at invalidAt do makeKindinvalidAt
+main at invalidAt do wordinvalidAt
+main at invalidAt do rejectioninvalidAt
+main at invalidAt set rejection invalidAtRejection
+main at invalidAt goto report
+main at unterminatedAt do makeKindunterminatedAt
+main at unterminatedAt do wordunterminatedAt
+main at unterminatedAt do rejectionunterminatedAt
+main at unterminatedAt set rejection unterminatedAtRejection
+main at unterminatedAt goto report
+main at tooLargeAt do makeKindtooLargeAt
+main at tooLargeAt do wordtooLargeAt
+main at tooLargeAt do rejectiontooLargeAt
+main at tooLargeAt set rejection tooLargeAtRejection
+main at tooLargeAt goto report
+main at rowsRefused set rejection rowsError
+main at rowsRefused goto report
+main at modelRefused set rejection modelError
+main at modelRefused goto report
+main at checkRefused set rejection checkError
+main at checkRefused goto report
+main at emitRefused set rejection emitError
+main at emitRefused goto report
+main at report do reportIt
+main at report branch ifError reportIt goto refused else goto refused
+main at refused return ok refusedCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 16777216
+store released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+makeDeadline suppresses none
+
+countArguments is call
+countArguments in main
+countArguments invokes process.argumentCount
+countArguments argument none
+countArguments result argumentCount Int64
+countArguments ownedBy none
+countArguments cleanedBy none
+countArguments borrows none
+countArguments catch none
+countArguments suppresses none
+
+checkCount is call
+checkCount in main
+checkCount invokes compare.lessThanInt64
+checkCount argument left Int64 argumentCount copy
+checkCount argument right Int64 two copy
+checkCount result tooFew Bool
+checkCount ownedBy none
+checkCount cleanedBy none
+checkCount borrows none
+checkCount catch none
+checkCount suppresses none
+
+readSourcePath is call
+readSourcePath in main
+readSourcePath invokes process.argument
+readSourcePath argument index Int64 zero copy
+readSourcePath argument region Region store lend
+readSourcePath result sourcePath String
+readSourcePath ownedBy store
+readSourcePath cleanedBy none
+readSourcePath borrows none
+readSourcePath catch readSourcePathError process.ArgumentError
+readSourcePath suppresses none
+
+readOutputName is call
+readOutputName in main
+readOutputName invokes process.argument
+readOutputName argument index Int64 one copy
+readOutputName argument region Region store lend
+readOutputName result outputName String
+readOutputName ownedBy store
+readOutputName cleanedBy none
+readOutputName borrows none
+readOutputName catch readOutputNameError process.ArgumentError
+readOutputName suppresses none
+
+checkCompiler is call
+checkCompiler in main
+checkCompiler invokes compare.greaterOrEqualInt64
+checkCompiler argument left Int64 argumentCount copy
+checkCompiler argument right Int64 three copy
+checkCompiler result namesCompiler Bool
+checkCompiler ownedBy none
+checkCompiler cleanedBy none
+checkCompiler borrows none
+checkCompiler catch none
+checkCompiler suppresses none
+
+readCompilerName is call
+readCompilerName in main
+readCompilerName invokes process.argument
+readCompilerName argument index Int64 two copy
+readCompilerName argument region Region store lend
+readCompilerName result compilerName String
+readCompilerName ownedBy store
+readCompilerName cleanedBy none
+readCompilerName borrows none
+readCompilerName catch readCompilerNameError process.ArgumentError
+readCompilerName suppresses none
+
+readTask is task
+readTask in main
+readTask invokes fs.readAll
+readTask argument path String sourcePath lend
+readTask argument region Region store lend
+readTask argument maxBytes Int64 readLimit copy
+readTask argument deadline time.Deadline deadline copy
+readTask result sourceBytes Bytes
+readTask ownedBy store
+readTask cleanedBy none
+readTask borrows none
+readTask catch readError fs.FileError
+readTask suppresses none
+
+decodeSource is call
+decodeSource in main
+decodeSource invokes string.fromBytes
+decodeSource argument bytes Bytes sourceBytes lend
+decodeSource argument region Region store lend
+decodeSource result source String
+decodeSource ownedBy store
+decodeSource cleanedBy none
+decodeSource borrows none
+decodeSource catch decodeError string.Utf8Error
+decodeSource suppresses none
+
+tokenizeSource is call
+tokenizeSource in main
+tokenizeSource invokes lexer.tokenize
+tokenizeSource argument source String source lend
+tokenizeSource argument resultRegion Region store lend
+tokenizeSource result tokens lexer.Tokens
+tokenizeSource ownedBy store
+tokenizeSource cleanedBy none
+tokenizeSource borrows none
+tokenizeSource catch lexError lexer.LexError
+tokenizeSource suppresses none
+
+newWords is call
+newWords in main
+newWords invokes syntax.Words.new
+newWords argument region Region store lend
+newWords result words syntax.Words
+newWords ownedBy store
+newWords cleanedBy none
+newWords borrows none
+newWords catch none
+newWords suppresses none
+
+newRows is call
+newRows in main
+newRows invokes syntax.Rows.new
+newRows argument region Region store lend
+newRows result rows syntax.Rows
+newRows ownedBy store
+newRows cleanedBy none
+newRows borrows none
+newRows catch none
+newRows suppresses none
+
+groupSource is call
+groupSource in main
+groupSource invokes syntax.groupRows
+groupSource argument source String source lend
+groupSource argument tokens lexer.Tokens tokens lend
+groupSource argument words syntax.Words words lendMutable
+groupSource argument rows syntax.Rows rows lendMutable
+groupSource result none
+groupSource ownedBy none
+groupSource cleanedBy none
+groupSource borrows none
+groupSource catch rowsError syntax.Rejection
+groupSource suppresses none
+
+newEntities is call
+newEntities in main
+newEntities invokes model.Entities.new
+newEntities argument region Region store lend
+newEntities result entities model.Entities
+newEntities ownedBy store
+newEntities cleanedBy none
+newEntities borrows none
+newEntities catch none
+newEntities suppresses none
+
+newNames is call
+newNames in main
+newNames invokes model.EntityNames.new
+newNames argument region Region store lend
+newNames result names model.EntityNames
+newNames ownedBy store
+newNames cleanedBy none
+newNames borrows none
+newNames catch none
+newNames suppresses none
+
+buildTheModel is call
+buildTheModel in main
+buildTheModel invokes model.buildModel
+buildTheModel argument source String source lend
+buildTheModel argument words syntax.Words words lend
+buildTheModel argument rows syntax.Rows rows lend
+buildTheModel argument entities model.Entities entities lendMutable
+buildTheModel argument names model.EntityNames names lendMutable
+buildTheModel result none
+buildTheModel ownedBy none
+buildTheModel cleanedBy none
+buildTheModel borrows none
+buildTheModel catch modelError syntax.Rejection
+buildTheModel suppresses none
+
+newValues is call
+newValues in main
+newValues invokes subset.Values.new
+newValues argument region Region store lend
+newValues result values subset.Values
+newValues ownedBy store
+newValues cleanedBy none
+newValues borrows none
+newValues catch none
+newValues suppresses none
+
+newCalls is call
+newCalls in main
+newCalls invokes subset.Calls.new
+newCalls argument region Region store lend
+newCalls result calls subset.Calls
+newCalls ownedBy store
+newCalls cleanedBy none
+newCalls borrows none
+newCalls catch none
+newCalls suppresses none
+
+newLabels is call
+newLabels in main
+newLabels invokes subset.Labels.new
+newLabels argument region Region store lend
+newLabels result labels subset.Labels
+newLabels ownedBy store
+newLabels cleanedBy none
+newLabels borrows none
+newLabels catch none
+newLabels suppresses none
+
+newSteps is call
+newSteps in main
+newSteps invokes subset.Steps.new
+newSteps argument region Region store lend
+newSteps result steps subset.Steps
+newSteps ownedBy store
+newSteps cleanedBy none
+newSteps borrows none
+newSteps catch none
+newSteps suppresses none
+
+checkTheSubset is call
+checkTheSubset in main
+checkTheSubset invokes subset.checkSubset
+checkTheSubset argument source String source lend
+checkTheSubset argument words syntax.Words words lend
+checkTheSubset argument rows syntax.Rows rows lend
+checkTheSubset argument entities model.Entities entities lend
+checkTheSubset argument names model.EntityNames names lend
+checkTheSubset argument values subset.Values values lendMutable
+checkTheSubset argument calls subset.Calls calls lendMutable
+checkTheSubset argument labels subset.Labels labels lendMutable
+checkTheSubset argument steps subset.Steps steps lendMutable
+checkTheSubset result none
+checkTheSubset ownedBy none
+checkTheSubset cleanedBy none
+checkTheSubset borrows none
+checkTheSubset catch checkError syntax.Rejection
+checkTheSubset suppresses none
+
+newC is call
+newC in main
+newC invokes buffer.new
+newC argument region Region store lend
+newC result cText buffer.ByteBuffer
+newC ownedBy store
+newC cleanedBy none
+newC borrows none
+newC catch none
+newC suppresses none
+
+readAnchor is call
+readAnchor in main
+readAnchor invokes syntax.Words.getOrTrap
+readAnchor argument list syntax.Words words lend
+readAnchor argument index Int64 zero copy
+readAnchor result anchor syntax.Word
+readAnchor ownedBy none
+readAnchor cleanedBy none
+readAnchor borrows none
+readAnchor catch none
+readAnchor suppresses none
+
+emitTheProgram is call
+emitTheProgram in main
+emitTheProgram invokes emitc.emitProgram
+emitTheProgram argument source String source lend
+emitTheProgram argument values subset.Values values lend
+emitTheProgram argument calls subset.Calls calls lend
+emitTheProgram argument labels subset.Labels labels lend
+emitTheProgram argument steps subset.Steps steps lend
+emitTheProgram argument buffer buffer.ByteBuffer cText lendMutable
+emitTheProgram argument anchor syntax.Word anchor copy
+emitTheProgram result none
+emitTheProgram ownedBy none
+emitTheProgram cleanedBy none
+emitTheProgram borrows none
+emitTheProgram catch emitError syntax.Rejection
+emitTheProgram suppresses none
+
+makeCPath is call
+makeCPath in main
+makeCPath invokes string.concat
+makeCPath argument left String outputName lend
+makeCPath argument right String cSuffix lend
+makeCPath argument region Region store lend
+makeCPath result cPath String
+makeCPath ownedBy store
+makeCPath cleanedBy none
+makeCPath borrows none
+makeCPath catch none
+makeCPath suppresses none
+
+makeBuildDirectory is call
+makeBuildDirectory rationale "The directory usually exists already; if it cannot be made, writing the C file into it fails next and is reported there"
+makeBuildDirectory in main
+makeBuildDirectory invokes fs.createDirectory
+makeBuildDirectory argument path String buildDirectory lend
+makeBuildDirectory result none
+makeBuildDirectory ownedBy none
+makeBuildDirectory cleanedBy none
+makeBuildDirectory borrows none
+makeBuildDirectory catch directoryError fs.FileError
+makeBuildDirectory suppresses fs.FileError.notFound
+makeBuildDirectory suppresses fs.FileError.denied
+makeBuildDirectory suppresses fs.FileError.exists
+makeBuildDirectory suppresses fs.FileError.tooLarge
+makeBuildDirectory suppresses fs.FileError.timedOut
+makeBuildDirectory suppresses fs.FileError.cancelled
+makeBuildDirectory suppresses fs.FileError.busy
+makeBuildDirectory suppresses fs.FileError.failed
+
+cBytes is call
+cBytes in main
+cBytes invokes buffer.toBytes
+cBytes argument buffer buffer.ByteBuffer cText lend
+cBytes result cBytesValue Bytes
+cBytes ownedBy none
+cBytes cleanedBy none
+cBytes borrows cText
+cBytes catch none
+cBytes suppresses none
+
+writeTask is task
+writeTask in main
+writeTask invokes fs.writeAll
+writeTask argument path String cPath lend
+writeTask argument bytes Bytes cBytesValue lend
+writeTask argument deadline time.Deadline deadline copy
+writeTask result none
+writeTask ownedBy none
+writeTask cleanedBy none
+writeTask borrows none
+writeTask catch writeError fs.FileError
+writeTask suppresses none
+
+newArguments is call
+newArguments in main
+newArguments invokes process.newArguments
+newArguments argument region Region store lend
+newArguments result compilerArguments process.Arguments
+newArguments ownedBy store
+newArguments cleanedBy none
+newArguments borrows none
+newArguments catch none
+newArguments suppresses none
+
+addCPath is call
+addCPath in main
+addCPath invokes process.addArgument
+addCPath argument arguments process.Arguments compilerArguments lendMutable
+addCPath argument text String cPath lend
+addCPath result none
+addCPath ownedBy none
+addCPath cleanedBy none
+addCPath borrows none
+addCPath catch none
+addCPath suppresses none
+
+addOutputFlag is call
+addOutputFlag in main
+addOutputFlag invokes process.addArgument
+addOutputFlag argument arguments process.Arguments compilerArguments lendMutable
+addOutputFlag argument text String outputFlag lend
+addOutputFlag result none
+addOutputFlag ownedBy none
+addOutputFlag cleanedBy none
+addOutputFlag borrows none
+addOutputFlag catch none
+addOutputFlag suppresses none
+
+addOutputName is call
+addOutputName in main
+addOutputName invokes process.addArgument
+addOutputName argument arguments process.Arguments compilerArguments lendMutable
+addOutputName argument text String outputName lend
+addOutputName result none
+addOutputName ownedBy none
+addOutputName cleanedBy none
+addOutputName borrows none
+addOutputName catch none
+addOutputName suppresses none
+
+runCompiler is task
+runCompiler in main
+runCompiler invokes process.run
+runCompiler argument program String compiler lend
+runCompiler argument arguments process.Arguments compilerArguments lend
+runCompiler argument deadline time.Deadline deadline copy
+runCompiler result status ExitCode
+runCompiler ownedBy none
+runCompiler cleanedBy none
+runCompiler borrows none
+runCompiler catch runError process.RunError
+runCompiler suppresses none
+
+statusValue is call
+statusValue in main
+statusValue invokes convert.exitCodeToInt64
+statusValue argument value ExitCode status copy
+statusValue result statusNumber Int64
+statusValue ownedBy none
+statusValue cleanedBy none
+statusValue borrows none
+statusValue catch none
+statusValue suppresses none
+
+successCheck is call
+successCheck in main
+successCheck invokes compare.equalInt64
+successCheck argument left Int64 statusNumber copy
+successCheck argument right Int64 zero copy
+successCheck result built Bool
+successCheck ownedBy none
+successCheck cleanedBy none
+successCheck borrows none
+successCheck catch none
+successCheck suppresses none
+
+newSummary is call
+newSummary in main
+newSummary invokes buffer.new
+newSummary argument region Region store lend
+newSummary result summary buffer.ByteBuffer
+newSummary ownedBy store
+newSummary cleanedBy none
+newSummary borrows none
+newSummary catch none
+newSummary suppresses none
+
+putSummary0 is call
+putSummary0 in main
+putSummary0 invokes buffer.appendString
+putSummary0 argument buffer buffer.ByteBuffer summary lendMutable
+putSummary0 argument text String builtLead lend
+putSummary0 result none
+putSummary0 ownedBy none
+putSummary0 cleanedBy none
+putSummary0 borrows none
+putSummary0 catch none
+putSummary0 suppresses none
+
+putSummary1 is call
+putSummary1 in main
+putSummary1 invokes buffer.appendString
+putSummary1 argument buffer buffer.ByteBuffer summary lendMutable
+putSummary1 argument text String sourcePath lend
+putSummary1 result none
+putSummary1 ownedBy none
+putSummary1 cleanedBy none
+putSummary1 borrows none
+putSummary1 catch none
+putSummary1 suppresses none
+
+putSummary2 is call
+putSummary2 in main
+putSummary2 invokes buffer.appendString
+putSummary2 argument buffer buffer.ByteBuffer summary lendMutable
+putSummary2 argument text String builtMiddle lend
+putSummary2 result none
+putSummary2 ownedBy none
+putSummary2 cleanedBy none
+putSummary2 borrows none
+putSummary2 catch none
+putSummary2 suppresses none
+
+putSummary3 is call
+putSummary3 in main
+putSummary3 invokes buffer.appendString
+putSummary3 argument buffer buffer.ByteBuffer summary lendMutable
+putSummary3 argument text String cPath lend
+putSummary3 result none
+putSummary3 ownedBy none
+putSummary3 cleanedBy none
+putSummary3 borrows none
+putSummary3 catch none
+putSummary3 suppresses none
+
+putSummary4 is call
+putSummary4 in main
+putSummary4 invokes buffer.appendString
+putSummary4 argument buffer buffer.ByteBuffer summary lendMutable
+putSummary4 argument text String builtMiddle lend
+putSummary4 result none
+putSummary4 ownedBy none
+putSummary4 cleanedBy none
+putSummary4 borrows none
+putSummary4 catch none
+putSummary4 suppresses none
+
+putSummary5 is call
+putSummary5 in main
+putSummary5 invokes buffer.appendString
+putSummary5 argument buffer buffer.ByteBuffer summary lendMutable
+putSummary5 argument text String outputName lend
+putSummary5 result none
+putSummary5 ownedBy none
+putSummary5 cleanedBy none
+putSummary5 borrows none
+putSummary5 catch none
+putSummary5 suppresses none
+
+finishSummary is call
+finishSummary in main
+finishSummary invokes buffer.toString
+finishSummary argument buffer buffer.ByteBuffer summary lend
+finishSummary argument region Region store lend
+finishSummary result summaryText String
+finishSummary ownedBy store
+finishSummary cleanedBy none
+finishSummary borrows none
+finishSummary catch summaryError string.Utf8Error
+finishSummary suppresses none
+
+printIt is call
+printIt in main
+printIt invokes console.writeLine
+printIt argument text String summaryText lend
+printIt result none
+printIt ownedBy none
+printIt cleanedBy none
+printIt borrows none
+printIt catch printError console.WriteError
+printIt suppresses none
+
+writeUsage is call
+writeUsage rationale "The exit code already says what happened; a message that cannot be written changes nothing"
+writeUsage in main
+writeUsage invokes console.writeError
+writeUsage argument text String usageText lend
+writeUsage result none
+writeUsage ownedBy none
+writeUsage cleanedBy none
+writeUsage borrows none
+writeUsage catch usageError console.WriteError
+writeUsage suppresses console.WriteError.failed
+
+joinReadFailed is call
+joinReadFailed in main
+joinReadFailed invokes string.concat
+joinReadFailed argument left String sourcePath lend
+joinReadFailed argument right String readFailedText lend
+joinReadFailed argument region Region store lend
+joinReadFailed result readFailedMessage String
+joinReadFailed ownedBy store
+joinReadFailed cleanedBy none
+joinReadFailed borrows none
+joinReadFailed catch none
+joinReadFailed suppresses none
+
+writeReadFailed is call
+writeReadFailed rationale "The exit code already says what happened; a message that cannot be written changes nothing"
+writeReadFailed in main
+writeReadFailed invokes console.writeError
+writeReadFailed argument text String readFailedMessage lend
+writeReadFailed result none
+writeReadFailed ownedBy none
+writeReadFailed cleanedBy none
+writeReadFailed borrows none
+writeReadFailed catch readFailedError console.WriteError
+writeReadFailed suppresses console.WriteError.failed
+
+joinNotText is call
+joinNotText in main
+joinNotText invokes string.concat
+joinNotText argument left String sourcePath lend
+joinNotText argument right String notTextText lend
+joinNotText argument region Region store lend
+joinNotText result notTextMessage String
+joinNotText ownedBy store
+joinNotText cleanedBy none
+joinNotText borrows none
+joinNotText catch none
+joinNotText suppresses none
+
+writeNotText is call
+writeNotText rationale "The exit code already says what happened; a message that cannot be written changes nothing"
+writeNotText in main
+writeNotText invokes console.writeError
+writeNotText argument text String notTextMessage lend
+writeNotText result none
+writeNotText ownedBy none
+writeNotText cleanedBy none
+writeNotText borrows none
+writeNotText catch notTextError console.WriteError
+writeNotText suppresses console.WriteError.failed
+
+joinWriteFailed is call
+joinWriteFailed in main
+joinWriteFailed invokes string.concat
+joinWriteFailed argument left String cPath lend
+joinWriteFailed argument right String writeFailedText lend
+joinWriteFailed argument region Region store lend
+joinWriteFailed result writeFailedMessage String
+joinWriteFailed ownedBy store
+joinWriteFailed cleanedBy none
+joinWriteFailed borrows none
+joinWriteFailed catch none
+joinWriteFailed suppresses none
+
+writeWriteFailed is call
+writeWriteFailed rationale "The exit code already says what happened; a message that cannot be written changes nothing"
+writeWriteFailed in main
+writeWriteFailed invokes console.writeError
+writeWriteFailed argument text String writeFailedMessage lend
+writeWriteFailed result none
+writeWriteFailed ownedBy none
+writeWriteFailed cleanedBy none
+writeWriteFailed borrows none
+writeWriteFailed catch writeFailedError console.WriteError
+writeWriteFailed suppresses console.WriteError.failed
+
+joinRunFailed is call
+joinRunFailed in main
+joinRunFailed invokes string.concat
+joinRunFailed argument left String compiler lend
+joinRunFailed argument right String runFailedText lend
+joinRunFailed argument region Region store lend
+joinRunFailed result runFailedLead String
+joinRunFailed ownedBy store
+joinRunFailed cleanedBy none
+joinRunFailed borrows none
+joinRunFailed catch none
+joinRunFailed suppresses none
+
+joinRunFailedPath is call
+joinRunFailedPath in main
+joinRunFailedPath invokes string.concat
+joinRunFailedPath argument left String runFailedLead lend
+joinRunFailedPath argument right String cPath lend
+joinRunFailedPath argument region Region store lend
+joinRunFailedPath result runFailedMessage String
+joinRunFailedPath ownedBy store
+joinRunFailedPath cleanedBy none
+joinRunFailedPath borrows none
+joinRunFailedPath catch none
+joinRunFailedPath suppresses none
+
+writeRunFailed is call
+writeRunFailed rationale "The exit code already says what happened; a message that cannot be written changes nothing"
+writeRunFailed in main
+writeRunFailed invokes console.writeError
+writeRunFailed argument text String runFailedMessage lend
+writeRunFailed result none
+writeRunFailed ownedBy none
+writeRunFailed cleanedBy none
+writeRunFailed borrows none
+writeRunFailed catch runFailedError console.WriteError
+writeRunFailed suppresses console.WriteError.failed
+
+joinCompilerFailed is call
+joinCompilerFailed in main
+joinCompilerFailed invokes string.concat
+joinCompilerFailed argument left String compilerFailedText lend
+joinCompilerFailed argument right String cPath lend
+joinCompilerFailed argument region Region store lend
+joinCompilerFailed result compilerFailedMessage String
+joinCompilerFailed ownedBy store
+joinCompilerFailed cleanedBy none
+joinCompilerFailed borrows none
+joinCompilerFailed catch none
+joinCompilerFailed suppresses none
+
+writeCompilerFailed is call
+writeCompilerFailed rationale "The exit code already says what happened; a message that cannot be written changes nothing"
+writeCompilerFailed in main
+writeCompilerFailed invokes console.writeError
+writeCompilerFailed argument text String compilerFailedMessage lend
+writeCompilerFailed result none
+writeCompilerFailed ownedBy none
+writeCompilerFailed cleanedBy none
+writeCompilerFailed borrows none
+writeCompilerFailed catch compilerFailedError console.WriteError
+writeCompilerFailed suppresses console.WriteError.failed
+
+makeKindinvalidAt is call
+makeKindinvalidAt in main
+makeKindinvalidAt invokes syntax.WordKind.name
+makeKindinvalidAt argument none
+makeKindinvalidAt result kindinvalidAt syntax.WordKind
+makeKindinvalidAt ownedBy none
+makeKindinvalidAt cleanedBy none
+makeKindinvalidAt borrows none
+makeKindinvalidAt catch none
+makeKindinvalidAt suppresses none
+
+wordinvalidAt is call
+wordinvalidAt in main
+wordinvalidAt invokes syntax.Word.new
+wordinvalidAt argument kind syntax.WordKind kindinvalidAt copy
+wordinvalidAt argument start string.Position badAt copy
+wordinvalidAt argument length Int64 one copy
+wordinvalidAt result invalidAtWord syntax.Word
+wordinvalidAt ownedBy none
+wordinvalidAt cleanedBy none
+wordinvalidAt borrows none
+wordinvalidAt catch none
+wordinvalidAt suppresses none
+
+rejectioninvalidAt is call
+rejectioninvalidAt in main
+rejectioninvalidAt invokes syntax.Rejection.invalidCharacter
+rejectioninvalidAt argument payload syntax.Word invalidAtWord copy
+rejectioninvalidAt result invalidAtRejection syntax.Rejection
+rejectioninvalidAt ownedBy none
+rejectioninvalidAt cleanedBy none
+rejectioninvalidAt borrows none
+rejectioninvalidAt catch none
+rejectioninvalidAt suppresses none
+
+makeKindunterminatedAt is call
+makeKindunterminatedAt in main
+makeKindunterminatedAt invokes syntax.WordKind.name
+makeKindunterminatedAt argument none
+makeKindunterminatedAt result kindunterminatedAt syntax.WordKind
+makeKindunterminatedAt ownedBy none
+makeKindunterminatedAt cleanedBy none
+makeKindunterminatedAt borrows none
+makeKindunterminatedAt catch none
+makeKindunterminatedAt suppresses none
+
+wordunterminatedAt is call
+wordunterminatedAt in main
+wordunterminatedAt invokes syntax.Word.new
+wordunterminatedAt argument kind syntax.WordKind kindunterminatedAt copy
+wordunterminatedAt argument start string.Position openAt copy
+wordunterminatedAt argument length Int64 one copy
+wordunterminatedAt result unterminatedAtWord syntax.Word
+wordunterminatedAt ownedBy none
+wordunterminatedAt cleanedBy none
+wordunterminatedAt borrows none
+wordunterminatedAt catch none
+wordunterminatedAt suppresses none
+
+rejectionunterminatedAt is call
+rejectionunterminatedAt in main
+rejectionunterminatedAt invokes syntax.Rejection.unterminatedText
+rejectionunterminatedAt argument payload syntax.Word unterminatedAtWord copy
+rejectionunterminatedAt result unterminatedAtRejection syntax.Rejection
+rejectionunterminatedAt ownedBy none
+rejectionunterminatedAt cleanedBy none
+rejectionunterminatedAt borrows none
+rejectionunterminatedAt catch none
+rejectionunterminatedAt suppresses none
+
+makeKindtooLargeAt is call
+makeKindtooLargeAt in main
+makeKindtooLargeAt invokes syntax.WordKind.name
+makeKindtooLargeAt argument none
+makeKindtooLargeAt result kindtooLargeAt syntax.WordKind
+makeKindtooLargeAt ownedBy none
+makeKindtooLargeAt cleanedBy none
+makeKindtooLargeAt borrows none
+makeKindtooLargeAt catch none
+makeKindtooLargeAt suppresses none
+
+wordtooLargeAt is call
+wordtooLargeAt in main
+wordtooLargeAt invokes syntax.Word.new
+wordtooLargeAt argument kind syntax.WordKind kindtooLargeAt copy
+wordtooLargeAt argument start string.Position digitsAt copy
+wordtooLargeAt argument length Int64 one copy
+wordtooLargeAt result tooLargeAtWord syntax.Word
+wordtooLargeAt ownedBy none
+wordtooLargeAt cleanedBy none
+wordtooLargeAt borrows none
+wordtooLargeAt catch none
+wordtooLargeAt suppresses none
+
+rejectiontooLargeAt is call
+rejectiontooLargeAt in main
+rejectiontooLargeAt invokes syntax.Rejection.integerTooLarge
+rejectiontooLargeAt argument payload syntax.Word tooLargeAtWord copy
+rejectiontooLargeAt result tooLargeAtRejection syntax.Rejection
+rejectiontooLargeAt ownedBy none
+rejectiontooLargeAt cleanedBy none
+rejectiontooLargeAt borrows none
+rejectiontooLargeAt catch none
+rejectiontooLargeAt suppresses none
+
+reportIt is call
+reportIt rationale "The exit code already says the source was refused; a lost message does not change it"
+reportIt in main
+reportIt invokes reportRejection
+reportIt argument path String sourcePath lend
+reportIt argument source String source lend
+reportIt argument rejection syntax.Rejection rejection copy
+reportIt result none
+reportIt ownedBy none
+reportIt cleanedBy none
+reportIt borrows none
+reportIt catch reportError console.WriteError
+reportIt suppresses console.WriteError.failed

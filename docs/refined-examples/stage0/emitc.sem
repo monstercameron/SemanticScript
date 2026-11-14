@@ -1,0 +1,3058 @@
+# The stage0 compiler's back end: the program the checker collected, written as
+# one C file. The file is a fixed prelude (the runtime: console output and the
+# checked arithmetic, each trapping with exit code 70 as `refined run` does),
+# then `main`:
+#
+# - every value becomes a typed C local named `v_<name>` (`const char *` for
+#   `String`, `int64_t` for `Int64`, `int` for `ExitCode`, `bool` for `Bool`),
+#   declared first with a zero value, then set in order: constants, then lets
+#   (a let set from another value reads it, so constants come first);
+# - every call that can fail gets a flag `f_<name>`, set by the call;
+# - every loop header with a `maxIterations` bound gets a counter `n_<label>`;
+# - every label becomes a C label `l_<label>` and its steps follow it: `do`
+#   becomes a C statement or runtime call, `set` an assignment, `goto` and
+#   `branch` C `goto`s, and `return ok` a C `return`.
+#
+# A jump to a bounded loop header counts the pass when it comes from inside
+# the loop (from the header or a block within it) and resets the count when it
+# enters the loop from outside, the rule the LLVM backend follows, so a loop
+# that passes its bound traps in C as it does under `refined run`.
+#
+# C spellings are looked up by the target's and type's names in this module's
+# own tables, so the checker and the emitter each keep only what they need.
+
+emitc is module
+emitc purpose "Write a checked stage0 program as one C file"
+emitc path emitc
+emitc imports standard.string
+emitc imports standard.buffer
+emitc imports standard.list
+emitc imports standard.map
+emitc imports standard.math
+emitc imports standard.compare
+emitc imports standard.logic
+emitc imports standard.test
+emitc imports lexer
+emitc imports syntax
+emitc imports model
+emitc imports subset
+emitc exports emitProgram
+
+# ---------------------------------------------------------------- C spellings
+
+CTarget is record
+CTarget purpose "How a call target is written in C: the text before, between, and after its arguments"
+CTarget typeParameter none
+CTarget field text String
+CTarget field before String
+CTarget field between String
+CTarget field after String
+
+cTargets is table
+cTargets purpose "The C spelling of every call target of the stage0 subset"
+cTargets rowType CTarget
+cTargets row writeLineSpelling 1
+cTargets row writeSpelling 2
+cTargets row writeIntegerLineSpelling 3
+cTargets row addInt64Spelling 4
+cTargets row subtractInt64Spelling 5
+cTargets row multiplyInt64Spelling 6
+cTargets row divideInt64Spelling 7
+cTargets row remainderInt64Spelling 8
+cTargets row negateInt64Spelling 9
+cTargets row absoluteInt64Spelling 10
+cTargets row equalInt64Spelling 11
+cTargets row notEqualInt64Spelling 12
+cTargets row lessThanInt64Spelling 13
+cTargets row lessOrEqualInt64Spelling 14
+cTargets row greaterThanInt64Spelling 15
+cTargets row greaterOrEqualInt64Spelling 16
+cTargets row andSpelling 17
+cTargets row orSpelling 18
+cTargets row xorSpelling 19
+cTargets row notSpelling 20
+cTargets row exitCodeToInt64Spelling 21
+cTargets row int64ToExitCodeSpelling 22
+cTargets cell writeLineSpelling text "console.writeLine"
+cTargets cell writeLineSpelling before "ss_write_line("
+cTargets cell writeLineSpelling between ""
+cTargets cell writeLineSpelling after ")"
+cTargets cell writeSpelling text "console.write"
+cTargets cell writeSpelling before "ss_write("
+cTargets cell writeSpelling between ""
+cTargets cell writeSpelling after ")"
+cTargets cell writeIntegerLineSpelling text "console.writeIntegerLine"
+cTargets cell writeIntegerLineSpelling before "ss_write_integer_line("
+cTargets cell writeIntegerLineSpelling between ""
+cTargets cell writeIntegerLineSpelling after ")"
+cTargets cell addInt64Spelling text "math.addInt64"
+cTargets cell addInt64Spelling before "ss_add("
+cTargets cell addInt64Spelling between ", "
+cTargets cell addInt64Spelling after ")"
+cTargets cell subtractInt64Spelling text "math.subtractInt64"
+cTargets cell subtractInt64Spelling before "ss_subtract("
+cTargets cell subtractInt64Spelling between ", "
+cTargets cell subtractInt64Spelling after ")"
+cTargets cell multiplyInt64Spelling text "math.multiplyInt64"
+cTargets cell multiplyInt64Spelling before "ss_multiply("
+cTargets cell multiplyInt64Spelling between ", "
+cTargets cell multiplyInt64Spelling after ")"
+cTargets cell divideInt64Spelling text "math.divideInt64"
+cTargets cell divideInt64Spelling before "ss_divide("
+cTargets cell divideInt64Spelling between ", "
+cTargets cell divideInt64Spelling after ")"
+cTargets cell remainderInt64Spelling text "math.remainderInt64"
+cTargets cell remainderInt64Spelling before "ss_remainder("
+cTargets cell remainderInt64Spelling between ", "
+cTargets cell remainderInt64Spelling after ")"
+cTargets cell negateInt64Spelling text "math.negateInt64"
+cTargets cell negateInt64Spelling before "ss_negate("
+cTargets cell negateInt64Spelling between ""
+cTargets cell negateInt64Spelling after ")"
+cTargets cell absoluteInt64Spelling text "math.absoluteInt64"
+cTargets cell absoluteInt64Spelling before "ss_absolute("
+cTargets cell absoluteInt64Spelling between ""
+cTargets cell absoluteInt64Spelling after ")"
+cTargets cell equalInt64Spelling text "compare.equalInt64"
+cTargets cell equalInt64Spelling before "("
+cTargets cell equalInt64Spelling between " == "
+cTargets cell equalInt64Spelling after ")"
+cTargets cell notEqualInt64Spelling text "compare.notEqualInt64"
+cTargets cell notEqualInt64Spelling before "("
+cTargets cell notEqualInt64Spelling between " != "
+cTargets cell notEqualInt64Spelling after ")"
+cTargets cell lessThanInt64Spelling text "compare.lessThanInt64"
+cTargets cell lessThanInt64Spelling before "("
+cTargets cell lessThanInt64Spelling between " < "
+cTargets cell lessThanInt64Spelling after ")"
+cTargets cell lessOrEqualInt64Spelling text "compare.lessOrEqualInt64"
+cTargets cell lessOrEqualInt64Spelling before "("
+cTargets cell lessOrEqualInt64Spelling between " <= "
+cTargets cell lessOrEqualInt64Spelling after ")"
+cTargets cell greaterThanInt64Spelling text "compare.greaterThanInt64"
+cTargets cell greaterThanInt64Spelling before "("
+cTargets cell greaterThanInt64Spelling between " > "
+cTargets cell greaterThanInt64Spelling after ")"
+cTargets cell greaterOrEqualInt64Spelling text "compare.greaterOrEqualInt64"
+cTargets cell greaterOrEqualInt64Spelling before "("
+cTargets cell greaterOrEqualInt64Spelling between " >= "
+cTargets cell greaterOrEqualInt64Spelling after ")"
+cTargets cell andSpelling text "logic.and"
+cTargets cell andSpelling before "("
+cTargets cell andSpelling between " && "
+cTargets cell andSpelling after ")"
+cTargets cell orSpelling text "logic.or"
+cTargets cell orSpelling before "("
+cTargets cell orSpelling between " || "
+cTargets cell orSpelling after ")"
+cTargets cell xorSpelling text "logic.xor"
+cTargets cell xorSpelling before "("
+cTargets cell xorSpelling between " != "
+cTargets cell xorSpelling after ")"
+cTargets cell notSpelling text "logic.not"
+cTargets cell notSpelling before "(!"
+cTargets cell notSpelling between ""
+cTargets cell notSpelling after ")"
+cTargets cell exitCodeToInt64Spelling text "convert.exitCodeToInt64"
+cTargets cell exitCodeToInt64Spelling before "((int64_t)"
+cTargets cell exitCodeToInt64Spelling between ""
+cTargets cell exitCodeToInt64Spelling after ")"
+cTargets cell int64ToExitCodeSpelling text "convert.int64ToExitCode"
+cTargets cell int64ToExitCodeSpelling before "ss_exit_code("
+cTargets cell int64ToExitCodeSpelling between ""
+cTargets cell int64ToExitCodeSpelling after ")"
+
+CType is record
+CType purpose "How a value type is written in C, and the zero a C local of it starts as"
+CType typeParameter none
+CType field text String
+CType field cType String
+CType field zero String
+
+cTypes is table
+cTypes purpose "The C spelling of every value type of the stage0 subset"
+cTypes rowType CType
+cTypes row stringSpelling 1
+cTypes row int64Spelling 2
+cTypes row exitcodeSpelling 3
+cTypes row boolSpelling 4
+cTypes cell stringSpelling text "String"
+cTypes cell stringSpelling cType "const char *"
+cTypes cell stringSpelling zero "\"\""
+cTypes cell int64Spelling text "Int64"
+cTypes cell int64Spelling cType "int64_t "
+cTypes cell int64Spelling zero "0"
+cTypes cell exitcodeSpelling text "ExitCode"
+cTypes cell exitcodeSpelling cType "int "
+cTypes cell exitcodeSpelling zero "0"
+cTypes cell boolSpelling text "Bool"
+cTypes cell boolSpelling cType "bool "
+cTypes cell boolSpelling zero "false"
+
+prelude is constant
+prelude purpose "The runtime every emitted program starts with: console output and checked arithmetic"
+prelude type String
+prelude value "/* Generated by stage0, the first SemanticScript compiler written in SemanticScript. */\n#include <stdbool.h>\n#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n#ifdef _WIN32\n#include <fcntl.h>\n#include <io.h>\n#endif\n\nstatic void ss_start(void) {\n#ifdef _WIN32\n  _setmode(_fileno(stdout), _O_BINARY);\n#endif\n}\n\nstatic void ss_trap(const char *what) {\n  fflush(stdout);\n  fprintf(stderr, \"trap: %s\\n\", what);\n  exit(70);\n}\n\nstatic bool ss_write(const char *text) {\n  return fputs(text, stdout) == EOF;\n}\n\nstatic bool ss_write_line(const char *text) {\n  return fputs(text, stdout) == EOF || fputc('\\n', stdout) == EOF;\n}\n\nstatic bool ss_write_integer_line(int64_t value) {\n  char digits[24];\n  int at = 23;\n  uint64_t rest = value < 0 ? (uint64_t)0 - (uint64_t)value : (uint64_t)value;\n  digits[at] = '\\0';\n  do {\n    at -= 1;\n    digits[at] = (char)('0' + rest % 10);\n    rest /= 10;\n  } while (rest != 0);\n  if (value < 0) {\n    at -= 1;\n    digits[at] = '-';\n  }\n  return ss_write_line(digits + at);\n}\n\nstatic int64_t ss_add(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_add_overflow(left, right, &out)) ss_trap(\"math.addInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_subtract(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_sub_overflow(left, right, &out)) ss_trap(\"math.subtractInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_multiply(int64_t left, int64_t right) {\n  int64_t out;\n  if (__builtin_mul_overflow(left, right, &out)) ss_trap(\"math.multiplyInt64 overflowed Int64\");\n  return out;\n}\n\nstatic int64_t ss_divide(int64_t left, int64_t right) {\n  if (right == 0) ss_trap(\"math.divideInt64 divided by zero\");\n  if (left == INT64_MIN && right == -1) ss_trap(\"math.divideInt64 overflowed Int64\");\n  return left / right;\n}\n\nstatic int64_t ss_remainder(int64_t left, int64_t right) {\n  if (right == 0) ss_trap(\"math.remainderInt64 divided by zero\");\n  if (left == INT64_MIN && right == -1) ss_trap(\"math.remainderInt64 overflowed Int64\");\n  return left % right;\n}\n\nstatic int64_t ss_negate(int64_t value) {\n  if (value == INT64_MIN) ss_trap(\"math.negateInt64 overflowed Int64\");\n  return -value;\n}\n\nstatic int64_t ss_absolute(int64_t value) {\n  if (value == INT64_MIN) ss_trap(\"math.absoluteInt64 overflowed Int64\");\n  return value < 0 ? -value : value;\n}\n\nstatic int ss_exit_code(int64_t value) {\n  if (value < 0 || value > 255) ss_trap(\"convert.int64ToExitCode was given a value outside 0 to 255\");\n  return (int)value;\n}\n\nstatic void ss_pass(int64_t *passes, int64_t bound, const char *label) {\n  *passes += 1;\n  if (*passes > bound) {\n    fflush(stdout);\n    fprintf(stderr, \"trap: loop `%s` returned to its header more often than its maxIterations\\n\", label);\n    exit(70);\n  }\n}\n\n"
+
+lookupCTarget is operation
+lookupCTarget purpose "Find a call target word in the C spellings and return its row"
+lookupCTarget invariant none
+lookupCTarget typeParameter none
+lookupCTarget input source String borrowed
+lookupCTarget input word syntax.Word copied
+lookupCTarget output Int64
+lookupCTarget outputOwnedBy none
+lookupCTarget raises syntax.Rejection
+lookupCTarget effect none
+lookupCTarget uses none
+lookupCTarget memoryHeap false
+lookupCTarget async false
+lookupCTarget maxRecursion none
+lookupCTarget label begin loopKind none
+lookupCTarget label begin within none
+lookupCTarget label scan loopKind forEach
+lookupCTarget label scan within none
+lookupCTarget label scan maxIterations 22
+lookupCTarget label scan over cTargets
+lookupCTarget label compare loopKind none
+lookupCTarget label compare within scan
+lookupCTarget label found loopKind none
+lookupCTarget label found within none
+lookupCTarget label missing loopKind none
+lookupCTarget label missing within none
+lookupCTarget label outside loopKind none
+lookupCTarget label outside within none
+lookupCTarget let one Int64 1 immutable
+lookupCTarget let position Int64 0 mutable
+lookupCTarget at begin do readStart
+lookupCTarget at begin do readOffset
+lookupCTarget at begin do readLength
+lookupCTarget at begin do cutWord
+lookupCTarget at begin branch ifError cutWord goto outside else goto scan
+lookupCTarget at scan branch ifNext cTargets bind entry CTarget goto compare else goto missing
+lookupCTarget at compare do countRow
+lookupCTarget at compare set position nextPosition
+lookupCTarget at compare do readText
+lookupCTarget at compare do sameText
+lookupCTarget at compare branch if isSame goto found else goto scan
+lookupCTarget at found return ok position
+lookupCTarget at missing do makeMissing
+lookupCTarget at missing return error missingError
+lookupCTarget at outside do makeOutside
+lookupCTarget at outside return error outsideError
+
+readStart is call
+readStart in lookupCTarget
+readStart invokes syntax.Word.start
+readStart argument record syntax.Word word copy
+readStart result wordStart string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readOffset is call
+readOffset in lookupCTarget
+readOffset invokes string.Position.offset
+readOffset argument record string.Position wordStart copy
+readOffset result wordOffset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readLength is call
+readLength in lookupCTarget
+readLength invokes syntax.Word.length
+readLength argument record syntax.Word word copy
+readLength result wordLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+cutWord is call
+cutWord in lookupCTarget
+cutWord invokes string.slice
+cutWord argument text String source lend
+cutWord argument start Int64 wordOffset copy
+cutWord argument length Int64 wordLength copy
+cutWord result wordText String
+cutWord ownedBy none
+cutWord cleanedBy none
+cutWord borrows source
+cutWord catch cutError string.StringIndexError
+cutWord suppresses none
+
+countRow is call
+countRow in lookupCTarget
+countRow invokes math.addInt64
+countRow argument left Int64 position copy
+countRow argument right Int64 one copy
+countRow result nextPosition Int64
+countRow ownedBy none
+countRow cleanedBy none
+countRow borrows none
+countRow catch none
+countRow suppresses none
+
+readText is call
+readText in lookupCTarget
+readText invokes CTarget.text
+readText argument record CTarget entry lend
+readText result entryText String
+readText ownedBy none
+readText cleanedBy none
+readText borrows entry
+readText catch none
+readText suppresses none
+
+sameText is call
+sameText in lookupCTarget
+sameText invokes string.equals
+sameText argument left String entryText lend
+sameText argument right String wordText lend
+sameText result isSame Bool
+sameText ownedBy none
+sameText cleanedBy none
+sameText borrows none
+sameText catch none
+sameText suppresses none
+
+makeMissing is call
+makeMissing in lookupCTarget
+makeMissing invokes syntax.Rejection.unsupportedTarget
+makeMissing argument payload syntax.Word word copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+makeOutside is call
+makeOutside in lookupCTarget
+makeOutside invokes syntax.Rejection.outsideSource
+makeOutside argument payload syntax.Word word copy
+makeOutside result outsideError syntax.Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+lookupCType is operation
+lookupCType purpose "Find a type word in the C type spellings and return its row"
+lookupCType invariant none
+lookupCType typeParameter none
+lookupCType input source String borrowed
+lookupCType input word syntax.Word copied
+lookupCType output Int64
+lookupCType outputOwnedBy none
+lookupCType raises syntax.Rejection
+lookupCType effect none
+lookupCType uses none
+lookupCType memoryHeap false
+lookupCType async false
+lookupCType maxRecursion none
+lookupCType label begin loopKind none
+lookupCType label begin within none
+lookupCType label scan loopKind forEach
+lookupCType label scan within none
+lookupCType label scan maxIterations 4
+lookupCType label scan over cTypes
+lookupCType label compare loopKind none
+lookupCType label compare within scan
+lookupCType label found loopKind none
+lookupCType label found within none
+lookupCType label missing loopKind none
+lookupCType label missing within none
+lookupCType label outside loopKind none
+lookupCType label outside within none
+lookupCType let one Int64 1 immutable
+lookupCType let position Int64 0 mutable
+lookupCType at begin do readStart
+lookupCType at begin do readOffset
+lookupCType at begin do readLength
+lookupCType at begin do cutWord
+lookupCType at begin branch ifError cutWord goto outside else goto scan
+lookupCType at scan branch ifNext cTypes bind entry CType goto compare else goto missing
+lookupCType at compare do countRow
+lookupCType at compare set position nextPosition
+lookupCType at compare do readText
+lookupCType at compare do sameText
+lookupCType at compare branch if isSame goto found else goto scan
+lookupCType at found return ok position
+lookupCType at missing do makeMissing
+lookupCType at missing return error missingError
+lookupCType at outside do makeOutside
+lookupCType at outside return error outsideError
+
+readStart is call
+readStart in lookupCType
+readStart invokes syntax.Word.start
+readStart argument record syntax.Word word copy
+readStart result wordStart string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readOffset is call
+readOffset in lookupCType
+readOffset invokes string.Position.offset
+readOffset argument record string.Position wordStart copy
+readOffset result wordOffset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readLength is call
+readLength in lookupCType
+readLength invokes syntax.Word.length
+readLength argument record syntax.Word word copy
+readLength result wordLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+cutWord is call
+cutWord in lookupCType
+cutWord invokes string.slice
+cutWord argument text String source lend
+cutWord argument start Int64 wordOffset copy
+cutWord argument length Int64 wordLength copy
+cutWord result wordText String
+cutWord ownedBy none
+cutWord cleanedBy none
+cutWord borrows source
+cutWord catch cutError string.StringIndexError
+cutWord suppresses none
+
+countRow is call
+countRow in lookupCType
+countRow invokes math.addInt64
+countRow argument left Int64 position copy
+countRow argument right Int64 one copy
+countRow result nextPosition Int64
+countRow ownedBy none
+countRow cleanedBy none
+countRow borrows none
+countRow catch none
+countRow suppresses none
+
+readText is call
+readText in lookupCType
+readText invokes CType.text
+readText argument record CType entry lend
+readText result entryText String
+readText ownedBy none
+readText cleanedBy none
+readText borrows entry
+readText catch none
+readText suppresses none
+
+sameText is call
+sameText in lookupCType
+sameText invokes string.equals
+sameText argument left String entryText lend
+sameText argument right String wordText lend
+sameText result isSame Bool
+sameText ownedBy none
+sameText cleanedBy none
+sameText borrows none
+sameText catch none
+sameText suppresses none
+
+makeMissing is call
+makeMissing in lookupCType
+makeMissing invokes syntax.Rejection.unsupportedType
+makeMissing argument payload syntax.Word word copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+makeOutside is call
+makeOutside in lookupCType
+makeOutside invokes syntax.Rejection.outsideSource
+makeOutside argument payload syntax.Word word copy
+makeOutside result outsideError syntax.Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+# ---------------------------------------------------------------- pieces of C
+
+putName is operation
+putName purpose "Append a C name: a prefix that keeps it apart from C's own names, then the word"
+putName invariant none
+putName typeParameter none
+putName input buffer buffer.ByteBuffer borrowedMutable
+putName input prefix String borrowed
+putName input source String borrowed
+putName input word syntax.Word copied
+putName output none
+putName outputOwnedBy none
+putName raises none
+putName effect none
+putName uses none
+putName memoryHeap false
+putName async false
+putName maxRecursion none
+putName label begin loopKind none
+putName label begin within none
+putName let none
+putName at begin do putPrefix
+putName at begin do putText
+putName at begin return ok none
+
+putPrefix is call
+putPrefix in putName
+putPrefix invokes buffer.appendString
+putPrefix argument buffer buffer.ByteBuffer buffer lendMutable
+putPrefix argument text String prefix lend
+putPrefix result none
+putPrefix ownedBy none
+putPrefix cleanedBy none
+putPrefix borrows none
+putPrefix catch none
+putPrefix suppresses none
+
+putText is call
+putText in putName
+putText invokes syntax.putWord
+putText argument buffer buffer.ByteBuffer buffer lendMutable
+putText argument source String source lend
+putText argument word syntax.Word word copy
+putText result none
+putText ownedBy none
+putText cleanedBy none
+putText borrows none
+putText catch none
+putText suppresses none
+
+isInside is operation
+isInside purpose "Decide whether a jump from one label to another returns to a loop from inside it: the labels are the same, or the target is a loop the source is within"
+isInside invariant none
+isInside typeParameter none
+isInside input source String borrowed
+isInside input labels subset.Labels borrowed
+isInside input from syntax.Word copied
+isInside input to syntax.Word copied
+isInside input region Region borrowed
+isInside output Bool
+isInside outputOwnedBy none
+isInside raises syntax.Rejection
+isInside effect none
+isInside uses none
+isInside memoryHeap true
+isInside async false
+isInside maxRecursion none
+isInside label begin loopKind none
+isInside label begin within none
+isInside label climb note "Each pass moves to the loop around the current label; `within` never cycles (refined check, R503)"
+isInside label climb loopKind while
+isInside label climb within none
+isInside label climb maxIterations limit
+isInside label sameChecked loopKind none
+isInside label sameChecked within climb
+isInside label outward loopKind none
+isInside label outward within climb
+isInside label readLabel loopKind none
+isInside label readLabel within climb
+isInside label nestedCheck loopKind none
+isInside label nestedCheck within climb
+isInside label moveOut loopKind none
+isInside label moveOut within climb
+isInside label inside loopKind none
+isInside label inside within none
+isInside label outside loopKind none
+isInside label outside within none
+isInside label unknown loopKind none
+isInside label unknown within none
+isInside label sameCheckFailed loopKind none
+isInside label sameCheckFailed within none
+isInside label copyNameFailed loopKind none
+isInside label copyNameFailed within none
+isInside let one Int64 1 immutable
+isInside let yes Bool true immutable
+isInside let no Bool false immutable
+isInside let current syntax.Word from mutable
+isInside at begin do countLabels
+isInside at begin do findBound
+isInside at begin goto climb
+isInside at climb do sameCheck
+isInside at climb branch ifError sameCheck goto sameCheckFailed else goto sameChecked
+isInside at sameChecked branch if arrived goto inside else goto outward
+isInside at outward do copyName
+isInside at outward branch ifError copyName goto copyNameFailed else goto readLabel
+isInside at readLabel do getLabel
+isInside at readLabel branch ifError getLabel goto unknown else goto nestedCheck
+isInside at nestedCheck do readNested
+isInside at nestedCheck branch if nested goto moveOut else goto outside
+isInside at moveOut do readWithin
+isInside at moveOut set current around
+isInside at moveOut goto climb
+isInside at inside return ok yes
+isInside at outside return ok no
+isInside at unknown do makeUnknown
+isInside at unknown return error unknownError
+isInside at sameCheckFailed return error sameCheckError
+isInside at copyNameFailed return error copyNameError
+
+countLabels is call
+countLabels in isInside
+countLabels invokes subset.Labels.length
+countLabels argument map subset.Labels labels lend
+countLabels result labelCount Int64
+countLabels ownedBy none
+countLabels cleanedBy none
+countLabels borrows none
+countLabels catch none
+countLabels suppresses none
+
+findBound is call
+findBound in isInside
+findBound invokes math.addInt64
+findBound argument left Int64 labelCount copy
+findBound argument right Int64 one copy
+findBound result limit Int64
+findBound ownedBy none
+findBound cleanedBy none
+findBound borrows none
+findBound catch none
+findBound suppresses none
+
+sameCheck is call
+sameCheck in isInside
+sameCheck invokes syntax.sameText
+sameCheck argument source String source lend
+sameCheck argument left syntax.Word current copy
+sameCheck argument right syntax.Word to copy
+sameCheck result arrived Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch sameCheckError syntax.Rejection
+sameCheck suppresses none
+
+copyName is call
+copyName in isInside
+copyName invokes syntax.wordText
+copyName argument source String source lend
+copyName argument word syntax.Word current copy
+copyName argument region Region region lend
+copyName result key String
+copyName ownedBy region
+copyName cleanedBy none
+copyName borrows none
+copyName catch copyNameError syntax.Rejection
+copyName suppresses none
+
+getLabel is call
+getLabel in isInside
+getLabel invokes subset.Labels.get
+getLabel argument map subset.Labels labels lend
+getLabel argument key String key lend
+getLabel result info subset.LabelInfo
+getLabel ownedBy none
+getLabel cleanedBy none
+getLabel borrows none
+getLabel catch absentError map.KeyMissing
+getLabel suppresses none
+
+readNested is call
+readNested in isInside
+readNested invokes subset.LabelInfo.nested
+readNested argument record subset.LabelInfo info copy
+readNested result nested Bool
+readNested ownedBy none
+readNested cleanedBy none
+readNested borrows none
+readNested catch none
+readNested suppresses none
+
+readWithin is call
+readWithin in isInside
+readWithin invokes subset.LabelInfo.within
+readWithin argument record subset.LabelInfo info copy
+readWithin result around syntax.Word
+readWithin ownedBy none
+readWithin cleanedBy none
+readWithin borrows none
+readWithin catch none
+readWithin suppresses none
+
+makeUnknown is call
+makeUnknown in isInside
+makeUnknown invokes syntax.Rejection.unknownLabel
+makeUnknown argument payload syntax.Word current copy
+makeUnknown result unknownError syntax.Rejection
+makeUnknown ownedBy none
+makeUnknown cleanedBy none
+makeUnknown borrows none
+makeUnknown catch none
+makeUnknown suppresses none
+
+putJump is operation
+putJump purpose "Write a jump to a label as a C block, counting or resetting the target loop's passes"
+putJump invariant none
+putJump typeParameter none
+putJump input buffer buffer.ByteBuffer borrowedMutable
+putJump input source String borrowed
+putJump input labels subset.Labels borrowed
+putJump input from syntax.Word copied
+putJump input to syntax.Word copied
+putJump input region Region borrowed
+putJump output none
+putJump outputOwnedBy none
+putJump raises syntax.Rejection
+putJump effect none
+putJump uses none
+putJump memoryHeap true
+putJump async false
+putJump maxRecursion none
+putJump label begin loopKind none
+putJump label begin within none
+putJump label readLabel loopKind none
+putJump label readLabel within none
+putJump label opened loopKind none
+putJump label opened within none
+putJump label counted loopKind none
+putJump label counted within none
+putJump label insideChecked loopKind none
+putJump label insideChecked within none
+putJump label pass loopKind none
+putJump label pass within none
+putJump label boundName loopKind none
+putJump label boundName within none
+putJump label boundLiteral loopKind none
+putJump label boundLiteral within none
+putJump label passLabel loopKind none
+putJump label passLabel within none
+putJump label reset loopKind none
+putJump label reset within none
+putJump label jump loopKind none
+putJump label jump within none
+putJump label unknown loopKind none
+putJump label unknown within none
+putJump label copyNameFailed loopKind none
+putJump label copyNameFailed within none
+putJump label insideCheckFailed loopKind none
+putJump label insideCheckFailed within none
+putJump let open String "{ " immutable
+putJump let gotoText String "goto l_" immutable
+putJump let close String "; }" immutable
+putJump let passText String "ss_pass(&n_" immutable
+putJump let comma String ", " immutable
+putJump let quote String ", \"" immutable
+putJump let passEnd String "\"); " immutable
+putJump let resetText String "n_" immutable
+putJump let resetEnd String " = 0; " immutable
+putJump let valuePrefix String "v_" immutable
+putJump let noPrefix String "" immutable
+putJump at begin do copyName
+putJump at begin branch ifError copyName goto copyNameFailed else goto readLabel
+putJump at readLabel do getLabel
+putJump at readLabel branch ifError getLabel goto unknown else goto opened
+putJump at opened do putOpen
+putJump at opened do readBounded
+putJump at opened branch if bounded goto counted else goto jump
+putJump at counted do insideCheck
+putJump at counted branch ifError insideCheck goto insideCheckFailed else goto insideChecked
+putJump at insideChecked branch if back goto pass else goto reset
+putJump at pass do putPass
+putJump at pass do putPassLabel
+putJump at pass do putComma
+putJump at pass do readBound
+putJump at pass do readBoundKind
+putJump at pass match boundKind syntax.WordKind
+putJump at pass case syntax.WordKind.name bind none none goto boundName
+putJump at pass case syntax.WordKind.integer bind boundValue Int64 goto boundLiteral
+putJump at pass case syntax.WordKind.text bind none none goto boundLiteral
+putJump at boundName do putBoundName
+putJump at boundName goto passLabel
+putJump at boundLiteral do putBoundNumber
+putJump at boundLiteral goto passLabel
+putJump at passLabel do putQuote
+putJump at passLabel do putQuotedLabel
+putJump at passLabel do putPassEnd
+putJump at passLabel goto jump
+putJump at reset do putReset
+putJump at reset do putResetLabel
+putJump at reset do putResetEnd
+putJump at reset goto jump
+putJump at jump do putGoto
+putJump at jump do putTarget
+putJump at jump do putClose
+putJump at jump return ok none
+putJump at unknown do makeUnknown
+putJump at unknown return error unknownError
+putJump at copyNameFailed return error copyNameError
+putJump at insideCheckFailed return error insideCheckError
+
+copyName is call
+copyName in putJump
+copyName invokes syntax.wordText
+copyName argument source String source lend
+copyName argument word syntax.Word to copy
+copyName argument region Region region lend
+copyName result key String
+copyName ownedBy region
+copyName cleanedBy none
+copyName borrows none
+copyName catch copyNameError syntax.Rejection
+copyName suppresses none
+
+getLabel is call
+getLabel in putJump
+getLabel invokes subset.Labels.get
+getLabel argument map subset.Labels labels lend
+getLabel argument key String key lend
+getLabel result info subset.LabelInfo
+getLabel ownedBy none
+getLabel cleanedBy none
+getLabel borrows none
+getLabel catch absentError map.KeyMissing
+getLabel suppresses none
+
+putOpen is call
+putOpen in putJump
+putOpen invokes buffer.appendString
+putOpen argument buffer buffer.ByteBuffer buffer lendMutable
+putOpen argument text String open lend
+putOpen result none
+putOpen ownedBy none
+putOpen cleanedBy none
+putOpen borrows none
+putOpen catch none
+putOpen suppresses none
+
+readBounded is call
+readBounded in putJump
+readBounded invokes subset.LabelInfo.bounded
+readBounded argument record subset.LabelInfo info copy
+readBounded result bounded Bool
+readBounded ownedBy none
+readBounded cleanedBy none
+readBounded borrows none
+readBounded catch none
+readBounded suppresses none
+
+insideCheck is call
+insideCheck in putJump
+insideCheck invokes isInside
+insideCheck argument source String source lend
+insideCheck argument labels subset.Labels labels lend
+insideCheck argument from syntax.Word from copy
+insideCheck argument to syntax.Word to copy
+insideCheck argument region Region region lend
+insideCheck result back Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch insideCheckError syntax.Rejection
+insideCheck suppresses none
+
+putPass is call
+putPass in putJump
+putPass invokes buffer.appendString
+putPass argument buffer buffer.ByteBuffer buffer lendMutable
+putPass argument text String passText lend
+putPass result none
+putPass ownedBy none
+putPass cleanedBy none
+putPass borrows none
+putPass catch none
+putPass suppresses none
+
+putPassLabel is call
+putPassLabel in putJump
+putPassLabel invokes syntax.putWord
+putPassLabel argument buffer buffer.ByteBuffer buffer lendMutable
+putPassLabel argument source String source lend
+putPassLabel argument word syntax.Word to copy
+putPassLabel result none
+putPassLabel ownedBy none
+putPassLabel cleanedBy none
+putPassLabel borrows none
+putPassLabel catch none
+putPassLabel suppresses none
+
+putComma is call
+putComma in putJump
+putComma invokes buffer.appendString
+putComma argument buffer buffer.ByteBuffer buffer lendMutable
+putComma argument text String comma lend
+putComma result none
+putComma ownedBy none
+putComma cleanedBy none
+putComma borrows none
+putComma catch none
+putComma suppresses none
+
+readBound is call
+readBound in putJump
+readBound invokes subset.LabelInfo.bound
+readBound argument record subset.LabelInfo info copy
+readBound result bound syntax.Word
+readBound ownedBy none
+readBound cleanedBy none
+readBound borrows none
+readBound catch none
+readBound suppresses none
+
+readBoundKind is call
+readBoundKind in putJump
+readBoundKind invokes syntax.Word.kind
+readBoundKind argument record syntax.Word bound copy
+readBoundKind result boundKind syntax.WordKind
+readBoundKind ownedBy none
+readBoundKind cleanedBy none
+readBoundKind borrows none
+readBoundKind catch none
+readBoundKind suppresses none
+
+putBoundName is call
+putBoundName in putJump
+putBoundName invokes putName
+putBoundName argument buffer buffer.ByteBuffer buffer lendMutable
+putBoundName argument prefix String valuePrefix lend
+putBoundName argument source String source lend
+putBoundName argument word syntax.Word bound copy
+putBoundName result none
+putBoundName ownedBy none
+putBoundName cleanedBy none
+putBoundName borrows none
+putBoundName catch none
+putBoundName suppresses none
+
+putBoundNumber is call
+putBoundNumber in putJump
+putBoundNumber invokes putName
+putBoundNumber argument buffer buffer.ByteBuffer buffer lendMutable
+putBoundNumber argument prefix String noPrefix lend
+putBoundNumber argument source String source lend
+putBoundNumber argument word syntax.Word bound copy
+putBoundNumber result none
+putBoundNumber ownedBy none
+putBoundNumber cleanedBy none
+putBoundNumber borrows none
+putBoundNumber catch none
+putBoundNumber suppresses none
+
+putQuote is call
+putQuote in putJump
+putQuote invokes buffer.appendString
+putQuote argument buffer buffer.ByteBuffer buffer lendMutable
+putQuote argument text String quote lend
+putQuote result none
+putQuote ownedBy none
+putQuote cleanedBy none
+putQuote borrows none
+putQuote catch none
+putQuote suppresses none
+
+putQuotedLabel is call
+putQuotedLabel in putJump
+putQuotedLabel invokes syntax.putWord
+putQuotedLabel argument buffer buffer.ByteBuffer buffer lendMutable
+putQuotedLabel argument source String source lend
+putQuotedLabel argument word syntax.Word to copy
+putQuotedLabel result none
+putQuotedLabel ownedBy none
+putQuotedLabel cleanedBy none
+putQuotedLabel borrows none
+putQuotedLabel catch none
+putQuotedLabel suppresses none
+
+putPassEnd is call
+putPassEnd in putJump
+putPassEnd invokes buffer.appendString
+putPassEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putPassEnd argument text String passEnd lend
+putPassEnd result none
+putPassEnd ownedBy none
+putPassEnd cleanedBy none
+putPassEnd borrows none
+putPassEnd catch none
+putPassEnd suppresses none
+
+putReset is call
+putReset in putJump
+putReset invokes buffer.appendString
+putReset argument buffer buffer.ByteBuffer buffer lendMutable
+putReset argument text String resetText lend
+putReset result none
+putReset ownedBy none
+putReset cleanedBy none
+putReset borrows none
+putReset catch none
+putReset suppresses none
+
+putResetLabel is call
+putResetLabel in putJump
+putResetLabel invokes syntax.putWord
+putResetLabel argument buffer buffer.ByteBuffer buffer lendMutable
+putResetLabel argument source String source lend
+putResetLabel argument word syntax.Word to copy
+putResetLabel result none
+putResetLabel ownedBy none
+putResetLabel cleanedBy none
+putResetLabel borrows none
+putResetLabel catch none
+putResetLabel suppresses none
+
+putResetEnd is call
+putResetEnd in putJump
+putResetEnd invokes buffer.appendString
+putResetEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putResetEnd argument text String resetEnd lend
+putResetEnd result none
+putResetEnd ownedBy none
+putResetEnd cleanedBy none
+putResetEnd borrows none
+putResetEnd catch none
+putResetEnd suppresses none
+
+putGoto is call
+putGoto in putJump
+putGoto invokes buffer.appendString
+putGoto argument buffer buffer.ByteBuffer buffer lendMutable
+putGoto argument text String gotoText lend
+putGoto result none
+putGoto ownedBy none
+putGoto cleanedBy none
+putGoto borrows none
+putGoto catch none
+putGoto suppresses none
+
+putTarget is call
+putTarget in putJump
+putTarget invokes syntax.putWord
+putTarget argument buffer buffer.ByteBuffer buffer lendMutable
+putTarget argument source String source lend
+putTarget argument word syntax.Word to copy
+putTarget result none
+putTarget ownedBy none
+putTarget cleanedBy none
+putTarget borrows none
+putTarget catch none
+putTarget suppresses none
+
+putClose is call
+putClose in putJump
+putClose invokes buffer.appendString
+putClose argument buffer buffer.ByteBuffer buffer lendMutable
+putClose argument text String close lend
+putClose result none
+putClose ownedBy none
+putClose cleanedBy none
+putClose borrows none
+putClose catch none
+putClose suppresses none
+
+makeUnknown is call
+makeUnknown in putJump
+makeUnknown invokes syntax.Rejection.unknownLabel
+makeUnknown argument payload syntax.Word to copy
+makeUnknown result unknownError syntax.Rejection
+makeUnknown ownedBy none
+makeUnknown cleanedBy none
+makeUnknown borrows none
+makeUnknown catch none
+makeUnknown suppresses none
+
+putCall is operation
+putCall purpose "Write a call as one C statement: its flag or result, set from the target's C spelling"
+putCall invariant none
+putCall typeParameter none
+putCall input buffer buffer.ByteBuffer borrowedMutable
+putCall input source String borrowed
+putCall input info subset.CallInfo copied
+putCall output none
+putCall outputOwnedBy none
+putCall raises syntax.Rejection
+putCall effect none
+putCall uses none
+putCall memoryHeap false
+putCall async false
+putCall maxRecursion none
+putCall label begin loopKind none
+putCall label begin within none
+putCall label targetFound loopKind none
+putCall label targetFound within none
+putCall label spelled loopKind none
+putCall label spelled within none
+putCall label flagSide loopKind none
+putCall label flagSide within none
+putCall label valueSide loopKind none
+putCall label valueSide within none
+putCall label rightSide loopKind none
+putCall label rightSide within none
+putCall label secondArgument loopKind none
+putCall label secondArgument within none
+putCall label closeCall loopKind none
+putCall label closeCall within none
+putCall label noTarget loopKind none
+putCall label noTarget within none
+putCall label findTargetFailed loopKind none
+putCall label findTargetFailed within none
+putCall let indent String "  " immutable
+putCall let flagPrefix String "f_" immutable
+putCall let valuePrefix String "v_" immutable
+putCall let assign String " = " immutable
+putCall let lineEnd String ";\n" immutable
+putCall let two Int64 2 immutable
+putCall at begin do readTargetWord
+putCall at begin do findTarget
+putCall at begin branch ifError findTarget goto findTargetFailed else goto targetFound
+putCall at targetFound do readTarget
+putCall at targetFound branch ifError readTarget goto noTarget else goto spelled
+putCall at spelled do putIndent
+putCall at spelled do readRaises
+putCall at spelled branch if canFail goto flagSide else goto valueSide
+putCall at flagSide do readName
+putCall at flagSide do putFlag
+putCall at flagSide goto rightSide
+putCall at valueSide do readResult
+putCall at valueSide do putResult
+putCall at valueSide goto rightSide
+putCall at rightSide do putAssign
+putCall at rightSide do readBefore
+putCall at rightSide do putBefore
+putCall at rightSide do readFirst
+putCall at rightSide do putFirst
+putCall at rightSide do readArity
+putCall at rightSide do twoCheck
+putCall at rightSide branch if takesTwo goto secondArgument else goto closeCall
+putCall at secondArgument do readBetween
+putCall at secondArgument do putBetween
+putCall at secondArgument do readSecond
+putCall at secondArgument do putSecond
+putCall at secondArgument goto closeCall
+putCall at closeCall do readAfter
+putCall at closeCall do putAfter
+putCall at closeCall do putLineEnd
+putCall at closeCall return ok none
+putCall at noTarget do makeNoTarget
+putCall at noTarget return error noTargetError
+putCall at findTargetFailed return error findTargetError
+
+readTargetWord is call
+readTargetWord in putCall
+readTargetWord invokes subset.CallInfo.target
+readTargetWord argument record subset.CallInfo info copy
+readTargetWord result targetWord syntax.Word
+readTargetWord ownedBy none
+readTargetWord cleanedBy none
+readTargetWord borrows none
+readTargetWord catch none
+readTargetWord suppresses none
+
+findTarget is call
+findTarget in putCall
+findTarget invokes lookupCTarget
+findTarget argument source String source lend
+findTarget argument word syntax.Word targetWord copy
+findTarget result targetAt Int64
+findTarget ownedBy none
+findTarget cleanedBy none
+findTarget borrows none
+findTarget catch findTargetError syntax.Rejection
+findTarget suppresses none
+
+readTarget is call
+readTarget in putCall
+readTarget invokes cTargets.rowAt
+readTarget argument position Int64 targetAt copy
+readTarget result spelling CTarget
+readTarget ownedBy none
+readTarget cleanedBy none
+readTarget borrows none
+readTarget catch targetRowError list.IndexOutOfRange
+readTarget suppresses none
+
+putIndent is call
+putIndent in putCall
+putIndent invokes buffer.appendString
+putIndent argument buffer buffer.ByteBuffer buffer lendMutable
+putIndent argument text String indent lend
+putIndent result none
+putIndent ownedBy none
+putIndent cleanedBy none
+putIndent borrows none
+putIndent catch none
+putIndent suppresses none
+
+readRaises is call
+readRaises in putCall
+readRaises invokes subset.CallInfo.raises
+readRaises argument record subset.CallInfo info copy
+readRaises result canFail Bool
+readRaises ownedBy none
+readRaises cleanedBy none
+readRaises borrows none
+readRaises catch none
+readRaises suppresses none
+
+readName is call
+readName in putCall
+readName invokes subset.CallInfo.name
+readName argument record subset.CallInfo info copy
+readName result callName syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+putFlag is call
+putFlag in putCall
+putFlag invokes putName
+putFlag argument buffer buffer.ByteBuffer buffer lendMutable
+putFlag argument prefix String flagPrefix lend
+putFlag argument source String source lend
+putFlag argument word syntax.Word callName copy
+putFlag result none
+putFlag ownedBy none
+putFlag cleanedBy none
+putFlag borrows none
+putFlag catch none
+putFlag suppresses none
+
+readResult is call
+readResult in putCall
+readResult invokes subset.CallInfo.result
+readResult argument record subset.CallInfo info copy
+readResult result resultName syntax.Word
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+putResult is call
+putResult in putCall
+putResult invokes putName
+putResult argument buffer buffer.ByteBuffer buffer lendMutable
+putResult argument prefix String valuePrefix lend
+putResult argument source String source lend
+putResult argument word syntax.Word resultName copy
+putResult result none
+putResult ownedBy none
+putResult cleanedBy none
+putResult borrows none
+putResult catch none
+putResult suppresses none
+
+putAssign is call
+putAssign in putCall
+putAssign invokes buffer.appendString
+putAssign argument buffer buffer.ByteBuffer buffer lendMutable
+putAssign argument text String assign lend
+putAssign result none
+putAssign ownedBy none
+putAssign cleanedBy none
+putAssign borrows none
+putAssign catch none
+putAssign suppresses none
+
+readBefore is call
+readBefore in putCall
+readBefore invokes CTarget.before
+readBefore argument record CTarget spelling lend
+readBefore result before String
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows spelling
+readBefore catch none
+readBefore suppresses none
+
+putBefore is call
+putBefore in putCall
+putBefore invokes buffer.appendString
+putBefore argument buffer buffer.ByteBuffer buffer lendMutable
+putBefore argument text String before lend
+putBefore result none
+putBefore ownedBy none
+putBefore cleanedBy none
+putBefore borrows none
+putBefore catch none
+putBefore suppresses none
+
+readFirst is call
+readFirst in putCall
+readFirst invokes subset.CallInfo.first
+readFirst argument record subset.CallInfo info copy
+readFirst result first syntax.Word
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+putFirst is call
+putFirst in putCall
+putFirst invokes putName
+putFirst argument buffer buffer.ByteBuffer buffer lendMutable
+putFirst argument prefix String valuePrefix lend
+putFirst argument source String source lend
+putFirst argument word syntax.Word first copy
+putFirst result none
+putFirst ownedBy none
+putFirst cleanedBy none
+putFirst borrows none
+putFirst catch none
+putFirst suppresses none
+
+readArity is call
+readArity in putCall
+readArity invokes subset.CallInfo.arity
+readArity argument record subset.CallInfo info copy
+readArity result arity Int64
+readArity ownedBy none
+readArity cleanedBy none
+readArity borrows none
+readArity catch none
+readArity suppresses none
+
+twoCheck is call
+twoCheck in putCall
+twoCheck invokes compare.equalInt64
+twoCheck argument left Int64 arity copy
+twoCheck argument right Int64 two copy
+twoCheck result takesTwo Bool
+twoCheck ownedBy none
+twoCheck cleanedBy none
+twoCheck borrows none
+twoCheck catch none
+twoCheck suppresses none
+
+readBetween is call
+readBetween in putCall
+readBetween invokes CTarget.between
+readBetween argument record CTarget spelling lend
+readBetween result between String
+readBetween ownedBy none
+readBetween cleanedBy none
+readBetween borrows spelling
+readBetween catch none
+readBetween suppresses none
+
+putBetween is call
+putBetween in putCall
+putBetween invokes buffer.appendString
+putBetween argument buffer buffer.ByteBuffer buffer lendMutable
+putBetween argument text String between lend
+putBetween result none
+putBetween ownedBy none
+putBetween cleanedBy none
+putBetween borrows none
+putBetween catch none
+putBetween suppresses none
+
+readSecond is call
+readSecond in putCall
+readSecond invokes subset.CallInfo.second
+readSecond argument record subset.CallInfo info copy
+readSecond result second syntax.Word
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+putSecond is call
+putSecond in putCall
+putSecond invokes putName
+putSecond argument buffer buffer.ByteBuffer buffer lendMutable
+putSecond argument prefix String valuePrefix lend
+putSecond argument source String source lend
+putSecond argument word syntax.Word second copy
+putSecond result none
+putSecond ownedBy none
+putSecond cleanedBy none
+putSecond borrows none
+putSecond catch none
+putSecond suppresses none
+
+readAfter is call
+readAfter in putCall
+readAfter invokes CTarget.after
+readAfter argument record CTarget spelling lend
+readAfter result after String
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows spelling
+readAfter catch none
+readAfter suppresses none
+
+putAfter is call
+putAfter in putCall
+putAfter invokes buffer.appendString
+putAfter argument buffer buffer.ByteBuffer buffer lendMutable
+putAfter argument text String after lend
+putAfter result none
+putAfter ownedBy none
+putAfter cleanedBy none
+putAfter borrows none
+putAfter catch none
+putAfter suppresses none
+
+putLineEnd is call
+putLineEnd in putCall
+putLineEnd invokes buffer.appendString
+putLineEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putLineEnd argument text String lineEnd lend
+putLineEnd result none
+putLineEnd ownedBy none
+putLineEnd cleanedBy none
+putLineEnd borrows none
+putLineEnd catch none
+putLineEnd suppresses none
+
+makeNoTarget is call
+makeNoTarget in putCall
+makeNoTarget invokes syntax.Rejection.unsupportedTarget
+makeNoTarget argument payload syntax.Word targetWord copy
+makeNoTarget result noTargetError syntax.Rejection
+makeNoTarget ownedBy none
+makeNoTarget cleanedBy none
+makeNoTarget borrows none
+makeNoTarget catch none
+makeNoTarget suppresses none
+
+putDeclarations is operation
+putDeclarations purpose "Declare every value as a typed C local set to its type's zero"
+putDeclarations invariant none
+putDeclarations typeParameter none
+putDeclarations input buffer buffer.ByteBuffer borrowedMutable
+putDeclarations input source String borrowed
+putDeclarations input values subset.Values borrowed
+putDeclarations input anchor syntax.Word copied
+putDeclarations output none
+putDeclarations outputOwnedBy none
+putDeclarations raises syntax.Rejection
+putDeclarations effect none
+putDeclarations uses none
+putDeclarations memoryHeap false
+putDeclarations async false
+putDeclarations maxRecursion none
+putDeclarations label begin loopKind none
+putDeclarations label begin within none
+putDeclarations label eachValue loopKind forEach
+putDeclarations label eachValue within none
+putDeclarations label eachValue maxIterations valueCount
+putDeclarations label eachValue over values
+putDeclarations label declare loopKind none
+putDeclarations label declare within eachValue
+putDeclarations label typed loopKind none
+putDeclarations label typed within eachValue
+putDeclarations label typeFound loopKind none
+putDeclarations label typeFound within eachValue
+putDeclarations label write loopKind none
+putDeclarations label write within eachValue
+putDeclarations label done loopKind none
+putDeclarations label done within none
+putDeclarations label missing loopKind none
+putDeclarations label missing within none
+putDeclarations label noType loopKind none
+putDeclarations label noType within none
+putDeclarations label findTypeFailed loopKind none
+putDeclarations label findTypeFailed within none
+putDeclarations let indent String "  " immutable
+putDeclarations let valuePrefix String "v_" immutable
+putDeclarations let assign String " = " immutable
+putDeclarations let lineEnd String ";\n" immutable
+putDeclarations at begin do countValues
+putDeclarations at begin goto eachValue
+putDeclarations at eachValue branch ifNext values bind key String goto declare else goto done
+putDeclarations at declare do readInfo
+putDeclarations at declare branch ifError readInfo goto missing else goto typed
+putDeclarations at typed do readType
+putDeclarations at typed do findType
+putDeclarations at typed branch ifError findType goto findTypeFailed else goto typeFound
+putDeclarations at typeFound do readSpelling
+putDeclarations at typeFound branch ifError readSpelling goto noType else goto write
+putDeclarations at write do readName
+putDeclarations at write do readCType
+putDeclarations at write do readZero
+putDeclarations at write do putIndent
+putDeclarations at write do putCType
+putDeclarations at write do putValueName
+putDeclarations at write do putAssign
+putDeclarations at write do putZero
+putDeclarations at write do putLineEnd
+putDeclarations at write goto eachValue
+putDeclarations at done return ok none
+putDeclarations at missing do makeMissing
+putDeclarations at missing return error missingError
+putDeclarations at noType do makeNoType
+putDeclarations at noType return error noTypeError
+putDeclarations at findTypeFailed return error findTypeError
+
+countValues is call
+countValues in putDeclarations
+countValues invokes subset.Values.length
+countValues argument map subset.Values values lend
+countValues result valueCount Int64
+countValues ownedBy none
+countValues cleanedBy none
+countValues borrows none
+countValues catch none
+countValues suppresses none
+
+readInfo is call
+readInfo in putDeclarations
+readInfo invokes subset.Values.get
+readInfo argument map subset.Values values lend
+readInfo argument key String key lend
+readInfo result info subset.ValueInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch absentError map.KeyMissing
+readInfo suppresses none
+
+readType is call
+readType in putDeclarations
+readType invokes subset.ValueInfo.type
+readType argument record subset.ValueInfo info copy
+readType result typeWord syntax.Word
+readType ownedBy none
+readType cleanedBy none
+readType borrows none
+readType catch none
+readType suppresses none
+
+findType is call
+findType in putDeclarations
+findType invokes lookupCType
+findType argument source String source lend
+findType argument word syntax.Word typeWord copy
+findType result typeAt Int64
+findType ownedBy none
+findType cleanedBy none
+findType borrows none
+findType catch findTypeError syntax.Rejection
+findType suppresses none
+
+readSpelling is call
+readSpelling in putDeclarations
+readSpelling invokes cTypes.rowAt
+readSpelling argument position Int64 typeAt copy
+readSpelling result spelling CType
+readSpelling ownedBy none
+readSpelling cleanedBy none
+readSpelling borrows none
+readSpelling catch typeRowError list.IndexOutOfRange
+readSpelling suppresses none
+
+readName is call
+readName in putDeclarations
+readName invokes subset.ValueInfo.name
+readName argument record subset.ValueInfo info copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readCType is call
+readCType in putDeclarations
+readCType invokes CType.cType
+readCType argument record CType spelling lend
+readCType result cType String
+readCType ownedBy none
+readCType cleanedBy none
+readCType borrows spelling
+readCType catch none
+readCType suppresses none
+
+readZero is call
+readZero in putDeclarations
+readZero invokes CType.zero
+readZero argument record CType spelling lend
+readZero result zero String
+readZero ownedBy none
+readZero cleanedBy none
+readZero borrows spelling
+readZero catch none
+readZero suppresses none
+
+putIndent is call
+putIndent in putDeclarations
+putIndent invokes buffer.appendString
+putIndent argument buffer buffer.ByteBuffer buffer lendMutable
+putIndent argument text String indent lend
+putIndent result none
+putIndent ownedBy none
+putIndent cleanedBy none
+putIndent borrows none
+putIndent catch none
+putIndent suppresses none
+
+putCType is call
+putCType in putDeclarations
+putCType invokes buffer.appendString
+putCType argument buffer buffer.ByteBuffer buffer lendMutable
+putCType argument text String cType lend
+putCType result none
+putCType ownedBy none
+putCType cleanedBy none
+putCType borrows none
+putCType catch none
+putCType suppresses none
+
+putValueName is call
+putValueName in putDeclarations
+putValueName invokes putName
+putValueName argument buffer buffer.ByteBuffer buffer lendMutable
+putValueName argument prefix String valuePrefix lend
+putValueName argument source String source lend
+putValueName argument word syntax.Word name copy
+putValueName result none
+putValueName ownedBy none
+putValueName cleanedBy none
+putValueName borrows none
+putValueName catch none
+putValueName suppresses none
+
+putAssign is call
+putAssign in putDeclarations
+putAssign invokes buffer.appendString
+putAssign argument buffer buffer.ByteBuffer buffer lendMutable
+putAssign argument text String assign lend
+putAssign result none
+putAssign ownedBy none
+putAssign cleanedBy none
+putAssign borrows none
+putAssign catch none
+putAssign suppresses none
+
+putZero is call
+putZero in putDeclarations
+putZero invokes buffer.appendString
+putZero argument buffer buffer.ByteBuffer buffer lendMutable
+putZero argument text String zero lend
+putZero result none
+putZero ownedBy none
+putZero cleanedBy none
+putZero borrows none
+putZero catch none
+putZero suppresses none
+
+putLineEnd is call
+putLineEnd in putDeclarations
+putLineEnd invokes buffer.appendString
+putLineEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putLineEnd argument text String lineEnd lend
+putLineEnd result none
+putLineEnd ownedBy none
+putLineEnd cleanedBy none
+putLineEnd borrows none
+putLineEnd catch none
+putLineEnd suppresses none
+
+makeMissing is call
+makeMissing in putDeclarations
+makeMissing invokes syntax.Rejection.lostName
+makeMissing argument payload syntax.Word anchor copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+makeNoType is call
+makeNoType in putDeclarations
+makeNoType invokes syntax.Rejection.unsupportedType
+makeNoType argument payload syntax.Word typeWord copy
+makeNoType result noTypeError syntax.Rejection
+makeNoType ownedBy none
+makeNoType cleanedBy none
+makeNoType borrows none
+makeNoType catch none
+makeNoType suppresses none
+
+putFlags is operation
+putFlags purpose "Declare a failure flag for every call that can fail"
+putFlags invariant none
+putFlags typeParameter none
+putFlags input buffer buffer.ByteBuffer borrowedMutable
+putFlags input source String borrowed
+putFlags input calls subset.Calls borrowed
+putFlags input anchor syntax.Word copied
+putFlags output none
+putFlags outputOwnedBy none
+putFlags raises syntax.Rejection
+putFlags effect none
+putFlags uses none
+putFlags memoryHeap false
+putFlags async false
+putFlags maxRecursion none
+putFlags label begin loopKind none
+putFlags label begin within none
+putFlags label eachCall loopKind forEach
+putFlags label eachCall within none
+putFlags label eachCall maxIterations callCount
+putFlags label eachCall over calls
+putFlags label readCall loopKind none
+putFlags label readCall within eachCall
+putFlags label raisesCheck loopKind none
+putFlags label raisesCheck within eachCall
+putFlags label declare loopKind none
+putFlags label declare within eachCall
+putFlags label done loopKind none
+putFlags label done within none
+putFlags label missing loopKind none
+putFlags label missing within none
+putFlags let flagStart String "  bool f_" immutable
+putFlags let flagEnd String " = false;\n" immutable
+putFlags at begin do countCalls
+putFlags at begin goto eachCall
+putFlags at eachCall branch ifNext calls bind key String goto readCall else goto done
+putFlags at readCall do readInfo
+putFlags at readCall branch ifError readInfo goto missing else goto raisesCheck
+putFlags at raisesCheck do readRaises
+putFlags at raisesCheck branch if canFail goto declare else goto eachCall
+putFlags at declare do readName
+putFlags at declare do putStart
+putFlags at declare do putFlagName
+putFlags at declare do putEnd
+putFlags at declare goto eachCall
+putFlags at done return ok none
+putFlags at missing do makeMissing
+putFlags at missing return error missingError
+
+countCalls is call
+countCalls in putFlags
+countCalls invokes subset.Calls.length
+countCalls argument map subset.Calls calls lend
+countCalls result callCount Int64
+countCalls ownedBy none
+countCalls cleanedBy none
+countCalls borrows none
+countCalls catch none
+countCalls suppresses none
+
+readInfo is call
+readInfo in putFlags
+readInfo invokes subset.Calls.get
+readInfo argument map subset.Calls calls lend
+readInfo argument key String key lend
+readInfo result info subset.CallInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch absentError map.KeyMissing
+readInfo suppresses none
+
+readRaises is call
+readRaises in putFlags
+readRaises invokes subset.CallInfo.raises
+readRaises argument record subset.CallInfo info copy
+readRaises result canFail Bool
+readRaises ownedBy none
+readRaises cleanedBy none
+readRaises borrows none
+readRaises catch none
+readRaises suppresses none
+
+readName is call
+readName in putFlags
+readName invokes subset.CallInfo.name
+readName argument record subset.CallInfo info copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+putStart is call
+putStart in putFlags
+putStart invokes buffer.appendString
+putStart argument buffer buffer.ByteBuffer buffer lendMutable
+putStart argument text String flagStart lend
+putStart result none
+putStart ownedBy none
+putStart cleanedBy none
+putStart borrows none
+putStart catch none
+putStart suppresses none
+
+putFlagName is call
+putFlagName in putFlags
+putFlagName invokes syntax.putWord
+putFlagName argument buffer buffer.ByteBuffer buffer lendMutable
+putFlagName argument source String source lend
+putFlagName argument word syntax.Word name copy
+putFlagName result none
+putFlagName ownedBy none
+putFlagName cleanedBy none
+putFlagName borrows none
+putFlagName catch none
+putFlagName suppresses none
+
+putEnd is call
+putEnd in putFlags
+putEnd invokes buffer.appendString
+putEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putEnd argument text String flagEnd lend
+putEnd result none
+putEnd ownedBy none
+putEnd cleanedBy none
+putEnd borrows none
+putEnd catch none
+putEnd suppresses none
+
+makeMissing is call
+makeMissing in putFlags
+makeMissing invokes syntax.Rejection.lostName
+makeMissing argument payload syntax.Word anchor copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+putCounters is operation
+putCounters purpose "Declare a pass counter for every loop header with a maxIterations bound"
+putCounters invariant none
+putCounters typeParameter none
+putCounters input buffer buffer.ByteBuffer borrowedMutable
+putCounters input source String borrowed
+putCounters input labels subset.Labels borrowed
+putCounters input anchor syntax.Word copied
+putCounters output none
+putCounters outputOwnedBy none
+putCounters raises syntax.Rejection
+putCounters effect none
+putCounters uses none
+putCounters memoryHeap false
+putCounters async false
+putCounters maxRecursion none
+putCounters label begin loopKind none
+putCounters label begin within none
+putCounters label eachLabel loopKind forEach
+putCounters label eachLabel within none
+putCounters label eachLabel maxIterations labelCount
+putCounters label eachLabel over labels
+putCounters label readLabel loopKind none
+putCounters label readLabel within eachLabel
+putCounters label boundCheck loopKind none
+putCounters label boundCheck within eachLabel
+putCounters label declare loopKind none
+putCounters label declare within eachLabel
+putCounters label done loopKind none
+putCounters label done within none
+putCounters label missing loopKind none
+putCounters label missing within none
+putCounters let counterStart String "  int64_t n_" immutable
+putCounters let counterEnd String " = 0;\n" immutable
+putCounters at begin do countLabels
+putCounters at begin goto eachLabel
+putCounters at eachLabel branch ifNext labels bind key String goto readLabel else goto done
+putCounters at readLabel do readInfo
+putCounters at readLabel branch ifError readInfo goto missing else goto boundCheck
+putCounters at boundCheck do readBounded
+putCounters at boundCheck branch if bounded goto declare else goto eachLabel
+putCounters at declare do readName
+putCounters at declare do putStart
+putCounters at declare do putCounterName
+putCounters at declare do putEnd
+putCounters at declare goto eachLabel
+putCounters at done return ok none
+putCounters at missing do makeMissing
+putCounters at missing return error missingError
+
+countLabels is call
+countLabels in putCounters
+countLabels invokes subset.Labels.length
+countLabels argument map subset.Labels labels lend
+countLabels result labelCount Int64
+countLabels ownedBy none
+countLabels cleanedBy none
+countLabels borrows none
+countLabels catch none
+countLabels suppresses none
+
+readInfo is call
+readInfo in putCounters
+readInfo invokes subset.Labels.get
+readInfo argument map subset.Labels labels lend
+readInfo argument key String key lend
+readInfo result info subset.LabelInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch absentError map.KeyMissing
+readInfo suppresses none
+
+readBounded is call
+readBounded in putCounters
+readBounded invokes subset.LabelInfo.bounded
+readBounded argument record subset.LabelInfo info copy
+readBounded result bounded Bool
+readBounded ownedBy none
+readBounded cleanedBy none
+readBounded borrows none
+readBounded catch none
+readBounded suppresses none
+
+readName is call
+readName in putCounters
+readName invokes subset.LabelInfo.name
+readName argument record subset.LabelInfo info copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+putStart is call
+putStart in putCounters
+putStart invokes buffer.appendString
+putStart argument buffer buffer.ByteBuffer buffer lendMutable
+putStart argument text String counterStart lend
+putStart result none
+putStart ownedBy none
+putStart cleanedBy none
+putStart borrows none
+putStart catch none
+putStart suppresses none
+
+putCounterName is call
+putCounterName in putCounters
+putCounterName invokes syntax.putWord
+putCounterName argument buffer buffer.ByteBuffer buffer lendMutable
+putCounterName argument source String source lend
+putCounterName argument word syntax.Word name copy
+putCounterName result none
+putCounterName ownedBy none
+putCounterName cleanedBy none
+putCounterName borrows none
+putCounterName catch none
+putCounterName suppresses none
+
+putEnd is call
+putEnd in putCounters
+putEnd invokes buffer.appendString
+putEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putEnd argument text String counterEnd lend
+putEnd result none
+putEnd ownedBy none
+putEnd cleanedBy none
+putEnd borrows none
+putEnd catch none
+putEnd suppresses none
+
+makeMissing is call
+makeMissing in putCounters
+makeMissing invokes syntax.Rejection.lostName
+makeMissing argument payload syntax.Word anchor copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+putInits is operation
+putInits purpose "Set every value of one origin (1 constants, 2 lets) that has a first value, in order"
+putInits invariant none
+putInits typeParameter none
+putInits input buffer buffer.ByteBuffer borrowedMutable
+putInits input source String borrowed
+putInits input values subset.Values borrowed
+putInits input origin Int64 copied
+putInits input anchor syntax.Word copied
+putInits output none
+putInits outputOwnedBy none
+putInits raises syntax.Rejection
+putInits effect none
+putInits uses none
+putInits memoryHeap false
+putInits async false
+putInits maxRecursion none
+putInits label begin loopKind none
+putInits label begin within none
+putInits label eachValue loopKind forEach
+putInits label eachValue within none
+putInits label eachValue maxIterations valueCount
+putInits label eachValue over values
+putInits label readValue loopKind none
+putInits label readValue within eachValue
+putInits label originCheck loopKind none
+putInits label originCheck within eachValue
+putInits label assignValue loopKind none
+putInits label assignValue within eachValue
+putInits label putSourceValue loopKind none
+putInits label putSourceValue within eachValue
+putInits label putLiteral loopKind none
+putInits label putLiteral within eachValue
+putInits label finishLine loopKind none
+putInits label finishLine within eachValue
+putInits label done loopKind none
+putInits label done within none
+putInits label missing loopKind none
+putInits label missing within none
+putInits let indent String "  " immutable
+putInits let valuePrefix String "v_" immutable
+putInits let assign String " = " immutable
+putInits let lineEnd String ";\n" immutable
+putInits at begin do countValues
+putInits at begin goto eachValue
+putInits at eachValue branch ifNext values bind key String goto readValue else goto done
+putInits at readValue do readInfo
+putInits at readValue branch ifError readInfo goto missing else goto originCheck
+putInits at originCheck do readOrigin
+putInits at originCheck do sameOrigin
+putInits at originCheck do readInitialized
+putInits at originCheck do wanted
+putInits at originCheck branch if setsHere goto assignValue else goto eachValue
+putInits at assignValue do readName
+putInits at assignValue do readInit
+putInits at assignValue do putIndent
+putInits at assignValue do putValueName
+putInits at assignValue do putAssign
+putInits at assignValue do readInitIsName
+putInits at assignValue branch if fromValue goto putSourceValue else goto putLiteral
+putInits at putSourceValue do putSourceName
+putInits at putSourceValue goto finishLine
+putInits at putLiteral do putLiteralText
+putInits at putLiteral goto finishLine
+putInits at finishLine do putLineEnd
+putInits at finishLine goto eachValue
+putInits at done return ok none
+putInits at missing do makeMissing
+putInits at missing return error missingError
+
+countValues is call
+countValues in putInits
+countValues invokes subset.Values.length
+countValues argument map subset.Values values lend
+countValues result valueCount Int64
+countValues ownedBy none
+countValues cleanedBy none
+countValues borrows none
+countValues catch none
+countValues suppresses none
+
+readInfo is call
+readInfo in putInits
+readInfo invokes subset.Values.get
+readInfo argument map subset.Values values lend
+readInfo argument key String key lend
+readInfo result info subset.ValueInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch absentError map.KeyMissing
+readInfo suppresses none
+
+readOrigin is call
+readOrigin in putInits
+readOrigin invokes subset.ValueInfo.origin
+readOrigin argument record subset.ValueInfo info copy
+readOrigin result valueOrigin Int64
+readOrigin ownedBy none
+readOrigin cleanedBy none
+readOrigin borrows none
+readOrigin catch none
+readOrigin suppresses none
+
+sameOrigin is call
+sameOrigin in putInits
+sameOrigin invokes compare.equalInt64
+sameOrigin argument left Int64 valueOrigin copy
+sameOrigin argument right Int64 origin copy
+sameOrigin result ofOrigin Bool
+sameOrigin ownedBy none
+sameOrigin cleanedBy none
+sameOrigin borrows none
+sameOrigin catch none
+sameOrigin suppresses none
+
+readInitialized is call
+readInitialized in putInits
+readInitialized invokes subset.ValueInfo.initialized
+readInitialized argument record subset.ValueInfo info copy
+readInitialized result initialized Bool
+readInitialized ownedBy none
+readInitialized cleanedBy none
+readInitialized borrows none
+readInitialized catch none
+readInitialized suppresses none
+
+wanted is call
+wanted in putInits
+wanted invokes logic.and
+wanted argument left Bool ofOrigin copy
+wanted argument right Bool initialized copy
+wanted result setsHere Bool
+wanted ownedBy none
+wanted cleanedBy none
+wanted borrows none
+wanted catch none
+wanted suppresses none
+
+readName is call
+readName in putInits
+readName invokes subset.ValueInfo.name
+readName argument record subset.ValueInfo info copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readInit is call
+readInit in putInits
+readInit invokes subset.ValueInfo.init
+readInit argument record subset.ValueInfo info copy
+readInit result init syntax.Word
+readInit ownedBy none
+readInit cleanedBy none
+readInit borrows none
+readInit catch none
+readInit suppresses none
+
+putIndent is call
+putIndent in putInits
+putIndent invokes buffer.appendString
+putIndent argument buffer buffer.ByteBuffer buffer lendMutable
+putIndent argument text String indent lend
+putIndent result none
+putIndent ownedBy none
+putIndent cleanedBy none
+putIndent borrows none
+putIndent catch none
+putIndent suppresses none
+
+putValueName is call
+putValueName in putInits
+putValueName invokes putName
+putValueName argument buffer buffer.ByteBuffer buffer lendMutable
+putValueName argument prefix String valuePrefix lend
+putValueName argument source String source lend
+putValueName argument word syntax.Word name copy
+putValueName result none
+putValueName ownedBy none
+putValueName cleanedBy none
+putValueName borrows none
+putValueName catch none
+putValueName suppresses none
+
+putAssign is call
+putAssign in putInits
+putAssign invokes buffer.appendString
+putAssign argument buffer buffer.ByteBuffer buffer lendMutable
+putAssign argument text String assign lend
+putAssign result none
+putAssign ownedBy none
+putAssign cleanedBy none
+putAssign borrows none
+putAssign catch none
+putAssign suppresses none
+
+readInitIsName is call
+readInitIsName in putInits
+readInitIsName invokes subset.ValueInfo.initIsName
+readInitIsName argument record subset.ValueInfo info copy
+readInitIsName result fromValue Bool
+readInitIsName ownedBy none
+readInitIsName cleanedBy none
+readInitIsName borrows none
+readInitIsName catch none
+readInitIsName suppresses none
+
+putSourceName is call
+putSourceName in putInits
+putSourceName invokes putName
+putSourceName argument buffer buffer.ByteBuffer buffer lendMutable
+putSourceName argument prefix String valuePrefix lend
+putSourceName argument source String source lend
+putSourceName argument word syntax.Word init copy
+putSourceName result none
+putSourceName ownedBy none
+putSourceName cleanedBy none
+putSourceName borrows none
+putSourceName catch none
+putSourceName suppresses none
+
+putLiteralText is call
+putLiteralText in putInits
+putLiteralText invokes syntax.putWord
+putLiteralText argument buffer buffer.ByteBuffer buffer lendMutable
+putLiteralText argument source String source lend
+putLiteralText argument word syntax.Word init copy
+putLiteralText result none
+putLiteralText ownedBy none
+putLiteralText cleanedBy none
+putLiteralText borrows none
+putLiteralText catch none
+putLiteralText suppresses none
+
+putLineEnd is call
+putLineEnd in putInits
+putLineEnd invokes buffer.appendString
+putLineEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putLineEnd argument text String lineEnd lend
+putLineEnd result none
+putLineEnd ownedBy none
+putLineEnd cleanedBy none
+putLineEnd borrows none
+putLineEnd catch none
+putLineEnd suppresses none
+
+makeMissing is call
+makeMissing in putInits
+makeMissing invokes syntax.Rejection.lostName
+makeMissing argument payload syntax.Word anchor copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+putStep is operation
+putStep purpose "Write one step of main as C"
+putStep invariant none
+putStep typeParameter none
+putStep input buffer buffer.ByteBuffer borrowedMutable
+putStep input source String borrowed
+putStep input calls subset.Calls borrowed
+putStep input labels subset.Labels borrowed
+putStep input step subset.Step copied
+putStep input region Region borrowed
+putStep output none
+putStep outputOwnedBy none
+putStep raises syntax.Rejection
+putStep effect none
+putStep uses none
+putStep memoryHeap true
+putStep async false
+putStep maxRecursion none
+putStep label begin loopKind none
+putStep label begin within none
+putStep label doStep loopKind none
+putStep label doStep within none
+putStep label findCall loopKind none
+putStep label findCall within none
+putStep label writeCall loopKind none
+putStep label writeCall within none
+putStep label done loopKind none
+putStep label done within none
+putStep label setStep loopKind none
+putStep label setStep within none
+putStep label jumpStep loopKind none
+putStep label jumpStep within none
+putStep label jumpWritten loopKind none
+putStep label jumpWritten within none
+putStep label branchIfStep loopKind none
+putStep label branchIfStep within none
+putStep label branchIfErrorStep loopKind none
+putStep label branchIfErrorStep within none
+putStep label branchArms loopKind none
+putStep label branchArms within none
+putStep label yesWritten loopKind none
+putStep label yesWritten within none
+putStep label noWritten loopKind none
+putStep label noWritten within none
+putStep label returnStep loopKind none
+putStep label returnStep within none
+putStep label missing loopKind none
+putStep label missing within none
+putStep label copyCallNameFailed loopKind none
+putStep label copyCallNameFailed within none
+putStep label putTheCallFailed loopKind none
+putStep label putTheCallFailed within none
+putStep label putGotoFailed loopKind none
+putStep label putGotoFailed within none
+putStep label putYesFailed loopKind none
+putStep label putYesFailed within none
+putStep label putNoFailed loopKind none
+putStep label putNoFailed within none
+putStep let indent String "  " immutable
+putStep let valuePrefix String "v_" immutable
+putStep let flagPrefix String "f_" immutable
+putStep let assign String " = " immutable
+putStep let lineEnd String ";\n" immutable
+putStep let newline String "\n" immutable
+putStep let ifValue String "  if (" immutable
+putStep let ifThen String ") " immutable
+putStep let elseText String " else " immutable
+putStep let returnText String "  return " immutable
+putStep at begin do readLabel
+putStep at begin do readVerb
+putStep at begin do readSubject
+putStep at begin do readTarget
+putStep at begin do readOtherwise
+putStep at begin match verb subset.StepVerb
+putStep at begin case subset.StepVerb.doCall bind none none goto doStep
+putStep at begin case subset.StepVerb.setValue bind none none goto setStep
+putStep at begin case subset.StepVerb.jump bind none none goto jumpStep
+putStep at begin case subset.StepVerb.branchIf bind none none goto branchIfStep
+putStep at begin case subset.StepVerb.branchIfError bind none none goto branchIfErrorStep
+putStep at begin case subset.StepVerb.returnOk bind none none goto returnStep
+putStep at doStep do copyCallName
+putStep at doStep branch ifError copyCallName goto copyCallNameFailed else goto findCall
+putStep at findCall do readCall
+putStep at findCall branch ifError readCall goto missing else goto writeCall
+putStep at writeCall do putTheCall
+putStep at writeCall branch ifError putTheCall goto putTheCallFailed else goto done
+putStep at done return ok none
+putStep at setStep do putSetIndent
+putStep at setStep do putSetTarget
+putStep at setStep do putSetAssign
+putStep at setStep do putSetSource
+putStep at setStep do putSetEnd
+putStep at setStep return ok none
+putStep at jumpStep do putJumpIndent
+putStep at jumpStep do putGoto
+putStep at jumpStep branch ifError putGoto goto putGotoFailed else goto jumpWritten
+putStep at jumpWritten do putJumpEnd
+putStep at jumpWritten return ok none
+putStep at branchIfStep do putIfValue
+putStep at branchIfStep do putCondition
+putStep at branchIfStep goto branchArms
+putStep at branchIfErrorStep do putIfError
+putStep at branchIfErrorStep do putFlag
+putStep at branchIfErrorStep goto branchArms
+putStep at branchArms do putThen
+putStep at branchArms do putYes
+putStep at branchArms branch ifError putYes goto putYesFailed else goto yesWritten
+putStep at yesWritten do putElse
+putStep at yesWritten do putNo
+putStep at yesWritten branch ifError putNo goto putNoFailed else goto noWritten
+putStep at noWritten do putBranchEnd
+putStep at noWritten return ok none
+putStep at returnStep do putReturn
+putStep at returnStep do putReturnValue
+putStep at returnStep do putReturnEnd
+putStep at returnStep return ok none
+putStep at missing do makeMissing
+putStep at missing return error missingError
+putStep at copyCallNameFailed return error copyCallNameError
+putStep at putTheCallFailed return error putTheCallError
+putStep at putGotoFailed return error putGotoError
+putStep at putYesFailed return error putYesError
+putStep at putNoFailed return error putNoError
+
+readLabel is call
+readLabel in putStep
+readLabel invokes subset.Step.label
+readLabel argument record subset.Step step copy
+readLabel result label syntax.Word
+readLabel ownedBy none
+readLabel cleanedBy none
+readLabel borrows none
+readLabel catch none
+readLabel suppresses none
+
+readVerb is call
+readVerb in putStep
+readVerb invokes subset.Step.verb
+readVerb argument record subset.Step step copy
+readVerb result verb subset.StepVerb
+readVerb ownedBy none
+readVerb cleanedBy none
+readVerb borrows none
+readVerb catch none
+readVerb suppresses none
+
+readSubject is call
+readSubject in putStep
+readSubject invokes subset.Step.subject
+readSubject argument record subset.Step step copy
+readSubject result subject syntax.Word
+readSubject ownedBy none
+readSubject cleanedBy none
+readSubject borrows none
+readSubject catch none
+readSubject suppresses none
+
+readTarget is call
+readTarget in putStep
+readTarget invokes subset.Step.target
+readTarget argument record subset.Step step copy
+readTarget result target syntax.Word
+readTarget ownedBy none
+readTarget cleanedBy none
+readTarget borrows none
+readTarget catch none
+readTarget suppresses none
+
+readOtherwise is call
+readOtherwise in putStep
+readOtherwise invokes subset.Step.otherwise
+readOtherwise argument record subset.Step step copy
+readOtherwise result otherwise syntax.Word
+readOtherwise ownedBy none
+readOtherwise cleanedBy none
+readOtherwise borrows none
+readOtherwise catch none
+readOtherwise suppresses none
+
+copyCallName is call
+copyCallName in putStep
+copyCallName invokes syntax.wordText
+copyCallName argument source String source lend
+copyCallName argument word syntax.Word subject copy
+copyCallName argument region Region region lend
+copyCallName result callKey String
+copyCallName ownedBy region
+copyCallName cleanedBy none
+copyCallName borrows none
+copyCallName catch copyCallNameError syntax.Rejection
+copyCallName suppresses none
+
+readCall is call
+readCall in putStep
+readCall invokes subset.Calls.get
+readCall argument map subset.Calls calls lend
+readCall argument key String callKey lend
+readCall result info subset.CallInfo
+readCall ownedBy none
+readCall cleanedBy none
+readCall borrows none
+readCall catch absentError map.KeyMissing
+readCall suppresses none
+
+putTheCall is call
+putTheCall in putStep
+putTheCall invokes putCall
+putTheCall argument buffer buffer.ByteBuffer buffer lendMutable
+putTheCall argument source String source lend
+putTheCall argument info subset.CallInfo info copy
+putTheCall result none
+putTheCall ownedBy none
+putTheCall cleanedBy none
+putTheCall borrows none
+putTheCall catch putTheCallError syntax.Rejection
+putTheCall suppresses none
+
+putSetIndent is call
+putSetIndent in putStep
+putSetIndent invokes buffer.appendString
+putSetIndent argument buffer buffer.ByteBuffer buffer lendMutable
+putSetIndent argument text String indent lend
+putSetIndent result none
+putSetIndent ownedBy none
+putSetIndent cleanedBy none
+putSetIndent borrows none
+putSetIndent catch none
+putSetIndent suppresses none
+
+putSetTarget is call
+putSetTarget in putStep
+putSetTarget invokes putName
+putSetTarget argument buffer buffer.ByteBuffer buffer lendMutable
+putSetTarget argument prefix String valuePrefix lend
+putSetTarget argument source String source lend
+putSetTarget argument word syntax.Word subject copy
+putSetTarget result none
+putSetTarget ownedBy none
+putSetTarget cleanedBy none
+putSetTarget borrows none
+putSetTarget catch none
+putSetTarget suppresses none
+
+putSetAssign is call
+putSetAssign in putStep
+putSetAssign invokes buffer.appendString
+putSetAssign argument buffer buffer.ByteBuffer buffer lendMutable
+putSetAssign argument text String assign lend
+putSetAssign result none
+putSetAssign ownedBy none
+putSetAssign cleanedBy none
+putSetAssign borrows none
+putSetAssign catch none
+putSetAssign suppresses none
+
+putSetSource is call
+putSetSource in putStep
+putSetSource invokes putName
+putSetSource argument buffer buffer.ByteBuffer buffer lendMutable
+putSetSource argument prefix String valuePrefix lend
+putSetSource argument source String source lend
+putSetSource argument word syntax.Word target copy
+putSetSource result none
+putSetSource ownedBy none
+putSetSource cleanedBy none
+putSetSource borrows none
+putSetSource catch none
+putSetSource suppresses none
+
+putSetEnd is call
+putSetEnd in putStep
+putSetEnd invokes buffer.appendString
+putSetEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putSetEnd argument text String lineEnd lend
+putSetEnd result none
+putSetEnd ownedBy none
+putSetEnd cleanedBy none
+putSetEnd borrows none
+putSetEnd catch none
+putSetEnd suppresses none
+
+putJumpIndent is call
+putJumpIndent in putStep
+putJumpIndent invokes buffer.appendString
+putJumpIndent argument buffer buffer.ByteBuffer buffer lendMutable
+putJumpIndent argument text String indent lend
+putJumpIndent result none
+putJumpIndent ownedBy none
+putJumpIndent cleanedBy none
+putJumpIndent borrows none
+putJumpIndent catch none
+putJumpIndent suppresses none
+
+putGoto is call
+putGoto in putStep
+putGoto invokes putJump
+putGoto argument buffer buffer.ByteBuffer buffer lendMutable
+putGoto argument source String source lend
+putGoto argument labels subset.Labels labels lend
+putGoto argument from syntax.Word label copy
+putGoto argument to syntax.Word target copy
+putGoto argument region Region region lend
+putGoto result none
+putGoto ownedBy none
+putGoto cleanedBy none
+putGoto borrows none
+putGoto catch putGotoError syntax.Rejection
+putGoto suppresses none
+
+putJumpEnd is call
+putJumpEnd in putStep
+putJumpEnd invokes buffer.appendString
+putJumpEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putJumpEnd argument text String newline lend
+putJumpEnd result none
+putJumpEnd ownedBy none
+putJumpEnd cleanedBy none
+putJumpEnd borrows none
+putJumpEnd catch none
+putJumpEnd suppresses none
+
+putIfValue is call
+putIfValue in putStep
+putIfValue invokes buffer.appendString
+putIfValue argument buffer buffer.ByteBuffer buffer lendMutable
+putIfValue argument text String ifValue lend
+putIfValue result none
+putIfValue ownedBy none
+putIfValue cleanedBy none
+putIfValue borrows none
+putIfValue catch none
+putIfValue suppresses none
+
+putCondition is call
+putCondition in putStep
+putCondition invokes putName
+putCondition argument buffer buffer.ByteBuffer buffer lendMutable
+putCondition argument prefix String valuePrefix lend
+putCondition argument source String source lend
+putCondition argument word syntax.Word subject copy
+putCondition result none
+putCondition ownedBy none
+putCondition cleanedBy none
+putCondition borrows none
+putCondition catch none
+putCondition suppresses none
+
+putIfError is call
+putIfError in putStep
+putIfError invokes buffer.appendString
+putIfError argument buffer buffer.ByteBuffer buffer lendMutable
+putIfError argument text String ifValue lend
+putIfError result none
+putIfError ownedBy none
+putIfError cleanedBy none
+putIfError borrows none
+putIfError catch none
+putIfError suppresses none
+
+putFlag is call
+putFlag in putStep
+putFlag invokes putName
+putFlag argument buffer buffer.ByteBuffer buffer lendMutable
+putFlag argument prefix String flagPrefix lend
+putFlag argument source String source lend
+putFlag argument word syntax.Word subject copy
+putFlag result none
+putFlag ownedBy none
+putFlag cleanedBy none
+putFlag borrows none
+putFlag catch none
+putFlag suppresses none
+
+putThen is call
+putThen in putStep
+putThen invokes buffer.appendString
+putThen argument buffer buffer.ByteBuffer buffer lendMutable
+putThen argument text String ifThen lend
+putThen result none
+putThen ownedBy none
+putThen cleanedBy none
+putThen borrows none
+putThen catch none
+putThen suppresses none
+
+putYes is call
+putYes in putStep
+putYes invokes putJump
+putYes argument buffer buffer.ByteBuffer buffer lendMutable
+putYes argument source String source lend
+putYes argument labels subset.Labels labels lend
+putYes argument from syntax.Word label copy
+putYes argument to syntax.Word target copy
+putYes argument region Region region lend
+putYes result none
+putYes ownedBy none
+putYes cleanedBy none
+putYes borrows none
+putYes catch putYesError syntax.Rejection
+putYes suppresses none
+
+putElse is call
+putElse in putStep
+putElse invokes buffer.appendString
+putElse argument buffer buffer.ByteBuffer buffer lendMutable
+putElse argument text String elseText lend
+putElse result none
+putElse ownedBy none
+putElse cleanedBy none
+putElse borrows none
+putElse catch none
+putElse suppresses none
+
+putNo is call
+putNo in putStep
+putNo invokes putJump
+putNo argument buffer buffer.ByteBuffer buffer lendMutable
+putNo argument source String source lend
+putNo argument labels subset.Labels labels lend
+putNo argument from syntax.Word label copy
+putNo argument to syntax.Word otherwise copy
+putNo argument region Region region lend
+putNo result none
+putNo ownedBy none
+putNo cleanedBy none
+putNo borrows none
+putNo catch putNoError syntax.Rejection
+putNo suppresses none
+
+putBranchEnd is call
+putBranchEnd in putStep
+putBranchEnd invokes buffer.appendString
+putBranchEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putBranchEnd argument text String newline lend
+putBranchEnd result none
+putBranchEnd ownedBy none
+putBranchEnd cleanedBy none
+putBranchEnd borrows none
+putBranchEnd catch none
+putBranchEnd suppresses none
+
+putReturn is call
+putReturn in putStep
+putReturn invokes buffer.appendString
+putReturn argument buffer buffer.ByteBuffer buffer lendMutable
+putReturn argument text String returnText lend
+putReturn result none
+putReturn ownedBy none
+putReturn cleanedBy none
+putReturn borrows none
+putReturn catch none
+putReturn suppresses none
+
+putReturnValue is call
+putReturnValue in putStep
+putReturnValue invokes putName
+putReturnValue argument buffer buffer.ByteBuffer buffer lendMutable
+putReturnValue argument prefix String valuePrefix lend
+putReturnValue argument source String source lend
+putReturnValue argument word syntax.Word subject copy
+putReturnValue result none
+putReturnValue ownedBy none
+putReturnValue cleanedBy none
+putReturnValue borrows none
+putReturnValue catch none
+putReturnValue suppresses none
+
+putReturnEnd is call
+putReturnEnd in putStep
+putReturnEnd invokes buffer.appendString
+putReturnEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putReturnEnd argument text String lineEnd lend
+putReturnEnd result none
+putReturnEnd ownedBy none
+putReturnEnd cleanedBy none
+putReturnEnd borrows none
+putReturnEnd catch none
+putReturnEnd suppresses none
+
+makeMissing is call
+makeMissing in putStep
+makeMissing invokes syntax.Rejection.lostName
+makeMissing argument payload syntax.Word subject copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+# ---------------------------------------------------------------- the whole program
+
+emitProgram is operation
+emitProgram purpose "Write a checked stage0 program as one C file: the prelude, then main"
+emitProgram invariant writesC "Writes the prelude, then `int main(void)` declaring every value, failure flag, and loop counter, setting constants and then lets, and every label of main as a C label followed by its steps, in source order"
+emitProgram invariant countsLoopPasses "A jump to a bounded loop header from inside the loop counts a pass, which traps past the bound; a jump from outside resets the count"
+emitProgram typeParameter none
+emitProgram input source String borrowed
+emitProgram input values subset.Values borrowed
+emitProgram input calls subset.Calls borrowed
+emitProgram input labels subset.Labels borrowed
+emitProgram input steps subset.Steps borrowed
+emitProgram input buffer buffer.ByteBuffer borrowedMutable
+emitProgram input anchor syntax.Word copied
+emitProgram output none
+emitProgram outputOwnedBy none
+emitProgram raises syntax.Rejection
+emitProgram effect none
+emitProgram uses none
+emitProgram memoryHeap true
+emitProgram async false
+emitProgram maxRecursion none
+emitProgram label begin loopKind none
+emitProgram label begin within none
+emitProgram label flags loopKind none
+emitProgram label flags within none
+emitProgram label counters loopKind none
+emitProgram label counters within none
+emitProgram label constants loopKind none
+emitProgram label constants within none
+emitProgram label lets loopKind none
+emitProgram label lets within none
+emitProgram label start loopKind none
+emitProgram label start within none
+emitProgram label eachStep loopKind forEach
+emitProgram label eachStep within none
+emitProgram label eachStep maxIterations stepCount
+emitProgram label eachStep over steps
+emitProgram label readStep loopKind none
+emitProgram label readStep within eachStep
+emitProgram label compareLabel loopKind none
+emitProgram label compareLabel within eachStep
+emitProgram label labelCompared loopKind none
+emitProgram label labelCompared within eachStep
+emitProgram label newLabel loopKind none
+emitProgram label newLabel within eachStep
+emitProgram label writeStep loopKind none
+emitProgram label writeStep within eachStep
+emitProgram label stepWritten loopKind none
+emitProgram label stepWritten within eachStep
+emitProgram label finish loopKind none
+emitProgram label finish within none
+emitProgram label declareValuesFailed loopKind none
+emitProgram label declareValuesFailed within none
+emitProgram label declareFlagsFailed loopKind none
+emitProgram label declareFlagsFailed within none
+emitProgram label declareCountersFailed loopKind none
+emitProgram label declareCountersFailed within none
+emitProgram label setConstantsFailed loopKind none
+emitProgram label setConstantsFailed within none
+emitProgram label setLetsFailed loopKind none
+emitProgram label setLetsFailed within none
+emitProgram label sameLabelFailed loopKind none
+emitProgram label sameLabelFailed within none
+emitProgram label putOneStepFailed loopKind none
+emitProgram label putOneStepFailed within none
+emitProgram let mainOpen String "int main(void) {\n  ss_start();\n" immutable
+emitProgram let startText String "  goto l_begin;\n" immutable
+emitProgram let labelPrefix String "l_" immutable
+emitProgram let labelEnd String ":;\n" immutable
+emitProgram let mainClose String "}\n" immutable
+emitProgram let constantOrigin Int64 1 immutable
+emitProgram let letOrigin Int64 2 immutable
+emitProgram let yes Bool true immutable
+emitProgram let started Bool false mutable
+emitProgram let previous syntax.Word anchor mutable
+emitProgram at begin do putPrelude
+emitProgram at begin do putMainOpen
+emitProgram at begin do declareValues
+emitProgram at begin branch ifError declareValues goto declareValuesFailed else goto flags
+emitProgram at flags do declareFlags
+emitProgram at flags branch ifError declareFlags goto declareFlagsFailed else goto counters
+emitProgram at counters do declareCounters
+emitProgram at counters branch ifError declareCounters goto declareCountersFailed else goto constants
+emitProgram at constants do setConstants
+emitProgram at constants branch ifError setConstants goto setConstantsFailed else goto lets
+emitProgram at lets do setLets
+emitProgram at lets branch ifError setLets goto setLetsFailed else goto start
+emitProgram at start do putStart
+emitProgram at start do countSteps
+emitProgram at start goto eachStep
+emitProgram at eachStep branch ifNext steps bind step subset.Step goto readStep else goto finish
+emitProgram at readStep do readLabel
+emitProgram at readStep branch if started goto compareLabel else goto newLabel
+emitProgram at compareLabel do sameLabel
+emitProgram at compareLabel branch ifError sameLabel goto sameLabelFailed else goto labelCompared
+emitProgram at labelCompared branch if sameBlock goto writeStep else goto newLabel
+emitProgram at newLabel do putLabelPrefix
+emitProgram at newLabel do putLabelName
+emitProgram at newLabel do putLabelEnd
+emitProgram at newLabel set started yes
+emitProgram at newLabel set previous label
+emitProgram at newLabel goto writeStep
+emitProgram at writeStep do putOneStep
+emitProgram at writeStep branch ifError putOneStep goto putOneStepFailed else goto stepWritten
+emitProgram at stepWritten goto eachStep
+emitProgram at finish do putMainClose
+emitProgram at finish return ok none
+emitProgram at declareValuesFailed return error declareValuesError
+emitProgram at declareFlagsFailed return error declareFlagsError
+emitProgram at declareCountersFailed return error declareCountersError
+emitProgram at setConstantsFailed return error setConstantsError
+emitProgram at setLetsFailed return error setLetsError
+emitProgram at sameLabelFailed return error sameLabelError
+emitProgram at putOneStepFailed return error putOneStepError
+
+scratch is region
+scratch in emitProgram
+scratch strategy arena
+scratch maxBytes 1048576
+scratch released atReturn
+
+putPrelude is call
+putPrelude in emitProgram
+putPrelude invokes buffer.appendString
+putPrelude argument buffer buffer.ByteBuffer buffer lendMutable
+putPrelude argument text String prelude lend
+putPrelude result none
+putPrelude ownedBy none
+putPrelude cleanedBy none
+putPrelude borrows none
+putPrelude catch none
+putPrelude suppresses none
+
+putMainOpen is call
+putMainOpen in emitProgram
+putMainOpen invokes buffer.appendString
+putMainOpen argument buffer buffer.ByteBuffer buffer lendMutable
+putMainOpen argument text String mainOpen lend
+putMainOpen result none
+putMainOpen ownedBy none
+putMainOpen cleanedBy none
+putMainOpen borrows none
+putMainOpen catch none
+putMainOpen suppresses none
+
+declareValues is call
+declareValues in emitProgram
+declareValues invokes putDeclarations
+declareValues argument buffer buffer.ByteBuffer buffer lendMutable
+declareValues argument source String source lend
+declareValues argument values subset.Values values lend
+declareValues argument anchor syntax.Word anchor copy
+declareValues result none
+declareValues ownedBy none
+declareValues cleanedBy none
+declareValues borrows none
+declareValues catch declareValuesError syntax.Rejection
+declareValues suppresses none
+
+declareFlags is call
+declareFlags in emitProgram
+declareFlags invokes putFlags
+declareFlags argument buffer buffer.ByteBuffer buffer lendMutable
+declareFlags argument source String source lend
+declareFlags argument calls subset.Calls calls lend
+declareFlags argument anchor syntax.Word anchor copy
+declareFlags result none
+declareFlags ownedBy none
+declareFlags cleanedBy none
+declareFlags borrows none
+declareFlags catch declareFlagsError syntax.Rejection
+declareFlags suppresses none
+
+declareCounters is call
+declareCounters in emitProgram
+declareCounters invokes putCounters
+declareCounters argument buffer buffer.ByteBuffer buffer lendMutable
+declareCounters argument source String source lend
+declareCounters argument labels subset.Labels labels lend
+declareCounters argument anchor syntax.Word anchor copy
+declareCounters result none
+declareCounters ownedBy none
+declareCounters cleanedBy none
+declareCounters borrows none
+declareCounters catch declareCountersError syntax.Rejection
+declareCounters suppresses none
+
+setConstants is call
+setConstants in emitProgram
+setConstants invokes putInits
+setConstants argument buffer buffer.ByteBuffer buffer lendMutable
+setConstants argument source String source lend
+setConstants argument values subset.Values values lend
+setConstants argument origin Int64 constantOrigin copy
+setConstants argument anchor syntax.Word anchor copy
+setConstants result none
+setConstants ownedBy none
+setConstants cleanedBy none
+setConstants borrows none
+setConstants catch setConstantsError syntax.Rejection
+setConstants suppresses none
+
+setLets is call
+setLets in emitProgram
+setLets invokes putInits
+setLets argument buffer buffer.ByteBuffer buffer lendMutable
+setLets argument source String source lend
+setLets argument values subset.Values values lend
+setLets argument origin Int64 letOrigin copy
+setLets argument anchor syntax.Word anchor copy
+setLets result none
+setLets ownedBy none
+setLets cleanedBy none
+setLets borrows none
+setLets catch setLetsError syntax.Rejection
+setLets suppresses none
+
+putStart is call
+putStart in emitProgram
+putStart invokes buffer.appendString
+putStart argument buffer buffer.ByteBuffer buffer lendMutable
+putStart argument text String startText lend
+putStart result none
+putStart ownedBy none
+putStart cleanedBy none
+putStart borrows none
+putStart catch none
+putStart suppresses none
+
+countSteps is call
+countSteps in emitProgram
+countSteps invokes subset.Steps.length
+countSteps argument list subset.Steps steps lend
+countSteps result stepCount Int64
+countSteps ownedBy none
+countSteps cleanedBy none
+countSteps borrows none
+countSteps catch none
+countSteps suppresses none
+
+readLabel is call
+readLabel in emitProgram
+readLabel invokes subset.Step.label
+readLabel argument record subset.Step step copy
+readLabel result label syntax.Word
+readLabel ownedBy none
+readLabel cleanedBy none
+readLabel borrows none
+readLabel catch none
+readLabel suppresses none
+
+sameLabel is call
+sameLabel in emitProgram
+sameLabel invokes syntax.sameText
+sameLabel argument source String source lend
+sameLabel argument left syntax.Word label copy
+sameLabel argument right syntax.Word previous copy
+sameLabel result sameBlock Bool
+sameLabel ownedBy none
+sameLabel cleanedBy none
+sameLabel borrows none
+sameLabel catch sameLabelError syntax.Rejection
+sameLabel suppresses none
+
+putLabelPrefix is call
+putLabelPrefix in emitProgram
+putLabelPrefix invokes buffer.appendString
+putLabelPrefix argument buffer buffer.ByteBuffer buffer lendMutable
+putLabelPrefix argument text String labelPrefix lend
+putLabelPrefix result none
+putLabelPrefix ownedBy none
+putLabelPrefix cleanedBy none
+putLabelPrefix borrows none
+putLabelPrefix catch none
+putLabelPrefix suppresses none
+
+putLabelName is call
+putLabelName in emitProgram
+putLabelName invokes syntax.putWord
+putLabelName argument buffer buffer.ByteBuffer buffer lendMutable
+putLabelName argument source String source lend
+putLabelName argument word syntax.Word label copy
+putLabelName result none
+putLabelName ownedBy none
+putLabelName cleanedBy none
+putLabelName borrows none
+putLabelName catch none
+putLabelName suppresses none
+
+putLabelEnd is call
+putLabelEnd in emitProgram
+putLabelEnd invokes buffer.appendString
+putLabelEnd argument buffer buffer.ByteBuffer buffer lendMutable
+putLabelEnd argument text String labelEnd lend
+putLabelEnd result none
+putLabelEnd ownedBy none
+putLabelEnd cleanedBy none
+putLabelEnd borrows none
+putLabelEnd catch none
+putLabelEnd suppresses none
+
+putOneStep is call
+putOneStep in emitProgram
+putOneStep invokes putStep
+putOneStep argument buffer buffer.ByteBuffer buffer lendMutable
+putOneStep argument source String source lend
+putOneStep argument calls subset.Calls calls lend
+putOneStep argument labels subset.Labels labels lend
+putOneStep argument step subset.Step step copy
+putOneStep argument region Region scratch lend
+putOneStep result none
+putOneStep ownedBy none
+putOneStep cleanedBy none
+putOneStep borrows none
+putOneStep catch putOneStepError syntax.Rejection
+putOneStep suppresses none
+
+putMainClose is call
+putMainClose in emitProgram
+putMainClose invokes buffer.appendString
+putMainClose argument buffer buffer.ByteBuffer buffer lendMutable
+putMainClose argument text String mainClose lend
+putMainClose result none
+putMainClose ownedBy none
+putMainClose cleanedBy none
+putMainClose borrows none
+putMainClose catch none
+putMainClose suppresses none

@@ -1,0 +1,53 @@
+# A stage0 sample: hello, world. `refined run` and the executable stage0
+# builds from it both print the greeting and exit with code 0:
+#
+#   refined run samples/hello
+#   refined run . -- samples/hello/hello.sem build/hello
+
+hello is module
+hello purpose "Print a greeting, the smallest program in the stage0 subset"
+hello path hello
+hello imports standard.console
+hello exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Print a greeting and exit with code zero"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label succeeded loopKind none
+main label succeeded within none
+main label failed loopKind none
+main label failed within none
+main let greeting String "Hello, world!" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin do printGreeting
+main at begin branch ifError printGreeting goto failed else goto succeeded
+main at succeeded return ok okCode
+main at failed return ok failCode
+
+printGreeting is call
+printGreeting in main
+printGreeting invokes console.writeLine
+printGreeting argument text String greeting lend
+printGreeting result none
+printGreeting ownedBy none
+printGreeting cleanedBy none
+printGreeting borrows none
+printGreeting catch printError console.WriteError
+printGreeting suppresses none

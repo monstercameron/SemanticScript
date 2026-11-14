@@ -1,0 +1,110 @@
+# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`
+# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module
+# constant `limit`, and exits with code 0.
+
+squares is module
+squares purpose "Print the squares of the whole numbers from 1 to a limit"
+squares path squares
+squares imports standard.console
+squares imports standard.math
+squares imports standard.compare
+squares exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+limit is constant
+limit purpose "The last number whose square is printed"
+limit type Int64
+limit value 5
+
+main is operation
+main purpose "Print the square of each whole number from 1 to the limit"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label nextSquare note "Each pass prints one square; the loop returns to its header once per number"
+main label nextSquare loopKind while
+main label nextSquare within none
+main label nextSquare maxIterations limit
+main label printSquare loopKind none
+main label printSquare within nextSquare
+main label advance loopKind none
+main label advance within nextSquare
+main label finished loopKind none
+main label finished within none
+main label failed loopKind none
+main label failed within none
+main let number Int64 1 mutable
+main let one Int64 1 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin goto nextSquare
+main at nextSquare do pastLimitCheck
+main at nextSquare branch if pastLimit goto finished else goto printSquare
+main at printSquare do square
+main at printSquare do printIt
+main at printSquare branch ifError printIt goto failed else goto advance
+main at advance do addOne
+main at advance set number nextNumber
+main at advance goto nextSquare
+main at finished return ok okCode
+main at failed return ok failCode
+
+pastLimitCheck is call
+pastLimitCheck in main
+pastLimitCheck invokes compare.greaterThanInt64
+pastLimitCheck argument left Int64 number copy
+pastLimitCheck argument right Int64 limit copy
+pastLimitCheck result pastLimit Bool
+pastLimitCheck ownedBy none
+pastLimitCheck cleanedBy none
+pastLimitCheck borrows none
+pastLimitCheck catch none
+pastLimitCheck suppresses none
+
+square is call
+square in main
+square invokes math.multiplyInt64
+square argument left Int64 number copy
+square argument right Int64 number copy
+square result squared Int64
+square ownedBy none
+square cleanedBy none
+square borrows none
+square catch none
+square suppresses none
+
+printIt is call
+printIt in main
+printIt invokes console.writeIntegerLine
+printIt argument value Int64 squared copy
+printIt result none
+printIt ownedBy none
+printIt cleanedBy none
+printIt borrows none
+printIt catch printError console.WriteError
+printIt suppresses none
+
+addOne is call
+addOne in main
+addOne invokes math.addInt64
+addOne argument left Int64 number copy
+addOne argument right Int64 one copy
+addOne result nextNumber Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none

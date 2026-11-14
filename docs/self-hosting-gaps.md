@@ -24,10 +24,23 @@ moved as follows (decisions in `docs/language-refinement.md`):
 | 10: integer types | Done: every integer type computes | D-90 |
 | 11: layered generics, sets of `String` | Done | D-92 to D-94 |
 | 15: chunked native arena | Done | D-80 to D-85 |
-| 12 to 14: the compiler in the language, its C emitter, the bootstrap | In progress: a stage-0 compiler is being written in the language | — |
+| 12, 13: the compiler in the language and its C emitter | Stage 0 done: `docs/refined-examples/stage0` compiles a subset (one `main`, `Int64`/`String`/`Bool`/`ExitCode` lets, 22 targets, every step and loop kind but `forEach`) to C and builds it | `tests/test_stage0.py` |
+| 14: the bootstrap | First step done: stage0 builds as a standalone executable and writes the same C, byte for byte, as under `refined run` (about 0.5 s per sample against 12 s); widening the subset until stage0 compiles itself remains | `tests/test_stage0.py` |
 
 An adversarial review of the new collection and tooling rules then found nine holes. All are closed and each has
 a regression check (D-107 to D-109; `tests/suite/conformance.py`, `tests/test_review.py`).
+
+### What writing stage0 found (15,725 rows, 903 calls)
+
+Ranked by cost, from the stage0 author's report; these drive the next refinement round:
+
+1. Volume: about 17 rows per call. Every fallible call needs its own catch name, an `ifError` branch, and a label that returns the error; there is no explicit propagation form.
+2. A `String` output needs a region, so reading a word's text costs four calls and an error label.
+3. Text lookups: no keyed table and no generic operation over tables, so seven near-identical scans; a table cannot be read from another module.
+4. Test files hold only tests and R604 needs a direct call, so test helpers became exported operations with their own tests.
+5. A record cannot be changed in place: one field means reading every field and building a new record.
+6. R411 makes names unique across labels, values, and calls in one operation, causing frequent collisions.
+7. `set` takes only names, not literals; `string.find` reports "not found" as an error; every `match` lists all variants, each binding a distinct name.
 
 ## Method
 

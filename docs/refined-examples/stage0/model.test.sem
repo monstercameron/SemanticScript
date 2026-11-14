@@ -1,0 +1,1291 @@
+# Tests for model.sem: every invariant of `buildModel` is verified below, on a
+# small module and on sources it refuses.
+
+modelTest is test
+modelTest purpose "A module's entities are found by name, with their kinds and the rows they own"
+modelTest verifies buildModel groupsEntities
+modelTest verifies buildModel namesEntities
+modelTest typeParameter none
+modelTest input none
+modelTest output none
+modelTest outputOwnedBy none
+modelTest raises none
+modelTest effect none
+modelTest uses none
+modelTest memoryHeap true
+modelTest async false
+modelTest maxRecursion none
+modelTest label begin loopKind none
+modelTest label begin within none
+modelTest label lexed loopKind none
+modelTest label lexed within none
+modelTest label grouped loopKind none
+modelTest label grouped within none
+modelTest label modelled loopKind none
+modelTest label modelled within none
+modelTest label founddemo loopKind none
+modelTest label founddemo within none
+modelTest label foundstdoutWriter loopKind none
+modelTest label foundstdoutWriter within none
+modelTest label foundmain loopKind none
+modelTest label foundmain within none
+modelTest label foundgreet loopKind none
+modelTest label foundgreet within none
+modelTest label refused loopKind none
+modelTest label refused within none
+modelTest let source String "# a comment line\ndemo is module\ndemo purpose \"A module to model\"\ndemo path demo\n\nstdoutWriter is capability\nstdoutWriter grants write console.stdout none\n\nmain is operation\nmain input none\n\ngreet is call\ngreet in main\n" immutable
+modelTest let demoName String "demo" immutable
+modelTest let demoKind Int64 1 immutable
+modelTest let demoFirst Int64 0 immutable
+modelTest let demoCount Int64 3 immutable
+modelTest let stdoutWriterName String "stdoutWriter" immutable
+modelTest let stdoutWriterKind Int64 2 immutable
+modelTest let stdoutWriterFirst Int64 3 immutable
+modelTest let stdoutWriterCount Int64 2 immutable
+modelTest let mainName String "main" immutable
+modelTest let mainKind Int64 4 immutable
+modelTest let mainFirst Int64 5 immutable
+modelTest let mainCount Int64 2 immutable
+modelTest let greetName String "greet" immutable
+modelTest let greetKind Int64 5 immutable
+modelTest let greetFirst Int64 7 immutable
+modelTest let greetCount Int64 2 immutable
+modelTest let four Int64 4 immutable
+modelTest let refusedText String "the front end refused the source or a step failed" immutable
+modelTest at begin do lex
+modelTest at begin branch ifError lex goto refused else goto lexed
+modelTest at lexed do newWords
+modelTest at lexed do newRows
+modelTest at lexed do group
+modelTest at lexed branch ifError group goto refused else goto grouped
+modelTest at grouped do newEntities
+modelTest at grouped do newNames
+modelTest at grouped do model
+modelTest at grouped branch ifError model goto refused else goto modelled
+modelTest at modelled do countEntities
+modelTest at modelled do expectFour
+modelTest at modelled do finddemo
+modelTest at modelled branch ifError finddemo goto refused else goto founddemo
+modelTest at founddemo do readdemo
+modelTest at founddemo do kindOfdemo
+modelTest at founddemo do expectKinddemo
+modelTest at founddemo do firstOfdemo
+modelTest at founddemo do expectFirstdemo
+modelTest at founddemo do countOfdemo
+modelTest at founddemo do expectCountdemo
+modelTest at founddemo do findstdoutWriter
+modelTest at founddemo branch ifError findstdoutWriter goto refused else goto foundstdoutWriter
+modelTest at foundstdoutWriter do readstdoutWriter
+modelTest at foundstdoutWriter do kindOfstdoutWriter
+modelTest at foundstdoutWriter do expectKindstdoutWriter
+modelTest at foundstdoutWriter do firstOfstdoutWriter
+modelTest at foundstdoutWriter do expectFirststdoutWriter
+modelTest at foundstdoutWriter do countOfstdoutWriter
+modelTest at foundstdoutWriter do expectCountstdoutWriter
+modelTest at foundstdoutWriter do findmain
+modelTest at foundstdoutWriter branch ifError findmain goto refused else goto foundmain
+modelTest at foundmain do readmain
+modelTest at foundmain do kindOfmain
+modelTest at foundmain do expectKindmain
+modelTest at foundmain do firstOfmain
+modelTest at foundmain do expectFirstmain
+modelTest at foundmain do countOfmain
+modelTest at foundmain do expectCountmain
+modelTest at foundmain do findgreet
+modelTest at foundmain branch ifError findgreet goto refused else goto foundgreet
+modelTest at foundgreet do readgreet
+modelTest at foundgreet do kindOfgreet
+modelTest at foundgreet do expectKindgreet
+modelTest at foundgreet do firstOfgreet
+modelTest at foundgreet do expectFirstgreet
+modelTest at foundgreet do countOfgreet
+modelTest at foundgreet do expectCountgreet
+modelTest at foundgreet return ok none
+modelTest at refused do failRefused
+modelTest at refused return ok none
+
+store is region
+store in modelTest
+store strategy arena
+store maxBytes 262144
+store released atReturn
+
+lex is call
+lex in modelTest
+lex invokes lexer.tokenize
+lex argument source String source lend
+lex argument resultRegion Region store lend
+lex result tokens lexer.Tokens
+lex ownedBy store
+lex cleanedBy none
+lex borrows none
+lex catch lexError lexer.LexError
+lex suppresses none
+
+newWords is call
+newWords in modelTest
+newWords invokes syntax.Words.new
+newWords argument region Region store lend
+newWords result words syntax.Words
+newWords ownedBy store
+newWords cleanedBy none
+newWords borrows none
+newWords catch none
+newWords suppresses none
+
+newRows is call
+newRows in modelTest
+newRows invokes syntax.Rows.new
+newRows argument region Region store lend
+newRows result rows syntax.Rows
+newRows ownedBy store
+newRows cleanedBy none
+newRows borrows none
+newRows catch none
+newRows suppresses none
+
+group is call
+group in modelTest
+group invokes syntax.groupRows
+group argument source String source lend
+group argument tokens lexer.Tokens tokens lend
+group argument words syntax.Words words lendMutable
+group argument rows syntax.Rows rows lendMutable
+group result none
+group ownedBy none
+group cleanedBy none
+group borrows none
+group catch groupError syntax.Rejection
+group suppresses none
+
+newEntities is call
+newEntities in modelTest
+newEntities invokes Entities.new
+newEntities argument region Region store lend
+newEntities result entities Entities
+newEntities ownedBy store
+newEntities cleanedBy none
+newEntities borrows none
+newEntities catch none
+newEntities suppresses none
+
+newNames is call
+newNames in modelTest
+newNames invokes EntityNames.new
+newNames argument region Region store lend
+newNames result names EntityNames
+newNames ownedBy store
+newNames cleanedBy none
+newNames borrows none
+newNames catch none
+newNames suppresses none
+
+model is call
+model in modelTest
+model invokes buildModel
+model argument source String source lend
+model argument words syntax.Words words lend
+model argument rows syntax.Rows rows lend
+model argument entities Entities entities lendMutable
+model argument names EntityNames names lendMutable
+model result none
+model ownedBy none
+model cleanedBy none
+model borrows none
+model catch modelError syntax.Rejection
+model suppresses none
+
+countEntities is call
+countEntities in modelTest
+countEntities invokes Entities.length
+countEntities argument list Entities entities lend
+countEntities result entityCount Int64
+countEntities ownedBy none
+countEntities cleanedBy none
+countEntities borrows none
+countEntities catch none
+countEntities suppresses none
+
+expectFour is call
+expectFour in modelTest
+expectFour invokes test.assertEqualInt64
+expectFour argument expected Int64 four copy
+expectFour argument actual Int64 entityCount copy
+expectFour result none
+expectFour ownedBy none
+expectFour cleanedBy none
+expectFour borrows none
+expectFour catch none
+expectFour suppresses none
+
+finddemo is call
+finddemo in modelTest
+finddemo invokes EntityNames.get
+finddemo argument map EntityNames names lend
+finddemo argument key String demoName lend
+finddemo result demoAt Int64
+finddemo ownedBy none
+finddemo cleanedBy none
+finddemo borrows none
+finddemo catch finddemoError map.KeyMissing
+finddemo suppresses none
+
+readdemo is call
+readdemo in modelTest
+readdemo invokes Entities.getOrTrap
+readdemo argument list Entities entities lend
+readdemo argument index Int64 demoAt copy
+readdemo result demoEntity Entity
+readdemo ownedBy none
+readdemo cleanedBy none
+readdemo borrows none
+readdemo catch none
+readdemo suppresses none
+
+kindOfdemo is call
+kindOfdemo in modelTest
+kindOfdemo invokes Entity.kind
+kindOfdemo argument record Entity demoEntity copy
+kindOfdemo result demoActualKind Int64
+kindOfdemo ownedBy none
+kindOfdemo cleanedBy none
+kindOfdemo borrows none
+kindOfdemo catch none
+kindOfdemo suppresses none
+
+expectKinddemo is call
+expectKinddemo in modelTest
+expectKinddemo invokes test.assertEqualInt64
+expectKinddemo argument expected Int64 demoKind copy
+expectKinddemo argument actual Int64 demoActualKind copy
+expectKinddemo result none
+expectKinddemo ownedBy none
+expectKinddemo cleanedBy none
+expectKinddemo borrows none
+expectKinddemo catch none
+expectKinddemo suppresses none
+
+firstOfdemo is call
+firstOfdemo in modelTest
+firstOfdemo invokes Entity.first
+firstOfdemo argument record Entity demoEntity copy
+firstOfdemo result demoActualFirst Int64
+firstOfdemo ownedBy none
+firstOfdemo cleanedBy none
+firstOfdemo borrows none
+firstOfdemo catch none
+firstOfdemo suppresses none
+
+expectFirstdemo is call
+expectFirstdemo in modelTest
+expectFirstdemo invokes test.assertEqualInt64
+expectFirstdemo argument expected Int64 demoFirst copy
+expectFirstdemo argument actual Int64 demoActualFirst copy
+expectFirstdemo result none
+expectFirstdemo ownedBy none
+expectFirstdemo cleanedBy none
+expectFirstdemo borrows none
+expectFirstdemo catch none
+expectFirstdemo suppresses none
+
+countOfdemo is call
+countOfdemo in modelTest
+countOfdemo invokes Entity.count
+countOfdemo argument record Entity demoEntity copy
+countOfdemo result demoActualCount Int64
+countOfdemo ownedBy none
+countOfdemo cleanedBy none
+countOfdemo borrows none
+countOfdemo catch none
+countOfdemo suppresses none
+
+expectCountdemo is call
+expectCountdemo in modelTest
+expectCountdemo invokes test.assertEqualInt64
+expectCountdemo argument expected Int64 demoCount copy
+expectCountdemo argument actual Int64 demoActualCount copy
+expectCountdemo result none
+expectCountdemo ownedBy none
+expectCountdemo cleanedBy none
+expectCountdemo borrows none
+expectCountdemo catch none
+expectCountdemo suppresses none
+
+findstdoutWriter is call
+findstdoutWriter in modelTest
+findstdoutWriter invokes EntityNames.get
+findstdoutWriter argument map EntityNames names lend
+findstdoutWriter argument key String stdoutWriterName lend
+findstdoutWriter result stdoutWriterAt Int64
+findstdoutWriter ownedBy none
+findstdoutWriter cleanedBy none
+findstdoutWriter borrows none
+findstdoutWriter catch findstdoutWriterError map.KeyMissing
+findstdoutWriter suppresses none
+
+readstdoutWriter is call
+readstdoutWriter in modelTest
+readstdoutWriter invokes Entities.getOrTrap
+readstdoutWriter argument list Entities entities lend
+readstdoutWriter argument index Int64 stdoutWriterAt copy
+readstdoutWriter result stdoutWriterEntity Entity
+readstdoutWriter ownedBy none
+readstdoutWriter cleanedBy none
+readstdoutWriter borrows none
+readstdoutWriter catch none
+readstdoutWriter suppresses none
+
+kindOfstdoutWriter is call
+kindOfstdoutWriter in modelTest
+kindOfstdoutWriter invokes Entity.kind
+kindOfstdoutWriter argument record Entity stdoutWriterEntity copy
+kindOfstdoutWriter result stdoutWriterActualKind Int64
+kindOfstdoutWriter ownedBy none
+kindOfstdoutWriter cleanedBy none
+kindOfstdoutWriter borrows none
+kindOfstdoutWriter catch none
+kindOfstdoutWriter suppresses none
+
+expectKindstdoutWriter is call
+expectKindstdoutWriter in modelTest
+expectKindstdoutWriter invokes test.assertEqualInt64
+expectKindstdoutWriter argument expected Int64 stdoutWriterKind copy
+expectKindstdoutWriter argument actual Int64 stdoutWriterActualKind copy
+expectKindstdoutWriter result none
+expectKindstdoutWriter ownedBy none
+expectKindstdoutWriter cleanedBy none
+expectKindstdoutWriter borrows none
+expectKindstdoutWriter catch none
+expectKindstdoutWriter suppresses none
+
+firstOfstdoutWriter is call
+firstOfstdoutWriter in modelTest
+firstOfstdoutWriter invokes Entity.first
+firstOfstdoutWriter argument record Entity stdoutWriterEntity copy
+firstOfstdoutWriter result stdoutWriterActualFirst Int64
+firstOfstdoutWriter ownedBy none
+firstOfstdoutWriter cleanedBy none
+firstOfstdoutWriter borrows none
+firstOfstdoutWriter catch none
+firstOfstdoutWriter suppresses none
+
+expectFirststdoutWriter is call
+expectFirststdoutWriter in modelTest
+expectFirststdoutWriter invokes test.assertEqualInt64
+expectFirststdoutWriter argument expected Int64 stdoutWriterFirst copy
+expectFirststdoutWriter argument actual Int64 stdoutWriterActualFirst copy
+expectFirststdoutWriter result none
+expectFirststdoutWriter ownedBy none
+expectFirststdoutWriter cleanedBy none
+expectFirststdoutWriter borrows none
+expectFirststdoutWriter catch none
+expectFirststdoutWriter suppresses none
+
+countOfstdoutWriter is call
+countOfstdoutWriter in modelTest
+countOfstdoutWriter invokes Entity.count
+countOfstdoutWriter argument record Entity stdoutWriterEntity copy
+countOfstdoutWriter result stdoutWriterActualCount Int64
+countOfstdoutWriter ownedBy none
+countOfstdoutWriter cleanedBy none
+countOfstdoutWriter borrows none
+countOfstdoutWriter catch none
+countOfstdoutWriter suppresses none
+
+expectCountstdoutWriter is call
+expectCountstdoutWriter in modelTest
+expectCountstdoutWriter invokes test.assertEqualInt64
+expectCountstdoutWriter argument expected Int64 stdoutWriterCount copy
+expectCountstdoutWriter argument actual Int64 stdoutWriterActualCount copy
+expectCountstdoutWriter result none
+expectCountstdoutWriter ownedBy none
+expectCountstdoutWriter cleanedBy none
+expectCountstdoutWriter borrows none
+expectCountstdoutWriter catch none
+expectCountstdoutWriter suppresses none
+
+findmain is call
+findmain in modelTest
+findmain invokes EntityNames.get
+findmain argument map EntityNames names lend
+findmain argument key String mainName lend
+findmain result mainAt Int64
+findmain ownedBy none
+findmain cleanedBy none
+findmain borrows none
+findmain catch findmainError map.KeyMissing
+findmain suppresses none
+
+readmain is call
+readmain in modelTest
+readmain invokes Entities.getOrTrap
+readmain argument list Entities entities lend
+readmain argument index Int64 mainAt copy
+readmain result mainEntity Entity
+readmain ownedBy none
+readmain cleanedBy none
+readmain borrows none
+readmain catch none
+readmain suppresses none
+
+kindOfmain is call
+kindOfmain in modelTest
+kindOfmain invokes Entity.kind
+kindOfmain argument record Entity mainEntity copy
+kindOfmain result mainActualKind Int64
+kindOfmain ownedBy none
+kindOfmain cleanedBy none
+kindOfmain borrows none
+kindOfmain catch none
+kindOfmain suppresses none
+
+expectKindmain is call
+expectKindmain in modelTest
+expectKindmain invokes test.assertEqualInt64
+expectKindmain argument expected Int64 mainKind copy
+expectKindmain argument actual Int64 mainActualKind copy
+expectKindmain result none
+expectKindmain ownedBy none
+expectKindmain cleanedBy none
+expectKindmain borrows none
+expectKindmain catch none
+expectKindmain suppresses none
+
+firstOfmain is call
+firstOfmain in modelTest
+firstOfmain invokes Entity.first
+firstOfmain argument record Entity mainEntity copy
+firstOfmain result mainActualFirst Int64
+firstOfmain ownedBy none
+firstOfmain cleanedBy none
+firstOfmain borrows none
+firstOfmain catch none
+firstOfmain suppresses none
+
+expectFirstmain is call
+expectFirstmain in modelTest
+expectFirstmain invokes test.assertEqualInt64
+expectFirstmain argument expected Int64 mainFirst copy
+expectFirstmain argument actual Int64 mainActualFirst copy
+expectFirstmain result none
+expectFirstmain ownedBy none
+expectFirstmain cleanedBy none
+expectFirstmain borrows none
+expectFirstmain catch none
+expectFirstmain suppresses none
+
+countOfmain is call
+countOfmain in modelTest
+countOfmain invokes Entity.count
+countOfmain argument record Entity mainEntity copy
+countOfmain result mainActualCount Int64
+countOfmain ownedBy none
+countOfmain cleanedBy none
+countOfmain borrows none
+countOfmain catch none
+countOfmain suppresses none
+
+expectCountmain is call
+expectCountmain in modelTest
+expectCountmain invokes test.assertEqualInt64
+expectCountmain argument expected Int64 mainCount copy
+expectCountmain argument actual Int64 mainActualCount copy
+expectCountmain result none
+expectCountmain ownedBy none
+expectCountmain cleanedBy none
+expectCountmain borrows none
+expectCountmain catch none
+expectCountmain suppresses none
+
+findgreet is call
+findgreet in modelTest
+findgreet invokes EntityNames.get
+findgreet argument map EntityNames names lend
+findgreet argument key String greetName lend
+findgreet result greetAt Int64
+findgreet ownedBy none
+findgreet cleanedBy none
+findgreet borrows none
+findgreet catch findgreetError map.KeyMissing
+findgreet suppresses none
+
+readgreet is call
+readgreet in modelTest
+readgreet invokes Entities.getOrTrap
+readgreet argument list Entities entities lend
+readgreet argument index Int64 greetAt copy
+readgreet result greetEntity Entity
+readgreet ownedBy none
+readgreet cleanedBy none
+readgreet borrows none
+readgreet catch none
+readgreet suppresses none
+
+kindOfgreet is call
+kindOfgreet in modelTest
+kindOfgreet invokes Entity.kind
+kindOfgreet argument record Entity greetEntity copy
+kindOfgreet result greetActualKind Int64
+kindOfgreet ownedBy none
+kindOfgreet cleanedBy none
+kindOfgreet borrows none
+kindOfgreet catch none
+kindOfgreet suppresses none
+
+expectKindgreet is call
+expectKindgreet in modelTest
+expectKindgreet invokes test.assertEqualInt64
+expectKindgreet argument expected Int64 greetKind copy
+expectKindgreet argument actual Int64 greetActualKind copy
+expectKindgreet result none
+expectKindgreet ownedBy none
+expectKindgreet cleanedBy none
+expectKindgreet borrows none
+expectKindgreet catch none
+expectKindgreet suppresses none
+
+firstOfgreet is call
+firstOfgreet in modelTest
+firstOfgreet invokes Entity.first
+firstOfgreet argument record Entity greetEntity copy
+firstOfgreet result greetActualFirst Int64
+firstOfgreet ownedBy none
+firstOfgreet cleanedBy none
+firstOfgreet borrows none
+firstOfgreet catch none
+firstOfgreet suppresses none
+
+expectFirstgreet is call
+expectFirstgreet in modelTest
+expectFirstgreet invokes test.assertEqualInt64
+expectFirstgreet argument expected Int64 greetFirst copy
+expectFirstgreet argument actual Int64 greetActualFirst copy
+expectFirstgreet result none
+expectFirstgreet ownedBy none
+expectFirstgreet cleanedBy none
+expectFirstgreet borrows none
+expectFirstgreet catch none
+expectFirstgreet suppresses none
+
+countOfgreet is call
+countOfgreet in modelTest
+countOfgreet invokes Entity.count
+countOfgreet argument record Entity greetEntity copy
+countOfgreet result greetActualCount Int64
+countOfgreet ownedBy none
+countOfgreet cleanedBy none
+countOfgreet borrows none
+countOfgreet catch none
+countOfgreet suppresses none
+
+expectCountgreet is call
+expectCountgreet in modelTest
+expectCountgreet invokes test.assertEqualInt64
+expectCountgreet argument expected Int64 greetCount copy
+expectCountgreet argument actual Int64 greetActualCount copy
+expectCountgreet result none
+expectCountgreet ownedBy none
+expectCountgreet cleanedBy none
+expectCountgreet borrows none
+expectCountgreet catch none
+expectCountgreet suppresses none
+
+failRefused is call
+failRefused in modelTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+rejectTest is test
+rejectTest purpose "An unsupported kind, a stray row, a name declared twice, and an operation other than main are refused at the word they concern"
+rejectTest verifies buildModel rejectsOutsideModel
+rejectTest typeParameter none
+rejectTest input none
+rejectTest output none
+rejectTest outputOwnedBy none
+rejectTest raises none
+rejectTest effect none
+rejectTest uses none
+rejectTest memoryHeap true
+rejectTest async false
+rejectTest maxRecursion none
+rejectTest label begin loopKind none
+rejectTest label begin within none
+rejectTest label lexed0 loopKind none
+rejectTest label lexed0 within none
+rejectTest label grouped0 loopKind none
+rejectTest label grouped0 within none
+rejectTest label rejected0 loopKind none
+rejectTest label rejected0 within none
+rejectTest label lexed1 loopKind none
+rejectTest label lexed1 within none
+rejectTest label grouped1 loopKind none
+rejectTest label grouped1 within none
+rejectTest label rejected1 loopKind none
+rejectTest label rejected1 within none
+rejectTest label lexed2 loopKind none
+rejectTest label lexed2 within none
+rejectTest label grouped2 loopKind none
+rejectTest label grouped2 within none
+rejectTest label rejected2 loopKind none
+rejectTest label rejected2 within none
+rejectTest label lexed3 loopKind none
+rejectTest label lexed3 within none
+rejectTest label grouped3 loopKind none
+rejectTest label grouped3 within none
+rejectTest label rejected3 loopKind none
+rejectTest label rejected3 within none
+rejectTest label lexed4 loopKind none
+rejectTest label lexed4 within none
+rejectTest label grouped4 loopKind none
+rejectTest label grouped4 within none
+rejectTest label rejected4 loopKind none
+rejectTest label rejected4 within none
+rejectTest label refused loopKind none
+rejectTest label refused within none
+rejectTest let source0 String "demo is module\npoint is record\n" immutable
+rejectTest let expected0 String "2:10: this entity kind is outside the stage0 subset (record)" immutable
+rejectTest let source1 String "demo is module\nother path demo\n" immutable
+rejectTest let expected1 String "2:1: this row's subject is not the entity above it (other)" immutable
+rejectTest let source2 String "demo is module\ndemo is module\n" immutable
+rejectTest let expected2 String "2:1: this name is already declared (demo)" immutable
+rejectTest let source3 String "demo is module\nhelper is operation\n" immutable
+rejectTest let expected3 String "2:1: stage0 compiles one operation, and it is named main (helper)" immutable
+rejectTest let source4 String "demo path demo\n" immutable
+rejectTest let expected4 String "1:1: this row's subject is not the entity above it (demo)" immutable
+rejectTest let refusedText String "the front end refused the source or a step failed" immutable
+rejectTest at begin do lex0
+rejectTest at begin branch ifError lex0 goto refused else goto lexed0
+rejectTest at lexed0 do newWords0
+rejectTest at lexed0 do newRows0
+rejectTest at lexed0 do group0
+rejectTest at lexed0 branch ifError group0 goto refused else goto grouped0
+rejectTest at grouped0 do newEntities0
+rejectTest at grouped0 do newNames0
+rejectTest at grouped0 do model0
+rejectTest at grouped0 branch ifError model0 goto rejected0 else goto refused
+rejectTest at rejected0 do describe0
+rejectTest at rejected0 do expect0
+rejectTest at rejected0 do lex1
+rejectTest at rejected0 branch ifError lex1 goto refused else goto lexed1
+rejectTest at lexed1 do newWords1
+rejectTest at lexed1 do newRows1
+rejectTest at lexed1 do group1
+rejectTest at lexed1 branch ifError group1 goto refused else goto grouped1
+rejectTest at grouped1 do newEntities1
+rejectTest at grouped1 do newNames1
+rejectTest at grouped1 do model1
+rejectTest at grouped1 branch ifError model1 goto rejected1 else goto refused
+rejectTest at rejected1 do describe1
+rejectTest at rejected1 do expect1
+rejectTest at rejected1 do lex2
+rejectTest at rejected1 branch ifError lex2 goto refused else goto lexed2
+rejectTest at lexed2 do newWords2
+rejectTest at lexed2 do newRows2
+rejectTest at lexed2 do group2
+rejectTest at lexed2 branch ifError group2 goto refused else goto grouped2
+rejectTest at grouped2 do newEntities2
+rejectTest at grouped2 do newNames2
+rejectTest at grouped2 do model2
+rejectTest at grouped2 branch ifError model2 goto rejected2 else goto refused
+rejectTest at rejected2 do describe2
+rejectTest at rejected2 do expect2
+rejectTest at rejected2 do lex3
+rejectTest at rejected2 branch ifError lex3 goto refused else goto lexed3
+rejectTest at lexed3 do newWords3
+rejectTest at lexed3 do newRows3
+rejectTest at lexed3 do group3
+rejectTest at lexed3 branch ifError group3 goto refused else goto grouped3
+rejectTest at grouped3 do newEntities3
+rejectTest at grouped3 do newNames3
+rejectTest at grouped3 do model3
+rejectTest at grouped3 branch ifError model3 goto rejected3 else goto refused
+rejectTest at rejected3 do describe3
+rejectTest at rejected3 do expect3
+rejectTest at rejected3 do lex4
+rejectTest at rejected3 branch ifError lex4 goto refused else goto lexed4
+rejectTest at lexed4 do newWords4
+rejectTest at lexed4 do newRows4
+rejectTest at lexed4 do group4
+rejectTest at lexed4 branch ifError group4 goto refused else goto grouped4
+rejectTest at grouped4 do newEntities4
+rejectTest at grouped4 do newNames4
+rejectTest at grouped4 do model4
+rejectTest at grouped4 branch ifError model4 goto rejected4 else goto refused
+rejectTest at rejected4 do describe4
+rejectTest at rejected4 do expect4
+rejectTest at rejected4 return ok none
+rejectTest at refused do failRefused
+rejectTest at refused return ok none
+
+store is region
+store in rejectTest
+store strategy arena
+store maxBytes 262144
+store released atReturn
+
+lex0 is call
+lex0 in rejectTest
+lex0 invokes lexer.tokenize
+lex0 argument source String source0 lend
+lex0 argument resultRegion Region store lend
+lex0 result tokens0 lexer.Tokens
+lex0 ownedBy store
+lex0 cleanedBy none
+lex0 borrows none
+lex0 catch lex0Error lexer.LexError
+lex0 suppresses none
+
+newWords0 is call
+newWords0 in rejectTest
+newWords0 invokes syntax.Words.new
+newWords0 argument region Region store lend
+newWords0 result words0 syntax.Words
+newWords0 ownedBy store
+newWords0 cleanedBy none
+newWords0 borrows none
+newWords0 catch none
+newWords0 suppresses none
+
+newRows0 is call
+newRows0 in rejectTest
+newRows0 invokes syntax.Rows.new
+newRows0 argument region Region store lend
+newRows0 result rows0 syntax.Rows
+newRows0 ownedBy store
+newRows0 cleanedBy none
+newRows0 borrows none
+newRows0 catch none
+newRows0 suppresses none
+
+group0 is call
+group0 in rejectTest
+group0 invokes syntax.groupRows
+group0 argument source String source0 lend
+group0 argument tokens lexer.Tokens tokens0 lend
+group0 argument words syntax.Words words0 lendMutable
+group0 argument rows syntax.Rows rows0 lendMutable
+group0 result none
+group0 ownedBy none
+group0 cleanedBy none
+group0 borrows none
+group0 catch group0Error syntax.Rejection
+group0 suppresses none
+
+newEntities0 is call
+newEntities0 in rejectTest
+newEntities0 invokes Entities.new
+newEntities0 argument region Region store lend
+newEntities0 result entities0 Entities
+newEntities0 ownedBy store
+newEntities0 cleanedBy none
+newEntities0 borrows none
+newEntities0 catch none
+newEntities0 suppresses none
+
+newNames0 is call
+newNames0 in rejectTest
+newNames0 invokes EntityNames.new
+newNames0 argument region Region store lend
+newNames0 result names0 EntityNames
+newNames0 ownedBy store
+newNames0 cleanedBy none
+newNames0 borrows none
+newNames0 catch none
+newNames0 suppresses none
+
+model0 is call
+model0 in rejectTest
+model0 invokes buildModel
+model0 argument source String source0 lend
+model0 argument words syntax.Words words0 lend
+model0 argument rows syntax.Rows rows0 lend
+model0 argument entities Entities entities0 lendMutable
+model0 argument names EntityNames names0 lendMutable
+model0 result none
+model0 ownedBy none
+model0 cleanedBy none
+model0 borrows none
+model0 catch modelError0 syntax.Rejection
+model0 suppresses none
+
+describe0 is call
+describe0 in rejectTest
+describe0 invokes syntax.diagnostic
+describe0 argument source String source0 lend
+describe0 argument rejection syntax.Rejection modelError0 copy
+describe0 argument region Region store lend
+describe0 result described0 String
+describe0 ownedBy store
+describe0 cleanedBy none
+describe0 borrows none
+describe0 catch none
+describe0 suppresses none
+
+expect0 is call
+expect0 in rejectTest
+expect0 invokes test.assertEqualString
+expect0 argument expected String expected0 lend
+expect0 argument actual String described0 lend
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+lex1 is call
+lex1 in rejectTest
+lex1 invokes lexer.tokenize
+lex1 argument source String source1 lend
+lex1 argument resultRegion Region store lend
+lex1 result tokens1 lexer.Tokens
+lex1 ownedBy store
+lex1 cleanedBy none
+lex1 borrows none
+lex1 catch lex1Error lexer.LexError
+lex1 suppresses none
+
+newWords1 is call
+newWords1 in rejectTest
+newWords1 invokes syntax.Words.new
+newWords1 argument region Region store lend
+newWords1 result words1 syntax.Words
+newWords1 ownedBy store
+newWords1 cleanedBy none
+newWords1 borrows none
+newWords1 catch none
+newWords1 suppresses none
+
+newRows1 is call
+newRows1 in rejectTest
+newRows1 invokes syntax.Rows.new
+newRows1 argument region Region store lend
+newRows1 result rows1 syntax.Rows
+newRows1 ownedBy store
+newRows1 cleanedBy none
+newRows1 borrows none
+newRows1 catch none
+newRows1 suppresses none
+
+group1 is call
+group1 in rejectTest
+group1 invokes syntax.groupRows
+group1 argument source String source1 lend
+group1 argument tokens lexer.Tokens tokens1 lend
+group1 argument words syntax.Words words1 lendMutable
+group1 argument rows syntax.Rows rows1 lendMutable
+group1 result none
+group1 ownedBy none
+group1 cleanedBy none
+group1 borrows none
+group1 catch group1Error syntax.Rejection
+group1 suppresses none
+
+newEntities1 is call
+newEntities1 in rejectTest
+newEntities1 invokes Entities.new
+newEntities1 argument region Region store lend
+newEntities1 result entities1 Entities
+newEntities1 ownedBy store
+newEntities1 cleanedBy none
+newEntities1 borrows none
+newEntities1 catch none
+newEntities1 suppresses none
+
+newNames1 is call
+newNames1 in rejectTest
+newNames1 invokes EntityNames.new
+newNames1 argument region Region store lend
+newNames1 result names1 EntityNames
+newNames1 ownedBy store
+newNames1 cleanedBy none
+newNames1 borrows none
+newNames1 catch none
+newNames1 suppresses none
+
+model1 is call
+model1 in rejectTest
+model1 invokes buildModel
+model1 argument source String source1 lend
+model1 argument words syntax.Words words1 lend
+model1 argument rows syntax.Rows rows1 lend
+model1 argument entities Entities entities1 lendMutable
+model1 argument names EntityNames names1 lendMutable
+model1 result none
+model1 ownedBy none
+model1 cleanedBy none
+model1 borrows none
+model1 catch modelError1 syntax.Rejection
+model1 suppresses none
+
+describe1 is call
+describe1 in rejectTest
+describe1 invokes syntax.diagnostic
+describe1 argument source String source1 lend
+describe1 argument rejection syntax.Rejection modelError1 copy
+describe1 argument region Region store lend
+describe1 result described1 String
+describe1 ownedBy store
+describe1 cleanedBy none
+describe1 borrows none
+describe1 catch none
+describe1 suppresses none
+
+expect1 is call
+expect1 in rejectTest
+expect1 invokes test.assertEqualString
+expect1 argument expected String expected1 lend
+expect1 argument actual String described1 lend
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+lex2 is call
+lex2 in rejectTest
+lex2 invokes lexer.tokenize
+lex2 argument source String source2 lend
+lex2 argument resultRegion Region store lend
+lex2 result tokens2 lexer.Tokens
+lex2 ownedBy store
+lex2 cleanedBy none
+lex2 borrows none
+lex2 catch lex2Error lexer.LexError
+lex2 suppresses none
+
+newWords2 is call
+newWords2 in rejectTest
+newWords2 invokes syntax.Words.new
+newWords2 argument region Region store lend
+newWords2 result words2 syntax.Words
+newWords2 ownedBy store
+newWords2 cleanedBy none
+newWords2 borrows none
+newWords2 catch none
+newWords2 suppresses none
+
+newRows2 is call
+newRows2 in rejectTest
+newRows2 invokes syntax.Rows.new
+newRows2 argument region Region store lend
+newRows2 result rows2 syntax.Rows
+newRows2 ownedBy store
+newRows2 cleanedBy none
+newRows2 borrows none
+newRows2 catch none
+newRows2 suppresses none
+
+group2 is call
+group2 in rejectTest
+group2 invokes syntax.groupRows
+group2 argument source String source2 lend
+group2 argument tokens lexer.Tokens tokens2 lend
+group2 argument words syntax.Words words2 lendMutable
+group2 argument rows syntax.Rows rows2 lendMutable
+group2 result none
+group2 ownedBy none
+group2 cleanedBy none
+group2 borrows none
+group2 catch group2Error syntax.Rejection
+group2 suppresses none
+
+newEntities2 is call
+newEntities2 in rejectTest
+newEntities2 invokes Entities.new
+newEntities2 argument region Region store lend
+newEntities2 result entities2 Entities
+newEntities2 ownedBy store
+newEntities2 cleanedBy none
+newEntities2 borrows none
+newEntities2 catch none
+newEntities2 suppresses none
+
+newNames2 is call
+newNames2 in rejectTest
+newNames2 invokes EntityNames.new
+newNames2 argument region Region store lend
+newNames2 result names2 EntityNames
+newNames2 ownedBy store
+newNames2 cleanedBy none
+newNames2 borrows none
+newNames2 catch none
+newNames2 suppresses none
+
+model2 is call
+model2 in rejectTest
+model2 invokes buildModel
+model2 argument source String source2 lend
+model2 argument words syntax.Words words2 lend
+model2 argument rows syntax.Rows rows2 lend
+model2 argument entities Entities entities2 lendMutable
+model2 argument names EntityNames names2 lendMutable
+model2 result none
+model2 ownedBy none
+model2 cleanedBy none
+model2 borrows none
+model2 catch modelError2 syntax.Rejection
+model2 suppresses none
+
+describe2 is call
+describe2 in rejectTest
+describe2 invokes syntax.diagnostic
+describe2 argument source String source2 lend
+describe2 argument rejection syntax.Rejection modelError2 copy
+describe2 argument region Region store lend
+describe2 result described2 String
+describe2 ownedBy store
+describe2 cleanedBy none
+describe2 borrows none
+describe2 catch none
+describe2 suppresses none
+
+expect2 is call
+expect2 in rejectTest
+expect2 invokes test.assertEqualString
+expect2 argument expected String expected2 lend
+expect2 argument actual String described2 lend
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+lex3 is call
+lex3 in rejectTest
+lex3 invokes lexer.tokenize
+lex3 argument source String source3 lend
+lex3 argument resultRegion Region store lend
+lex3 result tokens3 lexer.Tokens
+lex3 ownedBy store
+lex3 cleanedBy none
+lex3 borrows none
+lex3 catch lex3Error lexer.LexError
+lex3 suppresses none
+
+newWords3 is call
+newWords3 in rejectTest
+newWords3 invokes syntax.Words.new
+newWords3 argument region Region store lend
+newWords3 result words3 syntax.Words
+newWords3 ownedBy store
+newWords3 cleanedBy none
+newWords3 borrows none
+newWords3 catch none
+newWords3 suppresses none
+
+newRows3 is call
+newRows3 in rejectTest
+newRows3 invokes syntax.Rows.new
+newRows3 argument region Region store lend
+newRows3 result rows3 syntax.Rows
+newRows3 ownedBy store
+newRows3 cleanedBy none
+newRows3 borrows none
+newRows3 catch none
+newRows3 suppresses none
+
+group3 is call
+group3 in rejectTest
+group3 invokes syntax.groupRows
+group3 argument source String source3 lend
+group3 argument tokens lexer.Tokens tokens3 lend
+group3 argument words syntax.Words words3 lendMutable
+group3 argument rows syntax.Rows rows3 lendMutable
+group3 result none
+group3 ownedBy none
+group3 cleanedBy none
+group3 borrows none
+group3 catch group3Error syntax.Rejection
+group3 suppresses none
+
+newEntities3 is call
+newEntities3 in rejectTest
+newEntities3 invokes Entities.new
+newEntities3 argument region Region store lend
+newEntities3 result entities3 Entities
+newEntities3 ownedBy store
+newEntities3 cleanedBy none
+newEntities3 borrows none
+newEntities3 catch none
+newEntities3 suppresses none
+
+newNames3 is call
+newNames3 in rejectTest
+newNames3 invokes EntityNames.new
+newNames3 argument region Region store lend
+newNames3 result names3 EntityNames
+newNames3 ownedBy store
+newNames3 cleanedBy none
+newNames3 borrows none
+newNames3 catch none
+newNames3 suppresses none
+
+model3 is call
+model3 in rejectTest
+model3 invokes buildModel
+model3 argument source String source3 lend
+model3 argument words syntax.Words words3 lend
+model3 argument rows syntax.Rows rows3 lend
+model3 argument entities Entities entities3 lendMutable
+model3 argument names EntityNames names3 lendMutable
+model3 result none
+model3 ownedBy none
+model3 cleanedBy none
+model3 borrows none
+model3 catch modelError3 syntax.Rejection
+model3 suppresses none
+
+describe3 is call
+describe3 in rejectTest
+describe3 invokes syntax.diagnostic
+describe3 argument source String source3 lend
+describe3 argument rejection syntax.Rejection modelError3 copy
+describe3 argument region Region store lend
+describe3 result described3 String
+describe3 ownedBy store
+describe3 cleanedBy none
+describe3 borrows none
+describe3 catch none
+describe3 suppresses none
+
+expect3 is call
+expect3 in rejectTest
+expect3 invokes test.assertEqualString
+expect3 argument expected String expected3 lend
+expect3 argument actual String described3 lend
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+lex4 is call
+lex4 in rejectTest
+lex4 invokes lexer.tokenize
+lex4 argument source String source4 lend
+lex4 argument resultRegion Region store lend
+lex4 result tokens4 lexer.Tokens
+lex4 ownedBy store
+lex4 cleanedBy none
+lex4 borrows none
+lex4 catch lex4Error lexer.LexError
+lex4 suppresses none
+
+newWords4 is call
+newWords4 in rejectTest
+newWords4 invokes syntax.Words.new
+newWords4 argument region Region store lend
+newWords4 result words4 syntax.Words
+newWords4 ownedBy store
+newWords4 cleanedBy none
+newWords4 borrows none
+newWords4 catch none
+newWords4 suppresses none
+
+newRows4 is call
+newRows4 in rejectTest
+newRows4 invokes syntax.Rows.new
+newRows4 argument region Region store lend
+newRows4 result rows4 syntax.Rows
+newRows4 ownedBy store
+newRows4 cleanedBy none
+newRows4 borrows none
+newRows4 catch none
+newRows4 suppresses none
+
+group4 is call
+group4 in rejectTest
+group4 invokes syntax.groupRows
+group4 argument source String source4 lend
+group4 argument tokens lexer.Tokens tokens4 lend
+group4 argument words syntax.Words words4 lendMutable
+group4 argument rows syntax.Rows rows4 lendMutable
+group4 result none
+group4 ownedBy none
+group4 cleanedBy none
+group4 borrows none
+group4 catch group4Error syntax.Rejection
+group4 suppresses none
+
+newEntities4 is call
+newEntities4 in rejectTest
+newEntities4 invokes Entities.new
+newEntities4 argument region Region store lend
+newEntities4 result entities4 Entities
+newEntities4 ownedBy store
+newEntities4 cleanedBy none
+newEntities4 borrows none
+newEntities4 catch none
+newEntities4 suppresses none
+
+newNames4 is call
+newNames4 in rejectTest
+newNames4 invokes EntityNames.new
+newNames4 argument region Region store lend
+newNames4 result names4 EntityNames
+newNames4 ownedBy store
+newNames4 cleanedBy none
+newNames4 borrows none
+newNames4 catch none
+newNames4 suppresses none
+
+model4 is call
+model4 in rejectTest
+model4 invokes buildModel
+model4 argument source String source4 lend
+model4 argument words syntax.Words words4 lend
+model4 argument rows syntax.Rows rows4 lend
+model4 argument entities Entities entities4 lendMutable
+model4 argument names EntityNames names4 lendMutable
+model4 result none
+model4 ownedBy none
+model4 cleanedBy none
+model4 borrows none
+model4 catch modelError4 syntax.Rejection
+model4 suppresses none
+
+describe4 is call
+describe4 in rejectTest
+describe4 invokes syntax.diagnostic
+describe4 argument source String source4 lend
+describe4 argument rejection syntax.Rejection modelError4 copy
+describe4 argument region Region store lend
+describe4 result described4 String
+describe4 ownedBy store
+describe4 cleanedBy none
+describe4 borrows none
+describe4 catch none
+describe4 suppresses none
+
+expect4 is call
+expect4 in rejectTest
+expect4 invokes test.assertEqualString
+expect4 argument expected String expected4 lend
+expect4 argument actual String described4 lend
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+failRefused is call
+failRefused in rejectTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none

@@ -1,0 +1,10 @@
+# Authority approved for this project (`refined approve`). A program runs only with authority
+# listed here; build.sem asking for more stops `refined run`, `test`, and executable builds.
+read process.arguments none
+write console.stdout none
+write console.stderr none
+read fs.files "./"
+write fs.files "build/"
+spawn process.programs "cc"
+spawn process.programs "gcc"
+spawn process.programs "clang"

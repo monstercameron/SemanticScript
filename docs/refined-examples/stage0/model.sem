@@ -1,0 +1,821 @@
+# The stage0 compiler's model: rows grouped into entities. An entity is the
+# `<name> is <kind>` row that starts it and every row after it up to the next
+# `is` row; each of those rows has the entity's name as its subject (the
+# formatter's layout, which stage0 requires). An entity records its name, its
+# kind, and the run of rows it owns, and a map finds an entity by its name.
+#
+# Kinds are numbered by their row in the `kinds` table: 1 module, 2 capability,
+# 3 constant, 4 operation, 5 call. Any other kind is outside the stage0 subset.
+
+model is module
+model purpose "Group rows into entities and find an entity by its name"
+model path model
+model imports standard.string
+model imports standard.list
+model imports standard.map
+model imports standard.math
+model imports standard.compare
+model imports standard.test
+model imports lexer
+model imports syntax
+model exports Entity
+model exports Entities
+model exports EntityNames
+model exports buildModel
+
+KindRow is record
+KindRow purpose "One entity kind stage0 compiles, numbered by its row"
+KindRow typeParameter none
+KindRow field text String
+
+kinds is table
+kinds purpose "The entity kinds of the stage0 subset; a kind's number is its row's position"
+kinds rowType KindRow
+kinds row moduleRow 1
+kinds row capabilityRow 2
+kinds row constantRow 3
+kinds row operationRow 4
+kinds row callRow 5
+kinds cell moduleRow text "module"
+kinds cell capabilityRow text "capability"
+kinds cell constantRow text "constant"
+kinds cell operationRow text "operation"
+kinds cell callRow text "call"
+
+operationKind is constant
+operationKind purpose "The number of the operation kind in the kinds table"
+operationKind type Int64
+operationKind value 4
+
+Entity is record
+Entity purpose "One entity: its name, its kind's number, and the run of rows it owns"
+Entity typeParameter none
+Entity field name syntax.Word
+Entity field kind Int64
+Entity field first Int64
+Entity field count Int64
+
+Entities is typeInstance
+Entities purpose "Every entity of a module, in source order"
+Entities in none
+Entities instantiates list.List Entity
+
+EntityNames is typeInstance
+EntityNames purpose "The position of each entity in the entity list, by its name"
+EntityNames in none
+EntityNames instantiates map.Map String Int64
+
+lookupKind is operation
+lookupKind purpose "Find a kind word in the kinds table and return its number"
+lookupKind invariant none
+lookupKind typeParameter none
+lookupKind input source String borrowed
+lookupKind input word syntax.Word copied
+lookupKind output Int64
+lookupKind outputOwnedBy none
+lookupKind raises syntax.Rejection
+lookupKind effect none
+lookupKind uses none
+lookupKind memoryHeap false
+lookupKind async false
+lookupKind maxRecursion none
+lookupKind label begin loopKind none
+lookupKind label begin within none
+lookupKind label scan loopKind forEach
+lookupKind label scan within none
+lookupKind label scan maxIterations 5
+lookupKind label scan over kinds
+lookupKind label compare loopKind none
+lookupKind label compare within scan
+lookupKind label found loopKind none
+lookupKind label found within none
+lookupKind label missing loopKind none
+lookupKind label missing within none
+lookupKind label outside loopKind none
+lookupKind label outside within none
+lookupKind let one Int64 1 immutable
+lookupKind let position Int64 0 mutable
+lookupKind at begin do readStart
+lookupKind at begin do readOffset
+lookupKind at begin do readLength
+lookupKind at begin do cutWord
+lookupKind at begin branch ifError cutWord goto outside else goto scan
+lookupKind at scan branch ifNext kinds bind entry KindRow goto compare else goto missing
+lookupKind at compare do countRow
+lookupKind at compare set position nextPosition
+lookupKind at compare do readText
+lookupKind at compare do sameText
+lookupKind at compare branch if isSame goto found else goto scan
+lookupKind at found return ok position
+lookupKind at missing do makeMissing
+lookupKind at missing return error missingError
+lookupKind at outside do makeOutside
+lookupKind at outside return error outsideError
+
+readStart is call
+readStart in lookupKind
+readStart invokes syntax.Word.start
+readStart argument record syntax.Word word copy
+readStart result wordStart string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readOffset is call
+readOffset in lookupKind
+readOffset invokes string.Position.offset
+readOffset argument record string.Position wordStart copy
+readOffset result wordOffset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readLength is call
+readLength in lookupKind
+readLength invokes syntax.Word.length
+readLength argument record syntax.Word word copy
+readLength result wordLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+cutWord is call
+cutWord in lookupKind
+cutWord invokes string.slice
+cutWord argument text String source lend
+cutWord argument start Int64 wordOffset copy
+cutWord argument length Int64 wordLength copy
+cutWord result wordText String
+cutWord ownedBy none
+cutWord cleanedBy none
+cutWord borrows source
+cutWord catch cutError string.StringIndexError
+cutWord suppresses none
+
+countRow is call
+countRow in lookupKind
+countRow invokes math.addInt64
+countRow argument left Int64 position copy
+countRow argument right Int64 one copy
+countRow result nextPosition Int64
+countRow ownedBy none
+countRow cleanedBy none
+countRow borrows none
+countRow catch none
+countRow suppresses none
+
+readText is call
+readText in lookupKind
+readText invokes KindRow.text
+readText argument record KindRow entry lend
+readText result entryText String
+readText ownedBy none
+readText cleanedBy none
+readText borrows entry
+readText catch none
+readText suppresses none
+
+sameText is call
+sameText in lookupKind
+sameText invokes string.equals
+sameText argument left String entryText lend
+sameText argument right String wordText lend
+sameText result isSame Bool
+sameText ownedBy none
+sameText cleanedBy none
+sameText borrows none
+sameText catch none
+sameText suppresses none
+
+makeMissing is call
+makeMissing in lookupKind
+makeMissing invokes syntax.Rejection.unsupportedKind
+makeMissing argument payload syntax.Word word copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+makeOutside is call
+makeOutside in lookupKind
+makeOutside invokes syntax.Rejection.outsideSource
+makeOutside argument payload syntax.Word word copy
+makeOutside result outsideError syntax.Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+closeEntity is operation
+closeEntity purpose "Record the entity being built, when there is one, and enter its name in the name map"
+closeEntity invariant none
+closeEntity typeParameter none
+closeEntity input source String borrowed
+closeEntity input entities Entities borrowedMutable
+closeEntity input names EntityNames borrowedMutable
+closeEntity input open Bool copied
+closeEntity input name syntax.Word copied
+closeEntity input kind Int64 copied
+closeEntity input first Int64 copied
+closeEntity input end Int64 copied
+closeEntity input region Region borrowed
+closeEntity output none
+closeEntity outputOwnedBy none
+closeEntity raises syntax.Rejection
+closeEntity effect none
+closeEntity uses none
+closeEntity memoryHeap true
+closeEntity async false
+closeEntity maxRecursion none
+closeEntity label begin loopKind none
+closeEntity label begin within none
+closeEntity label add loopKind none
+closeEntity label add within none
+closeEntity label enter loopKind none
+closeEntity label enter within none
+closeEntity label done loopKind none
+closeEntity label done within none
+closeEntity label copyNameFailed loopKind none
+closeEntity label copyNameFailed within none
+closeEntity let none
+closeEntity at begin branch if open goto add else goto done
+closeEntity at add do measure
+closeEntity at add do makeEntity
+closeEntity at add do countEntities
+closeEntity at add do appendEntity
+closeEntity at add do copyName
+closeEntity at add branch ifError copyName goto copyNameFailed else goto enter
+closeEntity at enter do enterName
+closeEntity at enter goto done
+closeEntity at done return ok none
+closeEntity at copyNameFailed return error copyNameError
+
+measure is call
+measure in closeEntity
+measure invokes math.subtractInt64
+measure argument left Int64 end copy
+measure argument right Int64 first copy
+measure result count Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+makeEntity is call
+makeEntity in closeEntity
+makeEntity invokes Entity.new
+makeEntity argument name syntax.Word name copy
+makeEntity argument kind Int64 kind copy
+makeEntity argument first Int64 first copy
+makeEntity argument count Int64 count copy
+makeEntity result entity Entity
+makeEntity ownedBy none
+makeEntity cleanedBy none
+makeEntity borrows none
+makeEntity catch none
+makeEntity suppresses none
+
+countEntities is call
+countEntities in closeEntity
+countEntities invokes Entities.length
+countEntities argument list Entities entities lend
+countEntities result position Int64
+countEntities ownedBy none
+countEntities cleanedBy none
+countEntities borrows none
+countEntities catch none
+countEntities suppresses none
+
+appendEntity is call
+appendEntity in closeEntity
+appendEntity invokes Entities.append
+appendEntity argument list Entities entities lendMutable
+appendEntity argument item Entity entity copy
+appendEntity result none
+appendEntity ownedBy none
+appendEntity cleanedBy none
+appendEntity borrows none
+appendEntity catch none
+appendEntity suppresses none
+
+copyName is call
+copyName in closeEntity
+copyName invokes syntax.wordText
+copyName argument source String source lend
+copyName argument word syntax.Word name copy
+copyName argument region Region region lend
+copyName result key String
+copyName ownedBy region
+copyName cleanedBy none
+copyName borrows none
+copyName catch copyNameError syntax.Rejection
+copyName suppresses none
+
+enterName is call
+enterName in closeEntity
+enterName invokes EntityNames.put
+enterName argument map EntityNames names lendMutable
+enterName argument key String key lend
+enterName argument value Int64 position copy
+enterName result none
+enterName ownedBy none
+enterName cleanedBy none
+enterName borrows none
+enterName catch none
+enterName suppresses none
+
+buildModel is operation
+buildModel purpose "Group rows into entities by their `is` rows and enter each entity's name in a map"
+buildModel invariant groupsEntities "Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5"
+buildModel invariant namesEntities "Each entity's name maps to its position in the entity list"
+buildModel invariant rejectsOutsideModel "Another kind is unsupportedKind, a row whose subject is not the entity above it is strayRow, a name declared twice is duplicateName, and an operation not named main is notMain"
+buildModel typeParameter none
+buildModel input source String borrowed
+buildModel input words syntax.Words borrowed
+buildModel input rows syntax.Rows borrowed
+buildModel input entities Entities borrowedMutable
+buildModel input names EntityNames borrowedMutable
+buildModel output none
+buildModel outputOwnedBy none
+buildModel raises syntax.Rejection
+buildModel effect none
+buildModel uses none
+buildModel memoryHeap true
+buildModel async false
+buildModel maxRecursion none
+buildModel label begin loopKind none
+buildModel label begin within none
+buildModel label visit loopKind forEach
+buildModel label visit within none
+buildModel label visit maxIterations rowCount
+buildModel label visit over rows
+buildModel label readRow loopKind none
+buildModel label readRow within visit
+buildModel label sort loopKind none
+buildModel label sort within visit
+buildModel label opening loopKind none
+buildModel label opening within visit
+buildModel label shapeCheck loopKind none
+buildModel label shapeCheck within visit
+buildModel label readKindWord loopKind none
+buildModel label readKindWord within visit
+buildModel label nameCheck loopKind none
+buildModel label nameCheck within visit
+buildModel label duplicateCheck loopKind none
+buildModel label duplicateCheck within visit
+buildModel label operationCheck loopKind none
+buildModel label operationCheck within visit
+buildModel label mainCheck loopKind none
+buildModel label mainCheck within visit
+buildModel label mainChecked loopKind none
+buildModel label mainChecked within visit
+buildModel label openIt loopKind none
+buildModel label openIt within visit
+buildModel label continuing loopKind none
+buildModel label continuing within visit
+buildModel label sameCheck loopKind none
+buildModel label sameCheck within visit
+buildModel label subjectChecked loopKind none
+buildModel label subjectChecked within visit
+buildModel label advance loopKind none
+buildModel label advance within visit
+buildModel label finished loopKind none
+buildModel label finished within none
+buildModel label done loopKind none
+buildModel label done within none
+buildModel label longIsRow loopKind none
+buildModel label longIsRow within none
+buildModel label duplicate loopKind none
+buildModel label duplicate within none
+buildModel label notMain loopKind none
+buildModel label notMain within none
+buildModel label stray loopKind none
+buildModel label stray within none
+buildModel label isCheckFailed loopKind none
+buildModel label isCheckFailed within none
+buildModel label closePreviousFailed loopKind none
+buildModel label closePreviousFailed within none
+buildModel label classifyFailed loopKind none
+buildModel label classifyFailed within none
+buildModel label copySubjectFailed loopKind none
+buildModel label copySubjectFailed within none
+buildModel label nameIsMainFailed loopKind none
+buildModel label nameIsMainFailed within none
+buildModel label subjectCheckFailed loopKind none
+buildModel label subjectCheckFailed within none
+buildModel label closeLastFailed loopKind none
+buildModel label closeLastFailed within none
+buildModel let zero Int64 0 immutable
+buildModel let one Int64 1 immutable
+buildModel let two Int64 2 immutable
+buildModel let three Int64 3 immutable
+buildModel let yes Bool true immutable
+buildModel let isWord String "is" immutable
+buildModel let mainName String "main" immutable
+buildModel let rowIndex Int64 0 mutable
+buildModel let open Bool false mutable
+buildModel let openName syntax.Word unset mutable
+buildModel let openKind Int64 0 mutable
+buildModel let openFirst Int64 0 mutable
+buildModel at begin do countRows
+buildModel at begin do makeNameKind
+buildModel at begin do makeOrigin
+buildModel at begin do makePlaceholder
+buildModel at begin set openName placeholder
+buildModel at begin goto visit
+buildModel at visit branch ifNext rows bind row syntax.Row goto readRow else goto finished
+buildModel at readRow do readFirst
+buildModel at readRow do readCount
+buildModel at readRow do readSubject
+buildModel at readRow do findPredicate
+buildModel at readRow do readPredicate
+buildModel at readRow do isCheck
+buildModel at readRow branch ifError isCheck goto isCheckFailed else goto sort
+buildModel at sort branch if isIs goto opening else goto continuing
+buildModel at opening do closePrevious
+buildModel at opening branch ifError closePrevious goto closePreviousFailed else goto shapeCheck
+buildModel at shapeCheck do threeCheck
+buildModel at shapeCheck branch if isThree goto readKindWord else goto longIsRow
+buildModel at readKindWord do findKind
+buildModel at readKindWord do readKind
+buildModel at readKindWord do classify
+buildModel at readKindWord branch ifError classify goto classifyFailed else goto nameCheck
+buildModel at nameCheck do copySubject
+buildModel at nameCheck branch ifError copySubject goto copySubjectFailed else goto duplicateCheck
+buildModel at duplicateCheck do findName
+buildModel at duplicateCheck branch if taken goto duplicate else goto operationCheck
+buildModel at operationCheck do kindCheck
+buildModel at operationCheck branch if isOperation goto mainCheck else goto openIt
+buildModel at mainCheck do nameIsMain
+buildModel at mainCheck branch ifError nameIsMain goto nameIsMainFailed else goto mainChecked
+buildModel at mainChecked branch if isMain goto openIt else goto notMain
+buildModel at openIt set open yes
+buildModel at openIt set openName subject
+buildModel at openIt set openKind kind
+buildModel at openIt set openFirst rowIndex
+buildModel at openIt goto advance
+buildModel at continuing branch if open goto sameCheck else goto stray
+buildModel at sameCheck do subjectCheck
+buildModel at sameCheck branch ifError subjectCheck goto subjectCheckFailed else goto subjectChecked
+buildModel at subjectChecked branch if sameSubject goto advance else goto stray
+buildModel at advance do stepRow
+buildModel at advance set rowIndex nextRow
+buildModel at advance goto visit
+buildModel at finished do closeLast
+buildModel at finished branch ifError closeLast goto closeLastFailed else goto done
+buildModel at done return ok none
+buildModel at longIsRow do makeLongIsRow
+buildModel at longIsRow return error longIsRowError
+buildModel at duplicate do makeDuplicate
+buildModel at duplicate return error duplicateError
+buildModel at notMain do makeNotMain
+buildModel at notMain return error notMainError
+buildModel at stray do makeStray
+buildModel at stray return error strayError
+buildModel at isCheckFailed return error isCheckError
+buildModel at closePreviousFailed return error closePreviousError
+buildModel at classifyFailed return error classifyError
+buildModel at copySubjectFailed return error copySubjectError
+buildModel at nameIsMainFailed return error nameIsMainError
+buildModel at subjectCheckFailed return error subjectCheckError
+buildModel at closeLastFailed return error closeLastError
+
+scratch is region
+scratch in buildModel
+scratch strategy arena
+scratch maxBytes 1048576
+scratch released atReturn
+
+countRows is call
+countRows in buildModel
+countRows invokes syntax.Rows.length
+countRows argument list syntax.Rows rows lend
+countRows result rowCount Int64
+countRows ownedBy none
+countRows cleanedBy none
+countRows borrows none
+countRows catch none
+countRows suppresses none
+
+makeNameKind is call
+makeNameKind in buildModel
+makeNameKind invokes syntax.WordKind.name
+makeNameKind argument none
+makeNameKind result nameKind syntax.WordKind
+makeNameKind ownedBy none
+makeNameKind cleanedBy none
+makeNameKind borrows none
+makeNameKind catch none
+makeNameKind suppresses none
+
+makeOrigin is call
+makeOrigin in buildModel
+makeOrigin invokes string.Position.new
+makeOrigin argument offset Int64 zero copy
+makeOrigin argument line Int64 one copy
+makeOrigin argument column Int64 one copy
+makeOrigin result origin string.Position
+makeOrigin ownedBy none
+makeOrigin cleanedBy none
+makeOrigin borrows none
+makeOrigin catch none
+makeOrigin suppresses none
+
+makePlaceholder is call
+makePlaceholder in buildModel
+makePlaceholder invokes syntax.Word.new
+makePlaceholder argument kind syntax.WordKind nameKind copy
+makePlaceholder argument start string.Position origin copy
+makePlaceholder argument length Int64 zero copy
+makePlaceholder result placeholder syntax.Word
+makePlaceholder ownedBy none
+makePlaceholder cleanedBy none
+makePlaceholder borrows none
+makePlaceholder catch none
+makePlaceholder suppresses none
+
+readFirst is call
+readFirst in buildModel
+readFirst invokes syntax.Row.first
+readFirst argument record syntax.Row row copy
+readFirst result first Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readCount is call
+readCount in buildModel
+readCount invokes syntax.Row.count
+readCount argument record syntax.Row row copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readSubject is call
+readSubject in buildModel
+readSubject invokes syntax.Words.getOrTrap
+readSubject argument list syntax.Words words lend
+readSubject argument index Int64 first copy
+readSubject result subject syntax.Word
+readSubject ownedBy none
+readSubject cleanedBy none
+readSubject borrows none
+readSubject catch none
+readSubject suppresses none
+
+findPredicate is call
+findPredicate in buildModel
+findPredicate invokes math.addInt64
+findPredicate argument left Int64 first copy
+findPredicate argument right Int64 one copy
+findPredicate result predicateAt Int64
+findPredicate ownedBy none
+findPredicate cleanedBy none
+findPredicate borrows none
+findPredicate catch none
+findPredicate suppresses none
+
+readPredicate is call
+readPredicate in buildModel
+readPredicate invokes syntax.Words.getOrTrap
+readPredicate argument list syntax.Words words lend
+readPredicate argument index Int64 predicateAt copy
+readPredicate result predicate syntax.Word
+readPredicate ownedBy none
+readPredicate cleanedBy none
+readPredicate borrows none
+readPredicate catch none
+readPredicate suppresses none
+
+isCheck is call
+isCheck in buildModel
+isCheck invokes syntax.isText
+isCheck argument source String source lend
+isCheck argument word syntax.Word predicate copy
+isCheck argument text String isWord lend
+isCheck result isIs Bool
+isCheck ownedBy none
+isCheck cleanedBy none
+isCheck borrows none
+isCheck catch isCheckError syntax.Rejection
+isCheck suppresses none
+
+closePrevious is call
+closePrevious in buildModel
+closePrevious invokes closeEntity
+closePrevious argument source String source lend
+closePrevious argument entities Entities entities lendMutable
+closePrevious argument names EntityNames names lendMutable
+closePrevious argument open Bool open copy
+closePrevious argument name syntax.Word openName copy
+closePrevious argument kind Int64 openKind copy
+closePrevious argument first Int64 openFirst copy
+closePrevious argument end Int64 rowIndex copy
+closePrevious argument region Region scratch lend
+closePrevious result none
+closePrevious ownedBy none
+closePrevious cleanedBy none
+closePrevious borrows none
+closePrevious catch closePreviousError syntax.Rejection
+closePrevious suppresses none
+
+threeCheck is call
+threeCheck in buildModel
+threeCheck invokes compare.equalInt64
+threeCheck argument left Int64 count copy
+threeCheck argument right Int64 three copy
+threeCheck result isThree Bool
+threeCheck ownedBy none
+threeCheck cleanedBy none
+threeCheck borrows none
+threeCheck catch none
+threeCheck suppresses none
+
+findKind is call
+findKind in buildModel
+findKind invokes math.addInt64
+findKind argument left Int64 first copy
+findKind argument right Int64 two copy
+findKind result kindAt Int64
+findKind ownedBy none
+findKind cleanedBy none
+findKind borrows none
+findKind catch none
+findKind suppresses none
+
+readKind is call
+readKind in buildModel
+readKind invokes syntax.Words.getOrTrap
+readKind argument list syntax.Words words lend
+readKind argument index Int64 kindAt copy
+readKind result kindWord syntax.Word
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+classify is call
+classify in buildModel
+classify invokes lookupKind
+classify argument source String source lend
+classify argument word syntax.Word kindWord copy
+classify result kind Int64
+classify ownedBy none
+classify cleanedBy none
+classify borrows none
+classify catch classifyError syntax.Rejection
+classify suppresses none
+
+copySubject is call
+copySubject in buildModel
+copySubject invokes syntax.wordText
+copySubject argument source String source lend
+copySubject argument word syntax.Word subject copy
+copySubject argument region Region scratch lend
+copySubject result subjectText String
+copySubject ownedBy scratch
+copySubject cleanedBy none
+copySubject borrows none
+copySubject catch copySubjectError syntax.Rejection
+copySubject suppresses none
+
+findName is call
+findName in buildModel
+findName invokes EntityNames.contains
+findName argument map EntityNames names lend
+findName argument key String subjectText lend
+findName result taken Bool
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+kindCheck is call
+kindCheck in buildModel
+kindCheck invokes compare.equalInt64
+kindCheck argument left Int64 kind copy
+kindCheck argument right Int64 operationKind copy
+kindCheck result isOperation Bool
+kindCheck ownedBy none
+kindCheck cleanedBy none
+kindCheck borrows none
+kindCheck catch none
+kindCheck suppresses none
+
+nameIsMain is call
+nameIsMain in buildModel
+nameIsMain invokes syntax.isText
+nameIsMain argument source String source lend
+nameIsMain argument word syntax.Word subject copy
+nameIsMain argument text String mainName lend
+nameIsMain result isMain Bool
+nameIsMain ownedBy none
+nameIsMain cleanedBy none
+nameIsMain borrows none
+nameIsMain catch nameIsMainError syntax.Rejection
+nameIsMain suppresses none
+
+subjectCheck is call
+subjectCheck in buildModel
+subjectCheck invokes syntax.sameText
+subjectCheck argument source String source lend
+subjectCheck argument left syntax.Word subject copy
+subjectCheck argument right syntax.Word openName copy
+subjectCheck result sameSubject Bool
+subjectCheck ownedBy none
+subjectCheck cleanedBy none
+subjectCheck borrows none
+subjectCheck catch subjectCheckError syntax.Rejection
+subjectCheck suppresses none
+
+stepRow is call
+stepRow in buildModel
+stepRow invokes math.addInt64
+stepRow argument left Int64 rowIndex copy
+stepRow argument right Int64 one copy
+stepRow result nextRow Int64
+stepRow ownedBy none
+stepRow cleanedBy none
+stepRow borrows none
+stepRow catch none
+stepRow suppresses none
+
+closeLast is call
+closeLast in buildModel
+closeLast invokes closeEntity
+closeLast argument source String source lend
+closeLast argument entities Entities entities lendMutable
+closeLast argument names EntityNames names lendMutable
+closeLast argument open Bool open copy
+closeLast argument name syntax.Word openName copy
+closeLast argument kind Int64 openKind copy
+closeLast argument first Int64 openFirst copy
+closeLast argument end Int64 rowIndex copy
+closeLast argument region Region scratch lend
+closeLast result none
+closeLast ownedBy none
+closeLast cleanedBy none
+closeLast borrows none
+closeLast catch closeLastError syntax.Rejection
+closeLast suppresses none
+
+makeLongIsRow is call
+makeLongIsRow in buildModel
+makeLongIsRow invokes syntax.Rejection.unsupportedPayload
+makeLongIsRow argument payload syntax.Word predicate copy
+makeLongIsRow result longIsRowError syntax.Rejection
+makeLongIsRow ownedBy none
+makeLongIsRow cleanedBy none
+makeLongIsRow borrows none
+makeLongIsRow catch none
+makeLongIsRow suppresses none
+
+makeDuplicate is call
+makeDuplicate in buildModel
+makeDuplicate invokes syntax.Rejection.duplicateName
+makeDuplicate argument payload syntax.Word subject copy
+makeDuplicate result duplicateError syntax.Rejection
+makeDuplicate ownedBy none
+makeDuplicate cleanedBy none
+makeDuplicate borrows none
+makeDuplicate catch none
+makeDuplicate suppresses none
+
+makeNotMain is call
+makeNotMain in buildModel
+makeNotMain invokes syntax.Rejection.notMain
+makeNotMain argument payload syntax.Word subject copy
+makeNotMain result notMainError syntax.Rejection
+makeNotMain ownedBy none
+makeNotMain cleanedBy none
+makeNotMain borrows none
+makeNotMain catch none
+makeNotMain suppresses none
+
+makeStray is call
+makeStray in buildModel
+makeStray invokes syntax.Rejection.strayRow
+makeStray argument payload syntax.Word subject copy
+makeStray result strayError syntax.Rejection
+makeStray ownedBy none
+makeStray cleanedBy none
+makeStray borrows none
+makeStray catch none
+makeStray suppresses none
