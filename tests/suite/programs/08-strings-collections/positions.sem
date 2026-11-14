@@ -1,0 +1,562 @@
+# covers: 8 Unicode support
+# covers: 8 UTF-8 handling
+# covers: 8 String slicing
+# covers: 22 Invalid Unicode
+# covers: 15 Lexical analysis
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 0
+# stdout: 1
+# stdout: 3
+# stdout: 4
+# stdout: 5
+# stdout: 6
+# stdout: 7
+# stdout: 2
+# stdout: 4
+# stdout: 7
+# stdout: -1
+# stdout: 2
+# stdout: 2
+# stdout: 0
+# stdout: true
+# stdout: false
+# stdout: true
+# stdout: false
+# stdout: false
+
+positions is module
+positions purpose "Track line and column across a text, keep slices on character boundaries, and classify punctuation"
+positions path positions
+positions imports standard.console
+positions imports standard.string
+positions imports standard.byte
+positions exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParameter none
+showInt input value Int64 copied
+showInt output none
+showInt outputOwnedBy none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memoryHeap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt let none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParameter none
+showText input text String borrowed
+showText output none
+showText outputOwnedBy none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memoryHeap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText let none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue argument text String text lend
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParameter none
+showBool input flag Bool copied
+showBool output none
+showBool outputOwnedBy none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memoryHeap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue argument text String trueText lend
+writeTrue result none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse argument text String falseText lend
+writeFalse result none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label walk loopKind while
+main label walk within none
+main label walk maxIterations 16
+main label moved loopKind none
+main label moved within walk
+main label finished loopKind none
+main label finished within none
+main label report loopKind none
+main label report within none
+main label before loopKind none
+main label before within none
+main label slices loopKind none
+main label slices within none
+main label splitStart loopKind none
+main label splitStart within none
+main label splitStartFailed loopKind none
+main label splitStartFailed within none
+main label splitEnd loopKind none
+main label splitEnd within none
+main label splitEndFailed loopKind none
+main label splitEndFailed within none
+main label punctuation loopKind none
+main label punctuation within none
+main label broken loopKind none
+main label broken within none
+main let source String "a\xc3\xa9\nb\xc3z" immutable
+main let accented String "h\xc3\xa9llo" immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let minusOne Int64 -1 immutable
+main let paren Byte 40 immutable
+main let letter Byte 97 immutable
+main let tilde Byte 126 immutable
+main let space Byte 32 immutable
+main let delete Byte 127 immutable
+main let position string.Position unset mutable
+main let failCode ExitCode 1 immutable
+main let okCode ExitCode 0 immutable
+main at begin do makeStart
+main at begin set position startPosition
+main at begin goto walk
+main at walk do readOffset
+main at walk do printOffset
+main at walk do stepIt
+main at walk branch ifError stepIt goto finished else goto moved
+main at moved set position nextPosition
+main at moved goto walk
+main at finished match stepError string.StringIndexError
+main at finished case string.StringIndexError.outOfRange bind badOffset Int64 goto report
+main at report do readLine
+main at report do printLine
+main at report do readColumn
+main at report do printColumn
+main at report do printBadOffset
+main at report do makeBefore
+main at report do stepBefore
+main at report branch ifError stepBefore goto before else goto broken
+main at before match beforeError string.StringIndexError
+main at before case string.StringIndexError.outOfRange bind beforeOffset Int64 goto slices
+main at slices do printBeforeOffset
+main at slices do sliceWhole
+main at slices branch ifError sliceWhole goto broken else goto splitStart
+main at splitStart do measureWhole
+main at splitStart do printWhole
+main at splitStart do sliceSplitStart
+main at splitStart branch ifError sliceSplitStart goto splitStartFailed else goto broken
+main at splitStartFailed match splitStartError string.StringIndexError
+main at splitStartFailed case string.StringIndexError.outOfRange bind splitStartAt Int64 goto splitEnd
+main at splitEnd do printSplitStart
+main at splitEnd do sliceSplitEnd
+main at splitEnd branch ifError sliceSplitEnd goto splitEndFailed else goto broken
+main at splitEndFailed match splitEndError string.StringIndexError
+main at splitEndFailed case string.StringIndexError.outOfRange bind splitEndAt Int64 goto punctuation
+main at punctuation do printSplitEnd
+main at punctuation do parenCheck
+main at punctuation do printParen
+main at punctuation do letterCheck
+main at punctuation do printLetter
+main at punctuation do tildeCheck
+main at punctuation do printTilde
+main at punctuation do spaceCheck
+main at punctuation do printSpace
+main at punctuation do deleteCheck
+main at punctuation do printDelete
+main at punctuation return ok okCode
+main at broken return ok failCode
+
+makeStart is call
+makeStart in main
+makeStart invokes string.Position.new
+makeStart argument offset Int64 zero copy
+makeStart argument line Int64 one copy
+makeStart argument column Int64 one copy
+makeStart result startPosition string.Position
+makeStart ownedBy none
+makeStart cleanedBy none
+makeStart borrows none
+makeStart catch none
+
+readOffset is call
+readOffset in main
+readOffset invokes string.Position.offset
+readOffset argument record string.Position position copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+
+printOffset is call
+printOffset in main
+printOffset invokes showInt
+printOffset argument value Int64 offset copy
+printOffset result none
+printOffset ownedBy none
+printOffset cleanedBy none
+printOffset borrows none
+printOffset catch none
+
+stepIt is call
+stepIt in main
+stepIt invokes string.advancePosition
+stepIt argument text String source lend
+stepIt argument position string.Position position copy
+stepIt result nextPosition string.Position
+stepIt ownedBy none
+stepIt cleanedBy none
+stepIt borrows none
+stepIt catch stepError string.StringIndexError
+
+readLine is call
+readLine in main
+readLine invokes string.Position.line
+readLine argument record string.Position position copy
+readLine result lineNumber Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+
+printLine is call
+printLine in main
+printLine invokes showInt
+printLine argument value Int64 lineNumber copy
+printLine result none
+printLine ownedBy none
+printLine cleanedBy none
+printLine borrows none
+printLine catch none
+
+readColumn is call
+readColumn in main
+readColumn invokes string.Position.column
+readColumn argument record string.Position position copy
+readColumn result columnNumber Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+
+printColumn is call
+printColumn in main
+printColumn invokes showInt
+printColumn argument value Int64 columnNumber copy
+printColumn result none
+printColumn ownedBy none
+printColumn cleanedBy none
+printColumn borrows none
+printColumn catch none
+
+printBadOffset is call
+printBadOffset in main
+printBadOffset invokes showInt
+printBadOffset argument value Int64 badOffset copy
+printBadOffset result none
+printBadOffset ownedBy none
+printBadOffset cleanedBy none
+printBadOffset borrows none
+printBadOffset catch none
+
+makeBefore is call
+makeBefore in main
+makeBefore invokes string.Position.new
+makeBefore argument offset Int64 minusOne copy
+makeBefore argument line Int64 one copy
+makeBefore argument column Int64 one copy
+makeBefore result beforeStart string.Position
+makeBefore ownedBy none
+makeBefore cleanedBy none
+makeBefore borrows none
+makeBefore catch none
+
+stepBefore is call
+stepBefore in main
+stepBefore invokes string.advancePosition
+stepBefore argument text String source lend
+stepBefore argument position string.Position beforeStart copy
+stepBefore result afterBefore string.Position
+stepBefore ownedBy none
+stepBefore cleanedBy none
+stepBefore borrows none
+stepBefore catch beforeError string.StringIndexError
+
+printBeforeOffset is call
+printBeforeOffset in main
+printBeforeOffset invokes showInt
+printBeforeOffset argument value Int64 beforeOffset copy
+printBeforeOffset result none
+printBeforeOffset ownedBy none
+printBeforeOffset cleanedBy none
+printBeforeOffset borrows none
+printBeforeOffset catch none
+
+sliceWhole is call
+sliceWhole in main
+sliceWhole invokes string.slice
+sliceWhole argument text String accented lend
+sliceWhole argument start Int64 one copy
+sliceWhole argument length Int64 two copy
+sliceWhole result wholeCharacter String
+sliceWhole ownedBy none
+sliceWhole cleanedBy none
+sliceWhole borrows accented
+sliceWhole catch wholeError string.StringIndexError
+
+measureWhole is call
+measureWhole in main
+measureWhole invokes string.byteLength
+measureWhole argument text String wholeCharacter lend
+measureWhole result wholeBytes Int64
+measureWhole ownedBy none
+measureWhole cleanedBy none
+measureWhole borrows none
+measureWhole catch none
+
+printWhole is call
+printWhole in main
+printWhole invokes showInt
+printWhole argument value Int64 wholeBytes copy
+printWhole result none
+printWhole ownedBy none
+printWhole cleanedBy none
+printWhole borrows none
+printWhole catch none
+
+sliceSplitStart is call
+sliceSplitStart in main
+sliceSplitStart invokes string.slice
+sliceSplitStart argument text String accented lend
+sliceSplitStart argument start Int64 two copy
+sliceSplitStart argument length Int64 one copy
+sliceSplitStart result splitStartText String
+sliceSplitStart ownedBy none
+sliceSplitStart cleanedBy none
+sliceSplitStart borrows accented
+sliceSplitStart catch splitStartError string.StringIndexError
+
+printSplitStart is call
+printSplitStart in main
+printSplitStart invokes showInt
+printSplitStart argument value Int64 splitStartAt copy
+printSplitStart result none
+printSplitStart ownedBy none
+printSplitStart cleanedBy none
+printSplitStart borrows none
+printSplitStart catch none
+
+sliceSplitEnd is call
+sliceSplitEnd in main
+sliceSplitEnd invokes string.slice
+sliceSplitEnd argument text String accented lend
+sliceSplitEnd argument start Int64 zero copy
+sliceSplitEnd argument length Int64 two copy
+sliceSplitEnd result splitEndText String
+sliceSplitEnd ownedBy none
+sliceSplitEnd cleanedBy none
+sliceSplitEnd borrows accented
+sliceSplitEnd catch splitEndError string.StringIndexError
+
+printSplitEnd is call
+printSplitEnd in main
+printSplitEnd invokes showInt
+printSplitEnd argument value Int64 splitEndAt copy
+printSplitEnd result none
+printSplitEnd ownedBy none
+printSplitEnd cleanedBy none
+printSplitEnd borrows none
+printSplitEnd catch none
+
+parenCheck is call
+parenCheck in main
+parenCheck invokes byte.isPunctuation
+parenCheck argument value Byte paren copy
+parenCheck result parenIsPunctuation Bool
+parenCheck ownedBy none
+parenCheck cleanedBy none
+parenCheck borrows none
+parenCheck catch none
+
+printParen is call
+printParen in main
+printParen invokes showBool
+printParen argument flag Bool parenIsPunctuation copy
+printParen result none
+printParen ownedBy none
+printParen cleanedBy none
+printParen borrows none
+printParen catch none
+
+letterCheck is call
+letterCheck in main
+letterCheck invokes byte.isPunctuation
+letterCheck argument value Byte letter copy
+letterCheck result letterIsPunctuation Bool
+letterCheck ownedBy none
+letterCheck cleanedBy none
+letterCheck borrows none
+letterCheck catch none
+
+printLetter is call
+printLetter in main
+printLetter invokes showBool
+printLetter argument flag Bool letterIsPunctuation copy
+printLetter result none
+printLetter ownedBy none
+printLetter cleanedBy none
+printLetter borrows none
+printLetter catch none
+
+tildeCheck is call
+tildeCheck in main
+tildeCheck invokes byte.isPunctuation
+tildeCheck argument value Byte tilde copy
+tildeCheck result tildeIsPunctuation Bool
+tildeCheck ownedBy none
+tildeCheck cleanedBy none
+tildeCheck borrows none
+tildeCheck catch none
+
+printTilde is call
+printTilde in main
+printTilde invokes showBool
+printTilde argument flag Bool tildeIsPunctuation copy
+printTilde result none
+printTilde ownedBy none
+printTilde cleanedBy none
+printTilde borrows none
+printTilde catch none
+
+spaceCheck is call
+spaceCheck in main
+spaceCheck invokes byte.isPunctuation
+spaceCheck argument value Byte space copy
+spaceCheck result spaceIsPunctuation Bool
+spaceCheck ownedBy none
+spaceCheck cleanedBy none
+spaceCheck borrows none
+spaceCheck catch none
+
+printSpace is call
+printSpace in main
+printSpace invokes showBool
+printSpace argument flag Bool spaceIsPunctuation copy
+printSpace result none
+printSpace ownedBy none
+printSpace cleanedBy none
+printSpace borrows none
+printSpace catch none
+
+deleteCheck is call
+deleteCheck in main
+deleteCheck invokes byte.isPunctuation
+deleteCheck argument value Byte delete copy
+deleteCheck result deleteIsPunctuation Bool
+deleteCheck ownedBy none
+deleteCheck cleanedBy none
+deleteCheck borrows none
+deleteCheck catch none
+
+printDelete is call
+printDelete in main
+printDelete invokes showBool
+printDelete argument flag Bool deleteIsPunctuation copy
+printDelete result none
+printDelete ownedBy none
+printDelete cleanedBy none
+printDelete borrows none
+printDelete catch none

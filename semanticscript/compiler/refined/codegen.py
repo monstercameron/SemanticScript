@@ -527,7 +527,7 @@ class OpGen:
             for n, a in shown:
                 t = a.type.pointee
                 kind = ("i1" if t == I1 else f"i{t.width}" if isinstance(t, ir.IntType) else "f64" if t == F64
-                        else "str" if t == STR else "other")
+                        else "str" if t == STR else self.debug_kind(self.info.bindings[n].type, t))
                 kinds.append(f"{n}:{kind}:{self.t(self.info.bindings[n].type)}")
             arr = self.fn_alloca(ir.ArrayType(PTR, max(len(shown), 1)), f"{lab}.debugValues")
             for i, (_n, a) in enumerate(shown):
@@ -535,6 +535,19 @@ class OpGen:
             count, values, desc = len(shown), b.gep(arr, [I32(0), I32(0)]), self.be.string(";".join(kinds))
         b.call(self.be.callbacks["refined_block"], [b.extract_value(text, 0), b.extract_value(text, 1), values,
                                                     I64(count), b.extract_value(desc, 0), b.extract_value(desc, 1)])
+
+    def debug_kind(self, canon: Optional[str], t: ir.Type) -> str:
+        """D-73: how the debugger reads a record of integer and `Bool` fields (`record(name i64,...)`) and an
+        enum in the narrow layout (`enum(name,name*,...)`, `*` marking a variant with a payload)."""
+        info = self.world.type_info(canon)
+        if info is None:
+            return "other"
+        if info.kind == "record" and isinstance(t, ir.LiteralStructType) and \
+                all(isinstance(e, ir.IntType) for e in t.elements):
+            return "record(" + ",".join(f"{n} i{e.width}" for (n, _f), e in zip(info.fields, t.elements)) + ")"
+        if info.kind == "enum" and t == ENUM and info.variants:
+            return "enum(" + ",".join(n + ("*" if p else "") for n, p in info.variants) + ")"
+        return "other"
 
     def emit_block(self, lab: str) -> None:
         b = ir.IRBuilder(self.blocks[lab])
@@ -1017,6 +1030,16 @@ class OpGen:
                 size = b.extract_value(text, 1)
                 ok = b.and_(ok, b.icmp_signed("<=", start, size))
                 ok = b.and_(ok, b.icmp_signed("<=", length, b.sub(size, start)))
+                # D-70: a slice keeps characters whole. An offset inside the text splits a character when its
+                # byte is a UTF-8 continuation byte (10xxxxxx). Reads stay inside the text: an offset outside it
+                # reads a constant zero byte instead.
+                zero = b.extract_value(self.be.string(""), 0)
+
+                def splits(i):
+                    inside = b.and_(b.icmp_signed(">=", i, I64(0)), b.icmp_signed("<", i, size))
+                    at = b.select(inside, b.gep(b.extract_value(text, 0), [b.select(inside, i, I64(0))]), zero)
+                    return b.and_(inside, b.icmp_unsigned("==", b.and_(b.load(at), I8(0xC0)), I8(0x80)))
+                ok = b.and_(ok, b.not_(b.or_(splits(start), splits(b.add(start, length)))))
                 safe_start = b.select(ok, start, I64(0))
                 s = b.insert_value(ir.Constant(STR, ir.Undefined), b.gep(b.extract_value(text, 0), [safe_start]), 0)
                 s = b.insert_value(s, b.select(ok, length, I64(0)), 1)
@@ -1057,6 +1080,8 @@ class OpGen:
                 phi.add_incoming(I8(0), start)
                 err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), idx, 1)
                 return phi, b.not_(inside), err
+            if name == "advancePosition":
+                return self.advance_position(b, a[0], a[1], ci, line)
         if mod == "byte":
             v = a[0]
 
@@ -1074,6 +1099,10 @@ class OpGen:
                 sp = b.or_(b.icmp_unsigned("==", v, I8(32)), b.icmp_unsigned("==", v, I8(9)))
                 sp = b.or_(sp, b.or_(b.icmp_unsigned("==", v, I8(10)), b.icmp_unsigned("==", v, I8(13))))
                 return sp, None, None
+            if name == "isPunctuation":
+                # D-72: the 32 printable ASCII bytes that are neither letters, digits, nor space
+                punct = b.or_(between(33, 47), between(58, 64))
+                return b.or_(punct, b.or_(between(91, 96), between(123, 126))), None, None
             if name == "equals":
                 return b.icmp_unsigned("==", a[0], a[1]), None, None
         if mod == "test":
@@ -1103,6 +1132,52 @@ class OpGen:
                 extra.append(self.be.string(self.scope_text(ci.sig)))
             return self.host_call(b, inv, ci, args, line, extra)
         self.unsupported(line, f"the library target `{inv}`")
+
+    def advance_position(self, b: ir.IRBuilder, text, pos, ci: CallInfo, line: int):
+        """D-71: the position after the character at `pos`'s offset. A character is the UTF-8 sequence its lead
+        byte announces when that many continuation bytes follow; any other byte is a character of its own. A
+        newline byte (10) moves to column 1 of the next line; any other character moves one column right. An
+        offset outside the text is `outOfRange` carrying the offset."""
+        size = b.extract_value(text, 1)
+        offset = b.extract_value(pos, 0)
+        inside = b.and_(b.icmp_signed(">=", offset, I64(0)), b.icmp_signed("<", offset, size))
+        start = b.block
+        read = self.fn.append_basic_block(f"{ci.entity.name}.character")
+        done = self.fn.append_basic_block(f"{ci.entity.name}.advanced")
+        b.cbranch(inside, read, done)
+        rb = ir.IRBuilder(read)
+        base = rb.extract_value(text, 0)
+        lead = rb.load(rb.gep(base, [offset]))
+
+        def between(v, lo: int, hi: int):
+            return rb.and_(rb.icmp_unsigned(">=", v, I8(lo)), rb.icmp_unsigned("<=", v, I8(hi)))
+        want = rb.select(between(lead, 0xF0, 0xF4), I64(4), I64(1))
+        want = rb.select(between(lead, 0xE0, 0xEF), I64(3), want)
+        want = rb.select(between(lead, 0xC2, 0xDF), I64(2), want)
+        whole = I1(1)
+        for k in (1, 2, 3):
+            at = rb.add(offset, I64(k))  # offset < size, so this cannot overflow
+            there = rb.icmp_signed("<", at, size)
+            byte = rb.load(rb.gep(base, [rb.select(there, at, offset)]))
+            follows = rb.and_(there, rb.icmp_unsigned("==", rb.and_(byte, I8(0xC0)), I8(0x80)))
+            whole = rb.and_(whole, rb.or_(rb.icmp_signed("<=", want, I64(k)), follows))
+        width = rb.select(whole, want, I64(1))
+        newline = rb.icmp_unsigned("==", lead, I8(10))
+        next_line = rb.sadd_with_overflow(rb.extract_value(pos, 1), I64(1))
+        next_column = rb.sadd_with_overflow(rb.extract_value(pos, 2), I64(1))
+        overflowed = rb.select(newline, rb.extract_value(next_line, 1), rb.extract_value(next_column, 1))
+        with rb.if_then(overflowed, likely=False):
+            self.trap(rb, line, f"`string.advancePosition` overflowed `Int64` in `{ci.entity.name}`")
+        moved = rb.insert_value(pos, rb.add(offset, width), 0)
+        moved = rb.insert_value(moved, rb.select(newline, rb.extract_value(next_line, 0), rb.extract_value(pos, 1)), 1)
+        moved = rb.insert_value(moved, rb.select(newline, I64(1), rb.extract_value(next_column, 0)), 2)
+        rb.branch(done)
+        b.position_at_end(done)
+        phi = b.phi(pos.type)
+        phi.add_incoming(moved, rb.block)
+        phi.add_incoming(pos, start)
+        err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), offset, 1)
+        return phi, b.not_(inside), err
 
     def scope_text(self, sig) -> str:
         """D-38: what the runtime checks a scoped argument against before the call happens:
