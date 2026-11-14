@@ -1,0 +1,92 @@
+# loop_jitter_accumulate -- (repurposed from retry_jitter_randomness (no RNG runtime)) a real accumulator loop sums 1..6 with a mutable total and a
+# counter (README s13). The total is built by the loop, not a constant, so it
+# fails under a no-op lowering.
+#
+# Correctness observation: 1 + ... + 6 = 21.
+# Expected output: 21
+
+LoopJitterAccumulate is project
+LoopJitterAccumulate module examplesLoopJitterAccumulate
+LoopJitterAccumulate target console
+LoopJitterAccumulate entry main
+
+examplesLoopJitterAccumulate is module
+examplesLoopJitterAccumulate path examples.loopJitterAccumulate
+examplesLoopJitterAccumulate exports main
+examplesLoopJitterAccumulate purpose "Sum 1..6 in a loop and print the total"
+examplesLoopJitterAccumulate invariant "Loop runs while the counter is within bound"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Accumulate 1..6 and print the sum"
+main invariant "Writes exactly one integer line: 21"
+main let total mutable Int64 0
+main let counter mutable Int64 1
+main let bound immutable Int64 6
+main let oneStep immutable Int64 1
+main let harnessName immutable String "loop_jitter_accumulate"
+main let harnessExpected immutable Int64 21
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "loop_jitter_accumulate: real result (not the no-op 0)"
+main at loopHead do checkGoing
+main branch ifFalse stillGoing goto loopExit
+main do addToTotal
+main do increment
+main goto loopHead
+main at loopExit do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.lessThanOrEqualInt64
+checkGoing arg left Int64 counter
+checkGoing arg right Int64 bound
+checkGoing out stillGoing Bool
+
+addToTotal is call
+addToTotal in main
+addToTotal invokes math.addInt64
+addToTotal arg left Int64 total
+addToTotal arg right Int64 counter
+addToTotal out total Int64
+
+increment is call
+increment in main
+increment invokes math.addInt64
+increment arg left Int64 counter
+increment arg right Int64 oneStep
+increment out counter Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

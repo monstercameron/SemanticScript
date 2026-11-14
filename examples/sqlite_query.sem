@@ -1,0 +1,191 @@
+# sqlite_query — the real sqlite runtime (WS3-016). The vendored sqlite engine
+# (third_party/sqlite/sqlite3.c) is wrapped by ss_sqlite.c into a plain
+# `args -> single return` ABI that binds through the compiler's generic
+# `body runtimeBinding <symbol>` seam; the JIT compiles + loads that native
+# library (arch-matched to the JIT triple) and runs actual SQL. This opens an
+# in-memory database, creates a table, inserts three rows, and reads results
+# back with aggregate + filtered queries — proving the sqlite runtime executes,
+# not just type-checks.
+#   * COUNT(*) after three inserts is 3;
+#   * SUM(n) is 60 (real aggregate over the rows);
+#   * a filtered SELECT returns the matching row's value;
+#   * the aggregate and the count differ (real query, not a constant).
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+SqliteQuery is project
+SqliteQuery module examplesSqliteQuery
+SqliteQuery target console
+SqliteQuery entry main
+
+examplesSqliteQuery is module
+examplesSqliteQuery path examples.sqliteQuery
+examplesSqliteQuery exports main
+examplesSqliteQuery purpose "Run real SQL against an in-memory sqlite database and assert the results"
+examplesSqliteQuery invariant "Results come from the sqlite engine, not constants"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+SqlText is alias
+SqlText for String
+SqlText purpose "SQL text trusted for sqlite execution"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+sqliteOpenMemory is operation
+sqliteOpenMemory out OpaquePointer
+sqliteOpenMemory body runtimeBinding ss_sqlite_open_memory
+sqliteOpenMemory purpose "Open a fresh in-memory sqlite database"
+
+sqliteExec is operation
+sqliteExec in db OpaquePointer
+sqliteExec in sql SqlText
+sqliteExec out Int32
+sqliteExec body runtimeBinding ss_sqlite_exec
+sqliteExec purpose "Execute a one-shot SQL statement"
+
+sqliteQueryScalar is operation
+sqliteQueryScalar in db OpaquePointer
+sqliteQueryScalar in sql SqlText
+sqliteQueryScalar out Int64
+sqliteQueryScalar body runtimeBinding ss_sqlite_query_scalar
+sqliteQueryScalar purpose "Run a query and read the first column of the first row as Int64"
+
+sqliteClose is operation
+sqliteClose in db OpaquePointer
+sqliteClose out Int32
+sqliteClose body runtimeBinding ss_sqlite_close
+sqliteClose purpose "Close the database handle"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Seed a table and assert aggregate and filtered query results"
+main invariant "All four assertions hold"
+main let createSql immutable SqlText "CREATE TABLE t(n INTEGER)"
+main let insert10 immutable SqlText "INSERT INTO t VALUES(10)"
+main let insert20 immutable SqlText "INSERT INTO t VALUES(20)"
+main let insert30 immutable SqlText "INSERT INTO t VALUES(30)"
+main let countSql immutable SqlText "SELECT COUNT(*) FROM t"
+main let sumSql immutable SqlText "SELECT SUM(n) FROM t"
+main let filterSql immutable SqlText "SELECT n FROM t WHERE n = 20"
+main let expectCount immutable Int64 3
+main let expectSum immutable Int64 60
+main let expectFiltered immutable Int64 20
+main let tnCount immutable String "COUNT(*) is 3 after three inserts"
+main let tnSum immutable String "SUM(n) is 60 over the inserted rows"
+main let tnFilter immutable String "SELECT n WHERE n = 20 returns 20"
+main let tnReal immutable String "the aggregate sum and the row count differ (real query)"
+main do openDb
+main do createTab
+main do ins10
+main do ins20
+main do ins30
+main do queryCount
+main do querySum
+main do queryFiltered
+main do checkCount
+main do checkSum
+main do checkFilter
+main do checkReal
+main do closeDb
+main do harnessReport
+main return harnessSummaryCode
+
+openDb is call
+openDb in main
+openDb invokes sqliteOpenMemory
+openDb out db OpaquePointer
+
+createTab is call
+createTab in main
+createTab invokes sqliteExec
+createTab arg db OpaquePointer db
+createTab arg sql SqlText createSql
+createTab discards "status intentionally unused in this demonstration"
+
+ins10 is call
+ins10 in main
+ins10 invokes sqliteExec
+ins10 arg db OpaquePointer db
+ins10 arg sql SqlText insert10
+ins10 discards "status intentionally unused in this demonstration"
+
+ins20 is call
+ins20 in main
+ins20 invokes sqliteExec
+ins20 arg db OpaquePointer db
+ins20 arg sql SqlText insert20
+ins20 discards "status intentionally unused in this demonstration"
+
+ins30 is call
+ins30 in main
+ins30 invokes sqliteExec
+ins30 arg db OpaquePointer db
+ins30 arg sql SqlText insert30
+ins30 discards "status intentionally unused in this demonstration"
+
+queryCount is call
+queryCount in main
+queryCount invokes sqliteQueryScalar
+queryCount arg db OpaquePointer db
+queryCount arg sql SqlText countSql
+queryCount out rowCount Int64
+
+querySum is call
+querySum in main
+querySum invokes sqliteQueryScalar
+querySum arg db OpaquePointer db
+querySum arg sql SqlText sumSql
+querySum out rowSum Int64
+
+queryFiltered is call
+queryFiltered in main
+queryFiltered invokes sqliteQueryScalar
+queryFiltered arg db OpaquePointer db
+queryFiltered arg sql SqlText filterSql
+queryFiltered out filtered Int64
+
+checkCount is call
+checkCount in main
+checkCount invokes test.assertEqualInt64
+checkCount arg name String tnCount
+checkCount arg expected Int64 expectCount
+checkCount arg actual Int64 rowCount
+
+checkSum is call
+checkSum in main
+checkSum invokes test.assertEqualInt64
+checkSum arg name String tnSum
+checkSum arg expected Int64 expectSum
+checkSum arg actual Int64 rowSum
+
+checkFilter is call
+checkFilter in main
+checkFilter invokes test.assertEqualInt64
+checkFilter arg name String tnFilter
+checkFilter arg expected Int64 expectFiltered
+checkFilter arg actual Int64 filtered
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 rowCount
+checkReal arg actual Int64 rowSum
+
+closeDb is call
+closeDb in main
+closeDb invokes sqliteClose
+closeDb arg db OpaquePointer db
+closeDb discards "status intentionally unused in this demonstration"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

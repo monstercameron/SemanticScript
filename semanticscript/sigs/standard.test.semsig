@@ -1,0 +1,72 @@
+# standard.test.semsig — test-harness namespace (README ss26, ss35).
+# A self-checking assertion + reporting surface: each assertion prints a
+# PASS/FAIL line and tallies the result in two internal counters; `test.summary`
+# prints the totals and returns the failure count as a process exit code, so a
+# program built from these is a CI-friendly test (exit 0 iff every assertion
+# passed). Companion to standard.assert (which only computes a Bool).
+testSig is semsig
+testSig version "1.0"
+testSig generatedBy "semanticscript 0.1"
+testSig describes standard.test
+testAnd is intrinsic
+testAnd target test.and
+testAnd arg left Bool
+testAnd arg right Bool
+testAnd out both Bool
+testAnd purpose "Logical AND of two test outcomes"
+assertEqualInt64 is intrinsic
+assertEqualInt64 target test.assertEqualInt64
+assertEqualInt64 arg name String
+assertEqualInt64 arg expected Int64
+assertEqualInt64 arg actual Int64
+assertEqualInt64 purpose "Assert expected == actual; print a PASS/FAIL report line and tally it"
+assertEqualFloat64 is intrinsic
+assertEqualFloat64 target test.assertEqualFloat64
+assertEqualFloat64 arg name String
+assertEqualFloat64 arg expected Float64
+assertEqualFloat64 arg actual Float64
+assertEqualFloat64 purpose "Assert expected == actual (Float64); print a PASS/FAIL report line and tally it"
+assertTrue is intrinsic
+assertTrue target test.assertTrue
+assertTrue arg name String
+assertTrue arg value Bool
+assertTrue purpose "Assert a Bool condition holds; print a PASS/FAIL report line and tally it"
+assertEqualText is intrinsic
+assertEqualText target test.assertEqualText
+assertEqualText arg name String
+assertEqualText arg expected String
+assertEqualText arg actual String
+assertEqualText purpose "Assert two strings are equal; print a PASS/FAIL report line and tally it"
+assertFalse is intrinsic
+assertFalse target test.assertFalse
+assertFalse arg name String
+assertFalse arg value Bool
+assertFalse purpose "Negative assertion: assert a Bool is false; print a PASS/FAIL report line and tally it"
+assertNotEqualText is intrinsic
+assertNotEqualText target test.assertNotEqualText
+assertNotEqualText arg name String
+assertNotEqualText arg expected String
+assertNotEqualText arg actual String
+assertNotEqualText purpose "Negative assertion: assert two strings differ; print a PASS/FAIL report line and tally it"
+assertNotEqualInt64 is intrinsic
+assertNotEqualInt64 target test.assertNotEqualInt64
+assertNotEqualInt64 arg name String
+assertNotEqualInt64 arg expected Int64
+assertNotEqualInt64 arg actual Int64
+assertNotEqualInt64 purpose "Negative assertion: assert two Int64 values differ; print a PASS/FAIL report line and tally it"
+assertStatusIs is intrinsic
+assertStatusIs target test.assertStatusIs
+assertStatusIs arg name String
+assertStatusIs arg expected Int64
+assertStatusIs arg actual Int64
+assertStatusIs purpose "Assert an HTTP status equals the expected status; print a PASS/FAIL report line and tally it"
+assertRowCount is intrinsic
+assertRowCount target test.assertRowCount
+assertRowCount arg name String
+assertRowCount arg expected Int64
+assertRowCount arg actual Int64
+assertRowCount purpose "Assert a database/query row count equals the expected count; print a PASS/FAIL report line and tally it"
+summary is intrinsic
+summary target test.summary
+summary out failures Int32
+summary purpose "Print pass/fail totals; return the failure count as a process exit code"

@@ -1,0 +1,81 @@
+# string_find_substring — substring search via the standard.string runtime
+# (X-200). `findSubstring` binds the ss_string_find native helper through the
+# generic runtimeBinding seam; it returns the byte offset of the first match
+# ("lo" in "hello" -> 3) or -1. Self-checked via the standard.test harness, so it
+# fails under a no-op lowering.
+# Expected output: a PASS line for 3 then "---- N passed, 0 failed ----".
+
+StringFindSubstring is project
+StringFindSubstring module examplesStringFindSubstring
+StringFindSubstring target console
+StringFindSubstring entry main
+
+examplesStringFindSubstring is module
+examplesStringFindSubstring path examples.stringFindSubstring
+examplesStringFindSubstring exports main
+examplesStringFindSubstring purpose "Find a substring offset via the standard.string runtime"
+examplesStringFindSubstring invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+findSubstring is operation
+findSubstring in haystack String
+findSubstring in needle String
+findSubstring out Int64
+findSubstring memory heap no
+findSubstring async no
+findSubstring purpose "Return the byte offset of needle in haystack, or -1 if absent"
+findSubstring invariant "Pure byte search; performs no effects"
+findSubstring body runtimeBinding ss_string_find
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Find 'lo' in 'hello' and assert the offset"
+main invariant "All assertions hold"
+main let haystackText immutable String "hello"
+main let needleText immutable String "lo"
+main let harnessExpected immutable Int64 3
+main let noopDecoy immutable Int64 -1
+main let harnessName immutable String "string_find_substring"
+main let noopName immutable String "string_find_substring: real offset (not the no-op -1)"
+main do findCall
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+findCall is call
+findCall in main
+findCall invokes findSubstring
+findCall arg haystack String haystackText
+findCall arg needle String needleText
+findCall out foundOffset Int64
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 foundOffset
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 foundOffset
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

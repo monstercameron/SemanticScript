@@ -1,0 +1,275 @@
+# standard.http.semsig — generated signature sidecar (README ss26, ss34.3).
+# The §34 minimal-core direction models the web server as an `HttpServer` record
+# plus `http.route`/`http.serve`/`http.callNext` stdlib calls checked by this
+# signature file, rather than as `webServer` keywords. Runtime (sockets, the
+# middleware dispatch loop) is external surface (ss27) and not in the compiler.
+# (todos WS3-017 contract surface; X-010 migration target)
+
+httpSig is semsig
+httpSig version "1.0"
+httpSig generatedBy "semanticscript 0.1"
+httpSig describes standard.http
+
+HttpSafeUrl is alias
+HttpSafeUrl for String
+HttpSafeUrl purpose "A URL validated safe for URL-bearing attributes (href/src/action)"
+
+HttpRuntimeString is alias
+HttpRuntimeString for String
+HttpRuntimeString allocator ss_http.string
+HttpRuntimeString purpose "A runtime-owned HTTP helper string; release with http.freeString"
+
+HttpRequest is record
+HttpRequest field method String
+HttpRequest field path String
+HttpRequest field body String
+HttpRequest purpose "An inbound HTTP request passed to a handler"
+
+HttpResponse is record
+HttpResponse field status Int32
+HttpResponse field body String
+HttpResponse purpose "A handler's HTTP response"
+
+HttpServer is record
+HttpServer field host String
+HttpServer field port Int32
+HttpServer purpose "Server configuration (replaces the §14 webServer keyword surface)"
+
+HttpError is error
+HttpError purpose "Represent routing, serving, and middleware failures"
+
+NextMiddleware is alias
+NextMiddleware for OpaquePointer
+NextMiddleware purpose "Continuation handle for the downstream middleware chain"
+
+urlEncode is intrinsic
+urlEncode target http.urlEncode
+urlEncode arg component String
+urlEncode out encoded HttpRuntimeString
+urlEncode owns encoded cleanedBy http.freeString
+urlEncode unsafe yes
+urlEncode wrapsAs HttpRuntimeString
+urlEncode cleanedBy http.freeString
+urlEncode allocator ss_http.string
+urlEncode purpose "Percent-encode one URL component; the returned string is freed with http.freeString"
+
+urlDecode is intrinsic
+urlDecode target http.urlDecode
+urlDecode arg component String
+urlDecode out decoded HttpRuntimeString
+urlDecode owns decoded cleanedBy http.freeString
+urlDecode unsafe yes
+urlDecode wrapsAs HttpRuntimeString
+urlDecode cleanedBy http.freeString
+urlDecode allocator ss_http.string
+urlDecode purpose "Decode one URL component; the returned string is freed with http.freeString"
+
+htmlEscape is intrinsic
+htmlEscape target http.htmlEscape
+htmlEscape arg text String
+htmlEscape out escaped HttpRuntimeString
+htmlEscape owns escaped cleanedBy http.freeString
+htmlEscape unsafe yes
+htmlEscape wrapsAs HttpRuntimeString
+htmlEscape cleanedBy http.freeString
+htmlEscape allocator ss_http.string
+htmlEscape purpose "Escape text for HTML interpolation; the returned string is freed with http.freeString"
+
+freeString is intrinsic
+freeString target http.freeString
+freeString arg text HttpRuntimeString
+freeString purpose "Release a runtime-owned string returned by the HTTP helper string intrinsics"
+
+route is intrinsic
+route target http.route
+route arg server HttpServer
+route arg method String
+route arg path String
+route arg handler OpaquePointer
+route out registered Bool
+route purpose "Register a handler for a method+path on a server"
+
+serve is intrinsic
+serve target http.serve
+serve arg server HttpServer
+serve out exit ExitCode
+serve catch HttpError
+serve async yes
+serve purpose "Run the server's request loop until shutdown"
+
+callNext is intrinsic
+callNext target http.callNext
+callNext arg next NextMiddleware
+callNext out continued Bool
+callNext purpose "Invoke the downstream middleware chain and return whether it continued"
+
+requestMethod is intrinsic
+requestMethod target http.requestMethod
+requestMethod arg request HttpRequest
+requestMethod out method String
+requestMethod purpose "Read the HTTP request method from a live request"
+
+requestPath is intrinsic
+requestPath target http.requestPath
+requestPath arg request HttpRequest
+requestPath out path String
+requestPath purpose "Read the HTTP request path from a live request"
+
+requestHeader is intrinsic
+requestHeader target http.requestHeader
+requestHeader arg request HttpRequest
+requestHeader arg name String
+requestHeader out value String
+requestHeader purpose "Read a request header value by name; absent headers return the empty string, never null"
+
+requestQueryParam is intrinsic
+requestQueryParam target http.requestQueryParam
+requestQueryParam arg request HttpRequest
+requestQueryParam arg name String
+requestQueryParam out value String
+requestQueryParam purpose "Read a query parameter value by name; absent parameters return the empty string, never null"
+
+requestPathParam is intrinsic
+requestPathParam target http.requestPathParam
+requestPathParam arg request HttpRequest
+requestPathParam arg name String
+requestPathParam out value String
+requestPathParam purpose "Read a route path parameter value by name; absent path params return the empty string, never null"
+
+requestCookie is intrinsic
+requestCookie target http.requestCookie
+requestCookie arg request HttpRequest
+requestCookie arg cookieName String
+requestCookie out value String
+requestCookie purpose "Read a request cookie value by name; absent cookies return the empty string, never null"
+
+requestBodyText is intrinsic
+requestBodyText target http.requestBodyText
+requestBodyText arg request HttpRequest
+requestBodyText out body String
+requestBodyText purpose "Read the request body as text; callers must declare a maximumBytes limit for untrusted bodies"
+
+requestBodyBytes is intrinsic
+requestBodyBytes target http.requestBodyBytes
+requestBodyBytes arg request HttpRequest
+requestBodyBytes out body OpaquePointer
+requestBodyBytes borrows request
+requestBodyBytes lifetime request
+requestBodyBytes mayEscape no
+requestBodyBytes purpose "Read the request body as a borrowed byte pointer paired with http.requestBodyLength"
+
+requestBodyLength is intrinsic
+requestBodyLength target http.requestBodyLength
+requestBodyLength arg request HttpRequest
+requestBodyLength out length ByteCount
+requestBodyLength purpose "Read the request body byte length"
+
+multipartPartText is intrinsic
+multipartPartText target http.multipartPartText
+multipartPartText arg request HttpRequest
+multipartPartText arg name String
+multipartPartText out text String
+multipartPartText purpose "Read a multipart part as text"
+
+multipartPartBytes is intrinsic
+multipartPartBytes target http.multipartPartBytes
+multipartPartBytes arg request HttpRequest
+multipartPartBytes arg name String
+multipartPartBytes out bytes OpaquePointer
+multipartPartBytes borrows request
+multipartPartBytes lifetime request
+multipartPartBytes mayEscape no
+multipartPartBytes purpose "Read a multipart part as borrowed bytes paired with http.multipartPartLength"
+
+multipartPartLength is intrinsic
+multipartPartLength target http.multipartPartLength
+multipartPartLength arg request HttpRequest
+multipartPartLength arg name String
+multipartPartLength out length ByteCount
+multipartPartLength purpose "Read a multipart part byte length"
+
+multipartPartFilename is intrinsic
+multipartPartFilename target http.multipartPartFilename
+multipartPartFilename arg request HttpRequest
+multipartPartFilename arg name String
+multipartPartFilename out filename String
+multipartPartFilename purpose "Read a multipart part filename"
+
+multipartPartContentType is intrinsic
+multipartPartContentType target http.multipartPartContentType
+multipartPartContentType arg request HttpRequest
+multipartPartContentType arg name String
+multipartPartContentType out contentType String
+multipartPartContentType purpose "Read a multipart part content type"
+
+responseText is intrinsic
+responseText target http.responseText
+responseText arg response HttpResponse
+responseText arg status Int32
+responseText arg body String
+responseText arg contentType String
+responseText optionalSlot contentType
+responseText out status Int32
+responseText catch HttpError
+responseText purpose "Write a text response body; contentType may be omitted at the call site"
+
+responseBytes is intrinsic
+responseBytes target http.responseBytes
+responseBytes arg response HttpResponse
+responseBytes arg status Int32
+responseBytes arg body OpaquePointer
+responseBytes arg bodyLength ByteCount
+responseBytes arg contentType String
+responseBytes optionalSlot contentType
+responseBytes out status Int32
+responseBytes catch HttpError
+responseBytes purpose "Write a byte response body with a proven pointer and bodyLength pair; contentType may be omitted at the call site"
+
+responseFile is intrinsic
+responseFile target http.responseFile
+responseFile arg response HttpResponse
+responseFile arg status Int32
+responseFile arg rootDirectory String
+responseFile arg requestedPath String
+responseFile out status Int32
+responseFile catch HttpError
+responseFile purpose "Stream a static file response confined under a root directory"
+
+responseHeader is intrinsic
+responseHeader target http.responseHeader
+responseHeader arg response HttpResponse
+responseHeader arg name String
+responseHeader arg value String
+responseHeader out status Int32
+responseHeader catch HttpError
+responseHeader purpose "Set an HTTP response header before writing the body"
+
+responseSseEvent is intrinsic
+responseSseEvent target http.responseSseEvent
+responseSseEvent arg response HttpResponse
+responseSseEvent arg status Int32
+responseSseEvent arg event String
+responseSseEvent arg data String
+responseSseEvent out status Int32
+responseSseEvent catch HttpError
+responseSseEvent purpose "Write a single server-sent event response"
+
+respond is intrinsic
+respond target http.respond
+respond arg response HttpResponse
+respond arg status Int32
+respond arg body String
+respond out status Int32
+respond catch HttpError
+respond purpose "Write a plaintext response body and status"
+
+ensureDirectory is intrinsic
+ensureDirectory target http.ensureDirectory
+ensureDirectory arg directoryPath String
+ensureDirectory out status Int32
+ensureDirectory purpose "Create a directory if it is missing"
+
+nowMillis is intrinsic
+nowMillis target http.nowMillis
+nowMillis out millis Int64
+nowMillis purpose "Return the current wall-clock time in milliseconds"

@@ -1,0 +1,163 @@
+# decimal_list_total — aggregate a list of money values exactly (README §27
+# collections + R-067 decimal). This is the realistic shape the two runtimes meet
+# in: a growable list holds scale-2 raw decimals (raw = amount * 100), and a
+# goto-loop folds them with decimal.add into a running total. Because Decimal is a
+# scaled Int64, the sum is exact — no binary-float drift across the line items.
+#
+# Line items: 10.50 + 5.25 + 12.00 + 3.00 == 30.75  (raw 1050+525+1200+300 = 3075).
+# The total comes from iterating the list, not a constant, so it fails under a
+# no-op lowering. Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+DecimalListTotal is project
+DecimalListTotal module examplesDecimalListTotal
+DecimalListTotal target console
+DecimalListTotal entry main
+
+examplesDecimalListTotal is module
+examplesDecimalListTotal path examples.decimalListTotal
+examplesDecimalListTotal exports main
+examplesDecimalListTotal purpose "Sum a list of scaled-decimal money values exactly via a goto-loop"
+examplesDecimalListTotal invariant "The total is the exact decimal sum of the iterated line items"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Decimal is alias
+Decimal for Int64
+Decimal purpose "Fixed-scale value: the raw Int64 is the amount * 100 (scale 2)"
+
+ListHandle is alias
+ListHandle for OpaquePointer
+ListHandle purpose "An opaque growable-list handle"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Build a list of money line items and total them exactly with decimal.add"
+main invariant "Loop terminates at index == length; total is 3075 raw (30.75)"
+main let m1050 immutable Decimal 1050
+main let m525 immutable Decimal 525
+main let m1200 immutable Decimal 1200
+main let m300 immutable Decimal 300
+main let total mutable Decimal 0
+main let idx mutable Int64 0
+main let one immutable Int64 1
+main let expectTotal immutable Int64 3075
+main let zeroGuard immutable Int64 0
+main let tnTotal immutable String "iterating the line items totals 30.75 (raw 3075)"
+main let tnNonZero immutable String "the iterated total is real (not the initial 0)"
+main do mk
+main do app0
+main do app1
+main do app2
+main do app3
+main do lenCall
+main at loopHead do checkGoing
+main branch ifFalse going goto loopExit
+main do getElem
+main do addItem
+main do incIdx
+main goto loopHead
+main at loopExit do checkTotal
+main do checkNonZero
+main do rel
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes list.create
+mk out theList ListHandle
+
+app0 is call
+app0 in main
+app0 invokes list.append
+app0 arg list ListHandle theList
+app0 arg value Int64 m1050
+app0 discards "append status ignored in collection example"
+
+app1 is call
+app1 in main
+app1 invokes list.append
+app1 arg list ListHandle theList
+app1 arg value Int64 m525
+app1 discards "append status ignored in collection example"
+
+app2 is call
+app2 in main
+app2 invokes list.append
+app2 arg list ListHandle theList
+app2 arg value Int64 m1200
+app2 discards "append status ignored in collection example"
+
+app3 is call
+app3 in main
+app3 invokes list.append
+app3 arg list ListHandle theList
+app3 arg value Int64 m300
+app3 discards "append status ignored in collection example"
+
+lenCall is call
+lenCall in main
+lenCall invokes list.length
+lenCall arg list ListHandle theList
+lenCall out listLen Int64
+
+checkGoing is call
+checkGoing in main
+checkGoing invokes math.lessThanInt64
+checkGoing arg left Int64 idx
+checkGoing arg right Int64 listLen
+checkGoing out going Bool
+
+getElem is call
+getElem in main
+getElem invokes list.get
+getElem arg list ListHandle theList
+getElem arg index Int64 idx
+getElem out item Int64
+
+addItem is call
+addItem in main
+addItem invokes decimal.add
+addItem arg left Decimal total
+addItem arg right Decimal item
+addItem out total Decimal
+
+incIdx is call
+incIdx in main
+incIdx invokes math.addInt64
+incIdx arg left Int64 idx
+incIdx arg right Int64 one
+incIdx out idx Int64
+
+checkTotal is call
+checkTotal in main
+checkTotal invokes test.assertEqualInt64
+checkTotal arg name String tnTotal
+checkTotal arg expected Int64 expectTotal
+checkTotal arg actual Int64 total
+
+checkNonZero is call
+checkNonZero in main
+checkNonZero invokes test.assertNotEqualInt64
+checkNonZero arg name String tnNonZero
+checkNonZero arg expected Int64 zeroGuard
+checkNonZero arg actual Int64 total
+
+rel is call
+rel in main
+rel invokes list.release
+rel arg list ListHandle theList
+rel discards "release status ignored during cleanup"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

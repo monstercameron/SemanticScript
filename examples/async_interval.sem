@@ -1,0 +1,127 @@
+# async_interval — a periodic interval on the libuv loop (R-040). Each tick arms
+# a one-shot libuv timer for the period and drives the loop until it fires,
+# returning the running tick count. So ticking N times advances real loop time by
+# ~N periods — the interval concurrency primitive on standard.async. The ops are
+# inlined; their typed home is std/standard.async.sem.
+#   * the first tick returns count 1, the third returns 3 (the counter advances);
+#   * three ticks on a 5ms interval all complete.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+AsyncInterval is project
+AsyncInterval module examplesAsyncInterval
+AsyncInterval target console
+AsyncInterval entry main
+
+examplesAsyncInterval is module
+examplesAsyncInterval path examples.asyncInterval
+examplesAsyncInterval exports main
+examplesAsyncInterval purpose "Tick a periodic interval three times and assert the counter advances"
+examplesAsyncInterval invariant "Each tick waits one period on the loop and increments the count"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+AsyncIntervalHandle is alias
+AsyncIntervalHandle for OpaquePointer
+AsyncIntervalHandle purpose "An opaque periodic-interval handle"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+ivCreate is operation
+ivCreate in periodMs Int64
+ivCreate out AsyncIntervalHandle
+ivCreate body runtimeBinding ss_async_interval_create
+
+ivTick is operation
+ivTick in interval AsyncIntervalHandle
+ivTick out Int64
+ivTick async yes
+ivTick body runtimeBinding ss_async_interval_tick
+
+ivClose is operation
+ivClose in interval AsyncIntervalHandle
+ivClose out Int32
+ivClose body runtimeBinding ss_async_interval_close
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Tick a 5ms interval three times and assert the running count"
+main invariant "All three assertions hold"
+main let periodMs immutable Int64 5
+main let one immutable Int64 1
+main let three immutable Int64 3
+main let tnFirst immutable String "the first tick returns count 1"
+main let tnThird immutable String "the third tick returns count 3 (the counter advanced)"
+main let tnReal immutable String "the tick count advances (first != third)"
+main do mk
+main do tick1
+main do tick2
+main do tick3
+main do checkFirst
+main do checkThird
+main do checkReal
+main do closeIv
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes ivCreate
+mk arg periodMs Int64 periodMs
+mk out theInterval AsyncIntervalHandle
+
+tick1 is call
+tick1 in main
+tick1 invokes ivTick
+tick1 arg interval AsyncIntervalHandle theInterval
+tick1 out count1 Int64
+
+tick2 is call
+tick2 in main
+tick2 invokes ivTick
+tick2 arg interval AsyncIntervalHandle theInterval
+tick2 discards "status intentionally unused in this demonstration"
+
+tick3 is call
+tick3 in main
+tick3 invokes ivTick
+tick3 arg interval AsyncIntervalHandle theInterval
+tick3 out count3 Int64
+
+checkFirst is call
+checkFirst in main
+checkFirst invokes test.assertEqualInt64
+checkFirst arg name String tnFirst
+checkFirst arg expected Int64 one
+checkFirst arg actual Int64 count1
+
+checkThird is call
+checkThird in main
+checkThird invokes test.assertEqualInt64
+checkThird arg name String tnThird
+checkThird arg expected Int64 three
+checkThird arg actual Int64 count3
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 count1
+checkReal arg actual Int64 count3
+
+closeIv is call
+closeIv in main
+closeIv invokes ivClose
+closeIv arg interval AsyncIntervalHandle theInterval
+closeIv discards "status intentionally unused in this demonstration"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

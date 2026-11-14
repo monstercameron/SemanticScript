@@ -1,0 +1,95 @@
+{
+  "Operation": {
+    "prefix": "operation",
+    "description": "Declare an operation with purpose, output, and a first call.",
+    "body": [
+      "${1:operationName} is operation",
+      "${1:operationName} purpose \"${2:what it does}\"",
+      "${1:operationName} out ${3:ExitCode}",
+      "${1:operationName} do ${4:firstCall}"
+    ]
+  },
+  "Call": {
+    "prefix": "call",
+    "description": "Declare a call that invokes a target with one argument.",
+    "body": [
+      "${1:callName} is call",
+      "${1:callName} in ${2:ownerOperation}",
+      "${1:callName} invokes ${3:console.writeLine}",
+      "${1:callName} arg ${4:text} ${5:String} ${6:value}",
+      "${1:callName} out ${7:result} ${8:Int32}"
+    ]
+  },
+  "Capability": {
+    "prefix": "capability",
+    "description": "Declare a capability that grants an action on a resource.",
+    "body": [
+      "${1:capabilityName} is capability",
+      "${1:capabilityName} grants ${2:write} ${3:console}",
+      "${1:capabilityName} purpose \"${4:authority this grants}\""
+    ]
+  },
+  "Record": {
+    "prefix": "record",
+    "description": "Declare a record with fields.",
+    "body": [
+      "${1:RecordName} is record",
+      "${1:RecordName} field ${2:fieldName} ${3:String}",
+      "${1:RecordName} field ${4:anotherField} ${5:Int64}"
+    ]
+  },
+  "Enum": {
+    "prefix": "enum",
+    "description": "Declare an enum with variants.",
+    "body": [
+      "${1:EnumName} is enum",
+      "${1:EnumName} variant ${2:FirstVariant}",
+      "${1:EnumName} variant ${3:SecondVariant}"
+    ]
+  },
+  "Error": {
+    "prefix": "error",
+    "description": "Declare a typed error with variants.",
+    "body": [
+      "${1:ErrorName} is error",
+      "${1:ErrorName} variant ${2:NotFound}",
+      "${1:ErrorName} variant ${3:Invalid}"
+    ]
+  },
+  "Storage": {
+    "prefix": "storage",
+    "description": "Declare module-scoped storage with an initial value.",
+    "body": [
+      "${1:storageName} is storage module ${2|immutable,mutable|} ${3:String} ${4:\"value\"}"
+    ]
+  },
+  "Web server": {
+    "prefix": "webserver",
+    "description": "Declare a webServer with host, port, and a route.",
+    "body": [
+      "${1:serverName} is webServer",
+      "${1:serverName} purpose \"${2:what it serves}\"",
+      "${1:serverName} host \"${3:127.0.0.1}\"",
+      "${1:serverName} port ${4:8080}",
+      "${1:serverName} route ${5|GET,POST,PUT,DELETE|} \"${6:/}\" ${7:handlerName}"
+    ]
+  },
+  "Branch on error": {
+    "prefix": "branch",
+    "description": "Branch to a label when a fallible call errors.",
+    "body": [
+      "${1:operationName} branch ifError ${2:fallibleCall} goto ${3:errorLabel}"
+    ]
+  },
+  "Project (build.sem)": {
+    "prefix": "project",
+    "description": "Declare a project entry in build.sem.",
+    "body": [
+      "${1:ProjectName} is project",
+      "${1:ProjectName} module ${2:appModule}",
+      "${1:ProjectName} target ${3|console,webServer|}",
+      "${1:ProjectName} entry ${4:mainOperation}",
+      "${1:ProjectName} languageVersion \"${5:1.0}\""
+    ]
+  }
+}
