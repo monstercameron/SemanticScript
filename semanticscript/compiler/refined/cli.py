@@ -199,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("approved:\n" + "".join(f"  allows {r}\n" for r in rows) if rows else
                          "approved: nothing (the project allows none)\n")
         return 0
-    if args.command in ("run", "bench", "test") or (args.command == "build" and args.kind == "executable"):
+    if args.command in ("run", "bench", "test", "run-one-test") or (args.command == "build" and args.kind == "executable"):
         refused = _unapproved(args.path)
         if refused:
             return refused
@@ -285,7 +285,11 @@ def main(argv: list[str] | None = None) -> int:
         return build(str(module), args.output, args.target, args.kind, None if entry == "none" else entry)
 
     if args.command == "run-one-test":
-        mod, test = args.test.split(".", 1)
+        mod, _dot, test = args.test.partition(".")
+        known = res.world.modules.get(mod)
+        if known is None or test not in known.tests:
+            sys.stderr.write(f"there is no test `{args.test}` in this project\n")
+            return 2
         module, diags = _compile(res, [(mod, test)])
         if diags:
             sys.stdout.write(json.dumps({"status": "unsupported", "diagnostics": [d.to_json() for d in diags]}) + "\n")

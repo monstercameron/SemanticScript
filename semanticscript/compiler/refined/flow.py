@@ -428,6 +428,8 @@ class Flow:
                 if st.verb == "return" and st.args[0] == "ok" and st.args[1] in views:
                     self.err("R514", st.line, f"`{st.args[1]}` is only borrowed, so it cannot be returned; return a "
                              "value allocated in the caller's region")
+                elif st.verb == "return" and st.args[0] == "ok" and st.args[1] in op.bindings:
+                    self._returned_region(st.args[1], st.line)
         if not tracked:
             return
         start = {n: frozenset({"owned"} if op.bindings[n].kind == "input" else {"none"}) for n in tracked}
@@ -536,6 +538,20 @@ class Flow:
         return outs
 
     # ------------------------------------------------------------ activations
+
+    def _returned_region(self, name: str, line: int) -> None:
+        """D-108: a result is returned in the region its output names. Text in it is copied there at the return;
+        a list, map, set, or channel in it cannot be copied, so it must have been made in that region."""
+        owner = self.ent.value("outputOwnedBy")
+        b = self.op.bindings.get(name)
+        if b is None or owner in (None, "none", "caller") or not self.world.holds_container(b.type):
+            return
+        from .semantics import _region_of
+        where = _region_of(self.op, name)
+        if where != owner:
+            self.err("R514", line, f"`{name}` is returned in region `{owner}`, so it is made there: it holds a list, "
+                     f"map, set, or channel, which cannot be copied, and "
+                     f"{'it was made in `' + where + '`' if where else 'where it was made is not known here'}")
 
     def _suppression(self, ent, error_type, discards: bool, line: int) -> None:
         """D-54: an activation whose failure is dropped names, in `suppresses` rows, exactly the variants of its error
@@ -809,6 +825,13 @@ class Flow:
                 b = op.bindings.get(tgt)
                 if report and (b is None or b.kind != "let" or not b.mutable):
                     self.err("R403", st.line, f"only a `mutable` let can be set; `{tgt}` is not one")
+                sb = op.bindings.get(src)
+                if report and b is not None and sb is not None and not self.world.plain(b.type) and (
+                        sb.view_of is not None or (sb.kind == "input" and sb.mode != "owned")):
+                    # D-108: as for `let` (D-40), a second name for a borrowed value would carry the loan past it
+                    self.err("R514", st.line, f"`set {tgt} {src}` would make `{tgt}` a second name for `{src}`, which "
+                             f"is {'a view of `' + sb.view_of + '`' if sb.view_of else 'a borrowed input'}; use "
+                             f"`{src}` directly")
                 self._use(src, cur, st.line, b.type if b else None, f"`set {tgt}`", report)
                 cur.add(tgt)
             elif v == "goto":

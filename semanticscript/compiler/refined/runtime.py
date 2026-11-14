@@ -68,8 +68,19 @@ def _release_on_trap() -> int:
     return released
 
 
+_trapping = threading.Lock()
+_trapping_thread: list[int] = []
+
+
 @ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
 def _trap(ptr, length):
+    # A trap ends the process. Two tasks on their own threads may trap at once: the first reports, and the other
+    # waits for the end instead of printing a second report (a standalone executable runs tasks in turn).
+    if not _trapping.acquire(blocking=False):
+        if _trapping_thread and _trapping_thread[0] == threading.get_ident():
+            os._exit(TRAP_EXIT_CODE)
+        threading.Event().wait()
+    _trapping_thread.append(threading.get_ident())
     from . import tasks
     trace = tasks.stack_trace()
     msg = b"trap: " + _bytes(ptr, length) + b"\n" + "".join(line + "\n" for line in trace).encode("utf-8", "replace")

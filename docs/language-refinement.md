@@ -2210,6 +2210,30 @@ Decisions (by delegation):
   region, in the same operation (R514); an operation that builds such a
   value for its caller returns it, allocated in a region the caller passes.
 
+- **D-108** A value is safe only in the region it is said to live in. An
+  adversarial review of D-107 found five ways around it, closed together:
+  a result is returned in the region its `outputOwnedBy` names, so text in
+  it is copied there at the return, and a list, map, set, or channel in it
+  must have been made there (R514); an error carries only plain values,
+  because nothing names a region for it (R403); a type parameter that is not
+  `plain` may stand for a container, so a generic operation stores its values
+  under the same proof as a concrete one; a `set` takes no value that is not
+  plain from a view or a borrowed input (R514), which had let a view be
+  laundered into a value that outlived its list; and a resource is never a
+  record field or an enum payload (R403), so a file cannot escape the
+  cleanup and release rules inside a value.
+- **D-109** Tools read the program the way the compiler does. `allows` and
+  `grants` rows are compared token by token through the lexer, so spacing,
+  tabs, or a trailing comment cannot widen authority past `refined approve`
+  (exit 3). `run-one-test` needs approved authority like `test` and reports
+  an unknown module or test as an error (exit 2). The build cache hashes
+  every package a project `requires`, wherever it is. One writer per file
+  (D-52) is checked by the file's identity (device and file number) once it
+  is open, as well as by its path, so a hard link names the same file; a
+  file opened for writing is emptied only after that check. Under the JIT,
+  where started tasks run on their own threads, only the first of two
+  simultaneous traps is reported, as in an executable.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.
@@ -2707,6 +2731,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-43 to D-47 | Exclusive handle loans, cancel-then-join, table loop bounds, no exported capabilities, a conformance suite; one consistent syntax pattern (owner) |
 | 2026-11-14 | D-48 to D-56 | Group failure propagation, region trap rationale, task state on every path, release on trap, one writer per file, approved authority, exact suppression, recoverable allocation, run-time loop bounds |
 | 2026-11-14 | D-100 to D-106 | Sound positions, trapping twins, stacks, module constants, table access, replace for nested values, linear checking |
+| 2026-11-14 | D-107 to D-109 | Collections keep what they store alive; adversarial review: results, errors, generics, `set`, and resource fields stay in their regions; approval, test runner, cache, and file identity read the program as the compiler does |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

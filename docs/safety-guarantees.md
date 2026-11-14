@@ -51,6 +51,7 @@ Also: `mutation:mutable-loan-of-read-loan`, `mutation:change-through-read-loan`,
 | `no-detach` | rejected: R205, R510 | `detach` is not a step |
 | `runs` | runs | the program prices the order in two tasks and prints the report |
 | `group-first-failure` | runs | a group's failing task cancels a ten-second sibling; `join` delivers its error at once (exit 3: stopped early) |
+| `error-carries-text` | rejected: R403, R406 | an error type whose payload is text |
 | `group-catch-none` | rejected: R403, R401, R506 | a group that cannot receive its tasks' errors |
 | `group-wrong-error-type` | rejected: R403 | a group catching a different error type than its tasks raise |
 | `group-join-unchecked` | rejected: R506, R511 | joining a fallible group without branching on its error |
@@ -130,6 +131,7 @@ Also: `case:08-strings-collections/positions`, `case:08-strings-collections/boun
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
+| `resource-in-record` | rejected: R403 | a record with a file handle field |
 | `cleanup-deferred-twice` | rejected: R510 | deferring the first file's cleanup twice |
 | `cleanup-before-acquire` | rejected: R507, R513 | deferring the cleanup before the file is open |
 | `trap-releases-handles` | traps | a division by zero with both files open: no cleanup runs, and the runtime closes the two files |
@@ -221,6 +223,7 @@ Also: `mutation:recursive-type-by-value`, `mutation:recursive-type-through-list`
 - A list of plain items is also a stack: `removeLast` takes the last item off (an empty list is `list.IndexOutOfRange`), and `truncate` cuts the list to a length (D-102).
 - An item of a list is read as a view; to change a list or record held in a list, `replace` puts a new item in and hands the old one back owned (for items that are not plain values, as a value of the list's region, which the call names and the runtime checks), so it can be changed and put back (D-105).
 - A collection outlives what it stores only if what it stores lives in its region. Text, and text inside records and enum payloads, is copied into the collection's region when stored (lists, maps, sets, channels), so text made in a region that ends first stays readable. A value holding a list, map, set, or channel cannot be copied that way: it must come from a call whose `ownedBy` names the collection's own region, in the same operation (R514, D-107).
+- A result is returned in the region its output names: text in it is copied there at the return, and a list, map, set, or channel in it must have been made there. An error carries only plain values, since no region is named for it. A type parameter that is not `plain` may stand for a container, so a generic operation stores its values under the same rule. A `set` takes no value from a view or a borrowed input. A resource is never a field or a payload (R403, R514, D-108).
 - A table is a fixed array: `<table>.length` is its row count and `<table>.rowAt` reads a row by the number its `row` row gives it (1 to n); any other number is `list.IndexOutOfRange` (D-104).
 - A `constant` is a named literal of a module (`type`, `value`), read by every operation of the module as an immutable value set on entry; its value is a literal of its type, it cannot be set, and no operation may reuse its name (R403, R411, D-103).
 
@@ -228,6 +231,9 @@ Also: `mutation:recursive-type-by-value`, `mutation:recursive-type-through-list`
 | --- | --- | --- |
 | `positions-and-stacks` | runs | a position read on its own list, refused on another; a stack pushed, popped, cut, and emptied |
 | `replace-in-another-region` | rejected: R514 | putting back an inner list made in another region |
+| `generic-stash` | rejected: R514 | a generic operation storing a value of any type in a list the caller lends |
+| `returned-from-local-region` | rejected: R514 | returning a stack made in the operation's own region |
+| `set-launders-a-view` | rejected: R514 | setting a mutable let from a view of a list's item |
 | `callee-region-stored` | rejected: R514 | an operation storing a list made in its own region in its caller's list |
 | `foreign-position-traps` | traps | the trapping read with a position from the other list |
 | `indexed-list-never-clears` | rejected: R401 | clearing an indexed list |

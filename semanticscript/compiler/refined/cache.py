@@ -35,10 +35,23 @@ def project_files(path: str) -> tuple[str, list[str]]:
     path = os.path.abspath(path)
     if os.path.isdir(path) or os.path.basename(path) == "build.sem":
         root = path if os.path.isdir(path) else os.path.dirname(path)
-        files = []
-        for d, dirs, names in os.walk(root):
-            dirs[:] = sorted(x for x in dirs if not x.startswith("."))
-            files += [os.path.join(d, n) for n in sorted(names) if n.endswith(".sem")]
+        files: list[str] = []
+        pending, seen = [root], set()
+        while pending:  # D-109: required packages are part of the program, wherever they live
+            here = os.path.normcase(os.path.abspath(pending.pop(0)))
+            if here in seen:
+                continue
+            seen.add(here)
+            for d, dirs, names in os.walk(here):
+                dirs[:] = sorted(x for x in dirs if not x.startswith("."))
+                files += [os.path.join(d, n) for n in sorted(names) if n.endswith(".sem") or n == "authority.approved"]
+            build = os.path.join(here, "build.sem")
+            if os.path.isfile(build):
+                with open(build, encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        parts = line.split('"')
+                        if len(parts) >= 5 and " requires " in parts[0]:
+                            pending.append(os.path.join(here, parts[1]))
         return os.path.join(root, DIRNAME), files
     test = path[:-4] + ".test.sem"
     return os.path.join(os.path.dirname(path), DIRNAME), [path] + ([test] if os.path.exists(test) else [])
@@ -53,7 +66,7 @@ def key(path: str, options: dict) -> tuple[str, str]:
     h.update(json.dumps(options, sort_keys=True).encode())
     base = os.path.dirname(directory)
     for f in files:
-        h.update(os.path.relpath(f, base).replace(os.sep, "/").encode() + b"\0")
+        h.update(os.path.abspath(f).replace(os.sep, "/").encode() + b"\0")
         with open(f, "rb") as fh:
             h.update(fh.read() + b"\0")
     return directory, h.hexdigest()

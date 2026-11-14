@@ -375,14 +375,20 @@ def allows_rows(project: str, texts: list[str]) -> list[str]:
     """The `allows` rows that cover exactly the capabilities written in `texts` (module sources). Tools that
     generate a build.sem for code they did not write (the REPL, the test harness) use this; a hand-written
     build.sem states its authority itself."""
-    import re
     rows = []
     for text in texts:
-        for verb, res, scope in re.findall(r"^\w+ grants (\w+) ([\w.]+) (none|\"[^\"]*\")\s*$", text, re.M):
-            row = f"{project} allows {verb} {res} {scope}"
-            if row not in rows:
-                rows.append(row)
+        for tokens in _row_tokens(text):
+            if len(tokens) == 5 and tokens[1] == "grants":
+                row = f"{project} allows {tokens[2]} {tokens[3]} {tokens[4]}"
+                if row not in rows:
+                    rows.append(row)
     return rows or [f"{project} allows none"]
+
+
+def _row_tokens(text: str) -> list[list[str]]:
+    """Each row of a source as the lexer reads it (any spacing, comments dropped), as raw token texts (D-109)."""
+    from .lexer import lex
+    return [[tok.raw for tok in line.tokens] for line in lex(text, Sink("<authority>")) if line.tokens]
 
 
 # ---------------------------------------------------------------- D-53: authority is approved, not self-granted
@@ -399,15 +405,16 @@ def find_build(path: str) -> Optional[str]:
 
 
 def requested_authority(build_path: str) -> list[str]:
-    """Every `<verb> <resource> <scope|none>` the project's `allows` rows ask for, in order."""
-    import re
+    """Every `<verb> <resource> <scope|none>` the project's `allows` rows ask for, in order. Read with the
+    compiler's own lexer (D-109), so spacing and comments that the checker accepts cannot hide a row from approval."""
     with open(build_path, encoding="utf-8") as fh:
         text = fh.read()
     rows = []
-    for verb, res, scope in re.findall(r'^\w+ allows (\w+) ([\w.]+) (none|"[^"]*")\s*$', text, re.M):
-        row = f"{verb} {res} {scope}"
-        if row not in rows:
-            rows.append(row)
+    for tokens in _row_tokens(text):
+        if len(tokens) >= 3 and tokens[1] == "allows" and tokens[2] != "none":
+            row = " ".join(tokens[2:])
+            if row not in rows:
+                rows.append(row)
     return rows
 
 
@@ -416,7 +423,7 @@ def approved_authority(build_path: str) -> set[str]:
     if not os.path.isfile(path):
         return set()
     with open(path, encoding="utf-8") as fh:
-        return {line.strip() for line in fh if line.strip() and not line.startswith("#")}
+        return {" ".join(tokens) for tokens in _row_tokens(fh.read())}
 
 
 def unapproved_authority(build_path: str) -> list[str]:

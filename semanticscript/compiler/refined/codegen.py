@@ -687,6 +687,11 @@ class OpGen:
     def ret(self, b: ir.IRBuilder, a: list, line: int) -> None:
         # the returned value is read before cleanups run; cleanups run newest first, each at most once
         result = b.load(self.allocas[a[1]]) if a[1] != "none" else None
+        owner = self.info.sig.output_owner if a[0] == "ok" else None
+        if result is not None and owner not in (None, "caller", "none") and owner in self.allocas:
+            # D-108: text in the result is copied into the region the output names, before this operation's own
+            # regions are released, so a result built from local text stays valid
+            result = self.relocate(b, result, self.info.sig.output, b.load(self.allocas[owner]), line)
         for name in reversed(self.defer_order):
             c = self.cleanups[name]
             armed = self.armed[name]

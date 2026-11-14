@@ -15,7 +15,7 @@
 # stdout: nobody
 # stdout: 3
 # stdout: 4
-# stdout: bad input
+# stdout: 7
 # stdout: inner
 # stdout: true
 # stdout: false
@@ -189,9 +189,9 @@ Shape variant tagged Inner
 Shape variant empty none
 
 InputError is enum
-InputError purpose "Why input was rejected, with a message for the person who gave it"
+InputError purpose "Why input was rejected, with a code for the person who gave it (errors carry plain values, D-108)"
 InputError typeParameter none
-InputError variant rejected String
+InputError variant rejected Int64
 
 Labelled is record
 Labelled purpose "A list of numbers with the shape it came from, compared field by field"
@@ -200,7 +200,7 @@ Labelled field numbers Numbers
 Labelled field shape Shape
 
 check is operation
-check purpose "Reject every input with a message"
+check purpose "Reject every input with a code"
 check invariant none
 check typeParameter none
 check input text String borrowed
@@ -214,14 +214,14 @@ check async false
 check maxRecursion none
 check label begin loopKind none
 check label begin within none
-check let message String "bad input" immutable
+check let code Int64 7 immutable
 check at begin do makeError
 check at begin return error failure
 
 makeError is call
 makeError in check
 makeError invokes InputError.rejected
-makeError argument payload String message give
+makeError argument payload Int64 code copy
 makeError result failure InputError
 makeError ownedBy none
 makeError cleanedBy none
@@ -322,7 +322,7 @@ main at showPoints do printCount
 main at showPoints do runCheck
 main at showPoints branch ifError runCheck goto inspectError else goto failed
 main at inspectError match checkError InputError
-main at inspectError case InputError.rejected bind why String goto showWhy
+main at inspectError case InputError.rejected bind why Int64 goto showWhy
 main at showWhy do printWhy
 main at showWhy do makeLabel
 main at showWhy do makeTagged
@@ -564,8 +564,8 @@ runCheck suppresses none
 
 printWhy is call
 printWhy in main
-printWhy invokes showText
-printWhy argument text String why lend
+printWhy invokes showInt
+printWhy argument value Int64 why copy
 printWhy result none
 printWhy ownedBy none
 printWhy cleanedBy none

@@ -91,6 +91,10 @@ def test_conformance_as_executables(tmp_path):
                              cwd=exe_dir, timeout=120)
         jit_err = jit.stderr.replace(os.path.normpath(jit_dir), "<project>")
         exe_err = ran.stderr.replace(os.path.normpath(exe_dir), "<project>")
+        if "(in a task started with `start`)" in jit_err + exe_err:
+            # Started tasks run concurrently under the JIT and in turn in an executable; when more than one would
+            # trap, which one reports first is not part of the language, so only the trap itself is compared.
+            jit_err, exe_err = jit_err.splitlines()[0], exe_err.splitlines()[0]
         assert (ran.returncode, ran.stdout, exe_err) == (jit.returncode, jit.stdout, jit_err), check.id
         return check.id
 

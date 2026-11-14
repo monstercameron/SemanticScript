@@ -332,8 +332,8 @@ def _run(p):
 # ---------------------------------------------------------------- files
 
 class File:
-    def __init__(self, fh, key: str = "", writes: bool = False):
-        self.fh, self.key, self.writes = fh, key, writes
+    def __init__(self, fh, key: str = "", writes: bool = False, ident: str | None = None):
+        self.fh, self.key, self.writes, self.ident = fh, key, writes, ident
 
 
 # D-52: one file, however it is named, is open for writing by at most one handle of the program, and never while
@@ -354,7 +354,30 @@ def _claim(path: str, writes: bool) -> str:
     return key
 
 
-def _unclaim(key: str, writes: bool) -> None:
+def _identity(fd: int) -> str | None:
+    """D-109: the file itself (its device and file number), so a hard link, which `realpath` cannot see through,
+    names the same file. None where the file system gives no number."""
+    st = os.fstat(fd)
+    return f"#{st.st_dev}:{st.st_ino}" if st.st_ino else None
+
+
+def _claim_identity(fh, writes: bool, path_key: str) -> str | None:
+    """Claim the opened file by its identity too; on a conflict, close it and give the path back."""
+    ident = _identity(fh.fileno())
+    if ident is None:
+        return None
+    holders = _open_files.get(ident, [])
+    if holders and (writes or any(holders)):
+        fh.close()
+        _unclaim(path_key, writes)
+        fail("fs.FileError", "busy")
+    _open_files.setdefault(ident, []).append(writes)
+    return ident
+
+
+def _unclaim(key: str | None, writes: bool) -> None:
+    if key is None:
+        return
     holders = _open_files.get(key)
     if holders:
         holders.remove(writes)
@@ -379,12 +402,13 @@ def _open(path: str, mode: str) -> tuple:
         if mode == "r+b" and not os.path.isfile(path):
             raise FileNotFoundError(path)
         fh = open(path, mode)
-        if mode == "r+b":
-            fh.truncate(0)
     except OSError as exc:
         _unclaim(key, writes)
         _file_error(exc)
-    return ok(new_handle(File(fh, key, writes)))
+    ident = _claim_identity(fh, writes, key)
+    if mode == "r+b":
+        fh.truncate(0)  # emptied only once the file is known to be no one else's
+    return ok(new_handle(File(fh, key, writes, ident)))
 
 
 @target("fs.openRead")
@@ -478,6 +502,7 @@ def _fs_close(p):
     f = get(p[0][0], File)
     drop(p[0][0])
     _unclaim(f.key, f.writes)
+    _unclaim(f.ident, f.writes)
     try:
         f.fh.close()
     except OSError as exc:
@@ -494,6 +519,12 @@ def _exists(p):
 def _remove(p):
     if _file_key(text(p[0])) in _open_files:
         fail("fs.FileError", "busy")
+    try:
+        st = os.stat(text(p[0]))
+        if st.st_ino and f"#{st.st_dev}:{st.st_ino}" in _open_files:
+            fail("fs.FileError", "busy")
+    except OSError:
+        pass
     try:
         os.remove(text(p[0]))
     except OSError as exc:
@@ -517,12 +548,19 @@ def _read_all(p):
     _file_wait_check(p[3][0])
     key = _claim(path, False)
     try:
-        with open(path, "rb") as fh:
+        fh = open(path, "rb")
+    except OSError as exc:
+        _unclaim(key, False)
+        _file_error(exc)
+    ident = _claim_identity(fh, False, key)
+    try:
+        with fh:
             content = fh.read(limit + 1)
     except OSError as exc:
         _file_error(exc)
     finally:
         _unclaim(key, False)
+        _unclaim(ident, False)
     if len(content) > limit:
         fail("fs.FileError", "tooLarge")
     return ok(*put(region, content))
@@ -533,12 +571,20 @@ def _write_all(p):
     _file_wait_check(p[2][0])
     key = _claim(text(p[0]), True)
     try:
-        with open(text(p[0]), "wb") as fh:
+        fh = open(text(p[0]), "ab")  # not emptied until the file is known to be no one else's
+    except OSError as exc:
+        _unclaim(key, True)
+        _file_error(exc)
+    ident = _claim_identity(fh, True, key)
+    try:
+        with fh:
+            fh.truncate(0)
             fh.write(data(p[1]))
     except OSError as exc:
         _file_error(exc)
     finally:
         _unclaim(key, True)
+        _unclaim(ident, True)
     return ok()
 
 

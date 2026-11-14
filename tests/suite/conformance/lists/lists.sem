@@ -238,6 +238,8 @@ main at measured do addOneName
 main at measured do readName
 main at measured branch ifError readName goto broken else goto named
 main at named do printName
+main at named do numberAsText
+main at named do printNumberText
 main at named return ok okCode
 main at broken return ok failCode
 
@@ -761,6 +763,29 @@ printName borrows none
 printName catch none
 printName suppresses none
 
+numberAsText is call
+numberAsText in main
+numberAsText invokes numberText
+numberAsText argument into Region store lend
+numberAsText argument value Int64 seven copy
+numberAsText result sevenText String
+numberAsText ownedBy store
+numberAsText cleanedBy none
+numberAsText borrows none
+numberAsText catch none
+numberAsText suppresses none
+
+printNumberText is call
+printNumberText in main
+printNumberText invokes showText
+printNumberText argument text String sevenText lend
+printNumberText result none
+printNumberText ownedBy none
+printNumberText cleanedBy none
+printNumberText borrows none
+printNumberText catch none
+printNumberText suppresses none
+
 addName is operation
 addName purpose "Join two pieces of text in this operation's own region and add the result to the caller's list"
 addName invariant none
@@ -812,3 +837,41 @@ storeJoined cleanedBy none
 storeJoined borrows none
 storeJoined catch none
 storeJoined suppresses none
+
+numberText is operation
+numberText purpose "Write a number as text in this operation's own region and return it in the caller's"
+numberText invariant none
+numberText typeParameter none
+numberText input into Region borrowed
+numberText input value Int64 copied
+numberText output String
+numberText outputOwnedBy into
+numberText raises none
+numberText effect none
+numberText uses none
+numberText memoryHeap true
+numberText async false
+numberText maxRecursion none
+numberText label begin loopKind none
+numberText label begin within none
+numberText let none
+numberText at begin do digits
+numberText at begin return ok local
+
+scratchDigits is region
+scratchDigits in numberText
+scratchDigits strategy arena
+scratchDigits maxBytes 256
+scratchDigits released atReturn
+
+digits is call
+digits in numberText
+digits invokes string.fromInt64
+digits argument value Int64 value copy
+digits argument region Region scratchDigits lend
+digits result local String
+digits ownedBy scratchDigits
+digits cleanedBy none
+digits borrows none
+digits catch none
+digits suppresses none

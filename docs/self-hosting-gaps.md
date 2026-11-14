@@ -6,6 +6,29 @@ Scope: the refined language and its compiler (`semanticscript/compiler/refined`)
 
 Of the 70 items, **29 are Supported, 31 Partial, 3 Missing, and 7 Not applicable by design**. The language core (records, enums with payloads, exhaustive `match`, ownership, regions, loops, recursion, typed list positions) is sound enough to write a compiler in, and the `lexer` and `symbols` examples prove the front-end half under `refined run`. Self-hosting is blocked by one structural fact, not by the language design: everything a compiler needs from the operating system and every keyed or growable-text container is a **host target implemented in Python (`host.py`) and refused in standalone executables with R901**. Verified: `refined build --kind executable` refuses the `lexer` example (11 host targets, including `fs.readAll`, `process.argument`, `buffer.*`, `string.fromBytes`) and the `symbols` example (`map.Map.*`). A compiler written in the language today can run only inside the Python JIT, and nothing it emits could be a compiler that reads a file. After that, the largest risks are the AST model (no mutation of an element in place, a `NodeId` that cannot index a second list or become a number, a verified stale-position defect after `clear`), the volume the explicit rule produces (about 12 rows per call; an estimated 100,000 to 180,000 rows for the compiler), and a checker whose time grows quadratically with module size (measured). The recommended emission target is **C source**, written to a file and built by the C compiler that `refined build --kind executable` already requires.
 
+## Status since this report
+
+The report below describes commit `21cf659` and is kept as written. Since then, the roadmap at the end has
+moved as follows (decisions in `docs/language-refinement.md`):
+
+| Roadmap item | State | Where |
+| --- | --- | --- |
+| 1, 3: native `fs`, process arguments, `environment`, `console.readLine`, `process.run`, `buffer`, `string.fromBytes`, `time.Deadline` | Done: an executable reads files and arguments with no Python | D-80 to D-85 |
+| 2: native `map.Map` and `set.Set` | Done | D-80 to D-85 |
+| 4: position soundness | Done: positions carry the list's identity; indexed lists only grow | D-100 |
+| 5: tree ergonomics | Done: `<Alias>.toInt64`, `replace`, `removeLast`, `truncate` | D-100, D-102, D-105 |
+| 6: trapping twins | Done: `getOrTrap`, `byteAtOrTrap` | D-101 |
+| 7: text and bytes targets | Done without the host | D-91 |
+| 8: `constant`, `<table>.rowAt`, `<table>.length` | Done | D-103, D-104 |
+| 9: checker performance | Done: 4,000 operations check in about 2 seconds | D-106 |
+| 10: integer types | Done: every integer type computes | D-90 |
+| 11: layered generics, sets of `String` | Done | D-92 to D-94 |
+| 15: chunked native arena | Done | D-80 to D-85 |
+| 12 to 14: the compiler in the language, its C emitter, the bootstrap | In progress: a stage-0 compiler is being written in the language | — |
+
+An adversarial review of the new collection and tooling rules then found nine holes. All are closed and each has
+a regression check (D-107 to D-109; `tests/suite/conformance.py`, `tests/test_review.py`).
+
 ## Method
 
 Statuses come from reading `shapes.py`, `library.py`, `host.py`, `codegen.py`, `native.py`, `native_runtime.c`, `semantics.py`, `flow.py`, and the design record, and from probes run on scratch copies outside the repository. "Verified" below means a probe was run; "by reading" means the claim rests on the cited code only. Three levels are kept apart for every item:

@@ -995,6 +995,7 @@ static void check_scope(const char *target, Text value, Text scope_text) {
 typedef struct File {
     int fd;
     char *key;
+    char *ident;  /* D-109: the file's identity (device and file number), or NULL */
     int writes, readable, writable;
 } File;
 
@@ -1028,7 +1029,53 @@ static int32_t claim(Call *c, Text path, int writes, char **key_out) {
     return 0;
 }
 
+/* D-109: the file itself, so a hard link names the same file; NULL where the system gives no number */
+static char *identity_key(int fd) {
+    char buf[96];
+#ifdef _WIN32
+    BY_HANDLE_FILE_INFORMATION info;
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    if (h == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(h, &info)) return NULL;
+    snprintf(buf, sizeof buf, "#%lu:%lu:%lu", (unsigned long)info.dwVolumeSerialNumber,
+             (unsigned long)info.nFileIndexHigh, (unsigned long)info.nFileIndexLow);
+#else
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_ino == 0) return NULL;
+    snprintf(buf, sizeof buf, "#%llu:%llu", (unsigned long long)st.st_dev, (unsigned long long)st.st_ino);
+#endif
+    return strdup(buf);
+}
+
+static void unclaim(const char *key, int writes);
+static int raw_close(int fd);
+
+/* claim an opened file by its identity as well; 0 and the key (or NULL), or `busy` with the path given back */
+static int32_t claim_identity(Call *c, int fd, int writes, char *path_key, char **ident_out) {
+    *ident_out = NULL;
+    char *ident = identity_key(fd);
+    if (!ident) return 0;
+    int64_t i = find_claim(ident);
+    if (i >= 0 && (writes || claims[i].writers)) {
+        free(ident);
+        raw_close(fd);
+        unclaim(path_key, writes);
+        free(path_key);
+        return fail(c, ERR_fs_FileError_busy, 0);
+    }
+    if (i < 0) {
+        claims = grow(claims, &claim_cap, claim_count + 1, sizeof(Claim));
+        i = claim_count++;
+        claims[i].key = strdup(ident);
+        claims[i].readers = claims[i].writers = 0;
+    }
+    if (writes) claims[i].writers++;
+    else claims[i].readers++;
+    *ident_out = ident;
+    return 0;
+}
+
 static void unclaim(const char *key, int writes) {
+    if (!key) return;
     int64_t i = find_claim(key);
     if (i < 0) return;
     if (writes) claims[i].writers--;
@@ -1147,26 +1194,35 @@ static int32_t open_file(Call *c, int how) {
     case OPEN_CREATE: flags = WR | CR | EX; break;
     default: flags = WR | CR | AP; break;
     }
+    char *ident = NULL;
     if (how == OPEN_WRITE && !is_regular_file(path)) {
         err = ENOENT;
     } else {
         fd = open_path(path, flags);
-        if (fd < 0) err = errno;
+        if (fd < 0) {
+            err = errno;
+        } else {
+            int32_t taken = claim_identity(c, fd, writes, key, &ident);
+            if (taken) return taken;  /* the file is open elsewhere under another name (a hard link) */
 #ifdef _WIN32
-        else if (how == OPEN_WRITE && _chsize_s(fd, 0) != 0) err = errno;
+            if (how == OPEN_WRITE && _chsize_s(fd, 0) != 0) err = errno;
 #else
-        else if (how == OPEN_WRITE && ftruncate(fd, 0) != 0) err = errno;
+            if (how == OPEN_WRITE && ftruncate(fd, 0) != 0) err = errno;
 #endif
+        }
     }
     if (err) {
         if (fd >= 0) raw_close(fd);
         unclaim(key, writes);
+        unclaim(ident, writes);
         free(key);
+        free(ident);
         return file_error(c, err);
     }
     File *f = calloc(1, sizeof(File));
     f->fd = fd;
     f->key = key;
+    f->ident = ident;
     f->writes = writes;
     f->readable = how == OPEN_READ || how == OPEN_WRITE;
     f->writable = how != OPEN_READ;
@@ -1204,7 +1260,9 @@ static int32_t h_fs_close(Call *c) {
     File *f = get_object(h, H_FILE);
     int fd = f->fd;
     unclaim(f->key, f->writes);
+    unclaim(f->ident, f->writes);
     free(f->key);
+    free(f->ident);
     free(f);
     objects[h].kind = H_NONE;
     objects[h].p = NULL;
@@ -1233,6 +1291,18 @@ static int32_t h_fs_remove(Call *c) {
     int64_t held = find_claim(key);
     free(key);
     if (held >= 0) return fail(c, ERR_fs_FileError_busy, 0);
+#ifdef _WIN32
+    int probe = open_path(path, _O_RDONLY);
+#else
+    int probe = open_path(path, O_RDONLY);
+#endif
+    if (probe >= 0) {  /* D-109: the same file open under another name (a hard link) */
+        char *ident = identity_key(probe);
+        raw_close(probe);
+        int64_t open_elsewhere = ident ? find_claim(ident) : -1;
+        free(ident);
+        if (open_elsewhere >= 0) return fail(c, ERR_fs_FileError_busy, 0);
+    }
 #ifdef _WIN32
     wchar_t *w = widen(path);
     BOOL ok = DeleteFileW(w);
@@ -1298,13 +1368,18 @@ static int32_t h_fs_read_all(Call *c) {
     int err = fd < 0 ? errno : 0;
     unsigned char *data = NULL;
     int64_t n = 0;
+    char *ident = NULL;
     if (!err) {
+        int32_t taken = claim_identity(c, fd, 0, key, &ident);
+        if (taken) return taken;
         n = read_upto(fd, limit < 0 ? 0 : (limit == INT64_MAX ? limit : limit + 1), &data);
         if (n < 0) err = errno;
         raw_close(fd);
     }
     unclaim(key, 0);
+    unclaim(ident, 0);
     free(key);
+    free(ident);
     if (err) return file_error(c, err);
     if (n > limit) {
         free(data);
@@ -1323,17 +1398,27 @@ static int32_t h_fs_write_all(Call *c) {
     int32_t busy = claim(c, path, 1, &key);
     if (busy) return busy;
 #ifdef _WIN32
-    int fd = open_path(path, _O_WRONLY | _O_CREAT | _O_TRUNC);
+    int fd = open_path(path, _O_WRONLY | _O_CREAT);  /* emptied once it is known to be no one else's */
 #else
-    int fd = open_path(path, O_WRONLY | O_CREAT | O_TRUNC);
+    int fd = open_path(path, O_WRONLY | O_CREAT);
 #endif
     int err = fd < 0 ? errno : 0;
+    char *ident = NULL;
     if (!err) {
-        err = write_all(fd, data.p, data.n);
+        int32_t taken = claim_identity(c, fd, 1, key, &ident);
+        if (taken) return taken;
+#ifdef _WIN32
+        if (_chsize_s(fd, 0) != 0) err = errno;
+#else
+        if (ftruncate(fd, 0) != 0) err = errno;
+#endif
+        if (!err) err = write_all(fd, data.p, data.n);
         if (raw_close(fd) != 0 && !err) err = errno;
     }
     unclaim(key, 1);
+    unclaim(ident, 1);
     free(key);
+    free(ident);
     return err ? file_error(c, err) : 0;
 }
 

@@ -140,8 +140,11 @@ class World:
         return any(self.holds(t, test, seen) for t in parts)
 
     def holds_container(self, canon: Optional[str]) -> bool:
-        """A list, map, set, or channel somewhere inside: values that live in a region as a whole."""
+        """A list, map, set, or channel somewhere inside: values that live in a region as a whole. A type
+        parameter that is not `plain` may stand for one (D-108)."""
         def container(c):
+            if c.endswith("@any"):
+                return True
             info = self.type_info(c)
             return info is not None and info.kind == "instance" and info.generic in (
                 "list.List", "map.Map", "set.Set", "channel.Channel")
@@ -752,6 +755,15 @@ def _contains_by_value(world: World, canon: Optional[str], target: str, seen: se
     return any(t == target or _contains_by_value(world, t, target, seen, through) for t in inner if t is not None)
 
 
+def _no_resource_inside(world: World, m: Module, canon: Optional[str], line: int, what: str) -> None:
+    """D-108: a resource (a file, a connection, a library) is owned by one operation and released by it; held in a
+    record or an enum it could be copied, stored in a collection, or outlive its release."""
+    info = world.type_info(canon)
+    if info is not None and info.kind == "resource":
+        m.sink.error("R403", line, f"{what} is `{_show(canon)}`, a resource; a resource is owned by one operation and "
+                     "is never part of a record or an enum")
+
+
 def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
     tparams = type_params_of(ent)
     canon = f"{m.short}.{ent.name}"
@@ -764,10 +776,11 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
                      "of nodes and an index alias (`<Alias> indexes <List>`), so nodes refer to each other by "
                      "position (D-60)")
     for r in ent.facts("field"):
-        resolve_type(world, m, r.text(1), r.line, tparams)
+        _no_resource_inside(world, m, resolve_type(world, m, r.text(1), r.line, tparams), r.line, f"field `{r.text(0)}`")
     for r in ent.facts("variant"):
         if r.text(1) != "none":
-            resolve_type(world, m, r.text(1), r.line, tparams)
+            _no_resource_inside(world, m, resolve_type(world, m, r.text(1), r.line, tparams), r.line,
+                                f"variant `{r.text(0)}`")
     if ent.kind == "alias":
         base = resolve_type(world, m, ent.value("aliasOf"), ent.line)
         idx = ent.value("indexes")
@@ -975,6 +988,12 @@ def _check_header(world: World, m: Module, ent: Entity) -> None:
         info = world.type_info(rt)
         if rt is not None and (info is None or info.kind not in ("enum",)):
             sink.error("R403", ent.fact("raises").line, f"`raises` names an error enum; `{raises}` is not an enum")
+        elif rt is not None and not world.plain(rt):
+            # D-108: an error leaves its operation through `return error`, and no region is named for it, so it
+            # carries only plain values (numbers, positions, flags); text in it would outlive its region
+            sink.error("R403", ent.fact("raises").line, f"an error carries only plain values; `{raises}` holds text "
+                       "or a collection, which would outlive the region it was made in. Carry a position or a code, "
+                       "and report the text where it is known")
 
 
 def _check_mode(world: World, m: Module, t: Optional[str], mode: str, line: int, what: str) -> None:
@@ -1428,12 +1447,19 @@ def _check_stored_regions(world: World, m: Module, op: OpInfo, ci: CallInfo, sig
     a list, map, set, or channel cannot be copied that way, so it must come from a call whose `ownedBy` names the
     same region as the collection's, in this operation."""
     params = {p.name: p for p in sig.inputs}
-    coll = next(((slot, value) for slot, _t, value, _m, _l in ci.args if slot in COLLECTION_SLOTS), None)
+
+    def is_collection(t):
+        info = world.type_info(t)
+        return info is not None and info.kind == "instance" and info.generic in (
+            "list.List", "map.Map", "set.Set", "channel.Channel")
+    # D-108: the collection is found by its type (a list, map, set, or channel lent exclusively), not by its slot
+    coll = next(((slot, value) for slot, _t, value, mode, _l in ci.args
+                 if slot in params and is_collection(params[slot].type) and mode == "lendMutable"), None)
     if coll is None:
         return
     for slot, t, value, mode, line in ci.args:
         p = params.get(slot)
-        if mode != "give" or p is None or p.mode != "owned" or slot in COLLECTION_SLOTS:
+        if mode != "give" or p is None or p.mode != "owned" or slot == coll[0]:
             continue
         typ = world.type_info(p.type)
         if world.plain(p.type) or (typ is not None and typ.kind == "resource") or not world.holds_container(p.type):

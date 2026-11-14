@@ -166,6 +166,60 @@ local released atReturn
 ''' + _call("makeLocal", "fillGroups", "Stack.new", ("region Region local lend",), out="localStack Stack", owned="local") \
     + "\n\n" + _call("storeLocal", "fillGroups", "Groups.append", ("list Groups groups lendMutable",
                                                                   "item Stack localStack give"))
+GENERIC_STASH = '''
+Pile is typeInstance
+Pile purpose "Values of the stash's type, kept in the caller's list"
+Pile in stash
+Pile instantiates list.List T
+
+stash is operation
+stash purpose "Store any value in a list the caller lends"
+stash invariant none
+stash typeParameter T any
+stash input into Pile borrowedMutable
+stash input thing T owned
+stash output none
+stash outputOwnedBy none
+stash raises none
+stash effect none
+stash uses none
+stash memoryHeap false
+stash async false
+stash maxRecursion none
+stash label begin loopKind none
+stash label begin within none
+stash let none
+stash at begin do put
+stash at begin return ok none
+
+''' + _call("put", "stash", "Pile.append", ("list Pile into lendMutable", "item T thing give"))
+LOCAL_STACK_RETURNED = '''
+stackFor is operation
+stackFor purpose "Make a stack in this operation's own region and return it in the caller's"
+stackFor invariant none
+stackFor typeParameter none
+stackFor input into Region borrowed
+stackFor output Stack
+stackFor outputOwnedBy into
+stackFor raises none
+stackFor effect none
+stackFor uses none
+stackFor memoryHeap true
+stackFor async false
+stackFor maxRecursion none
+stackFor label begin loopKind none
+stackFor label begin within none
+stackFor let none
+stackFor at begin do makeLocal
+stackFor at begin return ok localStack
+
+local is region
+local in stackFor
+local strategy arena
+local maxBytes 1024
+local released atReturn
+
+''' + _call("makeLocal", "stackFor", "Stack.new", ("region Region local lend",), out="localStack Stack", owned="local")
 REGION_TEXT = '''
 label is operation
 label purpose "Return text built in this operation's own region"
@@ -296,6 +350,9 @@ GUARANTEES = (
               (), (), "list=3750 discounted=3375"),
         Check("group-first-failure", "run", "a group's failing task cancels a ten-second sibling; `join` delivers "
               "its error at once (exit 3: stopped early)", (), (), "-3", base="groups", exit=3),
+        Check("error-carries-text", "reject", "an error type whose payload is text",
+              (("groups.sem", "CheckError variant negative Int64", "CheckError variant negative String"),),
+              ("R403", "R406"), "an error carries only plain values", base="groups"),
         Check("group-catch-none", "reject", "a group that cannot receive its tasks' errors",
               (("groups.sem", "checks catch checkError CheckError", "checks catch none"),),
               ("R403", "R401", "R506"), "states `catch <name> groups.CheckError`", base="groups"),
@@ -444,6 +501,9 @@ GUARANTEES = (
         "A cancelled task runs the cleanups of the operations it unwinds through, since cancellation reaches it as "
         "an error.",
     ), (
+        Check("resource-in-record", "reject", "a record with a file handle field",
+              ((C, "<append>", 'Holder is record\nHolder purpose "A file kept in a record"\nHolder typeParameter none\n'
+                               'Holder field file fs.FileHandle'),), ("R403",), "a resource", base="cleanups"),
         Check("cleanup-deferred-twice", "reject", "deferring the first file's cleanup twice",
               ((C, "main at openedFirst defer releaseFirst\n",
                 "main at openedFirst defer releaseFirst\nmain at openedFirst defer releaseFirst\n"),),
@@ -637,6 +697,11 @@ GUARANTEES = (
         "channels), so text made in a region that ends first stays readable. A value holding a list, map, set, or "
         "channel cannot be copied that way: it must come from a call whose `ownedBy` names the collection's own "
         "region, in the same operation (R514, D-107).",
+        "A result is returned in the region its output names: text in it is copied there at the return, and a "
+        "list, map, set, or channel in it must have been made there. An error carries only plain values, since no "
+        "region is named for it. A type parameter that is not `plain` may stand for a container, so a generic "
+        "operation stores its values under the same rule. A `set` takes no value from a view or a borrowed input. "
+        "A resource is never a field or a payload (R403, R514, D-108).",
         "A table is a fixed array: `<table>.length` is its row count and `<table>.rowAt` reads a row by the number "
         "its `row` row gives it (1 to n); any other number is `list.IndexOutOfRange` (D-104).",
         "A `constant` is a named literal of a module (`type`, `value`), read by every operation of the module as an "
@@ -645,7 +710,7 @@ GUARANTEES = (
     ), (
         Check("positions-and-stacks", "run", "a position read on its own list, refused on another; a stack pushed, "
               "popped, cut, and emptied", (), (), "foreign", base="lists",
-              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing", "1", "name")),
+              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing", "1", "name", "7")),
         Check("replace-in-another-region", "reject", "putting back an inner list made in another region",
               ((L, "store released atReturn", "store released atReturn\n\nelsewhere is region\n"
                           "elsewhere in main\nelsewhere strategy arena\nelsewhere maxBytes 1024\n"
@@ -653,6 +718,14 @@ GUARANTEES = (
                (L, "takeInner argument region Region store lend", "takeInner argument region Region elsewhere lend"),
                (L, "takeInner ownedBy store", "takeInner ownedBy elsewhere")),
               ("R514",), "its region is `elsewhere`, and `groups`'s is `store`", base="lists"),
+        Check("generic-stash", "reject", "a generic operation storing a value of any type in a list the caller lends",
+              ((L, "<append>", GENERIC_STASH),), ("R514",), "`thing` is stored in `into`", base="lists"),
+        Check("returned-from-local-region", "reject", "returning a stack made in the operation's own region",
+              ((L, "<append>", LOCAL_STACK_RETURNED),), ("R514",), "is returned in region `into`", base="lists"),
+        Check("set-launders-a-view", "reject", "setting a mutable let from a view of a list's item",
+              ((L, "main let eight Int64 8 immutable", "main let eight Int64 8 immutable\nmain let alias Stack unset mutable"),
+               (L, "main at measured do innerSize\n", "main at measured set alias stored\nmain at measured do innerSize\n")),
+              ("R514",), "a view of `groups`", base="lists"),
         Check("callee-region-stored", "reject", "an operation storing a list made in its own region in its caller's "
               "list", ((L, "<append>", CALLEE_STACK),), ("R514",), "its region is `local`", base="lists"),
         Check("foreign-position-traps", "trap", "the trapping read with a position from the other list",
