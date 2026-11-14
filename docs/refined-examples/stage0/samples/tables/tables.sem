@@ -1,0 +1,420 @@
+# A stage0 sample: tables as fixed arrays. A table of planets (text, a
+# number, and an enum cell) is read with `forEach`, with `rowAt` (whose
+# failure past the last row it branches on), and with `length`. It exits
+# with code 0:
+#
+#   Mercury 0
+#   Venus 0
+#   Earth 1
+#   Mars 2
+#   moons: 3
+#   rows: 4
+#   rocky: Venus
+#   no row 5
+tables is module
+tables purpose "Read a table of planets by forEach, rowAt, and length"
+tables path tables
+tables imports standard.console
+tables imports standard.math
+tables imports standard.list
+tables exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Kind is enum
+Kind purpose "What a planet is made of"
+Kind typeParameter none
+Kind variant rocky none
+Kind variant gas none
+
+Planet is record
+Planet purpose "A planet's name, how many moons it has, and what it is made of"
+Planet typeParameter none
+Planet field name String
+Planet field moons Int64
+Planet field kind Kind
+
+planets is table
+planets purpose "The inner planets, nearest the sun first"
+planets rowType Planet
+planets row mercury 1
+planets row venus 2
+planets row earth 3
+planets row mars 4
+planets cell mercury name "Mercury"
+planets cell mercury moons 0
+planets cell mercury kind Kind.rocky
+planets cell venus name "Venus"
+planets cell venus moons 0
+planets cell venus kind Kind.rocky
+planets cell earth name "Earth"
+planets cell earth moons 1
+planets cell earth kind Kind.rocky
+planets cell mars name "Mars"
+planets cell mars moons 2
+planets cell mars kind Kind.rocky
+
+main is operation
+main purpose "Print each planet and its moons, the total, the row count, one row by number, and a row past the end"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label eachPlanet loopKind forEach
+main label eachPlanet within none
+main label eachPlanet maxIterations rowCount
+main label eachPlanet over planets
+main label printPlanet loopKind none
+main label printPlanet within eachPlanet
+main label writeNameDone loopKind none
+main label writeNameDone within eachPlanet
+main label writeSpaceDone loopKind none
+main label writeSpaceDone within eachPlanet
+main label writeMoonsDone loopKind none
+main label writeMoonsDone within eachPlanet
+main label summed loopKind none
+main label summed within none
+main label writeTotalLeadDone loopKind none
+main label writeTotalLeadDone within none
+main label writeTotalDone loopKind none
+main label writeTotalDone within none
+main label writeRowsLeadDone loopKind none
+main label writeRowsLeadDone within none
+main label writeRowsDone loopKind none
+main label writeRowsDone within none
+main label readSecondDone loopKind none
+main label readSecondDone within none
+main label rocky loopKind none
+main label rocky within none
+main label writeRockyDone loopKind none
+main label writeRockyDone within none
+main label writeSecondDone loopKind none
+main label writeSecondDone within none
+main label gas loopKind none
+main label gas within none
+main label writeGasDone loopKind none
+main label writeGasDone within none
+main label past loopKind none
+main label past within none
+main label readPastDone loopKind none
+main label readPastDone within none
+main label writePastDone loopKind none
+main label writePastDone within none
+main label noRow loopKind none
+main label noRow within none
+main label writeNoRowDone loopKind none
+main label writeNoRowDone within none
+main label missing loopKind none
+main label missing within none
+main let total Int64 0 mutable
+main let okCode ExitCode 0 immutable
+main let space String " " immutable
+main let totalText String "moons: " immutable
+main let rowsText String "rows: " immutable
+main let two Int64 2 immutable
+main let rockyText String "rocky: " immutable
+main let gasText String "gas" immutable
+main let five Int64 5 immutable
+main let noRowText String "no row 5" immutable
+main at begin do countRows
+main at begin goto eachPlanet
+main at eachPlanet branch ifNext planets bind planet Planet goto printPlanet else goto summed
+main at printPlanet do readName
+main at printPlanet do readMoons
+main at printPlanet do writeName
+main at printPlanet branch ifError writeName goto writeNameDone else goto writeNameDone
+main at writeNameDone do writeSpace
+main at writeNameDone branch ifError writeSpace goto writeSpaceDone else goto writeSpaceDone
+main at writeSpaceDone do writeMoons
+main at writeSpaceDone branch ifError writeMoons goto writeMoonsDone else goto writeMoonsDone
+main at writeMoonsDone do addMoons
+main at writeMoonsDone set total nextTotal
+main at writeMoonsDone goto eachPlanet
+main at summed do writeTotalLead
+main at summed branch ifError writeTotalLead goto writeTotalLeadDone else goto writeTotalLeadDone
+main at writeTotalLeadDone do writeTotal
+main at writeTotalLeadDone branch ifError writeTotal goto writeTotalDone else goto writeTotalDone
+main at writeTotalDone do writeRowsLead
+main at writeTotalDone branch ifError writeRowsLead goto writeRowsLeadDone else goto writeRowsLeadDone
+main at writeRowsLeadDone do writeRows
+main at writeRowsLeadDone branch ifError writeRows goto writeRowsDone else goto writeRowsDone
+main at writeRowsDone do readSecond
+main at writeRowsDone branch ifError readSecond goto missing else goto readSecondDone
+main at readSecondDone do readSecondName
+main at readSecondDone do readSecondKind
+main at readSecondDone match secondKind Kind
+main at readSecondDone case Kind.rocky bind none none goto rocky
+main at readSecondDone case Kind.gas bind none none goto gas
+main at rocky do writeRocky
+main at rocky branch ifError writeRocky goto writeRockyDone else goto writeRockyDone
+main at writeRockyDone do writeSecond
+main at writeRockyDone branch ifError writeSecond goto writeSecondDone else goto writeSecondDone
+main at writeSecondDone goto past
+main at gas do writeGas
+main at gas branch ifError writeGas goto writeGasDone else goto writeGasDone
+main at writeGasDone goto past
+main at past do readPast
+main at past branch ifError readPast goto noRow else goto readPastDone
+main at readPastDone do readPastName
+main at readPastDone do writePast
+main at readPastDone branch ifError writePast goto writePastDone else goto writePastDone
+main at writePastDone return ok okCode
+main at noRow do writeNoRow
+main at noRow branch ifError writeNoRow goto writeNoRowDone else goto writeNoRowDone
+main at writeNoRowDone return ok okCode
+main at missing return ok okCode
+
+countRows is call
+countRows in main
+countRows invokes planets.length
+countRows argument none
+countRows result rowCount Int64
+countRows ownedBy none
+countRows cleanedBy none
+countRows borrows none
+countRows catch none
+countRows suppresses none
+
+readName is call
+readName in main
+readName invokes Planet.name
+readName argument record Planet planet lend
+readName result name String
+readName ownedBy none
+readName cleanedBy none
+readName borrows planet
+readName catch none
+readName suppresses none
+
+readMoons is call
+readMoons in main
+readMoons invokes Planet.moons
+readMoons argument record Planet planet lend
+readMoons result moons Int64
+readMoons ownedBy none
+readMoons cleanedBy none
+readMoons borrows none
+readMoons catch none
+readMoons suppresses none
+
+writeName is call
+writeName rationale "The failure has nowhere to be reported, so it is discarded"
+writeName in main
+writeName invokes console.write
+writeName argument text String name lend
+writeName result none
+writeName ownedBy none
+writeName cleanedBy none
+writeName borrows none
+writeName catch writeNameError console.WriteError
+writeName suppresses console.WriteError.failed
+
+writeSpace is call
+writeSpace rationale "The failure has nowhere to be reported, so it is discarded"
+writeSpace in main
+writeSpace invokes console.write
+writeSpace argument text String space lend
+writeSpace result none
+writeSpace ownedBy none
+writeSpace cleanedBy none
+writeSpace borrows none
+writeSpace catch writeSpaceError console.WriteError
+writeSpace suppresses console.WriteError.failed
+
+writeMoons is call
+writeMoons rationale "The failure has nowhere to be reported, so it is discarded"
+writeMoons in main
+writeMoons invokes console.writeIntegerLine
+writeMoons argument value Int64 moons copy
+writeMoons result none
+writeMoons ownedBy none
+writeMoons cleanedBy none
+writeMoons borrows none
+writeMoons catch writeMoonsError console.WriteError
+writeMoons suppresses console.WriteError.failed
+
+addMoons is call
+addMoons in main
+addMoons invokes math.addInt64
+addMoons argument left Int64 total copy
+addMoons argument right Int64 moons copy
+addMoons result nextTotal Int64
+addMoons ownedBy none
+addMoons cleanedBy none
+addMoons borrows none
+addMoons catch none
+addMoons suppresses none
+
+writeTotalLead is call
+writeTotalLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeTotalLead in main
+writeTotalLead invokes console.write
+writeTotalLead argument text String totalText lend
+writeTotalLead result none
+writeTotalLead ownedBy none
+writeTotalLead cleanedBy none
+writeTotalLead borrows none
+writeTotalLead catch writeTotalLeadError console.WriteError
+writeTotalLead suppresses console.WriteError.failed
+
+writeTotal is call
+writeTotal rationale "The failure has nowhere to be reported, so it is discarded"
+writeTotal in main
+writeTotal invokes console.writeIntegerLine
+writeTotal argument value Int64 total copy
+writeTotal result none
+writeTotal ownedBy none
+writeTotal cleanedBy none
+writeTotal borrows none
+writeTotal catch writeTotalError console.WriteError
+writeTotal suppresses console.WriteError.failed
+
+writeRowsLead is call
+writeRowsLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeRowsLead in main
+writeRowsLead invokes console.write
+writeRowsLead argument text String rowsText lend
+writeRowsLead result none
+writeRowsLead ownedBy none
+writeRowsLead cleanedBy none
+writeRowsLead borrows none
+writeRowsLead catch writeRowsLeadError console.WriteError
+writeRowsLead suppresses console.WriteError.failed
+
+writeRows is call
+writeRows rationale "The failure has nowhere to be reported, so it is discarded"
+writeRows in main
+writeRows invokes console.writeIntegerLine
+writeRows argument value Int64 rowCount copy
+writeRows result none
+writeRows ownedBy none
+writeRows cleanedBy none
+writeRows borrows none
+writeRows catch writeRowsError console.WriteError
+writeRows suppresses console.WriteError.failed
+
+readSecond is call
+readSecond in main
+readSecond invokes planets.rowAt
+readSecond argument position Int64 two copy
+readSecond result second Planet
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch readSecondError list.IndexOutOfRange
+readSecond suppresses none
+
+readSecondName is call
+readSecondName in main
+readSecondName invokes Planet.name
+readSecondName argument record Planet second lend
+readSecondName result secondName String
+readSecondName ownedBy none
+readSecondName cleanedBy none
+readSecondName borrows second
+readSecondName catch none
+readSecondName suppresses none
+
+readSecondKind is call
+readSecondKind in main
+readSecondKind invokes Planet.kind
+readSecondKind argument record Planet second lend
+readSecondKind result secondKind Kind
+readSecondKind ownedBy none
+readSecondKind cleanedBy none
+readSecondKind borrows none
+readSecondKind catch none
+readSecondKind suppresses none
+
+writeRocky is call
+writeRocky rationale "The failure has nowhere to be reported, so it is discarded"
+writeRocky in main
+writeRocky invokes console.write
+writeRocky argument text String rockyText lend
+writeRocky result none
+writeRocky ownedBy none
+writeRocky cleanedBy none
+writeRocky borrows none
+writeRocky catch writeRockyError console.WriteError
+writeRocky suppresses console.WriteError.failed
+
+writeSecond is call
+writeSecond rationale "The failure has nowhere to be reported, so it is discarded"
+writeSecond in main
+writeSecond invokes console.writeLine
+writeSecond argument text String secondName lend
+writeSecond result none
+writeSecond ownedBy none
+writeSecond cleanedBy none
+writeSecond borrows none
+writeSecond catch writeSecondError console.WriteError
+writeSecond suppresses console.WriteError.failed
+
+writeGas is call
+writeGas rationale "The failure has nowhere to be reported, so it is discarded"
+writeGas in main
+writeGas invokes console.writeLine
+writeGas argument text String gasText lend
+writeGas result none
+writeGas ownedBy none
+writeGas cleanedBy none
+writeGas borrows none
+writeGas catch writeGasError console.WriteError
+writeGas suppresses console.WriteError.failed
+
+readPast is call
+readPast in main
+readPast invokes planets.rowAt
+readPast argument position Int64 five copy
+readPast result pastRow Planet
+readPast ownedBy none
+readPast cleanedBy none
+readPast borrows none
+readPast catch readPastError list.IndexOutOfRange
+readPast suppresses none
+
+readPastName is call
+readPastName in main
+readPastName invokes Planet.name
+readPastName argument record Planet pastRow lend
+readPastName result pastName String
+readPastName ownedBy none
+readPastName cleanedBy none
+readPastName borrows pastRow
+readPastName catch none
+readPastName suppresses none
+
+writePast is call
+writePast rationale "The failure has nowhere to be reported, so it is discarded"
+writePast in main
+writePast invokes console.writeLine
+writePast argument text String pastName lend
+writePast result none
+writePast ownedBy none
+writePast cleanedBy none
+writePast borrows none
+writePast catch writePastError console.WriteError
+writePast suppresses console.WriteError.failed
+
+writeNoRow is call
+writeNoRow rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoRow in main
+writeNoRow invokes console.writeLine
+writeNoRow argument text String noRowText lend
+writeNoRow result none
+writeNoRow ownedBy none
+writeNoRow cleanedBy none
+writeNoRow borrows none
+writeNoRow catch writeNoRowError console.WriteError
+writeNoRow suppresses console.WriteError.failed

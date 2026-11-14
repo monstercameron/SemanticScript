@@ -8,7 +8,7 @@
 #
 # Kinds are numbered by their row in the `kinds` table: 1 module, 2 capability,
 # 3 constant, 4 operation, 5 call, 6 record, 7 enum, 8 typeInstance, 9 region,
-# 10 task.
+# 10 task, 11 table.
 # Any other kind is outside the stage0 subset.
 
 model is module
@@ -46,6 +46,7 @@ kinds row enumRow 7
 kinds row typeInstanceRow 8
 kinds row regionRow 9
 kinds row taskRow 10
+kinds row tableRow 11
 kinds cell moduleRow text "module"
 kinds cell capabilityRow text "capability"
 kinds cell constantRow text "constant"
@@ -56,6 +57,7 @@ kinds cell enumRow text "enum"
 kinds cell typeInstanceRow text "typeInstance"
 kinds cell regionRow text "region"
 kinds cell taskRow text "task"
+kinds cell tableRow text "table"
 
 Entity is record
 Entity purpose "One entity: its name, its kind's number, and the run of rows it owns"
@@ -93,7 +95,7 @@ lookupKind label begin loopKind none
 lookupKind label begin within none
 lookupKind label scan loopKind forEach
 lookupKind label scan within none
-lookupKind label scan maxIterations 10
+lookupKind label scan maxIterations 11
 lookupKind label scan over kinds
 lookupKind label compare loopKind none
 lookupKind label compare within scan
@@ -400,7 +402,7 @@ enterName suppresses none
 
 buildModel is operation
 buildModel purpose "Group rows into entities by their `is` rows and enter each module-level entity's name in a map"
-buildModel invariant groupsEntities "\"Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5, record 6, enum 7, typeInstance 8, region 9, task 10\""
+buildModel invariant groupsEntities "\"Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5, record 6, enum 7, typeInstance 8, region 9, task 10, table 11\""
 buildModel invariant namesEntities "\"Each entity's name maps to its position in the entity list, except calls, tasks, and regions, whose names belong to the operation they are in\""
 buildModel invariant rejectsOutsideModel "\"Another kind is unsupportedKind, a row whose subject is not the entity above it is strayRow, and a module-level name declared twice is duplicateName\""
 buildModel typeParameter none

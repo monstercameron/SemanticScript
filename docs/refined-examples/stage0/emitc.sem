@@ -16,7 +16,8 @@
 #   sizes agree; `rl_<Type>` for a type that holds text, which copies the text
 #   into a region (as a list does with what it stores, and a return with an
 #   output owned by a region); `la_`, `lg_`, and `lt_<List>` for each list's
-#   append, get, and getOrTrap;
+#   append, get, and getOrTrap; each table as a static array `tb_<table>` of
+#   its rows and `tr_<table>` reading row 1 to n;
 # - module constants as static C values;
 # - each operation as `static ... o_<name>(...)`: it returns its output, or,
 #   when it raises, a bool that is true on failure with the output and error
@@ -24,7 +25,9 @@
 #   each call that can fail has a flag `f_<call>`, each bounded loop a counter
 #   `n_<label>`, each forEach loop a position `i_<label>`, and each label a C
 #   label `l_<label>` followed by its steps. A recursive operation counts its
-#   depth in `d_<name>` and traps past its maxRecursion;
+#   depth in `d_<name>` and traps past its maxRecursion. A target of the host
+#   library is one call of the runtime's `refined_host`, its arguments and
+#   result flattened to 64-bit slots as the LLVM backend flattens them;
 # - a C `main` that hands the command line to the runtime and returns main's
 #   ExitCode.
 #
@@ -1343,6 +1346,8 @@ putTypedefs label eachType within none
 putTypedefs label eachType maxIterations typeCount
 putTypedefs label readType loopKind none
 putTypedefs label readType within eachType
+putTypedefs label notTable loopKind none
+putTypedefs label notTable within eachType
 putTypedefs label listType loopKind none
 putTypedefs label listType within eachType
 putTypedefs label structType loopKind none
@@ -1352,6 +1357,7 @@ putTypedefs label done within none
 putTypedefs let code Int64 11 mutable
 putTypedefs let one Int64 1 immutable
 putTypedefs let five Int64 5 immutable
+putTypedefs let six Int64 6 immutable
 putTypedefs let listStart String "typedef ss_list *t_" immutable
 putTypedefs let lineEnd String ";\n" immutable
 putTypedefs let structStart String "typedef struct t_" immutable
@@ -1367,7 +1373,9 @@ putTypedefs at readType do readInfo
 putTypedefs at readType do readName
 putTypedefs at readType do readKind
 putTypedefs at readType do listCheck
-putTypedefs at readType branch if isList goto listType else goto structType
+putTypedefs at readType do tableCheck
+putTypedefs at readType branch if isTable goto eachType else goto notTable
+putTypedefs at notTable branch if isList goto listType else goto structType
 putTypedefs at listType do doAppendString
 putTypedefs at listType do doPutWord
 putTypedefs at listType do doAppendString2
@@ -1461,6 +1469,18 @@ listCheck cleanedBy none
 listCheck borrows none
 listCheck catch none
 listCheck suppresses none
+
+tableCheck is call
+tableCheck in putTypedefs
+tableCheck invokes compare.equalInt64
+tableCheck argument left Int64 kind copy
+tableCheck argument right Int64 six copy
+tableCheck result isTable Bool
+tableCheck ownedBy none
+tableCheck cleanedBy none
+tableCheck borrows none
+tableCheck catch none
+tableCheck suppresses none
 
 doAppendString is call
 doAppendString in putTypedefs
@@ -3177,14 +3197,1518 @@ doAppendString15 borrows none
 doAppendString15 catch none
 doAppendString15 suppresses none
 
+findCell is operation
+findCell purpose "Find the value of the cell of a table row that fills a field"
+findCell invariant none
+findCell typeParameter none
+findCell input source String borrowed
+findCell input words syntax.Words borrowed
+findCell input rows syntax.Rows borrowed
+findCell input entity model.Entity copied
+findCell input rowName syntax.Word copied
+findCell input fieldName syntax.Word copied
+findCell output syntax.Word
+findCell outputOwnedBy none
+findCell raises syntax.Rejection
+findCell effect none
+findCell uses none
+findCell memoryHeap false
+findCell async false
+findCell maxRecursion none
+findCell label begin loopKind none
+findCell label begin within none
+findCell label eachRow loopKind while
+findCell label eachRow within none
+findCell label eachRow maxIterations entityCount
+findCell label readRow loopKind none
+findCell label readRow within eachRow
+findCell label readCell loopKind none
+findCell label readCell within eachRow
+findCell label cellCheckDone loopKind none
+findCell label cellCheckDone within eachRow
+findCell label rowCheck loopKind none
+findCell label rowCheck within eachRow
+findCell label sameRowDone loopKind none
+findCell label sameRowDone within eachRow
+findCell label fieldCheck loopKind none
+findCell label fieldCheck within eachRow
+findCell label sameFieldDone loopKind none
+findCell label sameFieldDone within eachRow
+findCell label found loopKind none
+findCell label found within none
+findCell label missing loopKind none
+findCell label missing within none
+findCell label cellCheckFailed loopKind none
+findCell label cellCheckFailed within none
+findCell label sameRowFailed loopKind none
+findCell label sameRowFailed within none
+findCell label sameFieldFailed loopKind none
+findCell label sameFieldFailed within none
+findCell let rowIndex Int64 0 mutable
+findCell let one Int64 1 immutable
+findCell let five Int64 5 immutable
+findCell let cellWord String "cell" immutable
+findCell let two Int64 2 immutable
+findCell let three Int64 3 immutable
+findCell let four Int64 4 immutable
+findCell at begin do readEntityFirst
+findCell at begin do readEntityCount
+findCell at begin do findEnd
+findCell at begin set rowIndex entityFirst
+findCell at begin goto eachRow
+findCell at eachRow do endCheck
+findCell at eachRow branch if rowsDone goto missing else goto readRow
+findCell at readRow do fetchRow
+findCell at readRow do advanceRow
+findCell at readRow set rowIndex nextIndex
+findCell at readRow do readCount
+findCell at readRow do shapeCheck
+findCell at readRow branch if isFive goto readCell else goto eachRow
+findCell at readCell do readFirstWord
+findCell at readCell do findPredicate
+findCell at readCell do readPredicate
+findCell at readCell do cellCheck
+findCell at readCell branch ifError cellCheck goto cellCheckFailed else goto cellCheckDone
+findCell at cellCheckDone branch if isCell goto rowCheck else goto eachRow
+findCell at rowCheck do findRowWord
+findCell at rowCheck do readRowWord
+findCell at rowCheck do sameRow
+findCell at rowCheck branch ifError sameRow goto sameRowFailed else goto sameRowDone
+findCell at sameRowDone branch if isRow goto fieldCheck else goto eachRow
+findCell at fieldCheck do findFieldWord
+findCell at fieldCheck do readFieldWord
+findCell at fieldCheck do sameField
+findCell at fieldCheck branch ifError sameField goto sameFieldFailed else goto sameFieldDone
+findCell at sameFieldDone branch if isField goto found else goto eachRow
+findCell at found do findValueWord
+findCell at found do readValueWord
+findCell at found return ok value
+findCell at missing do makeMissing
+findCell at missing return error missingError
+findCell at cellCheckFailed return error cellCheckError
+findCell at sameRowFailed return error sameRowError
+findCell at sameFieldFailed return error sameFieldError
+
+readEntityFirst is call
+readEntityFirst in findCell
+readEntityFirst invokes model.Entity.first
+readEntityFirst argument record model.Entity entity copy
+readEntityFirst result entityFirst Int64
+readEntityFirst ownedBy none
+readEntityFirst cleanedBy none
+readEntityFirst borrows none
+readEntityFirst catch none
+readEntityFirst suppresses none
+
+readEntityCount is call
+readEntityCount in findCell
+readEntityCount invokes model.Entity.count
+readEntityCount argument record model.Entity entity copy
+readEntityCount result entityCount Int64
+readEntityCount ownedBy none
+readEntityCount cleanedBy none
+readEntityCount borrows none
+readEntityCount catch none
+readEntityCount suppresses none
+
+findEnd is call
+findEnd in findCell
+findEnd invokes math.addInt64
+findEnd argument left Int64 entityFirst copy
+findEnd argument right Int64 entityCount copy
+findEnd result entityEnd Int64
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+endCheck is call
+endCheck in findCell
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 rowIndex copy
+endCheck argument right Int64 entityEnd copy
+endCheck result rowsDone Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+fetchRow is call
+fetchRow in findCell
+fetchRow invokes syntax.Rows.getOrTrap
+fetchRow argument list syntax.Rows rows lend
+fetchRow argument index Int64 rowIndex copy
+fetchRow result row syntax.Row
+fetchRow ownedBy none
+fetchRow cleanedBy none
+fetchRow borrows none
+fetchRow catch none
+fetchRow suppresses none
+
+advanceRow is call
+advanceRow in findCell
+advanceRow invokes math.addInt64
+advanceRow argument left Int64 rowIndex copy
+advanceRow argument right Int64 one copy
+advanceRow result nextIndex Int64
+advanceRow ownedBy none
+advanceRow cleanedBy none
+advanceRow borrows none
+advanceRow catch none
+advanceRow suppresses none
+
+readCount is call
+readCount in findCell
+readCount invokes syntax.Row.count
+readCount argument record syntax.Row row copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+shapeCheck is call
+shapeCheck in findCell
+shapeCheck invokes compare.equalInt64
+shapeCheck argument left Int64 count copy
+shapeCheck argument right Int64 five copy
+shapeCheck result isFive Bool
+shapeCheck ownedBy none
+shapeCheck cleanedBy none
+shapeCheck borrows none
+shapeCheck catch none
+shapeCheck suppresses none
+
+readFirstWord is call
+readFirstWord in findCell
+readFirstWord invokes syntax.Row.first
+readFirstWord argument record syntax.Row row copy
+readFirstWord result first Int64
+readFirstWord ownedBy none
+readFirstWord cleanedBy none
+readFirstWord borrows none
+readFirstWord catch none
+readFirstWord suppresses none
+
+findPredicate is call
+findPredicate in findCell
+findPredicate invokes math.addInt64
+findPredicate argument left Int64 first copy
+findPredicate argument right Int64 one copy
+findPredicate result predicateAt Int64
+findPredicate ownedBy none
+findPredicate cleanedBy none
+findPredicate borrows none
+findPredicate catch none
+findPredicate suppresses none
+
+readPredicate is call
+readPredicate in findCell
+readPredicate invokes syntax.Words.getOrTrap
+readPredicate argument list syntax.Words words lend
+readPredicate argument index Int64 predicateAt copy
+readPredicate result predicate syntax.Word
+readPredicate ownedBy none
+readPredicate cleanedBy none
+readPredicate borrows none
+readPredicate catch none
+readPredicate suppresses none
+
+cellCheck is call
+cellCheck in findCell
+cellCheck invokes syntax.isText
+cellCheck argument source String source lend
+cellCheck argument word syntax.Word predicate copy
+cellCheck argument text String cellWord lend
+cellCheck result isCell Bool
+cellCheck ownedBy none
+cellCheck cleanedBy none
+cellCheck borrows none
+cellCheck catch cellCheckError syntax.Rejection
+cellCheck suppresses none
+
+findRowWord is call
+findRowWord in findCell
+findRowWord invokes math.addInt64
+findRowWord argument left Int64 first copy
+findRowWord argument right Int64 two copy
+findRowWord result rowAt Int64
+findRowWord ownedBy none
+findRowWord cleanedBy none
+findRowWord borrows none
+findRowWord catch none
+findRowWord suppresses none
+
+readRowWord is call
+readRowWord in findCell
+readRowWord invokes syntax.Words.getOrTrap
+readRowWord argument list syntax.Words words lend
+readRowWord argument index Int64 rowAt copy
+readRowWord result cellRow syntax.Word
+readRowWord ownedBy none
+readRowWord cleanedBy none
+readRowWord borrows none
+readRowWord catch none
+readRowWord suppresses none
+
+sameRow is call
+sameRow in findCell
+sameRow invokes syntax.sameText
+sameRow argument source String source lend
+sameRow argument left syntax.Word cellRow copy
+sameRow argument right syntax.Word rowName copy
+sameRow result isRow Bool
+sameRow ownedBy none
+sameRow cleanedBy none
+sameRow borrows none
+sameRow catch sameRowError syntax.Rejection
+sameRow suppresses none
+
+findFieldWord is call
+findFieldWord in findCell
+findFieldWord invokes math.addInt64
+findFieldWord argument left Int64 first copy
+findFieldWord argument right Int64 three copy
+findFieldWord result fieldAt Int64
+findFieldWord ownedBy none
+findFieldWord cleanedBy none
+findFieldWord borrows none
+findFieldWord catch none
+findFieldWord suppresses none
+
+readFieldWord is call
+readFieldWord in findCell
+readFieldWord invokes syntax.Words.getOrTrap
+readFieldWord argument list syntax.Words words lend
+readFieldWord argument index Int64 fieldAt copy
+readFieldWord result cellField syntax.Word
+readFieldWord ownedBy none
+readFieldWord cleanedBy none
+readFieldWord borrows none
+readFieldWord catch none
+readFieldWord suppresses none
+
+sameField is call
+sameField in findCell
+sameField invokes syntax.sameText
+sameField argument source String source lend
+sameField argument left syntax.Word cellField copy
+sameField argument right syntax.Word fieldName copy
+sameField result isField Bool
+sameField ownedBy none
+sameField cleanedBy none
+sameField borrows none
+sameField catch sameFieldError syntax.Rejection
+sameField suppresses none
+
+findValueWord is call
+findValueWord in findCell
+findValueWord invokes math.addInt64
+findValueWord argument left Int64 first copy
+findValueWord argument right Int64 four copy
+findValueWord result valueAt Int64
+findValueWord ownedBy none
+findValueWord cleanedBy none
+findValueWord borrows none
+findValueWord catch none
+findValueWord suppresses none
+
+readValueWord is call
+readValueWord in findCell
+readValueWord invokes syntax.Words.getOrTrap
+readValueWord argument list syntax.Words words lend
+readValueWord argument index Int64 valueAt copy
+readValueWord result value syntax.Word
+readValueWord ownedBy none
+readValueWord cleanedBy none
+readValueWord borrows none
+readValueWord catch none
+readValueWord suppresses none
+
+makeMissing is call
+makeMissing in findCell
+makeMissing invokes syntax.Rejection.unsupportedPayload
+makeMissing argument payload syntax.Word rowName copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+putCellValue is operation
+putCellValue purpose "Append a table cell's value as C: text as SS_STATIC, an enum variant as its tag, anything else as written"
+putCellValue invariant none
+putCellValue typeParameter none
+putCellValue input buffer buffer.ByteBuffer borrowedMutable
+putCellValue input source String borrowed
+putCellValue input types subset.Types borrowed
+putCellValue input members subset.Members borrowed
+putCellValue input targets subset.Targets borrowed
+putCellValue input code Int64 copied
+putCellValue input value syntax.Word copied
+putCellValue output none
+putCellValue outputOwnedBy none
+putCellValue raises syntax.Rejection
+putCellValue effect none
+putCellValue uses none
+putCellValue memoryHeap false
+putCellValue async false
+putCellValue maxRecursion none
+putCellValue label begin loopKind none
+putCellValue label begin within none
+putCellValue label text loopKind none
+putCellValue label text within none
+putCellValue label notText loopKind none
+putCellValue label notText within none
+putCellValue label plain loopKind none
+putCellValue label plain within none
+putCellValue label variant loopKind none
+putCellValue label variant within none
+putCellValue label cutVariantTextDone loopKind none
+putCellValue label cutVariantTextDone within none
+putCellValue label findVariantDone loopKind none
+putCellValue label findVariantDone within none
+putCellValue label narrowTag loopKind none
+putCellValue label narrowTag within none
+putCellValue label wideTag loopKind none
+putCellValue label wideTag within none
+putCellValue label missing loopKind none
+putCellValue label missing within none
+putCellValue label outside loopKind none
+putCellValue label outside within none
+putCellValue let one Int64 1 immutable
+putCellValue let textStart String "SS_STATIC(" immutable
+putCellValue let close String ")" immutable
+putCellValue let four Int64 4 immutable
+putCellValue let open String "{ " immutable
+putCellValue let narrowEnd String ", 0 }" immutable
+putCellValue let wideOpen String "{ .tag = " immutable
+putCellValue let wideEnd String " }" immutable
+putCellValue at begin do stringCheck
+putCellValue at begin branch if isString goto text else goto notText
+putCellValue at text do doAppendString
+putCellValue at text do doPutWord
+putCellValue at text do doAppendString2
+putCellValue at text return ok none
+putCellValue at notText do readInfo
+putCellValue at notText do readKind
+putCellValue at notText do enumCheck
+putCellValue at notText branch if isEnum goto variant else goto plain
+putCellValue at plain do doPutWord2
+putCellValue at plain return ok none
+putCellValue at variant do readVariantTextStart
+putCellValue at variant do readVariantTextOffset
+putCellValue at variant do readVariantTextLength
+putCellValue at variant do cutVariantText
+putCellValue at variant branch ifError cutVariantText goto outside else goto cutVariantTextDone
+putCellValue at cutVariantTextDone do findVariant
+putCellValue at cutVariantTextDone branch ifError findVariant goto missing else goto findVariantDone
+putCellValue at findVariantDone do readMemberIndex
+putCellValue at findVariantDone do readMember
+putCellValue at findVariantDone do readTag
+putCellValue at findVariantDone do readNarrow
+putCellValue at findVariantDone branch if narrow goto narrowTag else goto wideTag
+putCellValue at narrowTag do doAppendString3
+putCellValue at narrowTag do doAppendInt64
+putCellValue at narrowTag do doAppendString4
+putCellValue at narrowTag return ok none
+putCellValue at wideTag do doAppendString5
+putCellValue at wideTag do doAppendInt642
+putCellValue at wideTag do doAppendString6
+putCellValue at wideTag return ok none
+putCellValue at missing do makeMissing
+putCellValue at missing return error missingError
+putCellValue at outside do makeOutside
+putCellValue at outside return error outsideError
+
+stringCheck is call
+stringCheck in putCellValue
+stringCheck invokes compare.equalInt64
+stringCheck argument left Int64 code copy
+stringCheck argument right Int64 one copy
+stringCheck result isString Bool
+stringCheck ownedBy none
+stringCheck cleanedBy none
+stringCheck borrows none
+stringCheck catch none
+stringCheck suppresses none
+
+doAppendString is call
+doAppendString in putCellValue
+doAppendString invokes buffer.appendString
+doAppendString argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString argument text String textStart lend
+doAppendString result none
+doAppendString ownedBy none
+doAppendString cleanedBy none
+doAppendString borrows none
+doAppendString catch none
+doAppendString suppresses none
+
+doPutWord is call
+doPutWord in putCellValue
+doPutWord invokes syntax.putWord
+doPutWord argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord argument source String source lend
+doPutWord argument word syntax.Word value copy
+doPutWord result none
+doPutWord ownedBy none
+doPutWord cleanedBy none
+doPutWord borrows none
+doPutWord catch none
+doPutWord suppresses none
+
+doAppendString2 is call
+doAppendString2 in putCellValue
+doAppendString2 invokes buffer.appendString
+doAppendString2 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString2 argument text String close lend
+doAppendString2 result none
+doAppendString2 ownedBy none
+doAppendString2 cleanedBy none
+doAppendString2 borrows none
+doAppendString2 catch none
+doAppendString2 suppresses none
+
+readInfo is call
+readInfo in putCellValue
+readInfo invokes typeInfoAt
+readInfo argument types subset.Types types lend
+readInfo argument code Int64 code copy
+readInfo result info subset.TypeInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch none
+readInfo suppresses none
+
+readKind is call
+readKind in putCellValue
+readKind invokes subset.TypeInfo.kind
+readKind argument record subset.TypeInfo info copy
+readKind result kind Int64
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+enumCheck is call
+enumCheck in putCellValue
+enumCheck invokes compare.equalInt64
+enumCheck argument left Int64 kind copy
+enumCheck argument right Int64 four copy
+enumCheck result isEnum Bool
+enumCheck ownedBy none
+enumCheck cleanedBy none
+enumCheck borrows none
+enumCheck catch none
+enumCheck suppresses none
+
+doPutWord2 is call
+doPutWord2 in putCellValue
+doPutWord2 invokes syntax.putWord
+doPutWord2 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord2 argument source String source lend
+doPutWord2 argument word syntax.Word value copy
+doPutWord2 result none
+doPutWord2 ownedBy none
+doPutWord2 cleanedBy none
+doPutWord2 borrows none
+doPutWord2 catch none
+doPutWord2 suppresses none
+
+readVariantTextStart is call
+readVariantTextStart in putCellValue
+readVariantTextStart invokes syntax.Word.start
+readVariantTextStart argument record syntax.Word value copy
+readVariantTextStart result variantTextStart string.Position
+readVariantTextStart ownedBy none
+readVariantTextStart cleanedBy none
+readVariantTextStart borrows none
+readVariantTextStart catch none
+readVariantTextStart suppresses none
+
+readVariantTextOffset is call
+readVariantTextOffset in putCellValue
+readVariantTextOffset invokes string.Position.offset
+readVariantTextOffset argument record string.Position variantTextStart copy
+readVariantTextOffset result variantTextOffset Int64
+readVariantTextOffset ownedBy none
+readVariantTextOffset cleanedBy none
+readVariantTextOffset borrows none
+readVariantTextOffset catch none
+readVariantTextOffset suppresses none
+
+readVariantTextLength is call
+readVariantTextLength in putCellValue
+readVariantTextLength invokes syntax.Word.length
+readVariantTextLength argument record syntax.Word value copy
+readVariantTextLength result variantTextLength Int64
+readVariantTextLength ownedBy none
+readVariantTextLength cleanedBy none
+readVariantTextLength borrows none
+readVariantTextLength catch none
+readVariantTextLength suppresses none
+
+cutVariantText is call
+cutVariantText in putCellValue
+cutVariantText invokes string.slice
+cutVariantText argument text String source lend
+cutVariantText argument start Int64 variantTextOffset copy
+cutVariantText argument length Int64 variantTextLength copy
+cutVariantText result variantText String
+cutVariantText ownedBy none
+cutVariantText cleanedBy none
+cutVariantText borrows source
+cutVariantText catch cutVariantTextError string.StringIndexError
+cutVariantText suppresses none
+
+findVariant is call
+findVariant in putCellValue
+findVariant invokes subset.Targets.get
+findVariant argument map subset.Targets targets lend
+findVariant argument key String variantText lend
+findVariant result target subset.TargetInfo
+findVariant ownedBy none
+findVariant cleanedBy none
+findVariant borrows none
+findVariant catch findVariantError map.KeyMissing
+findVariant suppresses none
+
+readMemberIndex is call
+readMemberIndex in putCellValue
+readMemberIndex invokes subset.TargetInfo.member
+readMemberIndex argument record subset.TargetInfo target copy
+readMemberIndex result memberIndex Int64
+readMemberIndex ownedBy none
+readMemberIndex cleanedBy none
+readMemberIndex borrows none
+readMemberIndex catch none
+readMemberIndex suppresses none
+
+readMember is call
+readMember in putCellValue
+readMember invokes memberAt
+readMember argument members subset.Members members lend
+readMember argument index Int64 memberIndex copy
+readMember result member subset.MemberInfo
+readMember ownedBy none
+readMember cleanedBy none
+readMember borrows none
+readMember catch none
+readMember suppresses none
+
+readTag is call
+readTag in putCellValue
+readTag invokes subset.MemberInfo.index
+readTag argument record subset.MemberInfo member copy
+readTag result tag Int64
+readTag ownedBy none
+readTag cleanedBy none
+readTag borrows none
+readTag catch none
+readTag suppresses none
+
+readNarrow is call
+readNarrow in putCellValue
+readNarrow invokes subset.TypeInfo.narrow
+readNarrow argument record subset.TypeInfo info copy
+readNarrow result narrow Bool
+readNarrow ownedBy none
+readNarrow cleanedBy none
+readNarrow borrows none
+readNarrow catch none
+readNarrow suppresses none
+
+doAppendString3 is call
+doAppendString3 in putCellValue
+doAppendString3 invokes buffer.appendString
+doAppendString3 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString3 argument text String open lend
+doAppendString3 result none
+doAppendString3 ownedBy none
+doAppendString3 cleanedBy none
+doAppendString3 borrows none
+doAppendString3 catch none
+doAppendString3 suppresses none
+
+doAppendInt64 is call
+doAppendInt64 in putCellValue
+doAppendInt64 invokes buffer.appendInt64
+doAppendInt64 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt64 argument value Int64 tag copy
+doAppendInt64 result none
+doAppendInt64 ownedBy none
+doAppendInt64 cleanedBy none
+doAppendInt64 borrows none
+doAppendInt64 catch none
+doAppendInt64 suppresses none
+
+doAppendString4 is call
+doAppendString4 in putCellValue
+doAppendString4 invokes buffer.appendString
+doAppendString4 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString4 argument text String narrowEnd lend
+doAppendString4 result none
+doAppendString4 ownedBy none
+doAppendString4 cleanedBy none
+doAppendString4 borrows none
+doAppendString4 catch none
+doAppendString4 suppresses none
+
+doAppendString5 is call
+doAppendString5 in putCellValue
+doAppendString5 invokes buffer.appendString
+doAppendString5 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString5 argument text String wideOpen lend
+doAppendString5 result none
+doAppendString5 ownedBy none
+doAppendString5 cleanedBy none
+doAppendString5 borrows none
+doAppendString5 catch none
+doAppendString5 suppresses none
+
+doAppendInt642 is call
+doAppendInt642 in putCellValue
+doAppendInt642 invokes buffer.appendInt64
+doAppendInt642 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt642 argument value Int64 tag copy
+doAppendInt642 result none
+doAppendInt642 ownedBy none
+doAppendInt642 cleanedBy none
+doAppendInt642 borrows none
+doAppendInt642 catch none
+doAppendInt642 suppresses none
+
+doAppendString6 is call
+doAppendString6 in putCellValue
+doAppendString6 invokes buffer.appendString
+doAppendString6 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString6 argument text String wideEnd lend
+doAppendString6 result none
+doAppendString6 ownedBy none
+doAppendString6 cleanedBy none
+doAppendString6 borrows none
+doAppendString6 catch none
+doAppendString6 suppresses none
+
+makeMissing is call
+makeMissing in putCellValue
+makeMissing invokes syntax.Rejection.unknownVariant
+makeMissing argument payload syntax.Word value copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+makeOutside is call
+makeOutside in putCellValue
+makeOutside invokes syntax.Rejection.outsideSource
+makeOutside argument payload syntax.Word value copy
+makeOutside result outsideError syntax.Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+putTable is operation
+putTable purpose "Define a table as a static array of its rows, each a record of its cells in field order, and `tr_<table>`, which reads row 1 to n or fails"
+putTable invariant none
+putTable typeParameter none
+putTable input buffer buffer.ByteBuffer borrowedMutable
+putTable input source String borrowed
+putTable input words syntax.Words borrowed
+putTable input rows syntax.Rows borrowed
+putTable input entities model.Entities borrowed
+putTable input types subset.Types borrowed
+putTable input members subset.Members borrowed
+putTable input targets subset.Targets borrowed
+putTable input code Int64 copied
+putTable output none
+putTable outputOwnedBy none
+putTable raises syntax.Rejection
+putTable effect none
+putTable uses none
+putTable memoryHeap false
+putTable async false
+putTable maxRecursion none
+putTable label begin loopKind none
+putTable label begin within none
+putTable label putRowTypeDone loopKind none
+putTable label putRowTypeDone within none
+putTable label eachRow loopKind while
+putTable label eachRow within none
+putTable label eachRow maxIterations entityCount
+putTable label readRow loopKind none
+putTable label readRow within eachRow
+putTable label readPredicate loopKind none
+putTable label readPredicate within eachRow
+putTable label rowCheckDone loopKind none
+putTable label rowCheckDone within eachRow
+putTable label putRow loopKind none
+putTable label putRow within eachRow
+putTable label eachField loopKind while
+putTable label eachField within eachRow
+putTable label eachField maxIterations fieldCount
+putTable label readField loopKind none
+putTable label readField within eachField
+putTable label comma loopKind none
+putTable label comma within eachField
+putTable label cell loopKind none
+putTable label cell within eachField
+putTable label findTheCellDone loopKind none
+putTable label findTheCellDone within eachField
+putTable label putTheCellDone loopKind none
+putTable label putTheCellDone within eachField
+putTable label rowDone loopKind none
+putTable label rowDone within eachRow
+putTable label finish loopKind none
+putTable label finish within none
+putTable label putOutTypeDone loopKind none
+putTable label putOutTypeDone within none
+putTable label putRowTypeFailed loopKind none
+putTable label putRowTypeFailed within none
+putTable label rowCheckFailed loopKind none
+putTable label rowCheckFailed within none
+putTable label findTheCellFailed loopKind none
+putTable label findTheCellFailed within none
+putTable label putTheCellFailed loopKind none
+putTable label putTheCellFailed within none
+putTable label putOutTypeFailed loopKind none
+putTable label putOutTypeFailed within none
+putTable let rowIndex Int64 0 mutable
+putTable let fieldIndex Int64 0 mutable
+putTable let zero Int64 0 immutable
+putTable let staticStart String "static const " immutable
+putTable let arrayName String " tb_" immutable
+putTable let arrayOpen String "[" immutable
+putTable let arrayStart String "] = {\n" immutable
+putTable let one Int64 1 immutable
+putTable let four Int64 4 immutable
+putTable let rowWord String "row" immutable
+putTable let two Int64 2 immutable
+putTable let rowOpen String "  { " immutable
+putTable let commaText String ", " immutable
+putTable let rowClose String " },\n" immutable
+putTable let arrayEnd String "};\n\nstatic bool tr_" immutable
+putTable let readerOpen String "(" immutable
+putTable let readerBody String " *out, int64_t p) {\n  if (p < 1 || p > " immutable
+putTable let readerMiddle String ") return true;\n  *out = tb_" immutable
+putTable let readerEnd String "[p - 1];\n  return false;\n}\n\n" immutable
+putTable at begin do readInfo
+putTable at begin do readName
+putTable at begin do readRowType
+putTable at begin do readEntityIndex
+putTable at begin do readRowCount
+putTable at begin do readEntity
+putTable at begin do readRecord
+putTable at begin do readFirstField
+putTable at begin do readFieldCount
+putTable at begin do doAppendString
+putTable at begin do putRowType
+putTable at begin branch ifError putRowType goto putRowTypeFailed else goto putRowTypeDone
+putTable at putRowTypeDone do doAppendString2
+putTable at putRowTypeDone do doPutWord
+putTable at putRowTypeDone do doAppendString3
+putTable at putRowTypeDone do doAppendInt64
+putTable at putRowTypeDone do doAppendString4
+putTable at putRowTypeDone do readEntityFirst
+putTable at putRowTypeDone do readEntityCount
+putTable at putRowTypeDone do findEnd
+putTable at putRowTypeDone set rowIndex entityFirst
+putTable at putRowTypeDone goto eachRow
+putTable at eachRow do endCheck
+putTable at eachRow branch if rowsDone goto finish else goto readRow
+putTable at readRow do fetchRow
+putTable at readRow do advanceRow
+putTable at readRow set rowIndex nextIndex
+putTable at readRow do readCount
+putTable at readRow do shapeCheck
+putTable at readRow branch if isFour goto readPredicate else goto eachRow
+putTable at readPredicate do readFirstWord
+putTable at readPredicate do findPredicate
+putTable at readPredicate do readPredicateWord
+putTable at readPredicate do rowCheck
+putTable at readPredicate branch ifError rowCheck goto rowCheckFailed else goto rowCheckDone
+putTable at rowCheckDone branch if isRow goto putRow else goto eachRow
+putTable at putRow do findRowName
+putTable at putRow do readRowName
+putTable at putRow do doAppendString5
+putTable at putRow set fieldIndex zero
+putTable at putRow goto eachField
+putTable at eachField do fieldsDone
+putTable at eachField branch if allFields goto rowDone else goto readField
+putTable at readField do findField
+putTable at readField do readMember
+putTable at readField do readFieldName
+putTable at readField do readFieldType
+putTable at readField do firstCheck
+putTable at readField do countField
+putTable at readField set fieldIndex nextField
+putTable at readField branch if isFirst goto cell else goto comma
+putTable at comma do doAppendString6
+putTable at comma goto cell
+putTable at cell do findTheCell
+putTable at cell branch ifError findTheCell goto findTheCellFailed else goto findTheCellDone
+putTable at findTheCellDone do putTheCell
+putTable at findTheCellDone branch ifError putTheCell goto putTheCellFailed else goto putTheCellDone
+putTable at putTheCellDone goto eachField
+putTable at rowDone do doAppendString7
+putTable at rowDone goto eachRow
+putTable at finish do doAppendString8
+putTable at finish do doPutWord2
+putTable at finish do doAppendString9
+putTable at finish do putOutType
+putTable at finish branch ifError putOutType goto putOutTypeFailed else goto putOutTypeDone
+putTable at putOutTypeDone do doAppendString10
+putTable at putOutTypeDone do doAppendInt642
+putTable at putOutTypeDone do doAppendString11
+putTable at putOutTypeDone do doPutWord3
+putTable at putOutTypeDone do doAppendString12
+putTable at putOutTypeDone return ok none
+putTable at putRowTypeFailed return error putRowTypeError
+putTable at rowCheckFailed return error rowCheckError
+putTable at findTheCellFailed return error findTheCellError
+putTable at putTheCellFailed return error putTheCellError
+putTable at putOutTypeFailed return error putOutTypeError
+
+readInfo is call
+readInfo in putTable
+readInfo invokes typeInfoAt
+readInfo argument types subset.Types types lend
+readInfo argument code Int64 code copy
+readInfo result info subset.TypeInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch none
+readInfo suppresses none
+
+readName is call
+readName in putTable
+readName invokes subset.TypeInfo.name
+readName argument record subset.TypeInfo info copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readRowType is call
+readRowType in putTable
+readRowType invokes subset.TypeInfo.item
+readRowType argument record subset.TypeInfo info copy
+readRowType result rowType Int64
+readRowType ownedBy none
+readRowType cleanedBy none
+readRowType borrows none
+readRowType catch none
+readRowType suppresses none
+
+readEntityIndex is call
+readEntityIndex in putTable
+readEntityIndex invokes subset.TypeInfo.first
+readEntityIndex argument record subset.TypeInfo info copy
+readEntityIndex result entityIndex Int64
+readEntityIndex ownedBy none
+readEntityIndex cleanedBy none
+readEntityIndex borrows none
+readEntityIndex catch none
+readEntityIndex suppresses none
+
+readRowCount is call
+readRowCount in putTable
+readRowCount invokes subset.TypeInfo.count
+readRowCount argument record subset.TypeInfo info copy
+readRowCount result rowCount Int64
+readRowCount ownedBy none
+readRowCount cleanedBy none
+readRowCount borrows none
+readRowCount catch none
+readRowCount suppresses none
+
+readEntity is call
+readEntity in putTable
+readEntity invokes model.Entities.getOrTrap
+readEntity argument list model.Entities entities lend
+readEntity argument index Int64 entityIndex copy
+readEntity result entity model.Entity
+readEntity ownedBy none
+readEntity cleanedBy none
+readEntity borrows none
+readEntity catch none
+readEntity suppresses none
+
+readRecord is call
+readRecord in putTable
+readRecord invokes typeInfoAt
+readRecord argument types subset.Types types lend
+readRecord argument code Int64 rowType copy
+readRecord result record subset.TypeInfo
+readRecord ownedBy none
+readRecord cleanedBy none
+readRecord borrows none
+readRecord catch none
+readRecord suppresses none
+
+readFirstField is call
+readFirstField in putTable
+readFirstField invokes subset.TypeInfo.first
+readFirstField argument record subset.TypeInfo record copy
+readFirstField result firstField Int64
+readFirstField ownedBy none
+readFirstField cleanedBy none
+readFirstField borrows none
+readFirstField catch none
+readFirstField suppresses none
+
+readFieldCount is call
+readFieldCount in putTable
+readFieldCount invokes subset.TypeInfo.count
+readFieldCount argument record subset.TypeInfo record copy
+readFieldCount result fieldCount Int64
+readFieldCount ownedBy none
+readFieldCount cleanedBy none
+readFieldCount borrows none
+readFieldCount catch none
+readFieldCount suppresses none
+
+doAppendString is call
+doAppendString in putTable
+doAppendString invokes buffer.appendString
+doAppendString argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString argument text String staticStart lend
+doAppendString result none
+doAppendString ownedBy none
+doAppendString cleanedBy none
+doAppendString borrows none
+doAppendString catch none
+doAppendString suppresses none
+
+putRowType is call
+putRowType in putTable
+putRowType invokes putCType
+putRowType argument buffer buffer.ByteBuffer buffer lendMutable
+putRowType argument source String source lend
+putRowType argument types subset.Types types lend
+putRowType argument code Int64 rowType copy
+putRowType result none
+putRowType ownedBy none
+putRowType cleanedBy none
+putRowType borrows none
+putRowType catch putRowTypeError syntax.Rejection
+putRowType suppresses none
+
+doAppendString2 is call
+doAppendString2 in putTable
+doAppendString2 invokes buffer.appendString
+doAppendString2 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString2 argument text String arrayName lend
+doAppendString2 result none
+doAppendString2 ownedBy none
+doAppendString2 cleanedBy none
+doAppendString2 borrows none
+doAppendString2 catch none
+doAppendString2 suppresses none
+
+doPutWord is call
+doPutWord in putTable
+doPutWord invokes syntax.putWord
+doPutWord argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord argument source String source lend
+doPutWord argument word syntax.Word name copy
+doPutWord result none
+doPutWord ownedBy none
+doPutWord cleanedBy none
+doPutWord borrows none
+doPutWord catch none
+doPutWord suppresses none
+
+doAppendString3 is call
+doAppendString3 in putTable
+doAppendString3 invokes buffer.appendString
+doAppendString3 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString3 argument text String arrayOpen lend
+doAppendString3 result none
+doAppendString3 ownedBy none
+doAppendString3 cleanedBy none
+doAppendString3 borrows none
+doAppendString3 catch none
+doAppendString3 suppresses none
+
+doAppendInt64 is call
+doAppendInt64 in putTable
+doAppendInt64 invokes buffer.appendInt64
+doAppendInt64 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt64 argument value Int64 rowCount copy
+doAppendInt64 result none
+doAppendInt64 ownedBy none
+doAppendInt64 cleanedBy none
+doAppendInt64 borrows none
+doAppendInt64 catch none
+doAppendInt64 suppresses none
+
+doAppendString4 is call
+doAppendString4 in putTable
+doAppendString4 invokes buffer.appendString
+doAppendString4 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString4 argument text String arrayStart lend
+doAppendString4 result none
+doAppendString4 ownedBy none
+doAppendString4 cleanedBy none
+doAppendString4 borrows none
+doAppendString4 catch none
+doAppendString4 suppresses none
+
+readEntityFirst is call
+readEntityFirst in putTable
+readEntityFirst invokes model.Entity.first
+readEntityFirst argument record model.Entity entity copy
+readEntityFirst result entityFirst Int64
+readEntityFirst ownedBy none
+readEntityFirst cleanedBy none
+readEntityFirst borrows none
+readEntityFirst catch none
+readEntityFirst suppresses none
+
+readEntityCount is call
+readEntityCount in putTable
+readEntityCount invokes model.Entity.count
+readEntityCount argument record model.Entity entity copy
+readEntityCount result entityCount Int64
+readEntityCount ownedBy none
+readEntityCount cleanedBy none
+readEntityCount borrows none
+readEntityCount catch none
+readEntityCount suppresses none
+
+findEnd is call
+findEnd in putTable
+findEnd invokes math.addInt64
+findEnd argument left Int64 entityFirst copy
+findEnd argument right Int64 entityCount copy
+findEnd result entityEnd Int64
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+endCheck is call
+endCheck in putTable
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 rowIndex copy
+endCheck argument right Int64 entityEnd copy
+endCheck result rowsDone Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+fetchRow is call
+fetchRow in putTable
+fetchRow invokes syntax.Rows.getOrTrap
+fetchRow argument list syntax.Rows rows lend
+fetchRow argument index Int64 rowIndex copy
+fetchRow result row syntax.Row
+fetchRow ownedBy none
+fetchRow cleanedBy none
+fetchRow borrows none
+fetchRow catch none
+fetchRow suppresses none
+
+advanceRow is call
+advanceRow in putTable
+advanceRow invokes math.addInt64
+advanceRow argument left Int64 rowIndex copy
+advanceRow argument right Int64 one copy
+advanceRow result nextIndex Int64
+advanceRow ownedBy none
+advanceRow cleanedBy none
+advanceRow borrows none
+advanceRow catch none
+advanceRow suppresses none
+
+readCount is call
+readCount in putTable
+readCount invokes syntax.Row.count
+readCount argument record syntax.Row row copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+shapeCheck is call
+shapeCheck in putTable
+shapeCheck invokes compare.equalInt64
+shapeCheck argument left Int64 count copy
+shapeCheck argument right Int64 four copy
+shapeCheck result isFour Bool
+shapeCheck ownedBy none
+shapeCheck cleanedBy none
+shapeCheck borrows none
+shapeCheck catch none
+shapeCheck suppresses none
+
+readFirstWord is call
+readFirstWord in putTable
+readFirstWord invokes syntax.Row.first
+readFirstWord argument record syntax.Row row copy
+readFirstWord result first Int64
+readFirstWord ownedBy none
+readFirstWord cleanedBy none
+readFirstWord borrows none
+readFirstWord catch none
+readFirstWord suppresses none
+
+findPredicate is call
+findPredicate in putTable
+findPredicate invokes math.addInt64
+findPredicate argument left Int64 first copy
+findPredicate argument right Int64 one copy
+findPredicate result predicateAt Int64
+findPredicate ownedBy none
+findPredicate cleanedBy none
+findPredicate borrows none
+findPredicate catch none
+findPredicate suppresses none
+
+readPredicateWord is call
+readPredicateWord in putTable
+readPredicateWord invokes syntax.Words.getOrTrap
+readPredicateWord argument list syntax.Words words lend
+readPredicateWord argument index Int64 predicateAt copy
+readPredicateWord result predicate syntax.Word
+readPredicateWord ownedBy none
+readPredicateWord cleanedBy none
+readPredicateWord borrows none
+readPredicateWord catch none
+readPredicateWord suppresses none
+
+rowCheck is call
+rowCheck in putTable
+rowCheck invokes syntax.isText
+rowCheck argument source String source lend
+rowCheck argument word syntax.Word predicate copy
+rowCheck argument text String rowWord lend
+rowCheck result isRow Bool
+rowCheck ownedBy none
+rowCheck cleanedBy none
+rowCheck borrows none
+rowCheck catch rowCheckError syntax.Rejection
+rowCheck suppresses none
+
+findRowName is call
+findRowName in putTable
+findRowName invokes math.addInt64
+findRowName argument left Int64 first copy
+findRowName argument right Int64 two copy
+findRowName result rowNameAt Int64
+findRowName ownedBy none
+findRowName cleanedBy none
+findRowName borrows none
+findRowName catch none
+findRowName suppresses none
+
+readRowName is call
+readRowName in putTable
+readRowName invokes syntax.Words.getOrTrap
+readRowName argument list syntax.Words words lend
+readRowName argument index Int64 rowNameAt copy
+readRowName result rowName syntax.Word
+readRowName ownedBy none
+readRowName cleanedBy none
+readRowName borrows none
+readRowName catch none
+readRowName suppresses none
+
+doAppendString5 is call
+doAppendString5 in putTable
+doAppendString5 invokes buffer.appendString
+doAppendString5 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString5 argument text String rowOpen lend
+doAppendString5 result none
+doAppendString5 ownedBy none
+doAppendString5 cleanedBy none
+doAppendString5 borrows none
+doAppendString5 catch none
+doAppendString5 suppresses none
+
+fieldsDone is call
+fieldsDone in putTable
+fieldsDone invokes compare.greaterOrEqualInt64
+fieldsDone argument left Int64 fieldIndex copy
+fieldsDone argument right Int64 fieldCount copy
+fieldsDone result allFields Bool
+fieldsDone ownedBy none
+fieldsDone cleanedBy none
+fieldsDone borrows none
+fieldsDone catch none
+fieldsDone suppresses none
+
+findField is call
+findField in putTable
+findField invokes math.addInt64
+findField argument left Int64 firstField copy
+findField argument right Int64 fieldIndex copy
+findField result memberIndex Int64
+findField ownedBy none
+findField cleanedBy none
+findField borrows none
+findField catch none
+findField suppresses none
+
+readMember is call
+readMember in putTable
+readMember invokes memberAt
+readMember argument members subset.Members members lend
+readMember argument index Int64 memberIndex copy
+readMember result field subset.MemberInfo
+readMember ownedBy none
+readMember cleanedBy none
+readMember borrows none
+readMember catch none
+readMember suppresses none
+
+readFieldName is call
+readFieldName in putTable
+readFieldName invokes subset.MemberInfo.name
+readFieldName argument record subset.MemberInfo field copy
+readFieldName result fieldName syntax.Word
+readFieldName ownedBy none
+readFieldName cleanedBy none
+readFieldName borrows none
+readFieldName catch none
+readFieldName suppresses none
+
+readFieldType is call
+readFieldType in putTable
+readFieldType invokes subset.MemberInfo.type
+readFieldType argument record subset.MemberInfo field copy
+readFieldType result fieldType Int64
+readFieldType ownedBy none
+readFieldType cleanedBy none
+readFieldType borrows none
+readFieldType catch none
+readFieldType suppresses none
+
+firstCheck is call
+firstCheck in putTable
+firstCheck invokes compare.equalInt64
+firstCheck argument left Int64 fieldIndex copy
+firstCheck argument right Int64 zero copy
+firstCheck result isFirst Bool
+firstCheck ownedBy none
+firstCheck cleanedBy none
+firstCheck borrows none
+firstCheck catch none
+firstCheck suppresses none
+
+countField is call
+countField in putTable
+countField invokes math.addInt64
+countField argument left Int64 fieldIndex copy
+countField argument right Int64 one copy
+countField result nextField Int64
+countField ownedBy none
+countField cleanedBy none
+countField borrows none
+countField catch none
+countField suppresses none
+
+doAppendString6 is call
+doAppendString6 in putTable
+doAppendString6 invokes buffer.appendString
+doAppendString6 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString6 argument text String commaText lend
+doAppendString6 result none
+doAppendString6 ownedBy none
+doAppendString6 cleanedBy none
+doAppendString6 borrows none
+doAppendString6 catch none
+doAppendString6 suppresses none
+
+findTheCell is call
+findTheCell in putTable
+findTheCell invokes findCell
+findTheCell argument source String source lend
+findTheCell argument words syntax.Words words lend
+findTheCell argument rows syntax.Rows rows lend
+findTheCell argument entity model.Entity entity copy
+findTheCell argument rowName syntax.Word rowName copy
+findTheCell argument fieldName syntax.Word fieldName copy
+findTheCell result value syntax.Word
+findTheCell ownedBy none
+findTheCell cleanedBy none
+findTheCell borrows none
+findTheCell catch findTheCellError syntax.Rejection
+findTheCell suppresses none
+
+putTheCell is call
+putTheCell in putTable
+putTheCell invokes putCellValue
+putTheCell argument buffer buffer.ByteBuffer buffer lendMutable
+putTheCell argument source String source lend
+putTheCell argument types subset.Types types lend
+putTheCell argument members subset.Members members lend
+putTheCell argument targets subset.Targets targets lend
+putTheCell argument code Int64 fieldType copy
+putTheCell argument value syntax.Word value copy
+putTheCell result none
+putTheCell ownedBy none
+putTheCell cleanedBy none
+putTheCell borrows none
+putTheCell catch putTheCellError syntax.Rejection
+putTheCell suppresses none
+
+doAppendString7 is call
+doAppendString7 in putTable
+doAppendString7 invokes buffer.appendString
+doAppendString7 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString7 argument text String rowClose lend
+doAppendString7 result none
+doAppendString7 ownedBy none
+doAppendString7 cleanedBy none
+doAppendString7 borrows none
+doAppendString7 catch none
+doAppendString7 suppresses none
+
+doAppendString8 is call
+doAppendString8 in putTable
+doAppendString8 invokes buffer.appendString
+doAppendString8 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString8 argument text String arrayEnd lend
+doAppendString8 result none
+doAppendString8 ownedBy none
+doAppendString8 cleanedBy none
+doAppendString8 borrows none
+doAppendString8 catch none
+doAppendString8 suppresses none
+
+doPutWord2 is call
+doPutWord2 in putTable
+doPutWord2 invokes syntax.putWord
+doPutWord2 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord2 argument source String source lend
+doPutWord2 argument word syntax.Word name copy
+doPutWord2 result none
+doPutWord2 ownedBy none
+doPutWord2 cleanedBy none
+doPutWord2 borrows none
+doPutWord2 catch none
+doPutWord2 suppresses none
+
+doAppendString9 is call
+doAppendString9 in putTable
+doAppendString9 invokes buffer.appendString
+doAppendString9 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString9 argument text String readerOpen lend
+doAppendString9 result none
+doAppendString9 ownedBy none
+doAppendString9 cleanedBy none
+doAppendString9 borrows none
+doAppendString9 catch none
+doAppendString9 suppresses none
+
+putOutType is call
+putOutType in putTable
+putOutType invokes putCType
+putOutType argument buffer buffer.ByteBuffer buffer lendMutable
+putOutType argument source String source lend
+putOutType argument types subset.Types types lend
+putOutType argument code Int64 rowType copy
+putOutType result none
+putOutType ownedBy none
+putOutType cleanedBy none
+putOutType borrows none
+putOutType catch putOutTypeError syntax.Rejection
+putOutType suppresses none
+
+doAppendString10 is call
+doAppendString10 in putTable
+doAppendString10 invokes buffer.appendString
+doAppendString10 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString10 argument text String readerBody lend
+doAppendString10 result none
+doAppendString10 ownedBy none
+doAppendString10 cleanedBy none
+doAppendString10 borrows none
+doAppendString10 catch none
+doAppendString10 suppresses none
+
+doAppendInt642 is call
+doAppendInt642 in putTable
+doAppendInt642 invokes buffer.appendInt64
+doAppendInt642 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt642 argument value Int64 rowCount copy
+doAppendInt642 result none
+doAppendInt642 ownedBy none
+doAppendInt642 cleanedBy none
+doAppendInt642 borrows none
+doAppendInt642 catch none
+doAppendInt642 suppresses none
+
+doAppendString11 is call
+doAppendString11 in putTable
+doAppendString11 invokes buffer.appendString
+doAppendString11 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString11 argument text String readerMiddle lend
+doAppendString11 result none
+doAppendString11 ownedBy none
+doAppendString11 cleanedBy none
+doAppendString11 borrows none
+doAppendString11 catch none
+doAppendString11 suppresses none
+
+doPutWord3 is call
+doPutWord3 in putTable
+doPutWord3 invokes syntax.putWord
+doPutWord3 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord3 argument source String source lend
+doPutWord3 argument word syntax.Word name copy
+doPutWord3 result none
+doPutWord3 ownedBy none
+doPutWord3 cleanedBy none
+doPutWord3 borrows none
+doPutWord3 catch none
+doPutWord3 suppresses none
+
+doAppendString12 is call
+doAppendString12 in putTable
+doAppendString12 invokes buffer.appendString
+doAppendString12 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString12 argument text String readerEnd lend
+doAppendString12 result none
+doAppendString12 ownedBy none
+doAppendString12 cleanedBy none
+doAppendString12 borrows none
+doAppendString12 catch none
+doAppendString12 suppresses none
+
 putTypes is operation
-putTypes purpose "Write the module's types: typedefs, struct definitions in source order, relocators for those that hold text, and list helpers"
+putTypes purpose "Write the module's types: typedefs, struct definitions in source order, relocators for those that hold text, list helpers, and tables"
 putTypes invariant none
 putTypes typeParameter none
 putTypes input buffer buffer.ByteBuffer borrowedMutable
 putTypes input source String borrowed
+putTypes input words syntax.Words borrowed
+putTypes input rows syntax.Rows borrowed
+putTypes input entities model.Entities borrowed
 putTypes input types subset.Types borrowed
 putTypes input members subset.Members borrowed
+putTypes input targets subset.Targets borrowed
 putTypes output none
 putTypes outputOwnedBy none
 putTypes raises syntax.Rejection
@@ -3215,6 +4739,12 @@ putTypes label eachList within none
 putTypes label eachList maxIterations typeCount
 putTypes label readList loopKind none
 putTypes label readList within eachList
+putTypes label tableKind loopKind none
+putTypes label tableKind within eachList
+putTypes label putOneTable loopKind none
+putTypes label putOneTable within eachList
+putTypes label putTheTableDone loopKind none
+putTypes label putTheTableDone within eachList
 putTypes label putOneList loopKind none
 putTypes label putOneList within eachList
 putTypes label putTheListDone loopKind none
@@ -3225,12 +4755,15 @@ putTypes label putTheStructFailed loopKind none
 putTypes label putTheStructFailed within none
 putTypes label putTheRelocatorFailed loopKind none
 putTypes label putTheRelocatorFailed within none
+putTypes label putTheTableFailed loopKind none
+putTypes label putTheTableFailed within none
 putTypes label putTheListFailed loopKind none
 putTypes label putTheListFailed within none
 putTypes let code Int64 11 mutable
 putTypes let eleven Int64 11 immutable
 putTypes let one Int64 1 immutable
 putTypes let five Int64 5 immutable
+putTypes let six Int64 6 immutable
 putTypes at begin do putAllTypedefs
 putTypes at begin do countTypes
 putTypes at begin goto eachStruct
@@ -3241,7 +4774,9 @@ putTypes at readStruct set code nextStruct
 putTypes at readStruct do readStructInfo
 putTypes at readStruct do readStructKind
 putTypes at readStruct do listCheck
-putTypes at readStruct branch if isList goto eachStruct else goto putOneStruct
+putTypes at readStruct do tableCheck
+putTypes at readStruct do noStruct
+putTypes at readStruct branch if skipStruct goto eachStruct else goto putOneStruct
 putTypes at putOneStruct do putTheStruct
 putTypes at putOneStruct branch ifError putTheStruct goto putTheStructFailed else goto putTheStructDone
 putTypes at putTheStructDone do textCheck
@@ -3258,13 +4793,19 @@ putTypes at readList set code nextList
 putTypes at readList do readListInfo
 putTypes at readList do readListKind
 putTypes at readList do isListCheck
-putTypes at readList branch if listType goto putOneList else goto eachList
+putTypes at readList branch if listType goto putOneList else goto tableKind
+putTypes at tableKind do isTableCheck
+putTypes at tableKind branch if tableType goto putOneTable else goto eachList
+putTypes at putOneTable do putTheTable
+putTypes at putOneTable branch ifError putTheTable goto putTheTableFailed else goto putTheTableDone
+putTypes at putTheTableDone goto eachList
 putTypes at putOneList do putTheList
 putTypes at putOneList branch ifError putTheList goto putTheListFailed else goto putTheListDone
 putTypes at putTheListDone goto eachList
 putTypes at done return ok none
 putTypes at putTheStructFailed return error putTheStructError
 putTypes at putTheRelocatorFailed return error putTheRelocatorError
+putTypes at putTheTableFailed return error putTheTableError
 putTypes at putTheListFailed return error putTheListError
 
 putAllTypedefs is call
@@ -3349,6 +4890,30 @@ listCheck cleanedBy none
 listCheck borrows none
 listCheck catch none
 listCheck suppresses none
+
+tableCheck is call
+tableCheck in putTypes
+tableCheck invokes compare.equalInt64
+tableCheck argument left Int64 structKind copy
+tableCheck argument right Int64 six copy
+tableCheck result isTable Bool
+tableCheck ownedBy none
+tableCheck cleanedBy none
+tableCheck borrows none
+tableCheck catch none
+tableCheck suppresses none
+
+noStruct is call
+noStruct in putTypes
+noStruct invokes logic.or
+noStruct argument left Bool isList copy
+noStruct argument right Bool isTable copy
+noStruct result skipStruct Bool
+noStruct ownedBy none
+noStruct cleanedBy none
+noStruct borrows none
+noStruct catch none
+noStruct suppresses none
 
 putTheStruct is call
 putTheStruct in putTypes
@@ -3449,6 +5014,37 @@ isListCheck cleanedBy none
 isListCheck borrows none
 isListCheck catch none
 isListCheck suppresses none
+
+isTableCheck is call
+isTableCheck in putTypes
+isTableCheck invokes compare.equalInt64
+isTableCheck argument left Int64 listKind copy
+isTableCheck argument right Int64 six copy
+isTableCheck result tableType Bool
+isTableCheck ownedBy none
+isTableCheck cleanedBy none
+isTableCheck borrows none
+isTableCheck catch none
+isTableCheck suppresses none
+
+putTheTable is call
+putTheTable in putTypes
+putTheTable invokes putTable
+putTheTable argument buffer buffer.ByteBuffer buffer lendMutable
+putTheTable argument source String source lend
+putTheTable argument words syntax.Words words lend
+putTheTable argument rows syntax.Rows rows lend
+putTheTable argument entities model.Entities entities lend
+putTheTable argument types subset.Types types lend
+putTheTable argument members subset.Members members lend
+putTheTable argument targets subset.Targets targets lend
+putTheTable argument code Int64 code copy
+putTheTable result none
+putTheTable ownedBy none
+putTheTable cleanedBy none
+putTheTable borrows none
+putTheTable catch putTheTableError syntax.Rejection
+putTheTable suppresses none
 
 putTheList is call
 putTheList in putTypes
@@ -7196,6 +8792,10 @@ putCall label listGetCall loopKind none
 putCall label listGetCall within none
 putCall label listGetOrTrapCall loopKind none
 putCall label listGetOrTrapCall within none
+putCall label tableRowAtCall loopKind none
+putCall label tableRowAtCall within none
+putCall label tableLengthCall loopKind none
+putCall label tableLengthCall within none
 putCall label finish loopKind none
 putCall label finish within none
 putCall label lost loopKind none
@@ -7206,6 +8806,7 @@ putCall label putEnumTypeFailed loopKind none
 putCall label putEnumTypeFailed within none
 putCall let yes Bool true immutable
 putCall let no Bool false immutable
+putCall let rowAtPrefix String "tr_" immutable
 putCall let flagPrefix String "f_" immutable
 putCall let opPrefix String "o_" immutable
 putCall let fieldPrefix String ".m_" immutable
@@ -7250,6 +8851,8 @@ putCall at begin case subset.TargetKind.listAppend bind none none goto inline
 putCall at begin case subset.TargetKind.listLength bind none none goto inline
 putCall at begin case subset.TargetKind.listGet bind none none goto inline
 putCall at begin case subset.TargetKind.listGetOrTrap bind none none goto inline
+putCall at begin case subset.TargetKind.tableRowAt bind none none goto inline
+putCall at begin case subset.TargetKind.tableLength bind none none goto inline
 putCall at hostCheck do readHostRow
 putCall at hostCheck branch ifError readHostRow goto lost else goto readHostRowDone
 putCall at readHostRowDone do readHost
@@ -7277,6 +8880,8 @@ putCall at dispatch case subset.TargetKind.listAppend bind none none goto listAp
 putCall at dispatch case subset.TargetKind.listLength bind none none goto listLengthCall
 putCall at dispatch case subset.TargetKind.listGet bind none none goto listGetCall
 putCall at dispatch case subset.TargetKind.listGetOrTrap bind none none goto listGetOrTrapCall
+putCall at dispatch case subset.TargetKind.tableRowAt bind none none goto tableRowAtCall
+putCall at dispatch case subset.TargetKind.tableLength bind none none goto tableLengthCall
 putCall at builtinCall do readSpelling
 putCall at builtinCall branch ifError readSpelling goto lost else goto readSpellingDone
 putCall at readSpellingDone do readBefore
@@ -7405,7 +9010,22 @@ putCall at listGetOrTrapCall do doAppendString42
 putCall at listGetOrTrapCall do putTrapArguments
 putCall at listGetOrTrapCall do doAppendString43
 putCall at listGetOrTrapCall goto finish
-putCall at finish do doAppendString44
+putCall at tableRowAtCall do readTableInfo
+putCall at tableRowAtCall do readTableName
+putCall at tableRowAtCall do doAppendString44
+putCall at tableRowAtCall do doPutWord8
+putCall at tableRowAtCall do doAppendString45
+putCall at tableRowAtCall do doAppendString46
+putCall at tableRowAtCall do putRowAtResult
+putCall at tableRowAtCall do doAppendString47
+putCall at tableRowAtCall do putRowAtArguments
+putCall at tableRowAtCall do doAppendString48
+putCall at tableRowAtCall goto finish
+putCall at tableLengthCall do readLengthInfo
+putCall at tableLengthCall do readRowCount
+putCall at tableLengthCall do doAppendInt643
+putCall at tableLengthCall goto finish
+putCall at finish do doAppendString49
 putCall at finish return ok none
 putCall at lost do makeLost
 putCall at lost return error lostError
@@ -8842,17 +10462,178 @@ doAppendString43 borrows none
 doAppendString43 catch none
 doAppendString43 suppresses none
 
+readTableInfo is call
+readTableInfo in putCall
+readTableInfo invokes typeInfoAt
+readTableInfo argument types subset.Types types lend
+readTableInfo argument code Int64 owner copy
+readTableInfo result tableInfo subset.TypeInfo
+readTableInfo ownedBy none
+readTableInfo cleanedBy none
+readTableInfo borrows none
+readTableInfo catch none
+readTableInfo suppresses none
+
+readTableName is call
+readTableName in putCall
+readTableName invokes subset.TypeInfo.name
+readTableName argument record subset.TypeInfo tableInfo copy
+readTableName result tableName syntax.Word
+readTableName ownedBy none
+readTableName cleanedBy none
+readTableName borrows none
+readTableName catch none
+readTableName suppresses none
+
 doAppendString44 is call
 doAppendString44 in putCall
 doAppendString44 invokes buffer.appendString
 doAppendString44 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString44 argument text String lineEnd lend
+doAppendString44 argument text String rowAtPrefix lend
 doAppendString44 result none
 doAppendString44 ownedBy none
 doAppendString44 cleanedBy none
 doAppendString44 borrows none
 doAppendString44 catch none
 doAppendString44 suppresses none
+
+doPutWord8 is call
+doPutWord8 in putCall
+doPutWord8 invokes syntax.putWord
+doPutWord8 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord8 argument source String source lend
+doPutWord8 argument word syntax.Word tableName copy
+doPutWord8 result none
+doPutWord8 ownedBy none
+doPutWord8 cleanedBy none
+doPutWord8 borrows none
+doPutWord8 catch none
+doPutWord8 suppresses none
+
+doAppendString45 is call
+doAppendString45 in putCall
+doAppendString45 invokes buffer.appendString
+doAppendString45 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString45 argument text String open lend
+doAppendString45 result none
+doAppendString45 ownedBy none
+doAppendString45 cleanedBy none
+doAppendString45 borrows none
+doAppendString45 catch none
+doAppendString45 suppresses none
+
+doAppendString46 is call
+doAppendString46 in putCall
+doAppendString46 invokes buffer.appendString
+doAppendString46 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString46 argument text String address lend
+doAppendString46 result none
+doAppendString46 ownedBy none
+doAppendString46 cleanedBy none
+doAppendString46 borrows none
+doAppendString46 catch none
+doAppendString46 suppresses none
+
+putRowAtResult is call
+putRowAtResult in putCall
+putRowAtResult invokes putValue
+putRowAtResult argument buffer buffer.ByteBuffer buffer lendMutable
+putRowAtResult argument source String source lend
+putRowAtResult argument word syntax.Word result copy
+putRowAtResult result none
+putRowAtResult ownedBy none
+putRowAtResult cleanedBy none
+putRowAtResult borrows none
+putRowAtResult catch none
+putRowAtResult suppresses none
+
+doAppendString47 is call
+doAppendString47 in putCall
+doAppendString47 invokes buffer.appendString
+doAppendString47 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString47 argument text String comma lend
+doAppendString47 result none
+doAppendString47 ownedBy none
+doAppendString47 cleanedBy none
+doAppendString47 borrows none
+doAppendString47 catch none
+doAppendString47 suppresses none
+
+putRowAtArguments is call
+putRowAtArguments in putCall
+putRowAtArguments invokes putArguments
+putRowAtArguments argument buffer buffer.ByteBuffer buffer lendMutable
+putRowAtArguments argument source String source lend
+putRowAtArguments argument arguments subset.Arguments arguments lend
+putRowAtArguments argument info subset.CallInfo info copy
+putRowAtArguments argument between String comma lend
+putRowAtArguments argument skipRegions Bool no copy
+putRowAtArguments argument started Bool no copy
+putRowAtArguments result none
+putRowAtArguments ownedBy none
+putRowAtArguments cleanedBy none
+putRowAtArguments borrows none
+putRowAtArguments catch none
+putRowAtArguments suppresses none
+
+doAppendString48 is call
+doAppendString48 in putCall
+doAppendString48 invokes buffer.appendString
+doAppendString48 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString48 argument text String close lend
+doAppendString48 result none
+doAppendString48 ownedBy none
+doAppendString48 cleanedBy none
+doAppendString48 borrows none
+doAppendString48 catch none
+doAppendString48 suppresses none
+
+readLengthInfo is call
+readLengthInfo in putCall
+readLengthInfo invokes typeInfoAt
+readLengthInfo argument types subset.Types types lend
+readLengthInfo argument code Int64 owner copy
+readLengthInfo result lengthInfo subset.TypeInfo
+readLengthInfo ownedBy none
+readLengthInfo cleanedBy none
+readLengthInfo borrows none
+readLengthInfo catch none
+readLengthInfo suppresses none
+
+readRowCount is call
+readRowCount in putCall
+readRowCount invokes subset.TypeInfo.count
+readRowCount argument record subset.TypeInfo lengthInfo copy
+readRowCount result rowCount Int64
+readRowCount ownedBy none
+readRowCount cleanedBy none
+readRowCount borrows none
+readRowCount catch none
+readRowCount suppresses none
+
+doAppendInt643 is call
+doAppendInt643 in putCall
+doAppendInt643 invokes buffer.appendInt64
+doAppendInt643 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt643 argument value Int64 rowCount copy
+doAppendInt643 result none
+doAppendInt643 ownedBy none
+doAppendInt643 cleanedBy none
+doAppendInt643 borrows none
+doAppendInt643 catch none
+doAppendInt643 suppresses none
+
+doAppendString49 is call
+doAppendString49 in putCall
+doAppendString49 invokes buffer.appendString
+doAppendString49 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString49 argument text String lineEnd lend
+doAppendString49 result none
+doAppendString49 ownedBy none
+doAppendString49 cleanedBy none
+doAppendString49 borrows none
+doAppendString49 catch none
+doAppendString49 suppresses none
 
 makeLost is call
 makeLost in putCall
@@ -9716,6 +11497,14 @@ putStep label putNoDone loopKind none
 putStep label putNoDone within none
 putStep label branchIfNextStep loopKind none
 putStep label branchIfNextStep within none
+putStep label tableNextStep loopKind none
+putStep label tableNextStep within none
+putStep label putTableYesDone loopKind none
+putStep label putTableYesDone within none
+putStep label putTableNoDone loopKind none
+putStep label putTableNoDone within none
+putStep label listNextStep loopKind none
+putStep label listNextStep within none
 putStep label putItemTypeDone loopKind none
 putStep label putItemTypeDone within none
 putStep label putNextYesDone loopKind none
@@ -9756,6 +11545,10 @@ putStep label putYesFailed loopKind none
 putStep label putYesFailed within none
 putStep label putNoFailed loopKind none
 putStep label putNoFailed within none
+putStep label putTableYesFailed loopKind none
+putStep label putTableYesFailed within none
+putStep label putTableNoFailed loopKind none
+putStep label putTableNoFailed within none
 putStep label putItemTypeFailed loopKind none
 putStep label putItemTypeFailed within none
 putStep label putNextYesFailed loopKind none
@@ -9777,18 +11570,21 @@ putStep let newline String "\n" immutable
 putStep let ifValue String "  if (" immutable
 putStep let ifThen String ") " immutable
 putStep let elseText String " else " immutable
+putStep let zero Int64 0 immutable
 putStep let ifIndex String "  if (i_" immutable
 putStep let less String " < " immutable
+putStep let tableOpen String ") { " immutable
+putStep let tableRead String " = tb_" immutable
+putStep let tableIndex String "[i_" immutable
+putStep let indexStep String "]; i_" immutable
+putStep let indexEnd String " += 1; " immutable
+putStep let nextElse String " } else " immutable
 putStep let lengthOpen String "->length) { " immutable
 putStep let itemCast String " = ((" immutable
 putStep let itemData String " *)" immutable
 putStep let dataIndex String "->data)[i_" immutable
-putStep let indexStep String "]; i_" immutable
-putStep let indexEnd String " += 1; " immutable
-putStep let nextElse String " } else " immutable
 putStep let tagTest String ".tag == " immutable
 putStep let caseOpen String ") { " immutable
-putStep let zero Int64 0 immutable
 putStep let semicolon String "; " immutable
 putStep let caseClose String " }\n" immutable
 putStep at begin do readLabel
@@ -9848,57 +11644,82 @@ putStep at putYesDone do putNo
 putStep at putYesDone branch ifError putNo goto putNoFailed else goto putNoDone
 putStep at putNoDone do doAppendString11
 putStep at putNoDone goto done
-putStep at branchIfNextStep do doAppendString12
-putStep at branchIfNextStep do doPutWord2
-putStep at branchIfNextStep do doAppendString13
-putStep at branchIfNextStep do putCollection
-putStep at branchIfNextStep do doAppendString14
-putStep at branchIfNextStep do putItem
-putStep at branchIfNextStep do doAppendString15
-putStep at branchIfNextStep do putItemType
-putStep at branchIfNextStep branch ifError putItemType goto putItemTypeFailed else goto putItemTypeDone
-putStep at putItemTypeDone do doAppendString16
+putStep at branchIfNextStep do tableCheck
+putStep at branchIfNextStep branch if overTable goto tableNextStep else goto listNextStep
+putStep at tableNextStep do readTableInfo
+putStep at tableNextStep do readTableName
+putStep at tableNextStep do readRowCount
+putStep at tableNextStep do doAppendString12
+putStep at tableNextStep do doPutWord2
+putStep at tableNextStep do doAppendString13
+putStep at tableNextStep do doAppendInt64
+putStep at tableNextStep do doAppendString14
+putStep at tableNextStep do putTableItem
+putStep at tableNextStep do doAppendString15
+putStep at tableNextStep do doPutWord3
+putStep at tableNextStep do doAppendString16
+putStep at tableNextStep do doPutWord4
+putStep at tableNextStep do doAppendString17
+putStep at tableNextStep do doPutWord5
+putStep at tableNextStep do doAppendString18
+putStep at tableNextStep do putTableYes
+putStep at tableNextStep branch ifError putTableYes goto putTableYesFailed else goto putTableYesDone
+putStep at putTableYesDone do doAppendString19
+putStep at putTableYesDone do putTableNo
+putStep at putTableYesDone branch ifError putTableNo goto putTableNoFailed else goto putTableNoDone
+putStep at putTableNoDone do doAppendString20
+putStep at putTableNoDone goto done
+putStep at listNextStep do doAppendString21
+putStep at listNextStep do doPutWord6
+putStep at listNextStep do doAppendString22
+putStep at listNextStep do putCollection
+putStep at listNextStep do doAppendString23
+putStep at listNextStep do putItem
+putStep at listNextStep do doAppendString24
+putStep at listNextStep do putItemType
+putStep at listNextStep branch ifError putItemType goto putItemTypeFailed else goto putItemTypeDone
+putStep at putItemTypeDone do doAppendString25
 putStep at putItemTypeDone do putCollectionData
-putStep at putItemTypeDone do doAppendString17
-putStep at putItemTypeDone do doPutWord3
-putStep at putItemTypeDone do doAppendString18
-putStep at putItemTypeDone do doPutWord4
-putStep at putItemTypeDone do doAppendString19
+putStep at putItemTypeDone do doAppendString26
+putStep at putItemTypeDone do doPutWord7
+putStep at putItemTypeDone do doAppendString27
+putStep at putItemTypeDone do doPutWord8
+putStep at putItemTypeDone do doAppendString28
 putStep at putItemTypeDone do putNextYes
 putStep at putItemTypeDone branch ifError putNextYes goto putNextYesFailed else goto putNextYesDone
-putStep at putNextYesDone do doAppendString20
+putStep at putNextYesDone do doAppendString29
 putStep at putNextYesDone do putNextNo
 putStep at putNextYesDone branch ifError putNextNo goto putNextNoFailed else goto putNextNoDone
-putStep at putNextNoDone do doAppendString21
+putStep at putNextNoDone do doAppendString30
 putStep at putNextNoDone goto done
 putStep at caseStep do readMember
 putStep at caseStep do readTag
 putStep at caseStep do readOwner
 putStep at caseStep do readOwnerInfo
 putStep at caseStep do readNarrow
-putStep at caseStep do doAppendString22
+putStep at caseStep do doAppendString31
 putStep at caseStep do putMatched
-putStep at caseStep do doAppendString23
-putStep at caseStep do doAppendInt64
-putStep at caseStep do doAppendString24
+putStep at caseStep do doAppendString32
+putStep at caseStep do doAppendInt642
+putStep at caseStep do doAppendString33
 putStep at caseStep do bindCheck
 putStep at caseStep branch if binds goto bind else goto caseJump
 putStep at bind do putBind
-putStep at bind do doAppendString25
+putStep at bind do doAppendString34
 putStep at bind branch if narrow goto narrowPayload else goto widePayload
 putStep at narrowPayload do putNarrow
 putStep at narrowPayload branch ifError putNarrow goto putNarrowFailed else goto putNarrowDone
 putStep at putNarrowDone goto bindEnd
 putStep at widePayload do putWide
 putStep at widePayload do readPayloadName
-putStep at widePayload do doAppendString26
-putStep at widePayload do doPutWord5
+putStep at widePayload do doAppendString35
+putStep at widePayload do doPutWord9
 putStep at widePayload goto bindEnd
-putStep at bindEnd do doAppendString27
+putStep at bindEnd do doAppendString36
 putStep at bindEnd goto caseJump
 putStep at caseJump do putCaseJump
 putStep at caseJump branch ifError putCaseJump goto putCaseJumpFailed else goto putCaseJumpDone
-putStep at putCaseJumpDone do doAppendString28
+putStep at putCaseJumpDone do doAppendString37
 putStep at putCaseJumpDone goto done
 putStep at returnStep do writeReturn
 putStep at returnStep branch ifError writeReturn goto writeReturnFailed else goto writeReturnDone
@@ -9912,6 +11733,8 @@ putStep at writeCallFailed return error writeCallError
 putStep at putGotoFailed return error putGotoError
 putStep at putYesFailed return error putYesError
 putStep at putNoFailed return error putNoError
+putStep at putTableYesFailed return error putTableYesError
+putStep at putTableNoFailed return error putTableNoError
 putStep at putItemTypeFailed return error putItemTypeError
 putStep at putNextYesFailed return error putNextYesError
 putStep at putNextNoFailed return error putNextNoError
@@ -10311,6 +12134,52 @@ doAppendString11 borrows none
 doAppendString11 catch none
 doAppendString11 suppresses none
 
+tableCheck is call
+tableCheck in putStep
+tableCheck invokes compare.greaterThanInt64
+tableCheck argument left Int64 number copy
+tableCheck argument right Int64 zero copy
+tableCheck result overTable Bool
+tableCheck ownedBy none
+tableCheck cleanedBy none
+tableCheck borrows none
+tableCheck catch none
+tableCheck suppresses none
+
+readTableInfo is call
+readTableInfo in putStep
+readTableInfo invokes typeInfoAt
+readTableInfo argument types subset.Types types lend
+readTableInfo argument code Int64 number copy
+readTableInfo result tableInfo subset.TypeInfo
+readTableInfo ownedBy none
+readTableInfo cleanedBy none
+readTableInfo borrows none
+readTableInfo catch none
+readTableInfo suppresses none
+
+readTableName is call
+readTableName in putStep
+readTableName invokes subset.TypeInfo.name
+readTableName argument record subset.TypeInfo tableInfo copy
+readTableName result tableName syntax.Word
+readTableName ownedBy none
+readTableName cleanedBy none
+readTableName borrows none
+readTableName catch none
+readTableName suppresses none
+
+readRowCount is call
+readRowCount in putStep
+readRowCount invokes subset.TypeInfo.count
+readRowCount argument record subset.TypeInfo tableInfo copy
+readRowCount result rowCount Int64
+readRowCount ownedBy none
+readRowCount cleanedBy none
+readRowCount borrows none
+readRowCount catch none
+readRowCount suppresses none
+
 doAppendString12 is call
 doAppendString12 in putStep
 doAppendString12 invokes buffer.appendString
@@ -10348,6 +12217,221 @@ doAppendString13 borrows none
 doAppendString13 catch none
 doAppendString13 suppresses none
 
+doAppendInt64 is call
+doAppendInt64 in putStep
+doAppendInt64 invokes buffer.appendInt64
+doAppendInt64 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt64 argument value Int64 rowCount copy
+doAppendInt64 result none
+doAppendInt64 ownedBy none
+doAppendInt64 cleanedBy none
+doAppendInt64 borrows none
+doAppendInt64 catch none
+doAppendInt64 suppresses none
+
+doAppendString14 is call
+doAppendString14 in putStep
+doAppendString14 invokes buffer.appendString
+doAppendString14 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString14 argument text String tableOpen lend
+doAppendString14 result none
+doAppendString14 ownedBy none
+doAppendString14 cleanedBy none
+doAppendString14 borrows none
+doAppendString14 catch none
+doAppendString14 suppresses none
+
+putTableItem is call
+putTableItem in putStep
+putTableItem invokes putValue
+putTableItem argument buffer buffer.ByteBuffer buffer lendMutable
+putTableItem argument source String source lend
+putTableItem argument word syntax.Word extra copy
+putTableItem result none
+putTableItem ownedBy none
+putTableItem cleanedBy none
+putTableItem borrows none
+putTableItem catch none
+putTableItem suppresses none
+
+doAppendString15 is call
+doAppendString15 in putStep
+doAppendString15 invokes buffer.appendString
+doAppendString15 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString15 argument text String tableRead lend
+doAppendString15 result none
+doAppendString15 ownedBy none
+doAppendString15 cleanedBy none
+doAppendString15 borrows none
+doAppendString15 catch none
+doAppendString15 suppresses none
+
+doPutWord3 is call
+doPutWord3 in putStep
+doPutWord3 invokes syntax.putWord
+doPutWord3 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord3 argument source String source lend
+doPutWord3 argument word syntax.Word tableName copy
+doPutWord3 result none
+doPutWord3 ownedBy none
+doPutWord3 cleanedBy none
+doPutWord3 borrows none
+doPutWord3 catch none
+doPutWord3 suppresses none
+
+doAppendString16 is call
+doAppendString16 in putStep
+doAppendString16 invokes buffer.appendString
+doAppendString16 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString16 argument text String tableIndex lend
+doAppendString16 result none
+doAppendString16 ownedBy none
+doAppendString16 cleanedBy none
+doAppendString16 borrows none
+doAppendString16 catch none
+doAppendString16 suppresses none
+
+doPutWord4 is call
+doPutWord4 in putStep
+doPutWord4 invokes syntax.putWord
+doPutWord4 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord4 argument source String source lend
+doPutWord4 argument word syntax.Word label copy
+doPutWord4 result none
+doPutWord4 ownedBy none
+doPutWord4 cleanedBy none
+doPutWord4 borrows none
+doPutWord4 catch none
+doPutWord4 suppresses none
+
+doAppendString17 is call
+doAppendString17 in putStep
+doAppendString17 invokes buffer.appendString
+doAppendString17 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString17 argument text String indexStep lend
+doAppendString17 result none
+doAppendString17 ownedBy none
+doAppendString17 cleanedBy none
+doAppendString17 borrows none
+doAppendString17 catch none
+doAppendString17 suppresses none
+
+doPutWord5 is call
+doPutWord5 in putStep
+doPutWord5 invokes syntax.putWord
+doPutWord5 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord5 argument source String source lend
+doPutWord5 argument word syntax.Word label copy
+doPutWord5 result none
+doPutWord5 ownedBy none
+doPutWord5 cleanedBy none
+doPutWord5 borrows none
+doPutWord5 catch none
+doPutWord5 suppresses none
+
+doAppendString18 is call
+doAppendString18 in putStep
+doAppendString18 invokes buffer.appendString
+doAppendString18 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString18 argument text String indexEnd lend
+doAppendString18 result none
+doAppendString18 ownedBy none
+doAppendString18 cleanedBy none
+doAppendString18 borrows none
+doAppendString18 catch none
+doAppendString18 suppresses none
+
+putTableYes is call
+putTableYes in putStep
+putTableYes invokes putJump
+putTableYes argument buffer buffer.ByteBuffer buffer lendMutable
+putTableYes argument source String source lend
+putTableYes argument labels subset.Labels labels lend
+putTableYes argument from syntax.Word label copy
+putTableYes argument to syntax.Word target copy
+putTableYes result none
+putTableYes ownedBy none
+putTableYes cleanedBy none
+putTableYes borrows none
+putTableYes catch putTableYesError syntax.Rejection
+putTableYes suppresses none
+
+doAppendString19 is call
+doAppendString19 in putStep
+doAppendString19 invokes buffer.appendString
+doAppendString19 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString19 argument text String nextElse lend
+doAppendString19 result none
+doAppendString19 ownedBy none
+doAppendString19 cleanedBy none
+doAppendString19 borrows none
+doAppendString19 catch none
+doAppendString19 suppresses none
+
+putTableNo is call
+putTableNo in putStep
+putTableNo invokes putJump
+putTableNo argument buffer buffer.ByteBuffer buffer lendMutable
+putTableNo argument source String source lend
+putTableNo argument labels subset.Labels labels lend
+putTableNo argument from syntax.Word label copy
+putTableNo argument to syntax.Word otherwise copy
+putTableNo result none
+putTableNo ownedBy none
+putTableNo cleanedBy none
+putTableNo borrows none
+putTableNo catch putTableNoError syntax.Rejection
+putTableNo suppresses none
+
+doAppendString20 is call
+doAppendString20 in putStep
+doAppendString20 invokes buffer.appendString
+doAppendString20 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString20 argument text String newline lend
+doAppendString20 result none
+doAppendString20 ownedBy none
+doAppendString20 cleanedBy none
+doAppendString20 borrows none
+doAppendString20 catch none
+doAppendString20 suppresses none
+
+doAppendString21 is call
+doAppendString21 in putStep
+doAppendString21 invokes buffer.appendString
+doAppendString21 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString21 argument text String ifIndex lend
+doAppendString21 result none
+doAppendString21 ownedBy none
+doAppendString21 cleanedBy none
+doAppendString21 borrows none
+doAppendString21 catch none
+doAppendString21 suppresses none
+
+doPutWord6 is call
+doPutWord6 in putStep
+doPutWord6 invokes syntax.putWord
+doPutWord6 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord6 argument source String source lend
+doPutWord6 argument word syntax.Word label copy
+doPutWord6 result none
+doPutWord6 ownedBy none
+doPutWord6 cleanedBy none
+doPutWord6 borrows none
+doPutWord6 catch none
+doPutWord6 suppresses none
+
+doAppendString22 is call
+doAppendString22 in putStep
+doAppendString22 invokes buffer.appendString
+doAppendString22 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString22 argument text String less lend
+doAppendString22 result none
+doAppendString22 ownedBy none
+doAppendString22 cleanedBy none
+doAppendString22 borrows none
+doAppendString22 catch none
+doAppendString22 suppresses none
+
 putCollection is call
 putCollection in putStep
 putCollection invokes putValue
@@ -10361,17 +12445,17 @@ putCollection borrows none
 putCollection catch none
 putCollection suppresses none
 
-doAppendString14 is call
-doAppendString14 in putStep
-doAppendString14 invokes buffer.appendString
-doAppendString14 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString14 argument text String lengthOpen lend
-doAppendString14 result none
-doAppendString14 ownedBy none
-doAppendString14 cleanedBy none
-doAppendString14 borrows none
-doAppendString14 catch none
-doAppendString14 suppresses none
+doAppendString23 is call
+doAppendString23 in putStep
+doAppendString23 invokes buffer.appendString
+doAppendString23 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString23 argument text String lengthOpen lend
+doAppendString23 result none
+doAppendString23 ownedBy none
+doAppendString23 cleanedBy none
+doAppendString23 borrows none
+doAppendString23 catch none
+doAppendString23 suppresses none
 
 putItem is call
 putItem in putStep
@@ -10386,17 +12470,17 @@ putItem borrows none
 putItem catch none
 putItem suppresses none
 
-doAppendString15 is call
-doAppendString15 in putStep
-doAppendString15 invokes buffer.appendString
-doAppendString15 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString15 argument text String itemCast lend
-doAppendString15 result none
-doAppendString15 ownedBy none
-doAppendString15 cleanedBy none
-doAppendString15 borrows none
-doAppendString15 catch none
-doAppendString15 suppresses none
+doAppendString24 is call
+doAppendString24 in putStep
+doAppendString24 invokes buffer.appendString
+doAppendString24 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString24 argument text String itemCast lend
+doAppendString24 result none
+doAppendString24 ownedBy none
+doAppendString24 cleanedBy none
+doAppendString24 borrows none
+doAppendString24 catch none
+doAppendString24 suppresses none
 
 putItemType is call
 putItemType in putStep
@@ -10412,17 +12496,17 @@ putItemType borrows none
 putItemType catch putItemTypeError syntax.Rejection
 putItemType suppresses none
 
-doAppendString16 is call
-doAppendString16 in putStep
-doAppendString16 invokes buffer.appendString
-doAppendString16 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString16 argument text String itemData lend
-doAppendString16 result none
-doAppendString16 ownedBy none
-doAppendString16 cleanedBy none
-doAppendString16 borrows none
-doAppendString16 catch none
-doAppendString16 suppresses none
+doAppendString25 is call
+doAppendString25 in putStep
+doAppendString25 invokes buffer.appendString
+doAppendString25 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString25 argument text String itemData lend
+doAppendString25 result none
+doAppendString25 ownedBy none
+doAppendString25 cleanedBy none
+doAppendString25 borrows none
+doAppendString25 catch none
+doAppendString25 suppresses none
 
 putCollectionData is call
 putCollectionData in putStep
@@ -10437,67 +12521,67 @@ putCollectionData borrows none
 putCollectionData catch none
 putCollectionData suppresses none
 
-doAppendString17 is call
-doAppendString17 in putStep
-doAppendString17 invokes buffer.appendString
-doAppendString17 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString17 argument text String dataIndex lend
-doAppendString17 result none
-doAppendString17 ownedBy none
-doAppendString17 cleanedBy none
-doAppendString17 borrows none
-doAppendString17 catch none
-doAppendString17 suppresses none
+doAppendString26 is call
+doAppendString26 in putStep
+doAppendString26 invokes buffer.appendString
+doAppendString26 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString26 argument text String dataIndex lend
+doAppendString26 result none
+doAppendString26 ownedBy none
+doAppendString26 cleanedBy none
+doAppendString26 borrows none
+doAppendString26 catch none
+doAppendString26 suppresses none
 
-doPutWord3 is call
-doPutWord3 in putStep
-doPutWord3 invokes syntax.putWord
-doPutWord3 argument buffer buffer.ByteBuffer buffer lendMutable
-doPutWord3 argument source String source lend
-doPutWord3 argument word syntax.Word label copy
-doPutWord3 result none
-doPutWord3 ownedBy none
-doPutWord3 cleanedBy none
-doPutWord3 borrows none
-doPutWord3 catch none
-doPutWord3 suppresses none
+doPutWord7 is call
+doPutWord7 in putStep
+doPutWord7 invokes syntax.putWord
+doPutWord7 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord7 argument source String source lend
+doPutWord7 argument word syntax.Word label copy
+doPutWord7 result none
+doPutWord7 ownedBy none
+doPutWord7 cleanedBy none
+doPutWord7 borrows none
+doPutWord7 catch none
+doPutWord7 suppresses none
 
-doAppendString18 is call
-doAppendString18 in putStep
-doAppendString18 invokes buffer.appendString
-doAppendString18 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString18 argument text String indexStep lend
-doAppendString18 result none
-doAppendString18 ownedBy none
-doAppendString18 cleanedBy none
-doAppendString18 borrows none
-doAppendString18 catch none
-doAppendString18 suppresses none
+doAppendString27 is call
+doAppendString27 in putStep
+doAppendString27 invokes buffer.appendString
+doAppendString27 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString27 argument text String indexStep lend
+doAppendString27 result none
+doAppendString27 ownedBy none
+doAppendString27 cleanedBy none
+doAppendString27 borrows none
+doAppendString27 catch none
+doAppendString27 suppresses none
 
-doPutWord4 is call
-doPutWord4 in putStep
-doPutWord4 invokes syntax.putWord
-doPutWord4 argument buffer buffer.ByteBuffer buffer lendMutable
-doPutWord4 argument source String source lend
-doPutWord4 argument word syntax.Word label copy
-doPutWord4 result none
-doPutWord4 ownedBy none
-doPutWord4 cleanedBy none
-doPutWord4 borrows none
-doPutWord4 catch none
-doPutWord4 suppresses none
+doPutWord8 is call
+doPutWord8 in putStep
+doPutWord8 invokes syntax.putWord
+doPutWord8 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord8 argument source String source lend
+doPutWord8 argument word syntax.Word label copy
+doPutWord8 result none
+doPutWord8 ownedBy none
+doPutWord8 cleanedBy none
+doPutWord8 borrows none
+doPutWord8 catch none
+doPutWord8 suppresses none
 
-doAppendString19 is call
-doAppendString19 in putStep
-doAppendString19 invokes buffer.appendString
-doAppendString19 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString19 argument text String indexEnd lend
-doAppendString19 result none
-doAppendString19 ownedBy none
-doAppendString19 cleanedBy none
-doAppendString19 borrows none
-doAppendString19 catch none
-doAppendString19 suppresses none
+doAppendString28 is call
+doAppendString28 in putStep
+doAppendString28 invokes buffer.appendString
+doAppendString28 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString28 argument text String indexEnd lend
+doAppendString28 result none
+doAppendString28 ownedBy none
+doAppendString28 cleanedBy none
+doAppendString28 borrows none
+doAppendString28 catch none
+doAppendString28 suppresses none
 
 putNextYes is call
 putNextYes in putStep
@@ -10514,17 +12598,17 @@ putNextYes borrows none
 putNextYes catch putNextYesError syntax.Rejection
 putNextYes suppresses none
 
-doAppendString20 is call
-doAppendString20 in putStep
-doAppendString20 invokes buffer.appendString
-doAppendString20 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString20 argument text String nextElse lend
-doAppendString20 result none
-doAppendString20 ownedBy none
-doAppendString20 cleanedBy none
-doAppendString20 borrows none
-doAppendString20 catch none
-doAppendString20 suppresses none
+doAppendString29 is call
+doAppendString29 in putStep
+doAppendString29 invokes buffer.appendString
+doAppendString29 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString29 argument text String nextElse lend
+doAppendString29 result none
+doAppendString29 ownedBy none
+doAppendString29 cleanedBy none
+doAppendString29 borrows none
+doAppendString29 catch none
+doAppendString29 suppresses none
 
 putNextNo is call
 putNextNo in putStep
@@ -10541,17 +12625,17 @@ putNextNo borrows none
 putNextNo catch putNextNoError syntax.Rejection
 putNextNo suppresses none
 
-doAppendString21 is call
-doAppendString21 in putStep
-doAppendString21 invokes buffer.appendString
-doAppendString21 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString21 argument text String newline lend
-doAppendString21 result none
-doAppendString21 ownedBy none
-doAppendString21 cleanedBy none
-doAppendString21 borrows none
-doAppendString21 catch none
-doAppendString21 suppresses none
+doAppendString30 is call
+doAppendString30 in putStep
+doAppendString30 invokes buffer.appendString
+doAppendString30 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString30 argument text String newline lend
+doAppendString30 result none
+doAppendString30 ownedBy none
+doAppendString30 cleanedBy none
+doAppendString30 borrows none
+doAppendString30 catch none
+doAppendString30 suppresses none
 
 readMember is call
 readMember in putStep
@@ -10610,17 +12694,17 @@ readNarrow borrows none
 readNarrow catch none
 readNarrow suppresses none
 
-doAppendString22 is call
-doAppendString22 in putStep
-doAppendString22 invokes buffer.appendString
-doAppendString22 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString22 argument text String ifValue lend
-doAppendString22 result none
-doAppendString22 ownedBy none
-doAppendString22 cleanedBy none
-doAppendString22 borrows none
-doAppendString22 catch none
-doAppendString22 suppresses none
+doAppendString31 is call
+doAppendString31 in putStep
+doAppendString31 invokes buffer.appendString
+doAppendString31 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString31 argument text String ifValue lend
+doAppendString31 result none
+doAppendString31 ownedBy none
+doAppendString31 cleanedBy none
+doAppendString31 borrows none
+doAppendString31 catch none
+doAppendString31 suppresses none
 
 putMatched is call
 putMatched in putStep
@@ -10635,41 +12719,41 @@ putMatched borrows none
 putMatched catch none
 putMatched suppresses none
 
-doAppendString23 is call
-doAppendString23 in putStep
-doAppendString23 invokes buffer.appendString
-doAppendString23 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString23 argument text String tagTest lend
-doAppendString23 result none
-doAppendString23 ownedBy none
-doAppendString23 cleanedBy none
-doAppendString23 borrows none
-doAppendString23 catch none
-doAppendString23 suppresses none
+doAppendString32 is call
+doAppendString32 in putStep
+doAppendString32 invokes buffer.appendString
+doAppendString32 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString32 argument text String tagTest lend
+doAppendString32 result none
+doAppendString32 ownedBy none
+doAppendString32 cleanedBy none
+doAppendString32 borrows none
+doAppendString32 catch none
+doAppendString32 suppresses none
 
-doAppendInt64 is call
-doAppendInt64 in putStep
-doAppendInt64 invokes buffer.appendInt64
-doAppendInt64 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendInt64 argument value Int64 tag copy
-doAppendInt64 result none
-doAppendInt64 ownedBy none
-doAppendInt64 cleanedBy none
-doAppendInt64 borrows none
-doAppendInt64 catch none
-doAppendInt64 suppresses none
+doAppendInt642 is call
+doAppendInt642 in putStep
+doAppendInt642 invokes buffer.appendInt64
+doAppendInt642 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendInt642 argument value Int64 tag copy
+doAppendInt642 result none
+doAppendInt642 ownedBy none
+doAppendInt642 cleanedBy none
+doAppendInt642 borrows none
+doAppendInt642 catch none
+doAppendInt642 suppresses none
 
-doAppendString24 is call
-doAppendString24 in putStep
-doAppendString24 invokes buffer.appendString
-doAppendString24 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString24 argument text String caseOpen lend
-doAppendString24 result none
-doAppendString24 ownedBy none
-doAppendString24 cleanedBy none
-doAppendString24 borrows none
-doAppendString24 catch none
-doAppendString24 suppresses none
+doAppendString33 is call
+doAppendString33 in putStep
+doAppendString33 invokes buffer.appendString
+doAppendString33 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString33 argument text String caseOpen lend
+doAppendString33 result none
+doAppendString33 ownedBy none
+doAppendString33 cleanedBy none
+doAppendString33 borrows none
+doAppendString33 catch none
+doAppendString33 suppresses none
 
 bindCheck is call
 bindCheck in putStep
@@ -10696,17 +12780,17 @@ putBind borrows none
 putBind catch none
 putBind suppresses none
 
-doAppendString25 is call
-doAppendString25 in putStep
-doAppendString25 invokes buffer.appendString
-doAppendString25 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString25 argument text String assign lend
-doAppendString25 result none
-doAppendString25 ownedBy none
-doAppendString25 cleanedBy none
-doAppendString25 borrows none
-doAppendString25 catch none
-doAppendString25 suppresses none
+doAppendString34 is call
+doAppendString34 in putStep
+doAppendString34 invokes buffer.appendString
+doAppendString34 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString34 argument text String assign lend
+doAppendString34 result none
+doAppendString34 ownedBy none
+doAppendString34 cleanedBy none
+doAppendString34 borrows none
+doAppendString34 catch none
+doAppendString34 suppresses none
 
 putNarrow is call
 putNarrow in putStep
@@ -10747,42 +12831,42 @@ readPayloadName borrows none
 readPayloadName catch none
 readPayloadName suppresses none
 
-doAppendString26 is call
-doAppendString26 in putStep
-doAppendString26 invokes buffer.appendString
-doAppendString26 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString26 argument text String payloadPrefix lend
-doAppendString26 result none
-doAppendString26 ownedBy none
-doAppendString26 cleanedBy none
-doAppendString26 borrows none
-doAppendString26 catch none
-doAppendString26 suppresses none
+doAppendString35 is call
+doAppendString35 in putStep
+doAppendString35 invokes buffer.appendString
+doAppendString35 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString35 argument text String payloadPrefix lend
+doAppendString35 result none
+doAppendString35 ownedBy none
+doAppendString35 cleanedBy none
+doAppendString35 borrows none
+doAppendString35 catch none
+doAppendString35 suppresses none
 
-doPutWord5 is call
-doPutWord5 in putStep
-doPutWord5 invokes syntax.putWord
-doPutWord5 argument buffer buffer.ByteBuffer buffer lendMutable
-doPutWord5 argument source String source lend
-doPutWord5 argument word syntax.Word payloadName copy
-doPutWord5 result none
-doPutWord5 ownedBy none
-doPutWord5 cleanedBy none
-doPutWord5 borrows none
-doPutWord5 catch none
-doPutWord5 suppresses none
+doPutWord9 is call
+doPutWord9 in putStep
+doPutWord9 invokes syntax.putWord
+doPutWord9 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord9 argument source String source lend
+doPutWord9 argument word syntax.Word payloadName copy
+doPutWord9 result none
+doPutWord9 ownedBy none
+doPutWord9 cleanedBy none
+doPutWord9 borrows none
+doPutWord9 catch none
+doPutWord9 suppresses none
 
-doAppendString27 is call
-doAppendString27 in putStep
-doAppendString27 invokes buffer.appendString
-doAppendString27 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString27 argument text String semicolon lend
-doAppendString27 result none
-doAppendString27 ownedBy none
-doAppendString27 cleanedBy none
-doAppendString27 borrows none
-doAppendString27 catch none
-doAppendString27 suppresses none
+doAppendString36 is call
+doAppendString36 in putStep
+doAppendString36 invokes buffer.appendString
+doAppendString36 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString36 argument text String semicolon lend
+doAppendString36 result none
+doAppendString36 ownedBy none
+doAppendString36 cleanedBy none
+doAppendString36 borrows none
+doAppendString36 catch none
+doAppendString36 suppresses none
 
 putCaseJump is call
 putCaseJump in putStep
@@ -10799,17 +12883,17 @@ putCaseJump borrows none
 putCaseJump catch putCaseJumpError syntax.Rejection
 putCaseJump suppresses none
 
-doAppendString28 is call
-doAppendString28 in putStep
-doAppendString28 invokes buffer.appendString
-doAppendString28 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString28 argument text String caseClose lend
-doAppendString28 result none
-doAppendString28 ownedBy none
-doAppendString28 cleanedBy none
-doAppendString28 borrows none
-doAppendString28 catch none
-doAppendString28 suppresses none
+doAppendString37 is call
+doAppendString37 in putStep
+doAppendString37 invokes buffer.appendString
+doAppendString37 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString37 argument text String caseClose lend
+doAppendString37 result none
+doAppendString37 ownedBy none
+doAppendString37 cleanedBy none
+doAppendString37 borrows none
+doAppendString37 catch none
+doAppendString37 suppresses none
 
 writeReturn is call
 writeReturn in putStep
@@ -12626,8 +14710,12 @@ putModuleTypes in emitModule
 putModuleTypes invokes putTypes
 putModuleTypes argument buffer buffer.ByteBuffer buffer lendMutable
 putModuleTypes argument source String source lend
+putModuleTypes argument words syntax.Words words lend
+putModuleTypes argument rows syntax.Rows rows lend
+putModuleTypes argument entities model.Entities entities lend
 putModuleTypes argument types subset.Types types lend
 putModuleTypes argument members subset.Members members lend
+putModuleTypes argument targets subset.Targets targets lend
 putModuleTypes result none
 putModuleTypes ownedBy none
 putModuleTypes cleanedBy none

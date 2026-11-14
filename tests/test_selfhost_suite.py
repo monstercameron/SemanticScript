@@ -28,7 +28,7 @@ LINK = [os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "nat
     (["-lshell32"] if os.name == "nt" else [])
 EXE = ".exe" if os.name == "nt" else ""
 # the number of suite programs the self-hosted compiler builds correctly; raise it as the subset grows
-COVERAGE_FLOOR = 11
+COVERAGE_FLOOR = 12
 _LOCATED = re.compile(r"^[^\n:]+\.sem:\d+:\d+: .+\n$")
 
 

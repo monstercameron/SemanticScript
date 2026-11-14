@@ -35,6 +35,7 @@ SAMPLES = {
     "outofrange": ("2\n", 70),
     "strings": ("brown\nbyte: 113\nlength: 19\nquick brown fox 42\nequal: true\nfox at 16\nno cat\nlimit: 3\n", 0),
     "buffers": ("total: 42!\nlength: 10\nparsed: 1234\nnot a number\ndigit, letter\nround trip: abc\n", 0),
+    "tables": ("Mercury 0\nVenus 0\nEarth 1\nMars 2\nmoons: 3\nrows: 4\nrocky: Venus\nno row 5\n", 0),
 }
 OUTSIDE = "samples/outside/outside.sem:12:11: this entity kind is outside the stage0 subset (alias)\n"
 

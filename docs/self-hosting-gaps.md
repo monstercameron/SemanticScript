@@ -24,8 +24,8 @@ moved as follows (decisions in `docs/language-refinement.md`):
 | 10: integer types | Done: every integer type computes | D-90 |
 | 11: layered generics, sets of `String` | Done | D-92 to D-94 |
 | 15: chunked native arena | Done | D-80 to D-85 |
-| 12, 13: the compiler in the language and its C emitter | Stage 0 done: `docs/refined-examples/stage0` compiles a subset (one `main`, `Int64`/`String`/`Bool`/`ExitCode` lets, 22 targets, every step and loop kind but `forEach`) to C and builds it | `tests/test_stage0.py` |
-| 14: the bootstrap | First step done: stage0 builds as a standalone executable and writes the same C, byte for byte, as under `refined run` (about 0.5 s per sample against 12 s); widening the subset until stage0 compiles itself remains | `tests/test_stage0.py` |
+| 12, 13: the compiler in the language and its C emitter | Stages 0 to 2 done (docs/self-hosting-plan.md): `docs/refined-examples/stage0` compiles one module of operations calling each other, records, enums with payloads, `match`, `raises`, lists, tables, tasks, and 65 library targets (17 of them host targets through `refined_host`) to C linked with `native_runtime.c` | `tests/test_stage0.py`, `tests/test_selfhost_suite.py` |
+| 14: the bootstrap | First step done: stage0 builds as a standalone executable and writes the same C, byte for byte, as under `refined run` (about 0.1 s of its own per sample, plus the C compiler, against about 36 s under `refined run`); widening the subset until stage0 compiles itself remains | `tests/test_stage0.py` |
 
 An adversarial review of the new collection and tooling rules then found nine holes. All are closed and each has
 a regression check (D-107 to D-109; `tests/suite/conformance.py`, `tests/test_review.py`).

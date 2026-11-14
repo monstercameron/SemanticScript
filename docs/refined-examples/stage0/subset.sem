@@ -5,27 +5,33 @@
 # - checkDeclarations reads every entity. Types are numbered: the built-in
 #   types 1 to 6 (String, Int64, ExitCode, Bool, Byte, Region), the standard
 #   error types together as 7 (a caught standard error can only be branched
-#   on), and the module's records, enums, and `list.List` typeInstances from 8
-#   in source order. Record fields and enum variants become members; every
-#   standard library target the subset compiles (the `builtinTargets` table),
-#   every operation, every record constructor and field reader, every variant
-#   constructor, and every list member becomes a call target with its argument
-#   slots, types, and passing modes, its result type, and what it raises. Each
-#   call and region is tied to the operation its `in` row names.
+#   on), the host library's handles and `Bytes` 8 to 11 (ByteBuffer,
+#   process.Arguments, time.Deadline, Bytes), and the module's records, enums,
+#   `list.List` typeInstances, and tables from 12 in source order. Record
+#   fields and enum variants become members; every standard library target the
+#   subset compiles (the `builtinTargets` table), every operation, every record
+#   constructor and field reader, every variant constructor, every list member,
+#   and every table's `rowAt` and `length` becomes a call target with its
+#   argument slots, types, and passing modes, its result type, and what it
+#   raises. Each call, task, and region is tied to the operation its `in` row
+#   names.
 # - checkOperation reads one operation: its inputs, lets, labels, and regions,
 #   the values its steps bind (`branch ifNext` items, `case` payloads), each of
 #   its calls against the call's target, and each step in order.
 #
 # The subset: a module of constants (built-in types, literal values),
-# records, enums with payloads, lists, and operations with copied, borrowed,
+# records, enums with payloads, lists, tables of records (cells are literals
+# or variants without payload), and operations with copied, borrowed,
 # and borrowedMutable inputs, one output (or none), an output owned by a region
 # input, `raises none` or an enum of the module, `maxRecursion` on recursive
 # operations, and regions. main takes no input, gives an ExitCode, and raises
-# nothing. Steps: `do`, `set`, `goto`, `branch if`, `branch ifError`,
-# `branch ifNext` over a list in a forEach loop, `match` and `case` on an enum
-# of the module, `return ok`, and `return error`. Labels may be loops of any
-# kind; `maxIterations` is kept so the emitted program traps where `refined
-# run` would. A type held by value in a record or enum (or a list's item) must
+# nothing; an `async true` operation is compiled like any other, and a task
+# runs when it is started, as in an executable (D-37). Steps: `do`, `set`,
+# `goto`, `branch if`, `branch ifError`, `branch ifNext` over a list or a
+# table in a forEach loop, `match` and `case` on an enum of the module,
+# `return ok`, `return error`, `start <task> into none`, and `join`. Labels
+# may be loops of any kind; `maxIterations` is kept so the emitted program
+# traps where `refined run` would. A type held by value in a record or enum (or a list's item) must
 # be declared above the type holding it, so the C structs follow source order.
 #
 # What is checked: every row's predicate is one the subset reads, on an entity
@@ -145,6 +151,9 @@ Predicate variant suppressesRow none
 Predicate variant strategyRow none
 Predicate variant maxBytesRow none
 Predicate variant releasedRow none
+Predicate variant rowTypeRow none
+Predicate variant rowRow none
+Predicate variant cellRow none
 
 PredicateRow is record
 PredicateRow purpose "A predicate word and what it states"
@@ -208,6 +217,8 @@ TargetKind variant listAppend none
 TargetKind variant listLength none
 TargetKind variant listGet none
 TargetKind variant listGetOrTrap none
+TargetKind variant tableRowAt none
+TargetKind variant tableLength none
 
 BuiltinRow is record
 BuiltinRow purpose "A standard library target the subset compiles: up to three argument slots with their types (numbered as the types table numbers them) and passing modes (1 copy, 2 lend, 3 lendMutable, 4 give), its result type (0 for none), and its error (raises 7, a standard error, with the error type's name; 0 when it cannot fail)"
@@ -330,6 +341,9 @@ predicateWords row suppressesWord 38
 predicateWords row strategyWord 39
 predicateWords row maxBytesWord 40
 predicateWords row releasedWord 41
+predicateWords row rowTypeWord 42
+predicateWords row rowWord 43
+predicateWords row cellWord 44
 predicateWords cell purposeWord text "purpose"
 predicateWords cell purposeWord predicate Predicate.contextRow
 predicateWords cell invariantWord text "invariant"
@@ -412,6 +426,12 @@ predicateWords cell maxBytesWord text "maxBytes"
 predicateWords cell maxBytesWord predicate Predicate.maxBytesRow
 predicateWords cell releasedWord text "released"
 predicateWords cell releasedWord predicate Predicate.releasedRow
+predicateWords cell rowTypeWord text "rowType"
+predicateWords cell rowTypeWord predicate Predicate.rowTypeRow
+predicateWords cell rowWord text "row"
+predicateWords cell rowWord predicate Predicate.rowRow
+predicateWords cell cellWord text "cell"
+predicateWords cell cellWord predicate Predicate.cellRow
 
 stepWords is table
 stepWords purpose "The step words of the stage0 subset (`branch` and `return` are refined by the word after them)"
@@ -1481,7 +1501,7 @@ builtinTargets cell logErrorTarget error "log.LogError"
 
 # ---------------------------------------------------------------- what the checker collects
 TypeInfo is record
-TypeInfo purpose "A type: built in (codes 1 to 6), the standard errors (7), or declared by the module (8 on). kind: 1 built in, 2 standard error, 3 record, 4 enum, 5 list. A list keeps its item type; a record or enum its first member and how many it has; an enum whether it is narrow (stored as a tag and one Int64) and whether no variant carries a payload"
+TypeInfo purpose "A type: built in (codes 1 to 11, 7 the standard errors), or declared by the module (12 on). kind: 1 built in, 2 standard error, 3 record, 4 enum, 5 list, 6 table. A list keeps its item type and a table its row type; a record or enum its first member and how many it has, a table its entity's position and how many rows it has; an enum whether it is narrow (stored as a tag and one Int64) and whether no variant carries a payload"
 TypeInfo typeParameter none
 TypeInfo field name syntax.Word
 TypeInfo field kind Int64
@@ -1675,7 +1695,7 @@ lookupPredicate label begin loopKind none
 lookupPredicate label begin within none
 lookupPredicate label scan loopKind forEach
 lookupPredicate label scan within none
-lookupPredicate label scan maxIterations 41
+lookupPredicate label scan maxIterations 44
 lookupPredicate label scan over predicateWords
 lookupPredicate label compare loopKind none
 lookupPredicate label compare within scan
@@ -3927,6 +3947,8 @@ declareNames label kindEnum loopKind none
 declareNames label kindEnum within eachEntity
 declareNames label kindList loopKind none
 declareNames label kindList within eachEntity
+declareNames label kindTable loopKind none
+declareNames label kindTable within eachEntity
 declareNames label enterType loopKind none
 declareNames label enterType within eachEntity
 declareNames label done loopKind none
@@ -3942,13 +3964,14 @@ declareNames let typeKind Int64 0 mutable
 declareNames let three Int64 3 immutable
 declareNames let four Int64 4 immutable
 declareNames let five Int64 5 immutable
+declareNames let six Int64 6 immutable
 declareNames let no Bool false immutable
 declareNames let yes Bool true immutable
 declareNames let zero Int64 0 immutable
 declareNames let one Int64 1 immutable
-declareNames let six Int64 6 immutable
 declareNames let seven Int64 7 immutable
 declareNames let eight Int64 8 immutable
+declareNames let eleven Int64 11 immutable
 declareNames at begin do makePlaceholder
 declareNames at begin do countEntities
 declareNames at begin goto eachBuiltin
@@ -3975,7 +3998,9 @@ declareNames at copyOperationNameDone goto eachEntity
 declareNames at typeCheck do recordCheck
 declareNames at typeCheck do enumCheck
 declareNames at typeCheck do listCheck
+declareNames at typeCheck do tableCheck
 declareNames at typeCheck do eitherCheck
+declareNames at typeCheck do listOrTable
 declareNames at typeCheck do anyCheck
 declareNames at typeCheck branch if isType goto numberType else goto eachEntity
 declareNames at numberType do copyTypeName
@@ -3987,7 +4012,9 @@ declareNames at kindRecord branch if isRecord goto enterType else goto kindEnum
 declareNames at kindEnum set typeKind four
 declareNames at kindEnum branch if isEnum goto enterType else goto kindList
 declareNames at kindList set typeKind five
-declareNames at kindList goto enterType
+declareNames at kindList branch if isList goto enterType else goto kindTable
+declareNames at kindTable set typeKind six
+declareNames at kindTable goto enterType
 declareNames at enterType do makeType
 declareNames at enterType do appendType
 declareNames at enterType do countTypes
@@ -4217,6 +4244,18 @@ listCheck borrows none
 listCheck catch none
 listCheck suppresses none
 
+tableCheck is call
+tableCheck in declareNames
+tableCheck invokes compare.equalInt64
+tableCheck argument left Int64 kind copy
+tableCheck argument right Int64 eleven copy
+tableCheck result isTable Bool
+tableCheck ownedBy none
+tableCheck cleanedBy none
+tableCheck borrows none
+tableCheck catch none
+tableCheck suppresses none
+
 eitherCheck is call
 eitherCheck in declareNames
 eitherCheck invokes logic.or
@@ -4229,11 +4268,23 @@ eitherCheck borrows none
 eitherCheck catch none
 eitherCheck suppresses none
 
+listOrTable is call
+listOrTable in declareNames
+listOrTable invokes logic.or
+listOrTable argument left Bool isList copy
+listOrTable argument right Bool isTable copy
+listOrTable result collection Bool
+listOrTable ownedBy none
+listOrTable cleanedBy none
+listOrTable borrows none
+listOrTable catch none
+listOrTable suppresses none
+
 anyCheck is call
 anyCheck in declareNames
 anyCheck invokes logic.or
 anyCheck argument left Bool recordOrEnum copy
-anyCheck argument right Bool isList copy
+anyCheck argument right Bool collection copy
 anyCheck result isType Bool
 anyCheck ownedBy none
 anyCheck cleanedBy none
@@ -4796,6 +4847,9 @@ declareModule at findPredicateDone case Predicate.suppressesRow bind none none g
 declareModule at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareModule at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareModule at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareModule at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareModule at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareModule at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareModule at finish return ok none
 declareModule at nextRow do advanceRow
 declareModule at nextRow set rowIndex nextIndex
@@ -5005,6 +5059,9 @@ declareCapability at findPredicateDone case Predicate.suppressesRow bind none no
 declareCapability at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareCapability at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareCapability at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareCapability at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareCapability at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareCapability at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareCapability at finish return ok none
 declareCapability at nextRow do advanceRow
 declareCapability at nextRow set rowIndex nextIndex
@@ -5257,6 +5314,9 @@ declareConstant at findPredicateDone case Predicate.suppressesRow bind none none
 declareConstant at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareConstant at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareConstant at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareConstant at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareConstant at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareConstant at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareConstant at typeFact do readTypePayload
 declareConstant at typeFact do typeShape
 declareConstant at typeFact branch ifError typeShape goto typeShapeFailed else goto typeShapeDone
@@ -5757,6 +5817,9 @@ declareRecord at findPredicateDone case Predicate.suppressesRow bind none none g
 declareRecord at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareRecord at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareRecord at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareRecord at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareRecord at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareRecord at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareRecord at noParameter do fixedNone
 declareRecord at noParameter branch ifError fixedNone goto fixedNoneFailed else goto fixedNoneDone
 declareRecord at fixedNoneDone goto nextRow
@@ -7326,6 +7389,9 @@ declareEnum at findPredicateDone case Predicate.suppressesRow bind none none got
 declareEnum at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareEnum at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareEnum at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareEnum at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareEnum at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareEnum at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareEnum at noParameter do fixedNone
 declareEnum at noParameter branch ifError fixedNone goto fixedNoneFailed else goto fixedNoneDone
 declareEnum at fixedNoneDone goto nextRow
@@ -8326,6 +8392,9 @@ declareInstance at findPredicateDone case Predicate.suppressesRow bind none none
 declareInstance at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareInstance at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareInstance at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareInstance at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareInstance at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareInstance at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareInstance at noOwner do fixedNone
 declareInstance at noOwner branch ifError fixedNone goto fixedNoneFailed else goto fixedNoneDone
 declareInstance at fixedNoneDone goto nextRow
@@ -9300,6 +9369,1359 @@ enterTrap borrows none
 enterTrap catch enterTrapError syntax.Rejection
 enterTrap suppresses none
 
+lookupMember is operation
+lookupMember purpose "Find the member of a record or enum a word names, by its position in the members list"
+lookupMember invariant none
+lookupMember typeParameter none
+lookupMember input source String borrowed
+lookupMember input types Types borrowed
+lookupMember input members Members borrowed
+lookupMember input code Int64 copied
+lookupMember input word syntax.Word copied
+lookupMember output Int64
+lookupMember outputOwnedBy none
+lookupMember raises syntax.Rejection
+lookupMember effect none
+lookupMember uses none
+lookupMember memoryHeap false
+lookupMember async false
+lookupMember maxRecursion none
+lookupMember label begin loopKind none
+lookupMember label begin within none
+lookupMember label eachMember loopKind while
+lookupMember label eachMember within none
+lookupMember label eachMember maxIterations count
+lookupMember label readMember loopKind none
+lookupMember label readMember within eachMember
+lookupMember label sameCheckDone loopKind none
+lookupMember label sameCheckDone within eachMember
+lookupMember label found loopKind none
+lookupMember label found within none
+lookupMember label missing loopKind none
+lookupMember label missing within none
+lookupMember label sameCheckFailed loopKind none
+lookupMember label sameCheckFailed within none
+lookupMember let index Int64 0 mutable
+lookupMember let one Int64 1 immutable
+lookupMember at begin do readInfo
+lookupMember at begin do readFirst
+lookupMember at begin do readCount
+lookupMember at begin goto eachMember
+lookupMember at eachMember do doneCheck
+lookupMember at eachMember branch if allSeen goto missing else goto readMember
+lookupMember at readMember do findIndex
+lookupMember at readMember do readMemberInfo
+lookupMember at readMember do readName
+lookupMember at readMember do sameCheck
+lookupMember at readMember branch ifError sameCheck goto sameCheckFailed else goto sameCheckDone
+lookupMember at sameCheckDone do countMember
+lookupMember at sameCheckDone set index nextIndex
+lookupMember at sameCheckDone branch if same goto found else goto eachMember
+lookupMember at found return ok memberIndex
+lookupMember at missing do makeMissing
+lookupMember at missing return error missingError
+lookupMember at sameCheckFailed return error sameCheckError
+
+readInfo is call
+readInfo in lookupMember
+readInfo invokes typeInfoOf
+readInfo argument types Types types lend
+readInfo argument code Int64 code copy
+readInfo result info TypeInfo
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch none
+readInfo suppresses none
+
+readFirst is call
+readFirst in lookupMember
+readFirst invokes TypeInfo.first
+readFirst argument record TypeInfo info copy
+readFirst result first Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readCount is call
+readCount in lookupMember
+readCount invokes TypeInfo.count
+readCount argument record TypeInfo info copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doneCheck is call
+doneCheck in lookupMember
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 index copy
+doneCheck argument right Int64 count copy
+doneCheck result allSeen Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findIndex is call
+findIndex in lookupMember
+findIndex invokes math.addInt64
+findIndex argument left Int64 first copy
+findIndex argument right Int64 index copy
+findIndex result memberIndex Int64
+findIndex ownedBy none
+findIndex cleanedBy none
+findIndex borrows none
+findIndex catch none
+findIndex suppresses none
+
+readMemberInfo is call
+readMemberInfo in lookupMember
+readMemberInfo invokes Members.getOrTrap
+readMemberInfo argument list Members members lend
+readMemberInfo argument index Int64 memberIndex copy
+readMemberInfo result member MemberInfo
+readMemberInfo ownedBy none
+readMemberInfo cleanedBy none
+readMemberInfo borrows none
+readMemberInfo catch none
+readMemberInfo suppresses none
+
+readName is call
+readName in lookupMember
+readName invokes MemberInfo.name
+readName argument record MemberInfo member copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+sameCheck is call
+sameCheck in lookupMember
+sameCheck invokes syntax.sameText
+sameCheck argument source String source lend
+sameCheck argument left syntax.Word name copy
+sameCheck argument right syntax.Word word copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch sameCheckError syntax.Rejection
+sameCheck suppresses none
+
+countMember is call
+countMember in lookupMember
+countMember invokes math.addInt64
+countMember argument left Int64 index copy
+countMember argument right Int64 one copy
+countMember result nextIndex Int64
+countMember ownedBy none
+countMember cleanedBy none
+countMember borrows none
+countMember catch none
+countMember suppresses none
+
+makeMissing is call
+makeMissing in lookupMember
+makeMissing invokes syntax.Rejection.unsupportedPayload
+makeMissing argument payload syntax.Word word copy
+makeMissing result missingError syntax.Rejection
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+checkCell is operation
+checkCell purpose "Check a table cell: the field it fills belongs to the row type, and its value is a literal of the field's type or a variant without payload of the field's enum"
+checkCell invariant none
+checkCell typeParameter none
+checkCell input source String borrowed
+checkCell input words syntax.Words borrowed
+checkCell input row syntax.Row copied
+checkCell input rowType Int64 copied
+checkCell input types Types borrowed
+checkCell input members Members borrowed
+checkCell input targets Targets borrowed
+checkCell output none
+checkCell outputOwnedBy none
+checkCell raises syntax.Rejection
+checkCell effect none
+checkCell uses none
+checkCell memoryHeap false
+checkCell async false
+checkCell maxRecursion none
+checkCell label begin loopKind none
+checkCell label begin within none
+checkCell label cellShapeDone loopKind none
+checkCell label cellShapeDone within none
+checkCell label findFieldDone loopKind none
+checkCell label findFieldDone within none
+checkCell label literalCell loopKind none
+checkCell label literalCell within none
+checkCell label checkLiteralDone loopKind none
+checkCell label checkLiteralDone within none
+checkCell label variantCell loopKind none
+checkCell label variantCell within none
+checkCell label cutVariantTextDone loopKind none
+checkCell label cutVariantTextDone within none
+checkCell label findVariantDone loopKind none
+checkCell label findVariantDone within none
+checkCell label variantOwner loopKind none
+checkCell label variantOwner within none
+checkCell label done loopKind none
+checkCell label done within none
+checkCell label badVariant loopKind none
+checkCell label badVariant within none
+checkCell label outside loopKind none
+checkCell label outside within none
+checkCell label cellShapeFailed loopKind none
+checkCell label cellShapeFailed within none
+checkCell label findFieldFailed loopKind none
+checkCell label findFieldFailed within none
+checkCell label checkLiteralFailed loopKind none
+checkCell label checkLiteralFailed within none
+checkCell let two Int64 2 immutable
+checkCell let five Int64 5 immutable
+checkCell let three Int64 3 immutable
+checkCell let four Int64 4 immutable
+checkCell let zero Int64 0 immutable
+checkCell at begin do readCellRow
+checkCell at begin do cellShape
+checkCell at begin branch ifError cellShape goto cellShapeFailed else goto cellShapeDone
+checkCell at cellShapeDone do readFieldWord
+checkCell at cellShapeDone do readValueWord
+checkCell at cellShapeDone do findField
+checkCell at cellShapeDone branch ifError findField goto findFieldFailed else goto findFieldDone
+checkCell at findFieldDone do readField
+checkCell at findFieldDone do readFieldType
+checkCell at findFieldDone do readFieldInfo
+checkCell at findFieldDone do readFieldKind
+checkCell at findFieldDone do enumCheck
+checkCell at findFieldDone branch if isEnum goto variantCell else goto literalCell
+checkCell at literalCell do readLiteral
+checkCell at literalCell do checkLiteral
+checkCell at literalCell branch ifError checkLiteral goto checkLiteralFailed else goto checkLiteralDone
+checkCell at checkLiteralDone return ok none
+checkCell at variantCell do readVariantTextStart
+checkCell at variantCell do readVariantTextOffset
+checkCell at variantCell do readVariantTextLength
+checkCell at variantCell do cutVariantText
+checkCell at variantCell branch ifError cutVariantText goto outside else goto cutVariantTextDone
+checkCell at cutVariantTextDone do findVariant
+checkCell at cutVariantTextDone branch ifError findVariant goto badVariant else goto findVariantDone
+checkCell at findVariantDone do readVariantKind
+checkCell at findVariantDone do readOwner
+checkCell at findVariantDone do readCount
+checkCell at findVariantDone match variantKind TargetKind
+checkCell at findVariantDone case TargetKind.variantMake bind none none goto variantOwner
+checkCell at findVariantDone case TargetKind.builtin bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.operation bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.recordNew bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.fieldRead bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.listNew bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.listAppend bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.listLength bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.listGet bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.listGetOrTrap bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.tableRowAt bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.tableLength bind none none goto badVariant
+checkCell at variantOwner do ownerCheck
+checkCell at variantOwner do bareCheck
+checkCell at variantOwner do bothCheck
+checkCell at variantOwner branch if fits goto done else goto badVariant
+checkCell at done return ok none
+checkCell at badVariant do makeBadVariant
+checkCell at badVariant return error badVariantError
+checkCell at outside do makeOutside
+checkCell at outside return error outsideError
+checkCell at cellShapeFailed return error cellShapeError
+checkCell at findFieldFailed return error findFieldError
+checkCell at checkLiteralFailed return error checkLiteralError
+
+readCellRow is call
+readCellRow in checkCell
+readCellRow invokes wordAt
+readCellRow argument words syntax.Words words lend
+readCellRow argument row syntax.Row row copy
+readCellRow argument offset Int64 two copy
+readCellRow result cellRow syntax.Word
+readCellRow ownedBy none
+readCellRow cleanedBy none
+readCellRow borrows none
+readCellRow catch none
+readCellRow suppresses none
+
+cellShape is call
+cellShape in checkCell
+cellShape invokes expectCount
+cellShape argument row syntax.Row row copy
+cellShape argument count Int64 five copy
+cellShape argument word syntax.Word cellRow copy
+cellShape result none
+cellShape ownedBy none
+cellShape cleanedBy none
+cellShape borrows none
+cellShape catch cellShapeError syntax.Rejection
+cellShape suppresses none
+
+readFieldWord is call
+readFieldWord in checkCell
+readFieldWord invokes wordAt
+readFieldWord argument words syntax.Words words lend
+readFieldWord argument row syntax.Row row copy
+readFieldWord argument offset Int64 three copy
+readFieldWord result fieldWord syntax.Word
+readFieldWord ownedBy none
+readFieldWord cleanedBy none
+readFieldWord borrows none
+readFieldWord catch none
+readFieldWord suppresses none
+
+readValueWord is call
+readValueWord in checkCell
+readValueWord invokes wordAt
+readValueWord argument words syntax.Words words lend
+readValueWord argument row syntax.Row row copy
+readValueWord argument offset Int64 four copy
+readValueWord result valueWord syntax.Word
+readValueWord ownedBy none
+readValueWord cleanedBy none
+readValueWord borrows none
+readValueWord catch none
+readValueWord suppresses none
+
+findField is call
+findField in checkCell
+findField invokes lookupMember
+findField argument source String source lend
+findField argument types Types types lend
+findField argument members Members members lend
+findField argument code Int64 rowType copy
+findField argument word syntax.Word fieldWord copy
+findField result fieldIndex Int64
+findField ownedBy none
+findField cleanedBy none
+findField borrows none
+findField catch findFieldError syntax.Rejection
+findField suppresses none
+
+readField is call
+readField in checkCell
+readField invokes Members.getOrTrap
+readField argument list Members members lend
+readField argument index Int64 fieldIndex copy
+readField result field MemberInfo
+readField ownedBy none
+readField cleanedBy none
+readField borrows none
+readField catch none
+readField suppresses none
+
+readFieldType is call
+readFieldType in checkCell
+readFieldType invokes MemberInfo.type
+readFieldType argument record MemberInfo field copy
+readFieldType result fieldType Int64
+readFieldType ownedBy none
+readFieldType cleanedBy none
+readFieldType borrows none
+readFieldType catch none
+readFieldType suppresses none
+
+readFieldInfo is call
+readFieldInfo in checkCell
+readFieldInfo invokes typeInfoOf
+readFieldInfo argument types Types types lend
+readFieldInfo argument code Int64 fieldType copy
+readFieldInfo result fieldInfo TypeInfo
+readFieldInfo ownedBy none
+readFieldInfo cleanedBy none
+readFieldInfo borrows none
+readFieldInfo catch none
+readFieldInfo suppresses none
+
+readFieldKind is call
+readFieldKind in checkCell
+readFieldKind invokes TypeInfo.kind
+readFieldKind argument record TypeInfo fieldInfo copy
+readFieldKind result fieldKind Int64
+readFieldKind ownedBy none
+readFieldKind cleanedBy none
+readFieldKind borrows none
+readFieldKind catch none
+readFieldKind suppresses none
+
+enumCheck is call
+enumCheck in checkCell
+enumCheck invokes compare.equalInt64
+enumCheck argument left Int64 fieldKind copy
+enumCheck argument right Int64 four copy
+enumCheck result isEnum Bool
+enumCheck ownedBy none
+enumCheck cleanedBy none
+enumCheck borrows none
+enumCheck catch none
+enumCheck suppresses none
+
+readLiteral is call
+readLiteral in checkCell
+readLiteral invokes literalOf
+readLiteral argument code Int64 fieldType copy
+readLiteral result literal LiteralKind
+readLiteral ownedBy none
+readLiteral cleanedBy none
+readLiteral borrows none
+readLiteral catch none
+readLiteral suppresses none
+
+checkLiteral is call
+checkLiteral in checkCell
+checkLiteral invokes literalFits
+checkLiteral argument source String source lend
+checkLiteral argument word syntax.Word valueWord copy
+checkLiteral argument literal LiteralKind literal copy
+checkLiteral result none
+checkLiteral ownedBy none
+checkLiteral cleanedBy none
+checkLiteral borrows none
+checkLiteral catch checkLiteralError syntax.Rejection
+checkLiteral suppresses none
+
+readVariantTextStart is call
+readVariantTextStart in checkCell
+readVariantTextStart invokes syntax.Word.start
+readVariantTextStart argument record syntax.Word valueWord copy
+readVariantTextStart result variantTextStart string.Position
+readVariantTextStart ownedBy none
+readVariantTextStart cleanedBy none
+readVariantTextStart borrows none
+readVariantTextStart catch none
+readVariantTextStart suppresses none
+
+readVariantTextOffset is call
+readVariantTextOffset in checkCell
+readVariantTextOffset invokes string.Position.offset
+readVariantTextOffset argument record string.Position variantTextStart copy
+readVariantTextOffset result variantTextOffset Int64
+readVariantTextOffset ownedBy none
+readVariantTextOffset cleanedBy none
+readVariantTextOffset borrows none
+readVariantTextOffset catch none
+readVariantTextOffset suppresses none
+
+readVariantTextLength is call
+readVariantTextLength in checkCell
+readVariantTextLength invokes syntax.Word.length
+readVariantTextLength argument record syntax.Word valueWord copy
+readVariantTextLength result variantTextLength Int64
+readVariantTextLength ownedBy none
+readVariantTextLength cleanedBy none
+readVariantTextLength borrows none
+readVariantTextLength catch none
+readVariantTextLength suppresses none
+
+cutVariantText is call
+cutVariantText in checkCell
+cutVariantText invokes string.slice
+cutVariantText argument text String source lend
+cutVariantText argument start Int64 variantTextOffset copy
+cutVariantText argument length Int64 variantTextLength copy
+cutVariantText result variantText String
+cutVariantText ownedBy none
+cutVariantText cleanedBy none
+cutVariantText borrows source
+cutVariantText catch cutVariantTextError string.StringIndexError
+cutVariantText suppresses none
+
+findVariant is call
+findVariant in checkCell
+findVariant invokes Targets.get
+findVariant argument map Targets targets lend
+findVariant argument key String variantText lend
+findVariant result variantTarget TargetInfo
+findVariant ownedBy none
+findVariant cleanedBy none
+findVariant borrows none
+findVariant catch findVariantError map.KeyMissing
+findVariant suppresses none
+
+readVariantKind is call
+readVariantKind in checkCell
+readVariantKind invokes TargetInfo.kind
+readVariantKind argument record TargetInfo variantTarget copy
+readVariantKind result variantKind TargetKind
+readVariantKind ownedBy none
+readVariantKind cleanedBy none
+readVariantKind borrows none
+readVariantKind catch none
+readVariantKind suppresses none
+
+readOwner is call
+readOwner in checkCell
+readOwner invokes TargetInfo.owner
+readOwner argument record TargetInfo variantTarget copy
+readOwner result owner Int64
+readOwner ownedBy none
+readOwner cleanedBy none
+readOwner borrows none
+readOwner catch none
+readOwner suppresses none
+
+readCount is call
+readCount in checkCell
+readCount invokes TargetInfo.paramCount
+readCount argument record TargetInfo variantTarget copy
+readCount result argumentCount Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+ownerCheck is call
+ownerCheck in checkCell
+ownerCheck invokes compare.equalInt64
+ownerCheck argument left Int64 owner copy
+ownerCheck argument right Int64 fieldType copy
+ownerCheck result sameEnum Bool
+ownerCheck ownedBy none
+ownerCheck cleanedBy none
+ownerCheck borrows none
+ownerCheck catch none
+ownerCheck suppresses none
+
+bareCheck is call
+bareCheck in checkCell
+bareCheck invokes compare.equalInt64
+bareCheck argument left Int64 argumentCount copy
+bareCheck argument right Int64 zero copy
+bareCheck result bare Bool
+bareCheck ownedBy none
+bareCheck cleanedBy none
+bareCheck borrows none
+bareCheck catch none
+bareCheck suppresses none
+
+bothCheck is call
+bothCheck in checkCell
+bothCheck invokes logic.and
+bothCheck argument left Bool sameEnum copy
+bothCheck argument right Bool bare copy
+bothCheck result fits Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+makeBadVariant is call
+makeBadVariant in checkCell
+makeBadVariant invokes syntax.Rejection.unknownVariant
+makeBadVariant argument payload syntax.Word valueWord copy
+makeBadVariant result badVariantError syntax.Rejection
+makeBadVariant ownedBy none
+makeBadVariant cleanedBy none
+makeBadVariant borrows none
+makeBadVariant catch none
+makeBadVariant suppresses none
+
+makeOutside is call
+makeOutside in checkCell
+makeOutside invokes syntax.Rejection.outsideSource
+makeOutside argument payload syntax.Word valueWord copy
+makeOutside result outsideError syntax.Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+declareTable is operation
+declareTable purpose "Check a table: its row type is a record, its rows are numbered 1 to n in order, and each cell fills a field of the row with a literal of its type; enter rowAt and length as call targets"
+declareTable invariant none
+declareTable typeParameter none
+declareTable input source String borrowed
+declareTable input words syntax.Words borrowed
+declareTable input rows syntax.Rows borrowed
+declareTable input entity model.Entity copied
+declareTable input entityIndex Int64 copied
+declareTable input code Int64 copied
+declareTable input types Types borrowedMutable
+declareTable input typeNames TypeNames borrowed
+declareTable input members Members borrowed
+declareTable input params Params borrowedMutable
+declareTable input targets Targets borrowedMutable
+declareTable input region Region borrowed
+declareTable output none
+declareTable outputOwnedBy none
+declareTable raises syntax.Rejection
+declareTable effect none
+declareTable uses none
+declareTable memoryHeap true
+declareTable async false
+declareTable maxRecursion none
+declareTable label begin loopKind none
+declareTable label begin within none
+declareTable label eachRow loopKind while
+declareTable label eachRow within none
+declareTable label eachRow maxIterations entityCount
+declareTable label readRow loopKind none
+declareTable label readRow within eachRow
+declareTable label findPredicateDone loopKind none
+declareTable label findPredicateDone within eachRow
+declareTable label rowTypeFact loopKind none
+declareTable label rowTypeFact within eachRow
+declareTable label rowTypeShapeDone loopKind none
+declareTable label rowTypeShapeDone within eachRow
+declareTable label findRowTypeDone loopKind none
+declareTable label findRowTypeDone within eachRow
+declareTable label keepRowType loopKind none
+declareTable label keepRowType within eachRow
+declareTable label rowFact loopKind none
+declareTable label rowFact within eachRow
+declareTable label rowShapeDone loopKind none
+declareTable label rowShapeDone within eachRow
+declareTable label numberCheck loopKind none
+declareTable label numberCheck within eachRow
+declareTable label cellFact loopKind none
+declareTable label cellFact within eachRow
+declareTable label checkTheCell loopKind none
+declareTable label checkTheCell within eachRow
+declareTable label checkItDone loopKind none
+declareTable label checkItDone within eachRow
+declareTable label finish loopKind none
+declareTable label finish within none
+declareTable label registered loopKind none
+declareTable label registered within none
+declareTable label rowAtKeyDone loopKind none
+declareTable label rowAtKeyDone within none
+declareTable label enterRowAtDone loopKind none
+declareTable label enterRowAtDone within none
+declareTable label lengthKeyDone loopKind none
+declareTable label lengthKeyDone within none
+declareTable label enterLengthDone loopKind none
+declareTable label enterLengthDone within none
+declareTable label lost loopKind none
+declareTable label lost within none
+declareTable label badRowType loopKind none
+declareTable label badRowType within none
+declareTable label cellBeforeRowType loopKind none
+declareTable label cellBeforeRowType within none
+declareTable label badNumber loopKind none
+declareTable label badNumber within none
+declareTable label nextRow loopKind none
+declareTable label nextRow within eachRow
+declareTable label refuse loopKind none
+declareTable label refuse within none
+declareTable label findPredicateFailed loopKind none
+declareTable label findPredicateFailed within none
+declareTable label rowTypeShapeFailed loopKind none
+declareTable label rowTypeShapeFailed within none
+declareTable label findRowTypeFailed loopKind none
+declareTable label findRowTypeFailed within none
+declareTable label rowShapeFailed loopKind none
+declareTable label rowShapeFailed within none
+declareTable label checkItFailed loopKind none
+declareTable label checkItFailed within none
+declareTable label rowAtKeyFailed loopKind none
+declareTable label rowAtKeyFailed within none
+declareTable label enterRowAtFailed loopKind none
+declareTable label enterRowAtFailed within none
+declareTable label lengthKeyFailed loopKind none
+declareTable label lengthKeyFailed within none
+declareTable label enterLengthFailed loopKind none
+declareTable label enterLengthFailed within none
+declareTable let rowType Int64 0 mutable
+declareTable let rowCount Int64 0 mutable
+declareTable let no Bool false immutable
+declareTable let rowIndex Int64 0 mutable
+declareTable let one Int64 1 immutable
+declareTable let two Int64 2 immutable
+declareTable let three Int64 3 immutable
+declareTable let four Int64 4 immutable
+declareTable let zero Int64 0 immutable
+declareTable let six Int64 6 immutable
+declareTable let positionSlot String "position" immutable
+declareTable let rowAtWord String "rowAt" immutable
+declareTable let seven Int64 7 immutable
+declareTable let lengthWord String "length" immutable
+declareTable at begin do readName
+declareTable at begin do readEntityFirst
+declareTable at begin do readEntityCount
+declareTable at begin do findEnd
+declareTable at begin do findStart
+declareTable at begin set rowIndex rowStart
+declareTable at begin goto eachRow
+declareTable at eachRow do endCheck
+declareTable at eachRow branch if rowsDone goto finish else goto readRow
+declareTable at readRow do fetchRow
+declareTable at readRow do readPredicateWord
+declareTable at readRow do findPredicate
+declareTable at readRow branch ifError findPredicate goto findPredicateFailed else goto findPredicateDone
+declareTable at findPredicateDone match predicate Predicate
+declareTable at findPredicateDone case Predicate.contextRow bind none none goto nextRow
+declareTable at findPredicateDone case Predicate.rowTypeRow bind none none goto rowTypeFact
+declareTable at findPredicateDone case Predicate.rowRow bind none none goto rowFact
+declareTable at findPredicateDone case Predicate.cellRow bind none none goto cellFact
+declareTable at findPredicateDone case Predicate.pathRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.importsRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.exportsRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.grantsRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.typeParameterRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.fieldRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.variantRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.inRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.instantiatesRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.typeRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.valueRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.inputRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.outputRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.outputOwnedByRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.raisesRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.effectRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.usesRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.memoryHeapRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.asyncRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.maxRecursionRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.labelRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.letRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.atRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.invokesRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.argumentRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.resultRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.ownedByRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.cleanedByRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.borrowsRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.catchRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.suppressesRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.strategyRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
+declareTable at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareTable at rowTypeFact do readRowTypeWord
+declareTable at rowTypeFact do rowTypeShape
+declareTable at rowTypeFact branch ifError rowTypeShape goto rowTypeShapeFailed else goto rowTypeShapeDone
+declareTable at rowTypeShapeDone do findRowType
+declareTable at rowTypeShapeDone branch ifError findRowType goto findRowTypeFailed else goto findRowTypeDone
+declareTable at findRowTypeDone do readRowInfo
+declareTable at findRowTypeDone do readRowKind
+declareTable at findRowTypeDone do recordCheck
+declareTable at findRowTypeDone branch if isRecord goto keepRowType else goto badRowType
+declareTable at keepRowType set rowType rowCode
+declareTable at keepRowType goto nextRow
+declareTable at rowFact do readRowName
+declareTable at rowFact do rowShape
+declareTable at rowFact branch ifError rowShape goto rowShapeFailed else goto rowShapeDone
+declareTable at rowShapeDone do readNumberWord
+declareTable at rowShapeDone do countRow
+declareTable at rowShapeDone set rowCount nextCount
+declareTable at rowShapeDone do readNumberKind
+declareTable at rowShapeDone match numberKind syntax.WordKind
+declareTable at rowShapeDone case syntax.WordKind.integer bind number Int64 goto numberCheck
+declareTable at rowShapeDone case syntax.WordKind.name bind none none goto badNumber
+declareTable at rowShapeDone case syntax.WordKind.text bind none none goto badNumber
+declareTable at numberCheck do orderCheck
+declareTable at numberCheck branch if inOrder goto nextRow else goto badNumber
+declareTable at cellFact do typedCheck
+declareTable at cellFact branch if typed goto checkTheCell else goto cellBeforeRowType
+declareTable at checkTheCell do checkIt
+declareTable at checkTheCell branch ifError checkIt goto checkItFailed else goto checkItDone
+declareTable at checkItDone goto nextRow
+declareTable at finish do makeInfo
+declareTable at finish do findIndex
+declareTable at finish do setInfo
+declareTable at finish branch ifError setInfo goto lost else goto registered
+declareTable at registered do rowAtFirst
+declareTable at registered do addPosition
+declareTable at registered do rowAtKey
+declareTable at registered branch ifError rowAtKey goto rowAtKeyFailed else goto rowAtKeyDone
+declareTable at rowAtKeyDone do makeRowAtKind
+declareTable at rowAtKeyDone do makeRowAt
+declareTable at rowAtKeyDone do enterRowAt
+declareTable at rowAtKeyDone branch ifError enterRowAt goto enterRowAtFailed else goto enterRowAtDone
+declareTable at enterRowAtDone do lengthFirst
+declareTable at enterRowAtDone do lengthKey
+declareTable at enterRowAtDone branch ifError lengthKey goto lengthKeyFailed else goto lengthKeyDone
+declareTable at lengthKeyDone do makeLengthKind
+declareTable at lengthKeyDone do makeLength
+declareTable at lengthKeyDone do enterLength
+declareTable at lengthKeyDone branch ifError enterLength goto enterLengthFailed else goto enterLengthDone
+declareTable at enterLengthDone return ok none
+declareTable at lost do makeLost
+declareTable at lost return error lostError
+declareTable at badRowType do makeBadRowType
+declareTable at badRowType return error badRowTypeError
+declareTable at cellBeforeRowType do makeCellBeforeRowType
+declareTable at cellBeforeRowType return error cellBeforeRowTypeError
+declareTable at badNumber do makeBadNumber
+declareTable at badNumber return error badNumberError
+declareTable at nextRow do advanceRow
+declareTable at nextRow set rowIndex nextIndex
+declareTable at nextRow goto eachRow
+declareTable at refuse do makeRefused
+declareTable at refuse return error refusedError
+declareTable at findPredicateFailed return error findPredicateError
+declareTable at rowTypeShapeFailed return error rowTypeShapeError
+declareTable at findRowTypeFailed return error findRowTypeError
+declareTable at rowShapeFailed return error rowShapeError
+declareTable at checkItFailed return error checkItError
+declareTable at rowAtKeyFailed return error rowAtKeyError
+declareTable at enterRowAtFailed return error enterRowAtError
+declareTable at lengthKeyFailed return error lengthKeyError
+declareTable at enterLengthFailed return error enterLengthError
+
+readName is call
+readName in declareTable
+readName invokes model.Entity.name
+readName argument record model.Entity entity copy
+readName result name syntax.Word
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readEntityFirst is call
+readEntityFirst in declareTable
+readEntityFirst invokes model.Entity.first
+readEntityFirst argument record model.Entity entity copy
+readEntityFirst result entityFirst Int64
+readEntityFirst ownedBy none
+readEntityFirst cleanedBy none
+readEntityFirst borrows none
+readEntityFirst catch none
+readEntityFirst suppresses none
+
+readEntityCount is call
+readEntityCount in declareTable
+readEntityCount invokes model.Entity.count
+readEntityCount argument record model.Entity entity copy
+readEntityCount result entityCount Int64
+readEntityCount ownedBy none
+readEntityCount cleanedBy none
+readEntityCount borrows none
+readEntityCount catch none
+readEntityCount suppresses none
+
+findEnd is call
+findEnd in declareTable
+findEnd invokes math.addInt64
+findEnd argument left Int64 entityFirst copy
+findEnd argument right Int64 entityCount copy
+findEnd result entityEnd Int64
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+findStart is call
+findStart in declareTable
+findStart invokes math.addInt64
+findStart argument left Int64 entityFirst copy
+findStart argument right Int64 one copy
+findStart result rowStart Int64
+findStart ownedBy none
+findStart cleanedBy none
+findStart borrows none
+findStart catch none
+findStart suppresses none
+
+endCheck is call
+endCheck in declareTable
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 rowIndex copy
+endCheck argument right Int64 entityEnd copy
+endCheck result rowsDone Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+fetchRow is call
+fetchRow in declareTable
+fetchRow invokes syntax.Rows.getOrTrap
+fetchRow argument list syntax.Rows rows lend
+fetchRow argument index Int64 rowIndex copy
+fetchRow result row syntax.Row
+fetchRow ownedBy none
+fetchRow cleanedBy none
+fetchRow borrows none
+fetchRow catch none
+fetchRow suppresses none
+
+readPredicateWord is call
+readPredicateWord in declareTable
+readPredicateWord invokes wordAt
+readPredicateWord argument words syntax.Words words lend
+readPredicateWord argument row syntax.Row row copy
+readPredicateWord argument offset Int64 one copy
+readPredicateWord result predicateWord syntax.Word
+readPredicateWord ownedBy none
+readPredicateWord cleanedBy none
+readPredicateWord borrows none
+readPredicateWord catch none
+readPredicateWord suppresses none
+
+findPredicate is call
+findPredicate in declareTable
+findPredicate invokes lookupPredicate
+findPredicate argument source String source lend
+findPredicate argument word syntax.Word predicateWord copy
+findPredicate result predicate Predicate
+findPredicate ownedBy none
+findPredicate cleanedBy none
+findPredicate borrows none
+findPredicate catch findPredicateError syntax.Rejection
+findPredicate suppresses none
+
+readRowTypeWord is call
+readRowTypeWord in declareTable
+readRowTypeWord invokes wordAt
+readRowTypeWord argument words syntax.Words words lend
+readRowTypeWord argument row syntax.Row row copy
+readRowTypeWord argument offset Int64 two copy
+readRowTypeWord result rowTypeWord syntax.Word
+readRowTypeWord ownedBy none
+readRowTypeWord cleanedBy none
+readRowTypeWord borrows none
+readRowTypeWord catch none
+readRowTypeWord suppresses none
+
+rowTypeShape is call
+rowTypeShape in declareTable
+rowTypeShape invokes expectCount
+rowTypeShape argument row syntax.Row row copy
+rowTypeShape argument count Int64 three copy
+rowTypeShape argument word syntax.Word rowTypeWord copy
+rowTypeShape result none
+rowTypeShape ownedBy none
+rowTypeShape cleanedBy none
+rowTypeShape borrows none
+rowTypeShape catch rowTypeShapeError syntax.Rejection
+rowTypeShape suppresses none
+
+findRowType is call
+findRowType in declareTable
+findRowType invokes findType
+findRowType argument source String source lend
+findRowType argument typeNames TypeNames typeNames lend
+findRowType argument word syntax.Word rowTypeWord copy
+findRowType result rowCode Int64
+findRowType ownedBy none
+findRowType cleanedBy none
+findRowType borrows none
+findRowType catch findRowTypeError syntax.Rejection
+findRowType suppresses none
+
+readRowInfo is call
+readRowInfo in declareTable
+readRowInfo invokes typeInfoOf
+readRowInfo argument types Types types lend
+readRowInfo argument code Int64 rowCode copy
+readRowInfo result rowInfo TypeInfo
+readRowInfo ownedBy none
+readRowInfo cleanedBy none
+readRowInfo borrows none
+readRowInfo catch none
+readRowInfo suppresses none
+
+readRowKind is call
+readRowKind in declareTable
+readRowKind invokes TypeInfo.kind
+readRowKind argument record TypeInfo rowInfo copy
+readRowKind result rowKind Int64
+readRowKind ownedBy none
+readRowKind cleanedBy none
+readRowKind borrows none
+readRowKind catch none
+readRowKind suppresses none
+
+recordCheck is call
+recordCheck in declareTable
+recordCheck invokes compare.equalInt64
+recordCheck argument left Int64 rowKind copy
+recordCheck argument right Int64 three copy
+recordCheck result isRecord Bool
+recordCheck ownedBy none
+recordCheck cleanedBy none
+recordCheck borrows none
+recordCheck catch none
+recordCheck suppresses none
+
+readRowName is call
+readRowName in declareTable
+readRowName invokes wordAt
+readRowName argument words syntax.Words words lend
+readRowName argument row syntax.Row row copy
+readRowName argument offset Int64 two copy
+readRowName result rowName syntax.Word
+readRowName ownedBy none
+readRowName cleanedBy none
+readRowName borrows none
+readRowName catch none
+readRowName suppresses none
+
+rowShape is call
+rowShape in declareTable
+rowShape invokes expectCount
+rowShape argument row syntax.Row row copy
+rowShape argument count Int64 four copy
+rowShape argument word syntax.Word rowName copy
+rowShape result none
+rowShape ownedBy none
+rowShape cleanedBy none
+rowShape borrows none
+rowShape catch rowShapeError syntax.Rejection
+rowShape suppresses none
+
+readNumberWord is call
+readNumberWord in declareTable
+readNumberWord invokes wordAt
+readNumberWord argument words syntax.Words words lend
+readNumberWord argument row syntax.Row row copy
+readNumberWord argument offset Int64 three copy
+readNumberWord result numberWord syntax.Word
+readNumberWord ownedBy none
+readNumberWord cleanedBy none
+readNumberWord borrows none
+readNumberWord catch none
+readNumberWord suppresses none
+
+countRow is call
+countRow in declareTable
+countRow invokes math.addInt64
+countRow argument left Int64 rowCount copy
+countRow argument right Int64 one copy
+countRow result nextCount Int64
+countRow ownedBy none
+countRow cleanedBy none
+countRow borrows none
+countRow catch none
+countRow suppresses none
+
+readNumberKind is call
+readNumberKind in declareTable
+readNumberKind invokes syntax.Word.kind
+readNumberKind argument record syntax.Word numberWord copy
+readNumberKind result numberKind syntax.WordKind
+readNumberKind ownedBy none
+readNumberKind cleanedBy none
+readNumberKind borrows none
+readNumberKind catch none
+readNumberKind suppresses none
+
+orderCheck is call
+orderCheck in declareTable
+orderCheck invokes compare.equalInt64
+orderCheck argument left Int64 number copy
+orderCheck argument right Int64 rowCount copy
+orderCheck result inOrder Bool
+orderCheck ownedBy none
+orderCheck cleanedBy none
+orderCheck borrows none
+orderCheck catch none
+orderCheck suppresses none
+
+typedCheck is call
+typedCheck in declareTable
+typedCheck invokes compare.greaterThanInt64
+typedCheck argument left Int64 rowType copy
+typedCheck argument right Int64 zero copy
+typedCheck result typed Bool
+typedCheck ownedBy none
+typedCheck cleanedBy none
+typedCheck borrows none
+typedCheck catch none
+typedCheck suppresses none
+
+checkIt is call
+checkIt in declareTable
+checkIt invokes checkCell
+checkIt argument source String source lend
+checkIt argument words syntax.Words words lend
+checkIt argument row syntax.Row row copy
+checkIt argument rowType Int64 rowType copy
+checkIt argument types Types types lend
+checkIt argument members Members members lend
+checkIt argument targets Targets targets lend
+checkIt result none
+checkIt ownedBy none
+checkIt cleanedBy none
+checkIt borrows none
+checkIt catch checkItError syntax.Rejection
+checkIt suppresses none
+
+makeInfo is call
+makeInfo in declareTable
+makeInfo invokes TypeInfo.new
+makeInfo argument name syntax.Word name copy
+makeInfo argument kind Int64 six copy
+makeInfo argument item Int64 rowType copy
+makeInfo argument plain Bool no copy
+makeInfo argument holdsText Bool no copy
+makeInfo argument narrow Bool no copy
+makeInfo argument tagOnly Bool no copy
+makeInfo argument first Int64 entityIndex copy
+makeInfo argument count Int64 rowCount copy
+makeInfo result info TypeInfo
+makeInfo ownedBy none
+makeInfo cleanedBy none
+makeInfo borrows none
+makeInfo catch none
+makeInfo suppresses none
+
+findIndex is call
+findIndex in declareTable
+findIndex invokes math.subtractInt64
+findIndex argument left Int64 code copy
+findIndex argument right Int64 one copy
+findIndex result typeIndex Int64
+findIndex ownedBy none
+findIndex cleanedBy none
+findIndex borrows none
+findIndex catch none
+findIndex suppresses none
+
+setInfo is call
+setInfo in declareTable
+setInfo invokes Types.set
+setInfo argument list Types types lendMutable
+setInfo argument index Int64 typeIndex copy
+setInfo argument item TypeInfo info copy
+setInfo result none
+setInfo ownedBy none
+setInfo cleanedBy none
+setInfo borrows none
+setInfo catch setInfoError list.IndexOutOfRange
+setInfo suppresses none
+
+rowAtFirst is call
+rowAtFirst in declareTable
+rowAtFirst invokes Params.length
+rowAtFirst argument list Params params lend
+rowAtFirst result rowAtParam Int64
+rowAtFirst ownedBy none
+rowAtFirst cleanedBy none
+rowAtFirst borrows none
+rowAtFirst catch none
+rowAtFirst suppresses none
+
+addPosition is call
+addPosition in declareTable
+addPosition invokes addParam
+addPosition argument params Params params lendMutable
+addPosition argument slot String positionSlot lend
+addPosition argument type Int64 two copy
+addPosition argument mode Int64 one copy
+addPosition argument region Region region lend
+addPosition result none
+addPosition ownedBy none
+addPosition cleanedBy none
+addPosition borrows none
+addPosition catch none
+addPosition suppresses none
+
+rowAtKey is call
+rowAtKey in declareTable
+rowAtKey invokes memberKey
+rowAtKey argument source String source lend
+rowAtKey argument typeName syntax.Word name copy
+rowAtKey argument member String rowAtWord lend
+rowAtKey argument region Region region lend
+rowAtKey result rowAtName String
+rowAtKey ownedBy region
+rowAtKey cleanedBy none
+rowAtKey borrows none
+rowAtKey catch rowAtKeyError syntax.Rejection
+rowAtKey suppresses none
+
+makeRowAtKind is call
+makeRowAtKind in declareTable
+makeRowAtKind invokes TargetKind.tableRowAt
+makeRowAtKind argument none
+makeRowAtKind result rowAtKind TargetKind
+makeRowAtKind ownedBy none
+makeRowAtKind cleanedBy none
+makeRowAtKind borrows none
+makeRowAtKind catch none
+makeRowAtKind suppresses none
+
+makeRowAt is call
+makeRowAt in declareTable
+makeRowAt invokes TargetInfo.new
+makeRowAt argument kind TargetKind rowAtKind copy
+makeRowAt argument owner Int64 code copy
+makeRowAt argument member Int64 zero copy
+makeRowAt argument firstParam Int64 rowAtParam copy
+makeRowAt argument paramCount Int64 one copy
+makeRowAt argument output Int64 rowType copy
+makeRowAt argument raises Int64 seven copy
+makeRowAt result rowAtTarget TargetInfo
+makeRowAt ownedBy none
+makeRowAt cleanedBy none
+makeRowAt borrows none
+makeRowAt catch none
+makeRowAt suppresses none
+
+enterRowAt is call
+enterRowAt in declareTable
+enterRowAt invokes putTarget
+enterRowAt argument source String source lend
+enterRowAt argument targets Targets targets lendMutable
+enterRowAt argument key String rowAtName lend
+enterRowAt argument info TargetInfo rowAtTarget copy
+enterRowAt argument word syntax.Word name copy
+enterRowAt result none
+enterRowAt ownedBy none
+enterRowAt cleanedBy none
+enterRowAt borrows none
+enterRowAt catch enterRowAtError syntax.Rejection
+enterRowAt suppresses none
+
+lengthFirst is call
+lengthFirst in declareTable
+lengthFirst invokes Params.length
+lengthFirst argument list Params params lend
+lengthFirst result lengthParam Int64
+lengthFirst ownedBy none
+lengthFirst cleanedBy none
+lengthFirst borrows none
+lengthFirst catch none
+lengthFirst suppresses none
+
+lengthKey is call
+lengthKey in declareTable
+lengthKey invokes memberKey
+lengthKey argument source String source lend
+lengthKey argument typeName syntax.Word name copy
+lengthKey argument member String lengthWord lend
+lengthKey argument region Region region lend
+lengthKey result lengthName String
+lengthKey ownedBy region
+lengthKey cleanedBy none
+lengthKey borrows none
+lengthKey catch lengthKeyError syntax.Rejection
+lengthKey suppresses none
+
+makeLengthKind is call
+makeLengthKind in declareTable
+makeLengthKind invokes TargetKind.tableLength
+makeLengthKind argument none
+makeLengthKind result lengthKind TargetKind
+makeLengthKind ownedBy none
+makeLengthKind cleanedBy none
+makeLengthKind borrows none
+makeLengthKind catch none
+makeLengthKind suppresses none
+
+makeLength is call
+makeLength in declareTable
+makeLength invokes TargetInfo.new
+makeLength argument kind TargetKind lengthKind copy
+makeLength argument owner Int64 code copy
+makeLength argument member Int64 zero copy
+makeLength argument firstParam Int64 lengthParam copy
+makeLength argument paramCount Int64 zero copy
+makeLength argument output Int64 two copy
+makeLength argument raises Int64 zero copy
+makeLength result lengthTarget TargetInfo
+makeLength ownedBy none
+makeLength cleanedBy none
+makeLength borrows none
+makeLength catch none
+makeLength suppresses none
+
+enterLength is call
+enterLength in declareTable
+enterLength invokes putTarget
+enterLength argument source String source lend
+enterLength argument targets Targets targets lendMutable
+enterLength argument key String lengthName lend
+enterLength argument info TargetInfo lengthTarget copy
+enterLength argument word syntax.Word name copy
+enterLength result none
+enterLength ownedBy none
+enterLength cleanedBy none
+enterLength borrows none
+enterLength catch enterLengthError syntax.Rejection
+enterLength suppresses none
+
+makeLost is call
+makeLost in declareTable
+makeLost invokes syntax.Rejection.lostName
+makeLost argument payload syntax.Word name copy
+makeLost result lostError syntax.Rejection
+makeLost ownedBy none
+makeLost cleanedBy none
+makeLost borrows none
+makeLost catch none
+makeLost suppresses none
+
+makeBadRowType is call
+makeBadRowType in declareTable
+makeBadRowType invokes syntax.Rejection.unsupportedType
+makeBadRowType argument payload syntax.Word rowTypeWord copy
+makeBadRowType result badRowTypeError syntax.Rejection
+makeBadRowType ownedBy none
+makeBadRowType cleanedBy none
+makeBadRowType borrows none
+makeBadRowType catch none
+makeBadRowType suppresses none
+
+makeCellBeforeRowType is call
+makeCellBeforeRowType in declareTable
+makeCellBeforeRowType invokes syntax.Rejection.unsupportedPredicate
+makeCellBeforeRowType argument payload syntax.Word predicateWord copy
+makeCellBeforeRowType result cellBeforeRowTypeError syntax.Rejection
+makeCellBeforeRowType ownedBy none
+makeCellBeforeRowType cleanedBy none
+makeCellBeforeRowType borrows none
+makeCellBeforeRowType catch none
+makeCellBeforeRowType suppresses none
+
+makeBadNumber is call
+makeBadNumber in declareTable
+makeBadNumber invokes syntax.Rejection.unsupportedPayload
+makeBadNumber argument payload syntax.Word numberWord copy
+makeBadNumber result badNumberError syntax.Rejection
+makeBadNumber ownedBy none
+makeBadNumber cleanedBy none
+makeBadNumber borrows none
+makeBadNumber catch none
+makeBadNumber suppresses none
+
+advanceRow is call
+advanceRow in declareTable
+advanceRow invokes math.addInt64
+advanceRow argument left Int64 rowIndex copy
+advanceRow argument right Int64 one copy
+advanceRow result nextIndex Int64
+advanceRow ownedBy none
+advanceRow cleanedBy none
+advanceRow borrows none
+advanceRow catch none
+advanceRow suppresses none
+
+makeRefused is call
+makeRefused in declareTable
+makeRefused invokes syntax.Rejection.unsupportedPredicate
+makeRefused argument payload syntax.Word predicateWord copy
+makeRefused result refusedError syntax.Rejection
+makeRefused ownedBy none
+makeRefused cleanedBy none
+makeRefused borrows none
+makeRefused catch none
+makeRefused suppresses none
+
 declareOperation is operation
 declareOperation purpose "Check an operation's signature rows, add its slots, and enter it as a call target; main takes no input, gives an ExitCode, and raises nothing"
 declareOperation invariant none
@@ -9551,6 +10973,9 @@ declareOperation at findPredicateDone case Predicate.suppressesRow bind none non
 declareOperation at findPredicateDone case Predicate.strategyRow bind none none goto refuse
 declareOperation at findPredicateDone case Predicate.maxBytesRow bind none none goto refuse
 declareOperation at findPredicateDone case Predicate.releasedRow bind none none goto refuse
+declareOperation at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareOperation at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareOperation at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareOperation at noParameter do fixedNone
 declareOperation at noParameter branch ifError fixedNone goto fixedNoneFailed else goto fixedNoneDone
 declareOperation at fixedNoneDone goto nextRow
@@ -10679,6 +12104,9 @@ declareOwned at findPredicateDone case Predicate.maxRecursionRow bind none none 
 declareOwned at findPredicateDone case Predicate.labelRow bind none none goto refuse
 declareOwned at findPredicateDone case Predicate.letRow bind none none goto refuse
 declareOwned at findPredicateDone case Predicate.atRow bind none none goto refuse
+declareOwned at findPredicateDone case Predicate.rowTypeRow bind none none goto refuse
+declareOwned at findPredicateDone case Predicate.rowRow bind none none goto refuse
+declareOwned at findPredicateDone case Predicate.cellRow bind none none goto refuse
 declareOwned at noCleanup do fixedNone
 declareOwned at noCleanup branch ifError fixedNone goto fixedNoneFailed else goto fixedNoneDone
 declareOwned at fixedNoneDone goto nextRow
@@ -11202,6 +12630,12 @@ checkDeclarations label notOwned loopKind none
 checkDeclarations label notOwned within eachEntity
 checkDeclarations label notRecord loopKind none
 checkDeclarations label notRecord within eachEntity
+checkDeclarations label notEnum loopKind none
+checkDeclarations label notEnum within eachEntity
+checkDeclarations label tableEntity loopKind none
+checkDeclarations label tableEntity within eachEntity
+checkDeclarations label checkTableRowsDone loopKind none
+checkDeclarations label checkTableRowsDone within eachEntity
 checkDeclarations label moduleEntity loopKind none
 checkDeclarations label moduleEntity within eachEntity
 checkDeclarations label checkModuleRowsDone loopKind none
@@ -11248,6 +12682,8 @@ checkDeclarations label numberNamesFailed loopKind none
 checkDeclarations label numberNamesFailed within none
 checkDeclarations label enterBuiltinsFailed loopKind none
 checkDeclarations label enterBuiltinsFailed within none
+checkDeclarations label checkTableRowsFailed loopKind none
+checkDeclarations label checkTableRowsFailed within none
 checkDeclarations label checkModuleRowsFailed loopKind none
 checkDeclarations label checkModuleRowsFailed within none
 checkDeclarations label checkCapabilityRowsFailed loopKind none
@@ -11276,6 +12712,7 @@ checkDeclarations let nine Int64 9 immutable
 checkDeclarations let ten Int64 10 immutable
 checkDeclarations let six Int64 6 immutable
 checkDeclarations let seven Int64 7 immutable
+checkDeclarations let eleven Int64 11 immutable
 checkDeclarations let minus1 Int64 -1 immutable
 checkDeclarations let mainText String "main" immutable
 checkDeclarations let zero Int64 0 immutable
@@ -11307,7 +12744,12 @@ checkDeclarations at notOwned set typeCode nextCode
 checkDeclarations at notOwned do recordCheck
 checkDeclarations at notOwned branch if isRecord goto recordEntity else goto notRecord
 checkDeclarations at notRecord do enumCheck
-checkDeclarations at notRecord branch if isEnum goto enumEntity else goto instanceEntity
+checkDeclarations at notRecord branch if isEnum goto enumEntity else goto notEnum
+checkDeclarations at notEnum do tableCheck
+checkDeclarations at notEnum branch if isTable goto tableEntity else goto instanceEntity
+checkDeclarations at tableEntity do checkTableRows
+checkDeclarations at tableEntity branch ifError checkTableRows goto checkTableRowsFailed else goto checkTableRowsDone
+checkDeclarations at checkTableRowsDone goto unowned
 checkDeclarations at moduleEntity do checkModuleRows
 checkDeclarations at moduleEntity branch ifError checkModuleRows goto checkModuleRowsFailed else goto checkModuleRowsDone
 checkDeclarations at checkModuleRowsDone goto unowned
@@ -11349,6 +12791,7 @@ checkDeclarations at noMain do makeNoMain
 checkDeclarations at noMain return error noMainError
 checkDeclarations at numberNamesFailed return error numberNamesError
 checkDeclarations at enterBuiltinsFailed return error enterBuiltinsError
+checkDeclarations at checkTableRowsFailed return error checkTableRowsError
 checkDeclarations at checkModuleRowsFailed return error checkModuleRowsError
 checkDeclarations at checkCapabilityRowsFailed return error checkCapabilityRowsError
 checkDeclarations at checkConstantRowsFailed return error checkConstantRowsError
@@ -11564,6 +13007,40 @@ enumCheck cleanedBy none
 enumCheck borrows none
 enumCheck catch none
 enumCheck suppresses none
+
+tableCheck is call
+tableCheck in checkDeclarations
+tableCheck invokes compare.equalInt64
+tableCheck argument left Int64 kind copy
+tableCheck argument right Int64 eleven copy
+tableCheck result isTable Bool
+tableCheck ownedBy none
+tableCheck cleanedBy none
+tableCheck borrows none
+tableCheck catch none
+tableCheck suppresses none
+
+checkTableRows is call
+checkTableRows in checkDeclarations
+checkTableRows invokes declareTable
+checkTableRows argument source String source lend
+checkTableRows argument words syntax.Words words lend
+checkTableRows argument rows syntax.Rows rows lend
+checkTableRows argument entity model.Entity entity copy
+checkTableRows argument entityIndex Int64 entityIndex copy
+checkTableRows argument code Int64 typeCode copy
+checkTableRows argument types Types types lendMutable
+checkTableRows argument typeNames TypeNames typeNames lend
+checkTableRows argument members Members members lend
+checkTableRows argument params Params params lendMutable
+checkTableRows argument targets Targets targets lendMutable
+checkTableRows argument region Region region lend
+checkTableRows result none
+checkTableRows ownedBy none
+checkTableRows cleanedBy none
+checkTableRows borrows none
+checkTableRows catch checkTableRowsError syntax.Rejection
+checkTableRows suppresses none
 
 checkModuleRows is call
 checkModuleRows in checkDeclarations
@@ -13996,6 +15473,9 @@ collectRows at findPredicateDone case Predicate.suppressesRow bind none none got
 collectRows at findPredicateDone case Predicate.strategyRow bind none none goto nextRow
 collectRows at findPredicateDone case Predicate.maxBytesRow bind none none goto nextRow
 collectRows at findPredicateDone case Predicate.releasedRow bind none none goto nextRow
+collectRows at findPredicateDone case Predicate.rowTypeRow bind none none goto nextRow
+collectRows at findPredicateDone case Predicate.rowRow bind none none goto nextRow
+collectRows at findPredicateDone case Predicate.cellRow bind none none goto nextRow
 collectRows at inputFact do enterInput
 collectRows at inputFact branch ifError enterInput goto enterInputFailed else goto enterInputDone
 collectRows at enterInputDone goto nextRow
@@ -14297,6 +15777,9 @@ addRegion at findPredicateDone case Predicate.borrowsRow bind none none goto nex
 addRegion at findPredicateDone case Predicate.catchRow bind none none goto nextRow
 addRegion at findPredicateDone case Predicate.suppressesRow bind none none goto nextRow
 addRegion at findPredicateDone case Predicate.strategyRow bind none none goto nextRow
+addRegion at findPredicateDone case Predicate.rowTypeRow bind none none goto nextRow
+addRegion at findPredicateDone case Predicate.rowRow bind none none goto nextRow
+addRegion at findPredicateDone case Predicate.cellRow bind none none goto nextRow
 addRegion at capacityFact do readBytesWord
 addRegion at capacityFact set capacity bytesWord
 addRegion at capacityFact goto nextRow
@@ -14565,6 +16048,8 @@ catchFits at begin case TargetKind.listAppend bind none none goto listError
 catchFits at begin case TargetKind.listLength bind none none goto listError
 catchFits at begin case TargetKind.listGet bind none none goto listError
 catchFits at begin case TargetKind.listGetOrTrap bind none none goto listError
+catchFits at begin case TargetKind.tableRowAt bind none none goto listError
+catchFits at begin case TargetKind.tableLength bind none none goto listError
 catchFits at builtinError do readOwner
 catchFits at builtinError do readRow
 catchFits at builtinError branch ifError readRow goto listError else goto readRowDone
@@ -14910,6 +16395,9 @@ checkCall at findPredicateDone case Predicate.suppressesRow bind none none goto 
 checkCall at findPredicateDone case Predicate.strategyRow bind none none goto nextRow
 checkCall at findPredicateDone case Predicate.maxBytesRow bind none none goto nextRow
 checkCall at findPredicateDone case Predicate.releasedRow bind none none goto nextRow
+checkCall at findPredicateDone case Predicate.rowTypeRow bind none none goto nextRow
+checkCall at findPredicateDone case Predicate.rowRow bind none none goto nextRow
+checkCall at findPredicateDone case Predicate.cellRow bind none none goto nextRow
 checkCall at invokes do readTargetWord
 checkCall at invokes do invokesShape
 checkCall at invokes branch ifError invokesShape goto invokesShapeFailed else goto invokesShapeDone
@@ -17146,6 +18634,7 @@ checkStep input arguments Arguments borrowed
 checkStep input labels Labels borrowed
 checkStep input matchValue syntax.Word copied
 checkStep input matchCode Int64 copied
+checkStep input typeNames TypeNames borrowed
 checkStep output Step
 checkStep outputOwnedBy none
 checkStep raises syntax.Rejection
@@ -17258,6 +18747,10 @@ checkStep label readLoopDone loopKind none
 checkStep label readLoopDone within none
 checkStep label collectionCheck loopKind none
 checkStep label collectionCheck within none
+checkStep label collectionKnownDone loopKind none
+checkStep label collectionKnownDone within none
+checkStep label listCollection loopKind none
+checkStep label listCollection within none
 checkStep label collectionCodeDone loopKind none
 checkStep label collectionCodeDone within none
 checkStep label itemCheck loopKind none
@@ -17266,6 +18759,16 @@ checkStep label itemCodeDone loopKind none
 checkStep label itemCodeDone within none
 checkStep label makeBranchIfNext loopKind none
 checkStep label makeBranchIfNext within none
+checkStep label tableCollection loopKind none
+checkStep label tableCollection within none
+checkStep label findTableDone loopKind none
+checkStep label findTableDone within none
+checkStep label rowCheck loopKind none
+checkStep label rowCheck within none
+checkStep label rowCodeDone loopKind none
+checkStep label rowCodeDone within none
+checkStep label makeTableNextStep loopKind none
+checkStep label makeTableNextStep within none
 checkStep label matchStep loopKind none
 checkStep label matchStep within none
 checkStep label matchShapeDone loopKind none
@@ -17430,10 +18933,16 @@ checkStep label nextNoCheckFailed loopKind none
 checkStep label nextNoCheckFailed within none
 checkStep label readLoopFailed loopKind none
 checkStep label readLoopFailed within none
+checkStep label collectionKnownFailed loopKind none
+checkStep label collectionKnownFailed within none
 checkStep label collectionCodeFailed loopKind none
 checkStep label collectionCodeFailed within none
 checkStep label itemCodeFailed loopKind none
 checkStep label itemCodeFailed within none
+checkStep label findTableFailed loopKind none
+checkStep label findTableFailed within none
+checkStep label rowCodeFailed loopKind none
+checkStep label rowCodeFailed within none
 checkStep label matchShapeFailed loopKind none
 checkStep label matchShapeFailed within none
 checkStep label matchedCodeFailed loopKind none
@@ -17613,8 +19122,11 @@ checkStep at nextNoCheckDone branch ifError readLoop goto readLoopFailed else go
 checkStep at readLoopDone do readLoopKind
 checkStep at readLoopDone do forEachCheck
 checkStep at readLoopDone branch if isForEach goto collectionCheck else goto notForEach
-checkStep at collectionCheck do collectionCode
-checkStep at collectionCheck branch ifError collectionCode goto collectionCodeFailed else goto collectionCodeDone
+checkStep at collectionCheck do collectionKnown
+checkStep at collectionCheck branch ifError collectionKnown goto collectionKnownFailed else goto collectionKnownDone
+checkStep at collectionKnownDone branch if isValue goto listCollection else goto tableCollection
+checkStep at listCollection do collectionCode
+checkStep at listCollection branch ifError collectionCode goto collectionCodeFailed else goto collectionCodeDone
 checkStep at collectionCodeDone do readListInfo
 checkStep at collectionCodeDone do readListKind
 checkStep at collectionCodeDone do listCheck
@@ -17627,6 +19139,20 @@ checkStep at itemCodeDone branch if itemFits goto makeBranchIfNext else goto ite
 checkStep at makeBranchIfNext do makeIfNextVerb
 checkStep at makeBranchIfNext do makeIfNext
 checkStep at makeBranchIfNext return ok ifNextDone
+checkStep at tableCollection do findTable
+checkStep at tableCollection branch ifError findTable goto findTableFailed else goto findTableDone
+checkStep at findTableDone do readTableInfo
+checkStep at findTableDone do readTableKind
+checkStep at findTableDone do tableCheck
+checkStep at findTableDone branch if isTable goto rowCheck else goto notList
+checkStep at rowCheck do readRowType
+checkStep at rowCheck do rowCode
+checkStep at rowCheck branch ifError rowCode goto rowCodeFailed else goto rowCodeDone
+checkStep at rowCodeDone do rowTypeCheck
+checkStep at rowCodeDone branch if rowFits goto makeTableNextStep else goto itemWrongType
+checkStep at makeTableNextStep do makeTableNextVerb
+checkStep at makeTableNextStep do makeTableNext
+checkStep at makeTableNextStep return ok tableNextDone
 checkStep at matchStep do matchShape
 checkStep at matchStep branch ifError matchShape goto matchShapeFailed else goto matchShapeDone
 checkStep at matchShapeDone do readMatchedWord
@@ -17665,6 +19191,8 @@ checkStep at findVariantDone case TargetKind.listAppend bind none none goto unkn
 checkStep at findVariantDone case TargetKind.listLength bind none none goto unknownVariant
 checkStep at findVariantDone case TargetKind.listGet bind none none goto unknownVariant
 checkStep at findVariantDone case TargetKind.listGetOrTrap bind none none goto unknownVariant
+checkStep at findVariantDone case TargetKind.tableRowAt bind none none goto unknownVariant
+checkStep at findVariantDone case TargetKind.tableLength bind none none goto unknownVariant
 checkStep at variantOwner do readOwner
 checkStep at variantOwner do ownerCheck
 checkStep at variantOwner branch if sameEnum goto readVariant else goto unknownVariant
@@ -17784,8 +19312,11 @@ checkStep at ifNextShapeFailed return error ifNextShapeError
 checkStep at nextYesCheckFailed return error nextYesCheckError
 checkStep at nextNoCheckFailed return error nextNoCheckError
 checkStep at readLoopFailed return error readLoopError
+checkStep at collectionKnownFailed return error collectionKnownError
 checkStep at collectionCodeFailed return error collectionCodeError
 checkStep at itemCodeFailed return error itemCodeError
+checkStep at findTableFailed return error findTableError
+checkStep at rowCodeFailed return error rowCodeError
 checkStep at matchShapeFailed return error matchShapeError
 checkStep at matchedCodeFailed return error matchedCodeError
 checkStep at caseShapeFailed return error caseShapeError
@@ -18757,6 +20288,20 @@ forEachCheck borrows none
 forEachCheck catch none
 forEachCheck suppresses none
 
+collectionKnown is call
+collectionKnown in checkStep
+collectionKnown invokes knowsValue
+collectionKnown argument source String source lend
+collectionKnown argument values Values values lend
+collectionKnown argument constants Values constants lend
+collectionKnown argument word syntax.Word conditionWord copy
+collectionKnown result isValue Bool
+collectionKnown ownedBy none
+collectionKnown cleanedBy none
+collectionKnown borrows none
+collectionKnown catch collectionKnownError syntax.Rejection
+collectionKnown suppresses none
+
 collectionCode is call
 collectionCode in checkStep
 collectionCode invokes valueCode
@@ -18871,6 +20416,120 @@ makeIfNext cleanedBy none
 makeIfNext borrows none
 makeIfNext catch none
 makeIfNext suppresses none
+
+findTable is call
+findTable in checkStep
+findTable invokes findType
+findTable argument source String source lend
+findTable argument typeNames TypeNames typeNames lend
+findTable argument word syntax.Word conditionWord copy
+findTable result tableCode Int64
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch findTableError syntax.Rejection
+findTable suppresses none
+
+readTableInfo is call
+readTableInfo in checkStep
+readTableInfo invokes typeInfoOf
+readTableInfo argument types Types types lend
+readTableInfo argument code Int64 tableCode copy
+readTableInfo result tableInfo TypeInfo
+readTableInfo ownedBy none
+readTableInfo cleanedBy none
+readTableInfo borrows none
+readTableInfo catch none
+readTableInfo suppresses none
+
+readTableKind is call
+readTableKind in checkStep
+readTableKind invokes TypeInfo.kind
+readTableKind argument record TypeInfo tableInfo copy
+readTableKind result tableKind Int64
+readTableKind ownedBy none
+readTableKind cleanedBy none
+readTableKind borrows none
+readTableKind catch none
+readTableKind suppresses none
+
+tableCheck is call
+tableCheck in checkStep
+tableCheck invokes compare.equalInt64
+tableCheck argument left Int64 tableKind copy
+tableCheck argument right Int64 six copy
+tableCheck result isTable Bool
+tableCheck ownedBy none
+tableCheck cleanedBy none
+tableCheck borrows none
+tableCheck catch none
+tableCheck suppresses none
+
+readRowType is call
+readRowType in checkStep
+readRowType invokes TypeInfo.item
+readRowType argument record TypeInfo tableInfo copy
+readRowType result rowType Int64
+readRowType ownedBy none
+readRowType cleanedBy none
+readRowType borrows none
+readRowType catch none
+readRowType suppresses none
+
+rowCode is call
+rowCode in checkStep
+rowCode invokes valueCode
+rowCode argument source String source lend
+rowCode argument values Values values lend
+rowCode argument constants Values constants lend
+rowCode argument word syntax.Word itemWord copy
+rowCode result boundRowCode Int64
+rowCode ownedBy none
+rowCode cleanedBy none
+rowCode borrows none
+rowCode catch rowCodeError syntax.Rejection
+rowCode suppresses none
+
+rowTypeCheck is call
+rowTypeCheck in checkStep
+rowTypeCheck invokes compare.equalInt64
+rowTypeCheck argument left Int64 boundRowCode copy
+rowTypeCheck argument right Int64 rowType copy
+rowTypeCheck result rowFits Bool
+rowTypeCheck ownedBy none
+rowTypeCheck cleanedBy none
+rowTypeCheck borrows none
+rowTypeCheck catch none
+rowTypeCheck suppresses none
+
+makeTableNextVerb is call
+makeTableNextVerb in checkStep
+makeTableNextVerb invokes StepVerb.branchIfNext
+makeTableNextVerb argument none
+makeTableNextVerb result tableNextVerb StepVerb
+makeTableNextVerb ownedBy none
+makeTableNextVerb cleanedBy none
+makeTableNextVerb borrows none
+makeTableNextVerb catch none
+makeTableNextVerb suppresses none
+
+makeTableNext is call
+makeTableNext in checkStep
+makeTableNext invokes Step.new
+makeTableNext argument label syntax.Word labelWord copy
+makeTableNext argument verb StepVerb tableNextVerb copy
+makeTableNext argument subject syntax.Word conditionWord copy
+makeTableNext argument target syntax.Word nextYesWord copy
+makeTableNext argument otherwise syntax.Word nextNoWord copy
+makeTableNext argument extra syntax.Word itemWord copy
+makeTableNext argument number Int64 tableCode copy
+makeTableNext argument code Int64 rowType copy
+makeTableNext result tableNextDone Step
+makeTableNext ownedBy none
+makeTableNext cleanedBy none
+makeTableNext borrows none
+makeTableNext catch none
+makeTableNext suppresses none
 
 matchShape is call
 matchShape in checkStep
@@ -19703,6 +21362,7 @@ collectSteps input calls Calls borrowed
 collectSteps input arguments Arguments borrowed
 collectSteps input labels Labels borrowed
 collectSteps input steps Steps borrowedMutable
+collectSteps input typeNames TypeNames borrowed
 collectSteps output none
 collectSteps outputOwnedBy none
 collectSteps raises syntax.Rejection
@@ -19813,6 +21473,9 @@ collectSteps at findPredicateDone case Predicate.suppressesRow bind none none go
 collectSteps at findPredicateDone case Predicate.strategyRow bind none none goto nextRow
 collectSteps at findPredicateDone case Predicate.maxBytesRow bind none none goto nextRow
 collectSteps at findPredicateDone case Predicate.releasedRow bind none none goto nextRow
+collectSteps at findPredicateDone case Predicate.rowTypeRow bind none none goto nextRow
+collectSteps at findPredicateDone case Predicate.rowRow bind none none goto nextRow
+collectSteps at findPredicateDone case Predicate.cellRow bind none none goto nextRow
 collectSteps at stepRow do checkTheStep
 collectSteps at stepRow branch ifError checkTheStep goto checkTheStepFailed else goto checkTheStepDone
 collectSteps at checkTheStepDone do appendStep
@@ -20007,6 +21670,7 @@ checkTheStep argument arguments Arguments arguments lend
 checkTheStep argument labels Labels labels lend
 checkTheStep argument matchValue syntax.Word matchValue copy
 checkTheStep argument matchCode Int64 matchCode copy
+checkTheStep argument typeNames TypeNames typeNames lend
 checkTheStep result step Step
 checkTheStep ownedBy none
 checkTheStep cleanedBy none
@@ -20376,6 +22040,7 @@ stepsCheck argument calls Calls calls lend
 stepsCheck argument arguments Arguments arguments lend
 stepsCheck argument labels Labels labels lend
 stepsCheck argument steps Steps steps lendMutable
+stepsCheck argument typeNames TypeNames typeNames lend
 stepsCheck result none
 stepsCheck ownedBy none
 stepsCheck cleanedBy none
