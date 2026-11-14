@@ -1,0 +1,69 @@
+# string_concat_slice - string concatenation and slicing (X-211).
+# Builds "hello" by concatenating "hel" + "lo" via a real string.concat call and
+# self-checks it via the standard.test harness, so it fails under a no-op lowering.
+# Expected output: a PASS line containing "hello" then "---- N passed, 0 failed ----".
+
+StringConcatSlice is project
+StringConcatSlice module examplesStringConcatSlice
+StringConcatSlice target console
+StringConcatSlice entry main
+
+examplesStringConcatSlice is module
+examplesStringConcatSlice path examples.stringConcatSlice
+examplesStringConcatSlice exports main
+examplesStringConcatSlice purpose "string concatenation and slicing"
+examplesStringConcatSlice invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap yes
+main async no
+main purpose "Concatenate two fragments and assert the result"
+main invariant "All assertions hold"
+main let leftPart immutable String "hel"
+main let rightPart immutable String "lo"
+main let harnessExpected immutable String "hello"
+main let emptyGuard immutable String ""
+main let harnessName immutable String "string_concat_slice"
+main let noopName immutable String "string_concat_slice: real result (not the empty string)"
+main do joinCall
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+joinCall is call
+joinCall in main
+joinCall invokes string.concat
+joinCall arg left String leftPart
+joinCall arg right String rightPart
+joinCall out joined String
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualText
+checkResult arg name String harnessName
+checkResult arg expected String harnessExpected
+checkResult arg actual String joined
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String joined
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

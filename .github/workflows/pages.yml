@@ -1,12 +1,9 @@
 name: Deploy project website
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  # The project website (Vite/npm) belongs to the deprecated legacy product —
+  # package.json now lives under legacy/. Gated to manual-only so it no longer
+  # auto-fails on every push; rewire when the new compiler grows a website.
   workflow_dispatch:
 
 permissions:
@@ -21,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
