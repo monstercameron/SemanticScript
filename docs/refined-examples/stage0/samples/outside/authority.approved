@@ -1,0 +1,2 @@
+# Authority approved for this project (`refined approve`). A program runs only with authority
+# listed here; build.sem asking for more stops `refined run`, `test`, and executable builds.

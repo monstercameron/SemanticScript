@@ -5,9 +5,9 @@
 
 emitTest is test
 emitTest purpose "The squares sample is written as C: the prelude, its constant, a function for main with its locals, labels, and jumps that count and reset the loop passes, and a C main; a source outside the subset is refused"
-emitTest verifies emitModule writesC
-emitTest verifies emitModule countsLoopPasses
-emitTest verifies emitModule refusesOutsideSubset
+emitTest verifies emitProgram writesC
+emitTest verifies emitProgram countsLoopPasses
+emitTest verifies emitProgram refusesOutsideSubset
 emitTest typeParameter none
 emitTest input none
 emitTest output none
@@ -36,6 +36,8 @@ emitTest label findSignatureDone loopKind none
 emitTest label findSignatureDone within none
 emitTest label findConstantTextDone loopKind none
 emitTest label findConstantTextDone within none
+emitTest label findConstantReadDone loopKind none
+emitTest label findConstantReadDone within none
 emitTest label findPassTextDone loopKind none
 emitTest label findPassTextDone within none
 emitTest label findResetTextDone loopKind none
@@ -52,19 +54,25 @@ emitTest label modelYDone loopKind none
 emitTest label modelYDone within none
 emitTest label badRefused loopKind none
 emitTest label badRefused within none
+emitTest label otherRefused loopKind none
+emitTest label otherRefused within none
 emitTest label refused loopKind none
 emitTest label refused within none
 emitTest let source String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
 emitTest let badSource String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.wrappingMultiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+emitTest let badExpected String "79:15: this call target is outside the stage0 subset (math.wrappingMultiplyInt64)" immutable
+emitTest let noEntryExpected String "5:1: the module has no main operation (squares)" immutable
 emitTest let refusedText String "the front end refused the source or a step failed" immutable
-emitTest let mainWrapper String "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_main();\n}\n" immutable
-emitTest let signature String "static int o_main(void) {\n" immutable
-emitTest let constantText String "static const int64_t v_limit = 5;\n" immutable
+emitTest let mainWrapper String "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_squares_main();\n}\n" immutable
+emitTest let signature String "static int o_squares_main(void) {\n" immutable
+emitTest let constantText String "static const int64_t k_squares_limit = 5;\n" immutable
+emitTest let constantRead String "  int64_t v_limit = k_squares_limit;\n" immutable
 emitTest let passText String "{ ss_pass(&n_nextSquare, v_limit, \"nextSquare\"); goto l_nextSquare; }" immutable
 emitTest let resetText String "{ n_nextSquare = 0; goto l_nextSquare; }" immutable
 emitTest let callText String "  f_printIt = ss_write_integer_line(v_squared);\n" immutable
 emitTest let returnText String "  { int ss_result = v_okCode; return ss_result; }\n" immutable
-emitTest let zero Int64 0 immutable
+emitTest let entry String "squares.main" immutable
+emitTest let otherEntry String "squares.start" immutable
 emitTest at begin do lexX
 emitTest at begin branch ifError lexX goto refused else goto lexXDone
 emitTest at lexXDone do newWordsX
@@ -86,8 +94,10 @@ emitTest at findMainWrapperDone do findSignature
 emitTest at findMainWrapperDone branch ifError findSignature goto refused else goto findSignatureDone
 emitTest at findSignatureDone do findConstantText
 emitTest at findSignatureDone branch ifError findConstantText goto refused else goto findConstantTextDone
-emitTest at findConstantTextDone do findPassText
-emitTest at findConstantTextDone branch ifError findPassText goto refused else goto findPassTextDone
+emitTest at findConstantTextDone do findConstantRead
+emitTest at findConstantTextDone branch ifError findConstantRead goto refused else goto findConstantReadDone
+emitTest at findConstantReadDone do findPassText
+emitTest at findConstantReadDone branch ifError findPassText goto refused else goto findPassTextDone
 emitTest at findPassTextDone do findResetText
 emitTest at findPassTextDone branch ifError findResetText goto refused else goto findResetTextDone
 emitTest at findResetTextDone do findCallText
@@ -107,9 +117,14 @@ emitTest at groupYDone branch ifError modelY goto refused else goto modelYDone
 emitTest at modelYDone do newBadC
 emitTest at modelYDone do emitBad
 emitTest at modelYDone branch ifError emitBad goto badRefused else goto refused
-emitTest at badRefused do badLength
-emitTest at badRefused do expectNothing
-emitTest at badRefused return ok none
+emitTest at badRefused do describeBad
+emitTest at badRefused do expectBad
+emitTest at badRefused do newOtherC
+emitTest at badRefused do emitOther
+emitTest at badRefused branch ifError emitOther goto otherRefused else goto refused
+emitTest at otherRefused do describeOther
+emitTest at otherRefused do expectOther
+emitTest at otherRefused return ok none
 emitTest at refused do failRefused
 emitTest at refused return ok none
 
@@ -217,12 +232,13 @@ newC suppresses none
 
 emit is call
 emit in emitTest
-emit invokes emitModule
+emit invokes emitProgram
 emit argument buffer buffer.ByteBuffer cText lendMutable
 emit argument source String source lend
 emit argument words syntax.Words wordsX lend
 emit argument rows syntax.Rows rowsX lend
 emit argument entities model.Entities entitiesX lend
+emit argument entry String entry lend
 emit result none
 emit ownedBy none
 emit cleanedBy none
@@ -277,6 +293,18 @@ findConstantText cleanedBy none
 findConstantText borrows none
 findConstantText catch findConstantTextError string.NotFound
 findConstantText suppresses none
+
+findConstantRead is call
+findConstantRead in emitTest
+findConstantRead invokes string.find
+findConstantRead argument text String written lend
+findConstantRead argument needle String constantRead lend
+findConstantRead result constantReadAt Int64
+findConstantRead ownedBy none
+findConstantRead cleanedBy none
+findConstantRead borrows none
+findConstantRead catch findConstantReadError string.NotFound
+findConstantRead suppresses none
 
 findPassText is call
 findPassText in emitTest
@@ -424,12 +452,13 @@ newBadC suppresses none
 
 emitBad is call
 emitBad in emitTest
-emitBad invokes emitModule
+emitBad invokes emitProgram
 emitBad argument buffer buffer.ByteBuffer badC lendMutable
 emitBad argument source String badSource lend
 emitBad argument words syntax.Words wordsY lend
 emitBad argument rows syntax.Rows rowsY lend
 emitBad argument entities model.Entities entitiesY lend
+emitBad argument entry String entry lend
 emitBad result none
 emitBad ownedBy none
 emitBad cleanedBy none
@@ -437,28 +466,82 @@ emitBad borrows none
 emitBad catch badError syntax.Rejection
 emitBad suppresses none
 
-badLength is call
-badLength in emitTest
-badLength invokes buffer.length
-badLength argument buffer buffer.ByteBuffer badC lend
-badLength result badBytes Int64
-badLength ownedBy none
-badLength cleanedBy none
-badLength borrows none
-badLength catch none
-badLength suppresses none
+describeBad is call
+describeBad in emitTest
+describeBad invokes syntax.diagnostic
+describeBad argument source String badSource lend
+describeBad argument rejection syntax.Rejection badError copy
+describeBad argument region Region store lend
+describeBad result badDescribed String
+describeBad ownedBy store
+describeBad cleanedBy none
+describeBad borrows none
+describeBad catch none
+describeBad suppresses none
 
-expectNothing is call
-expectNothing in emitTest
-expectNothing invokes test.assertEqualInt64
-expectNothing argument expected Int64 zero copy
-expectNothing argument actual Int64 badBytes copy
-expectNothing result none
-expectNothing ownedBy none
-expectNothing cleanedBy none
-expectNothing borrows none
-expectNothing catch none
-expectNothing suppresses none
+expectBad is call
+expectBad in emitTest
+expectBad invokes test.assertEqualString
+expectBad argument expected String badExpected lend
+expectBad argument actual String badDescribed lend
+expectBad result none
+expectBad ownedBy none
+expectBad cleanedBy none
+expectBad borrows none
+expectBad catch none
+expectBad suppresses none
+
+newOtherC is call
+newOtherC in emitTest
+newOtherC invokes buffer.new
+newOtherC argument region Region store lend
+newOtherC result otherC buffer.ByteBuffer
+newOtherC ownedBy store
+newOtherC cleanedBy none
+newOtherC borrows none
+newOtherC catch none
+newOtherC suppresses none
+
+emitOther is call
+emitOther in emitTest
+emitOther invokes emitProgram
+emitOther argument buffer buffer.ByteBuffer otherC lendMutable
+emitOther argument source String source lend
+emitOther argument words syntax.Words wordsX lend
+emitOther argument rows syntax.Rows rowsX lend
+emitOther argument entities model.Entities entitiesX lend
+emitOther argument entry String otherEntry lend
+emitOther result none
+emitOther ownedBy none
+emitOther cleanedBy none
+emitOther borrows none
+emitOther catch otherError syntax.Rejection
+emitOther suppresses none
+
+describeOther is call
+describeOther in emitTest
+describeOther invokes syntax.diagnostic
+describeOther argument source String source lend
+describeOther argument rejection syntax.Rejection otherError copy
+describeOther argument region Region store lend
+describeOther result otherDescribed String
+describeOther ownedBy store
+describeOther cleanedBy none
+describeOther borrows none
+describeOther catch none
+describeOther suppresses none
+
+expectOther is call
+expectOther in emitTest
+expectOther invokes test.assertEqualString
+expectOther argument expected String noEntryExpected lend
+expectOther argument actual String otherDescribed lend
+expectOther result none
+expectOther ownedBy none
+expectOther cleanedBy none
+expectOther borrows none
+expectOther catch none
+expectOther suppresses none
 
 failRefused is call
 failRefused in emitTest

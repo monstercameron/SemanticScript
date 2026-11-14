@@ -1,4 +1,4 @@
-# A source stage0 refuses: an alias is outside the stage0 subset. stage0
+# A program stage0 refuses: an alias is outside the stage0 subset. stage0
 # reports where and why, and exits with code 1:
 #
 #   samples/outside/outside.sem:12:11: this entity kind is outside the stage0 subset (alias)
@@ -7,10 +7,28 @@ outside is module
 outside purpose "Hold an alias, which the stage0 subset does not compile"
 outside path outside
 outside imports none
-outside exports none
+outside exports main
 
 Meters is alias
 Meters purpose "A distance in meters, as a whole number"
 Meters typeParameter none
 Meters aliasOf Int64
 Meters indexes none
+
+main is operation
+main purpose "Exit with code 0; `refined run` runs it, and stage0 refuses the alias above it"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect none
+main uses none
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let okCode ExitCode 0 immutable
+main at begin return ok okCode

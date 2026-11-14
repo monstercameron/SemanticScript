@@ -1,0 +1,36 @@
+# stage0: the first stage of a SemanticScript compiler written in SemanticScript.
+#
+#     cd docs/refined-examples/stage0
+#     refined run . -- samples/hello build/hello gcc \
+#         ../../../semanticscript/compiler/refined/native_runtime.c [-lshell32]
+#
+# It reads the project directory named by the first argument: its build.sem
+# names the modules (`includesModule`, in order) and the entry
+# (`<module>.main`). It reads each module's file, `<module>.sem` in the
+# project directory, and puts their texts one after another, after a module of
+# its own, `string`, which declares the standard library's string.Position
+# record. It tokenizes that program text (lexer), groups the tokens into rows
+# of words (syntax), groups the rows into entities (model), checks module by
+# module that the program is in the stage0 subset (subset), writes it as C
+# (emitc) to the second argument with `.c` added, and runs the C compiler named
+# by the third argument (gcc when there is none) to build the second argument
+# as an executable. Every argument after the compiler's name is passed to it
+# after the C file: the runtime of refined executables (native_runtime.c),
+# which the C file is linked with, and any flags the platform needs (on
+# Windows, `-lshell32` for the runtime's command line).
+#
+# A diagnostic names the file the word is in and the line within that file:
+# each file's text starts at a known offset and line of the program text.
+#
+# Authority (build.sem, and the capabilities below): read the command line;
+# read files under the working directory; write files under `build/`; run a C
+# compiler named exactly `cc`, `gcc`, or `clang`. Paths come from the command
+# line, so their scopes are checked when the files are opened (D-38); a path
+# outside them stops the program before the file is touched.
+#
+# Exit codes: 0 built; 1 the program is refused, with a diagnostic
+# `path:line:column: message (word)` on standard error; 2 usage; 3 a file could
+# not be read or written, or a source is not UTF-8; 4 the C compiler could not
+# be run or failed; 5 standard output failed.
+#
+# This module is generated from tools/stage0.dsl by tools/build.py.

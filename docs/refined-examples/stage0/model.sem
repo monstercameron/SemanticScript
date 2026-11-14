@@ -6,9 +6,14 @@
 # its name. Calls, tasks, and regions are not in the map: each belongs to the
 # operation its `in` row names, so the same name may serve several operations.
 #
+# A program is several modules, one after another, each beginning with its
+# `<name> is module` entity. A module is entered in the map by its name, and
+# every other module-level entity by `<module>.<name>`, so two modules may use
+# the same names.
+#
 # Kinds are numbered by their row in the `kinds` table: 1 module, 2 capability,
 # 3 constant, 4 operation, 5 call, 6 record, 7 enum, 8 typeInstance, 9 region,
-# 10 task, 11 table.
+# 10 task, 11 table, 12 operationType.
 # Any other kind is outside the stage0 subset.
 
 model is module
@@ -47,6 +52,7 @@ kinds row typeInstanceRow 8
 kinds row regionRow 9
 kinds row taskRow 10
 kinds row tableRow 11
+kinds row operationTypeRow 12
 kinds cell moduleRow text "module"
 kinds cell capabilityRow text "capability"
 kinds cell constantRow text "constant"
@@ -58,6 +64,7 @@ kinds cell typeInstanceRow text "typeInstance"
 kinds cell regionRow text "region"
 kinds cell taskRow text "task"
 kinds cell tableRow text "table"
+kinds cell operationTypeRow text "operationType"
 
 Entity is record
 Entity purpose "One entity: its name, its kind's number, and the run of rows it owns"
@@ -95,7 +102,7 @@ lookupKind label begin loopKind none
 lookupKind label begin within none
 lookupKind label scan loopKind forEach
 lookupKind label scan within none
-lookupKind label scan maxIterations 11
+lookupKind label scan maxIterations 12
 lookupKind label scan over kinds
 lookupKind label compare loopKind none
 lookupKind label compare within scan
@@ -266,6 +273,81 @@ neitherCheck borrows none
 neitherCheck catch none
 neitherCheck suppresses none
 
+nameKey is operation
+nameKey purpose "The key a module-level entity is entered under: a module by its name, anything else by `<module>.<name>` (the scope is the module's name and a dot, or empty before the first module)"
+nameKey invariant none
+nameKey typeParameter none
+nameKey input source String borrowed
+nameKey input name syntax.Word copied
+nameKey input kind Int64 copied
+nameKey input scope String borrowed
+nameKey input region Region borrowed
+nameKey output String
+nameKey outputOwnedBy region
+nameKey raises syntax.Rejection
+nameKey effect none
+nameKey uses none
+nameKey memoryHeap true
+nameKey async false
+nameKey maxRecursion none
+nameKey label begin loopKind none
+nameKey label begin within none
+nameKey label copyNameDone loopKind none
+nameKey label copyNameDone within none
+nameKey label bare loopKind none
+nameKey label bare within none
+nameKey label scoped loopKind none
+nameKey label scoped within none
+nameKey label copyNameFailed loopKind none
+nameKey label copyNameFailed within none
+nameKey let one Int64 1 immutable
+nameKey at begin do copyName
+nameKey at begin branch ifError copyName goto copyNameFailed else goto copyNameDone
+nameKey at copyNameDone do moduleCheck
+nameKey at copyNameDone branch if isModule goto bare else goto scoped
+nameKey at bare return ok nameText
+nameKey at scoped do joinScope
+nameKey at scoped return ok key
+nameKey at copyNameFailed return error copyNameError
+
+copyName is call
+copyName in nameKey
+copyName invokes syntax.wordText
+copyName argument source String source lend
+copyName argument word syntax.Word name copy
+copyName argument region Region region lend
+copyName result nameText String
+copyName ownedBy region
+copyName cleanedBy none
+copyName borrows none
+copyName catch copyNameError syntax.Rejection
+copyName suppresses none
+
+moduleCheck is call
+moduleCheck in nameKey
+moduleCheck invokes compare.equalInt64
+moduleCheck argument left Int64 kind copy
+moduleCheck argument right Int64 one copy
+moduleCheck result isModule Bool
+moduleCheck ownedBy none
+moduleCheck cleanedBy none
+moduleCheck borrows none
+moduleCheck catch none
+moduleCheck suppresses none
+
+joinScope is call
+joinScope in nameKey
+joinScope invokes string.concat
+joinScope argument left String scope lend
+joinScope argument right String nameText lend
+joinScope argument region Region region lend
+joinScope result key String
+joinScope ownedBy region
+joinScope cleanedBy none
+joinScope borrows none
+joinScope catch none
+joinScope suppresses none
+
 closeEntity is operation
 closeEntity purpose "Record the entity being built, when there is one, and enter its name in the name map when it is a module-level name"
 closeEntity invariant none
@@ -278,6 +360,7 @@ closeEntity input name syntax.Word copied
 closeEntity input kind Int64 copied
 closeEntity input first Int64 copied
 closeEntity input end Int64 copied
+closeEntity input scope String borrowed
 closeEntity input region Region borrowed
 closeEntity output none
 closeEntity outputOwnedBy none
@@ -293,12 +376,12 @@ closeEntity label add loopKind none
 closeEntity label add within none
 closeEntity label enter loopKind none
 closeEntity label enter within none
-closeEntity label copyNameDone loopKind none
-closeEntity label copyNameDone within none
+closeEntity label makeKeyDone loopKind none
+closeEntity label makeKeyDone within none
 closeEntity label done loopKind none
 closeEntity label done within none
-closeEntity label copyNameFailed loopKind none
-closeEntity label copyNameFailed within none
+closeEntity label makeKeyFailed loopKind none
+closeEntity label makeKeyFailed within none
 closeEntity let none
 closeEntity at begin branch if open goto add else goto done
 closeEntity at add do measure
@@ -307,12 +390,12 @@ closeEntity at add do countEntities
 closeEntity at add do appendEntity
 closeEntity at add do ownsCheck
 closeEntity at add branch if owned goto enter else goto done
-closeEntity at enter do copyName
-closeEntity at enter branch ifError copyName goto copyNameFailed else goto copyNameDone
-closeEntity at copyNameDone do enterName
-closeEntity at copyNameDone goto done
+closeEntity at enter do makeKey
+closeEntity at enter branch ifError makeKey goto makeKeyFailed else goto makeKeyDone
+closeEntity at makeKeyDone do enterName
+closeEntity at makeKeyDone goto done
 closeEntity at done return ok none
-closeEntity at copyNameFailed return error copyNameError
+closeEntity at makeKeyFailed return error makeKeyError
 
 measure is call
 measure in closeEntity
@@ -374,18 +457,20 @@ ownsCheck borrows none
 ownsCheck catch none
 ownsCheck suppresses none
 
-copyName is call
-copyName in closeEntity
-copyName invokes syntax.wordText
-copyName argument source String source lend
-copyName argument word syntax.Word name copy
-copyName argument region Region region lend
-copyName result key String
-copyName ownedBy region
-copyName cleanedBy none
-copyName borrows none
-copyName catch copyNameError syntax.Rejection
-copyName suppresses none
+makeKey is call
+makeKey in closeEntity
+makeKey invokes nameKey
+makeKey argument source String source lend
+makeKey argument name syntax.Word name copy
+makeKey argument kind Int64 kind copy
+makeKey argument scope String scope lend
+makeKey argument region Region region lend
+makeKey result key String
+makeKey ownedBy region
+makeKey cleanedBy none
+makeKey borrows none
+makeKey catch makeKeyError syntax.Rejection
+makeKey suppresses none
 
 enterName is call
 enterName in closeEntity
@@ -403,7 +488,7 @@ enterName suppresses none
 buildModel is operation
 buildModel purpose "Group rows into entities by their `is` rows and enter each module-level entity's name in a map"
 buildModel invariant groupsEntities "\"Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5, record 6, enum 7, typeInstance 8, region 9, task 10, table 11\""
-buildModel invariant namesEntities "\"Each entity's name maps to its position in the entity list, except calls, tasks, and regions, whose names belong to the operation they are in\""
+buildModel invariant namesEntities "\"Each module's name maps to its position in the entity list, and each other entity's `<module>.<name>` to its position, except calls, tasks, and regions, whose names belong to the operation they are in\""
 buildModel invariant rejectsOutsideModel "\"Another kind is unsupportedKind, a row whose subject is not the entity above it is strayRow, and a module-level name declared twice is duplicateName\""
 buildModel typeParameter none
 buildModel input source String borrowed
@@ -437,10 +522,16 @@ buildModel label readKindWord loopKind none
 buildModel label readKindWord within visit
 buildModel label classifyDone loopKind none
 buildModel label classifyDone within visit
+buildModel label enterScope loopKind none
+buildModel label enterScope within visit
+buildModel label copyModuleNameDone loopKind none
+buildModel label copyModuleNameDone within visit
+buildModel label ownership loopKind none
+buildModel label ownership within visit
 buildModel label nameCheck loopKind none
 buildModel label nameCheck within visit
-buildModel label copySubjectDone loopKind none
-buildModel label copySubjectDone within visit
+buildModel label makeSubjectKeyDone loopKind none
+buildModel label makeSubjectKeyDone within visit
 buildModel label openIt loopKind none
 buildModel label openIt within visit
 buildModel label continuing loopKind none
@@ -467,12 +558,15 @@ buildModel label closePreviousFailed loopKind none
 buildModel label closePreviousFailed within none
 buildModel label classifyFailed loopKind none
 buildModel label classifyFailed within none
-buildModel label copySubjectFailed loopKind none
-buildModel label copySubjectFailed within none
+buildModel label copyModuleNameFailed loopKind none
+buildModel label copyModuleNameFailed within none
+buildModel label makeSubjectKeyFailed loopKind none
+buildModel label makeSubjectKeyFailed within none
 buildModel label subjectCheckFailed loopKind none
 buildModel label subjectCheckFailed within none
 buildModel label closeLastFailed loopKind none
 buildModel label closeLastFailed within none
+buildModel let scope String "" mutable
 buildModel let rowIndex Int64 0 mutable
 buildModel let open Bool false mutable
 buildModel let openName syntax.Word unset mutable
@@ -484,6 +578,7 @@ buildModel let one Int64 1 immutable
 buildModel let isWord String "is" immutable
 buildModel let three Int64 3 immutable
 buildModel let two Int64 2 immutable
+buildModel let dot String "." immutable
 buildModel at begin do countRows
 buildModel at begin do makeNameKind
 buildModel at begin do makeOrigin
@@ -507,12 +602,19 @@ buildModel at readKindWord do findKind
 buildModel at readKindWord do readKind
 buildModel at readKindWord do classify
 buildModel at readKindWord branch ifError classify goto classifyFailed else goto classifyDone
-buildModel at classifyDone do ownsCheck
-buildModel at classifyDone branch if owned goto nameCheck else goto openIt
-buildModel at nameCheck do copySubject
-buildModel at nameCheck branch ifError copySubject goto copySubjectFailed else goto copySubjectDone
-buildModel at copySubjectDone do findName
-buildModel at copySubjectDone branch if taken goto duplicate else goto openIt
+buildModel at classifyDone do moduleCheck
+buildModel at classifyDone branch if isModule goto enterScope else goto ownership
+buildModel at enterScope do copyModuleName
+buildModel at enterScope branch ifError copyModuleName goto copyModuleNameFailed else goto copyModuleNameDone
+buildModel at copyModuleNameDone do makeScope
+buildModel at copyModuleNameDone set scope moduleScope
+buildModel at copyModuleNameDone goto ownership
+buildModel at ownership do ownsCheck
+buildModel at ownership branch if owned goto nameCheck else goto openIt
+buildModel at nameCheck do makeSubjectKey
+buildModel at nameCheck branch ifError makeSubjectKey goto makeSubjectKeyFailed else goto makeSubjectKeyDone
+buildModel at makeSubjectKeyDone do findName
+buildModel at makeSubjectKeyDone branch if taken goto duplicate else goto openIt
 buildModel at openIt set open yes
 buildModel at openIt set openName subject
 buildModel at openIt set openKind kind
@@ -537,14 +639,15 @@ buildModel at stray return error strayError
 buildModel at isCheckFailed return error isCheckError
 buildModel at closePreviousFailed return error closePreviousError
 buildModel at classifyFailed return error classifyError
-buildModel at copySubjectFailed return error copySubjectError
+buildModel at copyModuleNameFailed return error copyModuleNameError
+buildModel at makeSubjectKeyFailed return error makeSubjectKeyError
 buildModel at subjectCheckFailed return error subjectCheckError
 buildModel at closeLastFailed return error closeLastError
 
 scratch is region
 scratch in buildModel
 scratch strategy arena
-scratch maxBytes 1048576
+scratch maxBytes 67108864
 scratch released atReturn
 
 countRows is call
@@ -677,6 +780,7 @@ closePrevious argument name syntax.Word openName copy
 closePrevious argument kind Int64 openKind copy
 closePrevious argument first Int64 openFirst copy
 closePrevious argument end Int64 rowIndex copy
+closePrevious argument scope String scope lend
 closePrevious argument region Region scratch lend
 closePrevious result none
 closePrevious ownedBy none
@@ -733,6 +837,44 @@ classify borrows none
 classify catch classifyError syntax.Rejection
 classify suppresses none
 
+moduleCheck is call
+moduleCheck in buildModel
+moduleCheck invokes compare.equalInt64
+moduleCheck argument left Int64 kind copy
+moduleCheck argument right Int64 one copy
+moduleCheck result isModule Bool
+moduleCheck ownedBy none
+moduleCheck cleanedBy none
+moduleCheck borrows none
+moduleCheck catch none
+moduleCheck suppresses none
+
+copyModuleName is call
+copyModuleName in buildModel
+copyModuleName invokes syntax.wordText
+copyModuleName argument source String source lend
+copyModuleName argument word syntax.Word subject copy
+copyModuleName argument region Region scratch lend
+copyModuleName result moduleText String
+copyModuleName ownedBy scratch
+copyModuleName cleanedBy none
+copyModuleName borrows none
+copyModuleName catch copyModuleNameError syntax.Rejection
+copyModuleName suppresses none
+
+makeScope is call
+makeScope in buildModel
+makeScope invokes string.concat
+makeScope argument left String moduleText lend
+makeScope argument right String dot lend
+makeScope argument region Region scratch lend
+makeScope result moduleScope String
+makeScope ownedBy scratch
+makeScope cleanedBy none
+makeScope borrows none
+makeScope catch none
+makeScope suppresses none
+
 ownsCheck is call
 ownsCheck in buildModel
 ownsCheck invokes ownsName
@@ -744,24 +886,26 @@ ownsCheck borrows none
 ownsCheck catch none
 ownsCheck suppresses none
 
-copySubject is call
-copySubject in buildModel
-copySubject invokes syntax.wordText
-copySubject argument source String source lend
-copySubject argument word syntax.Word subject copy
-copySubject argument region Region scratch lend
-copySubject result subjectText String
-copySubject ownedBy scratch
-copySubject cleanedBy none
-copySubject borrows none
-copySubject catch copySubjectError syntax.Rejection
-copySubject suppresses none
+makeSubjectKey is call
+makeSubjectKey in buildModel
+makeSubjectKey invokes nameKey
+makeSubjectKey argument source String source lend
+makeSubjectKey argument name syntax.Word subject copy
+makeSubjectKey argument kind Int64 kind copy
+makeSubjectKey argument scope String scope lend
+makeSubjectKey argument region Region scratch lend
+makeSubjectKey result subjectKey String
+makeSubjectKey ownedBy scratch
+makeSubjectKey cleanedBy none
+makeSubjectKey borrows none
+makeSubjectKey catch makeSubjectKeyError syntax.Rejection
+makeSubjectKey suppresses none
 
 findName is call
 findName in buildModel
 findName invokes EntityNames.contains
 findName argument map EntityNames names lend
-findName argument key String subjectText lend
+findName argument key String subjectKey lend
 findName result taken Bool
 findName ownedBy none
 findName cleanedBy none
@@ -805,6 +949,7 @@ closeLast argument name syntax.Word openName copy
 closeLast argument kind Int64 openKind copy
 closeLast argument first Int64 openFirst copy
 closeLast argument end Int64 rowIndex copy
+closeLast argument scope String scope lend
 closeLast argument region Region scratch lend
 closeLast result none
 closeLast ownedBy none

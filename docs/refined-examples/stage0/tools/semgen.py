@@ -91,6 +91,19 @@ class Program:
         return m
 
     def _declare_rows(self, m, ename, kind, rows):
+        if kind == "operationType":
+            d = TypeDecl("optype", f"{m.name}.{ename}")
+            ins, out, raises = [], None, None
+            for r in rows:
+                if r[0] == "input" and r[1] != "none":
+                    ins.append((r[1], r[2], r[3]))
+                elif r[0] == "output":
+                    out = None if r[1] == "none" else r[1]
+                elif r[0] == "raises":
+                    raises = None if r[1] == "none" else r[1]
+            d.sig = ("raw", ins, out, None, raises)
+            m.types[ename] = d
+            return
         if kind in ("record", "enum", "typeInstance", "table"):
             k = {"typeInstance": "instance"}.get(kind, kind)
             d = TypeDecl(k, f"{m.name}.{ename}")
@@ -210,6 +223,18 @@ class Program:
         return "copied" if self.plain(c) else "borrowed"
 
     # ------------------------------------------------------------ signatures
+    def optype_sig(self, c: str) -> S:
+        """The signature an operationType declares, for a call through a reference of that type."""
+        d = self.decl(c)
+        if not isinstance(d, TypeDecl) or d.kind != "optype":
+            raise GenError(f"{c} is not an operationType")
+        mm = self.modules[d.canon.split(".", 1)[0]]
+        if not isinstance(d.sig, S):
+            _raw, ins, out, owner, raises = d.sig
+            d.sig = S([P(n, self.canon(mm, t), md) for n, t, md in ins], self.canon(mm, out), owner,
+                      self.canon(mm, raises))
+        return d.sig
+
     def op_sig(self, mod: Module, name: str) -> S:
         v = mod.ops[name]
         if isinstance(v, S):
@@ -353,7 +378,7 @@ def cap(s):
     return s[:1].upper() + s[1:]
 
 
-CALL_RE = re.compile(r"^(?:([a-z][A-Za-z0-9]*):\s*)?(?:([a-z][A-Za-z0-9]*)\s*=\s*)?([A-Za-z][A-Za-z0-9.]*)\((.*)\)\s*(.*)$")
+CALL_RE = re.compile(r"^(?:([a-z][A-Za-z0-9]*):\s*)?(?:([a-z][A-Za-z0-9]*)\s*=\s*)?(\*?[A-Za-z][A-Za-z0-9.]*)\((.*)\)\s*(.*)$")
 INT_RE = re.compile(r"^-?[0-9]+$")
 
 
@@ -380,6 +405,7 @@ class OpBuilder:
         self.effects = []
         self.uses = []
         self.recursion = None
+        self.async_ = False
         self.regions = []
         self.lets = OrderedDict()
         self.locals: dict[str, str] = {}
@@ -433,6 +459,8 @@ class OpBuilder:
             self.uses.append(t[1])
         elif k == "recursion":
             self.recursion = t[1]
+        elif k == "async":
+            self.async_ = True
         elif k == "region":
             self.regions.append((t[1], t[2], "atProcessExit" if len(t) > 3 and t[3] == "exit" else "atReturn"))
             self.local(t[1], "Region")
@@ -563,6 +591,8 @@ class OpBuilder:
             self.step(f"return error {t[1]}")
         elif k == "let":
             self.add_let(t[1], t[2], t[3], len(t) > 4 and t[4] == "mut")
+        elif k == "task":
+            self.call_stmt(line.strip()[5:].strip(), task=True)
         else:
             self.call_stmt(line)
 
@@ -592,12 +622,18 @@ class OpBuilder:
             i += 1
         return name
 
-    def call_stmt(self, line):
+    def call_stmt(self, line, task=False):
         mt = CALL_RE.match(line.strip())
         if not mt:
             raise GenError(f"{self.name}: cannot read statement: {line}")
         cname, result, target, argtext, mark = mt.groups()
-        sig = self.prog.target_sig(self.m, target)
+        reference = None
+        if target.startswith("*"):
+            # a call through a value of an operationType: `invokesReference <value>`
+            reference = target[1:]
+            sig = self.prog.optype_sig(self.type_of(reference))
+        else:
+            sig = self.prog.target_sig(self.m, target)
         args = split_args(argtext)
         if len(args) != len(sig.params):
             raise GenError(f"{self.name}: {target} takes {len(sig.params)} arguments, given {len(args)}: {line}")
@@ -619,7 +655,8 @@ class OpBuilder:
         if cname is None:
             cname = self.call_name(target, result)
         self.claim(cname)
-        ent = [f"{cname} is call", f"{cname} in {self.name}", f"{cname} invokes {target}"]
+        ent = [f"{cname} is {'task' if task else 'call'}", f"{cname} in {self.name}",
+               f"{cname} invokesReference {reference}" if reference else f"{cname} invokes {target}"]
         if rows_args:
             ent += [f"{cname} argument {s} {t} {v} {md}" for s, t, v, md in rows_args]
         else:
@@ -675,7 +712,11 @@ class OpBuilder:
             ent.append(f"{cname} catch none")
             ent.append(f"{cname} suppresses none")
         self.calls.append(ent)
-        self.step(f"do {cname}")
+        if task:
+            self.step(f"start {cname} into none")
+            self.step(f"join {cname}")
+        else:
+            self.step(f"do {cname}")
         if after is not None:
             target_label = after[0]
             done = cname + "Done"
@@ -708,7 +749,7 @@ class OpBuilder:
         rows += [f"{n} uses {u}" for u in self.uses] or [f"{n} uses none"]
         heap = bool(self.regions) or any(t == "Region" for _a, t, _c in self.inputs)
         rows.append(f"{n} memoryHeap {'true' if heap else 'false'}")
-        rows.append(f"{n} async false")
+        rows.append(f"{n} async {'true' if self.async_ else 'false'}")
         rows.append(f"{n} maxRecursion {self.recursion or 'none'}")
         blocks = self.blocks + self.fail_blocks
         for b in blocks:
@@ -797,7 +838,11 @@ class Generator:
             return ["\n".join(rows)]
         if k == "capability":
             name, purpose = t[1], t[2]
-            return ["\n".join([f"{name} is capability", f"{name} purpose {purpose}", f"{name} grants {' '.join(t[3:])}"])]
+            rows = [f"{name} is capability", f"{name} purpose {purpose}"]
+            if len(t) > 3:
+                rows.append(f"{name} grants {' '.join(t[3:])}")
+            rows += [f"{name} {b}" for b in body if tokens(b)[0] == "grants"]
+            return ["\n".join(rows)]
         if k == "record":
             name, purpose = t[1], t[2]
             rows = [f"{name} is record", f"{name} purpose {purpose}", f"{name} typeParameter none"]
@@ -811,6 +856,16 @@ class Generator:
             for b in body:
                 bt = tokens(b)
                 rows.append(f"{name} variant {bt[1]} {bt[2] if len(bt) > 2 else 'none'}")
+            return ["\n".join(rows)]
+        if k == "optype":
+            name, purpose = t[1], t[2]
+            ins = [tokens(b)[1:] for b in body if tokens(b)[0] == "input"]
+            out = [tokens(b)[1] for b in body if tokens(b)[0] == "output"]
+            raises = [tokens(b)[1] for b in body if tokens(b)[0] == "raises"]
+            rows = [f"{name} is operationType", f"{name} purpose {purpose}", f"{name} typeParameter none"]
+            rows += [f"{name} input {' '.join(i)}" for i in ins] or [f"{name} input none"]
+            rows += [f"{name} output {out[0] if out else 'none'}", f"{name} outputOwnedBy none",
+                     f"{name} raises {raises[0] if raises else 'none'}", f"{name} effect none", f"{name} async false"]
             return ["\n".join(rows)]
         if k == "instance":
             name, purpose = t[1], t[2]
@@ -839,7 +894,7 @@ class Generator:
             early = [b for b in body if b.startswith(("let ", "region "))]
             body = [b for b in body if not b.startswith(("let ", "region "))]
             heads = [b for b in body if tokens(b)[0] in ("invariant", "verifies", "input", "output", "owner", "raises",
-                                                         "effect", "uses", "recursion")]
+                                                         "effect", "uses", "recursion", "async")]
             for b in heads:
                 ob.header(tokens(b))
             body = [b for b in body if b not in heads]
@@ -908,6 +963,12 @@ class Generator:
             elif k == "enum":
                 d = TypeDecl("enum", f"{m.name}.{t[1]}")
                 d.variants = [(b[1], b[2] if len(b) > 2 else None) for b in body]
+                m.types[t[1]] = d
+            elif k == "optype":
+                d = TypeDecl("optype", f"{m.name}.{t[1]}")
+                d.sig = ("raw", [(b[1], b[2], b[3]) for b in body if b[0] == "input"],
+                         ([b[1] for b in body if b[0] == "output"] or [None])[0], None,
+                         ([b[1] for b in body if b[0] == "raises"] or [None])[0])
                 m.types[t[1]] = d
             elif k == "instance":
                 d = TypeDecl("instance", f"{m.name}.{t[1]}")

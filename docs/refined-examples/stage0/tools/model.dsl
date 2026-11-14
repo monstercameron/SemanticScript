@@ -18,6 +18,7 @@ table kinds "The entity kinds of the stage0 subset; a kind's number is its row's
   row regionRow text="region"
   row taskRow text="task"
   row tableRow text="table"
+  row operationTypeRow text="operationType"
 
 record Entity "One entity: its name, its kind's number, and the run of rows it owns"
   field name syntax.Word
@@ -37,7 +38,7 @@ op lookupKind "Find a kind word in the kinds table and return its number"
   let position Int64 0 mut
 :begin
   goto scan
-:scan loop=forEach max=11 over=kinds
+:scan loop=forEach max=12 over=kinds
   next kinds entry compare missing
 :compare in=scan
   countRow: nextPosition = math.addInt64(position, 1)
@@ -66,6 +67,25 @@ op ownsName "Decide whether an entity of a kind is entered in the name map: call
   neitherCheck: owns = logic.not(owned)
   return owns
 
+op nameKey "The key a module-level entity is entered under: a module by its name, anything else by `<module>.<name>` (the scope is the module's name and a dot, or empty before the first module)"
+  input source String borrowed
+  input name syntax.Word copied
+  input kind Int64 copied
+  input scope String borrowed
+  input region Region borrowed
+  output String
+  owner region
+  raises syntax.Rejection
+:begin
+  copyName: nameText = syntax.wordText(source, name, region) ?^
+  moduleCheck: isModule = compare.equalInt64(kind, 1)
+  if isModule bare scoped
+:bare
+  return nameText
+:scoped
+  joinScope: key = string.concat(scope, nameText, region)
+  return key
+
 op closeEntity "Record the entity being built, when there is one, and enter its name in the name map when it is a module-level name"
   input source String borrowed
   input entities Entities borrowedMutable
@@ -75,6 +95,7 @@ op closeEntity "Record the entity being built, when there is one, and enter its 
   input kind Int64 copied
   input first Int64 copied
   input end Int64 copied
+  input scope String borrowed
   input region Region borrowed
   raises syntax.Rejection
 :begin
@@ -87,7 +108,7 @@ op closeEntity "Record the entity being built, when there is one, and enter its 
   ownsCheck: owned = ownsName(kind)
   if owned enter done
 :enter
-  copyName: key = syntax.wordText(source, name, region) ?^
+  makeKey: key = nameKey(source, name, kind, scope, region) ?^
   enterName: EntityNames.put(names, key, position)
   goto done
 :done
@@ -95,7 +116,7 @@ op closeEntity "Record the entity being built, when there is one, and enter its 
 
 op buildModel "Group rows into entities by their `is` rows and enter each module-level entity's name in a map"
   invariant groupsEntities "Each `<name> is <kind>` row starts an entity of that kind owning it and the rows after it up to the next `is` row; kinds are numbered module 1, capability 2, constant 3, operation 4, call 5, record 6, enum 7, typeInstance 8, region 9, task 10, table 11"
-  invariant namesEntities "Each entity's name maps to its position in the entity list, except calls, tasks, and regions, whose names belong to the operation they are in"
+  invariant namesEntities "Each module's name maps to its position in the entity list, and each other entity's `<module>.<name>` to its position, except calls, tasks, and regions, whose names belong to the operation they are in"
   invariant rejectsOutsideModel "Another kind is unsupportedKind, a row whose subject is not the entity above it is strayRow, and a module-level name declared twice is duplicateName"
   input source String borrowed
   input words syntax.Words borrowed
@@ -103,7 +124,8 @@ op buildModel "Group rows into entities by their `is` rows and enter each module
   input entities Entities borrowedMutable
   input names EntityNames borrowedMutable
   raises syntax.Rejection
-  region scratch 1048576
+  region scratch 67108864
+  let scope String "" mut
   let rowIndex Int64 0 mut
   let open Bool false mut
   let openName syntax.Word unset mut
@@ -128,18 +150,26 @@ op buildModel "Group rows into entities by their `is` rows and enter each module
   isCheck: isIs = syntax.isText(source, predicate, isWord="is") ?^
   if isIs opening continuing
 :opening in=visit
-  closePrevious: closeEntity(source, entities, names, open, openName, openKind, openFirst, rowIndex, scratch) ?^
+  closePrevious: closeEntity(source, entities, names, open, openName, openKind, openFirst, rowIndex, scope, scratch) ?^
   threeCheck: isThree = compare.equalInt64(count, 3)
   if isThree readKindWord longIsRow
 :readKindWord in=visit
   findKind: kindAt = math.addInt64(first, 2)
   readKind: kindWord = syntax.Words.getOrTrap(words, kindAt)
   classify: kind = lookupKind(source, kindWord) ?^
+  moduleCheck: isModule = compare.equalInt64(kind, 1)
+  if isModule enterScope ownership
+:enterScope in=visit
+  copyModuleName: moduleText = syntax.wordText(source, subject, scratch) ?^
+  makeScope: moduleScope = string.concat(moduleText, dot=".", scratch)
+  set scope moduleScope
+  goto ownership
+:ownership in=visit
   ownsCheck: owned = ownsName(kind)
   if owned nameCheck openIt
 :nameCheck in=visit
-  copySubject: subjectText = syntax.wordText(source, subject, scratch) ?^
-  findName: taken = EntityNames.contains(names, subjectText)
+  makeSubjectKey: subjectKey = nameKey(source, subject, kind, scope, scratch) ?^
+  findName: taken = EntityNames.contains(names, subjectKey)
   if taken duplicate openIt
 :openIt in=visit
   set open yes
@@ -157,7 +187,7 @@ op buildModel "Group rows into entities by their `is` rows and enter each module
   set rowIndex nextRow
   goto visit
 :finished
-  closeLast: closeEntity(source, entities, names, open, openName, openKind, openFirst, rowIndex, scratch) ?^
+  closeLast: closeEntity(source, entities, names, open, openName, openKind, openFirst, rowIndex, scope, scratch) ?^
   return
 :longIsRow
   makeLongIsRow: longIsRowError = syntax.Rejection.unsupportedPayload(predicate)
@@ -182,9 +212,9 @@ test modelTest "A module's entities are found by name, with their kinds and the 
   countEntities: entityCount = Entities.length(entitiesX)
   expectCount: test.assertEqualInt64(five=5, entityCount)
   @expectEntity demo demo 1 0 3
-  @expectEntity point Point 6 3 2
-  @expectEntity main main 4 5 2
-  greetCheck: hasGreet = EntityNames.contains(namesX, greetName="greet")
+  @expectEntity point demo.Point 6 3 2
+  @expectEntity main demo.main 4 5 2
+  greetCheck: hasGreet = EntityNames.contains(namesX, greetName="demo.greet")
   greetAbsent: noGreet = logic.not(hasGreet)
   expectNoGreet: test.assertTrue(noGreet)
   readGreet: greet = Entities.getOrTrap(entitiesX, three=3)

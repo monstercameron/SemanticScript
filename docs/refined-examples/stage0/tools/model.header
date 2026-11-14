@@ -6,7 +6,12 @@
 # its name. Calls, tasks, and regions are not in the map: each belongs to the
 # operation its `in` row names, so the same name may serve several operations.
 #
+# A program is several modules, one after another, each beginning with its
+# `<name> is module` entity. A module is entered in the map by its name, and
+# every other module-level entity by `<module>.<name>`, so two modules may use
+# the same names.
+#
 # Kinds are numbered by their row in the `kinds` table: 1 module, 2 capability,
 # 3 constant, 4 operation, 5 call, 6 record, 7 enum, 8 typeInstance, 9 region,
-# 10 task, 11 table.
+# 10 task, 11 table, 12 operationType.
 # Any other kind is outside the stage0 subset.

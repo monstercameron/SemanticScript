@@ -1,7 +1,7 @@
-module subset "Check that a module is in the stage0 subset and collect what the emitter needs"
+module subset "Check that a program is in the stage0 subset and collect what the emitter needs"
   path subset
   imports standard.string standard.list standard.map standard.math standard.compare standard.logic standard.test lexer syntax model
-  exports LiteralKind TypeInfo Types TypeNames MemberInfo Members ParamInfo Params TargetKind TargetInfo Targets OpInfo Ops OpNames Owners ValueInfo Values CallInfo Calls ArgumentInfo Arguments LabelInfo Labels StepVerb Step Steps checkDeclarations checkOperation checkModule diagnose
+  exports LiteralKind TypeInfo Types TypeNames MemberInfo Members ParamInfo Params TargetKind TargetInfo Targets OpInfo Ops OpNames Owners ValueInfo Values CallInfo Calls ArgumentInfo Arguments LabelInfo Labels StepVerb Step Steps declareBuiltins nextModule checkModuleDeclarations checkOperation checkProgram diagnose
 
 ## ---------------------------------------------------------------- what the subset reads
 
@@ -45,6 +45,7 @@ enum Predicate "What a row states, by its predicate"
   variant letRow
   variant atRow
   variant invokesRow
+  variant invokesReferenceRow
   variant argumentRow
   variant resultRow
   variant ownedByRow
@@ -109,8 +110,16 @@ enum TargetKind "What a call target is"
   variant listGetOrTrap
   variant tableRowAt
   variant tableLength
+  variant listSet
+  variant mapNew
+  variant mapPut
+  variant mapGet
+  variant mapContains
+  variant mapRemove
+  variant mapLength
+  variant reference
 
-record BuiltinRow "A standard library target the subset compiles: up to three argument slots with their types (numbered as the types table numbers them) and passing modes (1 copy, 2 lend, 3 lendMutable, 4 give), its result type (0 for none), and its error (raises 7, a standard error, with the error type's name; 0 when it cannot fail)"
+record BuiltinRow "A standard library target the subset compiles: up to four argument slots with their types (numbered as the types table numbers them; 12 is string.Position, the first type the program declares) and passing modes (1 copy, 2 lend, 3 lendMutable, 4 give), its result type (0 for none), and its error (raises 7, a standard error, with the error type's name; 0 when it cannot fail)"
   field text String
   field count Int64
   field slot1 String
@@ -122,6 +131,9 @@ record BuiltinRow "A standard library target the subset compiles: up to three ar
   field slot3 String
   field type3 Int64
   field mode3 Int64
+  field slot4 String
+  field type4 Int64
+  field mode4 Int64
   field output Int64
   field raises Int64
   field error String
@@ -130,16 +142,20 @@ record BuiltinRow "A standard library target the subset compiles: up to three ar
 
 ## ---------------------------------------------------------------- what the checker collects
 
-record TypeInfo "A type: built in (codes 1 to 11, 7 the standard errors), or declared by the module (12 on). kind: 1 built in, 2 standard error, 3 record, 4 enum, 5 list, 6 table. A list keeps its item type and a table its row type; a record or enum its first member and how many it has, a table its entity's position and how many rows it has; an enum whether it is narrow (stored as a tag and one Int64) and whether no variant carries a payload"
+record TypeInfo "A type: built in (codes 1 to 11, 7 the standard errors), or declared by a module of the program (12 on), with the module's name. kind: 1 built in, 2 standard error, 3 record, 4 enum, 5 list, 6 table, 7 map, 8 operationType. A list keeps its item type, a table its row type, a map its key type and value type, and an operationType its output; a record or enum its first member and how many it has, a table its entity's position and how many rows it has, an operationType its first slot and how many it has, and what it raises; an enum whether it is narrow (stored as a tag and one Int64) and whether no variant carries a payload. slots: how many 64-bit slots a value takes when it is passed to the host, as the LLVM backend flattens it"
   field name syntax.Word
+  field module syntax.Word
   field kind Int64
   field item Int64
+  field value Int64
   field plain Bool
   field holdsText Bool
   field narrow Bool
   field tagOnly Bool
   field first Int64
   field count Int64
+  field raises Int64
+  field slots Int64
 
 instance Types "Every type, numbered from 1 by its position" list.List TypeInfo
 
@@ -172,8 +188,11 @@ record TargetInfo "A call target: what it is, the builtin row, operation, or typ
 
 instance Targets "Every call target the module may invoke, by its name" map.Map String TargetInfo
 
-record OpInfo "An operation of the module: its name, its entity's position, its slots in params, its output and error types (0 for none), the region input its output is owned by, and its maxRecursion bound when it recurses"
+record OpInfo "An operation of the program: its name, its module's name and the module's entities (first, and one past the last), its entity's position, its slots in params, its output and error types (0 for none), the region input its output is owned by, and its maxRecursion bound when it recurses"
   field name syntax.Word
+  field module syntax.Word
+  field moduleFirst Int64
+  field moduleEnd Int64
   field entity Int64
   field firstParam Int64
   field paramCount Int64
@@ -202,9 +221,10 @@ record ValueInfo "A value of an operation: its name, type, whether `set` may cha
 
 instance Values "Every value by name, in the order they are declared" map.Map String ValueInfo
 
-record CallInfo "A call of an operation: its name, its target, where its arguments start in the argument list and how many, the value it sets, and the name its error is caught as"
+record CallInfo "A call of an operation: its name, its target, the value of an operationType it calls through (`invokesReference`; its name otherwise), where its arguments start in the argument list and how many, the value it sets, and the name its error is caught as"
   field name syntax.Word
   field target TargetInfo
+  field reference syntax.Word
   field firstArgument Int64
   field arity Int64
   field result syntax.Word
@@ -389,6 +409,59 @@ op typeInfoOf "Read the facts of a type by its number"
   findIndex: index = math.subtractInt64(code, 1)
   readInfo: info = Types.getOrTrap(types, index)
   return info
+
+op slotsOf "How many 64-bit slots a value of a type takes when it is passed to the host, as the LLVM backend flattens it: two for String and Bytes (a pointer and a length), one for any other built-in type, and what a declared type worked out when it was declared"
+  input types Types borrowed
+  input code Int64 copied
+  output Int64
+  let one Int64 1
+  let two Int64 2
+:begin
+  stringCheck: isString = compare.equalInt64(code, 1)
+  bytesCheck: isBytes = compare.equalInt64(code, 11)
+  textCheck: isText = logic.or(isString, isBytes)
+  if isText text notText
+:text
+  return two
+:notText
+  builtinCheck: isBuiltin = compare.lessOrEqualInt64(code, 11)
+  if isBuiltin single declared
+:single
+  return one
+:declared
+  readInfo: info = typeInfoOf(types, code)
+  readSlots: slots = TypeInfo.slots(info)
+  return slots
+
+op declareBuiltins "Number the built-in types 1 to 11 and enter every standard library target of the subset as a call target, once for the whole program"
+  invariant numbersBuiltins "The built-in types are numbered 1 to 11 in the order of the builtinTypes table, each entered under its name, and every target of builtinTargets is a call target under its own name"
+  input source String borrowed
+  input types Types borrowedMutable
+  input typeNames TypeNames borrowedMutable
+  input params Params borrowedMutable
+  input targets Targets borrowedMutable
+  input region Region borrowed
+  raises syntax.Rejection
+  let no Bool false
+:begin
+  makePlaceholder: placeholder = placeholderWord()
+  goto eachBuiltin
+:eachBuiltin loop=forEach max=11 over=builtinTypes
+  next builtinTypes typeRow enterBuiltin builtinsDone
+:enterBuiltin in=eachBuiltin
+  readBuiltinText: builtinText = TypeRow.text(typeRow)
+  readBuiltinPlain: builtinPlain = TypeRow.plain(typeRow)
+  readBuiltinKind: builtinKind = TypeRow.kind(typeRow)
+  countBefore: before = Types.length(types)
+  findCode: builtinCode = math.addInt64(before, 1)
+  slotsCheck: builtinSlots = slotsOf(types, builtinCode)
+  makeBuiltin: builtin = TypeInfo.new(placeholder, placeholder, builtinKind, 0, 0, builtinPlain, no, no, no, 0, 0, 0, builtinSlots)
+  appendBuiltin: Types.append(types, builtin)
+  putBuiltin: TypeNames.put(typeNames, builtinText, builtinCode)
+  goto eachBuiltin
+:builtinsDone
+  enterBuiltins: registerBuiltins(source, params, targets, region) ?^
+  return
 
 op literalFits "Refuse a literal that does not fit the type whose literals are given"
   input source String borrowed
@@ -587,40 +660,39 @@ op putTarget "Enter a call target under its name, refusing a name entered before
 
 ## ---------------------------------------------------------------- declarations: types and operations by name
 
-op declareNames "Number the built-in types, then every record, enum, and typeInstance in source order, and every operation"
+op declareNames "Number every record, enum, typeInstance, table, and operationType of one module after the types already numbered, in source order, and every operation after the operations already known"
   input source String borrowed
   input entities model.Entities borrowed
+  input first Int64 copied
+  input end Int64 copied
+  input module syntax.Word copied
   input types Types borrowedMutable
   input typeNames TypeNames borrowedMutable
   input opNames OpNames borrowedMutable
+  input opBase Int64 copied
   input region Region borrowed
   raises syntax.Rejection
+  let index Int64 0 mut
   let operationCount Int64 0 mut
   let typeKind Int64 0 mut
   let three Int64 3
   let four Int64 4
   let five Int64 5
   let six Int64 6
+  let eight Int64 8
   let no Bool false
-  let yes Bool true
 :begin
-  makePlaceholder: placeholder = placeholderWord()
-  countEntities: entityCount = model.Entities.length(entities)
-  goto eachBuiltin
-:eachBuiltin loop=forEach max=11 over=builtinTypes
-  next builtinTypes typeRow enterBuiltin eachEntity
-:enterBuiltin in=eachBuiltin
-  readBuiltinText: builtinText = TypeRow.text(typeRow)
-  readBuiltinPlain: builtinPlain = TypeRow.plain(typeRow)
-  readBuiltinKind: builtinKind = TypeRow.kind(typeRow)
-  makeBuiltin: builtin = TypeInfo.new(placeholder, builtinKind, 0, builtinPlain, no, no, no, 0, 0)
-  appendBuiltin: Types.append(types, builtin)
-  countBuiltins: builtinCode = Types.length(types)
-  putBuiltin: TypeNames.put(typeNames, builtinText, builtinCode)
-  goto eachBuiltin
-:eachEntity loop=forEach max=entityCount over=entities
-  next entities entity readEntity done
+  set index first
+  set operationCount opBase
+  findSpan: span = math.subtractInt64(end, first)
+  goto eachEntity
+:eachEntity loop=while max=span
+  doneCheck: allDone = compare.greaterOrEqualInt64(index, end)
+  if allDone done readEntity
 :readEntity in=eachEntity
+  readTheEntity: entity = model.Entities.getOrTrap(entities, index)
+  countIndex: nextIndex = math.addInt64(index, 1)
+  set index nextIndex
   readKind: kind = model.Entity.kind(entity)
   readName: name = model.Entity.name(entity)
   operationCheck: isOperation = compare.equalInt64(kind, 4)
@@ -636,9 +708,11 @@ op declareNames "Number the built-in types, then every record, enum, and typeIns
   enumCheck: isEnum = compare.equalInt64(kind, 7)
   listCheck: isList = compare.equalInt64(kind, 8)
   tableCheck: isTable = compare.equalInt64(kind, 11)
+  referenceCheck: isReference = compare.equalInt64(kind, 12)
   eitherCheck: recordOrEnum = logic.or(isRecord, isEnum)
   listOrTable: collection = logic.or(isList, isTable)
-  anyCheck: isType = logic.or(recordOrEnum, collection)
+  anyCheck: isStored = logic.or(recordOrEnum, collection)
+  referenceToo: isType = logic.or(isStored, isReference)
   if isType numberType eachEntity
 :numberType in=eachEntity
   copyTypeName: typeText = syntax.wordText(source, name, region) ?^
@@ -655,9 +729,12 @@ op declareNames "Number the built-in types, then every record, enum, and typeIns
   if isList enterType kindTable
 :kindTable in=eachEntity
   set typeKind six
+  if isTable enterType kindReference
+:kindReference in=eachEntity
+  set typeKind eight
   goto enterType
 :enterType in=eachEntity
-  makeType: typeInfo = TypeInfo.new(name, typeKind, 0, no, no, no, no, 0, 0)
+  makeType: typeInfo = TypeInfo.new(name, module, typeKind, 0, 0, no, no, no, no, 0, 0, 0, 1)
   appendType: Types.append(types, typeInfo)
   countTypes: typeCode = Types.length(types)
   putType: TypeNames.put(typeNames, typeText, typeCode)
@@ -704,6 +781,13 @@ op registerBuiltins "Enter every standard library target of the subset as a call
   readType3: type3 = BuiltinRow.type3(entry)
   readMode3: mode3 = BuiltinRow.mode3(entry)
   addSlot3: addParam(params, slot3, type3, mode3, region)
+  hasFourCheck: hasFour = compare.greaterThanInt64(count, 3)
+  if hasFour addFourth register
+:addFourth in=eachTarget
+  readSlot4: slot4 = BuiltinRow.slot4(entry)
+  readType4: type4 = BuiltinRow.type4(entry)
+  readMode4: mode4 = BuiltinRow.mode4(entry)
+  addSlot4: addParam(params, slot4, type4, mode4, region)
   goto register
 :register in=eachTarget
   readText: text = BuiltinRow.text(entry)
@@ -810,6 +894,7 @@ op declareRecord "Check a record's fields, number them as members, and enter its
   input region Region borrowed
   raises syntax.Rejection
   let index Int64 0 mut
+  let slots Int64 0 mut
   let plain Bool true mut
   let holdsText Bool false mut
   let no Bool false
@@ -837,13 +922,18 @@ op declareRecord "Check a record's fields, number them as members, and enter its
   textCheck: fieldHoldsText = holdsTextOf(types, fieldCode)
   eitherText: stillText = logic.or(holdsText, fieldHoldsText)
   set holdsText stillText
+  fieldSlotsCheck: fieldSlots = slotsOf(types, fieldCode)
+  addSlots: nextSlots = math.addInt64(slots, fieldSlots)
+  set slots nextSlots
   makeMember: member = MemberInfo.new(code, fieldName, fieldCode, index, 0)
   appendMember: Members.append(members, member)
   countMember: nextMember = math.addInt64(index, 1)
   set index nextMember
   goto nextRow
 :finish
-  makeInfo: info = TypeInfo.new(name, 3, 0, plain, holdsText, no, no, firstMember, index)
+  readOld: old = typeInfoOf(types, code)
+  readModule: module = TypeInfo.module(old)
+  makeInfo: info = TypeInfo.new(name, module, 3, 0, 0, plain, holdsText, no, no, firstMember, index, 0, slots)
   findIndex: typeIndex = math.subtractInt64(code, 1)
   setInfo: Types.set(types, typeIndex, info) ! setInfoError
   iferr setInfo lost registered
@@ -853,7 +943,7 @@ op declareRecord "Check a record's fields, number them as members, and enter its
 @reject lostName name lost
 @rowsNext
 
-op orderFits "Refuse a record field or enum payload whose type is a record or enum declared at or below the type holding it"
+op orderFits "Refuse a record field, enum payload, list item, or map value whose type is a record or enum declared at or below the type holding it, or a type no value may hold: a list, a map, an operationType, a region, or a standard error"
   input types Types borrowed
   input code Int64 copied
   input heldCode Int64 copied
@@ -865,10 +955,15 @@ op orderFits "Refuse a record field or enum payload whose type is a record or en
   recordCheck: isRecord = compare.equalInt64(kind, 3)
   enumCheck: isEnum = compare.equalInt64(kind, 4)
   listCheck: isList = compare.equalInt64(kind, 5)
+  mapCheck: isMap = compare.equalInt64(kind, 7)
+  referenceCheck: isReference = compare.equalInt64(kind, 8)
   errorCheck: isError = compare.equalInt64(kind, 2)
   regionCheck: isRegion = compare.equalInt64(heldCode, 6)
-  if isList unsupported notList
-:notList
+  collectionCheck: isCollection = logic.or(isList, isMap)
+  if isCollection unsupported notCollection
+:notCollection
+  if isReference unsupported notReference
+:notReference
   if isError unsupported notError
 :notError
   if isRegion unsupported notRegion
@@ -1006,6 +1101,8 @@ op declareEnum "Check an enum's variants, number them as members, and enter a co
   raises syntax.Rejection
   let index Int64 0 mut
   let slot Int64 0 mut
+  let wideSlots Int64 0 mut
+  let one Int64 1
   let plain Bool true mut
   let holdsText Bool false mut
   let narrow Bool true mut
@@ -1048,6 +1145,9 @@ op declareEnum "Check an enum's variants, number them as members, and enter a co
   set tagOnly no
   countSlot: nextSlot = math.addInt64(slot, 1)
   set slot nextSlot
+  payloadSlotsCheck: payloadSlots = slotsOf(types, payloadCode)
+  addSlots: nextWideSlots = math.addInt64(wideSlots, payloadSlots)
+  set wideSlots nextWideSlots
   makeMember: member = MemberInfo.new(code, variantName, payloadCode, index, slot)
   appendMember: Members.append(members, member)
   goto counted
@@ -1056,7 +1156,15 @@ op declareEnum "Check an enum's variants, number them as members, and enter a co
   set index nextMember
   goto nextRow
 :finish
-  makeInfo: info = TypeInfo.new(name, 4, 0, plain, holdsText, narrow, tagOnly, firstMember, index)
+  readOld: old = typeInfoOf(types, code)
+  readModule: module = TypeInfo.module(old)
+  if narrow narrowSlots makeInfoStep
+:narrowSlots
+  set wideSlots one
+  goto makeInfoStep
+:makeInfoStep
+  countTag: slots = math.addInt64(wideSlots, 1)
+  makeInfo: info = TypeInfo.new(name, module, 4, 0, 0, plain, holdsText, narrow, tagOnly, firstMember, index, 0, slots)
   findIndex: typeIndex = math.subtractInt64(code, 1)
   setInfo: Types.set(types, typeIndex, info) ! setInfoError
   iferr setInfo lost registered
@@ -1111,7 +1219,7 @@ op registerEnum "Enter a constructor for each variant of an enum: a payload slot
 :done
   return
 
-op declareInstance "Check a typeInstance of list.List and enter the list's members as call targets"
+op declareInstance "Check a typeInstance of list.List, or of map.Map with String keys, and enter its members as call targets"
   input source String borrowed
   input words syntax.Words borrowed
   input rows syntax.Rows borrowed
@@ -1124,7 +1232,10 @@ op declareInstance "Check a typeInstance of list.List and enter the list's membe
   input region Region borrowed
   raises syntax.Rejection
   let item Int64 0 mut
+  let value Int64 0 mut
+  let isMap Bool false mut
   let no Bool false
+  let yes Bool true
 :begin
   readName: name = model.Entity.name(entity)
   @rowsBegin
@@ -1137,28 +1248,57 @@ op declareInstance "Check a typeInstance of list.List and enter the list's membe
   goto nextRow
 :instance in=eachRow
   @wordAt genericWord 2
-  instanceShape: expectCount(row, 4, genericWord) ?^
+  instanceShape: expectAtLeast(row, 4, genericWord) ?^
   @wordAt itemWord 3
   listCheck: isList = syntax.isText(source, genericWord, listWord="list.List") ?^
-  if isList listItem unsupported
-:listItem in=eachRow
+  if isList listShape mapCheck
+:listShape in=eachRow
+  listCount: expectCount(row, 4, genericWord) ?^
   findItem: itemCode = findType(source, typeNames, itemWord) ?^
   checkOrder: orderFits(types, code, itemCode, itemWord) ?^
   set item itemCode
   goto nextRow
+:mapCheck in=eachRow
+  mapTest: isMapWord = syntax.isText(source, genericWord, mapWord="map.Map") ?^
+  if isMapWord mapShape unsupported
+:mapShape in=eachRow
+  mapCount: expectCount(row, 5, genericWord) ?^
+  @wordAt valueWord 4
+  findKey: keyCode = findType(source, typeNames, itemWord) ?^
+  stringKey: keyIsString = compare.equalInt64(keyCode, 1)
+  if keyIsString mapValue badKey
+:mapValue in=eachRow
+  findValueType: valueTypeCode = findType(source, typeNames, valueWord) ?^
+  checkValueOrder: orderFits(types, code, valueTypeCode, valueWord) ?^
+  set item keyCode
+  set value valueTypeCode
+  set isMap yes
+  goto nextRow
 :finish
-  makeInfo: info = TypeInfo.new(name, 5, item, no, no, no, no, 0, 0)
+  readOld: old = typeInfoOf(types, code)
+  readModule: module = TypeInfo.module(old)
   findIndex: typeIndex = math.subtractInt64(code, 1)
+  if isMap mapInfo listInfo
+:listInfo
+  makeInfo: info = TypeInfo.new(name, module, 5, item, 0, no, no, no, no, 0, 0, 0, 1)
   setInfo: Types.set(types, typeIndex, info) ! setInfoError
-  iferr setInfo lost registered
-:registered
+  iferr setInfo lost listRegistered
+:listRegistered
   registerTargets: registerList(source, code, item, types, params, targets, region) ?^
+  return
+:mapInfo
+  makeMapInfo: mapType = TypeInfo.new(name, module, 7, item, value, no, no, no, no, 0, 0, 0, 1)
+  setMapInfo: Types.set(types, typeIndex, mapType) ! setMapInfoError
+  iferr setMapInfo lost mapRegistered
+:mapRegistered
+  registerMapTargets: registerMap(source, code, item, value, types, params, targets, region) ?^
   return
 @reject lostName name lost
 @reject unsupportedType genericWord unsupported
+@reject unsupportedType itemWord badKey
 @rowsNext
 
-op registerList "Enter a list type's members: new, append, length, get, and getOrTrap"
+op registerList "Enter a list type's members: new, append, length, get, getOrTrap, and set"
   input source String borrowed
   input code Int64 copied
   input item Int64 copied
@@ -1204,6 +1344,71 @@ op registerList "Enter a list type's members: new, append, length, get, and getO
   makeTrapKind: trapKind = TargetKind.listGetOrTrap()
   makeTrap: trapTarget = TargetInfo.new(trapKind, code, 0, trapParam, 2, item, 0)
   enterTrap: putTarget(source, targets, trapName, trapTarget, name) ?^
+  setFirst: setParam = Params.length(params)
+  addSetList: addParam(params, listSlot, code, 3, region)
+  addSetIndex: addParam(params, indexSlot, 2, 1, region)
+  addSetItem: addParam(params, itemSlot, item, itemMode, region)
+  setKey: setName = memberKey(source, name, setWord="set", region) ?^
+  makeSetKind: setKind = TargetKind.listSet()
+  makeSet: setTarget = TargetInfo.new(setKind, code, 0, setParam, 3, 0, 7)
+  enterSet: putTarget(source, targets, setName, setTarget, name) ?^
+  return
+
+op registerMap "Enter a map type's members: new, put, get, contains, remove, and length; a key is lent, and a value kept as a list item is"
+  input source String borrowed
+  input code Int64 copied
+  input key Int64 copied
+  input value Int64 copied
+  input types Types borrowed
+  input params Params borrowedMutable
+  input targets Targets borrowedMutable
+  input region Region borrowed
+  raises syntax.Rejection
+:begin
+  readInfo: info = typeInfoOf(types, code)
+  readName: name = TypeInfo.name(info)
+  valueModeCheck: valueMode = ownMode(types, value)
+  newFirst: newParam = Params.length(params)
+  addNewRegion: addParam(params, regionSlot="region", 6, 2, region)
+  newKey: newName = memberKey(source, name, newWord="new", region) ?^
+  makeNewKind: newKind = TargetKind.mapNew()
+  makeNew: newTarget = TargetInfo.new(newKind, code, 0, newParam, 1, code, 0)
+  enterNew: putTarget(source, targets, newName, newTarget, name) ?^
+  putFirst: putParam = Params.length(params)
+  addPutMap: addParam(params, mapSlot="map", code, 3, region)
+  addPutKey: addParam(params, keySlot="key", key, 2, region)
+  addPutValue: addParam(params, valueSlot="value", value, valueMode, region)
+  putKey: putName = memberKey(source, name, putWord="put", region) ?^
+  makePutKind: putKind = TargetKind.mapPut()
+  makePut: putMember = TargetInfo.new(putKind, code, 0, putParam, 3, 0, 0)
+  enterPut: putTarget(source, targets, putName, putMember, name) ?^
+  getFirst: getParam = Params.length(params)
+  addGetMap: addParam(params, mapSlot, code, 2, region)
+  addGetKey: addParam(params, keySlot, key, 2, region)
+  getKey: getName = memberKey(source, name, getWord="get", region) ?^
+  makeGetKind: getKind = TargetKind.mapGet()
+  makeGet: getTarget = TargetInfo.new(getKind, code, 0, getParam, 2, value, 7)
+  enterGet: putTarget(source, targets, getName, getTarget, name) ?^
+  containsFirst: containsParam = Params.length(params)
+  addContainsMap: addParam(params, mapSlot, code, 2, region)
+  addContainsKey: addParam(params, keySlot, key, 2, region)
+  containsKey: containsName = memberKey(source, name, containsWord="contains", region) ?^
+  makeContainsKind: containsKind = TargetKind.mapContains()
+  makeContains: containsTarget = TargetInfo.new(containsKind, code, 0, containsParam, 2, 4, 0)
+  enterContains: putTarget(source, targets, containsName, containsTarget, name) ?^
+  removeFirst: removeParam = Params.length(params)
+  addRemoveMap: addParam(params, mapSlot, code, 3, region)
+  addRemoveKey: addParam(params, keySlot, key, 2, region)
+  removeKey: removeName = memberKey(source, name, removeWord="remove", region) ?^
+  makeRemoveKind: removeKind = TargetKind.mapRemove()
+  makeRemove: removeTarget = TargetInfo.new(removeKind, code, 0, removeParam, 2, 0, 7)
+  enterRemove: putTarget(source, targets, removeName, removeTarget, name) ?^
+  lengthFirst: lengthParam = Params.length(params)
+  addLengthMap: addParam(params, mapSlot, code, 2, region)
+  lengthKey: lengthName = memberKey(source, name, lengthWord="length", region) ?^
+  makeLengthKind: lengthKind = TargetKind.mapLength()
+  makeLength: lengthTarget = TargetInfo.new(lengthKind, code, 0, lengthParam, 1, 2, 0)
+  enterLength: putTarget(source, targets, lengthName, lengthTarget, name) ?^
   return
 
 op lookupMember "Find the member of a record or enum a word names, by its position in the members list"
@@ -1335,7 +1540,9 @@ op declareTable "Check a table: its row type is a record, its rows are numbered 
   checkIt: checkCell(source, words, row, rowType, types, members, targets) ?^
   goto nextRow
 :finish
-  makeInfo: info = TypeInfo.new(name, 6, rowType, no, no, no, no, entityIndex, rowCount)
+  readOld: old = typeInfoOf(types, code)
+  readModule: module = TypeInfo.module(old)
+  makeInfo: info = TypeInfo.new(name, module, 6, rowType, 0, no, no, no, no, entityIndex, rowCount, 0, 1)
   findIndex: typeIndex = math.subtractInt64(code, 1)
   setInfo: Types.set(types, typeIndex, info) ! setInfoError
   iferr setInfo lost registered
@@ -1358,6 +1565,98 @@ op declareTable "Check a table: its row type is a record, its rows are numbered 
 @reject unsupportedPayload numberWord badNumber
 @rowsNext
 
+op declareOperationType "Check an operationType: its inputs (copied, borrowed, or borrowedMutable), its output, `raises none` or an enum, `outputOwnedBy none`, and `async false`; it is a type whose values call an operation of that signature"
+  input source String borrowed
+  input words syntax.Words borrowed
+  input rows syntax.Rows borrowed
+  input entity model.Entity copied
+  input code Int64 copied
+  input types Types borrowedMutable
+  input typeNames TypeNames borrowed
+  input params Params borrowedMutable
+  input region Region borrowed
+  raises syntax.Rejection
+  let output Int64 0 mut
+  let raises Int64 0 mut
+  let yes Bool true
+  let no Bool false
+:begin
+  readName: name = model.Entity.name(entity)
+  firstCheck: firstParam = Params.length(params)
+  @rowsBegin
+  case contextRow nextRow
+  case typeParameterRow noParameter
+  case effectRow nextRow
+  case asyncRow notAsync
+  case inputRow inputFact
+  case outputRow outputFact
+  case outputOwnedByRow noOwner
+  case raisesRow raisesFact
+  others refuse
+:noParameter in=eachRow
+  fixedNone: checkWord(source, words, row, noneWord="none") ?^
+  goto nextRow
+:notAsync in=eachRow
+  fixedFalse: checkWord(source, words, row, falseWord="false") ?^
+  goto nextRow
+:noOwner in=eachRow
+  fixedOwner: checkWord(source, words, row, noneWord) ?^
+  goto nextRow
+:inputFact in=eachRow
+  readInputCount: inputCount = syntax.Row.count(row)
+  noInputCheck: noInput = compare.equalInt64(inputCount, 3)
+  if noInput inputNone inputSlot
+:inputNone in=eachRow
+  inputFixed: checkWord(source, words, row, noneWord) ?^
+  goto nextRow
+:inputSlot in=eachRow
+  @wordAt inputName 2
+  inputShape: expectCount(row, 5, inputName) ?^
+  @wordAt inputType 3
+  @wordAt inputMode 4
+  findInputType: inputCode = findType(source, typeNames, inputType) ?^
+  findInputMode: modeCode = inputModeOf(source, inputMode) ?^
+  copyInputName: inputText = syntax.wordText(source, inputName, region) ?^
+  addInputSlot: addParam(params, inputText, inputCode, modeCode, region)
+  goto nextRow
+:outputFact in=eachRow
+  @wordAt outputWord 2
+  outputShape: expectCount(row, 3, outputWord) ?^
+  outputNoneCheck: outputNone = syntax.isText(source, outputWord, noneWord) ?^
+  if outputNone nextRow outputType
+:outputType in=eachRow
+  findOutputType: outputCode = findType(source, typeNames, outputWord) ?^
+  set output outputCode
+  goto nextRow
+:raisesFact in=eachRow
+  @wordAt raisesWord 2
+  raisesShape: expectCount(row, 3, raisesWord) ?^
+  raisesNoneCheck: raisesNone = syntax.isText(source, raisesWord, noneWord) ?^
+  if raisesNone nextRow raisesType
+:raisesType in=eachRow
+  findRaisesType: raisesCode = findType(source, typeNames, raisesWord) ?^
+  readRaisesInfo: raisesInfo = typeInfoOf(types, raisesCode)
+  readRaisesKind: raisesKind = TypeInfo.kind(raisesInfo)
+  enumCheck: raisesEnum = compare.equalInt64(raisesKind, 4)
+  if raisesEnum keepRaises badRaises
+:keepRaises in=eachRow
+  set raises raisesCode
+  goto nextRow
+:finish
+  lastCheck: lastParam = Params.length(params)
+  countParams: paramCount = math.subtractInt64(lastParam, firstParam)
+  readOld: old = typeInfoOf(types, code)
+  readModule: module = TypeInfo.module(old)
+  makeInfo: info = TypeInfo.new(name, module, 8, output, 0, yes, no, no, no, firstParam, paramCount, raises, 1)
+  findIndex: typeIndex = math.subtractInt64(code, 1)
+  setInfo: Types.set(types, typeIndex, info) ! setInfoError
+  iferr setInfo lost registered
+:registered
+  return
+@reject unsupportedType raisesWord badRaises
+@reject lostName name lost
+@rowsNext
+
 op declareOperation "Check an operation's signature rows, add its slots, and enter it as a call target; main takes no input, gives an ExitCode, and raises nothing"
   input source String borrowed
   input words syntax.Words borrowed
@@ -1365,6 +1664,9 @@ op declareOperation "Check an operation's signature rows, add its slots, and ent
   input entity model.Entity copied
   input entityIndex Int64 copied
   input opIndex Int64 copied
+  input module syntax.Word copied
+  input moduleFirst Int64 copied
+  input moduleEnd Int64 copied
   input types Types borrowed
   input typeNames TypeNames borrowed
   input params Params borrowedMutable
@@ -1491,7 +1793,7 @@ op declareOperation "Check an operation's signature rows, add its slots, and ent
   allThree: mainFits = logic.and(inputsAndOutput, noRaises)
   if mainFits register badMain
 :register
-  makeOp: op = OpInfo.new(name, entityIndex, firstParam, paramCount, output, raises, owner, owned, depth, recursive)
+  makeOp: op = OpInfo.new(name, module, moduleFirst, moduleEnd, entityIndex, firstParam, paramCount, output, raises, owner, owned, depth, recursive)
   appendOp: Ops.append(ops, op)
   copyName: nameText = syntax.wordText(source, name, region) ?^
   makeKind: kind = TargetKind.operation()
@@ -1519,6 +1821,7 @@ op declareOwned "Check the rows of a call or a region and return the position of
   case contextRow nextRow
   case inRow ownerFact
   case invokesRow nextRow
+  case invokesReferenceRow nextRow
   case argumentRow nextRow
   case resultRow nextRow
   case ownedByRow nextRow
@@ -1569,14 +1872,132 @@ op declareOwned "Check the rows of a call or a region and return the position of
 @reject unknownOwner name noOwner
 @rowsNext
 
-op checkDeclarations "Check every entity's rows and collect the module's types, members, call targets, operations, constants, and which operation each call and region belongs to"
-  invariant declaresTypes "Built-in types are numbered 1 to 6 (String, Int64, ExitCode, Bool, Byte, Region), the standard errors 7, and records, enums, and list typeInstances from 8 in source order; each record field and enum variant is a member, in order"
-  invariant declaresTargets "Every standard library target of the subset, operation, record constructor and field reader, enum variant constructor, and list member is a call target with its slots, result type, and error"
-  invariant rejectsOutsideDeclarations "A predicate, payload, type, or kind outside the subset is refused at the word concerned, as is a module whose main is missing or takes inputs, a type held by value before it is declared, and a call or region whose operation does not exist"
+## ---------------------------------------------------------------- one operation: inputs, labels, lets, binds
+
+op copyTypeNames "Enter every name of one type map in another, with the type it names"
+  input from TypeNames borrowed
+  input to TypeNames borrowedMutable
+:begin
+  countNames: count = TypeNames.length(from)
+  goto eachName
+:eachName loop=forEach max=count over=from
+  next from key copyOne done
+:copyOne in=eachName
+  readCode: code = TypeNames.get(from, key) ? eachName
+  putCode: TypeNames.put(to, key, code)
+  goto eachName
+:done
+  return
+
+op copyTargets "Enter every call target of one target map in another"
+  input from Targets borrowed
+  input to Targets borrowedMutable
+:begin
+  countNames: count = Targets.length(from)
+  goto eachName
+:eachName loop=forEach max=count over=from
+  next from key copyOne done
+:copyOne in=eachName
+  readTarget: target = Targets.get(from, key) ? eachName
+  putIt: Targets.put(to, key, target)
+  goto eachName
+:done
+  return
+
+op publishTypeNames "Enter the types a module declared (the names its map holds past the ones it was seeded with) in the program's map, as `<module>.<name>`"
+  input source String borrowed
+  input module syntax.Word copied
+  input local TypeNames borrowed
+  input seeded Int64 copied
+  input global TypeNames borrowedMutable
+  input region Region borrowed
+  raises syntax.Rejection
+  let position Int64 0 mut
+:begin
+  copyModule: moduleText = syntax.wordText(source, module, region) ?^
+  makeScope: scope = string.concat(moduleText, dot=".", region)
+  countNames: count = TypeNames.length(local)
+  goto eachName
+:eachName loop=forEach max=count over=local
+  next local key readOne done
+:readOne in=eachName
+  ownCheck: own = compare.greaterOrEqualInt64(position, seeded)
+  countPosition: nextPosition = math.addInt64(position, 1)
+  set position nextPosition
+  if own publishOne eachName
+:publishOne in=eachName
+  readCode: code = TypeNames.get(local, key) ? eachName
+  qualify: qualified = string.concat(scope, key, region)
+  putCode: TypeNames.put(global, qualified, code)
+  goto eachName
+:done
+  return
+
+op publishTargets "Enter the call targets a module declared (those its map holds past the ones it was seeded with) in the program's map, as `<module>.<name>`"
+  input source String borrowed
+  input module syntax.Word copied
+  input local Targets borrowed
+  input seeded Int64 copied
+  input global Targets borrowedMutable
+  input region Region borrowed
+  raises syntax.Rejection
+  let position Int64 0 mut
+:begin
+  copyModule: moduleText = syntax.wordText(source, module, region) ?^
+  makeScope: scope = string.concat(moduleText, dot=".", region)
+  countNames: count = Targets.length(local)
+  goto eachName
+:eachName loop=forEach max=count over=local
+  next local key readOne done
+:readOne in=eachName
+  ownCheck: own = compare.greaterOrEqualInt64(position, seeded)
+  countPosition: nextPosition = math.addInt64(position, 1)
+  set position nextPosition
+  if own publishOne eachName
+:publishOne in=eachName
+  readTarget: target = Targets.get(local, key) ? eachName
+  qualify: qualified = string.concat(scope, key, region)
+  putIt: Targets.put(global, qualified, target)
+  goto eachName
+:done
+  return
+
+op nextModule "The position one past the last entity of the module that starts at a position: the next module entity's position, or the length of the list"
+  invariant findsModuleEnd "Gives the position of the first module entity after the given position, or the number of entities when there is none"
+  input entities model.Entities borrowed
+  input first Int64 copied
+  output Int64
+  let index Int64 0 mut
+:begin
+  countEntities: count = model.Entities.length(entities)
+  startAfter: start = math.addInt64(first, 1)
+  set index start
+  goto scan
+:scan loop=while max=count
+  endCheck: atEnd = compare.greaterOrEqualInt64(index, count)
+  if atEnd finish readEntity
+:readEntity in=scan
+  readTheEntity: entity = model.Entities.getOrTrap(entities, index)
+  readKind: kind = model.Entity.kind(entity)
+  moduleCheck: isModule = compare.equalInt64(kind, 1)
+  if isModule finish advance
+:advance in=scan
+  stepIndex: nextIndex = math.addInt64(index, 1)
+  set index nextIndex
+  goto scan
+:finish
+  return index
+
+op checkModuleDeclarations "Check the entities of one module of a program and collect its declarations, under its own names, in maps seeded with the built-in names and every earlier module's `<module>.<name>`; then publish its names as `<module>.<name>` for the modules after it"
+  invariant declaresTypes "Built-in types are numbered 1 to 11 (String, Int64, ExitCode, Bool, Byte, Region, the standard errors, ByteBuffer, process.Arguments, time.Deadline, Bytes) and every record, enum, typeInstance, table, and operationType of the program after them in source order; each record field and enum variant is a member, in order"
+  invariant declaresTargets "Every standard library target of the subset, operation, record constructor and field reader, enum variant constructor, list and map member, and table reader is a call target with its slots, result type, and error, under its own name in its module and as `<module>.<name>` in the modules after it"
+  invariant rejectsOutsideDeclarations "A predicate, payload, type, or kind outside the subset is refused at the word concerned, as is a module whose first entity is not its module entity, a main that takes inputs, a type held by value before it is declared, and a call or region whose operation does not exist"
   input source String borrowed
   input words syntax.Words borrowed
   input rows syntax.Rows borrowed
   input entities model.Entities borrowed
+  input first Int64 copied
+  input end Int64 copied
   input types Types borrowedMutable
   input typeNames TypeNames borrowedMutable
   input members Members borrowedMutable
@@ -1586,24 +2007,41 @@ op checkDeclarations "Check every entity's rows and collect the module's types, 
   input opNames OpNames borrowedMutable
   input owners Owners borrowedMutable
   input constants Values borrowedMutable
+  input globalTypeNames TypeNames borrowedMutable
+  input globalTargets Targets borrowedMutable
   input region Region borrowed
   raises syntax.Rejection
   let entityIndex Int64 0 mut
   let opIndex Int64 0 mut
-  let typeCode Int64 11 mut
+  let typeCode Int64 0 mut
 :begin
-  numberNames: declareNames(source, entities, types, typeNames, opNames, region) ?^
-  enterBuiltins: registerBuiltins(source, params, targets, region) ?^
-  countEntities: entityCount = model.Entities.length(entities)
+  readModuleEntity: moduleEntity = model.Entities.getOrTrap(entities, first)
+  readModuleKind: moduleKind = model.Entity.kind(moduleEntity)
+  readModuleName: module = model.Entity.name(moduleEntity)
+  moduleCheck: isModule = compare.equalInt64(moduleKind, 1)
+  if isModule seed notModule
+:seed
+  seedTypes: copyTypeNames(globalTypeNames, typeNames)
+  seedTargets: copyTargets(globalTargets, targets)
+  countSeededTypes: seededTypes = TypeNames.length(typeNames)
+  countSeededTargets: seededTargets = Targets.length(targets)
+  countOps: opBase = Ops.length(ops)
+  countTypes: typeBase = Types.length(types)
+  set opIndex opBase
+  set typeCode typeBase
+  set entityIndex first
+  numberNames: declareNames(source, entities, first, end, module, types, typeNames, opNames, opBase, region) ?^
+  findSpan: span = math.subtractInt64(end, first)
   goto eachEntity
-:eachEntity loop=forEach max=entityCount over=entities
-  next entities entity readEntity checkMain
+:eachEntity loop=while max=span
+  doneCheck: allDone = compare.greaterOrEqualInt64(entityIndex, end)
+  if allDone publish readEntity
 :readEntity in=eachEntity
+  readTheEntity: entity = model.Entities.getOrTrap(entities, entityIndex)
   readKind: kind = model.Entity.kind(entity)
-  readEntityFirst: entityFirst = model.Entity.first(entity)
-  moduleCheck: isModule = compare.equalInt64(kind, 1)
-  if isModule moduleEntity notModule
-:notModule in=eachEntity
+  moduleKindCheck: isModuleEntity = compare.equalInt64(kind, 1)
+  if isModuleEntity moduleEntityStep notModuleEntity
+:notModuleEntity in=eachEntity
   capabilityCheck: isCapability = compare.equalInt64(kind, 2)
   if isCapability capabilityEntity notCapability
 :notCapability in=eachEntity
@@ -1629,11 +2067,17 @@ op checkDeclarations "Check every entity's rows and collect the module's types, 
   if isEnum enumEntity notEnum
 :notEnum in=eachEntity
   tableCheck: isTable = compare.equalInt64(kind, 11)
-  if isTable tableEntity instanceEntity
+  if isTable tableEntity notTable
+:notTable in=eachEntity
+  referenceCheck: isReference = compare.equalInt64(kind, 12)
+  if isReference referenceEntity instanceEntity
 :tableEntity in=eachEntity
   checkTableRows: declareTable(source, words, rows, entity, entityIndex, typeCode, types, typeNames, members, params, targets, region) ?^
   goto unowned
-:moduleEntity in=eachEntity
+:referenceEntity in=eachEntity
+  checkReferenceRows: declareOperationType(source, words, rows, entity, typeCode, types, typeNames, params, region) ?^
+  goto unowned
+:moduleEntityStep in=eachEntity
   checkModuleRows: declareModule(source, words, rows, entity) ?^
   goto unowned
 :capabilityEntity in=eachEntity
@@ -1643,7 +2087,7 @@ op checkDeclarations "Check every entity's rows and collect the module's types, 
   checkConstantRows: declareConstant(source, words, rows, entity, typeNames, constants) ?^
   goto unowned
 :operationEntity in=eachEntity
-  checkOperationRows: declareOperation(source, words, rows, entity, entityIndex, opIndex, types, typeNames, params, targets, ops, region) ?^
+  checkOperationRows: declareOperation(source, words, rows, entity, entityIndex, opIndex, module, first, end, types, typeNames, params, targets, ops, region) ?^
   countOperation: nextOp = math.addInt64(opIndex, 1)
   set opIndex nextOp
   goto unowned
@@ -1667,18 +2111,11 @@ op checkDeclarations "Check every entity's rows and collect the module's types, 
   countEntity: nextEntity = math.addInt64(entityIndex, 1)
   set entityIndex nextEntity
   goto eachEntity
-:checkMain
-  hasMain: mainKnown = OpNames.contains(opNames, mainText="main")
-  if mainKnown done noMain
-:done
+:publish
+  publishTypes: publishTypeNames(source, module, typeNames, seededTypes, globalTypeNames, region) ?^
+  publishCalls: publishTargets(source, module, targets, seededTargets, globalTargets, region) ?^
   return
-:noMain
-  readModule: firstEntity = model.Entities.getOrTrap(entities, 0)
-  readModuleName: moduleName = model.Entity.name(firstEntity)
-  makeNoMain: noMainError = syntax.Rejection.noMain(moduleName)
-  raise noMainError
-
-## ---------------------------------------------------------------- one operation: inputs, labels, lets, binds
+@reject notModule module notModule
 
 op addInput "Check an input row of an operation and enter its value"
   input source String borrowed
@@ -1705,11 +2142,65 @@ op addInput "Check an input row of an operation and enter its value"
 :done
   return
 
-op addLet "Check a let row of an operation and enter its value"
+op signatureFits "Decide whether an operation fits an operationType: the same slots with the same types and modes, the same output, and the same error"
+  input params Params borrowed
+  input reference TypeInfo copied
+  input target TargetInfo copied
+  output Bool
+  let index Int64 0 mut
+  let no Bool false
+  let yes Bool true
+:begin
+  readKind: kind = TargetInfo.kind(target)
+  match kind
+  case operation compareShape
+  others different
+:compareShape
+  readWantCount: wantCount = TypeInfo.count(reference)
+  readHaveCount: haveCount = TargetInfo.paramCount(target)
+  readWantOutput: wantOutput = TypeInfo.item(reference)
+  readHaveOutput: haveOutput = TargetInfo.output(target)
+  readWantRaises: wantRaises = TypeInfo.raises(reference)
+  readHaveRaises: haveRaises = TargetInfo.raises(target)
+  countCheck: sameCount = compare.equalInt64(wantCount, haveCount)
+  outputCheck: sameOutput = compare.equalInt64(wantOutput, haveOutput)
+  raisesCheck: sameRaises = compare.equalInt64(wantRaises, haveRaises)
+  bothCheck: countAndOutput = logic.and(sameCount, sameOutput)
+  allCheck: shapeFits = logic.and(countAndOutput, sameRaises)
+  readWantFirst: wantFirst = TypeInfo.first(reference)
+  readHaveFirst: haveFirst = TargetInfo.firstParam(target)
+  if shapeFits eachSlot different
+:eachSlot loop=while max=wantCount
+  slotsDone: allSlots = compare.greaterOrEqualInt64(index, wantCount)
+  if allSlots same compareSlot
+:compareSlot in=eachSlot
+  findWant: wantIndex = math.addInt64(wantFirst, index)
+  findHave: haveIndex = math.addInt64(haveFirst, index)
+  readWant: want = Params.getOrTrap(params, wantIndex)
+  readHave: have = Params.getOrTrap(params, haveIndex)
+  readWantType: wantType = ParamInfo.type(want)
+  readHaveType: haveType = ParamInfo.type(have)
+  readWantMode: wantMode = ParamInfo.mode(want)
+  readHaveMode: haveMode = ParamInfo.mode(have)
+  typeCheck: sameType = compare.equalInt64(wantType, haveType)
+  modeCheck: sameMode = compare.equalInt64(wantMode, haveMode)
+  slotCheck: slotFits = logic.and(sameType, sameMode)
+  countSlot: nextIndex = math.addInt64(index, 1)
+  set index nextIndex
+  if slotFits eachSlot different
+:same
+  return yes
+:different
+  return no
+
+op addLet "Check a let row of an operation and enter its value; a let of an operationType names an operation that fits it"
   input source String borrowed
   input words syntax.Words borrowed
   input row syntax.Row copied
+  input types Types borrowed
   input typeNames TypeNames borrowed
+  input params Params borrowed
+  input targets Targets borrowed
   input values Values borrowedMutable
   input constants Values borrowed
   raises syntax.Rejection
@@ -1756,7 +2247,17 @@ op addLet "Check a let row of an operation and enter its value"
   flagCheck: isTrue = syntax.isText(source, valueWord, trueWord="true") ?^
   falseCheck: isFalse = syntax.isText(source, valueWord, falseWord="false") ?^
   eitherFlag: isFlag = logic.or(isTrue, isFalse)
-  if isFlag literalCheck copyFrom
+  if isFlag literalCheck referenceCheck
+:referenceCheck
+  readLetType: letType = typeInfoOf(types, code)
+  readLetKind: letKind = TypeInfo.kind(letType)
+  operationTypeCheck: isReference = compare.equalInt64(letKind, 8)
+  if isReference operationValue copyFrom
+:operationValue
+  @view operationText valueWord outside
+  findOperation: operationTarget = Targets.get(targets, operationText) ? wrongType
+  fitCheck: fits = signatureFits(params, letType, operationTarget)
+  if fits markName wrongType
 :copyFrom
   readSource: sourceInfo = findValue(source, values, constants, valueWord) ?^
   sourceCode: fromCode = ValueInfo.code(sourceInfo)
@@ -1778,6 +2279,7 @@ op addLet "Check a let row of an operation and enter its value"
   return
 @reject unsupportedPayload mutabilityWord badMutability
 @reject wrongType valueWord wrongType
+@reject outsideSource valueWord outside
 
 op lookupLabel "Read what is known of a label so far, or a fresh entry for a label not seen yet"
   input source String borrowed
@@ -1931,7 +2433,10 @@ op collectRows "Check the rows of an operation that state its inputs, labels, an
   input words syntax.Words borrowed
   input rows syntax.Rows borrowed
   input entity model.Entity copied
+  input types Types borrowed
   input typeNames TypeNames borrowed
+  input params Params borrowed
+  input targets Targets borrowed
   input values Values borrowedMutable
   input constants Values borrowed
   input labels Labels borrowedMutable
@@ -1950,7 +2455,7 @@ op collectRows "Check the rows of an operation that state its inputs, labels, an
   enterLabel: addLabelFact(source, words, row, labels) ?^
   goto nextRow
 :letFact in=eachRow
-  enterLet: addLet(source, words, row, typeNames, values, constants) ?^
+  enterLet: addLet(source, words, row, types, typeNames, params, targets, values, constants) ?^
   goto nextRow
 :atFact in=eachRow
   enterBind: addBind(source, words, row, typeNames, values, constants) ?^
@@ -2003,10 +2508,13 @@ op catchFits "Decide whether a catch row's type word names the standard error a 
   output Bool
   raises syntax.Rejection
   let indexError String "list.IndexOutOfRange"
+  let keyError String "map.KeyMissing"
 :begin
   readKind: kind = TargetInfo.kind(target)
   match kind
   case builtin builtinError
+  case mapGet mapError
+  case mapRemove mapError
   others listError
 :builtinError
   readOwner: row = TargetInfo.owner(target)
@@ -2014,6 +2522,9 @@ op catchFits "Decide whether a catch row's type word names the standard error a 
   readError: error = BuiltinRow.error(entry)
   builtinCheck: builtinFits = syntax.isText(source, word, error) ?^
   return builtinFits
+:mapError
+  mapCheck: mapFits = syntax.isText(source, word, keyError) ?^
+  return mapFits
 :listError
   listCheck: listFits = syntax.isText(source, word, indexError) ?^
   return listFits
@@ -2023,6 +2534,7 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   input words syntax.Words borrowed
   input rows syntax.Rows borrowed
   input entity model.Entity copied
+  input types Types borrowed
   input typeNames TypeNames borrowed
   input params Params borrowed
   input targets Targets borrowed
@@ -2033,6 +2545,7 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   raises syntax.Rejection
   let target TargetInfo unset mut
   let hasTarget Bool false mut
+  let reference syntax.Word unset mut
   let argumentIndex Int64 0 mut
   let result syntax.Word unset mut
   let hasResult Bool false mut
@@ -2044,12 +2557,14 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   readName: name = model.Entity.name(entity)
   set result name
   set catchName name
+  set reference name
   firstCheck: firstArgument = Arguments.length(arguments)
   makeKind: placeholderKind = TargetKind.builtin()
   makePlaceholder: placeholder = TargetInfo.new(placeholderKind, 0, 0, 0, 0, 0, 0)
   set target placeholder
   @rowsBegin
   case invokesRow invokes
+  case invokesReferenceRow invokesReference
   case argumentRow argument
   case resultRow resultFact
   case catchRow catchFact
@@ -2061,6 +2576,26 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   findTarget: found = Targets.get(targets, targetText) ? unknownTarget
   set target found
   set hasTarget yes
+  goto nextRow
+:invokesReference in=eachRow
+  @wordAt referenceWord 2
+  referenceShape: expectCount(row, 3, referenceWord) ?^
+  findReference: referenceInfo = findValue(source, values, constants, referenceWord) ?^
+  readReferenceCode: referenceCode = ValueInfo.code(referenceInfo)
+  readReferenceType: referenceType = typeInfoOf(types, referenceCode)
+  readReferenceKind: referenceKind = TypeInfo.kind(referenceType)
+  referenceCheck: isReference = compare.equalInt64(referenceKind, 8)
+  if isReference throughReference notReference
+:throughReference in=eachRow
+  readReferenceFirst: referenceFirst = TypeInfo.first(referenceType)
+  readReferenceCount: referenceCount = TypeInfo.count(referenceType)
+  readReferenceOutput: referenceOutput = TypeInfo.item(referenceType)
+  readReferenceRaises: referenceRaises = TypeInfo.raises(referenceType)
+  makeReferenceKind: referenceTargetKind = TargetKind.reference()
+  makeReferenceTarget: referenceTarget = TargetInfo.new(referenceTargetKind, referenceCode, 0, referenceFirst, referenceCount, referenceOutput, referenceRaises)
+  set target referenceTarget
+  set hasTarget yes
+  set reference referenceWord
   goto nextRow
 :argument in=eachRow
   if hasTarget argumentShape lost
@@ -2172,10 +2707,11 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   takenCheck: taken = Calls.contains(calls, callText)
   if taken duplicate putCall
 :putCall
-  makeInfo: info = CallInfo.new(name, target, firstArgument, argumentIndex, result, hasResult, catchName, hasCatch)
+  makeInfo: info = CallInfo.new(name, target, reference, firstArgument, argumentIndex, result, hasResult, catchName, hasCatch)
   putIt: Calls.put(calls, callText, info)
   return
 @reject unsupportedTarget targetWord unknownTarget
+@reject wrongType referenceWord notReference
 @reject outsideSource name outside
 @reject lostName name lost
 @reject argumentCount slotWord wrongCount
@@ -2190,13 +2726,15 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
 @reject duplicateName name duplicate
 @rowsNext none
 
-op collectOwned "Enter the regions of an operation as values, and check its calls"
+op collectOwned "Enter the regions of an operation as values, and check its calls; both are entities of the operation's module"
   input source String borrowed
   input words syntax.Words borrowed
   input rows syntax.Rows borrowed
   input entities model.Entities borrowed
   input owners Owners borrowed
+  input op OpInfo copied
   input opIndex Int64 copied
+  input types Types borrowed
   input typeNames TypeNames borrowed
   input params Params borrowed
   input targets Targets borrowed
@@ -2206,13 +2744,17 @@ op collectOwned "Enter the regions of an operation as values, and check its call
   input arguments Arguments borrowedMutable
   raises syntax.Rejection
   let entityIndex Int64 0 mut
-  let zero Int64 0
 :begin
-  countEntities: entityCount = model.Entities.length(entities)
+  readFirst: first = OpInfo.moduleFirst(op)
+  readEnd: end = OpInfo.moduleEnd(op)
+  findSpan: span = math.subtractInt64(end, first)
+  set entityIndex first
   goto eachRegion
-:eachRegion loop=forEach max=entityCount over=entities
-  next entities regionEntity readRegionOwner regionsDone
+:eachRegion loop=while max=span
+  regionsDoneCheck: allRegions = compare.greaterOrEqualInt64(entityIndex, end)
+  if allRegions regionsDone readRegionOwner
 :readRegionOwner in=eachRegion
+  readRegionEntity: regionEntity = model.Entities.getOrTrap(entities, entityIndex)
   readRegionOwnerIndex: regionOwner = Owners.getOrTrap(owners, entityIndex)
   countRegionEntity: nextRegionEntity = math.addInt64(entityIndex, 1)
   set entityIndex nextRegionEntity
@@ -2226,11 +2768,13 @@ op collectOwned "Enter the regions of an operation as values, and check its call
   enterRegionValue: addRegion(source, words, rows, regionEntity, values, constants) ?^
   goto eachRegion
 :regionsDone
-  set entityIndex zero
+  set entityIndex first
   goto eachCall
-:eachCall loop=forEach max=entityCount over=entities
-  next entities callEntity readCallOwner done
+:eachCall loop=while max=span
+  callsDoneCheck: allCalls = compare.greaterOrEqualInt64(entityIndex, end)
+  if allCalls done readCallOwner
 :readCallOwner in=eachCall
+  readCallEntity: callEntity = model.Entities.getOrTrap(entities, entityIndex)
   readCallOwnerIndex: callOwner = Owners.getOrTrap(owners, entityIndex)
   countCallEntity: nextCallEntity = math.addInt64(entityIndex, 1)
   set entityIndex nextCallEntity
@@ -2243,7 +2787,7 @@ op collectOwned "Enter the regions of an operation as values, and check its call
   callOrTask: runs = logic.or(isCall, isTask)
   if runs enterCall eachCall
 :enterCall in=eachCall
-  checkTheCall: checkCall(source, words, rows, callEntity, typeNames, params, targets, values, constants, calls, arguments) ?^
+  checkTheCall: checkCall(source, words, rows, callEntity, types, typeNames, params, targets, values, constants, calls, arguments) ?^
   goto eachCall
 :done
   return
@@ -2476,7 +3020,19 @@ op checkStep "Check one step of an operation and return it with the words it nam
   readListInfo: listInfo = typeInfoOf(types, listCode)
   readListKind: listKind = TypeInfo.kind(listInfo)
   listCheck: isList = compare.equalInt64(listKind, 5)
-  if isList itemCheck notList
+  if isList itemCheck mapCollectionCheck
+:mapCollectionCheck
+  mapCheck: isMap = compare.equalInt64(listKind, 7)
+  if isMap mapKeyCheck notList
+:mapKeyCheck
+  readKey: keyCode = TypeInfo.item(listInfo)
+  keyBound: boundKeyCode = valueCode(source, values, constants, itemWord) ?^
+  keyTypeCheck: keyFits = compare.equalInt64(boundKeyCode, keyCode)
+  if keyFits makeMapNextStep itemWrongType
+:makeMapNextStep
+  makeMapNextVerb: mapNextVerb = StepVerb.branchIfNext()
+  makeMapNext: mapNextDone = Step.new(labelWord, mapNextVerb, conditionWord, nextYesWord, nextNoWord, itemWord, listCode, keyCode)
+  return mapNextDone
 :itemCheck
   readItem: item = TypeInfo.item(listInfo)
   itemCode: boundCode = valueCode(source, values, constants, itemWord) ?^
@@ -2695,32 +3251,68 @@ op checkOperation "Check one operation: its inputs, lets, labels, regions, calls
   readOp: op = Ops.getOrTrap(ops, opIndex)
   readEntityIndex: entityIndex = OpInfo.entity(op)
   readEntity: entity = model.Entities.getOrTrap(entities, entityIndex)
-  rowsCheck: collectRows(source, words, rows, entity, typeNames, values, constants, labels) ?^
-  ownedCheck: collectOwned(source, words, rows, entities, owners, opIndex, typeNames, params, targets, values, constants, calls, arguments) ?^
+  rowsCheck: collectRows(source, words, rows, entity, types, typeNames, params, targets, values, constants, labels) ?^
+  ownedCheck: collectOwned(source, words, rows, entities, owners, op, opIndex, types, typeNames, params, targets, values, constants, calls, arguments) ?^
   stepsCheck: collectSteps(source, words, rows, entity, types, members, targets, op, values, constants, calls, arguments, labels, steps, typeNames) ?^
   return
 
-op checkModule "Check that a modelled module is in the stage0 subset: its declarations, then each operation"
-  invariant acceptsSubset "A module of records, enums, list typeInstances, constants, and operations calling the subset's targets and each other is accepted"
+op checkProgram "Check that a modelled program is in the stage0 subset: each module in source order, its declarations and then each of its operations"
+  invariant acceptsSubset "A program of modules of records, enums, list and map typeInstances, tables, operationTypes, constants, and operations calling the subset's targets and each other is accepted"
   invariant rejectsOutsideSubset "The first declaration or step outside the subset is refused at the word concerned"
   input source String borrowed
   input words syntax.Words borrowed
   input rows syntax.Rows borrowed
   input entities model.Entities borrowed
   raises syntax.Rejection
-  region work 268435456
-  let opIndex Int64 0 mut
+  region work 1073741824
+  let first Int64 0 mut
 :begin
   newTypes: types = Types.new(work)
-  newTypeNames: typeNames = TypeNames.new(work)
   newMembers: members = Members.new(work)
   newParams: params = Params.new(work)
-  newTargets: targets = Targets.new(work)
   newOps: ops = Ops.new(work)
-  newOpNames: opNames = OpNames.new(work)
   newOwners: owners = Owners.new(work)
-  newConstants: constants = Values.new(work)
-  declare: checkDeclarations(source, words, rows, entities, types, typeNames, members, params, targets, ops, opNames, owners, constants, work) ?^
+  newTypeNames: globalTypeNames = TypeNames.new(work)
+  newTargets: globalTargets = Targets.new(work)
+  declareAll: declareBuiltins(source, types, globalTypeNames, params, globalTargets, work) ?^
+  countEntities: count = model.Entities.length(entities)
+  goto eachModule
+:eachModule loop=while max=count
+  doneCheck: allDone = compare.greaterOrEqualInt64(first, count)
+  if allDone done checkOne
+:checkOne in=eachModule
+  findEnd: end = nextModule(entities, first)
+  checkIt: checkOneModule(source, words, rows, entities, first, end, types, members, params, ops, owners, globalTypeNames, globalTargets) ?^
+  set first end
+  goto eachModule
+:done
+  return
+
+op checkOneModule "Check one module of a program: its declarations, then each of its operations, with names of its own released when it is checked"
+  input source String borrowed
+  input words syntax.Words borrowed
+  input rows syntax.Rows borrowed
+  input entities model.Entities borrowed
+  input first Int64 copied
+  input end Int64 copied
+  input types Types borrowedMutable
+  input members Members borrowedMutable
+  input params Params borrowedMutable
+  input ops Ops borrowedMutable
+  input owners Owners borrowedMutable
+  input globalTypeNames TypeNames borrowedMutable
+  input globalTargets Targets borrowedMutable
+  raises syntax.Rejection
+  region moduleWork 1073741824
+  let opIndex Int64 0 mut
+:begin
+  newTypeNames: typeNames = TypeNames.new(moduleWork)
+  newTargets: targets = Targets.new(moduleWork)
+  newOpNames: opNames = OpNames.new(moduleWork)
+  newConstants: constants = Values.new(moduleWork)
+  countBefore: opBase = Ops.length(ops)
+  set opIndex opBase
+  declare: checkModuleDeclarations(source, words, rows, entities, first, end, types, typeNames, members, params, targets, ops, opNames, owners, constants, globalTypeNames, globalTargets, moduleWork) ?^
   countOps: opCount = Ops.length(ops)
   goto eachOp
 :eachOp loop=while max=opCount
@@ -2759,8 +3351,8 @@ op checkOneOperation "Check one operation into collections of its own, released 
   check: checkOperation(source, words, rows, entities, types, typeNames, members, params, targets, ops, owners, constants, opIndex, values, calls, arguments, labels, steps) ?^
   return
 
-op diagnose "Run the front end on a source and describe the first problem, or say it was accepted"
-  invariant reportsFirstProblem "Returns `accepted` for a module in the subset; otherwise the first problem the lexer, rows, model, or subset check finds, as `line:column: message (word)`"
+op diagnose "Run the front end on a program's source and describe the first problem, or say it was accepted"
+  invariant reportsFirstProblem "Returns `accepted` for a program in the subset; otherwise the first problem the lexer, rows, model, or subset check finds, as `line:column: message (word)`"
   input source String borrowed
   input region Region borrowed
   output String
@@ -2779,7 +3371,7 @@ op diagnose "Run the front end on a source and describe the first problem, or sa
   buildIt: model.buildModel(source, words, rows, entities, names) ! buildError
   iferr buildIt refusedModel checkIt
 :checkIt
-  checkAll: checkModule(source, words, rows, entities) ! checkError
+  checkAll: checkProgram(source, words, rows, entities) ! checkError
   iferr checkAll refusedCheck accepted
 :accepted
   return acceptedText

@@ -141,6 +141,8 @@ rejectTest purpose "Stray marks, glued words, a dangling dot, a lone minus, and 
 rejectTest verifies groupRows rejectsMalformedWords
 rejectTest verifies groupRows rejectsShortRows
 rejectTest verifies diagnostic locatesAndExplains
+rejectTest verifies rejectionWord givesWord
+rejectTest verifies rejectionMessage givesMessage
 rejectTest typeParameter none
 rejectTest input none
 rejectTest output none
@@ -186,6 +188,8 @@ rejectTest let expected3 String "1:5: this mark is not part of a word (-)" immut
 rejectTest let source4 String "a b\n" immutable
 rejectTest let expected4 String "1:1: a row has a subject, a predicate, and a payload (a)" immutable
 rejectTest let refusedText String "the front end refused the source or a step failed" immutable
+rejectTest let markMessage String "this mark is not part of a word" immutable
+rejectTest let markColumn Int64 5 immutable
 rejectTest at begin do lex0
 rejectTest at begin branch ifError lex0 goto refused else goto lexed0
 rejectTest at lexed0 do newWords0
@@ -194,6 +198,12 @@ rejectTest at lexed0 do group0
 rejectTest at lexed0 branch ifError group0 goto rejected0 else goto refused
 rejectTest at rejected0 do describe0
 rejectTest at rejected0 do expect0
+rejectTest at rejected0 do readWord0
+rejectTest at rejected0 do readStart0
+rejectTest at rejected0 do readColumn0
+rejectTest at rejected0 do expectColumn0
+rejectTest at rejected0 do readMessage0
+rejectTest at rejected0 do expectMessage0
 rejectTest at rejected0 do lex1
 rejectTest at rejected0 branch ifError lex1 goto refused else goto lexed1
 rejectTest at lexed1 do newWords1
@@ -296,6 +306,75 @@ describe0 cleanedBy none
 describe0 borrows none
 describe0 catch none
 describe0 suppresses none
+
+readWord0 is call
+readWord0 in rejectTest
+readWord0 invokes rejectionWord
+readWord0 argument rejection Rejection groupError0 copy
+readWord0 result rejectedWord0 Word
+readWord0 ownedBy none
+readWord0 cleanedBy none
+readWord0 borrows none
+readWord0 catch none
+readWord0 suppresses none
+
+readStart0 is call
+readStart0 in rejectTest
+readStart0 invokes Word.start
+readStart0 argument record Word rejectedWord0 copy
+readStart0 result rejectedStart0 string.Position
+readStart0 ownedBy none
+readStart0 cleanedBy none
+readStart0 borrows none
+readStart0 catch none
+readStart0 suppresses none
+
+readColumn0 is call
+readColumn0 in rejectTest
+readColumn0 invokes string.Position.column
+readColumn0 argument record string.Position rejectedStart0 copy
+readColumn0 result rejectedColumn0 Int64
+readColumn0 ownedBy none
+readColumn0 cleanedBy none
+readColumn0 borrows none
+readColumn0 catch none
+readColumn0 suppresses none
+
+expectColumn0 is call
+expectColumn0 in rejectTest
+expectColumn0 invokes test.assertEqualInt64
+expectColumn0 argument expected Int64 markColumn copy
+expectColumn0 argument actual Int64 rejectedColumn0 copy
+expectColumn0 result none
+expectColumn0 ownedBy none
+expectColumn0 cleanedBy none
+expectColumn0 borrows none
+expectColumn0 catch none
+expectColumn0 suppresses none
+
+readMessage0 is call
+readMessage0 in rejectTest
+readMessage0 invokes rejectionMessage
+readMessage0 argument rejection Rejection groupError0 copy
+readMessage0 argument region Region store lend
+readMessage0 result message0 String
+readMessage0 ownedBy store
+readMessage0 cleanedBy none
+readMessage0 borrows none
+readMessage0 catch none
+readMessage0 suppresses none
+
+expectMessage0 is call
+expectMessage0 in rejectTest
+expectMessage0 invokes test.assertEqualString
+expectMessage0 argument expected String markMessage lend
+expectMessage0 argument actual String message0 lend
+expectMessage0 result none
+expectMessage0 ownedBy none
+expectMessage0 cleanedBy none
+expectMessage0 borrows none
+expectMessage0 catch none
+expectMessage0 suppresses none
 
 expect0 is call
 expect0 in rejectTest

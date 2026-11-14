@@ -36,6 +36,8 @@ syntax exports isText
 syntax exports sameText
 syntax exports putWord
 syntax exports diagnostic
+syntax exports rejectionWord
+syntax exports rejectionMessage
 syntax exports listRows
 
 WordKind is enum
@@ -105,6 +107,8 @@ Rejection variant unknownOwner Word
 Rejection variant invalidCharacter Word
 Rejection variant unterminatedText Word
 Rejection variant integerTooLarge Word
+Rejection variant notModule Word
+Rejection variant badProject Word
 
 # ---------------------------------------------------------------- building rows
 
@@ -1505,7 +1509,7 @@ stepIndex suppresses none
 
 rejectionWord is operation
 rejectionWord purpose "Read the word a rejection points at"
-rejectionWord invariant none
+rejectionWord invariant givesWord "Gives the word every variant of a rejection carries"
 rejectionWord typeParameter none
 rejectionWord input rejection Rejection copied
 rejectionWord output Word
@@ -1586,6 +1590,10 @@ rejectionWord label unterminatedTextCase loopKind none
 rejectionWord label unterminatedTextCase within none
 rejectionWord label integerTooLargeCase loopKind none
 rejectionWord label integerTooLargeCase within none
+rejectionWord label notModuleCase loopKind none
+rejectionWord label notModuleCase within none
+rejectionWord label badProjectCase loopKind none
+rejectionWord label badProjectCase within none
 rejectionWord let none
 rejectionWord at begin match rejection Rejection
 rejectionWord at begin case Rejection.strayMark bind strayMarkWord Word goto strayMarkCase
@@ -1622,6 +1630,8 @@ rejectionWord at begin case Rejection.unknownOwner bind unknownOwnerWord Word go
 rejectionWord at begin case Rejection.invalidCharacter bind invalidCharacterWord Word goto invalidCharacterCase
 rejectionWord at begin case Rejection.unterminatedText bind unterminatedTextWord Word goto unterminatedTextCase
 rejectionWord at begin case Rejection.integerTooLarge bind integerTooLargeWord Word goto integerTooLargeCase
+rejectionWord at begin case Rejection.notModule bind notModuleWord Word goto notModuleCase
+rejectionWord at begin case Rejection.badProject bind badProjectWord Word goto badProjectCase
 rejectionWord at strayMarkCase return ok strayMarkWord
 rejectionWord at gluedWordsCase return ok gluedWordsWord
 rejectionWord at danglingDotCase return ok danglingDotWord
@@ -1656,10 +1666,12 @@ rejectionWord at unknownOwnerCase return ok unknownOwnerWord
 rejectionWord at invalidCharacterCase return ok invalidCharacterWord
 rejectionWord at unterminatedTextCase return ok unterminatedTextWord
 rejectionWord at integerTooLargeCase return ok integerTooLargeWord
+rejectionWord at notModuleCase return ok notModuleWord
+rejectionWord at badProjectCase return ok badProjectWord
 
 rejectionMessage is operation
 rejectionMessage purpose "Say why a source is refused, in words"
-rejectionMessage invariant none
+rejectionMessage invariant givesMessage "Gives the message that says why each variant of a rejection refuses a source"
 rejectionMessage typeParameter none
 rejectionMessage input rejection Rejection copied
 rejectionMessage input region Region borrowed
@@ -1741,6 +1753,10 @@ rejectionMessage label unterminatedTextCase loopKind none
 rejectionMessage label unterminatedTextCase within none
 rejectionMessage label integerTooLargeCase loopKind none
 rejectionMessage label integerTooLargeCase within none
+rejectionMessage label notModuleCase loopKind none
+rejectionMessage label notModuleCase within none
+rejectionMessage label badProjectCase loopKind none
+rejectionMessage label badProjectCase within none
 rejectionMessage let strayMarkText String "this mark is not part of a word" immutable
 rejectionMessage let gluedWordsText String "words are separated by spaces" immutable
 rejectionMessage let danglingDotText String "a dotted name ends with a dot" immutable
@@ -1775,6 +1791,8 @@ rejectionMessage let unknownOwnerText String "no operation of this module has th
 rejectionMessage let invalidCharacterText String "no word begins with this character" immutable
 rejectionMessage let unterminatedTextText String "quoted text is not closed before the end of its line" immutable
 rejectionMessage let integerTooLargeText String "this integer is too large for Int64" immutable
+rejectionMessage let notModuleText String "a module's file begins with its `<name> is module` entity" immutable
+rejectionMessage let badProjectText String "build.sem names its modules with `includesModule` and its entry as `<module>.main`" immutable
 rejectionMessage at begin match rejection Rejection
 rejectionMessage at begin case Rejection.strayMark bind strayMarkWord Word goto strayMarkCase
 rejectionMessage at begin case Rejection.gluedWords bind gluedWordsWord Word goto gluedWordsCase
@@ -1810,6 +1828,8 @@ rejectionMessage at begin case Rejection.unknownOwner bind unknownOwnerWord Word
 rejectionMessage at begin case Rejection.invalidCharacter bind invalidCharacterWord Word goto invalidCharacterCase
 rejectionMessage at begin case Rejection.unterminatedText bind unterminatedTextWord Word goto unterminatedTextCase
 rejectionMessage at begin case Rejection.integerTooLarge bind integerTooLargeWord Word goto integerTooLargeCase
+rejectionMessage at begin case Rejection.notModule bind notModuleWord Word goto notModuleCase
+rejectionMessage at begin case Rejection.badProject bind badProjectWord Word goto badProjectCase
 rejectionMessage at strayMarkCase return ok strayMarkText
 rejectionMessage at gluedWordsCase return ok gluedWordsText
 rejectionMessage at danglingDotCase return ok danglingDotText
@@ -1844,6 +1864,8 @@ rejectionMessage at unknownOwnerCase return ok unknownOwnerText
 rejectionMessage at invalidCharacterCase return ok invalidCharacterText
 rejectionMessage at unterminatedTextCase return ok unterminatedTextText
 rejectionMessage at integerTooLargeCase return ok integerTooLargeText
+rejectionMessage at notModuleCase return ok notModuleText
+rejectionMessage at badProjectCase return ok badProjectText
 
 diagnostic is operation
 diagnostic purpose "Write a rejection as `line:column: message (word)`, the shape of a compiler diagnostic"

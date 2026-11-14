@@ -1,0 +1,14 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples) that stage0
+# refuses: `refined run` runs it, and stage0 reports the alias it cannot
+# compile.
+
+outside is project
+outside purpose "Hold an alias, which the stage0 subset does not compile"
+outside target console
+outside version "0.1.0"
+outside language refined 1
+outside standardLibrary 1
+outside allows none
+outside requires none
+outside includesModule outside
+outside entry outside.main

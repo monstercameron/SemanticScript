@@ -5,8 +5,10 @@
 
 declareTest is test
 declareTest purpose "Built-in and declared types are numbered, members kept in order, and every target entered with its slots"
-declareTest verifies checkDeclarations declaresTypes
-declareTest verifies checkDeclarations declaresTargets
+declareTest verifies checkModuleDeclarations declaresTypes
+declareTest verifies checkModuleDeclarations declaresTargets
+declareTest verifies declareBuiltins numbersBuiltins
+declareTest verifies nextModule findsModuleEnd
 declareTest typeParameter none
 declareTest input none
 declareTest output none
@@ -25,6 +27,8 @@ declareTest label groupXDone loopKind none
 declareTest label groupXDone within none
 declareTest label modelXDone loopKind none
 declareTest label modelXDone within none
+declareTest label builtinsXDone loopKind none
+declareTest label builtinsXDone within none
 declareTest label declareXDone loopKind none
 declareTest label declareXDone within none
 declareTest label findPointDone loopKind none
@@ -35,10 +39,17 @@ declareTest label findNewDone loopKind none
 declareTest label findNewDone within none
 declareTest label findMainDone loopKind none
 declareTest label findMainDone within none
+declareTest label findPublishedTypeDone loopKind none
+declareTest label findPublishedTypeDone within none
+declareTest label findStringDone loopKind none
+declareTest label findStringDone within none
+declareTest label findBytesDone loopKind none
+declareTest label findBytesDone within none
 declareTest label refused loopKind none
 declareTest label refused within none
 declareTest let source String "demo is module\ndemo path demo\ndemo imports none\ndemo exports main\n\nPoint is record\nPoint typeParameter none\nPoint field x Int64\nPoint field label String\n\nShape is enum\nShape typeParameter none\nShape variant dot Int64\nShape variant empty none\n\nPoints is typeInstance\nPoints in none\nPoints instantiates list.List Point\n\nmain is operation\nmain input none\nmain output ExitCode\nmain raises none\n" immutable
 declareTest let refusedText String "the front end refused the source or a step failed" immutable
+declareTest let zero Int64 0 immutable
 declareTest let fourteen Int64 14 immutable
 declareTest let pointName String "Point" immutable
 declareTest let twelve Int64 12 immutable
@@ -51,6 +62,12 @@ declareTest let dotName String "Shape.dot" immutable
 declareTest let appendName String "Points.append" immutable
 declareTest let writeName String "console.writeLine" immutable
 declareTest let mainName String "main" immutable
+declareTest let publishedName String "demo.Point.new" immutable
+declareTest let publishedType String "demo.Point" immutable
+declareTest let stringName String "String" immutable
+declareTest let one Int64 1 immutable
+declareTest let bytesName String "Bytes" immutable
+declareTest let eleven Int64 11 immutable
 declareTest at begin do lexX
 declareTest at begin branch ifError lexX goto refused else goto lexXDone
 declareTest at lexXDone do newWordsX
@@ -70,8 +87,13 @@ declareTest at modelXDone do newOpsX
 declareTest at modelXDone do newOpNamesX
 declareTest at modelXDone do newOwnersX
 declareTest at modelXDone do newConstantsX
-declareTest at modelXDone do declareX
-declareTest at modelXDone branch ifError declareX goto refused else goto declareXDone
+declareTest at modelXDone do newGlobalTypeNamesX
+declareTest at modelXDone do newGlobalTargetsX
+declareTest at modelXDone do builtinsX
+declareTest at modelXDone branch ifError builtinsX goto refused else goto builtinsXDone
+declareTest at builtinsXDone do findEndX
+declareTest at builtinsXDone do declareX
+declareTest at builtinsXDone branch ifError declareX goto refused else goto declareXDone
 declareTest at declareXDone do countTypes
 declareTest at declareXDone do expectTypes
 declareTest at declareXDone do findPoint
@@ -103,7 +125,23 @@ declareTest at findNewDone do findMain
 declareTest at findNewDone branch ifError findMain goto refused else goto findMainDone
 declareTest at findMainDone do readMainOutput
 declareTest at findMainDone do expectMainOutput
-declareTest at findMainDone return ok none
+declareTest at findMainDone do findPublished
+declareTest at findMainDone do expectPublished
+declareTest at findMainDone do findPublishedType
+declareTest at findMainDone branch ifError findPublishedType goto refused else goto findPublishedTypeDone
+declareTest at findPublishedTypeDone do expectPublishedType
+declareTest at findPublishedTypeDone do findString
+declareTest at findPublishedTypeDone branch ifError findString goto refused else goto findStringDone
+declareTest at findStringDone do expectString
+declareTest at findStringDone do findBytes
+declareTest at findStringDone branch ifError findBytes goto refused else goto findBytesDone
+declareTest at findBytesDone do expectBytes
+declareTest at findBytesDone do countModel
+declareTest at findBytesDone do expectEnd
+declareTest at findBytesDone do findBareType
+declareTest at findBytesDone do bareAbsent
+declareTest at findBytesDone do expectNoBareType
+declareTest at findBytesDone return ok none
 declareTest at refused do failRefused
 declareTest at refused return ok none
 
@@ -297,13 +335,65 @@ newConstantsX borrows none
 newConstantsX catch none
 newConstantsX suppresses none
 
+newGlobalTypeNamesX is call
+newGlobalTypeNamesX in declareTest
+newGlobalTypeNamesX invokes TypeNames.new
+newGlobalTypeNamesX argument region Region store lend
+newGlobalTypeNamesX result globalTypeNamesX TypeNames
+newGlobalTypeNamesX ownedBy store
+newGlobalTypeNamesX cleanedBy none
+newGlobalTypeNamesX borrows none
+newGlobalTypeNamesX catch none
+newGlobalTypeNamesX suppresses none
+
+newGlobalTargetsX is call
+newGlobalTargetsX in declareTest
+newGlobalTargetsX invokes Targets.new
+newGlobalTargetsX argument region Region store lend
+newGlobalTargetsX result globalTargetsX Targets
+newGlobalTargetsX ownedBy store
+newGlobalTargetsX cleanedBy none
+newGlobalTargetsX borrows none
+newGlobalTargetsX catch none
+newGlobalTargetsX suppresses none
+
+builtinsX is call
+builtinsX in declareTest
+builtinsX invokes declareBuiltins
+builtinsX argument source String source lend
+builtinsX argument types Types typesX lendMutable
+builtinsX argument typeNames TypeNames globalTypeNamesX lendMutable
+builtinsX argument params Params paramsX lendMutable
+builtinsX argument targets Targets globalTargetsX lendMutable
+builtinsX argument region Region store lend
+builtinsX result none
+builtinsX ownedBy none
+builtinsX cleanedBy none
+builtinsX borrows none
+builtinsX catch builtinsXError syntax.Rejection
+builtinsX suppresses none
+
+findEndX is call
+findEndX in declareTest
+findEndX invokes nextModule
+findEndX argument entities model.Entities entitiesX lend
+findEndX argument first Int64 zero copy
+findEndX result endX Int64
+findEndX ownedBy none
+findEndX cleanedBy none
+findEndX borrows none
+findEndX catch none
+findEndX suppresses none
+
 declareX is call
 declareX in declareTest
-declareX invokes checkDeclarations
+declareX invokes checkModuleDeclarations
 declareX argument source String source lend
 declareX argument words syntax.Words wordsX lend
 declareX argument rows syntax.Rows rowsX lend
 declareX argument entities model.Entities entitiesX lend
+declareX argument first Int64 zero copy
+declareX argument end Int64 endX copy
 declareX argument types Types typesX lendMutable
 declareX argument typeNames TypeNames typeNamesX lendMutable
 declareX argument members Members membersX lendMutable
@@ -313,6 +403,8 @@ declareX argument ops Ops opsX lendMutable
 declareX argument opNames OpNames opNamesX lendMutable
 declareX argument owners Owners ownersX lendMutable
 declareX argument constants Values constantsX lendMutable
+declareX argument globalTypeNames TypeNames globalTypeNamesX lendMutable
+declareX argument globalTargets Targets globalTargetsX lendMutable
 declareX argument region Region store lend
 declareX result none
 declareX ownedBy none
@@ -633,6 +725,158 @@ expectMainOutput borrows none
 expectMainOutput catch none
 expectMainOutput suppresses none
 
+findPublished is call
+findPublished in declareTest
+findPublished invokes Targets.contains
+findPublished argument map Targets globalTargetsX lend
+findPublished argument key String publishedName lend
+findPublished result publishedNew Bool
+findPublished ownedBy none
+findPublished cleanedBy none
+findPublished borrows none
+findPublished catch none
+findPublished suppresses none
+
+expectPublished is call
+expectPublished in declareTest
+expectPublished invokes test.assertTrue
+expectPublished argument value Bool publishedNew copy
+expectPublished result none
+expectPublished ownedBy none
+expectPublished cleanedBy none
+expectPublished borrows none
+expectPublished catch none
+expectPublished suppresses none
+
+findPublishedType is call
+findPublishedType in declareTest
+findPublishedType invokes TypeNames.get
+findPublishedType argument map TypeNames globalTypeNamesX lend
+findPublishedType argument key String publishedType lend
+findPublishedType result publishedCode Int64
+findPublishedType ownedBy none
+findPublishedType cleanedBy none
+findPublishedType borrows none
+findPublishedType catch findPublishedTypeError map.KeyMissing
+findPublishedType suppresses none
+
+expectPublishedType is call
+expectPublishedType in declareTest
+expectPublishedType invokes test.assertEqualInt64
+expectPublishedType argument expected Int64 twelve copy
+expectPublishedType argument actual Int64 publishedCode copy
+expectPublishedType result none
+expectPublishedType ownedBy none
+expectPublishedType cleanedBy none
+expectPublishedType borrows none
+expectPublishedType catch none
+expectPublishedType suppresses none
+
+findString is call
+findString in declareTest
+findString invokes TypeNames.get
+findString argument map TypeNames globalTypeNamesX lend
+findString argument key String stringName lend
+findString result stringCode Int64
+findString ownedBy none
+findString cleanedBy none
+findString borrows none
+findString catch findStringError map.KeyMissing
+findString suppresses none
+
+expectString is call
+expectString in declareTest
+expectString invokes test.assertEqualInt64
+expectString argument expected Int64 one copy
+expectString argument actual Int64 stringCode copy
+expectString result none
+expectString ownedBy none
+expectString cleanedBy none
+expectString borrows none
+expectString catch none
+expectString suppresses none
+
+findBytes is call
+findBytes in declareTest
+findBytes invokes TypeNames.get
+findBytes argument map TypeNames globalTypeNamesX lend
+findBytes argument key String bytesName lend
+findBytes result bytesCode Int64
+findBytes ownedBy none
+findBytes cleanedBy none
+findBytes borrows none
+findBytes catch findBytesError map.KeyMissing
+findBytes suppresses none
+
+expectBytes is call
+expectBytes in declareTest
+expectBytes invokes test.assertEqualInt64
+expectBytes argument expected Int64 eleven copy
+expectBytes argument actual Int64 bytesCode copy
+expectBytes result none
+expectBytes ownedBy none
+expectBytes cleanedBy none
+expectBytes borrows none
+expectBytes catch none
+expectBytes suppresses none
+
+countModel is call
+countModel in declareTest
+countModel invokes model.Entities.length
+countModel argument list model.Entities entitiesX lend
+countModel result modelCount Int64
+countModel ownedBy none
+countModel cleanedBy none
+countModel borrows none
+countModel catch none
+countModel suppresses none
+
+expectEnd is call
+expectEnd in declareTest
+expectEnd invokes test.assertEqualInt64
+expectEnd argument expected Int64 modelCount copy
+expectEnd argument actual Int64 endX copy
+expectEnd result none
+expectEnd ownedBy none
+expectEnd cleanedBy none
+expectEnd borrows none
+expectEnd catch none
+expectEnd suppresses none
+
+findBareType is call
+findBareType in declareTest
+findBareType invokes TypeNames.contains
+findBareType argument map TypeNames globalTypeNamesX lend
+findBareType argument key String pointName lend
+findBareType result bareType Bool
+findBareType ownedBy none
+findBareType cleanedBy none
+findBareType borrows none
+findBareType catch none
+findBareType suppresses none
+
+bareAbsent is call
+bareAbsent in declareTest
+bareAbsent invokes logic.not
+bareAbsent argument value Bool bareType copy
+bareAbsent result noBareType Bool
+bareAbsent ownedBy none
+bareAbsent cleanedBy none
+bareAbsent borrows none
+bareAbsent catch none
+bareAbsent suppresses none
+
+expectNoBareType is call
+expectNoBareType in declareTest
+expectNoBareType invokes test.assertTrue
+expectNoBareType argument value Bool noBareType copy
+expectNoBareType result none
+expectNoBareType ownedBy none
+expectNoBareType cleanedBy none
+expectNoBareType borrows none
+expectNoBareType catch none
+expectNoBareType suppresses none
+
 failRefused is call
 failRefused in declareTest
 failRefused invokes test.fail
@@ -666,6 +910,8 @@ operationTest label groupXDone loopKind none
 operationTest label groupXDone within none
 operationTest label modelXDone loopKind none
 operationTest label modelXDone within none
+operationTest label builtinsXDone loopKind none
+operationTest label builtinsXDone within none
 operationTest label declareXDone loopKind none
 operationTest label declareXDone within none
 operationTest label checkMainDone loopKind none
@@ -703,8 +949,13 @@ operationTest at modelXDone do newOpsX
 operationTest at modelXDone do newOpNamesX
 operationTest at modelXDone do newOwnersX
 operationTest at modelXDone do newConstantsX
-operationTest at modelXDone do declareX
-operationTest at modelXDone branch ifError declareX goto refused else goto declareXDone
+operationTest at modelXDone do newGlobalTypeNamesX
+operationTest at modelXDone do newGlobalTargetsX
+operationTest at modelXDone do builtinsX
+operationTest at modelXDone branch ifError builtinsX goto refused else goto builtinsXDone
+operationTest at builtinsXDone do findEndX
+operationTest at builtinsXDone do declareX
+operationTest at builtinsXDone branch ifError declareX goto refused else goto declareXDone
 operationTest at declareXDone do newValues
 operationTest at declareXDone do newCalls
 operationTest at declareXDone do newArguments
@@ -922,13 +1173,65 @@ newConstantsX borrows none
 newConstantsX catch none
 newConstantsX suppresses none
 
+newGlobalTypeNamesX is call
+newGlobalTypeNamesX in operationTest
+newGlobalTypeNamesX invokes TypeNames.new
+newGlobalTypeNamesX argument region Region store lend
+newGlobalTypeNamesX result globalTypeNamesX TypeNames
+newGlobalTypeNamesX ownedBy store
+newGlobalTypeNamesX cleanedBy none
+newGlobalTypeNamesX borrows none
+newGlobalTypeNamesX catch none
+newGlobalTypeNamesX suppresses none
+
+newGlobalTargetsX is call
+newGlobalTargetsX in operationTest
+newGlobalTargetsX invokes Targets.new
+newGlobalTargetsX argument region Region store lend
+newGlobalTargetsX result globalTargetsX Targets
+newGlobalTargetsX ownedBy store
+newGlobalTargetsX cleanedBy none
+newGlobalTargetsX borrows none
+newGlobalTargetsX catch none
+newGlobalTargetsX suppresses none
+
+builtinsX is call
+builtinsX in operationTest
+builtinsX invokes declareBuiltins
+builtinsX argument source String source lend
+builtinsX argument types Types typesX lendMutable
+builtinsX argument typeNames TypeNames globalTypeNamesX lendMutable
+builtinsX argument params Params paramsX lendMutable
+builtinsX argument targets Targets globalTargetsX lendMutable
+builtinsX argument region Region store lend
+builtinsX result none
+builtinsX ownedBy none
+builtinsX cleanedBy none
+builtinsX borrows none
+builtinsX catch builtinsXError syntax.Rejection
+builtinsX suppresses none
+
+findEndX is call
+findEndX in operationTest
+findEndX invokes nextModule
+findEndX argument entities model.Entities entitiesX lend
+findEndX argument first Int64 zero copy
+findEndX result endX Int64
+findEndX ownedBy none
+findEndX cleanedBy none
+findEndX borrows none
+findEndX catch none
+findEndX suppresses none
+
 declareX is call
 declareX in operationTest
-declareX invokes checkDeclarations
+declareX invokes checkModuleDeclarations
 declareX argument source String source lend
 declareX argument words syntax.Words wordsX lend
 declareX argument rows syntax.Rows rowsX lend
 declareX argument entities model.Entities entitiesX lend
+declareX argument first Int64 zero copy
+declareX argument end Int64 endX copy
 declareX argument types Types typesX lendMutable
 declareX argument typeNames TypeNames typeNamesX lendMutable
 declareX argument members Members membersX lendMutable
@@ -938,6 +1241,8 @@ declareX argument ops Ops opsX lendMutable
 declareX argument opNames OpNames opNamesX lendMutable
 declareX argument owners Owners ownersX lendMutable
 declareX argument constants Values constantsX lendMutable
+declareX argument globalTypeNames TypeNames globalTypeNamesX lendMutable
+declareX argument globalTargets Targets globalTargetsX lendMutable
 declareX argument region Region store lend
 declareX result none
 declareX ownedBy none
@@ -1214,7 +1519,7 @@ failRefused suppresses none
 
 rejectTest is test
 rejectTest purpose "Predicates, payloads, types, literals, targets, arguments, labels, values, owners, and blocks outside the subset are refused at the word concerned"
-rejectTest verifies checkModule rejectsOutsideSubset
+rejectTest verifies checkProgram rejectsOutsideSubset
 rejectTest typeParameter none
 rejectTest input none
 rejectTest output none
@@ -1369,8 +1674,8 @@ rejectTest label finished loopKind none
 rejectTest label finished within none
 rejectTest label refused loopKind none
 rejectTest label refused within none
-rejectTest let source0 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck invokesReference none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
-rejectTest let expected0 String "75:16: this predicate is outside the stage0 subset here (invokesReference)" immutable
+rejectTest let source0 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck defers none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected0 String "75:16: this predicate is outside the stage0 subset here (defers)" immutable
 rejectTest let source1 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Float64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
 rejectTest let expected1 String "50:14: this type is outside the stage0 subset (Float64)" immutable
 rejectTest let source2 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 300 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
@@ -1705,7 +2010,7 @@ model0 suppresses none
 
 check0 is call
 check0 in rejectTest
-check0 invokes checkModule
+check0 invokes checkProgram
 check0 argument source String source0 lend
 check0 argument words syntax.Words words0 lend
 check0 argument rows syntax.Rows rows0 lend
@@ -1829,7 +2134,7 @@ model1 suppresses none
 
 check1 is call
 check1 in rejectTest
-check1 invokes checkModule
+check1 invokes checkProgram
 check1 argument source String source1 lend
 check1 argument words syntax.Words words1 lend
 check1 argument rows syntax.Rows rows1 lend
@@ -1953,7 +2258,7 @@ model2 suppresses none
 
 check2 is call
 check2 in rejectTest
-check2 invokes checkModule
+check2 invokes checkProgram
 check2 argument source String source2 lend
 check2 argument words syntax.Words words2 lend
 check2 argument rows syntax.Rows rows2 lend
@@ -2077,7 +2382,7 @@ model3 suppresses none
 
 check3 is call
 check3 in rejectTest
-check3 invokes checkModule
+check3 invokes checkProgram
 check3 argument source String source3 lend
 check3 argument words syntax.Words words3 lend
 check3 argument rows syntax.Rows rows3 lend
@@ -2201,7 +2506,7 @@ model4 suppresses none
 
 check4 is call
 check4 in rejectTest
-check4 invokes checkModule
+check4 invokes checkProgram
 check4 argument source String source4 lend
 check4 argument words syntax.Words words4 lend
 check4 argument rows syntax.Rows rows4 lend
@@ -2325,7 +2630,7 @@ model5 suppresses none
 
 check5 is call
 check5 in rejectTest
-check5 invokes checkModule
+check5 invokes checkProgram
 check5 argument source String source5 lend
 check5 argument words syntax.Words words5 lend
 check5 argument rows syntax.Rows rows5 lend
@@ -2449,7 +2754,7 @@ model6 suppresses none
 
 check6 is call
 check6 in rejectTest
-check6 invokes checkModule
+check6 invokes checkProgram
 check6 argument source String source6 lend
 check6 argument words syntax.Words words6 lend
 check6 argument rows syntax.Rows rows6 lend
@@ -2573,7 +2878,7 @@ model7 suppresses none
 
 check7 is call
 check7 in rejectTest
-check7 invokes checkModule
+check7 invokes checkProgram
 check7 argument source String source7 lend
 check7 argument words syntax.Words words7 lend
 check7 argument rows syntax.Rows rows7 lend
@@ -2697,7 +3002,7 @@ model8 suppresses none
 
 check8 is call
 check8 in rejectTest
-check8 invokes checkModule
+check8 invokes checkProgram
 check8 argument source String source8 lend
 check8 argument words syntax.Words words8 lend
 check8 argument rows syntax.Rows rows8 lend
@@ -2821,7 +3126,7 @@ model9 suppresses none
 
 check9 is call
 check9 in rejectTest
-check9 invokes checkModule
+check9 invokes checkProgram
 check9 argument source String source9 lend
 check9 argument words syntax.Words words9 lend
 check9 argument rows syntax.Rows rows9 lend
@@ -2945,7 +3250,7 @@ model10 suppresses none
 
 check10 is call
 check10 in rejectTest
-check10 invokes checkModule
+check10 invokes checkProgram
 check10 argument source String source10 lend
 check10 argument words syntax.Words words10 lend
 check10 argument rows syntax.Rows rows10 lend
@@ -3069,7 +3374,7 @@ model11 suppresses none
 
 check11 is call
 check11 in rejectTest
-check11 invokes checkModule
+check11 invokes checkProgram
 check11 argument source String source11 lend
 check11 argument words syntax.Words words11 lend
 check11 argument rows syntax.Rows rows11 lend
@@ -3193,7 +3498,7 @@ model12 suppresses none
 
 check12 is call
 check12 in rejectTest
-check12 invokes checkModule
+check12 invokes checkProgram
 check12 argument source String source12 lend
 check12 argument words syntax.Words words12 lend
 check12 argument rows syntax.Rows rows12 lend
@@ -3317,7 +3622,7 @@ model13 suppresses none
 
 check13 is call
 check13 in rejectTest
-check13 invokes checkModule
+check13 invokes checkProgram
 check13 argument source String source13 lend
 check13 argument words syntax.Words words13 lend
 check13 argument rows syntax.Rows rows13 lend
@@ -3366,10 +3671,10 @@ failRefused catch none
 failRefused suppresses none
 
 acceptTest is test
-acceptTest purpose "The squares sample is accepted and diagnosed as accepted; a record holding an enum declared below it, and a module with no main, are refused"
-acceptTest verifies checkModule acceptsSubset
+acceptTest purpose "The squares sample is accepted and diagnosed as accepted; a record holding an enum declared below it, and a source that does not begin with its module, are refused"
+acceptTest verifies checkProgram acceptsSubset
 acceptTest verifies diagnose reportsFirstProblem
-acceptTest verifies checkDeclarations rejectsOutsideDeclarations
+acceptTest verifies checkModuleDeclarations rejectsOutsideDeclarations
 acceptTest typeParameter none
 acceptTest input none
 acceptTest output none
@@ -3396,6 +3701,8 @@ acceptTest label groupYDone loopKind none
 acceptTest label groupYDone within none
 acceptTest label modelYDone loopKind none
 acceptTest label modelYDone within none
+acceptTest label builtinsYDone loopKind none
+acceptTest label builtinsYDone within none
 acceptTest label noMainRefused loopKind none
 acceptTest label noMainRefused within none
 acceptTest label refused loopKind none
@@ -3403,10 +3710,11 @@ acceptTest label refused within none
 acceptTest let source String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
 acceptTest let orderSource String "demo is module\ndemo path demo\ndemo imports none\ndemo exports main\n\nPoint is record\nPoint typeParameter none\nPoint field x Int64\nPoint field shape Shape\nPoint field label String\n\nShape is enum\nShape typeParameter none\nShape variant dot Int64\nShape variant empty none\n\nPoints is typeInstance\nPoints in none\nPoints instantiates list.List Point\n\nmain is operation\nmain input none\nmain output ExitCode\nmain raises none\n" immutable
 acceptTest let orderExpected String "9:19: a record or enum holds only types declared above it (Shape)" immutable
-acceptTest let noMainSource String "demo is module\ndemo path demo\n" immutable
-acceptTest let noMainExpected String "1:1: the module has no main operation (demo)" immutable
+acceptTest let noMainSource String "Point is record\nPoint typeParameter none\n" immutable
+acceptTest let noMainExpected String "1:1: a module's file begins with its `<name> is module` entity (Point)" immutable
 acceptTest let refusedText String "the front end refused the source or a step failed" immutable
 acceptTest let acceptedText String "accepted" immutable
+acceptTest let zero Int64 0 immutable
 acceptTest at begin do lexX
 acceptTest at begin branch ifError lexX goto refused else goto lexXDone
 acceptTest at lexXDone do newWordsX
@@ -3442,8 +3750,13 @@ acceptTest at modelYDone do newOpsY
 acceptTest at modelYDone do newOpNamesY
 acceptTest at modelYDone do newOwnersY
 acceptTest at modelYDone do newConstantsY
-acceptTest at modelYDone do declareY
-acceptTest at modelYDone branch ifError declareY goto noMainRefused else goto refused
+acceptTest at modelYDone do newGlobalTypeNamesY
+acceptTest at modelYDone do newGlobalTargetsY
+acceptTest at modelYDone do builtinsY
+acceptTest at modelYDone branch ifError builtinsY goto refused else goto builtinsYDone
+acceptTest at builtinsYDone do findEndY
+acceptTest at builtinsYDone do declareY
+acceptTest at builtinsYDone branch ifError declareY goto noMainRefused else goto refused
 acceptTest at noMainRefused do describeNoMain
 acceptTest at noMainRefused do expectNoMain
 acceptTest at noMainRefused return ok none
@@ -3543,7 +3856,7 @@ modelX suppresses none
 
 acceptIt is call
 acceptIt in acceptTest
-acceptIt invokes checkModule
+acceptIt invokes checkProgram
 acceptIt argument source String source lend
 acceptIt argument words syntax.Words wordsX lend
 acceptIt argument rows syntax.Rows rowsX lend
@@ -3787,13 +4100,65 @@ newConstantsY borrows none
 newConstantsY catch none
 newConstantsY suppresses none
 
+newGlobalTypeNamesY is call
+newGlobalTypeNamesY in acceptTest
+newGlobalTypeNamesY invokes TypeNames.new
+newGlobalTypeNamesY argument region Region store lend
+newGlobalTypeNamesY result globalTypeNamesY TypeNames
+newGlobalTypeNamesY ownedBy store
+newGlobalTypeNamesY cleanedBy none
+newGlobalTypeNamesY borrows none
+newGlobalTypeNamesY catch none
+newGlobalTypeNamesY suppresses none
+
+newGlobalTargetsY is call
+newGlobalTargetsY in acceptTest
+newGlobalTargetsY invokes Targets.new
+newGlobalTargetsY argument region Region store lend
+newGlobalTargetsY result globalTargetsY Targets
+newGlobalTargetsY ownedBy store
+newGlobalTargetsY cleanedBy none
+newGlobalTargetsY borrows none
+newGlobalTargetsY catch none
+newGlobalTargetsY suppresses none
+
+builtinsY is call
+builtinsY in acceptTest
+builtinsY invokes declareBuiltins
+builtinsY argument source String noMainSource lend
+builtinsY argument types Types typesY lendMutable
+builtinsY argument typeNames TypeNames globalTypeNamesY lendMutable
+builtinsY argument params Params paramsY lendMutable
+builtinsY argument targets Targets globalTargetsY lendMutable
+builtinsY argument region Region store lend
+builtinsY result none
+builtinsY ownedBy none
+builtinsY cleanedBy none
+builtinsY borrows none
+builtinsY catch builtinsYError syntax.Rejection
+builtinsY suppresses none
+
+findEndY is call
+findEndY in acceptTest
+findEndY invokes nextModule
+findEndY argument entities model.Entities entitiesY lend
+findEndY argument first Int64 zero copy
+findEndY result endY Int64
+findEndY ownedBy none
+findEndY cleanedBy none
+findEndY borrows none
+findEndY catch none
+findEndY suppresses none
+
 declareY is call
 declareY in acceptTest
-declareY invokes checkDeclarations
+declareY invokes checkModuleDeclarations
 declareY argument source String noMainSource lend
 declareY argument words syntax.Words wordsY lend
 declareY argument rows syntax.Rows rowsY lend
 declareY argument entities model.Entities entitiesY lend
+declareY argument first Int64 zero copy
+declareY argument end Int64 endY copy
 declareY argument types Types typesY lendMutable
 declareY argument typeNames TypeNames typeNamesY lendMutable
 declareY argument members Members membersY lendMutable
@@ -3803,6 +4168,8 @@ declareY argument ops Ops opsY lendMutable
 declareY argument opNames OpNames opNamesY lendMutable
 declareY argument owners Owners ownersY lendMutable
 declareY argument constants Values constantsY lendMutable
+declareY argument globalTypeNames TypeNames globalTypeNamesY lendMutable
+declareY argument globalTargets Targets globalTargetsY lendMutable
 declareY argument region Region store lend
 declareY result none
 declareY ownedBy none

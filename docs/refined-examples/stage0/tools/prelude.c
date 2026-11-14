@@ -17,6 +17,10 @@ int64_t refined_find(const char *h, int64_t hn, const char *nd, int64_t nn);
 int32_t refined_bytes_equal(const char *a, int64_t an, const char *b, int64_t bn);
 int32_t refined_parse_int(const char *p, int64_t n, int64_t *out);
 int32_t refined_host(const char *name, int64_t n, int64_t *args, int64_t *results, int64_t *payload);
+void *refined_handle_region(int64_t h);
+
+/* a call of the host library by a key written in place: `<target>|<slots per argument>|<result slots>` */
+#define SS_HOST(key, a, o, e) refined_host((key), (int64_t)sizeof(key) - 1, (a), (o), (e))
 
 /* text: a pointer and a length in bytes, as the LLVM backend's {i8*, i64} */
 typedef struct { const char *p; int64_t n; } ss_string;
@@ -58,6 +62,10 @@ static bool ss_is_letter_or_digit(uint8_t v) {
 
 static bool ss_is_space(uint8_t v) {
   return v == 32 || v == 9 || v == 10 || v == 13;
+}
+
+static bool ss_is_punctuation(uint8_t v) {
+  return (v >= 33 && v <= 47) || (v >= 58 && v <= 64) || (v >= 91 && v <= 96) || (v >= 123 && v <= 126);
 }
 
 static int64_t ss_add(int64_t left, int64_t right) {
@@ -210,6 +218,41 @@ static bool ss_byte_at(uint8_t *out, ss_string text, int64_t index) {
 static uint8_t ss_byte_at_or_trap(ss_string text, int64_t index) {
   if (index < 0 || index >= text.n) ss_trap("string.byteAtOrTrap read a byte outside its text");
   return (uint8_t)text.p[index];
+}
+
+/* string.advancePosition (D-71): the position after the character at a position's offset. A character is the
+   UTF-8 sequence its lead byte announces when that many continuation bytes follow; any other byte is one of its
+   own. A newline moves to column 1 of the next line, anything else one column right; an offset outside the text
+   fails. string.Position is the program's first declared type, so this is a macro over its fields. */
+#define ss_advance_position(out, text, pos) \
+  ss_advance(&(out)->m_offset, &(out)->m_line, &(out)->m_column, (text), (pos).m_offset, (pos).m_line, (pos).m_column)
+
+static bool ss_follows(ss_string text, int64_t at) {
+  return at < text.n && ((unsigned char)text.p[at] & 0xC0) == 0x80;
+}
+
+static bool ss_advance(int64_t *offset, int64_t *line, int64_t *column, ss_string text, int64_t o, int64_t l,
+                       int64_t c) {
+  if (o < 0 || o >= text.n) return true;
+  unsigned char lead = (unsigned char)text.p[o];
+  int64_t want = (lead >= 0xF0 && lead <= 0xF4) ? 4 : (lead >= 0xE0 && lead <= 0xEF) ? 3 :
+                 (lead >= 0xC2 && lead <= 0xDF) ? 2 : 1;
+  bool whole = true;
+  for (int64_t k = 1; k <= 3; k++) {
+    if (want > k && !ss_follows(text, o + k)) whole = false;
+  }
+  int64_t width = whole ? want : 1;
+  int64_t next_line = l, next_column = c;
+  if (lead == 10) {
+    if (__builtin_add_overflow(l, 1, &next_line)) ss_trap("string.advancePosition overflowed Int64");
+    next_column = 1;
+  } else {
+    if (__builtin_add_overflow(c, 1, &next_column)) ss_trap("string.advancePosition overflowed Int64");
+  }
+  if (offset) *offset = o + width;
+  if (line) *line = next_line;
+  if (column) *column = next_column;
+  return false;
 }
 
 static bool ss_find(int64_t *out, ss_string text, ss_string needle) {

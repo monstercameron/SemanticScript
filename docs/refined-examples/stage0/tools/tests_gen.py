@@ -34,13 +34,20 @@ def collections(sfx, region="store"):
         f"newOpNames{sfx}: opNames{sfx} = OpNames.new({region})",
         f"newOwners{sfx}: owners{sfx} = Owners.new({region})",
         f"newConstants{sfx}: constants{sfx} = Values.new({region})",
+        f"newGlobalTypeNames{sfx}: globalTypeNames{sfx} = TypeNames.new({region})",
+        f"newGlobalTargets{sfx}: globalTargets{sfx} = Targets.new({region})",
     ]
 
 
 def declare(sfx, source, mark):
-    return (f"declare{sfx}: checkDeclarations({source}, words{sfx}, rows{sfx}, entities{sfx}, types{sfx}, "
-            f"typeNames{sfx}, members{sfx}, params{sfx}, targets{sfx}, ops{sfx}, opNames{sfx}, owners{sfx}, "
-            f"constants{sfx}, store) {mark}")
+    """The built-in names, then the declarations of the module that starts the source."""
+    return "\n  ".join([
+        f"builtins{sfx}: declareBuiltins({source}, types{sfx}, globalTypeNames{sfx}, params{sfx}, "
+        f"globalTargets{sfx}, store) ? refused",
+        f"findEnd{sfx}: end{sfx} = nextModule(entities{sfx}, 0)",
+        f"declare{sfx}: checkModuleDeclarations({source}, words{sfx}, rows{sfx}, entities{sfx}, 0, end{sfx}, "
+        f"types{sfx}, typeNames{sfx}, members{sfx}, params{sfx}, targets{sfx}, ops{sfx}, opNames{sfx}, owners{sfx}, "
+        f"constants{sfx}, globalTypeNames{sfx}, globalTargets{sfx}, store) {mark}"])
 
 
 DECLARE_SOURCE = """demo is module
@@ -74,7 +81,8 @@ def subset_tests(stage0):
     out = []
     # ---- declarations
     t = [f"test declareTest {q('Built-in and declared types are numbered, members kept in order, and every target entered with its slots')}",
-         "  verifies checkDeclarations declaresTypes", "  verifies checkDeclarations declaresTargets",
+         "  verifies checkModuleDeclarations declaresTypes", "  verifies checkModuleDeclarations declaresTargets",
+         "  verifies declareBuiltins numbersBuiltins", "  verifies nextModule findsModuleEnd",
          "  region store 4194304", f"  let source String {q(DECLARE_SOURCE)}", "  " + REFUSED, ":begin"]
     t += ["  " + x for x in macros.front("X", "source", "refused", "model", prefix="model.")]
     t += ["  " + x for x in collections("X")]
@@ -107,6 +115,19 @@ def subset_tests(stage0):
         "  findMain: mainTarget = Targets.get(targetsX, mainName=\"main\") ? refused",
         "  readMainOutput: mainOutput = TargetInfo.output(mainTarget)",
         "  expectMainOutput: test.assertEqualInt64(three, mainOutput)",
+        "  findPublished: publishedNew = Targets.contains(globalTargetsX, publishedName=\"demo.Point.new\")",
+        "  expectPublished: test.assertTrue(publishedNew)",
+        "  findPublishedType: publishedCode = TypeNames.get(globalTypeNamesX, publishedType=\"demo.Point\") ? refused",
+        "  expectPublishedType: test.assertEqualInt64(twelve, publishedCode)",
+        "  findString: stringCode = TypeNames.get(globalTypeNamesX, stringName=\"String\") ? refused",
+        "  expectString: test.assertEqualInt64(one=1, stringCode)",
+        "  findBytes: bytesCode = TypeNames.get(globalTypeNamesX, bytesName=\"Bytes\") ? refused",
+        "  expectBytes: test.assertEqualInt64(eleven=11, bytesCode)",
+        "  countModel: modelCount = model.Entities.length(entitiesX)",
+        "  expectEnd: test.assertEqualInt64(modelCount, endX)",
+        "  findBareType: bareType = TypeNames.contains(globalTypeNamesX, pointName)",
+        "  bareAbsent: noBareType = logic.not(bareType)",
+        "  expectNoBareType: test.assertTrue(noBareType)",
         "  return",
         ":refused",
         "  failRefused: test.fail(refusedText)",
@@ -152,8 +173,8 @@ def subset_tests(stage0):
     # ---- refusals
     cases = [(squares, None)]
     m = []
-    m.append(mutate(squares, "pastLimitCheck suppresses none", "pastLimitCheck invokesReference none",
-                    "invokesReference", "this predicate is outside the stage0 subset here"))
+    m.append(mutate(squares, "pastLimitCheck suppresses none", "pastLimitCheck defers none",
+                    "defers", "this predicate is outside the stage0 subset here"))
     m.append(mutate(squares, "main let one Int64 1 immutable", "main let one Float64 1 immutable", "Float64",
                     "this type is outside the stage0 subset"))
     m.append(mutate(squares, "main let okCode ExitCode 0 immutable", "main let okCode ExitCode 300 immutable", "300",
@@ -184,26 +205,26 @@ def subset_tests(stage0):
     cases = m
     t = macros.reject_test(
         "rejectTest", "Predicates, payloads, types, literals, targets, arguments, labels, values, owners, and blocks "
-        "outside the subset are refused at the word concerned", [("checkModule", "rejectsOutsideSubset")], cases,
+        "outside the subset are refused at the word concerned", [("checkProgram", "rejectsOutsideSubset")], cases,
         lambda i: macros.front(i, f"source{i}", "refused", "model", prefix="model.") +
-        [f"check{i}: checkModule(source{i}, words{i}, rows{i}, entities{i}) ! rejection{i}",
+        [f"check{i}: checkProgram(source{i}, words{i}, rows{i}, entities{i}) ! rejection{i}",
          f"iferr check{i} rejected{i} refused"])
     out.append(t)
     # ---- acceptance, diagnose, and declaration refusals
     order_src = DECLARE_SOURCE.replace("Point field x Int64\n", "Point field x Int64\nPoint field shape Shape\n")
     shape_line = order_src.split("\n").index("Point field shape Shape") + 1
-    t = [f"test acceptTest {q('The squares sample is accepted and diagnosed as accepted; a record holding an enum declared below it, and a module with no main, are refused')}",
-         "  verifies checkModule acceptsSubset", "  verifies diagnose reportsFirstProblem",
-         "  verifies checkDeclarations rejectsOutsideDeclarations",
+    t = [f"test acceptTest {q('The squares sample is accepted and diagnosed as accepted; a record holding an enum declared below it, and a source that does not begin with its module, are refused')}",
+         "  verifies checkProgram acceptsSubset", "  verifies diagnose reportsFirstProblem",
+         "  verifies checkModuleDeclarations rejectsOutsideDeclarations",
          "  region store 4194304", f"  let source String {q(squares)}",
          f"  let orderSource String {q(order_src)}",
          f"  let orderExpected String {q(f'{shape_line}:19: a record or enum holds only types declared above it (Shape)')}",
-         f"  let noMainSource String {q('demo is module' + chr(10) + 'demo path demo' + chr(10))}",
-         f"  let noMainExpected String {q('1:1: the module has no main operation (demo)')}",
+         f"  let noMainSource String {q('Point is record' + chr(10) + 'Point typeParameter none' + chr(10))}",
+         f"  let noMainExpected String {q('1:1: a module' + chr(39) + 's file begins with its `<name> is module` entity (Point)')}",
          "  " + REFUSED, ":begin"]
     t += ["  " + x for x in macros.front("X", "source", "refused", "model", prefix="model.")]
     t += [
-        "  acceptIt: checkModule(source, wordsX, rowsX, entitiesX) ? refused",
+        "  acceptIt: checkProgram(source, wordsX, rowsX, entitiesX) ? refused",
         "  describeIt: described = diagnose(source, store)",
         "  expectAccepted: test.assertEqualString(acceptedText=\"accepted\", described)",
         "  describeOrder: orderDescribed = diagnose(orderSource, store)",
@@ -229,19 +250,25 @@ def subset_tests(stage0):
 def emitc_tests(stage0):
     squares = sample(stage0, "squares")
     bad = squares.replace("square invokes math.multiplyInt64", "square invokes math.wrappingMultiplyInt64")
+    bad_line = bad.split("\n").index("square invokes math.wrappingMultiplyInt64") + 1
+    bad_where = f"{bad_line}:15: this call target is outside the stage0 subset (math.wrappingMultiplyInt64)"
+    no_entry_where = f"{squares.split(chr(10)).index('squares is module') + 1}:1: the module has no main operation (squares)"
     snippets = [
-        ("mainWrapper", "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_main();\n}\n"),
-        ("signature", "static int o_main(void) {\n"),
-        ("constantText", "static const int64_t v_limit = 5;\n"),
+        ("mainWrapper", "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_squares_main();\n}\n"),
+        ("signature", "static int o_squares_main(void) {\n"),
+        ("constantText", "static const int64_t k_squares_limit = 5;\n"),
+        ("constantRead", "  int64_t v_limit = k_squares_limit;\n"),
         ("passText", '{ ss_pass(&n_nextSquare, v_limit, "nextSquare"); goto l_nextSquare; }'),
         ("resetText", "{ n_nextSquare = 0; goto l_nextSquare; }"),
         ("callText", "  f_printIt = ss_write_integer_line(v_squared);\n"),
         ("returnText", "  { int ss_result = v_okCode; return ss_result; }\n"),
     ]
     t = [f"test emitTest {q('The squares sample is written as C: the prelude, its constant, a function for main with its locals, labels, and jumps that count and reset the loop passes, and a C main; a source outside the subset is refused')}",
-         "  verifies emitModule writesC", "  verifies emitModule countsLoopPasses",
-         "  verifies emitModule refusesOutsideSubset",
+         "  verifies emitProgram writesC", "  verifies emitProgram countsLoopPasses",
+         "  verifies emitProgram refusesOutsideSubset",
          "  region store 16777216", f"  let source String {q(squares)}", f"  let badSource String {q(bad)}",
+         f"  let badExpected String {q(bad_where)}",
+         f"  let noEntryExpected String {q(no_entry_where)}",
          "  " + REFUSED]
     for name, text in snippets:
         t.append(f"  let {name} String {q(text)}")
@@ -249,7 +276,7 @@ def emitc_tests(stage0):
     t += ["  " + x for x in macros.front("X", "source", "refused", "model", prefix="model.")]
     t += [
         "  newC: cText = buffer.new(store)",
-        "  emit: emitModule(cText, source, wordsX, rowsX, entitiesX) ? refused",
+        "  emit: emitProgram(cText, source, wordsX, rowsX, entitiesX, entry=\"squares.main\") ? refused",
         "  readC: written = buffer.toString(cText, store) ? refused",
     ]
     for name, _text in snippets:
@@ -257,11 +284,17 @@ def emitc_tests(stage0):
     t += ["  " + x for x in macros.front("Y", "badSource", "refused", "model", prefix="model.")]
     t += [
         "  newBadC: badC = buffer.new(store)",
-        "  emitBad: emitModule(badC, badSource, wordsY, rowsY, entitiesY) ! badError",
+        "  emitBad: emitProgram(badC, badSource, wordsY, rowsY, entitiesY, entry) ! badError",
         "  iferr emitBad badRefused refused",
         ":badRefused",
-        "  badLength: badBytes = buffer.length(badC)",
-        "  expectNothing: test.assertEqualInt64(zero=0, badBytes)",
+        "  describeBad: badDescribed = syntax.diagnostic(badSource, badError, store)",
+        "  expectBad: test.assertEqualString(badExpected, badDescribed)",
+        "  newOtherC: otherC = buffer.new(store)",
+        "  emitOther: emitProgram(otherC, source, wordsX, rowsX, entitiesX, otherEntry=\"squares.start\") ! otherError",
+        "  iferr emitOther otherRefused refused",
+        ":otherRefused",
+        "  describeOther: otherDescribed = syntax.diagnostic(source, otherError, store)",
+        "  expectOther: test.assertEqualString(noEntryExpected, otherDescribed)",
         "  return",
         ":refused",
         "  failRefused: test.fail(refusedText)",

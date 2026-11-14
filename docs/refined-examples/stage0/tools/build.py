@@ -46,6 +46,8 @@ REJECTIONS = [
     ("invalidCharacter", "no word begins with this character"),
     ("unterminatedText", "quoted text is not closed before the end of its line"),
     ("integerTooLarge", "this integer is too large for Int64"),
+    ("notModule", "a module's file begins with its `<name> is module` entity"),
+    ("badProject", "build.sem names its modules with `includesModule` and its entry as `<module>.main`"),
 ]
 
 
@@ -72,7 +74,8 @@ def regenerate_syntax(path):
     rej = ["Rejection is enum", 'Rejection purpose "Why stage0 refuses a source, with the word the diagnostic points at"',
            "Rejection typeParameter none"] + [f"Rejection variant {n} Word" for n, _m in REJECTIONS]
     word = ["rejectionWord is operation", 'rejectionWord purpose "Read the word a rejection points at"',
-            "rejectionWord invariant none", "rejectionWord typeParameter none",
+            'rejectionWord invariant givesWord "Gives the word every variant of a rejection carries"',
+            "rejectionWord typeParameter none",
             "rejectionWord input rejection Rejection copied", "rejectionWord output Word",
             "rejectionWord outputOwnedBy none", "rejectionWord raises none", "rejectionWord effect none",
             "rejectionWord uses none", "rejectionWord memoryHeap false", "rejectionWord async false",
@@ -85,7 +88,8 @@ def regenerate_syntax(path):
     word += [f"rejectionWord at begin case Rejection.{n} bind {n}Word Word goto {n}Case" for n, _m in REJECTIONS]
     word += [f"rejectionWord at {n}Case return ok {n}Word" for n, _m in REJECTIONS]
     msg = ["rejectionMessage is operation", 'rejectionMessage purpose "Say why a source is refused, in words"',
-           "rejectionMessage invariant none", "rejectionMessage typeParameter none",
+           'rejectionMessage invariant givesMessage "Gives the message that says why each variant of a rejection refuses '
+           'a source"', "rejectionMessage typeParameter none",
            "rejectionMessage input rejection Rejection copied", "rejectionMessage input region Region borrowed",
            "rejectionMessage output String", "rejectionMessage outputOwnedBy region", "rejectionMessage raises none",
            "rejectionMessage effect none", "rejectionMessage uses none", "rejectionMessage memoryHeap true",
@@ -164,6 +168,9 @@ BUILTIN_TYPES = [
     ("Bytes", "noLiteral", False, 1, "ss_string"),
 ]
 TYPE_CODES = {n: i for i, (n, *_r) in enumerate(BUILTIN_TYPES, 1)}
+# string.Position is a record of the standard library: stage0 declares it in a module of its own, `string`, which the
+# driver puts before the program's modules, so it is always the first declared type
+TYPE_CODES["string.Position"] = len(BUILTIN_TYPES) + 1
 SLOTS = {"String": 2, "Bytes": 2}
 MODE_CODES = {"copied": 1, "borrowed": 2, "borrowedMutable": 3, "owned": 4}
 
@@ -208,6 +215,7 @@ BUILTINS = [
     ("byte.isLetterOrDigit", "ss_is_letter_or_digit(", "", ")"),
     ("byte.isSpace", "ss_is_space(", "", ")"),
     ("byte.equals", "(", " == ", ")"),
+    ("byte.isPunctuation", "ss_is_punctuation(", "", ")"),
     ("string.byteLength", "ss_byte_length(", ", ", ")"),
     ("string.equals", "ss_equals(", ", ", ")"),
     ("string.startsWith", "ss_starts_with(", ", ", ")"),
@@ -219,6 +227,7 @@ BUILTINS = [
     ("string.byteAtOrTrap", "ss_byte_at_or_trap(", ", ", ")"),
     ("string.find", "ss_find(", ", ", ")"),
     ("string.toBytes", "ss_to_bytes(", ", ", ")"),
+    ("string.advancePosition", "ss_advance_position(", ", ", ")"),
     ("string.fromBytes", *HOST),
     ("buffer.new", *HOST),
     ("buffer.appendString", *HOST),
@@ -236,18 +245,31 @@ BUILTINS = [
     ("log.info", *HOST),
     ("log.warn", *HOST),
     ("log.error", *HOST),
+    ("time.Deadline.after", *HOST),
+    ("fs.readAll", *HOST),
+    ("fs.writeAll", *HOST),
+    ("fs.createDirectory", *HOST),
+    ("process.run", *HOST),
 ]
+
+
+def library_sig(target):
+    """A standard library target's signature: `<module>.<target>`, or `<module>.<Type>.<target>`."""
+    from refined.library import LIBRARY as LIB
+    parts = target.split(".")
+    if len(parts) == 3:
+        return LIB[parts[0]]["types"][parts[1]].targets[parts[2]]
+    return LIB[parts[0]]["targets"][parts[1]]
 
 
 def builtin_rows():
     from refined.library import LIBRARY as LIB
     rows = []
     for target, *_spelling in BUILTINS:
-        mod, name = target.split(".")
-        sig = LIB[mod]["targets"][name]
+        sig = library_sig(target)
         ps = [(p.name, TYPE_CODES[p.type], MODE_CODES[p.mode] if p.type != "Region" else 2) for p in sig.inputs]
         # an argument's mode as the call writes it: copied -> copy (1), borrowed -> lend (2), ...
-        while len(ps) < 3:
+        while len(ps) < 4:
             ps.append(("", 0, 0))
         out = TYPE_CODES[sig.output] if sig.output else 0
         rows.append((target, len(sig.inputs), ps, out, 7 if sig.raises else 0, sig.raises or ""))
@@ -255,11 +277,10 @@ def builtin_rows():
 
 
 def host_key(target):
-    """The name refined_host dispatches on: the target, each argument's slot count, and the result's."""
-    from refined.library import LIBRARY as LIB
-    mod, name = target.split(".")
-    sig = LIB[mod]["targets"][name]
-    counts = [SLOTS.get(p.type, 1) for p in sig.inputs]
+    """The name refined_host dispatches on: the target, each argument's slot count, and the result's; a scoped
+    target takes the scope text (a pointer and a length) after its arguments (D-38)."""
+    sig = library_sig(target)
+    counts = [SLOTS.get(p.type, 1) for p in sig.inputs] + ([2] if sig.scoped else [])
     nres = SLOTS.get(sig.output, 1) if sig.output else 0
     return f"{target}|{','.join(str(c) for c in counts)}|{nres}", sum(counts), nres
 
@@ -291,7 +312,8 @@ CONTEXT = ["purpose", "invariant", "rationale", "risk", "note", "todo", "depreca
 PREDICATES = ["path", "imports", "exports", "grants", "typeParameter", "field", "variant", "in", "instantiates",
               "type", "value", "input", "output", "outputOwnedBy", "raises", "effect", "uses", "memoryHeap", "async",
               "maxRecursion", "label", "let", "at", "invokes", "argument", "result", "ownedBy", "cleanedBy", "borrows",
-              "catch", "suppresses", "strategy", "maxBytes", "released", "rowType", "row", "cell"]
+              "catch", "suppresses", "strategy", "maxBytes", "released", "rowType", "row", "cell",
+              "invokesReference"]
 STEPS = [("do", "doCall"), ("set", "setValue"), ("goto", "jump"), ("branch", "branchIf"), ("match", "matchValue"),
          ("case", "caseOf"), ("return", "returnOk"), ("start", "startTask"), ("join", "joinTask")]
 FACTS = [("purpose", "other"), ("rationale", "other"), ("risk", "other"), ("note", "other"), ("todo", "other"),
@@ -346,10 +368,14 @@ def emitc_tables():
     for target, before, between, after in BUILTINS:
         host = before == "host"
         key, nargs, nres = host_key(target) if host else ("", 0, 0)
+        sig = library_sig(target)
+        scope = sorted(sig.effects)[0] if sig.scoped else ("", "")
         rows.append((row_name(target) + "Spelling", [("text", q(target)), ("before", q("" if host else before)),
                                                        ("between", q(between)), ("after", q(after)),
                                                        ("host", "true" if host else "false"), ("key", q(key)),
-                                                       ("slots", str(nargs)), ("results", str(nres))]))
+                                                       ("slots", str(nargs)), ("results", str(nres)),
+                                                       ("scoped", "true" if sig.scoped else "false"),
+                                                       ("verb", q(scope[0])), ("resource", q(scope[1]))]))
     t.append(table_text("cTargets", "The C spelling of every standard library target of the subset, in the order of "
                         "subset's builtinTargets", "CTarget", rows))
     t.append(table_text("cTypes", "The C spelling of every built-in type, numbered as subset numbers them", "CType",
@@ -379,47 +405,6 @@ def generate(prog, name, dsl_file, header, test_header):
     g.declare(text)
     g.parse(text)
     return g, header, test_header
-
-
-def patch_stage0(prog):
-    path = os.path.join(STAGE0, "stage0.sem")
-    m = prog.load_sem("stage0", path)
-    with open(os.path.join(HERE, "stage0x.dsl"), encoding="utf-8") as fh:
-        text = fh.read()
-    g = Generator(prog, m)
-    g.declare(text)
-    g.parse(text)
-    with open(path, encoding="utf-8") as fh:
-        blocks = fh.read().strip("\n").split("\n\n")
-    out = []
-    for b in blocks:
-        lines = b.split("\n")
-        name, kind = entity_name(b)
-        if name == "addExtraArguments" or f"{name} in addExtraArguments" in lines or name == "addExtras":
-            continue
-        if name == "main" and kind == "operation":
-            lines = [ln for ln in lines if ln != "main at build do addExtras"]
-            i = lines.index("main at build do addOutputName")
-            lines.insert(i + 1, "main at build do addExtras")
-            lines = [ln.replace('main let usageText String "usage: refined run <stage0> -- <source.sem> build/<name> '
-                                '[cc|gcc|clang]" immutable',
-                                'main let usageText String "usage: refined run <stage0> -- <source.sem> build/<name> '
-                                '[cc|gcc|clang [native_runtime.c [flags...]]]" immutable') for ln in lines]
-            b = "\n".join(lines)
-        out.append(b)
-        if name == "addOutputName":
-            out.append("\n".join([
-                "addExtras is call", "addExtras in main", "addExtras invokes addExtraArguments",
-                "addExtras argument arguments process.Arguments compilerArguments lendMutable",
-                "addExtras argument count Int64 argumentCount copy", "addExtras argument region Region store lend",
-                "addExtras result none", "addExtras ownedBy none", "addExtras cleanedBy none", "addExtras borrows none",
-                "addExtras catch none", "addExtras suppresses none"]))
-    # the new operation goes before main
-    i = [k for k, b in enumerate(out) if entity_name(b) == ("main", "operation")][0]
-    out[i:i] = g.out
-    new = semgen.format_text("\n\n".join(out) + "\n")
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(new)
 
 
 SAMPLE_BUILD = """# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
@@ -479,7 +464,7 @@ def main(which):
         regenerate_syntax(syn)
     prog.load_sem("syntax", syn)
     gens = []
-    for name in ("model", "subset", "emitc"):
+    for name in ("model", "subset", "emitc", "stage0"):
         dsl = os.path.join(HERE, name + ".dsl")
         if not os.path.exists(dsl):
             prog.load_sem(name, os.path.join(STAGE0, name + ".sem"))
@@ -488,8 +473,9 @@ def main(which):
         thdr = os.path.join(HERE, name + ".test.header")
         header = open(hdr, encoding="utf-8").read().rstrip("\n").split("\n") if os.path.exists(hdr) else \
             header_of(os.path.join(STAGE0, name + ".sem"))
+        tsem = os.path.join(STAGE0, name + ".test.sem")
         theader = open(thdr, encoding="utf-8").read().rstrip("\n").split("\n") if os.path.exists(thdr) else \
-            header_of(os.path.join(STAGE0, name + ".test.sem"))
+            (header_of(tsem) if os.path.exists(tsem) else None)
         g, header, theader = generate(prog, name, name + ".dsl", header, theader)
         if name in which:
             f, tf = g.render(header, theader)
@@ -499,13 +485,10 @@ def main(which):
                 with open(os.path.join(STAGE0, name + ".test.sem"), "w", encoding="utf-8", newline="\n") as fh:
                     fh.write(tf)
             print(f"{name}: {f.count(chr(10))} lines" + (f", tests {tf.count(chr(10))} lines" if tf else ""))
-    if "stage0" in which:
-        patch_stage0(prog)
-        print("stage0 patched")
 
 
 if __name__ == "__main__":
     if sys.argv[1:2] == ["samples"]:
         generate_samples(Program(), sys.argv[2:])
     else:
-        main(sys.argv[1:] or ["syntax", "model", "subset", "emitc"])
+        main(sys.argv[1:] or ["syntax", "model", "subset", "emitc", "stage0"])
