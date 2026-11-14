@@ -220,13 +220,15 @@ Also: `mutation:recursive-type-by-value`, `mutation:recursive-type-through-list`
 - `getOrTrap` (lists) and `string.byteAtOrTrap` are the trapping twins of `get` and `byteAt`: for an index the program has already proved in range, a bad index is a trap rather than an error to branch on (D-101).
 - A list of plain items is also a stack: `removeLast` takes the last item off (an empty list is `list.IndexOutOfRange`), and `truncate` cuts the list to a length (D-102).
 - An item of a list is read as a view; to change a list or record held in a list, `replace` puts a new item in and hands the old one back owned (for items that are not plain values, as a value of the list's region, which the call names and the runtime checks), so it can be changed and put back (D-105).
+- A collection outlives what it stores only if what it stores lives in its region. Text, and text inside records and enum payloads, is copied into the collection's region when stored (lists, maps, sets, channels), so text made in a region that ends first stays readable. A value holding a list, map, set, or channel cannot be copied that way: it must come from a call whose `ownedBy` names the collection's own region, in the same operation (R514, D-107).
 - A table is a fixed array: `<table>.length` is its row count and `<table>.rowAt` reads a row by the number its `row` row gives it (1 to n); any other number is `list.IndexOutOfRange` (D-104).
 - A `constant` is a named literal of a module (`type`, `value`), read by every operation of the module as an immutable value set on entry; its value is a literal of its type, it cannot be set, and no operation may reuse its name (R403, R411, D-103).
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
 | `positions-and-stacks` | runs | a position read on its own list, refused on another; a stack pushed, popped, cut, and emptied |
-| `replace-in-another-region` | traps | taking an inner list out while naming a region that is not the list's |
+| `replace-in-another-region` | rejected: R514 | putting back an inner list made in another region |
+| `callee-region-stored` | rejected: R514 | an operation storing a list made in its own region in its caller's list |
 | `foreign-position-traps` | traps | the trapping read with a position from the other list |
 | `indexed-list-never-clears` | rejected: R401 | clearing an indexed list |
 | `indexed-list-never-shrinks` | rejected: R401 | taking the last item off an indexed list |

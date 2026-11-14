@@ -116,6 +116,33 @@ class World:
         lib = LIBRARY.get(mod)
         return lib["types"].get(name) if lib else None
 
+    def holds(self, canon: Optional[str], test, _seen: Optional[set] = None) -> bool:
+        """Whether a value of `canon` holds, at any depth through records, enum payloads, and aliases, a part
+        for which `test(canon)` is true (D-107)."""
+        if canon is None:
+            return False
+        seen = _seen or set()
+        if canon in seen:
+            return False
+        seen.add(canon)
+        if test(canon):
+            return True
+        info = self.type_info(canon)
+        if info is None:
+            return False
+        if info.kind == "alias":
+            return self.holds(info.base, test, seen)
+        parts = [t for _n, t in info.fields] + [p for _n, p in info.variants if p is not None]
+        return any(self.holds(t, test, seen) for t in parts)
+
+    def holds_container(self, canon: Optional[str]) -> bool:
+        """A list, map, set, or channel somewhere inside: values that live in a region as a whole."""
+        def container(c):
+            info = self.type_info(c)
+            return info is not None and info.kind == "instance" and info.generic in (
+                "list.List", "map.Map", "set.Set", "channel.Channel")
+        return self.holds(canon, container)
+
     def plain(self, canon: Optional[str], _seen: Optional[set] = None) -> bool:
         info = self.type_info(canon)
         if info is None:
@@ -1153,6 +1180,8 @@ def _check_call(world: World, m: Module, op: OpInfo, ci: CallInfo) -> None:
             sink.error("R402", line, f"`{value}` is a table; tables are read with `forEach`, not passed")
         else:
             sink.error("R401", line, f"`{value}` is not a value in `{op.entity.name}`")
+    if sig is not None:
+        _check_stored_regions(world, m, op, ci, sig)
     _check_loans(m, op, ci)
     if sig.scoped and sig.scoped in passed:
         _check_scope(m, op, ci, sig, passed[sig.scoped])
@@ -1203,6 +1232,44 @@ def _check_call(world: World, m: Module, op: OpInfo, ci: CallInfo) -> None:
             if not _value_leaves(op, ci.out[0]):
                 sink.error("R409", crow.line, f"`{ci.out[0]}` is owned by `{owner}` and is neither cleaned up, given "
                            "away, nor returned")
+
+
+COLLECTION_SLOTS = ("list", "map", "set", "channel")
+
+
+def _region_of(op: OpInfo, name: str) -> Optional[str]:
+    """The region a value lives in, when this operation can tell: the `ownedBy` region of the call or task that
+    produced it, or the region itself when the value is a `Region` input lent in."""
+    for c in op.calls.values():
+        if c.out and c.out[0] == name:
+            owner = c.entity.value("ownedBy")
+            return owner if owner not in (None, "none", "caller") else None
+    return None
+
+
+def _check_stored_regions(world: World, m: Module, op: OpInfo, ci: CallInfo, sig: Sig) -> None:
+    """D-107: a collection outlives what is stored in it only if what is stored lives in its region. Text, and text
+    inside records and enum payloads, is copied into the collection's region when it is stored. A value that holds
+    a list, map, set, or channel cannot be copied that way, so it must come from a call whose `ownedBy` names the
+    same region as the collection's, in this operation."""
+    params = {p.name: p for p in sig.inputs}
+    coll = next(((slot, value) for slot, _t, value, _m, _l in ci.args if slot in COLLECTION_SLOTS), None)
+    if coll is None:
+        return
+    for slot, t, value, mode, line in ci.args:
+        p = params.get(slot)
+        if mode != "give" or p is None or p.mode != "owned" or slot in COLLECTION_SLOTS:
+            continue
+        typ = world.type_info(p.type)
+        if world.plain(p.type) or (typ is not None and typ.kind == "resource") or not world.holds_container(p.type):
+            continue  # plain values are copied; text inside a value is copied into the collection's region
+        where, home = _region_of(op, value), _region_of(op, coll[1])
+        if where is None or home is None or where != home:
+            m.sink.error("R514", line, f"`{value}` is stored in `{coll[1]}`, so it must live in the same region; "
+                         f"{'its region is `' + where + '`' if where else 'its region is not known here'}, and "
+                         f"`{coll[1]}`'s is {'`' + home + '`' if home else 'not known here'}. Make it in the "
+                         "collection's region in this operation (or return it to the operation that owns the "
+                         "collection, allocated in a region that operation passes in)")
 
 
 def _check_loans(m: Module, op: OpInfo, ci: CallInfo) -> None:

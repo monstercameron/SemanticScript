@@ -2198,6 +2198,18 @@ Decisions (by delegation):
   without per-character checks. A module of 4,000 operations (172,000
   rows) checks in about 2 seconds instead of growing quadratically.
 
+- **D-107** A collection outlives what it stores only if what it stores lives
+  in its region. Found while reviewing D-105: an operation could make a list
+  in its own region, store it in its caller's list, and return, leaving the
+  caller's list holding released memory; text stored the same way had the
+  same flaw. Now text, and text inside records and enum payloads, is copied
+  into the collection's region when it is stored (lists inline; maps, sets,
+  and channels through the region the runtime records for each of them). A
+  value that holds a list, map, set, or channel cannot be copied that way,
+  so it must come from a call whose `ownedBy` names the collection's own
+  region, in the same operation (R514); an operation that builds such a
+  value for its caller returns it, allocated in a region the caller passes.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.

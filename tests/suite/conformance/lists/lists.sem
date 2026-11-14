@@ -3,6 +3,7 @@ lists purpose "Positions that belong to one list, trapping twins, and a list use
 lists path lists
 lists imports standard.console
 lists imports standard.list
+lists imports standard.string
 lists exports main
 
 stdoutWriter is capability
@@ -117,6 +118,10 @@ Stack is typeInstance
 Stack purpose "Whole numbers used as a stack"
 Stack instantiates list.List Int64
 
+Names is typeInstance
+Names purpose "Text kept in a list, made by other operations in their own regions"
+Names instantiates list.List String
+
 Groups is typeInstance
 Groups purpose "Stacks kept in a list, each changed after it is stored"
 Groups instantiates list.List Stack
@@ -158,6 +163,8 @@ main label back loopKind none
 main label back within none
 main label measured loopKind none
 main label measured within none
+main label named loopKind none
+main label named within none
 main label broken loopKind none
 main label broken within none
 main let eight Int64 8 immutable
@@ -222,7 +229,12 @@ main at back do readInner
 main at back branch ifError readInner goto broken else goto measured
 main at measured do innerSize
 main at measured do printInnerSize
-main at measured return ok okCode
+main at measured do makeNames
+main at measured do addOneName
+main at measured do readName
+main at measured branch ifError readName goto broken else goto named
+main at named do printName
+main at named return ok okCode
 main at broken return ok failCode
 
 store is region
@@ -699,3 +711,100 @@ printInnerSize cleanedBy none
 printInnerSize borrows none
 printInnerSize catch none
 printInnerSize suppresses none
+
+makeNames is call
+makeNames in main
+makeNames invokes Names.new
+makeNames argument region Region store lend
+makeNames result names Names
+makeNames ownedBy store
+makeNames cleanedBy none
+makeNames borrows none
+makeNames catch none
+makeNames suppresses none
+
+addOneName is call
+addOneName in main
+addOneName invokes addName
+addOneName argument names Names names lendMutable
+addOneName result none
+addOneName ownedBy none
+addOneName cleanedBy none
+addOneName borrows none
+addOneName catch none
+addOneName suppresses none
+
+readName is call
+readName in main
+readName invokes Names.get
+readName argument list Names names lend
+readName argument index Int64 zero copy
+readName result firstName String
+readName ownedBy none
+readName cleanedBy none
+readName borrows names
+readName catch nameError list.IndexOutOfRange
+readName suppresses none
+
+printName is call
+printName in main
+printName invokes showText
+printName argument text String firstName lend
+printName result none
+printName ownedBy none
+printName cleanedBy none
+printName borrows none
+printName catch none
+printName suppresses none
+
+addName is operation
+addName purpose "Join two pieces of text in this operation's own region and add the result to the caller's list"
+addName invariant none
+addName typeParameter none
+addName input names Names borrowedMutable
+addName output none
+addName outputOwnedBy none
+addName raises none
+addName effect none
+addName uses none
+addName memoryHeap true
+addName async false
+addName maxRecursion none
+addName label begin loopKind none
+addName label begin within none
+addName let front String "na" immutable
+addName let back String "me" immutable
+addName at begin do joinPieces
+addName at begin do storeJoined
+addName at begin return ok none
+
+scratch is region
+scratch in addName
+scratch strategy arena
+scratch maxBytes 256
+scratch released atReturn
+
+joinPieces is call
+joinPieces in addName
+joinPieces invokes string.concat
+joinPieces argument left String front lend
+joinPieces argument right String back lend
+joinPieces argument region Region scratch lend
+joinPieces result joined String
+joinPieces ownedBy scratch
+joinPieces cleanedBy none
+joinPieces borrows none
+joinPieces catch none
+joinPieces suppresses none
+
+storeJoined is call
+storeJoined in addName
+storeJoined invokes Names.append
+storeJoined argument list Names names lendMutable
+storeJoined argument item String joined give
+storeJoined result none
+storeJoined ownedBy none
+storeJoined cleanedBy none
+storeJoined borrows none
+storeJoined catch none
+storeJoined suppresses none

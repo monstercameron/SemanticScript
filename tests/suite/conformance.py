@@ -136,6 +136,36 @@ FAILING_TRAP = FAILING + (("cleanups.sem", "releaseSecond runs closeSecond\nrele
                                            "releaseSecond onError suppress",
                            "releaseSecond runs closeSecond\nreleaseSecond cleans second\nreleaseSecond onError trap"),
                           ("cleanups.sem", "closeSecond suppresses CloseError.refused", "closeSecond suppresses none"))
+CALLEE_STACK = '''
+fillGroups is operation
+fillGroups purpose "Append a stack made in this operation's own region to the caller's list"
+fillGroups invariant none
+fillGroups typeParameter none
+fillGroups input groups Groups borrowedMutable
+fillGroups output none
+fillGroups outputOwnedBy none
+fillGroups raises none
+fillGroups effect none
+fillGroups uses none
+fillGroups memoryHeap true
+fillGroups async false
+fillGroups maxRecursion none
+fillGroups label begin loopKind none
+fillGroups label begin within none
+fillGroups let none
+fillGroups at begin do makeLocal
+fillGroups at begin do storeLocal
+fillGroups at begin return ok none
+
+local is region
+local in fillGroups
+local strategy arena
+local maxBytes 1024
+local released atReturn
+
+''' + _call("makeLocal", "fillGroups", "Stack.new", ("region Region local lend",), out="localStack Stack", owned="local") \
+    + "\n\n" + _call("storeLocal", "fillGroups", "Groups.append", ("list Groups groups lendMutable",
+                                                                  "item Stack localStack give"))
 REGION_TEXT = '''
 label is operation
 label purpose "Return text built in this operation's own region"
@@ -601,6 +631,11 @@ GUARANTEES = (
         "An item of a list is read as a view; to change a list or record held in a list, `replace` puts a new item "
         "in and hands the old one back owned (for items that are not plain values, as a value of the list's region, "
         "which the call names and the runtime checks), so it can be changed and put back (D-105).",
+        "A collection outlives what it stores only if what it stores lives in its region. Text, and text inside "
+        "records and enum payloads, is copied into the collection's region when stored (lists, maps, sets, "
+        "channels), so text made in a region that ends first stays readable. A value holding a list, map, set, or "
+        "channel cannot be copied that way: it must come from a call whose `ownedBy` names the collection's own "
+        "region, in the same operation (R514, D-107).",
         "A table is a fixed array: `<table>.length` is its row count and `<table>.rowAt` reads a row by the number "
         "its `row` row gives it (1 to n); any other number is `list.IndexOutOfRange` (D-104).",
         "A `constant` is a named literal of a module (`type`, `value`), read by every operation of the module as an "
@@ -609,15 +644,16 @@ GUARANTEES = (
     ), (
         Check("positions-and-stacks", "run", "a position read on its own list, refused on another; a stack pushed, "
               "popped, cut, and emptied", (), (), "foreign", base="lists",
-              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing", "1")),
-        Check("replace-in-another-region", "trap", "taking an inner list out while naming a region that is not the "
-              "list's", ((L, "store released atReturn", "store released atReturn\n\nelsewhere is region\n"
+              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing", "1", "name")),
+        Check("replace-in-another-region", "reject", "putting back an inner list made in another region",
+              ((L, "store released atReturn", "store released atReturn\n\nelsewhere is region\n"
                           "elsewhere in main\nelsewhere strategy arena\nelsewhere maxBytes 1024\n"
                           "elsewhere released atReturn"),
-                         (L, "takeInner argument region Region store lend", "takeInner argument region Region elsewhere lend"),
-                         (L, "takeInner ownedBy store", "takeInner ownedBy elsewhere")),
-              (), "named a region that is not the list's own", base="lists",
-              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing")),
+               (L, "takeInner argument region Region store lend", "takeInner argument region Region elsewhere lend"),
+               (L, "takeInner ownedBy store", "takeInner ownedBy elsewhere")),
+              ("R514",), "its region is `elsewhere`, and `groups`'s is `store`", base="lists"),
+        Check("callee-region-stored", "reject", "an operation storing a list made in its own region in its caller's "
+              "list", ((L, "<append>", CALLEE_STACK),), ("R514",), "its region is `local`", base="lists"),
         Check("foreign-position-traps", "trap", "the trapping read with a position from the other list",
               ((L, "trapOwn argument list Cells first lend", "trapOwn argument list Cells second lend"),), (),
               "read a position outside its list", base="lists",

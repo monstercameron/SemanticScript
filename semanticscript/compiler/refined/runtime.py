@@ -154,6 +154,12 @@ def _region_new(capacity, lp, ll):
     return addr
 
 
+@ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int64)
+def _handle_region(handle):
+    from . import host
+    return host.region_of(handle)
+
+
 @ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_void_p)
 def _region_remaining(handle):
     reg = _regions.get(handle)
@@ -284,6 +290,7 @@ _CALLBACKS = {
     "refined_assert_str": _assert_str, "refined_fail": _fail,
     "refined_region_new": _region_new, "refined_region_alloc": _region_alloc, "refined_region_free": _region_free,
     "refined_region_remaining": _region_remaining,
+    "refined_handle_region": _handle_region,
     "refined_write_float": _write_float, "refined_format_int": _format_int, "refined_find": _find,
     "refined_parse_int": _parse_int, "refined_host": _host,
 }

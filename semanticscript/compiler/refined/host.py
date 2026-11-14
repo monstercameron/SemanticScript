@@ -80,13 +80,24 @@ _objects: dict[int, object] = {}
 _next = [1]
 
 
+_home: dict[int, int] = {}  # handle -> the region that owns it (D-107: where its contents are copied)
+
+
 def new_handle(obj: object, region: int | None = None) -> int:
     h = _next[0]
     _next[0] += 1
     _objects[h] = obj
     if region is not None:
         rt.region_owns(region, h)
+        _home[h] = region
     return h
+
+
+def region_of(h: int) -> int:
+    region = _home.get(h)
+    if region is None:
+        rt._trap_now("a value was stored in a collection that is not in any region")
+    return region
 
 
 def get(h: int, kind: type):
@@ -98,6 +109,7 @@ def get(h: int, kind: type):
 
 def drop(h: int) -> None:
     _objects.pop(h, None)
+    _home.pop(h, None)
 
 
 _children: set = set()  # child processes still running (killed if the program traps)
@@ -777,9 +789,10 @@ class Map(dict):
     """Keys in the order they were first put (D-62). With text keys (D-61) a key is looked up by its bytes, and
     `put` copies a new key into the map's region, so a key read back stays valid as long as the map."""
 
-    def __init__(self, region: int, text: bool):
+    def __init__(self, region: int, text: bool, text_values: bool = False):
         super().__init__()
         self.region, self.text, self.copies = region, text, {}
+        self.text_values = text_values  # D-107: a `String` value is copied into the map's region when it is put
         self.order: list | None = None  # the keys as a list, rebuilt after the set of keys changes
 
     def key(self, slots: tuple):
@@ -796,14 +809,17 @@ class Set(set):
 
 
 class Channel:
-    def __init__(self, capacity: int):
+    def __init__(self, capacity: int, region: int = 0, text: bool = False):
         self.capacity, self.items, self.closed = capacity, deque(), False
+        self.region, self.text = region, text  # D-107: a `String` item is copied into the channel's region
 
 
 @target("map.Map.new")
 def _map_new(p):
-    # the compiler adds one slot: 1 when the keys are `String` (D-61)
-    return ok(new_handle(Map(p[0][0], bool(p[1][0]) if len(p) > 1 else False), p[0][0]))
+    # the compiler adds two slots: 1 when the keys are `String` (D-61), 1 when the values are (D-107)
+    text_keys = bool(p[1][0]) if len(p) > 1 else False
+    text_values = bool(p[2][0]) if len(p) > 2 else False
+    return ok(new_handle(Map(p[0][0], text_keys, text_values), p[0][0]))
 
 
 @target("map.Map.put")
@@ -814,7 +830,7 @@ def _map_put(p):
         m.copies[k] = put(m.region, k)
     if k not in m:
         m.order = None
-    m[k] = p[2]
+    m[k] = put(m.region, data(p[2])) if m.text_values else p[2]
     return ok()
 
 
@@ -892,7 +908,8 @@ def _set_length(p):
 def _channel_new(p):
     if p[0][0] < 1:
         rt._trap_now(f"a channel needs a capacity of at least 1, not {p[0][0]}")
-    return ok(new_handle(Channel(p[0][0]), p[1][0]))
+    # the compiler adds one slot: 1 when the items are `String` (D-107)
+    return ok(new_handle(Channel(p[0][0], p[1][0], bool(p[2][0]) if len(p) > 2 else False), p[1][0]))
 
 
 def _channel_wait(ready, deadline: int, what: str) -> None:
@@ -910,7 +927,7 @@ def _channel_send(p):
     _channel_wait(lambda: ch.closed or len(ch.items) < ch.capacity, p[2][0], "a send waits on a full channel")
     if ch.closed:
         fail("channel.ChannelError", "closed")
-    ch.items.append(p[1])
+    ch.items.append(put(ch.region, data(p[1])) if ch.text else p[1])
     tasks.notify()
     return ok()
 

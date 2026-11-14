@@ -73,6 +73,7 @@ CALLBACKS = {
     "refined_region_new": ir.FunctionType(PTR, [I64, PTR, I64]),
     "refined_region_alloc": ir.FunctionType(PTR, [PTR, I64]),
     "refined_region_remaining": ir.FunctionType(I64, [PTR]),
+    "refined_handle_region": ir.FunctionType(PTR, [I64]),
     "refined_region_free": ir.FunctionType(ir.VoidType(), [PTR]),
     "refined_write_float": ir.FunctionType(I32, [I32, F64, I32]),
     "refined_format_int": ir.FunctionType(PTR, [I64, PTR, I64.as_pointer()]),
@@ -858,6 +859,33 @@ class OpGen:
             if err is not None:
                 b.store(err, self.allocas[ci.catch[0]])
 
+    def relocate(self, b: ir.IRBuilder, value, canon: str, region, line: int):
+        """D-107: `value` with every `String` and `Bytes` inside it (through records and enum payloads) copied into
+        `region`. Inactive enum payload fields are zero, so copying them copies nothing."""
+        canon = self.t(canon)
+        if canon in ("String", "Bytes"):
+            n = b.extract_value(value, 1)
+            fresh = b.call(self.be.callbacks["refined_region_alloc"], [region, n])
+            memcpy = self.be.module.declare_intrinsic("llvm.memcpy", [PTR, PTR, I64])
+            b.call(memcpy, [fresh, b.extract_value(value, 0), n, I1(0)])
+            return b.insert_value(value, fresh, 0)
+        if not self.world.holds(canon, lambda c: self.t(c) in ("String", "Bytes")):
+            return value
+        info = self.world.type_info(canon)
+        if info.kind == "alias":
+            return self.relocate(b, value, info.base, region, line)
+        if info.kind == "record":
+            for i, (_n, ft) in enumerate(info.fields):
+                value = b.insert_value(value, self.relocate(b, b.extract_value(value, i), ft, region, line), i)
+            return value
+        layout = self.be.enum_layout(canon)
+        if layout:
+            for vname, ptype in info.variants:
+                if ptype is not None and vname in layout:
+                    k = layout[vname]
+                    value = b.insert_value(value, self.relocate(b, b.extract_value(value, k), ptype, region, line), k)
+        return value
+
     def table_member(self, b: ir.IRBuilder, name: str, member: str, args: dict, ci: CallInfo, line: int):
         """D-104: `<table>.length` and `<table>.rowAt`, reading the table's constant array."""
         g, n, rec = self.be.table(self.m, name)
@@ -1376,9 +1404,23 @@ class OpGen:
             name = f"{info.generic if info.kind == 'instance' else canon}.{member}"
             if name in HOST_TARGETS:
                 extra = [self.be.string(self.scope_text(ci.sig))] if ci.sig is not None and ci.sig.scoped else []
+                stored = {"map.Map.put": ("value", 1), "set.Set.add": ("item", 0), "channel.Channel.send": ("item", 0)}
+                if name in stored and info.args:
+                    slot, which = stored[name]
+                    held = info.args[which] if which < len(info.args) else info.args[0]
+                    if slot in args and self.world.holds(held, lambda c: self.t(c) in ("String", "Bytes")) \
+                            and self.t(held) not in ("String", "Bytes"):
+                        # D-107: text inside a stored record or enum is copied into the collection's region
+                        # (a stored `String` itself is copied by the host)
+                        home = b.call(self.be.callbacks["refined_handle_region"], [list(args.values())[0]])
+                        args = dict(args, **{slot: self.relocate(b, args[slot], held, home, line)})
                 if name == "map.Map.new":
-                    # D-61: the map learns whether its keys are text, compared by content and copied into it
+                    # D-61: the map learns whether its keys are text, compared by content and copied into it;
+                    # D-107: and whether its values are, copied into it when they are put
                     extra.append(I64(1 if self.t(info.args[0]) == "String" else 0))
+                    extra.append(I64(1 if self.t(info.args[1]) in ("String", "Bytes") else 0))
+                if name == "channel.Channel.new":
+                    extra.append(I64(1 if self.t(info.args[0]) in ("String", "Bytes") else 0))
                 return self.host_call(b, name, ci, args, line, extra)
             self.unsupported(line, f"`{inv}`")
         if info.kind == "instance" and info.generic == "list.List":
@@ -1463,6 +1505,10 @@ class OpGen:
             phi.add_incoming(value, body)
             phi.add_incoming(ir.Constant(et, None), start)
             return phi, b.not_(ok), b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), I64(-1), 1)
+        if "item" in args and self.world.holds(item, lambda c: self.t(c) in ("String", "Bytes")):
+            # D-107: a collection keeps its own copy of the text in what it stores, in its own region, so the
+            # text outlives the region it came from
+            args = dict(args, item=self.relocate(b, args["item"], item, b.load(b.gep(hdr, [I32(0), I32(3)])), line))
         if member in ("append", "appendIndexed"):
             cap = b.load(cap_ptr)
             with b.if_then(b.icmp_signed("==", length, cap)):
