@@ -1,0 +1,80 @@
+# float_nan_compare -- IEEE-754 NaN ordered/unordered comparison. Load-bearing: POSITIVE and NEGATIVE assertions (false-cases,
+# inequalities, edge cases) stress the language in both directions via the
+# standard.test harness. Exit 0 iff every assertion holds.
+# Expected output: 2 PASS lines then  ---- 2 passed, 0 failed ----
+
+FloatNanCompare is project
+FloatNanCompare module examplesFloatNanCompare
+FloatNanCompare target console
+FloatNanCompare entry main
+
+examplesFloatNanCompare is module
+examplesFloatNanCompare path examples.floatNanCompare
+examplesFloatNanCompare exports main
+examplesFloatNanCompare purpose "IEEE-754 NaN ordered/unordered comparison"
+examplesFloatNanCompare invariant "Positive and negative assertions both hold"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "IEEE-754 NaN ordered/unordered comparison"
+main invariant "All assertions hold"
+main let zeroF immutable Float64 0.0
+main let tn0 immutable String "NaN != NaN (unordered)"
+main let tn1 immutable String "NaN == NaN is false (ordered)"
+main do mkNan
+main do neCall
+main do eqCall
+main do check0
+main do check1
+main do harnessReport
+main return harnessSummaryCode
+
+mkNan is call
+mkNan in main
+mkNan invokes math.divideFloat64
+mkNan arg left Float64 zeroF
+mkNan arg right Float64 zeroF
+mkNan out nan Float64
+
+neCall is call
+neCall in main
+neCall invokes math.notEqualFloat64
+neCall arg left Float64 nan
+neCall arg right Float64 nan
+neCall out neTrue Bool
+
+eqCall is call
+eqCall in main
+eqCall invokes math.equalFloat64
+eqCall arg left Float64 nan
+eqCall arg right Float64 nan
+eqCall out eqFalse Bool
+
+check0 is call
+check0 in main
+check0 invokes test.assertTrue
+check0 arg name String tn0
+check0 arg value Bool neTrue
+
+check1 is call
+check1 in main
+check1 invokes test.assertFalse
+check1 arg name String tn1
+check1 arg value Bool eqFalse
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

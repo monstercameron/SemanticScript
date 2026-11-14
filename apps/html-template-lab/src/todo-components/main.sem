@@ -1,0 +1,79 @@
+# html-template-lab/todo-components — EAV port (apps/html-template-lab/modules/todo-components).
+#
+# Reusable HTML/SSX components for the console-rendered todo dashboard: a
+# component-level htmlTemplate plus a hydration operation. Dynamic holes inside
+# the html body only read the operation's hydrate-argument values — the component
+# has no request, console, persistence, or todo-domain access; all dynamic
+# content arrives through operation inputs forwarded into bare HTML holes.
+# (v0.1 `html template`/`html body template`/`html.hydrate.X` -> EAV
+# `is htmlTemplate`/`body html`/`html.render arg template HtmlTemplate X`.)
+
+appHtmlTemplateLabTodoComponents is module
+appHtmlTemplateLabTodoComponents path apps.htmlTemplateLab.todoComponents
+appHtmlTemplateLabTodoComponents imports html standard.html
+appHtmlTemplateLabTodoComponents exports renderTodoListFragment
+appHtmlTemplateLabTodoComponents purpose "Reusable HTML components for the console-rendered todo dashboard"
+appHtmlTemplateLabTodoComponents invariant "Dynamic holes inside html body templates only read hydrate argument values"
+
+HtmlFragment is alias
+HtmlFragment for String
+HtmlFragment purpose "A rendered, escaped HTML fragment composed into pages"
+
+HtmlTemplate is alias
+HtmlTemplate for String
+HtmlTemplate purpose "A named html template hydrated by html.render"
+
+# TodoListTemplate: render a fixed three-row ordered todo list as an HTML
+# fragment. Renders exactly three rows; dynamic collection rendering is future
+# work (v0.1 carried these as `purpose`/`guarantee`; htmlTemplate takes `body`).
+TodoListTemplate is htmlTemplate
+TodoListTemplate body html
+  <section class="todo-list-region" aria-label="Todo list">
+    <ol class="todo-list">
+      <li class="{{firstTodoClassName}}">
+        <span class="todo-title">{{firstTodoTitleText}}</span>
+        <span class="todo-status">{{firstTodoStatusText}}</span>
+      </li>
+      <li class="{{secondTodoClassName}}">
+        <span class="todo-title">{{secondTodoTitleText}}</span>
+        <span class="todo-status">{{secondTodoStatusText}}</span>
+      </li>
+      <li class="{{thirdTodoClassName}}">
+        <span class="todo-title">{{thirdTodoTitleText}}</span>
+        <span class="todo-status">{{thirdTodoStatusText}}</span>
+      </li>
+    </ol>
+  </section>
+
+renderTodoListFragment is operation
+renderTodoListFragment in firstTodoTitleText String
+renderTodoListFragment in firstTodoStatusText String
+renderTodoListFragment in firstTodoClassName String
+renderTodoListFragment in secondTodoTitleText String
+renderTodoListFragment in secondTodoStatusText String
+renderTodoListFragment in secondTodoClassName String
+renderTodoListFragment in thirdTodoTitleText String
+renderTodoListFragment in thirdTodoStatusText String
+renderTodoListFragment in thirdTodoClassName String
+renderTodoListFragment out HtmlFragment
+renderTodoListFragment async no
+renderTodoListFragment memory heap no
+renderTodoListFragment purpose "Hydrate the reusable fixed three-row todo list component from explicit caller inputs"
+renderTodoListFragment invariant "All dynamic content arrives through operation inputs forwarded into bare HTML holes"
+renderTodoListFragment do hydrateTodoList
+renderTodoListFragment return todoListFragment
+
+hydrateTodoList is call
+hydrateTodoList in renderTodoListFragment
+hydrateTodoList invokes html.render
+hydrateTodoList arg template HtmlTemplate TodoListTemplate
+hydrateTodoList arg firstTodoClassName String firstTodoClassName
+hydrateTodoList arg firstTodoTitleText String firstTodoTitleText
+hydrateTodoList arg firstTodoStatusText String firstTodoStatusText
+hydrateTodoList arg secondTodoClassName String secondTodoClassName
+hydrateTodoList arg secondTodoTitleText String secondTodoTitleText
+hydrateTodoList arg secondTodoStatusText String secondTodoStatusText
+hydrateTodoList arg thirdTodoClassName String thirdTodoClassName
+hydrateTodoList arg thirdTodoTitleText String thirdTodoTitleText
+hydrateTodoList arg thirdTodoStatusText String thirdTodoStatusText
+hydrateTodoList out todoListFragment HtmlFragment

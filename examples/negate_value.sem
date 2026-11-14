@@ -1,0 +1,69 @@
+# negate_value — (repurposed from string_prefix_suffix). math.negateInt64 returns
+# 0 - n (README §10.6). Computed, not a constant.
+#
+# Correctness observation: negate(42) = -42.
+# Expected output: -42
+
+NegateValue is project
+NegateValue module examplesNegateValue
+NegateValue target console
+NegateValue entry main
+
+examplesNegateValue is module
+examplesNegateValue path examples.negateValue
+examplesNegateValue exports main
+examplesNegateValue purpose "Negate an integer"
+examplesNegateValue invariant "Result is 0 - n"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute negate(42) and print it"
+main invariant "Writes exactly one integer line: -42"
+main let positiveValue immutable Int64 42
+main let harnessName immutable String "negate_value"
+main let harnessExpected immutable Int64 -42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "negate_value: real result (not the no-op 0)"
+main do negateCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+negateCall is call
+negateCall in main
+negateCall invokes math.negateInt64
+negateCall arg value Int64 positiveValue
+negateCall out negated Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 negated
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 negated
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

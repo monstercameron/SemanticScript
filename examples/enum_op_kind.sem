@@ -1,0 +1,81 @@
+# enum_op_kind -- (repurposed from operator_overload_custom (no operator overloading)) construct an enum value and discriminate it with branch ifVariant
+# (README s10.5/s13), converging both arms to a single asserted outcome. Uses
+# the standard.test harness: prints a PASS/FAIL line and a summary, exit 0 iff
+# the assertion holds.
+#
+# Correctness observation: build OpKind.timesOp; the matched arm sets outcome=3.
+# Expected output:
+#   PASS  enum_op_kind  (expected 3, actual 3)
+#   ---- 1 passed, 0 failed ----
+
+EnumOpKind is project
+EnumOpKind module examplesEnumOpKind
+EnumOpKind target console
+EnumOpKind entry main
+
+examplesEnumOpKind is module
+examplesEnumOpKind path examples.enumOpKind
+examplesEnumOpKind exports main
+examplesEnumOpKind purpose "Discriminate a OpKind enum value and assert the outcome"
+examplesEnumOpKind invariant "Takes the matched arm only for the timesOp variant"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+OpKind is enum
+OpKind variant plusOp
+OpKind variant minusOp
+OpKind variant timesOp
+OpKind purpose "An enum for variant discrimination"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build OpKind.timesOp, discriminate it, and assert the outcome"
+main invariant "Asserts the matched-arm outcome via the test harness"
+main let outcome mutable Int64 0
+main let chosenMark immutable Int64 3
+main let harnessName immutable String "enum_op_kind"
+main let harnessExpected immutable Int64 3
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "enum_op_kind: real result (not the no-op 0)"
+main do makeValue
+main branch ifVariant currentValue timesOp goto isChosen
+main goto afterMatch
+main at isChosen set outcome chosenMark
+main at afterMatch do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+makeValue is call
+makeValue in main
+makeValue invokes OpKind.timesOp
+makeValue out currentValue OpKind
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
