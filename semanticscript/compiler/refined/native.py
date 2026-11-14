@@ -13,6 +13,14 @@ generated `main(argc, argv)` into a standalone executable with the system C
 compiler (cc, gcc, or clang, or $REFINED_CC), statically when the C library
 allows. The C runtime implements most of the host library natively (D-80); a
 program that calls a target it does not implement is refused (R901, D-81).
+
+`--kind executable --runtime semanticscript` (D-124) links the program instead
+with the runtime written in SemanticScript (semanticscript/runtime), compiled to
+a second object, and no C library: no CRT start files, no libc, the entry point
+`refined_entry`, and only kernel32 (plus the compiler's own support library, for
+stack probes). It runs on Windows so far. A program that needs a runtime
+function or host target that runtime does not provide yet is refused (R901)
+before anything is linked.
 """
 from __future__ import annotations
 
@@ -160,12 +168,136 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
         return False, f"linking failed:\n{last.stdout}{last.stderr}"
 
 
-def build(ir_text: str, output: str, triple: str | None, kind: str, entry: str | None = None) -> int:
+# ---------------------------------------------------------------- the runtime in SemanticScript (D-124)
+
+RUNTIME_PROJECT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "runtime"))
+_DECLARE = re.compile(r'^declare [^@\n]*@"?([A-Za-z_][A-Za-z0-9_.]*)"?\(', re.M)
+
+
+def runtime_ir() -> tuple[str | None, set[str], str]:
+    """The runtime project compiled to LLVM IR with every `abi c` operation as a root: (IR, the symbols it
+    defines, a problem). The project must check clean and its authority must be approved (D-53)."""
+    from .check import check_path, find_build, unapproved_authority
+    from .codegen import compile_roots
+    from .semantics import abi_symbol
+    build_path = find_build(RUNTIME_PROJECT)
+    if build_path is None:
+        return None, set(), f"there is no runtime project at {RUNTIME_PROJECT}"
+    missing = unapproved_authority(build_path)
+    if missing:
+        return None, set(), ("the runtime project asks for authority that was not approved: "
+                             + ", ".join(f"`allows {r}`" for r in missing))
+    res = check_path(RUNTIME_PROJECT)
+    if not res.ok:
+        return None, set(), "the runtime project does not check:\n" + "\n".join(d.format() for d in res.diagnostics)
+    roots = [(m.short, name) for m in res.world.modules.values() for name, ent in m.ops.items()
+             if abi_symbol(ent) is not None]
+    module, diags = compile_roots(res.world, roots, {"runtime_object": True})
+    if diags:
+        return None, set(), "the runtime project does not compile:\n" + "\n".join(d.format() for d in diags)
+    symbols = {abi_symbol(m.ops[name]) for m in res.world.modules.values() for name in m.ops
+               if abi_symbol(m.ops[name]) is not None}
+    return str(module), symbols, ""
+
+
+def _imported(ir_text: str) -> str:
+    """D-122: the operating system's functions are imported from their DLL (`__imp_<name>`), not called through a
+    stub the import library would add."""
+    from .library import SYSTEM_CALLS
+    names = "|".join(re.escape(symbol) for symbol, _sig in SYSTEM_CALLS.values())
+    return re.sub(rf'^declare ([^@\n]*@"?(?:{names})"?\()', r"declare dllimport \1", ir_text, flags=re.M)
+
+
+def _ss_runtime_object(triple: str, folder: str) -> tuple[str | None, set[str], str]:
+    """The runtime's object, compiled once per runtime and compiler source text and kept in the temporary
+    directory, with the symbols it defines."""
+    import hashlib
+    import json
+    h = hashlib.sha256(triple.encode())
+    here = os.path.dirname(os.path.abspath(__file__))
+    for root in (RUNTIME_PROJECT, here):
+        for name in sorted(os.listdir(root)):
+            if name.endswith((".sem", ".py", ".approved")):
+                with open(os.path.join(root, name), "rb") as fh:
+                    h.update(name.encode() + b"\0" + fh.read())
+    digest = h.hexdigest()[:20]
+    cached = os.path.join(tempfile.gettempdir(), f"refined-runtime-ss-{digest}.o")
+    listed = cached + ".symbols"
+    if os.path.exists(cached) and os.path.exists(listed):
+        with open(listed, encoding="utf-8") as fh:
+            return cached, set(json.load(fh)), ""
+    ir_text, symbols, problem = runtime_ir()
+    if ir_text is None:
+        return None, set(), problem
+    fresh = os.path.join(folder, "runtime.o")
+    with open(fresh, "wb") as fh:
+        fh.write(emit(_imported(ir_text), triple, "object"))
+    try:
+        for path, data in ((cached, None), (listed, json.dumps(sorted(symbols)))):
+            partial = f"{path}.{os.getpid()}"
+            if data is None:
+                shutil.copyfile(fresh, partial)
+            else:
+                with open(partial, "w", encoding="utf-8") as fh:
+                    fh.write(data)
+            os.replace(partial, path)
+        return cached, symbols, ""
+    except OSError:
+        return fresh, symbols, ""
+
+
+def needed_runtime(ir_text: str) -> set[str]:
+    """The runtime functions a compiled program calls: the callbacks it declares (codegen declares each when it is
+    first used). `memcpy` and the like, which LLVM may call, the runtime always defines."""
+    from .codegen import CALLBACKS
+    return {name for name in _DECLARE.findall(ir_text) if name in CALLBACKS}
+
+
+def executable_semanticscript(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
+    """D-124: link the program's object and the runtime's object (from semanticscript/runtime) with no C library."""
+    cc = find_cc()
+    if cc is None:
+        return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
+    machine = subprocess.run(cc + ["-dumpmachine"], capture_output=True, text=True).stdout.strip()
+    if "mingw" not in machine and "windows" not in machine:
+        return False, (f"R901 the runtime in SemanticScript calls Windows only so far (D-122); `{machine}` needs "
+                       "the C runtime (`--runtime c`)")
+    triple = machine.split("-")[0] + "-w64-windows-gnu"
+    with tempfile.TemporaryDirectory() as d:
+        runtime_obj, provided, problem = _ss_runtime_object(triple, d)
+        if runtime_obj is None:
+            return False, problem
+        missing = sorted(needed_runtime(ir_text) - provided)
+        if missing:
+            return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
+                           "in SemanticScript does not provide yet (docs/runtime-in-semanticscript.md); build it "
+                           "with the C runtime (`--runtime c`)")
+        mod, _dot, op = entry.partition(".")
+        from .codegen import function_name
+        program = (_imported(ir_text) + "\n; the program's entry, which the runtime's `refined_entry` runs (D-124)\n"
+                   "define i32 @refined_program_main() {\nentry:\n"
+                   f'  %code = call i32 @"{function_name(mod, op)}"()\n  ret i32 %code\n}}\n')
+        obj = os.path.join(d, "program.o")
+        with open(obj, "wb") as fh:
+            fh.write(emit(program, triple, "object"))
+        cmd = cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}", "-o", output,
+                    obj, runtime_obj, "-lkernel32", "-lgcc"]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            return False, f"linking failed:\n{proc.stdout}{proc.stderr}"
+        return True, f"linked {output} (the runtime in SemanticScript, no C library, {machine})"
+
+
+def build(ir_text: str, output: str, triple: str | None, kind: str, entry: str | None = None,
+          runtime: str = "c") -> int:
     if kind == "executable":
         if entry is None:
             sys.stdout.write("an executable needs a console project with an entry\n")
             return 1
-        ok, message = executable(ir_text, entry, output)
+        if runtime == "semanticscript":
+            ok, message = executable_semanticscript(ir_text, entry, output)
+        else:
+            ok, message = executable(ir_text, entry, output)
         sys.stdout.write(message + "\n")
         return 0 if ok else 1
     try:

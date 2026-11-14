@@ -1,0 +1,5 @@
+# Regions (refined_region_new, _alloc, _remaining, _free): chunks of memory from VirtualAlloc,
+# handed out by bumping, sixteen bytes aligned and zeroed, and given back all at once. A
+# request past a region's capacity traps with the message `refined run` gives.
+#
+# This module is generated from tools/regions.dsl by tools/build.py.

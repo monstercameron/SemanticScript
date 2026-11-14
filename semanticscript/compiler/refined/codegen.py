@@ -48,9 +48,9 @@ from .diagnostics import Diagnostic
 from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
-from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES
-from .semantics import (CallInfo, Module, OpInfo, World, grant_scope, instance_scope, resolve_type, resolve_variant,
-                        type_params_of)
+from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES, STATE_BYTES, SYSTEM_CALLS
+from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, grant_scope, instance_scope, resolve_type,
+                        resolve_variant, type_params_of)
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
 F32, F64 = ir.FloatType(), ir.DoubleType()
@@ -114,10 +114,32 @@ POSITION_BITS = 32
 LIST = LIST_HEADER.as_pointer()
 
 
+class _Callbacks:
+    """The runtime functions compiled code calls, declared when first used. In a program that implements the runtime
+    (D-124) a callback its `abi c` operations define is that operation, so the runtime calls itself directly."""
+
+    def __init__(self, backend: "Backend"):
+        self.be = backend
+        self.made: dict[str, ir.Value] = {}
+
+    def __getitem__(self, name: str):
+        if name not in self.made:
+            self.made[name] = self.be.callback(name)
+        return self.made[name]
+
+
 class Unsupported(Exception):
     def __init__(self, file: str, line: int, message: str):
         super().__init__(message)
         self.file, self.line, self.message = file, line, message
+
+
+def _same_shape(got: ir.FunctionType, want: ir.FunctionType) -> bool:
+    """Whether two function types agree but for what their pointers point at (LLVM's pointers are opaque)."""
+    def same(a, b) -> bool:
+        return a == b or (isinstance(a, ir.PointerType) and isinstance(b, ir.PointerType))
+    return len(got.args) == len(want.args) and same(got.return_type, want.return_type) and \
+        all(same(a, b) for a, b in zip(got.args, want.args))
 
 
 def function_name(module: str, op: str) -> str:
@@ -135,11 +157,49 @@ class Backend:
         self.functions: dict[tuple[str, str], ir.Function] = {}
         self.pending: list[tuple[Module, OpInfo, ir.Function, dict]] = []
         self.strings: dict[bytes, ir.GlobalVariable] = {}
-        self.callbacks = {n: ir.Function(self.module, t, name=n) for n, t in CALLBACKS.items()}
+        # D-123: the operations exported to C, by symbol
+        self.abi = {abi_symbol(ent): (m.short, name) for m in world.modules.values() for name, ent in m.ops.items()
+                    if abi_symbol(ent) is not None}
+        # D-124: a program that defines runtime functions is the runtime. Its operations keep no shadow call stack
+        # and count recursion in place, since those calls would reach the runtime itself
+        self.bare = bool(set(self.abi) & set(CALLBACKS))
+        self.callbacks = _Callbacks(self)
         self.tables: dict[tuple[str, str], ir.GlobalVariable] = {}
         self.depth: dict[str, int] = {}
         self._types: dict[str, ir.Type] = {}
-        self._stack_guard()
+        if not self.options.get("runtime_object"):  # the program linked with the runtime defines it
+            self._stack_guard()
+
+    def callback(self, name: str):
+        """A runtime function: the program's own `abi c` operation of that symbol when it is the runtime, otherwise a
+        declaration the runtime (runtime.py, native_runtime.c, or semanticscript/runtime) resolves."""
+        want = CALLBACKS[name]
+        if self.bare and name in self.abi:
+            mod, op = self.abi[name]
+            fn = self.function_for(mod, op, None, 0)
+            return fn
+        return ir.Function(self.module, want, name=name)
+
+    def system_function(self, target: str) -> ir.Function:
+        """D-122: the operating system's function behind a `system` target, declared by its own name. A standalone
+        executable imports it (native.py marks the declaration `dllimport`); the JIT binds it in this process."""
+        symbol, sig = SYSTEM_CALLS[target]
+        fn = self.module.globals.get(symbol)
+        if fn is None:
+            fn = ir.Function(self.module, self.fn_type(sig, "", 0), name=symbol)
+        return fn
+
+    def machine_state(self) -> ir.GlobalVariable:
+        """D-121: one zeroed block of STATE_BYTES for the runtime's process-wide state, shared by every object that
+        names it (common linkage)."""
+        g = self.module.globals.get("refined_machine_state")
+        if g is None:
+            arr = ir.ArrayType(I8, STATE_BYTES)
+            g = ir.GlobalVariable(self.module, arr, "refined_machine_state")
+            g.initializer = ir.Constant(arr, None)
+            g.linkage = "common"
+            g.align = 16
+        return g
 
     def _stack_guard(self) -> None:
         """`refined_stack_here` gives the runtime an address on the calling thread's stack, from which it sets
@@ -173,7 +233,7 @@ class Backend:
             return F32
         if canon in ("String", "Bytes"):
             return STR
-        if canon == "Region":
+        if canon in ("Region", "machine.Address"):
             return PTR
         if canon in self._types:
             return self._types[canon]
@@ -251,7 +311,17 @@ class Backend:
             raise Unsupported(m.file, ent.line, f"generic operation `{op}` without type arguments")
         sig = self.world.concrete_sig(info.sig, sub) if sub else info.sig
         name = function_name(mod, op) + (f"<{','.join(sub[k] for k in sorted(sub))}>" if sub else "")
-        fn = ir.Function(self.module, self.fn_type(sig, m.file, ent.line), name=name)
+        name = abi_symbol(ent) or name  # D-123: exported to C under its symbol
+        ftype = self.fn_type(sig, m.file, ent.line)
+        if self.bare and name in CALLBACKS:
+            # D-124: the runtime's own definition of a function compiled code calls has the type those calls have;
+            # an address may be declared there as a pointer to what it points at (`i64*` for `machine.Address`)
+            want = CALLBACKS[name]
+            if not _same_shape(ftype, want):
+                raise Unsupported(m.file, ent.line, f"`{name}` with a signature other than {want}, the one compiled "
+                                                    "code calls it with")
+            ftype = want
+        fn = ir.Function(self.module, ftype, name=name)
         self.functions[key] = fn
         self.pending.append((m, info, fn, sub))
         return fn
@@ -453,7 +523,8 @@ class OpGen:
                 self.indexes[lab] = b.alloca(I64, name=f"{lab}.index")
         params = [p.name for p in self.info.sig.inputs]
         for arg, pname in zip(self.fn.args, params):
-            b.store(arg, self.allocas[pname])
+            slot = self.allocas[pname]
+            b.store(arg if arg.type == slot.type.pointee else b.bitcast(arg, slot.type.pointee), slot)
         for reg in self.regions:
             label = self.be.string(f"region `{reg.name}` of `{self.ent.name}`")
             handle = b.call(self.be.callbacks["refined_region_new"],
@@ -475,7 +546,15 @@ class OpGen:
             else:
                 b.store(self.be.literal(self.m, tok, self.t(bind.type), r.line), self.allocas[bind.name])
         mr = ent.value("maxRecursion")
-        if mr not in (None, "none"):
+        if mr not in (None, "none") and self.be.bare:
+            # D-124: the runtime counts its own recursion in place, in a counter of its own per operation
+            self.depth = self.bare_depth()
+            self.max_depth = int(mr)
+            d = b.add(b.load(self.depth), I64(1))
+            b.store(d, self.depth)
+            with b.if_then(b.icmp_signed(">", d, I64(self.max_depth)), likely=False):
+                self.trap(b, ent.line, f"`{ent.name}` called itself deeper than maxRecursion {self.max_depth}")
+        elif mr not in (None, "none"):
             self.depth = self.be.recursion_id(self.fn.name)
             self.max_depth = int(mr)
             here = b.ptrtoint(b.alloca(I8, name="stack.probe"), I64)
@@ -486,14 +565,26 @@ class OpGen:
                 self.trap(b, ent.line, f"`{ent.name}` ran out of stack before reaching maxRecursion "
                           f"{self.max_depth}; lower the bound or recurse less deeply")
         # the shadow call stack a trap prints (stack traces): pushed here, popped at every `return`
-        file, line = self.where(ent.line)
-        frame_name = self.be.string(f"{self.m.short}.{ent.name} ({file.replace(chr(92), '/').rsplit('/', 1)[-1]}:{line})")
-        b.call(self.be.callbacks["refined_frame_push"], [b.extract_value(frame_name, 0), b.extract_value(frame_name, 1)])
+        if not self.be.bare:
+            file, line = self.where(ent.line)
+            frame_name = self.be.string(f"{self.m.short}.{ent.name} "
+                                        f"({file.replace(chr(92), '/').rsplit('/', 1)[-1]}:{line})")
+            b.call(self.be.callbacks["refined_frame_push"], [b.extract_value(frame_name, 0),
+                                                             b.extract_value(frame_name, 1)])
         for lab in self.order:
             self.blocks[lab] = self.fn.append_basic_block(lab)
         b.branch(self.edge(None, "begin"))
         for lab in self.order:
             self.emit_block(lab)
+
+    def bare_depth(self) -> ir.GlobalVariable:
+        name = f"{self.fn.name}.depth"
+        g = self.be.module.globals.get(name)
+        if g is None:
+            g = ir.GlobalVariable(self.be.module, I64, name)
+            g.initializer = I64(0)
+            g.linkage = "internal"
+        return g
 
     def ancestors(self, lab: str) -> set:
         out, cur = set(), self.within.get(lab, "none")
@@ -707,9 +798,13 @@ class OpGen:
                 b.call(self.be.callbacks["refined_region_free"], [b.load(self.allocas[reg.name])])
         for g in self.groups.values():
             b.call(self.be.callbacks["refined_group_free"], [b.load(g)])
-        b.call(self.be.callbacks["refined_frame_pop"], [])
-        if self.depth is not None:
-            b.call(self.be.callbacks["refined_recursion_leave"], [I64(self.depth)])
+        if self.be.bare:
+            if self.depth is not None:
+                b.store(b.sub(b.load(self.depth), I64(1)), self.depth)
+        else:
+            b.call(self.be.callbacks["refined_frame_pop"], [])
+            if self.depth is not None:
+                b.call(self.be.callbacks["refined_recursion_leave"], [I64(self.depth)])
         sig = self.info.sig
         rtype = self.fn.function_type.return_type
         if sig.raises:
@@ -852,7 +947,7 @@ class OpGen:
             sub = {k: self.t(v) for k, v in sub.items()}
             fn = self.be.function_for(owner.short, gen, self.m.file, ent.line, sub)
             sig = self.world.concrete_sig(owner.op_infos[gen].sig, sub)
-            res = b.call(fn, [args[p.name] for p in sig.inputs])
+            res = b.call(fn, self.fit(b, fn, [args[p.name] for p in sig.inputs]))
             out, failed, err = self._split(b, res, sig)
         elif inv and len(inv.split(".")) == 2 and inv.split(".")[0] in self.m.tables:
             out, failed, err = self.table_member(b, inv.split(".")[0], inv.split(".")[1], args, ci, ent.line)
@@ -862,7 +957,7 @@ class OpGen:
                 self.unsupported(ent.line, f"calling `{inv}` (generic operations are not supported yet)")
             fn = self.be.function_for(mod, op, self.m.file, ent.line)
             sig = self.world.modules[mod].op_infos[op].sig
-            res = b.call(fn, [args[p.name] for p in sig.inputs])
+            res = b.call(fn, self.fit(b, fn, [args[p.name] for p in sig.inputs]))
             out, failed, err = self._split(b, res, sig)
         else:
             out, failed, err = self.intrinsic(b, inv, ci, args, ent.line)
@@ -872,6 +967,12 @@ class OpGen:
             b.store(failed if failed is not None else I1(0), self.failed[ent.name])
             if err is not None:
                 b.store(err, self.allocas[ci.catch[0]])
+
+    @staticmethod
+    def fit(b: ir.IRBuilder, fn: ir.Function, values: list) -> list:
+        """Arguments for a call of `fn`, an address passed as the pointer type its parameter names (a runtime
+        function exported to C has the pointer types compiled code calls it with, D-124)."""
+        return [v if v.type == t else b.bitcast(v, t) for v, t in zip(values, fn.function_type.args)]
 
     def relocate(self, b: ir.IRBuilder, value, canon: str, region, line: int):
         """D-107: `value` with every `String` and `Bytes` inside it (through records and enum payloads) copied into
@@ -994,6 +1095,12 @@ class OpGen:
             return self.derived(b, inv, ci, args, line)
         mod, name = parts
         a = [args[s] for s, *_ in ci.args]
+        if mod == "machine":
+            return self.machine(b, name, args, ci, line)
+        if mod == "system" and name in SYSTEM_CALLS:
+            sig = SYSTEM_CALLS[name][1]
+            res = b.call(self.be.system_function(name), [args[p.name] for p in sig.inputs])
+            return (res if sig.output else None), None, None
 
         def trap_if(cond, message: str) -> None:
             with b.if_then(cond, likely=False):
@@ -1333,6 +1440,84 @@ class OpGen:
                 extra.append(self.be.string(self.scope_text(ci.sig)))
             return self.host_call(b, inv, ci, args, line, extra)
         self.unsupported(line, f"the library target `{inv}`")
+
+    def machine(self, b: ir.IRBuilder, name: str, args: dict, ci: CallInfo, line: int):
+        """D-121: the `machine` targets, each a few instructions: addresses are `i8*`, loads and stores take any
+        alignment, and nothing is checked."""
+        widths = {"Byte": I8, "Int32": I32, "Int64": I64, "UInt64": I64, "Float64": F64, "Address": PTR}
+        if name == "zero":
+            return ir.Constant(PTR, None), None, None
+        if name == "state":
+            return b.bitcast(self.be.machine_state(), PTR), None, None
+        if name == "stackAddress":
+            return self.fn_alloca(I8, f"{ci.entity.name}.here"), None, None
+        if name == "offset":
+            return b.gep(args["address"], [args["bytes"]]), None, None
+        if name == "difference":
+            return b.sub(b.ptrtoint(args["left"], I64), b.ptrtoint(args["right"], I64)), None, None
+        if name in ("equal", "lessThan"):
+            sym = "==" if name == "equal" else "<"
+            return b.icmp_unsigned(sym, b.ptrtoint(args["left"], I64), b.ptrtoint(args["right"], I64)), None, None
+        if name == "toInt64":
+            return b.ptrtoint(args["address"], I64), None, None
+        if name == "fromInt64":
+            return b.inttoptr(args["value"], PTR), None, None
+        if name.startswith("load") and name[4:] in widths:
+            t = widths[name[4:]]
+            return b.load(b.bitcast(args["address"], t.as_pointer()), align=1), None, None
+        if name.startswith("store") and name[5:] in widths:
+            t = widths[name[5:]]
+            b.store(args["value"], b.bitcast(args["address"], t.as_pointer()), align=1)
+            return None, None, None
+        if name == "copy":
+            move = self.be.module.declare_intrinsic("llvm.memmove", [PTR, PTR, I64])
+            b.call(move, [args["target"], args["source"], args["bytes"], I1(0)])
+            return None, None, None
+        if name == "fill":
+            fill = self.be.module.declare_intrinsic("llvm.memset", [PTR, I64])
+            b.call(fill, [args["target"], args["value"], args["bytes"], I1(0)])
+            return None, None, None
+        if name == "compare":
+            return self.compare_memory(b, args["left"], args["right"], args["bytes"], ci.entity.name), None, None
+        if name in ("addressOfString", "addressOfBytes"):
+            return b.extract_value(args["text" if name == "addressOfString" else "data"], 0), None, None
+        if name in ("stringAt", "bytesAt"):
+            view = b.insert_value(ir.Constant(STR, ir.Undefined), args["address"], 0)
+            return b.insert_value(view, args["bytes"], 1), None, None
+        if name == "callWithAddress":
+            thunk = b.bitcast(args["function"], ir.FunctionType(ir.VoidType(), [PTR]).as_pointer())
+            b.call(thunk, [args["argument"]])
+            return None, None, None
+        if name == "runEntry":
+            if not self.be.options.get("runtime_object"):
+                self.unsupported(line, "`machine.runEntry` outside the runtime linked with a program (`refined build "
+                                       "--kind executable --runtime semanticscript`)")
+            entry = self.be.module.globals.get("refined_program_main") or                 ir.Function(self.be.module, ir.FunctionType(I32, []), name="refined_program_main")
+            return b.call(entry, []), None, None
+        self.unsupported(line, f"the library target `machine.{name}`")
+
+    def compare_memory(self, b: ir.IRBuilder, left, right, n, tag: str):
+        """-1, 0, or 1: how the first differing byte of two ranges compares, as unsigned bytes."""
+        i_ptr, r_ptr = self.fn_alloca(I64, f"{tag}.at"), self.fn_alloca(I32, f"{tag}.order")
+        b.store(I64(0), i_ptr)
+        b.store(I32(0), r_ptr)
+        head, body, out = self.loop(b, tag)
+        hb = ir.IRBuilder(head)
+        i = hb.load(i_ptr)
+        hb.cbranch(hb.icmp_signed("<", i, n), body, out)
+        bb = ir.IRBuilder(body)
+        x, y = bb.load(bb.gep(left, [i])), bb.load(bb.gep(right, [i]))
+        nxt = self.fn.append_basic_block(f"{tag}.next")
+        found = self.fn.append_basic_block(f"{tag}.differ")
+        bb.cbranch(bb.icmp_unsigned("!=", x, y), found, nxt)
+        fb = ir.IRBuilder(found)
+        fb.store(fb.select(fb.icmp_unsigned("<", x, y), I32(-1), I32(1)), r_ptr)
+        fb.branch(out)
+        nb = ir.IRBuilder(nxt)
+        nb.store(nb.add(i, I64(1)), i_ptr)
+        nb.branch(head)
+        b.position_at_end(out)
+        return b.load(r_ptr)
 
     def byte_at(self, b: ir.IRBuilder, text, idx, ci: CallInfo):
         """The byte at a position of a `String` or `Bytes`, or `outOfRange` carrying the position."""

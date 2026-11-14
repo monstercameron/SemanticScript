@@ -208,7 +208,79 @@ _W = E("write console.stdout")
 _RG = P("region", "Region", "borrowed")
 _DL = P("deadline", "time.Deadline", "copied")
 
+# D-121: the machine, for the runtime only. An address is 64 bits; loads and stores read and write memory as it is,
+# with no check, so every target states `use machine.memory`, which build.sem allows and someone approves (D-53).
+_MEM = E("use machine.memory")
+_A = "machine.Address"
+STATE_BYTES = 64 * 1024  # `machine.state`: one zeroed static block for the runtime's process-wide state
+
+
+def _at(name: str) -> Param:
+    return P(name, _A, "copied")
+
+
+def _machine() -> dict:
+    out = {
+        "zero": Sig((), _A, effects=_MEM),  # the address 0
+        "state": Sig((), _A, effects=_MEM),  # the first byte of the zeroed STATE_BYTES block
+        "stackAddress": Sig((), _A, effects=_MEM),  # an address in the calling operation's own stack frame
+        "offset": Sig((_at("address"), P("bytes", "Int64", "copied")), _A, effects=_MEM),
+        "difference": Sig((_at("left"), _at("right")), "Int64", effects=_MEM),  # left less right, in bytes
+        "equal": Sig((_at("left"), _at("right")), "Bool", effects=_MEM),
+        "lessThan": Sig((_at("left"), _at("right")), "Bool", effects=_MEM),  # as unsigned numbers
+        "toInt64": Sig((_at("address"),), "Int64", effects=_MEM),
+        "fromInt64": Sig((P("value", "Int64", "copied"),), _A, effects=_MEM),
+        # memmove semantics: the ranges may overlap
+        "copy": Sig((_at("target"), _at("source"), P("bytes", "Int64", "copied")), effects=_MEM),
+        "fill": Sig((_at("target"), P("value", "Byte", "copied"), P("bytes", "Int64", "copied")), effects=_MEM),
+        # -1, 0, or 1: how the first differing byte compares, as unsigned bytes; 0 when none differs
+        "compare": Sig((_at("left"), _at("right"), P("bytes", "Int64", "copied")), "Int32", effects=_MEM),
+        "addressOfString": Sig((P("text", "String", "borrowed"),), _A, effects=_MEM),
+        "addressOfBytes": Sig((P("data", "Bytes", "borrowed"),), _A, effects=_MEM),
+        # views of memory the runtime keeps: nothing is copied, and nothing checks that the memory stays valid
+        "stringAt": Sig((_at("address"), P("bytes", "Int64", "copied")), "String", effects=_MEM),
+        "bytesAt": Sig((_at("address"), P("bytes", "Int64", "copied")), "Bytes", effects=_MEM),
+        # `void function(argument)`, for the thunks the compiler hands the runtime when a task starts
+        "callWithAddress": Sig((_at("function"), _at("argument")), effects=_MEM),
+        # the program linked with the runtime: its entry operation's exit code (D-124)
+        "runEntry": Sig((), "Int32", effects=_MEM),
+    }
+    for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Address"):
+        canon = _A if t == "Address" else t
+        out[f"load{t}"] = Sig((_at("address"),), canon, effects=_MEM)
+        out[f"store{t}"] = Sig((_at("address"), P("value", canon, "copied")), effects=_MEM)
+    return out
+
+
+# D-122: the operating system's entry points, one typed target each, called directly (Windows: imported from
+# kernel32.dll). `system.calls` is granted like `machine.memory`. Each row: target, the function's own name, and
+# its signature in the C ABI (a DWORD or BOOL is `Int32`, a HANDLE or pointer `machine.Address`, a SIZE_T `Int64`).
+_SYS = E("use system.calls")
+SYSTEM_CALLS: dict[str, tuple[str, Sig]] = {
+    "getStdHandle": ("GetStdHandle", Sig((P("which", "Int32", "copied"),), _A, effects=_SYS)),
+    "writeFile": ("WriteFile", Sig((_at("handle"), _at("buffer"), P("bytes", "Int32", "copied"), _at("written"),
+                                    _at("overlapped")), "Int32", effects=_SYS)),
+    "readFile": ("ReadFile", Sig((_at("handle"), _at("buffer"), P("bytes", "Int32", "copied"), _at("read"),
+                                  _at("overlapped")), "Int32", effects=_SYS)),
+    "exitProcess": ("ExitProcess", Sig((P("code", "Int32", "copied"),), effects=_SYS)),
+    "virtualAlloc": ("VirtualAlloc", Sig((_at("address"), P("bytes", "Int64", "copied"),
+                                          P("allocationType", "Int32", "copied"), P("protection", "Int32", "copied")),
+                                         _A, effects=_SYS)),
+    "virtualFree": ("VirtualFree", Sig((_at("address"), P("bytes", "Int64", "copied"), P("freeType", "Int32", "copied")),
+                                       "Int32", effects=_SYS)),
+    "getCommandLineW": ("GetCommandLineW", Sig((), _A, effects=_SYS)),
+    "getLastError": ("GetLastError", Sig((), "Int32", effects=_SYS)),
+}
+
 LIBRARY: dict[str, dict] = {
+    "machine": {
+        "types": {"Address": TypeInfo(_A, "opaque", True)},
+        "targets": _machine(),
+    },
+    "system": {
+        "types": {},
+        "targets": {name: sig for name, (_symbol, sig) in SYSTEM_CALLS.items()},
+    },
     "console": {
         "types": {
             "WriteError": _err("console.WriteError", ("failed", "Int32")),

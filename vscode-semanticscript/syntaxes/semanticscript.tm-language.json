@@ -97,7 +97,7 @@
       }
     },
     "fact": {
-      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(invokesReference|standardLibrary|includesModule|outputOwnedBy|typeParameter|instantiates|maxRecursion|deprecated|memoryHeap|suppresses|cleanedBy|invariant|rationale|argument|language|maxBytes|maxTasks|released|requires|strategy|verifies|aliasOf|borrows|exports|imports|indexes|invokes|onError|ownedBy|purpose|rowType|variant|version|allows|cleans|effect|grants|output|raises|result|target|async|catch|entry|field|input|label|value|cell|note|path|risk|runs|todo|type|uses|let|row|at|in)\\b",
+      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(invokesReference|standardLibrary|includesModule|outputOwnedBy|typeParameter|instantiates|maxRecursion|deprecated|memoryHeap|suppresses|cleanedBy|invariant|rationale|argument|language|maxBytes|maxTasks|released|requires|strategy|verifies|aliasOf|borrows|exports|imports|indexes|invokes|onError|ownedBy|purpose|rowType|variant|version|allows|cleans|effect|grants|output|raises|result|target|async|catch|entry|field|input|label|value|cell|note|path|risk|runs|todo|type|uses|abi|let|row|at|in)\\b",
       "captures": {
         "1": {
           "name": "variable.other.subject.semanticscript"
@@ -121,7 +121,7 @@
     },
     "word": {
       "name": "keyword.operator.semanticscript",
-      "match": "(?<![A-Za-z0-9.])(?:borrowedMutable|atProcessExit|concurrency|lendMutable|immutable|readWrite|atReturn|borrowed|security|suppress|connect|console|counted|doWhile|failure|forEach|forever|ifError|library|mutable|refined|copied|ifNext|listen|memory|timing|arena|error|owned|plain|spawn|while|write|bind|copy|data|else|give|goto|into|lend|load|read|trap|any|if|ok)\\b"
+      "match": "(?<![A-Za-z0-9.])(?:borrowedMutable|atProcessExit|concurrency|lendMutable|immutable|readWrite|atReturn|borrowed|security|suppress|connect|console|counted|doWhile|failure|forEach|forever|ifError|library|mutable|refined|copied|ifNext|listen|memory|timing|arena|error|owned|plain|spawn|while|write|bind|copy|data|else|give|goto|into|lend|load|read|trap|any|use|if|ok|c)\\b"
     },
     "type": {
       "name": "entity.name.type.semanticscript",

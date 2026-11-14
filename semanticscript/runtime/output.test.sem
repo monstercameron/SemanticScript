@@ -1,0 +1,461 @@
+# Tests of the `output` module; generated from tools/output.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+standardHandleTest is test
+standardHandleTest purpose "Stream 2 is standard error and every other stream standard output"
+standardHandleTest verifies standardHandle namesStream
+standardHandleTest typeParameter none
+standardHandleTest input none
+standardHandleTest output none
+standardHandleTest outputOwnedBy none
+standardHandleTest raises none
+standardHandleTest effect use machine.memory
+standardHandleTest effect use system.calls
+standardHandleTest uses memoryAccess
+standardHandleTest uses systemCalls
+standardHandleTest memoryHeap false
+standardHandleTest async false
+standardHandleTest maxRecursion none
+standardHandleTest label begin loopKind none
+standardHandleTest label begin within none
+standardHandleTest let two Int32 2 immutable
+standardHandleTest let stdError Int32 -12 immutable
+standardHandleTest let one Int32 1 immutable
+standardHandleTest let stdOutput Int32 -11 immutable
+standardHandleTest at begin do findError
+standardHandleTest at begin do findSystemError
+standardHandleTest at begin do sameError
+standardHandleTest at begin do expectError
+standardHandleTest at begin do findOutput
+standardHandleTest at begin do findSystemOutput
+standardHandleTest at begin do sameOutput
+standardHandleTest at begin do expectOutput
+standardHandleTest at begin return ok none
+
+findError is call
+findError in standardHandleTest
+findError invokes standardHandle
+findError argument stream Int32 two copy
+findError result errorHandle machine.Address
+findError ownedBy none
+findError cleanedBy none
+findError borrows none
+findError catch none
+findError suppresses none
+
+findSystemError is call
+findSystemError in standardHandleTest
+findSystemError invokes system.getStdHandle
+findSystemError argument which Int32 stdError copy
+findSystemError result systemError machine.Address
+findSystemError ownedBy none
+findSystemError cleanedBy none
+findSystemError borrows none
+findSystemError catch none
+findSystemError suppresses none
+
+sameError is call
+sameError in standardHandleTest
+sameError invokes machine.equal
+sameError argument left machine.Address errorHandle copy
+sameError argument right machine.Address systemError copy
+sameError result errorSame Bool
+sameError ownedBy none
+sameError cleanedBy none
+sameError borrows none
+sameError catch none
+sameError suppresses none
+
+expectError is call
+expectError in standardHandleTest
+expectError invokes test.assertTrue
+expectError argument value Bool errorSame copy
+expectError result none
+expectError ownedBy none
+expectError cleanedBy none
+expectError borrows none
+expectError catch none
+expectError suppresses none
+
+findOutput is call
+findOutput in standardHandleTest
+findOutput invokes standardHandle
+findOutput argument stream Int32 one copy
+findOutput result outputHandle machine.Address
+findOutput ownedBy none
+findOutput cleanedBy none
+findOutput borrows none
+findOutput catch none
+findOutput suppresses none
+
+findSystemOutput is call
+findSystemOutput in standardHandleTest
+findSystemOutput invokes system.getStdHandle
+findSystemOutput argument which Int32 stdOutput copy
+findSystemOutput result systemOutput machine.Address
+findSystemOutput ownedBy none
+findSystemOutput cleanedBy none
+findSystemOutput borrows none
+findSystemOutput catch none
+findSystemOutput suppresses none
+
+sameOutput is call
+sameOutput in standardHandleTest
+sameOutput invokes machine.equal
+sameOutput argument left machine.Address outputHandle copy
+sameOutput argument right machine.Address systemOutput copy
+sameOutput result outputSame Bool
+sameOutput ownedBy none
+sameOutput cleanedBy none
+sameOutput borrows none
+sameOutput catch none
+sameOutput suppresses none
+
+expectOutput is call
+expectOutput in standardHandleTest
+expectOutput invokes test.assertTrue
+expectOutput argument value Bool outputSame copy
+expectOutput result none
+expectOutput ownedBy none
+expectOutput cleanedBy none
+expectOutput borrows none
+expectOutput catch none
+expectOutput suppresses none
+
+writeAllTest is test
+writeAllTest purpose "Writing nothing succeeds; writing to no handle at all reports the system's error"
+writeAllTest verifies writeAll reportsFailure
+writeAllTest typeParameter none
+writeAllTest input none
+writeAllTest output none
+writeAllTest outputOwnedBy none
+writeAllTest raises none
+writeAllTest effect use machine.memory
+writeAllTest effect use system.calls
+writeAllTest uses memoryAccess
+writeAllTest uses systemCalls
+writeAllTest memoryHeap false
+writeAllTest async false
+writeAllTest maxRecursion none
+writeAllTest label begin loopKind none
+writeAllTest label begin within none
+writeAllTest let text String "never written" immutable
+writeAllTest let two Int32 2 immutable
+writeAllTest let zero Int64 0 immutable
+writeAllTest let thirteen Int64 13 immutable
+writeAllTest let ok Int32 0 immutable
+writeAllTest at begin do findError
+writeAllTest at begin do findText
+writeAllTest at begin do writeNothing
+writeAllTest at begin do nothingWide
+writeAllTest at begin do expectNothing
+writeAllTest at begin do findNowhere
+writeAllTest at begin do writeNowhere
+writeAllTest at begin do refusedCheck
+writeAllTest at begin do expectRefused
+writeAllTest at begin return ok none
+
+findError is call
+findError in writeAllTest
+findError invokes standardHandle
+findError argument stream Int32 two copy
+findError result errorHandle machine.Address
+findError ownedBy none
+findError cleanedBy none
+findError borrows none
+findError catch none
+findError suppresses none
+
+findText is call
+findText in writeAllTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+writeNothing is call
+writeNothing in writeAllTest
+writeNothing invokes writeAll
+writeNothing argument handle machine.Address errorHandle copy
+writeNothing argument text machine.Address textAt copy
+writeNothing argument bytes Int64 zero copy
+writeNothing result nothingStatus Int32
+writeNothing ownedBy none
+writeNothing cleanedBy none
+writeNothing borrows none
+writeNothing catch none
+writeNothing suppresses none
+
+nothingWide is call
+nothingWide in writeAllTest
+nothingWide invokes convert.int32ToInt64
+nothingWide argument value Int32 nothingStatus copy
+nothingWide result nothingValue Int64
+nothingWide ownedBy none
+nothingWide cleanedBy none
+nothingWide borrows none
+nothingWide catch none
+nothingWide suppresses none
+
+expectNothing is call
+expectNothing in writeAllTest
+expectNothing invokes test.assertEqualInt64
+expectNothing argument expected Int64 zero copy
+expectNothing argument actual Int64 nothingValue copy
+expectNothing result none
+expectNothing ownedBy none
+expectNothing cleanedBy none
+expectNothing borrows none
+expectNothing catch none
+expectNothing suppresses none
+
+findNowhere is call
+findNowhere in writeAllTest
+findNowhere invokes machine.zero
+findNowhere argument none
+findNowhere result nowhere machine.Address
+findNowhere ownedBy none
+findNowhere cleanedBy none
+findNowhere borrows none
+findNowhere catch none
+findNowhere suppresses none
+
+writeNowhere is call
+writeNowhere in writeAllTest
+writeNowhere invokes writeAll
+writeNowhere argument handle machine.Address nowhere copy
+writeNowhere argument text machine.Address textAt copy
+writeNowhere argument bytes Int64 thirteen copy
+writeNowhere result nowhereStatus Int32
+writeNowhere ownedBy none
+writeNowhere cleanedBy none
+writeNowhere borrows none
+writeNowhere catch none
+writeNowhere suppresses none
+
+refusedCheck is call
+refusedCheck in writeAllTest
+refusedCheck invokes compare.notEqualInt32
+refusedCheck argument left Int32 nowhereStatus copy
+refusedCheck argument right Int32 ok copy
+refusedCheck result refused Bool
+refusedCheck ownedBy none
+refusedCheck cleanedBy none
+refusedCheck borrows none
+refusedCheck catch none
+refusedCheck suppresses none
+
+expectRefused is call
+expectRefused in writeAllTest
+expectRefused invokes test.assertTrue
+expectRefused argument value Bool refused copy
+expectRefused result none
+expectRefused ownedBy none
+expectRefused cleanedBy none
+expectRefused borrows none
+expectRefused catch none
+expectRefused suppresses none
+
+writeTextTest is test
+writeTextTest purpose "Writing an empty text with no line end to standard error succeeds"
+writeTextTest verifies writeText writesLine
+writeTextTest typeParameter none
+writeTextTest input none
+writeTextTest output none
+writeTextTest outputOwnedBy none
+writeTextTest raises none
+writeTextTest effect use machine.memory
+writeTextTest effect use system.calls
+writeTextTest uses memoryAccess
+writeTextTest uses systemCalls
+writeTextTest memoryHeap false
+writeTextTest async false
+writeTextTest maxRecursion none
+writeTextTest label begin loopKind none
+writeTextTest label begin within none
+writeTextTest let text String "" immutable
+writeTextTest let two Int32 2 immutable
+writeTextTest let zero Int64 0 immutable
+writeTextTest let noLine Int32 0 immutable
+writeTextTest at begin do findText
+writeTextTest at begin do writeEmpty
+writeTextTest at begin do statusWide
+writeTextTest at begin do expectWritten
+writeTextTest at begin return ok none
+
+findText is call
+findText in writeTextTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+writeEmpty is call
+writeEmpty in writeTextTest
+writeEmpty invokes writeText
+writeEmpty argument stream Int32 two copy
+writeEmpty argument text machine.Address textAt copy
+writeEmpty argument bytes Int64 zero copy
+writeEmpty argument newline Int32 noLine copy
+writeEmpty result status Int32
+writeEmpty ownedBy none
+writeEmpty cleanedBy none
+writeEmpty borrows none
+writeEmpty catch none
+writeEmpty suppresses none
+
+statusWide is call
+statusWide in writeTextTest
+statusWide invokes convert.int32ToInt64
+statusWide argument value Int32 status copy
+statusWide result statusValue Int64
+statusWide ownedBy none
+statusWide cleanedBy none
+statusWide borrows none
+statusWide catch none
+statusWide suppresses none
+
+expectWritten is call
+expectWritten in writeTextTest
+expectWritten invokes test.assertEqualInt64
+expectWritten argument expected Int64 zero copy
+expectWritten argument actual Int64 statusValue copy
+expectWritten result none
+expectWritten ownedBy none
+expectWritten cleanedBy none
+expectWritten borrows none
+expectWritten catch none
+expectWritten suppresses none
+
+writeIntegerTest is test
+writeIntegerTest purpose "A number written to a stream the system refuses reports a failure"
+writeIntegerTest verifies writeInteger writesDecimalLine
+writeIntegerTest typeParameter none
+writeIntegerTest input none
+writeIntegerTest output none
+writeIntegerTest outputOwnedBy none
+writeIntegerTest raises none
+writeIntegerTest effect use machine.memory
+writeIntegerTest effect use system.calls
+writeIntegerTest uses memoryAccess
+writeIntegerTest uses systemCalls
+writeIntegerTest memoryHeap false
+writeIntegerTest async false
+writeIntegerTest maxRecursion none
+writeIntegerTest label begin loopKind none
+writeIntegerTest label begin within none
+writeIntegerTest let two Int32 2 immutable
+writeIntegerTest let value Int64 0 immutable
+writeIntegerTest let noLine Int32 0 immutable
+writeIntegerTest let zeroCharacter Int64 48 immutable
+writeIntegerTest let zero Int64 0 immutable
+writeIntegerTest at begin do writeNumber
+writeIntegerTest at begin do findState
+writeIntegerTest at begin do findDigits
+writeIntegerTest at begin do readDigit
+writeIntegerTest at begin do digitWide
+writeIntegerTest at begin do expectDigit
+writeIntegerTest at begin do statusWide
+writeIntegerTest at begin do expectWritten
+writeIntegerTest at begin return ok none
+
+writeNumber is call
+writeNumber in writeIntegerTest
+writeNumber invokes writeInteger
+writeNumber argument stream Int32 two copy
+writeNumber argument value Int64 value copy
+writeNumber argument newline Int32 noLine copy
+writeNumber result status Int32
+writeNumber ownedBy none
+writeNumber cleanedBy none
+writeNumber borrows none
+writeNumber catch none
+writeNumber suppresses none
+
+findState is call
+findState in writeIntegerTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findDigits is call
+findDigits in writeIntegerTest
+findDigits invokes machine.offset
+findDigits argument address machine.Address state copy
+findDigits argument bytes Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+readDigit is call
+readDigit in writeIntegerTest
+readDigit invokes machine.loadByte
+readDigit argument address machine.Address digits copy
+readDigit result digit Byte
+readDigit ownedBy none
+readDigit cleanedBy none
+readDigit borrows none
+readDigit catch none
+readDigit suppresses none
+
+digitWide is call
+digitWide in writeIntegerTest
+digitWide invokes convert.byteToInt64
+digitWide argument value Byte digit copy
+digitWide result digitValue Int64
+digitWide ownedBy none
+digitWide cleanedBy none
+digitWide borrows none
+digitWide catch none
+digitWide suppresses none
+
+expectDigit is call
+expectDigit in writeIntegerTest
+expectDigit invokes test.assertEqualInt64
+expectDigit argument expected Int64 zeroCharacter copy
+expectDigit argument actual Int64 digitValue copy
+expectDigit result none
+expectDigit ownedBy none
+expectDigit cleanedBy none
+expectDigit borrows none
+expectDigit catch none
+expectDigit suppresses none
+
+statusWide is call
+statusWide in writeIntegerTest
+statusWide invokes convert.int32ToInt64
+statusWide argument value Int32 status copy
+statusWide result statusValue Int64
+statusWide ownedBy none
+statusWide cleanedBy none
+statusWide borrows none
+statusWide catch none
+statusWide suppresses none
+
+expectWritten is call
+expectWritten in writeIntegerTest
+expectWritten invokes test.assertEqualInt64
+expectWritten argument expected Int64 zero copy
+expectWritten argument actual Int64 statusValue copy
+expectWritten result none
+expectWritten ownedBy none
+expectWritten cleanedBy none
+expectWritten borrows none
+expectWritten catch none
+expectWritten suppresses none

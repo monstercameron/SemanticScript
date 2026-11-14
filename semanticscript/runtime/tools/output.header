@@ -1,0 +1,5 @@
+# Standard output and standard error: refined_write and refined_write_int, written with
+# WriteFile as the program asks, with nothing kept in a buffer, so the two streams interleave
+# as `refined run` interleaves them.
+#
+# This module is generated from tools/output.dsl by tools/build.py.

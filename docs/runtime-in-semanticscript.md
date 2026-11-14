@@ -69,8 +69,50 @@ SemanticScript.
 
 | Stage | Work | State |
 | --- | --- | --- |
-| 1 | The primitive layer in the compiler; a runtime slice (entry, write, trap, exit, regions) that links `hello` with no libc | Planned |
+| 1 | The primitive layer in the compiler; a runtime slice (entry, write, trap, exit, regions) that links `hello` with no libc | Done |
 | 2 | Text, numbers, bytes, buffers; maps, sets, channels; the host dispatch | Planned |
 | 3 | Files, identity and claims, directories, processes and pipes, environment, arguments, time | Planned |
 | 4 | Tasks, groups, recursion depth, frames and stack traces, test assertions | Planned |
 | 5 | Switch every executable to the new runtime; delete `native_runtime.c`; stage0 links it | Planned |
+
+## Stage 1 (done)
+
+The compiler has the primitive layer: the `use` effect verb, the `machine`
+and `system` standard modules (library.py: `_machine()`, `SYSTEM_CALLS`,
+`STATE_BYTES`), the `abi c "<symbol>"` row (shapes.py, semantics.py), and
+their lowering (codegen.py: `machine`, `system_function`, `machine_state`).
+Under `refined run` and `refined test` the `machine` targets work as
+compiled and the `system` targets call the functions already loaded in the
+process, so the runtime's own tests run there.
+
+`semanticscript/runtime` is a library project of six modules, written as
+DSL files in `tools/` that stage0's generator expands
+(`python semanticscript/runtime/tools/build.py`):
+
+| Module | Provides |
+| --- | --- |
+| `memory` | `memcpy`, `memmove`, `memset`, `memcmp`, `refined_bytes_equal`, `refined_find` |
+| `numbers` | decimal text of an `Int64`; `refined_parse_int` |
+| `output` | `refined_write`, `refined_write_int` (WriteFile, unbuffered) |
+| `frames` | `refined_frame_push`, `refined_frame_pop`, `refined_recursion_enter`, `refined_recursion_leave`, `refined_trap` (the report `refined run` prints, exit 70) |
+| `regions` | `refined_region_new`, `refined_region_alloc`, `refined_region_remaining`, `refined_region_free` (64 KiB chunks from VirtualAlloc, 64 kept for reuse), `refined_format_int` |
+| `start` | `refined_entry`: the stack floor, the program's entry, `ExitProcess` |
+
+`refined build --kind executable --runtime semanticscript` links a program
+with it and no C library (D-124); the C runtime stays the default. 42 of the
+suite's 76 running programs link this way and behave exactly as under
+`refined run`, traps and stack traces included, and the rest are refused
+when built, naming what they need (tests/test_runtime_nolibc.py). `hello`
+is a 34 KB executable that imports from KERNEL32.dll alone.
+
+What stage 2 needs from the compiler: nothing new for text, numbers, and
+bytes (`machine` and `abi c` cover them). The host dispatch
+(`refined_host`) takes a key and slot arrays, which an `abi c` operation
+already receives as addresses; its many targets want a table from key to
+operation, so either an operation reference (D-118) that may be stored and
+called with addresses, or a `machine` target that calls an address with
+several arguments. Floating-point text (D-125) needs `Float64` bits as
+`UInt64` (`machine.storeFloat64` then `loadUInt64` does it today, through
+`machine.state`). Stage 3 adds `system` rows for each kernel32 function the
+plan lists; stage 4 calls task thunks with `machine.callWithAddress`.
+

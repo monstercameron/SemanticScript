@@ -3,6 +3,25 @@
 All notable changes to SemanticScript are recorded here. The format is loosely
 based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### The runtime in SemanticScript, stage 1
+
+- The primitive layer (D-120 to D-124): the `use` effect verb; the standard
+  modules `machine` (addresses, loads and stores, `copy`, `fill`,
+  `compare`, a static state block) and `system` (kernel32 functions, called
+  directly), each granted like any authority (`use machine.memory`,
+  `use system.calls`); and `abi c "<symbol>"`, which exports an operation
+  to C.
+- `semanticscript/runtime`: the first slice of the runtime written in
+  SemanticScript (entry, output, traps with stack traces, recursion depth,
+  regions, integer text, `memcpy` and the like), with its own tests.
+- `refined build --kind executable --runtime semanticscript` links a program
+  with it and no C library; the executable imports from KERNEL32.dll alone.
+  42 of the suite's 76 running programs build this way and behave exactly
+  as under `refined run`; the others are refused, naming what they need.
+  The C runtime stays the default.
+
 ## 1.0.0 (2026-11-14)
 
 ### The language compiles its own compiler

@@ -1,0 +1,2072 @@
+# The shadow call stack every compiled operation pushes and pops, the depth counters of
+# recursive operations and the stack floor, and traps: refined_trap writes `trap: <message>`
+# and the call stack to standard error exactly as `refined run` does, then ends the process
+# with exit code 70.
+#
+# This module is generated from tools/frames.dsl by tools/build.py.
+
+frames is module
+frames purpose "The call stack a trap prints, recursion depth and the stack floor, and traps"
+frames path frames
+frames imports standard.machine
+frames imports standard.system
+frames imports standard.string
+frames imports standard.math
+frames imports standard.compare
+frames imports standard.convert
+frames imports standard.logic
+frames imports standard.test
+frames imports memory
+frames imports numbers
+frames imports output
+frames exports pushFrame
+frames exports popFrame
+frames exports report
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep the call stack and the depth counters in memory"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to write a trap's report, take memory for the call stack, and end the process"
+systemCalls grants use system.calls none
+
+# machine.state bytes 64 to 127 belong to this module: 64 the address of the call stack's table, 72 how many
+# frames are on it, 80 how many the table holds, 88 the stack floor (set by `start`), 96 to 127 the digits of a
+# count being written; bytes 8192 to 40959 are the depth counters of 4096 recursive operations.
+framesAt is constant
+framesAt purpose "Where the address of the call stack's table is kept, in machine.state"
+framesAt type Int64
+framesAt value 64
+
+countAt is constant
+countAt purpose "Where the number of frames on the call stack is kept, in machine.state"
+countAt type Int64
+countAt value 72
+
+capacityAt is constant
+capacityAt purpose "Where the number of frames the table holds is kept, in machine.state"
+capacityAt type Int64
+capacityAt value 80
+
+floorAt is constant
+floorAt purpose "Where the stack floor is kept, in machine.state: an address below which a recursive operation traps, or 0"
+floorAt type Int64
+floorAt value 88
+
+digitsAt is constant
+digitsAt purpose "Where a count's digits are put together, in machine.state"
+digitsAt type Int64
+digitsAt value 96
+
+depthsAt is constant
+depthsAt purpose "Where the depth counters start, in machine.state: one Int64 per recursive operation, by the number the compiler gives it"
+depthsAt type Int64
+depthsAt value 8192
+
+depthCount is constant
+depthCount purpose "How many recursive operations have a depth counter"
+depthCount type Int64
+depthCount value 4096
+
+frameBytes is constant
+frameBytes purpose "The size of a frame in the table: the address of the operation's name, then the name's length"
+frameBytes type Int64
+frameBytes value 16
+
+firstCapacity is constant
+firstCapacity purpose "How many frames the table holds when it is first made; it doubles when full"
+firstCapacity type Int64
+firstCapacity value 4096
+
+shownRuns is constant
+shownRuns purpose "How many lines of the call stack a trap prints before saying how many more there are"
+shownRuns type Int64
+shownRuns value 12
+
+# ---------------------------------------------------------------- the call stack
+pushFrame is operation
+pushFrame purpose "Put an operation's name on the call stack, as each compiled operation does when it starts"
+pushFrame invariant keepsName "\"The frame is the top of the call stack and holds the name's address and length; the table grows when full\""
+pushFrame typeParameter none
+pushFrame input name machine.Address copied
+pushFrame input bytes Int64 copied
+pushFrame output none
+pushFrame outputOwnedBy none
+pushFrame raises none
+pushFrame effect use machine.memory
+pushFrame effect use system.calls
+pushFrame uses memoryAccess
+pushFrame uses systemCalls
+pushFrame memoryHeap false
+pushFrame async false
+pushFrame maxRecursion none
+pushFrame abi c "refined_frame_push"
+pushFrame label begin loopKind none
+pushFrame label begin within none
+pushFrame label grow loopKind none
+pushFrame label grow within none
+pushFrame label first loopKind none
+pushFrame label first within none
+pushFrame label double loopKind none
+pushFrame label double within none
+pushFrame label allocate loopKind none
+pushFrame label allocate within none
+pushFrame label move loopKind none
+pushFrame label move within none
+pushFrame label release loopKind none
+pushFrame label release within none
+pushFrame label keep loopKind none
+pushFrame label keep within none
+pushFrame label counted loopKind none
+pushFrame label counted within none
+pushFrame let capacity Int64 0 mutable
+pushFrame let zero Int64 0 immutable
+pushFrame let two Int64 2 immutable
+pushFrame let commitAndReserve Int32 12288 immutable
+pushFrame let readWrite Int32 4 immutable
+pushFrame let releaseMemory Int32 32768 immutable
+pushFrame let eight Int64 8 immutable
+pushFrame let one Int64 1 immutable
+pushFrame at begin do findState
+pushFrame at begin do findCount
+pushFrame at begin do readCount
+pushFrame at begin do findCapacity
+pushFrame at begin do readCapacity
+pushFrame at begin do findTable
+pushFrame at begin do fullCheck
+pushFrame at begin branch if full goto grow else goto keep
+pushFrame at grow do emptyCheck
+pushFrame at grow branch if empty goto first else goto double
+pushFrame at first set capacity firstCapacity
+pushFrame at first goto allocate
+pushFrame at double do twice
+pushFrame at double set capacity doubled
+pushFrame at double goto allocate
+pushFrame at allocate do sizeOf
+pushFrame at allocate do nowhere
+pushFrame at allocate do takeMemory
+pushFrame at allocate do failedCheck
+pushFrame at allocate branch if failed goto counted else goto move
+pushFrame at move do readOld
+pushFrame at move do usedOf
+pushFrame at move do copyOld
+pushFrame at move do storeTable
+pushFrame at move do storeCapacity
+pushFrame at move do hadCheck
+pushFrame at move branch if hadTable goto release else goto keep
+pushFrame at release do freeOld
+pushFrame at release goto keep
+pushFrame at keep do readTable
+pushFrame at keep do findOffset
+pushFrame at keep do findFrame
+pushFrame at keep do storeName
+pushFrame at keep do findLength
+pushFrame at keep do storeLength
+pushFrame at keep goto counted
+pushFrame at counted do addFrame
+pushFrame at counted do storeCount
+pushFrame at counted return ok none
+
+findState is call
+findState in pushFrame
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findCount is call
+findCount in pushFrame
+findCount invokes machine.offset
+findCount argument address machine.Address state copy
+findCount argument bytes Int64 countAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in pushFrame
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCapacity is call
+findCapacity in pushFrame
+findCapacity invokes machine.offset
+findCapacity argument address machine.Address state copy
+findCapacity argument bytes Int64 capacityAt copy
+findCapacity result capacitySlot machine.Address
+findCapacity ownedBy none
+findCapacity cleanedBy none
+findCapacity borrows none
+findCapacity catch none
+findCapacity suppresses none
+
+readCapacity is call
+readCapacity in pushFrame
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address capacitySlot copy
+readCapacity result held Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findTable is call
+findTable in pushFrame
+findTable invokes machine.offset
+findTable argument address machine.Address state copy
+findTable argument bytes Int64 framesAt copy
+findTable result tableSlot machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+fullCheck is call
+fullCheck in pushFrame
+fullCheck invokes compare.greaterOrEqualInt64
+fullCheck argument left Int64 count copy
+fullCheck argument right Int64 held copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+emptyCheck is call
+emptyCheck in pushFrame
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 held copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+twice is call
+twice in pushFrame
+twice invokes math.multiplyInt64
+twice argument left Int64 held copy
+twice argument right Int64 two copy
+twice result doubled Int64
+twice ownedBy none
+twice cleanedBy none
+twice borrows none
+twice catch none
+twice suppresses none
+
+sizeOf is call
+sizeOf in pushFrame
+sizeOf invokes math.multiplyInt64
+sizeOf argument left Int64 capacity copy
+sizeOf argument right Int64 frameBytes copy
+sizeOf result size Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+nowhere is call
+nowhere in pushFrame
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+takeMemory is call
+takeMemory in pushFrame
+takeMemory invokes system.virtualAlloc
+takeMemory argument address machine.Address anywhere copy
+takeMemory argument bytes Int64 size copy
+takeMemory argument allocationType Int32 commitAndReserve copy
+takeMemory argument protection Int32 readWrite copy
+takeMemory result table machine.Address
+takeMemory ownedBy none
+takeMemory cleanedBy none
+takeMemory borrows none
+takeMemory catch none
+takeMemory suppresses none
+
+failedCheck is call
+failedCheck in pushFrame
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address table copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+readOld is call
+readOld in pushFrame
+readOld invokes machine.loadAddress
+readOld argument address machine.Address tableSlot copy
+readOld result old machine.Address
+readOld ownedBy none
+readOld cleanedBy none
+readOld borrows none
+readOld catch none
+readOld suppresses none
+
+usedOf is call
+usedOf in pushFrame
+usedOf invokes math.multiplyInt64
+usedOf argument left Int64 held copy
+usedOf argument right Int64 frameBytes copy
+usedOf result used Int64
+usedOf ownedBy none
+usedOf cleanedBy none
+usedOf borrows none
+usedOf catch none
+usedOf suppresses none
+
+copyOld is call
+copyOld in pushFrame
+copyOld invokes machine.copy
+copyOld argument target machine.Address table copy
+copyOld argument source machine.Address old copy
+copyOld argument bytes Int64 used copy
+copyOld result none
+copyOld ownedBy none
+copyOld cleanedBy none
+copyOld borrows none
+copyOld catch none
+copyOld suppresses none
+
+storeTable is call
+storeTable in pushFrame
+storeTable invokes machine.storeAddress
+storeTable argument address machine.Address tableSlot copy
+storeTable argument value machine.Address table copy
+storeTable result none
+storeTable ownedBy none
+storeTable cleanedBy none
+storeTable borrows none
+storeTable catch none
+storeTable suppresses none
+
+storeCapacity is call
+storeCapacity in pushFrame
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address capacitySlot copy
+storeCapacity argument value Int64 capacity copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+hadCheck is call
+hadCheck in pushFrame
+hadCheck invokes compare.greaterThanInt64
+hadCheck argument left Int64 held copy
+hadCheck argument right Int64 zero copy
+hadCheck result hadTable Bool
+hadCheck ownedBy none
+hadCheck cleanedBy none
+hadCheck borrows none
+hadCheck catch none
+hadCheck suppresses none
+
+freeOld is call
+freeOld in pushFrame
+freeOld invokes system.virtualFree
+freeOld argument address machine.Address old copy
+freeOld argument bytes Int64 zero copy
+freeOld argument freeType Int32 releaseMemory copy
+freeOld result freed Int32
+freeOld ownedBy none
+freeOld cleanedBy none
+freeOld borrows none
+freeOld catch none
+freeOld suppresses none
+
+readTable is call
+readTable in pushFrame
+readTable invokes machine.loadAddress
+readTable argument address machine.Address tableSlot copy
+readTable result current machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+findOffset is call
+findOffset in pushFrame
+findOffset invokes math.multiplyInt64
+findOffset argument left Int64 count copy
+findOffset argument right Int64 frameBytes copy
+findOffset result offset Int64
+findOffset ownedBy none
+findOffset cleanedBy none
+findOffset borrows none
+findOffset catch none
+findOffset suppresses none
+
+findFrame is call
+findFrame in pushFrame
+findFrame invokes machine.offset
+findFrame argument address machine.Address current copy
+findFrame argument bytes Int64 offset copy
+findFrame result frame machine.Address
+findFrame ownedBy none
+findFrame cleanedBy none
+findFrame borrows none
+findFrame catch none
+findFrame suppresses none
+
+storeName is call
+storeName in pushFrame
+storeName invokes machine.storeAddress
+storeName argument address machine.Address frame copy
+storeName argument value machine.Address name copy
+storeName result none
+storeName ownedBy none
+storeName cleanedBy none
+storeName borrows none
+storeName catch none
+storeName suppresses none
+
+findLength is call
+findLength in pushFrame
+findLength invokes machine.offset
+findLength argument address machine.Address frame copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in pushFrame
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+addFrame is call
+addFrame in pushFrame
+addFrame invokes math.addInt64
+addFrame argument left Int64 count copy
+addFrame argument right Int64 one copy
+addFrame result nextCount Int64
+addFrame ownedBy none
+addFrame cleanedBy none
+addFrame borrows none
+addFrame catch none
+addFrame suppresses none
+
+storeCount is call
+storeCount in pushFrame
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address countSlot copy
+storeCount argument value Int64 nextCount copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+popFrame is operation
+popFrame purpose "Take the top frame off the call stack, as each compiled operation does when it returns"
+popFrame invariant dropsTop "\"The call stack holds one frame fewer, and never fewer than none\""
+popFrame typeParameter none
+popFrame input none
+popFrame output none
+popFrame outputOwnedBy none
+popFrame raises none
+popFrame effect use machine.memory
+popFrame uses memoryAccess
+popFrame memoryHeap false
+popFrame async false
+popFrame maxRecursion none
+popFrame abi c "refined_frame_pop"
+popFrame label begin loopKind none
+popFrame label begin within none
+popFrame label drop loopKind none
+popFrame label drop within none
+popFrame label done loopKind none
+popFrame label done within none
+popFrame let zero Int64 0 immutable
+popFrame let one Int64 1 immutable
+popFrame at begin do findState
+popFrame at begin do findCount
+popFrame at begin do readCount
+popFrame at begin do anyCheck
+popFrame at begin branch if any goto drop else goto done
+popFrame at drop do dropFrame
+popFrame at drop do storeCount
+popFrame at drop goto done
+popFrame at done return ok none
+
+findState is call
+findState in popFrame
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findCount is call
+findCount in popFrame
+findCount invokes machine.offset
+findCount argument address machine.Address state copy
+findCount argument bytes Int64 countAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in popFrame
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+anyCheck is call
+anyCheck in popFrame
+anyCheck invokes compare.greaterThanInt64
+anyCheck argument left Int64 count copy
+anyCheck argument right Int64 zero copy
+anyCheck result any Bool
+anyCheck ownedBy none
+anyCheck cleanedBy none
+anyCheck borrows none
+anyCheck catch none
+anyCheck suppresses none
+
+dropFrame is call
+dropFrame in popFrame
+dropFrame invokes math.subtractInt64
+dropFrame argument left Int64 count copy
+dropFrame argument right Int64 one copy
+dropFrame result fewer Int64
+dropFrame ownedBy none
+dropFrame cleanedBy none
+dropFrame borrows none
+dropFrame catch none
+dropFrame suppresses none
+
+storeCount is call
+storeCount in popFrame
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address countSlot copy
+storeCount argument value Int64 fewer copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+sameFrame is operation
+sameFrame purpose "Whether two frames of the call stack name the same operation"
+sameFrame invariant none
+sameFrame typeParameter none
+sameFrame input table machine.Address copied
+sameFrame input left Int64 copied
+sameFrame input right Int64 copied
+sameFrame output Bool
+sameFrame outputOwnedBy none
+sameFrame raises none
+sameFrame effect use machine.memory
+sameFrame uses memoryAccess
+sameFrame memoryHeap false
+sameFrame async false
+sameFrame maxRecursion none
+sameFrame label begin loopKind none
+sameFrame label begin within none
+sameFrame let eight Int64 8 immutable
+sameFrame let zero Int32 0 immutable
+sameFrame at begin do findLeftOffset
+sameFrame at begin do findLeft
+sameFrame at begin do readLeftName
+sameFrame at begin do findLeftLength
+sameFrame at begin do readLeftLength
+sameFrame at begin do findRightOffset
+sameFrame at begin do findRight
+sameFrame at begin do readRightName
+sameFrame at begin do findRightLength
+sameFrame at begin do readRightLength
+sameFrame at begin do compareNames
+sameFrame at begin do sameCheck
+sameFrame at begin return ok same
+
+findLeftOffset is call
+findLeftOffset in sameFrame
+findLeftOffset invokes math.multiplyInt64
+findLeftOffset argument left Int64 left copy
+findLeftOffset argument right Int64 frameBytes copy
+findLeftOffset result leftOffset Int64
+findLeftOffset ownedBy none
+findLeftOffset cleanedBy none
+findLeftOffset borrows none
+findLeftOffset catch none
+findLeftOffset suppresses none
+
+findLeft is call
+findLeft in sameFrame
+findLeft invokes machine.offset
+findLeft argument address machine.Address table copy
+findLeft argument bytes Int64 leftOffset copy
+findLeft result leftFrame machine.Address
+findLeft ownedBy none
+findLeft cleanedBy none
+findLeft borrows none
+findLeft catch none
+findLeft suppresses none
+
+readLeftName is call
+readLeftName in sameFrame
+readLeftName invokes machine.loadAddress
+readLeftName argument address machine.Address leftFrame copy
+readLeftName result leftName machine.Address
+readLeftName ownedBy none
+readLeftName cleanedBy none
+readLeftName borrows none
+readLeftName catch none
+readLeftName suppresses none
+
+findLeftLength is call
+findLeftLength in sameFrame
+findLeftLength invokes machine.offset
+findLeftLength argument address machine.Address leftFrame copy
+findLeftLength argument bytes Int64 eight copy
+findLeftLength result leftLengthSlot machine.Address
+findLeftLength ownedBy none
+findLeftLength cleanedBy none
+findLeftLength borrows none
+findLeftLength catch none
+findLeftLength suppresses none
+
+readLeftLength is call
+readLeftLength in sameFrame
+readLeftLength invokes machine.loadInt64
+readLeftLength argument address machine.Address leftLengthSlot copy
+readLeftLength result leftLength Int64
+readLeftLength ownedBy none
+readLeftLength cleanedBy none
+readLeftLength borrows none
+readLeftLength catch none
+readLeftLength suppresses none
+
+findRightOffset is call
+findRightOffset in sameFrame
+findRightOffset invokes math.multiplyInt64
+findRightOffset argument left Int64 right copy
+findRightOffset argument right Int64 frameBytes copy
+findRightOffset result rightOffset Int64
+findRightOffset ownedBy none
+findRightOffset cleanedBy none
+findRightOffset borrows none
+findRightOffset catch none
+findRightOffset suppresses none
+
+findRight is call
+findRight in sameFrame
+findRight invokes machine.offset
+findRight argument address machine.Address table copy
+findRight argument bytes Int64 rightOffset copy
+findRight result rightFrame machine.Address
+findRight ownedBy none
+findRight cleanedBy none
+findRight borrows none
+findRight catch none
+findRight suppresses none
+
+readRightName is call
+readRightName in sameFrame
+readRightName invokes machine.loadAddress
+readRightName argument address machine.Address rightFrame copy
+readRightName result rightName machine.Address
+readRightName ownedBy none
+readRightName cleanedBy none
+readRightName borrows none
+readRightName catch none
+readRightName suppresses none
+
+findRightLength is call
+findRightLength in sameFrame
+findRightLength invokes machine.offset
+findRightLength argument address machine.Address rightFrame copy
+findRightLength argument bytes Int64 eight copy
+findRightLength result rightLengthSlot machine.Address
+findRightLength ownedBy none
+findRightLength cleanedBy none
+findRightLength borrows none
+findRightLength catch none
+findRightLength suppresses none
+
+readRightLength is call
+readRightLength in sameFrame
+readRightLength invokes machine.loadInt64
+readRightLength argument address machine.Address rightLengthSlot copy
+readRightLength result rightLength Int64
+readRightLength ownedBy none
+readRightLength cleanedBy none
+readRightLength borrows none
+readRightLength catch none
+readRightLength suppresses none
+
+compareNames is call
+compareNames in sameFrame
+compareNames invokes memory.bytesEqual
+compareNames argument left machine.Address leftName copy
+compareNames argument leftBytes Int64 leftLength copy
+compareNames argument right machine.Address rightName copy
+compareNames argument rightBytes Int64 rightLength copy
+compareNames result equal Int32
+compareNames ownedBy none
+compareNames cleanedBy none
+compareNames borrows none
+compareNames catch none
+compareNames suppresses none
+
+sameCheck is call
+sameCheck in sameFrame
+sameCheck invokes compare.notEqualInt32
+sameCheck argument left Int32 equal copy
+sameCheck argument right Int32 zero copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+# ---------------------------------------------------------------- recursion depth and the stack floor
+depthSlot is operation
+depthSlot purpose "The address of a recursive operation's depth counter, or the address 0 for a number outside the counters"
+depthSlot invariant none
+depthSlot typeParameter none
+depthSlot input operation Int64 copied
+depthSlot output machine.Address
+depthSlot outputOwnedBy none
+depthSlot raises none
+depthSlot effect use machine.memory
+depthSlot uses memoryAccess
+depthSlot memoryHeap false
+depthSlot async false
+depthSlot maxRecursion none
+depthSlot label begin loopKind none
+depthSlot label begin within none
+depthSlot label find loopKind none
+depthSlot label find within none
+depthSlot label outside loopKind none
+depthSlot label outside within none
+depthSlot let zero Int64 0 immutable
+depthSlot let eight Int64 8 immutable
+depthSlot at begin do lowCheck
+depthSlot at begin do highCheck
+depthSlot at begin do bothCheck
+depthSlot at begin branch if inside goto find else goto outside
+depthSlot at find do findState
+depthSlot at find do findDepths
+depthSlot at find do findOffset
+depthSlot at find do findSlot
+depthSlot at find return ok slot
+depthSlot at outside do nowhere
+depthSlot at outside return ok zeroAddress
+
+lowCheck is call
+lowCheck in depthSlot
+lowCheck invokes compare.greaterOrEqualInt64
+lowCheck argument left Int64 operation copy
+lowCheck argument right Int64 zero copy
+lowCheck result aboveLow Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in depthSlot
+highCheck invokes compare.lessThanInt64
+highCheck argument left Int64 operation copy
+highCheck argument right Int64 depthCount copy
+highCheck result belowHigh Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+bothCheck is call
+bothCheck in depthSlot
+bothCheck invokes logic.and
+bothCheck argument left Bool aboveLow copy
+bothCheck argument right Bool belowHigh copy
+bothCheck result inside Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+findState is call
+findState in depthSlot
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findDepths is call
+findDepths in depthSlot
+findDepths invokes machine.offset
+findDepths argument address machine.Address state copy
+findDepths argument bytes Int64 depthsAt copy
+findDepths result depths machine.Address
+findDepths ownedBy none
+findDepths cleanedBy none
+findDepths borrows none
+findDepths catch none
+findDepths suppresses none
+
+findOffset is call
+findOffset in depthSlot
+findOffset invokes math.multiplyInt64
+findOffset argument left Int64 operation copy
+findOffset argument right Int64 eight copy
+findOffset result offset Int64
+findOffset ownedBy none
+findOffset cleanedBy none
+findOffset borrows none
+findOffset catch none
+findOffset suppresses none
+
+findSlot is call
+findSlot in depthSlot
+findSlot invokes machine.offset
+findSlot argument address machine.Address depths copy
+findSlot argument bytes Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+nowhere is call
+nowhere in depthSlot
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result zeroAddress machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+enterRecursion is operation
+enterRecursion purpose "Count one more call of a recursive operation: 0 to go on, 1 when it is deeper than its bound, 2 when its frame lies below the stack floor"
+enterRecursion invariant countsDepth "\"Each call counts one deeper; past the operation's bound it gives 1, below a stack floor that is set it gives 2, otherwise 0\""
+enterRecursion typeParameter none
+enterRecursion input operation Int64 copied
+enterRecursion input limit Int64 copied
+enterRecursion input here Int64 copied
+enterRecursion output Int32
+enterRecursion outputOwnedBy none
+enterRecursion raises none
+enterRecursion effect use machine.memory
+enterRecursion effect use system.calls
+enterRecursion uses memoryAccess
+enterRecursion uses systemCalls
+enterRecursion memoryHeap false
+enterRecursion async false
+enterRecursion maxRecursion none
+enterRecursion abi c "refined_recursion_enter"
+enterRecursion label begin loopKind none
+enterRecursion label begin within none
+enterRecursion label count loopKind none
+enterRecursion label count within none
+enterRecursion label overBound loopKind none
+enterRecursion label overBound within none
+enterRecursion label floorCheck loopKind none
+enterRecursion label floorCheck within none
+enterRecursion label overStack loopKind none
+enterRecursion label overStack within none
+enterRecursion label fine loopKind none
+enterRecursion label fine within none
+enterRecursion label noSlot loopKind none
+enterRecursion label noSlot within none
+enterRecursion let goOn Int32 0 immutable
+enterRecursion let tooDeep Int32 1 immutable
+enterRecursion let outOfStack Int32 2 immutable
+enterRecursion let noCounter String "a recursive operation has no depth counter" immutable
+enterRecursion let one Int64 1 immutable
+enterRecursion let zero Int64 0 immutable
+enterRecursion at begin do findSlot
+enterRecursion at begin do nowhere
+enterRecursion at begin do missingCheck
+enterRecursion at begin branch if missing goto noSlot else goto count
+enterRecursion at count do readDepth
+enterRecursion at count do deeper
+enterRecursion at count do storeDepth
+enterRecursion at count do boundCheck
+enterRecursion at count branch if past goto overBound else goto floorCheck
+enterRecursion at overBound return ok tooDeep
+enterRecursion at floorCheck do findState
+enterRecursion at floorCheck do findFloor
+enterRecursion at floorCheck do readFloor
+enterRecursion at floorCheck do setCheck
+enterRecursion at floorCheck do belowCheck
+enterRecursion at floorCheck do bothCheck
+enterRecursion at floorCheck branch if underFloor goto overStack else goto fine
+enterRecursion at overStack return ok outOfStack
+enterRecursion at fine return ok goOn
+enterRecursion at noSlot do findText
+enterRecursion at noSlot do textLength
+enterRecursion at noSlot do stop
+enterRecursion at noSlot return ok goOn
+
+findSlot is call
+findSlot in enterRecursion
+findSlot invokes depthSlot
+findSlot argument operation Int64 operation copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+nowhere is call
+nowhere in enterRecursion
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result zeroAddress machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in enterRecursion
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address slot copy
+missingCheck argument right machine.Address zeroAddress copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+readDepth is call
+readDepth in enterRecursion
+readDepth invokes machine.loadInt64
+readDepth argument address machine.Address slot copy
+readDepth result depth Int64
+readDepth ownedBy none
+readDepth cleanedBy none
+readDepth borrows none
+readDepth catch none
+readDepth suppresses none
+
+deeper is call
+deeper in enterRecursion
+deeper invokes math.addInt64
+deeper argument left Int64 depth copy
+deeper argument right Int64 one copy
+deeper result nextDepth Int64
+deeper ownedBy none
+deeper cleanedBy none
+deeper borrows none
+deeper catch none
+deeper suppresses none
+
+storeDepth is call
+storeDepth in enterRecursion
+storeDepth invokes machine.storeInt64
+storeDepth argument address machine.Address slot copy
+storeDepth argument value Int64 nextDepth copy
+storeDepth result none
+storeDepth ownedBy none
+storeDepth cleanedBy none
+storeDepth borrows none
+storeDepth catch none
+storeDepth suppresses none
+
+boundCheck is call
+boundCheck in enterRecursion
+boundCheck invokes compare.greaterThanInt64
+boundCheck argument left Int64 nextDepth copy
+boundCheck argument right Int64 limit copy
+boundCheck result past Bool
+boundCheck ownedBy none
+boundCheck cleanedBy none
+boundCheck borrows none
+boundCheck catch none
+boundCheck suppresses none
+
+findState is call
+findState in enterRecursion
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findFloor is call
+findFloor in enterRecursion
+findFloor invokes machine.offset
+findFloor argument address machine.Address state copy
+findFloor argument bytes Int64 floorAt copy
+findFloor result floorSlot machine.Address
+findFloor ownedBy none
+findFloor cleanedBy none
+findFloor borrows none
+findFloor catch none
+findFloor suppresses none
+
+readFloor is call
+readFloor in enterRecursion
+readFloor invokes machine.loadInt64
+readFloor argument address machine.Address floorSlot copy
+readFloor result floor Int64
+readFloor ownedBy none
+readFloor cleanedBy none
+readFloor borrows none
+readFloor catch none
+readFloor suppresses none
+
+setCheck is call
+setCheck in enterRecursion
+setCheck invokes compare.notEqualInt64
+setCheck argument left Int64 floor copy
+setCheck argument right Int64 zero copy
+setCheck result floorSet Bool
+setCheck ownedBy none
+setCheck cleanedBy none
+setCheck borrows none
+setCheck catch none
+setCheck suppresses none
+
+belowCheck is call
+belowCheck in enterRecursion
+belowCheck invokes compare.lessThanInt64
+belowCheck argument left Int64 here copy
+belowCheck argument right Int64 floor copy
+belowCheck result below Bool
+belowCheck ownedBy none
+belowCheck cleanedBy none
+belowCheck borrows none
+belowCheck catch none
+belowCheck suppresses none
+
+bothCheck is call
+bothCheck in enterRecursion
+bothCheck invokes logic.and
+bothCheck argument left Bool floorSet copy
+bothCheck argument right Bool below copy
+bothCheck result underFloor Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+findText is call
+findText in enterRecursion
+findText invokes machine.addressOfString
+findText argument text String noCounter lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in enterRecursion
+textLength invokes string.byteLength
+textLength argument text String noCounter lend
+textLength result textBytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+stop is call
+stop in enterRecursion
+stop invokes trap
+stop argument text machine.Address textAt copy
+stop argument bytes Int64 textBytes copy
+stop result none
+stop ownedBy none
+stop cleanedBy none
+stop borrows none
+stop catch none
+stop suppresses none
+
+leaveRecursion is operation
+leaveRecursion purpose "Count one call fewer of a recursive operation, as it returns: refined_recursion_leave"
+leaveRecursion invariant countsBack "\"The operation's depth is one less than before the call; a number outside the counters changes nothing\""
+leaveRecursion typeParameter none
+leaveRecursion input operation Int64 copied
+leaveRecursion output none
+leaveRecursion outputOwnedBy none
+leaveRecursion raises none
+leaveRecursion effect use machine.memory
+leaveRecursion uses memoryAccess
+leaveRecursion memoryHeap false
+leaveRecursion async false
+leaveRecursion maxRecursion none
+leaveRecursion abi c "refined_recursion_leave"
+leaveRecursion label begin loopKind none
+leaveRecursion label begin within none
+leaveRecursion label count loopKind none
+leaveRecursion label count within none
+leaveRecursion label done loopKind none
+leaveRecursion label done within none
+leaveRecursion let one Int64 1 immutable
+leaveRecursion at begin do findSlot
+leaveRecursion at begin do nowhere
+leaveRecursion at begin do missingCheck
+leaveRecursion at begin branch if missing goto done else goto count
+leaveRecursion at count do readDepth
+leaveRecursion at count do shallower
+leaveRecursion at count do storeDepth
+leaveRecursion at count goto done
+leaveRecursion at done return ok none
+
+findSlot is call
+findSlot in leaveRecursion
+findSlot invokes depthSlot
+findSlot argument operation Int64 operation copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+nowhere is call
+nowhere in leaveRecursion
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result zeroAddress machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in leaveRecursion
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address slot copy
+missingCheck argument right machine.Address zeroAddress copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+readDepth is call
+readDepth in leaveRecursion
+readDepth invokes machine.loadInt64
+readDepth argument address machine.Address slot copy
+readDepth result depth Int64
+readDepth ownedBy none
+readDepth cleanedBy none
+readDepth borrows none
+readDepth catch none
+readDepth suppresses none
+
+shallower is call
+shallower in leaveRecursion
+shallower invokes math.subtractInt64
+shallower argument left Int64 depth copy
+shallower argument right Int64 one copy
+shallower result nextDepth Int64
+shallower ownedBy none
+shallower cleanedBy none
+shallower borrows none
+shallower catch none
+shallower suppresses none
+
+storeDepth is call
+storeDepth in leaveRecursion
+storeDepth invokes machine.storeInt64
+storeDepth argument address machine.Address slot copy
+storeDepth argument value Int64 nextDepth copy
+storeDepth result none
+storeDepth ownedBy none
+storeDepth cleanedBy none
+storeDepth borrows none
+storeDepth catch none
+storeDepth suppresses none
+
+# ---------------------------------------------------------------- traps
+lesser is operation
+lesser purpose "The smaller of two whole numbers"
+lesser invariant none
+lesser typeParameter none
+lesser input left Int64 copied
+lesser input right Int64 copied
+lesser output Int64
+lesser outputOwnedBy none
+lesser raises none
+lesser effect none
+lesser uses none
+lesser memoryHeap false
+lesser async false
+lesser maxRecursion none
+lesser label begin loopKind none
+lesser label begin within none
+lesser label giveLeft loopKind none
+lesser label giveLeft within none
+lesser label giveRight loopKind none
+lesser label giveRight within none
+lesser let none
+lesser at begin do orderCheck
+lesser at begin branch if leftSmaller goto giveLeft else goto giveRight
+lesser at giveLeft return ok left
+lesser at giveRight return ok right
+
+orderCheck is call
+orderCheck in lesser
+orderCheck invokes compare.lessThanInt64
+orderCheck argument left Int64 left copy
+orderCheck argument right Int64 right copy
+orderCheck result leftSmaller Bool
+orderCheck ownedBy none
+orderCheck cleanedBy none
+orderCheck borrows none
+orderCheck catch none
+orderCheck suppresses none
+
+writeString is operation
+writeString purpose "Write text to a handle; gives 0, or the system's error code"
+writeString invariant none
+writeString typeParameter none
+writeString input handle machine.Address copied
+writeString input text String borrowed
+writeString output Int32
+writeString outputOwnedBy none
+writeString raises none
+writeString effect use machine.memory
+writeString effect use system.calls
+writeString uses memoryAccess
+writeString uses systemCalls
+writeString memoryHeap false
+writeString async false
+writeString maxRecursion none
+writeString label begin loopKind none
+writeString label begin within none
+writeString let none
+writeString at begin do findText
+writeString at begin do textLength
+writeString at begin do write
+writeString at begin return ok status
+
+findText is call
+findText in writeString
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in writeString
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+write is call
+write in writeString
+write invokes output.writeAll
+write argument handle machine.Address handle copy
+write argument text machine.Address textAt copy
+write argument bytes Int64 bytes copy
+write result status Int32
+write ownedBy none
+write cleanedBy none
+write borrows none
+write catch none
+write suppresses none
+
+writeCount is operation
+writeCount purpose "Write a whole number in decimal to a handle; gives 0, or the system's error code"
+writeCount invariant none
+writeCount typeParameter none
+writeCount input handle machine.Address copied
+writeCount input value Int64 copied
+writeCount output Int32
+writeCount outputOwnedBy none
+writeCount raises none
+writeCount effect use machine.memory
+writeCount effect use system.calls
+writeCount uses memoryAccess
+writeCount uses systemCalls
+writeCount memoryHeap false
+writeCount async false
+writeCount maxRecursion none
+writeCount label begin loopKind none
+writeCount label begin within none
+writeCount let none
+writeCount at begin do findState
+writeCount at begin do findDigits
+writeCount at begin do format
+writeCount at begin do write
+writeCount at begin return ok status
+
+findState is call
+findState in writeCount
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findDigits is call
+findDigits in writeCount
+findDigits invokes machine.offset
+findDigits argument address machine.Address state copy
+findDigits argument bytes Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+format is call
+format in writeCount
+format invokes numbers.formatDecimal
+format argument value Int64 value copy
+format argument target machine.Address digits copy
+format result length Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+write is call
+write in writeCount
+write invokes output.writeAll
+write argument handle machine.Address handle copy
+write argument text machine.Address digits copy
+write argument bytes Int64 length copy
+write result status Int32
+write ownedBy none
+write cleanedBy none
+write borrows none
+write catch none
+write suppresses none
+
+writeFrame is operation
+writeFrame purpose "Write one line of the call stack: `  in <operation>`, with `(<count> calls deep)` after a run of the same operation"
+writeFrame invariant none
+writeFrame typeParameter none
+writeFrame input handle machine.Address copied
+writeFrame input table machine.Address copied
+writeFrame input frame Int64 copied
+writeFrame input calls Int64 copied
+writeFrame output none
+writeFrame outputOwnedBy none
+writeFrame raises none
+writeFrame effect use machine.memory
+writeFrame effect use system.calls
+writeFrame uses memoryAccess
+writeFrame uses systemCalls
+writeFrame memoryHeap false
+writeFrame async false
+writeFrame maxRecursion none
+writeFrame label begin loopKind none
+writeFrame label begin within none
+writeFrame label writeRun loopKind none
+writeFrame label writeRun within none
+writeFrame label finish loopKind none
+writeFrame label finish within none
+writeFrame let inText String "  in " immutable
+writeFrame let eight Int64 8 immutable
+writeFrame let one Int64 1 immutable
+writeFrame let openText String " (" immutable
+writeFrame let closeText String " calls deep)" immutable
+writeFrame let lineEnd String "\n" immutable
+writeFrame at begin do writeIn
+writeFrame at begin do findOffset
+writeFrame at begin do findFrame
+writeFrame at begin do readName
+writeFrame at begin do findLength
+writeFrame at begin do readLength
+writeFrame at begin do writeName
+writeFrame at begin do runCheck
+writeFrame at begin branch if run goto writeRun else goto finish
+writeFrame at writeRun do writeOpen
+writeFrame at writeRun do writeCalls
+writeFrame at writeRun do writeClose
+writeFrame at writeRun goto finish
+writeFrame at finish do writeEnd
+writeFrame at finish return ok none
+
+writeIn is call
+writeIn in writeFrame
+writeIn invokes writeString
+writeIn argument handle machine.Address handle copy
+writeIn argument text String inText lend
+writeIn result inStatus Int32
+writeIn ownedBy none
+writeIn cleanedBy none
+writeIn borrows none
+writeIn catch none
+writeIn suppresses none
+
+findOffset is call
+findOffset in writeFrame
+findOffset invokes math.multiplyInt64
+findOffset argument left Int64 frame copy
+findOffset argument right Int64 frameBytes copy
+findOffset result offset Int64
+findOffset ownedBy none
+findOffset cleanedBy none
+findOffset borrows none
+findOffset catch none
+findOffset suppresses none
+
+findFrame is call
+findFrame in writeFrame
+findFrame invokes machine.offset
+findFrame argument address machine.Address table copy
+findFrame argument bytes Int64 offset copy
+findFrame result entry machine.Address
+findFrame ownedBy none
+findFrame cleanedBy none
+findFrame borrows none
+findFrame catch none
+findFrame suppresses none
+
+readName is call
+readName in writeFrame
+readName invokes machine.loadAddress
+readName argument address machine.Address entry copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+findLength is call
+findLength in writeFrame
+findLength invokes machine.offset
+findLength argument address machine.Address entry copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in writeFrame
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+writeName is call
+writeName in writeFrame
+writeName invokes output.writeAll
+writeName argument handle machine.Address handle copy
+writeName argument text machine.Address name copy
+writeName argument bytes Int64 length copy
+writeName result nameStatus Int32
+writeName ownedBy none
+writeName cleanedBy none
+writeName borrows none
+writeName catch none
+writeName suppresses none
+
+runCheck is call
+runCheck in writeFrame
+runCheck invokes compare.greaterThanInt64
+runCheck argument left Int64 calls copy
+runCheck argument right Int64 one copy
+runCheck result run Bool
+runCheck ownedBy none
+runCheck cleanedBy none
+runCheck borrows none
+runCheck catch none
+runCheck suppresses none
+
+writeOpen is call
+writeOpen in writeFrame
+writeOpen invokes writeString
+writeOpen argument handle machine.Address handle copy
+writeOpen argument text String openText lend
+writeOpen result openStatus Int32
+writeOpen ownedBy none
+writeOpen cleanedBy none
+writeOpen borrows none
+writeOpen catch none
+writeOpen suppresses none
+
+writeCalls is call
+writeCalls in writeFrame
+writeCalls invokes writeCount
+writeCalls argument handle machine.Address handle copy
+writeCalls argument value Int64 calls copy
+writeCalls result callsStatus Int32
+writeCalls ownedBy none
+writeCalls cleanedBy none
+writeCalls borrows none
+writeCalls catch none
+writeCalls suppresses none
+
+writeClose is call
+writeClose in writeFrame
+writeClose invokes writeString
+writeClose argument handle machine.Address handle copy
+writeClose argument text String closeText lend
+writeClose result closeStatus Int32
+writeClose ownedBy none
+writeClose cleanedBy none
+writeClose borrows none
+writeClose catch none
+writeClose suppresses none
+
+writeEnd is call
+writeEnd in writeFrame
+writeEnd invokes writeString
+writeEnd argument handle machine.Address handle copy
+writeEnd argument text String lineEnd lend
+writeEnd result endStatus Int32
+writeEnd ownedBy none
+writeEnd cleanedBy none
+writeEnd borrows none
+writeEnd catch none
+writeEnd suppresses none
+
+report is operation
+report purpose "Write a trap's report to standard error as `refined run` writes it: `trap: <message>`, then the call stack, innermost first, a run of the same operation as one line with its count, at most 12 lines and then how many more"
+report invariant writesReport "\"Writes `trap: ` and the message on a line of its own, then a line per run of the call stack's frames from the top, at most 12, then `  ... and <n> more` when there are more; gives the status of writing the message\""
+report typeParameter none
+report input text machine.Address copied
+report input bytes Int64 copied
+report output Int32
+report outputOwnedBy none
+report raises none
+report effect use machine.memory
+report effect use system.calls
+report uses memoryAccess
+report uses systemCalls
+report memoryHeap false
+report async false
+report maxRecursion none
+report label begin loopKind none
+report label begin within none
+report label eachRun loopKind while
+report label eachRun within none
+report label eachRun maxIterations frameCount
+report label startRun loopKind none
+report label startRun within eachRun
+report label eachSame loopKind while
+report label eachSame within eachRun
+report label eachSame maxIterations frameCount
+report label compareSame loopKind none
+report label compareSame within eachSame
+report label countSame loopKind none
+report label countSame within eachSame
+report label counted loopKind none
+report label counted within eachRun
+report label writeRun loopKind none
+report label writeRun within eachRun
+report label nextRun loopKind none
+report label nextRun within eachRun
+report label more loopKind none
+report label more within none
+report label writeMore loopKind none
+report label writeMore within none
+report label finish loopKind none
+report label finish within none
+report let at Int64 0 mutable
+report let same Int64 0 mutable
+report let calls Int64 0 mutable
+report let runs Int64 0 mutable
+report let two Int32 2 immutable
+report let lead String "trap: " immutable
+report let lineEnd String "\n" immutable
+report let one Int64 1 immutable
+report let zero Int64 0 immutable
+report let andText String "  ... and " immutable
+report let moreText String " more\n" immutable
+report at begin do findHandle
+report at begin do writeLead
+report at begin do writeMessage
+report at begin do writeEnd
+report at begin do findState
+report at begin do findCount
+report at begin do readCount
+report at begin do findCapacity
+report at begin do readCapacity
+report at begin do findTableSlot
+report at begin do readTable
+report at begin do shownFrames
+report at begin do topOf
+report at begin set at top
+report at begin goto eachRun
+report at eachRun do doneCheck
+report at eachRun branch if done goto more else goto startRun
+report at startRun set same at
+report at startRun set calls zero
+report at startRun goto eachSame
+report at eachSame do sameDone
+report at eachSame branch if below goto counted else goto compareSame
+report at compareSame do matchCheck
+report at compareSame branch if matches goto countSame else goto counted
+report at countSame do downOne
+report at countSame set same lower
+report at countSame do addCall
+report at countSame set calls moreCalls
+report at countSame goto eachSame
+report at counted do shownCheck
+report at counted branch if shown goto writeRun else goto nextRun
+report at writeRun do writeLine
+report at writeRun goto nextRun
+report at nextRun do addRun
+report at nextRun set runs moreRuns
+report at nextRun set at same
+report at nextRun goto eachRun
+report at more do hiddenCheck
+report at more branch if hidden goto writeMore else goto finish
+report at writeMore do countHidden
+report at writeMore do writeAnd
+report at writeMore do writeHidden
+report at writeMore do writeTail
+report at writeMore goto finish
+report at finish return ok messageStatus
+
+findHandle is call
+findHandle in report
+findHandle invokes output.standardHandle
+findHandle argument stream Int32 two copy
+findHandle result handle machine.Address
+findHandle ownedBy none
+findHandle cleanedBy none
+findHandle borrows none
+findHandle catch none
+findHandle suppresses none
+
+writeLead is call
+writeLead in report
+writeLead invokes writeString
+writeLead argument handle machine.Address handle copy
+writeLead argument text String lead lend
+writeLead result leadStatus Int32
+writeLead ownedBy none
+writeLead cleanedBy none
+writeLead borrows none
+writeLead catch none
+writeLead suppresses none
+
+writeMessage is call
+writeMessage in report
+writeMessage invokes output.writeAll
+writeMessage argument handle machine.Address handle copy
+writeMessage argument text machine.Address text copy
+writeMessage argument bytes Int64 bytes copy
+writeMessage result messageStatus Int32
+writeMessage ownedBy none
+writeMessage cleanedBy none
+writeMessage borrows none
+writeMessage catch none
+writeMessage suppresses none
+
+writeEnd is call
+writeEnd in report
+writeEnd invokes writeString
+writeEnd argument handle machine.Address handle copy
+writeEnd argument text String lineEnd lend
+writeEnd result endStatus Int32
+writeEnd ownedBy none
+writeEnd cleanedBy none
+writeEnd borrows none
+writeEnd catch none
+writeEnd suppresses none
+
+findState is call
+findState in report
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findCount is call
+findCount in report
+findCount invokes machine.offset
+findCount argument address machine.Address state copy
+findCount argument bytes Int64 countAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in report
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCapacity is call
+findCapacity in report
+findCapacity invokes machine.offset
+findCapacity argument address machine.Address state copy
+findCapacity argument bytes Int64 capacityAt copy
+findCapacity result capacitySlot machine.Address
+findCapacity ownedBy none
+findCapacity cleanedBy none
+findCapacity borrows none
+findCapacity catch none
+findCapacity suppresses none
+
+readCapacity is call
+readCapacity in report
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address capacitySlot copy
+readCapacity result held Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findTableSlot is call
+findTableSlot in report
+findTableSlot invokes machine.offset
+findTableSlot argument address machine.Address state copy
+findTableSlot argument bytes Int64 framesAt copy
+findTableSlot result tableSlot machine.Address
+findTableSlot ownedBy none
+findTableSlot cleanedBy none
+findTableSlot borrows none
+findTableSlot catch none
+findTableSlot suppresses none
+
+readTable is call
+readTable in report
+readTable invokes machine.loadAddress
+readTable argument address machine.Address tableSlot copy
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+shownFrames is call
+shownFrames in report
+shownFrames invokes lesser
+shownFrames argument left Int64 count copy
+shownFrames argument right Int64 held copy
+shownFrames result frameCount Int64
+shownFrames ownedBy none
+shownFrames cleanedBy none
+shownFrames borrows none
+shownFrames catch none
+shownFrames suppresses none
+
+topOf is call
+topOf in report
+topOf invokes math.subtractInt64
+topOf argument left Int64 frameCount copy
+topOf argument right Int64 one copy
+topOf result top Int64
+topOf ownedBy none
+topOf cleanedBy none
+topOf borrows none
+topOf catch none
+topOf suppresses none
+
+doneCheck is call
+doneCheck in report
+doneCheck invokes compare.lessThanInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 zero copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+sameDone is call
+sameDone in report
+sameDone invokes compare.lessThanInt64
+sameDone argument left Int64 same copy
+sameDone argument right Int64 zero copy
+sameDone result below Bool
+sameDone ownedBy none
+sameDone cleanedBy none
+sameDone borrows none
+sameDone catch none
+sameDone suppresses none
+
+matchCheck is call
+matchCheck in report
+matchCheck invokes sameFrame
+matchCheck argument table machine.Address table copy
+matchCheck argument left Int64 same copy
+matchCheck argument right Int64 at copy
+matchCheck result matches Bool
+matchCheck ownedBy none
+matchCheck cleanedBy none
+matchCheck borrows none
+matchCheck catch none
+matchCheck suppresses none
+
+downOne is call
+downOne in report
+downOne invokes math.subtractInt64
+downOne argument left Int64 same copy
+downOne argument right Int64 one copy
+downOne result lower Int64
+downOne ownedBy none
+downOne cleanedBy none
+downOne borrows none
+downOne catch none
+downOne suppresses none
+
+addCall is call
+addCall in report
+addCall invokes math.addInt64
+addCall argument left Int64 calls copy
+addCall argument right Int64 one copy
+addCall result moreCalls Int64
+addCall ownedBy none
+addCall cleanedBy none
+addCall borrows none
+addCall catch none
+addCall suppresses none
+
+shownCheck is call
+shownCheck in report
+shownCheck invokes compare.lessThanInt64
+shownCheck argument left Int64 runs copy
+shownCheck argument right Int64 shownRuns copy
+shownCheck result shown Bool
+shownCheck ownedBy none
+shownCheck cleanedBy none
+shownCheck borrows none
+shownCheck catch none
+shownCheck suppresses none
+
+writeLine is call
+writeLine in report
+writeLine invokes writeFrame
+writeLine argument handle machine.Address handle copy
+writeLine argument table machine.Address table copy
+writeLine argument frame Int64 at copy
+writeLine argument calls Int64 calls copy
+writeLine result none
+writeLine ownedBy none
+writeLine cleanedBy none
+writeLine borrows none
+writeLine catch none
+writeLine suppresses none
+
+addRun is call
+addRun in report
+addRun invokes math.addInt64
+addRun argument left Int64 runs copy
+addRun argument right Int64 one copy
+addRun result moreRuns Int64
+addRun ownedBy none
+addRun cleanedBy none
+addRun borrows none
+addRun catch none
+addRun suppresses none
+
+hiddenCheck is call
+hiddenCheck in report
+hiddenCheck invokes compare.greaterThanInt64
+hiddenCheck argument left Int64 runs copy
+hiddenCheck argument right Int64 shownRuns copy
+hiddenCheck result hidden Bool
+hiddenCheck ownedBy none
+hiddenCheck cleanedBy none
+hiddenCheck borrows none
+hiddenCheck catch none
+hiddenCheck suppresses none
+
+countHidden is call
+countHidden in report
+countHidden invokes math.subtractInt64
+countHidden argument left Int64 runs copy
+countHidden argument right Int64 shownRuns copy
+countHidden result hiddenRuns Int64
+countHidden ownedBy none
+countHidden cleanedBy none
+countHidden borrows none
+countHidden catch none
+countHidden suppresses none
+
+writeAnd is call
+writeAnd in report
+writeAnd invokes writeString
+writeAnd argument handle machine.Address handle copy
+writeAnd argument text String andText lend
+writeAnd result andStatus Int32
+writeAnd ownedBy none
+writeAnd cleanedBy none
+writeAnd borrows none
+writeAnd catch none
+writeAnd suppresses none
+
+writeHidden is call
+writeHidden in report
+writeHidden invokes writeCount
+writeHidden argument handle machine.Address handle copy
+writeHidden argument value Int64 hiddenRuns copy
+writeHidden result hiddenStatus Int32
+writeHidden ownedBy none
+writeHidden cleanedBy none
+writeHidden borrows none
+writeHidden catch none
+writeHidden suppresses none
+
+writeTail is call
+writeTail in report
+writeTail invokes writeString
+writeTail argument handle machine.Address handle copy
+writeTail argument text String moreText lend
+writeTail result tailStatus Int32
+writeTail ownedBy none
+writeTail cleanedBy none
+writeTail borrows none
+writeTail catch none
+writeTail suppresses none
+
+trap is operation
+trap purpose "Report a trap and end the process with exit code 70, as `refined run` does: refined_trap"
+trap invariant none
+trap typeParameter none
+trap input text machine.Address copied
+trap input bytes Int64 copied
+trap output none
+trap outputOwnedBy none
+trap raises none
+trap effect use machine.memory
+trap effect use system.calls
+trap uses memoryAccess
+trap uses systemCalls
+trap memoryHeap false
+trap async false
+trap maxRecursion none
+trap abi c "refined_trap"
+trap label begin loopKind none
+trap label begin within none
+trap let trapCode Int32 70 immutable
+trap at begin do writeReport
+trap at begin do stop
+trap at begin return ok none
+
+writeReport is call
+writeReport in trap
+writeReport invokes report
+writeReport argument text machine.Address text copy
+writeReport argument bytes Int64 bytes copy
+writeReport result status Int32
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch none
+writeReport suppresses none
+
+stop is call
+stop in trap
+stop invokes system.exitProcess
+stop argument code Int32 trapCode copy
+stop result none
+stop ownedBy none
+stop cleanedBy none
+stop borrows none
+stop catch none
+stop suppresses none

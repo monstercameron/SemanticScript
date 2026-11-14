@@ -1,0 +1,24 @@
+# The runtime of standalone executables, in SemanticScript (docs/runtime-in-semanticscript.md).
+#
+# `refined build --kind executable --runtime semanticscript` compiles these modules with the program and links
+# the two with no C library: the only code not written in SemanticScript is the operating system's (kernel32.dll
+# on Windows). Its operations are exported to C (`abi c`, D-123) under the names compiled code calls.
+#
+# The modules are generated from tools/*.dsl by tools/build.py.
+
+runtime is project
+runtime purpose "Implement the functions compiled programs call, on the machine and the operating system, with no C library"
+runtime target library
+runtime version "0.1.0"
+runtime language refined 1
+runtime standardLibrary 1
+runtime allows use machine.memory none
+runtime allows use system.calls none
+runtime requires none
+runtime includesModule memory
+runtime includesModule numbers
+runtime includesModule output
+runtime includesModule frames
+runtime includesModule regions
+runtime includesModule start
+runtime entry none

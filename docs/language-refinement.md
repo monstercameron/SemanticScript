@@ -2328,6 +2328,92 @@ a program:
   safety analyses stay in `refined check`, which every program passes
   first; porting the checker into the language comes after 1.0.
 
+## The runtime in SemanticScript, stage 1 (2026-11-14)
+
+`docs/runtime-in-semanticscript.md` moves the runtime of standalone
+executables out of C and links them with no C library. Stage 1 put the
+primitive layer in the compiler and wrote the first slice of the runtime
+(`semanticscript/runtime`), enough for `hello` and programs of integers,
+text, regions, recursion, and traps. Decided by delegation:
+
+- **D-120** The machine and the operating system are reached through two
+  standard modules, `machine` and `system`, whose every target performs an
+  effect with a new verb, `use`: `use machine.memory` and
+  `use system.calls`. Nothing else about authority changes: an operation
+  declares the effect and names a capability that grants it, the module
+  declares the capability, build.sem allows it, and someone approves it
+  (D-53), so a program without them is refused by `refined check` (R407,
+  R408) and one whose authority was not approved does not run or build. The
+  language still has no raw memory and no system calls; these are for the
+  runtime, and every project that reaches them says so in two places a
+  reviewer reads.
+- **D-121** `machine` has one type, `machine.Address` (a 64-bit address, a
+  plain value, `i8*` in the backend), and targets that are each a few
+  instructions: `zero`; `offset` by a number of bytes, `difference`,
+  `equal`, `lessThan` (unsigned), `toInt64`, `fromInt64`; `load<T>` and
+  `store<T>` for `Byte`, `Int32`, `Int64`, `UInt64`, `Float64`, and
+  `Address`, at any alignment; `copy` (with memmove's meaning: the ranges
+  may overlap), `fill`, and `compare` (-1, 0, or 1, by the first differing
+  byte as unsigned) of a range; `addressOfString` and `addressOfBytes`, and
+  `stringAt` and `bytesAt`, a view of a range as text or bytes (nothing is
+  copied and nothing checks the range stays valid); `stackAddress`, an
+  address in the calling operation's own frame, for the stack floor;
+  `state`, the first byte of one zeroed static block of 64 KiB
+  (`STATE_BYTES`), the runtime's process-wide state, laid out by the
+  modules that use it (each module's header says which bytes are its own);
+  `callWithAddress`, a call of `void f(void *)` through an address, for the
+  thunks the compiler hands the runtime when a task starts; and `runEntry`,
+  the exit code of the program linked with the runtime (D-124). A byte's
+  length is already `string.byteLength` and `bytes.length`, so `machine`
+  does not repeat them. Under `refined run` the targets work as compiled,
+  in the JIT's own memory, so the runtime's tests run there too.
+- **D-122** `system` has one typed target per operating-system function the
+  runtime calls, named after it with a lower-case first letter
+  (`system.writeFile` is `WriteFile`), with its C signature: a `DWORD` or
+  `BOOL` is `Int32`, a `HANDLE` or pointer `machine.Address`, a `SIZE_T`
+  `Int64`. The table is `SYSTEM_CALLS` in library.py: `GetStdHandle`,
+  `WriteFile`, `ReadFile`, `ExitProcess`, `VirtualAlloc`, `VirtualFree`,
+  `GetCommandLineW`, and `GetLastError` so far; each later stage adds the
+  functions it needs (the plan lists them). A call is a direct call of the
+  function, imported from kernel32.dll (`dllimport`) in an executable and
+  bound to the function already in the process under `refined run`.
+  Windows comes first; Linux will reach the kernel through raw system calls
+  behind the same kind of table.
+- **D-123** `<operation> abi c "<symbol>"` exports an operation to C under
+  that exact symbol, with the C calling convention. It is the only
+  optional structural row (at most one, after `maxRecursion`): only the
+  runtime's operations have it, and an `abi none` row on every other
+  operation would state nothing a reader needs; context rows are already
+  optional in the same way. The checker holds it to what crosses the
+  boundary as it is: the symbol is a C identifier and names one operation
+  in the program, inputs and output are `Int64`, `Int32`, `Byte`, `Bool`,
+  `Float64`, or `machine.Address`, and the operation raises nothing (C has
+  no error values), is not generic, and does not wait (R402, R403). Tests
+  have no `abi` row.
+- **D-124** `refined build --kind executable --runtime semanticscript`
+  compiles the runtime project to its own object, with every `abi c`
+  operation as a root, and links it with the program's object by
+  `-nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lgcc`: no CRT
+  start files and no C library; `libgcc` is the compiler's support library
+  (stack probes, `___chkstk_ms`), not libc. The executable's import table
+  names KERNEL32.dll alone (a test reads it). The runtime's
+  `refined_entry` sets the stack floor (248 MiB below its frame, the main
+  thread's stack being 256 MiB, as the C runtime does), runs the program's
+  entry through `machine.runEntry` (a call of `refined_program_main`, which
+  native.py defines next to the program as a call of its entry operation),
+  and ends the process with the exit code. A program that needs a runtime
+  function this runtime does not define yet (every callback the program's
+  IR declares is checked) is refused before linking, with R901 naming the
+  functions; the C runtime stays the default until stage 5. A program that
+  defines runtime functions (an `abi c` operation named like one of
+  codegen's callbacks) is the runtime, and is compiled as such: its
+  operations push no frames on the shadow call stack and count their own
+  recursion in place, since those calls would reach the runtime itself, and
+  each runtime function it calls is its own operation. Its object leaves
+  `refined_stack_here` to the program's. The runtime is written as DSL files
+  (`semanticscript/runtime/tools`) that stage0's generator expands into the
+  `.sem` modules, which are what `refined check` and `refined test` read.
+
 ## Data structures for self-hosting (2026-11-14)
 
 A compiler written in the language needs tokens and AST nodes (records and
@@ -2819,6 +2905,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-110 to D-113 | From writing stage0: `string.contains`, `<table>.find`, helpers in test files; error propagation stays explicit |
 | 2026-11-14 | D-119 | 1.0: the language compiles its own compiler to a fixed point |
 | 2026-11-14 | D-114 to D-118 | stage0 compiles itself: projects of several modules, `string.Position` as a declared record, maps through the host, standard errors passed on, operation references and scoped host targets in C (by delegation) |
+| 2026-11-14 | D-120 to D-124 | The runtime in SemanticScript, stage 1: the `use` effect for `machine.memory` and `system.calls`, the `machine` and `system` modules, `abi c` exports, executables linked with no C library (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

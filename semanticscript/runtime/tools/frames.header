@@ -1,0 +1,6 @@
+# The shadow call stack every compiled operation pushes and pops, the depth counters of
+# recursive operations and the stack floor, and traps: refined_trap writes `trap: <message>`
+# and the call stack to standard error exactly as `refined run` does, then ends the process
+# with exit code 70.
+#
+# This module is generated from tools/frames.dsl by tools/build.py.

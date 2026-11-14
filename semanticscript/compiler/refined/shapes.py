@@ -30,8 +30,9 @@ BUILTIN_TYPES = frozenset({
     "Float32", "Float64", "Bool", "Byte", "String", "Bytes", "Region", "ExitCode",
 })
 
-# `load` (D-33): bringing native code into the process (the foreign function interface)
-EFFECT_VERBS = frozenset({"read", "write", "readWrite", "listen", "connect", "spawn", "load"})
+# `load` (D-33): bringing native code into the process (the foreign function interface); `use` (D-120): reaching
+# the machine (`machine.memory`) or the operating system (`system.calls`) directly, which only the runtime does
+EFFECT_VERBS = frozenset({"read", "write", "readWrite", "listen", "connect", "spawn", "load", "use"})
 # D-47: a parameter's mode is a participle and its argument's mode the matching verb, pair by pair
 INPUT_MODES = frozenset({"copied", "borrowed", "borrowedMutable", "owned"})
 ARG_MODES = frozenset({"copy", "lend", "lendMutable", "give"})
@@ -198,6 +199,11 @@ _OP_HEADER = {
 _OP_SKELETON = [("typeParameter", "some"), ("input", "some"), ("output", "one"), ("outputOwnedBy", "one"),
                 ("raises", "one"), ("effect", "some"), ("uses", "some"), ("memoryHeap", "one"), ("async", "one"),
                 ("maxRecursion", "one"), ("label", "some"), ("let", "some"), ("at", "some")]
+# D-123: an operation may be exported to C under an exact symbol, `abi c "<symbol>"`. It is the one optional
+# structural row: only the runtime's operations have it, and `abi none` on every other operation would state
+# nothing a reader needs. It sits after `maxRecursion`, with the other facts about how the operation is called.
+_ABI = {"abi": [(kw("c"), "string")]}
+_OPERATION_SKELETON = _OP_SKELETON[:10] + [("abi", "optional")] + _OP_SKELETON[10:]
 
 _CALL_SHAPES = {
     "in": [("name",)],
@@ -275,7 +281,7 @@ KINDS: dict[str, dict] = {
         "skeleton": [("typeParameter", "some"), ("input", "some"), ("output", "one"), ("outputOwnedBy", "one"),
                      ("raises", "one"), ("effect", "some"), ("async", "one")],
     },
-    "operation": {"shapes": _OP_HEADER, "skeleton": _OP_SKELETON},
+    "operation": {"shapes": {**_OP_HEADER, **_ABI}, "skeleton": _OPERATION_SKELETON},
     "test": {"shapes": _OP_HEADER, "skeleton": _OP_SKELETON},
     "call": {"shapes": _CALL_SHAPES, "skeleton": _CALL_SKELETON},
     "task": {"shapes": _CALL_SHAPES, "skeleton": _CALL_SKELETON},
@@ -418,7 +424,7 @@ def grammar_markdown() -> str:
            "Generated from `semanticscript/compiler/refined/shapes.py`. Do not edit by hand.", "",
            "Every row is `<subject> <predicate> <payload>`. Context rows (" +
            ", ".join(f"`{c}`" for c in CONTEXT_ORDER) + ") come directly after the `is` row, in that order.", ""]
-    card_text = {"one": "exactly one", "some": "one or more", "any": "zero or more"}
+    card_text = {"one": "exactly one", "some": "one or more", "any": "zero or more", "optional": "at most one"}
     for kind, spec in KINDS.items():
         out += [f"## `{kind}`", "", "| Predicate | Rows | Shape |", "| --- | --- | --- |"]
         for pred, card in spec["skeleton"]:

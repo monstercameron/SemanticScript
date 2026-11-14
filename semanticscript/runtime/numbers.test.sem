@@ -1,0 +1,646 @@
+# Tests of the `numbers` module; generated from tools/numbers.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests write in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never reaches.
+expectDecimal is operation
+expectDecimal purpose "Format a number in the tests' scratch bytes and compare the text with what is expected"
+expectDecimal invariant none
+expectDecimal typeParameter none
+expectDecimal input value Int64 copied
+expectDecimal input expected String borrowed
+expectDecimal output none
+expectDecimal outputOwnedBy none
+expectDecimal raises none
+expectDecimal effect use machine.memory
+expectDecimal uses memoryAccess
+expectDecimal memoryHeap false
+expectDecimal async false
+expectDecimal maxRecursion none
+expectDecimal label begin loopKind none
+expectDecimal label begin within none
+expectDecimal let scratchAt Int64 61440 immutable
+expectDecimal at begin do findState
+expectDecimal at begin do findScratch
+expectDecimal at begin do format
+expectDecimal at begin do viewText
+expectDecimal at begin do expectText
+expectDecimal at begin return ok none
+
+findState is call
+findState in expectDecimal
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in expectDecimal
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+format is call
+format in expectDecimal
+format invokes formatDecimal
+format argument value Int64 value copy
+format argument target machine.Address scratch copy
+format result length Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+viewText is call
+viewText in expectDecimal
+viewText invokes machine.stringAt
+viewText argument address machine.Address scratch copy
+viewText argument bytes Int64 length copy
+viewText result text String
+viewText ownedBy none
+viewText cleanedBy none
+viewText borrows none
+viewText catch none
+viewText suppresses none
+
+expectText is call
+expectText in expectDecimal
+expectText invokes test.assertEqualString
+expectText argument expected String expected lend
+expectText argument actual String text lend
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+formatDecimalTest is test
+formatDecimalTest purpose "Numbers are written as `refined run` prints them"
+formatDecimalTest verifies formatDecimal writesDecimal
+formatDecimalTest typeParameter none
+formatDecimalTest input none
+formatDecimalTest output none
+formatDecimalTest outputOwnedBy none
+formatDecimalTest raises none
+formatDecimalTest effect use machine.memory
+formatDecimalTest uses memoryAccess
+formatDecimalTest memoryHeap false
+formatDecimalTest async false
+formatDecimalTest maxRecursion none
+formatDecimalTest label begin loopKind none
+formatDecimalTest label begin within none
+formatDecimalTest let zero Int64 0 immutable
+formatDecimalTest let zeroText String "0" immutable
+formatDecimalTest let seven Int64 7 immutable
+formatDecimalTest let sevenText String "7" immutable
+formatDecimalTest let large Int64 1234567890 immutable
+formatDecimalTest let largeText String "1234567890" immutable
+formatDecimalTest let minusTwelve Int64 -12 immutable
+formatDecimalTest let minusTwelveText String "-12" immutable
+formatDecimalTest let most Int64 9223372036854775807 immutable
+formatDecimalTest let mostText String "9223372036854775807" immutable
+formatDecimalTest let least Int64 -9223372036854775808 immutable
+formatDecimalTest let leastText String "-9223372036854775808" immutable
+formatDecimalTest let scratchAt Int64 61440 immutable
+formatDecimalTest let twenty Int64 20 immutable
+formatDecimalTest at begin do formatZero
+formatDecimalTest at begin do formatSmall
+formatDecimalTest at begin do formatLarge
+formatDecimalTest at begin do formatNegative
+formatDecimalTest at begin do formatMost
+formatDecimalTest at begin do formatLeast
+formatDecimalTest at begin do findState
+formatDecimalTest at begin do findScratch
+formatDecimalTest at begin do countLeast
+formatDecimalTest at begin do expectLength
+formatDecimalTest at begin return ok none
+
+formatZero is call
+formatZero in formatDecimalTest
+formatZero invokes expectDecimal
+formatZero argument value Int64 zero copy
+formatZero argument expected String zeroText lend
+formatZero result none
+formatZero ownedBy none
+formatZero cleanedBy none
+formatZero borrows none
+formatZero catch none
+formatZero suppresses none
+
+formatSmall is call
+formatSmall in formatDecimalTest
+formatSmall invokes expectDecimal
+formatSmall argument value Int64 seven copy
+formatSmall argument expected String sevenText lend
+formatSmall result none
+formatSmall ownedBy none
+formatSmall cleanedBy none
+formatSmall borrows none
+formatSmall catch none
+formatSmall suppresses none
+
+formatLarge is call
+formatLarge in formatDecimalTest
+formatLarge invokes expectDecimal
+formatLarge argument value Int64 large copy
+formatLarge argument expected String largeText lend
+formatLarge result none
+formatLarge ownedBy none
+formatLarge cleanedBy none
+formatLarge borrows none
+formatLarge catch none
+formatLarge suppresses none
+
+formatNegative is call
+formatNegative in formatDecimalTest
+formatNegative invokes expectDecimal
+formatNegative argument value Int64 minusTwelve copy
+formatNegative argument expected String minusTwelveText lend
+formatNegative result none
+formatNegative ownedBy none
+formatNegative cleanedBy none
+formatNegative borrows none
+formatNegative catch none
+formatNegative suppresses none
+
+formatMost is call
+formatMost in formatDecimalTest
+formatMost invokes expectDecimal
+formatMost argument value Int64 most copy
+formatMost argument expected String mostText lend
+formatMost result none
+formatMost ownedBy none
+formatMost cleanedBy none
+formatMost borrows none
+formatMost catch none
+formatMost suppresses none
+
+formatLeast is call
+formatLeast in formatDecimalTest
+formatLeast invokes expectDecimal
+formatLeast argument value Int64 least copy
+formatLeast argument expected String leastText lend
+formatLeast result none
+formatLeast ownedBy none
+formatLeast cleanedBy none
+formatLeast borrows none
+formatLeast catch none
+formatLeast suppresses none
+
+findState is call
+findState in formatDecimalTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in formatDecimalTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+countLeast is call
+countLeast in formatDecimalTest
+countLeast invokes formatDecimal
+countLeast argument value Int64 least copy
+countLeast argument target machine.Address scratch copy
+countLeast result leastLength Int64
+countLeast ownedBy none
+countLeast cleanedBy none
+countLeast borrows none
+countLeast catch none
+countLeast suppresses none
+
+expectLength is call
+expectLength in formatDecimalTest
+expectLength invokes test.assertEqualInt64
+expectLength argument expected Int64 twenty copy
+expectLength argument actual Int64 leastLength copy
+expectLength result none
+expectLength ownedBy none
+expectLength cleanedBy none
+expectLength borrows none
+expectLength catch none
+expectLength suppresses none
+
+expectRead is operation
+expectRead purpose "Read a text, the number going to the tests' scratch bytes, and compare the status and the number with what is expected"
+expectRead invariant none
+expectRead typeParameter none
+expectRead input text String borrowed
+expectRead input status Int64 copied
+expectRead input value Int64 copied
+expectRead output none
+expectRead outputOwnedBy none
+expectRead raises none
+expectRead effect use machine.memory
+expectRead uses memoryAccess
+expectRead memoryHeap false
+expectRead async false
+expectRead maxRecursion none
+expectRead label begin loopKind none
+expectRead label begin within none
+expectRead let scratchAt Int64 61440 immutable
+expectRead at begin do findState
+expectRead at begin do findScratch
+expectRead at begin do findText
+expectRead at begin do measure
+expectRead at begin do parse
+expectRead at begin do widenStatus
+expectRead at begin do expectStatus
+expectRead at begin do readValue
+expectRead at begin do expectValue
+expectRead at begin return ok none
+
+findState is call
+findState in expectRead
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in expectRead
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in expectRead
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+measure is call
+measure in expectRead
+measure invokes string.byteLength
+measure argument text String text lend
+measure result bytes Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+parse is call
+parse in expectRead
+parse invokes parseDecimal
+parse argument text machine.Address textAt copy
+parse argument bytes Int64 bytes copy
+parse argument result machine.Address scratch copy
+parse result got Int32
+parse ownedBy none
+parse cleanedBy none
+parse borrows none
+parse catch none
+parse suppresses none
+
+widenStatus is call
+widenStatus in expectRead
+widenStatus invokes convert.int32ToInt64
+widenStatus argument value Int32 got copy
+widenStatus result gotStatus Int64
+widenStatus ownedBy none
+widenStatus cleanedBy none
+widenStatus borrows none
+widenStatus catch none
+widenStatus suppresses none
+
+expectStatus is call
+expectStatus in expectRead
+expectStatus invokes test.assertEqualInt64
+expectStatus argument expected Int64 status copy
+expectStatus argument actual Int64 gotStatus copy
+expectStatus result none
+expectStatus ownedBy none
+expectStatus cleanedBy none
+expectStatus borrows none
+expectStatus catch none
+expectStatus suppresses none
+
+readValue is call
+readValue in expectRead
+readValue invokes machine.loadInt64
+readValue argument address machine.Address scratch copy
+readValue result gotValue Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+expectValue is call
+expectValue in expectRead
+expectValue invokes test.assertEqualInt64
+expectValue argument expected Int64 value copy
+expectValue argument actual Int64 gotValue copy
+expectValue result none
+expectValue ownedBy none
+expectValue cleanedBy none
+expectValue borrows none
+expectValue catch none
+expectValue suppresses none
+
+parseDecimalTest is test
+parseDecimalTest purpose "Decimal text is read as `refined run` reads it"
+parseDecimalTest verifies parseDecimal readsDecimal
+parseDecimalTest typeParameter none
+parseDecimalTest input none
+parseDecimalTest output none
+parseDecimalTest outputOwnedBy none
+parseDecimalTest raises none
+parseDecimalTest effect use machine.memory
+parseDecimalTest uses memoryAccess
+parseDecimalTest memoryHeap false
+parseDecimalTest async false
+parseDecimalTest maxRecursion none
+parseDecimalTest label begin loopKind none
+parseDecimalTest label begin within none
+parseDecimalTest let zeroText String "0" immutable
+parseDecimalTest let parsedStatus Int64 0 immutable
+parseDecimalTest let zero Int64 0 immutable
+parseDecimalTest let negativeText String "-42" immutable
+parseDecimalTest let minusFortyTwo Int64 -42 immutable
+parseDecimalTest let mostText String "9223372036854775807" immutable
+parseDecimalTest let most Int64 9223372036854775807 immutable
+parseDecimalTest let leastText String "-9223372036854775808" immutable
+parseDecimalTest let least Int64 -9223372036854775808 immutable
+parseDecimalTest let pastText String "9223372036854775808" immutable
+parseDecimalTest let rangeStatus Int64 2 immutable
+parseDecimalTest let pastLeastText String "-9223372036854775809" immutable
+parseDecimalTest let emptyText String "" immutable
+parseDecimalTest let notNumberStatus Int64 1 immutable
+parseDecimalTest let signText String "-" immutable
+parseDecimalTest let plusText String "+1" immutable
+parseDecimalTest let spaceText String " 1" immutable
+parseDecimalTest let longWordText String "99999999999999999999x" immutable
+parseDecimalTest let scratchAt Int64 61440 immutable
+parseDecimalTest let nineteen Int64 19 immutable
+parseDecimalTest at begin do checkZero
+parseDecimalTest at begin do checkNegative
+parseDecimalTest at begin do checkMost
+parseDecimalTest at begin do checkLeast
+parseDecimalTest at begin do checkPast
+parseDecimalTest at begin do checkPastLeast
+parseDecimalTest at begin do checkEmpty
+parseDecimalTest at begin do checkSign
+parseDecimalTest at begin do checkPlus
+parseDecimalTest at begin do checkSpace
+parseDecimalTest at begin do checkLongWord
+parseDecimalTest at begin do findState
+parseDecimalTest at begin do findScratch
+parseDecimalTest at begin do findText
+parseDecimalTest at begin do parseDirect
+parseDecimalTest at begin do widenGot
+parseDecimalTest at begin do expectDirect
+parseDecimalTest at begin return ok none
+
+checkZero is call
+checkZero in parseDecimalTest
+checkZero invokes expectRead
+checkZero argument text String zeroText lend
+checkZero argument status Int64 parsedStatus copy
+checkZero argument value Int64 zero copy
+checkZero result none
+checkZero ownedBy none
+checkZero cleanedBy none
+checkZero borrows none
+checkZero catch none
+checkZero suppresses none
+
+checkNegative is call
+checkNegative in parseDecimalTest
+checkNegative invokes expectRead
+checkNegative argument text String negativeText lend
+checkNegative argument status Int64 parsedStatus copy
+checkNegative argument value Int64 minusFortyTwo copy
+checkNegative result none
+checkNegative ownedBy none
+checkNegative cleanedBy none
+checkNegative borrows none
+checkNegative catch none
+checkNegative suppresses none
+
+checkMost is call
+checkMost in parseDecimalTest
+checkMost invokes expectRead
+checkMost argument text String mostText lend
+checkMost argument status Int64 parsedStatus copy
+checkMost argument value Int64 most copy
+checkMost result none
+checkMost ownedBy none
+checkMost cleanedBy none
+checkMost borrows none
+checkMost catch none
+checkMost suppresses none
+
+checkLeast is call
+checkLeast in parseDecimalTest
+checkLeast invokes expectRead
+checkLeast argument text String leastText lend
+checkLeast argument status Int64 parsedStatus copy
+checkLeast argument value Int64 least copy
+checkLeast result none
+checkLeast ownedBy none
+checkLeast cleanedBy none
+checkLeast borrows none
+checkLeast catch none
+checkLeast suppresses none
+
+checkPast is call
+checkPast in parseDecimalTest
+checkPast invokes expectRead
+checkPast argument text String pastText lend
+checkPast argument status Int64 rangeStatus copy
+checkPast argument value Int64 zero copy
+checkPast result none
+checkPast ownedBy none
+checkPast cleanedBy none
+checkPast borrows none
+checkPast catch none
+checkPast suppresses none
+
+checkPastLeast is call
+checkPastLeast in parseDecimalTest
+checkPastLeast invokes expectRead
+checkPastLeast argument text String pastLeastText lend
+checkPastLeast argument status Int64 rangeStatus copy
+checkPastLeast argument value Int64 zero copy
+checkPastLeast result none
+checkPastLeast ownedBy none
+checkPastLeast cleanedBy none
+checkPastLeast borrows none
+checkPastLeast catch none
+checkPastLeast suppresses none
+
+checkEmpty is call
+checkEmpty in parseDecimalTest
+checkEmpty invokes expectRead
+checkEmpty argument text String emptyText lend
+checkEmpty argument status Int64 notNumberStatus copy
+checkEmpty argument value Int64 zero copy
+checkEmpty result none
+checkEmpty ownedBy none
+checkEmpty cleanedBy none
+checkEmpty borrows none
+checkEmpty catch none
+checkEmpty suppresses none
+
+checkSign is call
+checkSign in parseDecimalTest
+checkSign invokes expectRead
+checkSign argument text String signText lend
+checkSign argument status Int64 notNumberStatus copy
+checkSign argument value Int64 zero copy
+checkSign result none
+checkSign ownedBy none
+checkSign cleanedBy none
+checkSign borrows none
+checkSign catch none
+checkSign suppresses none
+
+checkPlus is call
+checkPlus in parseDecimalTest
+checkPlus invokes expectRead
+checkPlus argument text String plusText lend
+checkPlus argument status Int64 notNumberStatus copy
+checkPlus argument value Int64 zero copy
+checkPlus result none
+checkPlus ownedBy none
+checkPlus cleanedBy none
+checkPlus borrows none
+checkPlus catch none
+checkPlus suppresses none
+
+checkSpace is call
+checkSpace in parseDecimalTest
+checkSpace invokes expectRead
+checkSpace argument text String spaceText lend
+checkSpace argument status Int64 notNumberStatus copy
+checkSpace argument value Int64 zero copy
+checkSpace result none
+checkSpace ownedBy none
+checkSpace cleanedBy none
+checkSpace borrows none
+checkSpace catch none
+checkSpace suppresses none
+
+checkLongWord is call
+checkLongWord in parseDecimalTest
+checkLongWord invokes expectRead
+checkLongWord argument text String longWordText lend
+checkLongWord argument status Int64 notNumberStatus copy
+checkLongWord argument value Int64 zero copy
+checkLongWord result none
+checkLongWord ownedBy none
+checkLongWord cleanedBy none
+checkLongWord borrows none
+checkLongWord catch none
+checkLongWord suppresses none
+
+findState is call
+findState in parseDecimalTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in parseDecimalTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in parseDecimalTest
+findText invokes machine.addressOfString
+findText argument text String mostText lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+parseDirect is call
+parseDirect in parseDecimalTest
+parseDirect invokes parseDecimal
+parseDirect argument text machine.Address textAt copy
+parseDirect argument bytes Int64 nineteen copy
+parseDirect argument result machine.Address scratch copy
+parseDirect result got Int32
+parseDirect ownedBy none
+parseDirect cleanedBy none
+parseDirect borrows none
+parseDirect catch none
+parseDirect suppresses none
+
+widenGot is call
+widenGot in parseDecimalTest
+widenGot invokes convert.int32ToInt64
+widenGot argument value Int32 got copy
+widenGot result gotStatus Int64
+widenGot ownedBy none
+widenGot cleanedBy none
+widenGot borrows none
+widenGot catch none
+widenGot suppresses none
+
+expectDirect is call
+expectDirect in parseDecimalTest
+expectDirect invokes test.assertEqualInt64
+expectDirect argument expected Int64 parsedStatus copy
+expectDirect argument actual Int64 gotStatus copy
+expectDirect result none
+expectDirect ownedBy none
+expectDirect cleanedBy none
+expectDirect borrows none
+expectDirect catch none
+expectDirect suppresses none

@@ -1,0 +1,842 @@
+# Tests of the `frames` module; generated from tools/frames.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+pushFrameTest is test
+pushFrameTest purpose "Pushing a frame puts its name on top of the call stack; popping takes it off"
+pushFrameTest verifies pushFrame keepsName
+pushFrameTest verifies popFrame dropsTop
+pushFrameTest typeParameter none
+pushFrameTest input none
+pushFrameTest output none
+pushFrameTest outputOwnedBy none
+pushFrameTest raises none
+pushFrameTest effect use machine.memory
+pushFrameTest effect use system.calls
+pushFrameTest uses memoryAccess
+pushFrameTest uses systemCalls
+pushFrameTest memoryHeap false
+pushFrameTest async false
+pushFrameTest maxRecursion none
+pushFrameTest label begin loopKind none
+pushFrameTest label begin within none
+pushFrameTest let name String "demo.main (demo.sem:9)" immutable
+pushFrameTest let one Int64 1 immutable
+pushFrameTest let zero Int64 0 immutable
+pushFrameTest at begin do findState
+pushFrameTest at begin do findCount
+pushFrameTest at begin do readBefore
+pushFrameTest at begin do findName
+pushFrameTest at begin do nameLength
+pushFrameTest at begin do push
+pushFrameTest at begin do readAfter
+pushFrameTest at begin do expectedAfter
+pushFrameTest at begin do expectPushed
+pushFrameTest at begin do findTableSlot
+pushFrameTest at begin do readTable
+pushFrameTest at begin do findOffset
+pushFrameTest at begin do findFrame
+pushFrameTest at begin do readName
+pushFrameTest at begin do sameName
+pushFrameTest at begin do expectName
+pushFrameTest at begin do pop
+pushFrameTest at begin do readPopped
+pushFrameTest at begin do expectPopped
+pushFrameTest at begin do popEmpty
+pushFrameTest at begin do readEmpty
+pushFrameTest at begin do expectEmpty
+pushFrameTest at begin return ok none
+
+findState is call
+findState in pushFrameTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findCount is call
+findCount in pushFrameTest
+findCount invokes machine.offset
+findCount argument address machine.Address state copy
+findCount argument bytes Int64 countAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readBefore is call
+readBefore in pushFrameTest
+readBefore invokes machine.loadInt64
+readBefore argument address machine.Address countSlot copy
+readBefore result before Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+findName is call
+findName in pushFrameTest
+findName invokes machine.addressOfString
+findName argument text String name lend
+findName result nameAt machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+nameLength is call
+nameLength in pushFrameTest
+nameLength invokes string.byteLength
+nameLength argument text String name lend
+nameLength result nameBytes Int64
+nameLength ownedBy none
+nameLength cleanedBy none
+nameLength borrows none
+nameLength catch none
+nameLength suppresses none
+
+push is call
+push in pushFrameTest
+push invokes pushFrame
+push argument name machine.Address nameAt copy
+push argument bytes Int64 nameBytes copy
+push result none
+push ownedBy none
+push cleanedBy none
+push borrows none
+push catch none
+push suppresses none
+
+readAfter is call
+readAfter in pushFrameTest
+readAfter invokes machine.loadInt64
+readAfter argument address machine.Address countSlot copy
+readAfter result after Int64
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+expectedAfter is call
+expectedAfter in pushFrameTest
+expectedAfter invokes math.addInt64
+expectedAfter argument left Int64 before copy
+expectedAfter argument right Int64 one copy
+expectedAfter result wanted Int64
+expectedAfter ownedBy none
+expectedAfter cleanedBy none
+expectedAfter borrows none
+expectedAfter catch none
+expectedAfter suppresses none
+
+expectPushed is call
+expectPushed in pushFrameTest
+expectPushed invokes test.assertEqualInt64
+expectPushed argument expected Int64 wanted copy
+expectPushed argument actual Int64 after copy
+expectPushed result none
+expectPushed ownedBy none
+expectPushed cleanedBy none
+expectPushed borrows none
+expectPushed catch none
+expectPushed suppresses none
+
+findTableSlot is call
+findTableSlot in pushFrameTest
+findTableSlot invokes machine.offset
+findTableSlot argument address machine.Address state copy
+findTableSlot argument bytes Int64 framesAt copy
+findTableSlot result tableSlot machine.Address
+findTableSlot ownedBy none
+findTableSlot cleanedBy none
+findTableSlot borrows none
+findTableSlot catch none
+findTableSlot suppresses none
+
+readTable is call
+readTable in pushFrameTest
+readTable invokes machine.loadAddress
+readTable argument address machine.Address tableSlot copy
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+findOffset is call
+findOffset in pushFrameTest
+findOffset invokes math.multiplyInt64
+findOffset argument left Int64 before copy
+findOffset argument right Int64 frameBytes copy
+findOffset result offset Int64
+findOffset ownedBy none
+findOffset cleanedBy none
+findOffset borrows none
+findOffset catch none
+findOffset suppresses none
+
+findFrame is call
+findFrame in pushFrameTest
+findFrame invokes machine.offset
+findFrame argument address machine.Address table copy
+findFrame argument bytes Int64 offset copy
+findFrame result frame machine.Address
+findFrame ownedBy none
+findFrame cleanedBy none
+findFrame borrows none
+findFrame catch none
+findFrame suppresses none
+
+readName is call
+readName in pushFrameTest
+readName invokes machine.loadAddress
+readName argument address machine.Address frame copy
+readName result kept machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+sameName is call
+sameName in pushFrameTest
+sameName invokes machine.equal
+sameName argument left machine.Address kept copy
+sameName argument right machine.Address nameAt copy
+sameName result sameAddress Bool
+sameName ownedBy none
+sameName cleanedBy none
+sameName borrows none
+sameName catch none
+sameName suppresses none
+
+expectName is call
+expectName in pushFrameTest
+expectName invokes test.assertTrue
+expectName argument value Bool sameAddress copy
+expectName result none
+expectName ownedBy none
+expectName cleanedBy none
+expectName borrows none
+expectName catch none
+expectName suppresses none
+
+pop is call
+pop in pushFrameTest
+pop invokes popFrame
+pop argument none
+pop result none
+pop ownedBy none
+pop cleanedBy none
+pop borrows none
+pop catch none
+pop suppresses none
+
+readPopped is call
+readPopped in pushFrameTest
+readPopped invokes machine.loadInt64
+readPopped argument address machine.Address countSlot copy
+readPopped result popped Int64
+readPopped ownedBy none
+readPopped cleanedBy none
+readPopped borrows none
+readPopped catch none
+readPopped suppresses none
+
+expectPopped is call
+expectPopped in pushFrameTest
+expectPopped invokes test.assertEqualInt64
+expectPopped argument expected Int64 before copy
+expectPopped argument actual Int64 popped copy
+expectPopped result none
+expectPopped ownedBy none
+expectPopped cleanedBy none
+expectPopped borrows none
+expectPopped catch none
+expectPopped suppresses none
+
+popEmpty is call
+popEmpty in pushFrameTest
+popEmpty invokes popFrame
+popEmpty argument none
+popEmpty result none
+popEmpty ownedBy none
+popEmpty cleanedBy none
+popEmpty borrows none
+popEmpty catch none
+popEmpty suppresses none
+
+readEmpty is call
+readEmpty in pushFrameTest
+readEmpty invokes machine.loadInt64
+readEmpty argument address machine.Address countSlot copy
+readEmpty result empty Int64
+readEmpty ownedBy none
+readEmpty cleanedBy none
+readEmpty borrows none
+readEmpty catch none
+readEmpty suppresses none
+
+expectEmpty is call
+expectEmpty in pushFrameTest
+expectEmpty invokes test.assertEqualInt64
+expectEmpty argument expected Int64 zero copy
+expectEmpty argument actual Int64 empty copy
+expectEmpty result none
+expectEmpty ownedBy none
+expectEmpty cleanedBy none
+expectEmpty borrows none
+expectEmpty catch none
+expectEmpty suppresses none
+
+recursionTest is test
+recursionTest purpose "Each call counts one deeper until the bound, a stack floor stops a frame below it, and leaving counts back"
+recursionTest verifies enterRecursion countsDepth
+recursionTest verifies leaveRecursion countsBack
+recursionTest typeParameter none
+recursionTest input none
+recursionTest output none
+recursionTest outputOwnedBy none
+recursionTest raises none
+recursionTest effect use machine.memory
+recursionTest effect use system.calls
+recursionTest uses memoryAccess
+recursionTest uses systemCalls
+recursionTest memoryHeap false
+recursionTest async false
+recursionTest maxRecursion none
+recursionTest label begin loopKind none
+recursionTest label begin within none
+recursionTest let operation Int64 7 immutable
+recursionTest let limit Int64 2 immutable
+recursionTest let here Int64 1000 immutable
+recursionTest let zero Int64 0 immutable
+recursionTest let one Int64 1 immutable
+recursionTest let floor Int64 2000 immutable
+recursionTest let two Int64 2 immutable
+recursionTest let fiftySix Int64 56 immutable
+recursionTest at begin do enterFirst
+recursionTest at begin do firstWide
+recursionTest at begin do expectFirst
+recursionTest at begin do enterSecond
+recursionTest at begin do secondWide
+recursionTest at begin do expectSecond
+recursionTest at begin do enterThird
+recursionTest at begin do thirdWide
+recursionTest at begin do expectThird
+recursionTest at begin do leaveThird
+recursionTest at begin do leaveSecond
+recursionTest at begin do findState
+recursionTest at begin do findFloor
+recursionTest at begin do setFloor
+recursionTest at begin do enterBelow
+recursionTest at begin do belowWide
+recursionTest at begin do expectBelow
+recursionTest at begin do clearFloor
+recursionTest at begin do leaveBelow
+recursionTest at begin do leaveFirst
+recursionTest at begin do findDepths
+recursionTest at begin do findDepth
+recursionTest at begin do readDepth
+recursionTest at begin do expectBack
+recursionTest at begin return ok none
+
+enterFirst is call
+enterFirst in recursionTest
+enterFirst invokes enterRecursion
+enterFirst argument operation Int64 operation copy
+enterFirst argument limit Int64 limit copy
+enterFirst argument here Int64 here copy
+enterFirst result first Int32
+enterFirst ownedBy none
+enterFirst cleanedBy none
+enterFirst borrows none
+enterFirst catch none
+enterFirst suppresses none
+
+firstWide is call
+firstWide in recursionTest
+firstWide invokes convert.int32ToInt64
+firstWide argument value Int32 first copy
+firstWide result firstValue Int64
+firstWide ownedBy none
+firstWide cleanedBy none
+firstWide borrows none
+firstWide catch none
+firstWide suppresses none
+
+expectFirst is call
+expectFirst in recursionTest
+expectFirst invokes test.assertEqualInt64
+expectFirst argument expected Int64 zero copy
+expectFirst argument actual Int64 firstValue copy
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+enterSecond is call
+enterSecond in recursionTest
+enterSecond invokes enterRecursion
+enterSecond argument operation Int64 operation copy
+enterSecond argument limit Int64 limit copy
+enterSecond argument here Int64 here copy
+enterSecond result second Int32
+enterSecond ownedBy none
+enterSecond cleanedBy none
+enterSecond borrows none
+enterSecond catch none
+enterSecond suppresses none
+
+secondWide is call
+secondWide in recursionTest
+secondWide invokes convert.int32ToInt64
+secondWide argument value Int32 second copy
+secondWide result secondValue Int64
+secondWide ownedBy none
+secondWide cleanedBy none
+secondWide borrows none
+secondWide catch none
+secondWide suppresses none
+
+expectSecond is call
+expectSecond in recursionTest
+expectSecond invokes test.assertEqualInt64
+expectSecond argument expected Int64 zero copy
+expectSecond argument actual Int64 secondValue copy
+expectSecond result none
+expectSecond ownedBy none
+expectSecond cleanedBy none
+expectSecond borrows none
+expectSecond catch none
+expectSecond suppresses none
+
+enterThird is call
+enterThird in recursionTest
+enterThird invokes enterRecursion
+enterThird argument operation Int64 operation copy
+enterThird argument limit Int64 limit copy
+enterThird argument here Int64 here copy
+enterThird result third Int32
+enterThird ownedBy none
+enterThird cleanedBy none
+enterThird borrows none
+enterThird catch none
+enterThird suppresses none
+
+thirdWide is call
+thirdWide in recursionTest
+thirdWide invokes convert.int32ToInt64
+thirdWide argument value Int32 third copy
+thirdWide result thirdValue Int64
+thirdWide ownedBy none
+thirdWide cleanedBy none
+thirdWide borrows none
+thirdWide catch none
+thirdWide suppresses none
+
+expectThird is call
+expectThird in recursionTest
+expectThird invokes test.assertEqualInt64
+expectThird argument expected Int64 one copy
+expectThird argument actual Int64 thirdValue copy
+expectThird result none
+expectThird ownedBy none
+expectThird cleanedBy none
+expectThird borrows none
+expectThird catch none
+expectThird suppresses none
+
+leaveThird is call
+leaveThird in recursionTest
+leaveThird invokes leaveRecursion
+leaveThird argument operation Int64 operation copy
+leaveThird result none
+leaveThird ownedBy none
+leaveThird cleanedBy none
+leaveThird borrows none
+leaveThird catch none
+leaveThird suppresses none
+
+leaveSecond is call
+leaveSecond in recursionTest
+leaveSecond invokes leaveRecursion
+leaveSecond argument operation Int64 operation copy
+leaveSecond result none
+leaveSecond ownedBy none
+leaveSecond cleanedBy none
+leaveSecond borrows none
+leaveSecond catch none
+leaveSecond suppresses none
+
+findState is call
+findState in recursionTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findFloor is call
+findFloor in recursionTest
+findFloor invokes machine.offset
+findFloor argument address machine.Address state copy
+findFloor argument bytes Int64 floorAt copy
+findFloor result floorSlot machine.Address
+findFloor ownedBy none
+findFloor cleanedBy none
+findFloor borrows none
+findFloor catch none
+findFloor suppresses none
+
+setFloor is call
+setFloor in recursionTest
+setFloor invokes machine.storeInt64
+setFloor argument address machine.Address floorSlot copy
+setFloor argument value Int64 floor copy
+setFloor result none
+setFloor ownedBy none
+setFloor cleanedBy none
+setFloor borrows none
+setFloor catch none
+setFloor suppresses none
+
+enterBelow is call
+enterBelow in recursionTest
+enterBelow invokes enterRecursion
+enterBelow argument operation Int64 operation copy
+enterBelow argument limit Int64 limit copy
+enterBelow argument here Int64 here copy
+enterBelow result belowFloor Int32
+enterBelow ownedBy none
+enterBelow cleanedBy none
+enterBelow borrows none
+enterBelow catch none
+enterBelow suppresses none
+
+belowWide is call
+belowWide in recursionTest
+belowWide invokes convert.int32ToInt64
+belowWide argument value Int32 belowFloor copy
+belowWide result belowValue Int64
+belowWide ownedBy none
+belowWide cleanedBy none
+belowWide borrows none
+belowWide catch none
+belowWide suppresses none
+
+expectBelow is call
+expectBelow in recursionTest
+expectBelow invokes test.assertEqualInt64
+expectBelow argument expected Int64 two copy
+expectBelow argument actual Int64 belowValue copy
+expectBelow result none
+expectBelow ownedBy none
+expectBelow cleanedBy none
+expectBelow borrows none
+expectBelow catch none
+expectBelow suppresses none
+
+clearFloor is call
+clearFloor in recursionTest
+clearFloor invokes machine.storeInt64
+clearFloor argument address machine.Address floorSlot copy
+clearFloor argument value Int64 zero copy
+clearFloor result none
+clearFloor ownedBy none
+clearFloor cleanedBy none
+clearFloor borrows none
+clearFloor catch none
+clearFloor suppresses none
+
+leaveBelow is call
+leaveBelow in recursionTest
+leaveBelow invokes leaveRecursion
+leaveBelow argument operation Int64 operation copy
+leaveBelow result none
+leaveBelow ownedBy none
+leaveBelow cleanedBy none
+leaveBelow borrows none
+leaveBelow catch none
+leaveBelow suppresses none
+
+leaveFirst is call
+leaveFirst in recursionTest
+leaveFirst invokes leaveRecursion
+leaveFirst argument operation Int64 operation copy
+leaveFirst result none
+leaveFirst ownedBy none
+leaveFirst cleanedBy none
+leaveFirst borrows none
+leaveFirst catch none
+leaveFirst suppresses none
+
+findDepths is call
+findDepths in recursionTest
+findDepths invokes machine.offset
+findDepths argument address machine.Address state copy
+findDepths argument bytes Int64 depthsAt copy
+findDepths result depths machine.Address
+findDepths ownedBy none
+findDepths cleanedBy none
+findDepths borrows none
+findDepths catch none
+findDepths suppresses none
+
+findDepth is call
+findDepth in recursionTest
+findDepth invokes machine.offset
+findDepth argument address machine.Address depths copy
+findDepth argument bytes Int64 fiftySix copy
+findDepth result depthAt machine.Address
+findDepth ownedBy none
+findDepth cleanedBy none
+findDepth borrows none
+findDepth catch none
+findDepth suppresses none
+
+readDepth is call
+readDepth in recursionTest
+readDepth invokes machine.loadInt64
+readDepth argument address machine.Address depthAt copy
+readDepth result depth Int64
+readDepth ownedBy none
+readDepth cleanedBy none
+readDepth borrows none
+readDepth catch none
+readDepth suppresses none
+
+expectBack is call
+expectBack in recursionTest
+expectBack invokes test.assertEqualInt64
+expectBack argument expected Int64 zero copy
+expectBack argument actual Int64 depth copy
+expectBack result none
+expectBack ownedBy none
+expectBack cleanedBy none
+expectBack borrows none
+expectBack catch none
+expectBack suppresses none
+
+reportTest is test
+reportTest purpose "Writing a report succeeds and leaves the call stack as it was"
+reportTest verifies report writesReport
+reportTest typeParameter none
+reportTest input none
+reportTest output none
+reportTest outputOwnedBy none
+reportTest raises none
+reportTest effect use machine.memory
+reportTest effect use system.calls
+reportTest uses memoryAccess
+reportTest uses systemCalls
+reportTest memoryHeap false
+reportTest async false
+reportTest maxRecursion none
+reportTest label begin loopKind none
+reportTest label begin within none
+reportTest let message String "a test of the trap report (not a trap)" immutable
+reportTest let name String "demo.main (demo.sem:9)" immutable
+reportTest let zero Int64 0 immutable
+reportTest let two Int64 2 immutable
+reportTest at begin do findName
+reportTest at begin do nameLength
+reportTest at begin do pushOuter
+reportTest at begin do pushInner
+reportTest at begin do findMessage
+reportTest at begin do messageLength
+reportTest at begin do write
+reportTest at begin do statusWide
+reportTest at begin do expectWritten
+reportTest at begin do findState
+reportTest at begin do findCount
+reportTest at begin do readCount
+reportTest at begin do expectKept
+reportTest at begin do popInner
+reportTest at begin do popOuter
+reportTest at begin return ok none
+
+findName is call
+findName in reportTest
+findName invokes machine.addressOfString
+findName argument text String name lend
+findName result nameAt machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+nameLength is call
+nameLength in reportTest
+nameLength invokes string.byteLength
+nameLength argument text String name lend
+nameLength result nameBytes Int64
+nameLength ownedBy none
+nameLength cleanedBy none
+nameLength borrows none
+nameLength catch none
+nameLength suppresses none
+
+pushOuter is call
+pushOuter in reportTest
+pushOuter invokes pushFrame
+pushOuter argument name machine.Address nameAt copy
+pushOuter argument bytes Int64 nameBytes copy
+pushOuter result none
+pushOuter ownedBy none
+pushOuter cleanedBy none
+pushOuter borrows none
+pushOuter catch none
+pushOuter suppresses none
+
+pushInner is call
+pushInner in reportTest
+pushInner invokes pushFrame
+pushInner argument name machine.Address nameAt copy
+pushInner argument bytes Int64 nameBytes copy
+pushInner result none
+pushInner ownedBy none
+pushInner cleanedBy none
+pushInner borrows none
+pushInner catch none
+pushInner suppresses none
+
+findMessage is call
+findMessage in reportTest
+findMessage invokes machine.addressOfString
+findMessage argument text String message lend
+findMessage result messageAt machine.Address
+findMessage ownedBy none
+findMessage cleanedBy none
+findMessage borrows none
+findMessage catch none
+findMessage suppresses none
+
+messageLength is call
+messageLength in reportTest
+messageLength invokes string.byteLength
+messageLength argument text String message lend
+messageLength result messageBytes Int64
+messageLength ownedBy none
+messageLength cleanedBy none
+messageLength borrows none
+messageLength catch none
+messageLength suppresses none
+
+write is call
+write in reportTest
+write invokes report
+write argument text machine.Address messageAt copy
+write argument bytes Int64 messageBytes copy
+write result status Int32
+write ownedBy none
+write cleanedBy none
+write borrows none
+write catch none
+write suppresses none
+
+statusWide is call
+statusWide in reportTest
+statusWide invokes convert.int32ToInt64
+statusWide argument value Int32 status copy
+statusWide result statusValue Int64
+statusWide ownedBy none
+statusWide cleanedBy none
+statusWide borrows none
+statusWide catch none
+statusWide suppresses none
+
+expectWritten is call
+expectWritten in reportTest
+expectWritten invokes test.assertEqualInt64
+expectWritten argument expected Int64 zero copy
+expectWritten argument actual Int64 statusValue copy
+expectWritten result none
+expectWritten ownedBy none
+expectWritten cleanedBy none
+expectWritten borrows none
+expectWritten catch none
+expectWritten suppresses none
+
+findState is call
+findState in reportTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findCount is call
+findCount in reportTest
+findCount invokes machine.offset
+findCount argument address machine.Address state copy
+findCount argument bytes Int64 countAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in reportTest
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectKept is call
+expectKept in reportTest
+expectKept invokes test.assertEqualInt64
+expectKept argument expected Int64 two copy
+expectKept argument actual Int64 count copy
+expectKept result none
+expectKept ownedBy none
+expectKept cleanedBy none
+expectKept borrows none
+expectKept catch none
+expectKept suppresses none
+
+popInner is call
+popInner in reportTest
+popInner invokes popFrame
+popInner argument none
+popInner result none
+popInner ownedBy none
+popInner cleanedBy none
+popInner borrows none
+popInner catch none
+popInner suppresses none
+
+popOuter is call
+popOuter in reportTest
+popOuter invokes popFrame
+popOuter argument none
+popOuter result none
+popOuter ownedBy none
+popOuter cleanedBy none
+popOuter borrows none
+popOuter catch none
+popOuter suppresses none

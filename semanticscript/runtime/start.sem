@@ -1,0 +1,154 @@
+# The process's entry point. An executable linked with this runtime has no C start-up code:
+# the operating system calls refined_entry, which sets the stack floor, runs the program's
+# entry operation, and ends the process with its exit code.
+#
+# This module is generated from tools/start.dsl by tools/build.py.
+
+start is module
+start purpose "The process's entry point: set the stack floor, run the program, and exit with its code"
+start path start
+start imports standard.machine
+start imports standard.system
+start imports standard.math
+start exports none
+
+memoryAccess is capability
+memoryAccess purpose "Authority to find the stack and keep its floor in machine.state"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to end the process with the program's exit code"
+systemCalls grants use system.calls none
+
+# The stack floor is in machine.state at byte 88 (frames' part of it). An executable's main thread has a stack of
+# 256 MiB (native.py links it so); a recursive operation traps when its frame lies more than 248 MiB below the
+# entry's, which leaves 8 MiB for the runtime and the operating system, as the C runtime's entry does.
+floorAt is constant
+floorAt purpose "Where the stack floor is kept, in machine.state"
+floorAt type Int64
+floorAt value 88
+
+stackBudget is constant
+stackBudget purpose "How far below the entry's frame the stack floor is: 256 MiB less 8 MiB"
+stackBudget type Int64
+stackBudget value 260046848
+
+entry is operation
+entry purpose "Start the process: set the stack floor, run the program's entry operation, and end the process with its exit code: refined_entry"
+entry invariant none
+entry typeParameter none
+entry input none
+entry output none
+entry outputOwnedBy none
+entry raises none
+entry effect use machine.memory
+entry effect use system.calls
+entry uses memoryAccess
+entry uses systemCalls
+entry memoryHeap false
+entry async false
+entry maxRecursion none
+entry abi c "refined_entry"
+entry label begin loopKind none
+entry label begin within none
+entry let none
+entry at begin do findHere
+entry at begin do hereValue
+entry at begin do findFloor
+entry at begin do findState
+entry at begin do findFloorSlot
+entry at begin do storeFloor
+entry at begin do run
+entry at begin do exit
+entry at begin return ok none
+
+findHere is call
+findHere in entry
+findHere invokes machine.stackAddress
+findHere argument none
+findHere result here machine.Address
+findHere ownedBy none
+findHere cleanedBy none
+findHere borrows none
+findHere catch none
+findHere suppresses none
+
+hereValue is call
+hereValue in entry
+hereValue invokes machine.toInt64
+hereValue argument address machine.Address here copy
+hereValue result hereAt Int64
+hereValue ownedBy none
+hereValue cleanedBy none
+hereValue borrows none
+hereValue catch none
+hereValue suppresses none
+
+findFloor is call
+findFloor in entry
+findFloor invokes math.subtractInt64
+findFloor argument left Int64 hereAt copy
+findFloor argument right Int64 stackBudget copy
+findFloor result floor Int64
+findFloor ownedBy none
+findFloor cleanedBy none
+findFloor borrows none
+findFloor catch none
+findFloor suppresses none
+
+findState is call
+findState in entry
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findFloorSlot is call
+findFloorSlot in entry
+findFloorSlot invokes machine.offset
+findFloorSlot argument address machine.Address state copy
+findFloorSlot argument bytes Int64 floorAt copy
+findFloorSlot result floorSlot machine.Address
+findFloorSlot ownedBy none
+findFloorSlot cleanedBy none
+findFloorSlot borrows none
+findFloorSlot catch none
+findFloorSlot suppresses none
+
+storeFloor is call
+storeFloor in entry
+storeFloor invokes machine.storeInt64
+storeFloor argument address machine.Address floorSlot copy
+storeFloor argument value Int64 floor copy
+storeFloor result none
+storeFloor ownedBy none
+storeFloor cleanedBy none
+storeFloor borrows none
+storeFloor catch none
+storeFloor suppresses none
+
+run is call
+run in entry
+run invokes machine.runEntry
+run argument none
+run result code Int32
+run ownedBy none
+run cleanedBy none
+run borrows none
+run catch none
+run suppresses none
+
+exit is call
+exit in entry
+exit invokes system.exitProcess
+exit argument code Int32 code copy
+exit result none
+exit ownedBy none
+exit cleanedBy none
+exit borrows none
+exit catch none
+exit suppresses none

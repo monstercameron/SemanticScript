@@ -1,0 +1,692 @@
+# Tests of the `regions` module; generated from tools/regions.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+regionTest is test
+regionTest purpose "A region hands out zeroed, aligned, separate blocks, counts what it was asked for, and gives its chunks back"
+regionTest verifies newRegion startsEmpty
+regionTest verifies allocate handsOutZeroed
+regionTest verifies remaining countsAsked
+regionTest verifies release reusesChunks
+regionTest typeParameter none
+regionTest input none
+regionTest output none
+regionTest outputOwnedBy none
+regionTest raises none
+regionTest effect use machine.memory
+regionTest effect use system.calls
+regionTest uses memoryAccess
+regionTest uses systemCalls
+regionTest memoryHeap false
+regionTest async false
+regionTest maxRecursion none
+regionTest label begin loopKind none
+regionTest label begin within none
+regionTest let label String "region `scratch` of `regionTest`" immutable
+regionTest let capacity Int64 100000 immutable
+regionTest let three Int64 3 immutable
+regionTest let five Int64 5 immutable
+regionTest let left99992 Int64 99992 immutable
+regionTest let sixteen Int64 16 immutable
+regionTest let zero Int64 0 immutable
+regionTest let sevenByte Byte 7 immutable
+regionTest let ninetyThousand Int64 90000 immutable
+regionTest let forty Int64 40 immutable
+regionTest let two Int64 2 immutable
+regionTest let one Int64 1 immutable
+regionTest at begin do findLabel
+regionTest at begin do labelLength
+regionTest at begin do make
+regionTest at begin do readFresh
+regionTest at begin do expectFresh
+regionTest at begin do takeFirst
+regionTest at begin do takeSecond
+regionTest at begin do readLeft
+regionTest at begin do expectLeft
+regionTest at begin do apart
+regionTest at begin do expectApart
+regionTest at begin do firstValue
+regionTest at begin do alignOf
+regionTest at begin do expectAligned
+regionTest at begin do readZero
+regionTest at begin do zeroWide
+regionTest at begin do expectZeroed
+regionTest at begin do writeSome
+regionTest at begin do takeLarge
+regionTest at begin do readLarge
+regionTest at begin do largeWide
+regionTest at begin do expectLargeZeroed
+regionTest at begin do findChunkCount
+regionTest at begin do readChunkCount
+regionTest at begin do expectTwoChunks
+regionTest at begin do free
+regionTest at begin do findState
+regionTest at begin do findFreeCount
+regionTest at begin do readFreeCount
+regionTest at begin do expectKept
+regionTest at begin do makeAgain
+regionTest at begin do takeAgain
+regionTest at begin do readAgain
+regionTest at begin do againWide
+regionTest at begin do expectReused
+regionTest at begin do readReusedCount
+regionTest at begin do expectTaken
+regionTest at begin do freeAgain
+regionTest at begin return ok none
+
+findLabel is call
+findLabel in regionTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in regionTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in regionTest
+make invokes newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+readFresh is call
+readFresh in regionTest
+readFresh invokes remaining
+readFresh argument region machine.Address region copy
+readFresh result fresh Int64
+readFresh ownedBy none
+readFresh cleanedBy none
+readFresh borrows none
+readFresh catch none
+readFresh suppresses none
+
+expectFresh is call
+expectFresh in regionTest
+expectFresh invokes test.assertEqualInt64
+expectFresh argument expected Int64 capacity copy
+expectFresh argument actual Int64 fresh copy
+expectFresh result none
+expectFresh ownedBy none
+expectFresh cleanedBy none
+expectFresh borrows none
+expectFresh catch none
+expectFresh suppresses none
+
+takeFirst is call
+takeFirst in regionTest
+takeFirst invokes allocate
+takeFirst argument region machine.Address region copy
+takeFirst argument size Int64 three copy
+takeFirst result first machine.Address
+takeFirst ownedBy none
+takeFirst cleanedBy none
+takeFirst borrows none
+takeFirst catch none
+takeFirst suppresses none
+
+takeSecond is call
+takeSecond in regionTest
+takeSecond invokes allocate
+takeSecond argument region machine.Address region copy
+takeSecond argument size Int64 five copy
+takeSecond result second machine.Address
+takeSecond ownedBy none
+takeSecond cleanedBy none
+takeSecond borrows none
+takeSecond catch none
+takeSecond suppresses none
+
+readLeft is call
+readLeft in regionTest
+readLeft invokes remaining
+readLeft argument region machine.Address region copy
+readLeft result left Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+expectLeft is call
+expectLeft in regionTest
+expectLeft invokes test.assertEqualInt64
+expectLeft argument expected Int64 left99992 copy
+expectLeft argument actual Int64 left copy
+expectLeft result none
+expectLeft ownedBy none
+expectLeft cleanedBy none
+expectLeft borrows none
+expectLeft catch none
+expectLeft suppresses none
+
+apart is call
+apart in regionTest
+apart invokes machine.difference
+apart argument left machine.Address second copy
+apart argument right machine.Address first copy
+apart result gap Int64
+apart ownedBy none
+apart cleanedBy none
+apart borrows none
+apart catch none
+apart suppresses none
+
+expectApart is call
+expectApart in regionTest
+expectApart invokes test.assertEqualInt64
+expectApart argument expected Int64 sixteen copy
+expectApart argument actual Int64 gap copy
+expectApart result none
+expectApart ownedBy none
+expectApart cleanedBy none
+expectApart borrows none
+expectApart catch none
+expectApart suppresses none
+
+firstValue is call
+firstValue in regionTest
+firstValue invokes machine.toInt64
+firstValue argument address machine.Address first copy
+firstValue result firstAt Int64
+firstValue ownedBy none
+firstValue cleanedBy none
+firstValue borrows none
+firstValue catch none
+firstValue suppresses none
+
+alignOf is call
+alignOf in regionTest
+alignOf invokes math.remainderInt64
+alignOf argument left Int64 firstAt copy
+alignOf argument right Int64 sixteen copy
+alignOf result misaligned Int64
+alignOf ownedBy none
+alignOf cleanedBy none
+alignOf borrows none
+alignOf catch none
+alignOf suppresses none
+
+expectAligned is call
+expectAligned in regionTest
+expectAligned invokes test.assertEqualInt64
+expectAligned argument expected Int64 zero copy
+expectAligned argument actual Int64 misaligned copy
+expectAligned result none
+expectAligned ownedBy none
+expectAligned cleanedBy none
+expectAligned borrows none
+expectAligned catch none
+expectAligned suppresses none
+
+readZero is call
+readZero in regionTest
+readZero invokes machine.loadByte
+readZero argument address machine.Address second copy
+readZero result firstByte Byte
+readZero ownedBy none
+readZero cleanedBy none
+readZero borrows none
+readZero catch none
+readZero suppresses none
+
+zeroWide is call
+zeroWide in regionTest
+zeroWide invokes convert.byteToInt64
+zeroWide argument value Byte firstByte copy
+zeroWide result firstByteValue Int64
+zeroWide ownedBy none
+zeroWide cleanedBy none
+zeroWide borrows none
+zeroWide catch none
+zeroWide suppresses none
+
+expectZeroed is call
+expectZeroed in regionTest
+expectZeroed invokes test.assertEqualInt64
+expectZeroed argument expected Int64 zero copy
+expectZeroed argument actual Int64 firstByteValue copy
+expectZeroed result none
+expectZeroed ownedBy none
+expectZeroed cleanedBy none
+expectZeroed borrows none
+expectZeroed catch none
+expectZeroed suppresses none
+
+writeSome is call
+writeSome in regionTest
+writeSome invokes machine.storeByte
+writeSome argument address machine.Address second copy
+writeSome argument value Byte sevenByte copy
+writeSome result none
+writeSome ownedBy none
+writeSome cleanedBy none
+writeSome borrows none
+writeSome catch none
+writeSome suppresses none
+
+takeLarge is call
+takeLarge in regionTest
+takeLarge invokes allocate
+takeLarge argument region machine.Address region copy
+takeLarge argument size Int64 ninetyThousand copy
+takeLarge result large machine.Address
+takeLarge ownedBy none
+takeLarge cleanedBy none
+takeLarge borrows none
+takeLarge catch none
+takeLarge suppresses none
+
+readLarge is call
+readLarge in regionTest
+readLarge invokes machine.loadByte
+readLarge argument address machine.Address large copy
+readLarge result largeByte Byte
+readLarge ownedBy none
+readLarge cleanedBy none
+readLarge borrows none
+readLarge catch none
+readLarge suppresses none
+
+largeWide is call
+largeWide in regionTest
+largeWide invokes convert.byteToInt64
+largeWide argument value Byte largeByte copy
+largeWide result largeValue Int64
+largeWide ownedBy none
+largeWide cleanedBy none
+largeWide borrows none
+largeWide catch none
+largeWide suppresses none
+
+expectLargeZeroed is call
+expectLargeZeroed in regionTest
+expectLargeZeroed invokes test.assertEqualInt64
+expectLargeZeroed argument expected Int64 zero copy
+expectLargeZeroed argument actual Int64 largeValue copy
+expectLargeZeroed result none
+expectLargeZeroed ownedBy none
+expectLargeZeroed cleanedBy none
+expectLargeZeroed borrows none
+expectLargeZeroed catch none
+expectLargeZeroed suppresses none
+
+findChunkCount is call
+findChunkCount in regionTest
+findChunkCount invokes machine.offset
+findChunkCount argument address machine.Address region copy
+findChunkCount argument bytes Int64 forty copy
+findChunkCount result chunkCountSlot machine.Address
+findChunkCount ownedBy none
+findChunkCount cleanedBy none
+findChunkCount borrows none
+findChunkCount catch none
+findChunkCount suppresses none
+
+readChunkCount is call
+readChunkCount in regionTest
+readChunkCount invokes machine.loadInt64
+readChunkCount argument address machine.Address chunkCountSlot copy
+readChunkCount result chunkCount Int64
+readChunkCount ownedBy none
+readChunkCount cleanedBy none
+readChunkCount borrows none
+readChunkCount catch none
+readChunkCount suppresses none
+
+expectTwoChunks is call
+expectTwoChunks in regionTest
+expectTwoChunks invokes test.assertEqualInt64
+expectTwoChunks argument expected Int64 two copy
+expectTwoChunks argument actual Int64 chunkCount copy
+expectTwoChunks result none
+expectTwoChunks ownedBy none
+expectTwoChunks cleanedBy none
+expectTwoChunks borrows none
+expectTwoChunks catch none
+expectTwoChunks suppresses none
+
+free is call
+free in regionTest
+free invokes release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+findState is call
+findState in regionTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findFreeCount is call
+findFreeCount in regionTest
+findFreeCount invokes machine.offset
+findFreeCount argument address machine.Address state copy
+findFreeCount argument bytes Int64 freeCountAt copy
+findFreeCount result freeCountSlot machine.Address
+findFreeCount ownedBy none
+findFreeCount cleanedBy none
+findFreeCount borrows none
+findFreeCount catch none
+findFreeCount suppresses none
+
+readFreeCount is call
+readFreeCount in regionTest
+readFreeCount invokes machine.loadInt64
+readFreeCount argument address machine.Address freeCountSlot copy
+readFreeCount result freeCount Int64
+readFreeCount ownedBy none
+readFreeCount cleanedBy none
+readFreeCount borrows none
+readFreeCount catch none
+readFreeCount suppresses none
+
+expectKept is call
+expectKept in regionTest
+expectKept invokes test.assertEqualInt64
+expectKept argument expected Int64 one copy
+expectKept argument actual Int64 freeCount copy
+expectKept result none
+expectKept ownedBy none
+expectKept cleanedBy none
+expectKept borrows none
+expectKept catch none
+expectKept suppresses none
+
+makeAgain is call
+makeAgain in regionTest
+makeAgain invokes newRegion
+makeAgain argument capacity Int64 capacity copy
+makeAgain argument label machine.Address labelAt copy
+makeAgain argument labelBytes Int64 labelBytes copy
+makeAgain result again machine.Address
+makeAgain ownedBy none
+makeAgain cleanedBy none
+makeAgain borrows none
+makeAgain catch none
+makeAgain suppresses none
+
+takeAgain is call
+takeAgain in regionTest
+takeAgain invokes allocate
+takeAgain argument region machine.Address again copy
+takeAgain argument size Int64 five copy
+takeAgain result block machine.Address
+takeAgain ownedBy none
+takeAgain cleanedBy none
+takeAgain borrows none
+takeAgain catch none
+takeAgain suppresses none
+
+readAgain is call
+readAgain in regionTest
+readAgain invokes machine.loadByte
+readAgain argument address machine.Address block copy
+readAgain result againByte Byte
+readAgain ownedBy none
+readAgain cleanedBy none
+readAgain borrows none
+readAgain catch none
+readAgain suppresses none
+
+againWide is call
+againWide in regionTest
+againWide invokes convert.byteToInt64
+againWide argument value Byte againByte copy
+againWide result againValue Int64
+againWide ownedBy none
+againWide cleanedBy none
+againWide borrows none
+againWide catch none
+againWide suppresses none
+
+expectReused is call
+expectReused in regionTest
+expectReused invokes test.assertEqualInt64
+expectReused argument expected Int64 zero copy
+expectReused argument actual Int64 againValue copy
+expectReused result none
+expectReused ownedBy none
+expectReused cleanedBy none
+expectReused borrows none
+expectReused catch none
+expectReused suppresses none
+
+readReusedCount is call
+readReusedCount in regionTest
+readReusedCount invokes machine.loadInt64
+readReusedCount argument address machine.Address freeCountSlot copy
+readReusedCount result reusedCount Int64
+readReusedCount ownedBy none
+readReusedCount cleanedBy none
+readReusedCount borrows none
+readReusedCount catch none
+readReusedCount suppresses none
+
+expectTaken is call
+expectTaken in regionTest
+expectTaken invokes test.assertEqualInt64
+expectTaken argument expected Int64 zero copy
+expectTaken argument actual Int64 reusedCount copy
+expectTaken result none
+expectTaken ownedBy none
+expectTaken cleanedBy none
+expectTaken borrows none
+expectTaken catch none
+expectTaken suppresses none
+
+freeAgain is call
+freeAgain in regionTest
+freeAgain invokes release
+freeAgain argument region machine.Address again copy
+freeAgain result none
+freeAgain ownedBy none
+freeAgain cleanedBy none
+freeAgain borrows none
+freeAgain catch none
+freeAgain suppresses none
+
+formatIntegerTest is test
+formatIntegerTest purpose "A number's text is put in the region and its length beside it"
+formatIntegerTest verifies formatInteger formatsIntoRegion
+formatIntegerTest typeParameter none
+formatIntegerTest input none
+formatIntegerTest output none
+formatIntegerTest outputOwnedBy none
+formatIntegerTest raises none
+formatIntegerTest effect use machine.memory
+formatIntegerTest effect use system.calls
+formatIntegerTest uses memoryAccess
+formatIntegerTest uses systemCalls
+formatIntegerTest memoryHeap false
+formatIntegerTest async false
+formatIntegerTest maxRecursion none
+formatIntegerTest label begin loopKind none
+formatIntegerTest label begin within none
+formatIntegerTest let label String "region `numbers` of `formatIntegerTest`" immutable
+formatIntegerTest let expected String "-4096" immutable
+formatIntegerTest let capacity Int64 64 immutable
+formatIntegerTest let scratchAt Int64 61440 immutable
+formatIntegerTest let minus4096 Int64 -4096 immutable
+formatIntegerTest let fiftyNine Int64 59 immutable
+formatIntegerTest at begin do findLabel
+formatIntegerTest at begin do labelLength
+formatIntegerTest at begin do make
+formatIntegerTest at begin do findState
+formatIntegerTest at begin do findLength
+formatIntegerTest at begin do format
+formatIntegerTest at begin do readLength
+formatIntegerTest at begin do viewText
+formatIntegerTest at begin do expectText
+formatIntegerTest at begin do readLeft
+formatIntegerTest at begin do expectLeft
+formatIntegerTest at begin do free
+formatIntegerTest at begin return ok none
+
+findLabel is call
+findLabel in formatIntegerTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in formatIntegerTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in formatIntegerTest
+make invokes newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+findState is call
+findState in formatIntegerTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLength is call
+findLength in formatIntegerTest
+findLength invokes machine.offset
+findLength argument address machine.Address state copy
+findLength argument bytes Int64 scratchAt copy
+findLength result lengthAt machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+format is call
+format in formatIntegerTest
+format invokes formatInteger
+format argument value Int64 minus4096 copy
+format argument region machine.Address region copy
+format argument lengthAt machine.Address lengthAt copy
+format result text machine.Address
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+readLength is call
+readLength in formatIntegerTest
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthAt copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+viewText is call
+viewText in formatIntegerTest
+viewText invokes machine.stringAt
+viewText argument address machine.Address text copy
+viewText argument bytes Int64 length copy
+viewText result shown String
+viewText ownedBy none
+viewText cleanedBy none
+viewText borrows none
+viewText catch none
+viewText suppresses none
+
+expectText is call
+expectText in formatIntegerTest
+expectText invokes test.assertEqualString
+expectText argument expected String expected lend
+expectText argument actual String shown lend
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+readLeft is call
+readLeft in formatIntegerTest
+readLeft invokes remaining
+readLeft argument region machine.Address region copy
+readLeft result left Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+expectLeft is call
+expectLeft in formatIntegerTest
+expectLeft invokes test.assertEqualInt64
+expectLeft argument expected Int64 fiftyNine copy
+expectLeft argument actual Int64 left copy
+expectLeft result none
+expectLeft ownedBy none
+expectLeft cleanedBy none
+expectLeft borrows none
+expectLeft catch none
+expectLeft suppresses none
+
+free is call
+free in formatIntegerTest
+free invokes release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

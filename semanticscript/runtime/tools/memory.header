@@ -1,0 +1,6 @@
+# The runtime's memory functions: memcpy, memmove, memset, and memcmp, which compiled code
+# and LLVM call, and the byte comparisons compiled code asks the runtime for
+# (refined_bytes_equal, refined_find). memcpy and memset move eight bytes at a time; none of
+# them calls another C function, since they are what such calls would reach.
+#
+# This module is generated from tools/memory.dsl by tools/build.py.

@@ -1,0 +1,911 @@
+# The runtime's memory functions: memcpy, memmove, memset, and memcmp, which compiled code
+# and LLVM call, and the byte comparisons compiled code asks the runtime for
+# (refined_bytes_equal, refined_find). memcpy and memset move eight bytes at a time; none of
+# them calls another C function, since they are what such calls would reach.
+#
+# This module is generated from tools/memory.dsl by tools/build.py.
+
+memory is module
+memory purpose "Copy, fill, and compare ranges of memory: the four C functions compiled code calls, and the byte comparisons of the runtime"
+memory path memory
+memory imports standard.machine
+memory imports standard.math
+memory imports standard.compare
+memory imports standard.convert
+memory imports standard.bits
+memory imports standard.test
+memory exports copyForward
+memory exports copyBackward
+memory exports moveBytes
+memory exports fillBytes
+memory exports compareBytes
+memory exports bytesEqual
+memory exports findBytes
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read and write memory by address"
+memoryAccess grants use machine.memory none
+
+# ---------------------------------------------------------------- memcpy, memmove, memset, memcmp
+copyForward is operation
+copyForward purpose "Copy a range of bytes to another, first byte first, eight bytes at a time while eight remain: memcpy"
+copyForward invariant copiesEveryByte "\"After the copy, each byte of the target range equals the byte at the same place in the source range\""
+copyForward typeParameter none
+copyForward input target machine.Address copied
+copyForward input source machine.Address copied
+copyForward input bytes Int64 copied
+copyForward output machine.Address
+copyForward outputOwnedBy none
+copyForward raises none
+copyForward effect use machine.memory
+copyForward uses memoryAccess
+copyForward memoryHeap false
+copyForward async false
+copyForward maxRecursion none
+copyForward abi c "memcpy"
+copyForward label begin loopKind none
+copyForward label begin within none
+copyForward label eachWord loopKind while
+copyForward label eachWord within none
+copyForward label eachWord maxIterations words
+copyForward label copyWord loopKind none
+copyForward label copyWord within eachWord
+copyForward label eachByte loopKind while
+copyForward label eachByte within none
+copyForward label eachByte maxIterations eight
+copyForward label copyByte loopKind none
+copyForward label copyByte within eachByte
+copyForward label finish loopKind none
+copyForward label finish within none
+copyForward let index Int64 0 mutable
+copyForward let eight Int64 8 immutable
+copyForward let one Int64 1 immutable
+copyForward at begin do countWords
+copyForward at begin goto eachWord
+copyForward at eachWord do wordsLeft
+copyForward at eachWord do wordsDone
+copyForward at eachWord branch if pastWords goto eachByte else goto copyWord
+copyForward at copyWord do findWordFrom
+copyForward at copyWord do readWord
+copyForward at copyWord do findWordTo
+copyForward at copyWord do writeWord
+copyForward at copyWord set index wordEnd
+copyForward at copyWord goto eachWord
+copyForward at eachByte do bytesDone
+copyForward at eachByte branch if done goto finish else goto copyByte
+copyForward at copyByte do findFrom
+copyForward at copyByte do readByte
+copyForward at copyByte do findTo
+copyForward at copyByte do writeByte
+copyForward at copyByte do advance
+copyForward at copyByte set index nextIndex
+copyForward at copyByte goto eachByte
+copyForward at finish return ok target
+
+countWords is call
+countWords in copyForward
+countWords invokes math.divideInt64
+countWords argument left Int64 bytes copy
+countWords argument right Int64 eight copy
+countWords result words Int64
+countWords ownedBy none
+countWords cleanedBy none
+countWords borrows none
+countWords catch none
+countWords suppresses none
+
+wordsLeft is call
+wordsLeft in copyForward
+wordsLeft invokes math.addInt64
+wordsLeft argument left Int64 index copy
+wordsLeft argument right Int64 eight copy
+wordsLeft result wordEnd Int64
+wordsLeft ownedBy none
+wordsLeft cleanedBy none
+wordsLeft borrows none
+wordsLeft catch none
+wordsLeft suppresses none
+
+wordsDone is call
+wordsDone in copyForward
+wordsDone invokes compare.greaterThanInt64
+wordsDone argument left Int64 wordEnd copy
+wordsDone argument right Int64 bytes copy
+wordsDone result pastWords Bool
+wordsDone ownedBy none
+wordsDone cleanedBy none
+wordsDone borrows none
+wordsDone catch none
+wordsDone suppresses none
+
+findWordFrom is call
+findWordFrom in copyForward
+findWordFrom invokes machine.offset
+findWordFrom argument address machine.Address source copy
+findWordFrom argument bytes Int64 index copy
+findWordFrom result wordFrom machine.Address
+findWordFrom ownedBy none
+findWordFrom cleanedBy none
+findWordFrom borrows none
+findWordFrom catch none
+findWordFrom suppresses none
+
+readWord is call
+readWord in copyForward
+readWord invokes machine.loadInt64
+readWord argument address machine.Address wordFrom copy
+readWord result word Int64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+findWordTo is call
+findWordTo in copyForward
+findWordTo invokes machine.offset
+findWordTo argument address machine.Address target copy
+findWordTo argument bytes Int64 index copy
+findWordTo result wordTo machine.Address
+findWordTo ownedBy none
+findWordTo cleanedBy none
+findWordTo borrows none
+findWordTo catch none
+findWordTo suppresses none
+
+writeWord is call
+writeWord in copyForward
+writeWord invokes machine.storeInt64
+writeWord argument address machine.Address wordTo copy
+writeWord argument value Int64 word copy
+writeWord result none
+writeWord ownedBy none
+writeWord cleanedBy none
+writeWord borrows none
+writeWord catch none
+writeWord suppresses none
+
+bytesDone is call
+bytesDone in copyForward
+bytesDone invokes compare.greaterOrEqualInt64
+bytesDone argument left Int64 index copy
+bytesDone argument right Int64 bytes copy
+bytesDone result done Bool
+bytesDone ownedBy none
+bytesDone cleanedBy none
+bytesDone borrows none
+bytesDone catch none
+bytesDone suppresses none
+
+findFrom is call
+findFrom in copyForward
+findFrom invokes machine.offset
+findFrom argument address machine.Address source copy
+findFrom argument bytes Int64 index copy
+findFrom result from machine.Address
+findFrom ownedBy none
+findFrom cleanedBy none
+findFrom borrows none
+findFrom catch none
+findFrom suppresses none
+
+readByte is call
+readByte in copyForward
+readByte invokes machine.loadByte
+readByte argument address machine.Address from copy
+readByte result value Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+findTo is call
+findTo in copyForward
+findTo invokes machine.offset
+findTo argument address machine.Address target copy
+findTo argument bytes Int64 index copy
+findTo result to machine.Address
+findTo ownedBy none
+findTo cleanedBy none
+findTo borrows none
+findTo catch none
+findTo suppresses none
+
+writeByte is call
+writeByte in copyForward
+writeByte invokes machine.storeByte
+writeByte argument address machine.Address to copy
+writeByte argument value Byte value copy
+writeByte result none
+writeByte ownedBy none
+writeByte cleanedBy none
+writeByte borrows none
+writeByte catch none
+writeByte suppresses none
+
+advance is call
+advance in copyForward
+advance invokes math.addInt64
+advance argument left Int64 index copy
+advance argument right Int64 one copy
+advance result nextIndex Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+copyBackward is operation
+copyBackward purpose "Copy a range of bytes to another, last byte first, so a target that overlaps the end of its source is copied whole"
+copyBackward invariant copiesOverlapping "\"A target that starts inside its source receives the source's bytes as they were before the copy\""
+copyBackward typeParameter none
+copyBackward input target machine.Address copied
+copyBackward input source machine.Address copied
+copyBackward input bytes Int64 copied
+copyBackward output none
+copyBackward outputOwnedBy none
+copyBackward raises none
+copyBackward effect use machine.memory
+copyBackward uses memoryAccess
+copyBackward memoryHeap false
+copyBackward async false
+copyBackward maxRecursion none
+copyBackward label begin loopKind none
+copyBackward label begin within none
+copyBackward label eachByte loopKind while
+copyBackward label eachByte within none
+copyBackward label eachByte maxIterations bytes
+copyBackward label copyByte loopKind none
+copyBackward label copyByte within eachByte
+copyBackward label finish loopKind none
+copyBackward label finish within none
+copyBackward let index Int64 0 mutable
+copyBackward let zero Int64 0 immutable
+copyBackward let one Int64 1 immutable
+copyBackward at begin set index bytes
+copyBackward at begin goto eachByte
+copyBackward at eachByte do bytesDone
+copyBackward at eachByte branch if done goto finish else goto copyByte
+copyBackward at copyByte do back
+copyBackward at copyByte set index nextIndex
+copyBackward at copyByte do findFrom
+copyBackward at copyByte do readByte
+copyBackward at copyByte do findTo
+copyBackward at copyByte do writeByte
+copyBackward at copyByte goto eachByte
+copyBackward at finish return ok none
+
+bytesDone is call
+bytesDone in copyBackward
+bytesDone invokes compare.lessOrEqualInt64
+bytesDone argument left Int64 index copy
+bytesDone argument right Int64 zero copy
+bytesDone result done Bool
+bytesDone ownedBy none
+bytesDone cleanedBy none
+bytesDone borrows none
+bytesDone catch none
+bytesDone suppresses none
+
+back is call
+back in copyBackward
+back invokes math.subtractInt64
+back argument left Int64 index copy
+back argument right Int64 one copy
+back result nextIndex Int64
+back ownedBy none
+back cleanedBy none
+back borrows none
+back catch none
+back suppresses none
+
+findFrom is call
+findFrom in copyBackward
+findFrom invokes machine.offset
+findFrom argument address machine.Address source copy
+findFrom argument bytes Int64 nextIndex copy
+findFrom result from machine.Address
+findFrom ownedBy none
+findFrom cleanedBy none
+findFrom borrows none
+findFrom catch none
+findFrom suppresses none
+
+readByte is call
+readByte in copyBackward
+readByte invokes machine.loadByte
+readByte argument address machine.Address from copy
+readByte result value Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+findTo is call
+findTo in copyBackward
+findTo invokes machine.offset
+findTo argument address machine.Address target copy
+findTo argument bytes Int64 nextIndex copy
+findTo result to machine.Address
+findTo ownedBy none
+findTo cleanedBy none
+findTo borrows none
+findTo catch none
+findTo suppresses none
+
+writeByte is call
+writeByte in copyBackward
+writeByte invokes machine.storeByte
+writeByte argument address machine.Address to copy
+writeByte argument value Byte value copy
+writeByte result none
+writeByte ownedBy none
+writeByte cleanedBy none
+writeByte borrows none
+writeByte catch none
+writeByte suppresses none
+
+moveBytes is operation
+moveBytes purpose "Copy a range of bytes to another that may overlap it: memmove"
+moveBytes invariant movesOverlapping "\"The target holds the source's bytes as they were before the move, whichever way the ranges overlap\""
+moveBytes typeParameter none
+moveBytes input target machine.Address copied
+moveBytes input source machine.Address copied
+moveBytes input bytes Int64 copied
+moveBytes output machine.Address
+moveBytes outputOwnedBy none
+moveBytes raises none
+moveBytes effect use machine.memory
+moveBytes uses memoryAccess
+moveBytes memoryHeap false
+moveBytes async false
+moveBytes maxRecursion none
+moveBytes abi c "memmove"
+moveBytes label begin loopKind none
+moveBytes label begin within none
+moveBytes label checkEnd loopKind none
+moveBytes label checkEnd within none
+moveBytes label forward loopKind none
+moveBytes label forward within none
+moveBytes label backward loopKind none
+moveBytes label backward within none
+moveBytes let none
+moveBytes at begin do sourceAfter
+moveBytes at begin branch if belowCheck goto forward else goto checkEnd
+moveBytes at checkEnd do findSourceEnd
+moveBytes at checkEnd do startsInside
+moveBytes at checkEnd branch if inside goto backward else goto forward
+moveBytes at forward do copyUp
+moveBytes at forward return ok copied
+moveBytes at backward do copyDown
+moveBytes at backward return ok target
+
+sourceAfter is call
+sourceAfter in moveBytes
+sourceAfter invokes machine.lessThan
+sourceAfter argument left machine.Address target copy
+sourceAfter argument right machine.Address source copy
+sourceAfter result belowCheck Bool
+sourceAfter ownedBy none
+sourceAfter cleanedBy none
+sourceAfter borrows none
+sourceAfter catch none
+sourceAfter suppresses none
+
+findSourceEnd is call
+findSourceEnd in moveBytes
+findSourceEnd invokes machine.offset
+findSourceEnd argument address machine.Address source copy
+findSourceEnd argument bytes Int64 bytes copy
+findSourceEnd result sourceEnd machine.Address
+findSourceEnd ownedBy none
+findSourceEnd cleanedBy none
+findSourceEnd borrows none
+findSourceEnd catch none
+findSourceEnd suppresses none
+
+startsInside is call
+startsInside in moveBytes
+startsInside invokes machine.lessThan
+startsInside argument left machine.Address target copy
+startsInside argument right machine.Address sourceEnd copy
+startsInside result inside Bool
+startsInside ownedBy none
+startsInside cleanedBy none
+startsInside borrows none
+startsInside catch none
+startsInside suppresses none
+
+copyUp is call
+copyUp in moveBytes
+copyUp invokes copyForward
+copyUp argument target machine.Address target copy
+copyUp argument source machine.Address source copy
+copyUp argument bytes Int64 bytes copy
+copyUp result copied machine.Address
+copyUp ownedBy none
+copyUp cleanedBy none
+copyUp borrows none
+copyUp catch none
+copyUp suppresses none
+
+copyDown is call
+copyDown in moveBytes
+copyDown invokes copyBackward
+copyDown argument target machine.Address target copy
+copyDown argument source machine.Address source copy
+copyDown argument bytes Int64 bytes copy
+copyDown result none
+copyDown ownedBy none
+copyDown cleanedBy none
+copyDown borrows none
+copyDown catch none
+copyDown suppresses none
+
+fillBytes is operation
+fillBytes purpose "Set every byte of a range to the low eight bits of a value, eight bytes at a time while eight remain: memset"
+fillBytes invariant fillsEveryByte "\"After the fill, every byte of the range is the value's low eight bits, and no byte outside it changed\""
+fillBytes typeParameter none
+fillBytes input target machine.Address copied
+fillBytes input value Int32 copied
+fillBytes input bytes Int64 copied
+fillBytes output machine.Address
+fillBytes outputOwnedBy none
+fillBytes raises none
+fillBytes effect use machine.memory
+fillBytes uses memoryAccess
+fillBytes memoryHeap false
+fillBytes async false
+fillBytes maxRecursion none
+fillBytes abi c "memset"
+fillBytes label begin loopKind none
+fillBytes label begin within none
+fillBytes label eachWord loopKind while
+fillBytes label eachWord within none
+fillBytes label eachWord maxIterations words
+fillBytes label fillWord loopKind none
+fillBytes label fillWord within eachWord
+fillBytes label eachByte loopKind while
+fillBytes label eachByte within none
+fillBytes label eachByte maxIterations eight
+fillBytes label fillByte loopKind none
+fillBytes label fillByte within eachByte
+fillBytes label finish loopKind none
+fillBytes label finish within none
+fillBytes let index Int64 0 mutable
+fillBytes let eight Int64 8 immutable
+fillBytes let lowMask Int32 255 immutable
+fillBytes let everyByte UInt64 72340172838076673 immutable
+fillBytes let one Int64 1 immutable
+fillBytes at begin do lowBits
+fillBytes at begin do lowWide
+fillBytes at begin do toByte
+fillBytes at begin do widen
+fillBytes at begin do spread
+fillBytes at begin do countWords
+fillBytes at begin goto eachWord
+fillBytes at eachWord do wordsLeft
+fillBytes at eachWord do wordsDone
+fillBytes at eachWord branch if pastWords goto eachByte else goto fillWord
+fillBytes at fillWord do findWordTo
+fillBytes at fillWord do writeWord
+fillBytes at fillWord set index wordEnd
+fillBytes at fillWord goto eachWord
+fillBytes at eachByte do bytesDone
+fillBytes at eachByte branch if done goto finish else goto fillByte
+fillBytes at fillByte do findTo
+fillBytes at fillByte do writeByte
+fillBytes at fillByte do advance
+fillBytes at fillByte set index nextIndex
+fillBytes at fillByte goto eachByte
+fillBytes at finish return ok target
+
+lowBits is call
+lowBits in fillBytes
+lowBits invokes bits.andInt32
+lowBits argument left Int32 value copy
+lowBits argument right Int32 lowMask copy
+lowBits result low Int32
+lowBits ownedBy none
+lowBits cleanedBy none
+lowBits borrows none
+lowBits catch none
+lowBits suppresses none
+
+lowWide is call
+lowWide in fillBytes
+lowWide invokes convert.int32ToInt64
+lowWide argument value Int32 low copy
+lowWide result lowValue Int64
+lowWide ownedBy none
+lowWide cleanedBy none
+lowWide borrows none
+lowWide catch none
+lowWide suppresses none
+
+toByte is call
+toByte in fillBytes
+toByte invokes convert.int64ToByte
+toByte argument value Int64 lowValue copy
+toByte result byte Byte
+toByte ownedBy none
+toByte cleanedBy none
+toByte borrows none
+toByte catch none
+toByte suppresses none
+
+widen is call
+widen in fillBytes
+widen invokes convert.byteToUInt64
+widen argument value Byte byte copy
+widen result wide UInt64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+spread is call
+spread in fillBytes
+spread invokes math.multiplyUInt64
+spread argument left UInt64 wide copy
+spread argument right UInt64 everyByte copy
+spread result pattern UInt64
+spread ownedBy none
+spread cleanedBy none
+spread borrows none
+spread catch none
+spread suppresses none
+
+countWords is call
+countWords in fillBytes
+countWords invokes math.divideInt64
+countWords argument left Int64 bytes copy
+countWords argument right Int64 eight copy
+countWords result words Int64
+countWords ownedBy none
+countWords cleanedBy none
+countWords borrows none
+countWords catch none
+countWords suppresses none
+
+wordsLeft is call
+wordsLeft in fillBytes
+wordsLeft invokes math.addInt64
+wordsLeft argument left Int64 index copy
+wordsLeft argument right Int64 eight copy
+wordsLeft result wordEnd Int64
+wordsLeft ownedBy none
+wordsLeft cleanedBy none
+wordsLeft borrows none
+wordsLeft catch none
+wordsLeft suppresses none
+
+wordsDone is call
+wordsDone in fillBytes
+wordsDone invokes compare.greaterThanInt64
+wordsDone argument left Int64 wordEnd copy
+wordsDone argument right Int64 bytes copy
+wordsDone result pastWords Bool
+wordsDone ownedBy none
+wordsDone cleanedBy none
+wordsDone borrows none
+wordsDone catch none
+wordsDone suppresses none
+
+findWordTo is call
+findWordTo in fillBytes
+findWordTo invokes machine.offset
+findWordTo argument address machine.Address target copy
+findWordTo argument bytes Int64 index copy
+findWordTo result wordTo machine.Address
+findWordTo ownedBy none
+findWordTo cleanedBy none
+findWordTo borrows none
+findWordTo catch none
+findWordTo suppresses none
+
+writeWord is call
+writeWord in fillBytes
+writeWord invokes machine.storeUInt64
+writeWord argument address machine.Address wordTo copy
+writeWord argument value UInt64 pattern copy
+writeWord result none
+writeWord ownedBy none
+writeWord cleanedBy none
+writeWord borrows none
+writeWord catch none
+writeWord suppresses none
+
+bytesDone is call
+bytesDone in fillBytes
+bytesDone invokes compare.greaterOrEqualInt64
+bytesDone argument left Int64 index copy
+bytesDone argument right Int64 bytes copy
+bytesDone result done Bool
+bytesDone ownedBy none
+bytesDone cleanedBy none
+bytesDone borrows none
+bytesDone catch none
+bytesDone suppresses none
+
+findTo is call
+findTo in fillBytes
+findTo invokes machine.offset
+findTo argument address machine.Address target copy
+findTo argument bytes Int64 index copy
+findTo result to machine.Address
+findTo ownedBy none
+findTo cleanedBy none
+findTo borrows none
+findTo catch none
+findTo suppresses none
+
+writeByte is call
+writeByte in fillBytes
+writeByte invokes machine.storeByte
+writeByte argument address machine.Address to copy
+writeByte argument value Byte byte copy
+writeByte result none
+writeByte ownedBy none
+writeByte cleanedBy none
+writeByte borrows none
+writeByte catch none
+writeByte suppresses none
+
+advance is call
+advance in fillBytes
+advance invokes math.addInt64
+advance argument left Int64 index copy
+advance argument right Int64 one copy
+advance result nextIndex Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+compareBytes is operation
+compareBytes purpose "Compare two ranges of the same length byte by byte: memcmp"
+compareBytes invariant ordersByFirstDifference "\"Gives -1 or 1 as the first differing byte of the left range is below or above the right's, as unsigned bytes, and 0 when no byte differs\""
+compareBytes typeParameter none
+compareBytes input left machine.Address copied
+compareBytes input right machine.Address copied
+compareBytes input bytes Int64 copied
+compareBytes output Int32
+compareBytes outputOwnedBy none
+compareBytes raises none
+compareBytes effect use machine.memory
+compareBytes uses memoryAccess
+compareBytes memoryHeap false
+compareBytes async false
+compareBytes maxRecursion none
+compareBytes abi c "memcmp"
+compareBytes label begin loopKind none
+compareBytes label begin within none
+compareBytes let none
+compareBytes at begin do compareRanges
+compareBytes at begin return ok order
+
+compareRanges is call
+compareRanges in compareBytes
+compareRanges invokes machine.compare
+compareRanges argument left machine.Address left copy
+compareRanges argument right machine.Address right copy
+compareRanges argument bytes Int64 bytes copy
+compareRanges result order Int32
+compareRanges ownedBy none
+compareRanges cleanedBy none
+compareRanges borrows none
+compareRanges catch none
+compareRanges suppresses none
+
+# ---------------------------------------------------------------- the runtime's byte comparisons
+bytesEqual is operation
+bytesEqual purpose "Whether two ranges hold the same bytes: 1 when their lengths and every byte agree, otherwise 0"
+bytesEqual invariant equalByContent "\"Two ranges are equal exactly when they have the same length and the same bytes, wherever they are\""
+bytesEqual typeParameter none
+bytesEqual input left machine.Address copied
+bytesEqual input leftBytes Int64 copied
+bytesEqual input right machine.Address copied
+bytesEqual input rightBytes Int64 copied
+bytesEqual output Int32
+bytesEqual outputOwnedBy none
+bytesEqual raises none
+bytesEqual effect use machine.memory
+bytesEqual uses memoryAccess
+bytesEqual memoryHeap false
+bytesEqual async false
+bytesEqual maxRecursion none
+bytesEqual abi c "refined_bytes_equal"
+bytesEqual label begin loopKind none
+bytesEqual label begin within none
+bytesEqual label compareRanges loopKind none
+bytesEqual label compareRanges within none
+bytesEqual label equal loopKind none
+bytesEqual label equal within none
+bytesEqual label different loopKind none
+bytesEqual label different within none
+bytesEqual let yes Int32 1 immutable
+bytesEqual let no Int32 0 immutable
+bytesEqual at begin do lengthCheck
+bytesEqual at begin branch if sameLength goto compareRanges else goto different
+bytesEqual at compareRanges do compareContent
+bytesEqual at compareRanges do contentCheck
+bytesEqual at compareRanges branch if same goto equal else goto different
+bytesEqual at equal return ok yes
+bytesEqual at different return ok no
+
+lengthCheck is call
+lengthCheck in bytesEqual
+lengthCheck invokes compare.equalInt64
+lengthCheck argument left Int64 leftBytes copy
+lengthCheck argument right Int64 rightBytes copy
+lengthCheck result sameLength Bool
+lengthCheck ownedBy none
+lengthCheck cleanedBy none
+lengthCheck borrows none
+lengthCheck catch none
+lengthCheck suppresses none
+
+compareContent is call
+compareContent in bytesEqual
+compareContent invokes machine.compare
+compareContent argument left machine.Address left copy
+compareContent argument right machine.Address right copy
+compareContent argument bytes Int64 leftBytes copy
+compareContent result order Int32
+compareContent ownedBy none
+compareContent cleanedBy none
+compareContent borrows none
+compareContent catch none
+compareContent suppresses none
+
+contentCheck is call
+contentCheck in bytesEqual
+contentCheck invokes compare.equalInt32
+contentCheck argument left Int32 order copy
+contentCheck argument right Int32 no copy
+contentCheck result same Bool
+contentCheck ownedBy none
+contentCheck cleanedBy none
+contentCheck borrows none
+contentCheck catch none
+contentCheck suppresses none
+
+findBytes is operation
+findBytes purpose "The offset of the first place a needle's bytes occur in a haystack, 0 for an empty needle, or -1 when they occur nowhere"
+findBytes invariant findsFirst "\"Gives the smallest offset at which the needle occurs, or -1 when it occurs nowhere; an empty needle occurs at 0\""
+findBytes typeParameter none
+findBytes input haystack machine.Address copied
+findBytes input haystackBytes Int64 copied
+findBytes input needle machine.Address copied
+findBytes input needleBytes Int64 copied
+findBytes output Int64
+findBytes outputOwnedBy none
+findBytes raises none
+findBytes effect use machine.memory
+findBytes uses memoryAccess
+findBytes memoryHeap false
+findBytes async false
+findBytes maxRecursion none
+findBytes abi c "refined_find"
+findBytes label begin loopKind none
+findBytes label begin within none
+findBytes label eachPlace loopKind while
+findBytes label eachPlace within none
+findBytes label eachPlace maxIterations haystackBytes
+findBytes label comparePlace loopKind none
+findBytes label comparePlace within eachPlace
+findBytes label nextPlace loopKind none
+findBytes label nextPlace within eachPlace
+findBytes label found loopKind none
+findBytes label found within none
+findBytes label missing loopKind none
+findBytes label missing within none
+findBytes let index Int64 0 mutable
+findBytes let missingAt Int64 -1 immutable
+findBytes let zero Int64 0 immutable
+findBytes let zero32 Int32 0 immutable
+findBytes let one Int64 1 immutable
+findBytes at begin do emptyCheck
+findBytes at begin branch if empty goto found else goto eachPlace
+findBytes at eachPlace do findEnd
+findBytes at eachPlace do pastCheck
+findBytes at eachPlace branch if past goto missing else goto comparePlace
+findBytes at comparePlace do findPlace
+findBytes at comparePlace do compareHere
+findBytes at comparePlace do sameCheck
+findBytes at comparePlace branch if same goto found else goto nextPlace
+findBytes at nextPlace do advance
+findBytes at nextPlace set index nextIndex
+findBytes at nextPlace goto eachPlace
+findBytes at found return ok index
+findBytes at missing return ok missingAt
+
+emptyCheck is call
+emptyCheck in findBytes
+emptyCheck invokes compare.lessOrEqualInt64
+emptyCheck argument left Int64 needleBytes copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+findEnd is call
+findEnd in findBytes
+findEnd invokes math.addInt64
+findEnd argument left Int64 index copy
+findEnd argument right Int64 needleBytes copy
+findEnd result placeEnd Int64
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+pastCheck is call
+pastCheck in findBytes
+pastCheck invokes compare.greaterThanInt64
+pastCheck argument left Int64 placeEnd copy
+pastCheck argument right Int64 haystackBytes copy
+pastCheck result past Bool
+pastCheck ownedBy none
+pastCheck cleanedBy none
+pastCheck borrows none
+pastCheck catch none
+pastCheck suppresses none
+
+findPlace is call
+findPlace in findBytes
+findPlace invokes machine.offset
+findPlace argument address machine.Address haystack copy
+findPlace argument bytes Int64 index copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+compareHere is call
+compareHere in findBytes
+compareHere invokes machine.compare
+compareHere argument left machine.Address place copy
+compareHere argument right machine.Address needle copy
+compareHere argument bytes Int64 needleBytes copy
+compareHere result order Int32
+compareHere ownedBy none
+compareHere cleanedBy none
+compareHere borrows none
+compareHere catch none
+compareHere suppresses none
+
+sameCheck is call
+sameCheck in findBytes
+sameCheck invokes compare.equalInt32
+sameCheck argument left Int32 order copy
+sameCheck argument right Int32 zero32 copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+advance is call
+advance in findBytes
+advance invokes math.addInt64
+advance argument left Int64 index copy
+advance argument right Int64 one copy
+advance result nextIndex Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none

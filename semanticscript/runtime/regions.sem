@@ -1,0 +1,2266 @@
+# Regions (refined_region_new, _alloc, _remaining, _free): chunks of memory from VirtualAlloc,
+# handed out by bumping, sixteen bytes aligned and zeroed, and given back all at once. A
+# request past a region's capacity traps with the message `refined run` gives.
+#
+# This module is generated from tools/regions.dsl by tools/build.py.
+
+regions is module
+regions purpose "Regions: memory taken from the operating system in chunks, handed out by bumping, and returned all at once"
+regions path regions
+regions imports standard.machine
+regions imports standard.system
+regions imports standard.string
+regions imports standard.math
+regions imports standard.compare
+regions imports standard.convert
+regions imports standard.bits
+regions imports standard.logic
+regions imports standard.test
+regions imports numbers
+regions imports frames
+regions exports newRegion
+regions exports allocate
+regions exports remaining
+regions exports release
+regions exports formatInteger
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep regions and their chunks in memory"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory from the operating system and give it back, and to end the process on a trap"
+systemCalls grants use system.calls none
+
+# A chunk is memory from VirtualAlloc: at 0 the next chunk of its region, 8 its size, 16 how many of its bytes are
+# used, its own 32 bytes included; what it hands out starts at 32 and is zeroed. A region's header lives in its
+# first chunk, after the chunk's own: at 0 its capacity, 8 the bytes asked of it (as `refined run` counts them),
+# 16 the chunk being filled, 24 the address and 32 the length of its label, 40 how many chunks it has.
+# A region's chunks of the standard size go back to a list of free chunks, zeroed, when it is released.
+# machine.state bytes 128 to 191 belong to this module: 128 the first free chunk, 136 how many are free, 144 to
+# 175 a number's digits.
+chunkBytes is constant
+chunkBytes purpose "The standard size of a chunk: VirtualAlloc's granularity"
+chunkBytes type Int64
+chunkBytes value 65536
+
+chunkHead is constant
+chunkHead purpose "The bytes at the start of a chunk that describe it"
+chunkHead type Int64
+chunkHead value 32
+
+regionHead is constant
+regionHead purpose "The bytes of a region's header, in its first chunk"
+regionHead type Int64
+regionHead value 64
+
+keptChunks is constant
+keptChunks purpose "How many free chunks are kept for the next regions"
+keptChunks type Int64
+keptChunks value 64
+
+freeAt is constant
+freeAt purpose "Where the first free chunk is kept, in machine.state"
+freeAt type Int64
+freeAt value 128
+
+freeCountAt is constant
+freeCountAt purpose "Where the number of free chunks is kept, in machine.state"
+freeCountAt type Int64
+freeCountAt value 136
+
+digitsAt is constant
+digitsAt purpose "Where a number's digits are put together, in machine.state"
+digitsAt type Int64
+digitsAt value 144
+
+# ---------------------------------------------------------------- chunks
+stop is operation
+stop purpose "Report a trap and end the process with exit code 70"
+stop invariant none
+stop typeParameter none
+stop input text String borrowed
+stop output none
+stop outputOwnedBy none
+stop raises none
+stop effect use machine.memory
+stop effect use system.calls
+stop uses memoryAccess
+stop uses systemCalls
+stop memoryHeap false
+stop async false
+stop maxRecursion none
+stop label begin loopKind none
+stop label begin within none
+stop let trapCode Int32 70 immutable
+stop at begin do findText
+stop at begin do textLength
+stop at begin do writeReport
+stop at begin do exit
+stop at begin return ok none
+
+findText is call
+findText in stop
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in stop
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+writeReport is call
+writeReport in stop
+writeReport invokes frames.report
+writeReport argument text machine.Address textAt copy
+writeReport argument bytes Int64 bytes copy
+writeReport result status Int32
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch none
+writeReport suppresses none
+
+exit is call
+exit in stop
+exit invokes system.exitProcess
+exit argument code Int32 trapCode copy
+exit result none
+exit ownedBy none
+exit cleanedBy none
+exit borrows none
+exit catch none
+exit suppresses none
+
+takeChunk is operation
+takeChunk purpose "A zeroed chunk of a size: a free one when the size is standard and one is free, otherwise fresh from VirtualAlloc; the address 0 when there is no memory"
+takeChunk invariant none
+takeChunk typeParameter none
+takeChunk input size Int64 copied
+takeChunk output machine.Address
+takeChunk outputOwnedBy none
+takeChunk raises none
+takeChunk effect use machine.memory
+takeChunk effect use system.calls
+takeChunk uses memoryAccess
+takeChunk uses systemCalls
+takeChunk memoryHeap false
+takeChunk async false
+takeChunk maxRecursion none
+takeChunk label begin loopKind none
+takeChunk label begin within none
+takeChunk label reuseFree loopKind none
+takeChunk label reuseFree within none
+takeChunk label freshChunk loopKind none
+takeChunk label freshChunk within none
+takeChunk let zero Int64 0 immutable
+takeChunk let one Int64 1 immutable
+takeChunk let commitAndReserve Int32 12288 immutable
+takeChunk let readWrite Int32 4 immutable
+takeChunk at begin do findState
+takeChunk at begin do findFree
+takeChunk at begin do findFreeCount
+takeChunk at begin do readFreeCount
+takeChunk at begin do standardCheck
+takeChunk at begin do anyCheck
+takeChunk at begin do reuseCheck
+takeChunk at begin branch if reuse goto reuseFree else goto freshChunk
+takeChunk at reuseFree do readFree
+takeChunk at reuseFree do readNext
+takeChunk at reuseFree do storeFree
+takeChunk at reuseFree do fewer
+takeChunk at reuseFree do storeFreeCount
+takeChunk at reuseFree return ok chunk
+takeChunk at freshChunk do nowhere
+takeChunk at freshChunk do take
+takeChunk at freshChunk return ok fresh
+
+findState is call
+findState in takeChunk
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findFree is call
+findFree in takeChunk
+findFree invokes machine.offset
+findFree argument address machine.Address state copy
+findFree argument bytes Int64 freeAt copy
+findFree result freeSlot machine.Address
+findFree ownedBy none
+findFree cleanedBy none
+findFree borrows none
+findFree catch none
+findFree suppresses none
+
+findFreeCount is call
+findFreeCount in takeChunk
+findFreeCount invokes machine.offset
+findFreeCount argument address machine.Address state copy
+findFreeCount argument bytes Int64 freeCountAt copy
+findFreeCount result freeCountSlot machine.Address
+findFreeCount ownedBy none
+findFreeCount cleanedBy none
+findFreeCount borrows none
+findFreeCount catch none
+findFreeCount suppresses none
+
+readFreeCount is call
+readFreeCount in takeChunk
+readFreeCount invokes machine.loadInt64
+readFreeCount argument address machine.Address freeCountSlot copy
+readFreeCount result freeCount Int64
+readFreeCount ownedBy none
+readFreeCount cleanedBy none
+readFreeCount borrows none
+readFreeCount catch none
+readFreeCount suppresses none
+
+standardCheck is call
+standardCheck in takeChunk
+standardCheck invokes compare.equalInt64
+standardCheck argument left Int64 size copy
+standardCheck argument right Int64 chunkBytes copy
+standardCheck result standard Bool
+standardCheck ownedBy none
+standardCheck cleanedBy none
+standardCheck borrows none
+standardCheck catch none
+standardCheck suppresses none
+
+anyCheck is call
+anyCheck in takeChunk
+anyCheck invokes compare.greaterThanInt64
+anyCheck argument left Int64 freeCount copy
+anyCheck argument right Int64 zero copy
+anyCheck result any Bool
+anyCheck ownedBy none
+anyCheck cleanedBy none
+anyCheck borrows none
+anyCheck catch none
+anyCheck suppresses none
+
+reuseCheck is call
+reuseCheck in takeChunk
+reuseCheck invokes logic.and
+reuseCheck argument left Bool standard copy
+reuseCheck argument right Bool any copy
+reuseCheck result reuse Bool
+reuseCheck ownedBy none
+reuseCheck cleanedBy none
+reuseCheck borrows none
+reuseCheck catch none
+reuseCheck suppresses none
+
+readFree is call
+readFree in takeChunk
+readFree invokes machine.loadAddress
+readFree argument address machine.Address freeSlot copy
+readFree result chunk machine.Address
+readFree ownedBy none
+readFree cleanedBy none
+readFree borrows none
+readFree catch none
+readFree suppresses none
+
+readNext is call
+readNext in takeChunk
+readNext invokes machine.loadAddress
+readNext argument address machine.Address chunk copy
+readNext result next machine.Address
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+storeFree is call
+storeFree in takeChunk
+storeFree invokes machine.storeAddress
+storeFree argument address machine.Address freeSlot copy
+storeFree argument value machine.Address next copy
+storeFree result none
+storeFree ownedBy none
+storeFree cleanedBy none
+storeFree borrows none
+storeFree catch none
+storeFree suppresses none
+
+fewer is call
+fewer in takeChunk
+fewer invokes math.subtractInt64
+fewer argument left Int64 freeCount copy
+fewer argument right Int64 one copy
+fewer result fewerFree Int64
+fewer ownedBy none
+fewer cleanedBy none
+fewer borrows none
+fewer catch none
+fewer suppresses none
+
+storeFreeCount is call
+storeFreeCount in takeChunk
+storeFreeCount invokes machine.storeInt64
+storeFreeCount argument address machine.Address freeCountSlot copy
+storeFreeCount argument value Int64 fewerFree copy
+storeFreeCount result none
+storeFreeCount ownedBy none
+storeFreeCount cleanedBy none
+storeFreeCount borrows none
+storeFreeCount catch none
+storeFreeCount suppresses none
+
+nowhere is call
+nowhere in takeChunk
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+take is call
+take in takeChunk
+take invokes system.virtualAlloc
+take argument address machine.Address anywhere copy
+take argument bytes Int64 size copy
+take argument allocationType Int32 commitAndReserve copy
+take argument protection Int32 readWrite copy
+take result fresh machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+dropChunk is operation
+dropChunk purpose "Give a chunk back: zeroed onto the free list when it is of the standard size and the list has room, otherwise to the operating system"
+dropChunk invariant none
+dropChunk typeParameter none
+dropChunk input chunk machine.Address copied
+dropChunk output none
+dropChunk outputOwnedBy none
+dropChunk raises none
+dropChunk effect use machine.memory
+dropChunk effect use system.calls
+dropChunk uses memoryAccess
+dropChunk uses systemCalls
+dropChunk memoryHeap false
+dropChunk async false
+dropChunk maxRecursion none
+dropChunk label begin loopKind none
+dropChunk label begin within none
+dropChunk label keepChunk loopKind none
+dropChunk label keepChunk within none
+dropChunk label giveBack loopKind none
+dropChunk label giveBack within none
+dropChunk let eight Int64 8 immutable
+dropChunk let sixteen Int64 16 immutable
+dropChunk let zeroByte Byte 0 immutable
+dropChunk let one Int64 1 immutable
+dropChunk let zero Int64 0 immutable
+dropChunk let releaseMemory Int32 32768 immutable
+dropChunk at begin do findSize
+dropChunk at begin do readSize
+dropChunk at begin do findUsed
+dropChunk at begin do readUsed
+dropChunk at begin do findState
+dropChunk at begin do findFree
+dropChunk at begin do findFreeCount
+dropChunk at begin do readFreeCount
+dropChunk at begin do standardCheck
+dropChunk at begin do roomCheck
+dropChunk at begin do keepCheck
+dropChunk at begin branch if keep goto keepChunk else goto giveBack
+dropChunk at keepChunk do clear
+dropChunk at keepChunk do readFree
+dropChunk at keepChunk do link
+dropChunk at keepChunk do storeFree
+dropChunk at keepChunk do more
+dropChunk at keepChunk do storeFreeCount
+dropChunk at keepChunk return ok none
+dropChunk at giveBack do giveToSystem
+dropChunk at giveBack return ok none
+
+findSize is call
+findSize in dropChunk
+findSize invokes machine.offset
+findSize argument address machine.Address chunk copy
+findSize argument bytes Int64 eight copy
+findSize result sizeSlot machine.Address
+findSize ownedBy none
+findSize cleanedBy none
+findSize borrows none
+findSize catch none
+findSize suppresses none
+
+readSize is call
+readSize in dropChunk
+readSize invokes machine.loadInt64
+readSize argument address machine.Address sizeSlot copy
+readSize result size Int64
+readSize ownedBy none
+readSize cleanedBy none
+readSize borrows none
+readSize catch none
+readSize suppresses none
+
+findUsed is call
+findUsed in dropChunk
+findUsed invokes machine.offset
+findUsed argument address machine.Address chunk copy
+findUsed argument bytes Int64 sixteen copy
+findUsed result usedSlot machine.Address
+findUsed ownedBy none
+findUsed cleanedBy none
+findUsed borrows none
+findUsed catch none
+findUsed suppresses none
+
+readUsed is call
+readUsed in dropChunk
+readUsed invokes machine.loadInt64
+readUsed argument address machine.Address usedSlot copy
+readUsed result used Int64
+readUsed ownedBy none
+readUsed cleanedBy none
+readUsed borrows none
+readUsed catch none
+readUsed suppresses none
+
+findState is call
+findState in dropChunk
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findFree is call
+findFree in dropChunk
+findFree invokes machine.offset
+findFree argument address machine.Address state copy
+findFree argument bytes Int64 freeAt copy
+findFree result freeSlot machine.Address
+findFree ownedBy none
+findFree cleanedBy none
+findFree borrows none
+findFree catch none
+findFree suppresses none
+
+findFreeCount is call
+findFreeCount in dropChunk
+findFreeCount invokes machine.offset
+findFreeCount argument address machine.Address state copy
+findFreeCount argument bytes Int64 freeCountAt copy
+findFreeCount result freeCountSlot machine.Address
+findFreeCount ownedBy none
+findFreeCount cleanedBy none
+findFreeCount borrows none
+findFreeCount catch none
+findFreeCount suppresses none
+
+readFreeCount is call
+readFreeCount in dropChunk
+readFreeCount invokes machine.loadInt64
+readFreeCount argument address machine.Address freeCountSlot copy
+readFreeCount result freeCount Int64
+readFreeCount ownedBy none
+readFreeCount cleanedBy none
+readFreeCount borrows none
+readFreeCount catch none
+readFreeCount suppresses none
+
+standardCheck is call
+standardCheck in dropChunk
+standardCheck invokes compare.equalInt64
+standardCheck argument left Int64 size copy
+standardCheck argument right Int64 chunkBytes copy
+standardCheck result standard Bool
+standardCheck ownedBy none
+standardCheck cleanedBy none
+standardCheck borrows none
+standardCheck catch none
+standardCheck suppresses none
+
+roomCheck is call
+roomCheck in dropChunk
+roomCheck invokes compare.lessThanInt64
+roomCheck argument left Int64 freeCount copy
+roomCheck argument right Int64 keptChunks copy
+roomCheck result room Bool
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+keepCheck is call
+keepCheck in dropChunk
+keepCheck invokes logic.and
+keepCheck argument left Bool standard copy
+keepCheck argument right Bool room copy
+keepCheck result keep Bool
+keepCheck ownedBy none
+keepCheck cleanedBy none
+keepCheck borrows none
+keepCheck catch none
+keepCheck suppresses none
+
+clear is call
+clear in dropChunk
+clear invokes machine.fill
+clear argument target machine.Address chunk copy
+clear argument value Byte zeroByte copy
+clear argument bytes Int64 used copy
+clear result none
+clear ownedBy none
+clear cleanedBy none
+clear borrows none
+clear catch none
+clear suppresses none
+
+readFree is call
+readFree in dropChunk
+readFree invokes machine.loadAddress
+readFree argument address machine.Address freeSlot copy
+readFree result first machine.Address
+readFree ownedBy none
+readFree cleanedBy none
+readFree borrows none
+readFree catch none
+readFree suppresses none
+
+link is call
+link in dropChunk
+link invokes machine.storeAddress
+link argument address machine.Address chunk copy
+link argument value machine.Address first copy
+link result none
+link ownedBy none
+link cleanedBy none
+link borrows none
+link catch none
+link suppresses none
+
+storeFree is call
+storeFree in dropChunk
+storeFree invokes machine.storeAddress
+storeFree argument address machine.Address freeSlot copy
+storeFree argument value machine.Address chunk copy
+storeFree result none
+storeFree ownedBy none
+storeFree cleanedBy none
+storeFree borrows none
+storeFree catch none
+storeFree suppresses none
+
+more is call
+more in dropChunk
+more invokes math.addInt64
+more argument left Int64 freeCount copy
+more argument right Int64 one copy
+more result moreFree Int64
+more ownedBy none
+more cleanedBy none
+more borrows none
+more catch none
+more suppresses none
+
+storeFreeCount is call
+storeFreeCount in dropChunk
+storeFreeCount invokes machine.storeInt64
+storeFreeCount argument address machine.Address freeCountSlot copy
+storeFreeCount argument value Int64 moreFree copy
+storeFreeCount result none
+storeFreeCount ownedBy none
+storeFreeCount cleanedBy none
+storeFreeCount borrows none
+storeFreeCount catch none
+storeFreeCount suppresses none
+
+giveToSystem is call
+giveToSystem in dropChunk
+giveToSystem invokes system.virtualFree
+giveToSystem argument address machine.Address chunk copy
+giveToSystem argument bytes Int64 zero copy
+giveToSystem argument freeType Int32 releaseMemory copy
+giveToSystem result freed Int32
+giveToSystem ownedBy none
+giveToSystem cleanedBy none
+giveToSystem borrows none
+giveToSystem catch none
+giveToSystem suppresses none
+
+# ---------------------------------------------------------------- regions
+newRegion is operation
+newRegion purpose "Make a region that may hand out a capacity of bytes, named by a label for its traps: refined_region_new"
+newRegion invariant startsEmpty "\"A new region has its whole capacity remaining\""
+newRegion typeParameter none
+newRegion input capacity Int64 copied
+newRegion input label machine.Address copied
+newRegion input labelBytes Int64 copied
+newRegion output machine.Address
+newRegion outputOwnedBy none
+newRegion raises none
+newRegion effect use machine.memory
+newRegion effect use system.calls
+newRegion uses memoryAccess
+newRegion uses systemCalls
+newRegion memoryHeap false
+newRegion async false
+newRegion maxRecursion none
+newRegion abi c "refined_region_new"
+newRegion label begin loopKind none
+newRegion label begin within none
+newRegion label describe loopKind none
+newRegion label describe within none
+newRegion label noMemory loopKind none
+newRegion label noMemory within none
+newRegion let eight Int64 8 immutable
+newRegion let sixteen Int64 16 immutable
+newRegion let zero Int64 0 immutable
+newRegion let twentyFour Int64 24 immutable
+newRegion let thirtyTwo Int64 32 immutable
+newRegion let forty Int64 40 immutable
+newRegion let one Int64 1 immutable
+newRegion let outOfMemory String "out of memory creating a region" immutable
+newRegion at begin do take
+newRegion at begin do nowhere
+newRegion at begin do failedCheck
+newRegion at begin branch if failed goto noMemory else goto describe
+newRegion at describe do storeNext
+newRegion at describe do findSize
+newRegion at describe do storeSize
+newRegion at describe do findUsed
+newRegion at describe do headBytes
+newRegion at describe do storeUsed
+newRegion at describe do findRegion
+newRegion at describe do storeCapacity
+newRegion at describe do findAsked
+newRegion at describe do storeAsked
+newRegion at describe do findChunks
+newRegion at describe do storeChunks
+newRegion at describe do findLabel
+newRegion at describe do storeLabel
+newRegion at describe do findLabelBytes
+newRegion at describe do storeLabelBytes
+newRegion at describe do findChunkCount
+newRegion at describe do storeChunkCount
+newRegion at describe return ok region
+newRegion at noMemory do stopHere
+newRegion at noMemory return ok anywhere
+
+take is call
+take in newRegion
+take invokes takeChunk
+take argument size Int64 chunkBytes copy
+take result chunk machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+nowhere is call
+nowhere in newRegion
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+failedCheck is call
+failedCheck in newRegion
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address chunk copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+storeNext is call
+storeNext in newRegion
+storeNext invokes machine.storeAddress
+storeNext argument address machine.Address chunk copy
+storeNext argument value machine.Address anywhere copy
+storeNext result none
+storeNext ownedBy none
+storeNext cleanedBy none
+storeNext borrows none
+storeNext catch none
+storeNext suppresses none
+
+findSize is call
+findSize in newRegion
+findSize invokes machine.offset
+findSize argument address machine.Address chunk copy
+findSize argument bytes Int64 eight copy
+findSize result sizeSlot machine.Address
+findSize ownedBy none
+findSize cleanedBy none
+findSize borrows none
+findSize catch none
+findSize suppresses none
+
+storeSize is call
+storeSize in newRegion
+storeSize invokes machine.storeInt64
+storeSize argument address machine.Address sizeSlot copy
+storeSize argument value Int64 chunkBytes copy
+storeSize result none
+storeSize ownedBy none
+storeSize cleanedBy none
+storeSize borrows none
+storeSize catch none
+storeSize suppresses none
+
+findUsed is call
+findUsed in newRegion
+findUsed invokes machine.offset
+findUsed argument address machine.Address chunk copy
+findUsed argument bytes Int64 sixteen copy
+findUsed result usedSlot machine.Address
+findUsed ownedBy none
+findUsed cleanedBy none
+findUsed borrows none
+findUsed catch none
+findUsed suppresses none
+
+headBytes is call
+headBytes in newRegion
+headBytes invokes math.addInt64
+headBytes argument left Int64 chunkHead copy
+headBytes argument right Int64 regionHead copy
+headBytes result used Int64
+headBytes ownedBy none
+headBytes cleanedBy none
+headBytes borrows none
+headBytes catch none
+headBytes suppresses none
+
+storeUsed is call
+storeUsed in newRegion
+storeUsed invokes machine.storeInt64
+storeUsed argument address machine.Address usedSlot copy
+storeUsed argument value Int64 used copy
+storeUsed result none
+storeUsed ownedBy none
+storeUsed cleanedBy none
+storeUsed borrows none
+storeUsed catch none
+storeUsed suppresses none
+
+findRegion is call
+findRegion in newRegion
+findRegion invokes machine.offset
+findRegion argument address machine.Address chunk copy
+findRegion argument bytes Int64 chunkHead copy
+findRegion result region machine.Address
+findRegion ownedBy none
+findRegion cleanedBy none
+findRegion borrows none
+findRegion catch none
+findRegion suppresses none
+
+storeCapacity is call
+storeCapacity in newRegion
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address region copy
+storeCapacity argument value Int64 capacity copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+findAsked is call
+findAsked in newRegion
+findAsked invokes machine.offset
+findAsked argument address machine.Address region copy
+findAsked argument bytes Int64 eight copy
+findAsked result askedSlot machine.Address
+findAsked ownedBy none
+findAsked cleanedBy none
+findAsked borrows none
+findAsked catch none
+findAsked suppresses none
+
+storeAsked is call
+storeAsked in newRegion
+storeAsked invokes machine.storeInt64
+storeAsked argument address machine.Address askedSlot copy
+storeAsked argument value Int64 zero copy
+storeAsked result none
+storeAsked ownedBy none
+storeAsked cleanedBy none
+storeAsked borrows none
+storeAsked catch none
+storeAsked suppresses none
+
+findChunks is call
+findChunks in newRegion
+findChunks invokes machine.offset
+findChunks argument address machine.Address region copy
+findChunks argument bytes Int64 sixteen copy
+findChunks result chunksSlot machine.Address
+findChunks ownedBy none
+findChunks cleanedBy none
+findChunks borrows none
+findChunks catch none
+findChunks suppresses none
+
+storeChunks is call
+storeChunks in newRegion
+storeChunks invokes machine.storeAddress
+storeChunks argument address machine.Address chunksSlot copy
+storeChunks argument value machine.Address chunk copy
+storeChunks result none
+storeChunks ownedBy none
+storeChunks cleanedBy none
+storeChunks borrows none
+storeChunks catch none
+storeChunks suppresses none
+
+findLabel is call
+findLabel in newRegion
+findLabel invokes machine.offset
+findLabel argument address machine.Address region copy
+findLabel argument bytes Int64 twentyFour copy
+findLabel result labelSlot machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+storeLabel is call
+storeLabel in newRegion
+storeLabel invokes machine.storeAddress
+storeLabel argument address machine.Address labelSlot copy
+storeLabel argument value machine.Address label copy
+storeLabel result none
+storeLabel ownedBy none
+storeLabel cleanedBy none
+storeLabel borrows none
+storeLabel catch none
+storeLabel suppresses none
+
+findLabelBytes is call
+findLabelBytes in newRegion
+findLabelBytes invokes machine.offset
+findLabelBytes argument address machine.Address region copy
+findLabelBytes argument bytes Int64 thirtyTwo copy
+findLabelBytes result labelBytesSlot machine.Address
+findLabelBytes ownedBy none
+findLabelBytes cleanedBy none
+findLabelBytes borrows none
+findLabelBytes catch none
+findLabelBytes suppresses none
+
+storeLabelBytes is call
+storeLabelBytes in newRegion
+storeLabelBytes invokes machine.storeInt64
+storeLabelBytes argument address machine.Address labelBytesSlot copy
+storeLabelBytes argument value Int64 labelBytes copy
+storeLabelBytes result none
+storeLabelBytes ownedBy none
+storeLabelBytes cleanedBy none
+storeLabelBytes borrows none
+storeLabelBytes catch none
+storeLabelBytes suppresses none
+
+findChunkCount is call
+findChunkCount in newRegion
+findChunkCount invokes machine.offset
+findChunkCount argument address machine.Address region copy
+findChunkCount argument bytes Int64 forty copy
+findChunkCount result chunkCountSlot machine.Address
+findChunkCount ownedBy none
+findChunkCount cleanedBy none
+findChunkCount borrows none
+findChunkCount catch none
+findChunkCount suppresses none
+
+storeChunkCount is call
+storeChunkCount in newRegion
+storeChunkCount invokes machine.storeInt64
+storeChunkCount argument address machine.Address chunkCountSlot copy
+storeChunkCount argument value Int64 one copy
+storeChunkCount result none
+storeChunkCount ownedBy none
+storeChunkCount cleanedBy none
+storeChunkCount borrows none
+storeChunkCount catch none
+storeChunkCount suppresses none
+
+stopHere is call
+stopHere in newRegion
+stopHere invokes stop
+stopHere argument text String outOfMemory lend
+stopHere result none
+stopHere ownedBy none
+stopHere cleanedBy none
+stopHere borrows none
+stopHere catch none
+stopHere suppresses none
+
+exceeded is operation
+exceeded purpose "Trap because a region was asked for more than its capacity: `<label> exceeded its capacity of <capacity> bytes`"
+exceeded invariant none
+exceeded typeParameter none
+exceeded input region machine.Address copied
+exceeded output none
+exceeded outputOwnedBy none
+exceeded raises none
+exceeded effect use machine.memory
+exceeded effect use system.calls
+exceeded uses memoryAccess
+exceeded uses systemCalls
+exceeded memoryHeap false
+exceeded async false
+exceeded maxRecursion none
+exceeded label begin loopKind none
+exceeded label begin within none
+exceeded label compose loopKind none
+exceeded label compose within none
+exceeded label labelOnly loopKind none
+exceeded label labelOnly within none
+exceeded let middle String " exceeded its capacity of " immutable
+exceeded let tail String " bytes" immutable
+exceeded let twentyFour Int64 24 immutable
+exceeded let thirtyTwo Int64 32 immutable
+exceeded let sixtyFour Int64 64 immutable
+exceeded let commitAndReserve Int32 12288 immutable
+exceeded let readWrite Int32 4 immutable
+exceeded let trapCode Int32 70 immutable
+exceeded at begin do readCapacity
+exceeded at begin do findLabel
+exceeded at begin do readLabel
+exceeded at begin do findLabelBytes
+exceeded at begin do readLabelBytes
+exceeded at begin do roomOf
+exceeded at begin do nowhere
+exceeded at begin do take
+exceeded at begin do failedCheck
+exceeded at begin branch if failed goto labelOnly else goto compose
+exceeded at compose do copyLabel
+exceeded at compose do findMiddle
+exceeded at compose do readMiddle
+exceeded at compose do middleLength
+exceeded at compose do copyMiddle
+exceeded at compose do afterMiddle
+exceeded at compose do findDigits
+exceeded at compose do format
+exceeded at compose do afterDigits
+exceeded at compose do findTail
+exceeded at compose do readTail
+exceeded at compose do tailLength
+exceeded at compose do copyTail
+exceeded at compose do total
+exceeded at compose do writeReport
+exceeded at compose do exit
+exceeded at compose return ok none
+exceeded at labelOnly do writeLabel
+exceeded at labelOnly do exitLabel
+exceeded at labelOnly return ok none
+
+readCapacity is call
+readCapacity in exceeded
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address region copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findLabel is call
+findLabel in exceeded
+findLabel invokes machine.offset
+findLabel argument address machine.Address region copy
+findLabel argument bytes Int64 twentyFour copy
+findLabel result labelSlot machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+readLabel is call
+readLabel in exceeded
+readLabel invokes machine.loadAddress
+readLabel argument address machine.Address labelSlot copy
+readLabel result label machine.Address
+readLabel ownedBy none
+readLabel cleanedBy none
+readLabel borrows none
+readLabel catch none
+readLabel suppresses none
+
+findLabelBytes is call
+findLabelBytes in exceeded
+findLabelBytes invokes machine.offset
+findLabelBytes argument address machine.Address region copy
+findLabelBytes argument bytes Int64 thirtyTwo copy
+findLabelBytes result labelBytesSlot machine.Address
+findLabelBytes ownedBy none
+findLabelBytes cleanedBy none
+findLabelBytes borrows none
+findLabelBytes catch none
+findLabelBytes suppresses none
+
+readLabelBytes is call
+readLabelBytes in exceeded
+readLabelBytes invokes machine.loadInt64
+readLabelBytes argument address machine.Address labelBytesSlot copy
+readLabelBytes result labelBytes Int64
+readLabelBytes ownedBy none
+readLabelBytes cleanedBy none
+readLabelBytes borrows none
+readLabelBytes catch none
+readLabelBytes suppresses none
+
+roomOf is call
+roomOf in exceeded
+roomOf invokes math.addInt64
+roomOf argument left Int64 labelBytes copy
+roomOf argument right Int64 sixtyFour copy
+roomOf result room Int64
+roomOf ownedBy none
+roomOf cleanedBy none
+roomOf borrows none
+roomOf catch none
+roomOf suppresses none
+
+nowhere is call
+nowhere in exceeded
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+take is call
+take in exceeded
+take invokes system.virtualAlloc
+take argument address machine.Address anywhere copy
+take argument bytes Int64 room copy
+take argument allocationType Int32 commitAndReserve copy
+take argument protection Int32 readWrite copy
+take result message machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+failedCheck is call
+failedCheck in exceeded
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address message copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+copyLabel is call
+copyLabel in exceeded
+copyLabel invokes machine.copy
+copyLabel argument target machine.Address message copy
+copyLabel argument source machine.Address label copy
+copyLabel argument bytes Int64 labelBytes copy
+copyLabel result none
+copyLabel ownedBy none
+copyLabel cleanedBy none
+copyLabel borrows none
+copyLabel catch none
+copyLabel suppresses none
+
+findMiddle is call
+findMiddle in exceeded
+findMiddle invokes machine.offset
+findMiddle argument address machine.Address message copy
+findMiddle argument bytes Int64 labelBytes copy
+findMiddle result middleAt machine.Address
+findMiddle ownedBy none
+findMiddle cleanedBy none
+findMiddle borrows none
+findMiddle catch none
+findMiddle suppresses none
+
+readMiddle is call
+readMiddle in exceeded
+readMiddle invokes machine.addressOfString
+readMiddle argument text String middle lend
+readMiddle result middleText machine.Address
+readMiddle ownedBy none
+readMiddle cleanedBy none
+readMiddle borrows none
+readMiddle catch none
+readMiddle suppresses none
+
+middleLength is call
+middleLength in exceeded
+middleLength invokes string.byteLength
+middleLength argument text String middle lend
+middleLength result middleBytes Int64
+middleLength ownedBy none
+middleLength cleanedBy none
+middleLength borrows none
+middleLength catch none
+middleLength suppresses none
+
+copyMiddle is call
+copyMiddle in exceeded
+copyMiddle invokes machine.copy
+copyMiddle argument target machine.Address middleAt copy
+copyMiddle argument source machine.Address middleText copy
+copyMiddle argument bytes Int64 middleBytes copy
+copyMiddle result none
+copyMiddle ownedBy none
+copyMiddle cleanedBy none
+copyMiddle borrows none
+copyMiddle catch none
+copyMiddle suppresses none
+
+afterMiddle is call
+afterMiddle in exceeded
+afterMiddle invokes math.addInt64
+afterMiddle argument left Int64 labelBytes copy
+afterMiddle argument right Int64 middleBytes copy
+afterMiddle result digitsOffset Int64
+afterMiddle ownedBy none
+afterMiddle cleanedBy none
+afterMiddle borrows none
+afterMiddle catch none
+afterMiddle suppresses none
+
+findDigits is call
+findDigits in exceeded
+findDigits invokes machine.offset
+findDigits argument address machine.Address message copy
+findDigits argument bytes Int64 digitsOffset copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+format is call
+format in exceeded
+format invokes numbers.formatDecimal
+format argument value Int64 capacity copy
+format argument target machine.Address digits copy
+format result digitCount Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+afterDigits is call
+afterDigits in exceeded
+afterDigits invokes math.addInt64
+afterDigits argument left Int64 digitsOffset copy
+afterDigits argument right Int64 digitCount copy
+afterDigits result tailOffset Int64
+afterDigits ownedBy none
+afterDigits cleanedBy none
+afterDigits borrows none
+afterDigits catch none
+afterDigits suppresses none
+
+findTail is call
+findTail in exceeded
+findTail invokes machine.offset
+findTail argument address machine.Address message copy
+findTail argument bytes Int64 tailOffset copy
+findTail result tailAt machine.Address
+findTail ownedBy none
+findTail cleanedBy none
+findTail borrows none
+findTail catch none
+findTail suppresses none
+
+readTail is call
+readTail in exceeded
+readTail invokes machine.addressOfString
+readTail argument text String tail lend
+readTail result tailText machine.Address
+readTail ownedBy none
+readTail cleanedBy none
+readTail borrows none
+readTail catch none
+readTail suppresses none
+
+tailLength is call
+tailLength in exceeded
+tailLength invokes string.byteLength
+tailLength argument text String tail lend
+tailLength result tailBytes Int64
+tailLength ownedBy none
+tailLength cleanedBy none
+tailLength borrows none
+tailLength catch none
+tailLength suppresses none
+
+copyTail is call
+copyTail in exceeded
+copyTail invokes machine.copy
+copyTail argument target machine.Address tailAt copy
+copyTail argument source machine.Address tailText copy
+copyTail argument bytes Int64 tailBytes copy
+copyTail result none
+copyTail ownedBy none
+copyTail cleanedBy none
+copyTail borrows none
+copyTail catch none
+copyTail suppresses none
+
+total is call
+total in exceeded
+total invokes math.addInt64
+total argument left Int64 tailOffset copy
+total argument right Int64 tailBytes copy
+total result messageBytes Int64
+total ownedBy none
+total cleanedBy none
+total borrows none
+total catch none
+total suppresses none
+
+writeReport is call
+writeReport in exceeded
+writeReport invokes frames.report
+writeReport argument text machine.Address message copy
+writeReport argument bytes Int64 messageBytes copy
+writeReport result status Int32
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch none
+writeReport suppresses none
+
+exit is call
+exit in exceeded
+exit invokes system.exitProcess
+exit argument code Int32 trapCode copy
+exit result none
+exit ownedBy none
+exit cleanedBy none
+exit borrows none
+exit catch none
+exit suppresses none
+
+writeLabel is call
+writeLabel in exceeded
+writeLabel invokes frames.report
+writeLabel argument text machine.Address label copy
+writeLabel argument bytes Int64 labelBytes copy
+writeLabel result labelStatus Int32
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch none
+writeLabel suppresses none
+
+exitLabel is call
+exitLabel in exceeded
+exitLabel invokes system.exitProcess
+exitLabel argument code Int32 trapCode copy
+exitLabel result none
+exitLabel ownedBy none
+exitLabel cleanedBy none
+exitLabel borrows none
+exitLabel catch none
+exitLabel suppresses none
+
+allocate is operation
+allocate purpose "Hand out a zeroed block of bytes from a region, sixteen-byte aligned; a request past the region's capacity traps: refined_region_alloc"
+allocate invariant handsOutZeroed "\"Each block is zeroed, aligned to 16 bytes, apart from every other block of the region, and counted against its capacity as asked\""
+allocate typeParameter none
+allocate input region machine.Address copied
+allocate input size Int64 copied
+allocate output machine.Address
+allocate outputOwnedBy none
+allocate raises none
+allocate effect use machine.memory
+allocate effect use system.calls
+allocate uses memoryAccess
+allocate uses systemCalls
+allocate memoryHeap false
+allocate async false
+allocate maxRecursion none
+allocate abi c "refined_region_alloc"
+allocate label begin loopKind none
+allocate label begin within none
+allocate label count loopKind none
+allocate label count within none
+allocate label needOne loopKind none
+allocate label needOne within none
+allocate label needSize loopKind none
+allocate label needSize within none
+allocate label place loopKind none
+allocate label place within none
+allocate label handOut loopKind none
+allocate label handOut within none
+allocate label grow loopKind none
+allocate label grow within none
+allocate label standardChunk loopKind none
+allocate label standardChunk within none
+allocate label largeChunk loopKind none
+allocate label largeChunk within none
+allocate label newChunk loopKind none
+allocate label newChunk within none
+allocate label link loopKind none
+allocate label link within none
+allocate label noMemory loopKind none
+allocate label noMemory within none
+allocate label tooMuch loopKind none
+allocate label tooMuch within none
+allocate let need Int64 0 mutable
+allocate let freshSize Int64 0 mutable
+allocate let eight Int64 8 immutable
+allocate let sixteen Int64 16 immutable
+allocate let zero Int64 0 immutable
+allocate let one Int64 1 immutable
+allocate let fifteen Int64 15 immutable
+allocate let minusSixteen Int64 -16 immutable
+allocate let granule Int64 65535 immutable
+allocate let chunkMask Int64 -65536 immutable
+allocate let forty Int64 40 immutable
+allocate let outOfMemory String "out of memory in a region" immutable
+allocate at begin do readCapacity
+allocate at begin do findAsked
+allocate at begin do readAsked
+allocate at begin do roomOf
+allocate at begin do negativeCheck
+allocate at begin do overCheck
+allocate at begin do badCheck
+allocate at begin branch if bad goto tooMuch else goto count
+allocate at count do addAsked
+allocate at count do storeAsked
+allocate at count do emptyCheck
+allocate at count branch if empty goto needOne else goto needSize
+allocate at needOne set need sixteen
+allocate at needOne goto place
+allocate at needSize do roundUp
+allocate at needSize do align
+allocate at needSize set need aligned
+allocate at needSize goto place
+allocate at place do findChunks
+allocate at place do readChunk
+allocate at place do findChunkSize
+allocate at place do readChunkSize
+allocate at place do findUsed
+allocate at place do readUsed
+allocate at place do leftOf
+allocate at place do fitCheck
+allocate at place branch if fits goto handOut else goto grow
+allocate at handOut do findBlock
+allocate at handOut do addUsed
+allocate at handOut do storeUsed
+allocate at handOut return ok block
+allocate at grow do wantOf
+allocate at grow do standardCheck
+allocate at grow branch if standard goto standardChunk else goto largeChunk
+allocate at standardChunk set freshSize chunkBytes
+allocate at standardChunk goto newChunk
+allocate at largeChunk do roundChunk
+allocate at largeChunk do alignChunk
+allocate at largeChunk set freshSize alignedChunk
+allocate at largeChunk goto newChunk
+allocate at newChunk do take
+allocate at newChunk do nowhere
+allocate at newChunk do failedCheck
+allocate at newChunk branch if failed goto noMemory else goto link
+allocate at link do storeNext
+allocate at link do findFreshSize
+allocate at link do storeFreshSize
+allocate at link do findFreshUsed
+allocate at link do freshUsedOf
+allocate at link do storeFreshUsed
+allocate at link do storeChunk
+allocate at link do findChunkCount
+allocate at link do readChunkCount
+allocate at link do moreChunks
+allocate at link do storeChunkCount
+allocate at link do findFreshBlock
+allocate at link return ok freshBlock
+allocate at noMemory do stopHere
+allocate at noMemory return ok anywhere
+allocate at tooMuch do trapHere
+allocate at tooMuch do nothing
+allocate at tooMuch return ok nowhere2
+
+readCapacity is call
+readCapacity in allocate
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address region copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findAsked is call
+findAsked in allocate
+findAsked invokes machine.offset
+findAsked argument address machine.Address region copy
+findAsked argument bytes Int64 eight copy
+findAsked result askedSlot machine.Address
+findAsked ownedBy none
+findAsked cleanedBy none
+findAsked borrows none
+findAsked catch none
+findAsked suppresses none
+
+readAsked is call
+readAsked in allocate
+readAsked invokes machine.loadInt64
+readAsked argument address machine.Address askedSlot copy
+readAsked result asked Int64
+readAsked ownedBy none
+readAsked cleanedBy none
+readAsked borrows none
+readAsked catch none
+readAsked suppresses none
+
+roomOf is call
+roomOf in allocate
+roomOf invokes math.subtractInt64
+roomOf argument left Int64 capacity copy
+roomOf argument right Int64 asked copy
+roomOf result room Int64
+roomOf ownedBy none
+roomOf cleanedBy none
+roomOf borrows none
+roomOf catch none
+roomOf suppresses none
+
+negativeCheck is call
+negativeCheck in allocate
+negativeCheck invokes compare.lessThanInt64
+negativeCheck argument left Int64 size copy
+negativeCheck argument right Int64 zero copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+overCheck is call
+overCheck in allocate
+overCheck invokes compare.greaterThanInt64
+overCheck argument left Int64 size copy
+overCheck argument right Int64 room copy
+overCheck result over Bool
+overCheck ownedBy none
+overCheck cleanedBy none
+overCheck borrows none
+overCheck catch none
+overCheck suppresses none
+
+badCheck is call
+badCheck in allocate
+badCheck invokes logic.or
+badCheck argument left Bool negative copy
+badCheck argument right Bool over copy
+badCheck result bad Bool
+badCheck ownedBy none
+badCheck cleanedBy none
+badCheck borrows none
+badCheck catch none
+badCheck suppresses none
+
+addAsked is call
+addAsked in allocate
+addAsked invokes math.addInt64
+addAsked argument left Int64 asked copy
+addAsked argument right Int64 size copy
+addAsked result nowAsked Int64
+addAsked ownedBy none
+addAsked cleanedBy none
+addAsked borrows none
+addAsked catch none
+addAsked suppresses none
+
+storeAsked is call
+storeAsked in allocate
+storeAsked invokes machine.storeInt64
+storeAsked argument address machine.Address askedSlot copy
+storeAsked argument value Int64 nowAsked copy
+storeAsked result none
+storeAsked ownedBy none
+storeAsked cleanedBy none
+storeAsked borrows none
+storeAsked catch none
+storeAsked suppresses none
+
+emptyCheck is call
+emptyCheck in allocate
+emptyCheck invokes compare.lessThanInt64
+emptyCheck argument left Int64 size copy
+emptyCheck argument right Int64 one copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+roundUp is call
+roundUp in allocate
+roundUp invokes math.addInt64
+roundUp argument left Int64 size copy
+roundUp argument right Int64 fifteen copy
+roundUp result padded Int64
+roundUp ownedBy none
+roundUp cleanedBy none
+roundUp borrows none
+roundUp catch none
+roundUp suppresses none
+
+align is call
+align in allocate
+align invokes bits.andInt64
+align argument left Int64 padded copy
+align argument right Int64 minusSixteen copy
+align result aligned Int64
+align ownedBy none
+align cleanedBy none
+align borrows none
+align catch none
+align suppresses none
+
+findChunks is call
+findChunks in allocate
+findChunks invokes machine.offset
+findChunks argument address machine.Address region copy
+findChunks argument bytes Int64 sixteen copy
+findChunks result chunksSlot machine.Address
+findChunks ownedBy none
+findChunks cleanedBy none
+findChunks borrows none
+findChunks catch none
+findChunks suppresses none
+
+readChunk is call
+readChunk in allocate
+readChunk invokes machine.loadAddress
+readChunk argument address machine.Address chunksSlot copy
+readChunk result chunk machine.Address
+readChunk ownedBy none
+readChunk cleanedBy none
+readChunk borrows none
+readChunk catch none
+readChunk suppresses none
+
+findChunkSize is call
+findChunkSize in allocate
+findChunkSize invokes machine.offset
+findChunkSize argument address machine.Address chunk copy
+findChunkSize argument bytes Int64 eight copy
+findChunkSize result chunkSizeSlot machine.Address
+findChunkSize ownedBy none
+findChunkSize cleanedBy none
+findChunkSize borrows none
+findChunkSize catch none
+findChunkSize suppresses none
+
+readChunkSize is call
+readChunkSize in allocate
+readChunkSize invokes machine.loadInt64
+readChunkSize argument address machine.Address chunkSizeSlot copy
+readChunkSize result chunkSize Int64
+readChunkSize ownedBy none
+readChunkSize cleanedBy none
+readChunkSize borrows none
+readChunkSize catch none
+readChunkSize suppresses none
+
+findUsed is call
+findUsed in allocate
+findUsed invokes machine.offset
+findUsed argument address machine.Address chunk copy
+findUsed argument bytes Int64 sixteen copy
+findUsed result usedSlot machine.Address
+findUsed ownedBy none
+findUsed cleanedBy none
+findUsed borrows none
+findUsed catch none
+findUsed suppresses none
+
+readUsed is call
+readUsed in allocate
+readUsed invokes machine.loadInt64
+readUsed argument address machine.Address usedSlot copy
+readUsed result used Int64
+readUsed ownedBy none
+readUsed cleanedBy none
+readUsed borrows none
+readUsed catch none
+readUsed suppresses none
+
+leftOf is call
+leftOf in allocate
+leftOf invokes math.subtractInt64
+leftOf argument left Int64 chunkSize copy
+leftOf argument right Int64 used copy
+leftOf result left Int64
+leftOf ownedBy none
+leftOf cleanedBy none
+leftOf borrows none
+leftOf catch none
+leftOf suppresses none
+
+fitCheck is call
+fitCheck in allocate
+fitCheck invokes compare.lessOrEqualInt64
+fitCheck argument left Int64 need copy
+fitCheck argument right Int64 left copy
+fitCheck result fits Bool
+fitCheck ownedBy none
+fitCheck cleanedBy none
+fitCheck borrows none
+fitCheck catch none
+fitCheck suppresses none
+
+findBlock is call
+findBlock in allocate
+findBlock invokes machine.offset
+findBlock argument address machine.Address chunk copy
+findBlock argument bytes Int64 used copy
+findBlock result block machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+addUsed is call
+addUsed in allocate
+addUsed invokes math.addInt64
+addUsed argument left Int64 used copy
+addUsed argument right Int64 need copy
+addUsed result nowUsed Int64
+addUsed ownedBy none
+addUsed cleanedBy none
+addUsed borrows none
+addUsed catch none
+addUsed suppresses none
+
+storeUsed is call
+storeUsed in allocate
+storeUsed invokes machine.storeInt64
+storeUsed argument address machine.Address usedSlot copy
+storeUsed argument value Int64 nowUsed copy
+storeUsed result none
+storeUsed ownedBy none
+storeUsed cleanedBy none
+storeUsed borrows none
+storeUsed catch none
+storeUsed suppresses none
+
+wantOf is call
+wantOf in allocate
+wantOf invokes math.addInt64
+wantOf argument left Int64 need copy
+wantOf argument right Int64 chunkHead copy
+wantOf result want Int64
+wantOf ownedBy none
+wantOf cleanedBy none
+wantOf borrows none
+wantOf catch none
+wantOf suppresses none
+
+standardCheck is call
+standardCheck in allocate
+standardCheck invokes compare.lessOrEqualInt64
+standardCheck argument left Int64 want copy
+standardCheck argument right Int64 chunkBytes copy
+standardCheck result standard Bool
+standardCheck ownedBy none
+standardCheck cleanedBy none
+standardCheck borrows none
+standardCheck catch none
+standardCheck suppresses none
+
+roundChunk is call
+roundChunk in allocate
+roundChunk invokes math.addInt64
+roundChunk argument left Int64 want copy
+roundChunk argument right Int64 granule copy
+roundChunk result paddedChunk Int64
+roundChunk ownedBy none
+roundChunk cleanedBy none
+roundChunk borrows none
+roundChunk catch none
+roundChunk suppresses none
+
+alignChunk is call
+alignChunk in allocate
+alignChunk invokes bits.andInt64
+alignChunk argument left Int64 paddedChunk copy
+alignChunk argument right Int64 chunkMask copy
+alignChunk result alignedChunk Int64
+alignChunk ownedBy none
+alignChunk cleanedBy none
+alignChunk borrows none
+alignChunk catch none
+alignChunk suppresses none
+
+take is call
+take in allocate
+take invokes takeChunk
+take argument size Int64 freshSize copy
+take result fresh machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+nowhere is call
+nowhere in allocate
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+failedCheck is call
+failedCheck in allocate
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address fresh copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+storeNext is call
+storeNext in allocate
+storeNext invokes machine.storeAddress
+storeNext argument address machine.Address fresh copy
+storeNext argument value machine.Address chunk copy
+storeNext result none
+storeNext ownedBy none
+storeNext cleanedBy none
+storeNext borrows none
+storeNext catch none
+storeNext suppresses none
+
+findFreshSize is call
+findFreshSize in allocate
+findFreshSize invokes machine.offset
+findFreshSize argument address machine.Address fresh copy
+findFreshSize argument bytes Int64 eight copy
+findFreshSize result freshSizeSlot machine.Address
+findFreshSize ownedBy none
+findFreshSize cleanedBy none
+findFreshSize borrows none
+findFreshSize catch none
+findFreshSize suppresses none
+
+storeFreshSize is call
+storeFreshSize in allocate
+storeFreshSize invokes machine.storeInt64
+storeFreshSize argument address machine.Address freshSizeSlot copy
+storeFreshSize argument value Int64 freshSize copy
+storeFreshSize result none
+storeFreshSize ownedBy none
+storeFreshSize cleanedBy none
+storeFreshSize borrows none
+storeFreshSize catch none
+storeFreshSize suppresses none
+
+findFreshUsed is call
+findFreshUsed in allocate
+findFreshUsed invokes machine.offset
+findFreshUsed argument address machine.Address fresh copy
+findFreshUsed argument bytes Int64 sixteen copy
+findFreshUsed result freshUsedSlot machine.Address
+findFreshUsed ownedBy none
+findFreshUsed cleanedBy none
+findFreshUsed borrows none
+findFreshUsed catch none
+findFreshUsed suppresses none
+
+freshUsedOf is call
+freshUsedOf in allocate
+freshUsedOf invokes math.addInt64
+freshUsedOf argument left Int64 chunkHead copy
+freshUsedOf argument right Int64 need copy
+freshUsedOf result freshUsed Int64
+freshUsedOf ownedBy none
+freshUsedOf cleanedBy none
+freshUsedOf borrows none
+freshUsedOf catch none
+freshUsedOf suppresses none
+
+storeFreshUsed is call
+storeFreshUsed in allocate
+storeFreshUsed invokes machine.storeInt64
+storeFreshUsed argument address machine.Address freshUsedSlot copy
+storeFreshUsed argument value Int64 freshUsed copy
+storeFreshUsed result none
+storeFreshUsed ownedBy none
+storeFreshUsed cleanedBy none
+storeFreshUsed borrows none
+storeFreshUsed catch none
+storeFreshUsed suppresses none
+
+storeChunk is call
+storeChunk in allocate
+storeChunk invokes machine.storeAddress
+storeChunk argument address machine.Address chunksSlot copy
+storeChunk argument value machine.Address fresh copy
+storeChunk result none
+storeChunk ownedBy none
+storeChunk cleanedBy none
+storeChunk borrows none
+storeChunk catch none
+storeChunk suppresses none
+
+findChunkCount is call
+findChunkCount in allocate
+findChunkCount invokes machine.offset
+findChunkCount argument address machine.Address region copy
+findChunkCount argument bytes Int64 forty copy
+findChunkCount result chunkCountSlot machine.Address
+findChunkCount ownedBy none
+findChunkCount cleanedBy none
+findChunkCount borrows none
+findChunkCount catch none
+findChunkCount suppresses none
+
+readChunkCount is call
+readChunkCount in allocate
+readChunkCount invokes machine.loadInt64
+readChunkCount argument address machine.Address chunkCountSlot copy
+readChunkCount result chunkCount Int64
+readChunkCount ownedBy none
+readChunkCount cleanedBy none
+readChunkCount borrows none
+readChunkCount catch none
+readChunkCount suppresses none
+
+moreChunks is call
+moreChunks in allocate
+moreChunks invokes math.addInt64
+moreChunks argument left Int64 chunkCount copy
+moreChunks argument right Int64 one copy
+moreChunks result nextChunkCount Int64
+moreChunks ownedBy none
+moreChunks cleanedBy none
+moreChunks borrows none
+moreChunks catch none
+moreChunks suppresses none
+
+storeChunkCount is call
+storeChunkCount in allocate
+storeChunkCount invokes machine.storeInt64
+storeChunkCount argument address machine.Address chunkCountSlot copy
+storeChunkCount argument value Int64 nextChunkCount copy
+storeChunkCount result none
+storeChunkCount ownedBy none
+storeChunkCount cleanedBy none
+storeChunkCount borrows none
+storeChunkCount catch none
+storeChunkCount suppresses none
+
+findFreshBlock is call
+findFreshBlock in allocate
+findFreshBlock invokes machine.offset
+findFreshBlock argument address machine.Address fresh copy
+findFreshBlock argument bytes Int64 chunkHead copy
+findFreshBlock result freshBlock machine.Address
+findFreshBlock ownedBy none
+findFreshBlock cleanedBy none
+findFreshBlock borrows none
+findFreshBlock catch none
+findFreshBlock suppresses none
+
+stopHere is call
+stopHere in allocate
+stopHere invokes stop
+stopHere argument text String outOfMemory lend
+stopHere result none
+stopHere ownedBy none
+stopHere cleanedBy none
+stopHere borrows none
+stopHere catch none
+stopHere suppresses none
+
+trapHere is call
+trapHere in allocate
+trapHere invokes exceeded
+trapHere argument region machine.Address region copy
+trapHere result none
+trapHere ownedBy none
+trapHere cleanedBy none
+trapHere borrows none
+trapHere catch none
+trapHere suppresses none
+
+nothing is call
+nothing in allocate
+nothing invokes machine.zero
+nothing argument none
+nothing result nowhere2 machine.Address
+nothing ownedBy none
+nothing cleanedBy none
+nothing borrows none
+nothing catch none
+nothing suppresses none
+
+remaining is operation
+remaining purpose "How many of a region's bytes are still free to ask for: refined_region_remaining"
+remaining invariant countsAsked "\"A region's remaining bytes are its capacity less every size it was asked for\""
+remaining typeParameter none
+remaining input region machine.Address copied
+remaining output Int64
+remaining outputOwnedBy none
+remaining raises none
+remaining effect use machine.memory
+remaining uses memoryAccess
+remaining memoryHeap false
+remaining async false
+remaining maxRecursion none
+remaining abi c "refined_region_remaining"
+remaining label begin loopKind none
+remaining label begin within none
+remaining let eight Int64 8 immutable
+remaining at begin do readCapacity
+remaining at begin do findAsked
+remaining at begin do readAsked
+remaining at begin do leftOf
+remaining at begin return ok left
+
+readCapacity is call
+readCapacity in remaining
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address region copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findAsked is call
+findAsked in remaining
+findAsked invokes machine.offset
+findAsked argument address machine.Address region copy
+findAsked argument bytes Int64 eight copy
+findAsked result askedSlot machine.Address
+findAsked ownedBy none
+findAsked cleanedBy none
+findAsked borrows none
+findAsked catch none
+findAsked suppresses none
+
+readAsked is call
+readAsked in remaining
+readAsked invokes machine.loadInt64
+readAsked argument address machine.Address askedSlot copy
+readAsked result asked Int64
+readAsked ownedBy none
+readAsked cleanedBy none
+readAsked borrows none
+readAsked catch none
+readAsked suppresses none
+
+leftOf is call
+leftOf in remaining
+leftOf invokes math.subtractInt64
+leftOf argument left Int64 capacity copy
+leftOf argument right Int64 asked copy
+leftOf result left Int64
+leftOf ownedBy none
+leftOf cleanedBy none
+leftOf borrows none
+leftOf catch none
+leftOf suppresses none
+
+release is operation
+release purpose "Give back every chunk of a region at once: refined_region_free"
+release invariant reusesChunks "\"Every chunk of the region is given back; a chunk of the standard size is kept, zeroed, for the next region while 64 are not yet kept\""
+release typeParameter none
+release input region machine.Address copied
+release output none
+release outputOwnedBy none
+release raises none
+release effect use machine.memory
+release effect use system.calls
+release uses memoryAccess
+release uses systemCalls
+release memoryHeap false
+release async false
+release maxRecursion none
+release abi c "refined_region_free"
+release label begin loopKind none
+release label begin within none
+release label eachChunk loopKind while
+release label eachChunk within none
+release label eachChunk maxIterations chunkCount
+release label dropOne loopKind none
+release label dropOne within eachChunk
+release label done loopKind none
+release label done within none
+release let chunk machine.Address unset mutable
+release let sixteen Int64 16 immutable
+release let forty Int64 40 immutable
+release at begin do findChunks
+release at begin do readChunk
+release at begin set chunk first
+release at begin do findChunkCount
+release at begin do readChunkCount
+release at begin do nowhere
+release at begin goto eachChunk
+release at eachChunk do endCheck
+release at eachChunk branch if atEnd goto done else goto dropOne
+release at dropOne do readNext
+release at dropOne do drop
+release at dropOne set chunk next
+release at dropOne goto eachChunk
+release at done return ok none
+
+findChunks is call
+findChunks in release
+findChunks invokes machine.offset
+findChunks argument address machine.Address region copy
+findChunks argument bytes Int64 sixteen copy
+findChunks result chunksSlot machine.Address
+findChunks ownedBy none
+findChunks cleanedBy none
+findChunks borrows none
+findChunks catch none
+findChunks suppresses none
+
+readChunk is call
+readChunk in release
+readChunk invokes machine.loadAddress
+readChunk argument address machine.Address chunksSlot copy
+readChunk result first machine.Address
+readChunk ownedBy none
+readChunk cleanedBy none
+readChunk borrows none
+readChunk catch none
+readChunk suppresses none
+
+findChunkCount is call
+findChunkCount in release
+findChunkCount invokes machine.offset
+findChunkCount argument address machine.Address region copy
+findChunkCount argument bytes Int64 forty copy
+findChunkCount result chunkCountSlot machine.Address
+findChunkCount ownedBy none
+findChunkCount cleanedBy none
+findChunkCount borrows none
+findChunkCount catch none
+findChunkCount suppresses none
+
+readChunkCount is call
+readChunkCount in release
+readChunkCount invokes machine.loadInt64
+readChunkCount argument address machine.Address chunkCountSlot copy
+readChunkCount result chunkCount Int64
+readChunkCount ownedBy none
+readChunkCount cleanedBy none
+readChunkCount borrows none
+readChunkCount catch none
+readChunkCount suppresses none
+
+nowhere is call
+nowhere in release
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+endCheck is call
+endCheck in release
+endCheck invokes machine.equal
+endCheck argument left machine.Address chunk copy
+endCheck argument right machine.Address anywhere copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readNext is call
+readNext in release
+readNext invokes machine.loadAddress
+readNext argument address machine.Address chunk copy
+readNext result next machine.Address
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+drop is call
+drop in release
+drop invokes dropChunk
+drop argument chunk machine.Address chunk copy
+drop result none
+drop ownedBy none
+drop cleanedBy none
+drop borrows none
+drop catch none
+drop suppresses none
+
+# ---------------------------------------------------------------- text
+formatInteger is operation
+formatInteger purpose "A whole number as decimal text in a region; its length is written at an address: refined_format_int"
+formatInteger invariant formatsIntoRegion "\"The text is the number as `refined run` prints it, in a block of the region, and its length is stored at the address given\""
+formatInteger typeParameter none
+formatInteger input value Int64 copied
+formatInteger input region machine.Address copied
+formatInteger input lengthAt machine.Address copied
+formatInteger output machine.Address
+formatInteger outputOwnedBy none
+formatInteger raises none
+formatInteger effect use machine.memory
+formatInteger effect use system.calls
+formatInteger uses memoryAccess
+formatInteger uses systemCalls
+formatInteger memoryHeap false
+formatInteger async false
+formatInteger maxRecursion none
+formatInteger abi c "refined_format_int"
+formatInteger label begin loopKind none
+formatInteger label begin within none
+formatInteger let none
+formatInteger at begin do findState
+formatInteger at begin do findDigits
+formatInteger at begin do format
+formatInteger at begin do take
+formatInteger at begin do copyDigits
+formatInteger at begin do storeLength
+formatInteger at begin return ok block
+
+findState is call
+findState in formatInteger
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findDigits is call
+findDigits in formatInteger
+findDigits invokes machine.offset
+findDigits argument address machine.Address state copy
+findDigits argument bytes Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+format is call
+format in formatInteger
+format invokes numbers.formatDecimal
+format argument value Int64 value copy
+format argument target machine.Address digits copy
+format result length Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+take is call
+take in formatInteger
+take invokes allocate
+take argument region machine.Address region copy
+take argument size Int64 length copy
+take result block machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+copyDigits is call
+copyDigits in formatInteger
+copyDigits invokes machine.copy
+copyDigits argument target machine.Address block copy
+copyDigits argument source machine.Address digits copy
+copyDigits argument bytes Int64 length copy
+copyDigits result none
+copyDigits ownedBy none
+copyDigits cleanedBy none
+copyDigits borrows none
+copyDigits catch none
+copyDigits suppresses none
+
+storeLength is call
+storeLength in formatInteger
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthAt copy
+storeLength argument value Int64 length copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none

@@ -1,0 +1,791 @@
+# Whole numbers as decimal text, written into memory (for console output, traps, and
+# string.fromInt64), and decimal text read back as a number (refined_parse_int, as
+# `refined run` reads it).
+#
+# This module is generated from tools/numbers.dsl by tools/build.py.
+
+numbers is module
+numbers purpose "Write whole numbers as decimal text into memory, and read them back"
+numbers path numbers
+numbers imports standard.machine
+numbers imports standard.string
+numbers imports standard.math
+numbers imports standard.compare
+numbers imports standard.convert
+numbers imports standard.logic
+numbers imports standard.test
+numbers exports formatDecimal
+numbers exports parseDecimal
+
+memoryAccess is capability
+memoryAccess purpose "Authority to write digits by address"
+memoryAccess grants use machine.memory none
+
+formatDecimal is operation
+formatDecimal purpose "Write a whole number as decimal text at an address: a minus sign when it is negative, then its digits with no leading zeros; gives how many bytes it wrote, at most 20"
+formatDecimal invariant writesDecimal "\"Writes the number as `refined run` prints it, `-` and digits with no leading zeros (0 is `0`), the most negative Int64 included, and gives the number of bytes written\""
+formatDecimal typeParameter none
+formatDecimal input value Int64 copied
+formatDecimal input target machine.Address copied
+formatDecimal output Int64
+formatDecimal outputOwnedBy none
+formatDecimal raises none
+formatDecimal effect use machine.memory
+formatDecimal uses memoryAccess
+formatDecimal memoryHeap false
+formatDecimal async false
+formatDecimal maxRecursion none
+formatDecimal label begin loopKind none
+formatDecimal label begin within none
+formatDecimal label sign loopKind none
+formatDecimal label sign within none
+formatDecimal label count loopKind none
+formatDecimal label count within none
+formatDecimal label eachDigit loopKind while
+formatDecimal label eachDigit within none
+formatDecimal label eachDigit maxIterations twenty
+formatDecimal label countDigit loopKind none
+formatDecimal label countDigit within eachDigit
+formatDecimal label write loopKind none
+formatDecimal label write within none
+formatDecimal label eachWrite loopKind while
+formatDecimal label eachWrite within none
+formatDecimal label eachWrite maxIterations twenty
+formatDecimal label writeDigit loopKind none
+formatDecimal label writeDigit within eachWrite
+formatDecimal label done loopKind none
+formatDecimal label done within none
+formatDecimal let magnitude UInt64 0 mutable
+formatDecimal let rest UInt64 0 mutable
+formatDecimal let start Int64 0 mutable
+formatDecimal let length Int64 0 mutable
+formatDecimal let at Int64 0 mutable
+formatDecimal let one Int64 1 immutable
+formatDecimal let twenty Int64 20 immutable
+formatDecimal let ten UInt64 10 immutable
+formatDecimal let zeroWide UInt64 0 immutable
+formatDecimal let zero Int64 0 immutable
+formatDecimal let minusSign Byte 45 immutable
+formatDecimal let zeroCharacter Byte 48 immutable
+formatDecimal at begin do bitsOf
+formatDecimal at begin set magnitude raw
+formatDecimal at begin do negativeCheck
+formatDecimal at begin branch if negative goto sign else goto count
+formatDecimal at sign do flip
+formatDecimal at sign set magnitude flipped
+formatDecimal at sign do writeMinus
+formatDecimal at sign set start one
+formatDecimal at sign goto count
+formatDecimal at count do firstDigit
+formatDecimal at count set rest afterFirst
+formatDecimal at count do countFirst
+formatDecimal at count set length withFirst
+formatDecimal at count goto eachDigit
+formatDecimal at eachDigit do moreCheck
+formatDecimal at eachDigit branch if more goto countDigit else goto write
+formatDecimal at countDigit do shrink
+formatDecimal at countDigit set rest smaller
+formatDecimal at countDigit do grow
+formatDecimal at countDigit set length longer
+formatDecimal at countDigit goto eachDigit
+formatDecimal at write set at length
+formatDecimal at write set rest magnitude
+formatDecimal at write goto eachWrite
+formatDecimal at eachWrite do writtenCheck
+formatDecimal at eachWrite branch if written goto done else goto writeDigit
+formatDecimal at writeDigit do back
+formatDecimal at writeDigit set at before
+formatDecimal at writeDigit do digitOf
+formatDecimal at writeDigit do narrow
+formatDecimal at writeDigit do toCharacter
+formatDecimal at writeDigit do findPlace
+formatDecimal at writeDigit do writeCharacter
+formatDecimal at writeDigit do shrinkWritten
+formatDecimal at writeDigit set rest remaining
+formatDecimal at writeDigit goto eachWrite
+formatDecimal at done return ok length
+
+bitsOf is call
+bitsOf in formatDecimal
+bitsOf invokes convert.int64BitsToUInt64
+bitsOf argument value Int64 value copy
+bitsOf result raw UInt64
+bitsOf ownedBy none
+bitsOf cleanedBy none
+bitsOf borrows none
+bitsOf catch none
+bitsOf suppresses none
+
+negativeCheck is call
+negativeCheck in formatDecimal
+negativeCheck invokes compare.lessThanInt64
+negativeCheck argument left Int64 value copy
+negativeCheck argument right Int64 zero copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+flip is call
+flip in formatDecimal
+flip invokes math.wrappingSubtractUInt64
+flip argument left UInt64 zeroWide copy
+flip argument right UInt64 raw copy
+flip result flipped UInt64
+flip ownedBy none
+flip cleanedBy none
+flip borrows none
+flip catch none
+flip suppresses none
+
+writeMinus is call
+writeMinus in formatDecimal
+writeMinus invokes machine.storeByte
+writeMinus argument address machine.Address target copy
+writeMinus argument value Byte minusSign copy
+writeMinus result none
+writeMinus ownedBy none
+writeMinus cleanedBy none
+writeMinus borrows none
+writeMinus catch none
+writeMinus suppresses none
+
+firstDigit is call
+firstDigit in formatDecimal
+firstDigit invokes math.divideUInt64
+firstDigit argument left UInt64 magnitude copy
+firstDigit argument right UInt64 ten copy
+firstDigit result afterFirst UInt64
+firstDigit ownedBy none
+firstDigit cleanedBy none
+firstDigit borrows none
+firstDigit catch none
+firstDigit suppresses none
+
+countFirst is call
+countFirst in formatDecimal
+countFirst invokes math.addInt64
+countFirst argument left Int64 start copy
+countFirst argument right Int64 one copy
+countFirst result withFirst Int64
+countFirst ownedBy none
+countFirst cleanedBy none
+countFirst borrows none
+countFirst catch none
+countFirst suppresses none
+
+moreCheck is call
+moreCheck in formatDecimal
+moreCheck invokes compare.greaterThanUInt64
+moreCheck argument left UInt64 rest copy
+moreCheck argument right UInt64 zeroWide copy
+moreCheck result more Bool
+moreCheck ownedBy none
+moreCheck cleanedBy none
+moreCheck borrows none
+moreCheck catch none
+moreCheck suppresses none
+
+shrink is call
+shrink in formatDecimal
+shrink invokes math.divideUInt64
+shrink argument left UInt64 rest copy
+shrink argument right UInt64 ten copy
+shrink result smaller UInt64
+shrink ownedBy none
+shrink cleanedBy none
+shrink borrows none
+shrink catch none
+shrink suppresses none
+
+grow is call
+grow in formatDecimal
+grow invokes math.addInt64
+grow argument left Int64 length copy
+grow argument right Int64 one copy
+grow result longer Int64
+grow ownedBy none
+grow cleanedBy none
+grow borrows none
+grow catch none
+grow suppresses none
+
+writtenCheck is call
+writtenCheck in formatDecimal
+writtenCheck invokes compare.lessOrEqualInt64
+writtenCheck argument left Int64 at copy
+writtenCheck argument right Int64 start copy
+writtenCheck result written Bool
+writtenCheck ownedBy none
+writtenCheck cleanedBy none
+writtenCheck borrows none
+writtenCheck catch none
+writtenCheck suppresses none
+
+back is call
+back in formatDecimal
+back invokes math.subtractInt64
+back argument left Int64 at copy
+back argument right Int64 one copy
+back result before Int64
+back ownedBy none
+back cleanedBy none
+back borrows none
+back catch none
+back suppresses none
+
+digitOf is call
+digitOf in formatDecimal
+digitOf invokes math.remainderUInt64
+digitOf argument left UInt64 rest copy
+digitOf argument right UInt64 ten copy
+digitOf result digit UInt64
+digitOf ownedBy none
+digitOf cleanedBy none
+digitOf borrows none
+digitOf catch none
+digitOf suppresses none
+
+narrow is call
+narrow in formatDecimal
+narrow invokes convert.uint64ToByte
+narrow argument value UInt64 digit copy
+narrow result digitByte Byte
+narrow ownedBy none
+narrow cleanedBy none
+narrow borrows none
+narrow catch none
+narrow suppresses none
+
+toCharacter is call
+toCharacter in formatDecimal
+toCharacter invokes math.addByte
+toCharacter argument left Byte digitByte copy
+toCharacter argument right Byte zeroCharacter copy
+toCharacter result character Byte
+toCharacter ownedBy none
+toCharacter cleanedBy none
+toCharacter borrows none
+toCharacter catch none
+toCharacter suppresses none
+
+findPlace is call
+findPlace in formatDecimal
+findPlace invokes machine.offset
+findPlace argument address machine.Address target copy
+findPlace argument bytes Int64 before copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+writeCharacter is call
+writeCharacter in formatDecimal
+writeCharacter invokes machine.storeByte
+writeCharacter argument address machine.Address place copy
+writeCharacter argument value Byte character copy
+writeCharacter result none
+writeCharacter ownedBy none
+writeCharacter cleanedBy none
+writeCharacter borrows none
+writeCharacter catch none
+writeCharacter suppresses none
+
+shrinkWritten is call
+shrinkWritten in formatDecimal
+shrinkWritten invokes math.divideUInt64
+shrinkWritten argument left UInt64 rest copy
+shrinkWritten argument right UInt64 ten copy
+shrinkWritten result remaining UInt64
+shrinkWritten ownedBy none
+shrinkWritten cleanedBy none
+shrinkWritten borrows none
+shrinkWritten catch none
+shrinkWritten suppresses none
+
+isDigit is operation
+isDigit purpose "Whether a byte is an ASCII digit, 0 to 9"
+isDigit invariant none
+isDigit typeParameter none
+isDigit input value Byte copied
+isDigit output Bool
+isDigit outputOwnedBy none
+isDigit raises none
+isDigit effect none
+isDigit uses none
+isDigit memoryHeap false
+isDigit async false
+isDigit maxRecursion none
+isDigit label begin loopKind none
+isDigit label begin within none
+isDigit let zeroCharacter Byte 48 immutable
+isDigit let nineCharacter Byte 57 immutable
+isDigit at begin do lowCheck
+isDigit at begin do highCheck
+isDigit at begin do bothCheck
+isDigit at begin return ok digit
+
+lowCheck is call
+lowCheck in isDigit
+lowCheck invokes compare.greaterOrEqualByte
+lowCheck argument left Byte value copy
+lowCheck argument right Byte zeroCharacter copy
+lowCheck result aboveLow Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in isDigit
+highCheck invokes compare.lessOrEqualByte
+highCheck argument left Byte value copy
+highCheck argument right Byte nineCharacter copy
+highCheck result belowHigh Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+bothCheck is call
+bothCheck in isDigit
+bothCheck invokes logic.and
+bothCheck argument left Bool aboveLow copy
+bothCheck argument right Bool belowHigh copy
+bothCheck result digit Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+parseDecimal is operation
+parseDecimal purpose "Read decimal text as a whole number into an address: 0 when it is one, 1 when it is not a number, 2 when it is out of the range of Int64; the number stored is 0 unless it is read: refined_parse_int"
+parseDecimal invariant readsDecimal "\"Accepts an optional `-` and one or more ASCII digits, as `refined run` does; any other text is not a number, even when it is also too long, and a number past Int64 is out of range\""
+parseDecimal typeParameter none
+parseDecimal input text machine.Address copied
+parseDecimal input bytes Int64 copied
+parseDecimal input result machine.Address copied
+parseDecimal output Int32
+parseDecimal outputOwnedBy none
+parseDecimal raises none
+parseDecimal effect use machine.memory
+parseDecimal uses memoryAccess
+parseDecimal memoryHeap false
+parseDecimal async false
+parseDecimal maxRecursion none
+parseDecimal abi c "refined_parse_int"
+parseDecimal label begin loopKind none
+parseDecimal label begin within none
+parseDecimal label signCheck loopKind none
+parseDecimal label signCheck within none
+parseDecimal label takeSign loopKind none
+parseDecimal label takeSign within none
+parseDecimal label body loopKind none
+parseDecimal label body within none
+parseDecimal label scan loopKind none
+parseDecimal label scan within none
+parseDecimal label eachByte loopKind while
+parseDecimal label eachByte within none
+parseDecimal label eachByte maxIterations bytes
+parseDecimal label checkByte loopKind none
+parseDecimal label checkByte within eachByte
+parseDecimal label nextByte loopKind none
+parseDecimal label nextByte within eachByte
+parseDecimal label read loopKind none
+parseDecimal label read within none
+parseDecimal label eachDigit loopKind while
+parseDecimal label eachDigit within none
+parseDecimal label eachDigit maxIterations bytes
+parseDecimal label addDigit loopKind none
+parseDecimal label addDigit within eachDigit
+parseDecimal label accumulate loopKind none
+parseDecimal label accumulate within eachDigit
+parseDecimal label finish loopKind none
+parseDecimal label finish within none
+parseDecimal label makeNegative loopKind none
+parseDecimal label makeNegative within none
+parseDecimal label makePositive loopKind none
+parseDecimal label makePositive within none
+parseDecimal label refuse loopKind none
+parseDecimal label refuse within none
+parseDecimal label tooLarge loopKind none
+parseDecimal label tooLarge within none
+parseDecimal let start Int64 0 mutable
+parseDecimal let at Int64 0 mutable
+parseDecimal let value UInt64 0 mutable
+parseDecimal let limit UInt64 9223372036854775807 mutable
+parseDecimal let mostNegative UInt64 9223372036854775808 immutable
+parseDecimal let negative Bool false mutable
+parseDecimal let yes Bool true immutable
+parseDecimal let one Int64 1 immutable
+parseDecimal let ten UInt64 10 immutable
+parseDecimal let parsed Int32 0 immutable
+parseDecimal let notNumber Int32 1 immutable
+parseDecimal let outOfRange Int32 2 immutable
+parseDecimal let zero Int64 0 immutable
+parseDecimal let minusSign Byte 45 immutable
+parseDecimal let zeroCharacter Byte 48 immutable
+parseDecimal let zeroWide UInt64 0 immutable
+parseDecimal at begin do clear
+parseDecimal at begin do emptyCheck
+parseDecimal at begin branch if empty goto refuse else goto signCheck
+parseDecimal at signCheck do readFirst
+parseDecimal at signCheck do minusCheck
+parseDecimal at signCheck branch if minus goto takeSign else goto body
+parseDecimal at takeSign set start one
+parseDecimal at takeSign set negative yes
+parseDecimal at takeSign set limit mostNegative
+parseDecimal at takeSign goto body
+parseDecimal at body do bodyCheck
+parseDecimal at body branch if noDigits goto refuse else goto scan
+parseDecimal at scan set at start
+parseDecimal at scan goto eachByte
+parseDecimal at eachByte do scannedCheck
+parseDecimal at eachByte branch if scanned goto read else goto checkByte
+parseDecimal at checkByte do findByte
+parseDecimal at checkByte do readByte
+parseDecimal at checkByte do digitCheck
+parseDecimal at checkByte branch if digit goto nextByte else goto refuse
+parseDecimal at nextByte do advanceScan
+parseDecimal at nextByte set at afterByte
+parseDecimal at nextByte goto eachByte
+parseDecimal at read set at start
+parseDecimal at read goto eachDigit
+parseDecimal at eachDigit do readCheck
+parseDecimal at eachDigit branch if done goto finish else goto addDigit
+parseDecimal at addDigit do findDigit
+parseDecimal at addDigit do readDigit
+parseDecimal at addDigit do toDigit
+parseDecimal at addDigit do widenDigit
+parseDecimal at addDigit do roomOf
+parseDecimal at addDigit do mostOf
+parseDecimal at addDigit do overCheck
+parseDecimal at addDigit branch if over goto tooLarge else goto accumulate
+parseDecimal at accumulate do shiftUp
+parseDecimal at accumulate do addOn
+parseDecimal at accumulate set value added
+parseDecimal at accumulate do advanceRead
+parseDecimal at accumulate set at afterDigit
+parseDecimal at accumulate goto eachDigit
+parseDecimal at finish branch if negative goto makeNegative else goto makePositive
+parseDecimal at makeNegative do flip
+parseDecimal at makeNegative do negativeBits
+parseDecimal at makeNegative do storeNegative
+parseDecimal at makeNegative return ok parsed
+parseDecimal at makePositive do positiveBits
+parseDecimal at makePositive do storePositive
+parseDecimal at makePositive return ok parsed
+parseDecimal at refuse return ok notNumber
+parseDecimal at tooLarge return ok outOfRange
+
+clear is call
+clear in parseDecimal
+clear invokes machine.storeInt64
+clear argument address machine.Address result copy
+clear argument value Int64 zero copy
+clear result none
+clear ownedBy none
+clear cleanedBy none
+clear borrows none
+clear catch none
+clear suppresses none
+
+emptyCheck is call
+emptyCheck in parseDecimal
+emptyCheck invokes compare.lessThanInt64
+emptyCheck argument left Int64 bytes copy
+emptyCheck argument right Int64 one copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+readFirst is call
+readFirst in parseDecimal
+readFirst invokes machine.loadByte
+readFirst argument address machine.Address text copy
+readFirst result first Byte
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+minusCheck is call
+minusCheck in parseDecimal
+minusCheck invokes compare.equalByte
+minusCheck argument left Byte first copy
+minusCheck argument right Byte minusSign copy
+minusCheck result minus Bool
+minusCheck ownedBy none
+minusCheck cleanedBy none
+minusCheck borrows none
+minusCheck catch none
+minusCheck suppresses none
+
+bodyCheck is call
+bodyCheck in parseDecimal
+bodyCheck invokes compare.greaterOrEqualInt64
+bodyCheck argument left Int64 start copy
+bodyCheck argument right Int64 bytes copy
+bodyCheck result noDigits Bool
+bodyCheck ownedBy none
+bodyCheck cleanedBy none
+bodyCheck borrows none
+bodyCheck catch none
+bodyCheck suppresses none
+
+scannedCheck is call
+scannedCheck in parseDecimal
+scannedCheck invokes compare.greaterOrEqualInt64
+scannedCheck argument left Int64 at copy
+scannedCheck argument right Int64 bytes copy
+scannedCheck result scanned Bool
+scannedCheck ownedBy none
+scannedCheck cleanedBy none
+scannedCheck borrows none
+scannedCheck catch none
+scannedCheck suppresses none
+
+findByte is call
+findByte in parseDecimal
+findByte invokes machine.offset
+findByte argument address machine.Address text copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in parseDecimal
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+digitCheck is call
+digitCheck in parseDecimal
+digitCheck invokes isDigit
+digitCheck argument value Byte byte copy
+digitCheck result digit Bool
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+advanceScan is call
+advanceScan in parseDecimal
+advanceScan invokes math.addInt64
+advanceScan argument left Int64 at copy
+advanceScan argument right Int64 one copy
+advanceScan result afterByte Int64
+advanceScan ownedBy none
+advanceScan cleanedBy none
+advanceScan borrows none
+advanceScan catch none
+advanceScan suppresses none
+
+readCheck is call
+readCheck in parseDecimal
+readCheck invokes compare.greaterOrEqualInt64
+readCheck argument left Int64 at copy
+readCheck argument right Int64 bytes copy
+readCheck result done Bool
+readCheck ownedBy none
+readCheck cleanedBy none
+readCheck borrows none
+readCheck catch none
+readCheck suppresses none
+
+findDigit is call
+findDigit in parseDecimal
+findDigit invokes machine.offset
+findDigit argument address machine.Address text copy
+findDigit argument bytes Int64 at copy
+findDigit result digitPlace machine.Address
+findDigit ownedBy none
+findDigit cleanedBy none
+findDigit borrows none
+findDigit catch none
+findDigit suppresses none
+
+readDigit is call
+readDigit in parseDecimal
+readDigit invokes machine.loadByte
+readDigit argument address machine.Address digitPlace copy
+readDigit result character Byte
+readDigit ownedBy none
+readDigit cleanedBy none
+readDigit borrows none
+readDigit catch none
+readDigit suppresses none
+
+toDigit is call
+toDigit in parseDecimal
+toDigit invokes math.subtractByte
+toDigit argument left Byte character copy
+toDigit argument right Byte zeroCharacter copy
+toDigit result digitByte Byte
+toDigit ownedBy none
+toDigit cleanedBy none
+toDigit borrows none
+toDigit catch none
+toDigit suppresses none
+
+widenDigit is call
+widenDigit in parseDecimal
+widenDigit invokes convert.byteToUInt64
+widenDigit argument value Byte digitByte copy
+widenDigit result digitValue UInt64
+widenDigit ownedBy none
+widenDigit cleanedBy none
+widenDigit borrows none
+widenDigit catch none
+widenDigit suppresses none
+
+roomOf is call
+roomOf in parseDecimal
+roomOf invokes math.subtractUInt64
+roomOf argument left UInt64 limit copy
+roomOf argument right UInt64 digitValue copy
+roomOf result room UInt64
+roomOf ownedBy none
+roomOf cleanedBy none
+roomOf borrows none
+roomOf catch none
+roomOf suppresses none
+
+mostOf is call
+mostOf in parseDecimal
+mostOf invokes math.divideUInt64
+mostOf argument left UInt64 room copy
+mostOf argument right UInt64 ten copy
+mostOf result most UInt64
+mostOf ownedBy none
+mostOf cleanedBy none
+mostOf borrows none
+mostOf catch none
+mostOf suppresses none
+
+overCheck is call
+overCheck in parseDecimal
+overCheck invokes compare.greaterThanUInt64
+overCheck argument left UInt64 value copy
+overCheck argument right UInt64 most copy
+overCheck result over Bool
+overCheck ownedBy none
+overCheck cleanedBy none
+overCheck borrows none
+overCheck catch none
+overCheck suppresses none
+
+shiftUp is call
+shiftUp in parseDecimal
+shiftUp invokes math.multiplyUInt64
+shiftUp argument left UInt64 value copy
+shiftUp argument right UInt64 ten copy
+shiftUp result shifted UInt64
+shiftUp ownedBy none
+shiftUp cleanedBy none
+shiftUp borrows none
+shiftUp catch none
+shiftUp suppresses none
+
+addOn is call
+addOn in parseDecimal
+addOn invokes math.addUInt64
+addOn argument left UInt64 shifted copy
+addOn argument right UInt64 digitValue copy
+addOn result added UInt64
+addOn ownedBy none
+addOn cleanedBy none
+addOn borrows none
+addOn catch none
+addOn suppresses none
+
+advanceRead is call
+advanceRead in parseDecimal
+advanceRead invokes math.addInt64
+advanceRead argument left Int64 at copy
+advanceRead argument right Int64 one copy
+advanceRead result afterDigit Int64
+advanceRead ownedBy none
+advanceRead cleanedBy none
+advanceRead borrows none
+advanceRead catch none
+advanceRead suppresses none
+
+flip is call
+flip in parseDecimal
+flip invokes math.wrappingSubtractUInt64
+flip argument left UInt64 zeroWide copy
+flip argument right UInt64 value copy
+flip result flipped UInt64
+flip ownedBy none
+flip cleanedBy none
+flip borrows none
+flip catch none
+flip suppresses none
+
+negativeBits is call
+negativeBits in parseDecimal
+negativeBits invokes convert.uint64BitsToInt64
+negativeBits argument value UInt64 flipped copy
+negativeBits result negativeValue Int64
+negativeBits ownedBy none
+negativeBits cleanedBy none
+negativeBits borrows none
+negativeBits catch none
+negativeBits suppresses none
+
+storeNegative is call
+storeNegative in parseDecimal
+storeNegative invokes machine.storeInt64
+storeNegative argument address machine.Address result copy
+storeNegative argument value Int64 negativeValue copy
+storeNegative result none
+storeNegative ownedBy none
+storeNegative cleanedBy none
+storeNegative borrows none
+storeNegative catch none
+storeNegative suppresses none
+
+positiveBits is call
+positiveBits in parseDecimal
+positiveBits invokes convert.uint64BitsToInt64
+positiveBits argument value UInt64 value copy
+positiveBits result positiveValue Int64
+positiveBits ownedBy none
+positiveBits cleanedBy none
+positiveBits borrows none
+positiveBits catch none
+positiveBits suppresses none
+
+storePositive is call
+storePositive in parseDecimal
+storePositive invokes machine.storeInt64
+storePositive argument address machine.Address result copy
+storePositive argument value Int64 positiveValue copy
+storePositive result none
+storePositive ownedBy none
+storePositive cleanedBy none
+storePositive borrows none
+storePositive catch none
+storePositive suppresses none

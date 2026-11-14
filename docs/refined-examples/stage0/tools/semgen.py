@@ -405,6 +405,7 @@ class OpBuilder:
         self.effects = []
         self.uses = []
         self.recursion = None
+        self.abi = None
         self.async_ = False
         self.regions = []
         self.lets = OrderedDict()
@@ -459,6 +460,8 @@ class OpBuilder:
             self.uses.append(t[1])
         elif k == "recursion":
             self.recursion = t[1]
+        elif k == "abi":
+            self.abi = " ".join(t[1:])  # D-123: `abi c "<symbol>"`
         elif k == "async":
             self.async_ = True
         elif k == "region":
@@ -760,6 +763,8 @@ class OpBuilder:
         rows.append(f"{n} memoryHeap {'true' if heap else 'false'}")
         rows.append(f"{n} async {'true' if self.async_ else 'false'}")
         rows.append(f"{n} maxRecursion {self.recursion or 'none'}")
+        if self.abi:
+            rows.append(f"{n} abi {self.abi}")
         blocks = self.blocks + self.fail_blocks
         for b in blocks:
             if b.note:
@@ -903,7 +908,7 @@ class Generator:
             early = [b for b in body if b.startswith(("let ", "region "))]
             body = [b for b in body if not b.startswith(("let ", "region "))]
             heads = [b for b in body if tokens(b)[0] in ("invariant", "verifies", "input", "output", "owner", "raises",
-                                                         "effect", "uses", "recursion", "async")]
+                                                         "effect", "uses", "recursion", "abi", "async")]
             for b in heads:
                 ob.header(tokens(b))
             body = [b for b in body if b not in heads]

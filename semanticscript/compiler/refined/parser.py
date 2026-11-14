@@ -112,6 +112,8 @@ def check_entity(ent: Entity, sink: Sink) -> None:
         shown = " or ".join(f"`{p}`" for p in preds)
         if not rows and any(x in malformed for x in preds):
             continue  # the row is there; its shape error says what is wrong with it
+        if card == "optional" and len(rows) > 1:
+            sink.error("R302", rows[1].line, f"a {ent.kind} has at most one {shown} row; this is another")
         if card == "one" and len(rows) != 1:
             if rows:
                 sink.error("R302", rows[1].line, f"a {ent.kind} has exactly one {shown} row; this is another")

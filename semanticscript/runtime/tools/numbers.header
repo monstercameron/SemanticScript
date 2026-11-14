@@ -1,0 +1,5 @@
+# Whole numbers as decimal text, written into memory (for console output, traps, and
+# string.fromInt64), and decimal text read back as a number (refined_parse_int, as
+# `refined run` reads it).
+#
+# This module is generated from tools/numbers.dsl by tools/build.py.

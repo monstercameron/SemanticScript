@@ -1,0 +1,5 @@
+# The process's entry point. An executable linked with this runtime has no C start-up code:
+# the operating system calls refined_entry, which sets the stack floor, runs the program's
+# entry operation, and ends the process with its exit code.
+#
+# This module is generated from tools/start.dsl by tools/build.py.

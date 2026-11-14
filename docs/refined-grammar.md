@@ -12,7 +12,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `version` | exactly one | `"<text>"` |
 | `language` | exactly one | `refined <integer>` |
 | `standardLibrary` | exactly one | `<integer>` |
-| `allows` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource> none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource> "<text>"` |
+| `allows` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource> none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource> "<text>"` |
 | `requires` | one or more (`none` alone when empty) | `none`<br>`<name> "<text>" "<text>"` |
 | `includesModule` | one or more | `<dotted.path>` |
 | `entry` | exactly one | `none`<br>`<target>` |
@@ -73,7 +73,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 
 | Predicate | Rows | Shape |
 | --- | --- | --- |
-| `grants` | one or more | `connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource> none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource> "<text>"` |
+| `grants` | one or more | `connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource> none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource> "<text>"` |
 
 ## `operationInstance`
 
@@ -91,7 +91,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwnedBy` | exactly one | `none`<br>`caller`<br>`<name>` |
 | `raises` | exactly one | `none`<br>`<Type>` |
-| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
+| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource>` |
 | `async` | exactly one | `false\|true` |
 
 ## `operation`
@@ -103,11 +103,12 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwnedBy` | exactly one | `none`<br>`caller`<br>`<name>` |
 | `raises` | exactly one | `none`<br>`<Type>` |
-| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
+| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource>` |
 | `uses` | one or more (`none` alone when empty) | `none`<br>`<name>` |
 | `memoryHeap` | exactly one | `false\|true` |
 | `async` | exactly one | `false\|true` |
 | `maxRecursion` | exactly one | `none`<br>`<integer>` |
+| `abi` | at most one | `c "<text>"` |
 | `label` | one or more | `<label> purpose "<text>"`<br>`<label> rationale "<text>"`<br>`<label> risk concurrency\|data\|failure\|memory\|security\|timing "<text>"`<br>`<label> note "<text>"`<br>`<label> todo "<text>"`<br>`<label> loopKind counted\|doWhile\|forEach\|forever\|none\|while`<br>`<label> within none`<br>`<label> within <label>`<br>`<label> maxIterations <integer>`<br>`<label> maxIterations <name>`<br>`<label> maxIterations unbounded`<br>`<label> counter <name>`<br>`<label> over <name>` |
 | `let` | one or more (`none` alone when empty) | `none`<br>`<name> <Type> <literal\|name\|unset> immutable\|mutable` |
 | `at` | one or more | `<label> do <name>`<br>`<label> start <name> into none`<br>`<label> start <name> into <name>`<br>`<label> join <name>`<br>`<label> cancel <name>`<br>`<label> awaitSlot <name>`<br>`<label> defer <name>`<br>`<label> set <name> <name>`<br>`<label> goto <label>`<br>`<label> branch if <name> goto <label> else goto <label>`<br>`<label> branch ifError <name> goto <label> else goto <label>`<br>`<label> branch ifNext <name> bind <name> <Type> goto <label> else goto <label>`<br>`<label> match <name> <Type>`<br>`<label> case <Enum.variant> bind none none goto <label>`<br>`<label> case <Enum.variant> bind <name> <Type> goto <label>`<br>`<label> return ok none`<br>`<label> return ok <name>`<br>`<label> return error <name>` |
@@ -121,7 +122,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `output` | exactly one | `none`<br>`<Type>` |
 | `outputOwnedBy` | exactly one | `none`<br>`caller`<br>`<name>` |
 | `raises` | exactly one | `none`<br>`<Type>` |
-| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource>` |
+| `effect` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|use\|write <module.resource>` |
 | `uses` | one or more (`none` alone when empty) | `none`<br>`<name>` |
 | `memoryHeap` | exactly one | `false\|true` |
 | `async` | exactly one | `false\|true` |

@@ -6,7 +6,8 @@
     refined test    PATH [--json]
     refined bench   PATH [--runs N] [--json]
     refined emit-ir PATH [--test MODULE.TEST]
-    refined build   PATH --output FILE [--target TRIPLE] [--kind object|assembly|wasm]
+    refined build   PATH --output FILE [--target TRIPLE] [--kind object|assembly|wasm|executable]
+                         [--runtime c|semanticscript]
     refined fmt     PATH... [--check]
     refined repl
     refined lsp
@@ -149,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--output", required=True)
     p.add_argument("--target", default=None, help="an LLVM target triple; the host's when omitted")
     p.add_argument("--kind", choices=("object", "assembly", "wasm", "executable"), default="object")
+    p.add_argument("--runtime", choices=("c", "semanticscript"), default="c",
+                   help="for an executable: the C runtime (native_runtime.c), or the runtime in SemanticScript linked "
+                        "with no C library (D-124)")
     p = sub.add_parser("stale")
     p.add_argument("path")
     p.add_argument("--base", required=True)
@@ -282,7 +286,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         from .native import build
         entry = res.project.value("entry")
-        return build(str(module), args.output, args.target, args.kind, None if entry == "none" else entry)
+        return build(str(module), args.output, args.target, args.kind, None if entry == "none" else entry,
+                     getattr(args, "runtime", "c"))
 
     if args.command == "run-one-test":
         mod, _dot, test = args.test.partition(".")

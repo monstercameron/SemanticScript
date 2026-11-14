@@ -12,7 +12,8 @@ from .flow import check_flow
 from .lexer import lex
 from .library import LIBRARY
 from .model import Entity, SourceFile
-from .semantics import Module, World, check_module, check_recursion, finish_module, grant_scope, index_module
+from .semantics import (Module, World, check_abi_symbols, check_module, check_recursion, finish_module, grant_scope,
+                        index_module)
 
 # Rows from a module's `.test.sem` file are merged into the module. Their line
 # numbers are offset so every diagnostic can be routed back to the right file.
@@ -234,6 +235,7 @@ def _run(world: World, modules: list[Module], sinks: list[Sink]) -> Result:
             check_flow(world, m, info)
         finish_module(m)
     check_recursion(world)
+    check_abi_symbols(world)
     return Result(diagnostics=_collect(sinks), world=world)
 
 

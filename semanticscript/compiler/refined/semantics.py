@@ -11,6 +11,7 @@ Covers enforcement-plan steps 3, 4, 6, and the static half of 8:
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -1311,6 +1312,62 @@ def _check_op(world: World, m: Module, op: OpInfo) -> None:
         sink.error("R407", eline, f"`{ent.name}` declares `effect {verb} {res}`, but nothing it activates performs it")
     _check_uses(m, op, declared)
     _check_exact_facts(world, m, op)
+    _check_abi(m, op)
+
+
+# D-123: what crosses the C boundary as it is: integers, `Byte`, `Bool`, `Float64`, and addresses
+ABI_TYPES = ("Int64", "Int32", "Byte", "Bool", "Float64", "machine.Address")
+C_SYMBOL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def abi_symbol(ent) -> Optional[str]:
+    """The C symbol an operation is exported under (`abi c "<symbol>"`, D-123), or None."""
+    row = ent.fact("abi")
+    return row.args[1].value if row is not None and len(row.args) > 1 else None
+
+
+def _check_abi(m: Module, op: OpInfo) -> None:
+    """D-123: an operation exported to C takes and gives only values the C ABI passes as they are, raises nothing,
+    and is neither generic nor async."""
+    ent = op.entity
+    row = ent.fact("abi")
+    if row is None:
+        return
+    sink = m.sink
+    symbol = abi_symbol(ent)
+    if not C_SYMBOL.match(symbol or ""):
+        sink.error("R402", row.line, f"`{symbol}` is not a C symbol: a letter or `_`, then letters, digits, and `_`")
+    if op.tparams:
+        sink.error("R402", row.line, f"`{ent.name}` is generic; an operation exported to C has one signature")
+    if ent.value("raises") not in (None, "none"):
+        sink.error("R402", row.line, f"`{ent.name}` raises an error; an operation exported to C raises nothing, since "
+                   "C has no error values (return a status instead)")
+    if ent.value("async") == "true":
+        sink.error("R402", row.line, f"`{ent.name}` waits; an operation exported to C does not")
+    if op.sig is None:
+        return
+    shown = ", ".join(f"`{t}`" for t in ABI_TYPES)
+    for p in op.sig.inputs:
+        if p.type not in ABI_TYPES:
+            sink.error("R403", row.line, f"input `{p.name}` is `{_show(p.type)}`; an operation exported to C takes "
+                       f"only {shown}")
+    if op.sig.output is not None and op.sig.output not in ABI_TYPES:
+        sink.error("R403", row.line, f"`{ent.name}` gives `{_show(op.sig.output)}`; an operation exported to C gives "
+                   f"only {shown}, or nothing")
+
+
+def check_abi_symbols(world: World) -> None:
+    """D-123: one operation per C symbol in a program."""
+    seen: dict[str, str] = {}
+    for m in world.modules.values():
+        for name, ent in m.ops.items():
+            symbol = abi_symbol(ent)
+            if symbol is None:
+                continue
+            if symbol in seen:
+                m.sink.error("R402", ent.fact("abi").line, f"`{symbol}` is already the C symbol of `{seen[symbol]}`")
+            else:
+                seen[symbol] = f"{m.short}.{name}"
 
 
 def _check_let(world: World, m: Module, op: OpInfo, r: Row) -> None:

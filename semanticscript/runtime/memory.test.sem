@@ -1,0 +1,1119 @@
+# Tests of the `memory` module; generated from tools/memory.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests write in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never reaches.
+copyForwardTest is test
+copyForwardTest purpose "memcpy copies whole words and the bytes after them"
+copyForwardTest verifies copyForward copiesEveryByte
+copyForwardTest typeParameter none
+copyForwardTest input none
+copyForwardTest output none
+copyForwardTest outputOwnedBy none
+copyForwardTest raises none
+copyForwardTest effect use machine.memory
+copyForwardTest uses memoryAccess
+copyForwardTest memoryHeap false
+copyForwardTest async false
+copyForwardTest maxRecursion none
+copyForwardTest label begin loopKind none
+copyForwardTest label begin within none
+copyForwardTest let text String "abcdefghijklmnopqrstu" immutable
+copyForwardTest let scratchAt Int64 61440 immutable
+copyForwardTest let twentyOne Int64 21 immutable
+copyForwardTest at begin do findState
+copyForwardTest at begin do findScratch
+copyForwardTest at begin do findText
+copyForwardTest at begin do copyText
+copyForwardTest at begin do viewCopy
+copyForwardTest at begin do expectCopy
+copyForwardTest at begin return ok none
+
+findState is call
+findState in copyForwardTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in copyForwardTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in copyForwardTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result from machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+copyText is call
+copyText in copyForwardTest
+copyText invokes copyForward
+copyText argument target machine.Address scratch copy
+copyText argument source machine.Address from copy
+copyText argument bytes Int64 twentyOne copy
+copyText result copied machine.Address
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+viewCopy is call
+viewCopy in copyForwardTest
+viewCopy invokes machine.stringAt
+viewCopy argument address machine.Address copied copy
+viewCopy argument bytes Int64 twentyOne copy
+viewCopy result view String
+viewCopy ownedBy none
+viewCopy cleanedBy none
+viewCopy borrows none
+viewCopy catch none
+viewCopy suppresses none
+
+expectCopy is call
+expectCopy in copyForwardTest
+expectCopy invokes test.assertEqualString
+expectCopy argument expected String text lend
+expectCopy argument actual String view lend
+expectCopy result none
+expectCopy ownedBy none
+expectCopy cleanedBy none
+expectCopy borrows none
+expectCopy catch none
+expectCopy suppresses none
+
+copyBackwardTest is test
+copyBackwardTest purpose "Copying last byte first moves a range up over itself intact"
+copyBackwardTest verifies copyBackward copiesOverlapping
+copyBackwardTest typeParameter none
+copyBackwardTest input none
+copyBackwardTest output none
+copyBackwardTest outputOwnedBy none
+copyBackwardTest raises none
+copyBackwardTest effect use machine.memory
+copyBackwardTest uses memoryAccess
+copyBackwardTest memoryHeap false
+copyBackwardTest async false
+copyBackwardTest maxRecursion none
+copyBackwardTest label begin loopKind none
+copyBackwardTest label begin within none
+copyBackwardTest let text String "abcdefgh" immutable
+copyBackwardTest let expected String "ababcdef" immutable
+copyBackwardTest let scratchAt Int64 61440 immutable
+copyBackwardTest let eight Int64 8 immutable
+copyBackwardTest let two Int64 2 immutable
+copyBackwardTest let six Int64 6 immutable
+copyBackwardTest at begin do findState
+copyBackwardTest at begin do findScratch
+copyBackwardTest at begin do findText
+copyBackwardTest at begin do copyText
+copyBackwardTest at begin do findUp
+copyBackwardTest at begin do copyUp
+copyBackwardTest at begin do viewCopy
+copyBackwardTest at begin do expectCopy
+copyBackwardTest at begin return ok none
+
+findState is call
+findState in copyBackwardTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in copyBackwardTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in copyBackwardTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result from machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+copyText is call
+copyText in copyBackwardTest
+copyText invokes copyForward
+copyText argument target machine.Address scratch copy
+copyText argument source machine.Address from copy
+copyText argument bytes Int64 eight copy
+copyText result copied machine.Address
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+findUp is call
+findUp in copyBackwardTest
+findUp invokes machine.offset
+findUp argument address machine.Address scratch copy
+findUp argument bytes Int64 two copy
+findUp result up machine.Address
+findUp ownedBy none
+findUp cleanedBy none
+findUp borrows none
+findUp catch none
+findUp suppresses none
+
+copyUp is call
+copyUp in copyBackwardTest
+copyUp invokes copyBackward
+copyUp argument target machine.Address up copy
+copyUp argument source machine.Address scratch copy
+copyUp argument bytes Int64 six copy
+copyUp result none
+copyUp ownedBy none
+copyUp cleanedBy none
+copyUp borrows none
+copyUp catch none
+copyUp suppresses none
+
+viewCopy is call
+viewCopy in copyBackwardTest
+viewCopy invokes machine.stringAt
+viewCopy argument address machine.Address scratch copy
+viewCopy argument bytes Int64 eight copy
+viewCopy result view String
+viewCopy ownedBy none
+viewCopy cleanedBy none
+viewCopy borrows none
+viewCopy catch none
+viewCopy suppresses none
+
+expectCopy is call
+expectCopy in copyBackwardTest
+expectCopy invokes test.assertEqualString
+expectCopy argument expected String expected lend
+expectCopy argument actual String view lend
+expectCopy result none
+expectCopy ownedBy none
+expectCopy cleanedBy none
+expectCopy borrows none
+expectCopy catch none
+expectCopy suppresses none
+
+moveBytesTest is test
+moveBytesTest purpose "memmove gives the source's old bytes whichever way the ranges overlap"
+moveBytesTest verifies moveBytes movesOverlapping
+moveBytesTest typeParameter none
+moveBytesTest input none
+moveBytesTest output none
+moveBytesTest outputOwnedBy none
+moveBytesTest raises none
+moveBytesTest effect use machine.memory
+moveBytesTest uses memoryAccess
+moveBytesTest memoryHeap false
+moveBytesTest async false
+moveBytesTest maxRecursion none
+moveBytesTest label begin loopKind none
+moveBytesTest label begin within none
+moveBytesTest let text String "abcdefgh" immutable
+moveBytesTest let movedUp String "ababcdef" immutable
+moveBytesTest let movedDown String "cdefghgh" immutable
+moveBytesTest let scratchAt Int64 61440 immutable
+moveBytesTest let eight Int64 8 immutable
+moveBytesTest let two Int64 2 immutable
+moveBytesTest let six Int64 6 immutable
+moveBytesTest at begin do findState
+moveBytesTest at begin do findScratch
+moveBytesTest at begin do findText
+moveBytesTest at begin do copyText
+moveBytesTest at begin do findUp
+moveBytesTest at begin do moveUp
+moveBytesTest at begin do viewUp
+moveBytesTest at begin do expectUp
+moveBytesTest at begin do copyAgain
+moveBytesTest at begin do moveDown
+moveBytesTest at begin do viewDown
+moveBytesTest at begin do expectDown
+moveBytesTest at begin return ok none
+
+findState is call
+findState in moveBytesTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in moveBytesTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in moveBytesTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result from machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+copyText is call
+copyText in moveBytesTest
+copyText invokes copyForward
+copyText argument target machine.Address scratch copy
+copyText argument source machine.Address from copy
+copyText argument bytes Int64 eight copy
+copyText result copied machine.Address
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+findUp is call
+findUp in moveBytesTest
+findUp invokes machine.offset
+findUp argument address machine.Address scratch copy
+findUp argument bytes Int64 two copy
+findUp result up machine.Address
+findUp ownedBy none
+findUp cleanedBy none
+findUp borrows none
+findUp catch none
+findUp suppresses none
+
+moveUp is call
+moveUp in moveBytesTest
+moveUp invokes moveBytes
+moveUp argument target machine.Address up copy
+moveUp argument source machine.Address scratch copy
+moveUp argument bytes Int64 six copy
+moveUp result movedTo machine.Address
+moveUp ownedBy none
+moveUp cleanedBy none
+moveUp borrows none
+moveUp catch none
+moveUp suppresses none
+
+viewUp is call
+viewUp in moveBytesTest
+viewUp invokes machine.stringAt
+viewUp argument address machine.Address scratch copy
+viewUp argument bytes Int64 eight copy
+viewUp result upView String
+viewUp ownedBy none
+viewUp cleanedBy none
+viewUp borrows none
+viewUp catch none
+viewUp suppresses none
+
+expectUp is call
+expectUp in moveBytesTest
+expectUp invokes test.assertEqualString
+expectUp argument expected String movedUp lend
+expectUp argument actual String upView lend
+expectUp result none
+expectUp ownedBy none
+expectUp cleanedBy none
+expectUp borrows none
+expectUp catch none
+expectUp suppresses none
+
+copyAgain is call
+copyAgain in moveBytesTest
+copyAgain invokes copyForward
+copyAgain argument target machine.Address scratch copy
+copyAgain argument source machine.Address from copy
+copyAgain argument bytes Int64 eight copy
+copyAgain result copiedAgain machine.Address
+copyAgain ownedBy none
+copyAgain cleanedBy none
+copyAgain borrows none
+copyAgain catch none
+copyAgain suppresses none
+
+moveDown is call
+moveDown in moveBytesTest
+moveDown invokes moveBytes
+moveDown argument target machine.Address scratch copy
+moveDown argument source machine.Address up copy
+moveDown argument bytes Int64 six copy
+moveDown result movedBack machine.Address
+moveDown ownedBy none
+moveDown cleanedBy none
+moveDown borrows none
+moveDown catch none
+moveDown suppresses none
+
+viewDown is call
+viewDown in moveBytesTest
+viewDown invokes machine.stringAt
+viewDown argument address machine.Address scratch copy
+viewDown argument bytes Int64 eight copy
+viewDown result downView String
+viewDown ownedBy none
+viewDown cleanedBy none
+viewDown borrows none
+viewDown catch none
+viewDown suppresses none
+
+expectDown is call
+expectDown in moveBytesTest
+expectDown invokes test.assertEqualString
+expectDown argument expected String movedDown lend
+expectDown argument actual String downView lend
+expectDown result none
+expectDown ownedBy none
+expectDown cleanedBy none
+expectDown borrows none
+expectDown catch none
+expectDown suppresses none
+
+fillBytesTest is test
+fillBytesTest purpose "memset sets every byte of its range to the value's low byte and no other byte"
+fillBytesTest verifies fillBytes fillsEveryByte
+fillBytesTest typeParameter none
+fillBytesTest input none
+fillBytesTest output none
+fillBytesTest outputOwnedBy none
+fillBytesTest raises none
+fillBytesTest effect use machine.memory
+fillBytesTest uses memoryAccess
+fillBytesTest memoryHeap false
+fillBytesTest async false
+fillBytesTest maxRecursion none
+fillBytesTest label begin loopKind none
+fillBytesTest label begin within none
+fillBytesTest let text String "xxxxxxxxxxxx" immutable
+fillBytesTest let expected String "xAAAAAAAAAAx" immutable
+fillBytesTest let scratchAt Int64 61440 immutable
+fillBytesTest let twelve Int64 12 immutable
+fillBytesTest let one Int64 1 immutable
+fillBytesTest let letterA Int32 321 immutable
+fillBytesTest let ten Int64 10 immutable
+fillBytesTest at begin do findState
+fillBytesTest at begin do findScratch
+fillBytesTest at begin do findText
+fillBytesTest at begin do copyText
+fillBytesTest at begin do findInside
+fillBytesTest at begin do fillInside
+fillBytesTest at begin do viewFill
+fillBytesTest at begin do expectFill
+fillBytesTest at begin return ok none
+
+findState is call
+findState in fillBytesTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in fillBytesTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in fillBytesTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result from machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+copyText is call
+copyText in fillBytesTest
+copyText invokes copyForward
+copyText argument target machine.Address scratch copy
+copyText argument source machine.Address from copy
+copyText argument bytes Int64 twelve copy
+copyText result copied machine.Address
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+findInside is call
+findInside in fillBytesTest
+findInside invokes machine.offset
+findInside argument address machine.Address scratch copy
+findInside argument bytes Int64 one copy
+findInside result inside machine.Address
+findInside ownedBy none
+findInside cleanedBy none
+findInside borrows none
+findInside catch none
+findInside suppresses none
+
+fillInside is call
+fillInside in fillBytesTest
+fillInside invokes fillBytes
+fillInside argument target machine.Address inside copy
+fillInside argument value Int32 letterA copy
+fillInside argument bytes Int64 ten copy
+fillInside result filled machine.Address
+fillInside ownedBy none
+fillInside cleanedBy none
+fillInside borrows none
+fillInside catch none
+fillInside suppresses none
+
+viewFill is call
+viewFill in fillBytesTest
+viewFill invokes machine.stringAt
+viewFill argument address machine.Address scratch copy
+viewFill argument bytes Int64 twelve copy
+viewFill result view String
+viewFill ownedBy none
+viewFill cleanedBy none
+viewFill borrows none
+viewFill catch none
+viewFill suppresses none
+
+expectFill is call
+expectFill in fillBytesTest
+expectFill invokes test.assertEqualString
+expectFill argument expected String expected lend
+expectFill argument actual String view lend
+expectFill result none
+expectFill ownedBy none
+expectFill cleanedBy none
+expectFill borrows none
+expectFill catch none
+expectFill suppresses none
+
+compareBytesTest is test
+compareBytesTest purpose "memcmp orders two ranges by their first differing byte, as unsigned bytes"
+compareBytesTest verifies compareBytes ordersByFirstDifference
+compareBytesTest typeParameter none
+compareBytesTest input none
+compareBytesTest output none
+compareBytesTest outputOwnedBy none
+compareBytesTest raises none
+compareBytesTest effect use machine.memory
+compareBytesTest uses memoryAccess
+compareBytesTest memoryHeap false
+compareBytesTest async false
+compareBytesTest maxRecursion none
+compareBytesTest label begin loopKind none
+compareBytesTest label begin within none
+compareBytesTest let low String "abc" immutable
+compareBytesTest let high String "abd" immutable
+compareBytesTest let accented String "é" immutable
+compareBytesTest let plain String "e" immutable
+compareBytesTest let three Int64 3 immutable
+compareBytesTest let minusOne Int64 -1 immutable
+compareBytesTest let one Int64 1 immutable
+compareBytesTest let zero Int64 0 immutable
+compareBytesTest at begin do findLow
+compareBytesTest at begin do findHigh
+compareBytesTest at begin do findAccented
+compareBytesTest at begin do findPlain
+compareBytesTest at begin do compareBelow
+compareBytesTest at begin do belowWide
+compareBytesTest at begin do expectBelow
+compareBytesTest at begin do compareAbove
+compareBytesTest at begin do aboveWide
+compareBytesTest at begin do expectAbove
+compareBytesTest at begin do compareSame
+compareBytesTest at begin do sameWide
+compareBytesTest at begin do expectSame
+compareBytesTest at begin do compareUnsigned
+compareBytesTest at begin do unsignedWide
+compareBytesTest at begin do expectUnsigned
+compareBytesTest at begin return ok none
+
+findLow is call
+findLow in compareBytesTest
+findLow invokes machine.addressOfString
+findLow argument text String low lend
+findLow result lowAt machine.Address
+findLow ownedBy none
+findLow cleanedBy none
+findLow borrows none
+findLow catch none
+findLow suppresses none
+
+findHigh is call
+findHigh in compareBytesTest
+findHigh invokes machine.addressOfString
+findHigh argument text String high lend
+findHigh result highAt machine.Address
+findHigh ownedBy none
+findHigh cleanedBy none
+findHigh borrows none
+findHigh catch none
+findHigh suppresses none
+
+findAccented is call
+findAccented in compareBytesTest
+findAccented invokes machine.addressOfString
+findAccented argument text String accented lend
+findAccented result accentedAt machine.Address
+findAccented ownedBy none
+findAccented cleanedBy none
+findAccented borrows none
+findAccented catch none
+findAccented suppresses none
+
+findPlain is call
+findPlain in compareBytesTest
+findPlain invokes machine.addressOfString
+findPlain argument text String plain lend
+findPlain result plainAt machine.Address
+findPlain ownedBy none
+findPlain cleanedBy none
+findPlain borrows none
+findPlain catch none
+findPlain suppresses none
+
+compareBelow is call
+compareBelow in compareBytesTest
+compareBelow invokes compareBytes
+compareBelow argument left machine.Address lowAt copy
+compareBelow argument right machine.Address highAt copy
+compareBelow argument bytes Int64 three copy
+compareBelow result below Int32
+compareBelow ownedBy none
+compareBelow cleanedBy none
+compareBelow borrows none
+compareBelow catch none
+compareBelow suppresses none
+
+belowWide is call
+belowWide in compareBytesTest
+belowWide invokes convert.int32ToInt64
+belowWide argument value Int32 below copy
+belowWide result belowValue Int64
+belowWide ownedBy none
+belowWide cleanedBy none
+belowWide borrows none
+belowWide catch none
+belowWide suppresses none
+
+expectBelow is call
+expectBelow in compareBytesTest
+expectBelow invokes test.assertEqualInt64
+expectBelow argument expected Int64 minusOne copy
+expectBelow argument actual Int64 belowValue copy
+expectBelow result none
+expectBelow ownedBy none
+expectBelow cleanedBy none
+expectBelow borrows none
+expectBelow catch none
+expectBelow suppresses none
+
+compareAbove is call
+compareAbove in compareBytesTest
+compareAbove invokes compareBytes
+compareAbove argument left machine.Address highAt copy
+compareAbove argument right machine.Address lowAt copy
+compareAbove argument bytes Int64 three copy
+compareAbove result above Int32
+compareAbove ownedBy none
+compareAbove cleanedBy none
+compareAbove borrows none
+compareAbove catch none
+compareAbove suppresses none
+
+aboveWide is call
+aboveWide in compareBytesTest
+aboveWide invokes convert.int32ToInt64
+aboveWide argument value Int32 above copy
+aboveWide result aboveValue Int64
+aboveWide ownedBy none
+aboveWide cleanedBy none
+aboveWide borrows none
+aboveWide catch none
+aboveWide suppresses none
+
+expectAbove is call
+expectAbove in compareBytesTest
+expectAbove invokes test.assertEqualInt64
+expectAbove argument expected Int64 one copy
+expectAbove argument actual Int64 aboveValue copy
+expectAbove result none
+expectAbove ownedBy none
+expectAbove cleanedBy none
+expectAbove borrows none
+expectAbove catch none
+expectAbove suppresses none
+
+compareSame is call
+compareSame in compareBytesTest
+compareSame invokes compareBytes
+compareSame argument left machine.Address lowAt copy
+compareSame argument right machine.Address lowAt copy
+compareSame argument bytes Int64 three copy
+compareSame result same Int32
+compareSame ownedBy none
+compareSame cleanedBy none
+compareSame borrows none
+compareSame catch none
+compareSame suppresses none
+
+sameWide is call
+sameWide in compareBytesTest
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+expectSame is call
+expectSame in compareBytesTest
+expectSame invokes test.assertEqualInt64
+expectSame argument expected Int64 zero copy
+expectSame argument actual Int64 sameValue copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+compareUnsigned is call
+compareUnsigned in compareBytesTest
+compareUnsigned invokes compareBytes
+compareUnsigned argument left machine.Address accentedAt copy
+compareUnsigned argument right machine.Address plainAt copy
+compareUnsigned argument bytes Int64 one copy
+compareUnsigned result unsigned Int32
+compareUnsigned ownedBy none
+compareUnsigned cleanedBy none
+compareUnsigned borrows none
+compareUnsigned catch none
+compareUnsigned suppresses none
+
+unsignedWide is call
+unsignedWide in compareBytesTest
+unsignedWide invokes convert.int32ToInt64
+unsignedWide argument value Int32 unsigned copy
+unsignedWide result unsignedValue Int64
+unsignedWide ownedBy none
+unsignedWide cleanedBy none
+unsignedWide borrows none
+unsignedWide catch none
+unsignedWide suppresses none
+
+expectUnsigned is call
+expectUnsigned in compareBytesTest
+expectUnsigned invokes test.assertEqualInt64
+expectUnsigned argument expected Int64 one copy
+expectUnsigned argument actual Int64 unsignedValue copy
+expectUnsigned result none
+expectUnsigned ownedBy none
+expectUnsigned cleanedBy none
+expectUnsigned borrows none
+expectUnsigned catch none
+expectUnsigned suppresses none
+
+bytesEqualTest is test
+bytesEqualTest purpose "Two ranges are equal by length and content, not by where they are"
+bytesEqualTest verifies bytesEqual equalByContent
+bytesEqualTest typeParameter none
+bytesEqualTest input none
+bytesEqualTest output none
+bytesEqualTest outputOwnedBy none
+bytesEqualTest raises none
+bytesEqualTest effect use machine.memory
+bytesEqualTest uses memoryAccess
+bytesEqualTest memoryHeap false
+bytesEqualTest async false
+bytesEqualTest maxRecursion none
+bytesEqualTest label begin loopKind none
+bytesEqualTest label begin within none
+bytesEqualTest let text String "abc" immutable
+bytesEqualTest let other String "abd" immutable
+bytesEqualTest let scratchAt Int64 61440 immutable
+bytesEqualTest let three Int64 3 immutable
+bytesEqualTest let one Int64 1 immutable
+bytesEqualTest let zero Int64 0 immutable
+bytesEqualTest let two Int64 2 immutable
+bytesEqualTest at begin do findState
+bytesEqualTest at begin do findScratch
+bytesEqualTest at begin do findText
+bytesEqualTest at begin do findOther
+bytesEqualTest at begin do copyText
+bytesEqualTest at begin do compareCopy
+bytesEqualTest at begin do copyWide
+bytesEqualTest at begin do expectCopy
+bytesEqualTest at begin do compareOther
+bytesEqualTest at begin do otherWide
+bytesEqualTest at begin do expectOther
+bytesEqualTest at begin do compareShorter
+bytesEqualTest at begin do shorterWide
+bytesEqualTest at begin do expectShorter
+bytesEqualTest at begin return ok none
+
+findState is call
+findState in bytesEqualTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in bytesEqualTest
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in bytesEqualTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result from machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+findOther is call
+findOther in bytesEqualTest
+findOther invokes machine.addressOfString
+findOther argument text String other lend
+findOther result otherAt machine.Address
+findOther ownedBy none
+findOther cleanedBy none
+findOther borrows none
+findOther catch none
+findOther suppresses none
+
+copyText is call
+copyText in bytesEqualTest
+copyText invokes copyForward
+copyText argument target machine.Address scratch copy
+copyText argument source machine.Address from copy
+copyText argument bytes Int64 three copy
+copyText result copied machine.Address
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+compareCopy is call
+compareCopy in bytesEqualTest
+compareCopy invokes bytesEqual
+compareCopy argument left machine.Address from copy
+compareCopy argument leftBytes Int64 three copy
+compareCopy argument right machine.Address scratch copy
+compareCopy argument rightBytes Int64 three copy
+compareCopy result sameCopy Int32
+compareCopy ownedBy none
+compareCopy cleanedBy none
+compareCopy borrows none
+compareCopy catch none
+compareCopy suppresses none
+
+copyWide is call
+copyWide in bytesEqualTest
+copyWide invokes convert.int32ToInt64
+copyWide argument value Int32 sameCopy copy
+copyWide result sameCopyValue Int64
+copyWide ownedBy none
+copyWide cleanedBy none
+copyWide borrows none
+copyWide catch none
+copyWide suppresses none
+
+expectCopy is call
+expectCopy in bytesEqualTest
+expectCopy invokes test.assertEqualInt64
+expectCopy argument expected Int64 one copy
+expectCopy argument actual Int64 sameCopyValue copy
+expectCopy result none
+expectCopy ownedBy none
+expectCopy cleanedBy none
+expectCopy borrows none
+expectCopy catch none
+expectCopy suppresses none
+
+compareOther is call
+compareOther in bytesEqualTest
+compareOther invokes bytesEqual
+compareOther argument left machine.Address from copy
+compareOther argument leftBytes Int64 three copy
+compareOther argument right machine.Address otherAt copy
+compareOther argument rightBytes Int64 three copy
+compareOther result sameOther Int32
+compareOther ownedBy none
+compareOther cleanedBy none
+compareOther borrows none
+compareOther catch none
+compareOther suppresses none
+
+otherWide is call
+otherWide in bytesEqualTest
+otherWide invokes convert.int32ToInt64
+otherWide argument value Int32 sameOther copy
+otherWide result sameOtherValue Int64
+otherWide ownedBy none
+otherWide cleanedBy none
+otherWide borrows none
+otherWide catch none
+otherWide suppresses none
+
+expectOther is call
+expectOther in bytesEqualTest
+expectOther invokes test.assertEqualInt64
+expectOther argument expected Int64 zero copy
+expectOther argument actual Int64 sameOtherValue copy
+expectOther result none
+expectOther ownedBy none
+expectOther cleanedBy none
+expectOther borrows none
+expectOther catch none
+expectOther suppresses none
+
+compareShorter is call
+compareShorter in bytesEqualTest
+compareShorter invokes bytesEqual
+compareShorter argument left machine.Address from copy
+compareShorter argument leftBytes Int64 three copy
+compareShorter argument right machine.Address scratch copy
+compareShorter argument rightBytes Int64 two copy
+compareShorter result sameShorter Int32
+compareShorter ownedBy none
+compareShorter cleanedBy none
+compareShorter borrows none
+compareShorter catch none
+compareShorter suppresses none
+
+shorterWide is call
+shorterWide in bytesEqualTest
+shorterWide invokes convert.int32ToInt64
+shorterWide argument value Int32 sameShorter copy
+shorterWide result sameShorterValue Int64
+shorterWide ownedBy none
+shorterWide cleanedBy none
+shorterWide borrows none
+shorterWide catch none
+shorterWide suppresses none
+
+expectShorter is call
+expectShorter in bytesEqualTest
+expectShorter invokes test.assertEqualInt64
+expectShorter argument expected Int64 zero copy
+expectShorter argument actual Int64 sameShorterValue copy
+expectShorter result none
+expectShorter ownedBy none
+expectShorter cleanedBy none
+expectShorter borrows none
+expectShorter catch none
+expectShorter suppresses none
+
+findBytesTest is test
+findBytesTest purpose "The first place a needle occurs, 0 for an empty needle, -1 for one that does not occur"
+findBytesTest verifies findBytes findsFirst
+findBytesTest typeParameter none
+findBytesTest input none
+findBytesTest output none
+findBytesTest outputOwnedBy none
+findBytesTest raises none
+findBytesTest effect use machine.memory
+findBytesTest uses memoryAccess
+findBytesTest memoryHeap false
+findBytesTest async false
+findBytesTest maxRecursion none
+findBytesTest label begin loopKind none
+findBytesTest label begin within none
+findBytesTest let haystack String "aabaab" immutable
+findBytesTest let needle String "ab" immutable
+findBytesTest let absent String "abb" immutable
+findBytesTest let six Int64 6 immutable
+findBytesTest let two Int64 2 immutable
+findBytesTest let one Int64 1 immutable
+findBytesTest let zero Int64 0 immutable
+findBytesTest let three Int64 3 immutable
+findBytesTest let minusOne Int64 -1 immutable
+findBytesTest at begin do findHaystack
+findBytesTest at begin do findNeedle
+findBytesTest at begin do findAbsent
+findBytesTest at begin do searchFirst
+findBytesTest at begin do expectFirst
+findBytesTest at begin do searchEmpty
+findBytesTest at begin do expectEmpty
+findBytesTest at begin do searchAbsent
+findBytesTest at begin do expectAbsent
+findBytesTest at begin return ok none
+
+findHaystack is call
+findHaystack in findBytesTest
+findHaystack invokes machine.addressOfString
+findHaystack argument text String haystack lend
+findHaystack result haystackAt machine.Address
+findHaystack ownedBy none
+findHaystack cleanedBy none
+findHaystack borrows none
+findHaystack catch none
+findHaystack suppresses none
+
+findNeedle is call
+findNeedle in findBytesTest
+findNeedle invokes machine.addressOfString
+findNeedle argument text String needle lend
+findNeedle result needleAt machine.Address
+findNeedle ownedBy none
+findNeedle cleanedBy none
+findNeedle borrows none
+findNeedle catch none
+findNeedle suppresses none
+
+findAbsent is call
+findAbsent in findBytesTest
+findAbsent invokes machine.addressOfString
+findAbsent argument text String absent lend
+findAbsent result absentAt machine.Address
+findAbsent ownedBy none
+findAbsent cleanedBy none
+findAbsent borrows none
+findAbsent catch none
+findAbsent suppresses none
+
+searchFirst is call
+searchFirst in findBytesTest
+searchFirst invokes findBytes
+searchFirst argument haystack machine.Address haystackAt copy
+searchFirst argument haystackBytes Int64 six copy
+searchFirst argument needle machine.Address needleAt copy
+searchFirst argument needleBytes Int64 two copy
+searchFirst result first Int64
+searchFirst ownedBy none
+searchFirst cleanedBy none
+searchFirst borrows none
+searchFirst catch none
+searchFirst suppresses none
+
+expectFirst is call
+expectFirst in findBytesTest
+expectFirst invokes test.assertEqualInt64
+expectFirst argument expected Int64 one copy
+expectFirst argument actual Int64 first copy
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+searchEmpty is call
+searchEmpty in findBytesTest
+searchEmpty invokes findBytes
+searchEmpty argument haystack machine.Address haystackAt copy
+searchEmpty argument haystackBytes Int64 six copy
+searchEmpty argument needle machine.Address needleAt copy
+searchEmpty argument needleBytes Int64 zero copy
+searchEmpty result empty Int64
+searchEmpty ownedBy none
+searchEmpty cleanedBy none
+searchEmpty borrows none
+searchEmpty catch none
+searchEmpty suppresses none
+
+expectEmpty is call
+expectEmpty in findBytesTest
+expectEmpty invokes test.assertEqualInt64
+expectEmpty argument expected Int64 zero copy
+expectEmpty argument actual Int64 empty copy
+expectEmpty result none
+expectEmpty ownedBy none
+expectEmpty cleanedBy none
+expectEmpty borrows none
+expectEmpty catch none
+expectEmpty suppresses none
+
+searchAbsent is call
+searchAbsent in findBytesTest
+searchAbsent invokes findBytes
+searchAbsent argument haystack machine.Address haystackAt copy
+searchAbsent argument haystackBytes Int64 six copy
+searchAbsent argument needle machine.Address absentAt copy
+searchAbsent argument needleBytes Int64 three copy
+searchAbsent result missing Int64
+searchAbsent ownedBy none
+searchAbsent cleanedBy none
+searchAbsent borrows none
+searchAbsent catch none
+searchAbsent suppresses none
+
+expectAbsent is call
+expectAbsent in findBytesTest
+expectAbsent invokes test.assertEqualInt64
+expectAbsent argument expected Int64 minusOne copy
+expectAbsent argument actual Int64 missing copy
+expectAbsent result none
+expectAbsent ownedBy none
+expectAbsent cleanedBy none
+expectAbsent borrows none
+expectAbsent catch none
+expectAbsent suppresses none

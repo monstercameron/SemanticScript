@@ -1,0 +1,675 @@
+# Standard output and standard error: refined_write and refined_write_int, written with
+# WriteFile as the program asks, with nothing kept in a buffer, so the two streams interleave
+# as `refined run` interleaves them.
+#
+# This module is generated from tools/output.dsl by tools/build.py.
+
+output is module
+output purpose "Write text and numbers to standard output and standard error"
+output path output
+output imports standard.machine
+output imports standard.system
+output imports standard.math
+output imports standard.compare
+output imports standard.convert
+output imports standard.test
+output imports numbers
+output exports standardHandle
+output exports writeAll
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read the text to write and to keep the count written in machine.state"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to call the operating system's GetStdHandle, WriteFile, and GetLastError"
+systemCalls grants use system.calls none
+
+# machine.state bytes 0 to 63 belong to this module: 0 the count WriteFile wrote (a DWORD), 16 to 47 the digits
+# and line end of a number being written.
+writtenAt is constant
+writtenAt purpose "Where WriteFile puts the count of bytes it wrote, in machine.state"
+writtenAt type Int64
+writtenAt value 0
+
+digitsAt is constant
+digitsAt purpose "Where a number's text is put together before it is written, in machine.state"
+digitsAt type Int64
+digitsAt value 16
+
+standardHandle is operation
+standardHandle purpose "The operating system's handle of standard error for stream 2, and of standard output for any other stream"
+standardHandle invariant namesStream "\"Stream 2 is standard error (STD_ERROR_HANDLE, -12); every other stream is standard output (STD_OUTPUT_HANDLE, -11)\""
+standardHandle typeParameter none
+standardHandle input stream Int32 copied
+standardHandle output machine.Address
+standardHandle outputOwnedBy none
+standardHandle raises none
+standardHandle effect use system.calls
+standardHandle uses systemCalls
+standardHandle memoryHeap false
+standardHandle async false
+standardHandle maxRecursion none
+standardHandle label begin loopKind none
+standardHandle label begin within none
+standardHandle label errorStream loopKind none
+standardHandle label errorStream within none
+standardHandle label outputStream loopKind none
+standardHandle label outputStream within none
+standardHandle let two Int32 2 immutable
+standardHandle let stdError Int32 -12 immutable
+standardHandle let stdOutput Int32 -11 immutable
+standardHandle at begin do errorCheck
+standardHandle at begin branch if isError goto errorStream else goto outputStream
+standardHandle at errorStream do findError
+standardHandle at errorStream return ok errorHandle
+standardHandle at outputStream do findOutput
+standardHandle at outputStream return ok outputHandle
+
+errorCheck is call
+errorCheck in standardHandle
+errorCheck invokes compare.equalInt32
+errorCheck argument left Int32 stream copy
+errorCheck argument right Int32 two copy
+errorCheck result isError Bool
+errorCheck ownedBy none
+errorCheck cleanedBy none
+errorCheck borrows none
+errorCheck catch none
+errorCheck suppresses none
+
+findError is call
+findError in standardHandle
+findError invokes system.getStdHandle
+findError argument which Int32 stdError copy
+findError result errorHandle machine.Address
+findError ownedBy none
+findError cleanedBy none
+findError borrows none
+findError catch none
+findError suppresses none
+
+findOutput is call
+findOutput in standardHandle
+findOutput invokes system.getStdHandle
+findOutput argument which Int32 stdOutput copy
+findOutput result outputHandle machine.Address
+findOutput ownedBy none
+findOutput cleanedBy none
+findOutput borrows none
+findOutput catch none
+findOutput suppresses none
+
+writeAll is operation
+writeAll purpose "Write a range of bytes to a handle, as many WriteFile calls as it takes; gives 0, or the system's error code when a write fails"
+writeAll invariant reportsFailure "\"Writing nothing succeeds with 0; a write the system refuses gives its error code, never 0\""
+writeAll typeParameter none
+writeAll input handle machine.Address copied
+writeAll input text machine.Address copied
+writeAll input bytes Int64 copied
+writeAll output Int32
+writeAll outputOwnedBy none
+writeAll raises none
+writeAll effect use machine.memory
+writeAll effect use system.calls
+writeAll uses memoryAccess
+writeAll uses systemCalls
+writeAll memoryHeap false
+writeAll async false
+writeAll maxRecursion none
+writeAll label begin loopKind none
+writeAll label begin within none
+writeAll label eachWrite loopKind while
+writeAll label eachWrite within none
+writeAll label eachWrite maxIterations bytes
+writeAll label writeSome loopKind none
+writeAll label writeSome within eachWrite
+writeAll label writeMost loopKind none
+writeAll label writeMost within eachWrite
+writeAll label writeLeft loopKind none
+writeAll label writeLeft within eachWrite
+writeAll label checkWrite loopKind none
+writeAll label checkWrite within eachWrite
+writeAll label countWritten loopKind none
+writeAll label countWritten within eachWrite
+writeAll label advance loopKind none
+writeAll label advance within eachWrite
+writeAll label succeeded loopKind none
+writeAll label succeeded within none
+writeAll label failure loopKind none
+writeAll label failure within none
+writeAll label reportCode loopKind none
+writeAll label reportCode within none
+writeAll label stalled loopKind none
+writeAll label stalled within none
+writeAll let done Int64 0 mutable
+writeAll let status Int32 0 mutable
+writeAll let zero Int64 0 immutable
+writeAll let most Int64 1073741824 immutable
+writeAll let okStatus Int32 0 immutable
+writeAll let unknownStatus Int32 1 immutable
+writeAll let failed Int32 0 immutable
+writeAll at begin do findState
+writeAll at begin do findWritten
+writeAll at begin do noOverlap
+writeAll at begin goto eachWrite
+writeAll at eachWrite do leftOf
+writeAll at eachWrite do finishedCheck
+writeAll at eachWrite branch if finished goto succeeded else goto writeSome
+writeAll at writeSome do capCheck
+writeAll at writeSome branch if tooMany goto writeMost else goto writeLeft
+writeAll at writeMost do narrowMost
+writeAll at writeMost do findFromMost
+writeAll at writeMost do callMost
+writeAll at writeMost set status wroteMost
+writeAll at writeMost goto checkWrite
+writeAll at writeLeft do narrowLeft
+writeAll at writeLeft do findFromLeft
+writeAll at writeLeft do callLeft
+writeAll at writeLeft set status wroteLeft
+writeAll at writeLeft goto checkWrite
+writeAll at checkWrite do refusedCheck
+writeAll at checkWrite branch if refused goto failure else goto countWritten
+writeAll at countWritten do readCount
+writeAll at countWritten do widenCount
+writeAll at countWritten do stuckCheck
+writeAll at countWritten branch if stuck goto stalled else goto advance
+writeAll at advance do addCount
+writeAll at advance set done nextDone
+writeAll at advance goto eachWrite
+writeAll at succeeded return ok okStatus
+writeAll at failure do readError
+writeAll at failure do zeroCheck
+writeAll at failure branch if noCode goto stalled else goto reportCode
+writeAll at reportCode return ok code
+writeAll at stalled return ok unknownStatus
+
+findState is call
+findState in writeAll
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findWritten is call
+findWritten in writeAll
+findWritten invokes machine.offset
+findWritten argument address machine.Address state copy
+findWritten argument bytes Int64 writtenAt copy
+findWritten result written machine.Address
+findWritten ownedBy none
+findWritten cleanedBy none
+findWritten borrows none
+findWritten catch none
+findWritten suppresses none
+
+noOverlap is call
+noOverlap in writeAll
+noOverlap invokes machine.zero
+noOverlap argument none
+noOverlap result nowhere machine.Address
+noOverlap ownedBy none
+noOverlap cleanedBy none
+noOverlap borrows none
+noOverlap catch none
+noOverlap suppresses none
+
+leftOf is call
+leftOf in writeAll
+leftOf invokes math.subtractInt64
+leftOf argument left Int64 bytes copy
+leftOf argument right Int64 done copy
+leftOf result left Int64
+leftOf ownedBy none
+leftOf cleanedBy none
+leftOf borrows none
+leftOf catch none
+leftOf suppresses none
+
+finishedCheck is call
+finishedCheck in writeAll
+finishedCheck invokes compare.lessOrEqualInt64
+finishedCheck argument left Int64 left copy
+finishedCheck argument right Int64 zero copy
+finishedCheck result finished Bool
+finishedCheck ownedBy none
+finishedCheck cleanedBy none
+finishedCheck borrows none
+finishedCheck catch none
+finishedCheck suppresses none
+
+capCheck is call
+capCheck in writeAll
+capCheck invokes compare.greaterThanInt64
+capCheck argument left Int64 left copy
+capCheck argument right Int64 most copy
+capCheck result tooMany Bool
+capCheck ownedBy none
+capCheck cleanedBy none
+capCheck borrows none
+capCheck catch none
+capCheck suppresses none
+
+narrowMost is call
+narrowMost in writeAll
+narrowMost invokes convert.int64ToInt32
+narrowMost argument value Int64 most copy
+narrowMost result chunk Int32
+narrowMost ownedBy none
+narrowMost cleanedBy none
+narrowMost borrows none
+narrowMost catch none
+narrowMost suppresses none
+
+findFromMost is call
+findFromMost in writeAll
+findFromMost invokes machine.offset
+findFromMost argument address machine.Address text copy
+findFromMost argument bytes Int64 done copy
+findFromMost result fromMost machine.Address
+findFromMost ownedBy none
+findFromMost cleanedBy none
+findFromMost borrows none
+findFromMost catch none
+findFromMost suppresses none
+
+callMost is call
+callMost in writeAll
+callMost invokes system.writeFile
+callMost argument handle machine.Address handle copy
+callMost argument buffer machine.Address fromMost copy
+callMost argument bytes Int32 chunk copy
+callMost argument written machine.Address written copy
+callMost argument overlapped machine.Address nowhere copy
+callMost result wroteMost Int32
+callMost ownedBy none
+callMost cleanedBy none
+callMost borrows none
+callMost catch none
+callMost suppresses none
+
+narrowLeft is call
+narrowLeft in writeAll
+narrowLeft invokes convert.int64ToInt32
+narrowLeft argument value Int64 left copy
+narrowLeft result leftChunk Int32
+narrowLeft ownedBy none
+narrowLeft cleanedBy none
+narrowLeft borrows none
+narrowLeft catch none
+narrowLeft suppresses none
+
+findFromLeft is call
+findFromLeft in writeAll
+findFromLeft invokes machine.offset
+findFromLeft argument address machine.Address text copy
+findFromLeft argument bytes Int64 done copy
+findFromLeft result fromLeft machine.Address
+findFromLeft ownedBy none
+findFromLeft cleanedBy none
+findFromLeft borrows none
+findFromLeft catch none
+findFromLeft suppresses none
+
+callLeft is call
+callLeft in writeAll
+callLeft invokes system.writeFile
+callLeft argument handle machine.Address handle copy
+callLeft argument buffer machine.Address fromLeft copy
+callLeft argument bytes Int32 leftChunk copy
+callLeft argument written machine.Address written copy
+callLeft argument overlapped machine.Address nowhere copy
+callLeft result wroteLeft Int32
+callLeft ownedBy none
+callLeft cleanedBy none
+callLeft borrows none
+callLeft catch none
+callLeft suppresses none
+
+refusedCheck is call
+refusedCheck in writeAll
+refusedCheck invokes compare.equalInt32
+refusedCheck argument left Int32 status copy
+refusedCheck argument right Int32 failed copy
+refusedCheck result refused Bool
+refusedCheck ownedBy none
+refusedCheck cleanedBy none
+refusedCheck borrows none
+refusedCheck catch none
+refusedCheck suppresses none
+
+readCount is call
+readCount in writeAll
+readCount invokes machine.loadInt32
+readCount argument address machine.Address written copy
+readCount result count Int32
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+widenCount is call
+widenCount in writeAll
+widenCount invokes convert.int32ToInt64
+widenCount argument value Int32 count copy
+widenCount result countWide Int64
+widenCount ownedBy none
+widenCount cleanedBy none
+widenCount borrows none
+widenCount catch none
+widenCount suppresses none
+
+stuckCheck is call
+stuckCheck in writeAll
+stuckCheck invokes compare.lessOrEqualInt64
+stuckCheck argument left Int64 countWide copy
+stuckCheck argument right Int64 zero copy
+stuckCheck result stuck Bool
+stuckCheck ownedBy none
+stuckCheck cleanedBy none
+stuckCheck borrows none
+stuckCheck catch none
+stuckCheck suppresses none
+
+addCount is call
+addCount in writeAll
+addCount invokes math.addInt64
+addCount argument left Int64 done copy
+addCount argument right Int64 countWide copy
+addCount result nextDone Int64
+addCount ownedBy none
+addCount cleanedBy none
+addCount borrows none
+addCount catch none
+addCount suppresses none
+
+readError is call
+readError in writeAll
+readError invokes system.getLastError
+readError argument none
+readError result code Int32
+readError ownedBy none
+readError cleanedBy none
+readError borrows none
+readError catch none
+readError suppresses none
+
+zeroCheck is call
+zeroCheck in writeAll
+zeroCheck invokes compare.equalInt32
+zeroCheck argument left Int32 code copy
+zeroCheck argument right Int32 failed copy
+zeroCheck result noCode Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+writeText is operation
+writeText purpose "Write text to standard output (stream 1) or standard error (stream 2), then a line end when asked; gives 0, or the system's error code"
+writeText invariant writesLine "\"Writes the text's bytes as they are, then one `\\\\n` byte when `newline` is not 0\""
+writeText typeParameter none
+writeText input stream Int32 copied
+writeText input text machine.Address copied
+writeText input bytes Int64 copied
+writeText input newline Int32 copied
+writeText output Int32
+writeText outputOwnedBy none
+writeText raises none
+writeText effect use machine.memory
+writeText effect use system.calls
+writeText uses memoryAccess
+writeText uses systemCalls
+writeText memoryHeap false
+writeText async false
+writeText maxRecursion none
+writeText abi c "refined_write"
+writeText label begin loopKind none
+writeText label begin within none
+writeText label lineCheck loopKind none
+writeText label lineCheck within none
+writeText label writeLine loopKind none
+writeText label writeLine within none
+writeText label done loopKind none
+writeText label done within none
+writeText let lineEnd String "\n" immutable
+writeText let ok Int32 0 immutable
+writeText let one Int64 1 immutable
+writeText at begin do findHandle
+writeText at begin do writeBody
+writeText at begin do failedCheck
+writeText at begin branch if failed goto done else goto lineCheck
+writeText at lineCheck do wantLine
+writeText at lineCheck branch if wanted goto writeLine else goto done
+writeText at writeLine do findLine
+writeText at writeLine do writeEnd
+writeText at writeLine return ok lineStatus
+writeText at done return ok status
+
+findHandle is call
+findHandle in writeText
+findHandle invokes standardHandle
+findHandle argument stream Int32 stream copy
+findHandle result handle machine.Address
+findHandle ownedBy none
+findHandle cleanedBy none
+findHandle borrows none
+findHandle catch none
+findHandle suppresses none
+
+writeBody is call
+writeBody in writeText
+writeBody invokes writeAll
+writeBody argument handle machine.Address handle copy
+writeBody argument text machine.Address text copy
+writeBody argument bytes Int64 bytes copy
+writeBody result status Int32
+writeBody ownedBy none
+writeBody cleanedBy none
+writeBody borrows none
+writeBody catch none
+writeBody suppresses none
+
+failedCheck is call
+failedCheck in writeText
+failedCheck invokes compare.notEqualInt32
+failedCheck argument left Int32 status copy
+failedCheck argument right Int32 ok copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+wantLine is call
+wantLine in writeText
+wantLine invokes compare.notEqualInt32
+wantLine argument left Int32 newline copy
+wantLine argument right Int32 ok copy
+wantLine result wanted Bool
+wantLine ownedBy none
+wantLine cleanedBy none
+wantLine borrows none
+wantLine catch none
+wantLine suppresses none
+
+findLine is call
+findLine in writeText
+findLine invokes machine.addressOfString
+findLine argument text String lineEnd lend
+findLine result lineAt machine.Address
+findLine ownedBy none
+findLine cleanedBy none
+findLine borrows none
+findLine catch none
+findLine suppresses none
+
+writeEnd is call
+writeEnd in writeText
+writeEnd invokes writeAll
+writeEnd argument handle machine.Address handle copy
+writeEnd argument text machine.Address lineAt copy
+writeEnd argument bytes Int64 one copy
+writeEnd result lineStatus Int32
+writeEnd ownedBy none
+writeEnd cleanedBy none
+writeEnd borrows none
+writeEnd catch none
+writeEnd suppresses none
+
+writeInteger is operation
+writeInteger purpose "Write a whole number in decimal to standard output (stream 1) or standard error (stream 2), then a line end when asked; gives 0, or the system's error code"
+writeInteger invariant writesDecimalLine "\"Writes the number as `refined run` prints it, then one `\\\\n` byte when `newline` is not 0, in one write\""
+writeInteger typeParameter none
+writeInteger input stream Int32 copied
+writeInteger input value Int64 copied
+writeInteger input newline Int32 copied
+writeInteger output Int32
+writeInteger outputOwnedBy none
+writeInteger raises none
+writeInteger effect use machine.memory
+writeInteger effect use system.calls
+writeInteger uses memoryAccess
+writeInteger uses systemCalls
+writeInteger memoryHeap false
+writeInteger async false
+writeInteger maxRecursion none
+writeInteger abi c "refined_write_int"
+writeInteger label begin loopKind none
+writeInteger label begin within none
+writeInteger label addLine loopKind none
+writeInteger label addLine within none
+writeInteger label write loopKind none
+writeInteger label write within none
+writeInteger let length Int64 0 mutable
+writeInteger let ok Int32 0 immutable
+writeInteger let lineEnd Byte 10 immutable
+writeInteger let one Int64 1 immutable
+writeInteger at begin do findState
+writeInteger at begin do findDigits
+writeInteger at begin do format
+writeInteger at begin set length written
+writeInteger at begin do wantLine
+writeInteger at begin branch if wanted goto addLine else goto write
+writeInteger at addLine do findEnd
+writeInteger at addLine do putLine
+writeInteger at addLine do withLine
+writeInteger at addLine set length lineLength
+writeInteger at addLine goto write
+writeInteger at write do findHandle
+writeInteger at write do writeDigits
+writeInteger at write return ok status
+
+findState is call
+findState in writeInteger
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findDigits is call
+findDigits in writeInteger
+findDigits invokes machine.offset
+findDigits argument address machine.Address state copy
+findDigits argument bytes Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+format is call
+format in writeInteger
+format invokes numbers.formatDecimal
+format argument value Int64 value copy
+format argument target machine.Address digits copy
+format result written Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+wantLine is call
+wantLine in writeInteger
+wantLine invokes compare.notEqualInt32
+wantLine argument left Int32 newline copy
+wantLine argument right Int32 ok copy
+wantLine result wanted Bool
+wantLine ownedBy none
+wantLine cleanedBy none
+wantLine borrows none
+wantLine catch none
+wantLine suppresses none
+
+findEnd is call
+findEnd in writeInteger
+findEnd invokes machine.offset
+findEnd argument address machine.Address digits copy
+findEnd argument bytes Int64 written copy
+findEnd result endAt machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+putLine is call
+putLine in writeInteger
+putLine invokes machine.storeByte
+putLine argument address machine.Address endAt copy
+putLine argument value Byte lineEnd copy
+putLine result none
+putLine ownedBy none
+putLine cleanedBy none
+putLine borrows none
+putLine catch none
+putLine suppresses none
+
+withLine is call
+withLine in writeInteger
+withLine invokes math.addInt64
+withLine argument left Int64 written copy
+withLine argument right Int64 one copy
+withLine result lineLength Int64
+withLine ownedBy none
+withLine cleanedBy none
+withLine borrows none
+withLine catch none
+withLine suppresses none
+
+findHandle is call
+findHandle in writeInteger
+findHandle invokes standardHandle
+findHandle argument stream Int32 stream copy
+findHandle result handle machine.Address
+findHandle ownedBy none
+findHandle cleanedBy none
+findHandle borrows none
+findHandle catch none
+findHandle suppresses none
+
+writeDigits is call
+writeDigits in writeInteger
+writeDigits invokes writeAll
+writeDigits argument handle machine.Address handle copy
+writeDigits argument text machine.Address digits copy
+writeDigits argument bytes Int64 length copy
+writeDigits result status Int32
+writeDigits ownedBy none
+writeDigits cleanedBy none
+writeDigits borrows none
+writeDigits catch none
+writeDigits suppresses none

@@ -347,6 +347,11 @@ def _init() -> None:
     from . import instrument, tasks
     for name, cb in {**_CALLBACKS, **tasks.CALLBACKS, **instrument.CALLBACKS}.items():
         llvm.add_symbol(name, ctypes.cast(cb, ctypes.c_void_p).value)
+    if os.name == "nt":
+        # D-122: a `system` target calls the operating system's own function, in this process as in an executable
+        from .library import SYSTEM_CALLS
+        for symbol, _sig in SYSTEM_CALLS.values():
+            llvm.add_symbol(symbol, ctypes.cast(getattr(ctypes.windll.kernel32, symbol), ctypes.c_void_p).value)
     _INITIALIZED = True
 
 
