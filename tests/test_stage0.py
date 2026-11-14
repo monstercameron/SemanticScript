@@ -46,11 +46,45 @@ SAMPLES = {
     "modules": ("area: 12\noblong\narea: 25\nsquare\narea: 35\noblong\napp label: app (width 3)\n"
                 "shapes label: shapes\napp sides: 3\nshapes sides: 4\n", 0),
     "files": ("wrote 2 lines\nfirst line\nsecond line\n", 70),
+    "boundaries": ("lessThan 1\nlessOrEqual 1\ngreaterThan 0\ngreaterOrEqual 0\nequal 0\nnotEqual 1\nlessThan 0\n"
+                   "lessOrEqual 1\ngreaterThan 0\ngreaterOrEqual 1\nequal 1\nnotEqual 0\nlessThan 0\n"
+                   "lessOrEqual 0\ngreaterThan 1\ngreaterOrEqual 1\nequal 0\nnotEqual 1\nbyte lessThan 1\n"
+                   "byte lessOrEqual 1\nbyte greaterThan 0\nbyte greaterOrEqual 0\nbyte equal 0\nbyte notEqual 1\n"
+                   "byte lessThan 0\nbyte lessOrEqual 1\nbyte greaterThan 0\nbyte greaterOrEqual 1\nbyte equal 1\n"
+                   "byte notEqual 0\nbyte lessThan 0\nbyte lessOrEqual 0\nbyte greaterThan 1\n"
+                   "byte greaterOrEqual 1\nbyte equal 0\nbyte notEqual 1\nand 1\nor 1\nxor 0\nnot 0\nand 0\nor 1\n"
+                   "xor 1\nnot 0\nand 0\nor 1\nxor 1\nnot 1\nand 0\nor 0\nxor 0\nnot 1\ndivide -3\nremainder -1\n"
+                   "subtract -9\nmultiply -14\nnegate 7\nabsolute 7\ndivide 0\nremainder 3\nsubtract 10\n"
+                   "multiply -21\nnegate -3\nabsolute 3\n", 0),
+    "collatz": ("steps: 0\nsteps: 1\nsteps: 7\nsteps: 2\nsteps: 5\nsteps: 8\nsteps: 16\nsteps: 3\nsteps: 19\n"
+                "steps: 6\nsteps: 14\nsteps: 9\ntotal: 90\ndigits: 45\n3^5: 243\nabs: 243\n", 90),
+    "divtrap": ("33\n50\n100\n", 70),
+    "inventory": ("nails left: 36\ntape left: -1\nnails: 36\n  shelf 0\nscrews: 12\n  shelf 1\nglue: 1\n"
+                  "  shelf 2\nglue is stocked\n", 0),
+    "ledger": ("balance 50\nbalance 30\nbalance 27\noverdrawn to -73\nnegative deposit -5\nbalance 27\n"
+               "balance 34\nAlice done\nrefused: 2\n", 9),
+    "overflow": ("4\n16\n64\n256\n1024\n4096\n16384\n65536\n262144\n1048576\n4194304\n16777216\n67108864\n"
+                 "268435456\n1073741824\n4294967296\n17179869184\n68719476736\n274877906944\n1099511627776\n"
+                 "4398046511104\n17592186044416\n70368744177664\n281474976710656\n1125899906842624\n"
+                 "4503599627370496\n18014398509481984\n72057594037927936\n288230376151711744\n"
+                 "1152921504606846976\n4611686018427387904\n", 70),
+    "words": ("words: 7\nplums-30-pears,-12-and-apples-seven-42\nbuffer: 38\napples at 23\n"
+              "starts with plums\nfirst byte: 112\nequal plums-30-pears,-12-and-apples-seven-42\n", 0),
 }
 OUTSIDE = "samples/outside/outside.sem:12:11: this entity kind is outside the stage0 subset (alias)\n"
+# programs `refined check` accepts that are just outside the subset (samples/refused), and where stage0 refuses each
+REFUSED = {
+    "outEnds": "outEnds.sem:67:15: this call target is outside the stage0 subset (string.endsWith)",
+    "outEscape": 'outEscape.sem:33:25: stage0 does not read \\x escapes in text ("A\\x41B")',
+    "outInt32": "outInt32.sem:52:16: this call target is outside the stage0 subset (convert.int64ToInt32)",
+    "outIntMap": "outIntMap.sem:17:27: this type is outside the stage0 subset (Int64)",
+    "outSaturating": "outSaturating.sem:52:13: this call target is outside the stage0 subset (math.saturatingAddInt64)",
+    "outSet": "outSet.sem:17:20: this type is outside the stage0 subset (set.Set)",
+}
 # the samples stage0 also compiles under `refined run`, whose C must equal the executable's byte for byte: a
-# map of records holding text, and a program of two modules with records, enums, and `with`
-UNDER_REFINED_RUN = ["maps", "modules"]
+# map of records holding text, a program of two modules with records, enums, and `with`, every comparison, logic,
+# and arithmetic target at its boundaries, and text split with byte tests into a buffer
+UNDER_REFINED_RUN = ["maps", "modules", "boundaries", "words"]
 
 CC = c_compiler()
 # what stage0 passes the C compiler after the C file: the runtime to link, and on Windows the library it needs
@@ -99,6 +133,19 @@ def test_stage0_refuses_a_program_outside_its_subset(stage0_native, project):
     assert proc.returncode == 2 and proc.stderr.startswith("usage: "), proc.stderr
     proc = _native(stage0_native, project, "samples/missing", "build/missing")
     assert (proc.returncode, proc.stderr) == (3, "samples/missing/build.sem: cannot read the source file\n")
+
+
+@pytest.mark.skipif(CC is None, reason="no C compiler named cc, gcc, or clang on PATH")
+@pytest.mark.parametrize("program", sorted(REFUSED))
+def test_stage0_refuses_programs_just_outside_its_subset(stage0_native, project, program):
+    """Each of these programs passes `refined check`, so the refusal is stage0's own: exit code 1, a located
+    `path:line:column: message (word)`, and no C written."""
+    checked = caselib.refined("check", os.path.join(project, "samples", "refused", program))
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    proc = _native(stage0_native, project, f"samples/refused/{program}", f"build/{program}", CC, *LINK)
+    assert (proc.returncode, proc.stdout) == (1, ""), proc.stdout + proc.stderr
+    assert proc.stderr == f"samples/refused/{program}/{REFUSED[program]}\n"
+    assert not os.path.exists(os.path.join(project, "build", f"{program}.c"))
 
 
 def test_stage0_module_tests_pass():

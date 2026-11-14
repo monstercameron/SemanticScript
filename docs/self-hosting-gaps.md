@@ -24,8 +24,8 @@ moved as follows (decisions in `docs/language-refinement.md`):
 | 10: integer types | Done: every integer type computes | D-90 |
 | 11: layered generics, sets of `String` | Done | D-92 to D-94 |
 | 15: chunked native arena | Done | D-80 to D-85 |
-| 12, 13: the compiler in the language and its C emitter | Stages 0 to 2 done (docs/self-hosting-plan.md): `docs/refined-examples/stage0` compiles one module of operations calling each other, records, enums with payloads, `match`, `raises`, lists, tables, tasks, and 65 library targets (17 of them host targets through `refined_host`) to C linked with `native_runtime.c` | `tests/test_stage0.py`, `tests/test_selfhost_suite.py` |
-| 14: the bootstrap | First step done: stage0 builds as a standalone executable and writes the same C, byte for byte, as under `refined run` (about 0.1 s of its own per sample, plus the C compiler, against about 36 s under `refined run`); widening the subset until stage0 compiles itself remains | `tests/test_stage0.py` |
+| 12, 13: the compiler in the language and its C emitter | Done for its own subset (docs/self-hosting-plan.md, stages 0 to 4): `docs/refined-examples/stage0` compiles projects of several modules, records, enums with payloads, `match`, `raises` (standard errors too), lists, maps, tables, tasks, operation references, and 72 library targets (22 of them host targets through `refined_host`, scoped ones given their capability's scope) to C linked with `native_runtime.c`; it builds 14 of 52 suite programs and refuses the rest with a located message | `tests/test_stage0.py`, `tests/test_selfhost_suite.py` |
+| 14: the bootstrap | Done: stage0, built once by `refined build --kind executable`, compiles its own source into stage0b, which compiles it again to byte-identical C (the fixed point); stage0 compiles itself in about 7 s with the C compiler, against about a minute per sample under `refined run` | `tests/test_bootstrap.py` |
 
 An adversarial review of the new collection and tooling rules then found nine holes. All are closed and each has
 a regression check (D-107 to D-109; `tests/suite/conformance.py`, `tests/test_review.py`).

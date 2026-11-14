@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+outSet is project
+outSet purpose "An audit program just outside the stage0 subset, which refined accepts; stage0 refuses it"
+outSet target console
+outSet version "0.1.0"
+outSet language refined 1
+outSet standardLibrary 1
+outSet allows write console.stdout none
+outSet requires none
+outSet includesModule outSet
+outSet entry outSet.main

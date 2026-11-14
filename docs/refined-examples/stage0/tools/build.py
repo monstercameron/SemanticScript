@@ -428,12 +428,17 @@ SAMPLE_AUTHORITY = """# Authority approved for this project (`refined approve`).
 # what each sample may do besides writing to standard output
 SAMPLE_ALLOWS = {"files": ['read fs.files "build/"', 'write fs.files "build/"']}
 # a sample of several modules is a folder of .dsl files, one per module, in the order build.sem includes them
-SAMPLE_PROJECTS = {"modules": ["shapes", "app"]}
+SAMPLE_PROJECTS = {"modules": ["shapes", "app"], "inventory": ["stock", "shop"]}
+# programs `refined check` accepts that stage0 refuses: samples/refused/<name>.dsl, written to samples/refused/<name>
+REFUSED = "refused"
 
 
 def sample_modules(name):
     """[(module name, dsl text)] of a sample, in the order build.sem includes them."""
     folder = os.path.join(HERE, "samples")
+    if name.startswith(REFUSED + "/"):
+        with open(os.path.join(folder, name + ".dsl"), encoding="utf-8") as fh:
+            return [(name.split("/")[1], fh.read())]
     if name in SAMPLE_PROJECTS:
         out = []
         for module in SAMPLE_PROJECTS[name]:
@@ -446,11 +451,13 @@ def sample_modules(name):
 
 def generate_samples(prog, names):
     folder = os.path.join(HERE, "samples")
-    found = sorted([fn[:-4] for fn in os.listdir(folder) if fn.endswith(".dsl")] + list(SAMPLE_PROJECTS))
+    found = sorted([fn[:-4] for fn in os.listdir(folder) if fn.endswith(".dsl")] + list(SAMPLE_PROJECTS) +
+                   [f"{REFUSED}/{fn[:-4]}" for fn in os.listdir(os.path.join(folder, REFUSED)) if fn.endswith(".dsl")])
     for name in found:
         if names and name not in names:
             continue
         modules = sample_modules(name)
+        project = name.split("/")[-1]
         out = os.path.join(STAGE0, "samples", name)
         os.makedirs(out, exist_ok=True)
         lines = 0
@@ -473,9 +480,11 @@ def generate_samples(prog, names):
         allows = ["write console.stdout none"] + SAMPLE_ALLOWS.get(name, [])
         with open(os.path.join(out, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(SAMPLE_BUILD.format(
-                name=name, purpose=purpose + "; a stage0 sample both runs agree on", entry=modules[-1][0],
-                allows="\n".join(f"{name} allows {a}" for a in allows),
-                includes="\n".join(f"{name} includesModule {module}" for module, _t in modules)))
+                name=project, entry=modules[-1][0],
+                purpose=purpose + ("; stage0 refuses it" if name.startswith(REFUSED + "/") else
+                                   "; a stage0 sample both runs agree on"),
+                allows="\n".join(f"{project} allows {a}" for a in allows),
+                includes="\n".join(f"{project} includesModule {module}" for module, _t in modules)))
         with open(os.path.join(out, "authority.approved"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(SAMPLE_AUTHORITY.format(authority="\n".join(allows)))
         print(f"sample {name}: {lines} lines")

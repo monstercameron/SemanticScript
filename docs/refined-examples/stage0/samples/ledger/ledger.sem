@@ -1,0 +1,673 @@
+# A stage0 sample from the audit: transactions held in enums applied to an
+# account record, with an error enum the program raises and branches on.
+ledger is module
+ledger purpose "Apply transactions held in enums to an account record, with an error enum"
+ledger path ledger
+ledger imports standard.console
+ledger imports standard.math
+ledger imports standard.compare
+ledger imports standard.list
+ledger imports standard.string
+ledger exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Account is record
+Account purpose "An account's owner and balance"
+Account typeParameter none
+Account field owner String
+Account field balance Int64
+
+Move is enum
+Move purpose "A transaction"
+Move typeParameter none
+Move variant deposit Int64
+Move variant withdraw Int64
+Move variant fee none
+Move variant rename String
+
+LedgerError is enum
+LedgerError purpose "Why a transaction was refused"
+LedgerError typeParameter none
+LedgerError variant overdrawn Int64
+LedgerError variant negative Int64
+
+Moves is typeInstance
+Moves purpose "A list of transactions"
+Moves in none
+Moves instantiates list.List Move
+
+apply is operation
+apply purpose "Apply one transaction to a balance"
+apply invariant none
+apply typeParameter none
+apply input balance Int64 copied
+apply input move Move borrowed
+apply output Int64
+apply outputOwnedBy none
+apply raises LedgerError
+apply effect none
+apply uses none
+apply memoryHeap false
+apply async false
+apply maxRecursion none
+apply label begin loopKind none
+apply label begin within none
+apply label onDeposit loopKind none
+apply label onDeposit within none
+apply label addIt loopKind none
+apply label addIt within none
+apply label badAmount loopKind none
+apply label badAmount within none
+apply label onWithdraw loopKind none
+apply label onWithdraw within none
+apply label keep loopKind none
+apply label keep within none
+apply label overdrawn loopKind none
+apply label overdrawn within none
+apply label onFee loopKind none
+apply label onFee within none
+apply label onRename loopKind none
+apply label onRename within none
+apply let feeAmount Int64 3 immutable
+apply let zero Int64 0 immutable
+apply at begin match move Move
+apply at begin case Move.deposit bind amount Int64 goto onDeposit
+apply at begin case Move.withdraw bind amount2 Int64 goto onWithdraw
+apply at begin case Move.fee bind none none goto onFee
+apply at begin case Move.rename bind newName String goto onRename
+apply at onDeposit do negCheck
+apply at onDeposit branch if isNeg goto badAmount else goto addIt
+apply at addIt do plus
+apply at addIt return ok added
+apply at badAmount do makeNeg
+apply at badAmount return error negError
+apply at onWithdraw do minus
+apply at onWithdraw do overCheck
+apply at onWithdraw branch if over goto overdrawn else goto keep
+apply at keep return ok left
+apply at overdrawn do makeOver
+apply at overdrawn return error overError
+apply at onFee do charge
+apply at onFee return ok charged
+apply at onRename return ok balance
+
+negCheck is call
+negCheck in apply
+negCheck invokes compare.lessThanInt64
+negCheck argument left Int64 amount copy
+negCheck argument right Int64 zero copy
+negCheck result isNeg Bool
+negCheck ownedBy none
+negCheck cleanedBy none
+negCheck borrows none
+negCheck catch none
+negCheck suppresses none
+
+plus is call
+plus in apply
+plus invokes math.addInt64
+plus argument left Int64 balance copy
+plus argument right Int64 amount copy
+plus result added Int64
+plus ownedBy none
+plus cleanedBy none
+plus borrows none
+plus catch none
+plus suppresses none
+
+makeNeg is call
+makeNeg in apply
+makeNeg invokes LedgerError.negative
+makeNeg argument payload Int64 amount copy
+makeNeg result negError LedgerError
+makeNeg ownedBy none
+makeNeg cleanedBy none
+makeNeg borrows none
+makeNeg catch none
+makeNeg suppresses none
+
+minus is call
+minus in apply
+minus invokes math.subtractInt64
+minus argument left Int64 balance copy
+minus argument right Int64 amount2 copy
+minus result left Int64
+minus ownedBy none
+minus cleanedBy none
+minus borrows none
+minus catch none
+minus suppresses none
+
+overCheck is call
+overCheck in apply
+overCheck invokes compare.lessThanInt64
+overCheck argument left Int64 left copy
+overCheck argument right Int64 zero copy
+overCheck result over Bool
+overCheck ownedBy none
+overCheck cleanedBy none
+overCheck borrows none
+overCheck catch none
+overCheck suppresses none
+
+makeOver is call
+makeOver in apply
+makeOver invokes LedgerError.overdrawn
+makeOver argument payload Int64 left copy
+makeOver result overError LedgerError
+makeOver ownedBy none
+makeOver cleanedBy none
+makeOver borrows none
+makeOver catch none
+makeOver suppresses none
+
+charge is call
+charge in apply
+charge invokes math.subtractInt64
+charge argument left Int64 balance copy
+charge argument right Int64 feeAmount copy
+charge result charged Int64
+charge ownedBy none
+charge cleanedBy none
+charge borrows none
+charge catch none
+charge suppresses none
+
+main is operation
+main purpose "Run a list of transactions and print the balance after each"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label each loopKind forEach
+main label each within none
+main label each maxIterations moveCount
+main label each over moves
+main label applyOne loopKind none
+main label applyOne within each
+main label accepted loopKind none
+main label accepted within each
+main label writeLeadDone loopKind none
+main label writeLeadDone within each
+main label writeBalanceDone loopKind none
+main label writeBalanceDone within each
+main label refusedOne loopKind none
+main label refusedOne within each
+main label onOverdrawn loopKind none
+main label onOverdrawn within each
+main label writeOverDone loopKind none
+main label writeOverDone within each
+main label writeByDone loopKind none
+main label writeByDone within each
+main label onNegative loopKind none
+main label onNegative within each
+main label writeNegDone loopKind none
+main label writeNegDone within each
+main label writeAmountDone loopKind none
+main label writeAmountDone within each
+main label done loopKind none
+main label done within none
+main label writeOwnerDone loopKind none
+main label writeOwnerDone within none
+main label writeRefusedLeadDone loopKind none
+main label writeRefusedLeadDone within none
+main label writeRefusedDone loopKind none
+main label writeRefusedDone within none
+main label failing loopKind none
+main label failing within none
+main label fine loopKind none
+main label fine within none
+main let balance Int64 0 mutable
+main let refused Int64 0 mutable
+main let doneCode ExitCode 0 immutable
+main let failCode ExitCode 9 immutable
+main let fifty Int64 50 immutable
+main let twenty Int64 20 immutable
+main let hundred Int64 100 immutable
+main let minusFive Int64 -5 immutable
+main let bob String "Bob" immutable
+main let seven Int64 7 immutable
+main let alice String "Alice" immutable
+main let zero Int64 0 immutable
+main let balanceText String "balance " immutable
+main let one Int64 1 immutable
+main let overText String "overdrawn to " immutable
+main let negText String "negative deposit " immutable
+main let endText String " done" immutable
+main let refusedText String "refused: " immutable
+main at begin do makeMoves
+main at begin do m1
+main at begin do a1
+main at begin do m2
+main at begin do a2
+main at begin do m3
+main at begin do a3
+main at begin do m4
+main at begin do a4
+main at begin do m5
+main at begin do a5
+main at begin do m6
+main at begin do a6
+main at begin do m7
+main at begin do a7
+main at begin do countMoves
+main at begin do makeAccount
+main at begin goto each
+main at each branch ifNext moves bind move Move goto applyOne else goto done
+main at applyOne do applying
+main at applyOne branch ifError applying goto refusedOne else goto accepted
+main at accepted set balance after
+main at accepted do writeLead
+main at accepted branch ifError writeLead goto writeLeadDone else goto writeLeadDone
+main at writeLeadDone do writeBalance
+main at writeLeadDone branch ifError writeBalance goto writeBalanceDone else goto writeBalanceDone
+main at writeBalanceDone goto each
+main at refusedOne do bumpRefused
+main at refusedOne set refused nextRefused
+main at refusedOne match problem LedgerError
+main at refusedOne case LedgerError.overdrawn bind by Int64 goto onOverdrawn
+main at refusedOne case LedgerError.negative bind amount Int64 goto onNegative
+main at onOverdrawn do writeOver
+main at onOverdrawn branch ifError writeOver goto writeOverDone else goto writeOverDone
+main at writeOverDone do writeBy
+main at writeOverDone branch ifError writeBy goto writeByDone else goto writeByDone
+main at writeByDone goto each
+main at onNegative do writeNeg
+main at onNegative branch ifError writeNeg goto writeNegDone else goto writeNegDone
+main at writeNegDone do writeAmount
+main at writeNegDone branch ifError writeAmount goto writeAmountDone else goto writeAmountDone
+main at writeAmountDone goto each
+main at done do readOwner
+main at done do greet
+main at done do writeOwner
+main at done branch ifError writeOwner goto writeOwnerDone else goto writeOwnerDone
+main at writeOwnerDone do writeRefusedLead
+main at writeOwnerDone branch ifError writeRefusedLead goto writeRefusedLeadDone else goto writeRefusedLeadDone
+main at writeRefusedLeadDone do writeRefused
+main at writeRefusedLeadDone branch ifError writeRefused goto writeRefusedDone else goto writeRefusedDone
+main at writeRefusedDone do checkRefused
+main at writeRefusedDone branch if tooMany goto failing else goto fine
+main at failing return ok failCode
+main at fine return ok doneCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 1048576
+scratch released atReturn
+
+makeMoves is call
+makeMoves in main
+makeMoves invokes Moves.new
+makeMoves argument region Region scratch lend
+makeMoves result moves Moves
+makeMoves ownedBy scratch
+makeMoves cleanedBy none
+makeMoves borrows none
+makeMoves catch none
+makeMoves suppresses none
+
+m1 is call
+m1 in main
+m1 invokes Move.deposit
+m1 argument payload Int64 fifty copy
+m1 result d1 Move
+m1 ownedBy none
+m1 cleanedBy none
+m1 borrows none
+m1 catch none
+m1 suppresses none
+
+a1 is call
+a1 in main
+a1 invokes Moves.append
+a1 argument list Moves moves lendMutable
+a1 argument item Move d1 give
+a1 result none
+a1 ownedBy none
+a1 cleanedBy none
+a1 borrows none
+a1 catch none
+a1 suppresses none
+
+m2 is call
+m2 in main
+m2 invokes Move.withdraw
+m2 argument payload Int64 twenty copy
+m2 result w1 Move
+m2 ownedBy none
+m2 cleanedBy none
+m2 borrows none
+m2 catch none
+m2 suppresses none
+
+a2 is call
+a2 in main
+a2 invokes Moves.append
+a2 argument list Moves moves lendMutable
+a2 argument item Move w1 give
+a2 result none
+a2 ownedBy none
+a2 cleanedBy none
+a2 borrows none
+a2 catch none
+a2 suppresses none
+
+m3 is call
+m3 in main
+m3 invokes Move.fee
+m3 argument none
+m3 result f1 Move
+m3 ownedBy none
+m3 cleanedBy none
+m3 borrows none
+m3 catch none
+m3 suppresses none
+
+a3 is call
+a3 in main
+a3 invokes Moves.append
+a3 argument list Moves moves lendMutable
+a3 argument item Move f1 give
+a3 result none
+a3 ownedBy none
+a3 cleanedBy none
+a3 borrows none
+a3 catch none
+a3 suppresses none
+
+m4 is call
+m4 in main
+m4 invokes Move.withdraw
+m4 argument payload Int64 hundred copy
+m4 result w2 Move
+m4 ownedBy none
+m4 cleanedBy none
+m4 borrows none
+m4 catch none
+m4 suppresses none
+
+a4 is call
+a4 in main
+a4 invokes Moves.append
+a4 argument list Moves moves lendMutable
+a4 argument item Move w2 give
+a4 result none
+a4 ownedBy none
+a4 cleanedBy none
+a4 borrows none
+a4 catch none
+a4 suppresses none
+
+m5 is call
+m5 in main
+m5 invokes Move.deposit
+m5 argument payload Int64 minusFive copy
+m5 result d2 Move
+m5 ownedBy none
+m5 cleanedBy none
+m5 borrows none
+m5 catch none
+m5 suppresses none
+
+a5 is call
+a5 in main
+a5 invokes Moves.append
+a5 argument list Moves moves lendMutable
+a5 argument item Move d2 give
+a5 result none
+a5 ownedBy none
+a5 cleanedBy none
+a5 borrows none
+a5 catch none
+a5 suppresses none
+
+m6 is call
+m6 in main
+m6 invokes Move.rename
+m6 argument payload String bob give
+m6 result r1 Move
+m6 ownedBy none
+m6 cleanedBy none
+m6 borrows none
+m6 catch none
+m6 suppresses none
+
+a6 is call
+a6 in main
+a6 invokes Moves.append
+a6 argument list Moves moves lendMutable
+a6 argument item Move r1 give
+a6 result none
+a6 ownedBy none
+a6 cleanedBy none
+a6 borrows none
+a6 catch none
+a6 suppresses none
+
+m7 is call
+m7 in main
+m7 invokes Move.deposit
+m7 argument payload Int64 seven copy
+m7 result d3 Move
+m7 ownedBy none
+m7 cleanedBy none
+m7 borrows none
+m7 catch none
+m7 suppresses none
+
+a7 is call
+a7 in main
+a7 invokes Moves.append
+a7 argument list Moves moves lendMutable
+a7 argument item Move d3 give
+a7 result none
+a7 ownedBy none
+a7 cleanedBy none
+a7 borrows none
+a7 catch none
+a7 suppresses none
+
+countMoves is call
+countMoves in main
+countMoves invokes Moves.length
+countMoves argument list Moves moves lend
+countMoves result moveCount Int64
+countMoves ownedBy none
+countMoves cleanedBy none
+countMoves borrows none
+countMoves catch none
+countMoves suppresses none
+
+makeAccount is call
+makeAccount in main
+makeAccount invokes Account.new
+makeAccount argument owner String alice lend
+makeAccount argument balance Int64 zero copy
+makeAccount argument region Region scratch lend
+makeAccount result account Account
+makeAccount ownedBy scratch
+makeAccount cleanedBy none
+makeAccount borrows none
+makeAccount catch none
+makeAccount suppresses none
+
+applying is call
+applying in main
+applying invokes apply
+applying argument balance Int64 balance copy
+applying argument move Move move lend
+applying result after Int64
+applying ownedBy none
+applying cleanedBy none
+applying borrows none
+applying catch problem LedgerError
+applying suppresses none
+
+writeLead is call
+writeLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeLead in main
+writeLead invokes console.write
+writeLead argument text String balanceText lend
+writeLead result none
+writeLead ownedBy none
+writeLead cleanedBy none
+writeLead borrows none
+writeLead catch writeLeadError console.WriteError
+writeLead suppresses console.WriteError.failed
+
+writeBalance is call
+writeBalance rationale "The failure has nowhere to be reported, so it is discarded"
+writeBalance in main
+writeBalance invokes console.writeIntegerLine
+writeBalance argument value Int64 balance copy
+writeBalance result none
+writeBalance ownedBy none
+writeBalance cleanedBy none
+writeBalance borrows none
+writeBalance catch writeBalanceError console.WriteError
+writeBalance suppresses console.WriteError.failed
+
+bumpRefused is call
+bumpRefused in main
+bumpRefused invokes math.addInt64
+bumpRefused argument left Int64 refused copy
+bumpRefused argument right Int64 one copy
+bumpRefused result nextRefused Int64
+bumpRefused ownedBy none
+bumpRefused cleanedBy none
+bumpRefused borrows none
+bumpRefused catch none
+bumpRefused suppresses none
+
+writeOver is call
+writeOver rationale "The failure has nowhere to be reported, so it is discarded"
+writeOver in main
+writeOver invokes console.write
+writeOver argument text String overText lend
+writeOver result none
+writeOver ownedBy none
+writeOver cleanedBy none
+writeOver borrows none
+writeOver catch writeOverError console.WriteError
+writeOver suppresses console.WriteError.failed
+
+writeBy is call
+writeBy rationale "The failure has nowhere to be reported, so it is discarded"
+writeBy in main
+writeBy invokes console.writeIntegerLine
+writeBy argument value Int64 by copy
+writeBy result none
+writeBy ownedBy none
+writeBy cleanedBy none
+writeBy borrows none
+writeBy catch writeByError console.WriteError
+writeBy suppresses console.WriteError.failed
+
+writeNeg is call
+writeNeg rationale "The failure has nowhere to be reported, so it is discarded"
+writeNeg in main
+writeNeg invokes console.write
+writeNeg argument text String negText lend
+writeNeg result none
+writeNeg ownedBy none
+writeNeg cleanedBy none
+writeNeg borrows none
+writeNeg catch writeNegError console.WriteError
+writeNeg suppresses console.WriteError.failed
+
+writeAmount is call
+writeAmount rationale "The failure has nowhere to be reported, so it is discarded"
+writeAmount in main
+writeAmount invokes console.writeIntegerLine
+writeAmount argument value Int64 amount copy
+writeAmount result none
+writeAmount ownedBy none
+writeAmount cleanedBy none
+writeAmount borrows none
+writeAmount catch writeAmountError console.WriteError
+writeAmount suppresses console.WriteError.failed
+
+readOwner is call
+readOwner in main
+readOwner invokes Account.owner
+readOwner argument record Account account lend
+readOwner result owner String
+readOwner ownedBy none
+readOwner cleanedBy none
+readOwner borrows account
+readOwner catch none
+readOwner suppresses none
+
+greet is call
+greet in main
+greet invokes string.concat
+greet argument left String owner lend
+greet argument right String endText lend
+greet argument region Region scratch lend
+greet result line String
+greet ownedBy scratch
+greet cleanedBy none
+greet borrows none
+greet catch none
+greet suppresses none
+
+writeOwner is call
+writeOwner rationale "The failure has nowhere to be reported, so it is discarded"
+writeOwner in main
+writeOwner invokes console.writeLine
+writeOwner argument text String line lend
+writeOwner result none
+writeOwner ownedBy none
+writeOwner cleanedBy none
+writeOwner borrows none
+writeOwner catch writeOwnerError console.WriteError
+writeOwner suppresses console.WriteError.failed
+
+writeRefusedLead is call
+writeRefusedLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeRefusedLead in main
+writeRefusedLead invokes console.write
+writeRefusedLead argument text String refusedText lend
+writeRefusedLead result none
+writeRefusedLead ownedBy none
+writeRefusedLead cleanedBy none
+writeRefusedLead borrows none
+writeRefusedLead catch writeRefusedLeadError console.WriteError
+writeRefusedLead suppresses console.WriteError.failed
+
+writeRefused is call
+writeRefused rationale "The failure has nowhere to be reported, so it is discarded"
+writeRefused in main
+writeRefused invokes console.writeIntegerLine
+writeRefused argument value Int64 refused copy
+writeRefused result none
+writeRefused ownedBy none
+writeRefused cleanedBy none
+writeRefused borrows none
+writeRefused catch writeRefusedError console.WriteError
+writeRefused suppresses console.WriteError.failed
+
+checkRefused is call
+checkRefused in main
+checkRefused invokes compare.greaterThanInt64
+checkRefused argument left Int64 refused copy
+checkRefused argument right Int64 one copy
+checkRefused result tooMany Bool
+checkRefused ownedBy none
+checkRefused cleanedBy none
+checkRefused borrows none
+checkRefused catch none
+checkRefused suppresses none

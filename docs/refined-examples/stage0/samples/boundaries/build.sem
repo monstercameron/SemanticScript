@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+boundaries is project
+boundaries purpose "Print comparisons, logic, and arithmetic at their boundaries; a stage0 sample both runs agree on"
+boundaries target console
+boundaries version "0.1.0"
+boundaries language refined 1
+boundaries standardLibrary 1
+boundaries allows write console.stdout none
+boundaries requires none
+boundaries includesModule boundaries
+boundaries entry boundaries.main

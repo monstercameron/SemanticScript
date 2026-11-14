@@ -24,6 +24,19 @@ and the stages. Progress is recorded in the table at the end.
    `path:line:column: message (word)` and exit 1; the compiler never writes C
    it cannot vouch for.
 
+Where each stands (2026-11-14):
+
+| Criterion | Holds | Evidence |
+| --- | --- | --- |
+| 1 A compiler written in the language | Yes: stage0 reads a project (build.sem and its modules), checks it, writes C, and runs the C compiler | `tests/test_stage0.py`: 23 samples built and run as `refined run` runs them; 4 of them also compiled under `refined run`, writing the same C |
+| 2 It compiles itself | Yes: the stage0 `refined build --kind executable` makes compiles its own six modules (171 operations) into stage0b | `tests/test_bootstrap.py` |
+| 3 Fixed point | Yes: stage0b compiles stage0 again to C byte-identical to what stage0 wrote, and compiles every sample to the C stage0 writes | `tests/test_bootstrap.py` |
+| 4 Same behaviour | Yes for what stage0 accepts: every suite program it builds matches `refined run`; it builds 14 of the 52 single-file suite programs (the floor in the test) | `tests/test_selfhost_suite.py` |
+| 5 Honest refusal | Yes: every program it does not build is refused with a located message, exit 1, and no C file | `tests/test_selfhost_suite.py`, `tests/test_stage0.py` (seven refused programs) |
+
+1.0 waits on criterion 4's reach (14 of 52) and on the rename to `selfhost`,
+not on the bootstrap.
+
 The safety analyses (ownership, loans, regions, task state, exhaustive
 error handling, authority) stay in the reference checker, `refined check`,
 which every program passes first, as stage0's header states today. Porting
@@ -80,4 +93,5 @@ The subset grows only as the compiler's own source needs it.
 | 1 | Several operations with inputs and outputs, calls between them, recursion; records; enums with payloads and `match`; `raises` | Done: copied, borrowed, and borrowedMutable inputs, outputs owned by a region input, `raises` an enum of the module, `maxRecursion`; the C links `native_runtime.c` |
 | 2 | Lists in regions, `forEach`, tables; string targets; constants of every type | Done but for constants of record and enum types: `list.List` (`new`, `append`, `length`, `get`, `getOrTrap`), tables (`rowAt`, `length`, `forEach`), string, byte, and conversion targets; builds 12 of 52 suite programs |
 | 3 | Host targets through `refined_host` (buffer, map, fs, process, console, time); several modules; tasks | Done: projects of several modules (build.sem, `<module>.<name>`); `map.Map` with String keys and values flattened as the LLVM backend flattens them; `forEach` over a map's keys; scoped targets (`fs.readAll`, `fs.writeAll`, `fs.createDirectory`, `process.run`) given the grant scope text; `operationType` and `invokesReference`; `string.Position`; `list.set` and `<Record>.with`; operations raising standard errors; builds 14 of 52 suite programs |
-| 4 | Its own source: compile every compiler module; then the fixed point | Done: the native stage0 compiles its own project into stage0b, stage0b compiles every sample to byte-identical C and executables that behave the same, and stage0b compiles stage0 again to byte-identical C (tests/test_bootstrap.py) |
+| 4 | Its own source: compile every compiler module; then the fixed point | Done: the native stage0 compiles its own project into stage0b, stage0b compiles every sample to byte-identical C and executables that behave the same and refuses the same programs, and stage0b compiles stage0 again to byte-identical C (tests/test_bootstrap.py) |
+| 5 | The rest of the suite: widen the subset program by program (integer types, `set.Set`, more library targets, dependency order among modules), then rename stage0 to `selfhost` | Next |

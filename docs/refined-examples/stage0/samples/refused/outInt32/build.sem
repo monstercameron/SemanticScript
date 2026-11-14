@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+outInt32 is project
+outInt32 purpose "An audit program just outside the stage0 subset, which refined accepts; stage0 refuses it"
+outInt32 target console
+outInt32 version "0.1.0"
+outInt32 language refined 1
+outInt32 standardLibrary 1
+outInt32 allows write console.stdout none
+outInt32 requires none
+outInt32 includesModule outInt32
+outInt32 entry outInt32.main

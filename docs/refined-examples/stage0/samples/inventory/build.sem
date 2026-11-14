@@ -1,0 +1,14 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+inventory is project
+inventory purpose "Use the stock module's map by qualified names; a stage0 sample both runs agree on"
+inventory target console
+inventory version "0.1.0"
+inventory language refined 1
+inventory standardLibrary 1
+inventory allows write console.stdout none
+inventory requires none
+inventory includesModule stock
+inventory includesModule shop
+inventory entry shop.main

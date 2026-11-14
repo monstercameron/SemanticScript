@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+outEnds is project
+outEnds purpose "An audit program just outside the stage0 subset, which refined accepts; stage0 refuses it"
+outEnds target console
+outEnds version "0.1.0"
+outEnds language refined 1
+outEnds standardLibrary 1
+outEnds allows write console.stdout none
+outEnds requires none
+outEnds includesModule outEnds
+outEnds entry outEnds.main

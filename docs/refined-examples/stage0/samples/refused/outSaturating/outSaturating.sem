@@ -1,0 +1,84 @@
+# A program `refined check` accepts that is just outside the stage0 subset,
+# from the audit: stage0 refuses it at the word concerned and writes no C.
+outSaturating is module
+outSaturating purpose "An audit program just outside the stage0 subset, which refined accepts"
+outSaturating path outSaturating
+outSaturating imports standard.console
+outSaturating imports standard.math
+outSaturating exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Do one thing stage0 should refuse, then print a line"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label wDone loopKind none
+main label wDone within none
+main label writeDoneDone loopKind none
+main label writeDoneDone within none
+main let okCode ExitCode 0 immutable
+main let big Int64 9223372036854775800 immutable
+main let ten Int64 10 immutable
+main let doneText String "done" immutable
+main at begin do add
+main at begin do w
+main at begin branch ifError w goto wDone else goto wDone
+main at wDone do writeDone
+main at wDone branch ifError writeDone goto writeDoneDone else goto writeDoneDone
+main at writeDoneDone return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+add is call
+add in main
+add invokes math.saturatingAddInt64
+add argument left Int64 big copy
+add argument right Int64 ten copy
+add result sum Int64
+add ownedBy none
+add cleanedBy none
+add borrows none
+add catch none
+add suppresses none
+
+w is call
+w rationale "The failure has nowhere to be reported, so it is discarded"
+w in main
+w invokes console.writeIntegerLine
+w argument value Int64 sum copy
+w result none
+w ownedBy none
+w cleanedBy none
+w borrows none
+w catch wError console.WriteError
+w suppresses console.WriteError.failed
+
+writeDone is call
+writeDone rationale "The failure has nowhere to be reported, so it is discarded"
+writeDone in main
+writeDone invokes console.writeLine
+writeDone argument text String doneText lend
+writeDone result none
+writeDone ownedBy none
+writeDone cleanedBy none
+writeDone borrows none
+writeDone catch writeDoneError console.WriteError
+writeDone suppresses console.WriteError.failed

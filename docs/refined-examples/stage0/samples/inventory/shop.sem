@@ -1,0 +1,389 @@
+# A stage0 sample of two modules from the audit: `shop` uses the map of
+# records `stock` declares, by qualified names.
+shop is module
+shop purpose "Use the stock module's map by qualified names"
+shop path shop
+shop imports standard.console
+shop imports standard.map
+shop imports stock
+shop exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Restock and take items, then list every item"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label writeNailsLeadDone loopKind none
+main label writeNailsLeadDone within none
+main label writeNailsDone loopKind none
+main label writeNailsDone within none
+main label writeTapeLeadDone loopKind none
+main label writeTapeLeadDone within none
+main label writeTapeDone loopKind none
+main label writeTapeDone within none
+main label eachKey loopKind forEach
+main label eachKey within none
+main label eachKey maxIterations keyCount
+main label eachKey over counts
+main label printKey loopKind none
+main label printKey within eachKey
+main label readItemDone loopKind none
+main label readItemDone within eachKey
+main label writeKeyDone loopKind none
+main label writeKeyDone within eachKey
+main label writeColonDone loopKind none
+main label writeColonDone within eachKey
+main label writeCountDone loopKind none
+main label writeCountDone within eachKey
+main label writeShelfLeadDone loopKind none
+main label writeShelfLeadDone within eachKey
+main label writeShelfDone loopKind none
+main label writeShelfDone within eachKey
+main label keysDone loopKind none
+main label keysDone within none
+main label sayGlue loopKind none
+main label sayGlue within none
+main label writeGlueDone loopKind none
+main label writeGlueDone within none
+main label done loopKind none
+main label done within none
+main let okCode ExitCode 0 immutable
+main let nails String "nails" immutable
+main let forty Int64 40 immutable
+main let screws String "screws" immutable
+main let twelve Int64 12 immutable
+main let five Int64 5 immutable
+main let glue String "glue" immutable
+main let one Int64 1 immutable
+main let nine Int64 9 immutable
+main let nailsText String "nails left: " immutable
+main let tape String "tape" immutable
+main let tapeText String "tape left: " immutable
+main let colon String ": " immutable
+main let shelfText String "  shelf " immutable
+main let glueText String "glue is stocked" immutable
+main at begin do makeCounts
+main at begin do r1
+main at begin do r2
+main at begin do r3
+main at begin do r4
+main at begin do t1
+main at begin do writeNailsLead
+main at begin branch ifError writeNailsLead goto writeNailsLeadDone else goto writeNailsLeadDone
+main at writeNailsLeadDone do writeNails
+main at writeNailsLeadDone branch ifError writeNails goto writeNailsDone else goto writeNailsDone
+main at writeNailsDone do t2
+main at writeNailsDone do writeTapeLead
+main at writeNailsDone branch ifError writeTapeLead goto writeTapeLeadDone else goto writeTapeLeadDone
+main at writeTapeLeadDone do writeTape
+main at writeTapeLeadDone branch ifError writeTape goto writeTapeDone else goto writeTapeDone
+main at writeTapeDone do countKeys
+main at writeTapeDone goto eachKey
+main at eachKey branch ifNext counts bind key String goto printKey else goto keysDone
+main at printKey do readItem
+main at printKey branch ifError readItem goto eachKey else goto readItemDone
+main at readItemDone do readCount
+main at readItemDone do readShelf
+main at readItemDone do writeKey
+main at readItemDone branch ifError writeKey goto writeKeyDone else goto writeKeyDone
+main at writeKeyDone do writeColon
+main at writeKeyDone branch ifError writeColon goto writeColonDone else goto writeColonDone
+main at writeColonDone do writeCount
+main at writeColonDone branch ifError writeCount goto writeCountDone else goto writeCountDone
+main at writeCountDone do writeShelfLead
+main at writeCountDone branch ifError writeShelfLead goto writeShelfLeadDone else goto writeShelfLeadDone
+main at writeShelfLeadDone do writeShelf
+main at writeShelfLeadDone branch ifError writeShelf goto writeShelfDone else goto writeShelfDone
+main at writeShelfDone goto eachKey
+main at keysDone do hasGlue
+main at keysDone branch if glueThere goto sayGlue else goto done
+main at sayGlue do writeGlue
+main at sayGlue branch ifError writeGlue goto writeGlueDone else goto writeGlueDone
+main at writeGlueDone goto done
+main at done return ok okCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 1048576
+store released atReturn
+
+makeCounts is call
+makeCounts in main
+makeCounts invokes stock.Counts.new
+makeCounts argument region Region store lend
+makeCounts result counts stock.Counts
+makeCounts ownedBy store
+makeCounts cleanedBy none
+makeCounts borrows none
+makeCounts catch none
+makeCounts suppresses none
+
+r1 is call
+r1 in main
+r1 invokes stock.restock
+r1 argument counts stock.Counts counts lendMutable
+r1 argument name String nails lend
+r1 argument amount Int64 forty copy
+r1 result none
+r1 ownedBy none
+r1 cleanedBy none
+r1 borrows none
+r1 catch none
+r1 suppresses none
+
+r2 is call
+r2 in main
+r2 invokes stock.restock
+r2 argument counts stock.Counts counts lendMutable
+r2 argument name String screws lend
+r2 argument amount Int64 twelve copy
+r2 result none
+r2 ownedBy none
+r2 cleanedBy none
+r2 borrows none
+r2 catch none
+r2 suppresses none
+
+r3 is call
+r3 in main
+r3 invokes stock.restock
+r3 argument counts stock.Counts counts lendMutable
+r3 argument name String nails lend
+r3 argument amount Int64 five copy
+r3 result none
+r3 ownedBy none
+r3 cleanedBy none
+r3 borrows none
+r3 catch none
+r3 suppresses none
+
+r4 is call
+r4 in main
+r4 invokes stock.restock
+r4 argument counts stock.Counts counts lendMutable
+r4 argument name String glue lend
+r4 argument amount Int64 one copy
+r4 result none
+r4 ownedBy none
+r4 cleanedBy none
+r4 borrows none
+r4 catch none
+r4 suppresses none
+
+t1 is call
+t1 in main
+t1 invokes stock.take
+t1 argument counts stock.Counts counts lendMutable
+t1 argument name String nails lend
+t1 argument amount Int64 nine copy
+t1 result leftNails Int64
+t1 ownedBy none
+t1 cleanedBy none
+t1 borrows none
+t1 catch none
+t1 suppresses none
+
+writeNailsLead is call
+writeNailsLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeNailsLead in main
+writeNailsLead invokes console.write
+writeNailsLead argument text String nailsText lend
+writeNailsLead result none
+writeNailsLead ownedBy none
+writeNailsLead cleanedBy none
+writeNailsLead borrows none
+writeNailsLead catch writeNailsLeadError console.WriteError
+writeNailsLead suppresses console.WriteError.failed
+
+writeNails is call
+writeNails rationale "The failure has nowhere to be reported, so it is discarded"
+writeNails in main
+writeNails invokes console.writeIntegerLine
+writeNails argument value Int64 leftNails copy
+writeNails result none
+writeNails ownedBy none
+writeNails cleanedBy none
+writeNails borrows none
+writeNails catch writeNailsError console.WriteError
+writeNails suppresses console.WriteError.failed
+
+t2 is call
+t2 in main
+t2 invokes stock.take
+t2 argument counts stock.Counts counts lendMutable
+t2 argument name String tape lend
+t2 argument amount Int64 one copy
+t2 result leftTape Int64
+t2 ownedBy none
+t2 cleanedBy none
+t2 borrows none
+t2 catch none
+t2 suppresses none
+
+writeTapeLead is call
+writeTapeLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeTapeLead in main
+writeTapeLead invokes console.write
+writeTapeLead argument text String tapeText lend
+writeTapeLead result none
+writeTapeLead ownedBy none
+writeTapeLead cleanedBy none
+writeTapeLead borrows none
+writeTapeLead catch writeTapeLeadError console.WriteError
+writeTapeLead suppresses console.WriteError.failed
+
+writeTape is call
+writeTape rationale "The failure has nowhere to be reported, so it is discarded"
+writeTape in main
+writeTape invokes console.writeIntegerLine
+writeTape argument value Int64 leftTape copy
+writeTape result none
+writeTape ownedBy none
+writeTape cleanedBy none
+writeTape borrows none
+writeTape catch writeTapeError console.WriteError
+writeTape suppresses console.WriteError.failed
+
+countKeys is call
+countKeys in main
+countKeys invokes stock.Counts.length
+countKeys argument map stock.Counts counts lend
+countKeys result keyCount Int64
+countKeys ownedBy none
+countKeys cleanedBy none
+countKeys borrows none
+countKeys catch none
+countKeys suppresses none
+
+readItem is call
+readItem in main
+readItem invokes stock.Counts.get
+readItem argument map stock.Counts counts lend
+readItem argument key String key lend
+readItem result item stock.Item
+readItem ownedBy none
+readItem cleanedBy none
+readItem borrows none
+readItem catch readItemError map.KeyMissing
+readItem suppresses none
+
+readCount is call
+readCount in main
+readCount invokes stock.Item.count
+readCount argument record stock.Item item copy
+readCount result n Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readShelf is call
+readShelf in main
+readShelf invokes stock.Item.shelf
+readShelf argument record stock.Item item copy
+readShelf result shelf Int64
+readShelf ownedBy none
+readShelf cleanedBy none
+readShelf borrows none
+readShelf catch none
+readShelf suppresses none
+
+writeKey is call
+writeKey rationale "The failure has nowhere to be reported, so it is discarded"
+writeKey in main
+writeKey invokes console.write
+writeKey argument text String key lend
+writeKey result none
+writeKey ownedBy none
+writeKey cleanedBy none
+writeKey borrows none
+writeKey catch writeKeyError console.WriteError
+writeKey suppresses console.WriteError.failed
+
+writeColon is call
+writeColon rationale "The failure has nowhere to be reported, so it is discarded"
+writeColon in main
+writeColon invokes console.write
+writeColon argument text String colon lend
+writeColon result none
+writeColon ownedBy none
+writeColon cleanedBy none
+writeColon borrows none
+writeColon catch writeColonError console.WriteError
+writeColon suppresses console.WriteError.failed
+
+writeCount is call
+writeCount rationale "The failure has nowhere to be reported, so it is discarded"
+writeCount in main
+writeCount invokes console.writeIntegerLine
+writeCount argument value Int64 n copy
+writeCount result none
+writeCount ownedBy none
+writeCount cleanedBy none
+writeCount borrows none
+writeCount catch writeCountError console.WriteError
+writeCount suppresses console.WriteError.failed
+
+writeShelfLead is call
+writeShelfLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeShelfLead in main
+writeShelfLead invokes console.write
+writeShelfLead argument text String shelfText lend
+writeShelfLead result none
+writeShelfLead ownedBy none
+writeShelfLead cleanedBy none
+writeShelfLead borrows none
+writeShelfLead catch writeShelfLeadError console.WriteError
+writeShelfLead suppresses console.WriteError.failed
+
+writeShelf is call
+writeShelf rationale "The failure has nowhere to be reported, so it is discarded"
+writeShelf in main
+writeShelf invokes console.writeIntegerLine
+writeShelf argument value Int64 shelf copy
+writeShelf result none
+writeShelf ownedBy none
+writeShelf cleanedBy none
+writeShelf borrows none
+writeShelf catch writeShelfError console.WriteError
+writeShelf suppresses console.WriteError.failed
+
+hasGlue is call
+hasGlue in main
+hasGlue invokes stock.Counts.contains
+hasGlue argument map stock.Counts counts lend
+hasGlue argument key String glue lend
+hasGlue result glueThere Bool
+hasGlue ownedBy none
+hasGlue cleanedBy none
+hasGlue borrows none
+hasGlue catch none
+hasGlue suppresses none
+
+writeGlue is call
+writeGlue rationale "The failure has nowhere to be reported, so it is discarded"
+writeGlue in main
+writeGlue invokes console.writeLine
+writeGlue argument text String glueText lend
+writeGlue result none
+writeGlue ownedBy none
+writeGlue cleanedBy none
+writeGlue borrows none
+writeGlue catch writeGlueError console.WriteError
+writeGlue suppresses console.WriteError.failed

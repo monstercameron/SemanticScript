@@ -1,0 +1,248 @@
+# The first module of the stage0 sample `inventory`, from the audit: item
+# counts kept in a map of records with String keys.
+stock is module
+stock purpose "Keep item counts in a map with String keys"
+stock path stock
+stock imports standard.math
+stock imports standard.map
+stock imports standard.test
+stock exports Counts
+stock exports Item
+stock exports restock
+stock exports take
+
+Item is record
+Item purpose "An item's count and shelf"
+Item typeParameter none
+Item field count Int64
+Item field shelf Int64
+
+Counts is typeInstance
+Counts purpose "Items by name"
+Counts in none
+Counts instantiates map.Map String Item
+
+restock is operation
+restock purpose "Add to an item's count, putting it on a shelf when it is new"
+restock invariant adds "\"The item's count grows by the amount\""
+restock typeParameter none
+restock input counts Counts borrowedMutable
+restock input name String borrowed
+restock input amount Int64 copied
+restock output none
+restock outputOwnedBy none
+restock raises none
+restock effect none
+restock uses none
+restock memoryHeap false
+restock async false
+restock maxRecursion none
+restock label begin loopKind none
+restock label begin within none
+restock label readItemDone loopKind none
+restock label readItemDone within none
+restock label fresh loopKind none
+restock label fresh within none
+restock label add loopKind none
+restock label add within none
+restock let have Int64 0 mutable
+restock let shelf Int64 0 mutable
+restock at begin do readItem
+restock at begin branch ifError readItem goto fresh else goto readItemDone
+restock at readItemDone do readCount
+restock at readItemDone set have before
+restock at readItemDone do readShelf
+restock at readItemDone set shelf oldShelf
+restock at readItemDone goto add
+restock at fresh do countAll
+restock at fresh set shelf size
+restock at fresh goto add
+restock at add do addIt
+restock at add do makeItem
+restock at add do putIt
+restock at add return ok none
+
+readItem is call
+readItem in restock
+readItem invokes Counts.get
+readItem argument map Counts counts lend
+readItem argument key String name lend
+readItem result item Item
+readItem ownedBy none
+readItem cleanedBy none
+readItem borrows none
+readItem catch readItemError map.KeyMissing
+readItem suppresses none
+
+readCount is call
+readCount in restock
+readCount invokes Item.count
+readCount argument record Item item copy
+readCount result before Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readShelf is call
+readShelf in restock
+readShelf invokes Item.shelf
+readShelf argument record Item item copy
+readShelf result oldShelf Int64
+readShelf ownedBy none
+readShelf cleanedBy none
+readShelf borrows none
+readShelf catch none
+readShelf suppresses none
+
+countAll is call
+countAll in restock
+countAll invokes Counts.length
+countAll argument map Counts counts lend
+countAll result size Int64
+countAll ownedBy none
+countAll cleanedBy none
+countAll borrows none
+countAll catch none
+countAll suppresses none
+
+addIt is call
+addIt in restock
+addIt invokes math.addInt64
+addIt argument left Int64 have copy
+addIt argument right Int64 amount copy
+addIt result after Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+makeItem is call
+makeItem in restock
+makeItem invokes Item.new
+makeItem argument count Int64 after copy
+makeItem argument shelf Int64 shelf copy
+makeItem result fresh2 Item
+makeItem ownedBy none
+makeItem cleanedBy none
+makeItem borrows none
+makeItem catch none
+makeItem suppresses none
+
+putIt is call
+putIt in restock
+putIt invokes Counts.put
+putIt argument map Counts counts lendMutable
+putIt argument key String name lend
+putIt argument value Item fresh2 copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+take is operation
+take purpose "Take some of an item, giving what is left, or -1 when there is no such item"
+take invariant takes "\"Gives the count less the amount, or -1 for a missing item\""
+take typeParameter none
+take input counts Counts borrowedMutable
+take input name String borrowed
+take input amount Int64 copied
+take output Int64
+take outputOwnedBy none
+take raises none
+take effect none
+take uses none
+take memoryHeap false
+take async false
+take maxRecursion none
+take label begin loopKind none
+take label begin within none
+take label readItemDone loopKind none
+take label readItemDone within none
+take label absent loopKind none
+take label absent within none
+take let missing Int64 -1 immutable
+take at begin do readItem
+take at begin branch ifError readItem goto absent else goto readItemDone
+take at readItemDone do readCount
+take at readItemDone do readShelf
+take at readItemDone do less
+take at readItemDone do makeItem
+take at readItemDone do putIt
+take at readItemDone return ok after
+take at absent return ok missing
+
+readItem is call
+readItem in take
+readItem invokes Counts.get
+readItem argument map Counts counts lend
+readItem argument key String name lend
+readItem result item Item
+readItem ownedBy none
+readItem cleanedBy none
+readItem borrows none
+readItem catch readItemError map.KeyMissing
+readItem suppresses none
+
+readCount is call
+readCount in take
+readCount invokes Item.count
+readCount argument record Item item copy
+readCount result before Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readShelf is call
+readShelf in take
+readShelf invokes Item.shelf
+readShelf argument record Item item copy
+readShelf result shelf Int64
+readShelf ownedBy none
+readShelf cleanedBy none
+readShelf borrows none
+readShelf catch none
+readShelf suppresses none
+
+less is call
+less in take
+less invokes math.subtractInt64
+less argument left Int64 before copy
+less argument right Int64 amount copy
+less result after Int64
+less ownedBy none
+less cleanedBy none
+less borrows none
+less catch none
+less suppresses none
+
+makeItem is call
+makeItem in take
+makeItem invokes Item.new
+makeItem argument count Int64 after copy
+makeItem argument shelf Int64 shelf copy
+makeItem result changed Item
+makeItem ownedBy none
+makeItem cleanedBy none
+makeItem borrows none
+makeItem catch none
+makeItem suppresses none
+
+putIt is call
+putIt in take
+putIt invokes Counts.put
+putIt argument map Counts counts lendMutable
+putIt argument key String name lend
+putIt argument value Item changed copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none

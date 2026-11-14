@@ -1,0 +1,126 @@
+# Tests for the stock module of the stage0 sample `inventory`.
+
+stockTest is test
+stockTest purpose "Restocking 5 then 3 nails and taking 2 leaves 6; taking a missing item gives -1"
+stockTest verifies restock adds
+stockTest verifies take takes
+stockTest typeParameter none
+stockTest input none
+stockTest output none
+stockTest outputOwnedBy none
+stockTest raises none
+stockTest effect none
+stockTest uses none
+stockTest memoryHeap true
+stockTest async false
+stockTest maxRecursion none
+stockTest label begin loopKind none
+stockTest label begin within none
+stockTest let nails String "nails" immutable
+stockTest let five Int64 5 immutable
+stockTest let three Int64 3 immutable
+stockTest let two Int64 2 immutable
+stockTest let six Int64 6 immutable
+stockTest let tape String "tape" immutable
+stockTest let minusOne Int64 -1 immutable
+stockTest at begin do makeCounts
+stockTest at begin do r1
+stockTest at begin do r2
+stockTest at begin do t1
+stockTest at begin do expectLeft
+stockTest at begin do t2
+stockTest at begin do expectNone
+stockTest at begin return ok none
+
+store is region
+store in stockTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeCounts is call
+makeCounts in stockTest
+makeCounts invokes Counts.new
+makeCounts argument region Region store lend
+makeCounts result counts Counts
+makeCounts ownedBy store
+makeCounts cleanedBy none
+makeCounts borrows none
+makeCounts catch none
+makeCounts suppresses none
+
+r1 is call
+r1 in stockTest
+r1 invokes restock
+r1 argument counts Counts counts lendMutable
+r1 argument name String nails lend
+r1 argument amount Int64 five copy
+r1 result none
+r1 ownedBy none
+r1 cleanedBy none
+r1 borrows none
+r1 catch none
+r1 suppresses none
+
+r2 is call
+r2 in stockTest
+r2 invokes restock
+r2 argument counts Counts counts lendMutable
+r2 argument name String nails lend
+r2 argument amount Int64 three copy
+r2 result none
+r2 ownedBy none
+r2 cleanedBy none
+r2 borrows none
+r2 catch none
+r2 suppresses none
+
+t1 is call
+t1 in stockTest
+t1 invokes take
+t1 argument counts Counts counts lendMutable
+t1 argument name String nails lend
+t1 argument amount Int64 two copy
+t1 result left Int64
+t1 ownedBy none
+t1 cleanedBy none
+t1 borrows none
+t1 catch none
+t1 suppresses none
+
+expectLeft is call
+expectLeft in stockTest
+expectLeft invokes test.assertEqualInt64
+expectLeft argument expected Int64 six copy
+expectLeft argument actual Int64 left copy
+expectLeft result none
+expectLeft ownedBy none
+expectLeft cleanedBy none
+expectLeft borrows none
+expectLeft catch none
+expectLeft suppresses none
+
+t2 is call
+t2 in stockTest
+t2 invokes take
+t2 argument counts Counts counts lendMutable
+t2 argument name String tape lend
+t2 argument amount Int64 two copy
+t2 result none2 Int64
+t2 ownedBy none
+t2 cleanedBy none
+t2 borrows none
+t2 catch none
+t2 suppresses none
+
+expectNone is call
+expectNone in stockTest
+expectNone invokes test.assertEqualInt64
+expectNone argument expected Int64 minusOne copy
+expectNone argument actual Int64 none2 copy
+expectNone result none
+expectNone ownedBy none
+expectNone cleanedBy none
+expectNone borrows none
+expectNone catch none
+expectNone suppresses none

@@ -1,0 +1,111 @@
+# A program `refined check` accepts that is just outside the stage0 subset,
+# from the audit: stage0 refuses it at the word concerned and writes no C.
+outEnds is module
+outEnds purpose "An audit program just outside the stage0 subset, which refined accepts"
+outEnds path outEnds
+outEnds imports standard.console
+outEnds imports standard.string
+outEnds exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Do one thing stage0 should refuse, then print a line"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label yes loopKind none
+main label yes within none
+main label w1Done loopKind none
+main label w1Done within none
+main label no loopKind none
+main label no within none
+main label w2Done loopKind none
+main label w2Done within none
+main label finish loopKind none
+main label finish within none
+main label writeDoneDone loopKind none
+main label writeDoneDone within none
+main let okCode ExitCode 0 immutable
+main let word String "hello" immutable
+main let suffix String "llo" immutable
+main let yesText String "yes" immutable
+main let noText String "no" immutable
+main let doneText String "done" immutable
+main at begin do check
+main at begin branch if ends goto yes else goto no
+main at yes do w1
+main at yes branch ifError w1 goto w1Done else goto w1Done
+main at w1Done goto finish
+main at no do w2
+main at no branch ifError w2 goto w2Done else goto w2Done
+main at w2Done goto finish
+main at finish do writeDone
+main at finish branch ifError writeDone goto writeDoneDone else goto writeDoneDone
+main at writeDoneDone return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+check is call
+check in main
+check invokes string.endsWith
+check argument text String word lend
+check argument suffix String suffix lend
+check result ends Bool
+check ownedBy none
+check cleanedBy none
+check borrows none
+check catch none
+check suppresses none
+
+w1 is call
+w1 rationale "The failure has nowhere to be reported, so it is discarded"
+w1 in main
+w1 invokes console.writeLine
+w1 argument text String yesText lend
+w1 result none
+w1 ownedBy none
+w1 cleanedBy none
+w1 borrows none
+w1 catch w1Error console.WriteError
+w1 suppresses console.WriteError.failed
+
+w2 is call
+w2 rationale "The failure has nowhere to be reported, so it is discarded"
+w2 in main
+w2 invokes console.writeLine
+w2 argument text String noText lend
+w2 result none
+w2 ownedBy none
+w2 cleanedBy none
+w2 borrows none
+w2 catch w2Error console.WriteError
+w2 suppresses console.WriteError.failed
+
+writeDone is call
+writeDone rationale "The failure has nowhere to be reported, so it is discarded"
+writeDone in main
+writeDone invokes console.writeLine
+writeDone argument text String doneText lend
+writeDone result none
+writeDone ownedBy none
+writeDone cleanedBy none
+writeDone borrows none
+writeDone catch writeDoneError console.WriteError
+writeDone suppresses console.WriteError.failed

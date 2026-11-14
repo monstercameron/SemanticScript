@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+collatz is project
+collatz purpose "Count Collatz steps and sum digits, exiting with a computed code; a stage0 sample both runs agree on"
+collatz target console
+collatz version "0.1.0"
+collatz language refined 1
+collatz standardLibrary 1
+collatz allows write console.stdout none
+collatz requires none
+collatz includesModule collatz
+collatz entry collatz.main

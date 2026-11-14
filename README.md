@@ -128,6 +128,27 @@ target the backend has not implemented.
 Every item still open is listed at the end of
 [docs/test-suite.md](docs/test-suite.md).
 
+### Self-hosting
+
+`docs/refined-examples/stage0` is a SemanticScript-to-C compiler written in
+SemanticScript, and it compiles itself. Build it once with the Python
+compiler, then let it build itself (a C compiler named `cc`, `gcc`, or
+`clang` on PATH; `-lshell32` on Windows only):
+
+```text
+cd docs/refined-examples/stage0
+python ../../../semanticscript/compiler/refined build . --kind executable --output stage0
+./stage0 . build/stage0b gcc ../../../semanticscript/compiler/refined/native_runtime.c -lshell32
+./build/stage0b . build/stage0c gcc ../../../semanticscript/compiler/refined/native_runtime.c -lshell32
+```
+
+`build/stage0c.c` is byte-identical to `build/stage0b.c`: the fixed point
+(`tests/test_bootstrap.py`). stage0 compiles a subset of the language and
+refuses anything else with a located message; the safety checks (ownership,
+loans, regions, task state, exhaustive errors, authority) stay in
+`refined check`, which a program passes before stage0 compiles it. The 1.0
+bar and its status are in [docs/self-hosting-plan.md](docs/self-hosting-plan.md).
+
 ## Commands
 
 `refined` is `python semanticscript/compiler/refined`.
@@ -149,7 +170,7 @@ Every item still open is listed at the end of
 semanticscript/compiler/refined/   the compiler: lexer, shape table, checker, LLVM backend, runtime
 docs/language-refinement.md        the language design, decisions, and plan
 docs/refined-grammar.md            every row shape (generated)
-docs/refined-examples/             worked example projects (hello, sum, factorial, selfhost, server)
+docs/refined-examples/             worked example projects (hello, sum, factorial, selfhost, stage0, server)
 tests/test_refined.py              rule tests on the worked examples
 tests/suite/, tests/test_suite.py  the language test suite: program cases, negative mutations, stress, fuzz
 docs/test-suite.md                 coverage map of the testing checklist (generated)

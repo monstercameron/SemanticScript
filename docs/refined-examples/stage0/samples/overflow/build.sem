@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+overflow is project
+overflow purpose "Double a number until Int64 overflows, so the program traps; a stage0 sample both runs agree on"
+overflow target console
+overflow version "0.1.0"
+overflow language refined 1
+overflow standardLibrary 1
+overflow allows write console.stdout none
+overflow requires none
+overflow includesModule overflow
+overflow entry overflow.main

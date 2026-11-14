@@ -1,0 +1,120 @@
+# A program `refined check` accepts that is just outside the stage0 subset,
+# from the audit: stage0 refuses it at the word concerned and writes no C.
+outSet is module
+outSet purpose "An audit program just outside the stage0 subset, which refined accepts"
+outSet path outSet
+outSet imports standard.console
+outSet imports standard.set
+outSet exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Names is typeInstance
+Names purpose "A set of names"
+Names in none
+Names instantiates set.Set String
+
+main is operation
+main purpose "Do one thing stage0 should refuse, then print a line"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label yes loopKind none
+main label yes within none
+main label wDone loopKind none
+main label wDone within none
+main label finish loopKind none
+main label finish within none
+main label writeDoneDone loopKind none
+main label writeDoneDone within none
+main let okCode ExitCode 0 immutable
+main let ann String "ann" immutable
+main let yesText String "yes" immutable
+main let doneText String "done" immutable
+main at begin do make
+main at begin do add
+main at begin do has
+main at begin branch if there goto yes else goto finish
+main at yes do w
+main at yes branch ifError w goto wDone else goto wDone
+main at wDone goto finish
+main at finish do writeDone
+main at finish branch ifError writeDone goto writeDoneDone else goto writeDoneDone
+main at writeDoneDone return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+make is call
+make in main
+make invokes Names.new
+make argument region Region scratch lend
+make result names Names
+make ownedBy scratch
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+add is call
+add in main
+add invokes Names.add
+add argument set Names names lendMutable
+add argument item String ann lend
+add result none
+add ownedBy none
+add cleanedBy none
+add borrows none
+add catch none
+add suppresses none
+
+has is call
+has in main
+has invokes Names.contains
+has argument set Names names lend
+has argument item String ann lend
+has result there Bool
+has ownedBy none
+has cleanedBy none
+has borrows none
+has catch none
+has suppresses none
+
+w is call
+w rationale "The failure has nowhere to be reported, so it is discarded"
+w in main
+w invokes console.writeLine
+w argument text String yesText lend
+w result none
+w ownedBy none
+w cleanedBy none
+w borrows none
+w catch wError console.WriteError
+w suppresses console.WriteError.failed
+
+writeDone is call
+writeDone rationale "The failure has nowhere to be reported, so it is discarded"
+writeDone in main
+writeDone invokes console.writeLine
+writeDone argument text String doneText lend
+writeDone result none
+writeDone ownedBy none
+writeDone cleanedBy none
+writeDone borrows none
+writeDone catch writeDoneError console.WriteError
+writeDone suppresses console.WriteError.failed

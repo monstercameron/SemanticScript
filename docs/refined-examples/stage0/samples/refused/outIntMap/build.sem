@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+outIntMap is project
+outIntMap purpose "An audit program just outside the stage0 subset, which refined accepts; stage0 refuses it"
+outIntMap target console
+outIntMap version "0.1.0"
+outIntMap language refined 1
+outIntMap standardLibrary 1
+outIntMap allows write console.stdout none
+outIntMap requires none
+outIntMap includesModule outIntMap
+outIntMap entry outIntMap.main

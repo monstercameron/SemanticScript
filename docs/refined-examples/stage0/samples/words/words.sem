@@ -1,0 +1,827 @@
+# A stage0 sample from the audit: words split with byte tests, a reversed
+# sentence built in a buffer, and numbers parsed from text.
+words is module
+words purpose "Split a sentence into words with byte tests, build a reversed sentence in a buffer, and parse numbers"
+words path words
+words imports standard.console
+words imports standard.math
+words imports standard.compare
+words imports standard.list
+words imports standard.string
+words imports standard.byte
+words imports standard.buffer
+words imports standard.convert
+words exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Texts is typeInstance
+Texts purpose "The words of a sentence, in order"
+Texts in none
+Texts instantiates list.List String
+
+splitWords is operation
+splitWords purpose "The words of a text, split at spaces"
+splitWords invariant none
+splitWords typeParameter none
+splitWords input text String borrowed
+splitWords input region Region borrowed
+splitWords output Texts
+splitWords outputOwnedBy region
+splitWords raises none
+splitWords effect none
+splitWords uses none
+splitWords memoryHeap true
+splitWords async false
+splitWords maxRecursion none
+splitWords label begin loopKind none
+splitWords label begin within none
+splitWords label scan loopKind while
+splitWords label scan within none
+splitWords label scan maxIterations length
+splitWords label readOne loopKind none
+splitWords label readOne within scan
+splitWords label onSpace loopKind none
+splitWords label onSpace within scan
+splitWords label closeWord loopKind none
+splitWords label closeWord within scan
+splitWords label cutDone loopKind none
+splitWords label cutDone within scan
+splitWords label onOther loopKind none
+splitWords label onOther within scan
+splitWords label openWord loopKind none
+splitWords label openWord within scan
+splitWords label advance loopKind none
+splitWords label advance within scan
+splitWords label finish loopKind none
+splitWords label finish within none
+splitWords label lastWord loopKind none
+splitWords label lastWord within none
+splitWords label cutLastDone loopKind none
+splitWords label cutLastDone within none
+splitWords label done loopKind none
+splitWords label done within none
+splitWords let index Int64 0 mutable
+splitWords let start Int64 0 mutable
+splitWords let inWord Bool false mutable
+splitWords let yes Bool true immutable
+splitWords let no Bool false immutable
+splitWords let empty String "" immutable
+splitWords let one Int64 1 immutable
+splitWords at begin do makeList
+splitWords at begin do measure
+splitWords at begin goto scan
+splitWords at scan do endCheck
+splitWords at scan branch if atEnd goto finish else goto readOne
+splitWords at readOne do fetch
+splitWords at readOne do spaceCheck
+splitWords at readOne branch if isSpace goto onSpace else goto onOther
+splitWords at onSpace branch if inWord goto closeWord else goto advance
+splitWords at closeWord do wordLength
+splitWords at closeWord do cut
+splitWords at closeWord branch ifError cut goto advance else goto cutDone
+splitWords at cutDone do copyWord
+splitWords at cutDone do keep
+splitWords at cutDone set inWord no
+splitWords at cutDone goto advance
+splitWords at onOther branch if inWord goto advance else goto openWord
+splitWords at openWord set start index
+splitWords at openWord set inWord yes
+splitWords at openWord goto advance
+splitWords at advance do step
+splitWords at advance set index nextIndex
+splitWords at advance goto scan
+splitWords at finish branch if inWord goto lastWord else goto done
+splitWords at lastWord do lastLength
+splitWords at lastWord do cutLast
+splitWords at lastWord branch ifError cutLast goto done else goto cutLastDone
+splitWords at cutLastDone do copyLast
+splitWords at cutLastDone do keepLast
+splitWords at cutLastDone goto done
+splitWords at done return ok found
+
+makeList is call
+makeList in splitWords
+makeList invokes Texts.new
+makeList argument region Region region lend
+makeList result found Texts
+makeList ownedBy region
+makeList cleanedBy none
+makeList borrows none
+makeList catch none
+makeList suppresses none
+
+measure is call
+measure in splitWords
+measure invokes string.byteLength
+measure argument text String text lend
+measure result length Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+endCheck is call
+endCheck in splitWords
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 index copy
+endCheck argument right Int64 length copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+fetch is call
+fetch in splitWords
+fetch invokes string.byteAtOrTrap
+fetch argument text String text lend
+fetch argument index Int64 index copy
+fetch result b Byte
+fetch ownedBy none
+fetch cleanedBy none
+fetch borrows none
+fetch catch none
+fetch suppresses none
+
+spaceCheck is call
+spaceCheck in splitWords
+spaceCheck invokes byte.isSpace
+spaceCheck argument value Byte b copy
+spaceCheck result isSpace Bool
+spaceCheck ownedBy none
+spaceCheck cleanedBy none
+spaceCheck borrows none
+spaceCheck catch none
+spaceCheck suppresses none
+
+wordLength is call
+wordLength in splitWords
+wordLength invokes math.subtractInt64
+wordLength argument left Int64 index copy
+wordLength argument right Int64 start copy
+wordLength result len Int64
+wordLength ownedBy none
+wordLength cleanedBy none
+wordLength borrows none
+wordLength catch none
+wordLength suppresses none
+
+cut is call
+cut in splitWords
+cut invokes string.slice
+cut argument text String text lend
+cut argument start Int64 start copy
+cut argument length Int64 len copy
+cut result word String
+cut ownedBy none
+cut cleanedBy none
+cut borrows text
+cut catch cutError string.StringIndexError
+cut suppresses none
+
+copyWord is call
+copyWord in splitWords
+copyWord invokes string.concat
+copyWord argument left String word lend
+copyWord argument right String empty lend
+copyWord argument region Region region lend
+copyWord result owned String
+copyWord ownedBy region
+copyWord cleanedBy none
+copyWord borrows none
+copyWord catch none
+copyWord suppresses none
+
+keep is call
+keep in splitWords
+keep invokes Texts.append
+keep argument list Texts found lendMutable
+keep argument item String owned give
+keep result none
+keep ownedBy none
+keep cleanedBy none
+keep borrows none
+keep catch none
+keep suppresses none
+
+step is call
+step in splitWords
+step invokes math.addInt64
+step argument left Int64 index copy
+step argument right Int64 one copy
+step result nextIndex Int64
+step ownedBy none
+step cleanedBy none
+step borrows none
+step catch none
+step suppresses none
+
+lastLength is call
+lastLength in splitWords
+lastLength invokes math.subtractInt64
+lastLength argument left Int64 index copy
+lastLength argument right Int64 start copy
+lastLength result len2 Int64
+lastLength ownedBy none
+lastLength cleanedBy none
+lastLength borrows none
+lastLength catch none
+lastLength suppresses none
+
+cutLast is call
+cutLast in splitWords
+cutLast invokes string.slice
+cutLast argument text String text lend
+cutLast argument start Int64 start copy
+cutLast argument length Int64 len2 copy
+cutLast result word2 String
+cutLast ownedBy none
+cutLast cleanedBy none
+cutLast borrows text
+cutLast catch cutLastError string.StringIndexError
+cutLast suppresses none
+
+copyLast is call
+copyLast in splitWords
+copyLast invokes string.concat
+copyLast argument left String word2 lend
+copyLast argument right String empty lend
+copyLast argument region Region region lend
+copyLast result owned2 String
+copyLast ownedBy region
+copyLast cleanedBy none
+copyLast borrows none
+copyLast catch none
+copyLast suppresses none
+
+keepLast is call
+keepLast in splitWords
+keepLast invokes Texts.append
+keepLast argument list Texts found lendMutable
+keepLast argument item String owned2 give
+keepLast result none
+keepLast ownedBy none
+keepLast cleanedBy none
+keepLast borrows none
+keepLast catch none
+keepLast suppresses none
+
+main is operation
+main purpose "Split, reverse, and parse"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label writeCountLeadDone loopKind none
+main label writeCountLeadDone within none
+main label writeCountDone loopKind none
+main label writeCountDone within none
+main label backwards loopKind while
+main label backwards within none
+main label backwards maxIterations partCount
+main label takeOne loopKind none
+main label takeOne within backwards
+main label parseDone loopKind none
+main label parseDone within backwards
+main label reversed loopKind none
+main label reversed within none
+main label toTextDone loopKind none
+main label toTextDone within none
+main label writeJoinedDone loopKind none
+main label writeJoinedDone within none
+main label writeLenLeadDone loopKind none
+main label writeLenLeadDone within none
+main label writeLenDone loopKind none
+main label writeLenDone within none
+main label findApplesDone loopKind none
+main label findApplesDone within none
+main label writeAtLeadDone loopKind none
+main label writeAtLeadDone within none
+main label writeAtDone loopKind none
+main label writeAtDone within none
+main label noApples loopKind none
+main label noApples within none
+main label writeNoDone loopKind none
+main label writeNoDone within none
+main label prefixes loopKind none
+main label prefixes within none
+main label yesPrefix loopKind none
+main label yesPrefix within none
+main label writeYesDone loopKind none
+main label writeYesDone within none
+main label noPrefix loopKind none
+main label noPrefix within none
+main label writeNoPDone loopKind none
+main label writeNoPDone within none
+main label bytes loopKind none
+main label bytes within none
+main label readByteDone loopKind none
+main label readByteDone within none
+main label writeByteLeadDone loopKind none
+main label writeByteLeadDone within none
+main label writeByteDone loopKind none
+main label writeByteDone within none
+main label sameText loopKind none
+main label sameText within none
+main label writeBothDone loopKind none
+main label writeBothDone within none
+main label broken loopKind none
+main label broken within none
+main label writeBrokenDone loopKind none
+main label writeBrokenDone within none
+main let position Int64 0 mutable
+main let total Int64 0 mutable
+main let digits Int64 0 mutable
+main let okCode ExitCode 0 immutable
+main let sentence String "  seven  apples and 12 pears, 30 plums " immutable
+main let countText String "words: " immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let dash Byte 45 immutable
+main let lenText String "buffer: " immutable
+main let apples String "apples" immutable
+main let atText String "apples at " immutable
+main let noText String "no apples" immutable
+main let plums String "plums" immutable
+main let yesText String "starts with plums" immutable
+main let noPText String "does not start with plums" immutable
+main let byteText String "first byte: " immutable
+main let eqText String "equal " immutable
+main let brokenText String "broken" immutable
+main at begin do split
+main at begin do countParts
+main at begin do writeCountLead
+main at begin branch ifError writeCountLead goto writeCountLeadDone else goto writeCountLeadDone
+main at writeCountLeadDone do writeCount
+main at writeCountLeadDone branch ifError writeCount goto writeCountDone else goto writeCountDone
+main at writeCountDone do makeBuffer
+main at writeCountDone set position partCount
+main at writeCountDone goto backwards
+main at backwards do zeroCheck
+main at backwards branch if atZero goto reversed else goto takeOne
+main at takeOne do down
+main at takeOne set position lower
+main at takeOne do readPart
+main at takeOne do addPart
+main at takeOne do addSpace
+main at takeOne do parse
+main at takeOne branch ifError parse goto backwards else goto parseDone
+main at parseDone do addTotal
+main at parseDone set total nextTotal
+main at parseDone goto backwards
+main at reversed do addTotalText
+main at reversed do toText
+main at reversed branch ifError toText goto broken else goto toTextDone
+main at toTextDone do writeJoined
+main at toTextDone branch ifError writeJoined goto writeJoinedDone else goto writeJoinedDone
+main at writeJoinedDone do bufferLength
+main at writeJoinedDone do writeLenLead
+main at writeJoinedDone branch ifError writeLenLead goto writeLenLeadDone else goto writeLenLeadDone
+main at writeLenLeadDone do writeLen
+main at writeLenLeadDone branch ifError writeLen goto writeLenDone else goto writeLenDone
+main at writeLenDone do findApples
+main at writeLenDone branch ifError findApples goto noApples else goto findApplesDone
+main at findApplesDone do writeAtLead
+main at findApplesDone branch ifError writeAtLead goto writeAtLeadDone else goto writeAtLeadDone
+main at writeAtLeadDone do writeAt
+main at writeAtLeadDone branch ifError writeAt goto writeAtDone else goto writeAtDone
+main at writeAtDone goto prefixes
+main at noApples do writeNo
+main at noApples branch ifError writeNo goto writeNoDone else goto writeNoDone
+main at writeNoDone goto prefixes
+main at prefixes do prefixCheck
+main at prefixes branch if starts goto yesPrefix else goto noPrefix
+main at yesPrefix do writeYes
+main at yesPrefix branch ifError writeYes goto writeYesDone else goto writeYesDone
+main at writeYesDone goto bytes
+main at noPrefix do writeNoP
+main at noPrefix branch ifError writeNoP goto writeNoPDone else goto writeNoPDone
+main at writeNoPDone goto bytes
+main at bytes do readByte
+main at bytes branch ifError readByte goto broken else goto readByteDone
+main at readByteDone do asNumber
+main at readByteDone do writeByteLead
+main at readByteDone branch ifError writeByteLead goto writeByteLeadDone else goto writeByteLeadDone
+main at writeByteLeadDone do writeByte
+main at writeByteLeadDone branch ifError writeByte goto writeByteDone else goto writeByteDone
+main at writeByteDone do equalCheck
+main at writeByteDone branch if same goto sameText else goto broken
+main at sameText do joinText
+main at sameText do writeBoth
+main at sameText branch ifError writeBoth goto writeBothDone else goto writeBothDone
+main at writeBothDone return ok okCode
+main at broken do writeBroken
+main at broken branch ifError writeBroken goto writeBrokenDone else goto writeBrokenDone
+main at writeBrokenDone return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 1048576
+scratch released atReturn
+
+split is call
+split in main
+split invokes splitWords
+split argument text String sentence lend
+split argument region Region scratch lend
+split result parts Texts
+split ownedBy scratch
+split cleanedBy none
+split borrows none
+split catch none
+split suppresses none
+
+countParts is call
+countParts in main
+countParts invokes Texts.length
+countParts argument list Texts parts lend
+countParts result partCount Int64
+countParts ownedBy none
+countParts cleanedBy none
+countParts borrows none
+countParts catch none
+countParts suppresses none
+
+writeCountLead is call
+writeCountLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeCountLead in main
+writeCountLead invokes console.write
+writeCountLead argument text String countText lend
+writeCountLead result none
+writeCountLead ownedBy none
+writeCountLead cleanedBy none
+writeCountLead borrows none
+writeCountLead catch writeCountLeadError console.WriteError
+writeCountLead suppresses console.WriteError.failed
+
+writeCount is call
+writeCount rationale "The failure has nowhere to be reported, so it is discarded"
+writeCount in main
+writeCount invokes console.writeIntegerLine
+writeCount argument value Int64 partCount copy
+writeCount result none
+writeCount ownedBy none
+writeCount cleanedBy none
+writeCount borrows none
+writeCount catch writeCountError console.WriteError
+writeCount suppresses console.WriteError.failed
+
+makeBuffer is call
+makeBuffer in main
+makeBuffer invokes buffer.new
+makeBuffer argument region Region scratch lend
+makeBuffer result out buffer.ByteBuffer
+makeBuffer ownedBy scratch
+makeBuffer cleanedBy none
+makeBuffer borrows none
+makeBuffer catch none
+makeBuffer suppresses none
+
+zeroCheck is call
+zeroCheck in main
+zeroCheck invokes compare.lessOrEqualInt64
+zeroCheck argument left Int64 position copy
+zeroCheck argument right Int64 zero copy
+zeroCheck result atZero Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+down is call
+down in main
+down invokes math.subtractInt64
+down argument left Int64 position copy
+down argument right Int64 one copy
+down result lower Int64
+down ownedBy none
+down cleanedBy none
+down borrows none
+down catch none
+down suppresses none
+
+readPart is call
+readPart in main
+readPart invokes Texts.getOrTrap
+readPart argument list Texts parts lend
+readPart argument index Int64 position copy
+readPart result part String
+readPart ownedBy none
+readPart cleanedBy none
+readPart borrows parts
+readPart catch none
+readPart suppresses none
+
+addPart is call
+addPart in main
+addPart invokes buffer.appendString
+addPart argument buffer buffer.ByteBuffer out lendMutable
+addPart argument text String part lend
+addPart result none
+addPart ownedBy none
+addPart cleanedBy none
+addPart borrows none
+addPart catch none
+addPart suppresses none
+
+addSpace is call
+addSpace in main
+addSpace invokes buffer.appendByte
+addSpace argument buffer buffer.ByteBuffer out lendMutable
+addSpace argument value Byte dash copy
+addSpace result none
+addSpace ownedBy none
+addSpace cleanedBy none
+addSpace borrows none
+addSpace catch none
+addSpace suppresses none
+
+parse is call
+parse in main
+parse invokes string.toInt64
+parse argument text String part lend
+parse result number Int64
+parse ownedBy none
+parse cleanedBy none
+parse borrows none
+parse catch parseError string.ParseError
+parse suppresses none
+
+addTotal is call
+addTotal in main
+addTotal invokes math.addInt64
+addTotal argument left Int64 total copy
+addTotal argument right Int64 number copy
+addTotal result nextTotal Int64
+addTotal ownedBy none
+addTotal cleanedBy none
+addTotal borrows none
+addTotal catch none
+addTotal suppresses none
+
+addTotalText is call
+addTotalText in main
+addTotalText invokes buffer.appendInt64
+addTotalText argument buffer buffer.ByteBuffer out lendMutable
+addTotalText argument value Int64 total copy
+addTotalText result none
+addTotalText ownedBy none
+addTotalText cleanedBy none
+addTotalText borrows none
+addTotalText catch none
+addTotalText suppresses none
+
+toText is call
+toText in main
+toText invokes buffer.toString
+toText argument buffer buffer.ByteBuffer out lend
+toText argument region Region scratch lend
+toText result joined String
+toText ownedBy scratch
+toText cleanedBy none
+toText borrows none
+toText catch toTextError string.Utf8Error
+toText suppresses none
+
+writeJoined is call
+writeJoined rationale "The failure has nowhere to be reported, so it is discarded"
+writeJoined in main
+writeJoined invokes console.writeLine
+writeJoined argument text String joined lend
+writeJoined result none
+writeJoined ownedBy none
+writeJoined cleanedBy none
+writeJoined borrows none
+writeJoined catch writeJoinedError console.WriteError
+writeJoined suppresses console.WriteError.failed
+
+bufferLength is call
+bufferLength in main
+bufferLength invokes buffer.length
+bufferLength argument buffer buffer.ByteBuffer out lend
+bufferLength result blen Int64
+bufferLength ownedBy none
+bufferLength cleanedBy none
+bufferLength borrows none
+bufferLength catch none
+bufferLength suppresses none
+
+writeLenLead is call
+writeLenLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeLenLead in main
+writeLenLead invokes console.write
+writeLenLead argument text String lenText lend
+writeLenLead result none
+writeLenLead ownedBy none
+writeLenLead cleanedBy none
+writeLenLead borrows none
+writeLenLead catch writeLenLeadError console.WriteError
+writeLenLead suppresses console.WriteError.failed
+
+writeLen is call
+writeLen rationale "The failure has nowhere to be reported, so it is discarded"
+writeLen in main
+writeLen invokes console.writeIntegerLine
+writeLen argument value Int64 blen copy
+writeLen result none
+writeLen ownedBy none
+writeLen cleanedBy none
+writeLen borrows none
+writeLen catch writeLenError console.WriteError
+writeLen suppresses console.WriteError.failed
+
+findApples is call
+findApples in main
+findApples invokes string.find
+findApples argument text String joined lend
+findApples argument needle String apples lend
+findApples result at Int64
+findApples ownedBy none
+findApples cleanedBy none
+findApples borrows none
+findApples catch findApplesError string.NotFound
+findApples suppresses none
+
+writeAtLead is call
+writeAtLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeAtLead in main
+writeAtLead invokes console.write
+writeAtLead argument text String atText lend
+writeAtLead result none
+writeAtLead ownedBy none
+writeAtLead cleanedBy none
+writeAtLead borrows none
+writeAtLead catch writeAtLeadError console.WriteError
+writeAtLead suppresses console.WriteError.failed
+
+writeAt is call
+writeAt rationale "The failure has nowhere to be reported, so it is discarded"
+writeAt in main
+writeAt invokes console.writeIntegerLine
+writeAt argument value Int64 at copy
+writeAt result none
+writeAt ownedBy none
+writeAt cleanedBy none
+writeAt borrows none
+writeAt catch writeAtError console.WriteError
+writeAt suppresses console.WriteError.failed
+
+writeNo is call
+writeNo rationale "The failure has nowhere to be reported, so it is discarded"
+writeNo in main
+writeNo invokes console.writeLine
+writeNo argument text String noText lend
+writeNo result none
+writeNo ownedBy none
+writeNo cleanedBy none
+writeNo borrows none
+writeNo catch writeNoError console.WriteError
+writeNo suppresses console.WriteError.failed
+
+prefixCheck is call
+prefixCheck in main
+prefixCheck invokes string.startsWith
+prefixCheck argument text String joined lend
+prefixCheck argument prefix String plums lend
+prefixCheck result starts Bool
+prefixCheck ownedBy none
+prefixCheck cleanedBy none
+prefixCheck borrows none
+prefixCheck catch none
+prefixCheck suppresses none
+
+writeYes is call
+writeYes rationale "The failure has nowhere to be reported, so it is discarded"
+writeYes in main
+writeYes invokes console.writeLine
+writeYes argument text String yesText lend
+writeYes result none
+writeYes ownedBy none
+writeYes cleanedBy none
+writeYes borrows none
+writeYes catch writeYesError console.WriteError
+writeYes suppresses console.WriteError.failed
+
+writeNoP is call
+writeNoP rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoP in main
+writeNoP invokes console.writeLine
+writeNoP argument text String noPText lend
+writeNoP result none
+writeNoP ownedBy none
+writeNoP cleanedBy none
+writeNoP borrows none
+writeNoP catch writeNoPError console.WriteError
+writeNoP suppresses console.WriteError.failed
+
+readByte is call
+readByte in main
+readByte invokes string.byteAt
+readByte argument text String joined lend
+readByte argument index Int64 zero copy
+readByte result first Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+asNumber is call
+asNumber in main
+asNumber invokes convert.byteToInt64
+asNumber argument value Byte first copy
+asNumber result firstNumber Int64
+asNumber ownedBy none
+asNumber cleanedBy none
+asNumber borrows none
+asNumber catch none
+asNumber suppresses none
+
+writeByteLead is call
+writeByteLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeByteLead in main
+writeByteLead invokes console.write
+writeByteLead argument text String byteText lend
+writeByteLead result none
+writeByteLead ownedBy none
+writeByteLead cleanedBy none
+writeByteLead borrows none
+writeByteLead catch writeByteLeadError console.WriteError
+writeByteLead suppresses console.WriteError.failed
+
+writeByte is call
+writeByte rationale "The failure has nowhere to be reported, so it is discarded"
+writeByte in main
+writeByte invokes console.writeIntegerLine
+writeByte argument value Int64 firstNumber copy
+writeByte result none
+writeByte ownedBy none
+writeByte cleanedBy none
+writeByte borrows none
+writeByte catch writeByteError console.WriteError
+writeByte suppresses console.WriteError.failed
+
+equalCheck is call
+equalCheck in main
+equalCheck invokes string.equals
+equalCheck argument left String joined lend
+equalCheck argument right String joined lend
+equalCheck result same Bool
+equalCheck ownedBy none
+equalCheck cleanedBy none
+equalCheck borrows none
+equalCheck catch none
+equalCheck suppresses none
+
+joinText is call
+joinText in main
+joinText invokes string.concat
+joinText argument left String eqText lend
+joinText argument right String joined lend
+joinText argument region Region scratch lend
+joinText result both String
+joinText ownedBy scratch
+joinText cleanedBy none
+joinText borrows none
+joinText catch none
+joinText suppresses none
+
+writeBoth is call
+writeBoth rationale "The failure has nowhere to be reported, so it is discarded"
+writeBoth in main
+writeBoth invokes console.writeLine
+writeBoth argument text String both lend
+writeBoth result none
+writeBoth ownedBy none
+writeBoth cleanedBy none
+writeBoth borrows none
+writeBoth catch writeBothError console.WriteError
+writeBoth suppresses console.WriteError.failed
+
+writeBroken is call
+writeBroken rationale "The failure has nowhere to be reported, so it is discarded"
+writeBroken in main
+writeBroken invokes console.writeLine
+writeBroken argument text String brokenText lend
+writeBroken result none
+writeBroken ownedBy none
+writeBroken cleanedBy none
+writeBroken borrows none
+writeBroken catch writeBrokenError console.WriteError
+writeBroken suppresses console.WriteError.failed

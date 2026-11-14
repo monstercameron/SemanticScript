@@ -1,0 +1,66 @@
+# A stage0 sample from the audit: doubling a number until Int64 overflows,
+# which traps (exit code 70) in the built executable as under `refined run`.
+overflow is module
+overflow purpose "Double a number until Int64 overflows, so the program traps"
+overflow path overflow
+overflow imports standard.console
+overflow imports standard.math
+overflow exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Print doublings until the multiplication overflows"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label each loopKind while
+main label each within none
+main label each maxIterations limit
+main label writeVDone loopKind none
+main label writeVDone within each
+main let v Int64 1 mutable
+main let limit Int64 100 immutable
+main let four Int64 4 immutable
+main at begin goto each
+main at each do double
+main at each set v doubled
+main at each do writeV
+main at each branch ifError writeV goto writeVDone else goto writeVDone
+main at writeVDone goto each
+
+double is call
+double in main
+double invokes math.multiplyInt64
+double argument left Int64 v copy
+double argument right Int64 four copy
+double result doubled Int64
+double ownedBy none
+double cleanedBy none
+double borrows none
+double catch none
+double suppresses none
+
+writeV is call
+writeV rationale "The failure has nowhere to be reported, so it is discarded"
+writeV in main
+writeV invokes console.writeIntegerLine
+writeV argument value Int64 v copy
+writeV result none
+writeV ownedBy none
+writeV cleanedBy none
+writeV borrows none
+writeV catch writeVError console.WriteError
+writeV suppresses console.WriteError.failed

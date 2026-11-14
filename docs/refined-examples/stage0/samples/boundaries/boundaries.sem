@@ -1,0 +1,989 @@
+# A stage0 sample of every comparison, logic, and arithmetic target at its
+# boundaries: each Int64 and Byte comparison on a smaller, an equal, and a
+# larger operand, the truth tables of and, or, xor, and not, and division and
+# remainder with negative operands. A C operator written wrong (`<=` for `<`)
+# changes a line of its output, which the built executable must print as
+# `refined run` does. It exits with code 0.
+boundaries is module
+boundaries purpose "Print comparisons, logic, and arithmetic at their boundaries"
+boundaries path boundaries
+boundaries imports standard.console
+boundaries imports standard.compare
+boundaries imports standard.logic
+boundaries imports standard.math
+boundaries exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+flag is operation
+flag purpose "Print a label and a Bool as 0 or 1 on one line"
+flag invariant none
+flag typeParameter none
+flag input label String borrowed
+flag input value Bool copied
+flag output none
+flag outputOwnedBy none
+flag raises none
+flag effect write console.stdout
+flag uses stdoutWriter
+flag memoryHeap false
+flag async false
+flag maxRecursion none
+flag label begin loopKind none
+flag label begin within none
+flag label writeLabelDone loopKind none
+flag label writeLabelDone within none
+flag label yes loopKind none
+flag label yes within none
+flag label writeOneDone loopKind none
+flag label writeOneDone within none
+flag label no loopKind none
+flag label no within none
+flag label writeZeroDone loopKind none
+flag label writeZeroDone within none
+flag let oneText String "1" immutable
+flag let zeroText String "0" immutable
+flag at begin do writeLabel
+flag at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+flag at writeLabelDone branch if value goto yes else goto no
+flag at yes do writeOne
+flag at yes branch ifError writeOne goto writeOneDone else goto writeOneDone
+flag at writeOneDone return ok none
+flag at no do writeZero
+flag at no branch ifError writeZero goto writeZeroDone else goto writeZeroDone
+flag at writeZeroDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in flag
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeOne is call
+writeOne rationale "The failure has nowhere to be reported, so it is discarded"
+writeOne in flag
+writeOne invokes console.writeLine
+writeOne argument text String oneText lend
+writeOne result none
+writeOne ownedBy none
+writeOne cleanedBy none
+writeOne borrows none
+writeOne catch writeOneError console.WriteError
+writeOne suppresses console.WriteError.failed
+
+writeZero is call
+writeZero rationale "The failure has nowhere to be reported, so it is discarded"
+writeZero in flag
+writeZero invokes console.writeLine
+writeZero argument text String zeroText lend
+writeZero result none
+writeZero ownedBy none
+writeZero cleanedBy none
+writeZero borrows none
+writeZero catch writeZeroError console.WriteError
+writeZero suppresses console.WriteError.failed
+
+number is operation
+number purpose "Print a label and a number on one line"
+number invariant none
+number typeParameter none
+number input label String borrowed
+number input value Int64 copied
+number output none
+number outputOwnedBy none
+number raises none
+number effect write console.stdout
+number uses stdoutWriter
+number memoryHeap false
+number async false
+number maxRecursion none
+number label begin loopKind none
+number label begin within none
+number label writeLabelDone loopKind none
+number label writeLabelDone within none
+number label writeValueDone loopKind none
+number label writeValueDone within none
+number let none
+number at begin do writeLabel
+number at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+number at writeLabelDone do writeValue
+number at writeLabelDone branch ifError writeValue goto writeValueDone else goto writeValueDone
+number at writeValueDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in number
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeValue is call
+writeValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeValue in number
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeValueError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+compareInt64 is operation
+compareInt64 purpose "Print every Int64 comparison of two numbers"
+compareInt64 invariant none
+compareInt64 typeParameter none
+compareInt64 input left Int64 copied
+compareInt64 input right Int64 copied
+compareInt64 output none
+compareInt64 outputOwnedBy none
+compareInt64 raises none
+compareInt64 effect write console.stdout
+compareInt64 uses stdoutWriter
+compareInt64 memoryHeap false
+compareInt64 async false
+compareInt64 maxRecursion none
+compareInt64 label begin loopKind none
+compareInt64 label begin within none
+compareInt64 let lessText String "lessThan " immutable
+compareInt64 let lessEqualText String "lessOrEqual " immutable
+compareInt64 let greaterText String "greaterThan " immutable
+compareInt64 let greaterEqualText String "greaterOrEqual " immutable
+compareInt64 let equalText String "equal " immutable
+compareInt64 let notEqualText String "notEqual " immutable
+compareInt64 at begin do lessCheck
+compareInt64 at begin do showLess
+compareInt64 at begin do lessEqualCheck
+compareInt64 at begin do showLessEqual
+compareInt64 at begin do greaterCheck
+compareInt64 at begin do showGreater
+compareInt64 at begin do greaterEqualCheck
+compareInt64 at begin do showGreaterEqual
+compareInt64 at begin do equalCheck
+compareInt64 at begin do showEqual
+compareInt64 at begin do notEqualCheck
+compareInt64 at begin do showNotEqual
+compareInt64 at begin return ok none
+
+lessCheck is call
+lessCheck in compareInt64
+lessCheck invokes compare.lessThanInt64
+lessCheck argument left Int64 left copy
+lessCheck argument right Int64 right copy
+lessCheck result less Bool
+lessCheck ownedBy none
+lessCheck cleanedBy none
+lessCheck borrows none
+lessCheck catch none
+lessCheck suppresses none
+
+showLess is call
+showLess in compareInt64
+showLess invokes flag
+showLess argument label String lessText lend
+showLess argument value Bool less copy
+showLess result none
+showLess ownedBy none
+showLess cleanedBy none
+showLess borrows none
+showLess catch none
+showLess suppresses none
+
+lessEqualCheck is call
+lessEqualCheck in compareInt64
+lessEqualCheck invokes compare.lessOrEqualInt64
+lessEqualCheck argument left Int64 left copy
+lessEqualCheck argument right Int64 right copy
+lessEqualCheck result lessEqual Bool
+lessEqualCheck ownedBy none
+lessEqualCheck cleanedBy none
+lessEqualCheck borrows none
+lessEqualCheck catch none
+lessEqualCheck suppresses none
+
+showLessEqual is call
+showLessEqual in compareInt64
+showLessEqual invokes flag
+showLessEqual argument label String lessEqualText lend
+showLessEqual argument value Bool lessEqual copy
+showLessEqual result none
+showLessEqual ownedBy none
+showLessEqual cleanedBy none
+showLessEqual borrows none
+showLessEqual catch none
+showLessEqual suppresses none
+
+greaterCheck is call
+greaterCheck in compareInt64
+greaterCheck invokes compare.greaterThanInt64
+greaterCheck argument left Int64 left copy
+greaterCheck argument right Int64 right copy
+greaterCheck result greater Bool
+greaterCheck ownedBy none
+greaterCheck cleanedBy none
+greaterCheck borrows none
+greaterCheck catch none
+greaterCheck suppresses none
+
+showGreater is call
+showGreater in compareInt64
+showGreater invokes flag
+showGreater argument label String greaterText lend
+showGreater argument value Bool greater copy
+showGreater result none
+showGreater ownedBy none
+showGreater cleanedBy none
+showGreater borrows none
+showGreater catch none
+showGreater suppresses none
+
+greaterEqualCheck is call
+greaterEqualCheck in compareInt64
+greaterEqualCheck invokes compare.greaterOrEqualInt64
+greaterEqualCheck argument left Int64 left copy
+greaterEqualCheck argument right Int64 right copy
+greaterEqualCheck result greaterEqual Bool
+greaterEqualCheck ownedBy none
+greaterEqualCheck cleanedBy none
+greaterEqualCheck borrows none
+greaterEqualCheck catch none
+greaterEqualCheck suppresses none
+
+showGreaterEqual is call
+showGreaterEqual in compareInt64
+showGreaterEqual invokes flag
+showGreaterEqual argument label String greaterEqualText lend
+showGreaterEqual argument value Bool greaterEqual copy
+showGreaterEqual result none
+showGreaterEqual ownedBy none
+showGreaterEqual cleanedBy none
+showGreaterEqual borrows none
+showGreaterEqual catch none
+showGreaterEqual suppresses none
+
+equalCheck is call
+equalCheck in compareInt64
+equalCheck invokes compare.equalInt64
+equalCheck argument left Int64 left copy
+equalCheck argument right Int64 right copy
+equalCheck result equal Bool
+equalCheck ownedBy none
+equalCheck cleanedBy none
+equalCheck borrows none
+equalCheck catch none
+equalCheck suppresses none
+
+showEqual is call
+showEqual in compareInt64
+showEqual invokes flag
+showEqual argument label String equalText lend
+showEqual argument value Bool equal copy
+showEqual result none
+showEqual ownedBy none
+showEqual cleanedBy none
+showEqual borrows none
+showEqual catch none
+showEqual suppresses none
+
+notEqualCheck is call
+notEqualCheck in compareInt64
+notEqualCheck invokes compare.notEqualInt64
+notEqualCheck argument left Int64 left copy
+notEqualCheck argument right Int64 right copy
+notEqualCheck result notEqual Bool
+notEqualCheck ownedBy none
+notEqualCheck cleanedBy none
+notEqualCheck borrows none
+notEqualCheck catch none
+notEqualCheck suppresses none
+
+showNotEqual is call
+showNotEqual in compareInt64
+showNotEqual invokes flag
+showNotEqual argument label String notEqualText lend
+showNotEqual argument value Bool notEqual copy
+showNotEqual result none
+showNotEqual ownedBy none
+showNotEqual cleanedBy none
+showNotEqual borrows none
+showNotEqual catch none
+showNotEqual suppresses none
+
+compareByte is operation
+compareByte purpose "Print every Byte comparison of two bytes"
+compareByte invariant none
+compareByte typeParameter none
+compareByte input left Byte copied
+compareByte input right Byte copied
+compareByte output none
+compareByte outputOwnedBy none
+compareByte raises none
+compareByte effect write console.stdout
+compareByte uses stdoutWriter
+compareByte memoryHeap false
+compareByte async false
+compareByte maxRecursion none
+compareByte label begin loopKind none
+compareByte label begin within none
+compareByte let lessText String "byte lessThan " immutable
+compareByte let lessEqualText String "byte lessOrEqual " immutable
+compareByte let greaterText String "byte greaterThan " immutable
+compareByte let greaterEqualText String "byte greaterOrEqual " immutable
+compareByte let equalText String "byte equal " immutable
+compareByte let notEqualText String "byte notEqual " immutable
+compareByte at begin do lessCheck
+compareByte at begin do showLess
+compareByte at begin do lessEqualCheck
+compareByte at begin do showLessEqual
+compareByte at begin do greaterCheck
+compareByte at begin do showGreater
+compareByte at begin do greaterEqualCheck
+compareByte at begin do showGreaterEqual
+compareByte at begin do equalCheck
+compareByte at begin do showEqual
+compareByte at begin do notEqualCheck
+compareByte at begin do showNotEqual
+compareByte at begin return ok none
+
+lessCheck is call
+lessCheck in compareByte
+lessCheck invokes compare.lessThanByte
+lessCheck argument left Byte left copy
+lessCheck argument right Byte right copy
+lessCheck result less Bool
+lessCheck ownedBy none
+lessCheck cleanedBy none
+lessCheck borrows none
+lessCheck catch none
+lessCheck suppresses none
+
+showLess is call
+showLess in compareByte
+showLess invokes flag
+showLess argument label String lessText lend
+showLess argument value Bool less copy
+showLess result none
+showLess ownedBy none
+showLess cleanedBy none
+showLess borrows none
+showLess catch none
+showLess suppresses none
+
+lessEqualCheck is call
+lessEqualCheck in compareByte
+lessEqualCheck invokes compare.lessOrEqualByte
+lessEqualCheck argument left Byte left copy
+lessEqualCheck argument right Byte right copy
+lessEqualCheck result lessEqual Bool
+lessEqualCheck ownedBy none
+lessEqualCheck cleanedBy none
+lessEqualCheck borrows none
+lessEqualCheck catch none
+lessEqualCheck suppresses none
+
+showLessEqual is call
+showLessEqual in compareByte
+showLessEqual invokes flag
+showLessEqual argument label String lessEqualText lend
+showLessEqual argument value Bool lessEqual copy
+showLessEqual result none
+showLessEqual ownedBy none
+showLessEqual cleanedBy none
+showLessEqual borrows none
+showLessEqual catch none
+showLessEqual suppresses none
+
+greaterCheck is call
+greaterCheck in compareByte
+greaterCheck invokes compare.greaterThanByte
+greaterCheck argument left Byte left copy
+greaterCheck argument right Byte right copy
+greaterCheck result greater Bool
+greaterCheck ownedBy none
+greaterCheck cleanedBy none
+greaterCheck borrows none
+greaterCheck catch none
+greaterCheck suppresses none
+
+showGreater is call
+showGreater in compareByte
+showGreater invokes flag
+showGreater argument label String greaterText lend
+showGreater argument value Bool greater copy
+showGreater result none
+showGreater ownedBy none
+showGreater cleanedBy none
+showGreater borrows none
+showGreater catch none
+showGreater suppresses none
+
+greaterEqualCheck is call
+greaterEqualCheck in compareByte
+greaterEqualCheck invokes compare.greaterOrEqualByte
+greaterEqualCheck argument left Byte left copy
+greaterEqualCheck argument right Byte right copy
+greaterEqualCheck result greaterEqual Bool
+greaterEqualCheck ownedBy none
+greaterEqualCheck cleanedBy none
+greaterEqualCheck borrows none
+greaterEqualCheck catch none
+greaterEqualCheck suppresses none
+
+showGreaterEqual is call
+showGreaterEqual in compareByte
+showGreaterEqual invokes flag
+showGreaterEqual argument label String greaterEqualText lend
+showGreaterEqual argument value Bool greaterEqual copy
+showGreaterEqual result none
+showGreaterEqual ownedBy none
+showGreaterEqual cleanedBy none
+showGreaterEqual borrows none
+showGreaterEqual catch none
+showGreaterEqual suppresses none
+
+equalCheck is call
+equalCheck in compareByte
+equalCheck invokes compare.equalByte
+equalCheck argument left Byte left copy
+equalCheck argument right Byte right copy
+equalCheck result equal Bool
+equalCheck ownedBy none
+equalCheck cleanedBy none
+equalCheck borrows none
+equalCheck catch none
+equalCheck suppresses none
+
+showEqual is call
+showEqual in compareByte
+showEqual invokes flag
+showEqual argument label String equalText lend
+showEqual argument value Bool equal copy
+showEqual result none
+showEqual ownedBy none
+showEqual cleanedBy none
+showEqual borrows none
+showEqual catch none
+showEqual suppresses none
+
+notEqualCheck is call
+notEqualCheck in compareByte
+notEqualCheck invokes compare.notEqualByte
+notEqualCheck argument left Byte left copy
+notEqualCheck argument right Byte right copy
+notEqualCheck result notEqual Bool
+notEqualCheck ownedBy none
+notEqualCheck cleanedBy none
+notEqualCheck borrows none
+notEqualCheck catch none
+notEqualCheck suppresses none
+
+showNotEqual is call
+showNotEqual in compareByte
+showNotEqual invokes flag
+showNotEqual argument label String notEqualText lend
+showNotEqual argument value Bool notEqual copy
+showNotEqual result none
+showNotEqual ownedBy none
+showNotEqual cleanedBy none
+showNotEqual borrows none
+showNotEqual catch none
+showNotEqual suppresses none
+
+logicOf is operation
+logicOf purpose "Print and, or, xor of two Bools and not of the first"
+logicOf invariant none
+logicOf typeParameter none
+logicOf input left Bool copied
+logicOf input right Bool copied
+logicOf output none
+logicOf outputOwnedBy none
+logicOf raises none
+logicOf effect write console.stdout
+logicOf uses stdoutWriter
+logicOf memoryHeap false
+logicOf async false
+logicOf maxRecursion none
+logicOf label begin loopKind none
+logicOf label begin within none
+logicOf let andText String "and " immutable
+logicOf let orText String "or " immutable
+logicOf let xorText String "xor " immutable
+logicOf let notText String "not " immutable
+logicOf at begin do andCheck
+logicOf at begin do showAnd
+logicOf at begin do orCheck
+logicOf at begin do showOr
+logicOf at begin do xorCheck
+logicOf at begin do showXor
+logicOf at begin do notCheck
+logicOf at begin do showNot
+logicOf at begin return ok none
+
+andCheck is call
+andCheck in logicOf
+andCheck invokes logic.and
+andCheck argument left Bool left copy
+andCheck argument right Bool right copy
+andCheck result both Bool
+andCheck ownedBy none
+andCheck cleanedBy none
+andCheck borrows none
+andCheck catch none
+andCheck suppresses none
+
+showAnd is call
+showAnd in logicOf
+showAnd invokes flag
+showAnd argument label String andText lend
+showAnd argument value Bool both copy
+showAnd result none
+showAnd ownedBy none
+showAnd cleanedBy none
+showAnd borrows none
+showAnd catch none
+showAnd suppresses none
+
+orCheck is call
+orCheck in logicOf
+orCheck invokes logic.or
+orCheck argument left Bool left copy
+orCheck argument right Bool right copy
+orCheck result either Bool
+orCheck ownedBy none
+orCheck cleanedBy none
+orCheck borrows none
+orCheck catch none
+orCheck suppresses none
+
+showOr is call
+showOr in logicOf
+showOr invokes flag
+showOr argument label String orText lend
+showOr argument value Bool either copy
+showOr result none
+showOr ownedBy none
+showOr cleanedBy none
+showOr borrows none
+showOr catch none
+showOr suppresses none
+
+xorCheck is call
+xorCheck in logicOf
+xorCheck invokes logic.xor
+xorCheck argument left Bool left copy
+xorCheck argument right Bool right copy
+xorCheck result oneOf Bool
+xorCheck ownedBy none
+xorCheck cleanedBy none
+xorCheck borrows none
+xorCheck catch none
+xorCheck suppresses none
+
+showXor is call
+showXor in logicOf
+showXor invokes flag
+showXor argument label String xorText lend
+showXor argument value Bool oneOf copy
+showXor result none
+showXor ownedBy none
+showXor cleanedBy none
+showXor borrows none
+showXor catch none
+showXor suppresses none
+
+notCheck is call
+notCheck in logicOf
+notCheck invokes logic.not
+notCheck argument value Bool left copy
+notCheck result negated Bool
+notCheck ownedBy none
+notCheck cleanedBy none
+notCheck borrows none
+notCheck catch none
+notCheck suppresses none
+
+showNot is call
+showNot in logicOf
+showNot invokes flag
+showNot argument label String notText lend
+showNot argument value Bool negated copy
+showNot result none
+showNot ownedBy none
+showNot cleanedBy none
+showNot borrows none
+showNot catch none
+showNot suppresses none
+
+arithmetic is operation
+arithmetic purpose "Print the quotient, remainder, difference, product, negation, and magnitude of numbers"
+arithmetic invariant none
+arithmetic typeParameter none
+arithmetic input left Int64 copied
+arithmetic input right Int64 copied
+arithmetic output none
+arithmetic outputOwnedBy none
+arithmetic raises none
+arithmetic effect write console.stdout
+arithmetic uses stdoutWriter
+arithmetic memoryHeap false
+arithmetic async false
+arithmetic maxRecursion none
+arithmetic label begin loopKind none
+arithmetic label begin within none
+arithmetic let quotientText String "divide " immutable
+arithmetic let remainderText String "remainder " immutable
+arithmetic let differenceText String "subtract " immutable
+arithmetic let productText String "multiply " immutable
+arithmetic let negateText String "negate " immutable
+arithmetic let absoluteText String "absolute " immutable
+arithmetic at begin do divide
+arithmetic at begin do showQuotient
+arithmetic at begin do remain
+arithmetic at begin do showRemainder
+arithmetic at begin do subtract
+arithmetic at begin do showDifference
+arithmetic at begin do multiply
+arithmetic at begin do showProduct
+arithmetic at begin do negate
+arithmetic at begin do showNegated
+arithmetic at begin do absolute
+arithmetic at begin do showMagnitude
+arithmetic at begin return ok none
+
+divide is call
+divide in arithmetic
+divide invokes math.divideInt64
+divide argument left Int64 left copy
+divide argument right Int64 right copy
+divide result quotient Int64
+divide ownedBy none
+divide cleanedBy none
+divide borrows none
+divide catch none
+divide suppresses none
+
+showQuotient is call
+showQuotient in arithmetic
+showQuotient invokes number
+showQuotient argument label String quotientText lend
+showQuotient argument value Int64 quotient copy
+showQuotient result none
+showQuotient ownedBy none
+showQuotient cleanedBy none
+showQuotient borrows none
+showQuotient catch none
+showQuotient suppresses none
+
+remain is call
+remain in arithmetic
+remain invokes math.remainderInt64
+remain argument left Int64 left copy
+remain argument right Int64 right copy
+remain result remainder Int64
+remain ownedBy none
+remain cleanedBy none
+remain borrows none
+remain catch none
+remain suppresses none
+
+showRemainder is call
+showRemainder in arithmetic
+showRemainder invokes number
+showRemainder argument label String remainderText lend
+showRemainder argument value Int64 remainder copy
+showRemainder result none
+showRemainder ownedBy none
+showRemainder cleanedBy none
+showRemainder borrows none
+showRemainder catch none
+showRemainder suppresses none
+
+subtract is call
+subtract in arithmetic
+subtract invokes math.subtractInt64
+subtract argument left Int64 left copy
+subtract argument right Int64 right copy
+subtract result difference Int64
+subtract ownedBy none
+subtract cleanedBy none
+subtract borrows none
+subtract catch none
+subtract suppresses none
+
+showDifference is call
+showDifference in arithmetic
+showDifference invokes number
+showDifference argument label String differenceText lend
+showDifference argument value Int64 difference copy
+showDifference result none
+showDifference ownedBy none
+showDifference cleanedBy none
+showDifference borrows none
+showDifference catch none
+showDifference suppresses none
+
+multiply is call
+multiply in arithmetic
+multiply invokes math.multiplyInt64
+multiply argument left Int64 left copy
+multiply argument right Int64 right copy
+multiply result product Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+multiply suppresses none
+
+showProduct is call
+showProduct in arithmetic
+showProduct invokes number
+showProduct argument label String productText lend
+showProduct argument value Int64 product copy
+showProduct result none
+showProduct ownedBy none
+showProduct cleanedBy none
+showProduct borrows none
+showProduct catch none
+showProduct suppresses none
+
+negate is call
+negate in arithmetic
+negate invokes math.negateInt64
+negate argument value Int64 left copy
+negate result negated Int64
+negate ownedBy none
+negate cleanedBy none
+negate borrows none
+negate catch none
+negate suppresses none
+
+showNegated is call
+showNegated in arithmetic
+showNegated invokes number
+showNegated argument label String negateText lend
+showNegated argument value Int64 negated copy
+showNegated result none
+showNegated ownedBy none
+showNegated cleanedBy none
+showNegated borrows none
+showNegated catch none
+showNegated suppresses none
+
+absolute is call
+absolute in arithmetic
+absolute invokes math.absoluteInt64
+absolute argument value Int64 left copy
+absolute result magnitude Int64
+absolute ownedBy none
+absolute cleanedBy none
+absolute borrows none
+absolute catch none
+absolute suppresses none
+
+showMagnitude is call
+showMagnitude in arithmetic
+showMagnitude invokes number
+showMagnitude argument label String absoluteText lend
+showMagnitude argument value Int64 magnitude copy
+showMagnitude result none
+showMagnitude ownedBy none
+showMagnitude cleanedBy none
+showMagnitude borrows none
+showMagnitude catch none
+showMagnitude suppresses none
+
+main is operation
+main purpose "Compare, combine, and divide numbers at their boundaries"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let three Int64 3 immutable
+main let smallByte Byte 1 immutable
+main let middleByte Byte 2 immutable
+main let largeByte Byte 250 immutable
+main let yes Bool true immutable
+main let no Bool false immutable
+main let minusSeven Int64 -7 immutable
+main let okCode ExitCode 0 immutable
+main at begin do compareSmaller
+main at begin do compareEqual
+main at begin do compareLarger
+main at begin do compareSmallerByte
+main at begin do compareEqualByte
+main at begin do compareLargerByte
+main at begin do logicBoth
+main at begin do logicFirst
+main at begin do logicSecond
+main at begin do logicNeither
+main at begin do arithmeticNegative
+main at begin do arithmeticPositive
+main at begin return ok okCode
+
+compareSmaller is call
+compareSmaller in main
+compareSmaller invokes compareInt64
+compareSmaller argument left Int64 one copy
+compareSmaller argument right Int64 two copy
+compareSmaller result none
+compareSmaller ownedBy none
+compareSmaller cleanedBy none
+compareSmaller borrows none
+compareSmaller catch none
+compareSmaller suppresses none
+
+compareEqual is call
+compareEqual in main
+compareEqual invokes compareInt64
+compareEqual argument left Int64 two copy
+compareEqual argument right Int64 two copy
+compareEqual result none
+compareEqual ownedBy none
+compareEqual cleanedBy none
+compareEqual borrows none
+compareEqual catch none
+compareEqual suppresses none
+
+compareLarger is call
+compareLarger in main
+compareLarger invokes compareInt64
+compareLarger argument left Int64 three copy
+compareLarger argument right Int64 two copy
+compareLarger result none
+compareLarger ownedBy none
+compareLarger cleanedBy none
+compareLarger borrows none
+compareLarger catch none
+compareLarger suppresses none
+
+compareSmallerByte is call
+compareSmallerByte in main
+compareSmallerByte invokes compareByte
+compareSmallerByte argument left Byte smallByte copy
+compareSmallerByte argument right Byte middleByte copy
+compareSmallerByte result none
+compareSmallerByte ownedBy none
+compareSmallerByte cleanedBy none
+compareSmallerByte borrows none
+compareSmallerByte catch none
+compareSmallerByte suppresses none
+
+compareEqualByte is call
+compareEqualByte in main
+compareEqualByte invokes compareByte
+compareEqualByte argument left Byte middleByte copy
+compareEqualByte argument right Byte middleByte copy
+compareEqualByte result none
+compareEqualByte ownedBy none
+compareEqualByte cleanedBy none
+compareEqualByte borrows none
+compareEqualByte catch none
+compareEqualByte suppresses none
+
+compareLargerByte is call
+compareLargerByte in main
+compareLargerByte invokes compareByte
+compareLargerByte argument left Byte largeByte copy
+compareLargerByte argument right Byte middleByte copy
+compareLargerByte result none
+compareLargerByte ownedBy none
+compareLargerByte cleanedBy none
+compareLargerByte borrows none
+compareLargerByte catch none
+compareLargerByte suppresses none
+
+logicBoth is call
+logicBoth in main
+logicBoth invokes logicOf
+logicBoth argument left Bool yes copy
+logicBoth argument right Bool yes copy
+logicBoth result none
+logicBoth ownedBy none
+logicBoth cleanedBy none
+logicBoth borrows none
+logicBoth catch none
+logicBoth suppresses none
+
+logicFirst is call
+logicFirst in main
+logicFirst invokes logicOf
+logicFirst argument left Bool yes copy
+logicFirst argument right Bool no copy
+logicFirst result none
+logicFirst ownedBy none
+logicFirst cleanedBy none
+logicFirst borrows none
+logicFirst catch none
+logicFirst suppresses none
+
+logicSecond is call
+logicSecond in main
+logicSecond invokes logicOf
+logicSecond argument left Bool no copy
+logicSecond argument right Bool yes copy
+logicSecond result none
+logicSecond ownedBy none
+logicSecond cleanedBy none
+logicSecond borrows none
+logicSecond catch none
+logicSecond suppresses none
+
+logicNeither is call
+logicNeither in main
+logicNeither invokes logicOf
+logicNeither argument left Bool no copy
+logicNeither argument right Bool no copy
+logicNeither result none
+logicNeither ownedBy none
+logicNeither cleanedBy none
+logicNeither borrows none
+logicNeither catch none
+logicNeither suppresses none
+
+arithmeticNegative is call
+arithmeticNegative in main
+arithmeticNegative invokes arithmetic
+arithmeticNegative argument left Int64 minusSeven copy
+arithmeticNegative argument right Int64 two copy
+arithmeticNegative result none
+arithmeticNegative ownedBy none
+arithmeticNegative cleanedBy none
+arithmeticNegative borrows none
+arithmeticNegative catch none
+arithmeticNegative suppresses none
+
+arithmeticPositive is call
+arithmeticPositive in main
+arithmeticPositive invokes arithmetic
+arithmeticPositive argument left Int64 three copy
+arithmeticPositive argument right Int64 minusSeven copy
+arithmeticPositive result none
+arithmeticPositive ownedBy none
+arithmeticPositive cleanedBy none
+arithmeticPositive borrows none
+arithmeticPositive catch none
+arithmeticPositive suppresses none

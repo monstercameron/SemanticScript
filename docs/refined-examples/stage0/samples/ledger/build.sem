@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+ledger is project
+ledger purpose "Apply transactions held in enums to an account record, with an error enum; a stage0 sample both runs agree on"
+ledger target console
+ledger version "0.1.0"
+ledger language refined 1
+ledger standardLibrary 1
+ledger allows write console.stdout none
+ledger requires none
+ledger includesModule ledger
+ledger entry ledger.main

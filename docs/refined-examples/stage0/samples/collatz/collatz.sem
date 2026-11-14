@@ -1,0 +1,520 @@
+# A stage0 sample from the audit of the self-hosted compiler: Collatz steps
+# and digit sums in loops, ending in an exit code the program computes.
+collatz is module
+collatz purpose "Count Collatz steps and sum digits, exiting with a computed code"
+collatz path collatz
+collatz imports standard.console
+collatz imports standard.math
+collatz imports standard.compare
+collatz imports standard.convert
+collatz exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+steps is operation
+steps purpose "The number of Collatz steps from n down to 1"
+steps invariant none
+steps typeParameter none
+steps input n Int64 copied
+steps output Int64
+steps outputOwnedBy none
+steps raises none
+steps effect none
+steps uses none
+steps memoryHeap false
+steps async false
+steps maxRecursion none
+steps label begin loopKind none
+steps label begin within none
+steps label walk loopKind while
+steps label walk within none
+steps label walk maxIterations limit
+steps label move loopKind none
+steps label move within walk
+steps label halve loopKind none
+steps label halve within walk
+steps label triple loopKind none
+steps label triple within walk
+steps label finished loopKind none
+steps label finished within none
+steps let value Int64 0 mutable
+steps let count Int64 0 mutable
+steps let limit Int64 1000 immutable
+steps let one Int64 1 immutable
+steps let two Int64 2 immutable
+steps let zero Int64 0 immutable
+steps let three Int64 3 immutable
+steps at begin set value n
+steps at begin goto walk
+steps at walk do oneCheck
+steps at walk branch if atOne goto finished else goto move
+steps at move do half
+steps at move do evenCheck
+steps at move do addStep
+steps at move set count nextCount
+steps at move branch if isEven goto halve else goto triple
+steps at halve do divide
+steps at halve set value halved
+steps at halve goto walk
+steps at triple do times
+steps at triple do plus
+steps at triple set value bumped
+steps at triple goto walk
+steps at finished return ok count
+
+oneCheck is call
+oneCheck in steps
+oneCheck invokes compare.lessOrEqualInt64
+oneCheck argument left Int64 value copy
+oneCheck argument right Int64 one copy
+oneCheck result atOne Bool
+oneCheck ownedBy none
+oneCheck cleanedBy none
+oneCheck borrows none
+oneCheck catch none
+oneCheck suppresses none
+
+half is call
+half in steps
+half invokes math.remainderInt64
+half argument left Int64 value copy
+half argument right Int64 two copy
+half result rest Int64
+half ownedBy none
+half cleanedBy none
+half borrows none
+half catch none
+half suppresses none
+
+evenCheck is call
+evenCheck in steps
+evenCheck invokes compare.equalInt64
+evenCheck argument left Int64 rest copy
+evenCheck argument right Int64 zero copy
+evenCheck result isEven Bool
+evenCheck ownedBy none
+evenCheck cleanedBy none
+evenCheck borrows none
+evenCheck catch none
+evenCheck suppresses none
+
+addStep is call
+addStep in steps
+addStep invokes math.addInt64
+addStep argument left Int64 count copy
+addStep argument right Int64 one copy
+addStep result nextCount Int64
+addStep ownedBy none
+addStep cleanedBy none
+addStep borrows none
+addStep catch none
+addStep suppresses none
+
+divide is call
+divide in steps
+divide invokes math.divideInt64
+divide argument left Int64 value copy
+divide argument right Int64 two copy
+divide result halved Int64
+divide ownedBy none
+divide cleanedBy none
+divide borrows none
+divide catch none
+divide suppresses none
+
+times is call
+times in steps
+times invokes math.multiplyInt64
+times argument left Int64 value copy
+times argument right Int64 three copy
+times result tripled Int64
+times ownedBy none
+times cleanedBy none
+times borrows none
+times catch none
+times suppresses none
+
+plus is call
+plus in steps
+plus invokes math.addInt64
+plus argument left Int64 tripled copy
+plus argument right Int64 one copy
+plus result bumped Int64
+plus ownedBy none
+plus cleanedBy none
+plus borrows none
+plus catch none
+plus suppresses none
+
+digitSum is operation
+digitSum purpose "The sum of the decimal digits of a number, by recursion"
+digitSum invariant none
+digitSum typeParameter none
+digitSum input n Int64 copied
+digitSum output Int64
+digitSum outputOwnedBy none
+digitSum raises none
+digitSum effect none
+digitSum uses none
+digitSum memoryHeap false
+digitSum async false
+digitSum maxRecursion 30
+digitSum label begin loopKind none
+digitSum label begin within none
+digitSum label base loopKind none
+digitSum label base within none
+digitSum label recurse loopKind none
+digitSum label recurse within none
+digitSum let ten Int64 10 immutable
+digitSum at begin do small
+digitSum at begin branch if isSmall goto base else goto recurse
+digitSum at base return ok n
+digitSum at recurse do lastDigit
+digitSum at recurse do shift
+digitSum at recurse do inner
+digitSum at recurse do total
+digitSum at recurse return ok summed
+
+small is call
+small in digitSum
+small invokes compare.lessThanInt64
+small argument left Int64 n copy
+small argument right Int64 ten copy
+small result isSmall Bool
+small ownedBy none
+small cleanedBy none
+small borrows none
+small catch none
+small suppresses none
+
+lastDigit is call
+lastDigit in digitSum
+lastDigit invokes math.remainderInt64
+lastDigit argument left Int64 n copy
+lastDigit argument right Int64 ten copy
+lastDigit result last Int64
+lastDigit ownedBy none
+lastDigit cleanedBy none
+lastDigit borrows none
+lastDigit catch none
+lastDigit suppresses none
+
+shift is call
+shift in digitSum
+shift invokes math.divideInt64
+shift argument left Int64 n copy
+shift argument right Int64 ten copy
+shift result rest Int64
+shift ownedBy none
+shift cleanedBy none
+shift borrows none
+shift catch none
+shift suppresses none
+
+inner is call
+inner in digitSum
+inner invokes digitSum
+inner argument n Int64 rest copy
+inner result restSum Int64
+inner ownedBy none
+inner cleanedBy none
+inner borrows none
+inner catch none
+inner suppresses none
+
+total is call
+total in digitSum
+total invokes math.addInt64
+total argument left Int64 last copy
+total argument right Int64 restSum copy
+total result summed Int64
+total ownedBy none
+total cleanedBy none
+total borrows none
+total catch none
+total suppresses none
+
+report is operation
+report purpose "Print a label and a number"
+report invariant none
+report typeParameter none
+report input label String borrowed
+report input value Int64 copied
+report output none
+report outputOwnedBy none
+report raises none
+report effect write console.stdout
+report uses stdoutWriter
+report memoryHeap false
+report async false
+report maxRecursion none
+report label begin loopKind none
+report label begin within none
+report label writeLabelDone loopKind none
+report label writeLabelDone within none
+report label writeValueDone loopKind none
+report label writeValueDone within none
+report let none
+report at begin do writeLabel
+report at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+report at writeLabelDone do writeValue
+report at writeLabelDone branch ifError writeValue goto writeValueDone else goto writeValueDone
+report at writeValueDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in report
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeValue is call
+writeValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeValue in report
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeValueError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+main is operation
+main purpose "Print Collatz steps for a few numbers and exit with a code computed from them"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label each loopKind while
+main label each within none
+main label each maxIterations top
+main label doOne loopKind none
+main label doOne within each
+main label summary loopKind none
+main label summary within none
+main let total Int64 0 mutable
+main let n Int64 1 mutable
+main let top Int64 12 immutable
+main let stepsText String "steps: " immutable
+main let one Int64 1 immutable
+main let totalText String "total: " immutable
+main let big Int64 9876543210 immutable
+main let digitsText String "digits: " immutable
+main let three Int64 3 immutable
+main let five Int64 5 immutable
+main let powerText String "3^5: " immutable
+main let absText String "abs: " immutable
+main let n200 Int64 200 immutable
+main at begin goto each
+main at each do doneCheck
+main at each branch if past goto summary else goto doOne
+main at doOne do count
+main at doOne do reportIt
+main at doOne do addIt
+main at doOne set total nextTotal
+main at doOne do bump
+main at doOne set n nextN
+main at doOne goto each
+main at summary do reportTotal
+main at summary do sumDigits
+main at summary do reportDigits
+main at summary do power
+main at summary do reportPower
+main at summary do neg
+main at summary do absolute
+main at summary do reportAbs
+main at summary do modCode
+main at summary do toCode
+main at summary return ok exitCode
+
+doneCheck is call
+doneCheck in main
+doneCheck invokes compare.greaterThanInt64
+doneCheck argument left Int64 n copy
+doneCheck argument right Int64 top copy
+doneCheck result past Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+count is call
+count in main
+count invokes steps
+count argument n Int64 n copy
+count result s Int64
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none
+
+reportIt is call
+reportIt in main
+reportIt invokes report
+reportIt argument label String stepsText lend
+reportIt argument value Int64 s copy
+reportIt result none
+reportIt ownedBy none
+reportIt cleanedBy none
+reportIt borrows none
+reportIt catch none
+reportIt suppresses none
+
+addIt is call
+addIt in main
+addIt invokes math.addInt64
+addIt argument left Int64 total copy
+addIt argument right Int64 s copy
+addIt result nextTotal Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+bump is call
+bump in main
+bump invokes math.addInt64
+bump argument left Int64 n copy
+bump argument right Int64 one copy
+bump result nextN Int64
+bump ownedBy none
+bump cleanedBy none
+bump borrows none
+bump catch none
+bump suppresses none
+
+reportTotal is call
+reportTotal in main
+reportTotal invokes report
+reportTotal argument label String totalText lend
+reportTotal argument value Int64 total copy
+reportTotal result none
+reportTotal ownedBy none
+reportTotal cleanedBy none
+reportTotal borrows none
+reportTotal catch none
+reportTotal suppresses none
+
+sumDigits is call
+sumDigits in main
+sumDigits invokes digitSum
+sumDigits argument n Int64 big copy
+sumDigits result ds Int64
+sumDigits ownedBy none
+sumDigits cleanedBy none
+sumDigits borrows none
+sumDigits catch none
+sumDigits suppresses none
+
+reportDigits is call
+reportDigits in main
+reportDigits invokes report
+reportDigits argument label String digitsText lend
+reportDigits argument value Int64 ds copy
+reportDigits result none
+reportDigits ownedBy none
+reportDigits cleanedBy none
+reportDigits borrows none
+reportDigits catch none
+reportDigits suppresses none
+
+power is call
+power in main
+power invokes math.powerInt64
+power argument base Int64 three copy
+power argument exponent Int64 five copy
+power result p Int64
+power ownedBy none
+power cleanedBy none
+power borrows none
+power catch none
+power suppresses none
+
+reportPower is call
+reportPower in main
+reportPower invokes report
+reportPower argument label String powerText lend
+reportPower argument value Int64 p copy
+reportPower result none
+reportPower ownedBy none
+reportPower cleanedBy none
+reportPower borrows none
+reportPower catch none
+reportPower suppresses none
+
+neg is call
+neg in main
+neg invokes math.negateInt64
+neg argument value Int64 p copy
+neg result negated Int64
+neg ownedBy none
+neg cleanedBy none
+neg borrows none
+neg catch none
+neg suppresses none
+
+absolute is call
+absolute in main
+absolute invokes math.absoluteInt64
+absolute argument value Int64 negated copy
+absolute result back Int64
+absolute ownedBy none
+absolute cleanedBy none
+absolute borrows none
+absolute catch none
+absolute suppresses none
+
+reportAbs is call
+reportAbs in main
+reportAbs invokes report
+reportAbs argument label String absText lend
+reportAbs argument value Int64 back copy
+reportAbs result none
+reportAbs ownedBy none
+reportAbs cleanedBy none
+reportAbs borrows none
+reportAbs catch none
+reportAbs suppresses none
+
+modCode is call
+modCode in main
+modCode invokes math.remainderInt64
+modCode argument left Int64 total copy
+modCode argument right Int64 n200 copy
+modCode result code Int64
+modCode ownedBy none
+modCode cleanedBy none
+modCode borrows none
+modCode catch none
+modCode suppresses none
+
+toCode is call
+toCode in main
+toCode invokes convert.int64ToExitCode
+toCode argument value Int64 code copy
+toCode result exitCode ExitCode
+toCode ownedBy none
+toCode cleanedBy none
+toCode borrows none
+toCode catch none
+toCode suppresses none

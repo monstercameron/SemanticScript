@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+words is project
+words purpose "Split a sentence into words with byte tests, build a reversed sentence in a buffer, and parse numbers; a stage0 sample both runs agree on"
+words target console
+words version "0.1.0"
+words language refined 1
+words standardLibrary 1
+words allows write console.stdout none
+words requires none
+words includesModule words
+words entry words.main

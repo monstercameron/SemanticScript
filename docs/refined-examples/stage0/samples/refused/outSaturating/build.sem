@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+outSaturating is project
+outSaturating purpose "An audit program just outside the stage0 subset, which refined accepts; stage0 refuses it"
+outSaturating target console
+outSaturating version "0.1.0"
+outSaturating language refined 1
+outSaturating standardLibrary 1
+outSaturating allows write console.stdout none
+outSaturating requires none
+outSaturating includesModule outSaturating
+outSaturating entry outSaturating.main

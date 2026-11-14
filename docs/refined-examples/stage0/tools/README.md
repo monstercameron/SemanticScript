@@ -16,7 +16,8 @@ compiler.
 - `tests_gen.py` and `macros.py` write the subset and emitc tests.
 - `samples/*.dsl` are the sample programs; a folder under `samples/` is a
   sample of several modules (`SAMPLE_PROJECTS` in `build.py` gives their
-  order).
+  order), and `samples/refused/*.dsl` are programs `refined check` accepts
+  that stage0 refuses.
 - `usage.py` lists what stage0's own modules use (entity kinds, predicates,
   steps, and call targets) and checks each against what stage0 compiles.
 

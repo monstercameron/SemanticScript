@@ -18,7 +18,7 @@ sys.path.insert(0, SUITE)
 
 import caselib  # noqa: E402
 from conftest import EXE, STAGE0, c_compiler  # noqa: E402
-from test_stage0 import LINK, OUTSIDE, SAMPLES  # noqa: E402
+from test_stage0 import LINK, OUTSIDE, REFUSED, SAMPLES  # noqa: E402
 
 CC = c_compiler()
 
@@ -61,6 +61,11 @@ def test_stage0_compiles_itself_to_a_fixed_point(stage0_native, tmp_path):
         assert (ran.stdout, ran.returncode) == SAMPLES[sample], ran.stderr
     refused = _compile(stage0b, second, "samples/outside", "build/outside")
     assert (refused.returncode, refused.stdout, refused.stderr) == (1, "", OUTSIDE)
+    for program, where in sorted(REFUSED.items()):
+        refused = _compile(stage0b, second, f"samples/refused/{program}", f"build/{program}")
+        assert (refused.returncode, refused.stdout, refused.stderr) == \
+            (1, "", f"samples/refused/{program}/{where}\n"), program
+        assert not os.path.exists(os.path.join(second, "build", f"{program}.c"))
 
     # stage0b compiles stage0's source to the same C stage0 wrote for stage0b: the fixed point
     again = _compile(stage0b, second, ".", "build/stage0c")

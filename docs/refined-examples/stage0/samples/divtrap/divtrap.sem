@@ -1,0 +1,81 @@
+# A stage0 sample from the audit: a division whose divisor reaches zero, which
+# traps (exit code 70) in the built executable as under `refined run`.
+divtrap is module
+divtrap purpose "Divide by a number that reaches zero, so the program traps"
+divtrap path divtrap
+divtrap imports standard.console
+divtrap imports standard.math
+divtrap exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Print 100 divided by 3, 2, 1, then trap dividing by 0"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label each loopKind while
+main label each within none
+main label each maxIterations limit
+main label writeQDone loopKind none
+main label writeQDone within each
+main let d Int64 3 mutable
+main let limit Int64 10 immutable
+main let okCode ExitCode 0 immutable
+main let hundred Int64 100 immutable
+main let one Int64 1 immutable
+main at begin goto each
+main at each do divide
+main at each do writeQ
+main at each branch ifError writeQ goto writeQDone else goto writeQDone
+main at writeQDone do lower
+main at writeQDone set d nextD
+main at writeQDone goto each
+
+divide is call
+divide in main
+divide invokes math.divideInt64
+divide argument left Int64 hundred copy
+divide argument right Int64 d copy
+divide result q Int64
+divide ownedBy none
+divide cleanedBy none
+divide borrows none
+divide catch none
+divide suppresses none
+
+writeQ is call
+writeQ rationale "The failure has nowhere to be reported, so it is discarded"
+writeQ in main
+writeQ invokes console.writeIntegerLine
+writeQ argument value Int64 q copy
+writeQ result none
+writeQ ownedBy none
+writeQ cleanedBy none
+writeQ borrows none
+writeQ catch writeQError console.WriteError
+writeQ suppresses console.WriteError.failed
+
+lower is call
+lower in main
+lower invokes math.subtractInt64
+lower argument left Int64 d copy
+lower argument right Int64 one copy
+lower result nextD Int64
+lower ownedBy none
+lower cleanedBy none
+lower borrows none
+lower catch none
+lower suppresses none

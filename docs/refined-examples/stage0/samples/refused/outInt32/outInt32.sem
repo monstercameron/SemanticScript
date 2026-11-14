@@ -1,0 +1,94 @@
+# A program `refined check` accepts that is just outside the stage0 subset,
+# from the audit: stage0 refuses it at the word concerned and writes no C.
+outInt32 is module
+outInt32 purpose "An audit program just outside the stage0 subset, which refined accepts"
+outInt32 path outInt32
+outInt32 imports standard.console
+outInt32 imports standard.convert
+outInt32 exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Do one thing stage0 should refuse, then print a line"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label wDone loopKind none
+main label wDone within none
+main label writeDoneDone loopKind none
+main label writeDoneDone within none
+main let okCode ExitCode 0 immutable
+main let seven Int64 7 immutable
+main let doneText String "done" immutable
+main at begin do narrow
+main at begin do wide
+main at begin do w
+main at begin branch ifError w goto wDone else goto wDone
+main at wDone do writeDone
+main at wDone branch ifError writeDone goto writeDoneDone else goto writeDoneDone
+main at writeDoneDone return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+narrow is call
+narrow in main
+narrow invokes convert.int64ToInt32
+narrow argument value Int64 seven copy
+narrow result small Int32
+narrow ownedBy none
+narrow cleanedBy none
+narrow borrows none
+narrow catch none
+narrow suppresses none
+
+wide is call
+wide in main
+wide invokes convert.int32ToInt64
+wide argument value Int32 small copy
+wide result back Int64
+wide ownedBy none
+wide cleanedBy none
+wide borrows none
+wide catch none
+wide suppresses none
+
+w is call
+w rationale "The failure has nowhere to be reported, so it is discarded"
+w in main
+w invokes console.writeIntegerLine
+w argument value Int64 back copy
+w result none
+w ownedBy none
+w cleanedBy none
+w borrows none
+w catch wError console.WriteError
+w suppresses console.WriteError.failed
+
+writeDone is call
+writeDone rationale "The failure has nowhere to be reported, so it is discarded"
+writeDone in main
+writeDone invokes console.writeLine
+writeDone argument text String doneText lend
+writeDone result none
+writeDone ownedBy none
+writeDone cleanedBy none
+writeDone borrows none
+writeDone catch writeDoneError console.WriteError
+writeDone suppresses console.WriteError.failed

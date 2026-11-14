@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+divtrap is project
+divtrap purpose "Divide by a number that reaches zero, so the program traps; a stage0 sample both runs agree on"
+divtrap target console
+divtrap version "0.1.0"
+divtrap language refined 1
+divtrap standardLibrary 1
+divtrap allows write console.stdout none
+divtrap requires none
+divtrap includesModule divtrap
+divtrap entry divtrap.main
