@@ -1,0 +1,84 @@
+# record_readonly_view -- (repurposed from view_borrow_readonly (no borrow runtime)) build a record and read a field back (Record.new / Record.field,
+# lowered to LLVM insert/extractvalue, README s10). The printed value is read
+# from the constructed record, not a constant.
+#
+# Correctness observation: build Viewed{datum=42, length=7}; read datum.
+# Expected output: 42
+
+RecordReadonlyView is project
+RecordReadonlyView module examplesRecordReadonlyView
+RecordReadonlyView target console
+RecordReadonlyView entry main
+
+examplesRecordReadonlyView is module
+examplesRecordReadonlyView path examples.recordReadonlyView
+examplesRecordReadonlyView exports main
+examplesRecordReadonlyView purpose "Build a Viewed record and read its datum field"
+examplesRecordReadonlyView invariant "Prints the datum field of the built record"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Viewed is record
+Viewed field datum Int64
+Viewed field length Int64
+Viewed purpose "A two-field record"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Viewed and print its datum field"
+main invariant "Writes exactly one integer line: 42"
+main let firstInput immutable Int64 42
+main let secondInput immutable Int64 7
+main let harnessName immutable String "record_readonly_view"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_readonly_view: real result (not the no-op 0)"
+main do buildRec
+main do readField
+main do writeField
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildRec is call
+buildRec in main
+buildRec invokes Viewed.new
+buildRec arg datum Int64 firstInput
+buildRec arg length Int64 secondInput
+buildRec out built Viewed
+
+readField is call
+readField in main
+readField invokes Viewed.datum
+readField arg record Viewed built
+readField out fieldOut Int64
+
+writeField is call
+writeField in main
+writeField invokes test.assertEqualInt64
+writeField arg name String harnessName
+writeField arg expected Int64 harnessExpected
+writeField arg actual Int64 fieldOut
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 fieldOut
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

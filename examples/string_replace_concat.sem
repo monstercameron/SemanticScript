@@ -1,0 +1,68 @@
+# string_replace_concat -- (repurposed: regex_match_replace (no regex runtime)). Real string.concat (README s30.2.2).
+# Expected output: replaced
+
+StringReplaceConcat is project
+StringReplaceConcat module examplesStringReplaceConcat
+StringReplaceConcat target console
+StringReplaceConcat entry main
+
+examplesStringReplaceConcat is module
+examplesStringReplaceConcat path examples.stringReplaceConcat
+examplesStringReplaceConcat exports main
+examplesStringReplaceConcat purpose "Compute stringReplaceConcat at runtime"
+examplesStringReplaceConcat invariant "Result is computed at runtime"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Concatenate two strings and print"
+main invariant "Writes exactly one line: replaced"
+main let partOne immutable String "re"
+main let partTwo immutable String "placed"
+main let harnessName immutable String "string_replace_concat"
+main let harnessExpected immutable String "replaced"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_replace_concat: real result (not the empty string)"
+main do calc
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calc is call
+calc in main
+calc invokes string.concat
+calc arg left String partOne
+calc arg right String partTwo
+calc out outValue String
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualText
+writeResult arg name String harnessName
+writeResult arg expected String harnessExpected
+writeResult arg actual String outValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String outValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="SemanticScript extension icon">
+  <defs>
+    <linearGradient id="bg" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12313A"/>
+      <stop offset="0.56" stop-color="#172033"/>
+      <stop offset="1" stop-color="#21172F"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="35" y1="33" x2="94" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5EEAD4"/>
+      <stop offset="0.52" stop-color="#79C0FF"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#bg)"/>
+  <path d="M38 42C45 33 59 29 74 33C84 36 91 42 94 50" fill="none" stroke="#5EEAD4" stroke-width="9" stroke-linecap="round"/>
+  <path d="M91 83C84 94 67 99 51 93C40 89 34 82 32 74" fill="none" stroke="#F59E0B" stroke-width="9" stroke-linecap="round"/>
+  <path d="M42 64H85" fill="none" stroke="#D2A8FF" stroke-width="7" stroke-linecap="round"/>
+  <path d="M51 49L77 79" fill="none" stroke="url(#mark)" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="38" cy="42" r="8" fill="#5EEAD4"/>
+  <circle cx="94" cy="50" r="8" fill="#79C0FF"/>
+  <circle cx="32" cy="74" r="8" fill="#D2A8FF"/>
+  <circle cx="91" cy="83" r="8" fill="#F59E0B"/>
+  <circle cx="64" cy="64" r="10" fill="#111827" stroke="#C9D1D9" stroke-width="4"/>
+</svg>

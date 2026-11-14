@@ -1,0 +1,74 @@
+# operation_requirement_unsatisfied -- guard an operation behind a requirement check (here satisfied), converging the arms to a single asserted `outcome`
+# via the standard.test harness (README s13/s35). Prints PASS/FAIL + a summary;
+# exit 0 iff the assertion holds.
+# Expected output:
+#   PASS  operation_requirement_unsatisfied  (expected 15, actual 15)
+#   ---- 1 passed, 0 failed ----
+
+OperationRequirementUnsatisfied is project
+OperationRequirementUnsatisfied module examplesOperationRequirementUnsatisfied
+OperationRequirementUnsatisfied target console
+OperationRequirementUnsatisfied entry main
+
+examplesOperationRequirementUnsatisfied is module
+examplesOperationRequirementUnsatisfied path examples.operationRequirementUnsatisfied
+examplesOperationRequirementUnsatisfied exports main
+examplesOperationRequirementUnsatisfied purpose "guard an operation behind a requirement check (here satisfied)"
+examplesOperationRequirementUnsatisfied invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "guard an operation behind a requirement check (here satisfied) and assert the outcome"
+main invariant "Asserts the converged outcome via the harness"
+main let harnessName immutable String "operation_requirement_unsatisfied"
+main let harnessExpected immutable Int64 15
+main let outcome mutable Int64 -1
+main let inputValue immutable Int64 15
+main let threshold immutable Int64 10
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "operation_requirement_unsatisfied: real result (not the no-op 0)"
+main do reqCheck
+main branch ifFalse meets goto afterCheck
+main set outcome inputValue
+main at afterCheck do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+reqCheck is call
+reqCheck in main
+reqCheck invokes math.greaterThanOrEqualInt64
+reqCheck arg left Int64 inputValue
+reqCheck arg right Int64 threshold
+reqCheck out meets Bool
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualInt64
+checkResult arg name String harnessName
+checkResult arg expected Int64 harnessExpected
+checkResult arg actual Int64 outcome
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outcome
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

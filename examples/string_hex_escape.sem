@@ -1,0 +1,63 @@
+# string_hex_escape — (repurposed from string_escape_unescape). Lexer \xNN hex
+# escapes (README §2) decode to bytes: "\x48\x49" is the bytes for "HI". Printing
+# proves the escapes were decoded.
+#
+# Correctness observation: "\x48\x49" decodes to HI.
+# Expected output: HI
+
+StringHexEscape is project
+StringHexEscape module examplesStringHexEscape
+StringHexEscape target console
+StringHexEscape entry main
+
+examplesStringHexEscape is module
+examplesStringHexEscape path examples.stringHexEscape
+examplesStringHexEscape exports main
+examplesStringHexEscape purpose "Print a string built from hex escapes"
+examplesStringHexEscape invariant "Hex escapes are decoded by the lexer"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Write a hex-escaped string and let the escapes decode"
+main invariant "Writes exactly one line: HI"
+main let hexText immutable String "\x48\x49"
+main let harnessName immutable String "string_hex_escape"
+main let harnessExpected immutable String "HI"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_hex_escape: real result (not the empty string)"
+main do writeHex
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+writeHex is call
+writeHex in main
+writeHex invokes test.assertEqualText
+writeHex arg name String harnessName
+writeHex arg expected String harnessExpected
+writeHex arg actual String hexText
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String hexText
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

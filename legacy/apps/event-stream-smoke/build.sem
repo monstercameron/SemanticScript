@@ -1,0 +1,146 @@
+# EventStreamSmoke build plan.
+
+module app.eventStreamSmoke.build
+purpose module app.eventStreamSmoke.build "Describe the event stream smoke app build."
+moduleOwns app.eventStreamSmoke.build "Build metadata for apps/event-stream-smoke/main.sem."
+moduleDoesNotOwn app.eventStreamSmoke.build "Runtime event behavior; main.sem owns the app logic."
+invariant module app.eventStreamSmoke.build "The app uses asyncRuntime libuv because every standard.event call is source-level start/await."
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+
+record BuildModules
+field BuildModules main BuildModule
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion Int64
+field BuildTarget profile String
+field BuildTarget optLevel Int64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget asyncRuntime String
+field BuildTarget formatterLineWidth Int64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+
+record BuildMetadata
+field BuildMetadata buildSource String
+field BuildMetadata runtimeContract String
+field BuildMetadata asyncSurface String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstants
+
+record BuildPlatform
+field BuildPlatform os String
+field BuildPlatform arch String
+field BuildPlatform cpuBaseline String
+field BuildPlatform cpuTune String
+field BuildPlatform nativeOutput String
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan mainOperation String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable eventStreamSmokeBuildPlan BuildPlan
+jsonBody eventStreamSmokeBuildPlan
+  {
+      "project": {
+          "name": "EventStreamSmoke",
+          "id": "eventStreamSmoke",
+          "modulePath": "github.com/monstercameron/SemanticScript/apps/event-stream-smoke",
+          "languageVersion": "1.0",
+          "projectVersion": "0.1.0",
+          "license": "MIT",
+          "sourceRoot": ".",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.event_stream_smoke",
+              "sourcePath": ".",
+              "mainFile": "main.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "nativeExe",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "native",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "asyncRuntime": "libuv",
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "docsOutput": "docs",
+          "nativeOutput": "event-stream-smoke",
+          "platforms": [
+              { "os": "macos",   "arch": "arm64",  "cpuBaseline": "native",    "cpuTune": "generic", "nativeOutput": "event-stream-smoke" },
+              { "os": "macos",   "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "event-stream-smoke-x86_64" },
+              { "os": "linux",   "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "event-stream-smoke-linux" },
+              { "os": "linux",   "arch": "riscv64","cpuBaseline": "generic",   "cpuTune": "generic", "nativeOutput": "event-stream-smoke-riscv64" },
+              { "os": "windows", "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "event-stream-smoke.exe" }
+          ]
+      },
+      "versionInfo": {
+          "version": "0.1.0.0",
+          "publisher": "Earl Cameron",
+          "description": "SemanticScript standard.event async fanout smoke app.",
+          "productName": "Event Stream Smoke",
+          "internalName": "event-stream-smoke",
+          "originalFilename": "event-stream-smoke.exe",
+          "comments": "Built from apps/event-stream-smoke/main.sem. Exercises standard.event start/await one-to-many fanout.",
+          "metadata": {
+              "buildSource": "apps/event-stream-smoke/build.sem",
+              "runtimeContract": "native 1",
+              "asyncSurface": "standard.event event calls plus user-operation start/await"
+          }
+      },
+      "constants": {},
+      "mainOperation": "main"
+  }
