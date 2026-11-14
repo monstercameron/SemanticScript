@@ -45,7 +45,7 @@ jobs:
       # Checking out `ref: <tag>` here also enforces that the tag EXISTS: a bogus
       # workflow_dispatch tag fails this step before anything is built.
       - name: Check out the requested tag
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
@@ -99,7 +99,7 @@ jobs:
       # R-120: build from the resolved tag's commit on every OS, not the dispatch
       # branch, and fail if HEAD is not the SHA preflight validated.
       - name: Check out the release tag
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ needs.preflight.outputs.tag }}
           fetch-depth: 0
@@ -185,7 +185,7 @@ jobs:
       # R-120: build the VSIX from the resolved tag's commit, same as the
       # binaries, and fail if HEAD is not the SHA preflight validated.
       - name: Check out the release tag
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ needs.preflight.outputs.tag }}
           fetch-depth: 0
@@ -246,7 +246,7 @@ jobs:
       # / attribution / checksums come from the same commit the binaries were
       # built from.
       - name: Check out the release tag
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ needs.preflight.outputs.tag }}
           fetch-depth: 0
