@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+squares is project
+squares purpose "Print the squares of 1 to 5; a stage0 sample that refined run and the built executable both run"
+squares target console
+squares version "0.1.0"
+squares language refined 1
+squares standardLibrary 1
+squares allows write console.stdout none
+squares requires none
+squares includesModule squares
+squares entry squares.main

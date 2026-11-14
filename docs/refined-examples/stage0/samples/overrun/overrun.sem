@@ -1,0 +1,98 @@
+# A stage0 sample whose loop passes its bound. The loop counts to `last` (5)
+# but states `maxIterations 3`: it prints 1 to 4, and the fourth return to its
+# header traps (exit code 70). `refined run` and the executable stage0 builds
+# from it stop at the same place.
+
+overrun is module
+overrun purpose "Count past a loop's stated bound, so the bound's trap can be compared"
+overrun path overrun
+overrun imports standard.console
+overrun imports standard.math
+overrun imports standard.compare
+overrun exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+last is constant
+last purpose "The number the loop would count to if its bound allowed it"
+last type Int64
+last value 5
+
+main is operation
+main purpose "Print the whole numbers up to last from a loop bounded to three returns"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label count note "The bound is too small on purpose: the loop would return to its header five times"
+main label count loopKind while
+main label count within none
+main label count maxIterations 3
+main label printNumber loopKind none
+main label printNumber within count
+main label advance loopKind none
+main label advance within count
+main label finished loopKind none
+main label finished within none
+main label failed loopKind none
+main label failed within none
+main let number Int64 1 mutable
+main let one Int64 1 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin goto count
+main at count do pastLastCheck
+main at count branch if pastLast goto finished else goto printNumber
+main at printNumber do printIt
+main at printNumber branch ifError printIt goto failed else goto advance
+main at advance do addOne
+main at advance set number nextNumber
+main at advance goto count
+main at finished return ok okCode
+main at failed return ok failCode
+
+pastLastCheck is call
+pastLastCheck in main
+pastLastCheck invokes compare.greaterThanInt64
+pastLastCheck argument left Int64 number copy
+pastLastCheck argument right Int64 last copy
+pastLastCheck result pastLast Bool
+pastLastCheck ownedBy none
+pastLastCheck cleanedBy none
+pastLastCheck borrows none
+pastLastCheck catch none
+pastLastCheck suppresses none
+
+printIt is call
+printIt in main
+printIt invokes console.writeIntegerLine
+printIt argument value Int64 number copy
+printIt result none
+printIt ownedBy none
+printIt cleanedBy none
+printIt borrows none
+printIt catch printError console.WriteError
+printIt suppresses none
+
+addOne is call
+addOne in main
+addOne invokes math.addInt64
+addOne argument left Int64 number copy
+addOne argument right Int64 one copy
+addOne result nextNumber Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none

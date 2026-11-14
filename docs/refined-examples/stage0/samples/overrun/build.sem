@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+overrun is project
+overrun purpose "Count past a loop bound; a stage0 sample whose trap both runs agree on"
+overrun target console
+overrun version "0.1.0"
+overrun language refined 1
+overrun standardLibrary 1
+overrun allows write console.stdout none
+overrun requires none
+overrun includesModule overrun
+overrun entry overrun.main

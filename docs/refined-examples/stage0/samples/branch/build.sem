@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+branch is project
+branch purpose "Compare two numbers and print their difference; a stage0 sample that both runs agree on"
+branch target console
+branch version "0.1.0"
+branch language refined 1
+branch standardLibrary 1
+branch allows write console.stdout none
+branch requires none
+branch includesModule branch
+branch entry branch.main

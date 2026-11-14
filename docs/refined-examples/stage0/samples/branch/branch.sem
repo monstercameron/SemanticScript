@@ -1,0 +1,135 @@
+# A stage0 sample: a branch. It compares two numbers, says which way the
+# comparison went, prints their difference after a label written without a
+# line end, and exits with code 3 (so a test can see the exit code survive
+# compilation):
+#
+#   left is smaller
+#   gap: -19
+
+branch is module
+branch purpose "Compare two numbers, say which is smaller, and print their difference"
+branch path branch
+branch imports standard.console
+branch imports standard.math
+branch imports standard.compare
+branch exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Say whether the left number is smaller than the right, print their difference, and exit with code 3"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label saySmaller loopKind none
+main label saySmaller within none
+main label sayNotSmaller loopKind none
+main label sayNotSmaller within none
+main label gapLead loopKind none
+main label gapLead within none
+main label gapValue loopKind none
+main label gapValue within none
+main label finished loopKind none
+main label finished within none
+main label failed loopKind none
+main label failed within none
+main let left Int64 -12 immutable
+main let right Int64 7 immutable
+main let smallerText String "left is smaller" immutable
+main let notSmallerText String "left is not smaller" immutable
+main let gapText String "gap: " immutable
+main let doneCode ExitCode 3 immutable
+main let failCode ExitCode 1 immutable
+main at begin do lessCheck
+main at begin branch if isLess goto saySmaller else goto sayNotSmaller
+main at saySmaller do printSmaller
+main at saySmaller branch ifError printSmaller goto failed else goto gapLead
+main at sayNotSmaller do printNotSmaller
+main at sayNotSmaller branch ifError printNotSmaller goto failed else goto gapLead
+main at gapLead do subtractThem
+main at gapLead do printGapText
+main at gapLead branch ifError printGapText goto failed else goto gapValue
+main at gapValue do printGap
+main at gapValue branch ifError printGap goto failed else goto finished
+main at finished return ok doneCode
+main at failed return ok failCode
+
+lessCheck is call
+lessCheck in main
+lessCheck invokes compare.lessThanInt64
+lessCheck argument left Int64 left copy
+lessCheck argument right Int64 right copy
+lessCheck result isLess Bool
+lessCheck ownedBy none
+lessCheck cleanedBy none
+lessCheck borrows none
+lessCheck catch none
+lessCheck suppresses none
+
+printSmaller is call
+printSmaller in main
+printSmaller invokes console.writeLine
+printSmaller argument text String smallerText lend
+printSmaller result none
+printSmaller ownedBy none
+printSmaller cleanedBy none
+printSmaller borrows none
+printSmaller catch smallerError console.WriteError
+printSmaller suppresses none
+
+printNotSmaller is call
+printNotSmaller in main
+printNotSmaller invokes console.writeLine
+printNotSmaller argument text String notSmallerText lend
+printNotSmaller result none
+printNotSmaller ownedBy none
+printNotSmaller cleanedBy none
+printNotSmaller borrows none
+printNotSmaller catch notSmallerError console.WriteError
+printNotSmaller suppresses none
+
+subtractThem is call
+subtractThem in main
+subtractThem invokes math.subtractInt64
+subtractThem argument left Int64 left copy
+subtractThem argument right Int64 right copy
+subtractThem result gap Int64
+subtractThem ownedBy none
+subtractThem cleanedBy none
+subtractThem borrows none
+subtractThem catch none
+subtractThem suppresses none
+
+printGapText is call
+printGapText in main
+printGapText invokes console.write
+printGapText argument text String gapText lend
+printGapText result none
+printGapText ownedBy none
+printGapText cleanedBy none
+printGapText borrows none
+printGapText catch gapTextError console.WriteError
+printGapText suppresses none
+
+printGap is call
+printGap in main
+printGap invokes console.writeIntegerLine
+printGap argument value Int64 gap copy
+printGap result none
+printGap ownedBy none
+printGap cleanedBy none
+printGap borrows none
+printGap catch gapError console.WriteError
+printGap suppresses none

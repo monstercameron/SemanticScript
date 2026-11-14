@@ -1,0 +1,1176 @@
+# Tests for subset.sem: every invariant of `checkSubset` and `diagnose` is
+# verified below, on the squares sample (samples/squares/squares.sem) and on
+# copies of it changed to step outside the subset in one place each.
+
+collectTest is test
+collectTest purpose "The squares sample is accepted, and its values, calls, labels, and steps are collected"
+collectTest verifies checkSubset collectsProgram
+collectTest typeParameter none
+collectTest input none
+collectTest output none
+collectTest outputOwnedBy none
+collectTest raises none
+collectTest effect none
+collectTest uses none
+collectTest memoryHeap true
+collectTest async false
+collectTest maxRecursion none
+collectTest label begin loopKind none
+collectTest label begin within none
+collectTest label lexed loopKind none
+collectTest label lexed within none
+collectTest label grouped loopKind none
+collectTest label grouped within none
+collectTest label modelled loopKind none
+collectTest label modelled within none
+collectTest label counts loopKind none
+collectTest label counts within none
+collectTest label limitFound loopKind none
+collectTest label limitFound within none
+collectTest label loopFound loopKind none
+collectTest label loopFound within none
+collectTest label printFound loopKind none
+collectTest label printFound within none
+collectTest label squareFound loopKind none
+collectTest label squareFound within none
+collectTest label refused loopKind none
+collectTest label refused within none
+collectTest let source String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+collectTest let valueCount Int64 8 immutable
+collectTest let callCount Int64 4 immutable
+collectTest let labelCount Int64 6 immutable
+collectTest let stepCount Int64 11 immutable
+collectTest let constantOrigin Int64 1 immutable
+collectTest let int64Type Int64 2 immutable
+collectTest let two Int64 2 immutable
+collectTest let limitName String "limit" immutable
+collectTest let nextSquareName String "nextSquare" immutable
+collectTest let printItName String "printIt" immutable
+collectTest let squareName String "square" immutable
+collectTest let refusedText String "the front end refused the source or a step failed" immutable
+collectTest at begin do lex
+collectTest at begin branch ifError lex goto refused else goto lexed
+collectTest at lexed do newWords
+collectTest at lexed do newRows
+collectTest at lexed do group
+collectTest at lexed branch ifError group goto refused else goto grouped
+collectTest at grouped do newEntities
+collectTest at grouped do newNames
+collectTest at grouped do model
+collectTest at grouped branch ifError model goto refused else goto modelled
+collectTest at modelled do newValues
+collectTest at modelled do newCalls
+collectTest at modelled do newLabels
+collectTest at modelled do newSteps
+collectTest at modelled do check
+collectTest at modelled branch ifError check goto refused else goto counts
+collectTest at counts do countValues
+collectTest at counts do expectValues
+collectTest at counts do countCalls
+collectTest at counts do expectCalls
+collectTest at counts do countLabels
+collectTest at counts do expectLabels
+collectTest at counts do countSteps
+collectTest at counts do expectSteps
+collectTest at counts do findLimit
+collectTest at counts branch ifError findLimit goto refused else goto limitFound
+collectTest at limitFound do limitOrigin
+collectTest at limitFound do expectConstant
+collectTest at limitFound do limitCode
+collectTest at limitFound do expectInt64
+collectTest at limitFound do findLoop
+collectTest at limitFound branch ifError findLoop goto refused else goto loopFound
+collectTest at loopFound do loopBounded
+collectTest at loopFound do expectBounded
+collectTest at loopFound do findPrint
+collectTest at loopFound branch ifError findPrint goto refused else goto printFound
+collectTest at printFound do printRaises
+collectTest at printFound do expectRaises
+collectTest at printFound do findSquare
+collectTest at printFound branch ifError findSquare goto refused else goto squareFound
+collectTest at squareFound do squareArity
+collectTest at squareFound do expectTwo
+collectTest at squareFound return ok none
+collectTest at refused do failRefused
+collectTest at refused return ok none
+
+store is region
+store in collectTest
+store strategy arena
+store maxBytes 1048576
+store released atReturn
+
+lex is call
+lex in collectTest
+lex invokes lexer.tokenize
+lex argument source String source lend
+lex argument resultRegion Region store lend
+lex result tokens lexer.Tokens
+lex ownedBy store
+lex cleanedBy none
+lex borrows none
+lex catch lexError lexer.LexError
+lex suppresses none
+
+newWords is call
+newWords in collectTest
+newWords invokes syntax.Words.new
+newWords argument region Region store lend
+newWords result words syntax.Words
+newWords ownedBy store
+newWords cleanedBy none
+newWords borrows none
+newWords catch none
+newWords suppresses none
+
+newRows is call
+newRows in collectTest
+newRows invokes syntax.Rows.new
+newRows argument region Region store lend
+newRows result rows syntax.Rows
+newRows ownedBy store
+newRows cleanedBy none
+newRows borrows none
+newRows catch none
+newRows suppresses none
+
+group is call
+group in collectTest
+group invokes syntax.groupRows
+group argument source String source lend
+group argument tokens lexer.Tokens tokens lend
+group argument words syntax.Words words lendMutable
+group argument rows syntax.Rows rows lendMutable
+group result none
+group ownedBy none
+group cleanedBy none
+group borrows none
+group catch groupError syntax.Rejection
+group suppresses none
+
+newEntities is call
+newEntities in collectTest
+newEntities invokes model.Entities.new
+newEntities argument region Region store lend
+newEntities result entities model.Entities
+newEntities ownedBy store
+newEntities cleanedBy none
+newEntities borrows none
+newEntities catch none
+newEntities suppresses none
+
+newNames is call
+newNames in collectTest
+newNames invokes model.EntityNames.new
+newNames argument region Region store lend
+newNames result names model.EntityNames
+newNames ownedBy store
+newNames cleanedBy none
+newNames borrows none
+newNames catch none
+newNames suppresses none
+
+model is call
+model in collectTest
+model invokes model.buildModel
+model argument source String source lend
+model argument words syntax.Words words lend
+model argument rows syntax.Rows rows lend
+model argument entities model.Entities entities lendMutable
+model argument names model.EntityNames names lendMutable
+model result none
+model ownedBy none
+model cleanedBy none
+model borrows none
+model catch modelError syntax.Rejection
+model suppresses none
+
+newValues is call
+newValues in collectTest
+newValues invokes Values.new
+newValues argument region Region store lend
+newValues result values Values
+newValues ownedBy store
+newValues cleanedBy none
+newValues borrows none
+newValues catch none
+newValues suppresses none
+
+newCalls is call
+newCalls in collectTest
+newCalls invokes Calls.new
+newCalls argument region Region store lend
+newCalls result calls Calls
+newCalls ownedBy store
+newCalls cleanedBy none
+newCalls borrows none
+newCalls catch none
+newCalls suppresses none
+
+newLabels is call
+newLabels in collectTest
+newLabels invokes Labels.new
+newLabels argument region Region store lend
+newLabels result labels Labels
+newLabels ownedBy store
+newLabels cleanedBy none
+newLabels borrows none
+newLabels catch none
+newLabels suppresses none
+
+newSteps is call
+newSteps in collectTest
+newSteps invokes Steps.new
+newSteps argument region Region store lend
+newSteps result steps Steps
+newSteps ownedBy store
+newSteps cleanedBy none
+newSteps borrows none
+newSteps catch none
+newSteps suppresses none
+
+check is call
+check in collectTest
+check invokes checkSubset
+check argument source String source lend
+check argument words syntax.Words words lend
+check argument rows syntax.Rows rows lend
+check argument entities model.Entities entities lend
+check argument names model.EntityNames names lend
+check argument values Values values lendMutable
+check argument calls Calls calls lendMutable
+check argument labels Labels labels lendMutable
+check argument steps Steps steps lendMutable
+check result none
+check ownedBy none
+check cleanedBy none
+check borrows none
+check catch checkError syntax.Rejection
+check suppresses none
+
+countValues is call
+countValues in collectTest
+countValues invokes Values.length
+countValues argument map Values values lend
+countValues result actualValues Int64
+countValues ownedBy none
+countValues cleanedBy none
+countValues borrows none
+countValues catch none
+countValues suppresses none
+
+expectValues is call
+expectValues in collectTest
+expectValues invokes test.assertEqualInt64
+expectValues argument expected Int64 valueCount copy
+expectValues argument actual Int64 actualValues copy
+expectValues result none
+expectValues ownedBy none
+expectValues cleanedBy none
+expectValues borrows none
+expectValues catch none
+expectValues suppresses none
+
+countCalls is call
+countCalls in collectTest
+countCalls invokes Calls.length
+countCalls argument map Calls calls lend
+countCalls result actualCalls Int64
+countCalls ownedBy none
+countCalls cleanedBy none
+countCalls borrows none
+countCalls catch none
+countCalls suppresses none
+
+expectCalls is call
+expectCalls in collectTest
+expectCalls invokes test.assertEqualInt64
+expectCalls argument expected Int64 callCount copy
+expectCalls argument actual Int64 actualCalls copy
+expectCalls result none
+expectCalls ownedBy none
+expectCalls cleanedBy none
+expectCalls borrows none
+expectCalls catch none
+expectCalls suppresses none
+
+countLabels is call
+countLabels in collectTest
+countLabels invokes Labels.length
+countLabels argument map Labels labels lend
+countLabels result actualLabels Int64
+countLabels ownedBy none
+countLabels cleanedBy none
+countLabels borrows none
+countLabels catch none
+countLabels suppresses none
+
+expectLabels is call
+expectLabels in collectTest
+expectLabels invokes test.assertEqualInt64
+expectLabels argument expected Int64 labelCount copy
+expectLabels argument actual Int64 actualLabels copy
+expectLabels result none
+expectLabels ownedBy none
+expectLabels cleanedBy none
+expectLabels borrows none
+expectLabels catch none
+expectLabels suppresses none
+
+countSteps is call
+countSteps in collectTest
+countSteps invokes Steps.length
+countSteps argument list Steps steps lend
+countSteps result actualSteps Int64
+countSteps ownedBy none
+countSteps cleanedBy none
+countSteps borrows none
+countSteps catch none
+countSteps suppresses none
+
+expectSteps is call
+expectSteps in collectTest
+expectSteps invokes test.assertEqualInt64
+expectSteps argument expected Int64 stepCount copy
+expectSteps argument actual Int64 actualSteps copy
+expectSteps result none
+expectSteps ownedBy none
+expectSteps cleanedBy none
+expectSteps borrows none
+expectSteps catch none
+expectSteps suppresses none
+
+findLimit is call
+findLimit in collectTest
+findLimit invokes Values.get
+findLimit argument map Values values lend
+findLimit argument key String limitName lend
+findLimit result limitInfo ValueInfo
+findLimit ownedBy none
+findLimit cleanedBy none
+findLimit borrows none
+findLimit catch findLimitError map.KeyMissing
+findLimit suppresses none
+
+limitOrigin is call
+limitOrigin in collectTest
+limitOrigin invokes ValueInfo.origin
+limitOrigin argument record ValueInfo limitInfo copy
+limitOrigin result limitOriginValue Int64
+limitOrigin ownedBy none
+limitOrigin cleanedBy none
+limitOrigin borrows none
+limitOrigin catch none
+limitOrigin suppresses none
+
+expectConstant is call
+expectConstant in collectTest
+expectConstant invokes test.assertEqualInt64
+expectConstant argument expected Int64 constantOrigin copy
+expectConstant argument actual Int64 limitOriginValue copy
+expectConstant result none
+expectConstant ownedBy none
+expectConstant cleanedBy none
+expectConstant borrows none
+expectConstant catch none
+expectConstant suppresses none
+
+limitCode is call
+limitCode in collectTest
+limitCode invokes ValueInfo.code
+limitCode argument record ValueInfo limitInfo copy
+limitCode result limitType Int64
+limitCode ownedBy none
+limitCode cleanedBy none
+limitCode borrows none
+limitCode catch none
+limitCode suppresses none
+
+expectInt64 is call
+expectInt64 in collectTest
+expectInt64 invokes test.assertEqualInt64
+expectInt64 argument expected Int64 int64Type copy
+expectInt64 argument actual Int64 limitType copy
+expectInt64 result none
+expectInt64 ownedBy none
+expectInt64 cleanedBy none
+expectInt64 borrows none
+expectInt64 catch none
+expectInt64 suppresses none
+
+findLoop is call
+findLoop in collectTest
+findLoop invokes Labels.get
+findLoop argument map Labels labels lend
+findLoop argument key String nextSquareName lend
+findLoop result loopInfo LabelInfo
+findLoop ownedBy none
+findLoop cleanedBy none
+findLoop borrows none
+findLoop catch findLoopError map.KeyMissing
+findLoop suppresses none
+
+loopBounded is call
+loopBounded in collectTest
+loopBounded invokes LabelInfo.bounded
+loopBounded argument record LabelInfo loopInfo copy
+loopBounded result bounded Bool
+loopBounded ownedBy none
+loopBounded cleanedBy none
+loopBounded borrows none
+loopBounded catch none
+loopBounded suppresses none
+
+expectBounded is call
+expectBounded in collectTest
+expectBounded invokes test.assertTrue
+expectBounded argument value Bool bounded copy
+expectBounded result none
+expectBounded ownedBy none
+expectBounded cleanedBy none
+expectBounded borrows none
+expectBounded catch none
+expectBounded suppresses none
+
+findPrint is call
+findPrint in collectTest
+findPrint invokes Calls.get
+findPrint argument map Calls calls lend
+findPrint argument key String printItName lend
+findPrint result printInfo CallInfo
+findPrint ownedBy none
+findPrint cleanedBy none
+findPrint borrows none
+findPrint catch findPrintError map.KeyMissing
+findPrint suppresses none
+
+printRaises is call
+printRaises in collectTest
+printRaises invokes CallInfo.raises
+printRaises argument record CallInfo printInfo copy
+printRaises result printCanFail Bool
+printRaises ownedBy none
+printRaises cleanedBy none
+printRaises borrows none
+printRaises catch none
+printRaises suppresses none
+
+expectRaises is call
+expectRaises in collectTest
+expectRaises invokes test.assertTrue
+expectRaises argument value Bool printCanFail copy
+expectRaises result none
+expectRaises ownedBy none
+expectRaises cleanedBy none
+expectRaises borrows none
+expectRaises catch none
+expectRaises suppresses none
+
+findSquare is call
+findSquare in collectTest
+findSquare invokes Calls.get
+findSquare argument map Calls calls lend
+findSquare argument key String squareName lend
+findSquare result squareInfo CallInfo
+findSquare ownedBy none
+findSquare cleanedBy none
+findSquare borrows none
+findSquare catch findSquareError map.KeyMissing
+findSquare suppresses none
+
+squareArity is call
+squareArity in collectTest
+squareArity invokes CallInfo.arity
+squareArity argument record CallInfo squareInfo copy
+squareArity result arity Int64
+squareArity ownedBy none
+squareArity cleanedBy none
+squareArity borrows none
+squareArity catch none
+squareArity suppresses none
+
+expectTwo is call
+expectTwo in collectTest
+expectTwo invokes test.assertEqualInt64
+expectTwo argument expected Int64 two copy
+expectTwo argument actual Int64 arity copy
+expectTwo result none
+expectTwo ownedBy none
+expectTwo cleanedBy none
+expectTwo borrows none
+expectTwo catch none
+expectTwo suppresses none
+
+failRefused is call
+failRefused in collectTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+rejectTest is test
+rejectTest purpose "Predicates, payloads, types, literals, targets, arguments, labels, values, loops, and blocks outside the subset are refused at the word concerned; the sample is accepted"
+rejectTest verifies checkSubset rejectsOutsideSubset
+rejectTest verifies checkSubset checksTypes
+rejectTest verifies checkSubset checksNames
+rejectTest verifies diagnose reportsFirstProblem
+rejectTest typeParameter none
+rejectTest input none
+rejectTest output none
+rejectTest outputOwnedBy none
+rejectTest raises none
+rejectTest effect none
+rejectTest uses none
+rejectTest memoryHeap true
+rejectTest async false
+rejectTest maxRecursion none
+rejectTest label begin loopKind none
+rejectTest label begin within none
+rejectTest label lexed loopKind none
+rejectTest label lexed within none
+rejectTest label grouped loopKind none
+rejectTest label grouped within none
+rejectTest label modelled loopKind none
+rejectTest label modelled within none
+rejectTest label firstRefused loopKind none
+rejectTest label firstRefused within none
+rejectTest label refused loopKind none
+rejectTest label refused within none
+rejectTest let source0 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected0 String "accepted" immutable
+rejectTest let source1 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokesReference math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected1 String "102:8: this predicate is outside the stage0 subset here (invokesReference)" immutable
+rejectTest let source2 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input count Int64 copied\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected2 String "26:12: this payload is outside the stage0 subset (count)" immutable
+rejectTest let source3 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Float64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected3 String "50:14: this type is outside the stage0 subset: String, Int64, ExitCode, Bool (Float64)" immutable
+rejectTest let source4 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 300 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected4 String "51:26: this literal does not fit its type (300)" immutable
+rejectTest let source5 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.powerInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected5 String "79:16: this call target is outside the stage0 subset (math.powerInt64)" immutable
+rejectTest let source6 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number lend\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected6 String "81:17: this argument does not match the target's slot, type, or mode (right)" immutable
+rejectTest let source7 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 okCode copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected7 String "92:30: this value has another type (okCode)" immutable
+rejectTest let source8 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nowhere\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected8 String "61:22: no label has this name (nowhere)" immutable
+rejectTest let source9 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set one nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected9 String "60:21: this value is immutable (one)" immutable
+rejectTest let source10 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind forEach\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected10 String "38:32: stage0 does not compile forEach loops (forEach)" immutable
+rejectTest let source11 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok doneCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected11 String "62:28: no value has this name (doneCode)" immutable
+rejectTest let source12 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if number goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected12 String "55:30: this value has another type (number)" immutable
+rejectTest let source13 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError square goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected13 String "58:36: this call cannot fail, so there is no error to branch on (square)" immutable
+rejectTest let source14 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stderr none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected14 String "15:21: this payload is outside the stage0 subset (write)" immutable
+rejectTest let source15 String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\nmain at advance goto nextSquare\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
+rejectTest let expected15 String "64:9: this label's steps are not together (advance)" immutable
+rejectTest let refusedText String "the front end refused the source or a step failed" immutable
+rejectTest at begin do lex
+rejectTest at begin branch ifError lex goto refused else goto lexed
+rejectTest at lexed do newWords
+rejectTest at lexed do newRows
+rejectTest at lexed do group
+rejectTest at lexed branch ifError group goto refused else goto grouped
+rejectTest at grouped do newEntities
+rejectTest at grouped do newNames
+rejectTest at grouped do model
+rejectTest at grouped branch ifError model goto refused else goto modelled
+rejectTest at modelled do newValues
+rejectTest at modelled do newCalls
+rejectTest at modelled do newLabels
+rejectTest at modelled do newSteps
+rejectTest at modelled do checkFirst
+rejectTest at modelled branch ifError checkFirst goto firstRefused else goto refused
+rejectTest at firstRefused do describeFirst
+rejectTest at firstRefused do expectFirst
+rejectTest at firstRefused do diagnose0
+rejectTest at firstRefused do expect0
+rejectTest at firstRefused do diagnose2
+rejectTest at firstRefused do expect2
+rejectTest at firstRefused do diagnose3
+rejectTest at firstRefused do expect3
+rejectTest at firstRefused do diagnose4
+rejectTest at firstRefused do expect4
+rejectTest at firstRefused do diagnose5
+rejectTest at firstRefused do expect5
+rejectTest at firstRefused do diagnose6
+rejectTest at firstRefused do expect6
+rejectTest at firstRefused do diagnose7
+rejectTest at firstRefused do expect7
+rejectTest at firstRefused do diagnose8
+rejectTest at firstRefused do expect8
+rejectTest at firstRefused do diagnose9
+rejectTest at firstRefused do expect9
+rejectTest at firstRefused do diagnose10
+rejectTest at firstRefused do expect10
+rejectTest at firstRefused do diagnose11
+rejectTest at firstRefused do expect11
+rejectTest at firstRefused do diagnose12
+rejectTest at firstRefused do expect12
+rejectTest at firstRefused do diagnose13
+rejectTest at firstRefused do expect13
+rejectTest at firstRefused do diagnose14
+rejectTest at firstRefused do expect14
+rejectTest at firstRefused do diagnose15
+rejectTest at firstRefused do expect15
+rejectTest at firstRefused return ok none
+rejectTest at refused do failRefused
+rejectTest at refused return ok none
+
+store is region
+store in rejectTest
+store strategy arena
+store maxBytes 4194304
+store released atReturn
+
+lex is call
+lex in rejectTest
+lex invokes lexer.tokenize
+lex argument source String source1 lend
+lex argument resultRegion Region store lend
+lex result tokens lexer.Tokens
+lex ownedBy store
+lex cleanedBy none
+lex borrows none
+lex catch lexError lexer.LexError
+lex suppresses none
+
+newWords is call
+newWords in rejectTest
+newWords invokes syntax.Words.new
+newWords argument region Region store lend
+newWords result words syntax.Words
+newWords ownedBy store
+newWords cleanedBy none
+newWords borrows none
+newWords catch none
+newWords suppresses none
+
+newRows is call
+newRows in rejectTest
+newRows invokes syntax.Rows.new
+newRows argument region Region store lend
+newRows result rows syntax.Rows
+newRows ownedBy store
+newRows cleanedBy none
+newRows borrows none
+newRows catch none
+newRows suppresses none
+
+group is call
+group in rejectTest
+group invokes syntax.groupRows
+group argument source String source1 lend
+group argument tokens lexer.Tokens tokens lend
+group argument words syntax.Words words lendMutable
+group argument rows syntax.Rows rows lendMutable
+group result none
+group ownedBy none
+group cleanedBy none
+group borrows none
+group catch groupError syntax.Rejection
+group suppresses none
+
+newEntities is call
+newEntities in rejectTest
+newEntities invokes model.Entities.new
+newEntities argument region Region store lend
+newEntities result entities model.Entities
+newEntities ownedBy store
+newEntities cleanedBy none
+newEntities borrows none
+newEntities catch none
+newEntities suppresses none
+
+newNames is call
+newNames in rejectTest
+newNames invokes model.EntityNames.new
+newNames argument region Region store lend
+newNames result names model.EntityNames
+newNames ownedBy store
+newNames cleanedBy none
+newNames borrows none
+newNames catch none
+newNames suppresses none
+
+model is call
+model in rejectTest
+model invokes model.buildModel
+model argument source String source1 lend
+model argument words syntax.Words words lend
+model argument rows syntax.Rows rows lend
+model argument entities model.Entities entities lendMutable
+model argument names model.EntityNames names lendMutable
+model result none
+model ownedBy none
+model cleanedBy none
+model borrows none
+model catch modelError syntax.Rejection
+model suppresses none
+
+newValues is call
+newValues in rejectTest
+newValues invokes Values.new
+newValues argument region Region store lend
+newValues result values Values
+newValues ownedBy store
+newValues cleanedBy none
+newValues borrows none
+newValues catch none
+newValues suppresses none
+
+newCalls is call
+newCalls in rejectTest
+newCalls invokes Calls.new
+newCalls argument region Region store lend
+newCalls result calls Calls
+newCalls ownedBy store
+newCalls cleanedBy none
+newCalls borrows none
+newCalls catch none
+newCalls suppresses none
+
+newLabels is call
+newLabels in rejectTest
+newLabels invokes Labels.new
+newLabels argument region Region store lend
+newLabels result labels Labels
+newLabels ownedBy store
+newLabels cleanedBy none
+newLabels borrows none
+newLabels catch none
+newLabels suppresses none
+
+newSteps is call
+newSteps in rejectTest
+newSteps invokes Steps.new
+newSteps argument region Region store lend
+newSteps result steps Steps
+newSteps ownedBy store
+newSteps cleanedBy none
+newSteps borrows none
+newSteps catch none
+newSteps suppresses none
+
+checkFirst is call
+checkFirst in rejectTest
+checkFirst invokes checkSubset
+checkFirst argument source String source1 lend
+checkFirst argument words syntax.Words words lend
+checkFirst argument rows syntax.Rows rows lend
+checkFirst argument entities model.Entities entities lend
+checkFirst argument names model.EntityNames names lend
+checkFirst argument values Values values lendMutable
+checkFirst argument calls Calls calls lendMutable
+checkFirst argument labels Labels labels lendMutable
+checkFirst argument steps Steps steps lendMutable
+checkFirst result none
+checkFirst ownedBy none
+checkFirst cleanedBy none
+checkFirst borrows none
+checkFirst catch firstError syntax.Rejection
+checkFirst suppresses none
+
+describeFirst is call
+describeFirst in rejectTest
+describeFirst invokes syntax.diagnostic
+describeFirst argument source String source1 lend
+describeFirst argument rejection syntax.Rejection firstError copy
+describeFirst argument region Region store lend
+describeFirst result described1 String
+describeFirst ownedBy store
+describeFirst cleanedBy none
+describeFirst borrows none
+describeFirst catch none
+describeFirst suppresses none
+
+expectFirst is call
+expectFirst in rejectTest
+expectFirst invokes test.assertEqualString
+expectFirst argument expected String expected1 lend
+expectFirst argument actual String described1 lend
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+diagnose0 is call
+diagnose0 in rejectTest
+diagnose0 invokes diagnose
+diagnose0 argument source String source0 lend
+diagnose0 argument region Region store lend
+diagnose0 result described0 String
+diagnose0 ownedBy store
+diagnose0 cleanedBy none
+diagnose0 borrows none
+diagnose0 catch none
+diagnose0 suppresses none
+
+expect0 is call
+expect0 in rejectTest
+expect0 invokes test.assertEqualString
+expect0 argument expected String expected0 lend
+expect0 argument actual String described0 lend
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+diagnose2 is call
+diagnose2 in rejectTest
+diagnose2 invokes diagnose
+diagnose2 argument source String source2 lend
+diagnose2 argument region Region store lend
+diagnose2 result described2 String
+diagnose2 ownedBy store
+diagnose2 cleanedBy none
+diagnose2 borrows none
+diagnose2 catch none
+diagnose2 suppresses none
+
+expect2 is call
+expect2 in rejectTest
+expect2 invokes test.assertEqualString
+expect2 argument expected String expected2 lend
+expect2 argument actual String described2 lend
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+diagnose3 is call
+diagnose3 in rejectTest
+diagnose3 invokes diagnose
+diagnose3 argument source String source3 lend
+diagnose3 argument region Region store lend
+diagnose3 result described3 String
+diagnose3 ownedBy store
+diagnose3 cleanedBy none
+diagnose3 borrows none
+diagnose3 catch none
+diagnose3 suppresses none
+
+expect3 is call
+expect3 in rejectTest
+expect3 invokes test.assertEqualString
+expect3 argument expected String expected3 lend
+expect3 argument actual String described3 lend
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+diagnose4 is call
+diagnose4 in rejectTest
+diagnose4 invokes diagnose
+diagnose4 argument source String source4 lend
+diagnose4 argument region Region store lend
+diagnose4 result described4 String
+diagnose4 ownedBy store
+diagnose4 cleanedBy none
+diagnose4 borrows none
+diagnose4 catch none
+diagnose4 suppresses none
+
+expect4 is call
+expect4 in rejectTest
+expect4 invokes test.assertEqualString
+expect4 argument expected String expected4 lend
+expect4 argument actual String described4 lend
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+diagnose5 is call
+diagnose5 in rejectTest
+diagnose5 invokes diagnose
+diagnose5 argument source String source5 lend
+diagnose5 argument region Region store lend
+diagnose5 result described5 String
+diagnose5 ownedBy store
+diagnose5 cleanedBy none
+diagnose5 borrows none
+diagnose5 catch none
+diagnose5 suppresses none
+
+expect5 is call
+expect5 in rejectTest
+expect5 invokes test.assertEqualString
+expect5 argument expected String expected5 lend
+expect5 argument actual String described5 lend
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+diagnose6 is call
+diagnose6 in rejectTest
+diagnose6 invokes diagnose
+diagnose6 argument source String source6 lend
+diagnose6 argument region Region store lend
+diagnose6 result described6 String
+diagnose6 ownedBy store
+diagnose6 cleanedBy none
+diagnose6 borrows none
+diagnose6 catch none
+diagnose6 suppresses none
+
+expect6 is call
+expect6 in rejectTest
+expect6 invokes test.assertEqualString
+expect6 argument expected String expected6 lend
+expect6 argument actual String described6 lend
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+diagnose7 is call
+diagnose7 in rejectTest
+diagnose7 invokes diagnose
+diagnose7 argument source String source7 lend
+diagnose7 argument region Region store lend
+diagnose7 result described7 String
+diagnose7 ownedBy store
+diagnose7 cleanedBy none
+diagnose7 borrows none
+diagnose7 catch none
+diagnose7 suppresses none
+
+expect7 is call
+expect7 in rejectTest
+expect7 invokes test.assertEqualString
+expect7 argument expected String expected7 lend
+expect7 argument actual String described7 lend
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+diagnose8 is call
+diagnose8 in rejectTest
+diagnose8 invokes diagnose
+diagnose8 argument source String source8 lend
+diagnose8 argument region Region store lend
+diagnose8 result described8 String
+diagnose8 ownedBy store
+diagnose8 cleanedBy none
+diagnose8 borrows none
+diagnose8 catch none
+diagnose8 suppresses none
+
+expect8 is call
+expect8 in rejectTest
+expect8 invokes test.assertEqualString
+expect8 argument expected String expected8 lend
+expect8 argument actual String described8 lend
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+diagnose9 is call
+diagnose9 in rejectTest
+diagnose9 invokes diagnose
+diagnose9 argument source String source9 lend
+diagnose9 argument region Region store lend
+diagnose9 result described9 String
+diagnose9 ownedBy store
+diagnose9 cleanedBy none
+diagnose9 borrows none
+diagnose9 catch none
+diagnose9 suppresses none
+
+expect9 is call
+expect9 in rejectTest
+expect9 invokes test.assertEqualString
+expect9 argument expected String expected9 lend
+expect9 argument actual String described9 lend
+expect9 result none
+expect9 ownedBy none
+expect9 cleanedBy none
+expect9 borrows none
+expect9 catch none
+expect9 suppresses none
+
+diagnose10 is call
+diagnose10 in rejectTest
+diagnose10 invokes diagnose
+diagnose10 argument source String source10 lend
+diagnose10 argument region Region store lend
+diagnose10 result described10 String
+diagnose10 ownedBy store
+diagnose10 cleanedBy none
+diagnose10 borrows none
+diagnose10 catch none
+diagnose10 suppresses none
+
+expect10 is call
+expect10 in rejectTest
+expect10 invokes test.assertEqualString
+expect10 argument expected String expected10 lend
+expect10 argument actual String described10 lend
+expect10 result none
+expect10 ownedBy none
+expect10 cleanedBy none
+expect10 borrows none
+expect10 catch none
+expect10 suppresses none
+
+diagnose11 is call
+diagnose11 in rejectTest
+diagnose11 invokes diagnose
+diagnose11 argument source String source11 lend
+diagnose11 argument region Region store lend
+diagnose11 result described11 String
+diagnose11 ownedBy store
+diagnose11 cleanedBy none
+diagnose11 borrows none
+diagnose11 catch none
+diagnose11 suppresses none
+
+expect11 is call
+expect11 in rejectTest
+expect11 invokes test.assertEqualString
+expect11 argument expected String expected11 lend
+expect11 argument actual String described11 lend
+expect11 result none
+expect11 ownedBy none
+expect11 cleanedBy none
+expect11 borrows none
+expect11 catch none
+expect11 suppresses none
+
+diagnose12 is call
+diagnose12 in rejectTest
+diagnose12 invokes diagnose
+diagnose12 argument source String source12 lend
+diagnose12 argument region Region store lend
+diagnose12 result described12 String
+diagnose12 ownedBy store
+diagnose12 cleanedBy none
+diagnose12 borrows none
+diagnose12 catch none
+diagnose12 suppresses none
+
+expect12 is call
+expect12 in rejectTest
+expect12 invokes test.assertEqualString
+expect12 argument expected String expected12 lend
+expect12 argument actual String described12 lend
+expect12 result none
+expect12 ownedBy none
+expect12 cleanedBy none
+expect12 borrows none
+expect12 catch none
+expect12 suppresses none
+
+diagnose13 is call
+diagnose13 in rejectTest
+diagnose13 invokes diagnose
+diagnose13 argument source String source13 lend
+diagnose13 argument region Region store lend
+diagnose13 result described13 String
+diagnose13 ownedBy store
+diagnose13 cleanedBy none
+diagnose13 borrows none
+diagnose13 catch none
+diagnose13 suppresses none
+
+expect13 is call
+expect13 in rejectTest
+expect13 invokes test.assertEqualString
+expect13 argument expected String expected13 lend
+expect13 argument actual String described13 lend
+expect13 result none
+expect13 ownedBy none
+expect13 cleanedBy none
+expect13 borrows none
+expect13 catch none
+expect13 suppresses none
+
+diagnose14 is call
+diagnose14 in rejectTest
+diagnose14 invokes diagnose
+diagnose14 argument source String source14 lend
+diagnose14 argument region Region store lend
+diagnose14 result described14 String
+diagnose14 ownedBy store
+diagnose14 cleanedBy none
+diagnose14 borrows none
+diagnose14 catch none
+diagnose14 suppresses none
+
+expect14 is call
+expect14 in rejectTest
+expect14 invokes test.assertEqualString
+expect14 argument expected String expected14 lend
+expect14 argument actual String described14 lend
+expect14 result none
+expect14 ownedBy none
+expect14 cleanedBy none
+expect14 borrows none
+expect14 catch none
+expect14 suppresses none
+
+diagnose15 is call
+diagnose15 in rejectTest
+diagnose15 invokes diagnose
+diagnose15 argument source String source15 lend
+diagnose15 argument region Region store lend
+diagnose15 result described15 String
+diagnose15 ownedBy store
+diagnose15 cleanedBy none
+diagnose15 borrows none
+diagnose15 catch none
+diagnose15 suppresses none
+
+expect15 is call
+expect15 in rejectTest
+expect15 invokes test.assertEqualString
+expect15 argument expected String expected15 lend
+expect15 argument actual String described15 lend
+expect15 result none
+expect15 ownedBy none
+expect15 cleanedBy none
+expect15 borrows none
+expect15 catch none
+expect15 suppresses none
+
+failRefused is call
+failRefused in rejectTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none

@@ -1,0 +1,942 @@
+# Tests for syntax.sem: every invariant of `groupRows`, the word readers, and the
+# rejection readers is verified below. Rows are compared as a listing, one line
+# per row, each word as `line:column text|`, so one string shows every word's
+# place and spelling.
+
+rowsTest is test
+rowsTest purpose "Lines become rows of words, dotted names one word and a minus sign part of its integer"
+rowsTest verifies groupRows rowsOfWords
+rowsTest verifies groupRows joinsDottedNames
+rowsTest verifies groupRows negativeIntegers
+rowsTest verifies listRows oneLinePerRow
+rowsTest typeParameter none
+rowsTest input none
+rowsTest output none
+rowsTest outputOwnedBy none
+rowsTest raises none
+rowsTest effect none
+rowsTest uses none
+rowsTest memoryHeap true
+rowsTest async false
+rowsTest maxRecursion none
+rowsTest label begin loopKind none
+rowsTest label begin within none
+rowsTest label lexed loopKind none
+rowsTest label lexed within none
+rowsTest label grouped loopKind none
+rowsTest label grouped within none
+rowsTest label compare loopKind none
+rowsTest label compare within none
+rowsTest label refused loopKind none
+rowsTest label refused within none
+rowsTest let source String "main is operation # a comment, with \"quotes\"\n\nmain let total Int64 -12 immutable\nx invokes console.writeLine\n" immutable
+rowsTest let expected String "1:1 main|1:6 is|1:9 operation|\n3:1 main|3:6 let|3:10 total|3:16 Int64|3:22 -12|3:26 immutable|\n4:1 x|4:3 invokes|4:11 console.writeLine|\n" immutable
+rowsTest let refusedText String "the front end refused the source or a step failed" immutable
+rowsTest at begin do lex
+rowsTest at begin branch ifError lex goto refused else goto lexed
+rowsTest at lexed do newWords
+rowsTest at lexed do newRows
+rowsTest at lexed do group
+rowsTest at lexed branch ifError group goto refused else goto grouped
+rowsTest at grouped do listIt
+rowsTest at grouped branch ifError listIt goto refused else goto compare
+rowsTest at compare do expectListing
+rowsTest at compare return ok none
+rowsTest at refused do failRefused
+rowsTest at refused return ok none
+
+store is region
+store in rowsTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+lex is call
+lex in rowsTest
+lex invokes lexer.tokenize
+lex argument source String source lend
+lex argument resultRegion Region store lend
+lex result tokens lexer.Tokens
+lex ownedBy store
+lex cleanedBy none
+lex borrows none
+lex catch lexError lexer.LexError
+lex suppresses none
+
+newWords is call
+newWords in rowsTest
+newWords invokes Words.new
+newWords argument region Region store lend
+newWords result words Words
+newWords ownedBy store
+newWords cleanedBy none
+newWords borrows none
+newWords catch none
+newWords suppresses none
+
+newRows is call
+newRows in rowsTest
+newRows invokes Rows.new
+newRows argument region Region store lend
+newRows result rows Rows
+newRows ownedBy store
+newRows cleanedBy none
+newRows borrows none
+newRows catch none
+newRows suppresses none
+
+group is call
+group in rowsTest
+group invokes groupRows
+group argument source String source lend
+group argument tokens lexer.Tokens tokens lend
+group argument words Words words lendMutable
+group argument rows Rows rows lendMutable
+group result none
+group ownedBy none
+group cleanedBy none
+group borrows none
+group catch groupError Rejection
+group suppresses none
+
+listIt is call
+listIt in rowsTest
+listIt invokes listRows
+listIt argument source String source lend
+listIt argument words Words words lend
+listIt argument rows Rows rows lend
+listIt argument region Region store lend
+listIt result listing String
+listIt ownedBy store
+listIt cleanedBy none
+listIt borrows none
+listIt catch listItError string.Utf8Error
+listIt suppresses none
+
+expectListing is call
+expectListing in rowsTest
+expectListing invokes test.assertEqualString
+expectListing argument expected String expected lend
+expectListing argument actual String listing lend
+expectListing result none
+expectListing ownedBy none
+expectListing cleanedBy none
+expectListing borrows none
+expectListing catch none
+expectListing suppresses none
+
+failRefused is call
+failRefused in rowsTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+rejectTest is test
+rejectTest purpose "Stray marks, glued words, a dangling dot, a lone minus, and a two-word row are refused at the word they concern, with their messages"
+rejectTest verifies groupRows rejectsMalformedWords
+rejectTest verifies groupRows rejectsShortRows
+rejectTest verifies diagnostic locatesAndExplains
+rejectTest typeParameter none
+rejectTest input none
+rejectTest output none
+rejectTest outputOwnedBy none
+rejectTest raises none
+rejectTest effect none
+rejectTest uses none
+rejectTest memoryHeap true
+rejectTest async false
+rejectTest maxRecursion none
+rejectTest label begin loopKind none
+rejectTest label begin within none
+rejectTest label lexed0 loopKind none
+rejectTest label lexed0 within none
+rejectTest label rejected0 loopKind none
+rejectTest label rejected0 within none
+rejectTest label lexed1 loopKind none
+rejectTest label lexed1 within none
+rejectTest label rejected1 loopKind none
+rejectTest label rejected1 within none
+rejectTest label lexed2 loopKind none
+rejectTest label lexed2 within none
+rejectTest label rejected2 loopKind none
+rejectTest label rejected2 within none
+rejectTest label lexed3 loopKind none
+rejectTest label lexed3 within none
+rejectTest label rejected3 loopKind none
+rejectTest label rejected3 within none
+rejectTest label lexed4 loopKind none
+rejectTest label lexed4 within none
+rejectTest label rejected4 loopKind none
+rejectTest label rejected4 within none
+rejectTest label refused loopKind none
+rejectTest label refused within none
+rejectTest let source0 String "a b ; c\n" immutable
+rejectTest let expected0 String "1:5: this mark is not part of a word (;)" immutable
+rejectTest let source1 String "a b 12c\n" immutable
+rejectTest let expected1 String "1:7: words are separated by spaces (c)" immutable
+rejectTest let source2 String "a b. c\n" immutable
+rejectTest let expected2 String "1:3: a dotted name ends with a dot (b.)" immutable
+rejectTest let source3 String "a b - 1\n" immutable
+rejectTest let expected3 String "1:5: this mark is not part of a word (-)" immutable
+rejectTest let source4 String "a b\n" immutable
+rejectTest let expected4 String "1:1: a row has a subject, a predicate, and a payload (a)" immutable
+rejectTest let refusedText String "the front end refused the source or a step failed" immutable
+rejectTest at begin do lex0
+rejectTest at begin branch ifError lex0 goto refused else goto lexed0
+rejectTest at lexed0 do newWords0
+rejectTest at lexed0 do newRows0
+rejectTest at lexed0 do group0
+rejectTest at lexed0 branch ifError group0 goto rejected0 else goto refused
+rejectTest at rejected0 do describe0
+rejectTest at rejected0 do expect0
+rejectTest at rejected0 do lex1
+rejectTest at rejected0 branch ifError lex1 goto refused else goto lexed1
+rejectTest at lexed1 do newWords1
+rejectTest at lexed1 do newRows1
+rejectTest at lexed1 do group1
+rejectTest at lexed1 branch ifError group1 goto rejected1 else goto refused
+rejectTest at rejected1 do describe1
+rejectTest at rejected1 do expect1
+rejectTest at rejected1 do lex2
+rejectTest at rejected1 branch ifError lex2 goto refused else goto lexed2
+rejectTest at lexed2 do newWords2
+rejectTest at lexed2 do newRows2
+rejectTest at lexed2 do group2
+rejectTest at lexed2 branch ifError group2 goto rejected2 else goto refused
+rejectTest at rejected2 do describe2
+rejectTest at rejected2 do expect2
+rejectTest at rejected2 do lex3
+rejectTest at rejected2 branch ifError lex3 goto refused else goto lexed3
+rejectTest at lexed3 do newWords3
+rejectTest at lexed3 do newRows3
+rejectTest at lexed3 do group3
+rejectTest at lexed3 branch ifError group3 goto rejected3 else goto refused
+rejectTest at rejected3 do describe3
+rejectTest at rejected3 do expect3
+rejectTest at rejected3 do lex4
+rejectTest at rejected3 branch ifError lex4 goto refused else goto lexed4
+rejectTest at lexed4 do newWords4
+rejectTest at lexed4 do newRows4
+rejectTest at lexed4 do group4
+rejectTest at lexed4 branch ifError group4 goto rejected4 else goto refused
+rejectTest at rejected4 do describe4
+rejectTest at rejected4 do expect4
+rejectTest at rejected4 return ok none
+rejectTest at refused do failRefused
+rejectTest at refused return ok none
+
+store is region
+store in rejectTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+lex0 is call
+lex0 in rejectTest
+lex0 invokes lexer.tokenize
+lex0 argument source String source0 lend
+lex0 argument resultRegion Region store lend
+lex0 result tokens0 lexer.Tokens
+lex0 ownedBy store
+lex0 cleanedBy none
+lex0 borrows none
+lex0 catch lex0Error lexer.LexError
+lex0 suppresses none
+
+newWords0 is call
+newWords0 in rejectTest
+newWords0 invokes Words.new
+newWords0 argument region Region store lend
+newWords0 result words0 Words
+newWords0 ownedBy store
+newWords0 cleanedBy none
+newWords0 borrows none
+newWords0 catch none
+newWords0 suppresses none
+
+newRows0 is call
+newRows0 in rejectTest
+newRows0 invokes Rows.new
+newRows0 argument region Region store lend
+newRows0 result rows0 Rows
+newRows0 ownedBy store
+newRows0 cleanedBy none
+newRows0 borrows none
+newRows0 catch none
+newRows0 suppresses none
+
+group0 is call
+group0 in rejectTest
+group0 invokes groupRows
+group0 argument source String source0 lend
+group0 argument tokens lexer.Tokens tokens0 lend
+group0 argument words Words words0 lendMutable
+group0 argument rows Rows rows0 lendMutable
+group0 result none
+group0 ownedBy none
+group0 cleanedBy none
+group0 borrows none
+group0 catch groupError0 Rejection
+group0 suppresses none
+
+describe0 is call
+describe0 in rejectTest
+describe0 invokes diagnostic
+describe0 argument source String source0 lend
+describe0 argument rejection Rejection groupError0 copy
+describe0 argument region Region store lend
+describe0 result described0 String
+describe0 ownedBy store
+describe0 cleanedBy none
+describe0 borrows none
+describe0 catch none
+describe0 suppresses none
+
+expect0 is call
+expect0 in rejectTest
+expect0 invokes test.assertEqualString
+expect0 argument expected String expected0 lend
+expect0 argument actual String described0 lend
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+lex1 is call
+lex1 in rejectTest
+lex1 invokes lexer.tokenize
+lex1 argument source String source1 lend
+lex1 argument resultRegion Region store lend
+lex1 result tokens1 lexer.Tokens
+lex1 ownedBy store
+lex1 cleanedBy none
+lex1 borrows none
+lex1 catch lex1Error lexer.LexError
+lex1 suppresses none
+
+newWords1 is call
+newWords1 in rejectTest
+newWords1 invokes Words.new
+newWords1 argument region Region store lend
+newWords1 result words1 Words
+newWords1 ownedBy store
+newWords1 cleanedBy none
+newWords1 borrows none
+newWords1 catch none
+newWords1 suppresses none
+
+newRows1 is call
+newRows1 in rejectTest
+newRows1 invokes Rows.new
+newRows1 argument region Region store lend
+newRows1 result rows1 Rows
+newRows1 ownedBy store
+newRows1 cleanedBy none
+newRows1 borrows none
+newRows1 catch none
+newRows1 suppresses none
+
+group1 is call
+group1 in rejectTest
+group1 invokes groupRows
+group1 argument source String source1 lend
+group1 argument tokens lexer.Tokens tokens1 lend
+group1 argument words Words words1 lendMutable
+group1 argument rows Rows rows1 lendMutable
+group1 result none
+group1 ownedBy none
+group1 cleanedBy none
+group1 borrows none
+group1 catch groupError1 Rejection
+group1 suppresses none
+
+describe1 is call
+describe1 in rejectTest
+describe1 invokes diagnostic
+describe1 argument source String source1 lend
+describe1 argument rejection Rejection groupError1 copy
+describe1 argument region Region store lend
+describe1 result described1 String
+describe1 ownedBy store
+describe1 cleanedBy none
+describe1 borrows none
+describe1 catch none
+describe1 suppresses none
+
+expect1 is call
+expect1 in rejectTest
+expect1 invokes test.assertEqualString
+expect1 argument expected String expected1 lend
+expect1 argument actual String described1 lend
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+lex2 is call
+lex2 in rejectTest
+lex2 invokes lexer.tokenize
+lex2 argument source String source2 lend
+lex2 argument resultRegion Region store lend
+lex2 result tokens2 lexer.Tokens
+lex2 ownedBy store
+lex2 cleanedBy none
+lex2 borrows none
+lex2 catch lex2Error lexer.LexError
+lex2 suppresses none
+
+newWords2 is call
+newWords2 in rejectTest
+newWords2 invokes Words.new
+newWords2 argument region Region store lend
+newWords2 result words2 Words
+newWords2 ownedBy store
+newWords2 cleanedBy none
+newWords2 borrows none
+newWords2 catch none
+newWords2 suppresses none
+
+newRows2 is call
+newRows2 in rejectTest
+newRows2 invokes Rows.new
+newRows2 argument region Region store lend
+newRows2 result rows2 Rows
+newRows2 ownedBy store
+newRows2 cleanedBy none
+newRows2 borrows none
+newRows2 catch none
+newRows2 suppresses none
+
+group2 is call
+group2 in rejectTest
+group2 invokes groupRows
+group2 argument source String source2 lend
+group2 argument tokens lexer.Tokens tokens2 lend
+group2 argument words Words words2 lendMutable
+group2 argument rows Rows rows2 lendMutable
+group2 result none
+group2 ownedBy none
+group2 cleanedBy none
+group2 borrows none
+group2 catch groupError2 Rejection
+group2 suppresses none
+
+describe2 is call
+describe2 in rejectTest
+describe2 invokes diagnostic
+describe2 argument source String source2 lend
+describe2 argument rejection Rejection groupError2 copy
+describe2 argument region Region store lend
+describe2 result described2 String
+describe2 ownedBy store
+describe2 cleanedBy none
+describe2 borrows none
+describe2 catch none
+describe2 suppresses none
+
+expect2 is call
+expect2 in rejectTest
+expect2 invokes test.assertEqualString
+expect2 argument expected String expected2 lend
+expect2 argument actual String described2 lend
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+lex3 is call
+lex3 in rejectTest
+lex3 invokes lexer.tokenize
+lex3 argument source String source3 lend
+lex3 argument resultRegion Region store lend
+lex3 result tokens3 lexer.Tokens
+lex3 ownedBy store
+lex3 cleanedBy none
+lex3 borrows none
+lex3 catch lex3Error lexer.LexError
+lex3 suppresses none
+
+newWords3 is call
+newWords3 in rejectTest
+newWords3 invokes Words.new
+newWords3 argument region Region store lend
+newWords3 result words3 Words
+newWords3 ownedBy store
+newWords3 cleanedBy none
+newWords3 borrows none
+newWords3 catch none
+newWords3 suppresses none
+
+newRows3 is call
+newRows3 in rejectTest
+newRows3 invokes Rows.new
+newRows3 argument region Region store lend
+newRows3 result rows3 Rows
+newRows3 ownedBy store
+newRows3 cleanedBy none
+newRows3 borrows none
+newRows3 catch none
+newRows3 suppresses none
+
+group3 is call
+group3 in rejectTest
+group3 invokes groupRows
+group3 argument source String source3 lend
+group3 argument tokens lexer.Tokens tokens3 lend
+group3 argument words Words words3 lendMutable
+group3 argument rows Rows rows3 lendMutable
+group3 result none
+group3 ownedBy none
+group3 cleanedBy none
+group3 borrows none
+group3 catch groupError3 Rejection
+group3 suppresses none
+
+describe3 is call
+describe3 in rejectTest
+describe3 invokes diagnostic
+describe3 argument source String source3 lend
+describe3 argument rejection Rejection groupError3 copy
+describe3 argument region Region store lend
+describe3 result described3 String
+describe3 ownedBy store
+describe3 cleanedBy none
+describe3 borrows none
+describe3 catch none
+describe3 suppresses none
+
+expect3 is call
+expect3 in rejectTest
+expect3 invokes test.assertEqualString
+expect3 argument expected String expected3 lend
+expect3 argument actual String described3 lend
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+lex4 is call
+lex4 in rejectTest
+lex4 invokes lexer.tokenize
+lex4 argument source String source4 lend
+lex4 argument resultRegion Region store lend
+lex4 result tokens4 lexer.Tokens
+lex4 ownedBy store
+lex4 cleanedBy none
+lex4 borrows none
+lex4 catch lex4Error lexer.LexError
+lex4 suppresses none
+
+newWords4 is call
+newWords4 in rejectTest
+newWords4 invokes Words.new
+newWords4 argument region Region store lend
+newWords4 result words4 Words
+newWords4 ownedBy store
+newWords4 cleanedBy none
+newWords4 borrows none
+newWords4 catch none
+newWords4 suppresses none
+
+newRows4 is call
+newRows4 in rejectTest
+newRows4 invokes Rows.new
+newRows4 argument region Region store lend
+newRows4 result rows4 Rows
+newRows4 ownedBy store
+newRows4 cleanedBy none
+newRows4 borrows none
+newRows4 catch none
+newRows4 suppresses none
+
+group4 is call
+group4 in rejectTest
+group4 invokes groupRows
+group4 argument source String source4 lend
+group4 argument tokens lexer.Tokens tokens4 lend
+group4 argument words Words words4 lendMutable
+group4 argument rows Rows rows4 lendMutable
+group4 result none
+group4 ownedBy none
+group4 cleanedBy none
+group4 borrows none
+group4 catch groupError4 Rejection
+group4 suppresses none
+
+describe4 is call
+describe4 in rejectTest
+describe4 invokes diagnostic
+describe4 argument source String source4 lend
+describe4 argument rejection Rejection groupError4 copy
+describe4 argument region Region store lend
+describe4 result described4 String
+describe4 ownedBy store
+describe4 cleanedBy none
+describe4 borrows none
+describe4 catch none
+describe4 suppresses none
+
+expect4 is call
+expect4 in rejectTest
+expect4 invokes test.assertEqualString
+expect4 argument expected String expected4 lend
+expect4 argument actual String described4 lend
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+failRefused is call
+failRefused in rejectTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+wordsTest is test
+wordsTest purpose "A word's text is copied, compared with a text and with another word, and appended to a buffer"
+wordsTest verifies wordText copiesWord
+wordsTest verifies isText comparesWithText
+wordsTest verifies sameText comparesWords
+wordsTest verifies putWord appendsWord
+wordsTest typeParameter none
+wordsTest input none
+wordsTest output none
+wordsTest outputOwnedBy none
+wordsTest raises none
+wordsTest effect none
+wordsTest uses none
+wordsTest memoryHeap true
+wordsTest async false
+wordsTest maxRecursion none
+wordsTest label begin loopKind none
+wordsTest label begin within none
+wordsTest label lexed loopKind none
+wordsTest label lexed within none
+wordsTest label grouped loopKind none
+wordsTest label grouped within none
+wordsTest label copied loopKind none
+wordsTest label copied within none
+wordsTest label checked loopKind none
+wordsTest label checked within none
+wordsTest label comparedSame loopKind none
+wordsTest label comparedSame within none
+wordsTest label comparedOther loopKind none
+wordsTest label comparedOther within none
+wordsTest label appended loopKind none
+wordsTest label appended within none
+wordsTest label refused loopKind none
+wordsTest label refused within none
+wordsTest let source String "alpha beta alpha\n" immutable
+wordsTest let alphaText String "alpha" immutable
+wordsTest let betaText String "beta" immutable
+wordsTest let zero Int64 0 immutable
+wordsTest let one Int64 1 immutable
+wordsTest let two Int64 2 immutable
+wordsTest let refusedText String "the front end refused the source or a step failed" immutable
+wordsTest at begin do lex
+wordsTest at begin branch ifError lex goto refused else goto lexed
+wordsTest at lexed do newWords
+wordsTest at lexed do newRows
+wordsTest at lexed do group
+wordsTest at lexed branch ifError group goto refused else goto grouped
+wordsTest at grouped do readFirst
+wordsTest at grouped do readSecond
+wordsTest at grouped do readThird
+wordsTest at grouped do copyFirst
+wordsTest at grouped branch ifError copyFirst goto refused else goto copied
+wordsTest at copied do expectAlpha
+wordsTest at copied do checkBeta
+wordsTest at copied branch ifError checkBeta goto refused else goto checked
+wordsTest at checked do expectBeta
+wordsTest at checked do compareSame
+wordsTest at checked branch ifError compareSame goto refused else goto comparedSame
+wordsTest at comparedSame do expectSame
+wordsTest at comparedSame do compareOther
+wordsTest at comparedSame branch ifError compareOther goto refused else goto comparedOther
+wordsTest at comparedOther do negateOther
+wordsTest at comparedOther do expectDiffers
+wordsTest at comparedOther do newText
+wordsTest at comparedOther do putSecond
+wordsTest at comparedOther do finishText
+wordsTest at comparedOther branch ifError finishText goto refused else goto appended
+wordsTest at appended do expectWritten
+wordsTest at appended return ok none
+wordsTest at refused do failRefused
+wordsTest at refused return ok none
+
+store is region
+store in wordsTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+lex is call
+lex in wordsTest
+lex invokes lexer.tokenize
+lex argument source String source lend
+lex argument resultRegion Region store lend
+lex result tokens lexer.Tokens
+lex ownedBy store
+lex cleanedBy none
+lex borrows none
+lex catch lexError lexer.LexError
+lex suppresses none
+
+newWords is call
+newWords in wordsTest
+newWords invokes Words.new
+newWords argument region Region store lend
+newWords result words Words
+newWords ownedBy store
+newWords cleanedBy none
+newWords borrows none
+newWords catch none
+newWords suppresses none
+
+newRows is call
+newRows in wordsTest
+newRows invokes Rows.new
+newRows argument region Region store lend
+newRows result rows Rows
+newRows ownedBy store
+newRows cleanedBy none
+newRows borrows none
+newRows catch none
+newRows suppresses none
+
+group is call
+group in wordsTest
+group invokes groupRows
+group argument source String source lend
+group argument tokens lexer.Tokens tokens lend
+group argument words Words words lendMutable
+group argument rows Rows rows lendMutable
+group result none
+group ownedBy none
+group cleanedBy none
+group borrows none
+group catch groupError Rejection
+group suppresses none
+
+readFirst is call
+readFirst in wordsTest
+readFirst invokes Words.getOrTrap
+readFirst argument list Words words lend
+readFirst argument index Int64 zero copy
+readFirst result first Word
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readSecond is call
+readSecond in wordsTest
+readSecond invokes Words.getOrTrap
+readSecond argument list Words words lend
+readSecond argument index Int64 one copy
+readSecond result second Word
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+readThird is call
+readThird in wordsTest
+readThird invokes Words.getOrTrap
+readThird argument list Words words lend
+readThird argument index Int64 two copy
+readThird result third Word
+readThird ownedBy none
+readThird cleanedBy none
+readThird borrows none
+readThird catch none
+readThird suppresses none
+
+copyFirst is call
+copyFirst in wordsTest
+copyFirst invokes wordText
+copyFirst argument source String source lend
+copyFirst argument word Word first copy
+copyFirst argument region Region store lend
+copyFirst result firstText String
+copyFirst ownedBy store
+copyFirst cleanedBy none
+copyFirst borrows none
+copyFirst catch copyFirstError Rejection
+copyFirst suppresses none
+
+expectAlpha is call
+expectAlpha in wordsTest
+expectAlpha invokes test.assertEqualString
+expectAlpha argument expected String alphaText lend
+expectAlpha argument actual String firstText lend
+expectAlpha result none
+expectAlpha ownedBy none
+expectAlpha cleanedBy none
+expectAlpha borrows none
+expectAlpha catch none
+expectAlpha suppresses none
+
+checkBeta is call
+checkBeta in wordsTest
+checkBeta invokes isText
+checkBeta argument source String source lend
+checkBeta argument word Word second copy
+checkBeta argument text String betaText lend
+checkBeta result isBeta Bool
+checkBeta ownedBy none
+checkBeta cleanedBy none
+checkBeta borrows none
+checkBeta catch checkBetaError Rejection
+checkBeta suppresses none
+
+expectBeta is call
+expectBeta in wordsTest
+expectBeta invokes test.assertTrue
+expectBeta argument value Bool isBeta copy
+expectBeta result none
+expectBeta ownedBy none
+expectBeta cleanedBy none
+expectBeta borrows none
+expectBeta catch none
+expectBeta suppresses none
+
+compareSame is call
+compareSame in wordsTest
+compareSame invokes sameText
+compareSame argument source String source lend
+compareSame argument left Word first copy
+compareSame argument right Word third copy
+compareSame result same Bool
+compareSame ownedBy none
+compareSame cleanedBy none
+compareSame borrows none
+compareSame catch compareSameError Rejection
+compareSame suppresses none
+
+expectSame is call
+expectSame in wordsTest
+expectSame invokes test.assertTrue
+expectSame argument value Bool same copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+compareOther is call
+compareOther in wordsTest
+compareOther invokes sameText
+compareOther argument source String source lend
+compareOther argument left Word first copy
+compareOther argument right Word second copy
+compareOther result other Bool
+compareOther ownedBy none
+compareOther cleanedBy none
+compareOther borrows none
+compareOther catch compareOtherError Rejection
+compareOther suppresses none
+
+negateOther is call
+negateOther in wordsTest
+negateOther invokes logic.not
+negateOther argument value Bool other copy
+negateOther result differs Bool
+negateOther ownedBy none
+negateOther cleanedBy none
+negateOther borrows none
+negateOther catch none
+negateOther suppresses none
+
+expectDiffers is call
+expectDiffers in wordsTest
+expectDiffers invokes test.assertTrue
+expectDiffers argument value Bool differs copy
+expectDiffers result none
+expectDiffers ownedBy none
+expectDiffers cleanedBy none
+expectDiffers borrows none
+expectDiffers catch none
+expectDiffers suppresses none
+
+newText is call
+newText in wordsTest
+newText invokes buffer.new
+newText argument region Region store lend
+newText result text buffer.ByteBuffer
+newText ownedBy store
+newText cleanedBy none
+newText borrows none
+newText catch none
+newText suppresses none
+
+putSecond is call
+putSecond in wordsTest
+putSecond invokes putWord
+putSecond argument buffer buffer.ByteBuffer text lendMutable
+putSecond argument source String source lend
+putSecond argument word Word second copy
+putSecond result none
+putSecond ownedBy none
+putSecond cleanedBy none
+putSecond borrows none
+putSecond catch none
+putSecond suppresses none
+
+finishText is call
+finishText in wordsTest
+finishText invokes buffer.toString
+finishText argument buffer buffer.ByteBuffer text lend
+finishText argument region Region store lend
+finishText result written String
+finishText ownedBy store
+finishText cleanedBy none
+finishText borrows none
+finishText catch finishTextError string.Utf8Error
+finishText suppresses none
+
+expectWritten is call
+expectWritten in wordsTest
+expectWritten invokes test.assertEqualString
+expectWritten argument expected String betaText lend
+expectWritten argument actual String written lend
+expectWritten result none
+expectWritten ownedBy none
+expectWritten cleanedBy none
+expectWritten borrows none
+expectWritten catch none
+expectWritten suppresses none
+
+failRefused is call
+failRefused in wordsTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none

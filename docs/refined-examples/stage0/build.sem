@@ -1,0 +1,36 @@
+# stage0: the first stage of a SemanticScript compiler written in
+# SemanticScript. It compiles one module in a small subset to C and builds it
+# with the C compiler:
+#
+#   cd docs/refined-examples/stage0
+#   python ../../../semanticscript/compiler/refined run . -- samples/hello/hello.sem build/hello
+#
+# The tokenizer (lexer.sem) is a copy of the lexer example's module, adapted
+# for SemanticScript's comments and escapes; the reasons are in its header.
+#
+# What the program may do is listed here and approved in authority.approved:
+# read the command line, read files under the working directory, write files
+# under build/, and run a C compiler named exactly cc, gcc, or clang.
+
+stage0 is project
+stage0 purpose "Compile a SemanticScript module in a small subset to C and build it with the C compiler"
+stage0 target console
+stage0 version "0.1.0"
+stage0 language refined 1
+stage0 standardLibrary 1
+stage0 allows read process.arguments none
+stage0 allows write console.stdout none
+stage0 allows write console.stderr none
+stage0 allows read fs.files "./"
+stage0 allows write fs.files "build/"
+stage0 allows spawn process.programs "cc"
+stage0 allows spawn process.programs "gcc"
+stage0 allows spawn process.programs "clang"
+stage0 requires none
+stage0 includesModule lexer
+stage0 includesModule syntax
+stage0 includesModule model
+stage0 includesModule subset
+stage0 includesModule emitc
+stage0 includesModule stage0
+stage0 entry stage0.main

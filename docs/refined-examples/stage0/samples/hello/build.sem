@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+hello is project
+hello purpose "Print a greeting; a stage0 sample that refined run and the built executable both run"
+hello target console
+hello version "0.1.0"
+hello language refined 1
+hello standardLibrary 1
+hello allows write console.stdout none
+hello requires none
+hello includesModule hello
+hello entry hello.main

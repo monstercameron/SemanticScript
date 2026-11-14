@@ -1,0 +1,2346 @@
+# The stage0 compiler's row reader: the lexer's tokens grouped into words and
+# the words into rows, `<subject> <predicate> <payload>`, one row per line.
+#
+# A word is a name (an identifier, or identifiers joined by `.` with no space
+# around the dots: `console.writeLine` is one word), an integer (digits, with a
+# `-` written directly before them for a negative number), or quoted text. Each
+# word keeps where it starts and how many bytes of source it covers; its text
+# is read from the source when it is needed, so nothing is copied while rows
+# are built. A row is a run of words in the word list.
+#
+# Every reason stage0 refuses a source is a variant of `Rejection`, carrying the
+# word the diagnostic points at; the later passes (model, subset, emitc) raise
+# the same type.
+
+syntax is module
+syntax purpose "Group a source's tokens into rows of words, and read a word's text back from the source"
+syntax path syntax
+syntax imports standard.string
+syntax imports standard.buffer
+syntax imports standard.list
+syntax imports standard.math
+syntax imports standard.compare
+syntax imports standard.logic
+syntax imports standard.byte
+syntax imports standard.test
+syntax imports lexer
+syntax exports WordKind
+syntax exports Word
+syntax exports Words
+syntax exports Row
+syntax exports Rows
+syntax exports Rejection
+syntax exports groupRows
+syntax exports wordText
+syntax exports isText
+syntax exports sameText
+syntax exports putWord
+syntax exports diagnostic
+syntax exports listRows
+
+WordKind is enum
+WordKind purpose "What a word is: a name, an integer with its value, or quoted text"
+WordKind typeParameter none
+WordKind variant name none
+WordKind variant integer Int64
+WordKind variant text none
+
+Word is record
+Word purpose "One word of a row: its kind, where its first character is, and how many bytes it covers"
+Word typeParameter none
+Word field kind WordKind
+Word field start string.Position
+Word field length Int64
+
+Words is typeInstance
+Words purpose "Every word of a source, in source order"
+Words instantiates list.List Word
+
+Row is record
+Row purpose "One row: the position of its first word in the word list, and how many words it has"
+Row typeParameter none
+Row field first Int64
+Row field count Int64
+
+Rows is typeInstance
+Rows purpose "Every row of a source, in source order"
+Rows instantiates list.List Row
+
+Rejection is enum
+Rejection purpose "Why stage0 refuses a source, with the word the diagnostic points at"
+Rejection typeParameter none
+Rejection variant strayMark Word
+Rejection variant gluedWords Word
+Rejection variant danglingDot Word
+Rejection variant shortRow Word
+Rejection variant outsideSource Word
+Rejection variant unsupportedKind Word
+Rejection variant strayRow Word
+Rejection variant duplicateName Word
+Rejection variant notMain Word
+Rejection variant noMain Word
+Rejection variant unsupportedPredicate Word
+Rejection variant unsupportedPayload Word
+Rejection variant unsupportedType Word
+Rejection variant badLiteral Word
+Rejection variant unsupportedEscape Word
+Rejection variant unknownValue Word
+Rejection variant wrongType Word
+Rejection variant unsupportedTarget Word
+Rejection variant wrongArgument Word
+Rejection variant argumentCount Word
+Rejection variant unknownLabel Word
+Rejection variant unknownCall Word
+Rejection variant unsupportedStep Word
+Rejection variant notMutable Word
+Rejection variant splitBlock Word
+Rejection variant unsupportedLoop Word
+Rejection variant notFailing Word
+Rejection variant lostName Word
+Rejection variant invalidCharacter Word
+Rejection variant unterminatedText Word
+Rejection variant integerTooLarge Word
+
+# ---------------------------------------------------------------- building rows
+
+flushWord is operation
+flushWord purpose "Add the word being built to the word list, when there is one"
+flushWord invariant none
+flushWord typeParameter none
+flushWord input words Words borrowedMutable
+flushWord input open Bool copied
+flushWord input kind WordKind copied
+flushWord input start string.Position copied
+flushWord input startOffset Int64 copied
+flushWord input endOffset Int64 copied
+flushWord output none
+flushWord outputOwnedBy none
+flushWord raises none
+flushWord effect none
+flushWord uses none
+flushWord memoryHeap false
+flushWord async false
+flushWord maxRecursion none
+flushWord label begin loopKind none
+flushWord label begin within none
+flushWord label add loopKind none
+flushWord label add within none
+flushWord label done loopKind none
+flushWord label done within none
+flushWord let none
+flushWord at begin branch if open goto add else goto done
+flushWord at add do measure
+flushWord at add do makeWord
+flushWord at add do appendWord
+flushWord at add goto done
+flushWord at done return ok none
+
+measure is call
+measure in flushWord
+measure invokes math.subtractInt64
+measure argument left Int64 endOffset copy
+measure argument right Int64 startOffset copy
+measure result length Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+makeWord is call
+makeWord in flushWord
+makeWord invokes Word.new
+makeWord argument kind WordKind kind copy
+makeWord argument start string.Position start copy
+makeWord argument length Int64 length copy
+makeWord result word Word
+makeWord ownedBy none
+makeWord cleanedBy none
+makeWord borrows none
+makeWord catch none
+makeWord suppresses none
+
+appendWord is call
+appendWord in flushWord
+appendWord invokes Words.append
+appendWord argument list Words words lendMutable
+appendWord argument item Word word copy
+appendWord result none
+appendWord ownedBy none
+appendWord cleanedBy none
+appendWord borrows none
+appendWord catch none
+appendWord suppresses none
+
+closeRow is operation
+closeRow purpose "End the row being built: record its words as a row, and return where the next row starts"
+closeRow invariant none
+closeRow typeParameter none
+closeRow input words Words borrowed
+closeRow input rows Rows borrowedMutable
+closeRow input rowFirst Int64 copied
+closeRow output Int64
+closeRow outputOwnedBy none
+closeRow raises Rejection
+closeRow effect none
+closeRow uses none
+closeRow memoryHeap false
+closeRow async false
+closeRow maxRecursion none
+closeRow label begin loopKind none
+closeRow label begin within none
+closeRow label blank loopKind none
+closeRow label blank within none
+closeRow label measured loopKind none
+closeRow label measured within none
+closeRow label record loopKind none
+closeRow label record within none
+closeRow label short loopKind none
+closeRow label short within none
+closeRow label shortFailed loopKind none
+closeRow label shortFailed within none
+closeRow let three Int64 3 immutable
+closeRow let zero Int64 0 immutable
+closeRow at begin do countWords
+closeRow at begin do measureRow
+closeRow at begin do emptyCheck
+closeRow at begin branch if isEmpty goto blank else goto measured
+closeRow at blank return ok rowFirst
+closeRow at measured do shortCheck
+closeRow at measured branch if isShort goto short else goto record
+closeRow at record do makeRow
+closeRow at record do appendRow
+closeRow at record return ok wordCount
+closeRow at short do readFirstWord
+closeRow at short goto shortFailed
+closeRow at shortFailed do makeShortFailed
+closeRow at shortFailed return error shortFailedError
+
+countWords is call
+countWords in closeRow
+countWords invokes Words.length
+countWords argument list Words words lend
+countWords result wordCount Int64
+countWords ownedBy none
+countWords cleanedBy none
+countWords borrows none
+countWords catch none
+countWords suppresses none
+
+measureRow is call
+measureRow in closeRow
+measureRow invokes math.subtractInt64
+measureRow argument left Int64 wordCount copy
+measureRow argument right Int64 rowFirst copy
+measureRow result rowCount Int64
+measureRow ownedBy none
+measureRow cleanedBy none
+measureRow borrows none
+measureRow catch none
+measureRow suppresses none
+
+emptyCheck is call
+emptyCheck in closeRow
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 rowCount copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result isEmpty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+shortCheck is call
+shortCheck in closeRow
+shortCheck invokes compare.lessThanInt64
+shortCheck argument left Int64 rowCount copy
+shortCheck argument right Int64 three copy
+shortCheck result isShort Bool
+shortCheck ownedBy none
+shortCheck cleanedBy none
+shortCheck borrows none
+shortCheck catch none
+shortCheck suppresses none
+
+makeRow is call
+makeRow in closeRow
+makeRow invokes Row.new
+makeRow argument first Int64 rowFirst copy
+makeRow argument count Int64 rowCount copy
+makeRow result row Row
+makeRow ownedBy none
+makeRow cleanedBy none
+makeRow borrows none
+makeRow catch none
+makeRow suppresses none
+
+appendRow is call
+appendRow in closeRow
+appendRow invokes Rows.append
+appendRow argument list Rows rows lendMutable
+appendRow argument item Row row copy
+appendRow result none
+appendRow ownedBy none
+appendRow cleanedBy none
+appendRow borrows none
+appendRow catch none
+appendRow suppresses none
+
+readFirstWord is call
+readFirstWord in closeRow
+readFirstWord invokes Words.getOrTrap
+readFirstWord argument list Words words lend
+readFirstWord argument index Int64 rowFirst copy
+readFirstWord result firstWord Word
+readFirstWord ownedBy none
+readFirstWord cleanedBy none
+readFirstWord borrows none
+readFirstWord catch none
+readFirstWord suppresses none
+
+makeShortFailed is call
+makeShortFailed in closeRow
+makeShortFailed invokes Rejection.shortRow
+makeShortFailed argument payload Word firstWord copy
+makeShortFailed result shortFailedError Rejection
+makeShortFailed ownedBy none
+makeShortFailed cleanedBy none
+makeShortFailed borrows none
+makeShortFailed catch none
+makeShortFailed suppresses none
+
+groupRows is operation
+groupRows purpose "Group a source's tokens into words and the words into rows, one row per line that has words"
+groupRows invariant rowsOfWords "Each line with words becomes one row of its words in order, each word located by line and column; a line with no words (blank, or only a comment) becomes no row"
+groupRows invariant joinsDottedNames "Identifiers joined by dots with no space between them are one name word"
+groupRows invariant negativeIntegers "A minus sign written directly before digits makes one negative integer word that starts at the sign"
+groupRows invariant rejectsMalformedWords "A mark that is not a dot inside a name or a minus before digits is strayMark, two tokens with no space between them are gluedWords, and a name ending in a dot is danglingDot"
+groupRows invariant rejectsShortRows "A row of fewer than three words is shortRow at its first word"
+groupRows typeParameter none
+groupRows input source String borrowed
+groupRows input tokens lexer.Tokens borrowed
+groupRows input words Words borrowedMutable
+groupRows input rows Rows borrowedMutable
+groupRows output none
+groupRows outputOwnedBy none
+groupRows raises Rejection
+groupRows effect none
+groupRows uses none
+groupRows memoryHeap false
+groupRows async false
+groupRows maxRecursion none
+groupRows label begin loopKind none
+groupRows label begin within none
+groupRows label visit note "Every token is visited once; the list's length, read first, bounds the loop"
+groupRows label visit loopKind forEach
+groupRows label visit within none
+groupRows label visit maxIterations tokenCount
+groupRows label visit over tokens
+groupRows label readToken loopKind none
+groupRows label readToken within visit
+groupRows label afterMinus loopKind none
+groupRows label afterMinus within visit
+groupRows label negative loopKind none
+groupRows label negative within visit
+groupRows label negativeWord loopKind none
+groupRows label negativeWord within visit
+groupRows label classify loopKind none
+groupRows label classify within visit
+groupRows label identifierCase loopKind none
+groupRows label identifierCase within visit
+groupRows label extendName loopKind none
+groupRows label extendName within visit
+groupRows label extendNameWord loopKind none
+groupRows label extendNameWord within visit
+groupRows label identifierFresh loopKind none
+groupRows label identifierFresh within visit
+groupRows label identifierStart loopKind none
+groupRows label identifierStart within visit
+groupRows label integerCase loopKind none
+groupRows label integerCase within visit
+groupRows label integerStart loopKind none
+groupRows label integerStart within visit
+groupRows label textCase loopKind none
+groupRows label textCase within visit
+groupRows label textStart loopKind none
+groupRows label textStart within visit
+groupRows label punctuationCase loopKind none
+groupRows label punctuationCase within visit
+groupRows label dotCase loopKind none
+groupRows label dotCase within visit
+groupRows label dotJoin loopKind none
+groupRows label dotJoin within visit
+groupRows label minusTest loopKind none
+groupRows label minusTest within visit
+groupRows label minusCase loopKind none
+groupRows label minusCase within visit
+groupRows label minusOpen loopKind none
+groupRows label minusOpen within visit
+groupRows label lineEnd loopKind none
+groupRows label lineEnd within visit
+groupRows label lineFlush loopKind none
+groupRows label lineFlush within visit
+groupRows label rowClosed loopKind none
+groupRows label rowClosed within visit
+groupRows label finished loopKind none
+groupRows label finished within none
+groupRows label closeFailed loopKind none
+groupRows label closeFailed within none
+groupRows label gluedAt loopKind none
+groupRows label gluedAt within none
+groupRows label gluedFailed loopKind none
+groupRows label gluedFailed within none
+groupRows label strayAt loopKind none
+groupRows label strayAt within none
+groupRows label strayFailed loopKind none
+groupRows label strayFailed within none
+groupRows label minusStray loopKind none
+groupRows label minusStray within none
+groupRows label minusFailed loopKind none
+groupRows label minusFailed within none
+groupRows label dangling loopKind none
+groupRows label dangling within none
+groupRows label danglingFailed loopKind none
+groupRows label danglingFailed within none
+groupRows let zero Int64 0 immutable
+groupRows let one Int64 1 immutable
+groupRows let dotByte Byte 46 immutable
+groupRows let minusByte Byte 45 immutable
+groupRows let yes Bool true immutable
+groupRows let no Bool false immutable
+groupRows let open Bool false mutable
+groupRows let dotted Bool false mutable
+groupRows let openIsName Bool false mutable
+groupRows let minus Bool false mutable
+groupRows let openKind WordKind unset mutable
+groupRows let openStart string.Position unset mutable
+groupRows let openOffset Int64 0 mutable
+groupRows let openEnd Int64 0 mutable
+groupRows let minusStart string.Position unset mutable
+groupRows let minusEnd Int64 0 mutable
+groupRows let rowFirst Int64 0 mutable
+groupRows at begin do countTokens
+groupRows at begin do makeNameKind
+groupRows at begin do makeTextKind
+groupRows at begin do makeOrigin
+groupRows at begin set openKind nameKind
+groupRows at begin set openStart origin
+groupRows at begin set minusStart origin
+groupRows at begin goto visit
+groupRows at visit branch ifNext tokens bind token lexer.Token goto readToken else goto finished
+groupRows at readToken do readKind
+groupRows at readToken do readStart
+groupRows at readToken do readLength
+groupRows at readToken do readOffset
+groupRows at readToken do findEnd
+groupRows at readToken do touchCheck
+groupRows at readToken do glueCheck
+groupRows at readToken branch if minus goto afterMinus else goto classify
+groupRows at afterMinus match tokenKind lexer.TokenKind
+groupRows at afterMinus case lexer.TokenKind.identifier bind none none goto minusStray
+groupRows at afterMinus case lexer.TokenKind.integer bind negativeDigits Int64 goto negative
+groupRows at afterMinus case lexer.TokenKind.text bind none none goto minusStray
+groupRows at afterMinus case lexer.TokenKind.punctuation bind markAfterMinus Byte goto minusStray
+groupRows at afterMinus case lexer.TokenKind.newline bind none none goto minusStray
+groupRows at afterMinus case lexer.TokenKind.endOfInput bind none none goto minusStray
+groupRows at negative do minusTouchCheck
+groupRows at negative branch if minusTouching goto negativeWord else goto minusStray
+groupRows at negativeWord do negate
+groupRows at negativeWord do makeNegativeKind
+groupRows at negativeWord do findSignOffset
+groupRows at negativeWord set openKind negativeKind
+groupRows at negativeWord set openIsName no
+groupRows at negativeWord set openStart minusStart
+groupRows at negativeWord set openOffset signOffset
+groupRows at negativeWord set openEnd tokenEnd
+groupRows at negativeWord set open yes
+groupRows at negativeWord set minus no
+groupRows at negativeWord goto visit
+groupRows at classify match tokenKind lexer.TokenKind
+groupRows at classify case lexer.TokenKind.identifier bind none none goto identifierCase
+groupRows at classify case lexer.TokenKind.integer bind number Int64 goto integerCase
+groupRows at classify case lexer.TokenKind.text bind none none goto textCase
+groupRows at classify case lexer.TokenKind.punctuation bind mark Byte goto punctuationCase
+groupRows at classify case lexer.TokenKind.newline bind none none goto lineEnd
+groupRows at classify case lexer.TokenKind.endOfInput bind none none goto lineEnd
+groupRows at identifierCase branch if dotted goto extendName else goto identifierFresh
+groupRows at extendName branch if touching goto extendNameWord else goto dangling
+groupRows at extendNameWord set openEnd tokenEnd
+groupRows at extendNameWord set dotted no
+groupRows at extendNameWord goto visit
+groupRows at identifierFresh branch if glued goto gluedAt else goto identifierStart
+groupRows at identifierStart do flushBeforeName
+groupRows at identifierStart set openKind nameKind
+groupRows at identifierStart set openIsName yes
+groupRows at identifierStart set openStart tokenStart
+groupRows at identifierStart set openOffset tokenOffset
+groupRows at identifierStart set openEnd tokenEnd
+groupRows at identifierStart set open yes
+groupRows at identifierStart goto visit
+groupRows at integerCase branch if glued goto gluedAt else goto integerStart
+groupRows at integerStart do flushBeforeInteger
+groupRows at integerStart do makeIntegerKind
+groupRows at integerStart set openKind integerKind
+groupRows at integerStart set openIsName no
+groupRows at integerStart set openStart tokenStart
+groupRows at integerStart set openOffset tokenOffset
+groupRows at integerStart set openEnd tokenEnd
+groupRows at integerStart set open yes
+groupRows at integerStart goto visit
+groupRows at textCase branch if glued goto gluedAt else goto textStart
+groupRows at textStart do flushBeforeText
+groupRows at textStart set openKind textKind
+groupRows at textStart set openIsName no
+groupRows at textStart set openStart tokenStart
+groupRows at textStart set openOffset tokenOffset
+groupRows at textStart set openEnd tokenEnd
+groupRows at textStart set open yes
+groupRows at textStart goto visit
+groupRows at punctuationCase do dotCheck
+groupRows at punctuationCase branch if isDot goto dotCase else goto minusTest
+groupRows at dotCase do joinCheck
+groupRows at dotCase do undottedCheck
+groupRows at dotCase do dotAllowed
+groupRows at dotCase branch if canDot goto dotJoin else goto strayAt
+groupRows at dotJoin set dotted yes
+groupRows at dotJoin set openEnd tokenEnd
+groupRows at dotJoin goto visit
+groupRows at minusTest do minusCheck
+groupRows at minusTest branch if isMinus goto minusCase else goto strayAt
+groupRows at minusCase branch if glued goto gluedAt else goto minusOpen
+groupRows at minusOpen do flushBeforeMinus
+groupRows at minusOpen set open no
+groupRows at minusOpen set openIsName no
+groupRows at minusOpen set minus yes
+groupRows at minusOpen set minusStart tokenStart
+groupRows at minusOpen set minusEnd tokenEnd
+groupRows at minusOpen goto visit
+groupRows at lineEnd branch if dotted goto dangling else goto lineFlush
+groupRows at lineFlush do flushAtLineEnd
+groupRows at lineFlush do closeThisRow
+groupRows at lineFlush branch ifError closeThisRow goto closeFailed else goto rowClosed
+groupRows at rowClosed set rowFirst nextFirst
+groupRows at rowClosed set open no
+groupRows at rowClosed set openIsName no
+groupRows at rowClosed goto visit
+groupRows at finished return ok none
+groupRows at closeFailed return error closeError
+groupRows at gluedAt do makeGluedWord
+groupRows at gluedAt goto gluedFailed
+groupRows at gluedFailed do makeGluedFailed
+groupRows at gluedFailed return error gluedFailedError
+groupRows at strayAt do makeStrayWord
+groupRows at strayAt goto strayFailed
+groupRows at strayFailed do makeStrayFailed
+groupRows at strayFailed return error strayFailedError
+groupRows at minusStray do makeMinusWord
+groupRows at minusStray goto minusFailed
+groupRows at minusFailed do makeMinusFailed
+groupRows at minusFailed return error minusFailedError
+groupRows at dangling do measureDangling
+groupRows at dangling do makeDanglingWord
+groupRows at dangling goto danglingFailed
+groupRows at danglingFailed do makeDanglingFailed
+groupRows at danglingFailed return error danglingFailedError
+
+countTokens is call
+countTokens in groupRows
+countTokens invokes lexer.Tokens.length
+countTokens argument list lexer.Tokens tokens lend
+countTokens result tokenCount Int64
+countTokens ownedBy none
+countTokens cleanedBy none
+countTokens borrows none
+countTokens catch none
+countTokens suppresses none
+
+makeNameKind is call
+makeNameKind in groupRows
+makeNameKind invokes WordKind.name
+makeNameKind argument none
+makeNameKind result nameKind WordKind
+makeNameKind ownedBy none
+makeNameKind cleanedBy none
+makeNameKind borrows none
+makeNameKind catch none
+makeNameKind suppresses none
+
+makeTextKind is call
+makeTextKind in groupRows
+makeTextKind invokes WordKind.text
+makeTextKind argument none
+makeTextKind result textKind WordKind
+makeTextKind ownedBy none
+makeTextKind cleanedBy none
+makeTextKind borrows none
+makeTextKind catch none
+makeTextKind suppresses none
+
+makeOrigin is call
+makeOrigin in groupRows
+makeOrigin invokes string.Position.new
+makeOrigin argument offset Int64 zero copy
+makeOrigin argument line Int64 one copy
+makeOrigin argument column Int64 one copy
+makeOrigin result origin string.Position
+makeOrigin ownedBy none
+makeOrigin cleanedBy none
+makeOrigin borrows none
+makeOrigin catch none
+makeOrigin suppresses none
+
+readKind is call
+readKind in groupRows
+readKind invokes lexer.Token.kind
+readKind argument record lexer.Token token copy
+readKind result tokenKind lexer.TokenKind
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+readStart is call
+readStart in groupRows
+readStart invokes lexer.Token.start
+readStart argument record lexer.Token token copy
+readStart result tokenStart string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readLength is call
+readLength in groupRows
+readLength invokes lexer.Token.length
+readLength argument record lexer.Token token copy
+readLength result tokenLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+readOffset is call
+readOffset in groupRows
+readOffset invokes string.Position.offset
+readOffset argument record string.Position tokenStart copy
+readOffset result tokenOffset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+findEnd is call
+findEnd in groupRows
+findEnd invokes math.addInt64
+findEnd argument left Int64 tokenOffset copy
+findEnd argument right Int64 tokenLength copy
+findEnd result tokenEnd Int64
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+touchCheck is call
+touchCheck in groupRows
+touchCheck invokes compare.equalInt64
+touchCheck argument left Int64 tokenOffset copy
+touchCheck argument right Int64 openEnd copy
+touchCheck result touching Bool
+touchCheck ownedBy none
+touchCheck cleanedBy none
+touchCheck borrows none
+touchCheck catch none
+touchCheck suppresses none
+
+glueCheck is call
+glueCheck in groupRows
+glueCheck invokes logic.and
+glueCheck argument left Bool open copy
+glueCheck argument right Bool touching copy
+glueCheck result glued Bool
+glueCheck ownedBy none
+glueCheck cleanedBy none
+glueCheck borrows none
+glueCheck catch none
+glueCheck suppresses none
+
+minusTouchCheck is call
+minusTouchCheck in groupRows
+minusTouchCheck invokes compare.equalInt64
+minusTouchCheck argument left Int64 tokenOffset copy
+minusTouchCheck argument right Int64 minusEnd copy
+minusTouchCheck result minusTouching Bool
+minusTouchCheck ownedBy none
+minusTouchCheck cleanedBy none
+minusTouchCheck borrows none
+minusTouchCheck catch none
+minusTouchCheck suppresses none
+
+negate is call
+negate in groupRows
+negate invokes math.negateInt64
+negate argument value Int64 negativeDigits copy
+negate result negativeValue Int64
+negate ownedBy none
+negate cleanedBy none
+negate borrows none
+negate catch none
+negate suppresses none
+
+makeNegativeKind is call
+makeNegativeKind in groupRows
+makeNegativeKind invokes WordKind.integer
+makeNegativeKind argument payload Int64 negativeValue copy
+makeNegativeKind result negativeKind WordKind
+makeNegativeKind ownedBy none
+makeNegativeKind cleanedBy none
+makeNegativeKind borrows none
+makeNegativeKind catch none
+makeNegativeKind suppresses none
+
+findSignOffset is call
+findSignOffset in groupRows
+findSignOffset invokes math.subtractInt64
+findSignOffset argument left Int64 tokenOffset copy
+findSignOffset argument right Int64 one copy
+findSignOffset result signOffset Int64
+findSignOffset ownedBy none
+findSignOffset cleanedBy none
+findSignOffset borrows none
+findSignOffset catch none
+findSignOffset suppresses none
+
+flushBeforeName is call
+flushBeforeName in groupRows
+flushBeforeName invokes flushWord
+flushBeforeName argument words Words words lendMutable
+flushBeforeName argument open Bool open copy
+flushBeforeName argument kind WordKind openKind copy
+flushBeforeName argument start string.Position openStart copy
+flushBeforeName argument startOffset Int64 openOffset copy
+flushBeforeName argument endOffset Int64 openEnd copy
+flushBeforeName result none
+flushBeforeName ownedBy none
+flushBeforeName cleanedBy none
+flushBeforeName borrows none
+flushBeforeName catch none
+flushBeforeName suppresses none
+
+flushBeforeInteger is call
+flushBeforeInteger in groupRows
+flushBeforeInteger invokes flushWord
+flushBeforeInteger argument words Words words lendMutable
+flushBeforeInteger argument open Bool open copy
+flushBeforeInteger argument kind WordKind openKind copy
+flushBeforeInteger argument start string.Position openStart copy
+flushBeforeInteger argument startOffset Int64 openOffset copy
+flushBeforeInteger argument endOffset Int64 openEnd copy
+flushBeforeInteger result none
+flushBeforeInteger ownedBy none
+flushBeforeInteger cleanedBy none
+flushBeforeInteger borrows none
+flushBeforeInteger catch none
+flushBeforeInteger suppresses none
+
+makeIntegerKind is call
+makeIntegerKind in groupRows
+makeIntegerKind invokes WordKind.integer
+makeIntegerKind argument payload Int64 number copy
+makeIntegerKind result integerKind WordKind
+makeIntegerKind ownedBy none
+makeIntegerKind cleanedBy none
+makeIntegerKind borrows none
+makeIntegerKind catch none
+makeIntegerKind suppresses none
+
+flushBeforeText is call
+flushBeforeText in groupRows
+flushBeforeText invokes flushWord
+flushBeforeText argument words Words words lendMutable
+flushBeforeText argument open Bool open copy
+flushBeforeText argument kind WordKind openKind copy
+flushBeforeText argument start string.Position openStart copy
+flushBeforeText argument startOffset Int64 openOffset copy
+flushBeforeText argument endOffset Int64 openEnd copy
+flushBeforeText result none
+flushBeforeText ownedBy none
+flushBeforeText cleanedBy none
+flushBeforeText borrows none
+flushBeforeText catch none
+flushBeforeText suppresses none
+
+dotCheck is call
+dotCheck in groupRows
+dotCheck invokes byte.equals
+dotCheck argument left Byte mark copy
+dotCheck argument right Byte dotByte copy
+dotCheck result isDot Bool
+dotCheck ownedBy none
+dotCheck cleanedBy none
+dotCheck borrows none
+dotCheck catch none
+dotCheck suppresses none
+
+joinCheck is call
+joinCheck in groupRows
+joinCheck invokes logic.and
+joinCheck argument left Bool glued copy
+joinCheck argument right Bool openIsName copy
+joinCheck result joinsName Bool
+joinCheck ownedBy none
+joinCheck cleanedBy none
+joinCheck borrows none
+joinCheck catch none
+joinCheck suppresses none
+
+undottedCheck is call
+undottedCheck in groupRows
+undottedCheck invokes logic.not
+undottedCheck argument value Bool dotted copy
+undottedCheck result undotted Bool
+undottedCheck ownedBy none
+undottedCheck cleanedBy none
+undottedCheck borrows none
+undottedCheck catch none
+undottedCheck suppresses none
+
+dotAllowed is call
+dotAllowed in groupRows
+dotAllowed invokes logic.and
+dotAllowed argument left Bool joinsName copy
+dotAllowed argument right Bool undotted copy
+dotAllowed result canDot Bool
+dotAllowed ownedBy none
+dotAllowed cleanedBy none
+dotAllowed borrows none
+dotAllowed catch none
+dotAllowed suppresses none
+
+minusCheck is call
+minusCheck in groupRows
+minusCheck invokes byte.equals
+minusCheck argument left Byte mark copy
+minusCheck argument right Byte minusByte copy
+minusCheck result isMinus Bool
+minusCheck ownedBy none
+minusCheck cleanedBy none
+minusCheck borrows none
+minusCheck catch none
+minusCheck suppresses none
+
+flushBeforeMinus is call
+flushBeforeMinus in groupRows
+flushBeforeMinus invokes flushWord
+flushBeforeMinus argument words Words words lendMutable
+flushBeforeMinus argument open Bool open copy
+flushBeforeMinus argument kind WordKind openKind copy
+flushBeforeMinus argument start string.Position openStart copy
+flushBeforeMinus argument startOffset Int64 openOffset copy
+flushBeforeMinus argument endOffset Int64 openEnd copy
+flushBeforeMinus result none
+flushBeforeMinus ownedBy none
+flushBeforeMinus cleanedBy none
+flushBeforeMinus borrows none
+flushBeforeMinus catch none
+flushBeforeMinus suppresses none
+
+flushAtLineEnd is call
+flushAtLineEnd in groupRows
+flushAtLineEnd invokes flushWord
+flushAtLineEnd argument words Words words lendMutable
+flushAtLineEnd argument open Bool open copy
+flushAtLineEnd argument kind WordKind openKind copy
+flushAtLineEnd argument start string.Position openStart copy
+flushAtLineEnd argument startOffset Int64 openOffset copy
+flushAtLineEnd argument endOffset Int64 openEnd copy
+flushAtLineEnd result none
+flushAtLineEnd ownedBy none
+flushAtLineEnd cleanedBy none
+flushAtLineEnd borrows none
+flushAtLineEnd catch none
+flushAtLineEnd suppresses none
+
+closeThisRow is call
+closeThisRow in groupRows
+closeThisRow invokes closeRow
+closeThisRow argument words Words words lend
+closeThisRow argument rows Rows rows lendMutable
+closeThisRow argument rowFirst Int64 rowFirst copy
+closeThisRow result nextFirst Int64
+closeThisRow ownedBy none
+closeThisRow cleanedBy none
+closeThisRow borrows none
+closeThisRow catch closeError Rejection
+closeThisRow suppresses none
+
+makeGluedWord is call
+makeGluedWord in groupRows
+makeGluedWord invokes Word.new
+makeGluedWord argument kind WordKind nameKind copy
+makeGluedWord argument start string.Position tokenStart copy
+makeGluedWord argument length Int64 tokenLength copy
+makeGluedWord result gluedWord Word
+makeGluedWord ownedBy none
+makeGluedWord cleanedBy none
+makeGluedWord borrows none
+makeGluedWord catch none
+makeGluedWord suppresses none
+
+makeGluedFailed is call
+makeGluedFailed in groupRows
+makeGluedFailed invokes Rejection.gluedWords
+makeGluedFailed argument payload Word gluedWord copy
+makeGluedFailed result gluedFailedError Rejection
+makeGluedFailed ownedBy none
+makeGluedFailed cleanedBy none
+makeGluedFailed borrows none
+makeGluedFailed catch none
+makeGluedFailed suppresses none
+
+makeStrayWord is call
+makeStrayWord in groupRows
+makeStrayWord invokes Word.new
+makeStrayWord argument kind WordKind nameKind copy
+makeStrayWord argument start string.Position tokenStart copy
+makeStrayWord argument length Int64 tokenLength copy
+makeStrayWord result strayWord Word
+makeStrayWord ownedBy none
+makeStrayWord cleanedBy none
+makeStrayWord borrows none
+makeStrayWord catch none
+makeStrayWord suppresses none
+
+makeStrayFailed is call
+makeStrayFailed in groupRows
+makeStrayFailed invokes Rejection.strayMark
+makeStrayFailed argument payload Word strayWord copy
+makeStrayFailed result strayFailedError Rejection
+makeStrayFailed ownedBy none
+makeStrayFailed cleanedBy none
+makeStrayFailed borrows none
+makeStrayFailed catch none
+makeStrayFailed suppresses none
+
+makeMinusWord is call
+makeMinusWord in groupRows
+makeMinusWord invokes Word.new
+makeMinusWord argument kind WordKind nameKind copy
+makeMinusWord argument start string.Position minusStart copy
+makeMinusWord argument length Int64 one copy
+makeMinusWord result minusWord Word
+makeMinusWord ownedBy none
+makeMinusWord cleanedBy none
+makeMinusWord borrows none
+makeMinusWord catch none
+makeMinusWord suppresses none
+
+makeMinusFailed is call
+makeMinusFailed in groupRows
+makeMinusFailed invokes Rejection.strayMark
+makeMinusFailed argument payload Word minusWord copy
+makeMinusFailed result minusFailedError Rejection
+makeMinusFailed ownedBy none
+makeMinusFailed cleanedBy none
+makeMinusFailed borrows none
+makeMinusFailed catch none
+makeMinusFailed suppresses none
+
+measureDangling is call
+measureDangling in groupRows
+measureDangling invokes math.subtractInt64
+measureDangling argument left Int64 openEnd copy
+measureDangling argument right Int64 openOffset copy
+measureDangling result danglingLength Int64
+measureDangling ownedBy none
+measureDangling cleanedBy none
+measureDangling borrows none
+measureDangling catch none
+measureDangling suppresses none
+
+makeDanglingWord is call
+makeDanglingWord in groupRows
+makeDanglingWord invokes Word.new
+makeDanglingWord argument kind WordKind openKind copy
+makeDanglingWord argument start string.Position openStart copy
+makeDanglingWord argument length Int64 danglingLength copy
+makeDanglingWord result danglingWord Word
+makeDanglingWord ownedBy none
+makeDanglingWord cleanedBy none
+makeDanglingWord borrows none
+makeDanglingWord catch none
+makeDanglingWord suppresses none
+
+makeDanglingFailed is call
+makeDanglingFailed in groupRows
+makeDanglingFailed invokes Rejection.danglingDot
+makeDanglingFailed argument payload Word danglingWord copy
+makeDanglingFailed result danglingFailedError Rejection
+makeDanglingFailed ownedBy none
+makeDanglingFailed cleanedBy none
+makeDanglingFailed borrows none
+makeDanglingFailed catch none
+makeDanglingFailed suppresses none
+
+# ---------------------------------------------------------------- reading words back
+
+wordText is operation
+wordText purpose "Copy a word's text out of the source into a region"
+wordText invariant copiesWord "Returns exactly the source text the word covers, held by the region"
+wordText typeParameter none
+wordText input source String borrowed
+wordText input word Word copied
+wordText input region Region borrowed
+wordText output String
+wordText outputOwnedBy region
+wordText raises Rejection
+wordText effect none
+wordText uses none
+wordText memoryHeap true
+wordText async false
+wordText maxRecursion none
+wordText label begin loopKind none
+wordText label begin within none
+wordText label copy loopKind none
+wordText label copy within none
+wordText label outside loopKind none
+wordText label outside within none
+wordText let empty String "" immutable
+wordText at begin do readWordStart
+wordText at begin do readWordOffset
+wordText at begin do readWordLength
+wordText at begin do cutWord
+wordText at begin branch ifError cutWord goto outside else goto copy
+wordText at copy do copyPiece
+wordText at copy return ok copied
+wordText at outside do makeOutside
+wordText at outside return error outsideError
+
+readWordStart is call
+readWordStart in wordText
+readWordStart invokes Word.start
+readWordStart argument record Word word copy
+readWordStart result wordStart string.Position
+readWordStart ownedBy none
+readWordStart cleanedBy none
+readWordStart borrows none
+readWordStart catch none
+readWordStart suppresses none
+
+readWordOffset is call
+readWordOffset in wordText
+readWordOffset invokes string.Position.offset
+readWordOffset argument record string.Position wordStart copy
+readWordOffset result wordOffset Int64
+readWordOffset ownedBy none
+readWordOffset cleanedBy none
+readWordOffset borrows none
+readWordOffset catch none
+readWordOffset suppresses none
+
+readWordLength is call
+readWordLength in wordText
+readWordLength invokes Word.length
+readWordLength argument record Word word copy
+readWordLength result wordLength Int64
+readWordLength ownedBy none
+readWordLength cleanedBy none
+readWordLength borrows none
+readWordLength catch none
+readWordLength suppresses none
+
+cutWord is call
+cutWord in wordText
+cutWord invokes string.slice
+cutWord argument text String source lend
+cutWord argument start Int64 wordOffset copy
+cutWord argument length Int64 wordLength copy
+cutWord result piece String
+cutWord ownedBy none
+cutWord cleanedBy none
+cutWord borrows source
+cutWord catch cutError string.StringIndexError
+cutWord suppresses none
+
+copyPiece is call
+copyPiece in wordText
+copyPiece invokes string.concat
+copyPiece argument left String piece lend
+copyPiece argument right String empty lend
+copyPiece argument region Region region lend
+copyPiece result copied String
+copyPiece ownedBy region
+copyPiece cleanedBy none
+copyPiece borrows none
+copyPiece catch none
+copyPiece suppresses none
+
+makeOutside is call
+makeOutside in wordText
+makeOutside invokes Rejection.outsideSource
+makeOutside argument payload Word word copy
+makeOutside result outsideError Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+isText is operation
+isText purpose "Decide whether a word's source text is a given text"
+isText invariant comparesWithText "True exactly when the word's source text equals the text"
+isText typeParameter none
+isText input source String borrowed
+isText input word Word copied
+isText input text String borrowed
+isText output Bool
+isText outputOwnedBy none
+isText raises Rejection
+isText effect none
+isText uses none
+isText memoryHeap false
+isText async false
+isText maxRecursion none
+isText label begin loopKind none
+isText label begin within none
+isText label compare loopKind none
+isText label compare within none
+isText label outside loopKind none
+isText label outside within none
+isText let none
+isText at begin do readWordStart
+isText at begin do readWordOffset
+isText at begin do readWordLength
+isText at begin do cutWord
+isText at begin branch ifError cutWord goto outside else goto compare
+isText at compare do compareText
+isText at compare return ok same
+isText at outside do makeOutside
+isText at outside return error outsideError
+
+readWordStart is call
+readWordStart in isText
+readWordStart invokes Word.start
+readWordStart argument record Word word copy
+readWordStart result wordStart string.Position
+readWordStart ownedBy none
+readWordStart cleanedBy none
+readWordStart borrows none
+readWordStart catch none
+readWordStart suppresses none
+
+readWordOffset is call
+readWordOffset in isText
+readWordOffset invokes string.Position.offset
+readWordOffset argument record string.Position wordStart copy
+readWordOffset result wordOffset Int64
+readWordOffset ownedBy none
+readWordOffset cleanedBy none
+readWordOffset borrows none
+readWordOffset catch none
+readWordOffset suppresses none
+
+readWordLength is call
+readWordLength in isText
+readWordLength invokes Word.length
+readWordLength argument record Word word copy
+readWordLength result wordLength Int64
+readWordLength ownedBy none
+readWordLength cleanedBy none
+readWordLength borrows none
+readWordLength catch none
+readWordLength suppresses none
+
+cutWord is call
+cutWord in isText
+cutWord invokes string.slice
+cutWord argument text String source lend
+cutWord argument start Int64 wordOffset copy
+cutWord argument length Int64 wordLength copy
+cutWord result piece String
+cutWord ownedBy none
+cutWord cleanedBy none
+cutWord borrows source
+cutWord catch cutError string.StringIndexError
+cutWord suppresses none
+
+compareText is call
+compareText in isText
+compareText invokes string.equals
+compareText argument left String piece lend
+compareText argument right String text lend
+compareText result same Bool
+compareText ownedBy none
+compareText cleanedBy none
+compareText borrows none
+compareText catch none
+compareText suppresses none
+
+makeOutside is call
+makeOutside in isText
+makeOutside invokes Rejection.outsideSource
+makeOutside argument payload Word word copy
+makeOutside result outsideError Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+sameText is operation
+sameText purpose "Decide whether two words have the same source text"
+sameText invariant comparesWords "True exactly when the two words' source texts are equal, wherever they are"
+sameText typeParameter none
+sameText input source String borrowed
+sameText input left Word copied
+sameText input right Word copied
+sameText output Bool
+sameText outputOwnedBy none
+sameText raises Rejection
+sameText effect none
+sameText uses none
+sameText memoryHeap false
+sameText async false
+sameText maxRecursion none
+sameText label begin loopKind none
+sameText label begin within none
+sameText label cutSecond loopKind none
+sameText label cutSecond within none
+sameText label compare loopKind none
+sameText label compare within none
+sameText label leftOutside loopKind none
+sameText label leftOutside within none
+sameText label rightOutside loopKind none
+sameText label rightOutside within none
+sameText let none
+sameText at begin do readLeftStart
+sameText at begin do readLeftOffset
+sameText at begin do readLeftLength
+sameText at begin do readRightStart
+sameText at begin do readRightOffset
+sameText at begin do readRightLength
+sameText at begin do cutLeft
+sameText at begin branch ifError cutLeft goto leftOutside else goto cutSecond
+sameText at cutSecond do cutRight
+sameText at cutSecond branch ifError cutRight goto rightOutside else goto compare
+sameText at compare do compareText
+sameText at compare return ok same
+sameText at leftOutside do makeLeftOutside
+sameText at leftOutside return error leftOutsideError
+sameText at rightOutside do makeRightOutside
+sameText at rightOutside return error rightOutsideError
+
+readLeftStart is call
+readLeftStart in sameText
+readLeftStart invokes Word.start
+readLeftStart argument record Word left copy
+readLeftStart result leftStart string.Position
+readLeftStart ownedBy none
+readLeftStart cleanedBy none
+readLeftStart borrows none
+readLeftStart catch none
+readLeftStart suppresses none
+
+readLeftOffset is call
+readLeftOffset in sameText
+readLeftOffset invokes string.Position.offset
+readLeftOffset argument record string.Position leftStart copy
+readLeftOffset result leftOffset Int64
+readLeftOffset ownedBy none
+readLeftOffset cleanedBy none
+readLeftOffset borrows none
+readLeftOffset catch none
+readLeftOffset suppresses none
+
+readLeftLength is call
+readLeftLength in sameText
+readLeftLength invokes Word.length
+readLeftLength argument record Word left copy
+readLeftLength result leftLength Int64
+readLeftLength ownedBy none
+readLeftLength cleanedBy none
+readLeftLength borrows none
+readLeftLength catch none
+readLeftLength suppresses none
+
+readRightStart is call
+readRightStart in sameText
+readRightStart invokes Word.start
+readRightStart argument record Word right copy
+readRightStart result rightStart string.Position
+readRightStart ownedBy none
+readRightStart cleanedBy none
+readRightStart borrows none
+readRightStart catch none
+readRightStart suppresses none
+
+readRightOffset is call
+readRightOffset in sameText
+readRightOffset invokes string.Position.offset
+readRightOffset argument record string.Position rightStart copy
+readRightOffset result rightOffset Int64
+readRightOffset ownedBy none
+readRightOffset cleanedBy none
+readRightOffset borrows none
+readRightOffset catch none
+readRightOffset suppresses none
+
+readRightLength is call
+readRightLength in sameText
+readRightLength invokes Word.length
+readRightLength argument record Word right copy
+readRightLength result rightLength Int64
+readRightLength ownedBy none
+readRightLength cleanedBy none
+readRightLength borrows none
+readRightLength catch none
+readRightLength suppresses none
+
+cutLeft is call
+cutLeft in sameText
+cutLeft invokes string.slice
+cutLeft argument text String source lend
+cutLeft argument start Int64 leftOffset copy
+cutLeft argument length Int64 leftLength copy
+cutLeft result leftPiece String
+cutLeft ownedBy none
+cutLeft cleanedBy none
+cutLeft borrows source
+cutLeft catch cutLeftError string.StringIndexError
+cutLeft suppresses none
+
+cutRight is call
+cutRight in sameText
+cutRight invokes string.slice
+cutRight argument text String source lend
+cutRight argument start Int64 rightOffset copy
+cutRight argument length Int64 rightLength copy
+cutRight result rightPiece String
+cutRight ownedBy none
+cutRight cleanedBy none
+cutRight borrows source
+cutRight catch cutRightError string.StringIndexError
+cutRight suppresses none
+
+compareText is call
+compareText in sameText
+compareText invokes string.equals
+compareText argument left String leftPiece lend
+compareText argument right String rightPiece lend
+compareText result same Bool
+compareText ownedBy none
+compareText cleanedBy none
+compareText borrows none
+compareText catch none
+compareText suppresses none
+
+makeLeftOutside is call
+makeLeftOutside in sameText
+makeLeftOutside invokes Rejection.outsideSource
+makeLeftOutside argument payload Word left copy
+makeLeftOutside result leftOutsideError Rejection
+makeLeftOutside ownedBy none
+makeLeftOutside cleanedBy none
+makeLeftOutside borrows none
+makeLeftOutside catch none
+makeLeftOutside suppresses none
+
+makeRightOutside is call
+makeRightOutside in sameText
+makeRightOutside invokes Rejection.outsideSource
+makeRightOutside argument payload Word right copy
+makeRightOutside result rightOutsideError Rejection
+makeRightOutside ownedBy none
+makeRightOutside cleanedBy none
+makeRightOutside borrows none
+makeRightOutside catch none
+makeRightOutside suppresses none
+
+putWord is operation
+putWord purpose "Append a word's source bytes to a buffer"
+putWord invariant appendsWord "Appends exactly the bytes of source the word covers"
+putWord typeParameter none
+putWord input buffer buffer.ByteBuffer borrowedMutable
+putWord input source String borrowed
+putWord input word Word copied
+putWord output none
+putWord outputOwnedBy none
+putWord raises none
+putWord effect none
+putWord uses none
+putWord memoryHeap false
+putWord async false
+putWord maxRecursion none
+putWord label begin loopKind none
+putWord label begin within none
+putWord label copy note "A word is a run of whole characters of the source, so every index read is in range"
+putWord label copy loopKind while
+putWord label copy within none
+putWord label copy maxIterations wordLength
+putWord label copyByte loopKind none
+putWord label copyByte within copy
+putWord label done loopKind none
+putWord label done within none
+putWord let one Int64 1 immutable
+putWord let index Int64 0 mutable
+putWord at begin do readWordStart
+putWord at begin do readWordOffset
+putWord at begin do readWordLength
+putWord at begin do findEnd
+putWord at begin set index wordOffset
+putWord at begin goto copy
+putWord at copy do endCheck
+putWord at copy branch if atEnd goto done else goto copyByte
+putWord at copyByte do readByte
+putWord at copyByte do appendByte
+putWord at copyByte do stepIndex
+putWord at copyByte set index nextIndex
+putWord at copyByte goto copy
+putWord at done return ok none
+
+readWordStart is call
+readWordStart in putWord
+readWordStart invokes Word.start
+readWordStart argument record Word word copy
+readWordStart result wordStart string.Position
+readWordStart ownedBy none
+readWordStart cleanedBy none
+readWordStart borrows none
+readWordStart catch none
+readWordStart suppresses none
+
+readWordOffset is call
+readWordOffset in putWord
+readWordOffset invokes string.Position.offset
+readWordOffset argument record string.Position wordStart copy
+readWordOffset result wordOffset Int64
+readWordOffset ownedBy none
+readWordOffset cleanedBy none
+readWordOffset borrows none
+readWordOffset catch none
+readWordOffset suppresses none
+
+readWordLength is call
+readWordLength in putWord
+readWordLength invokes Word.length
+readWordLength argument record Word word copy
+readWordLength result wordLength Int64
+readWordLength ownedBy none
+readWordLength cleanedBy none
+readWordLength borrows none
+readWordLength catch none
+readWordLength suppresses none
+
+findEnd is call
+findEnd in putWord
+findEnd invokes math.addInt64
+findEnd argument left Int64 wordOffset copy
+findEnd argument right Int64 wordLength copy
+findEnd result wordEnd Int64
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+endCheck is call
+endCheck in putWord
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 index copy
+endCheck argument right Int64 wordEnd copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readByte is call
+readByte in putWord
+readByte invokes string.byteAtOrTrap
+readByte argument text String source lend
+readByte argument index Int64 index copy
+readByte result value Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+appendByte is call
+appendByte in putWord
+appendByte invokes buffer.appendByte
+appendByte argument buffer buffer.ByteBuffer buffer lendMutable
+appendByte argument value Byte value copy
+appendByte result none
+appendByte ownedBy none
+appendByte cleanedBy none
+appendByte borrows none
+appendByte catch none
+appendByte suppresses none
+
+stepIndex is call
+stepIndex in putWord
+stepIndex invokes math.addInt64
+stepIndex argument left Int64 index copy
+stepIndex argument right Int64 one copy
+stepIndex result nextIndex Int64
+stepIndex ownedBy none
+stepIndex cleanedBy none
+stepIndex borrows none
+stepIndex catch none
+stepIndex suppresses none
+
+# ---------------------------------------------------------------- explaining a rejection
+
+rejectionWord is operation
+rejectionWord purpose "Read the word a rejection points at"
+rejectionWord invariant none
+rejectionWord typeParameter none
+rejectionWord input rejection Rejection copied
+rejectionWord output Word
+rejectionWord outputOwnedBy none
+rejectionWord raises none
+rejectionWord effect none
+rejectionWord uses none
+rejectionWord memoryHeap false
+rejectionWord async false
+rejectionWord maxRecursion none
+rejectionWord label begin loopKind none
+rejectionWord label begin within none
+rejectionWord label strayMarkCase loopKind none
+rejectionWord label strayMarkCase within none
+rejectionWord label gluedWordsCase loopKind none
+rejectionWord label gluedWordsCase within none
+rejectionWord label danglingDotCase loopKind none
+rejectionWord label danglingDotCase within none
+rejectionWord label shortRowCase loopKind none
+rejectionWord label shortRowCase within none
+rejectionWord label outsideSourceCase loopKind none
+rejectionWord label outsideSourceCase within none
+rejectionWord label unsupportedKindCase loopKind none
+rejectionWord label unsupportedKindCase within none
+rejectionWord label strayRowCase loopKind none
+rejectionWord label strayRowCase within none
+rejectionWord label duplicateNameCase loopKind none
+rejectionWord label duplicateNameCase within none
+rejectionWord label notMainCase loopKind none
+rejectionWord label notMainCase within none
+rejectionWord label noMainCase loopKind none
+rejectionWord label noMainCase within none
+rejectionWord label unsupportedPredicateCase loopKind none
+rejectionWord label unsupportedPredicateCase within none
+rejectionWord label unsupportedPayloadCase loopKind none
+rejectionWord label unsupportedPayloadCase within none
+rejectionWord label unsupportedTypeCase loopKind none
+rejectionWord label unsupportedTypeCase within none
+rejectionWord label badLiteralCase loopKind none
+rejectionWord label badLiteralCase within none
+rejectionWord label unsupportedEscapeCase loopKind none
+rejectionWord label unsupportedEscapeCase within none
+rejectionWord label unknownValueCase loopKind none
+rejectionWord label unknownValueCase within none
+rejectionWord label wrongTypeCase loopKind none
+rejectionWord label wrongTypeCase within none
+rejectionWord label unsupportedTargetCase loopKind none
+rejectionWord label unsupportedTargetCase within none
+rejectionWord label wrongArgumentCase loopKind none
+rejectionWord label wrongArgumentCase within none
+rejectionWord label argumentCountCase loopKind none
+rejectionWord label argumentCountCase within none
+rejectionWord label unknownLabelCase loopKind none
+rejectionWord label unknownLabelCase within none
+rejectionWord label unknownCallCase loopKind none
+rejectionWord label unknownCallCase within none
+rejectionWord label unsupportedStepCase loopKind none
+rejectionWord label unsupportedStepCase within none
+rejectionWord label notMutableCase loopKind none
+rejectionWord label notMutableCase within none
+rejectionWord label splitBlockCase loopKind none
+rejectionWord label splitBlockCase within none
+rejectionWord label unsupportedLoopCase loopKind none
+rejectionWord label unsupportedLoopCase within none
+rejectionWord label notFailingCase loopKind none
+rejectionWord label notFailingCase within none
+rejectionWord label lostNameCase loopKind none
+rejectionWord label lostNameCase within none
+rejectionWord label invalidCharacterCase loopKind none
+rejectionWord label invalidCharacterCase within none
+rejectionWord label unterminatedTextCase loopKind none
+rejectionWord label unterminatedTextCase within none
+rejectionWord label integerTooLargeCase loopKind none
+rejectionWord label integerTooLargeCase within none
+rejectionWord let none
+rejectionWord at begin match rejection Rejection
+rejectionWord at begin case Rejection.strayMark bind strayMarkWord Word goto strayMarkCase
+rejectionWord at begin case Rejection.gluedWords bind gluedWordsWord Word goto gluedWordsCase
+rejectionWord at begin case Rejection.danglingDot bind danglingDotWord Word goto danglingDotCase
+rejectionWord at begin case Rejection.shortRow bind shortRowWord Word goto shortRowCase
+rejectionWord at begin case Rejection.outsideSource bind outsideSourceWord Word goto outsideSourceCase
+rejectionWord at begin case Rejection.unsupportedKind bind unsupportedKindWord Word goto unsupportedKindCase
+rejectionWord at begin case Rejection.strayRow bind strayRowWord Word goto strayRowCase
+rejectionWord at begin case Rejection.duplicateName bind duplicateNameWord Word goto duplicateNameCase
+rejectionWord at begin case Rejection.notMain bind notMainWord Word goto notMainCase
+rejectionWord at begin case Rejection.noMain bind noMainWord Word goto noMainCase
+rejectionWord at begin case Rejection.unsupportedPredicate bind unsupportedPredicateWord Word goto unsupportedPredicateCase
+rejectionWord at begin case Rejection.unsupportedPayload bind unsupportedPayloadWord Word goto unsupportedPayloadCase
+rejectionWord at begin case Rejection.unsupportedType bind unsupportedTypeWord Word goto unsupportedTypeCase
+rejectionWord at begin case Rejection.badLiteral bind badLiteralWord Word goto badLiteralCase
+rejectionWord at begin case Rejection.unsupportedEscape bind unsupportedEscapeWord Word goto unsupportedEscapeCase
+rejectionWord at begin case Rejection.unknownValue bind unknownValueWord Word goto unknownValueCase
+rejectionWord at begin case Rejection.wrongType bind wrongTypeWord Word goto wrongTypeCase
+rejectionWord at begin case Rejection.unsupportedTarget bind unsupportedTargetWord Word goto unsupportedTargetCase
+rejectionWord at begin case Rejection.wrongArgument bind wrongArgumentWord Word goto wrongArgumentCase
+rejectionWord at begin case Rejection.argumentCount bind argumentCountWord Word goto argumentCountCase
+rejectionWord at begin case Rejection.unknownLabel bind unknownLabelWord Word goto unknownLabelCase
+rejectionWord at begin case Rejection.unknownCall bind unknownCallWord Word goto unknownCallCase
+rejectionWord at begin case Rejection.unsupportedStep bind unsupportedStepWord Word goto unsupportedStepCase
+rejectionWord at begin case Rejection.notMutable bind notMutableWord Word goto notMutableCase
+rejectionWord at begin case Rejection.splitBlock bind splitBlockWord Word goto splitBlockCase
+rejectionWord at begin case Rejection.unsupportedLoop bind unsupportedLoopWord Word goto unsupportedLoopCase
+rejectionWord at begin case Rejection.notFailing bind notFailingWord Word goto notFailingCase
+rejectionWord at begin case Rejection.lostName bind lostNameWord Word goto lostNameCase
+rejectionWord at begin case Rejection.invalidCharacter bind invalidCharacterWord Word goto invalidCharacterCase
+rejectionWord at begin case Rejection.unterminatedText bind unterminatedTextWord Word goto unterminatedTextCase
+rejectionWord at begin case Rejection.integerTooLarge bind integerTooLargeWord Word goto integerTooLargeCase
+rejectionWord at strayMarkCase return ok strayMarkWord
+rejectionWord at gluedWordsCase return ok gluedWordsWord
+rejectionWord at danglingDotCase return ok danglingDotWord
+rejectionWord at shortRowCase return ok shortRowWord
+rejectionWord at outsideSourceCase return ok outsideSourceWord
+rejectionWord at unsupportedKindCase return ok unsupportedKindWord
+rejectionWord at strayRowCase return ok strayRowWord
+rejectionWord at duplicateNameCase return ok duplicateNameWord
+rejectionWord at notMainCase return ok notMainWord
+rejectionWord at noMainCase return ok noMainWord
+rejectionWord at unsupportedPredicateCase return ok unsupportedPredicateWord
+rejectionWord at unsupportedPayloadCase return ok unsupportedPayloadWord
+rejectionWord at unsupportedTypeCase return ok unsupportedTypeWord
+rejectionWord at badLiteralCase return ok badLiteralWord
+rejectionWord at unsupportedEscapeCase return ok unsupportedEscapeWord
+rejectionWord at unknownValueCase return ok unknownValueWord
+rejectionWord at wrongTypeCase return ok wrongTypeWord
+rejectionWord at unsupportedTargetCase return ok unsupportedTargetWord
+rejectionWord at wrongArgumentCase return ok wrongArgumentWord
+rejectionWord at argumentCountCase return ok argumentCountWord
+rejectionWord at unknownLabelCase return ok unknownLabelWord
+rejectionWord at unknownCallCase return ok unknownCallWord
+rejectionWord at unsupportedStepCase return ok unsupportedStepWord
+rejectionWord at notMutableCase return ok notMutableWord
+rejectionWord at splitBlockCase return ok splitBlockWord
+rejectionWord at unsupportedLoopCase return ok unsupportedLoopWord
+rejectionWord at notFailingCase return ok notFailingWord
+rejectionWord at lostNameCase return ok lostNameWord
+rejectionWord at invalidCharacterCase return ok invalidCharacterWord
+rejectionWord at unterminatedTextCase return ok unterminatedTextWord
+rejectionWord at integerTooLargeCase return ok integerTooLargeWord
+
+rejectionMessage is operation
+rejectionMessage purpose "Say in words why a source was refused"
+rejectionMessage invariant none
+rejectionMessage typeParameter none
+rejectionMessage input rejection Rejection copied
+rejectionMessage input region Region borrowed
+rejectionMessage output String
+rejectionMessage outputOwnedBy region
+rejectionMessage raises none
+rejectionMessage effect none
+rejectionMessage uses none
+rejectionMessage memoryHeap true
+rejectionMessage async false
+rejectionMessage maxRecursion none
+rejectionMessage label begin loopKind none
+rejectionMessage label begin within none
+rejectionMessage label strayMarkCase loopKind none
+rejectionMessage label strayMarkCase within none
+rejectionMessage label gluedWordsCase loopKind none
+rejectionMessage label gluedWordsCase within none
+rejectionMessage label danglingDotCase loopKind none
+rejectionMessage label danglingDotCase within none
+rejectionMessage label shortRowCase loopKind none
+rejectionMessage label shortRowCase within none
+rejectionMessage label outsideSourceCase loopKind none
+rejectionMessage label outsideSourceCase within none
+rejectionMessage label unsupportedKindCase loopKind none
+rejectionMessage label unsupportedKindCase within none
+rejectionMessage label strayRowCase loopKind none
+rejectionMessage label strayRowCase within none
+rejectionMessage label duplicateNameCase loopKind none
+rejectionMessage label duplicateNameCase within none
+rejectionMessage label notMainCase loopKind none
+rejectionMessage label notMainCase within none
+rejectionMessage label noMainCase loopKind none
+rejectionMessage label noMainCase within none
+rejectionMessage label unsupportedPredicateCase loopKind none
+rejectionMessage label unsupportedPredicateCase within none
+rejectionMessage label unsupportedPayloadCase loopKind none
+rejectionMessage label unsupportedPayloadCase within none
+rejectionMessage label unsupportedTypeCase loopKind none
+rejectionMessage label unsupportedTypeCase within none
+rejectionMessage label badLiteralCase loopKind none
+rejectionMessage label badLiteralCase within none
+rejectionMessage label unsupportedEscapeCase loopKind none
+rejectionMessage label unsupportedEscapeCase within none
+rejectionMessage label unknownValueCase loopKind none
+rejectionMessage label unknownValueCase within none
+rejectionMessage label wrongTypeCase loopKind none
+rejectionMessage label wrongTypeCase within none
+rejectionMessage label unsupportedTargetCase loopKind none
+rejectionMessage label unsupportedTargetCase within none
+rejectionMessage label wrongArgumentCase loopKind none
+rejectionMessage label wrongArgumentCase within none
+rejectionMessage label argumentCountCase loopKind none
+rejectionMessage label argumentCountCase within none
+rejectionMessage label unknownLabelCase loopKind none
+rejectionMessage label unknownLabelCase within none
+rejectionMessage label unknownCallCase loopKind none
+rejectionMessage label unknownCallCase within none
+rejectionMessage label unsupportedStepCase loopKind none
+rejectionMessage label unsupportedStepCase within none
+rejectionMessage label notMutableCase loopKind none
+rejectionMessage label notMutableCase within none
+rejectionMessage label splitBlockCase loopKind none
+rejectionMessage label splitBlockCase within none
+rejectionMessage label unsupportedLoopCase loopKind none
+rejectionMessage label unsupportedLoopCase within none
+rejectionMessage label notFailingCase loopKind none
+rejectionMessage label notFailingCase within none
+rejectionMessage label lostNameCase loopKind none
+rejectionMessage label lostNameCase within none
+rejectionMessage label invalidCharacterCase loopKind none
+rejectionMessage label invalidCharacterCase within none
+rejectionMessage label unterminatedTextCase loopKind none
+rejectionMessage label unterminatedTextCase within none
+rejectionMessage label integerTooLargeCase loopKind none
+rejectionMessage label integerTooLargeCase within none
+rejectionMessage let strayMarkText String "this mark is not part of a word" immutable
+rejectionMessage let gluedWordsText String "words are separated by spaces" immutable
+rejectionMessage let danglingDotText String "a dotted name ends with a dot" immutable
+rejectionMessage let shortRowText String "a row has a subject, a predicate, and a payload" immutable
+rejectionMessage let outsideSourceText String "a word lies outside the source" immutable
+rejectionMessage let unsupportedKindText String "this entity kind is outside the stage0 subset" immutable
+rejectionMessage let strayRowText String "this row's subject is not the entity above it" immutable
+rejectionMessage let duplicateNameText String "this name is already declared" immutable
+rejectionMessage let notMainText String "stage0 compiles one operation, and it is named main" immutable
+rejectionMessage let noMainText String "the module has no main operation" immutable
+rejectionMessage let unsupportedPredicateText String "this predicate is outside the stage0 subset here" immutable
+rejectionMessage let unsupportedPayloadText String "this payload is outside the stage0 subset" immutable
+rejectionMessage let unsupportedTypeText String "this type is outside the stage0 subset: String, Int64, ExitCode, Bool" immutable
+rejectionMessage let badLiteralText String "this literal does not fit its type" immutable
+rejectionMessage let unsupportedEscapeText String "stage0 does not read \\x escapes in text" immutable
+rejectionMessage let unknownValueText String "no value has this name" immutable
+rejectionMessage let wrongTypeText String "this value has another type" immutable
+rejectionMessage let unsupportedTargetText String "this call target is outside the stage0 subset" immutable
+rejectionMessage let wrongArgumentText String "this argument does not match the target's slot, type, or mode" immutable
+rejectionMessage let argumentCountText String "the call passes the wrong number of arguments" immutable
+rejectionMessage let unknownLabelText String "no label has this name" immutable
+rejectionMessage let unknownCallText String "no call in main has this name" immutable
+rejectionMessage let unsupportedStepText String "this step is outside the stage0 subset" immutable
+rejectionMessage let notMutableText String "this value is immutable" immutable
+rejectionMessage let splitBlockText String "this label's steps are not together" immutable
+rejectionMessage let unsupportedLoopText String "stage0 does not compile forEach loops" immutable
+rejectionMessage let notFailingText String "this call cannot fail, so there is no error to branch on" immutable
+rejectionMessage let lostNameText String "stage0 lost track of a name it had checked; this is a fault in stage0" immutable
+rejectionMessage let invalidCharacterText String "no word begins with this character" immutable
+rejectionMessage let unterminatedTextText String "quoted text is not closed before the end of its line" immutable
+rejectionMessage let integerTooLargeText String "this integer is too large for Int64" immutable
+rejectionMessage at begin match rejection Rejection
+rejectionMessage at begin case Rejection.strayMark bind strayMarkWord Word goto strayMarkCase
+rejectionMessage at begin case Rejection.gluedWords bind gluedWordsWord Word goto gluedWordsCase
+rejectionMessage at begin case Rejection.danglingDot bind danglingDotWord Word goto danglingDotCase
+rejectionMessage at begin case Rejection.shortRow bind shortRowWord Word goto shortRowCase
+rejectionMessage at begin case Rejection.outsideSource bind outsideSourceWord Word goto outsideSourceCase
+rejectionMessage at begin case Rejection.unsupportedKind bind unsupportedKindWord Word goto unsupportedKindCase
+rejectionMessage at begin case Rejection.strayRow bind strayRowWord Word goto strayRowCase
+rejectionMessage at begin case Rejection.duplicateName bind duplicateNameWord Word goto duplicateNameCase
+rejectionMessage at begin case Rejection.notMain bind notMainWord Word goto notMainCase
+rejectionMessage at begin case Rejection.noMain bind noMainWord Word goto noMainCase
+rejectionMessage at begin case Rejection.unsupportedPredicate bind unsupportedPredicateWord Word goto unsupportedPredicateCase
+rejectionMessage at begin case Rejection.unsupportedPayload bind unsupportedPayloadWord Word goto unsupportedPayloadCase
+rejectionMessage at begin case Rejection.unsupportedType bind unsupportedTypeWord Word goto unsupportedTypeCase
+rejectionMessage at begin case Rejection.badLiteral bind badLiteralWord Word goto badLiteralCase
+rejectionMessage at begin case Rejection.unsupportedEscape bind unsupportedEscapeWord Word goto unsupportedEscapeCase
+rejectionMessage at begin case Rejection.unknownValue bind unknownValueWord Word goto unknownValueCase
+rejectionMessage at begin case Rejection.wrongType bind wrongTypeWord Word goto wrongTypeCase
+rejectionMessage at begin case Rejection.unsupportedTarget bind unsupportedTargetWord Word goto unsupportedTargetCase
+rejectionMessage at begin case Rejection.wrongArgument bind wrongArgumentWord Word goto wrongArgumentCase
+rejectionMessage at begin case Rejection.argumentCount bind argumentCountWord Word goto argumentCountCase
+rejectionMessage at begin case Rejection.unknownLabel bind unknownLabelWord Word goto unknownLabelCase
+rejectionMessage at begin case Rejection.unknownCall bind unknownCallWord Word goto unknownCallCase
+rejectionMessage at begin case Rejection.unsupportedStep bind unsupportedStepWord Word goto unsupportedStepCase
+rejectionMessage at begin case Rejection.notMutable bind notMutableWord Word goto notMutableCase
+rejectionMessage at begin case Rejection.splitBlock bind splitBlockWord Word goto splitBlockCase
+rejectionMessage at begin case Rejection.unsupportedLoop bind unsupportedLoopWord Word goto unsupportedLoopCase
+rejectionMessage at begin case Rejection.notFailing bind notFailingWord Word goto notFailingCase
+rejectionMessage at begin case Rejection.lostName bind lostNameWord Word goto lostNameCase
+rejectionMessage at begin case Rejection.invalidCharacter bind invalidCharacterWord Word goto invalidCharacterCase
+rejectionMessage at begin case Rejection.unterminatedText bind unterminatedTextWord Word goto unterminatedTextCase
+rejectionMessage at begin case Rejection.integerTooLarge bind integerTooLargeWord Word goto integerTooLargeCase
+rejectionMessage at strayMarkCase return ok strayMarkText
+rejectionMessage at gluedWordsCase return ok gluedWordsText
+rejectionMessage at danglingDotCase return ok danglingDotText
+rejectionMessage at shortRowCase return ok shortRowText
+rejectionMessage at outsideSourceCase return ok outsideSourceText
+rejectionMessage at unsupportedKindCase return ok unsupportedKindText
+rejectionMessage at strayRowCase return ok strayRowText
+rejectionMessage at duplicateNameCase return ok duplicateNameText
+rejectionMessage at notMainCase return ok notMainText
+rejectionMessage at noMainCase return ok noMainText
+rejectionMessage at unsupportedPredicateCase return ok unsupportedPredicateText
+rejectionMessage at unsupportedPayloadCase return ok unsupportedPayloadText
+rejectionMessage at unsupportedTypeCase return ok unsupportedTypeText
+rejectionMessage at badLiteralCase return ok badLiteralText
+rejectionMessage at unsupportedEscapeCase return ok unsupportedEscapeText
+rejectionMessage at unknownValueCase return ok unknownValueText
+rejectionMessage at wrongTypeCase return ok wrongTypeText
+rejectionMessage at unsupportedTargetCase return ok unsupportedTargetText
+rejectionMessage at wrongArgumentCase return ok wrongArgumentText
+rejectionMessage at argumentCountCase return ok argumentCountText
+rejectionMessage at unknownLabelCase return ok unknownLabelText
+rejectionMessage at unknownCallCase return ok unknownCallText
+rejectionMessage at unsupportedStepCase return ok unsupportedStepText
+rejectionMessage at notMutableCase return ok notMutableText
+rejectionMessage at splitBlockCase return ok splitBlockText
+rejectionMessage at unsupportedLoopCase return ok unsupportedLoopText
+rejectionMessage at notFailingCase return ok notFailingText
+rejectionMessage at lostNameCase return ok lostNameText
+rejectionMessage at invalidCharacterCase return ok invalidCharacterText
+rejectionMessage at unterminatedTextCase return ok unterminatedTextText
+rejectionMessage at integerTooLargeCase return ok integerTooLargeText
+
+diagnostic is operation
+diagnostic purpose "Write a rejection as `line:column: message (word)`, the shape of a compiler diagnostic"
+diagnostic invariant locatesAndExplains "Gives the line and column of the rejected word, the reason's message, and the word's text"
+diagnostic typeParameter none
+diagnostic input source String borrowed
+diagnostic input rejection Rejection copied
+diagnostic input region Region borrowed
+diagnostic output String
+diagnostic outputOwnedBy region
+diagnostic raises none
+diagnostic effect none
+diagnostic uses none
+diagnostic memoryHeap true
+diagnostic async false
+diagnostic maxRecursion none
+diagnostic label begin loopKind none
+diagnostic label begin within none
+diagnostic label done loopKind none
+diagnostic label done within none
+diagnostic label plain loopKind none
+diagnostic label plain within none
+diagnostic let colon Byte 58 immutable
+diagnostic let separator String ": " immutable
+diagnostic let open String " (" immutable
+diagnostic let close Byte 41 immutable
+diagnostic at begin do readWord
+diagnostic at begin do readStart
+diagnostic at begin do readLine
+diagnostic at begin do readColumn
+diagnostic at begin do readMessage
+diagnostic at begin do newText
+diagnostic at begin do putLine
+diagnostic at begin do putColon
+diagnostic at begin do putColumn
+diagnostic at begin do putSeparator
+diagnostic at begin do putMessage
+diagnostic at begin do putOpen
+diagnostic at begin do putText
+diagnostic at begin do putClose
+diagnostic at begin do finish
+diagnostic at begin branch ifError finish goto plain else goto done
+diagnostic at done return ok described
+diagnostic at plain return ok message
+
+readWord is call
+readWord in diagnostic
+readWord invokes rejectionWord
+readWord argument rejection Rejection rejection copy
+readWord result word Word
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readStart is call
+readStart in diagnostic
+readStart invokes Word.start
+readStart argument record Word word copy
+readStart result start string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readLine is call
+readLine in diagnostic
+readLine invokes string.Position.line
+readLine argument record string.Position start copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+readLine suppresses none
+
+readColumn is call
+readColumn in diagnostic
+readColumn invokes string.Position.column
+readColumn argument record string.Position start copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+readColumn suppresses none
+
+readMessage is call
+readMessage in diagnostic
+readMessage invokes rejectionMessage
+readMessage argument rejection Rejection rejection copy
+readMessage argument region Region region lend
+readMessage result message String
+readMessage ownedBy region
+readMessage cleanedBy none
+readMessage borrows none
+readMessage catch none
+readMessage suppresses none
+
+newText is call
+newText in diagnostic
+newText invokes buffer.new
+newText argument region Region region lend
+newText result text buffer.ByteBuffer
+newText ownedBy region
+newText cleanedBy none
+newText borrows none
+newText catch none
+newText suppresses none
+
+putLine is call
+putLine in diagnostic
+putLine invokes buffer.appendInt64
+putLine argument buffer buffer.ByteBuffer text lendMutable
+putLine argument value Int64 line copy
+putLine result none
+putLine ownedBy none
+putLine cleanedBy none
+putLine borrows none
+putLine catch none
+putLine suppresses none
+
+putColon is call
+putColon in diagnostic
+putColon invokes buffer.appendByte
+putColon argument buffer buffer.ByteBuffer text lendMutable
+putColon argument value Byte colon copy
+putColon result none
+putColon ownedBy none
+putColon cleanedBy none
+putColon borrows none
+putColon catch none
+putColon suppresses none
+
+putColumn is call
+putColumn in diagnostic
+putColumn invokes buffer.appendInt64
+putColumn argument buffer buffer.ByteBuffer text lendMutable
+putColumn argument value Int64 column copy
+putColumn result none
+putColumn ownedBy none
+putColumn cleanedBy none
+putColumn borrows none
+putColumn catch none
+putColumn suppresses none
+
+putSeparator is call
+putSeparator in diagnostic
+putSeparator invokes buffer.appendString
+putSeparator argument buffer buffer.ByteBuffer text lendMutable
+putSeparator argument text String separator lend
+putSeparator result none
+putSeparator ownedBy none
+putSeparator cleanedBy none
+putSeparator borrows none
+putSeparator catch none
+putSeparator suppresses none
+
+putMessage is call
+putMessage in diagnostic
+putMessage invokes buffer.appendString
+putMessage argument buffer buffer.ByteBuffer text lendMutable
+putMessage argument text String message lend
+putMessage result none
+putMessage ownedBy none
+putMessage cleanedBy none
+putMessage borrows none
+putMessage catch none
+putMessage suppresses none
+
+putOpen is call
+putOpen in diagnostic
+putOpen invokes buffer.appendString
+putOpen argument buffer buffer.ByteBuffer text lendMutable
+putOpen argument text String open lend
+putOpen result none
+putOpen ownedBy none
+putOpen cleanedBy none
+putOpen borrows none
+putOpen catch none
+putOpen suppresses none
+
+putText is call
+putText in diagnostic
+putText invokes putWord
+putText argument buffer buffer.ByteBuffer text lendMutable
+putText argument source String source lend
+putText argument word Word word copy
+putText result none
+putText ownedBy none
+putText cleanedBy none
+putText borrows none
+putText catch none
+putText suppresses none
+
+putClose is call
+putClose in diagnostic
+putClose invokes buffer.appendByte
+putClose argument buffer buffer.ByteBuffer text lendMutable
+putClose argument value Byte close copy
+putClose result none
+putClose ownedBy none
+putClose cleanedBy none
+putClose borrows none
+putClose catch none
+putClose suppresses none
+
+finish is call
+finish in diagnostic
+finish invokes buffer.toString
+finish argument buffer buffer.ByteBuffer text lend
+finish argument region Region region lend
+finish result described String
+finish ownedBy region
+finish cleanedBy none
+finish borrows none
+finish catch finishError string.Utf8Error
+finish suppresses none
+
+# ---------------------------------------------------------------- listing rows
+
+listRows is operation
+listRows purpose "List rows as text, one line per row and each word as line:column, its text, and a bar"
+listRows invariant oneLinePerRow "Writes one line per row, each word as its line, a colon, its column, a space, its source text, and a bar"
+listRows typeParameter none
+listRows input source String borrowed
+listRows input words Words borrowed
+listRows input rows Rows borrowed
+listRows input region Region borrowed
+listRows output String
+listRows outputOwnedBy region
+listRows raises string.Utf8Error
+listRows effect none
+listRows uses none
+listRows memoryHeap true
+listRows async false
+listRows maxRecursion none
+listRows label begin loopKind none
+listRows label begin within none
+listRows label eachRow loopKind forEach
+listRows label eachRow within none
+listRows label eachRow maxIterations rowCount
+listRows label eachRow over rows
+listRows label readRow loopKind none
+listRows label readRow within eachRow
+listRows label eachWord loopKind while
+listRows label eachWord within eachRow
+listRows label eachWord maxIterations wordTotal
+listRows label putOne loopKind none
+listRows label putOne within eachWord
+listRows label closeLine loopKind none
+listRows label closeLine within eachRow
+listRows label finish loopKind none
+listRows label finish within none
+listRows label done loopKind none
+listRows label done within none
+listRows label undecodable loopKind none
+listRows label undecodable within none
+listRows let one Int64 1 immutable
+listRows let colon Byte 58 immutable
+listRows let space Byte 32 immutable
+listRows let bar Byte 124 immutable
+listRows let lineEnd Byte 10 immutable
+listRows let index Int64 0 mutable
+listRows let rowEnd Int64 0 mutable
+listRows at begin do newText
+listRows at begin do countRows
+listRows at begin do countWords
+listRows at begin goto eachRow
+listRows at eachRow branch ifNext rows bind row Row goto readRow else goto finish
+listRows at readRow do readFirst
+listRows at readRow do readCount
+listRows at readRow do findLast
+listRows at readRow set index first
+listRows at readRow set rowEnd pastRow
+listRows at readRow goto eachWord
+listRows at eachWord do endCheck
+listRows at eachWord branch if rowDone goto closeLine else goto putOne
+listRows at putOne do readWord
+listRows at putOne do readStart
+listRows at putOne do readLine
+listRows at putOne do readColumn
+listRows at putOne do putLine
+listRows at putOne do putColon
+listRows at putOne do putColumn
+listRows at putOne do putSpace
+listRows at putOne do putText
+listRows at putOne do putBar
+listRows at putOne do stepIndex
+listRows at putOne set index nextIndex
+listRows at putOne goto eachWord
+listRows at closeLine do putLineEnd
+listRows at closeLine goto eachRow
+listRows at finish do finishText
+listRows at finish branch ifError finishText goto undecodable else goto done
+listRows at done return ok listing
+listRows at undecodable return error finishError
+
+newText is call
+newText in listRows
+newText invokes buffer.new
+newText argument region Region region lend
+newText result text buffer.ByteBuffer
+newText ownedBy region
+newText cleanedBy none
+newText borrows none
+newText catch none
+newText suppresses none
+
+countRows is call
+countRows in listRows
+countRows invokes Rows.length
+countRows argument list Rows rows lend
+countRows result rowCount Int64
+countRows ownedBy none
+countRows cleanedBy none
+countRows borrows none
+countRows catch none
+countRows suppresses none
+
+countWords is call
+countWords in listRows
+countWords invokes Words.length
+countWords argument list Words words lend
+countWords result wordTotal Int64
+countWords ownedBy none
+countWords cleanedBy none
+countWords borrows none
+countWords catch none
+countWords suppresses none
+
+readFirst is call
+readFirst in listRows
+readFirst invokes Row.first
+readFirst argument record Row row copy
+readFirst result first Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readCount is call
+readCount in listRows
+readCount invokes Row.count
+readCount argument record Row row copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findLast is call
+findLast in listRows
+findLast invokes math.addInt64
+findLast argument left Int64 first copy
+findLast argument right Int64 count copy
+findLast result pastRow Int64
+findLast ownedBy none
+findLast cleanedBy none
+findLast borrows none
+findLast catch none
+findLast suppresses none
+
+endCheck is call
+endCheck in listRows
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 index copy
+endCheck argument right Int64 rowEnd copy
+endCheck result rowDone Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readWord is call
+readWord in listRows
+readWord invokes Words.getOrTrap
+readWord argument list Words words lend
+readWord argument index Int64 index copy
+readWord result word Word
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readStart is call
+readStart in listRows
+readStart invokes Word.start
+readStart argument record Word word copy
+readStart result start string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readLine is call
+readLine in listRows
+readLine invokes string.Position.line
+readLine argument record string.Position start copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+readLine suppresses none
+
+readColumn is call
+readColumn in listRows
+readColumn invokes string.Position.column
+readColumn argument record string.Position start copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+readColumn suppresses none
+
+putLine is call
+putLine in listRows
+putLine invokes buffer.appendInt64
+putLine argument buffer buffer.ByteBuffer text lendMutable
+putLine argument value Int64 line copy
+putLine result none
+putLine ownedBy none
+putLine cleanedBy none
+putLine borrows none
+putLine catch none
+putLine suppresses none
+
+putColon is call
+putColon in listRows
+putColon invokes buffer.appendByte
+putColon argument buffer buffer.ByteBuffer text lendMutable
+putColon argument value Byte colon copy
+putColon result none
+putColon ownedBy none
+putColon cleanedBy none
+putColon borrows none
+putColon catch none
+putColon suppresses none
+
+putColumn is call
+putColumn in listRows
+putColumn invokes buffer.appendInt64
+putColumn argument buffer buffer.ByteBuffer text lendMutable
+putColumn argument value Int64 column copy
+putColumn result none
+putColumn ownedBy none
+putColumn cleanedBy none
+putColumn borrows none
+putColumn catch none
+putColumn suppresses none
+
+putSpace is call
+putSpace in listRows
+putSpace invokes buffer.appendByte
+putSpace argument buffer buffer.ByteBuffer text lendMutable
+putSpace argument value Byte space copy
+putSpace result none
+putSpace ownedBy none
+putSpace cleanedBy none
+putSpace borrows none
+putSpace catch none
+putSpace suppresses none
+
+putText is call
+putText in listRows
+putText invokes putWord
+putText argument buffer buffer.ByteBuffer text lendMutable
+putText argument source String source lend
+putText argument word Word word copy
+putText result none
+putText ownedBy none
+putText cleanedBy none
+putText borrows none
+putText catch none
+putText suppresses none
+
+putBar is call
+putBar in listRows
+putBar invokes buffer.appendByte
+putBar argument buffer buffer.ByteBuffer text lendMutable
+putBar argument value Byte bar copy
+putBar result none
+putBar ownedBy none
+putBar cleanedBy none
+putBar borrows none
+putBar catch none
+putBar suppresses none
+
+stepIndex is call
+stepIndex in listRows
+stepIndex invokes math.addInt64
+stepIndex argument left Int64 index copy
+stepIndex argument right Int64 one copy
+stepIndex result nextIndex Int64
+stepIndex ownedBy none
+stepIndex cleanedBy none
+stepIndex borrows none
+stepIndex catch none
+stepIndex suppresses none
+
+putLineEnd is call
+putLineEnd in listRows
+putLineEnd invokes buffer.appendByte
+putLineEnd argument buffer buffer.ByteBuffer text lendMutable
+putLineEnd argument value Byte lineEnd copy
+putLineEnd result none
+putLineEnd ownedBy none
+putLineEnd cleanedBy none
+putLineEnd borrows none
+putLineEnd catch none
+putLineEnd suppresses none
+
+finishText is call
+finishText in listRows
+finishText invokes buffer.toString
+finishText argument buffer buffer.ByteBuffer text lend
+finishText argument region Region region lend
+finishText result listing String
+finishText ownedBy region
+finishText cleanedBy none
+finishText borrows none
+finishText catch finishError string.Utf8Error
+finishText suppresses none
