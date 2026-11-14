@@ -56,7 +56,17 @@ class Entity:
     file: str = ""
 
     def facts(self, predicate: str) -> list[Row]:
-        return [r for r in self.rows[1:] if r.predicate == predicate]
+        """Rows of one predicate, in order. Indexed once per row list (D-106: a linear scan per question made
+        checking quadratic in a module's size); the index is rebuilt if the rows are replaced or change in number."""
+        key = (id(self.rows), len(self.rows))
+        index = self.__dict__.get("_index")
+        if index is None or index[0] != key:
+            by: dict[str, list[Row]] = {}
+            for r in self.rows[1:]:
+                by.setdefault(r.predicate, []).append(r)
+            index = (key, by)
+            self.__dict__["_index"] = index
+        return list(index[1].get(predicate, ()))
 
     def fact(self, predicate: str) -> Optional[Row]:
         f = self.facts(predicate)

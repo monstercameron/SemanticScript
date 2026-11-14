@@ -213,6 +213,30 @@ Also: `mutation:append-during-foreach`, `mutation:list-index-unchecked`, `mutati
 
 Also: `mutation:recursive-type-by-value`, `mutation:recursive-type-through-list`, `mutation:index-literal`, `mutation:index-from-integer`, `mutation:index-alias-twice`, `mutation:map-key-not-plain`, `mutation:map-text-key-copied`, `mutation:map-changed-while-listed`, `case:08-strings-collections/trees`, `test:test_symbols_example_runs_and_its_tests_pass`.
 
+## Positions and stacks
+
+- A list that has an index alias is indexed: `appendIndexed` returns a position, and `get`, `set`, and `getOrTrap` take one. Every list has an identity, given when it is made, and a position carries the identity of the list it came from: used on any other list it is `list.IndexOutOfRange`, never a read of another item (D-100).
+- An indexed list only grows: it has no `clear`, `removeLast`, or `truncate`, so a position never names a slot that was emptied and reused (R401, D-100). `<Alias>.toInt64` gives a position's number, for printing and as a key; there is no way back from a number to a position.
+- `getOrTrap` (lists) and `string.byteAtOrTrap` are the trapping twins of `get` and `byteAt`: for an index the program has already proved in range, a bad index is a trap rather than an error to branch on (D-101).
+- A list of plain items is also a stack: `removeLast` takes the last item off (an empty list is `list.IndexOutOfRange`), and `truncate` cuts the list to a length (D-102).
+- An item of a list is read as a view; to change a list or record held in a list, `replace` puts a new item in and hands the old one back owned (for items that are not plain values, as a value of the list's region, which the call names and the runtime checks), so it can be changed and put back (D-105).
+- A table is a fixed array: `<table>.length` is its row count and `<table>.rowAt` reads a row by the number its `row` row gives it (1 to n); any other number is `list.IndexOutOfRange` (D-104).
+- A `constant` is a named literal of a module (`type`, `value`), read by every operation of the module as an immutable value set on entry; its value is a literal of its type, it cannot be set, and no operation may reuse its name (R403, R411, D-103).
+
+| Check | Expect | What it shows |
+| --- | --- | --- |
+| `positions-and-stacks` | runs | a position read on its own list, refused on another; a stack pushed, popped, cut, and emptied |
+| `replace-in-another-region` | traps | taking an inner list out while naming a region that is not the list's |
+| `foreign-position-traps` | traps | the trapping read with a position from the other list |
+| `indexed-list-never-clears` | rejected: R401 | clearing an indexed list |
+| `indexed-list-never-shrinks` | rejected: R401 | taking the last item off an indexed list |
+| `table-unknown-target` | rejected: R401 | asking a table for a target it does not have |
+| `constant-wrong-type` | rejected: R403 | a constant whose value is not of its type |
+| `constant-shadowed` | rejected: R411 | an operation's let with a constant's name |
+| `constant-set` | rejected: R403 | setting a constant |
+
+Also: `mutation:map-changed-while-listed`, `case:08-strings-collections/trees`.
+
 ## Module contracts
 
 - A module uses another's operation, type, or variant only through `imports` and only if it is exported (R404). Calls across modules are checked against the callee's declared signature: argument types and loan modes, output owner, error type, effects, and generic constraints, exactly as within a module.

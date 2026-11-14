@@ -102,7 +102,10 @@ CALLBACKS = {
 }
 HOST_GENERICS = ("map.Map", "set.Set", "channel.Channel", "ffi.Function")
 # list.List value: pointer to {length, capacity, data, region}
-LIST_HEADER = ir.LiteralStructType([I64, I64, PTR, PTR])
+# {length, capacity, data, region, identity}: the identity is unique per list (D-100), so a position from an
+# indexed list carries it and is refused by any other list
+LIST_HEADER = ir.LiteralStructType([I64, I64, PTR, PTR, I64])
+POSITION_BITS = 32
 LIST = LIST_HEADER.as_pointer()
 
 
@@ -247,6 +250,15 @@ class Backend:
         self.functions[key] = fn
         self.pending.append((m, info, fn, sub))
         return fn
+
+    def list_counter(self) -> ir.GlobalVariable:
+        """The program-wide counter that gives each list its identity (D-100)."""
+        g = self.module.globals.get("refined.list.identities")
+        if g is None:
+            g = ir.GlobalVariable(self.module, I64, "refined.list.identities")
+            g.initializer = I64(0)
+            g.linkage = "internal"
+        return g
 
     def string(self, text: str) -> ir.Constant:
         data = text.encode("utf-8", "surrogateescape")
@@ -440,6 +452,10 @@ class OpGen:
             handle = b.call(self.be.callbacks["refined_region_new"],
                             [I64(int(reg.value("maxBytes"))), b.extract_value(label, 0), b.extract_value(label, 1)])
             b.store(handle, self.allocas[reg.name])
+        for c in self.m.constants.values():  # D-103: the module's constants, set on entry like immutable lets
+            if c.name in self.allocas and c.fact("value") is not None:
+                bind = self.info.bindings[c.name]
+                b.store(self.be.literal(self.m, c.fact("value").args[0], self.t(bind.type), c.line), self.allocas[c.name])
         for r in ent.facts("let"):
             if r.text(0) == "none":
                 continue
@@ -823,6 +839,8 @@ class OpGen:
             sig = self.world.substitute(owner.op_infos[gen].sig, sub)
             res = b.call(fn, [args[p.name] for p in sig.inputs])
             out, failed, err = self._split(b, res, sig)
+        elif inv and len(inv.split(".")) == 2 and inv.split(".")[0] in self.m.tables:
+            out, failed, err = self.table_member(b, inv.split(".")[0], inv.split(".")[1], args, ci, ent.line)
         elif ci.callee_op is not None or (inv and inv.split(".")[0] in self.world.modules and len(inv.split(".")) == 2):
             mod, op = (self.m.short, ci.callee_op) if ci.callee_op is not None and "." not in inv else inv.split(".")
             if mod not in self.world.modules or op not in self.world.modules[mod].op_infos:
@@ -839,6 +857,29 @@ class OpGen:
             b.store(failed if failed is not None else I1(0), self.failed[ent.name])
             if err is not None:
                 b.store(err, self.allocas[ci.catch[0]])
+
+    def table_member(self, b: ir.IRBuilder, name: str, member: str, args: dict, ci: CallInfo, line: int):
+        """D-104: `<table>.length` and `<table>.rowAt`, reading the table's constant array."""
+        g, n, rec = self.be.table(self.m, name)
+        if member == "length":
+            return I64(n), None, None
+        row = args["position"]  # the row number as the table writes it: 1 to n (R306)
+        inside = b.and_(b.icmp_signed(">=", row, I64(1)), b.icmp_signed("<=", row, I64(n)))
+        err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), row, 1)
+        idx = b.sub(row, I64(1))
+        rtype = self.be.ltype(rec, self.m.file, line)
+        start = b.block
+        body = self.fn.append_basic_block(f"{ci.entity.name}.row")
+        done = self.fn.append_basic_block(f"{ci.entity.name}.done")
+        b.cbranch(inside, body, done)
+        ib = ir.IRBuilder(body)
+        value = ib.load(ib.gep(g, [I32(0), idx]))
+        ib.branch(done)
+        b.position_at_end(done)
+        phi = b.phi(rtype)
+        phi.add_incoming(value, body)
+        phi.add_incoming(ir.Constant(rtype, None), start)
+        return phi, b.not_(inside), err
 
     def _instance(self, inv: str):
         """(module, generic operation, substitution) when `inv` names an `operationInstance`."""
@@ -1078,6 +1119,13 @@ class OpGen:
                 eq = b.call(cb["refined_bytes_equal"], [b.extract_value(a[0], 0), b.select(long_enough, plen, I64(0)),
                                                         b.extract_value(a[1], 0), plen])
                 return b.and_(long_enough, b.icmp_signed("!=", eq, I32(0))), None, None
+            if name == "byteAtOrTrap":
+                text, idx = a
+                inside = b.and_(b.icmp_signed(">=", idx, I64(0)), b.icmp_signed("<", idx, b.extract_value(text, 1)))
+                with b.if_then(b.not_(inside), likely=False):
+                    self.trap(b, line, f"`{ci.entity.name}` read byte {'{'}index{'}'} outside its text".replace(
+                        "{index}", "an index"))
+                return b.load(b.gep(b.extract_value(text, 0), [idx])), None, None
             if name == "byteAt":
                 text, idx = a
                 inside = b.and_(b.icmp_signed(">=", idx, I64(0)), b.icmp_signed("<", idx, b.extract_value(text, 1)))
@@ -1335,6 +1383,9 @@ class OpGen:
             self.unsupported(line, f"`{inv}`")
         if info.kind == "instance" and info.generic == "list.List":
             return self.list_member(b, member, info.args[0], args, ci, line)
+        if info.kind == "alias" and member == "toInt64":
+            # D-100: a position's number is its low bits; the list identity above them is not part of it
+            return b.and_(list(args.values())[0], I64((1 << POSITION_BITS) - 1)), None, None
         if info.kind == "record":
             t = self.be.ltype(canon, self.m.file, line)
             names = [n for n, _t in info.fields]
@@ -1376,8 +1427,11 @@ class OpGen:
         if member == "new":
             raw = b.call(alloc, [args["region"], self.sizeof(b, LIST_HEADER)])
             hdr = b.bitcast(raw, LIST)
-            b.store(ir.Constant(LIST_HEADER, [I64(0), I64(0), ir.Constant(PTR, None), ir.Constant(PTR, None)]), hdr)
+            b.store(ir.Constant(LIST_HEADER, [I64(0), I64(0), ir.Constant(PTR, None), ir.Constant(PTR, None), I64(0)]),
+                    hdr)
             b.store(args["region"], b.gep(hdr, [I32(0), I32(3)]))
+            identity = b.atomic_rmw("add", self.be.list_counter(), I64(1), "seq_cst")
+            b.store(b.add(identity, I64(1)), b.gep(hdr, [I32(0), I32(4)]))
             return hdr, None, None
         hdr = args["list"]
         len_ptr, cap_ptr, data_ptr = (b.gep(hdr, [I32(0), I32(i)]) for i in (0, 1, 2))
@@ -1387,6 +1441,28 @@ class OpGen:
         if member == "clear":
             b.store(I64(0), len_ptr)
             return None, None, None
+        if member == "truncate":
+            want = args["length"]
+            ok = b.and_(b.icmp_signed(">=", want, I64(0)), b.icmp_signed("<=", want, length))
+            with b.if_then(ok):
+                b.store(want, len_ptr)
+            return None, b.not_(ok), b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), want, 1)
+        if member == "removeLast":
+            ok = b.icmp_signed(">", length, I64(0))
+            start = b.block
+            body = self.fn.append_basic_block(f"{ci.entity.name}.take")
+            done = self.fn.append_basic_block(f"{ci.entity.name}.done")
+            b.cbranch(ok, body, done)
+            ib = ir.IRBuilder(body)
+            last = ib.sub(length, I64(1))
+            value = ib.load(ib.gep(ib.bitcast(ib.load(data_ptr), et.as_pointer()), [last]))
+            ib.store(last, len_ptr)
+            ib.branch(done)
+            b.position_at_end(done)
+            phi = b.phi(et)
+            phi.add_incoming(value, body)
+            phi.add_incoming(ir.Constant(et, None), start)
+            return phi, b.not_(ok), b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), I64(-1), 1)
         if member in ("append", "appendIndexed"):
             cap = b.load(cap_ptr)
             with b.if_then(b.icmp_signed("==", length, cap)):
@@ -1400,12 +1476,29 @@ class OpGen:
             slot = b.gep(b.bitcast(b.load(data_ptr), et.as_pointer()), [length])
             b.store(args["item"], slot)
             b.store(b.add(length, I64(1)), len_ptr)
-            # D-60: `appendIndexed` gives back the new item's position, which is the length before it
-            return (length if member == "appendIndexed" else None), None, None
-        if member in ("get", "set"):
+            # D-60: `appendIndexed` gives back the new item's position, which is the length before it; D-100: the
+            # position also carries the list's identity in its high bits
+            if member == "appendIndexed":
+                ident = b.load(b.gep(hdr, [I32(0), I32(4)]))
+                return b.or_(b.shl(ident, I64(POSITION_BITS)), length), None, None
+            return None, None, None
+        if member in ("get", "set", "getOrTrap", "replace"):
             idx = args["index"]
+            indexed = ci.sig is not None and ci.sig.inputs[1].type != "Int64"
             inside = b.and_(b.icmp_signed(">=", idx, I64(0)), b.icmp_signed("<", idx, length))
             err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), idx, 1)
+            if indexed:
+                # D-100: a position from another list (or from a list before it was replaced) has another identity
+                ident = b.load(b.gep(hdr, [I32(0), I32(4)]))
+                mine = b.icmp_signed("==", b.ashr(idx, I64(POSITION_BITS)), ident)
+                low = b.and_(idx, I64((1 << POSITION_BITS) - 1))
+                err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), low, 1)
+                idx = low
+                inside = b.and_(mine, b.icmp_signed("<", idx, length))
+            if member == "getOrTrap":
+                with b.if_then(b.not_(inside), likely=False):
+                    self.trap(b, line, f"`{ci.entity.name}` read a position outside its list")
+                return b.load(b.gep(b.bitcast(b.load(data_ptr), et.as_pointer()), [idx])), None, None
             start = b.block
             body = self.fn.append_basic_block(f"{ci.entity.name}.inside")
             done = self.fn.append_basic_block(f"{ci.entity.name}.done")
@@ -1417,6 +1510,23 @@ class OpGen:
                 ib.branch(done)
                 b.position_at_end(done)
                 return None, b.not_(inside), err
+            if member == "replace":
+                if "region" in args:
+                    # D-105: the old item is handed back as a value of the region the caller names, which must be
+                    # the region the list was made in
+                    own = ib.load(ib.gep(hdr, [I32(0), I32(3)]))
+                    same = ib.icmp_unsigned("==", ib.ptrtoint(own, I64), ib.ptrtoint(args["region"], I64))
+                    with ib.if_then(ib.not_(same), likely=False):
+                        self.trap(ib, line, f"`{ci.entity.name}` named a region that is not the list's own")
+                old = ib.load(slot)
+                ib.store(args["item"], slot)
+                after = ib.block
+                ib.branch(done)
+                b.position_at_end(done)
+                phi = b.phi(et)
+                phi.add_incoming(old, after)
+                phi.add_incoming(ir.Constant(et, None), start)
+                return phi, b.not_(inside), err
             value = ib.load(slot)
             ib.branch(done)
             b.position_at_end(done)

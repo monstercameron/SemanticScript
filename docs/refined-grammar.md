@@ -53,6 +53,13 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | --- | --- | --- |
 | `instantiates` | exactly one | `<Type> <Type>...` |
 
+## `constant`
+
+| Predicate | Rows | Shape |
+| --- | --- | --- |
+| `type` | exactly one | `<Type>` |
+| `value` | exactly one | `<literal>` |
+
 ## `table`
 
 | Predicate | Rows | Shape |

@@ -13,6 +13,8 @@ Rules:
 """
 from __future__ import annotations
 
+import re
+
 from .diagnostics import Sink
 from .model import Line, Token
 
@@ -25,6 +27,10 @@ def lex(text: str, sink: Sink) -> list[Line]:
         text = text[1:]
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     return [_lex_line(raw, n, sink) for n, raw in enumerate(text.split("\n"), 1)]
+
+
+# a word of printable ASCII other than `"` and `#` needs no character-by-character checks (D-106)
+_PLAIN_WORD = re.compile(r"[!$-~]+")
 
 
 def _bad_char(c: str) -> str | None:
@@ -92,6 +98,11 @@ def _lex_line(raw: str, lineno: int, sink: Sink) -> Line:
                 sink.error("R104", lineno, "a string must be followed by a space, a tab, or the end of the line")
             continue
         start = i
+        plain = _PLAIN_WORD.match(raw, i)
+        if plain is not None and (plain.end() == n or raw[plain.end()] in " \t"):
+            i = plain.end()
+            tokens.append(Token("word", raw[start:i], raw[start:i], start + 1))
+            continue
         while i < n and raw[i] not in " \t":
             ch = raw[i]
             if ch == '"':

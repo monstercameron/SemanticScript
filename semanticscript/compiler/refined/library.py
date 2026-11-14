@@ -229,6 +229,8 @@ LIBRARY: dict[str, dict] = {
         },
         "targets": {
             "byteLength": Sig((P("text", "String", "borrowed"),), "Int64"),
+            # D-101: the trapping twin of `byteAt`
+            "byteAtOrTrap": Sig((P("text", "String", "borrowed"), P("index", "Int64", "copied")), "Byte"),
             "byteAt": Sig((P("text", "String", "borrowed"), P("index", "Int64", "copied")), "Byte",
                           raises="string.StringIndexError"),
             "equals": Sig((P("left", "String", "borrowed"), P("right", "String", "borrowed")), "Bool"),
@@ -586,11 +588,30 @@ def generic_members(generic: str, inst: str, args: list[str], plain, index: Opti
             "set": Sig((P("list", inst, "borrowedMutable"), P("index", position, "copied"), P("item", item, own_mode(item))),
                        raises="list.IndexOutOfRange"),
             "length": Sig((P("list", inst, "borrowed"),), "Int64"),
-            "clear": Sig((P("list", inst, "borrowedMutable"),)),
+            # D-101: the trapping twin of `get`, for an index the program has already proved in range; a bad index
+            # is a trap, on the reasoning D-49 uses for region limits
+            "getOrTrap": Sig((P("list", inst, "borrowed"), P("index", position, "copied")), item,
+                             borrows=None if plain(item) else "list"),
+            # D-105: put an item in and take the old one out. For items that are not plain values the old item is
+            # handed back owned, as a value of the list's region (named, and checked when the call runs), so a
+            # list or record held in a list can be changed: replace it with a fresh one, change it, put it back
+            "replace": Sig((P("list", inst, "borrowedMutable"), P("index", position, "copied"),
+                            P("item", item, own_mode(item))), item, raises="list.IndexOutOfRange")
+            if plain(item) else
+            Sig((P("list", inst, "borrowedMutable"), P("index", position, "copied"), P("item", item, own_mode(item)),
+                 _RG), item, "region", "list.IndexOutOfRange"),
         }
         if index is not None:
-            # D-60: the one source of an index: append an item and receive its position
+            # D-60: the one source of an index: append an item and receive its position. D-100: an indexed list only
+            # grows (no `clear`, `removeLast`, or `truncate`), so a position never names a reused slot
             members["appendIndexed"] = Sig((P("list", inst, "borrowedMutable"), P("item", item, own_mode(item))), index)
+        else:
+            members["clear"] = Sig((P("list", inst, "borrowedMutable"),))
+            # D-102: a list is also a stack: take the last item off, or cut the list to a length
+            members["truncate"] = Sig((P("list", inst, "borrowedMutable"), P("length", "Int64", "copied")),
+                                      raises="list.IndexOutOfRange")
+            if plain(item):
+                members["removeLast"] = Sig((P("list", inst, "borrowedMutable"),), item, raises="list.IndexOutOfRange")
         return members
     if generic == "map.Map":
         key, value = args

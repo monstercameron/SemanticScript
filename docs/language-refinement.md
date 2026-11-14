@@ -2167,6 +2167,37 @@ Decisions (by delegation):
   its first pass, back edges included (R507). A value first set inside the
   loop cannot bound it.
 
+- **D-100** Positions are sound. Every list gets an identity when it is
+  made; a position from an indexed list carries that identity in its high
+  bits, and `get`, `set`, `getOrTrap`, and `replace` refuse a position from
+  any other list (`list.IndexOutOfRange`). An indexed list only grows: it
+  has no `clear`, `removeLast`, or `truncate`, so a position never names a
+  slot that was emptied and reused. `<Alias>.toInt64` gives a position's
+  number for printing and as a key; there is no way back. (Corrects D-60,
+  whose promise did not hold after `clear`.)
+- **D-101** Trapping twins: `<List>.getOrTrap` and `string.byteAtOrTrap`
+  trap on a bad index instead of raising, for indexes the program has
+  already proved in range. They are separate, explicitly named targets, on
+  the reasoning D-49 uses for region limits; the fallible targets stay.
+- **D-102** A list of plain items is a stack too: `removeLast` (an empty
+  list raises `list.IndexOutOfRange`) and `truncate`.
+- **D-103** Module constants: `<name> is constant` with `type` and `value`
+  rows. Every operation of the module reads it as an immutable value set on
+  entry; the value is a literal of its type (R403), it cannot be set, and no
+  operation may reuse its name (R411).
+- **D-104** A table is a fixed array: `<table>.length`, and `<table>.rowAt`
+  reading a row by the number its `row` row gives it (1 to n, as R306
+  numbers rows); any other number raises `list.IndexOutOfRange`.
+- **D-105** Changing what a list holds: `<List>.replace` puts a new item in
+  and hands the old one back owned (for items that are not plain values, as
+  a value of the list's region, which the call names and the runtime
+  checks). A list or record held in a list is changed by replacing it with
+  a fresh one, changing it, and putting it back; no new loan kind.
+- **D-106** The checker indexes an entity's rows by predicate and a module's
+  owned entities by owner, caches a module's names, and lexes plain words
+  without per-character checks. A module of 4,000 operations (172,000
+  rows) checks in about 2 seconds instead of growing quadratically.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.
@@ -2501,6 +2532,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | Part 10 | Adversarial refinement: loan, task, scope, and test holes closed; decisions D-38 to D-41 (by delegation) |
 | 2026-11-14 | D-43 to D-47 | Exclusive handle loans, cancel-then-join, table loop bounds, no exported capabilities, a conformance suite; one consistent syntax pattern (owner) |
 | 2026-11-14 | D-48 to D-56 | Group failure propagation, region trap rationale, task state on every path, release on trap, one writer per file, approved authority, exact suppression, recoverable allocation, run-time loop bounds |
+| 2026-11-14 | D-100 to D-106 | Sound positions, trapping twins, stacks, module constants, table access, replace for nested values, linear checking |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 

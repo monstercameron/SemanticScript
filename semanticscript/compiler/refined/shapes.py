@@ -113,12 +113,13 @@ SLOT_CHECKS = {
     "exportName": lambda tok: tok.kind == "word" and (is_name(tok.raw) or bool(UPPER.match(tok.raw))),
     "letValue": lambda tok: is_literal(tok.raw, tok.kind) or (tok.kind == "word" and (is_name(tok.raw) or tok.raw == "unset")),
     "cellValue": lambda tok: is_literal(tok.raw, tok.kind) or (tok.kind == "word" and is_name(tok.raw)),
+    "literal": lambda tok: is_literal(tok.raw, tok.kind),
 }
 
 SLOT_LABELS = {
     "name": "<name>", "label": "<label>", "Type": "<Type>", "string": '"<text>"', "int": "<integer>",
     "path": "<dotted.path>", "resource": "<module.resource>", "target": "<target>", "variant": "<Enum.variant>",
-    "exportName": "<name>", "letValue": "<literal|name|unset>", "cellValue": "<literal|name>",
+    "exportName": "<name>", "letValue": "<literal|name|unset>", "cellValue": "<literal|name>", "literal": "<literal>",
 }
 
 
@@ -166,7 +167,7 @@ CONTEXT_SHAPES = {
     "deprecated": [("string",)],
 }
 # Kinds that must state a purpose (LR-06 rule 1).
-PURPOSE_REQUIRED = frozenset({"project", "module", "operation", "test", "capability", "record", "enum", "alias",
+PURPOSE_REQUIRED = frozenset({"project", "module", "operation", "test", "capability", "record", "enum", "alias", "constant",
                               "table", "typeInstance", "operationInstance", "operationType"})
 # D-47: a cleanup always says why its failure policy is right, in its `rationale` context row.
 RATIONALE_REQUIRED = frozenset({"cleanup"})
@@ -246,6 +247,11 @@ KINDS: dict[str, dict] = {
     "typeInstance": {
         "shapes": {"instantiates": [("Type", "Type+")]},
         "skeleton": [("instantiates", "one")],
+    },
+    # D-103: a named value of a module, read by every operation of the module as an immutable value
+    "constant": {
+        "shapes": {"type": [("Type",)], "value": [("literal",)]},
+        "skeleton": [("type", "one"), ("value", "one")],
     },
     "table": {
         "shapes": {"rowType": [("Type",)], "row": [("name", "int")], "cell": [("name", "name", "cellValue")]},

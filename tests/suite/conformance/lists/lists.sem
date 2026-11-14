@@ -1,0 +1,701 @@
+lists is module
+lists purpose "Positions that belong to one list, trapping twins, and a list used as a stack"
+lists path lists
+lists imports standard.console
+lists imports standard.list
+lists exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParameter none
+showInt input value Int64 copied
+showInt output none
+showInt outputOwnedBy none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memoryHeap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt let none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParameter none
+showText input text String borrowed
+showText output none
+showText outputOwnedBy none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memoryHeap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText let none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue argument text String text lend
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+Cells is typeInstance
+Cells purpose "Values stored by position"
+Cells instantiates list.List Int64
+
+CellId is alias
+CellId purpose "A position in a Cells list"
+CellId typeParameter none
+CellId aliasOf Int64
+CellId indexes Cells
+
+seven is constant
+seven purpose "The value stored first, read back by its position"
+seven type Int64
+seven value 7
+
+foreignText is constant
+foreignText purpose "What the program prints when a position is refused by another list"
+foreignText type String
+foreignText value "foreign"
+
+Pair is record
+Pair purpose "A key and its value"
+Pair typeParameter none
+Pair field key Int64
+Pair field value Int64
+
+pairs is table
+pairs purpose "Two fixed pairs, read by position"
+pairs rowType Pair
+pairs row firstPair 1
+pairs row secondPair 2
+pairs cell firstPair key 1
+pairs cell firstPair value 10
+pairs cell secondPair key 2
+pairs cell secondPair value 20
+
+Stack is typeInstance
+Stack purpose "Whole numbers used as a stack"
+Stack instantiates list.List Int64
+
+Groups is typeInstance
+Groups purpose "Stacks kept in a list, each changed after it is stored"
+Groups instantiates list.List Stack
+
+main is operation
+main purpose "Exercise list positions and a stack"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label showOwn loopKind none
+main label showOwn within none
+main label foreign loopKind none
+main label foreign within none
+main label popped loopKind none
+main label popped within none
+main label cut loopKind none
+main label cut within none
+main label emptied loopKind none
+main label emptied within none
+main label empty loopKind none
+main label empty within none
+main label showPair loopKind none
+main label showPair within none
+main label noPair loopKind none
+main label noPair within none
+main label changeInner loopKind none
+main label changeInner within none
+main label back loopKind none
+main label back within none
+main label measured loopKind none
+main label measured within none
+main label broken loopKind none
+main label broken within none
+main let eight Int64 8 immutable
+main let five Int64 5 immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let three Int64 3 immutable
+main let emptyText String "empty" immutable
+main let missingText String "missing" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin do makeFirst
+main at begin do makeSecond
+main at begin do storeSeven
+main at begin do readOwn
+main at begin branch ifError readOwn goto broken else goto showOwn
+main at showOwn do printOwn
+main at showOwn do numberOf
+main at showOwn do printNumber
+main at showOwn do storeOther
+main at showOwn do readForeign
+main at showOwn branch ifError readForeign goto foreign else goto broken
+main at foreign do printForeign
+main at foreign do makeStack
+main at foreign do pushOne
+main at foreign do pushTwo
+main at foreign do pushThree
+main at foreign do popOnce
+main at foreign branch ifError popOnce goto broken else goto popped
+main at popped do printPopped
+main at popped do cutToOne
+main at popped branch ifError cutToOne goto broken else goto cut
+main at cut do sizeAfter
+main at cut do printSize
+main at cut do popLast
+main at cut branch ifError popLast goto broken else goto emptied
+main at emptied do popEmpty
+main at emptied branch ifError popEmpty goto empty else goto broken
+main at empty do printEmpty
+main at empty do trapOwn
+main at empty do printTrapped
+main at empty do countPairs
+main at empty do printPairCount
+main at empty do pairAtOne
+main at empty branch ifError pairAtOne goto broken else goto showPair
+main at showPair do valueOfPair
+main at showPair do printPairValue
+main at showPair do pairAtEight
+main at showPair branch ifError pairAtEight goto noPair else goto broken
+main at noPair do printMissing
+main at noPair do makeGroups
+main at noPair do makeInner
+main at noPair do storeInner
+main at noPair do makeFresh
+main at noPair do takeInner
+main at noPair branch ifError takeInner goto broken else goto changeInner
+main at changeInner do pushFive
+main at changeInner do putBack
+main at changeInner branch ifError putBack goto broken else goto back
+main at back do readInner
+main at back branch ifError readInner goto broken else goto measured
+main at measured do innerSize
+main at measured do printInnerSize
+main at measured return ok okCode
+main at broken return ok failCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeFirst is call
+makeFirst in main
+makeFirst invokes Cells.new
+makeFirst argument region Region store lend
+makeFirst result first Cells
+makeFirst ownedBy store
+makeFirst cleanedBy none
+makeFirst borrows none
+makeFirst catch none
+makeFirst suppresses none
+
+makeSecond is call
+makeSecond in main
+makeSecond invokes Cells.new
+makeSecond argument region Region store lend
+makeSecond result second Cells
+makeSecond ownedBy store
+makeSecond cleanedBy none
+makeSecond borrows none
+makeSecond catch none
+makeSecond suppresses none
+
+storeSeven is call
+storeSeven in main
+storeSeven invokes Cells.appendIndexed
+storeSeven argument list Cells first lendMutable
+storeSeven argument item Int64 seven copy
+storeSeven result sevenAt CellId
+storeSeven ownedBy none
+storeSeven cleanedBy none
+storeSeven borrows none
+storeSeven catch none
+storeSeven suppresses none
+
+readOwn is call
+readOwn in main
+readOwn invokes Cells.get
+readOwn argument list Cells first lend
+readOwn argument index CellId sevenAt copy
+readOwn result own Int64
+readOwn ownedBy none
+readOwn cleanedBy none
+readOwn borrows none
+readOwn catch ownError list.IndexOutOfRange
+readOwn suppresses none
+
+printOwn is call
+printOwn in main
+printOwn invokes showInt
+printOwn argument value Int64 own copy
+printOwn result none
+printOwn ownedBy none
+printOwn cleanedBy none
+printOwn borrows none
+printOwn catch none
+printOwn suppresses none
+
+numberOf is call
+numberOf in main
+numberOf invokes CellId.toInt64
+numberOf argument position CellId sevenAt copy
+numberOf result number Int64
+numberOf ownedBy none
+numberOf cleanedBy none
+numberOf borrows none
+numberOf catch none
+numberOf suppresses none
+
+printNumber is call
+printNumber in main
+printNumber invokes showInt
+printNumber argument value Int64 number copy
+printNumber result none
+printNumber ownedBy none
+printNumber cleanedBy none
+printNumber borrows none
+printNumber catch none
+printNumber suppresses none
+
+storeOther is call
+storeOther in main
+storeOther invokes Cells.appendIndexed
+storeOther argument list Cells second lendMutable
+storeOther argument item Int64 eight copy
+storeOther result eightAt CellId
+storeOther ownedBy none
+storeOther cleanedBy none
+storeOther borrows none
+storeOther catch none
+storeOther suppresses none
+
+readForeign is call
+readForeign in main
+readForeign invokes Cells.get
+readForeign argument list Cells second lend
+readForeign argument index CellId sevenAt copy
+readForeign result foreignValue Int64
+readForeign ownedBy none
+readForeign cleanedBy none
+readForeign borrows none
+readForeign catch foreignError list.IndexOutOfRange
+readForeign suppresses none
+
+printForeign is call
+printForeign in main
+printForeign invokes showText
+printForeign argument text String foreignText lend
+printForeign result none
+printForeign ownedBy none
+printForeign cleanedBy none
+printForeign borrows none
+printForeign catch none
+printForeign suppresses none
+
+makeStack is call
+makeStack in main
+makeStack invokes Stack.new
+makeStack argument region Region store lend
+makeStack result stack Stack
+makeStack ownedBy store
+makeStack cleanedBy none
+makeStack borrows none
+makeStack catch none
+makeStack suppresses none
+
+pushOne is call
+pushOne in main
+pushOne invokes Stack.append
+pushOne argument list Stack stack lendMutable
+pushOne argument item Int64 one copy
+pushOne result none
+pushOne ownedBy none
+pushOne cleanedBy none
+pushOne borrows none
+pushOne catch none
+pushOne suppresses none
+
+pushTwo is call
+pushTwo in main
+pushTwo invokes Stack.append
+pushTwo argument list Stack stack lendMutable
+pushTwo argument item Int64 two copy
+pushTwo result none
+pushTwo ownedBy none
+pushTwo cleanedBy none
+pushTwo borrows none
+pushTwo catch none
+pushTwo suppresses none
+
+pushThree is call
+pushThree in main
+pushThree invokes Stack.append
+pushThree argument list Stack stack lendMutable
+pushThree argument item Int64 three copy
+pushThree result none
+pushThree ownedBy none
+pushThree cleanedBy none
+pushThree borrows none
+pushThree catch none
+pushThree suppresses none
+
+popOnce is call
+popOnce in main
+popOnce invokes Stack.removeLast
+popOnce argument list Stack stack lendMutable
+popOnce result poppedValue Int64
+popOnce ownedBy none
+popOnce cleanedBy none
+popOnce borrows none
+popOnce catch popError list.IndexOutOfRange
+popOnce suppresses none
+
+printPopped is call
+printPopped in main
+printPopped invokes showInt
+printPopped argument value Int64 poppedValue copy
+printPopped result none
+printPopped ownedBy none
+printPopped cleanedBy none
+printPopped borrows none
+printPopped catch none
+printPopped suppresses none
+
+cutToOne is call
+cutToOne in main
+cutToOne invokes Stack.truncate
+cutToOne argument list Stack stack lendMutable
+cutToOne argument length Int64 one copy
+cutToOne result none
+cutToOne ownedBy none
+cutToOne cleanedBy none
+cutToOne borrows none
+cutToOne catch cutError list.IndexOutOfRange
+cutToOne suppresses none
+
+sizeAfter is call
+sizeAfter in main
+sizeAfter invokes Stack.length
+sizeAfter argument list Stack stack lend
+sizeAfter result size Int64
+sizeAfter ownedBy none
+sizeAfter cleanedBy none
+sizeAfter borrows none
+sizeAfter catch none
+sizeAfter suppresses none
+
+printSize is call
+printSize in main
+printSize invokes showInt
+printSize argument value Int64 size copy
+printSize result none
+printSize ownedBy none
+printSize cleanedBy none
+printSize borrows none
+printSize catch none
+printSize suppresses none
+
+popLast is call
+popLast in main
+popLast invokes Stack.removeLast
+popLast argument list Stack stack lendMutable
+popLast result lastOne Int64
+popLast ownedBy none
+popLast cleanedBy none
+popLast borrows none
+popLast catch lastError list.IndexOutOfRange
+popLast suppresses none
+
+popEmpty is call
+popEmpty in main
+popEmpty invokes Stack.removeLast
+popEmpty argument list Stack stack lendMutable
+popEmpty result nothing Int64
+popEmpty ownedBy none
+popEmpty cleanedBy none
+popEmpty borrows none
+popEmpty catch emptyError list.IndexOutOfRange
+popEmpty suppresses none
+
+printEmpty is call
+printEmpty in main
+printEmpty invokes showText
+printEmpty argument text String emptyText lend
+printEmpty result none
+printEmpty ownedBy none
+printEmpty cleanedBy none
+printEmpty borrows none
+printEmpty catch none
+printEmpty suppresses none
+
+trapOwn is call
+trapOwn in main
+trapOwn invokes Cells.getOrTrap
+trapOwn argument list Cells first lend
+trapOwn argument index CellId sevenAt copy
+trapOwn result sure Int64
+trapOwn ownedBy none
+trapOwn cleanedBy none
+trapOwn borrows none
+trapOwn catch none
+trapOwn suppresses none
+
+printTrapped is call
+printTrapped in main
+printTrapped invokes showInt
+printTrapped argument value Int64 sure copy
+printTrapped result none
+printTrapped ownedBy none
+printTrapped cleanedBy none
+printTrapped borrows none
+printTrapped catch none
+printTrapped suppresses none
+
+countPairs is call
+countPairs in main
+countPairs invokes pairs.length
+countPairs argument none
+countPairs result pairCount Int64
+countPairs ownedBy none
+countPairs cleanedBy none
+countPairs borrows none
+countPairs catch none
+countPairs suppresses none
+
+printPairCount is call
+printPairCount in main
+printPairCount invokes showInt
+printPairCount argument value Int64 pairCount copy
+printPairCount result none
+printPairCount ownedBy none
+printPairCount cleanedBy none
+printPairCount borrows none
+printPairCount catch none
+printPairCount suppresses none
+
+pairAtOne is call
+pairAtOne in main
+pairAtOne invokes pairs.rowAt
+pairAtOne argument position Int64 one copy
+pairAtOne result pair Pair
+pairAtOne ownedBy none
+pairAtOne cleanedBy none
+pairAtOne borrows none
+pairAtOne catch pairError list.IndexOutOfRange
+pairAtOne suppresses none
+
+valueOfPair is call
+valueOfPair in main
+valueOfPair invokes Pair.value
+valueOfPair argument record Pair pair copy
+valueOfPair result pairValue Int64
+valueOfPair ownedBy none
+valueOfPair cleanedBy none
+valueOfPair borrows none
+valueOfPair catch none
+valueOfPair suppresses none
+
+printPairValue is call
+printPairValue in main
+printPairValue invokes showInt
+printPairValue argument value Int64 pairValue copy
+printPairValue result none
+printPairValue ownedBy none
+printPairValue cleanedBy none
+printPairValue borrows none
+printPairValue catch none
+printPairValue suppresses none
+
+pairAtEight is call
+pairAtEight in main
+pairAtEight invokes pairs.rowAt
+pairAtEight argument position Int64 eight copy
+pairAtEight result farPair Pair
+pairAtEight ownedBy none
+pairAtEight cleanedBy none
+pairAtEight borrows none
+pairAtEight catch farError list.IndexOutOfRange
+pairAtEight suppresses none
+
+printMissing is call
+printMissing in main
+printMissing invokes showText
+printMissing argument text String missingText lend
+printMissing result none
+printMissing ownedBy none
+printMissing cleanedBy none
+printMissing borrows none
+printMissing catch none
+printMissing suppresses none
+
+makeGroups is call
+makeGroups in main
+makeGroups invokes Groups.new
+makeGroups argument region Region store lend
+makeGroups result groups Groups
+makeGroups ownedBy store
+makeGroups cleanedBy none
+makeGroups borrows none
+makeGroups catch none
+makeGroups suppresses none
+
+makeInner is call
+makeInner in main
+makeInner invokes Stack.new
+makeInner argument region Region store lend
+makeInner result inner Stack
+makeInner ownedBy store
+makeInner cleanedBy none
+makeInner borrows none
+makeInner catch none
+makeInner suppresses none
+
+storeInner is call
+storeInner in main
+storeInner invokes Groups.append
+storeInner argument list Groups groups lendMutable
+storeInner argument item Stack inner give
+storeInner result none
+storeInner ownedBy none
+storeInner cleanedBy none
+storeInner borrows none
+storeInner catch none
+storeInner suppresses none
+
+makeFresh is call
+makeFresh in main
+makeFresh invokes Stack.new
+makeFresh argument region Region store lend
+makeFresh result fresh Stack
+makeFresh ownedBy store
+makeFresh cleanedBy none
+makeFresh borrows none
+makeFresh catch none
+makeFresh suppresses none
+
+takeInner is call
+takeInner in main
+takeInner invokes Groups.replace
+takeInner argument list Groups groups lendMutable
+takeInner argument index Int64 zero copy
+takeInner argument item Stack fresh give
+takeInner argument region Region store lend
+takeInner result taken Stack
+takeInner ownedBy store
+takeInner cleanedBy none
+takeInner borrows none
+takeInner catch takeError list.IndexOutOfRange
+takeInner suppresses none
+
+pushFive is call
+pushFive in main
+pushFive invokes Stack.append
+pushFive argument list Stack taken lendMutable
+pushFive argument item Int64 five copy
+pushFive result none
+pushFive ownedBy none
+pushFive cleanedBy none
+pushFive borrows none
+pushFive catch none
+pushFive suppresses none
+
+putBack is call
+putBack in main
+putBack invokes Groups.replace
+putBack argument list Groups groups lendMutable
+putBack argument index Int64 zero copy
+putBack argument item Stack taken give
+putBack argument region Region store lend
+putBack result placeholder Stack
+putBack ownedBy store
+putBack cleanedBy none
+putBack borrows none
+putBack catch backError list.IndexOutOfRange
+putBack suppresses none
+
+readInner is call
+readInner in main
+readInner invokes Groups.get
+readInner argument list Groups groups lend
+readInner argument index Int64 zero copy
+readInner result stored Stack
+readInner ownedBy none
+readInner cleanedBy none
+readInner borrows groups
+readInner catch readError list.IndexOutOfRange
+readInner suppresses none
+
+innerSize is call
+innerSize in main
+innerSize invokes Stack.length
+innerSize argument list Stack stored lend
+innerSize result innerCount Int64
+innerSize ownedBy none
+innerSize cleanedBy none
+innerSize borrows none
+innerSize catch none
+innerSize suppresses none
+
+printInnerSize is call
+printInnerSize in main
+printInnerSize invokes showInt
+printInnerSize argument value Int64 innerCount copy
+printInnerSize result none
+printInnerSize ownedBy none
+printInnerSize cleanedBy none
+printInnerSize borrows none
+printInnerSize catch none
+printInnerSize suppresses none

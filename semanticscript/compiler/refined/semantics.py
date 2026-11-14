@@ -77,6 +77,7 @@ class Module:
         self.ops: dict[str, Entity] = {}
         self.tests: dict[str, Entity] = {}
         self.tables: dict[str, Entity] = {}
+        self.constants: dict[str, Entity] = {}  # D-103
         self.capabilities: dict[str, Entity] = {}
         self.op_instances: dict[str, Entity] = {}
         self.owned: list[Entity] = []
@@ -221,6 +222,9 @@ class World:
             for n, t in info.fields:
                 out[n] = Sig((Param("record", canon, mode(canon)),), t, borrows=None if self.plain(t) else "record")
             out["equals"] = Sig((Param("left", canon, mode(canon)), Param("right", canon, mode(canon))), "Bool")
+        if info.kind == "alias" and info.index is not None:
+            # D-100: a position's number, for printing and as a key; there is no way back
+            out["toInt64"] = Sig((Param("position", canon, "copied"),), "Int64")
         if info.kind in ("enum", "instance") and info.variants and not info.type_params:
             for n, p in info.variants:
                 out[n] = Sig(() if p is None else (Param("payload", p, "copied" if self.plain(p) else "owned"),), canon)
@@ -383,6 +387,8 @@ def index_module(world: World, m: Module, test_file_entities: set[int]) -> None:
             m.tests[ent.name] = ent
         elif ent.kind == "table":
             m.tables[ent.name] = ent
+        elif ent.kind == "constant":
+            m.constants[ent.name] = ent
         elif ent.kind == "capability":
             m.capabilities[ent.name] = ent
         elif ent.kind == "operationInstance":
@@ -445,6 +451,12 @@ def check_module(world: World, m: Module) -> None:
         _check_table(world, m, ent)
     for ent in m.capabilities.values():
         _check_capability(m, ent)
+    for c in m.constants.values():
+        # D-103: a constant's value is a literal of its type
+        canon = resolve_type(world, m, c.value("type"), c.line) if c.fact("type") is not None else None
+        row = c.fact("value")
+        if canon is not None and row is not None:
+            _check_value_token(world, m, row.args[0], canon, row.line, f"constant `{c.name}`")
     for ent in m.op_instances.values():
         _check_op_instance(world, m, ent)
     for ent in m.owned:
@@ -783,6 +795,18 @@ def _check_mode(world: World, m: Module, t: Optional[str], mode: str, line: int,
                      "`borrowed`, `borrowedMutable`, or `owned`")
 
 
+def _owned_by(m: Module) -> dict[str, list[Entity]]:
+    """Owned entities grouped by the operation their `in` row names, built once per module (D-106)."""
+    index = getattr(m, "_owned_index", None)
+    if index is None or index[0] != len(m.owned):
+        groups: dict[str, list[Entity]] = {}
+        for o in m.owned:
+            groups.setdefault(o.owner, []).append(o)
+        index = (len(m.owned), groups)
+        m._owned_index = index  # type: ignore[attr-defined]
+    return index[1]
+
+
 def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
     sink = m.sink
     info = OpInfo(ent, m)
@@ -792,7 +816,11 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
     info.output = info.sig.output
     info.raises = info.sig.raises
     names: dict[str, int] = {}
-    module_names = set(m.ops) | set(m.types) | set(m.tables) | set(m.capabilities) | set(m.tests) | set(m.op_instances)
+    module_names = getattr(m, "_module_names", None)
+    if module_names is None:  # the module's own names do not change once it is indexed (D-106)
+        module_names = set(m.ops) | set(m.types) | set(m.tables) | set(m.capabilities) | set(m.tests) \
+            | set(m.op_instances) | set(m.constants)
+        m._module_names = module_names  # type: ignore[attr-defined]
 
     def claim(name: str, line: int, what: str) -> None:
         if name in names:
@@ -809,6 +837,13 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
             t = resolve_type(world, m, r.text(1), r.line, tp, quiet=True)
             info.bindings[r.text(0)] = Binding(r.text(0), t, "input", r.line, mode=r.text(2))
             claim(r.text(0), r.line, "input")
+    for c in m.constants.values():
+        # D-103: every operation of the module sees the module's constants as immutable values set on entry
+        row = c.fact("value")
+        if row is None or c.fact("type") is None:
+            continue
+        t = resolve_type(world, m, c.value("type"), c.line, quiet=True)
+        info.bindings[c.name] = Binding(c.name, t, "let", c.line, mutable=False, literal=literal_value(row.args[0]))
     for r in ent.facts("let"):
         if r.text(0) == "none":
             continue
@@ -826,9 +861,7 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
             info.labels.append(lab)
     for lab in info.labels:
         claim(lab, ent.line, "label")
-    for o in m.owned:
-        if o.owner != ent.name:
-            continue
+    for o in _owned_by(m).get(ent.name, ()):
         claim(o.name, o.line, o.kind)
         info.owned[o.name] = o
         if o.kind == "region":
@@ -918,6 +951,16 @@ def resolve_target(world: World, m: Module, text: str, line: int, quiet: bool = 
         if text in m.tests:
             return err("R402", f"`{text}` is a test; tests are run by the test runner, not invoked")
         return err("R401", f"`{text}` is not an operation of this module")
+    if len(parts) == 2 and parts[0] in m.tables:
+        # D-104: a table is a fixed array of rows: read one by its row number (1 to n, as its `row` rows number
+        # them), or ask how many there are
+        table = m.tables[parts[0]]
+        rec = resolve_type(world, m, table.value("rowType"), table.line, quiet=True)
+        if parts[1] == "rowAt":
+            return Sig((Param("position", "Int64", "copied"),), rec, raises="list.IndexOutOfRange"), None
+        if parts[1] == "length":
+            return Sig((), "Int64"), None
+        return err("R401", f"table `{parts[0]}` has the targets `rowAt` and `length`, not `{parts[1]}`")
     if len(parts) == 2 and S.UPPER.match(parts[0]):
         canon = resolve_type(world, m, parts[0], line, quiet=quiet)
         if canon is None:

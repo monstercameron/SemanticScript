@@ -26,10 +26,11 @@ BASE = os.path.join(HERE, "conformance", "warehouse")
 BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups"),
          "cleanups": os.path.join(HERE, "conformance", "cleanups"),
          "symbols": os.path.join(HERE, "conformance", "symbols"),
+         "lists": os.path.join(HERE, "conformance", "lists"),
          "lexer": os.path.join(HERE, "..", "..", "docs", "refined-examples", "lexer")}
 DOC = os.path.join(HERE, "..", "..", "docs", "safety-guarantees.md")
 
-W, P, B, C = "warehouse.sem", "pricing.sem", "build.sem", "cleanups.sem"
+W, P, B, C, L = "warehouse.sem", "pricing.sem", "build.sem", "cleanups.sem", "lists.sem"
 SM, SE = "symbols.sem", "expressions.sem"  # the symbols example (D-60 to D-62)
 
 
@@ -584,6 +585,64 @@ GUARANTEES = (
         "mutation:index-from-integer", "mutation:index-alias-twice", "mutation:map-key-not-plain",
         "mutation:map-text-key-copied", "mutation:map-changed-while-listed", "case:08-strings-collections/trees",
         "test:test_symbols_example_runs_and_its_tests_pass")),
+
+    Guarantee("positions", "Positions and stacks", (
+        "A list that has an index alias is indexed: `appendIndexed` returns a position, and `get`, `set`, and "
+        "`getOrTrap` take one. Every list has an identity, given when it is made, and a position carries the "
+        "identity of the list it came from: used on any other list it is `list.IndexOutOfRange`, never a read of "
+        "another item (D-100).",
+        "An indexed list only grows: it has no `clear`, `removeLast`, or `truncate`, so a position never names a "
+        "slot that was emptied and reused (R401, D-100). `<Alias>.toInt64` gives a position's number, for printing "
+        "and as a key; there is no way back from a number to a position.",
+        "`getOrTrap` (lists) and `string.byteAtOrTrap` are the trapping twins of `get` and `byteAt`: for an index "
+        "the program has already proved in range, a bad index is a trap rather than an error to branch on (D-101).",
+        "A list of plain items is also a stack: `removeLast` takes the last item off (an empty list is "
+        "`list.IndexOutOfRange`), and `truncate` cuts the list to a length (D-102).",
+        "An item of a list is read as a view; to change a list or record held in a list, `replace` puts a new item "
+        "in and hands the old one back owned (for items that are not plain values, as a value of the list's region, "
+        "which the call names and the runtime checks), so it can be changed and put back (D-105).",
+        "A table is a fixed array: `<table>.length` is its row count and `<table>.rowAt` reads a row by the number "
+        "its `row` row gives it (1 to n); any other number is `list.IndexOutOfRange` (D-104).",
+        "A `constant` is a named literal of a module (`type`, `value`), read by every operation of the module as an "
+        "immutable value set on entry; its value is a literal of its type, it cannot be set, and no operation may "
+        "reuse its name (R403, R411, D-103).",
+    ), (
+        Check("positions-and-stacks", "run", "a position read on its own list, refused on another; a stack pushed, "
+              "popped, cut, and emptied", (), (), "foreign", base="lists",
+              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing", "1")),
+        Check("replace-in-another-region", "trap", "taking an inner list out while naming a region that is not the "
+              "list's", ((L, "store released atReturn", "store released atReturn\n\nelsewhere is region\n"
+                          "elsewhere in main\nelsewhere strategy arena\nelsewhere maxBytes 1024\n"
+                          "elsewhere released atReturn"),
+                         (L, "takeInner argument region Region store lend", "takeInner argument region Region elsewhere lend"),
+                         (L, "takeInner ownedBy store", "takeInner ownedBy elsewhere")),
+              (), "named a region that is not the list's own", base="lists",
+              lines=("7", "0", "foreign", "3", "1", "empty", "7", "2", "10", "missing")),
+        Check("foreign-position-traps", "trap", "the trapping read with a position from the other list",
+              ((L, "trapOwn argument list Cells first lend", "trapOwn argument list Cells second lend"),), (),
+              "read a position outside its list", base="lists",
+              lines=("7", "0", "foreign", "3", "1", "empty")),
+        Check("indexed-list-never-clears", "reject", "clearing an indexed list",
+              ((L, "main at empty do trapOwn\n", "main at empty do clearFirst\nmain at empty do trapOwn\n"),
+               (L, "<append>", _call("clearFirst", "main", "Cells.clear", ("list Cells first lendMutable",)))),
+              ("R401",), "has no target `clear`", base="lists"),
+        Check("indexed-list-never-shrinks", "reject", "taking the last item off an indexed list",
+              ((L, "main at empty do trapOwn\n", "main at empty do dropLast\nmain at empty do trapOwn\n"),
+               (L, "<append>", _call("dropLast", "main", "Cells.removeLast", ("list Cells first lendMutable",),
+                                     out="dropped Int64"))),
+              ("R401",), "has no target `removeLast`", base="lists"),
+        Check("table-unknown-target", "reject", "asking a table for a target it does not have",
+              ((L, "countPairs invokes pairs.length", "countPairs invokes pairs.size"),), ("R401",),
+              "has the targets `rowAt` and `length`", base="lists"),
+        Check("constant-wrong-type", "reject", "a constant whose value is not of its type",
+              ((L, "seven value 7", 'seven value "seven"'),), ("R403",), "constant `seven`", base="lists"),
+        Check("constant-shadowed", "reject", "an operation's let with a constant's name",
+              ((L, "main let eight Int64 8 immutable", "main let eight Int64 8 immutable\nmain let seven Int64 6 immutable"),),
+              ("R411",), "already a module-level name", base="lists"),
+        Check("constant-set", "reject", "setting a constant",
+              ((L, "main at empty do trapOwn\n", "main at empty set seven eight\nmain at empty do trapOwn\n"),),
+              ("R403",), "only a `mutable` let can be set", base="lists"),
+    ), ("mutation:map-changed-while-listed", "case:08-strings-collections/trees")),
 
     Guarantee("modules", "Module contracts", (
         "A module uses another's operation, type, or variant only through `imports` and only if it is exported "

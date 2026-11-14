@@ -1,0 +1,12 @@
+# Conformance base for list positions and stacks (D-100 to D-102).
+
+listRules is project
+listRules purpose "Show positions that belong to one list, trapping twins, and a list used as a stack"
+listRules target console
+listRules version "0.1.0"
+listRules language refined 1
+listRules standardLibrary 1
+listRules allows write console.stdout none
+listRules requires none
+listRules includesModule lists
+listRules entry lists.main
