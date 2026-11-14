@@ -1,0 +1,5 @@
+factorial is project
+factorial purpose "Compute five factorial by recursion and print it"
+factorial target console
+factorial module mathdemo
+factorial entry mathdemo.main

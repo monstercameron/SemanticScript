@@ -1,0 +1,41 @@
+# covers: 3 Bit shifting
+# kind: edge
+# expect: trap shift amount outside
+
+shiftTooFar is module
+shiftTooFar purpose "Trap: shift too far"
+shiftTooFar path shiftTooFar
+shiftTooFar imports standard.bits
+shiftTooFar exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let one immutable Int64 1
+main let sixtyFour immutable Int64 64
+main let okCode immutable ExitCode 0
+main at begin do compute
+main at begin return ok okCode
+
+compute is call
+compute in main
+compute invokes bits.shiftLeftInt64
+compute arg value Int64 one copy
+compute arg amount Int64 sixtyFour copy
+compute out result Int64
+compute ownedBy none
+compute cleanedBy none
+compute borrows none
+compute catch none

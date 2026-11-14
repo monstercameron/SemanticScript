@@ -1,0 +1,28 @@
+# covers: 9 Namespace collisions
+# covers: 17 Module isolation
+# kind: negative
+# expect: check R601 R602
+
+math is module
+math purpose "A project module named like the standard module `math`"
+math path math
+math imports none
+math exports main
+
+main is operation
+main purpose "Return exit status 0"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let zero immutable ExitCode 0
+main at begin return ok zero

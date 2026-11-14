@@ -1,0 +1,54 @@
+widthTest is test
+widthTest purpose "Check `width` on a 7 by 3 rectangle"
+widthTest verifies width returnsWidth
+widthTest typeParam none
+widthTest input none
+widthTest output none
+widthTest outputOwner none
+widthTest raises none
+widthTest effect none
+widthTest uses none
+widthTest memory heap false
+widthTest async false
+widthTest maxRecursion none
+widthTest label begin loopKind none
+widthTest label begin within none
+widthTest let seven immutable Int64 7
+widthTest let three immutable Int64 3
+widthTest let twentyOne immutable Int64 21
+widthTest at begin do makeBox
+widthTest at begin do runTarget
+widthTest at begin do expectValue
+widthTest at begin return ok none
+
+makeBox is call
+makeBox in widthTest
+makeBox invokes Rectangle.new
+makeBox arg width Int64 seven copy
+makeBox arg height Int64 three copy
+makeBox out box Rectangle
+makeBox ownedBy none
+makeBox cleanedBy none
+makeBox borrows none
+makeBox catch none
+
+runTarget is call
+runTarget in widthTest
+runTarget invokes width
+runTarget arg shape Rectangle box copy
+runTarget out result Int64
+runTarget ownedBy none
+runTarget cleanedBy none
+runTarget borrows none
+runTarget catch none
+
+expectValue is call
+expectValue in widthTest
+expectValue invokes test.assertEqualInt64
+expectValue arg expected Int64 seven copy
+expectValue arg actual Int64 result copy
+expectValue out none
+expectValue ownedBy none
+expectValue cleanedBy none
+expectValue borrows none
+expectValue catch none

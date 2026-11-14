@@ -1,0 +1,143 @@
+# covers: 7 Ownership
+# covers: 7 Ownership transfer
+# covers: 7 Resource cleanup
+# covers: 7 Double-free prevention
+# covers: 7 Use-after-free prevention
+# covers: 7 Memory leak detection
+# covers: 10 Cleanup after errors
+# covers: 10 Errors during resource cleanup
+# covers: 13 File-system capability enforcement
+# covers: 13 Capability scoping
+# covers: 21 Ownership constraints are enforced
+# covers: 21 Cleanup obligations are enforced
+# covers: 12 File-not-found handling
+# kind: positive
+# expect: unsupported `cleanup` entities
+
+resources is module
+resources purpose "Show owned file handles: released by a cleanup, or given to another operation"
+resources path resources
+resources imports standard.fs
+resources exports main
+
+fileReader is capability
+fileReader purpose "Authority to open and read files under the suite's data directory"
+fileReader grants read fs.files
+fileReader scope "/srv/suite/"
+
+closeFor is operation
+closeFor purpose "Take ownership of an open file and close it, reporting whether closing worked"
+closeFor invariant none
+closeFor typeParam none
+closeFor input file fs.FileHandle owned
+closeFor output Bool
+closeFor outputOwner none
+closeFor raises none
+closeFor effect read fs.files
+closeFor uses fileReader
+closeFor memory heap false
+closeFor async false
+closeFor maxRecursion none
+closeFor label begin loopKind none
+closeFor label begin within none
+closeFor label closed loopKind none
+closeFor label closed within none
+closeFor label failed loopKind none
+closeFor label failed within none
+closeFor let closedFlag immutable Bool true
+closeFor let failedFlag immutable Bool false
+closeFor at begin do closeIt
+closeFor at begin branch ifError closeIt goto failed else goto closed
+closeFor at closed return ok closedFlag
+closeFor at failed return ok failedFlag
+
+closeIt is call
+closeIt in closeFor
+closeIt invokes fs.close
+closeIt arg file fs.FileHandle file give
+closeIt out none
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch closeError fs.FileError
+
+main is operation
+main purpose "Open one file and release it with a cleanup, then open another and hand it off"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read fs.files
+main uses fileReader
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label opened loopKind none
+main label opened within none
+main label handOff loopKind none
+main label handOff within none
+main label missing loopKind none
+main label missing within none
+main let firstPath immutable String "/srv/suite/first.txt"
+main let secondPath immutable String "/srv/suite/second.txt"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do openFirst
+main at begin branch ifError openFirst goto missing else goto opened
+main at opened defer closeFirstCleanup
+main at opened do openSecond
+main at opened branch ifError openSecond goto missing else goto handOff
+main at handOff do giveSecond
+main at handOff return ok okCode
+main at missing return ok failCode
+
+openFirst is call
+openFirst in main
+openFirst invokes fs.openRead
+openFirst arg path String firstPath lend
+openFirst out first fs.FileHandle
+openFirst ownedBy main
+openFirst cleanedBy closeFirstCleanup
+openFirst borrows none
+openFirst catch firstError fs.FileError
+
+closeFirstCleanup is cleanup
+closeFirstCleanup in main
+closeFirstCleanup call closeFirst
+closeFirstCleanup cleans first
+closeFirstCleanup onFailure suppress
+closeFirstCleanup because "A failed close at exit has nobody to report to"
+
+closeFirst is call
+closeFirst in main
+closeFirst invokes fs.close
+closeFirst arg file fs.FileHandle first give
+closeFirst out none
+closeFirst ownedBy none
+closeFirst cleanedBy none
+closeFirst borrows none
+closeFirst catch closeFirstError fs.FileError
+
+openSecond is call
+openSecond in main
+openSecond invokes fs.openRead
+openSecond arg path String secondPath lend
+openSecond out second fs.FileHandle
+openSecond ownedBy main
+openSecond cleanedBy none
+openSecond borrows none
+openSecond catch secondError fs.FileError
+
+giveSecond is call
+giveSecond in main
+giveSecond invokes closeFor
+giveSecond arg file fs.FileHandle second give
+giveSecond out closedWell Bool
+giveSecond ownedBy none
+giveSecond cleanedBy none
+giveSecond borrows none
+giveSecond catch none

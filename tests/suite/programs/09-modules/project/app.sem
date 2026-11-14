@@ -1,0 +1,122 @@
+
+
+app is module
+app purpose "Build a rectangle and print its area and width"
+app path app
+app imports standard.console
+app imports geometry.shapes
+app imports geometry.area
+app exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let seven immutable Int64 7
+main let three immutable Int64 3
+main let okCode immutable ExitCode 0
+main at begin do makeRectangle
+main at begin do computeArea
+main at begin do showArea
+main at begin do readWidth
+main at begin do showWidth
+main at begin return ok okCode
+
+makeRectangle is call
+makeRectangle in main
+makeRectangle invokes shapes.Rectangle.new
+makeRectangle arg width Int64 seven copy
+makeRectangle arg height Int64 three copy
+makeRectangle out box shapes.Rectangle
+makeRectangle ownedBy none
+makeRectangle cleanedBy none
+makeRectangle borrows none
+makeRectangle catch none
+
+computeArea is call
+computeArea in main
+computeArea invokes area.rectangle
+computeArea arg shape shapes.Rectangle box copy
+computeArea out boxArea Int64
+computeArea ownedBy none
+computeArea cleanedBy none
+computeArea borrows none
+computeArea catch none
+
+showArea is call
+showArea in main
+showArea invokes showInt
+showArea arg value Int64 boxArea copy
+showArea out none
+showArea ownedBy none
+showArea cleanedBy none
+showArea borrows none
+showArea catch none
+
+readWidth is call
+readWidth in main
+readWidth invokes shapes.width
+readWidth arg shape shapes.Rectangle box copy
+readWidth out boxWidth Int64
+readWidth ownedBy none
+readWidth cleanedBy none
+readWidth borrows none
+readWidth catch none
+
+showWidth is call
+showWidth in main
+showWidth invokes showInt
+showWidth arg value Int64 boxWidth copy
+showWidth out none
+showWidth ownedBy none
+showWidth cleanedBy none
+showWidth borrows none
+showWidth catch none

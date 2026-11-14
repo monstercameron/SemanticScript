@@ -1,0 +1,46 @@
+# covers: 20 Unit tests
+# covers: 20 Regression tests
+# covers: 16 Runtime assertions
+# covers: 21 Invariants are validated
+# covers: 23 Testing framework integration
+# covers: 10 Assertion failures
+# covers: 20 Runtime failure tests
+# kind: negative
+# expect: test fail expected 13, got 12
+
+testsFail is module
+testsFail purpose "Hold one operation and the tests that check it"
+testsFail path testsFail
+testsFail imports standard.math
+testsFail imports standard.test
+testsFail exports triple
+
+triple is operation
+triple purpose "Return three times a number"
+triple invariant timesThree "The result is the input times three"
+triple typeParam none
+triple input value Int64 value
+triple output Int64
+triple outputOwner none
+triple raises none
+triple effect none
+triple uses none
+triple memory heap false
+triple async false
+triple maxRecursion none
+triple label begin loopKind none
+triple label begin within none
+triple let three immutable Int64 3
+triple at begin do multiply
+triple at begin return ok tripled
+
+multiply is call
+multiply in triple
+multiply invokes math.multiplyInt64
+multiply arg left Int64 value copy
+multiply arg right Int64 three copy
+multiply out tripled Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none

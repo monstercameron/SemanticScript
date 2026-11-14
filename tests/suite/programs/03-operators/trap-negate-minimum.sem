@@ -1,0 +1,41 @@
+# covers: 3 Unary operators
+# covers: 22 Minimum integer values
+# kind: edge
+# expect: trap overflowed `Int64`
+
+negateMinimum is module
+negateMinimum purpose "Trap: negate minimum"
+negateMinimum path negateMinimum
+negateMinimum imports standard.math
+negateMinimum exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let one immutable Int64 1
+main let small immutable Int64 -9223372036854775808
+main let okCode immutable ExitCode 0
+main at begin do compute
+main at begin return ok okCode
+
+compute is call
+compute in main
+compute invokes math.negateInt64
+compute arg value Int64 small copy
+compute out result Int64
+compute ownedBy none
+compute cleanedBy none
+compute borrows none
+compute catch none

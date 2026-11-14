@@ -1,5 +1,0 @@
-Async Workflow
-==============
-loadCache: succeeded - loadCache completed after 5ms
-readConfig: succeeded - readConfig completed after 10ms
-warmSearchIndex: failed - warmSearchIndex failed after 15ms

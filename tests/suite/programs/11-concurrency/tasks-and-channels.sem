@@ -1,0 +1,229 @@
+# covers: 11 Thread creation
+# covers: 11 Thread termination
+# covers: 11 Async functions
+# covers: 11 Await
+# covers: 11 Futures / Promises
+# covers: 11 Task scheduling
+# covers: 11 Parallel execution
+# covers: 11 Channels
+# covers: 11 Message passing
+# covers: 11 Task cancellation
+# covers: 11 Timeouts
+# covers: 11 Producer-consumer patterns
+# covers: 11 Structured concurrency
+# covers: 21 Async restrictions are enforced
+# kind: positive
+# expect: unsupported task
+
+concurrency is module
+concurrency purpose "Show tasks, a bounded task group, cancellation, deadlines, and a channel"
+concurrency path concurrency
+concurrency imports standard.time
+concurrency imports standard.channel
+concurrency imports standard.math
+concurrency exports main
+
+Mailbox is instance
+Mailbox purpose "A channel of whole numbers between a producer and a consumer"
+Mailbox instantiates channel.Channel Int64
+
+square is operation
+square purpose "Return a number times itself"
+square invariant none
+square typeParam none
+square input value Int64 value
+square output Int64
+square outputOwner none
+square raises none
+square effect none
+square uses none
+square memory heap false
+square async false
+square maxRecursion none
+square label begin loopKind none
+square label begin within none
+square at begin do multiply
+square at begin return ok squared
+
+multiply is call
+multiply in square
+multiply invokes math.multiplyInt64
+multiply arg left Int64 value copy
+multiply arg right Int64 value copy
+multiply out squared Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+
+warm is operation
+warm purpose "Square a number and keep nothing; work started into a group returns nothing"
+warm invariant none
+warm typeParam none
+warm input value Int64 value
+warm output none
+warm outputOwner none
+warm raises none
+warm effect none
+warm uses none
+warm memory heap false
+warm async false
+warm maxRecursion none
+warm label begin loopKind none
+warm label begin within none
+warm at begin do squareIt
+warm at begin return ok none
+
+squareIt is call
+squareIt in warm
+squareIt invokes square
+squareIt arg value Int64 value copy
+squareIt out ignored Int64
+squareIt ownedBy none
+squareIt cleanedBy none
+squareIt borrows none
+squareIt catch none
+
+main is operation
+main purpose "Run work in tasks, bound them with a group, cancel one, and pass a value through a channel"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label consume loopKind none
+main label consume within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let three immutable Int64 3
+main let four immutable Int64 4
+main let five immutable Int64 5
+main let napMs immutable Int64 1000
+main let waitMs immutable Int64 100
+main let capacity immutable Int64 4
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do makeDeadline
+main at begin start squareThree
+main at begin join squareThree
+main at begin awaitSlot workers
+main at begin start squareFour into workers
+main at begin awaitSlot workers
+main at begin start squareFive into workers
+main at begin join workers
+main at begin start nap
+main at begin cancel nap
+main at begin join nap
+main at begin do makeMailbox
+main at begin start produce
+main at begin join produce
+main at begin branch ifError produce goto failed else goto consume
+main at consume start receiveOne
+main at consume join receiveOne
+main at consume branch ifError receiveOne goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+workers is taskGroup
+workers in main
+workers limit 2
+
+mail is region
+mail in main
+mail strategy arena
+mail capacity 4096
+mail released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+squareThree is task
+squareThree in main
+squareThree invokes square
+squareThree arg value Int64 three copy
+squareThree out nine Int64
+squareThree ownedBy none
+squareThree cleanedBy none
+squareThree borrows none
+squareThree catch none
+
+squareFour is task
+squareFour in main
+squareFour invokes warm
+squareFour arg value Int64 four copy
+squareFour out none
+squareFour ownedBy none
+squareFour cleanedBy none
+squareFour borrows none
+squareFour catch none
+
+squareFive is task
+squareFive in main
+squareFive invokes warm
+squareFive arg value Int64 five copy
+squareFive out none
+squareFive ownedBy none
+squareFive cleanedBy none
+squareFive borrows none
+squareFive catch none
+
+nap is task
+nap in main
+nap invokes time.sleep
+nap arg milliseconds Int64 napMs copy
+nap out none
+nap ownedBy none
+nap cleanedBy none
+nap borrows none
+nap catch none
+
+makeMailbox is call
+makeMailbox in main
+makeMailbox invokes Mailbox.new
+makeMailbox arg capacity Int64 capacity copy
+makeMailbox arg region Region mail lend
+makeMailbox out mailbox Mailbox
+makeMailbox ownedBy mail
+makeMailbox cleanedBy none
+makeMailbox borrows none
+makeMailbox catch none
+
+produce is task
+produce in main
+produce invokes Mailbox.send
+produce arg channel Mailbox mailbox lend
+produce arg item Int64 nine copy
+produce arg deadline time.Deadline deadline copy
+produce out none
+produce ownedBy none
+produce cleanedBy none
+produce borrows none
+produce catch sendError channel.ChannelError
+
+receiveOne is task
+receiveOne in main
+receiveOne invokes Mailbox.receive
+receiveOne arg channel Mailbox mailbox lend
+receiveOne arg deadline time.Deadline deadline copy
+receiveOne out received Int64
+receiveOne ownedBy none
+receiveOne cleanedBy none
+receiveOne borrows none
+receiveOne catch receiveError channel.ChannelError

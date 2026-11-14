@@ -1,0 +1,36 @@
+# covers: 15 Lexical analysis
+# covers: 15 Token recognition
+# covers: 22 Malformed input
+# kind: edge
+# expect: run
+# exit: 0
+
+comments is module
+comments purpose "A program whose every entity carries free comments and context rows"
+comments path comments
+comments imports none
+comments exports main
+
+# A comment line between entities is free text for agents.
+main is operation
+main purpose "Return exit status 0"
+main invariant none
+main rationale "Kept tiny so only the comments vary"
+main risk timing "None; it returns at once"
+main note "Notes and todos are context rows"
+main todo "Nothing to do"
+main typeParam none   # a trailing comment after a row
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label begin purpose "The only block"
+main let zero immutable ExitCode 0
+main at begin return ok zero

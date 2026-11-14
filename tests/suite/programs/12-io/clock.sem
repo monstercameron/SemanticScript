@@ -1,0 +1,48 @@
+# covers: 19 Date and time
+# covers: 13 Capability scoping
+# kind: positive
+# expect: unsupported `clock.now`
+
+clockCase is module
+clockCase purpose "Use clock.now under a capability"
+clockCase path clockCase
+clockCase imports standard.clock
+clockCase exports main
+
+hostAccess is capability
+hostAccess purpose "Authority for exactly this case's host access"
+hostAccess grants read clock.wall
+hostAccess scope none
+
+main is operation
+main purpose "Use clock.now once"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read clock.wall
+main uses hostAccess
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label done loopKind none
+main label done within none
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do access
+main at begin goto done
+main at done return ok okCode
+
+access is call
+access in main
+access invokes clock.now
+access arg none
+access out now Int64
+access ownedBy none
+access cleanedBy none
+access borrows none
+access catch none

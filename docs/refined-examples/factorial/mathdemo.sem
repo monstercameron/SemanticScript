@@ -1,0 +1,134 @@
+# Recursion in the refined syntax. Prints 120.
+
+mathdemo is module
+mathdemo purpose "Hold a recursive factorial and a console entry point that prints five factorial"
+mathdemo path mathdemo
+mathdemo imports standard.console
+mathdemo imports standard.math
+mathdemo imports standard.compare
+mathdemo imports standard.test
+mathdemo exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+factorial is operation
+factorial purpose "Return n factorial for a non-negative n"
+factorial invariant fiveFactorial "The factorial of 5 is 120"
+factorial typeParam none
+factorial input n Int64 value
+factorial output Int64
+factorial outputOwner none
+factorial raises none
+factorial effect none
+factorial uses none
+factorial memory heap false
+factorial async false
+factorial maxRecursion 20
+factorial label begin loopKind none
+factorial label begin within none
+factorial label base loopKind none
+factorial label base within none
+factorial label recurse loopKind none
+factorial label recurse within none
+factorial let one immutable Int64 1
+factorial at begin do baseCheck
+factorial at begin branch if isBase goto base else goto recurse
+factorial at base return ok one
+factorial at recurse do decrement
+factorial at recurse do recurseCall
+factorial at recurse do multiply
+factorial at recurse return ok product
+
+baseCheck is call
+baseCheck in factorial
+baseCheck invokes compare.lessOrEqualInt64
+baseCheck arg left Int64 n copy
+baseCheck arg right Int64 one copy
+baseCheck out isBase Bool
+baseCheck ownedBy none
+baseCheck cleanedBy none
+baseCheck borrows none
+baseCheck catch none
+
+decrement is call
+decrement in factorial
+decrement invokes math.subtractInt64
+decrement arg left Int64 n copy
+decrement arg right Int64 one copy
+decrement out nMinusOne Int64
+decrement ownedBy none
+decrement cleanedBy none
+decrement borrows none
+decrement catch none
+
+recurseCall is call
+recurseCall in factorial
+recurseCall invokes factorial
+recurseCall arg n Int64 nMinusOne copy
+recurseCall out smaller Int64
+recurseCall ownedBy none
+recurseCall cleanedBy none
+recurseCall borrows none
+recurseCall catch none
+
+multiply is call
+multiply in factorial
+multiply invokes math.multiplyInt64
+multiply arg left Int64 n copy
+multiply arg right Int64 smaller copy
+multiply out product Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+
+main is operation
+main purpose "Print five factorial"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label succeeded loopKind none
+main label succeeded within none
+main label failed loopKind none
+main label failed within none
+main let five immutable Int64 5
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do computeFactorial
+main at begin do printResult
+main at begin branch ifError printResult goto failed else goto succeeded
+main at succeeded return ok okCode
+main at failed return ok failCode
+
+computeFactorial is call
+computeFactorial in main
+computeFactorial invokes factorial
+computeFactorial arg n Int64 five copy
+computeFactorial out result Int64
+computeFactorial ownedBy none
+computeFactorial cleanedBy none
+computeFactorial borrows none
+computeFactorial catch none
+
+printResult is call
+printResult in main
+printResult invokes console.writeIntegerLine
+printResult arg value Int64 result copy
+printResult out none
+printResult ownedBy none
+printResult cleanedBy none
+printResult borrows none
+printResult catch printError console.WriteError

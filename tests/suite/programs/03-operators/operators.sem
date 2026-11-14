@@ -1,0 +1,620 @@
+# covers: 3 Addition
+# covers: 3 Subtraction
+# covers: 3 Multiplication
+# covers: 3 Division
+# covers: 3 Modulo
+# covers: 3 Exponentiation
+# covers: 3 Equality
+# covers: 3 Inequality
+# covers: 3 Greater than / Less than
+# covers: 3 Logical AND / OR / NOT
+# covers: 3 Bitwise operators
+# covers: 3 Bit shifting
+# covers: 3 Unary operators
+# covers: 3 Expression evaluation order
+# covers: 21 Execution order is deterministic where specified
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 10
+# stdout: 4
+# stdout: 21
+# stdout: 2
+# stdout: -1
+# stdout: 343
+# stdout: -7
+# stdout: 7
+# stdout: true
+# stdout: true
+# stdout: true
+# stdout: false
+# stdout: true
+# stdout: false
+# stdout: true
+# stdout: 3
+# stdout: 7
+# stdout: 6
+# stdout: 56
+# stdout: -4
+
+operators is module
+operators purpose "Show every arithmetic, comparison, logic, and bit operation"
+operators path operators
+operators imports standard.console
+operators imports standard.math
+operators imports standard.compare
+operators imports standard.logic
+operators imports standard.bits
+operators exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let seven immutable Int64 7
+main let three immutable Int64 3
+main let two immutable Int64 2
+main let four immutable Int64 4
+main let one immutable Int64 1
+main let minusSeven immutable Int64 -7
+main let yes immutable Bool true
+main let no immutable Bool false
+main let okCode immutable ExitCode 0
+main at begin do add
+main at begin do showAdd
+main at begin do sub
+main at begin do showSub
+main at begin do mul
+main at begin do showMul
+main at begin do div
+main at begin do showDiv
+main at begin do rem
+main at begin do showRem
+main at begin do pow
+main at begin do showPow
+main at begin do neg
+main at begin do showNeg
+main at begin do abs
+main at begin do showAbs
+main at begin do eq
+main at begin do showEq
+main at begin do ne
+main at begin do showNe
+main at begin do gt
+main at begin do showGt
+main at begin do lt
+main at begin do showLt
+main at begin do both
+main at begin do showBoth
+main at begin do either
+main at begin do showEither
+main at begin do negation
+main at begin do showNegation
+main at begin do andBits
+main at begin do showAndBits
+main at begin do orBits
+main at begin do showOrBits
+main at begin do xorBits
+main at begin do showXorBits
+main at begin do shift
+main at begin do showShift
+main at begin do ashr
+main at begin do showAshr
+main at begin return ok okCode
+
+add is call
+add in main
+add invokes math.addInt64
+add arg left Int64 seven copy
+add arg right Int64 three copy
+add out sum Int64
+add ownedBy none
+add cleanedBy none
+add borrows none
+add catch none
+
+showAdd is call
+showAdd in main
+showAdd invokes showInt
+showAdd arg value Int64 sum copy
+showAdd out none
+showAdd ownedBy none
+showAdd cleanedBy none
+showAdd borrows none
+showAdd catch none
+
+sub is call
+sub in main
+sub invokes math.subtractInt64
+sub arg left Int64 seven copy
+sub arg right Int64 three copy
+sub out difference Int64
+sub ownedBy none
+sub cleanedBy none
+sub borrows none
+sub catch none
+
+showSub is call
+showSub in main
+showSub invokes showInt
+showSub arg value Int64 difference copy
+showSub out none
+showSub ownedBy none
+showSub cleanedBy none
+showSub borrows none
+showSub catch none
+
+mul is call
+mul in main
+mul invokes math.multiplyInt64
+mul arg left Int64 seven copy
+mul arg right Int64 three copy
+mul out product Int64
+mul ownedBy none
+mul cleanedBy none
+mul borrows none
+mul catch none
+
+showMul is call
+showMul in main
+showMul invokes showInt
+showMul arg value Int64 product copy
+showMul out none
+showMul ownedBy none
+showMul cleanedBy none
+showMul borrows none
+showMul catch none
+
+div is call
+div in main
+div invokes math.divideInt64
+div arg left Int64 seven copy
+div arg right Int64 three copy
+div out quotient Int64
+div ownedBy none
+div cleanedBy none
+div borrows none
+div catch none
+
+showDiv is call
+showDiv in main
+showDiv invokes showInt
+showDiv arg value Int64 quotient copy
+showDiv out none
+showDiv ownedBy none
+showDiv cleanedBy none
+showDiv borrows none
+showDiv catch none
+
+rem is call
+rem in main
+rem invokes math.remainderInt64
+rem arg left Int64 minusSeven copy
+rem arg right Int64 two copy
+rem out remainder Int64
+rem ownedBy none
+rem cleanedBy none
+rem borrows none
+rem catch none
+
+showRem is call
+showRem in main
+showRem invokes showInt
+showRem arg value Int64 remainder copy
+showRem out none
+showRem ownedBy none
+showRem cleanedBy none
+showRem borrows none
+showRem catch none
+
+pow is call
+pow in main
+pow invokes math.powerInt64
+pow arg base Int64 seven copy
+pow arg exponent Int64 three copy
+pow out cubed Int64
+pow ownedBy none
+pow cleanedBy none
+pow borrows none
+pow catch none
+
+showPow is call
+showPow in main
+showPow invokes showInt
+showPow arg value Int64 cubed copy
+showPow out none
+showPow ownedBy none
+showPow cleanedBy none
+showPow borrows none
+showPow catch none
+
+neg is call
+neg in main
+neg invokes math.negateInt64
+neg arg value Int64 seven copy
+neg out negated Int64
+neg ownedBy none
+neg cleanedBy none
+neg borrows none
+neg catch none
+
+showNeg is call
+showNeg in main
+showNeg invokes showInt
+showNeg arg value Int64 negated copy
+showNeg out none
+showNeg ownedBy none
+showNeg cleanedBy none
+showNeg borrows none
+showNeg catch none
+
+abs is call
+abs in main
+abs invokes math.absoluteInt64
+abs arg value Int64 minusSeven copy
+abs out absolute Int64
+abs ownedBy none
+abs cleanedBy none
+abs borrows none
+abs catch none
+
+showAbs is call
+showAbs in main
+showAbs invokes showInt
+showAbs arg value Int64 absolute copy
+showAbs out none
+showAbs ownedBy none
+showAbs cleanedBy none
+showAbs borrows none
+showAbs catch none
+
+eq is call
+eq in main
+eq invokes compare.equalInt64
+eq arg left Int64 seven copy
+eq arg right Int64 seven copy
+eq out isEqual Bool
+eq ownedBy none
+eq cleanedBy none
+eq borrows none
+eq catch none
+
+showEq is call
+showEq in main
+showEq invokes showBool
+showEq arg flag Bool isEqual copy
+showEq out none
+showEq ownedBy none
+showEq cleanedBy none
+showEq borrows none
+showEq catch none
+
+ne is call
+ne in main
+ne invokes compare.notEqualInt64
+ne arg left Int64 seven copy
+ne arg right Int64 three copy
+ne out isDifferent Bool
+ne ownedBy none
+ne cleanedBy none
+ne borrows none
+ne catch none
+
+showNe is call
+showNe in main
+showNe invokes showBool
+showNe arg flag Bool isDifferent copy
+showNe out none
+showNe ownedBy none
+showNe cleanedBy none
+showNe borrows none
+showNe catch none
+
+gt is call
+gt in main
+gt invokes compare.greaterThanInt64
+gt arg left Int64 seven copy
+gt arg right Int64 three copy
+gt out isGreater Bool
+gt ownedBy none
+gt cleanedBy none
+gt borrows none
+gt catch none
+
+showGt is call
+showGt in main
+showGt invokes showBool
+showGt arg flag Bool isGreater copy
+showGt out none
+showGt ownedBy none
+showGt cleanedBy none
+showGt borrows none
+showGt catch none
+
+lt is call
+lt in main
+lt invokes compare.lessThanInt64
+lt arg left Int64 seven copy
+lt arg right Int64 three copy
+lt out isLess Bool
+lt ownedBy none
+lt cleanedBy none
+lt borrows none
+lt catch none
+
+showLt is call
+showLt in main
+showLt invokes showBool
+showLt arg flag Bool isLess copy
+showLt out none
+showLt ownedBy none
+showLt cleanedBy none
+showLt borrows none
+showLt catch none
+
+both is call
+both in main
+both invokes logic.and
+both arg left Bool yes copy
+both arg right Bool yes copy
+both out bothTrue Bool
+both ownedBy none
+both cleanedBy none
+both borrows none
+both catch none
+
+showBoth is call
+showBoth in main
+showBoth invokes showBool
+showBoth arg flag Bool bothTrue copy
+showBoth out none
+showBoth ownedBy none
+showBoth cleanedBy none
+showBoth borrows none
+showBoth catch none
+
+either is call
+either in main
+either invokes logic.and
+either arg left Bool yes copy
+either arg right Bool no copy
+either out eitherAnd Bool
+either ownedBy none
+either cleanedBy none
+either borrows none
+either catch none
+
+showEither is call
+showEither in main
+showEither invokes showBool
+showEither arg flag Bool eitherAnd copy
+showEither out none
+showEither ownedBy none
+showEither cleanedBy none
+showEither borrows none
+showEither catch none
+
+negation is call
+negation in main
+negation invokes logic.not
+negation arg value Bool no copy
+negation out notNo Bool
+negation ownedBy none
+negation cleanedBy none
+negation borrows none
+negation catch none
+
+showNegation is call
+showNegation in main
+showNegation invokes showBool
+showNegation arg flag Bool notNo copy
+showNegation out none
+showNegation ownedBy none
+showNegation cleanedBy none
+showNegation borrows none
+showNegation catch none
+
+andBits is call
+andBits in main
+andBits invokes bits.andInt64
+andBits arg left Int64 seven copy
+andBits arg right Int64 three copy
+andBits out andedBits Int64
+andBits ownedBy none
+andBits cleanedBy none
+andBits borrows none
+andBits catch none
+
+showAndBits is call
+showAndBits in main
+showAndBits invokes showInt
+showAndBits arg value Int64 andedBits copy
+showAndBits out none
+showAndBits ownedBy none
+showAndBits cleanedBy none
+showAndBits borrows none
+showAndBits catch none
+
+orBits is call
+orBits in main
+orBits invokes bits.orInt64
+orBits arg left Int64 four copy
+orBits arg right Int64 three copy
+orBits out oredBits Int64
+orBits ownedBy none
+orBits cleanedBy none
+orBits borrows none
+orBits catch none
+
+showOrBits is call
+showOrBits in main
+showOrBits invokes showInt
+showOrBits arg value Int64 oredBits copy
+showOrBits out none
+showOrBits ownedBy none
+showOrBits cleanedBy none
+showOrBits borrows none
+showOrBits catch none
+
+xorBits is call
+xorBits in main
+xorBits invokes bits.xorInt64
+xorBits arg left Int64 seven copy
+xorBits arg right Int64 one copy
+xorBits out xoredBits Int64
+xorBits ownedBy none
+xorBits cleanedBy none
+xorBits borrows none
+xorBits catch none
+
+showXorBits is call
+showXorBits in main
+showXorBits invokes showInt
+showXorBits arg value Int64 xoredBits copy
+showXorBits out none
+showXorBits ownedBy none
+showXorBits cleanedBy none
+showXorBits borrows none
+showXorBits catch none
+
+shift is call
+shift in main
+shift invokes bits.shiftLeftInt64
+shift arg value Int64 seven copy
+shift arg amount Int64 three copy
+shift out shifted Int64
+shift ownedBy none
+shift cleanedBy none
+shift borrows none
+shift catch none
+
+showShift is call
+showShift in main
+showShift invokes showInt
+showShift arg value Int64 shifted copy
+showShift out none
+showShift ownedBy none
+showShift cleanedBy none
+showShift borrows none
+showShift catch none
+
+ashr is call
+ashr in main
+ashr invokes bits.shiftRightInt64
+ashr arg value Int64 minusSeven copy
+ashr arg amount Int64 one copy
+ashr out halved Int64
+ashr ownedBy none
+ashr cleanedBy none
+ashr borrows none
+ashr catch none
+
+showAshr is call
+showAshr in main
+showAshr invokes showInt
+showAshr arg value Int64 halved copy
+showAshr out none
+showAshr ownedBy none
+showAshr cleanedBy none
+showAshr borrows none
+showAshr catch none

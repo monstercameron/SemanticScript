@@ -1,0 +1,53 @@
+# covers: 3 NaN / Infinity handling
+# covers: 2 Type conversions
+# kind: edge
+# expect: trap out of range for `Int64`
+
+nanToInteger is module
+nanToInteger purpose "Trap: converting NaN to an integer"
+nanToInteger path nanToInteger
+nanToInteger imports standard.convert
+nanToInteger imports standard.math
+nanToInteger exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let zero immutable Float64 0.0
+main let okCode immutable ExitCode 0
+main at begin do makeNan
+main at begin do toInteger
+main at begin return ok okCode
+
+makeNan is call
+makeNan in main
+makeNan invokes math.divideFloat64
+makeNan arg left Float64 zero copy
+makeNan arg right Float64 zero copy
+makeNan out notANumber Float64
+makeNan ownedBy none
+makeNan cleanedBy none
+makeNan borrows none
+makeNan catch none
+
+toInteger is call
+toInteger in main
+toInteger invokes convert.float64ToInt64
+toInteger arg value Float64 notANumber copy
+toInteger out whole Int64
+toInteger ownedBy none
+toInteger cleanedBy none
+toInteger borrows none
+toInteger catch none

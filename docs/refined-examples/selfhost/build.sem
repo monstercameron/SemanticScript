@@ -1,0 +1,7 @@
+# Refined syntax (docs/language-refinement.md).
+selfhost is project
+selfhost purpose "The first pieces of a SemanticScript compiler written in SemanticScript"
+selfhost target library
+selfhost module compiler.lexer
+selfhost module compiler.tokens
+selfhost entry none

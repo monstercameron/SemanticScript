@@ -1,0 +1,84 @@
+# covers: 12 File writing
+# covers: 12 File appending
+# covers: 12 Directory operations
+# covers: 12 File permissions
+# covers: 13 Capability scoping
+# kind: positive
+# expect: unsupported async operations such as `main`
+
+fileWriteCase is module
+fileWriteCase purpose "Use fs.writeAll under a capability"
+fileWriteCase path fileWriteCase
+fileWriteCase imports standard.fs
+fileWriteCase imports standard.time
+fileWriteCase imports standard.string
+fileWriteCase exports main
+
+hostAccess is capability
+hostAccess purpose "Authority for exactly this case's host access"
+hostAccess grants write fs.files
+hostAccess scope "/srv/suite/"
+
+main is operation
+main purpose "Use fs.writeAll once"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write fs.files
+main uses hostAccess
+main memory heap false
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let path immutable String "/srv/suite/output.bin"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main let waitMs immutable Int64 1000
+main let payloadText immutable String "data"
+main at begin do makeDeadline
+main at begin do toBytes
+main at begin start access
+main at begin join access
+main at begin branch ifError access goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+toBytes is call
+toBytes in main
+toBytes invokes string.toBytes
+toBytes arg text String payloadText lend
+toBytes out payload Bytes
+toBytes ownedBy none
+toBytes cleanedBy none
+toBytes borrows payloadText
+toBytes catch none
+
+access is task
+access in main
+access invokes fs.writeAll
+access arg path String path lend
+access arg bytes Bytes payload lend
+access arg deadline time.Deadline deadline copy
+access out none
+access ownedBy none
+access cleanedBy none
+access borrows none
+access catch accessError fs.FileError

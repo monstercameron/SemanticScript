@@ -1,0 +1,54 @@
+areaTest is test
+areaTest purpose "Check `rectangle` on a 7 by 3 rectangle"
+areaTest verifies rectangle widthTimesHeight
+areaTest typeParam none
+areaTest input none
+areaTest output none
+areaTest outputOwner none
+areaTest raises none
+areaTest effect none
+areaTest uses none
+areaTest memory heap false
+areaTest async false
+areaTest maxRecursion none
+areaTest label begin loopKind none
+areaTest label begin within none
+areaTest let seven immutable Int64 7
+areaTest let three immutable Int64 3
+areaTest let twentyOne immutable Int64 21
+areaTest at begin do makeBox
+areaTest at begin do runTarget
+areaTest at begin do expectValue
+areaTest at begin return ok none
+
+makeBox is call
+makeBox in areaTest
+makeBox invokes shapes.Rectangle.new
+makeBox arg width Int64 seven copy
+makeBox arg height Int64 three copy
+makeBox out box shapes.Rectangle
+makeBox ownedBy none
+makeBox cleanedBy none
+makeBox borrows none
+makeBox catch none
+
+runTarget is call
+runTarget in areaTest
+runTarget invokes rectangle
+runTarget arg shape shapes.Rectangle box copy
+runTarget out result Int64
+runTarget ownedBy none
+runTarget cleanedBy none
+runTarget borrows none
+runTarget catch none
+
+expectValue is call
+expectValue in areaTest
+expectValue invokes test.assertEqualInt64
+expectValue arg expected Int64 twentyOne copy
+expectValue arg actual Int64 result copy
+expectValue out none
+expectValue ownedBy none
+expectValue cleanedBy none
+expectValue borrows none
+expectValue catch none

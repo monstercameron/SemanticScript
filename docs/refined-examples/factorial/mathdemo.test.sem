@@ -1,0 +1,43 @@
+# Tests for the `mathdemo` module.
+
+fiveFactorialTest is test
+fiveFactorialTest purpose "The factorial of 5 is computed as 120"
+fiveFactorialTest verifies factorial fiveFactorial
+fiveFactorialTest typeParam none
+fiveFactorialTest input none
+fiveFactorialTest output none
+fiveFactorialTest outputOwner none
+fiveFactorialTest raises none
+fiveFactorialTest effect none
+fiveFactorialTest uses none
+fiveFactorialTest memory heap false
+fiveFactorialTest async false
+fiveFactorialTest maxRecursion none
+fiveFactorialTest label begin loopKind none
+fiveFactorialTest label begin within none
+fiveFactorialTest let five immutable Int64 5
+fiveFactorialTest let expected immutable Int64 120
+fiveFactorialTest at begin do computeFive
+fiveFactorialTest at begin do expectOneHundredTwenty
+fiveFactorialTest at begin return ok none
+
+computeFive is call
+computeFive in fiveFactorialTest
+computeFive invokes factorial
+computeFive arg n Int64 five copy
+computeFive out actual Int64
+computeFive ownedBy none
+computeFive cleanedBy none
+computeFive borrows none
+computeFive catch none
+
+expectOneHundredTwenty is call
+expectOneHundredTwenty in fiveFactorialTest
+expectOneHundredTwenty invokes test.assertEqualInt64
+expectOneHundredTwenty arg expected Int64 expected copy
+expectOneHundredTwenty arg actual Int64 actual copy
+expectOneHundredTwenty out none
+expectOneHundredTwenty ownedBy none
+expectOneHundredTwenty cleanedBy none
+expectOneHundredTwenty borrows none
+expectOneHundredTwenty catch none

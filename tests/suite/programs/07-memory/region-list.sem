@@ -1,0 +1,362 @@
+# covers: 7 Heap allocation
+# covers: 7 Dynamic allocation
+# covers: 7 Deallocation
+# covers: 7 Memory lifetime tracking
+# covers: 7 Deterministic destruction
+# covers: 7 Out-of-bounds memory access
+# covers: 7 Buffer overflow protection
+# covers: 8 Array initialization
+# covers: 8 Array indexing
+# covers: 8 Array bounds checking
+# covers: 8 Array resizing
+# covers: 8 Collection iteration
+# covers: 8 Collection insertion
+# covers: 8 Collection removal
+# covers: 2 Arrays
+# covers: 2 Lists
+# covers: 1 Variable lifetime
+# covers: 17 Bounds checking
+# covers: 17 Memory safety
+# covers: 21 Heap restrictions are enforced
+# covers: 4 For loops
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 100
+# stdout: 99
+# stdout: 42
+# stdout: 100
+# stdout: 4992
+# stdout: 0
+
+memory is module
+memory purpose "Show a region-owned list that grows, is read, changed, iterated, and cleared"
+memory path memory
+memory imports standard.console
+memory imports standard.math
+memory imports standard.compare
+memory imports standard.list
+memory exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+Numbers is instance
+Numbers purpose "A growable list of whole numbers"
+Numbers instantiates list.List Int64
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label fill loopKind counted
+main label fill within none
+main label fill maxIterations 100
+main label fill counter index
+main label appendStep loopKind none
+main label appendStep within fill
+main label report loopKind none
+main label report within none
+main label showLastStep loopKind none
+main label showLastStep within none
+main label readBack loopKind none
+main label readBack within none
+main label showFirstStep loopKind none
+main label showFirstStep within none
+main label pastEnd loopKind none
+main label pastEnd within none
+main label showBad loopKind none
+main label showBad within none
+main label sumItems loopKind forEach
+main label sumItems within none
+main label sumItems maxIterations 100
+main label sumItems over numbers
+main label addItem loopKind none
+main label addItem within sumItems
+main label summed loopKind none
+main label summed within none
+main label broken loopKind none
+main label broken within none
+main let zero immutable Int64 0
+main let one immutable Int64 1
+main let hundred immutable Int64 100
+main let lastIndex immutable Int64 99
+main let fortyTwo immutable Int64 42
+main let index mutable Int64 0
+main let total mutable Int64 0
+main let failCode immutable ExitCode 1
+main let okCode immutable ExitCode 0
+main at begin do makeNumbers
+main at begin goto fill
+main at fill do filled
+main at fill branch if isFilled goto report else goto appendStep
+main at appendStep do appendIndex
+main at appendStep do advance
+main at appendStep set index nextIndex
+main at appendStep goto fill
+main at report do countNumbers
+main at report do showCount
+main at report do readLast
+main at report branch ifError readLast goto broken else goto showLastStep
+main at showLastStep do showLast
+main at showLastStep do replaceFirst
+main at showLastStep branch ifError replaceFirst goto broken else goto readBack
+main at readBack do readFirst
+main at readBack branch ifError readFirst goto broken else goto showFirstStep
+main at showFirstStep do showFirst
+main at showFirstStep do readPastEnd
+main at showFirstStep branch ifError readPastEnd goto pastEnd else goto broken
+main at pastEnd match pastEndError list.IndexOutOfRange
+main at pastEnd case list.IndexOutOfRange.outOfRange bind badIndex Int64 goto showBad
+main at showBad do printBad
+main at showBad goto sumItems
+main at sumItems branch ifNext numbers bind item Int64 goto addItem else goto summed
+main at addItem do addToTotal
+main at addItem set total newTotal
+main at addItem goto sumItems
+main at summed do showTotal
+main at summed do emptyIt
+main at summed do countAgain
+main at summed do showEmpty
+main at summed return ok okCode
+main at broken return ok failCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch capacity 65536
+scratch released atReturn
+
+makeNumbers is call
+makeNumbers in main
+makeNumbers invokes Numbers.new
+makeNumbers arg region Region scratch lend
+makeNumbers out numbers Numbers
+makeNumbers ownedBy scratch
+makeNumbers cleanedBy none
+makeNumbers borrows none
+makeNumbers catch none
+
+filled is call
+filled in main
+filled invokes compare.greaterOrEqualInt64
+filled arg left Int64 index copy
+filled arg right Int64 hundred copy
+filled out isFilled Bool
+filled ownedBy none
+filled cleanedBy none
+filled borrows none
+filled catch none
+
+appendIndex is call
+appendIndex in main
+appendIndex invokes Numbers.append
+appendIndex arg list Numbers numbers lendMutable
+appendIndex arg item Int64 index copy
+appendIndex out none
+appendIndex ownedBy none
+appendIndex cleanedBy none
+appendIndex borrows none
+appendIndex catch none
+
+advance is call
+advance in main
+advance invokes math.addInt64
+advance arg left Int64 index copy
+advance arg right Int64 one copy
+advance out nextIndex Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+
+countNumbers is call
+countNumbers in main
+countNumbers invokes Numbers.length
+countNumbers arg list Numbers numbers lend
+countNumbers out count Int64
+countNumbers ownedBy none
+countNumbers cleanedBy none
+countNumbers borrows none
+countNumbers catch none
+
+showCount is call
+showCount in main
+showCount invokes showInt
+showCount arg value Int64 count copy
+showCount out none
+showCount ownedBy none
+showCount cleanedBy none
+showCount borrows none
+showCount catch none
+
+readLast is call
+readLast in main
+readLast invokes Numbers.get
+readLast arg list Numbers numbers lend
+readLast arg index Int64 lastIndex copy
+readLast out last Int64
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch lastError list.IndexOutOfRange
+
+showLast is call
+showLast in main
+showLast invokes showInt
+showLast arg value Int64 last copy
+showLast out none
+showLast ownedBy none
+showLast cleanedBy none
+showLast borrows none
+showLast catch none
+
+replaceFirst is call
+replaceFirst in main
+replaceFirst invokes Numbers.set
+replaceFirst arg list Numbers numbers lendMutable
+replaceFirst arg index Int64 zero copy
+replaceFirst arg item Int64 fortyTwo copy
+replaceFirst out none
+replaceFirst ownedBy none
+replaceFirst cleanedBy none
+replaceFirst borrows none
+replaceFirst catch replaceError list.IndexOutOfRange
+
+readFirst is call
+readFirst in main
+readFirst invokes Numbers.get
+readFirst arg list Numbers numbers lend
+readFirst arg index Int64 zero copy
+readFirst out first Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch firstError list.IndexOutOfRange
+
+showFirst is call
+showFirst in main
+showFirst invokes showInt
+showFirst arg value Int64 first copy
+showFirst out none
+showFirst ownedBy none
+showFirst cleanedBy none
+showFirst borrows none
+showFirst catch none
+
+readPastEnd is call
+readPastEnd in main
+readPastEnd invokes Numbers.get
+readPastEnd arg list Numbers numbers lend
+readPastEnd arg index Int64 hundred copy
+readPastEnd out beyond Int64
+readPastEnd ownedBy none
+readPastEnd cleanedBy none
+readPastEnd borrows none
+readPastEnd catch pastEndError list.IndexOutOfRange
+
+printBad is call
+printBad in main
+printBad invokes showInt
+printBad arg value Int64 badIndex copy
+printBad out none
+printBad ownedBy none
+printBad cleanedBy none
+printBad borrows none
+printBad catch none
+
+addToTotal is call
+addToTotal in main
+addToTotal invokes math.addInt64
+addToTotal arg left Int64 total copy
+addToTotal arg right Int64 item copy
+addToTotal out newTotal Int64
+addToTotal ownedBy none
+addToTotal cleanedBy none
+addToTotal borrows none
+addToTotal catch none
+
+showTotal is call
+showTotal in main
+showTotal invokes showInt
+showTotal arg value Int64 total copy
+showTotal out none
+showTotal ownedBy none
+showTotal cleanedBy none
+showTotal borrows none
+showTotal catch none
+
+emptyIt is call
+emptyIt in main
+emptyIt invokes Numbers.clear
+emptyIt arg list Numbers numbers lendMutable
+emptyIt out none
+emptyIt ownedBy none
+emptyIt cleanedBy none
+emptyIt borrows none
+emptyIt catch none
+
+countAgain is call
+countAgain in main
+countAgain invokes Numbers.length
+countAgain arg list Numbers numbers lend
+countAgain out emptyCount Int64
+countAgain ownedBy none
+countAgain cleanedBy none
+countAgain borrows none
+countAgain catch none
+
+showEmpty is call
+showEmpty in main
+showEmpty invokes showInt
+showEmpty arg value Int64 emptyCount copy
+showEmpty out none
+showEmpty ownedBy none
+showEmpty cleanedBy none
+showEmpty borrows none
+showEmpty catch none

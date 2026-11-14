@@ -1,0 +1,52 @@
+# Hello, world in the refined syntax. Runs with:
+#   python semanticscript/compiler/refined run docs/refined-examples/hello
+#   python semanticscript/compiler/refined test docs/refined-examples/hello
+
+hello is module
+hello purpose "Hold the console entry point that prints a greeting"
+hello path hello
+hello imports standard.console
+hello imports standard.test
+hello exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+main is operation
+main purpose "Print a greeting and exit with code zero"
+main invariant printsGreeting "Writes the greeting line and exits with code zero"
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label succeeded loopKind none
+main label succeeded within none
+main label failed loopKind none
+main label failed within none
+main let greeting immutable String "Hello, world!"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do printGreeting
+main at begin branch ifError printGreeting goto failed else goto succeeded
+main at succeeded return ok okCode
+main at failed return ok failCode
+
+printGreeting is call
+printGreeting in main
+printGreeting invokes console.writeLine
+printGreeting arg text String greeting lend
+printGreeting out none
+printGreeting ownedBy none
+printGreeting cleanedBy none
+printGreeting borrows none
+printGreeting catch printError console.WriteError

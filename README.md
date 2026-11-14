@@ -1,293 +1,140 @@
-<div align="center">
-
 # SemanticScript
 
-**A programming language where the *meaning* is the source code.**
+[![CI](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Effects, authority, failure modes, cleanup, memory, and timing aren't comments or
-conventions — they're first-class rows the compiler checks and an agent can grep.
-One flat grammar. No hidden control flow. Built to be read and written by humans
-*and* AI.
+SemanticScript is an explicit, agent-first programming language. Programs are
+written and edited by AI agents, so the language optimizes for being exact and
+checkable, not short:
 
-`v0.4.0-beta.1` · compiles to native via LLVM · ships an MCP server + 49 agent tools
+- **Nothing is implied.** Every fact that changes what a program means is
+  written as a row. A missing row is an error, not a default.
+- **Every stated fact is checked.** If a row states a type, an effect, an owner,
+  a loop bound, or a claim, the compiler verifies it.
+- **One shape, one spelling.** Every line is `<subject> <predicate> <payload>`,
+  each predicate has exactly one shape, and each idea has one spelling.
 
-[Quickstart](docs/getting-started.md) · [Language Guide](docs/LANGUAGE.md) · [Examples](examples/) · [Apps](apps/) · [Changelog](CHANGELOG.md)
+The design, every rule, and the reasons behind them are in
+[docs/language-refinement.md](docs/language-refinement.md). The exact shape of
+every row is in [docs/refined-grammar.md](docs/refined-grammar.md), generated
+from the compiler.
 
-</div>
-
----
-
-## The big idea
-
-Most languages let you *write* `fetch()` anywhere and *hope* the reviewer notices
-it touches the network. SemanticScript makes you **declare** it — and then proves
-you did:
-
-```
-main effect write console.stdout      # this operation writes to stdout…
-main uses stdoutWriter                 # …under this capability…
-
-stdoutWriter is capability
-stdoutWriter grants write console.stdout   # …which is the only thing it's allowed to do.
-```
-
-If an operation performs an effect it didn't declare, or uses a capability that
-doesn't grant that effect, the source lane reports it. `check --strict` is the
-CI-style gate; the default `check` still exits 0 for warning-only findings and
-tells you how many warnings were not enforced. The contract — *what can this code
-touch, how can it fail, what must it clean up* — lives in the source, not in your
-head. That's what makes a program legible to a reviewer, a linter, or an agent
-before running it.
-
-Every line is the same shape:
-
-```
-<subject>  <predicate>  <payload>
-```
-
-No braces, no nesting, no verb families to special-case. A program is a flat tape
-of rows. Tools `grep` it, patch single rows, and validate one grammar.
-
----
+The language is pre-release and changes without backwards compatibility.
 
 ## Hello, world
 
-```
-HelloWorld is project
-HelloWorld target console
-HelloWorld entry main
+`hello/build.sem`:
 
+```
+hello is project
+hello purpose "Print one greeting line and exit"
+hello target console
+hello module hello
+hello entry hello.main
+```
+
+`hello/hello.sem` (abridged; the full file is
+[docs/refined-examples/hello/hello.sem](docs/refined-examples/hello/hello.sem)):
+
+```
 main is operation
-main out ExitCode
+main purpose "Print a greeting and exit with code zero"
+main invariant printsGreeting "Writes the greeting line and exits with code zero"
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main purpose "Write a greeting and return an exit code"
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label succeeded loopKind none
+main label succeeded within none
+main label failed loopKind none
+main label failed within none
+main let greeting immutable String "Hello, world!"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do printGreeting
+main at begin branch ifError printGreeting goto failed else goto succeeded
+main at succeeded return ok okCode
+main at failed return ok failCode
 
-main let greeting immutable String "hello world"
-main do writeHello
-main branch ifError writeHello goto failed
-main return 0
-main at failed return 1
-
-writeHello is call
-writeHello in main
-writeHello invokes console.writeLine
-writeHello arg text String greeting
-writeHello catch writeError ConsoleWriteError
-
-stdoutWriter is capability
-stdoutWriter grants write console.stdout
-
-ConsoleWriteError is error
-ConsoleWriteError purpose "A console write failed"
-ExitCode is alias
-ExitCode for Int32
+printGreeting is call
+printGreeting in main
+printGreeting invokes console.writeLine
+printGreeting arg text String greeting lend
+printGreeting out none
+printGreeting ownedBy none
+printGreeting cleanedBy none
+printGreeting borrows none
+printGreeting catch printError console.WriteError
 ```
 
-```sh
-semanticscript run hello.sem
-# hello world
+## Use it
+
+Requires Python 3.11 or newer and `llvmlite`:
+
+```bash
+python -m pip install -r requirements.txt
 ```
 
-Notice everything the operation does is *visible on its face*: it returns an
-`ExitCode`, it writes to stdout, it does so under a named capability, the write
-can fail with a typed error, and there's an explicit failure path. No surprises
-hiding in a called function three files away.
-
----
-
-## Core concepts in 60 seconds
-
-**Entities** open with `<name> is <kind>` and are described by the rows that
-follow. The kinds are the vocabulary of the language:
-
-| Kind | What it is |
-|---|---|
-| `project` / `module` | the build manifest and its namespaces |
-| `operation` | a function — with declared inputs, outputs, effects, and authority |
-| `call` | one invocation inside an operation (its own rows: args, output, catch) |
-| `capability` | a grant: the *only* effects an operation holding it may perform |
-| `error` | a named, typed failure value |
-| `alias` / `type` / `record` / `enum` | the type vocabulary |
-
-**Operations declare their whole contract.** Inputs, output arity, typed
-failure surface (`raises`), side effects, authority, heap use, and async-ness
-are all rows:
-
-```
-addTwo is operation
-addTwo in left Int64
-addTwo in right Int64
-addTwo out Int64
-addTwo memory heap no            # makes no heap allocations
-addTwo async no                  # runs to completion synchronously
-addTwo invariant "Pure arithmetic; performs no effects"
-addTwo do sumCall
-addTwo return sumValue
-
-sumCall is call
-sumCall in addTwo
-sumCall invokes math.addInt64
-sumCall arg left Int64 left
-sumCall arg right Int64 right
-sumCall out sumValue Int64
+```bash
+python semanticscript/compiler/refined check docs/refined-examples/hello
 ```
 
-An operation with no `effect` rows is provably pure — the linter knows it, and so
-does any agent reading it.
-
-**Calls are first-class rows, not buried expressions.** Every invocation names
-what it `invokes`, its `arg`s, where its result is bound (`out`), and which
-errors it may `catch`. You can read the entire call graph without parsing
-expressions.
-
-**Failure is data.** Errors are declared entities; operations branch on them
-explicitly (`branch ifError <call> goto <label>`); there are no invisible
-exceptions unwinding through your stack. Use `operation raises ErrorType` to
-document an operation's possible errors, and use call-site `catch` plus
-`branch ifError` to handle a specific fallible call.
-
-> Full grammar, every predicate, and every entity kind: **[docs/LANGUAGE.md](docs/LANGUAGE.md)**.
-
----
-
-## Why it reads well for AI agents
-
-SemanticScript was designed assuming an agent — not just a human — would author,
-review, and refactor it. That shows up across the toolchain:
-
-- **One grammar to patch.** Every fact is an addressable `subject predicate
-  payload` row. An agent adds a route, an effect, or a cleanup by *appending a
-  row*, not by reformatting a block.
-- **A built-in MCP server.** `semanticscript mcp` speaks JSON-RPC over stdio:
-  `check`, `docs`, `graph`, `skills`, `search`, and more, each returning a
-  stable, versioned `sem.<tool>.v1` JSON envelope.
-- **50 structured CLI tools** for retrieval and reasoning — `semanticscript
-  search "add a route"` does relevance-ranked retrieval across the diagnostics,
-  skills, task templates, and spec; `explain SS1502` describes any diagnostic;
-  `targets --signature TARGET` shows builtin arg slots/types; `reserved-words`
-  lists the exact reserved-name set; `query effects <file>` extracts a
-  program's effect set; `fix --plan` emits a repair plan whose `planUsable`
-  field says whether `patch` can apply it.
-- **Self-describing diagnostics.** 170 diagnostics, each with a tier, a summary,
-  what was found, and a suggested fix.
-
-The result: an agent can answer "what does this touch, how can it fail, where do
-I add X" from the source alone.
-
-Capabilities are a static source contract, not a runtime sandbox. Removing a
-`uses` row does not revoke a live OS permission; it changes what the source
-checker can authorize. A passing `check` means parse, lint, and LLVM lowering
-passed; it does not mean "this program has been executed, tested, native-linked,
-or sandboxed."
-
----
-
-## What you can build
-
-The toolchain JIT-runs programs and builds native executables; the runtime ships
-real seams for sqlite, HTTP (winsock), JSON, bcrypt, structured logging, async,
-events, and a headless widget tree. Worked, tested apps live in [`apps/`](apps/):
-
-- 🌐 **JSON REST APIs** — a `webServer` entity lowers to a real route table; the
-  `taskforge-web` app runs a full register → login → create → list round-trip
-  against **sqlite + bcrypt + json + logging**.
-- 🖥️ **Console & TUI apps** — an interactive TODO TUI renders, edits, and saves
-  under a scripted keystroke stream.
-- 🔌 **Network clients** — a self-contained HTTP-GET client over winsock.
-- ⚡ **Async pipelines** — `async start/join/poll/cancel`, channels, timeouts,
-  and graceful shutdown (see the `async_*` examples).
-- 🧩 **Event-driven & GUI smoke runtimes** — in-process pub/sub and a headless
-  control tree you can drive non-interactively.
-- 🕸️ **WebAssembly** — `semanticscript wasm app.sem -o app.wasm` emits a module
-  plus a CommonJS runner.
-
-…and 180+ small, single-purpose [`examples/`](examples/) covering arithmetic, bit
-ops, collections, closures, capabilities, conversions, and control flow — each
-one runs and asserts its own result.
-
----
-
-## Quickstart
-
-```sh
-git clone https://github.com/monstercameron/SemanticScript.git
-cd SemanticScript
-python -m pip install -r requirements.txt          # chiefly llvmlite (bundles LLVM)
-
-# alias the compiler for convenience
-alias semanticscript='python semanticscript/compiler/semanticscript.py'   # bash/zsh
-
-semanticscript check examples/add_two.sem --json       # static diagnostics
-semanticscript check examples/add_two.sem --strict     # stricter source gate
-semanticscript run examples/hello_world.sem            # -> hello world
-semanticscript build examples/add_two.sem -o add       # native executable
+```bash
+python semanticscript/compiler/refined run docs/refined-examples/hello
 ```
 
-You need **Python 3.12** and, for native builds and the native runtime,
-**clang** (or `zig cc`) on `PATH`. Pure console/compute programs JIT-run without
-a C compiler. Full setup, project layout, and editor integration:
-**[docs/getting-started.md](docs/getting-started.md)**.
-
----
-
-## The toolchain
+```bash
+python semanticscript/compiler/refined test docs/refined-examples/selfhost
+```
 
 | Command | What it does |
-|---|---|
-| `run` | JIT-compile and execute a file or project directory |
-| `build` / `wasm` | native executable / WebAssembly module + runner |
-| `check` / `lint` | static parse+lint diagnostics; default allows warning-only success, `--strict` promotes T3 warnings |
-| `verify` | one-shot check + discovered tests + run proof; use when "green means runnable" matters |
-| `fmt` | canonical row formatting (`--check` for CI, `-w`/`--write` to update a file) |
-| `fix` / `patch` | emit a repair plan; `patch` applies only plans with `planUsable:true` |
-| `graph` / `query` / `symbols` / `deps` | call graph, effect/dimension queries, symbol & dependency views |
-| `targets --signature` / `reserved-words` | discover builtin call signatures and reserved names |
-| `docs` / `explain` / `search` / `skills` | semantic docs, diagnostic lookup, ranked retrieval, agent skills |
-| `mcp` | run the MCP stdio server for agent integration |
+| --- | --- |
+| `check PATH [--json]` | Check a module file or a project (`build.sem` or its directory) against every rule |
+| `run PATH [--json]` | Compile a console project to LLVM and run it |
+| `test PATH [--json]` | Run every test in a project, each in its own process |
+| `emit-ir PATH [--test MODULE.TEST]` | Print the generated LLVM IR |
+| `stale PATH --base REF` | Flag entities whose code changed but whose context rows did not |
+| `grammar [--textmate] [--output FILE]` | Generate the row-shape reference or the editor grammar |
 
-`semanticscript --help` lists all 50 commands.
+Diagnostics have stable codes (`R101`...`R901`); each code's summary is in
+`semanticscript/compiler/refined/diagnostics.py`.
 
-Use `check` to prove the source contract and that the compiler can lower it to
-LLVM IR, then `verify`, `run`, `test`, or `build` to prove runtime behavior. The
-`sem.check.v1` envelope says this explicitly: it includes
-`lane: "static-source"`, `canCompile`, `compileProof`, warning counts, the active
-strict policy, and replayable next commands for run/build verification.
-`verify --strict <path>` packages the common check+test+run gate behind one
-`sem.verify.v1` envelope.
+## What runs today
 
----
+The checker enforces the whole language as designed. The backend compiles
+integers, booleans, floats, strings, records, enums, tables, loops with
+enforced bounds, recursion with an enforced depth, errors, regions, lists,
+optional values, and calls across modules. Tasks, cleanups, run-time string
+building, maps, sets, and network and file I/O are checked but not yet
+compiled; programs that use them are refused with `R901`. The current list is
+in Part 5 of the notes, and every item still open is listed at the end of
+[docs/test-suite.md](docs/test-suite.md).
 
-## Project status
+## Repository map
 
-**Beta (`0.4.0-beta.1`).** The language, compiler, runtime, and toolchain are
-feature-complete for the supported surface and heavily tested:
+```text
+semanticscript/compiler/refined/   the compiler: lexer, shape table, checker, LLVM backend, runtime
+docs/language-refinement.md        the language design, decisions, and plan
+docs/refined-grammar.md            every row shape (generated)
+docs/refined-examples/             worked example projects (hello, sum, factorial, selfhost, server)
+tests/test_refined.py              rule tests on the worked examples
+tests/suite/, tests/test_suite.py  the language test suite: program cases, negative mutations, stress, fuzz
+docs/test-suite.md                 coverage map of the testing checklist (generated)
+vscode-semanticscript/             VS Code extension (generated grammar, check-on-save diagnostics)
+```
 
-- ✅ 188 example programs run green (400+ assertions); 1,000+ pytest cases; the
-  full CLI surface, the MCP server, and seven end-to-end apps are each gated in
-  CI.
-- ⚠️ **Validated on Windows/ARM64.** Linux/macOS binaries build but are not yet
-  test-matrix-verified.
-- ⚠️ **Distribution** is a frozen single-file binary (no `pip` package yet); the
-  tagged release pipeline is wired but unproven on a tag.
-- 🚧 Network/registry commands (`download`/`update`/`self`/…) are deferred — they
-  need a package registry that doesn't exist yet. The offline dependency tooling
-  (`deps`, `repin` with MVS + lockfile) is in place.
+## Contributing and security
 
-See [CHANGELOG.md](CHANGELOG.md) for the full pre-release gap list and
-[docs/ROADMAP.md](docs/ROADMAP.md) for the path to 1.0.
-
----
-
-## Documentation
-
-- 🚀 **[Getting Started](docs/getting-started.md)** — install, first program, project layout
-- 📖 **[Language Guide](docs/LANGUAGE.md)** — the complete grammar and every entity kind
-- 🔤 **[Grammar](docs/GRAMMAR.md)** · 🗺️ **[Roadmap](docs/ROADMAP.md)** · 🔐 **[Security Matrix](docs/security-matrix.md)**
-- 🧪 **[examples/](examples/)** and **[apps/](apps/)** — runnable, tested programs
-- 📝 **[CONTRIBUTING.md](CONTRIBUTING.md)** · **[CHANGELOG.md](CHANGELOG.md)**
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 
-See [LICENSE](LICENSE). Third-party attributions (SQLite, libuv, crypt_blowfish,
-llvmlite/LLVM, CPython) are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+MIT. See [LICENSE](LICENSE).

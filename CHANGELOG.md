@@ -1,13 +1,45 @@
 # Changelog
 
-All notable changes to SemanticScript are recorded here. This file covers the
-restructured `semanticscript/` package era; the detailed dated history from
-before the repository reorganization (the AgentScript → EAV → SemanticScript
-lineage, ~700 commits) lives in [`legacy/CHANGELOG.md`](legacy/CHANGELOG.md).
+All notable changes to SemanticScript are recorded here. The format is loosely
+based on [Keep a Changelog](https://keepachangelog.com/). No versioned releases
+have been cut yet.
 
-The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
-No versioned releases have been cut yet; the source compatibility contract is
-tracked separately as `CONTRACT_VERSION` (currently `eav-0.3.1`).
+## Unreleased
+
+### The refined compiler replaces the earlier toolchain
+
+- The language was redesigned around two principles: nothing is implied, and
+  every stated fact is checked. The design and every decision are in
+  `docs/language-refinement.md`.
+- New compiler in `semanticscript/compiler/refined/`: a lexer, one shape table
+  for every row, a checker that enforces the whole design (diagnostic codes
+  R101-R605), its own LLVM backend and JIT runtime, a test runner, a staleness
+  flag for context rows, and a grammar generator for the docs and the editor.
+- Worked example projects in `docs/refined-examples/`; `hello`, `sum`, and
+  `factorial` run, and the self-hosting lexer and tokenizer pass their tests.
+- The VS Code extension was rewritten around the refined compiler: generated
+  highlighting, snippets, and check-on-save diagnostics.
+- **Removed, with no backwards compatibility:** the earlier compiler
+  (`semanticscript.py`), its standard library, signatures, C runtime, and
+  packaging; the examples, apps, and experiments in the earlier syntax; the
+  `legacy/` tree; vendored third-party C sources; the earlier test suite; the
+  earlier docs (`LANGUAGE.md`, `GRAMMAR.md`, `ROADMAP.md`, `GOVERNANCE.md`, and
+  others); and the CI workflows that built and released them. All of it remains
+  in git history before this change.
+
+### Test suite
+
+- `tests/suite`: program cases for every section of the language checklist
+  (positive, negative, and edge), a table of one-mistake negative cases with the
+  exact rule codes they must produce, and generated stress, fuzz, differential,
+  determinism, and source-location tests. `docs/test-suite.md` is a generated
+  coverage map of all 456 checklist items with status and evidence.
+- Fixed what it found: a checker crash on malformed rows; an out-of-bounds
+  `string.slice` when `start + length` overflowed; a native stack overflow
+  instead of a trap under deep recursion; `math.powerInt64` running one step per
+  unit of exponent; nested counted loops that could not restart their counter;
+  `math.saturating*Int64` refused by the backend; project modules named like
+  standard modules; and three misleading diagnostics.
 
 ## 0.4.0-beta.1 (unreleased)
 

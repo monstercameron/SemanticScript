@@ -1,0 +1,69 @@
+# covers: 4 Loop termination
+# covers: 16 Execution time limits
+# covers: 21 Invalid operation graphs are rejected
+# covers: 22 Infinite loops
+# kind: edge
+# expect: trap more than maxIterations 3 times
+
+runawayLoop is module
+runawayLoop purpose "Trap: a while loop that would pass its stated bound"
+runawayLoop path runawayLoop
+runawayLoop imports standard.compare
+runawayLoop imports standard.math
+runawayLoop exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label spin loopKind while
+main label spin within none
+main label spin maxIterations 3
+main label step loopKind none
+main label step within spin
+main label done loopKind none
+main label done within none
+main let one immutable Int64 1
+main let limit immutable Int64 100
+main let count mutable Int64 0
+main let okCode immutable ExitCode 0
+main at begin goto spin
+main at spin do below
+main at spin branch if isBelow goto step else goto done
+main at step do addOne
+main at step set count nextCount
+main at step goto spin
+main at done return ok okCode
+
+below is call
+below in main
+below invokes compare.lessThanInt64
+below arg left Int64 count copy
+below arg right Int64 limit copy
+below out isBelow Bool
+below ownedBy none
+below cleanedBy none
+below borrows none
+below catch none
+
+addOne is call
+addOne in main
+addOne invokes math.addInt64
+addOne arg left Int64 count copy
+addOne arg right Int64 one copy
+addOne out nextCount Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none

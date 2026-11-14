@@ -1,1 +1,0 @@
-"""SemanticScript standalone linter package."""

@@ -1,0 +1,203 @@
+# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# Tests for the `tokens` module. A test file is part of the module it sits
+# beside, so it names that module's operations without a prefix and may reach
+# private ones.
+# Check: python semanticscript/compiler/refined check docs/refined-examples/selfhost
+
+emptySourceTest is test
+emptySourceTest purpose "Tokenizing empty text gives an empty list"
+emptySourceTest verifies tokenize emptyGivesNoTokens
+emptySourceTest typeParam none
+emptySourceTest input none
+emptySourceTest output none
+emptySourceTest outputOwner none
+emptySourceTest raises none
+emptySourceTest effect none
+emptySourceTest uses none
+emptySourceTest memory heap true
+emptySourceTest async false
+emptySourceTest maxRecursion none
+emptySourceTest label begin loopKind none
+emptySourceTest label begin within none
+emptySourceTest label measure loopKind none
+emptySourceTest label measure within none
+emptySourceTest label failed loopKind none
+emptySourceTest label failed within none
+emptySourceTest let emptyText immutable String ""
+emptySourceTest let zero immutable Int64 0
+emptySourceTest let failMessage immutable String "tokenize raised on empty text"
+emptySourceTest at begin do tokenizeEmpty
+emptySourceTest at begin branch ifError tokenizeEmpty goto failed else goto measure
+emptySourceTest at measure do countTokens
+emptySourceTest at measure do expectZero
+emptySourceTest at measure return ok none
+emptySourceTest at failed do failUnexpected
+emptySourceTest at failed return ok none
+
+testRegion is region
+testRegion in emptySourceTest
+testRegion strategy arena
+testRegion capacity 4096
+testRegion released atReturn
+
+tokenizeEmpty is call
+tokenizeEmpty in emptySourceTest
+tokenizeEmpty invokes tokenize
+tokenizeEmpty arg source String emptyText lend
+tokenizeEmpty arg resultRegion Region testRegion lend
+tokenizeEmpty out emptyTokens TokenList
+tokenizeEmpty ownedBy testRegion
+tokenizeEmpty cleanedBy none
+tokenizeEmpty borrows none
+tokenizeEmpty catch unexpectedError LexError
+
+countTokens is call
+countTokens in emptySourceTest
+countTokens invokes TokenList.length
+countTokens arg list TokenList emptyTokens lend
+countTokens out tokenCount Int64
+countTokens ownedBy none
+countTokens cleanedBy none
+countTokens borrows none
+countTokens catch none
+
+expectZero is call
+expectZero in emptySourceTest
+expectZero invokes test.assertEqualInt64
+expectZero arg expected Int64 zero copy
+expectZero arg actual Int64 tokenCount copy
+expectZero out none
+expectZero ownedBy none
+expectZero cleanedBy none
+expectZero borrows none
+expectZero catch none
+
+failUnexpected is call
+failUnexpected in emptySourceTest
+failUnexpected invokes test.fail
+failUnexpected arg message String failMessage lend
+failUnexpected out none
+failUnexpected ownedBy none
+failUnexpected cleanedBy none
+failUnexpected borrows none
+failUnexpected catch none
+
+badByteTest is test
+badByteTest purpose "A digit where a word must start stops tokenizing with unexpectedByte at that offset"
+badByteTest verifies tokenize stopsAtBadByte
+badByteTest typeParam none
+badByteTest input none
+badByteTest output none
+badByteTest outputOwner none
+badByteTest raises none
+badByteTest effect none
+badByteTest uses none
+badByteTest memory heap true
+badByteTest async false
+badByteTest maxRecursion none
+badByteTest label begin loopKind none
+badByteTest label begin within none
+badByteTest label inspect loopKind none
+badByteTest label inspect within none
+badByteTest label checkOffset loopKind none
+badByteTest label checkOffset within none
+badByteTest label unexpected loopKind none
+badByteTest label unexpected within none
+badByteTest let badSource immutable String "ab 1"
+badByteTest let expectedOffset immutable Int64 3
+badByteTest let successMessage immutable String "tokenize accepted a digit where a word must start"
+badByteTest at begin do tokenizeBad
+badByteTest at begin branch ifError tokenizeBad goto inspect else goto unexpected
+badByteTest at inspect match badError LexError
+badByteTest at inspect case LexError.unexpectedByte bind badOffset Int64 goto checkOffset
+badByteTest at checkOffset do expectOffset
+badByteTest at checkOffset return ok none
+badByteTest at unexpected do failOnSuccess
+badByteTest at unexpected return ok none
+
+badRegion is region
+badRegion in badByteTest
+badRegion strategy arena
+badRegion capacity 4096
+badRegion released atReturn
+
+tokenizeBad is call
+tokenizeBad in badByteTest
+tokenizeBad invokes tokenize
+tokenizeBad arg source String badSource lend
+tokenizeBad arg resultRegion Region badRegion lend
+tokenizeBad out badTokens TokenList
+tokenizeBad ownedBy badRegion
+tokenizeBad cleanedBy none
+tokenizeBad borrows none
+tokenizeBad catch badError LexError
+
+expectOffset is call
+expectOffset in badByteTest
+expectOffset invokes test.assertEqualInt64
+expectOffset arg expected Int64 expectedOffset copy
+expectOffset arg actual Int64 badOffset copy
+expectOffset out none
+expectOffset ownedBy none
+expectOffset cleanedBy none
+expectOffset borrows none
+expectOffset catch none
+
+failOnSuccess is call
+failOnSuccess in badByteTest
+failOnSuccess invokes test.fail
+failOnSuccess arg message String successMessage lend
+failOnSuccess out none
+failOnSuccess ownedBy none
+failOnSuccess cleanedBy none
+failOnSuccess borrows none
+failOnSuccess catch none
+
+absentKindTest is test
+absentKindTest purpose "Text that fails to tokenize reports that it has no first token kind"
+absentKindTest verifies firstKind badSourceGivesAbsent
+absentKindTest typeParam none
+absentKindTest input none
+absentKindTest output none
+absentKindTest outputOwner none
+absentKindTest raises none
+absentKindTest effect none
+absentKindTest uses none
+absentKindTest memory heap false
+absentKindTest async false
+absentKindTest maxRecursion none
+absentKindTest label begin loopKind none
+absentKindTest label begin within none
+absentKindTest label wrongResult loopKind none
+absentKindTest label wrongResult within none
+absentKindTest label rightResult loopKind none
+absentKindTest label rightResult within none
+absentKindTest let digitSource immutable String "1"
+absentKindTest let presentMessage immutable String "firstKind found a token kind in text that does not tokenize"
+absentKindTest at begin do firstOfDigit
+absentKindTest at begin match digitKind TokenKindOption
+absentKindTest at begin case TokenKindOption.present bind foundKind lexer.TokenKind goto wrongResult
+absentKindTest at begin case TokenKindOption.absent bind none none goto rightResult
+absentKindTest at wrongResult do failOnPresent
+absentKindTest at wrongResult return ok none
+absentKindTest at rightResult return ok none
+
+firstOfDigit is call
+firstOfDigit in absentKindTest
+firstOfDigit invokes firstKind
+firstOfDigit arg source String digitSource lend
+firstOfDigit out digitKind TokenKindOption
+firstOfDigit ownedBy none
+firstOfDigit cleanedBy none
+firstOfDigit borrows none
+firstOfDigit catch none
+
+failOnPresent is call
+failOnPresent in absentKindTest
+failOnPresent invokes test.fail
+failOnPresent arg message String presentMessage lend
+failOnPresent out none
+failOnPresent ownedBy none
+failOnPresent cleanedBy none
+failOnPresent borrows none
+failOnPresent catch none

@@ -1,0 +1,44 @@
+# Tests for the case beside this file.
+
+tripleTest is test
+tripleTest purpose "Three times four is twelve"
+tripleTest verifies triple timesThree
+tripleTest typeParam none
+tripleTest input none
+tripleTest output none
+tripleTest outputOwner none
+tripleTest raises none
+tripleTest effect none
+tripleTest uses none
+tripleTest memory heap false
+tripleTest async false
+tripleTest maxRecursion none
+tripleTest label begin loopKind none
+tripleTest label begin within none
+tripleTest let four immutable Int64 4
+tripleTest let twelve immutable Int64 12
+tripleTest let thirteen immutable Int64 13
+tripleTest at begin do runTriple
+tripleTest at begin do expectResult
+tripleTest at begin return ok none
+
+runTriple is call
+runTriple in tripleTest
+runTriple invokes triple
+runTriple arg value Int64 four copy
+runTriple out result Int64
+runTriple ownedBy none
+runTriple cleanedBy none
+runTriple borrows none
+runTriple catch none
+
+expectResult is call
+expectResult in tripleTest
+expectResult invokes test.assertEqualInt64
+expectResult arg expected Int64 thirteen copy
+expectResult arg actual Int64 result copy
+expectResult out none
+expectResult ownedBy none
+expectResult cleanedBy none
+expectResult borrows none
+expectResult catch none

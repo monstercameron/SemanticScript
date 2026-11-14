@@ -1,8 +1,8 @@
 """Pytest fixture-discovery hook for the SemanticScript test suite.
 
-Puts the compiler package dir (semanticscript/compiler/) on sys.path so every
-test under tests/ can `import semanticscript` regardless of pytest's import mode
-or the directory the suite is launched from.
+Puts semanticscript/compiler/ on sys.path so every test under tests/ can
+`import refined` regardless of pytest's import mode or the directory the suite
+is launched from.
 """
 import os
 import sys

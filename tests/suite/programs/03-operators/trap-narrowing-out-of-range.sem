@@ -1,0 +1,41 @@
+# covers: 2 Type conversions
+# covers: 14 Type-safe casting
+# kind: edge
+# expect: trap out of range for `Int32`
+
+narrowingOutOfRange is module
+narrowingOutOfRange purpose "Trap: narrowing out of range"
+narrowingOutOfRange path narrowingOutOfRange
+narrowingOutOfRange imports standard.convert
+narrowingOutOfRange exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let one immutable Int64 1
+main let huge immutable Int64 4294967296
+main let okCode immutable ExitCode 0
+main at begin do compute
+main at begin return ok okCode
+
+compute is call
+compute in main
+compute invokes convert.int64ToInt32
+compute arg value Int64 huge copy
+compute out result Int32
+compute ownedBy none
+compute cleanedBy none
+compute borrows none
+compute catch none

@@ -4,7 +4,8 @@
 # High-churn implementation areas.
 /semanticscript/ @monstercameron
 /tests/ @monstercameron
-/examples/ @monstercameron
+/docs/ @monstercameron
+/vscode-semanticscript/ @monstercameron
 
 # Community and release metadata.
 /.github/ @monstercameron

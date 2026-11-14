@@ -1,0 +1,29 @@
+# covers: 22 Minimal valid program
+# covers: 22 Empty program
+# kind: edge
+# expect: run
+# exit: 0
+
+minimal is module
+minimal purpose "The smallest program: exit with status zero"
+minimal path minimal
+minimal imports none
+minimal exports main
+
+main is operation
+main purpose "Return exit status 0"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let zero immutable ExitCode 0
+main at begin return ok zero

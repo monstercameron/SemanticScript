@@ -1,0 +1,28 @@
+# covers: 9 Module declaration
+# covers: 15 Source-location tracking
+# kind: negative
+# expect: check R602
+
+wrongPlace is module
+wrongPlace purpose "A module whose path does not match its name"
+wrongPlace path somewhere.else
+wrongPlace imports none
+wrongPlace exports main
+
+main is operation
+main purpose "Return exit status 0"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let zero immutable ExitCode 0
+main at begin return ok zero

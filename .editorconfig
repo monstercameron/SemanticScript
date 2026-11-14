@@ -27,6 +27,3 @@ indent_style = tab
 [*.md]
 trim_trailing_whitespace = false
 
-[third_party/**]
-insert_final_newline = unset
-trim_trailing_whitespace = unset

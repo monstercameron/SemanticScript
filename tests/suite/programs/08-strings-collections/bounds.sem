@@ -1,0 +1,962 @@
+# covers: 17 Bounds checking
+# covers: 17 Memory safety
+# covers: 17 Input validation
+# covers: 8 String slicing
+# covers: 8 Array bounds checking
+# covers: 22 Zero-length collections
+# covers: 22 Maximum integer values
+# covers: 22 Minimum integer values
+# covers: 22 Malformed input
+# covers: 7 Out-of-bounds memory access
+# covers: 7 Buffer overflow protection
+# covers: 20 Regression tests
+# kind: edge
+# expect: run
+# exit: 0
+# stdout: -1
+# stdout: -1
+# stdout: -1
+# stdout: -1
+# stdout: 0
+# stdout: -1
+# stdout: -1
+# stdout: 0
+# stdout: 9223372036854775807
+# stdout: -1
+# stdout: -9223372036854775808
+# stdout: -1
+# stdout: -1
+# stdout: -1
+# stdout: -1
+# stdout: -1
+# stdout: -1
+# stdout: -1
+
+bounds is module
+bounds purpose "Try every bounds edge of strings, numbers in text, and lists; print the value or -1"
+bounds path bounds
+bounds imports standard.console
+bounds imports standard.string
+bounds imports standard.list
+bounds exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+Numbers is instance
+Numbers purpose "A growable list of whole numbers"
+Numbers instantiates list.List Int64
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label try0 loopKind none
+main label try0 within none
+main label worked0 loopKind none
+main label worked0 within none
+main label failed0 loopKind none
+main label failed0 within none
+main label try1 loopKind none
+main label try1 within none
+main label worked1 loopKind none
+main label worked1 within none
+main label failed1 loopKind none
+main label failed1 within none
+main label try2 loopKind none
+main label try2 within none
+main label worked2 loopKind none
+main label worked2 within none
+main label failed2 loopKind none
+main label failed2 within none
+main label try3 loopKind none
+main label try3 within none
+main label worked3 loopKind none
+main label worked3 within none
+main label failed3 loopKind none
+main label failed3 within none
+main label try4 loopKind none
+main label try4 within none
+main label worked4 loopKind none
+main label worked4 within none
+main label failed4 loopKind none
+main label failed4 within none
+main label try5 loopKind none
+main label try5 within none
+main label worked5 loopKind none
+main label worked5 within none
+main label failed5 loopKind none
+main label failed5 within none
+main label try6 loopKind none
+main label try6 within none
+main label worked6 loopKind none
+main label worked6 within none
+main label failed6 loopKind none
+main label failed6 within none
+main label try7 loopKind none
+main label try7 within none
+main label worked7 loopKind none
+main label worked7 within none
+main label failed7 loopKind none
+main label failed7 within none
+main label try8 loopKind none
+main label try8 within none
+main label worked8 loopKind none
+main label worked8 within none
+main label failed8 loopKind none
+main label failed8 within none
+main label try9 loopKind none
+main label try9 within none
+main label worked9 loopKind none
+main label worked9 within none
+main label failed9 loopKind none
+main label failed9 within none
+main label try10 loopKind none
+main label try10 within none
+main label worked10 loopKind none
+main label worked10 within none
+main label failed10 loopKind none
+main label failed10 within none
+main label try11 loopKind none
+main label try11 within none
+main label worked11 loopKind none
+main label worked11 within none
+main label failed11 loopKind none
+main label failed11 within none
+main label try12 loopKind none
+main label try12 within none
+main label worked12 loopKind none
+main label worked12 within none
+main label failed12 loopKind none
+main label failed12 within none
+main label try13 loopKind none
+main label try13 within none
+main label worked13 loopKind none
+main label worked13 within none
+main label failed13 loopKind none
+main label failed13 within none
+main label try14 loopKind none
+main label try14 within none
+main label worked14 loopKind none
+main label worked14 within none
+main label failed14 loopKind none
+main label failed14 within none
+main label try15 loopKind none
+main label try15 within none
+main label worked15 loopKind none
+main label worked15 within none
+main label failed15 loopKind none
+main label failed15 within none
+main label try16 loopKind none
+main label try16 within none
+main label worked16 loopKind none
+main label worked16 within none
+main label failed16 loopKind none
+main label failed16 within none
+main label try17 loopKind none
+main label try17 within none
+main label worked17 loopKind none
+main label worked17 within none
+main label failed17 loopKind none
+main label failed17 within none
+main label finish loopKind none
+main label finish within none
+main let source immutable String "hello"
+main let empty immutable String ""
+main let minusOne immutable Int64 -1
+main let zero immutable Int64 0
+main let one immutable Int64 1
+main let two immutable Int64 2
+main let five immutable Int64 5
+main let six immutable Int64 6
+main let largest immutable Int64 9223372036854775807
+main let largestText immutable String "9223372036854775807"
+main let pastLargestText immutable String "9223372036854775808"
+main let smallestText immutable String "-9223372036854775808"
+main let signText immutable String "-"
+main let plusText immutable String "+5"
+main let spaceText immutable String " 5"
+main let arabicDigit immutable String "٣"
+main let okCode immutable ExitCode 0
+main at begin do makeNumbers
+main at begin goto try0
+main at try0 do sliceNegativeStart
+main at try0 branch ifError sliceNegativeStart goto failed0 else goto worked0
+main at worked0 do measure0
+main at worked0 do showSliceNegativeStart
+main at worked0 goto try1
+main at failed0 do showFailed0
+main at failed0 goto try1
+main at try1 do sliceNegativeLength
+main at try1 branch ifError sliceNegativeLength goto failed1 else goto worked1
+main at worked1 do measure1
+main at worked1 do showSliceNegativeLength
+main at worked1 goto try2
+main at failed1 do showFailed1
+main at failed1 goto try2
+main at try2 do sliceLengthOverflows
+main at try2 branch ifError sliceLengthOverflows goto failed2 else goto worked2
+main at worked2 do measure2
+main at worked2 do showSliceLengthOverflows
+main at worked2 goto try3
+main at failed2 do showFailed2
+main at failed2 goto try3
+main at try3 do sliceStartPastEnd
+main at try3 branch ifError sliceStartPastEnd goto failed3 else goto worked3
+main at worked3 do measure3
+main at worked3 do showSliceStartPastEnd
+main at worked3 goto try4
+main at failed3 do showFailed3
+main at failed3 goto try4
+main at try4 do sliceEmptyAtEnd
+main at try4 branch ifError sliceEmptyAtEnd goto failed4 else goto worked4
+main at worked4 do measure4
+main at worked4 do showSliceEmptyAtEnd
+main at worked4 goto try5
+main at failed4 do showFailed4
+main at failed4 goto try5
+main at try5 do byteBeforeStart
+main at try5 branch ifError byteBeforeStart goto failed5 else goto worked5
+main at worked5 do showByteBeforeStart
+main at worked5 goto try6
+main at failed5 do showFailed5
+main at failed5 goto try6
+main at try6 do byteAtEnd
+main at try6 branch ifError byteAtEnd goto failed6 else goto worked6
+main at worked6 do showByteAtEnd
+main at worked6 goto try7
+main at failed6 do showFailed6
+main at failed6 goto try7
+main at try7 do findEmpty
+main at try7 branch ifError findEmpty goto failed7 else goto worked7
+main at worked7 do showFindEmpty
+main at worked7 goto try8
+main at failed7 do showFailed7
+main at failed7 goto try8
+main at try8 do parseLargest
+main at try8 branch ifError parseLargest goto failed8 else goto worked8
+main at worked8 do showParseLargest
+main at worked8 goto try9
+main at failed8 do showFailed8
+main at failed8 goto try9
+main at try9 do parsePastLargest
+main at try9 branch ifError parsePastLargest goto failed9 else goto worked9
+main at worked9 do showParsePastLargest
+main at worked9 goto try10
+main at failed9 do showFailed9
+main at failed9 goto try10
+main at try10 do parseSmallest
+main at try10 branch ifError parseSmallest goto failed10 else goto worked10
+main at worked10 do showParseSmallest
+main at worked10 goto try11
+main at failed10 do showFailed10
+main at failed10 goto try11
+main at try11 do parseSignOnly
+main at try11 branch ifError parseSignOnly goto failed11 else goto worked11
+main at worked11 do showParseSignOnly
+main at worked11 goto try12
+main at failed11 do showFailed11
+main at failed11 goto try12
+main at try12 do parseEmpty
+main at try12 branch ifError parseEmpty goto failed12 else goto worked12
+main at worked12 do showParseEmpty
+main at worked12 goto try13
+main at failed12 do showFailed12
+main at failed12 goto try13
+main at try13 do parsePlus
+main at try13 branch ifError parsePlus goto failed13 else goto worked13
+main at worked13 do showParsePlus
+main at worked13 goto try14
+main at failed13 do showFailed13
+main at failed13 goto try14
+main at try14 do parseSpace
+main at try14 branch ifError parseSpace goto failed14 else goto worked14
+main at worked14 do showParseSpace
+main at worked14 goto try15
+main at failed14 do showFailed14
+main at failed14 goto try15
+main at try15 do parseNonAscii
+main at try15 branch ifError parseNonAscii goto failed15 else goto worked15
+main at worked15 do showParseNonAscii
+main at worked15 goto try16
+main at failed15 do showFailed15
+main at failed15 goto try16
+main at try16 do listNegative
+main at try16 branch ifError listNegative goto failed16 else goto worked16
+main at worked16 do showListNegative
+main at worked16 goto try17
+main at failed16 do showFailed16
+main at failed16 goto try17
+main at try17 do listEmptyRead
+main at try17 branch ifError listEmptyRead goto failed17 else goto worked17
+main at worked17 do showListEmptyRead
+main at worked17 goto finish
+main at failed17 do showFailed17
+main at failed17 goto finish
+main at finish return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch capacity 1024
+scratch released atReturn
+
+makeNumbers is call
+makeNumbers in main
+makeNumbers invokes Numbers.new
+makeNumbers arg region Region scratch lend
+makeNumbers out numbers Numbers
+makeNumbers ownedBy scratch
+makeNumbers cleanedBy none
+makeNumbers borrows none
+makeNumbers catch none
+
+sliceNegativeStart is call
+sliceNegativeStart in main
+sliceNegativeStart invokes string.slice
+sliceNegativeStart arg text String source lend
+sliceNegativeStart arg start Int64 minusOne copy
+sliceNegativeStart arg length Int64 two copy
+sliceNegativeStart out sliceNegativeStartResult String
+sliceNegativeStart ownedBy none
+sliceNegativeStart cleanedBy none
+sliceNegativeStart borrows source
+sliceNegativeStart catch sliceNegativeStartError string.StringIndexError
+
+measure0 is call
+measure0 in main
+measure0 invokes string.byteLength
+measure0 arg text String sliceNegativeStartResult lend
+measure0 out sliceNegativeStartLength Int64
+measure0 ownedBy none
+measure0 cleanedBy none
+measure0 borrows none
+measure0 catch none
+
+showSliceNegativeStart is call
+showSliceNegativeStart in main
+showSliceNegativeStart invokes showInt
+showSliceNegativeStart arg value Int64 sliceNegativeStartLength copy
+showSliceNegativeStart out none
+showSliceNegativeStart ownedBy none
+showSliceNegativeStart cleanedBy none
+showSliceNegativeStart borrows none
+showSliceNegativeStart catch none
+
+showFailed0 is call
+showFailed0 in main
+showFailed0 invokes showInt
+showFailed0 arg value Int64 minusOne copy
+showFailed0 out none
+showFailed0 ownedBy none
+showFailed0 cleanedBy none
+showFailed0 borrows none
+showFailed0 catch none
+
+sliceNegativeLength is call
+sliceNegativeLength in main
+sliceNegativeLength invokes string.slice
+sliceNegativeLength arg text String source lend
+sliceNegativeLength arg start Int64 one copy
+sliceNegativeLength arg length Int64 minusOne copy
+sliceNegativeLength out sliceNegativeLengthResult String
+sliceNegativeLength ownedBy none
+sliceNegativeLength cleanedBy none
+sliceNegativeLength borrows source
+sliceNegativeLength catch sliceNegativeLengthError string.StringIndexError
+
+measure1 is call
+measure1 in main
+measure1 invokes string.byteLength
+measure1 arg text String sliceNegativeLengthResult lend
+measure1 out sliceNegativeLengthLength Int64
+measure1 ownedBy none
+measure1 cleanedBy none
+measure1 borrows none
+measure1 catch none
+
+showSliceNegativeLength is call
+showSliceNegativeLength in main
+showSliceNegativeLength invokes showInt
+showSliceNegativeLength arg value Int64 sliceNegativeLengthLength copy
+showSliceNegativeLength out none
+showSliceNegativeLength ownedBy none
+showSliceNegativeLength cleanedBy none
+showSliceNegativeLength borrows none
+showSliceNegativeLength catch none
+
+showFailed1 is call
+showFailed1 in main
+showFailed1 invokes showInt
+showFailed1 arg value Int64 minusOne copy
+showFailed1 out none
+showFailed1 ownedBy none
+showFailed1 cleanedBy none
+showFailed1 borrows none
+showFailed1 catch none
+
+sliceLengthOverflows is call
+sliceLengthOverflows in main
+sliceLengthOverflows invokes string.slice
+sliceLengthOverflows arg text String source lend
+sliceLengthOverflows arg start Int64 one copy
+sliceLengthOverflows arg length Int64 largest copy
+sliceLengthOverflows out sliceLengthOverflowsResult String
+sliceLengthOverflows ownedBy none
+sliceLengthOverflows cleanedBy none
+sliceLengthOverflows borrows source
+sliceLengthOverflows catch sliceLengthOverflowsError string.StringIndexError
+
+measure2 is call
+measure2 in main
+measure2 invokes string.byteLength
+measure2 arg text String sliceLengthOverflowsResult lend
+measure2 out sliceLengthOverflowsLength Int64
+measure2 ownedBy none
+measure2 cleanedBy none
+measure2 borrows none
+measure2 catch none
+
+showSliceLengthOverflows is call
+showSliceLengthOverflows in main
+showSliceLengthOverflows invokes showInt
+showSliceLengthOverflows arg value Int64 sliceLengthOverflowsLength copy
+showSliceLengthOverflows out none
+showSliceLengthOverflows ownedBy none
+showSliceLengthOverflows cleanedBy none
+showSliceLengthOverflows borrows none
+showSliceLengthOverflows catch none
+
+showFailed2 is call
+showFailed2 in main
+showFailed2 invokes showInt
+showFailed2 arg value Int64 minusOne copy
+showFailed2 out none
+showFailed2 ownedBy none
+showFailed2 cleanedBy none
+showFailed2 borrows none
+showFailed2 catch none
+
+sliceStartPastEnd is call
+sliceStartPastEnd in main
+sliceStartPastEnd invokes string.slice
+sliceStartPastEnd arg text String source lend
+sliceStartPastEnd arg start Int64 six copy
+sliceStartPastEnd arg length Int64 zero copy
+sliceStartPastEnd out sliceStartPastEndResult String
+sliceStartPastEnd ownedBy none
+sliceStartPastEnd cleanedBy none
+sliceStartPastEnd borrows source
+sliceStartPastEnd catch sliceStartPastEndError string.StringIndexError
+
+measure3 is call
+measure3 in main
+measure3 invokes string.byteLength
+measure3 arg text String sliceStartPastEndResult lend
+measure3 out sliceStartPastEndLength Int64
+measure3 ownedBy none
+measure3 cleanedBy none
+measure3 borrows none
+measure3 catch none
+
+showSliceStartPastEnd is call
+showSliceStartPastEnd in main
+showSliceStartPastEnd invokes showInt
+showSliceStartPastEnd arg value Int64 sliceStartPastEndLength copy
+showSliceStartPastEnd out none
+showSliceStartPastEnd ownedBy none
+showSliceStartPastEnd cleanedBy none
+showSliceStartPastEnd borrows none
+showSliceStartPastEnd catch none
+
+showFailed3 is call
+showFailed3 in main
+showFailed3 invokes showInt
+showFailed3 arg value Int64 minusOne copy
+showFailed3 out none
+showFailed3 ownedBy none
+showFailed3 cleanedBy none
+showFailed3 borrows none
+showFailed3 catch none
+
+sliceEmptyAtEnd is call
+sliceEmptyAtEnd in main
+sliceEmptyAtEnd invokes string.slice
+sliceEmptyAtEnd arg text String source lend
+sliceEmptyAtEnd arg start Int64 five copy
+sliceEmptyAtEnd arg length Int64 zero copy
+sliceEmptyAtEnd out sliceEmptyAtEndResult String
+sliceEmptyAtEnd ownedBy none
+sliceEmptyAtEnd cleanedBy none
+sliceEmptyAtEnd borrows source
+sliceEmptyAtEnd catch sliceEmptyAtEndError string.StringIndexError
+
+measure4 is call
+measure4 in main
+measure4 invokes string.byteLength
+measure4 arg text String sliceEmptyAtEndResult lend
+measure4 out sliceEmptyAtEndLength Int64
+measure4 ownedBy none
+measure4 cleanedBy none
+measure4 borrows none
+measure4 catch none
+
+showSliceEmptyAtEnd is call
+showSliceEmptyAtEnd in main
+showSliceEmptyAtEnd invokes showInt
+showSliceEmptyAtEnd arg value Int64 sliceEmptyAtEndLength copy
+showSliceEmptyAtEnd out none
+showSliceEmptyAtEnd ownedBy none
+showSliceEmptyAtEnd cleanedBy none
+showSliceEmptyAtEnd borrows none
+showSliceEmptyAtEnd catch none
+
+showFailed4 is call
+showFailed4 in main
+showFailed4 invokes showInt
+showFailed4 arg value Int64 minusOne copy
+showFailed4 out none
+showFailed4 ownedBy none
+showFailed4 cleanedBy none
+showFailed4 borrows none
+showFailed4 catch none
+
+byteBeforeStart is call
+byteBeforeStart in main
+byteBeforeStart invokes string.byteAt
+byteBeforeStart arg text String source lend
+byteBeforeStart arg index Int64 minusOne copy
+byteBeforeStart out byteBeforeStartResult Byte
+byteBeforeStart ownedBy none
+byteBeforeStart cleanedBy none
+byteBeforeStart borrows none
+byteBeforeStart catch byteBeforeStartError string.StringIndexError
+
+showByteBeforeStart is call
+showByteBeforeStart in main
+showByteBeforeStart invokes showInt
+showByteBeforeStart arg value Int64 zero copy
+showByteBeforeStart out none
+showByteBeforeStart ownedBy none
+showByteBeforeStart cleanedBy none
+showByteBeforeStart borrows none
+showByteBeforeStart catch none
+
+showFailed5 is call
+showFailed5 in main
+showFailed5 invokes showInt
+showFailed5 arg value Int64 minusOne copy
+showFailed5 out none
+showFailed5 ownedBy none
+showFailed5 cleanedBy none
+showFailed5 borrows none
+showFailed5 catch none
+
+byteAtEnd is call
+byteAtEnd in main
+byteAtEnd invokes string.byteAt
+byteAtEnd arg text String source lend
+byteAtEnd arg index Int64 five copy
+byteAtEnd out byteAtEndResult Byte
+byteAtEnd ownedBy none
+byteAtEnd cleanedBy none
+byteAtEnd borrows none
+byteAtEnd catch byteAtEndError string.StringIndexError
+
+showByteAtEnd is call
+showByteAtEnd in main
+showByteAtEnd invokes showInt
+showByteAtEnd arg value Int64 zero copy
+showByteAtEnd out none
+showByteAtEnd ownedBy none
+showByteAtEnd cleanedBy none
+showByteAtEnd borrows none
+showByteAtEnd catch none
+
+showFailed6 is call
+showFailed6 in main
+showFailed6 invokes showInt
+showFailed6 arg value Int64 minusOne copy
+showFailed6 out none
+showFailed6 ownedBy none
+showFailed6 cleanedBy none
+showFailed6 borrows none
+showFailed6 catch none
+
+findEmpty is call
+findEmpty in main
+findEmpty invokes string.find
+findEmpty arg text String source lend
+findEmpty arg needle String empty lend
+findEmpty out findEmptyResult Int64
+findEmpty ownedBy none
+findEmpty cleanedBy none
+findEmpty borrows none
+findEmpty catch findEmptyError string.NotFound
+
+showFindEmpty is call
+showFindEmpty in main
+showFindEmpty invokes showInt
+showFindEmpty arg value Int64 findEmptyResult copy
+showFindEmpty out none
+showFindEmpty ownedBy none
+showFindEmpty cleanedBy none
+showFindEmpty borrows none
+showFindEmpty catch none
+
+showFailed7 is call
+showFailed7 in main
+showFailed7 invokes showInt
+showFailed7 arg value Int64 minusOne copy
+showFailed7 out none
+showFailed7 ownedBy none
+showFailed7 cleanedBy none
+showFailed7 borrows none
+showFailed7 catch none
+
+parseLargest is call
+parseLargest in main
+parseLargest invokes string.toInt64
+parseLargest arg text String largestText lend
+parseLargest out parseLargestResult Int64
+parseLargest ownedBy none
+parseLargest cleanedBy none
+parseLargest borrows none
+parseLargest catch parseLargestError string.ParseError
+
+showParseLargest is call
+showParseLargest in main
+showParseLargest invokes showInt
+showParseLargest arg value Int64 parseLargestResult copy
+showParseLargest out none
+showParseLargest ownedBy none
+showParseLargest cleanedBy none
+showParseLargest borrows none
+showParseLargest catch none
+
+showFailed8 is call
+showFailed8 in main
+showFailed8 invokes showInt
+showFailed8 arg value Int64 minusOne copy
+showFailed8 out none
+showFailed8 ownedBy none
+showFailed8 cleanedBy none
+showFailed8 borrows none
+showFailed8 catch none
+
+parsePastLargest is call
+parsePastLargest in main
+parsePastLargest invokes string.toInt64
+parsePastLargest arg text String pastLargestText lend
+parsePastLargest out parsePastLargestResult Int64
+parsePastLargest ownedBy none
+parsePastLargest cleanedBy none
+parsePastLargest borrows none
+parsePastLargest catch parsePastLargestError string.ParseError
+
+showParsePastLargest is call
+showParsePastLargest in main
+showParsePastLargest invokes showInt
+showParsePastLargest arg value Int64 parsePastLargestResult copy
+showParsePastLargest out none
+showParsePastLargest ownedBy none
+showParsePastLargest cleanedBy none
+showParsePastLargest borrows none
+showParsePastLargest catch none
+
+showFailed9 is call
+showFailed9 in main
+showFailed9 invokes showInt
+showFailed9 arg value Int64 minusOne copy
+showFailed9 out none
+showFailed9 ownedBy none
+showFailed9 cleanedBy none
+showFailed9 borrows none
+showFailed9 catch none
+
+parseSmallest is call
+parseSmallest in main
+parseSmallest invokes string.toInt64
+parseSmallest arg text String smallestText lend
+parseSmallest out parseSmallestResult Int64
+parseSmallest ownedBy none
+parseSmallest cleanedBy none
+parseSmallest borrows none
+parseSmallest catch parseSmallestError string.ParseError
+
+showParseSmallest is call
+showParseSmallest in main
+showParseSmallest invokes showInt
+showParseSmallest arg value Int64 parseSmallestResult copy
+showParseSmallest out none
+showParseSmallest ownedBy none
+showParseSmallest cleanedBy none
+showParseSmallest borrows none
+showParseSmallest catch none
+
+showFailed10 is call
+showFailed10 in main
+showFailed10 invokes showInt
+showFailed10 arg value Int64 minusOne copy
+showFailed10 out none
+showFailed10 ownedBy none
+showFailed10 cleanedBy none
+showFailed10 borrows none
+showFailed10 catch none
+
+parseSignOnly is call
+parseSignOnly in main
+parseSignOnly invokes string.toInt64
+parseSignOnly arg text String signText lend
+parseSignOnly out parseSignOnlyResult Int64
+parseSignOnly ownedBy none
+parseSignOnly cleanedBy none
+parseSignOnly borrows none
+parseSignOnly catch parseSignOnlyError string.ParseError
+
+showParseSignOnly is call
+showParseSignOnly in main
+showParseSignOnly invokes showInt
+showParseSignOnly arg value Int64 parseSignOnlyResult copy
+showParseSignOnly out none
+showParseSignOnly ownedBy none
+showParseSignOnly cleanedBy none
+showParseSignOnly borrows none
+showParseSignOnly catch none
+
+showFailed11 is call
+showFailed11 in main
+showFailed11 invokes showInt
+showFailed11 arg value Int64 minusOne copy
+showFailed11 out none
+showFailed11 ownedBy none
+showFailed11 cleanedBy none
+showFailed11 borrows none
+showFailed11 catch none
+
+parseEmpty is call
+parseEmpty in main
+parseEmpty invokes string.toInt64
+parseEmpty arg text String empty lend
+parseEmpty out parseEmptyResult Int64
+parseEmpty ownedBy none
+parseEmpty cleanedBy none
+parseEmpty borrows none
+parseEmpty catch parseEmptyError string.ParseError
+
+showParseEmpty is call
+showParseEmpty in main
+showParseEmpty invokes showInt
+showParseEmpty arg value Int64 parseEmptyResult copy
+showParseEmpty out none
+showParseEmpty ownedBy none
+showParseEmpty cleanedBy none
+showParseEmpty borrows none
+showParseEmpty catch none
+
+showFailed12 is call
+showFailed12 in main
+showFailed12 invokes showInt
+showFailed12 arg value Int64 minusOne copy
+showFailed12 out none
+showFailed12 ownedBy none
+showFailed12 cleanedBy none
+showFailed12 borrows none
+showFailed12 catch none
+
+parsePlus is call
+parsePlus in main
+parsePlus invokes string.toInt64
+parsePlus arg text String plusText lend
+parsePlus out parsePlusResult Int64
+parsePlus ownedBy none
+parsePlus cleanedBy none
+parsePlus borrows none
+parsePlus catch parsePlusError string.ParseError
+
+showParsePlus is call
+showParsePlus in main
+showParsePlus invokes showInt
+showParsePlus arg value Int64 parsePlusResult copy
+showParsePlus out none
+showParsePlus ownedBy none
+showParsePlus cleanedBy none
+showParsePlus borrows none
+showParsePlus catch none
+
+showFailed13 is call
+showFailed13 in main
+showFailed13 invokes showInt
+showFailed13 arg value Int64 minusOne copy
+showFailed13 out none
+showFailed13 ownedBy none
+showFailed13 cleanedBy none
+showFailed13 borrows none
+showFailed13 catch none
+
+parseSpace is call
+parseSpace in main
+parseSpace invokes string.toInt64
+parseSpace arg text String spaceText lend
+parseSpace out parseSpaceResult Int64
+parseSpace ownedBy none
+parseSpace cleanedBy none
+parseSpace borrows none
+parseSpace catch parseSpaceError string.ParseError
+
+showParseSpace is call
+showParseSpace in main
+showParseSpace invokes showInt
+showParseSpace arg value Int64 parseSpaceResult copy
+showParseSpace out none
+showParseSpace ownedBy none
+showParseSpace cleanedBy none
+showParseSpace borrows none
+showParseSpace catch none
+
+showFailed14 is call
+showFailed14 in main
+showFailed14 invokes showInt
+showFailed14 arg value Int64 minusOne copy
+showFailed14 out none
+showFailed14 ownedBy none
+showFailed14 cleanedBy none
+showFailed14 borrows none
+showFailed14 catch none
+
+parseNonAscii is call
+parseNonAscii in main
+parseNonAscii invokes string.toInt64
+parseNonAscii arg text String arabicDigit lend
+parseNonAscii out parseNonAsciiResult Int64
+parseNonAscii ownedBy none
+parseNonAscii cleanedBy none
+parseNonAscii borrows none
+parseNonAscii catch parseNonAsciiError string.ParseError
+
+showParseNonAscii is call
+showParseNonAscii in main
+showParseNonAscii invokes showInt
+showParseNonAscii arg value Int64 parseNonAsciiResult copy
+showParseNonAscii out none
+showParseNonAscii ownedBy none
+showParseNonAscii cleanedBy none
+showParseNonAscii borrows none
+showParseNonAscii catch none
+
+showFailed15 is call
+showFailed15 in main
+showFailed15 invokes showInt
+showFailed15 arg value Int64 minusOne copy
+showFailed15 out none
+showFailed15 ownedBy none
+showFailed15 cleanedBy none
+showFailed15 borrows none
+showFailed15 catch none
+
+listNegative is call
+listNegative in main
+listNegative invokes Numbers.get
+listNegative arg list Numbers numbers lend
+listNegative arg index Int64 minusOne copy
+listNegative out listNegativeResult Int64
+listNegative ownedBy none
+listNegative cleanedBy none
+listNegative borrows none
+listNegative catch listNegativeError list.IndexOutOfRange
+
+showListNegative is call
+showListNegative in main
+showListNegative invokes showInt
+showListNegative arg value Int64 listNegativeResult copy
+showListNegative out none
+showListNegative ownedBy none
+showListNegative cleanedBy none
+showListNegative borrows none
+showListNegative catch none
+
+showFailed16 is call
+showFailed16 in main
+showFailed16 invokes showInt
+showFailed16 arg value Int64 minusOne copy
+showFailed16 out none
+showFailed16 ownedBy none
+showFailed16 cleanedBy none
+showFailed16 borrows none
+showFailed16 catch none
+
+listEmptyRead is call
+listEmptyRead in main
+listEmptyRead invokes Numbers.get
+listEmptyRead arg list Numbers numbers lend
+listEmptyRead arg index Int64 zero copy
+listEmptyRead out listEmptyReadResult Int64
+listEmptyRead ownedBy none
+listEmptyRead cleanedBy none
+listEmptyRead borrows none
+listEmptyRead catch listEmptyReadError list.IndexOutOfRange
+
+showListEmptyRead is call
+showListEmptyRead in main
+showListEmptyRead invokes showInt
+showListEmptyRead arg value Int64 listEmptyReadResult copy
+showListEmptyRead out none
+showListEmptyRead ownedBy none
+showListEmptyRead cleanedBy none
+showListEmptyRead borrows none
+showListEmptyRead catch none
+
+showFailed17 is call
+showFailed17 in main
+showFailed17 invokes showInt
+showFailed17 arg value Int64 minusOne copy
+showFailed17 out none
+showFailed17 ownedBy none
+showFailed17 cleanedBy none
+showFailed17 borrows none
+showFailed17 catch none

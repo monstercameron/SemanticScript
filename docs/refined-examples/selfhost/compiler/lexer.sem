@@ -1,0 +1,259 @@
+# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# A piece of a compiler front end: read one word token from source text and
+# classify it against a keyword table.
+# Check: python semanticscript/compiler/refined check docs/refined-examples/selfhost
+
+lexer is module
+lexer purpose "Turn source text into tokens"
+lexer path compiler.lexer
+lexer imports standard.string
+lexer imports standard.byte
+lexer imports standard.math
+lexer imports standard.compare
+lexer imports standard.test
+lexer exports scanWord
+lexer exports classifyWord
+lexer exports Token
+lexer exports TokenKind
+
+TokenKind is enum
+TokenKind purpose "What a token is"
+TokenKind typeParam none
+TokenKind variant word none
+TokenKind variant keywordIs none
+TokenKind variant keywordAt none
+TokenKind variant endOfInput none
+
+Token is record
+Token purpose "One token, located by byte offset and length in the source text"
+Token typeParam none
+Token field kind TokenKind
+Token field start Int64
+Token field length Int64
+
+Keyword is record
+Keyword purpose "One reserved word and the token kind it produces"
+Keyword typeParam none
+Keyword field text String
+Keyword field kind TokenKind
+
+keywords is table
+keywords purpose "Every reserved word of the language"
+keywords of Keyword
+keywords row isWord 1
+keywords row atWord 2
+keywords cell isWord text "is"
+keywords cell isWord kind TokenKind.keywordIs
+keywords cell atWord text "at"
+keywords cell atWord kind TokenKind.keywordAt
+
+# ---------------------------------------------------------------- scanWord
+
+scanWord is operation
+scanWord purpose "Read one word token that starts at a given byte offset"
+scanWord invariant wordIsMaximal "The token ends at the first byte that is not a letter or digit, or at the end of the source"
+scanWord typeParam none
+scanWord input source String borrowed
+scanWord input start Int64 value
+scanWord output Token
+scanWord outputOwner none
+scanWord raises none
+scanWord effect none
+scanWord uses none
+scanWord memory heap false
+scanWord async false
+scanWord maxRecursion none
+scanWord label begin loopKind none
+scanWord label begin within none
+scanWord label advance loopKind while
+scanWord label advance within none
+scanWord label advance maxIterations sourceLength
+scanWord label fetch loopKind none
+scanWord label fetch within advance
+scanWord label judge loopKind none
+scanWord label judge within advance
+scanWord label step loopKind none
+scanWord label step within advance
+scanWord label finish loopKind none
+scanWord label finish within none
+scanWord let one immutable Int64 1
+scanWord let position mutable Int64 start
+scanWord at begin do measureSource
+scanWord at begin goto advance
+scanWord at advance do atEndCheck
+scanWord at advance branch if atEnd goto finish else goto fetch
+scanWord at fetch do readByte
+scanWord at fetch branch ifError readByte goto finish else goto judge
+scanWord at judge do wordByteCheck
+scanWord at judge branch if isWordByte goto step else goto finish
+scanWord at step do addOne
+scanWord at step set position nextPosition
+scanWord at step goto advance
+scanWord at finish do measureWord
+scanWord at finish do makeWordKind
+scanWord at finish do buildToken
+scanWord at finish return ok token
+
+measureSource is call
+measureSource in scanWord
+measureSource invokes string.byteLength
+measureSource arg text String source lend
+measureSource out sourceLength Int64
+measureSource ownedBy none
+measureSource cleanedBy none
+measureSource borrows none
+measureSource catch none
+
+atEndCheck is call
+atEndCheck in scanWord
+atEndCheck invokes compare.greaterOrEqualInt64
+atEndCheck arg left Int64 position copy
+atEndCheck arg right Int64 sourceLength copy
+atEndCheck out atEnd Bool
+atEndCheck ownedBy none
+atEndCheck cleanedBy none
+atEndCheck borrows none
+atEndCheck catch none
+
+readByte is call
+readByte in scanWord
+readByte invokes string.byteAt
+readByte arg text String source lend
+readByte arg index Int64 position copy
+readByte out currentByte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+
+wordByteCheck is call
+wordByteCheck in scanWord
+wordByteCheck invokes byte.isLetterOrDigit
+wordByteCheck arg value Byte currentByte copy
+wordByteCheck out isWordByte Bool
+wordByteCheck ownedBy none
+wordByteCheck cleanedBy none
+wordByteCheck borrows none
+wordByteCheck catch none
+
+addOne is call
+addOne in scanWord
+addOne invokes math.addInt64
+addOne arg left Int64 position copy
+addOne arg right Int64 one copy
+addOne out nextPosition Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+
+measureWord is call
+measureWord in scanWord
+measureWord invokes math.subtractInt64
+measureWord arg left Int64 position copy
+measureWord arg right Int64 start copy
+measureWord out wordLength Int64
+measureWord ownedBy none
+measureWord cleanedBy none
+measureWord borrows none
+measureWord catch none
+
+makeWordKind is call
+makeWordKind in scanWord
+makeWordKind invokes TokenKind.word
+makeWordKind arg none
+makeWordKind out wordKind TokenKind
+makeWordKind ownedBy none
+makeWordKind cleanedBy none
+makeWordKind borrows none
+makeWordKind catch none
+
+buildToken is call
+buildToken in scanWord
+buildToken invokes Token.new
+buildToken arg kind TokenKind wordKind copy
+buildToken arg start Int64 start copy
+buildToken arg length Int64 wordLength copy
+buildToken out token Token
+buildToken ownedBy none
+buildToken cleanedBy none
+buildToken borrows none
+buildToken catch none
+
+# ---------------------------------------------------------------- classifyWord
+
+classifyWord is operation
+classifyWord purpose "Decide whether a word is a reserved word"
+classifyWord invariant keywordsWin "A word equal to a keyword's text gets that keyword's kind; any other word stays a word"
+classifyWord typeParam none
+classifyWord input word String borrowed
+classifyWord output TokenKind
+classifyWord outputOwner none
+classifyWord raises none
+classifyWord effect none
+classifyWord uses none
+classifyWord memory heap false
+classifyWord async false
+classifyWord maxRecursion none
+classifyWord label begin loopKind none
+classifyWord label begin within none
+classifyWord label visit loopKind forEach
+classifyWord label visit within none
+classifyWord label visit maxIterations 64
+classifyWord label visit over keywords
+classifyWord label compareText loopKind none
+classifyWord label compareText within visit
+classifyWord label matched loopKind none
+classifyWord label matched within none
+classifyWord label plainWord loopKind none
+classifyWord label plainWord within none
+classifyWord at begin goto visit
+classifyWord at visit branch ifNext keywords bind candidate Keyword goto compareText else goto plainWord
+classifyWord at compareText do readKeywordText
+classifyWord at compareText do textsEqual
+classifyWord at compareText branch if sameText goto matched else goto visit
+classifyWord at matched do readKeywordKind
+classifyWord at matched return ok keywordKind
+classifyWord at plainWord do makePlainKind
+classifyWord at plainWord return ok plainKind
+
+readKeywordText is call
+readKeywordText in classifyWord
+readKeywordText invokes Keyword.text
+readKeywordText arg record Keyword candidate lend
+readKeywordText out keywordText String
+readKeywordText ownedBy none
+readKeywordText cleanedBy none
+readKeywordText borrows candidate
+readKeywordText catch none
+
+textsEqual is call
+textsEqual in classifyWord
+textsEqual invokes string.equals
+textsEqual arg left String word lend
+textsEqual arg right String keywordText lend
+textsEqual out sameText Bool
+textsEqual ownedBy none
+textsEqual cleanedBy none
+textsEqual borrows none
+textsEqual catch none
+
+readKeywordKind is call
+readKeywordKind in classifyWord
+readKeywordKind invokes Keyword.kind
+readKeywordKind arg record Keyword candidate lend
+readKeywordKind out keywordKind TokenKind
+readKeywordKind ownedBy none
+readKeywordKind cleanedBy none
+readKeywordKind borrows none
+readKeywordKind catch none
+
+makePlainKind is call
+makePlainKind in classifyWord
+makePlainKind invokes TokenKind.word
+makePlainKind arg none
+makePlainKind out plainKind TokenKind
+makePlainKind ownedBy none
+makePlainKind cleanedBy none
+makePlainKind borrows none
+makePlainKind catch none

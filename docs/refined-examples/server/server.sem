@@ -1,0 +1,513 @@
+# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# A minimal HTTP server: listen, accept forever, one task per connection,
+# route through a static table, answer, close.
+# The project entity (target console, entry main) lives in build.sem, not here.
+# Check: python semanticscript/compiler/refined check docs/refined-examples/server
+
+
+server is module
+server purpose "Serve a health route over HTTP on port 8080"
+server path server
+server imports standard.net
+server imports standard.http
+server imports standard.time
+server imports standard.string
+server exports main
+
+listenAuthority is capability
+listenAuthority purpose "Authority to accept TCP connections on port 8080"
+listenAuthority grants listen net.tcp
+listenAuthority scope "0.0.0.0:8080"
+
+connectionIo is capability
+connectionIo purpose "Authority to read from and write to an accepted connection"
+connectionIo grants readWrite net.connection
+connectionIo scope none
+
+
+HttpHandler is operationType
+HttpHandler purpose "The signature every route handler has: a request in, a response allocated in the given region out"
+HttpHandler input request http.HttpRequest borrowed
+HttpHandler input responseRegion Region borrowed
+HttpHandler output http.HttpResponse
+HttpHandler outputOwner responseRegion
+HttpHandler raises none
+HttpHandler effect none
+HttpHandler async false
+
+Route is record
+Route purpose "One row of the routing table: a method, an exact path, and the operation that answers it"
+Route typeParam none
+Route field method http.HttpMethod
+Route field path String
+Route field handler HttpHandler
+
+routes is table
+routes purpose "Every route this server answers"
+routes of Route
+routes row health 1
+routes cell health method http.HttpMethod.get
+routes cell health path "/health"
+routes cell health handler handleHealth
+
+# ---------------------------------------------------------------- main
+
+main is operation
+main purpose "Listen on port 8080 and hand each accepted connection to its own task"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect listen net.tcp
+main effect readWrite net.connection
+main uses listenAuthority
+main uses connectionIo
+main memory heap false
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label listening loopKind none
+main label listening within none
+main label acceptNext loopKind forever
+main label acceptNext within none
+main label acceptNext maxIterations unbounded
+main label acceptNext because "A server accepts connections until it is stopped"
+main label startHandler loopKind none
+main label startHandler within acceptNext
+main label stopped loopKind none
+main label stopped within none
+main label listenFailed loopKind none
+main label listenFailed within none
+main let port immutable Int32 8080
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do makeNoDeadline
+main at begin do openListener
+main at begin branch ifError openListener goto listenFailed else goto listening
+main at listening defer closeListenerCleanup
+main at listening goto acceptNext
+main at acceptNext start acceptConnection
+main at acceptNext join acceptConnection
+main at acceptNext branch ifError acceptConnection goto stopped else goto startHandler
+main at startHandler awaitSlot connections
+main at startHandler start handleTask into connections
+main at startHandler goto acceptNext
+main at stopped join connections
+main at stopped return ok okCode
+main at listenFailed join connections
+main at listenFailed return ok failCode
+
+connections is taskGroup
+connections in main
+connections limit 256
+
+makeNoDeadline is call
+makeNoDeadline in main
+makeNoDeadline invokes time.Deadline.never
+makeNoDeadline arg none
+makeNoDeadline out noDeadline time.Deadline
+makeNoDeadline ownedBy none
+makeNoDeadline cleanedBy none
+makeNoDeadline borrows none
+makeNoDeadline catch none
+
+openListener is call
+openListener in main
+openListener invokes net.listen
+openListener arg port Int32 port copy
+openListener out listener net.TcpListener
+openListener ownedBy main
+openListener cleanedBy closeListenerCleanup
+openListener borrows none
+openListener catch listenError net.NetError
+
+closeListenerCleanup is cleanup
+closeListenerCleanup in main
+closeListenerCleanup call closeListener
+closeListenerCleanup cleans listener
+closeListenerCleanup onFailure suppress
+closeListenerCleanup because "Nothing useful can be done if closing the listener fails at exit"
+
+closeListener is call
+closeListener in main
+closeListener invokes net.closeListener
+closeListener arg listener net.TcpListener listener give
+closeListener out none
+closeListener ownedBy none
+closeListener cleanedBy none
+closeListener borrows none
+closeListener catch closeListenerError net.NetError
+
+acceptConnection is task
+acceptConnection in main
+acceptConnection invokes net.accept
+acceptConnection arg listener net.TcpListener listener lend
+acceptConnection arg deadline time.Deadline noDeadline copy
+acceptConnection out connection net.TcpConnection
+acceptConnection ownedBy main
+acceptConnection cleanedBy none
+acceptConnection borrows none
+acceptConnection catch acceptError net.NetError
+
+handleTask is task
+handleTask in main
+handleTask invokes handleConnection
+handleTask arg connection net.TcpConnection connection give
+handleTask out none
+handleTask ownedBy none
+handleTask cleanedBy none
+handleTask borrows none
+handleTask catch none
+
+# ---------------------------------------------------------------- one connection
+
+handleConnection is operation
+handleConnection purpose "Read one request from a connection, answer it, and close the connection"
+handleConnection invariant none
+handleConnection typeParam none
+handleConnection input connection net.TcpConnection owned
+handleConnection output none
+handleConnection outputOwner none
+handleConnection raises none
+handleConnection effect readWrite net.connection
+handleConnection uses connectionIo
+handleConnection memory heap true
+handleConnection async true
+handleConnection maxRecursion none
+handleConnection label begin loopKind none
+handleConnection label begin within none
+handleConnection label parse loopKind none
+handleConnection label parse within none
+handleConnection label dispatch loopKind none
+handleConnection label dispatch within none
+handleConnection label badRequest loopKind none
+handleConnection label badRequest within none
+handleConnection label send loopKind none
+handleConnection label send within none
+handleConnection label done loopKind none
+handleConnection label done within none
+handleConnection let maxRequestBytes immutable Int64 16384
+handleConnection let readTimeoutMs immutable Int64 5000
+handleConnection let badRequestStatus immutable Int32 400
+handleConnection let badRequestBody immutable String "bad request"
+handleConnection let response mutable http.HttpResponse unset
+handleConnection at begin defer closeConnectionCleanup
+handleConnection at begin do makeReadDeadline
+handleConnection at begin start readRequest
+handleConnection at begin join readRequest
+handleConnection at begin branch ifError readRequest goto done else goto parse
+handleConnection at parse do parseRequest
+handleConnection at parse branch ifError parseRequest goto badRequest else goto dispatch
+handleConnection at dispatch do findHandler
+handleConnection at dispatch do runHandler
+handleConnection at dispatch set response handlerResponse
+handleConnection at dispatch goto send
+handleConnection at badRequest do makeBadRequest
+handleConnection at badRequest set response badRequestResponse
+handleConnection at badRequest goto send
+handleConnection at send do serializeResponse
+handleConnection at send start writeResponse
+handleConnection at send join writeResponse
+handleConnection at send branch ifError writeResponse goto done else goto done
+handleConnection at done return ok none
+
+requestRegion is region
+requestRegion in handleConnection
+requestRegion strategy arena
+requestRegion capacity 65536
+requestRegion released atReturn
+
+closeConnectionCleanup is cleanup
+closeConnectionCleanup in handleConnection
+closeConnectionCleanup call closeConnection
+closeConnectionCleanup cleans connection
+closeConnectionCleanup onFailure suppress
+closeConnectionCleanup because "A close failure after the response is sent cannot be reported to anyone"
+
+closeConnection is call
+closeConnection in handleConnection
+closeConnection invokes net.close
+closeConnection arg connection net.TcpConnection connection give
+closeConnection out none
+closeConnection ownedBy none
+closeConnection cleanedBy none
+closeConnection borrows none
+closeConnection catch closeConnectionError net.NetError
+
+makeReadDeadline is call
+makeReadDeadline in handleConnection
+makeReadDeadline invokes time.Deadline.after
+makeReadDeadline arg milliseconds Int64 readTimeoutMs copy
+makeReadDeadline out readDeadline time.Deadline
+makeReadDeadline ownedBy none
+makeReadDeadline cleanedBy none
+makeReadDeadline borrows none
+makeReadDeadline catch none
+
+readRequest is task
+readRequest in handleConnection
+readRequest invokes net.read
+readRequest arg connection net.TcpConnection connection lend
+readRequest arg region Region requestRegion lend
+readRequest arg maxBytes Int64 maxRequestBytes copy
+readRequest arg deadline time.Deadline readDeadline copy
+readRequest out requestBytes Bytes
+readRequest ownedBy requestRegion
+readRequest cleanedBy none
+readRequest borrows none
+readRequest catch readError net.NetError
+
+parseRequest is call
+parseRequest in handleConnection
+parseRequest invokes http.parseRequest
+parseRequest arg bytes Bytes requestBytes lend
+parseRequest arg region Region requestRegion lend
+parseRequest out request http.HttpRequest
+parseRequest ownedBy requestRegion
+parseRequest cleanedBy none
+parseRequest borrows none
+parseRequest catch parseError http.HttpParseError
+
+findHandler is call
+findHandler in handleConnection
+findHandler invokes matchRoute
+findHandler arg request http.HttpRequest request lend
+findHandler out handler HttpHandler
+findHandler ownedBy none
+findHandler cleanedBy none
+findHandler borrows none
+findHandler catch none
+
+runHandler is call
+runHandler in handleConnection
+runHandler invokesReference handler
+runHandler arg request http.HttpRequest request lend
+runHandler arg responseRegion Region requestRegion lend
+runHandler out handlerResponse http.HttpResponse
+runHandler ownedBy requestRegion
+runHandler cleanedBy none
+runHandler borrows none
+runHandler catch none
+
+makeBadRequest is call
+makeBadRequest in handleConnection
+makeBadRequest invokes http.response
+makeBadRequest arg status Int32 badRequestStatus copy
+makeBadRequest arg body String badRequestBody lend
+makeBadRequest arg region Region requestRegion lend
+makeBadRequest out badRequestResponse http.HttpResponse
+makeBadRequest ownedBy requestRegion
+makeBadRequest cleanedBy none
+makeBadRequest borrows none
+makeBadRequest catch none
+
+serializeResponse is call
+serializeResponse in handleConnection
+serializeResponse invokes http.serializeResponse
+serializeResponse arg response http.HttpResponse response lend
+serializeResponse arg region Region requestRegion lend
+serializeResponse out responseBytes Bytes
+serializeResponse ownedBy requestRegion
+serializeResponse cleanedBy none
+serializeResponse borrows none
+serializeResponse catch none
+
+writeResponse is task
+writeResponse rationale "A failed write means the client is gone; there is nobody to tell"
+writeResponse in handleConnection
+writeResponse invokes net.write
+writeResponse arg connection net.TcpConnection connection lend
+writeResponse arg bytes Bytes responseBytes lend
+writeResponse arg deadline time.Deadline readDeadline copy
+writeResponse out none
+writeResponse ownedBy none
+writeResponse cleanedBy none
+writeResponse borrows none
+writeResponse catch writeError net.NetError
+
+# ---------------------------------------------------------------- routing
+
+matchRoute is operation
+matchRoute purpose "Pick the handler for a request by exact method and path"
+matchRoute invariant none
+matchRoute typeParam none
+matchRoute input request http.HttpRequest borrowed
+matchRoute output HttpHandler
+matchRoute outputOwner none
+matchRoute raises none
+matchRoute effect none
+matchRoute uses none
+matchRoute memory heap false
+matchRoute async false
+matchRoute maxRecursion none
+matchRoute label begin loopKind none
+matchRoute label begin within none
+matchRoute label visit loopKind forEach
+matchRoute label visit within none
+matchRoute label visit maxIterations 64
+matchRoute label visit over routes
+matchRoute label compareMethod loopKind none
+matchRoute label compareMethod within visit
+matchRoute label comparePath loopKind none
+matchRoute label comparePath within visit
+matchRoute label matched loopKind none
+matchRoute label matched within none
+matchRoute label noMatch loopKind none
+matchRoute label noMatch within none
+matchRoute let fallbackHandler immutable HttpHandler handleNotFound
+matchRoute at begin do readMethod
+matchRoute at begin do readPath
+matchRoute at begin goto visit
+matchRoute at visit branch ifNext routes bind candidate Route goto compareMethod else goto noMatch
+matchRoute at compareMethod do readCandidateMethod
+matchRoute at compareMethod do methodsEqual
+matchRoute at compareMethod branch if sameMethod goto comparePath else goto visit
+matchRoute at comparePath do readCandidatePath
+matchRoute at comparePath do pathsEqual
+matchRoute at comparePath branch if samePath goto matched else goto visit
+matchRoute at matched do readCandidateHandler
+matchRoute at matched return ok matchedHandler
+matchRoute at noMatch return ok fallbackHandler
+
+readMethod is call
+readMethod in matchRoute
+readMethod invokes http.HttpRequest.method
+readMethod arg record http.HttpRequest request lend
+readMethod out requestMethod http.HttpMethod
+readMethod ownedBy none
+readMethod cleanedBy none
+readMethod borrows none
+readMethod catch none
+
+readPath is call
+readPath in matchRoute
+readPath invokes http.HttpRequest.path
+readPath arg record http.HttpRequest request lend
+readPath out requestPath String
+readPath ownedBy none
+readPath cleanedBy none
+readPath borrows request
+readPath catch none
+
+readCandidateMethod is call
+readCandidateMethod in matchRoute
+readCandidateMethod invokes Route.method
+readCandidateMethod arg record Route candidate lend
+readCandidateMethod out candidateMethod http.HttpMethod
+readCandidateMethod ownedBy none
+readCandidateMethod cleanedBy none
+readCandidateMethod borrows none
+readCandidateMethod catch none
+
+methodsEqual is call
+methodsEqual in matchRoute
+methodsEqual invokes http.HttpMethod.equals
+methodsEqual arg left http.HttpMethod requestMethod copy
+methodsEqual arg right http.HttpMethod candidateMethod copy
+methodsEqual out sameMethod Bool
+methodsEqual ownedBy none
+methodsEqual cleanedBy none
+methodsEqual borrows none
+methodsEqual catch none
+
+readCandidatePath is call
+readCandidatePath in matchRoute
+readCandidatePath invokes Route.path
+readCandidatePath arg record Route candidate lend
+readCandidatePath out candidatePath String
+readCandidatePath ownedBy none
+readCandidatePath cleanedBy none
+readCandidatePath borrows candidate
+readCandidatePath catch none
+
+pathsEqual is call
+pathsEqual in matchRoute
+pathsEqual invokes string.equals
+pathsEqual arg left String requestPath lend
+pathsEqual arg right String candidatePath lend
+pathsEqual out samePath Bool
+pathsEqual ownedBy none
+pathsEqual cleanedBy none
+pathsEqual borrows none
+pathsEqual catch none
+
+readCandidateHandler is call
+readCandidateHandler in matchRoute
+readCandidateHandler invokes Route.handler
+readCandidateHandler arg record Route candidate lend
+readCandidateHandler out matchedHandler HttpHandler
+readCandidateHandler ownedBy none
+readCandidateHandler cleanedBy none
+readCandidateHandler borrows none
+readCandidateHandler catch none
+
+# ---------------------------------------------------------------- handlers
+
+handleHealth is operation
+handleHealth purpose "Answer the health route with a fixed body"
+handleHealth invariant none
+handleHealth typeParam none
+handleHealth input request http.HttpRequest borrowed
+handleHealth input responseRegion Region borrowed
+handleHealth output http.HttpResponse
+handleHealth outputOwner responseRegion
+handleHealth raises none
+handleHealth effect none
+handleHealth uses none
+handleHealth memory heap true
+handleHealth async false
+handleHealth maxRecursion none
+handleHealth label begin loopKind none
+handleHealth label begin within none
+handleHealth let okStatus immutable Int32 200
+handleHealth let okBody immutable String "ok"
+handleHealth at begin do buildHealthResponse
+handleHealth at begin return ok healthResponse
+
+buildHealthResponse is call
+buildHealthResponse in handleHealth
+buildHealthResponse invokes http.response
+buildHealthResponse arg status Int32 okStatus copy
+buildHealthResponse arg body String okBody lend
+buildHealthResponse arg region Region responseRegion lend
+buildHealthResponse out healthResponse http.HttpResponse
+buildHealthResponse ownedBy responseRegion
+buildHealthResponse cleanedBy none
+buildHealthResponse borrows none
+buildHealthResponse catch none
+
+handleNotFound is operation
+handleNotFound purpose "Answer any unknown route"
+handleNotFound invariant none
+handleNotFound typeParam none
+handleNotFound input request http.HttpRequest borrowed
+handleNotFound input responseRegion Region borrowed
+handleNotFound output http.HttpResponse
+handleNotFound outputOwner responseRegion
+handleNotFound raises none
+handleNotFound effect none
+handleNotFound uses none
+handleNotFound memory heap true
+handleNotFound async false
+handleNotFound maxRecursion none
+handleNotFound label begin loopKind none
+handleNotFound label begin within none
+handleNotFound let notFoundStatus immutable Int32 404
+handleNotFound let notFoundBody immutable String "not found"
+handleNotFound at begin do buildNotFoundResponse
+handleNotFound at begin return ok notFoundResponse
+
+buildNotFoundResponse is call
+buildNotFoundResponse in handleNotFound
+buildNotFoundResponse invokes http.response
+buildNotFoundResponse arg status Int32 notFoundStatus copy
+buildNotFoundResponse arg body String notFoundBody lend
+buildNotFoundResponse arg region Region responseRegion lend
+buildNotFoundResponse out notFoundResponse http.HttpResponse
+buildNotFoundResponse ownedBy responseRegion
+buildNotFoundResponse cleanedBy none
+buildNotFoundResponse borrows none
+buildNotFoundResponse catch none

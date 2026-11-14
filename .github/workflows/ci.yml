@@ -14,17 +14,23 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate compiler (Windows, Python ${{ matrix.python-version }})
-    # The native runtime (sqlite/http/async/gui) and the wasm/dom backends are
-    # wired for Windows (runtime/manifest.json links the win/* libuv sources,
-    # ws2_32, and the Win32 GUI), so the full suite runs on windows-latest.
-    runs-on: windows-latest
+    # Branch protection requires "Validate compiler (Windows, Python 3.11)" and
+    # "Validate compiler (Windows, Python 3.12)"; keep those names stable.
+    name: Validate compiler (${{ matrix.os-name }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version:
-          - "3.11"
-          - "3.12"
+        include:
+          - os: windows-latest
+            os-name: Windows
+            python-version: "3.11"
+          - os: windows-latest
+            os-name: Windows
+            python-version: "3.12"
+          - os: ubuntu-latest
+            os-name: Linux
+            python-version: "3.12"
 
     steps:
       - name: Check out repository
@@ -37,39 +43,43 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Set up Node.js  # the wasm + dom integration tests run the module under node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: "20"
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install pytest
 
-      - name: Put clang/LLVM on PATH
-        # The compiler JIT-links a native C runtime (and emits wasm) via clang;
-        # windows-latest ships LLVM under Program Files.
-        shell: pwsh
+      - name: Run the test suite
+        run: python -m pytest tests -q
+
+      - name: Check every worked example
+        shell: bash
         run: |
-          $llvm = "C:\Program Files\LLVM\bin"
-          if (Test-Path $llvm) { Add-Content -Path $env:GITHUB_PATH -Value $llvm }
-          clang --version
+          set -euo pipefail
+          for project in docs/refined-examples/*/; do
+            python semanticscript/compiler/refined check "$project"
+          done
 
-      - name: Run the example suite (188 programs — the canonical green gate)
-        run: python tests/run_examples.py
-
-      - name: Run the pytest suite (compiler unit + e2e + ownership tests)
-        # Covers tests/test_semanticscript.py and tests/test_ws1_110.py — the
-        # bulk of the compiler's assertions, previously not exercised by CI.
-        run: python -m pytest tests/ -q
-
-      - name: Run the integration tests (http server, gui, wasm, dom, apps, mcp)
-        shell: pwsh
+      - name: Check generated references are up to date
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
-          foreach ($t in "test_http_server", "test_gui", "test_wasm", "test_dom", "test_apps", "test_mcp", "test_agent_tools", "test_cli_surface") {
-            python "tests/$t.py"
-            if ($LASTEXITCODE -ne 0) { throw "$t failed with exit $LASTEXITCODE" }
-          }
+          set -euo pipefail
+          python semanticscript/compiler/refined grammar --output docs/refined-grammar.md
+          python semanticscript/compiler/refined grammar --textmate --output vscode-semanticscript/syntaxes/semanticscript.tm-language.json
+          git diff --exit-code -- docs/refined-grammar.md vscode-semanticscript/syntaxes/semanticscript.tm-language.json
+
+  editor:
+    name: Editor extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "20"
+
+      - name: Check the extension
+        working-directory: vscode-semanticscript
+        run: npm run check

@@ -1,0 +1,28 @@
+# covers: 9 Module declaration
+# covers: 9 Module imports
+# covers: 9 Module exports
+# covers: 9 Nested modules
+# covers: 9 Import resolution
+# covers: 9 Visibility / Access modifiers
+# covers: 9 Public / Private symbols
+# covers: 9 Cross-module function calls
+# covers: 9 Cross-module type references
+# covers: 9 Module aliases
+# covers: 9 Namespace collisions
+# covers: 9 Dependency management
+# covers: 13 Cross-module effects
+# covers: 22 Large dependency graphs
+# covers: 23 Dependency resolution
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 21
+# stdout: 7
+
+modulesDemo is project
+modulesDemo purpose "Call operations and use types from other modules, including a nested module path"
+modulesDemo target console
+modulesDemo module app
+modulesDemo module geometry.shapes
+modulesDemo module geometry.area
+modulesDemo entry app.main

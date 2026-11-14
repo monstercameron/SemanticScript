@@ -46,5 +46,3 @@
 
 # Keep generated or vendored dependencies from dominating GitHub language stats.
 build/** linguist-generated=true
-third_party/** linguist-vendored=true
-apps/**/build/** linguist-generated=true

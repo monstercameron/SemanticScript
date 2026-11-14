@@ -1,0 +1,33 @@
+# covers: 16 Exit status reporting
+# covers: 16 Process termination
+# covers: 22 Minimal valid program
+# covers: 10 Exit codes
+# covers: 16 Runtime initialization
+# covers: 16 Global initialization
+# kind: edge
+# expect: run
+# exit: 3
+
+exitStatus is module
+exitStatus purpose "Exit with status 3 and print nothing"
+exitStatus path exitStatus
+exitStatus imports none
+exitStatus exports main
+
+main is operation
+main purpose "Return exit status 3"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let three immutable ExitCode 3
+main at begin return ok three

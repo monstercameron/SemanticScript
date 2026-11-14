@@ -1,0 +1,103 @@
+# A counted loop in the refined syntax. Prints 15.
+
+sum is module
+sum purpose "Hold the console entry point that sums 1 to 5"
+sum path sum
+sum imports standard.console
+sum imports standard.math
+sum imports standard.compare
+sum exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+main is operation
+main purpose "Print the sum of the whole numbers from 1 to 5"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label sumLoop loopKind counted
+main label sumLoop within none
+main label sumLoop maxIterations 5
+main label sumLoop counter nextNumber
+main label addStep loopKind none
+main label addStep within sumLoop
+main label finish loopKind none
+main label finish within none
+main label succeeded loopKind none
+main label succeeded within none
+main label failed loopKind none
+main label failed within none
+main let lastNumber immutable Int64 5
+main let one immutable Int64 1
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main let total mutable Int64 0
+main let nextNumber mutable Int64 1
+main at begin goto sumLoop
+main at sumLoop do pastLastCheck
+main at sumLoop branch if pastLast goto finish else goto addStep
+main at addStep do addToTotal
+main at addStep set total newTotal
+main at addStep do addOne
+main at addStep set nextNumber afterNextNumber
+main at addStep goto sumLoop
+main at finish do printTotal
+main at finish branch ifError printTotal goto failed else goto succeeded
+main at succeeded return ok okCode
+main at failed return ok failCode
+
+pastLastCheck is call
+pastLastCheck in main
+pastLastCheck invokes compare.greaterThanInt64
+pastLastCheck arg left Int64 nextNumber copy
+pastLastCheck arg right Int64 lastNumber copy
+pastLastCheck out pastLast Bool
+pastLastCheck ownedBy none
+pastLastCheck cleanedBy none
+pastLastCheck borrows none
+pastLastCheck catch none
+
+addToTotal is call
+addToTotal in main
+addToTotal invokes math.addInt64
+addToTotal arg left Int64 total copy
+addToTotal arg right Int64 nextNumber copy
+addToTotal out newTotal Int64
+addToTotal ownedBy none
+addToTotal cleanedBy none
+addToTotal borrows none
+addToTotal catch none
+
+addOne is call
+addOne in main
+addOne invokes math.addInt64
+addOne arg left Int64 nextNumber copy
+addOne arg right Int64 one copy
+addOne out afterNextNumber Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+
+printTotal is call
+printTotal in main
+printTotal invokes console.writeIntegerLine
+printTotal arg value Int64 total copy
+printTotal out none
+printTotal ownedBy none
+printTotal cleanedBy none
+printTotal borrows none
+printTotal catch printError console.WriteError

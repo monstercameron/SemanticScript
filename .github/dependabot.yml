@@ -16,13 +16,10 @@ updates:
       - "dependencies"
       - "python"
 
-  # The website and VS Code extension npm projects were deprecated to legacy/;
-  # their dependency updates are no longer tracked. Only the live experiment
-  # remains below.
   - package-ecosystem: "npm"
-    directory: "/experiments/realtime-auction-arena/browser-sse-client"
+    directory: "/vscode-semanticscript"
     schedule:
       interval: "weekly"
     labels:
       - "dependencies"
-      - "experiment"
+      - "editor"

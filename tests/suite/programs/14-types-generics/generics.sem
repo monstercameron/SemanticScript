@@ -1,0 +1,95 @@
+# covers: 14 Generic functions
+# covers: 14 Generic constraints
+# covers: 14 Type parameter inference
+# covers: 14 Recursive generics
+# covers: 6 Recursive generic functions
+# covers: 14 Trait / Interface implementation
+# covers: 14 Trait bounds
+# kind: positive
+# expect: unsupported generic operation
+
+generics is module
+generics purpose "Show a generic operation, its instances, and a generic record"
+generics path generics
+generics imports none
+generics exports main
+
+pick is operation
+pick purpose "Return the first value when the flag is true, else the second"
+pick invariant none
+pick typeParam T plain
+pick input flag Bool value
+pick input first T value
+pick input second T value
+pick output T
+pick outputOwner none
+pick raises none
+pick effect none
+pick uses none
+pick memory heap false
+pick async false
+pick maxRecursion none
+pick label begin loopKind none
+pick label begin within none
+pick label takeFirst loopKind none
+pick label takeFirst within none
+pick label takeSecond loopKind none
+pick label takeSecond within none
+pick at begin branch if flag goto takeFirst else goto takeSecond
+pick at takeFirst return ok first
+pick at takeSecond return ok second
+
+pickInt is operationInstance
+pickInt purpose "pick for whole numbers"
+pickInt instantiates pick Int64
+
+pickBool is operationInstance
+pickBool purpose "pick for true or false"
+pickBool instantiates pick Bool
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let yes immutable Bool true
+main let one immutable Int64 1
+main let two immutable Int64 2
+main let okCode immutable ExitCode 0
+main at begin do chooseInt
+main at begin do chooseBool
+main at begin return ok okCode
+
+chooseInt is call
+chooseInt in main
+chooseInt invokes pickInt
+chooseInt arg flag Bool yes copy
+chooseInt arg first Int64 one copy
+chooseInt arg second Int64 two copy
+chooseInt out chosen Int64
+chooseInt ownedBy none
+chooseInt cleanedBy none
+chooseInt borrows none
+chooseInt catch none
+
+chooseBool is call
+chooseBool in main
+chooseBool invokes pickBool
+chooseBool arg flag Bool yes copy
+chooseBool arg first Bool yes copy
+chooseBool arg second Bool yes copy
+chooseBool out chosenFlag Bool
+chooseBool ownedBy none
+chooseBool cleanedBy none
+chooseBool borrows none
+chooseBool catch none

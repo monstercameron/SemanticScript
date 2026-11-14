@@ -1,0 +1,40 @@
+# covers: 2 Type conversions
+# kind: edge
+# expect: trap out of range for `Byte`
+
+byteOutOfRange is module
+byteOutOfRange purpose "Trap: byte out of range"
+byteOutOfRange path byteOutOfRange
+byteOutOfRange imports standard.convert
+byteOutOfRange exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let one immutable Int64 1
+main let tooBig immutable Int64 256
+main let okCode immutable ExitCode 0
+main at begin do compute
+main at begin return ok okCode
+
+compute is call
+compute in main
+compute invokes convert.int64ToByte
+compute arg value Int64 tooBig copy
+compute out result Byte
+compute ownedBy none
+compute cleanedBy none
+compute borrows none
+compute catch none

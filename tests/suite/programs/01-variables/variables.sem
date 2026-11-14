@@ -1,0 +1,195 @@
+# covers: 1 Variable declaration
+# covers: 1 Variable initialization
+# covers: 1 Variable reassignment
+# covers: 1 Immutable variables
+# covers: 1 Mutable variables
+# covers: 1 Constants
+# covers: 1 Type annotations
+# covers: 1 Local variables
+# covers: 1 Variable scope
+# covers: 21 Variables are initialized before use
+# covers: 21 Every referenced variable is defined
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 10
+# stdout: 11
+# stdout: 7
+# stdout: 3
+
+variables is module
+variables purpose "Show declaring, setting, and merging values"
+variables path variables
+variables imports standard.console
+variables imports standard.math
+variables exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+scaled is operation
+scaled purpose "Return a value from a local of the same name as one in main"
+scaled invariant none
+scaled typeParam none
+scaled input start Int64 value
+scaled output Int64
+scaled outputOwner none
+scaled raises none
+scaled effect none
+scaled uses none
+scaled memory heap false
+scaled async false
+scaled maxRecursion none
+scaled label begin loopKind none
+scaled label begin within none
+scaled let three immutable Int64 3
+scaled at begin do triple
+scaled at begin return ok tripled
+
+triple is call
+triple in scaled
+triple invokes math.multiplyInt64
+triple arg left Int64 start copy
+triple arg right Int64 three copy
+triple out tripled Int64
+triple ownedBy none
+triple cleanedBy none
+triple borrows none
+triple catch none
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label seven loopKind none
+main label seven within none
+main label other loopKind none
+main label other within none
+main label merged loopKind none
+main label merged within none
+main let ten immutable Int64 10
+main let one immutable Int64 1
+main let sevenValue immutable Int64 7
+main let pickSeven immutable Bool true
+main let counter mutable Int64 ten
+main let chosen mutable Int64 unset
+main let okCode immutable ExitCode 0
+main at begin do showStart
+main at begin do bump
+main at begin set counter bumped
+main at begin do showBumped
+main at begin branch if pickSeven goto seven else goto other
+main at seven set chosen sevenValue
+main at seven goto merged
+main at other set chosen ten
+main at other goto merged
+main at merged do showChosen
+main at merged do callScaled
+main at merged do showScaled
+main at merged return ok okCode
+
+showStart is call
+showStart in main
+showStart invokes showInt
+showStart arg value Int64 counter copy
+showStart out none
+showStart ownedBy none
+showStart cleanedBy none
+showStart borrows none
+showStart catch none
+
+bump is call
+bump in main
+bump invokes math.addInt64
+bump arg left Int64 counter copy
+bump arg right Int64 one copy
+bump out bumped Int64
+bump ownedBy none
+bump cleanedBy none
+bump borrows none
+bump catch none
+
+showBumped is call
+showBumped in main
+showBumped invokes showInt
+showBumped arg value Int64 counter copy
+showBumped out none
+showBumped ownedBy none
+showBumped cleanedBy none
+showBumped borrows none
+showBumped catch none
+
+showChosen is call
+showChosen in main
+showChosen invokes showInt
+showChosen arg value Int64 chosen copy
+showChosen out none
+showChosen ownedBy none
+showChosen cleanedBy none
+showChosen borrows none
+showChosen catch none
+
+callScaled is call
+callScaled in main
+callScaled invokes scaled
+callScaled arg start Int64 one copy
+callScaled out scaledValue Int64
+callScaled ownedBy none
+callScaled cleanedBy none
+callScaled borrows none
+callScaled catch none
+
+showScaled is call
+showScaled in main
+showScaled invokes showInt
+showScaled arg value Int64 scaledValue copy
+showScaled out none
+showScaled ownedBy none
+showScaled cleanedBy none
+showScaled borrows none
+showScaled catch none

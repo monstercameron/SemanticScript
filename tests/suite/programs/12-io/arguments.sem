@@ -1,0 +1,59 @@
+# covers: 12 Command-line arguments
+# covers: 13 Capability scoping
+# kind: positive
+# expect: unsupported `process.argument`
+
+argumentsCase is module
+argumentsCase purpose "Use process.argument under a capability"
+argumentsCase path argumentsCase
+argumentsCase imports standard.process
+argumentsCase exports main
+
+hostAccess is capability
+hostAccess purpose "Authority for exactly this case's host access"
+hostAccess grants read process.arguments
+hostAccess scope none
+
+main is operation
+main purpose "Use process.argument once"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read process.arguments
+main uses hostAccess
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let first immutable Int64 0
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do access
+main at begin branch ifError access goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+io is region
+io in main
+io strategy arena
+io capacity 65536
+io released atReturn
+
+access is call
+access in main
+access invokes process.argument
+access arg index Int64 first copy
+access arg region Region io lend
+access out argument String
+access ownedBy io
+access cleanedBy none
+access borrows none
+access catch accessError process.ArgumentError

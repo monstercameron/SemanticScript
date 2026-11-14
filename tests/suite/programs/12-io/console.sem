@@ -1,0 +1,118 @@
+# covers: 12 Standard output
+# covers: 12 Standard error
+# covers: 13 Console capability enforcement
+# covers: 13 Capability declaration
+# covers: 13 Capability granting
+# covers: 13 Effect declaration
+# covers: 13 Effect validation
+# covers: 13 Nested operation effects
+# covers: 13 Capability propagation
+# covers: 16 Program startup
+# covers: 16 Program shutdown
+# covers: 16 Entry-point discovery
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: no line end, then a line
+# stdout: second line
+# stderr: a diagnostic line
+
+consoleIo is module
+consoleIo purpose "Write to standard output with and without a line end, and to standard error"
+consoleIo path consoleIo
+consoleIo imports standard.console
+consoleIo exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+stderrWriter is capability
+stderrWriter purpose "Authority to write diagnostics to standard error"
+stderrWriter grants write console.stderr
+stderrWriter scope none
+
+main is operation
+main purpose "Write three pieces of text to two streams"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stderr
+main effect write console.stdout
+main uses stdoutWriter
+main uses stderrWriter
+main memory heap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label finishLine loopKind none
+main label finishLine within none
+main label nextLine loopKind none
+main label nextLine within none
+main label diagnose loopKind none
+main label diagnose within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let part immutable String "no line end, "
+main let rest immutable String "then a line"
+main let second immutable String "second line"
+main let diagnostic immutable String "a diagnostic line"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do writePart
+main at begin branch ifError writePart goto failed else goto finishLine
+main at finishLine do writeRest
+main at finishLine branch ifError writeRest goto failed else goto nextLine
+main at nextLine do writeSecond
+main at nextLine branch ifError writeSecond goto failed else goto diagnose
+main at diagnose do writeDiagnostic
+main at diagnose branch ifError writeDiagnostic goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+writePart is call
+writePart in main
+writePart invokes console.write
+writePart arg text String part lend
+writePart out none
+writePart ownedBy none
+writePart cleanedBy none
+writePart borrows none
+writePart catch partError console.WriteError
+
+writeRest is call
+writeRest in main
+writeRest invokes console.writeLine
+writeRest arg text String rest lend
+writeRest out none
+writeRest ownedBy none
+writeRest cleanedBy none
+writeRest borrows none
+writeRest catch restError console.WriteError
+
+writeSecond is call
+writeSecond in main
+writeSecond invokes console.writeLine
+writeSecond arg text String second lend
+writeSecond out none
+writeSecond ownedBy none
+writeSecond cleanedBy none
+writeSecond borrows none
+writeSecond catch secondError console.WriteError
+
+writeDiagnostic is call
+writeDiagnostic in main
+writeDiagnostic invokes console.writeError
+writeDiagnostic arg text String diagnostic lend
+writeDiagnostic out none
+writeDiagnostic ownedBy none
+writeDiagnostic cleanedBy none
+writeDiagnostic borrows none
+writeDiagnostic catch diagnosticError console.WriteError

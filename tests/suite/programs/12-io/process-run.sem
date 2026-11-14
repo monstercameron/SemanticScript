@@ -1,0 +1,88 @@
+# covers: 12 Process execution
+# covers: 19 Process management
+# covers: 22 Rapid process creation
+# covers: 17 Privilege separation
+# covers: 13 Capability scoping
+# kind: positive
+# expect: unsupported async operations such as `main`
+
+processRunCase is module
+processRunCase purpose "Use process.run under a capability"
+processRunCase path processRunCase
+processRunCase imports standard.process
+processRunCase imports standard.time
+processRunCase exports main
+
+hostAccess is capability
+hostAccess purpose "Authority for exactly this case's host access"
+hostAccess grants spawn process.programs
+hostAccess scope "git"
+
+main is operation
+main purpose "Use process.run once"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect spawn process.programs
+main uses hostAccess
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let program immutable String "git"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main let waitMs immutable Int64 1000
+main at begin do makeDeadline
+main at begin do newArguments
+main at begin start access
+main at begin join access
+main at begin branch ifError access goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+io is region
+io in main
+io strategy arena
+io capacity 65536
+io released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+newArguments is call
+newArguments in main
+newArguments invokes process.newArguments
+newArguments arg region Region io lend
+newArguments out arguments process.Arguments
+newArguments ownedBy io
+newArguments cleanedBy none
+newArguments borrows none
+newArguments catch none
+
+access is task
+access in main
+access invokes process.run
+access arg program String program lend
+access arg arguments process.Arguments arguments lend
+access arg deadline time.Deadline deadline copy
+access out status ExitCode
+access ownedBy none
+access cleanedBy none
+access borrows none
+access catch accessError process.RunError

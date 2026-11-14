@@ -1,0 +1,60 @@
+# covers: 12 Environment variables
+# covers: 19 Environment utilities
+# covers: 13 Capability scoping
+# kind: positive
+# expect: unsupported `environment.get`
+
+environmentCase is module
+environmentCase purpose "Use environment.get under a capability"
+environmentCase path environmentCase
+environmentCase imports standard.environment
+environmentCase exports main
+
+hostAccess is capability
+hostAccess purpose "Authority for exactly this case's host access"
+hostAccess grants read environment.variables
+hostAccess scope none
+
+main is operation
+main purpose "Use environment.get once"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read environment.variables
+main uses hostAccess
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let name immutable String "HOME"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do access
+main at begin branch ifError access goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+io is region
+io in main
+io strategy arena
+io capacity 65536
+io released atReturn
+
+access is call
+access in main
+access invokes environment.get
+access arg name String name lend
+access arg region Region io lend
+access out value String
+access ownedBy io
+access cleanedBy none
+access borrows none
+access catch accessError environment.MissingError

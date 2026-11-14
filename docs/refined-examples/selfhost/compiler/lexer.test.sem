@@ -1,0 +1,109 @@
+# Tests for the `lexer` module.
+
+scanWordTest is test
+scanWordTest purpose "A word stops at the first space, so `abc def` from offset 0 gives a word of length 3"
+scanWordTest verifies scanWord wordIsMaximal
+scanWordTest typeParam none
+scanWordTest input none
+scanWordTest output none
+scanWordTest outputOwner none
+scanWordTest raises none
+scanWordTest effect none
+scanWordTest uses none
+scanWordTest memory heap false
+scanWordTest async false
+scanWordTest maxRecursion none
+scanWordTest label begin loopKind none
+scanWordTest label begin within none
+scanWordTest let source immutable String "abc def"
+scanWordTest let zero immutable Int64 0
+scanWordTest let three immutable Int64 3
+scanWordTest at begin do scanFirst
+scanWordTest at begin do readLength
+scanWordTest at begin do expectThree
+scanWordTest at begin return ok none
+
+scanFirst is call
+scanFirst in scanWordTest
+scanFirst invokes scanWord
+scanFirst arg source String source lend
+scanFirst arg start Int64 zero copy
+scanFirst out firstToken Token
+scanFirst ownedBy none
+scanFirst cleanedBy none
+scanFirst borrows none
+scanFirst catch none
+
+readLength is call
+readLength in scanWordTest
+readLength invokes Token.length
+readLength arg record Token firstToken copy
+readLength out firstLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+
+expectThree is call
+expectThree in scanWordTest
+expectThree invokes test.assertEqualInt64
+expectThree arg expected Int64 three copy
+expectThree arg actual Int64 firstLength copy
+expectThree out none
+expectThree ownedBy none
+expectThree cleanedBy none
+expectThree borrows none
+expectThree catch none
+
+classifyWordTest is test
+classifyWordTest purpose "The word `is` is classified as the keyword `is`, not as a plain word"
+classifyWordTest verifies classifyWord keywordsWin
+classifyWordTest typeParam none
+classifyWordTest input none
+classifyWordTest output none
+classifyWordTest outputOwner none
+classifyWordTest raises none
+classifyWordTest effect none
+classifyWordTest uses none
+classifyWordTest memory heap false
+classifyWordTest async false
+classifyWordTest maxRecursion none
+classifyWordTest label begin loopKind none
+classifyWordTest label begin within none
+classifyWordTest let isText immutable String "is"
+classifyWordTest let keywordIsKind immutable TokenKind TokenKind.keywordIs
+classifyWordTest at begin do classifyIs
+classifyWordTest at begin do sameKind
+classifyWordTest at begin do expectSame
+classifyWordTest at begin return ok none
+
+classifyIs is call
+classifyIs in classifyWordTest
+classifyIs invokes classifyWord
+classifyIs arg word String isText lend
+classifyIs out isKind TokenKind
+classifyIs ownedBy none
+classifyIs cleanedBy none
+classifyIs borrows none
+classifyIs catch none
+
+sameKind is call
+sameKind in classifyWordTest
+sameKind invokes TokenKind.equals
+sameKind arg left TokenKind isKind copy
+sameKind arg right TokenKind keywordIsKind copy
+sameKind out kindsMatch Bool
+sameKind ownedBy none
+sameKind cleanedBy none
+sameKind borrows none
+sameKind catch none
+
+expectSame is call
+expectSame in classifyWordTest
+expectSame invokes test.assertTrue
+expectSame arg value Bool kindsMatch copy
+expectSame out none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none

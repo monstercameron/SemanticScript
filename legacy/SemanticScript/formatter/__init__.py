@@ -1,2 +1,0 @@
-"""SemanticScript source formatter package."""
-

@@ -1,0 +1,6 @@
+# Refined syntax (docs/language-refinement.md).
+helloServer is project
+helloServer purpose "A minimal HTTP server that answers one health route"
+helloServer target console
+helloServer module server
+helloServer entry server.main
