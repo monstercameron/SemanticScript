@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+outofrange is project
+outofrange purpose "Read past the end of a list with getOrTrap, so the trap can be compared; a stage0 sample both runs agree on"
+outofrange target console
+outofrange version "0.1.0"
+outofrange language refined 1
+outofrange standardLibrary 1
+outofrange allows write console.stdout none
+outofrange requires none
+outofrange includesModule outofrange
+outofrange entry outofrange.main

@@ -1,0 +1,505 @@
+# A stage0 sample: text. It slices a word out of a sentence, reads a byte,
+# joins texts and a number in a region, compares texts, finds a word (and
+# branches when a word is missing), and reads constants of several types. It
+# exits with code 0:
+#
+#   brown
+#   byte: 113
+#   length: 19
+#   quick brown fox 42
+#   equal: true
+#   fox at 16
+#   no cat
+#   limit: 3
+strings is module
+strings purpose "Slice, search, join, and compare text"
+strings path strings
+strings imports standard.console
+strings imports standard.string
+strings imports standard.convert
+strings exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+sentence is constant
+sentence purpose "The text the sample reads"
+sentence type String
+sentence value "the quick brown fox"
+
+limit is constant
+limit purpose "A whole number"
+limit type Int64
+limit value 3
+
+verbose is constant
+verbose purpose "Whether the sample prints its limit"
+verbose type Bool
+verbose value true
+
+main is operation
+main purpose "Read and build text, printing what is found"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label cutBrownDone loopKind none
+main label cutBrownDone within none
+main label printBrownDone loopKind none
+main label printBrownDone within none
+main label readByteDone loopKind none
+main label readByteDone within none
+main label writeByteLeadDone loopKind none
+main label writeByteLeadDone within none
+main label printByteDone loopKind none
+main label printByteDone within none
+main label writeLengthLeadDone loopKind none
+main label writeLengthLeadDone within none
+main label printLengthDone loopKind none
+main label printLengthDone within none
+main label cutTailDone loopKind none
+main label cutTailDone within none
+main label printJoinedDone loopKind none
+main label printJoinedDone within none
+main label writeEqualLeadDone loopKind none
+main label writeEqualLeadDone within none
+main label printTrue loopKind none
+main label printTrue within none
+main label writeTrueDone loopKind none
+main label writeTrueDone within none
+main label printFalse loopKind none
+main label printFalse within none
+main label writeFalseDone loopKind none
+main label writeFalseDone within none
+main label findFox loopKind none
+main label findFox within none
+main label findItDone loopKind none
+main label findItDone within none
+main label writeFoxLeadDone loopKind none
+main label writeFoxLeadDone within none
+main label printFoxDone loopKind none
+main label printFoxDone within none
+main label findCatDone loopKind none
+main label findCatDone within none
+main label printCatDone loopKind none
+main label printCatDone within none
+main label noCat loopKind none
+main label noCat within none
+main label writeNoCatDone loopKind none
+main label writeNoCatDone within none
+main label constants loopKind none
+main label constants within none
+main label printLimit loopKind none
+main label printLimit within none
+main label writeLimitLeadDone loopKind none
+main label writeLimitLeadDone within none
+main label printLimitValueDone loopKind none
+main label printLimitValueDone within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main let ten Int64 10 immutable
+main let five Int64 5 immutable
+main let four Int64 4 immutable
+main let byteText String "byte: " immutable
+main let lengthText String "length: " immutable
+main let fifteen Int64 15 immutable
+main let space String " " immutable
+main let fortyTwo Int64 42 immutable
+main let brownText String "brown" immutable
+main let equalText String "equal: " immutable
+main let trueText String "true" immutable
+main let falseText String "false" immutable
+main let fox String "fox" immutable
+main let foxText String "fox at " immutable
+main let cat String "cat" immutable
+main let noCatText String "no cat" immutable
+main let limitText String "limit: " immutable
+main at begin do cutBrown
+main at begin branch ifError cutBrown goto failed else goto cutBrownDone
+main at cutBrownDone do printBrown
+main at cutBrownDone branch ifError printBrown goto printBrownDone else goto printBrownDone
+main at printBrownDone do readByte
+main at printBrownDone branch ifError readByte goto failed else goto readByteDone
+main at readByteDone do widen
+main at readByteDone do writeByteLead
+main at readByteDone branch ifError writeByteLead goto writeByteLeadDone else goto writeByteLeadDone
+main at writeByteLeadDone do printByte
+main at writeByteLeadDone branch ifError printByte goto printByteDone else goto printByteDone
+main at printByteDone do measure
+main at printByteDone do writeLengthLead
+main at printByteDone branch ifError writeLengthLead goto writeLengthLeadDone else goto writeLengthLeadDone
+main at writeLengthLeadDone do printLength
+main at writeLengthLeadDone branch ifError printLength goto printLengthDone else goto printLengthDone
+main at printLengthDone do cutTail
+main at printLengthDone branch ifError cutTail goto failed else goto cutTailDone
+main at cutTailDone do joinSpace
+main at cutTailDone do numberText
+main at cutTailDone do joinNumber
+main at cutTailDone do printJoined
+main at cutTailDone branch ifError printJoined goto printJoinedDone else goto printJoinedDone
+main at printJoinedDone do compareTexts
+main at printJoinedDone do writeEqualLead
+main at printJoinedDone branch ifError writeEqualLead goto writeEqualLeadDone else goto writeEqualLeadDone
+main at writeEqualLeadDone branch if same goto printTrue else goto printFalse
+main at printTrue do writeTrue
+main at printTrue branch ifError writeTrue goto writeTrueDone else goto writeTrueDone
+main at writeTrueDone goto findFox
+main at printFalse do writeFalse
+main at printFalse branch ifError writeFalse goto writeFalseDone else goto writeFalseDone
+main at writeFalseDone goto findFox
+main at findFox do findIt
+main at findFox branch ifError findIt goto failed else goto findItDone
+main at findItDone do writeFoxLead
+main at findItDone branch ifError writeFoxLead goto writeFoxLeadDone else goto writeFoxLeadDone
+main at writeFoxLeadDone do printFox
+main at writeFoxLeadDone branch ifError printFox goto printFoxDone else goto printFoxDone
+main at printFoxDone do findCat
+main at printFoxDone branch ifError findCat goto noCat else goto findCatDone
+main at findCatDone do printCat
+main at findCatDone branch ifError printCat goto printCatDone else goto printCatDone
+main at printCatDone goto constants
+main at noCat do writeNoCat
+main at noCat branch ifError writeNoCat goto writeNoCatDone else goto writeNoCatDone
+main at writeNoCatDone goto constants
+main at constants branch if verbose goto printLimit else goto done
+main at printLimit do writeLimitLead
+main at printLimit branch ifError writeLimitLead goto writeLimitLeadDone else goto writeLimitLeadDone
+main at writeLimitLeadDone do printLimitValue
+main at writeLimitLeadDone branch ifError printLimitValue goto printLimitValueDone else goto printLimitValueDone
+main at printLimitValueDone goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+cutBrown is call
+cutBrown in main
+cutBrown invokes string.slice
+cutBrown argument text String sentence lend
+cutBrown argument start Int64 ten copy
+cutBrown argument length Int64 five copy
+cutBrown result brown String
+cutBrown ownedBy none
+cutBrown cleanedBy none
+cutBrown borrows sentence
+cutBrown catch cutBrownError string.StringIndexError
+cutBrown suppresses none
+
+printBrown is call
+printBrown rationale "The failure has nowhere to be reported, so it is discarded"
+printBrown in main
+printBrown invokes console.writeLine
+printBrown argument text String brown lend
+printBrown result none
+printBrown ownedBy none
+printBrown cleanedBy none
+printBrown borrows none
+printBrown catch printBrownError console.WriteError
+printBrown suppresses console.WriteError.failed
+
+readByte is call
+readByte in main
+readByte invokes string.byteAt
+readByte argument text String sentence lend
+readByte argument index Int64 four copy
+readByte result second Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+widen is call
+widen in main
+widen invokes convert.byteToInt64
+widen argument value Byte second copy
+widen result secondNumber Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+writeByteLead is call
+writeByteLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeByteLead in main
+writeByteLead invokes console.write
+writeByteLead argument text String byteText lend
+writeByteLead result none
+writeByteLead ownedBy none
+writeByteLead cleanedBy none
+writeByteLead borrows none
+writeByteLead catch writeByteLeadError console.WriteError
+writeByteLead suppresses console.WriteError.failed
+
+printByte is call
+printByte rationale "The failure has nowhere to be reported, so it is discarded"
+printByte in main
+printByte invokes console.writeIntegerLine
+printByte argument value Int64 secondNumber copy
+printByte result none
+printByte ownedBy none
+printByte cleanedBy none
+printByte borrows none
+printByte catch printByteError console.WriteError
+printByte suppresses console.WriteError.failed
+
+measure is call
+measure in main
+measure invokes string.byteLength
+measure argument text String sentence lend
+measure result length Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+writeLengthLead is call
+writeLengthLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeLengthLead in main
+writeLengthLead invokes console.write
+writeLengthLead argument text String lengthText lend
+writeLengthLead result none
+writeLengthLead ownedBy none
+writeLengthLead cleanedBy none
+writeLengthLead borrows none
+writeLengthLead catch writeLengthLeadError console.WriteError
+writeLengthLead suppresses console.WriteError.failed
+
+printLength is call
+printLength rationale "The failure has nowhere to be reported, so it is discarded"
+printLength in main
+printLength invokes console.writeIntegerLine
+printLength argument value Int64 length copy
+printLength result none
+printLength ownedBy none
+printLength cleanedBy none
+printLength borrows none
+printLength catch printLengthError console.WriteError
+printLength suppresses console.WriteError.failed
+
+cutTail is call
+cutTail in main
+cutTail invokes string.slice
+cutTail argument text String sentence lend
+cutTail argument start Int64 four copy
+cutTail argument length Int64 fifteen copy
+cutTail result tail String
+cutTail ownedBy none
+cutTail cleanedBy none
+cutTail borrows sentence
+cutTail catch cutTailError string.StringIndexError
+cutTail suppresses none
+
+joinSpace is call
+joinSpace in main
+joinSpace invokes string.concat
+joinSpace argument left String tail lend
+joinSpace argument right String space lend
+joinSpace argument region Region scratch lend
+joinSpace result spaced String
+joinSpace ownedBy scratch
+joinSpace cleanedBy none
+joinSpace borrows none
+joinSpace catch none
+joinSpace suppresses none
+
+numberText is call
+numberText in main
+numberText invokes string.fromInt64
+numberText argument value Int64 fortyTwo copy
+numberText argument region Region scratch lend
+numberText result digits String
+numberText ownedBy scratch
+numberText cleanedBy none
+numberText borrows none
+numberText catch none
+numberText suppresses none
+
+joinNumber is call
+joinNumber in main
+joinNumber invokes string.concat
+joinNumber argument left String spaced lend
+joinNumber argument right String digits lend
+joinNumber argument region Region scratch lend
+joinNumber result joined String
+joinNumber ownedBy scratch
+joinNumber cleanedBy none
+joinNumber borrows none
+joinNumber catch none
+joinNumber suppresses none
+
+printJoined is call
+printJoined rationale "The failure has nowhere to be reported, so it is discarded"
+printJoined in main
+printJoined invokes console.writeLine
+printJoined argument text String joined lend
+printJoined result none
+printJoined ownedBy none
+printJoined cleanedBy none
+printJoined borrows none
+printJoined catch printJoinedError console.WriteError
+printJoined suppresses console.WriteError.failed
+
+compareTexts is call
+compareTexts in main
+compareTexts invokes string.equals
+compareTexts argument left String brown lend
+compareTexts argument right String brownText lend
+compareTexts result same Bool
+compareTexts ownedBy none
+compareTexts cleanedBy none
+compareTexts borrows none
+compareTexts catch none
+compareTexts suppresses none
+
+writeEqualLead is call
+writeEqualLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeEqualLead in main
+writeEqualLead invokes console.write
+writeEqualLead argument text String equalText lend
+writeEqualLead result none
+writeEqualLead ownedBy none
+writeEqualLead cleanedBy none
+writeEqualLead borrows none
+writeEqualLead catch writeEqualLeadError console.WriteError
+writeEqualLead suppresses console.WriteError.failed
+
+writeTrue is call
+writeTrue rationale "The failure has nowhere to be reported, so it is discarded"
+writeTrue in main
+writeTrue invokes console.writeLine
+writeTrue argument text String trueText lend
+writeTrue result none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch writeTrueError console.WriteError
+writeTrue suppresses console.WriteError.failed
+
+writeFalse is call
+writeFalse rationale "The failure has nowhere to be reported, so it is discarded"
+writeFalse in main
+writeFalse invokes console.writeLine
+writeFalse argument text String falseText lend
+writeFalse result none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch writeFalseError console.WriteError
+writeFalse suppresses console.WriteError.failed
+
+findIt is call
+findIt in main
+findIt invokes string.find
+findIt argument text String sentence lend
+findIt argument needle String fox lend
+findIt result foxAt Int64
+findIt ownedBy none
+findIt cleanedBy none
+findIt borrows none
+findIt catch findItError string.NotFound
+findIt suppresses none
+
+writeFoxLead is call
+writeFoxLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeFoxLead in main
+writeFoxLead invokes console.write
+writeFoxLead argument text String foxText lend
+writeFoxLead result none
+writeFoxLead ownedBy none
+writeFoxLead cleanedBy none
+writeFoxLead borrows none
+writeFoxLead catch writeFoxLeadError console.WriteError
+writeFoxLead suppresses console.WriteError.failed
+
+printFox is call
+printFox rationale "The failure has nowhere to be reported, so it is discarded"
+printFox in main
+printFox invokes console.writeIntegerLine
+printFox argument value Int64 foxAt copy
+printFox result none
+printFox ownedBy none
+printFox cleanedBy none
+printFox borrows none
+printFox catch printFoxError console.WriteError
+printFox suppresses console.WriteError.failed
+
+findCat is call
+findCat in main
+findCat invokes string.find
+findCat argument text String sentence lend
+findCat argument needle String cat lend
+findCat result catAt Int64
+findCat ownedBy none
+findCat cleanedBy none
+findCat borrows none
+findCat catch findCatError string.NotFound
+findCat suppresses none
+
+printCat is call
+printCat rationale "The failure has nowhere to be reported, so it is discarded"
+printCat in main
+printCat invokes console.writeIntegerLine
+printCat argument value Int64 catAt copy
+printCat result none
+printCat ownedBy none
+printCat cleanedBy none
+printCat borrows none
+printCat catch printCatError console.WriteError
+printCat suppresses console.WriteError.failed
+
+writeNoCat is call
+writeNoCat rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoCat in main
+writeNoCat invokes console.writeLine
+writeNoCat argument text String noCatText lend
+writeNoCat result none
+writeNoCat ownedBy none
+writeNoCat cleanedBy none
+writeNoCat borrows none
+writeNoCat catch writeNoCatError console.WriteError
+writeNoCat suppresses console.WriteError.failed
+
+writeLimitLead is call
+writeLimitLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeLimitLead in main
+writeLimitLead invokes console.write
+writeLimitLead argument text String limitText lend
+writeLimitLead result none
+writeLimitLead ownedBy none
+writeLimitLead cleanedBy none
+writeLimitLead borrows none
+writeLimitLead catch writeLimitLeadError console.WriteError
+writeLimitLead suppresses console.WriteError.failed
+
+printLimitValue is call
+printLimitValue rationale "The failure has nowhere to be reported, so it is discarded"
+printLimitValue in main
+printLimitValue invokes console.writeIntegerLine
+printLimitValue argument value Int64 limit copy
+printLimitValue result none
+printLimitValue ownedBy none
+printLimitValue cleanedBy none
+printLimitValue borrows none
+printLimitValue catch printLimitValueError console.WriteError
+printLimitValue suppresses console.WriteError.failed

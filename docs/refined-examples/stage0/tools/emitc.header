@@ -1,0 +1,41 @@
+# The stage0 compiler's back end: a checked module written as one C file, to
+# be linked with the runtime of refined executables
+# (semanticscript/compiler/refined/native_runtime.c), which writes output,
+# traps with exit code 70, and keeps regions as `refined build --kind
+# executable` programs do. The file is:
+#
+# - a fixed prelude: declarations of the runtime functions it calls, text as a
+#   pointer and a length, the checked arithmetic, and lists (a header
+#   {length, capacity, data, region, identity} and a data block that starts at
+#   four items and doubles, allocated in the list's region as the LLVM backend
+#   allocates them, so a region's maxBytes is reached at the same call);
+# - each record as a struct of its fields (`m_<field>`), each enum as a struct
+#   of an `int32_t tag` and either one `int64_t payload` (the narrow layout,
+#   when every payload is an integer, a Bool, or an enum without payloads) or
+#   one field per payload (`p_<variant>`), the LLVM backend's layouts, so
+#   sizes agree; `rl_<Type>` for a type that holds text, which copies the text
+#   into a region (as a list does with what it stores, and a return with an
+#   output owned by a region); `la_`, `lg_`, and `lt_<List>` for each list's
+#   append, get, and getOrTrap; each table as a static array `tb_<table>` of
+#   its rows and `tr_<table>` reading row 1 to n;
+# - module constants as static C values;
+# - each operation as `static ... o_<name>(...)`: it returns its output, or,
+#   when it raises, a bool that is true on failure with the output and error
+#   written through `ss_out` and `ss_err`. Its values are C locals `v_<name>`,
+#   each call that can fail has a flag `f_<call>`, each bounded loop a counter
+#   `n_<label>`, each forEach loop a position `i_<label>`, and each label a C
+#   label `l_<label>` followed by its steps. A recursive operation counts its
+#   depth in `d_<name>` and traps past its maxRecursion. A target of the host
+#   library is one call of the runtime's `refined_host`, its arguments and
+#   result flattened to 64-bit slots as the LLVM backend flattens them;
+# - a C `main` that hands the command line to the runtime and returns main's
+#   ExitCode.
+#
+# A jump to a bounded loop header counts the pass when it comes from inside
+# the loop (from the header or a block within it) and resets the count (and a
+# forEach loop's position) when it enters the loop from outside, the rule the
+# LLVM backend follows, so a loop that passes its bound traps in C as it does
+# under `refined run`.
+#
+# This module is generated from a shorter description by a generator kept
+# outside the repository; it is ordinary SemanticScript and is edited as such.

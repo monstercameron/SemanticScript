@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+calls is project
+calls purpose "Call operations with inputs and outputs, two of them recursive; a stage0 sample both runs agree on"
+calls target console
+calls version "0.1.0"
+calls language refined 1
+calls standardLibrary 1
+calls allows write console.stdout none
+calls requires none
+calls includesModule calls
+calls entry calls.main

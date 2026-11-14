@@ -1,16 +1,16 @@
-# A source stage0 refuses: a record is outside the stage0 subset. stage0
+# A source stage0 refuses: an alias is outside the stage0 subset. stage0
 # reports where and why, and exits with code 1:
 #
-#   samples/outside/outside.sem:12:10: this entity kind is outside the stage0 subset (record)
+#   samples/outside/outside.sem:12:11: this entity kind is outside the stage0 subset (alias)
 
 outside is module
-outside purpose "Hold a record, which the stage0 subset does not compile"
+outside purpose "Hold an alias, which the stage0 subset does not compile"
 outside path outside
 outside imports none
-outside exports main
+outside exports none
 
-Point is record
-Point purpose "A point on a grid, by its two coordinates"
-Point typeParameter none
-Point field x Int64
-Point field y Int64
+Meters is alias
+Meters purpose "A distance in meters, as a whole number"
+Meters typeParameter none
+Meters aliasOf Int64
+Meters indexes none

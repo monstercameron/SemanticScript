@@ -1,0 +1,4 @@
+# Tests for emitc.sem: every invariant of `emitModule` is verified below, on
+# the squares sample (samples/squares/squares.sem), whose C is searched for its
+# signature, constant, call, jumps, return, and C main, and on a copy that
+# calls a target outside the subset, which writes nothing.

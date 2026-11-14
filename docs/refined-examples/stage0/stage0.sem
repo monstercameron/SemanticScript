@@ -1,14 +1,18 @@
 # stage0: the first stage of a SemanticScript compiler written in SemanticScript.
 #
 #     cd docs/refined-examples/stage0
-#     refined run . -- samples/hello/hello.sem build/hello [cc|gcc|clang]
+#     refined run . -- samples/hello/hello.sem build/hello gcc \
+#         ../../../semanticscript/compiler/refined/native_runtime.c [-lshell32]
 #
 # It reads the module file named by the first argument, tokenizes it (lexer),
 # groups the tokens into rows of words (syntax), groups the rows into entities
 # (model), checks that the module is in the stage0 subset (subset), writes it
 # as C (emitc) to the second argument with `.c` added, and runs the C compiler
 # named by the third argument (gcc when there is none) to build the second
-# argument as an executable.
+# argument as an executable. Every argument after the compiler's name is passed
+# to it after the C file: the runtime of refined executables (native_runtime.c),
+# which the C file is linked with, and any flags the platform needs (on
+# Windows, `-lshell32` for the runtime's command line).
 #
 # Authority (build.sem, and the capabilities below): read the command line;
 # read files under the working directory; write files under `build/`; run a C
@@ -30,12 +34,12 @@ stage0 imports standard.fs
 stage0 imports standard.string
 stage0 imports standard.buffer
 stage0 imports standard.compare
+stage0 imports standard.math
 stage0 imports standard.convert
 stage0 imports standard.time
 stage0 imports lexer
 stage0 imports syntax
 stage0 imports model
-stage0 imports subset
 stage0 imports emitc
 stage0 exports main
 
@@ -208,6 +212,93 @@ writePlain borrows none
 writePlain catch plainError console.WriteError
 writePlain suppresses none
 
+addExtraArguments is operation
+addExtraArguments purpose "Pass every command-line argument after the compiler's name to the C compiler: the runtime to link (native_runtime.c), then any flags"
+addExtraArguments invariant none
+addExtraArguments typeParameter none
+addExtraArguments input arguments process.Arguments borrowedMutable
+addExtraArguments input count Int64 copied
+addExtraArguments input region Region borrowed
+addExtraArguments output none
+addExtraArguments outputOwnedBy none
+addExtraArguments raises none
+addExtraArguments effect read process.arguments
+addExtraArguments uses argumentReader
+addExtraArguments memoryHeap true
+addExtraArguments async false
+addExtraArguments maxRecursion none
+addExtraArguments label begin loopKind none
+addExtraArguments label begin within none
+addExtraArguments label eachExtra loopKind while
+addExtraArguments label eachExtra within none
+addExtraArguments label eachExtra maxIterations count
+addExtraArguments label readExtra loopKind none
+addExtraArguments label readExtra within eachExtra
+addExtraArguments label readExtraArgumentDone loopKind none
+addExtraArguments label readExtraArgumentDone within eachExtra
+addExtraArguments label done loopKind none
+addExtraArguments label done within none
+addExtraArguments let index Int64 3 mutable
+addExtraArguments let one Int64 1 immutable
+addExtraArguments at begin goto eachExtra
+addExtraArguments at eachExtra do doneCheck
+addExtraArguments at eachExtra branch if allPassed goto done else goto readExtra
+addExtraArguments at readExtra do readExtraArgument
+addExtraArguments at readExtra branch ifError readExtraArgument goto done else goto readExtraArgumentDone
+addExtraArguments at readExtraArgumentDone do addExtra
+addExtraArguments at readExtraArgumentDone do countExtra
+addExtraArguments at readExtraArgumentDone set index nextIndex
+addExtraArguments at readExtraArgumentDone goto eachExtra
+addExtraArguments at done return ok none
+
+doneCheck is call
+doneCheck in addExtraArguments
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 index copy
+doneCheck argument right Int64 count copy
+doneCheck result allPassed Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readExtraArgument is call
+readExtraArgument in addExtraArguments
+readExtraArgument invokes process.argument
+readExtraArgument argument index Int64 index copy
+readExtraArgument argument region Region region lend
+readExtraArgument result extra String
+readExtraArgument ownedBy region
+readExtraArgument cleanedBy none
+readExtraArgument borrows none
+readExtraArgument catch readExtraArgumentError process.ArgumentError
+readExtraArgument suppresses none
+
+addExtra is call
+addExtra in addExtraArguments
+addExtra invokes process.addArgument
+addExtra argument arguments process.Arguments arguments lendMutable
+addExtra argument text String extra lend
+addExtra result none
+addExtra ownedBy none
+addExtra cleanedBy none
+addExtra borrows none
+addExtra catch none
+addExtra suppresses none
+
+countExtra is call
+countExtra in addExtraArguments
+countExtra invokes math.addInt64
+countExtra argument left Int64 index copy
+countExtra argument right Int64 one copy
+countExtra result nextIndex Int64
+countExtra ownedBy none
+countExtra cleanedBy none
+countExtra borrows none
+countExtra catch none
+countExtra suppresses none
+
 main is operation
 main purpose "Compile the module file named by the first argument to C and build it with the C compiler"
 main invariant none
@@ -303,15 +394,13 @@ main label rowsRefused loopKind none
 main label rowsRefused within none
 main label modelRefused loopKind none
 main label modelRefused within none
-main label checkRefused loopKind none
-main label checkRefused within none
 main label emitRefused loopKind none
 main label emitRefused within none
 main label report loopKind none
 main label report within none
 main label refused loopKind none
 main label refused within none
-main let usageText String "usage: refined run <stage0> -- <source.sem> build/<name> [cc|gcc|clang]" immutable
+main let usageText String "usage: refined run <stage0> -- <source.sem> build/<name> [cc|gcc|clang [native_runtime.c [flags...]]]" immutable
 main let defaultCompiler String "gcc" immutable
 main let cSuffix String ".c" immutable
 main let outputFlag String "-o" immutable
@@ -368,14 +457,8 @@ main at modelSource do newEntities
 main at modelSource do newNames
 main at modelSource do buildTheModel
 main at modelSource branch ifError buildTheModel goto modelRefused else goto checkSource
-main at checkSource do newValues
-main at checkSource do newCalls
-main at checkSource do newLabels
-main at checkSource do newSteps
-main at checkSource do checkTheSubset
-main at checkSource branch ifError checkTheSubset goto checkRefused else goto emit
+main at checkSource goto emit
 main at emit do newC
-main at emit do readAnchor
 main at emit do emitTheProgram
 main at emit branch ifError emitTheProgram goto emitRefused else goto save
 main at save do makeCPath
@@ -389,6 +472,7 @@ main at build do newArguments
 main at build do addCPath
 main at build do addOutputFlag
 main at build do addOutputName
+main at build do addExtras
 main at build start runCompiler into none
 main at build join runCompiler
 main at build branch ifError runCompiler goto runFailed else goto statusCheck
@@ -452,8 +536,6 @@ main at rowsRefused set rejection rowsError
 main at rowsRefused goto report
 main at modelRefused set rejection modelError
 main at modelRefused goto report
-main at checkRefused set rejection checkError
-main at checkRefused goto report
 main at emitRefused set rejection emitError
 main at emitRefused goto report
 main at report do reportIt
@@ -659,69 +741,6 @@ buildTheModel borrows none
 buildTheModel catch modelError syntax.Rejection
 buildTheModel suppresses none
 
-newValues is call
-newValues in main
-newValues invokes subset.Values.new
-newValues argument region Region store lend
-newValues result values subset.Values
-newValues ownedBy store
-newValues cleanedBy none
-newValues borrows none
-newValues catch none
-newValues suppresses none
-
-newCalls is call
-newCalls in main
-newCalls invokes subset.Calls.new
-newCalls argument region Region store lend
-newCalls result calls subset.Calls
-newCalls ownedBy store
-newCalls cleanedBy none
-newCalls borrows none
-newCalls catch none
-newCalls suppresses none
-
-newLabels is call
-newLabels in main
-newLabels invokes subset.Labels.new
-newLabels argument region Region store lend
-newLabels result labels subset.Labels
-newLabels ownedBy store
-newLabels cleanedBy none
-newLabels borrows none
-newLabels catch none
-newLabels suppresses none
-
-newSteps is call
-newSteps in main
-newSteps invokes subset.Steps.new
-newSteps argument region Region store lend
-newSteps result steps subset.Steps
-newSteps ownedBy store
-newSteps cleanedBy none
-newSteps borrows none
-newSteps catch none
-newSteps suppresses none
-
-checkTheSubset is call
-checkTheSubset in main
-checkTheSubset invokes subset.checkSubset
-checkTheSubset argument source String source lend
-checkTheSubset argument words syntax.Words words lend
-checkTheSubset argument rows syntax.Rows rows lend
-checkTheSubset argument entities model.Entities entities lend
-checkTheSubset argument names model.EntityNames names lend
-checkTheSubset argument values subset.Values values lendMutable
-checkTheSubset argument calls subset.Calls calls lendMutable
-checkTheSubset argument labels subset.Labels labels lendMutable
-checkTheSubset argument steps subset.Steps steps lendMutable
-checkTheSubset result none
-checkTheSubset ownedBy none
-checkTheSubset cleanedBy none
-checkTheSubset borrows none
-checkTheSubset catch checkError syntax.Rejection
-checkTheSubset suppresses none
-
 newC is call
 newC in main
 newC invokes buffer.new
@@ -733,28 +752,14 @@ newC borrows none
 newC catch none
 newC suppresses none
 
-readAnchor is call
-readAnchor in main
-readAnchor invokes syntax.Words.getOrTrap
-readAnchor argument list syntax.Words words lend
-readAnchor argument index Int64 zero copy
-readAnchor result anchor syntax.Word
-readAnchor ownedBy none
-readAnchor cleanedBy none
-readAnchor borrows none
-readAnchor catch none
-readAnchor suppresses none
-
 emitTheProgram is call
 emitTheProgram in main
-emitTheProgram invokes emitc.emitProgram
-emitTheProgram argument source String source lend
-emitTheProgram argument values subset.Values values lend
-emitTheProgram argument calls subset.Calls calls lend
-emitTheProgram argument labels subset.Labels labels lend
-emitTheProgram argument steps subset.Steps steps lend
+emitTheProgram invokes emitc.emitModule
 emitTheProgram argument buffer buffer.ByteBuffer cText lendMutable
-emitTheProgram argument anchor syntax.Word anchor copy
+emitTheProgram argument source String source lend
+emitTheProgram argument words syntax.Words words lend
+emitTheProgram argument rows syntax.Rows rows lend
+emitTheProgram argument entities model.Entities entities lend
 emitTheProgram result none
 emitTheProgram ownedBy none
 emitTheProgram cleanedBy none
@@ -864,6 +869,19 @@ addOutputName cleanedBy none
 addOutputName borrows none
 addOutputName catch none
 addOutputName suppresses none
+
+addExtras is call
+addExtras in main
+addExtras invokes addExtraArguments
+addExtras argument arguments process.Arguments compilerArguments lendMutable
+addExtras argument count Int64 argumentCount copy
+addExtras argument region Region store lend
+addExtras result none
+addExtras ownedBy none
+addExtras cleanedBy none
+addExtras borrows none
+addExtras catch none
+addExtras suppresses none
 
 runCompiler is task
 runCompiler in main

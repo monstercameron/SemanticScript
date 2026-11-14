@@ -1,0 +1,140 @@
+# A stage0 sample that reads past the end of a list with `getOrTrap`, the
+# trapping twin of `get` (D-101): it prints the list's length, then traps
+# (exit code 70). `refined run` and the executable stage0 builds from it
+# stop at the same place.
+outofrange is module
+outofrange purpose "Read past the end of a list with getOrTrap, so the trap can be compared"
+outofrange path outofrange
+outofrange imports standard.console
+outofrange imports standard.list
+outofrange exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Numbers is typeInstance
+Numbers purpose "A list of numbers"
+Numbers in none
+Numbers instantiates list.List Int64
+
+main is operation
+main purpose "Print a list's length, then read one item past its end"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label printCountDone loopKind none
+main label printCountDone within none
+main label printPastDone loopKind none
+main label printPastDone within none
+main let okCode ExitCode 0 immutable
+main let seven Int64 7 immutable
+main let eight Int64 8 immutable
+main at begin do makeNumbers
+main at begin do addSeven
+main at begin do addEight
+main at begin do countNumbers
+main at begin do printCount
+main at begin branch ifError printCount goto printCountDone else goto printCountDone
+main at printCountDone do readPast
+main at printCountDone do printPast
+main at printCountDone branch ifError printPast goto printPastDone else goto printPastDone
+main at printPastDone return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 4096
+scratch released atReturn
+
+makeNumbers is call
+makeNumbers in main
+makeNumbers invokes Numbers.new
+makeNumbers argument region Region scratch lend
+makeNumbers result numbers Numbers
+makeNumbers ownedBy scratch
+makeNumbers cleanedBy none
+makeNumbers borrows none
+makeNumbers catch none
+makeNumbers suppresses none
+
+addSeven is call
+addSeven in main
+addSeven invokes Numbers.append
+addSeven argument list Numbers numbers lendMutable
+addSeven argument item Int64 seven copy
+addSeven result none
+addSeven ownedBy none
+addSeven cleanedBy none
+addSeven borrows none
+addSeven catch none
+addSeven suppresses none
+
+addEight is call
+addEight in main
+addEight invokes Numbers.append
+addEight argument list Numbers numbers lendMutable
+addEight argument item Int64 eight copy
+addEight result none
+addEight ownedBy none
+addEight cleanedBy none
+addEight borrows none
+addEight catch none
+addEight suppresses none
+
+countNumbers is call
+countNumbers in main
+countNumbers invokes Numbers.length
+countNumbers argument list Numbers numbers lend
+countNumbers result count Int64
+countNumbers ownedBy none
+countNumbers cleanedBy none
+countNumbers borrows none
+countNumbers catch none
+countNumbers suppresses none
+
+printCount is call
+printCount rationale "The failure has nowhere to be reported, so it is discarded"
+printCount in main
+printCount invokes console.writeIntegerLine
+printCount argument value Int64 count copy
+printCount result none
+printCount ownedBy none
+printCount cleanedBy none
+printCount borrows none
+printCount catch printCountError console.WriteError
+printCount suppresses console.WriteError.failed
+
+readPast is call
+readPast in main
+readPast invokes Numbers.getOrTrap
+readPast argument list Numbers numbers lend
+readPast argument index Int64 count copy
+readPast result past Int64
+readPast ownedBy none
+readPast cleanedBy none
+readPast borrows none
+readPast catch none
+readPast suppresses none
+
+printPast is call
+printPast rationale "The failure has nowhere to be reported, so it is discarded"
+printPast in main
+printPast invokes console.writeIntegerLine
+printPast argument value Int64 past copy
+printPast result none
+printPast ownedBy none
+printPast cleanedBy none
+printPast borrows none
+printPast catch printPastError console.WriteError
+printPast suppresses console.WriteError.failed

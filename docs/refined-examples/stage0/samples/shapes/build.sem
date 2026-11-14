@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+shapes is project
+shapes purpose "Compute areas of shapes held in enums and records, with an error enum of their own; a stage0 sample both runs agree on"
+shapes target console
+shapes version "0.1.0"
+shapes language refined 1
+shapes standardLibrary 1
+shapes allows write console.stdout none
+shapes requires none
+shapes includesModule shapes
+shapes entry shapes.main

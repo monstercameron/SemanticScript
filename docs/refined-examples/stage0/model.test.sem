@@ -2,7 +2,7 @@
 # small module and on sources it refuses.
 
 modelTest is test
-modelTest purpose "A module's entities are found by name, with their kinds and the rows they own"
+modelTest purpose "A module's entities are found by name, with their kinds and the rows they own; calls and regions stay out of the name map"
 modelTest verifies buildModel groupsEntities
 modelTest verifies buildModel namesEntities
 modelTest typeParameter none
@@ -17,90 +17,88 @@ modelTest async false
 modelTest maxRecursion none
 modelTest label begin loopKind none
 modelTest label begin within none
-modelTest label lexed loopKind none
-modelTest label lexed within none
-modelTest label grouped loopKind none
-modelTest label grouped within none
-modelTest label modelled loopKind none
-modelTest label modelled within none
-modelTest label founddemo loopKind none
-modelTest label founddemo within none
-modelTest label foundstdoutWriter loopKind none
-modelTest label foundstdoutWriter within none
-modelTest label foundmain loopKind none
-modelTest label foundmain within none
-modelTest label foundgreet loopKind none
-modelTest label foundgreet within none
+modelTest label lexXDone loopKind none
+modelTest label lexXDone within none
+modelTest label groupXDone loopKind none
+modelTest label groupXDone within none
+modelTest label modelXDone loopKind none
+modelTest label modelXDone within none
+modelTest label finddemoDone loopKind none
+modelTest label finddemoDone within none
+modelTest label findpointDone loopKind none
+modelTest label findpointDone within none
+modelTest label findmainDone loopKind none
+modelTest label findmainDone within none
 modelTest label refused loopKind none
 modelTest label refused within none
-modelTest let source String "# a comment line\ndemo is module\ndemo purpose \"A module to model\"\ndemo path demo\n\nstdoutWriter is capability\nstdoutWriter grants write console.stdout none\n\nmain is operation\nmain input none\n\ngreet is call\ngreet in main\n" immutable
-modelTest let demoName String "demo" immutable
-modelTest let demoKind Int64 1 immutable
-modelTest let demoFirst Int64 0 immutable
-modelTest let demoCount Int64 3 immutable
-modelTest let stdoutWriterName String "stdoutWriter" immutable
-modelTest let stdoutWriterKind Int64 2 immutable
-modelTest let stdoutWriterFirst Int64 3 immutable
-modelTest let stdoutWriterCount Int64 2 immutable
-modelTest let mainName String "main" immutable
-modelTest let mainKind Int64 4 immutable
-modelTest let mainFirst Int64 5 immutable
-modelTest let mainCount Int64 2 immutable
-modelTest let greetName String "greet" immutable
-modelTest let greetKind Int64 5 immutable
-modelTest let greetFirst Int64 7 immutable
-modelTest let greetCount Int64 2 immutable
-modelTest let four Int64 4 immutable
+modelTest let source String "# a comment line\ndemo is module\ndemo purpose \"A module to model\"\ndemo path demo\n\nPoint is record\nPoint field x Int64\n\nmain is operation\nmain input none\n\ngreet is call\ngreet in main\n\nscratch is region\nscratch in main\n" immutable
 modelTest let refusedText String "the front end refused the source or a step failed" immutable
-modelTest at begin do lex
-modelTest at begin branch ifError lex goto refused else goto lexed
-modelTest at lexed do newWords
-modelTest at lexed do newRows
-modelTest at lexed do group
-modelTest at lexed branch ifError group goto refused else goto grouped
-modelTest at grouped do newEntities
-modelTest at grouped do newNames
-modelTest at grouped do model
-modelTest at grouped branch ifError model goto refused else goto modelled
-modelTest at modelled do countEntities
-modelTest at modelled do expectFour
-modelTest at modelled do finddemo
-modelTest at modelled branch ifError finddemo goto refused else goto founddemo
-modelTest at founddemo do readdemo
-modelTest at founddemo do kindOfdemo
-modelTest at founddemo do expectKinddemo
-modelTest at founddemo do firstOfdemo
-modelTest at founddemo do expectFirstdemo
-modelTest at founddemo do countOfdemo
-modelTest at founddemo do expectCountdemo
-modelTest at founddemo do findstdoutWriter
-modelTest at founddemo branch ifError findstdoutWriter goto refused else goto foundstdoutWriter
-modelTest at foundstdoutWriter do readstdoutWriter
-modelTest at foundstdoutWriter do kindOfstdoutWriter
-modelTest at foundstdoutWriter do expectKindstdoutWriter
-modelTest at foundstdoutWriter do firstOfstdoutWriter
-modelTest at foundstdoutWriter do expectFirststdoutWriter
-modelTest at foundstdoutWriter do countOfstdoutWriter
-modelTest at foundstdoutWriter do expectCountstdoutWriter
-modelTest at foundstdoutWriter do findmain
-modelTest at foundstdoutWriter branch ifError findmain goto refused else goto foundmain
-modelTest at foundmain do readmain
-modelTest at foundmain do kindOfmain
-modelTest at foundmain do expectKindmain
-modelTest at foundmain do firstOfmain
-modelTest at foundmain do expectFirstmain
-modelTest at foundmain do countOfmain
-modelTest at foundmain do expectCountmain
-modelTest at foundmain do findgreet
-modelTest at foundmain branch ifError findgreet goto refused else goto foundgreet
-modelTest at foundgreet do readgreet
-modelTest at foundgreet do kindOfgreet
-modelTest at foundgreet do expectKindgreet
-modelTest at foundgreet do firstOfgreet
-modelTest at foundgreet do expectFirstgreet
-modelTest at foundgreet do countOfgreet
-modelTest at foundgreet do expectCountgreet
-modelTest at foundgreet return ok none
+modelTest let five Int64 5 immutable
+modelTest let demoName String "demo" immutable
+modelTest let demoKindExpected Int64 1 immutable
+modelTest let demoFirstExpected Int64 0 immutable
+modelTest let demoCountExpected Int64 3 immutable
+modelTest let pointName String "Point" immutable
+modelTest let pointKindExpected Int64 6 immutable
+modelTest let pointFirstExpected Int64 3 immutable
+modelTest let pointCountExpected Int64 2 immutable
+modelTest let mainName String "main" immutable
+modelTest let mainKindExpected Int64 4 immutable
+modelTest let mainFirstExpected Int64 5 immutable
+modelTest let mainCountExpected Int64 2 immutable
+modelTest let greetName String "greet" immutable
+modelTest let three Int64 3 immutable
+modelTest let four Int64 4 immutable
+modelTest let nine Int64 9 immutable
+modelTest at begin do lexX
+modelTest at begin branch ifError lexX goto refused else goto lexXDone
+modelTest at lexXDone do newWordsX
+modelTest at lexXDone do newRowsX
+modelTest at lexXDone do groupX
+modelTest at lexXDone branch ifError groupX goto refused else goto groupXDone
+modelTest at groupXDone do newEntitiesX
+modelTest at groupXDone do newNamesX
+modelTest at groupXDone do modelX
+modelTest at groupXDone branch ifError modelX goto refused else goto modelXDone
+modelTest at modelXDone do countEntities
+modelTest at modelXDone do expectCount
+modelTest at modelXDone do finddemo
+modelTest at modelXDone branch ifError finddemo goto refused else goto finddemoDone
+modelTest at finddemoDone do readdemo
+modelTest at finddemoDone do kindOfdemo
+modelTest at finddemoDone do expectKinddemo
+modelTest at finddemoDone do firstOfdemo
+modelTest at finddemoDone do expectFirstdemo
+modelTest at finddemoDone do countOfdemo
+modelTest at finddemoDone do expectCountdemo
+modelTest at finddemoDone do findpoint
+modelTest at finddemoDone branch ifError findpoint goto refused else goto findpointDone
+modelTest at findpointDone do readpoint
+modelTest at findpointDone do kindOfpoint
+modelTest at findpointDone do expectKindpoint
+modelTest at findpointDone do firstOfpoint
+modelTest at findpointDone do expectFirstpoint
+modelTest at findpointDone do countOfpoint
+modelTest at findpointDone do expectCountpoint
+modelTest at findpointDone do findmain
+modelTest at findpointDone branch ifError findmain goto refused else goto findmainDone
+modelTest at findmainDone do readmain
+modelTest at findmainDone do kindOfmain
+modelTest at findmainDone do expectKindmain
+modelTest at findmainDone do firstOfmain
+modelTest at findmainDone do expectFirstmain
+modelTest at findmainDone do countOfmain
+modelTest at findmainDone do expectCountmain
+modelTest at findmainDone do greetCheck
+modelTest at findmainDone do greetAbsent
+modelTest at findmainDone do expectNoGreet
+modelTest at findmainDone do readGreet
+modelTest at findmainDone do greetKind
+modelTest at findmainDone do expectGreetKind
+modelTest at findmainDone do readScratch
+modelTest at findmainDone do scratchKind
+modelTest at findmainDone do expectScratchKind
+modelTest at findmainDone return ok none
 modelTest at refused do failRefused
 modelTest at refused return ok none
 
@@ -110,95 +108,95 @@ store strategy arena
 store maxBytes 262144
 store released atReturn
 
-lex is call
-lex in modelTest
-lex invokes lexer.tokenize
-lex argument source String source lend
-lex argument resultRegion Region store lend
-lex result tokens lexer.Tokens
-lex ownedBy store
-lex cleanedBy none
-lex borrows none
-lex catch lexError lexer.LexError
-lex suppresses none
+lexX is call
+lexX in modelTest
+lexX invokes lexer.tokenize
+lexX argument source String source lend
+lexX argument resultRegion Region store lend
+lexX result tokensX lexer.Tokens
+lexX ownedBy store
+lexX cleanedBy none
+lexX borrows none
+lexX catch lexXError lexer.LexError
+lexX suppresses none
 
-newWords is call
-newWords in modelTest
-newWords invokes syntax.Words.new
-newWords argument region Region store lend
-newWords result words syntax.Words
-newWords ownedBy store
-newWords cleanedBy none
-newWords borrows none
-newWords catch none
-newWords suppresses none
+newWordsX is call
+newWordsX in modelTest
+newWordsX invokes syntax.Words.new
+newWordsX argument region Region store lend
+newWordsX result wordsX syntax.Words
+newWordsX ownedBy store
+newWordsX cleanedBy none
+newWordsX borrows none
+newWordsX catch none
+newWordsX suppresses none
 
-newRows is call
-newRows in modelTest
-newRows invokes syntax.Rows.new
-newRows argument region Region store lend
-newRows result rows syntax.Rows
-newRows ownedBy store
-newRows cleanedBy none
-newRows borrows none
-newRows catch none
-newRows suppresses none
+newRowsX is call
+newRowsX in modelTest
+newRowsX invokes syntax.Rows.new
+newRowsX argument region Region store lend
+newRowsX result rowsX syntax.Rows
+newRowsX ownedBy store
+newRowsX cleanedBy none
+newRowsX borrows none
+newRowsX catch none
+newRowsX suppresses none
 
-group is call
-group in modelTest
-group invokes syntax.groupRows
-group argument source String source lend
-group argument tokens lexer.Tokens tokens lend
-group argument words syntax.Words words lendMutable
-group argument rows syntax.Rows rows lendMutable
-group result none
-group ownedBy none
-group cleanedBy none
-group borrows none
-group catch groupError syntax.Rejection
-group suppresses none
+groupX is call
+groupX in modelTest
+groupX invokes syntax.groupRows
+groupX argument source String source lend
+groupX argument tokens lexer.Tokens tokensX lend
+groupX argument words syntax.Words wordsX lendMutable
+groupX argument rows syntax.Rows rowsX lendMutable
+groupX result none
+groupX ownedBy none
+groupX cleanedBy none
+groupX borrows none
+groupX catch groupXError syntax.Rejection
+groupX suppresses none
 
-newEntities is call
-newEntities in modelTest
-newEntities invokes Entities.new
-newEntities argument region Region store lend
-newEntities result entities Entities
-newEntities ownedBy store
-newEntities cleanedBy none
-newEntities borrows none
-newEntities catch none
-newEntities suppresses none
+newEntitiesX is call
+newEntitiesX in modelTest
+newEntitiesX invokes Entities.new
+newEntitiesX argument region Region store lend
+newEntitiesX result entitiesX Entities
+newEntitiesX ownedBy store
+newEntitiesX cleanedBy none
+newEntitiesX borrows none
+newEntitiesX catch none
+newEntitiesX suppresses none
 
-newNames is call
-newNames in modelTest
-newNames invokes EntityNames.new
-newNames argument region Region store lend
-newNames result names EntityNames
-newNames ownedBy store
-newNames cleanedBy none
-newNames borrows none
-newNames catch none
-newNames suppresses none
+newNamesX is call
+newNamesX in modelTest
+newNamesX invokes EntityNames.new
+newNamesX argument region Region store lend
+newNamesX result namesX EntityNames
+newNamesX ownedBy store
+newNamesX cleanedBy none
+newNamesX borrows none
+newNamesX catch none
+newNamesX suppresses none
 
-model is call
-model in modelTest
-model invokes buildModel
-model argument source String source lend
-model argument words syntax.Words words lend
-model argument rows syntax.Rows rows lend
-model argument entities Entities entities lendMutable
-model argument names EntityNames names lendMutable
-model result none
-model ownedBy none
-model cleanedBy none
-model borrows none
-model catch modelError syntax.Rejection
-model suppresses none
+modelX is call
+modelX in modelTest
+modelX invokes buildModel
+modelX argument source String source lend
+modelX argument words syntax.Words wordsX lend
+modelX argument rows syntax.Rows rowsX lend
+modelX argument entities Entities entitiesX lendMutable
+modelX argument names EntityNames namesX lendMutable
+modelX result none
+modelX ownedBy none
+modelX cleanedBy none
+modelX borrows none
+modelX catch modelXError syntax.Rejection
+modelX suppresses none
 
 countEntities is call
 countEntities in modelTest
 countEntities invokes Entities.length
-countEntities argument list Entities entities lend
+countEntities argument list Entities entitiesX lend
 countEntities result entityCount Int64
 countEntities ownedBy none
 countEntities cleanedBy none
@@ -206,24 +204,24 @@ countEntities borrows none
 countEntities catch none
 countEntities suppresses none
 
-expectFour is call
-expectFour in modelTest
-expectFour invokes test.assertEqualInt64
-expectFour argument expected Int64 four copy
-expectFour argument actual Int64 entityCount copy
-expectFour result none
-expectFour ownedBy none
-expectFour cleanedBy none
-expectFour borrows none
-expectFour catch none
-expectFour suppresses none
+expectCount is call
+expectCount in modelTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 five copy
+expectCount argument actual Int64 entityCount copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
 
 finddemo is call
 finddemo in modelTest
 finddemo invokes EntityNames.get
-finddemo argument map EntityNames names lend
+finddemo argument map EntityNames namesX lend
 finddemo argument key String demoName lend
-finddemo result demoAt Int64
+finddemo result demoPosition Int64
 finddemo ownedBy none
 finddemo cleanedBy none
 finddemo borrows none
@@ -233,8 +231,8 @@ finddemo suppresses none
 readdemo is call
 readdemo in modelTest
 readdemo invokes Entities.getOrTrap
-readdemo argument list Entities entities lend
-readdemo argument index Int64 demoAt copy
+readdemo argument list Entities entitiesX lend
+readdemo argument index Int64 demoPosition copy
 readdemo result demoEntity Entity
 readdemo ownedBy none
 readdemo cleanedBy none
@@ -246,7 +244,7 @@ kindOfdemo is call
 kindOfdemo in modelTest
 kindOfdemo invokes Entity.kind
 kindOfdemo argument record Entity demoEntity copy
-kindOfdemo result demoActualKind Int64
+kindOfdemo result demoKind Int64
 kindOfdemo ownedBy none
 kindOfdemo cleanedBy none
 kindOfdemo borrows none
@@ -256,8 +254,8 @@ kindOfdemo suppresses none
 expectKinddemo is call
 expectKinddemo in modelTest
 expectKinddemo invokes test.assertEqualInt64
-expectKinddemo argument expected Int64 demoKind copy
-expectKinddemo argument actual Int64 demoActualKind copy
+expectKinddemo argument expected Int64 demoKindExpected copy
+expectKinddemo argument actual Int64 demoKind copy
 expectKinddemo result none
 expectKinddemo ownedBy none
 expectKinddemo cleanedBy none
@@ -269,7 +267,7 @@ firstOfdemo is call
 firstOfdemo in modelTest
 firstOfdemo invokes Entity.first
 firstOfdemo argument record Entity demoEntity copy
-firstOfdemo result demoActualFirst Int64
+firstOfdemo result demoFirst Int64
 firstOfdemo ownedBy none
 firstOfdemo cleanedBy none
 firstOfdemo borrows none
@@ -279,8 +277,8 @@ firstOfdemo suppresses none
 expectFirstdemo is call
 expectFirstdemo in modelTest
 expectFirstdemo invokes test.assertEqualInt64
-expectFirstdemo argument expected Int64 demoFirst copy
-expectFirstdemo argument actual Int64 demoActualFirst copy
+expectFirstdemo argument expected Int64 demoFirstExpected copy
+expectFirstdemo argument actual Int64 demoFirst copy
 expectFirstdemo result none
 expectFirstdemo ownedBy none
 expectFirstdemo cleanedBy none
@@ -292,7 +290,7 @@ countOfdemo is call
 countOfdemo in modelTest
 countOfdemo invokes Entity.count
 countOfdemo argument record Entity demoEntity copy
-countOfdemo result demoActualCount Int64
+countOfdemo result demoCount Int64
 countOfdemo ownedBy none
 countOfdemo cleanedBy none
 countOfdemo borrows none
@@ -302,8 +300,8 @@ countOfdemo suppresses none
 expectCountdemo is call
 expectCountdemo in modelTest
 expectCountdemo invokes test.assertEqualInt64
-expectCountdemo argument expected Int64 demoCount copy
-expectCountdemo argument actual Int64 demoActualCount copy
+expectCountdemo argument expected Int64 demoCountExpected copy
+expectCountdemo argument actual Int64 demoCount copy
 expectCountdemo result none
 expectCountdemo ownedBy none
 expectCountdemo cleanedBy none
@@ -311,105 +309,105 @@ expectCountdemo borrows none
 expectCountdemo catch none
 expectCountdemo suppresses none
 
-findstdoutWriter is call
-findstdoutWriter in modelTest
-findstdoutWriter invokes EntityNames.get
-findstdoutWriter argument map EntityNames names lend
-findstdoutWriter argument key String stdoutWriterName lend
-findstdoutWriter result stdoutWriterAt Int64
-findstdoutWriter ownedBy none
-findstdoutWriter cleanedBy none
-findstdoutWriter borrows none
-findstdoutWriter catch findstdoutWriterError map.KeyMissing
-findstdoutWriter suppresses none
+findpoint is call
+findpoint in modelTest
+findpoint invokes EntityNames.get
+findpoint argument map EntityNames namesX lend
+findpoint argument key String pointName lend
+findpoint result pointPosition Int64
+findpoint ownedBy none
+findpoint cleanedBy none
+findpoint borrows none
+findpoint catch findpointError map.KeyMissing
+findpoint suppresses none
 
-readstdoutWriter is call
-readstdoutWriter in modelTest
-readstdoutWriter invokes Entities.getOrTrap
-readstdoutWriter argument list Entities entities lend
-readstdoutWriter argument index Int64 stdoutWriterAt copy
-readstdoutWriter result stdoutWriterEntity Entity
-readstdoutWriter ownedBy none
-readstdoutWriter cleanedBy none
-readstdoutWriter borrows none
-readstdoutWriter catch none
-readstdoutWriter suppresses none
+readpoint is call
+readpoint in modelTest
+readpoint invokes Entities.getOrTrap
+readpoint argument list Entities entitiesX lend
+readpoint argument index Int64 pointPosition copy
+readpoint result pointEntity Entity
+readpoint ownedBy none
+readpoint cleanedBy none
+readpoint borrows none
+readpoint catch none
+readpoint suppresses none
 
-kindOfstdoutWriter is call
-kindOfstdoutWriter in modelTest
-kindOfstdoutWriter invokes Entity.kind
-kindOfstdoutWriter argument record Entity stdoutWriterEntity copy
-kindOfstdoutWriter result stdoutWriterActualKind Int64
-kindOfstdoutWriter ownedBy none
-kindOfstdoutWriter cleanedBy none
-kindOfstdoutWriter borrows none
-kindOfstdoutWriter catch none
-kindOfstdoutWriter suppresses none
+kindOfpoint is call
+kindOfpoint in modelTest
+kindOfpoint invokes Entity.kind
+kindOfpoint argument record Entity pointEntity copy
+kindOfpoint result pointKind Int64
+kindOfpoint ownedBy none
+kindOfpoint cleanedBy none
+kindOfpoint borrows none
+kindOfpoint catch none
+kindOfpoint suppresses none
 
-expectKindstdoutWriter is call
-expectKindstdoutWriter in modelTest
-expectKindstdoutWriter invokes test.assertEqualInt64
-expectKindstdoutWriter argument expected Int64 stdoutWriterKind copy
-expectKindstdoutWriter argument actual Int64 stdoutWriterActualKind copy
-expectKindstdoutWriter result none
-expectKindstdoutWriter ownedBy none
-expectKindstdoutWriter cleanedBy none
-expectKindstdoutWriter borrows none
-expectKindstdoutWriter catch none
-expectKindstdoutWriter suppresses none
+expectKindpoint is call
+expectKindpoint in modelTest
+expectKindpoint invokes test.assertEqualInt64
+expectKindpoint argument expected Int64 pointKindExpected copy
+expectKindpoint argument actual Int64 pointKind copy
+expectKindpoint result none
+expectKindpoint ownedBy none
+expectKindpoint cleanedBy none
+expectKindpoint borrows none
+expectKindpoint catch none
+expectKindpoint suppresses none
 
-firstOfstdoutWriter is call
-firstOfstdoutWriter in modelTest
-firstOfstdoutWriter invokes Entity.first
-firstOfstdoutWriter argument record Entity stdoutWriterEntity copy
-firstOfstdoutWriter result stdoutWriterActualFirst Int64
-firstOfstdoutWriter ownedBy none
-firstOfstdoutWriter cleanedBy none
-firstOfstdoutWriter borrows none
-firstOfstdoutWriter catch none
-firstOfstdoutWriter suppresses none
+firstOfpoint is call
+firstOfpoint in modelTest
+firstOfpoint invokes Entity.first
+firstOfpoint argument record Entity pointEntity copy
+firstOfpoint result pointFirst Int64
+firstOfpoint ownedBy none
+firstOfpoint cleanedBy none
+firstOfpoint borrows none
+firstOfpoint catch none
+firstOfpoint suppresses none
 
-expectFirststdoutWriter is call
-expectFirststdoutWriter in modelTest
-expectFirststdoutWriter invokes test.assertEqualInt64
-expectFirststdoutWriter argument expected Int64 stdoutWriterFirst copy
-expectFirststdoutWriter argument actual Int64 stdoutWriterActualFirst copy
-expectFirststdoutWriter result none
-expectFirststdoutWriter ownedBy none
-expectFirststdoutWriter cleanedBy none
-expectFirststdoutWriter borrows none
-expectFirststdoutWriter catch none
-expectFirststdoutWriter suppresses none
+expectFirstpoint is call
+expectFirstpoint in modelTest
+expectFirstpoint invokes test.assertEqualInt64
+expectFirstpoint argument expected Int64 pointFirstExpected copy
+expectFirstpoint argument actual Int64 pointFirst copy
+expectFirstpoint result none
+expectFirstpoint ownedBy none
+expectFirstpoint cleanedBy none
+expectFirstpoint borrows none
+expectFirstpoint catch none
+expectFirstpoint suppresses none
 
-countOfstdoutWriter is call
-countOfstdoutWriter in modelTest
-countOfstdoutWriter invokes Entity.count
-countOfstdoutWriter argument record Entity stdoutWriterEntity copy
-countOfstdoutWriter result stdoutWriterActualCount Int64
-countOfstdoutWriter ownedBy none
-countOfstdoutWriter cleanedBy none
-countOfstdoutWriter borrows none
-countOfstdoutWriter catch none
-countOfstdoutWriter suppresses none
+countOfpoint is call
+countOfpoint in modelTest
+countOfpoint invokes Entity.count
+countOfpoint argument record Entity pointEntity copy
+countOfpoint result pointCount Int64
+countOfpoint ownedBy none
+countOfpoint cleanedBy none
+countOfpoint borrows none
+countOfpoint catch none
+countOfpoint suppresses none
 
-expectCountstdoutWriter is call
-expectCountstdoutWriter in modelTest
-expectCountstdoutWriter invokes test.assertEqualInt64
-expectCountstdoutWriter argument expected Int64 stdoutWriterCount copy
-expectCountstdoutWriter argument actual Int64 stdoutWriterActualCount copy
-expectCountstdoutWriter result none
-expectCountstdoutWriter ownedBy none
-expectCountstdoutWriter cleanedBy none
-expectCountstdoutWriter borrows none
-expectCountstdoutWriter catch none
-expectCountstdoutWriter suppresses none
+expectCountpoint is call
+expectCountpoint in modelTest
+expectCountpoint invokes test.assertEqualInt64
+expectCountpoint argument expected Int64 pointCountExpected copy
+expectCountpoint argument actual Int64 pointCount copy
+expectCountpoint result none
+expectCountpoint ownedBy none
+expectCountpoint cleanedBy none
+expectCountpoint borrows none
+expectCountpoint catch none
+expectCountpoint suppresses none
 
 findmain is call
 findmain in modelTest
 findmain invokes EntityNames.get
-findmain argument map EntityNames names lend
+findmain argument map EntityNames namesX lend
 findmain argument key String mainName lend
-findmain result mainAt Int64
+findmain result mainPosition Int64
 findmain ownedBy none
 findmain cleanedBy none
 findmain borrows none
@@ -419,8 +417,8 @@ findmain suppresses none
 readmain is call
 readmain in modelTest
 readmain invokes Entities.getOrTrap
-readmain argument list Entities entities lend
-readmain argument index Int64 mainAt copy
+readmain argument list Entities entitiesX lend
+readmain argument index Int64 mainPosition copy
 readmain result mainEntity Entity
 readmain ownedBy none
 readmain cleanedBy none
@@ -432,7 +430,7 @@ kindOfmain is call
 kindOfmain in modelTest
 kindOfmain invokes Entity.kind
 kindOfmain argument record Entity mainEntity copy
-kindOfmain result mainActualKind Int64
+kindOfmain result mainKind Int64
 kindOfmain ownedBy none
 kindOfmain cleanedBy none
 kindOfmain borrows none
@@ -442,8 +440,8 @@ kindOfmain suppresses none
 expectKindmain is call
 expectKindmain in modelTest
 expectKindmain invokes test.assertEqualInt64
-expectKindmain argument expected Int64 mainKind copy
-expectKindmain argument actual Int64 mainActualKind copy
+expectKindmain argument expected Int64 mainKindExpected copy
+expectKindmain argument actual Int64 mainKind copy
 expectKindmain result none
 expectKindmain ownedBy none
 expectKindmain cleanedBy none
@@ -455,7 +453,7 @@ firstOfmain is call
 firstOfmain in modelTest
 firstOfmain invokes Entity.first
 firstOfmain argument record Entity mainEntity copy
-firstOfmain result mainActualFirst Int64
+firstOfmain result mainFirst Int64
 firstOfmain ownedBy none
 firstOfmain cleanedBy none
 firstOfmain borrows none
@@ -465,8 +463,8 @@ firstOfmain suppresses none
 expectFirstmain is call
 expectFirstmain in modelTest
 expectFirstmain invokes test.assertEqualInt64
-expectFirstmain argument expected Int64 mainFirst copy
-expectFirstmain argument actual Int64 mainActualFirst copy
+expectFirstmain argument expected Int64 mainFirstExpected copy
+expectFirstmain argument actual Int64 mainFirst copy
 expectFirstmain result none
 expectFirstmain ownedBy none
 expectFirstmain cleanedBy none
@@ -478,7 +476,7 @@ countOfmain is call
 countOfmain in modelTest
 countOfmain invokes Entity.count
 countOfmain argument record Entity mainEntity copy
-countOfmain result mainActualCount Int64
+countOfmain result mainCount Int64
 countOfmain ownedBy none
 countOfmain cleanedBy none
 countOfmain borrows none
@@ -488,8 +486,8 @@ countOfmain suppresses none
 expectCountmain is call
 expectCountmain in modelTest
 expectCountmain invokes test.assertEqualInt64
-expectCountmain argument expected Int64 mainCount copy
-expectCountmain argument actual Int64 mainActualCount copy
+expectCountmain argument expected Int64 mainCountExpected copy
+expectCountmain argument actual Int64 mainCount copy
 expectCountmain result none
 expectCountmain ownedBy none
 expectCountmain cleanedBy none
@@ -497,98 +495,109 @@ expectCountmain borrows none
 expectCountmain catch none
 expectCountmain suppresses none
 
-findgreet is call
-findgreet in modelTest
-findgreet invokes EntityNames.get
-findgreet argument map EntityNames names lend
-findgreet argument key String greetName lend
-findgreet result greetAt Int64
-findgreet ownedBy none
-findgreet cleanedBy none
-findgreet borrows none
-findgreet catch findgreetError map.KeyMissing
-findgreet suppresses none
+greetCheck is call
+greetCheck in modelTest
+greetCheck invokes EntityNames.contains
+greetCheck argument map EntityNames namesX lend
+greetCheck argument key String greetName lend
+greetCheck result hasGreet Bool
+greetCheck ownedBy none
+greetCheck cleanedBy none
+greetCheck borrows none
+greetCheck catch none
+greetCheck suppresses none
 
-readgreet is call
-readgreet in modelTest
-readgreet invokes Entities.getOrTrap
-readgreet argument list Entities entities lend
-readgreet argument index Int64 greetAt copy
-readgreet result greetEntity Entity
-readgreet ownedBy none
-readgreet cleanedBy none
-readgreet borrows none
-readgreet catch none
-readgreet suppresses none
+greetAbsent is call
+greetAbsent in modelTest
+greetAbsent invokes logic.not
+greetAbsent argument value Bool hasGreet copy
+greetAbsent result noGreet Bool
+greetAbsent ownedBy none
+greetAbsent cleanedBy none
+greetAbsent borrows none
+greetAbsent catch none
+greetAbsent suppresses none
 
-kindOfgreet is call
-kindOfgreet in modelTest
-kindOfgreet invokes Entity.kind
-kindOfgreet argument record Entity greetEntity copy
-kindOfgreet result greetActualKind Int64
-kindOfgreet ownedBy none
-kindOfgreet cleanedBy none
-kindOfgreet borrows none
-kindOfgreet catch none
-kindOfgreet suppresses none
+expectNoGreet is call
+expectNoGreet in modelTest
+expectNoGreet invokes test.assertTrue
+expectNoGreet argument value Bool noGreet copy
+expectNoGreet result none
+expectNoGreet ownedBy none
+expectNoGreet cleanedBy none
+expectNoGreet borrows none
+expectNoGreet catch none
+expectNoGreet suppresses none
 
-expectKindgreet is call
-expectKindgreet in modelTest
-expectKindgreet invokes test.assertEqualInt64
-expectKindgreet argument expected Int64 greetKind copy
-expectKindgreet argument actual Int64 greetActualKind copy
-expectKindgreet result none
-expectKindgreet ownedBy none
-expectKindgreet cleanedBy none
-expectKindgreet borrows none
-expectKindgreet catch none
-expectKindgreet suppresses none
+readGreet is call
+readGreet in modelTest
+readGreet invokes Entities.getOrTrap
+readGreet argument list Entities entitiesX lend
+readGreet argument index Int64 three copy
+readGreet result greet Entity
+readGreet ownedBy none
+readGreet cleanedBy none
+readGreet borrows none
+readGreet catch none
+readGreet suppresses none
 
-firstOfgreet is call
-firstOfgreet in modelTest
-firstOfgreet invokes Entity.first
-firstOfgreet argument record Entity greetEntity copy
-firstOfgreet result greetActualFirst Int64
-firstOfgreet ownedBy none
-firstOfgreet cleanedBy none
-firstOfgreet borrows none
-firstOfgreet catch none
-firstOfgreet suppresses none
+greetKind is call
+greetKind in modelTest
+greetKind invokes Entity.kind
+greetKind argument record Entity greet copy
+greetKind result greetKindNumber Int64
+greetKind ownedBy none
+greetKind cleanedBy none
+greetKind borrows none
+greetKind catch none
+greetKind suppresses none
 
-expectFirstgreet is call
-expectFirstgreet in modelTest
-expectFirstgreet invokes test.assertEqualInt64
-expectFirstgreet argument expected Int64 greetFirst copy
-expectFirstgreet argument actual Int64 greetActualFirst copy
-expectFirstgreet result none
-expectFirstgreet ownedBy none
-expectFirstgreet cleanedBy none
-expectFirstgreet borrows none
-expectFirstgreet catch none
-expectFirstgreet suppresses none
+expectGreetKind is call
+expectGreetKind in modelTest
+expectGreetKind invokes test.assertEqualInt64
+expectGreetKind argument expected Int64 five copy
+expectGreetKind argument actual Int64 greetKindNumber copy
+expectGreetKind result none
+expectGreetKind ownedBy none
+expectGreetKind cleanedBy none
+expectGreetKind borrows none
+expectGreetKind catch none
+expectGreetKind suppresses none
 
-countOfgreet is call
-countOfgreet in modelTest
-countOfgreet invokes Entity.count
-countOfgreet argument record Entity greetEntity copy
-countOfgreet result greetActualCount Int64
-countOfgreet ownedBy none
-countOfgreet cleanedBy none
-countOfgreet borrows none
-countOfgreet catch none
-countOfgreet suppresses none
+readScratch is call
+readScratch in modelTest
+readScratch invokes Entities.getOrTrap
+readScratch argument list Entities entitiesX lend
+readScratch argument index Int64 four copy
+readScratch result scratchEntity Entity
+readScratch ownedBy none
+readScratch cleanedBy none
+readScratch borrows none
+readScratch catch none
+readScratch suppresses none
 
-expectCountgreet is call
-expectCountgreet in modelTest
-expectCountgreet invokes test.assertEqualInt64
-expectCountgreet argument expected Int64 greetCount copy
-expectCountgreet argument actual Int64 greetActualCount copy
-expectCountgreet result none
-expectCountgreet ownedBy none
-expectCountgreet cleanedBy none
-expectCountgreet borrows none
-expectCountgreet catch none
-expectCountgreet suppresses none
+scratchKind is call
+scratchKind in modelTest
+scratchKind invokes Entity.kind
+scratchKind argument record Entity scratchEntity copy
+scratchKind result scratchKindNumber Int64
+scratchKind ownedBy none
+scratchKind cleanedBy none
+scratchKind borrows none
+scratchKind catch none
+scratchKind suppresses none
+
+expectScratchKind is call
+expectScratchKind in modelTest
+expectScratchKind invokes test.assertEqualInt64
+expectScratchKind argument expected Int64 nine copy
+expectScratchKind argument actual Int64 scratchKindNumber copy
+expectScratchKind result none
+expectScratchKind ownedBy none
+expectScratchKind cleanedBy none
+expectScratchKind borrows none
+expectScratchKind catch none
+expectScratchKind suppresses none
 
 failRefused is call
 failRefused in modelTest
@@ -602,7 +611,7 @@ failRefused catch none
 failRefused suppresses none
 
 rejectTest is test
-rejectTest purpose "An unsupported kind, a stray row, a name declared twice, and an operation other than main are refused at the word they concern"
+rejectTest purpose "Kinds outside the subset, stray rows, module-level names declared twice, and long `is` rows are refused at the word concerned"
 rejectTest verifies buildModel rejectsOutsideModel
 rejectTest typeParameter none
 rejectTest input none
@@ -616,117 +625,132 @@ rejectTest async false
 rejectTest maxRecursion none
 rejectTest label begin loopKind none
 rejectTest label begin within none
-rejectTest label lexed0 loopKind none
-rejectTest label lexed0 within none
-rejectTest label grouped0 loopKind none
-rejectTest label grouped0 within none
+rejectTest label lex0Done loopKind none
+rejectTest label lex0Done within none
+rejectTest label group0Done loopKind none
+rejectTest label group0Done within none
 rejectTest label rejected0 loopKind none
 rejectTest label rejected0 within none
-rejectTest label lexed1 loopKind none
-rejectTest label lexed1 within none
-rejectTest label grouped1 loopKind none
-rejectTest label grouped1 within none
+rejectTest label case1 loopKind none
+rejectTest label case1 within none
+rejectTest label lex1Done loopKind none
+rejectTest label lex1Done within none
+rejectTest label group1Done loopKind none
+rejectTest label group1Done within none
 rejectTest label rejected1 loopKind none
 rejectTest label rejected1 within none
-rejectTest label lexed2 loopKind none
-rejectTest label lexed2 within none
-rejectTest label grouped2 loopKind none
-rejectTest label grouped2 within none
+rejectTest label case2 loopKind none
+rejectTest label case2 within none
+rejectTest label lex2Done loopKind none
+rejectTest label lex2Done within none
+rejectTest label group2Done loopKind none
+rejectTest label group2Done within none
 rejectTest label rejected2 loopKind none
 rejectTest label rejected2 within none
-rejectTest label lexed3 loopKind none
-rejectTest label lexed3 within none
-rejectTest label grouped3 loopKind none
-rejectTest label grouped3 within none
+rejectTest label case3 loopKind none
+rejectTest label case3 within none
+rejectTest label lex3Done loopKind none
+rejectTest label lex3Done within none
+rejectTest label group3Done loopKind none
+rejectTest label group3Done within none
 rejectTest label rejected3 loopKind none
 rejectTest label rejected3 within none
-rejectTest label lexed4 loopKind none
-rejectTest label lexed4 within none
-rejectTest label grouped4 loopKind none
-rejectTest label grouped4 within none
+rejectTest label case4 loopKind none
+rejectTest label case4 within none
+rejectTest label lex4Done loopKind none
+rejectTest label lex4Done within none
+rejectTest label group4Done loopKind none
+rejectTest label group4Done within none
 rejectTest label rejected4 loopKind none
 rejectTest label rejected4 within none
+rejectTest label finished loopKind none
+rejectTest label finished within none
 rejectTest label refused loopKind none
 rejectTest label refused within none
-rejectTest let source0 String "demo is module\npoint is record\n" immutable
-rejectTest let expected0 String "2:10: this entity kind is outside the stage0 subset (record)" immutable
+rejectTest let source0 String "demo is module\nmeters is alias\n" immutable
+rejectTest let expected0 String "2:11: this entity kind is outside the stage0 subset (alias)" immutable
 rejectTest let source1 String "demo is module\nother path demo\n" immutable
 rejectTest let expected1 String "2:1: this row's subject is not the entity above it (other)" immutable
 rejectTest let source2 String "demo is module\ndemo is module\n" immutable
 rejectTest let expected2 String "2:1: this name is already declared (demo)" immutable
-rejectTest let source3 String "demo is module\nhelper is operation\n" immutable
-rejectTest let expected3 String "2:1: stage0 compiles one operation, and it is named main (helper)" immutable
-rejectTest let source4 String "demo path demo\n" immutable
-rejectTest let expected4 String "1:1: this row's subject is not the entity above it (demo)" immutable
+rejectTest let source3 String "demo path demo\n" immutable
+rejectTest let expected3 String "1:1: this row's subject is not the entity above it (demo)" immutable
+rejectTest let source4 String "demo is module extra\n" immutable
+rejectTest let expected4 String "1:6: this payload is outside the stage0 subset (is)" immutable
 rejectTest let refusedText String "the front end refused the source or a step failed" immutable
 rejectTest at begin do lex0
-rejectTest at begin branch ifError lex0 goto refused else goto lexed0
-rejectTest at lexed0 do newWords0
-rejectTest at lexed0 do newRows0
-rejectTest at lexed0 do group0
-rejectTest at lexed0 branch ifError group0 goto refused else goto grouped0
-rejectTest at grouped0 do newEntities0
-rejectTest at grouped0 do newNames0
-rejectTest at grouped0 do model0
-rejectTest at grouped0 branch ifError model0 goto rejected0 else goto refused
+rejectTest at begin branch ifError lex0 goto refused else goto lex0Done
+rejectTest at lex0Done do newWords0
+rejectTest at lex0Done do newRows0
+rejectTest at lex0Done do group0
+rejectTest at lex0Done branch ifError group0 goto refused else goto group0Done
+rejectTest at group0Done do newEntities0
+rejectTest at group0Done do newNames0
+rejectTest at group0Done do model0
+rejectTest at group0Done branch ifError model0 goto rejected0 else goto refused
 rejectTest at rejected0 do describe0
 rejectTest at rejected0 do expect0
-rejectTest at rejected0 do lex1
-rejectTest at rejected0 branch ifError lex1 goto refused else goto lexed1
-rejectTest at lexed1 do newWords1
-rejectTest at lexed1 do newRows1
-rejectTest at lexed1 do group1
-rejectTest at lexed1 branch ifError group1 goto refused else goto grouped1
-rejectTest at grouped1 do newEntities1
-rejectTest at grouped1 do newNames1
-rejectTest at grouped1 do model1
-rejectTest at grouped1 branch ifError model1 goto rejected1 else goto refused
+rejectTest at rejected0 goto case1
+rejectTest at case1 do lex1
+rejectTest at case1 branch ifError lex1 goto refused else goto lex1Done
+rejectTest at lex1Done do newWords1
+rejectTest at lex1Done do newRows1
+rejectTest at lex1Done do group1
+rejectTest at lex1Done branch ifError group1 goto refused else goto group1Done
+rejectTest at group1Done do newEntities1
+rejectTest at group1Done do newNames1
+rejectTest at group1Done do model1
+rejectTest at group1Done branch ifError model1 goto rejected1 else goto refused
 rejectTest at rejected1 do describe1
 rejectTest at rejected1 do expect1
-rejectTest at rejected1 do lex2
-rejectTest at rejected1 branch ifError lex2 goto refused else goto lexed2
-rejectTest at lexed2 do newWords2
-rejectTest at lexed2 do newRows2
-rejectTest at lexed2 do group2
-rejectTest at lexed2 branch ifError group2 goto refused else goto grouped2
-rejectTest at grouped2 do newEntities2
-rejectTest at grouped2 do newNames2
-rejectTest at grouped2 do model2
-rejectTest at grouped2 branch ifError model2 goto rejected2 else goto refused
+rejectTest at rejected1 goto case2
+rejectTest at case2 do lex2
+rejectTest at case2 branch ifError lex2 goto refused else goto lex2Done
+rejectTest at lex2Done do newWords2
+rejectTest at lex2Done do newRows2
+rejectTest at lex2Done do group2
+rejectTest at lex2Done branch ifError group2 goto refused else goto group2Done
+rejectTest at group2Done do newEntities2
+rejectTest at group2Done do newNames2
+rejectTest at group2Done do model2
+rejectTest at group2Done branch ifError model2 goto rejected2 else goto refused
 rejectTest at rejected2 do describe2
 rejectTest at rejected2 do expect2
-rejectTest at rejected2 do lex3
-rejectTest at rejected2 branch ifError lex3 goto refused else goto lexed3
-rejectTest at lexed3 do newWords3
-rejectTest at lexed3 do newRows3
-rejectTest at lexed3 do group3
-rejectTest at lexed3 branch ifError group3 goto refused else goto grouped3
-rejectTest at grouped3 do newEntities3
-rejectTest at grouped3 do newNames3
-rejectTest at grouped3 do model3
-rejectTest at grouped3 branch ifError model3 goto rejected3 else goto refused
+rejectTest at rejected2 goto case3
+rejectTest at case3 do lex3
+rejectTest at case3 branch ifError lex3 goto refused else goto lex3Done
+rejectTest at lex3Done do newWords3
+rejectTest at lex3Done do newRows3
+rejectTest at lex3Done do group3
+rejectTest at lex3Done branch ifError group3 goto refused else goto group3Done
+rejectTest at group3Done do newEntities3
+rejectTest at group3Done do newNames3
+rejectTest at group3Done do model3
+rejectTest at group3Done branch ifError model3 goto rejected3 else goto refused
 rejectTest at rejected3 do describe3
 rejectTest at rejected3 do expect3
-rejectTest at rejected3 do lex4
-rejectTest at rejected3 branch ifError lex4 goto refused else goto lexed4
-rejectTest at lexed4 do newWords4
-rejectTest at lexed4 do newRows4
-rejectTest at lexed4 do group4
-rejectTest at lexed4 branch ifError group4 goto refused else goto grouped4
-rejectTest at grouped4 do newEntities4
-rejectTest at grouped4 do newNames4
-rejectTest at grouped4 do model4
-rejectTest at grouped4 branch ifError model4 goto rejected4 else goto refused
+rejectTest at rejected3 goto case4
+rejectTest at case4 do lex4
+rejectTest at case4 branch ifError lex4 goto refused else goto lex4Done
+rejectTest at lex4Done do newWords4
+rejectTest at lex4Done do newRows4
+rejectTest at lex4Done do group4
+rejectTest at lex4Done branch ifError group4 goto refused else goto group4Done
+rejectTest at group4Done do newEntities4
+rejectTest at group4Done do newNames4
+rejectTest at group4Done do model4
+rejectTest at group4Done branch ifError model4 goto rejected4 else goto refused
 rejectTest at rejected4 do describe4
 rejectTest at rejected4 do expect4
-rejectTest at rejected4 return ok none
+rejectTest at rejected4 goto finished
+rejectTest at finished return ok none
 rejectTest at refused do failRefused
 rejectTest at refused return ok none
 
 store is region
 store in rejectTest
 store strategy arena
-store maxBytes 262144
+store maxBytes 4194304
 store released atReturn
 
 lex0 is call
@@ -811,14 +835,14 @@ model0 result none
 model0 ownedBy none
 model0 cleanedBy none
 model0 borrows none
-model0 catch modelError0 syntax.Rejection
+model0 catch rejection0 syntax.Rejection
 model0 suppresses none
 
 describe0 is call
 describe0 in rejectTest
 describe0 invokes syntax.diagnostic
 describe0 argument source String source0 lend
-describe0 argument rejection syntax.Rejection modelError0 copy
+describe0 argument rejection syntax.Rejection rejection0 copy
 describe0 argument region Region store lend
 describe0 result described0 String
 describe0 ownedBy store
@@ -921,14 +945,14 @@ model1 result none
 model1 ownedBy none
 model1 cleanedBy none
 model1 borrows none
-model1 catch modelError1 syntax.Rejection
+model1 catch rejection1 syntax.Rejection
 model1 suppresses none
 
 describe1 is call
 describe1 in rejectTest
 describe1 invokes syntax.diagnostic
 describe1 argument source String source1 lend
-describe1 argument rejection syntax.Rejection modelError1 copy
+describe1 argument rejection syntax.Rejection rejection1 copy
 describe1 argument region Region store lend
 describe1 result described1 String
 describe1 ownedBy store
@@ -1031,14 +1055,14 @@ model2 result none
 model2 ownedBy none
 model2 cleanedBy none
 model2 borrows none
-model2 catch modelError2 syntax.Rejection
+model2 catch rejection2 syntax.Rejection
 model2 suppresses none
 
 describe2 is call
 describe2 in rejectTest
 describe2 invokes syntax.diagnostic
 describe2 argument source String source2 lend
-describe2 argument rejection syntax.Rejection modelError2 copy
+describe2 argument rejection syntax.Rejection rejection2 copy
 describe2 argument region Region store lend
 describe2 result described2 String
 describe2 ownedBy store
@@ -1141,14 +1165,14 @@ model3 result none
 model3 ownedBy none
 model3 cleanedBy none
 model3 borrows none
-model3 catch modelError3 syntax.Rejection
+model3 catch rejection3 syntax.Rejection
 model3 suppresses none
 
 describe3 is call
 describe3 in rejectTest
 describe3 invokes syntax.diagnostic
 describe3 argument source String source3 lend
-describe3 argument rejection syntax.Rejection modelError3 copy
+describe3 argument rejection syntax.Rejection rejection3 copy
 describe3 argument region Region store lend
 describe3 result described3 String
 describe3 ownedBy store
@@ -1251,14 +1275,14 @@ model4 result none
 model4 ownedBy none
 model4 cleanedBy none
 model4 borrows none
-model4 catch modelError4 syntax.Rejection
+model4 catch rejection4 syntax.Rejection
 model4 suppresses none
 
 describe4 is call
 describe4 in rejectTest
 describe4 invokes syntax.diagnostic
 describe4 argument source String source4 lend
-describe4 argument rejection syntax.Rejection modelError4 copy
+describe4 argument rejection syntax.Rejection rejection4 copy
 describe4 argument region Region store lend
 describe4 result described4 String
 describe4 ownedBy store

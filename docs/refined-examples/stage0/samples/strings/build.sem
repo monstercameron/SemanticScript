@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+strings is project
+strings purpose "Slice, search, join, and compare text; a stage0 sample both runs agree on"
+strings target console
+strings version "0.1.0"
+strings language refined 1
+strings standardLibrary 1
+strings allows write console.stdout none
+strings requires none
+strings includesModule strings
+strings entry strings.main

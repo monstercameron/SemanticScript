@@ -79,7 +79,7 @@ Rejection variant outsideSource Word
 Rejection variant unsupportedKind Word
 Rejection variant strayRow Word
 Rejection variant duplicateName Word
-Rejection variant notMain Word
+Rejection variant badMain Word
 Rejection variant noMain Word
 Rejection variant unsupportedPredicate Word
 Rejection variant unsupportedPayload Word
@@ -99,6 +99,9 @@ Rejection variant splitBlock Word
 Rejection variant unsupportedLoop Word
 Rejection variant notFailing Word
 Rejection variant lostName Word
+Rejection variant typeOrder Word
+Rejection variant unknownVariant Word
+Rejection variant unknownOwner Word
 Rejection variant invalidCharacter Word
 Rejection variant unterminatedText Word
 Rejection variant integerTooLarge Word
@@ -1531,8 +1534,8 @@ rejectionWord label strayRowCase loopKind none
 rejectionWord label strayRowCase within none
 rejectionWord label duplicateNameCase loopKind none
 rejectionWord label duplicateNameCase within none
-rejectionWord label notMainCase loopKind none
-rejectionWord label notMainCase within none
+rejectionWord label badMainCase loopKind none
+rejectionWord label badMainCase within none
 rejectionWord label noMainCase loopKind none
 rejectionWord label noMainCase within none
 rejectionWord label unsupportedPredicateCase loopKind none
@@ -1571,6 +1574,12 @@ rejectionWord label notFailingCase loopKind none
 rejectionWord label notFailingCase within none
 rejectionWord label lostNameCase loopKind none
 rejectionWord label lostNameCase within none
+rejectionWord label typeOrderCase loopKind none
+rejectionWord label typeOrderCase within none
+rejectionWord label unknownVariantCase loopKind none
+rejectionWord label unknownVariantCase within none
+rejectionWord label unknownOwnerCase loopKind none
+rejectionWord label unknownOwnerCase within none
 rejectionWord label invalidCharacterCase loopKind none
 rejectionWord label invalidCharacterCase within none
 rejectionWord label unterminatedTextCase loopKind none
@@ -1587,7 +1596,7 @@ rejectionWord at begin case Rejection.outsideSource bind outsideSourceWord Word 
 rejectionWord at begin case Rejection.unsupportedKind bind unsupportedKindWord Word goto unsupportedKindCase
 rejectionWord at begin case Rejection.strayRow bind strayRowWord Word goto strayRowCase
 rejectionWord at begin case Rejection.duplicateName bind duplicateNameWord Word goto duplicateNameCase
-rejectionWord at begin case Rejection.notMain bind notMainWord Word goto notMainCase
+rejectionWord at begin case Rejection.badMain bind badMainWord Word goto badMainCase
 rejectionWord at begin case Rejection.noMain bind noMainWord Word goto noMainCase
 rejectionWord at begin case Rejection.unsupportedPredicate bind unsupportedPredicateWord Word goto unsupportedPredicateCase
 rejectionWord at begin case Rejection.unsupportedPayload bind unsupportedPayloadWord Word goto unsupportedPayloadCase
@@ -1607,6 +1616,9 @@ rejectionWord at begin case Rejection.splitBlock bind splitBlockWord Word goto s
 rejectionWord at begin case Rejection.unsupportedLoop bind unsupportedLoopWord Word goto unsupportedLoopCase
 rejectionWord at begin case Rejection.notFailing bind notFailingWord Word goto notFailingCase
 rejectionWord at begin case Rejection.lostName bind lostNameWord Word goto lostNameCase
+rejectionWord at begin case Rejection.typeOrder bind typeOrderWord Word goto typeOrderCase
+rejectionWord at begin case Rejection.unknownVariant bind unknownVariantWord Word goto unknownVariantCase
+rejectionWord at begin case Rejection.unknownOwner bind unknownOwnerWord Word goto unknownOwnerCase
 rejectionWord at begin case Rejection.invalidCharacter bind invalidCharacterWord Word goto invalidCharacterCase
 rejectionWord at begin case Rejection.unterminatedText bind unterminatedTextWord Word goto unterminatedTextCase
 rejectionWord at begin case Rejection.integerTooLarge bind integerTooLargeWord Word goto integerTooLargeCase
@@ -1618,7 +1630,7 @@ rejectionWord at outsideSourceCase return ok outsideSourceWord
 rejectionWord at unsupportedKindCase return ok unsupportedKindWord
 rejectionWord at strayRowCase return ok strayRowWord
 rejectionWord at duplicateNameCase return ok duplicateNameWord
-rejectionWord at notMainCase return ok notMainWord
+rejectionWord at badMainCase return ok badMainWord
 rejectionWord at noMainCase return ok noMainWord
 rejectionWord at unsupportedPredicateCase return ok unsupportedPredicateWord
 rejectionWord at unsupportedPayloadCase return ok unsupportedPayloadWord
@@ -1638,12 +1650,15 @@ rejectionWord at splitBlockCase return ok splitBlockWord
 rejectionWord at unsupportedLoopCase return ok unsupportedLoopWord
 rejectionWord at notFailingCase return ok notFailingWord
 rejectionWord at lostNameCase return ok lostNameWord
+rejectionWord at typeOrderCase return ok typeOrderWord
+rejectionWord at unknownVariantCase return ok unknownVariantWord
+rejectionWord at unknownOwnerCase return ok unknownOwnerWord
 rejectionWord at invalidCharacterCase return ok invalidCharacterWord
 rejectionWord at unterminatedTextCase return ok unterminatedTextWord
 rejectionWord at integerTooLargeCase return ok integerTooLargeWord
 
 rejectionMessage is operation
-rejectionMessage purpose "Say in words why a source was refused"
+rejectionMessage purpose "Say why a source is refused, in words"
 rejectionMessage invariant none
 rejectionMessage typeParameter none
 rejectionMessage input rejection Rejection copied
@@ -1674,8 +1689,8 @@ rejectionMessage label strayRowCase loopKind none
 rejectionMessage label strayRowCase within none
 rejectionMessage label duplicateNameCase loopKind none
 rejectionMessage label duplicateNameCase within none
-rejectionMessage label notMainCase loopKind none
-rejectionMessage label notMainCase within none
+rejectionMessage label badMainCase loopKind none
+rejectionMessage label badMainCase within none
 rejectionMessage label noMainCase loopKind none
 rejectionMessage label noMainCase within none
 rejectionMessage label unsupportedPredicateCase loopKind none
@@ -1714,6 +1729,12 @@ rejectionMessage label notFailingCase loopKind none
 rejectionMessage label notFailingCase within none
 rejectionMessage label lostNameCase loopKind none
 rejectionMessage label lostNameCase within none
+rejectionMessage label typeOrderCase loopKind none
+rejectionMessage label typeOrderCase within none
+rejectionMessage label unknownVariantCase loopKind none
+rejectionMessage label unknownVariantCase within none
+rejectionMessage label unknownOwnerCase loopKind none
+rejectionMessage label unknownOwnerCase within none
 rejectionMessage label invalidCharacterCase loopKind none
 rejectionMessage label invalidCharacterCase within none
 rejectionMessage label unterminatedTextCase loopKind none
@@ -1728,11 +1749,11 @@ rejectionMessage let outsideSourceText String "a word lies outside the source" i
 rejectionMessage let unsupportedKindText String "this entity kind is outside the stage0 subset" immutable
 rejectionMessage let strayRowText String "this row's subject is not the entity above it" immutable
 rejectionMessage let duplicateNameText String "this name is already declared" immutable
-rejectionMessage let notMainText String "stage0 compiles one operation, and it is named main" immutable
+rejectionMessage let badMainText String "main takes no input, gives an ExitCode, and raises nothing" immutable
 rejectionMessage let noMainText String "the module has no main operation" immutable
 rejectionMessage let unsupportedPredicateText String "this predicate is outside the stage0 subset here" immutable
 rejectionMessage let unsupportedPayloadText String "this payload is outside the stage0 subset" immutable
-rejectionMessage let unsupportedTypeText String "this type is outside the stage0 subset: String, Int64, ExitCode, Bool" immutable
+rejectionMessage let unsupportedTypeText String "this type is outside the stage0 subset" immutable
 rejectionMessage let badLiteralText String "this literal does not fit its type" immutable
 rejectionMessage let unsupportedEscapeText String "stage0 does not read \\x escapes in text" immutable
 rejectionMessage let unknownValueText String "no value has this name" immutable
@@ -1741,13 +1762,16 @@ rejectionMessage let unsupportedTargetText String "this call target is outside t
 rejectionMessage let wrongArgumentText String "this argument does not match the target's slot, type, or mode" immutable
 rejectionMessage let argumentCountText String "the call passes the wrong number of arguments" immutable
 rejectionMessage let unknownLabelText String "no label has this name" immutable
-rejectionMessage let unknownCallText String "no call in main has this name" immutable
+rejectionMessage let unknownCallText String "no call in this operation has this name" immutable
 rejectionMessage let unsupportedStepText String "this step is outside the stage0 subset" immutable
 rejectionMessage let notMutableText String "this value is immutable" immutable
 rejectionMessage let splitBlockText String "this label's steps are not together" immutable
-rejectionMessage let unsupportedLoopText String "stage0 does not compile forEach loops" immutable
+rejectionMessage let unsupportedLoopText String "stage0 compiles forEach loops over lists only" immutable
 rejectionMessage let notFailingText String "this call cannot fail, so there is no error to branch on" immutable
 rejectionMessage let lostNameText String "stage0 lost track of a name it had checked; this is a fault in stage0" immutable
+rejectionMessage let typeOrderText String "a record or enum holds only types declared above it" immutable
+rejectionMessage let unknownVariantText String "this variant is not one of the matched enum's" immutable
+rejectionMessage let unknownOwnerText String "no operation of this module has this name" immutable
 rejectionMessage let invalidCharacterText String "no word begins with this character" immutable
 rejectionMessage let unterminatedTextText String "quoted text is not closed before the end of its line" immutable
 rejectionMessage let integerTooLargeText String "this integer is too large for Int64" immutable
@@ -1760,7 +1784,7 @@ rejectionMessage at begin case Rejection.outsideSource bind outsideSourceWord Wo
 rejectionMessage at begin case Rejection.unsupportedKind bind unsupportedKindWord Word goto unsupportedKindCase
 rejectionMessage at begin case Rejection.strayRow bind strayRowWord Word goto strayRowCase
 rejectionMessage at begin case Rejection.duplicateName bind duplicateNameWord Word goto duplicateNameCase
-rejectionMessage at begin case Rejection.notMain bind notMainWord Word goto notMainCase
+rejectionMessage at begin case Rejection.badMain bind badMainWord Word goto badMainCase
 rejectionMessage at begin case Rejection.noMain bind noMainWord Word goto noMainCase
 rejectionMessage at begin case Rejection.unsupportedPredicate bind unsupportedPredicateWord Word goto unsupportedPredicateCase
 rejectionMessage at begin case Rejection.unsupportedPayload bind unsupportedPayloadWord Word goto unsupportedPayloadCase
@@ -1780,6 +1804,9 @@ rejectionMessage at begin case Rejection.splitBlock bind splitBlockWord Word got
 rejectionMessage at begin case Rejection.unsupportedLoop bind unsupportedLoopWord Word goto unsupportedLoopCase
 rejectionMessage at begin case Rejection.notFailing bind notFailingWord Word goto notFailingCase
 rejectionMessage at begin case Rejection.lostName bind lostNameWord Word goto lostNameCase
+rejectionMessage at begin case Rejection.typeOrder bind typeOrderWord Word goto typeOrderCase
+rejectionMessage at begin case Rejection.unknownVariant bind unknownVariantWord Word goto unknownVariantCase
+rejectionMessage at begin case Rejection.unknownOwner bind unknownOwnerWord Word goto unknownOwnerCase
 rejectionMessage at begin case Rejection.invalidCharacter bind invalidCharacterWord Word goto invalidCharacterCase
 rejectionMessage at begin case Rejection.unterminatedText bind unterminatedTextWord Word goto unterminatedTextCase
 rejectionMessage at begin case Rejection.integerTooLarge bind integerTooLargeWord Word goto integerTooLargeCase
@@ -1791,7 +1818,7 @@ rejectionMessage at outsideSourceCase return ok outsideSourceText
 rejectionMessage at unsupportedKindCase return ok unsupportedKindText
 rejectionMessage at strayRowCase return ok strayRowText
 rejectionMessage at duplicateNameCase return ok duplicateNameText
-rejectionMessage at notMainCase return ok notMainText
+rejectionMessage at badMainCase return ok badMainText
 rejectionMessage at noMainCase return ok noMainText
 rejectionMessage at unsupportedPredicateCase return ok unsupportedPredicateText
 rejectionMessage at unsupportedPayloadCase return ok unsupportedPayloadText
@@ -1811,6 +1838,9 @@ rejectionMessage at splitBlockCase return ok splitBlockText
 rejectionMessage at unsupportedLoopCase return ok unsupportedLoopText
 rejectionMessage at notFailingCase return ok notFailingText
 rejectionMessage at lostNameCase return ok lostNameText
+rejectionMessage at typeOrderCase return ok typeOrderText
+rejectionMessage at unknownVariantCase return ok unknownVariantText
+rejectionMessage at unknownOwnerCase return ok unknownOwnerText
 rejectionMessage at invalidCharacterCase return ok invalidCharacterText
 rejectionMessage at unterminatedTextCase return ok unterminatedTextText
 rejectionMessage at integerTooLargeCase return ok integerTooLargeText

@@ -1,0 +1,51 @@
+# The stage0 compiler's checker. It reads the model's entities row by row,
+# accepts the stage0 subset, and refuses anything else with a `Rejection` at the
+# word concerned. It works in two passes, and collects what the emitter needs:
+#
+# - checkDeclarations reads every entity. Types are numbered: the built-in
+#   types 1 to 6 (String, Int64, ExitCode, Bool, Byte, Region), the standard
+#   error types together as 7 (a caught standard error can only be branched
+#   on), the host library's handles and `Bytes` 8 to 11 (ByteBuffer,
+#   process.Arguments, time.Deadline, Bytes), and the module's records, enums,
+#   `list.List` typeInstances, and tables from 12 in source order. Record
+#   fields and enum variants become members; every standard library target the
+#   subset compiles (the `builtinTargets` table), every operation, every record
+#   constructor and field reader, every variant constructor, every list member,
+#   and every table's `rowAt` and `length` becomes a call target with its
+#   argument slots, types, and passing modes, its result type, and what it
+#   raises. Each call, task, and region is tied to the operation its `in` row
+#   names.
+# - checkOperation reads one operation: its inputs, lets, labels, and regions,
+#   the values its steps bind (`branch ifNext` items, `case` payloads), each of
+#   its calls against the call's target, and each step in order.
+#
+# The subset: a module of constants (built-in types, literal values),
+# records, enums with payloads, lists, tables of records (cells are literals
+# or variants without payload), and operations with copied, borrowed,
+# and borrowedMutable inputs, one output (or none), an output owned by a region
+# input, `raises none` or an enum of the module, `maxRecursion` on recursive
+# operations, and regions. main takes no input, gives an ExitCode, and raises
+# nothing; an `async true` operation is compiled like any other, and a task
+# runs when it is started, as in an executable (D-37). Steps: `do`, `set`,
+# `goto`, `branch if`, `branch ifError`, `branch ifNext` over a list or a
+# table in a forEach loop, `match` and `case` on an enum of the module,
+# `return ok`, `return error`, `start <task> into none`, and `join`. Labels
+# may be loops of any kind; `maxIterations` is kept so the emitted program
+# traps where `refined run` would. A type held by value in a record or enum (or a list's item) must
+# be declared above the type holding it, so the C structs follow source order.
+#
+# What is checked: every row's predicate is one the subset reads, on an entity
+# of the kind it belongs to; fixed payloads (`typeParameter none`, `async
+# false`, `cleanedBy none`, ...) are exactly those; types are known; literals
+# fit their types; argument slots, types, and passing modes match the target;
+# results and caught errors have the target's types; the values a call passes
+# and a step names exist with the types they need; `set` changes only mutable
+# lets; labels and calls a step names exist; a case's variant belongs to the
+# matched enum; returns give the operation's output or error type; and each
+# label's steps are together. The flow rules (`refined check`'s R5xx: values
+# set before use, every block ending in a jump, exhaustive matches, ownership)
+# are not repeated: run `refined check` on a program before compiling it with
+# stage0.
+#
+# This module is generated from a shorter description by a generator kept
+# outside the repository; it is ordinary SemanticScript and is edited as such.

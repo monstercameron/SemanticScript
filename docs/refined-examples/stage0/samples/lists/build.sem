@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+lists is project
+lists purpose "Fill and read lists of numbers, texts, and records in a region; a stage0 sample both runs agree on"
+lists target console
+lists version "0.1.0"
+lists language refined 1
+lists standardLibrary 1
+lists allows write console.stdout none
+lists requires none
+lists includesModule lists
+lists entry lists.main

@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+depth is project
+depth purpose "Recurse past a stated maxRecursion, so the bound's trap can be compared; a stage0 sample both runs agree on"
+depth target console
+depth version "0.1.0"
+depth language refined 1
+depth standardLibrary 1
+depth allows write console.stdout none
+depth requires none
+depth includesModule depth
+depth entry depth.main

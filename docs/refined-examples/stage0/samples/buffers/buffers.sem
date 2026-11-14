@@ -1,0 +1,441 @@
+# A stage0 sample: the host library. It builds a line in a byte buffer
+# (text, a number, and a byte), turns it back into text, parses a number out
+# of text, classifies bytes, and turns text into bytes and back, all through
+# the runtime's `refined_host` and inline targets, as an executable built by
+# `refined build` does. It exits with code 0:
+#
+#   total: 42!
+#   length: 10
+#   parsed: 1234
+#   not a number
+#   digit, letter
+#   round trip: abc
+buffers is module
+buffers purpose "Build text in a byte buffer, parse numbers, and classify bytes"
+buffers path buffers
+buffers imports standard.console
+buffers imports standard.buffer
+buffers imports standard.string
+buffers imports standard.byte
+buffers imports standard.logic
+buffers exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Build a line in a buffer, then parse, classify, and convert text"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label readBackDone loopKind none
+main label readBackDone within none
+main label printTextDone loopKind none
+main label printTextDone within none
+main label writeLengthLeadDone loopKind none
+main label writeLengthLeadDone within none
+main label printLengthDone loopKind none
+main label printLengthDone within none
+main label parseDone loopKind none
+main label parseDone within none
+main label writeParsedLeadDone loopKind none
+main label writeParsedLeadDone within none
+main label printParsedDone loopKind none
+main label printParsedDone within none
+main label parseBadDone loopKind none
+main label parseBadDone within none
+main label printNotParsedDone loopKind none
+main label printNotParsedDone within none
+main label notNumber loopKind none
+main label notNumber within none
+main label writeNotNumberDone loopKind none
+main label writeNotNumberDone within none
+main label classify loopKind none
+main label classify within none
+main label readDigitDone loopKind none
+main label readDigitDone within none
+main label readLetterDone loopKind none
+main label readLetterDone within none
+main label printBoth loopKind none
+main label printBoth within none
+main label writeBothDone loopKind none
+main label writeBothDone within none
+main label fromBytesDone loopKind none
+main label fromBytesDone within none
+main label writeRoundLeadDone loopKind none
+main label writeRoundLeadDone within none
+main label writeRoundDone loopKind none
+main label writeRoundDone within none
+main label failed loopKind none
+main label failed within none
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main let totalText String "total: " immutable
+main let fortyTwo Int64 42 immutable
+main let bang Byte 33 immutable
+main let lengthText String "length: " immutable
+main let digits String "1234" immutable
+main let parsedText String "parsed: " immutable
+main let word String "12a" immutable
+main let notNumberText String "not a number" immutable
+main let zero Int64 0 immutable
+main let two Int64 2 immutable
+main let bothText String "digit, letter" immutable
+main let abc String "abc" immutable
+main let roundText String "round trip: " immutable
+main at begin do makeBuffer
+main at begin do addText
+main at begin do addNumber
+main at begin do addMark
+main at begin do readBack
+main at begin branch ifError readBack goto failed else goto readBackDone
+main at readBackDone do printText
+main at readBackDone branch ifError printText goto printTextDone else goto printTextDone
+main at printTextDone do measure
+main at printTextDone do writeLengthLead
+main at printTextDone branch ifError writeLengthLead goto writeLengthLeadDone else goto writeLengthLeadDone
+main at writeLengthLeadDone do printLength
+main at writeLengthLeadDone branch ifError printLength goto printLengthDone else goto printLengthDone
+main at printLengthDone do parse
+main at printLengthDone branch ifError parse goto failed else goto parseDone
+main at parseDone do writeParsedLead
+main at parseDone branch ifError writeParsedLead goto writeParsedLeadDone else goto writeParsedLeadDone
+main at writeParsedLeadDone do printParsed
+main at writeParsedLeadDone branch ifError printParsed goto printParsedDone else goto printParsedDone
+main at printParsedDone do parseBad
+main at printParsedDone branch ifError parseBad goto notNumber else goto parseBadDone
+main at parseBadDone do printNotParsed
+main at parseBadDone branch ifError printNotParsed goto printNotParsedDone else goto printNotParsedDone
+main at printNotParsedDone goto classify
+main at notNumber do writeNotNumber
+main at notNumber branch ifError writeNotNumber goto writeNotNumberDone else goto writeNotNumberDone
+main at writeNotNumberDone goto classify
+main at classify do readDigit
+main at classify branch ifError readDigit goto failed else goto readDigitDone
+main at readDigitDone do digitCheck
+main at readDigitDone do readLetter
+main at readDigitDone branch ifError readLetter goto failed else goto readLetterDone
+main at readLetterDone do letterCheck
+main at readLetterDone do bothCheck
+main at readLetterDone branch if both goto printBoth else goto failed
+main at printBoth do writeBoth
+main at printBoth branch ifError writeBoth goto writeBothDone else goto writeBothDone
+main at writeBothDone do toBytes
+main at writeBothDone do fromBytes
+main at writeBothDone branch ifError fromBytes goto failed else goto fromBytesDone
+main at fromBytesDone do writeRoundLead
+main at fromBytesDone branch ifError writeRoundLead goto writeRoundLeadDone else goto writeRoundLeadDone
+main at writeRoundLeadDone do writeRound
+main at writeRoundLeadDone branch ifError writeRound goto writeRoundDone else goto writeRoundDone
+main at writeRoundDone return ok okCode
+main at failed return ok failCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+makeBuffer is call
+makeBuffer in main
+makeBuffer invokes buffer.new
+makeBuffer argument region Region scratch lend
+makeBuffer result line buffer.ByteBuffer
+makeBuffer ownedBy scratch
+makeBuffer cleanedBy none
+makeBuffer borrows none
+makeBuffer catch none
+makeBuffer suppresses none
+
+addText is call
+addText in main
+addText invokes buffer.appendString
+addText argument buffer buffer.ByteBuffer line lendMutable
+addText argument text String totalText lend
+addText result none
+addText ownedBy none
+addText cleanedBy none
+addText borrows none
+addText catch none
+addText suppresses none
+
+addNumber is call
+addNumber in main
+addNumber invokes buffer.appendInt64
+addNumber argument buffer buffer.ByteBuffer line lendMutable
+addNumber argument value Int64 fortyTwo copy
+addNumber result none
+addNumber ownedBy none
+addNumber cleanedBy none
+addNumber borrows none
+addNumber catch none
+addNumber suppresses none
+
+addMark is call
+addMark in main
+addMark invokes buffer.appendByte
+addMark argument buffer buffer.ByteBuffer line lendMutable
+addMark argument value Byte bang copy
+addMark result none
+addMark ownedBy none
+addMark cleanedBy none
+addMark borrows none
+addMark catch none
+addMark suppresses none
+
+readBack is call
+readBack in main
+readBack invokes buffer.toString
+readBack argument buffer buffer.ByteBuffer line lend
+readBack argument region Region scratch lend
+readBack result text String
+readBack ownedBy scratch
+readBack cleanedBy none
+readBack borrows none
+readBack catch readBackError string.Utf8Error
+readBack suppresses none
+
+printText is call
+printText rationale "The failure has nowhere to be reported, so it is discarded"
+printText in main
+printText invokes console.writeLine
+printText argument text String text lend
+printText result none
+printText ownedBy none
+printText cleanedBy none
+printText borrows none
+printText catch printTextError console.WriteError
+printText suppresses console.WriteError.failed
+
+measure is call
+measure in main
+measure invokes buffer.length
+measure argument buffer buffer.ByteBuffer line lend
+measure result size Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+writeLengthLead is call
+writeLengthLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeLengthLead in main
+writeLengthLead invokes console.write
+writeLengthLead argument text String lengthText lend
+writeLengthLead result none
+writeLengthLead ownedBy none
+writeLengthLead cleanedBy none
+writeLengthLead borrows none
+writeLengthLead catch writeLengthLeadError console.WriteError
+writeLengthLead suppresses console.WriteError.failed
+
+printLength is call
+printLength rationale "The failure has nowhere to be reported, so it is discarded"
+printLength in main
+printLength invokes console.writeIntegerLine
+printLength argument value Int64 size copy
+printLength result none
+printLength ownedBy none
+printLength cleanedBy none
+printLength borrows none
+printLength catch printLengthError console.WriteError
+printLength suppresses console.WriteError.failed
+
+parse is call
+parse in main
+parse invokes string.toInt64
+parse argument text String digits lend
+parse result parsed Int64
+parse ownedBy none
+parse cleanedBy none
+parse borrows none
+parse catch parseError string.ParseError
+parse suppresses none
+
+writeParsedLead is call
+writeParsedLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeParsedLead in main
+writeParsedLead invokes console.write
+writeParsedLead argument text String parsedText lend
+writeParsedLead result none
+writeParsedLead ownedBy none
+writeParsedLead cleanedBy none
+writeParsedLead borrows none
+writeParsedLead catch writeParsedLeadError console.WriteError
+writeParsedLead suppresses console.WriteError.failed
+
+printParsed is call
+printParsed rationale "The failure has nowhere to be reported, so it is discarded"
+printParsed in main
+printParsed invokes console.writeIntegerLine
+printParsed argument value Int64 parsed copy
+printParsed result none
+printParsed ownedBy none
+printParsed cleanedBy none
+printParsed borrows none
+printParsed catch printParsedError console.WriteError
+printParsed suppresses console.WriteError.failed
+
+parseBad is call
+parseBad in main
+parseBad invokes string.toInt64
+parseBad argument text String word lend
+parseBad result notParsed Int64
+parseBad ownedBy none
+parseBad cleanedBy none
+parseBad borrows none
+parseBad catch parseBadError string.ParseError
+parseBad suppresses none
+
+printNotParsed is call
+printNotParsed rationale "The failure has nowhere to be reported, so it is discarded"
+printNotParsed in main
+printNotParsed invokes console.writeIntegerLine
+printNotParsed argument value Int64 notParsed copy
+printNotParsed result none
+printNotParsed ownedBy none
+printNotParsed cleanedBy none
+printNotParsed borrows none
+printNotParsed catch printNotParsedError console.WriteError
+printNotParsed suppresses console.WriteError.failed
+
+writeNotNumber is call
+writeNotNumber rationale "The failure has nowhere to be reported, so it is discarded"
+writeNotNumber in main
+writeNotNumber invokes console.writeLine
+writeNotNumber argument text String notNumberText lend
+writeNotNumber result none
+writeNotNumber ownedBy none
+writeNotNumber cleanedBy none
+writeNotNumber borrows none
+writeNotNumber catch writeNotNumberError console.WriteError
+writeNotNumber suppresses console.WriteError.failed
+
+readDigit is call
+readDigit in main
+readDigit invokes string.byteAt
+readDigit argument text String digits lend
+readDigit argument index Int64 zero copy
+readDigit result firstDigit Byte
+readDigit ownedBy none
+readDigit cleanedBy none
+readDigit borrows none
+readDigit catch readDigitError string.StringIndexError
+readDigit suppresses none
+
+digitCheck is call
+digitCheck in main
+digitCheck invokes byte.isDigit
+digitCheck argument value Byte firstDigit copy
+digitCheck result isDigit Bool
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+readLetter is call
+readLetter in main
+readLetter invokes string.byteAt
+readLetter argument text String word lend
+readLetter argument index Int64 two copy
+readLetter result firstLetter Byte
+readLetter ownedBy none
+readLetter cleanedBy none
+readLetter borrows none
+readLetter catch readLetterError string.StringIndexError
+readLetter suppresses none
+
+letterCheck is call
+letterCheck in main
+letterCheck invokes byte.isLetter
+letterCheck argument value Byte firstLetter copy
+letterCheck result isLetter Bool
+letterCheck ownedBy none
+letterCheck cleanedBy none
+letterCheck borrows none
+letterCheck catch none
+letterCheck suppresses none
+
+bothCheck is call
+bothCheck in main
+bothCheck invokes logic.and
+bothCheck argument left Bool isDigit copy
+bothCheck argument right Bool isLetter copy
+bothCheck result both Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+writeBoth is call
+writeBoth rationale "The failure has nowhere to be reported, so it is discarded"
+writeBoth in main
+writeBoth invokes console.writeLine
+writeBoth argument text String bothText lend
+writeBoth result none
+writeBoth ownedBy none
+writeBoth cleanedBy none
+writeBoth borrows none
+writeBoth catch writeBothError console.WriteError
+writeBoth suppresses console.WriteError.failed
+
+toBytes is call
+toBytes in main
+toBytes invokes string.toBytes
+toBytes argument text String abc lend
+toBytes result raw Bytes
+toBytes ownedBy none
+toBytes cleanedBy none
+toBytes borrows abc
+toBytes catch none
+toBytes suppresses none
+
+fromBytes is call
+fromBytes in main
+fromBytes invokes string.fromBytes
+fromBytes argument bytes Bytes raw lend
+fromBytes argument region Region scratch lend
+fromBytes result back String
+fromBytes ownedBy scratch
+fromBytes cleanedBy none
+fromBytes borrows none
+fromBytes catch fromBytesError string.Utf8Error
+fromBytes suppresses none
+
+writeRoundLead is call
+writeRoundLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeRoundLead in main
+writeRoundLead invokes console.write
+writeRoundLead argument text String roundText lend
+writeRoundLead result none
+writeRoundLead ownedBy none
+writeRoundLead cleanedBy none
+writeRoundLead borrows none
+writeRoundLead catch writeRoundLeadError console.WriteError
+writeRoundLead suppresses console.WriteError.failed
+
+writeRound is call
+writeRound rationale "The failure has nowhere to be reported, so it is discarded"
+writeRound in main
+writeRound invokes console.writeLine
+writeRound argument text String back lend
+writeRound result none
+writeRound ownedBy none
+writeRound cleanedBy none
+writeRound borrows none
+writeRound catch writeRoundError console.WriteError
+writeRound suppresses console.WriteError.failed

@@ -1,10 +1,13 @@
-# Tests for emitc.sem: every invariant of `emitProgram` is verified below, on
-# the squares sample (samples/squares/squares.sem), whose C is compared in full.
+# Tests for emitc.sem: every invariant of `emitModule` is verified below, on
+# the squares sample (samples/squares/squares.sem), whose C is searched for its
+# signature, constant, call, jumps, return, and C main, and on a copy that
+# calls a target outside the subset, which writes nothing.
 
 emitTest is test
-emitTest purpose "The squares sample is written as the prelude and a C main with typed locals, a failure flag, a loop counter, labels, and jumps that count and reset the loop's passes"
-emitTest verifies emitProgram writesC
-emitTest verifies emitProgram countsLoopPasses
+emitTest purpose "The squares sample is written as C: the prelude, its constant, a function for main with its locals, labels, and jumps that count and reset the loop passes, and a C main; a source outside the subset is refused"
+emitTest verifies emitModule writesC
+emitTest verifies emitModule countsLoopPasses
+emitTest verifies emitModule refusesOutsideSubset
 emitTest typeParameter none
 emitTest input none
 emitTest output none
@@ -17,205 +20,189 @@ emitTest async false
 emitTest maxRecursion none
 emitTest label begin loopKind none
 emitTest label begin within none
-emitTest label lexed loopKind none
-emitTest label lexed within none
-emitTest label grouped loopKind none
-emitTest label grouped within none
-emitTest label modelled loopKind none
-emitTest label modelled within none
-emitTest label checked loopKind none
-emitTest label checked within none
-emitTest label emitted loopKind none
-emitTest label emitted within none
-emitTest label compare loopKind none
-emitTest label compare within none
+emitTest label lexXDone loopKind none
+emitTest label lexXDone within none
+emitTest label groupXDone loopKind none
+emitTest label groupXDone within none
+emitTest label modelXDone loopKind none
+emitTest label modelXDone within none
+emitTest label emitDone loopKind none
+emitTest label emitDone within none
+emitTest label readCDone loopKind none
+emitTest label readCDone within none
+emitTest label findMainWrapperDone loopKind none
+emitTest label findMainWrapperDone within none
+emitTest label findSignatureDone loopKind none
+emitTest label findSignatureDone within none
+emitTest label findConstantTextDone loopKind none
+emitTest label findConstantTextDone within none
+emitTest label findPassTextDone loopKind none
+emitTest label findPassTextDone within none
+emitTest label findResetTextDone loopKind none
+emitTest label findResetTextDone within none
+emitTest label findCallTextDone loopKind none
+emitTest label findCallTextDone within none
+emitTest label findReturnTextDone loopKind none
+emitTest label findReturnTextDone within none
+emitTest label lexYDone loopKind none
+emitTest label lexYDone within none
+emitTest label groupYDone loopKind none
+emitTest label groupYDone within none
+emitTest label modelYDone loopKind none
+emitTest label modelYDone within none
+emitTest label badRefused loopKind none
+emitTest label badRefused within none
 emitTest label refused loopKind none
 emitTest label refused within none
 emitTest let source String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.multiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
-emitTest let expectedMain String "int main(void) {\n  ss_start();\n  int64_t v_limit = 0;\n  int64_t v_number = 0;\n  int64_t v_one = 0;\n  int v_okCode = 0;\n  int v_failCode = 0;\n  bool v_pastLimit = false;\n  int64_t v_squared = 0;\n  int64_t v_nextNumber = 0;\n  bool f_printIt = false;\n  int64_t n_nextSquare = 0;\n  v_limit = 5;\n  v_number = 1;\n  v_one = 1;\n  v_okCode = 0;\n  v_failCode = 1;\n  goto l_begin;\nl_begin:;\n  { n_nextSquare = 0; goto l_nextSquare; }\nl_nextSquare:;\n  v_pastLimit = (v_number > v_limit);\n  if (v_pastLimit) { goto l_finished; } else { goto l_printSquare; }\nl_printSquare:;\n  v_squared = ss_multiply(v_number, v_number);\n  f_printIt = ss_write_integer_line(v_squared);\n  if (f_printIt) { goto l_failed; } else { goto l_advance; }\nl_advance:;\n  v_nextNumber = ss_add(v_number, v_one);\n  v_number = v_nextNumber;\n  { ss_pass(&n_nextSquare, v_limit, \"nextSquare\"); goto l_nextSquare; }\nl_finished:;\n  return v_okCode;\nl_failed:;\n  return v_failCode;\n}\n" immutable
-emitTest let zero Int64 0 immutable
+emitTest let badSource String "# A stage0 sample: an arithmetic loop. It prints the squares of 1 to `limit`\n# (1, 4, 9, 16, 25), one per line, from a `while` loop bounded by the module\n# constant `limit`, and exits with code 0.\n\nsquares is module\nsquares purpose \"Print the squares of the whole numbers from 1 to a limit\"\nsquares path squares\nsquares imports standard.console\nsquares imports standard.math\nsquares imports standard.compare\nsquares exports main\n\nstdoutWriter is capability\nstdoutWriter purpose \"Authority to write lines to standard output\"\nstdoutWriter grants write console.stdout none\n\nlimit is constant\nlimit purpose \"The last number whose square is printed\"\nlimit type Int64\nlimit value 5\n\nmain is operation\nmain purpose \"Print the square of each whole number from 1 to the limit\"\nmain invariant none\nmain typeParameter none\nmain input none\nmain output ExitCode\nmain outputOwnedBy none\nmain raises none\nmain effect write console.stdout\nmain uses stdoutWriter\nmain memoryHeap false\nmain async false\nmain maxRecursion none\nmain label begin loopKind none\nmain label begin within none\nmain label nextSquare note \"Each pass prints one square; the loop returns to its header once per number\"\nmain label nextSquare loopKind while\nmain label nextSquare within none\nmain label nextSquare maxIterations limit\nmain label printSquare loopKind none\nmain label printSquare within nextSquare\nmain label advance loopKind none\nmain label advance within nextSquare\nmain label finished loopKind none\nmain label finished within none\nmain label failed loopKind none\nmain label failed within none\nmain let number Int64 1 mutable\nmain let one Int64 1 immutable\nmain let okCode ExitCode 0 immutable\nmain let failCode ExitCode 1 immutable\nmain at begin goto nextSquare\nmain at nextSquare do pastLimitCheck\nmain at nextSquare branch if pastLimit goto finished else goto printSquare\nmain at printSquare do square\nmain at printSquare do printIt\nmain at printSquare branch ifError printIt goto failed else goto advance\nmain at advance do addOne\nmain at advance set number nextNumber\nmain at advance goto nextSquare\nmain at finished return ok okCode\nmain at failed return ok failCode\n\npastLimitCheck is call\npastLimitCheck in main\npastLimitCheck invokes compare.greaterThanInt64\npastLimitCheck argument left Int64 number copy\npastLimitCheck argument right Int64 limit copy\npastLimitCheck result pastLimit Bool\npastLimitCheck ownedBy none\npastLimitCheck cleanedBy none\npastLimitCheck borrows none\npastLimitCheck catch none\npastLimitCheck suppresses none\n\nsquare is call\nsquare in main\nsquare invokes math.wrappingMultiplyInt64\nsquare argument left Int64 number copy\nsquare argument right Int64 number copy\nsquare result squared Int64\nsquare ownedBy none\nsquare cleanedBy none\nsquare borrows none\nsquare catch none\nsquare suppresses none\n\nprintIt is call\nprintIt in main\nprintIt invokes console.writeIntegerLine\nprintIt argument value Int64 squared copy\nprintIt result none\nprintIt ownedBy none\nprintIt cleanedBy none\nprintIt borrows none\nprintIt catch printError console.WriteError\nprintIt suppresses none\n\naddOne is call\naddOne in main\naddOne invokes math.addInt64\naddOne argument left Int64 number copy\naddOne argument right Int64 one copy\naddOne result nextNumber Int64\naddOne ownedBy none\naddOne cleanedBy none\naddOne borrows none\naddOne catch none\naddOne suppresses none\n" immutable
 emitTest let refusedText String "the front end refused the source or a step failed" immutable
-emitTest at begin do lex
-emitTest at begin branch ifError lex goto refused else goto lexed
-emitTest at lexed do newWords
-emitTest at lexed do newRows
-emitTest at lexed do group
-emitTest at lexed branch ifError group goto refused else goto grouped
-emitTest at grouped do newEntities
-emitTest at grouped do newNames
-emitTest at grouped do model
-emitTest at grouped branch ifError model goto refused else goto modelled
-emitTest at modelled do newValues
-emitTest at modelled do newCalls
-emitTest at modelled do newLabels
-emitTest at modelled do newSteps
-emitTest at modelled do check
-emitTest at modelled branch ifError check goto refused else goto checked
-emitTest at checked do newC
-emitTest at checked do readAnchor
-emitTest at checked do emit
-emitTest at checked branch ifError emit goto refused else goto emitted
-emitTest at emitted do readC
-emitTest at emitted branch ifError readC goto refused else goto compare
-emitTest at compare do joinExpected
-emitTest at compare do expectC
-emitTest at compare return ok none
+emitTest let mainWrapper String "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_main();\n}\n" immutable
+emitTest let signature String "static int o_main(void) {\n" immutable
+emitTest let constantText String "static const int64_t v_limit = 5;\n" immutable
+emitTest let passText String "{ ss_pass(&n_nextSquare, v_limit, \"nextSquare\"); goto l_nextSquare; }" immutable
+emitTest let resetText String "{ n_nextSquare = 0; goto l_nextSquare; }" immutable
+emitTest let callText String "  f_printIt = ss_write_integer_line(v_squared);\n" immutable
+emitTest let returnText String "  { int ss_result = v_okCode; return ss_result; }\n" immutable
+emitTest let zero Int64 0 immutable
+emitTest at begin do lexX
+emitTest at begin branch ifError lexX goto refused else goto lexXDone
+emitTest at lexXDone do newWordsX
+emitTest at lexXDone do newRowsX
+emitTest at lexXDone do groupX
+emitTest at lexXDone branch ifError groupX goto refused else goto groupXDone
+emitTest at groupXDone do newEntitiesX
+emitTest at groupXDone do newNamesX
+emitTest at groupXDone do modelX
+emitTest at groupXDone branch ifError modelX goto refused else goto modelXDone
+emitTest at modelXDone do newC
+emitTest at modelXDone do emit
+emitTest at modelXDone branch ifError emit goto refused else goto emitDone
+emitTest at emitDone do readC
+emitTest at emitDone branch ifError readC goto refused else goto readCDone
+emitTest at readCDone do findMainWrapper
+emitTest at readCDone branch ifError findMainWrapper goto refused else goto findMainWrapperDone
+emitTest at findMainWrapperDone do findSignature
+emitTest at findMainWrapperDone branch ifError findSignature goto refused else goto findSignatureDone
+emitTest at findSignatureDone do findConstantText
+emitTest at findSignatureDone branch ifError findConstantText goto refused else goto findConstantTextDone
+emitTest at findConstantTextDone do findPassText
+emitTest at findConstantTextDone branch ifError findPassText goto refused else goto findPassTextDone
+emitTest at findPassTextDone do findResetText
+emitTest at findPassTextDone branch ifError findResetText goto refused else goto findResetTextDone
+emitTest at findResetTextDone do findCallText
+emitTest at findResetTextDone branch ifError findCallText goto refused else goto findCallTextDone
+emitTest at findCallTextDone do findReturnText
+emitTest at findCallTextDone branch ifError findReturnText goto refused else goto findReturnTextDone
+emitTest at findReturnTextDone do lexY
+emitTest at findReturnTextDone branch ifError lexY goto refused else goto lexYDone
+emitTest at lexYDone do newWordsY
+emitTest at lexYDone do newRowsY
+emitTest at lexYDone do groupY
+emitTest at lexYDone branch ifError groupY goto refused else goto groupYDone
+emitTest at groupYDone do newEntitiesY
+emitTest at groupYDone do newNamesY
+emitTest at groupYDone do modelY
+emitTest at groupYDone branch ifError modelY goto refused else goto modelYDone
+emitTest at modelYDone do newBadC
+emitTest at modelYDone do emitBad
+emitTest at modelYDone branch ifError emitBad goto badRefused else goto refused
+emitTest at badRefused do badLength
+emitTest at badRefused do expectNothing
+emitTest at badRefused return ok none
 emitTest at refused do failRefused
 emitTest at refused return ok none
 
 store is region
 store in emitTest
 store strategy arena
-store maxBytes 4194304
+store maxBytes 16777216
 store released atReturn
 
-lex is call
-lex in emitTest
-lex invokes lexer.tokenize
-lex argument source String source lend
-lex argument resultRegion Region store lend
-lex result tokens lexer.Tokens
-lex ownedBy store
-lex cleanedBy none
-lex borrows none
-lex catch lexError lexer.LexError
-lex suppresses none
+lexX is call
+lexX in emitTest
+lexX invokes lexer.tokenize
+lexX argument source String source lend
+lexX argument resultRegion Region store lend
+lexX result tokensX lexer.Tokens
+lexX ownedBy store
+lexX cleanedBy none
+lexX borrows none
+lexX catch lexXError lexer.LexError
+lexX suppresses none
 
-newWords is call
-newWords in emitTest
-newWords invokes syntax.Words.new
-newWords argument region Region store lend
-newWords result words syntax.Words
-newWords ownedBy store
-newWords cleanedBy none
-newWords borrows none
-newWords catch none
-newWords suppresses none
+newWordsX is call
+newWordsX in emitTest
+newWordsX invokes syntax.Words.new
+newWordsX argument region Region store lend
+newWordsX result wordsX syntax.Words
+newWordsX ownedBy store
+newWordsX cleanedBy none
+newWordsX borrows none
+newWordsX catch none
+newWordsX suppresses none
 
-newRows is call
-newRows in emitTest
-newRows invokes syntax.Rows.new
-newRows argument region Region store lend
-newRows result rows syntax.Rows
-newRows ownedBy store
-newRows cleanedBy none
-newRows borrows none
-newRows catch none
-newRows suppresses none
+newRowsX is call
+newRowsX in emitTest
+newRowsX invokes syntax.Rows.new
+newRowsX argument region Region store lend
+newRowsX result rowsX syntax.Rows
+newRowsX ownedBy store
+newRowsX cleanedBy none
+newRowsX borrows none
+newRowsX catch none
+newRowsX suppresses none
 
-group is call
-group in emitTest
-group invokes syntax.groupRows
-group argument source String source lend
-group argument tokens lexer.Tokens tokens lend
-group argument words syntax.Words words lendMutable
-group argument rows syntax.Rows rows lendMutable
-group result none
-group ownedBy none
-group cleanedBy none
-group borrows none
-group catch groupError syntax.Rejection
-group suppresses none
+groupX is call
+groupX in emitTest
+groupX invokes syntax.groupRows
+groupX argument source String source lend
+groupX argument tokens lexer.Tokens tokensX lend
+groupX argument words syntax.Words wordsX lendMutable
+groupX argument rows syntax.Rows rowsX lendMutable
+groupX result none
+groupX ownedBy none
+groupX cleanedBy none
+groupX borrows none
+groupX catch groupXError syntax.Rejection
+groupX suppresses none
 
-newEntities is call
-newEntities in emitTest
-newEntities invokes model.Entities.new
-newEntities argument region Region store lend
-newEntities result entities model.Entities
-newEntities ownedBy store
-newEntities cleanedBy none
-newEntities borrows none
-newEntities catch none
-newEntities suppresses none
+newEntitiesX is call
+newEntitiesX in emitTest
+newEntitiesX invokes model.Entities.new
+newEntitiesX argument region Region store lend
+newEntitiesX result entitiesX model.Entities
+newEntitiesX ownedBy store
+newEntitiesX cleanedBy none
+newEntitiesX borrows none
+newEntitiesX catch none
+newEntitiesX suppresses none
 
-newNames is call
-newNames in emitTest
-newNames invokes model.EntityNames.new
-newNames argument region Region store lend
-newNames result names model.EntityNames
-newNames ownedBy store
-newNames cleanedBy none
-newNames borrows none
-newNames catch none
-newNames suppresses none
+newNamesX is call
+newNamesX in emitTest
+newNamesX invokes model.EntityNames.new
+newNamesX argument region Region store lend
+newNamesX result namesX model.EntityNames
+newNamesX ownedBy store
+newNamesX cleanedBy none
+newNamesX borrows none
+newNamesX catch none
+newNamesX suppresses none
 
-model is call
-model in emitTest
-model invokes model.buildModel
-model argument source String source lend
-model argument words syntax.Words words lend
-model argument rows syntax.Rows rows lend
-model argument entities model.Entities entities lendMutable
-model argument names model.EntityNames names lendMutable
-model result none
-model ownedBy none
-model cleanedBy none
-model borrows none
-model catch modelError syntax.Rejection
-model suppresses none
-
-newValues is call
-newValues in emitTest
-newValues invokes subset.Values.new
-newValues argument region Region store lend
-newValues result values subset.Values
-newValues ownedBy store
-newValues cleanedBy none
-newValues borrows none
-newValues catch none
-newValues suppresses none
-
-newCalls is call
-newCalls in emitTest
-newCalls invokes subset.Calls.new
-newCalls argument region Region store lend
-newCalls result calls subset.Calls
-newCalls ownedBy store
-newCalls cleanedBy none
-newCalls borrows none
-newCalls catch none
-newCalls suppresses none
-
-newLabels is call
-newLabels in emitTest
-newLabels invokes subset.Labels.new
-newLabels argument region Region store lend
-newLabels result labels subset.Labels
-newLabels ownedBy store
-newLabels cleanedBy none
-newLabels borrows none
-newLabels catch none
-newLabels suppresses none
-
-newSteps is call
-newSteps in emitTest
-newSteps invokes subset.Steps.new
-newSteps argument region Region store lend
-newSteps result steps subset.Steps
-newSteps ownedBy store
-newSteps cleanedBy none
-newSteps borrows none
-newSteps catch none
-newSteps suppresses none
-
-check is call
-check in emitTest
-check invokes subset.checkSubset
-check argument source String source lend
-check argument words syntax.Words words lend
-check argument rows syntax.Rows rows lend
-check argument entities model.Entities entities lend
-check argument names model.EntityNames names lend
-check argument values subset.Values values lendMutable
-check argument calls subset.Calls calls lendMutable
-check argument labels subset.Labels labels lendMutable
-check argument steps subset.Steps steps lendMutable
-check result none
-check ownedBy none
-check cleanedBy none
-check borrows none
-check catch checkError syntax.Rejection
-check suppresses none
+modelX is call
+modelX in emitTest
+modelX invokes model.buildModel
+modelX argument source String source lend
+modelX argument words syntax.Words wordsX lend
+modelX argument rows syntax.Rows rowsX lend
+modelX argument entities model.Entities entitiesX lendMutable
+modelX argument names model.EntityNames namesX lendMutable
+modelX result none
+modelX ownedBy none
+modelX cleanedBy none
+modelX borrows none
+modelX catch modelXError syntax.Rejection
+modelX suppresses none
 
 newC is call
 newC in emitTest
@@ -228,28 +215,14 @@ newC borrows none
 newC catch none
 newC suppresses none
 
-readAnchor is call
-readAnchor in emitTest
-readAnchor invokes syntax.Words.getOrTrap
-readAnchor argument list syntax.Words words lend
-readAnchor argument index Int64 zero copy
-readAnchor result anchor syntax.Word
-readAnchor ownedBy none
-readAnchor cleanedBy none
-readAnchor borrows none
-readAnchor catch none
-readAnchor suppresses none
-
 emit is call
 emit in emitTest
-emit invokes emitProgram
-emit argument source String source lend
-emit argument values subset.Values values lend
-emit argument calls subset.Calls calls lend
-emit argument labels subset.Labels labels lend
-emit argument steps subset.Steps steps lend
+emit invokes emitModule
 emit argument buffer buffer.ByteBuffer cText lendMutable
-emit argument anchor syntax.Word anchor copy
+emit argument source String source lend
+emit argument words syntax.Words wordsX lend
+emit argument rows syntax.Rows rowsX lend
+emit argument entities model.Entities entitiesX lend
 emit result none
 emit ownedBy none
 emit cleanedBy none
@@ -269,30 +242,223 @@ readC borrows none
 readC catch readCError string.Utf8Error
 readC suppresses none
 
-joinExpected is call
-joinExpected in emitTest
-joinExpected invokes string.concat
-joinExpected argument left String prelude lend
-joinExpected argument right String expectedMain lend
-joinExpected argument region Region store lend
-joinExpected result expected String
-joinExpected ownedBy store
-joinExpected cleanedBy none
-joinExpected borrows none
-joinExpected catch none
-joinExpected suppresses none
+findMainWrapper is call
+findMainWrapper in emitTest
+findMainWrapper invokes string.find
+findMainWrapper argument text String written lend
+findMainWrapper argument needle String mainWrapper lend
+findMainWrapper result mainWrapperAt Int64
+findMainWrapper ownedBy none
+findMainWrapper cleanedBy none
+findMainWrapper borrows none
+findMainWrapper catch findMainWrapperError string.NotFound
+findMainWrapper suppresses none
 
-expectC is call
-expectC in emitTest
-expectC invokes test.assertEqualString
-expectC argument expected String expected lend
-expectC argument actual String written lend
-expectC result none
-expectC ownedBy none
-expectC cleanedBy none
-expectC borrows none
-expectC catch none
-expectC suppresses none
+findSignature is call
+findSignature in emitTest
+findSignature invokes string.find
+findSignature argument text String written lend
+findSignature argument needle String signature lend
+findSignature result signatureAt Int64
+findSignature ownedBy none
+findSignature cleanedBy none
+findSignature borrows none
+findSignature catch findSignatureError string.NotFound
+findSignature suppresses none
+
+findConstantText is call
+findConstantText in emitTest
+findConstantText invokes string.find
+findConstantText argument text String written lend
+findConstantText argument needle String constantText lend
+findConstantText result constantTextAt Int64
+findConstantText ownedBy none
+findConstantText cleanedBy none
+findConstantText borrows none
+findConstantText catch findConstantTextError string.NotFound
+findConstantText suppresses none
+
+findPassText is call
+findPassText in emitTest
+findPassText invokes string.find
+findPassText argument text String written lend
+findPassText argument needle String passText lend
+findPassText result passTextAt Int64
+findPassText ownedBy none
+findPassText cleanedBy none
+findPassText borrows none
+findPassText catch findPassTextError string.NotFound
+findPassText suppresses none
+
+findResetText is call
+findResetText in emitTest
+findResetText invokes string.find
+findResetText argument text String written lend
+findResetText argument needle String resetText lend
+findResetText result resetTextAt Int64
+findResetText ownedBy none
+findResetText cleanedBy none
+findResetText borrows none
+findResetText catch findResetTextError string.NotFound
+findResetText suppresses none
+
+findCallText is call
+findCallText in emitTest
+findCallText invokes string.find
+findCallText argument text String written lend
+findCallText argument needle String callText lend
+findCallText result callTextAt Int64
+findCallText ownedBy none
+findCallText cleanedBy none
+findCallText borrows none
+findCallText catch findCallTextError string.NotFound
+findCallText suppresses none
+
+findReturnText is call
+findReturnText in emitTest
+findReturnText invokes string.find
+findReturnText argument text String written lend
+findReturnText argument needle String returnText lend
+findReturnText result returnTextAt Int64
+findReturnText ownedBy none
+findReturnText cleanedBy none
+findReturnText borrows none
+findReturnText catch findReturnTextError string.NotFound
+findReturnText suppresses none
+
+lexY is call
+lexY in emitTest
+lexY invokes lexer.tokenize
+lexY argument source String badSource lend
+lexY argument resultRegion Region store lend
+lexY result tokensY lexer.Tokens
+lexY ownedBy store
+lexY cleanedBy none
+lexY borrows none
+lexY catch lexYError lexer.LexError
+lexY suppresses none
+
+newWordsY is call
+newWordsY in emitTest
+newWordsY invokes syntax.Words.new
+newWordsY argument region Region store lend
+newWordsY result wordsY syntax.Words
+newWordsY ownedBy store
+newWordsY cleanedBy none
+newWordsY borrows none
+newWordsY catch none
+newWordsY suppresses none
+
+newRowsY is call
+newRowsY in emitTest
+newRowsY invokes syntax.Rows.new
+newRowsY argument region Region store lend
+newRowsY result rowsY syntax.Rows
+newRowsY ownedBy store
+newRowsY cleanedBy none
+newRowsY borrows none
+newRowsY catch none
+newRowsY suppresses none
+
+groupY is call
+groupY in emitTest
+groupY invokes syntax.groupRows
+groupY argument source String badSource lend
+groupY argument tokens lexer.Tokens tokensY lend
+groupY argument words syntax.Words wordsY lendMutable
+groupY argument rows syntax.Rows rowsY lendMutable
+groupY result none
+groupY ownedBy none
+groupY cleanedBy none
+groupY borrows none
+groupY catch groupYError syntax.Rejection
+groupY suppresses none
+
+newEntitiesY is call
+newEntitiesY in emitTest
+newEntitiesY invokes model.Entities.new
+newEntitiesY argument region Region store lend
+newEntitiesY result entitiesY model.Entities
+newEntitiesY ownedBy store
+newEntitiesY cleanedBy none
+newEntitiesY borrows none
+newEntitiesY catch none
+newEntitiesY suppresses none
+
+newNamesY is call
+newNamesY in emitTest
+newNamesY invokes model.EntityNames.new
+newNamesY argument region Region store lend
+newNamesY result namesY model.EntityNames
+newNamesY ownedBy store
+newNamesY cleanedBy none
+newNamesY borrows none
+newNamesY catch none
+newNamesY suppresses none
+
+modelY is call
+modelY in emitTest
+modelY invokes model.buildModel
+modelY argument source String badSource lend
+modelY argument words syntax.Words wordsY lend
+modelY argument rows syntax.Rows rowsY lend
+modelY argument entities model.Entities entitiesY lendMutable
+modelY argument names model.EntityNames namesY lendMutable
+modelY result none
+modelY ownedBy none
+modelY cleanedBy none
+modelY borrows none
+modelY catch modelYError syntax.Rejection
+modelY suppresses none
+
+newBadC is call
+newBadC in emitTest
+newBadC invokes buffer.new
+newBadC argument region Region store lend
+newBadC result badC buffer.ByteBuffer
+newBadC ownedBy store
+newBadC cleanedBy none
+newBadC borrows none
+newBadC catch none
+newBadC suppresses none
+
+emitBad is call
+emitBad in emitTest
+emitBad invokes emitModule
+emitBad argument buffer buffer.ByteBuffer badC lendMutable
+emitBad argument source String badSource lend
+emitBad argument words syntax.Words wordsY lend
+emitBad argument rows syntax.Rows rowsY lend
+emitBad argument entities model.Entities entitiesY lend
+emitBad result none
+emitBad ownedBy none
+emitBad cleanedBy none
+emitBad borrows none
+emitBad catch badError syntax.Rejection
+emitBad suppresses none
+
+badLength is call
+badLength in emitTest
+badLength invokes buffer.length
+badLength argument buffer buffer.ByteBuffer badC lend
+badLength result badBytes Int64
+badLength ownedBy none
+badLength cleanedBy none
+badLength borrows none
+badLength catch none
+badLength suppresses none
+
+expectNothing is call
+expectNothing in emitTest
+expectNothing invokes test.assertEqualInt64
+expectNothing argument expected Int64 zero copy
+expectNothing argument actual Int64 badBytes copy
+expectNothing result none
+expectNothing ownedBy none
+expectNothing cleanedBy none
+expectNothing borrows none
+expectNothing catch none
+expectNothing suppresses none
 
 failRefused is call
 failRefused in emitTest
