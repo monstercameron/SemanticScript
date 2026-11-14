@@ -1,0 +1,120 @@
+# buffer_roundtrip — R-207: a length-carrying buffer is an OWNED resource.
+# bufferCreate now declares `owns Buffer cleanedBy buffer.release`, so the handle
+# can be released; the release is `defer`-ed to run exactly once at scope exit
+# (after the last use) — no leak, no use-after-release. buffer.set/get are fallible
+# (BufferBoundsError), so each is followed by `branch ifError`.
+BufferRoundtrip is project
+BufferRoundtrip module bufferRoundtripMod
+BufferRoundtrip target console
+BufferRoundtrip entry main
+
+bufferRoundtripMod is module
+bufferRoundtripMod path examples.bufferRoundtrip
+bufferRoundtripMod exports main
+bufferRoundtripMod purpose "Create, write, read, and release an owned byte buffer"
+bufferRoundtripMod invariant "main is the only project entry operation"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap yes
+main async no
+main purpose "Round-trip a byte through an owned buffer and release it"
+main invariant "The buffer is released exactly once, on the deferred cleanup path"
+main let bufferSize immutable Int64 4
+main let writeIndex immutable Int64 0
+main let letterCapitalA immutable Byte 65
+main let expectedByte immutable Int64 65
+main let expectedLength immutable Int64 4
+main let byteName immutable String "buffer_roundtrip: read-back byte"
+main let lengthName immutable String "buffer_roundtrip: length"
+main let bufferErrorCode immutable ExitCode 1
+main do createBufferCall
+main defer releaseBufferDefer
+main do setByteCall
+main branch ifError setByteCall goto bufferAccessFailed
+main do getByteCall
+main branch ifError getByteCall goto bufferAccessFailed
+main do lengthCall
+main do widenByteCall
+main do assertByteCall
+main do assertLengthCall
+main do reportCall
+main return summaryCode
+main at bufferAccessFailed return bufferErrorCode
+
+createBufferCall is call
+createBufferCall in main
+createBufferCall invokes buffer.create
+createBufferCall arg size Int64 bufferSize
+createBufferCall out workBuffer Buffer
+createBufferCall owns workBuffer
+createBufferCall cleanedBy releaseBufferDefer
+
+releaseBufferWorker is call
+releaseBufferWorker in main
+releaseBufferWorker invokes buffer.release
+releaseBufferWorker arg buffer Buffer workBuffer
+releaseBufferWorker discards "cleanup status ignored"
+
+releaseBufferDefer is cleanup
+releaseBufferDefer in main
+releaseBufferDefer call releaseBufferWorker
+releaseBufferDefer cleans workBuffer
+
+setByteCall is call
+setByteCall in main
+setByteCall invokes buffer.set
+setByteCall arg buffer Buffer workBuffer
+setByteCall arg index Int64 writeIndex
+setByteCall arg value Byte letterCapitalA
+setByteCall discards "written count not needed; an out-of-bounds write is the catch"
+setByteCall catch setBoundsError BufferBoundsError
+
+getByteCall is call
+getByteCall in main
+getByteCall invokes buffer.get
+getByteCall arg buffer Buffer workBuffer
+getByteCall arg index Int64 writeIndex
+getByteCall out readByte Byte
+getByteCall catch getBoundsError BufferBoundsError
+
+lengthCall is call
+lengthCall in main
+lengthCall invokes buffer.length
+lengthCall arg buffer Buffer workBuffer
+lengthCall out bufferLength Int64
+
+widenByteCall is call
+widenByteCall in main
+widenByteCall invokes convert.toInt64
+widenByteCall arg value Byte readByte
+widenByteCall out readByteValue Int64
+
+assertByteCall is call
+assertByteCall in main
+assertByteCall invokes test.assertEqualInt64
+assertByteCall arg name String byteName
+assertByteCall arg expected Int64 expectedByte
+assertByteCall arg actual Int64 readByteValue
+
+assertLengthCall is call
+assertLengthCall in main
+assertLengthCall invokes test.assertEqualInt64
+assertLengthCall arg name String lengthName
+assertLengthCall arg expected Int64 expectedLength
+assertLengthCall arg actual Int64 bufferLength
+
+reportCall is call
+reportCall in main
+reportCall invokes test.summary
+reportCall out summaryCode ExitCode
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"

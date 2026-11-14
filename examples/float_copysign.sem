@@ -1,0 +1,78 @@
+# float_copysign -- (repurposed from http_request_response: semanticscript has no matching runtime). Real Float64
+# intrinsic math.copysignFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
+#
+# Correctness observation: copysign(3.0,-1.0) = -3.
+# Expected output: -3
+
+FloatCopysign is project
+FloatCopysign module examplesFloatCopysign
+FloatCopysign target console
+FloatCopysign entry main
+
+examplesFloatCopysign is module
+examplesFloatCopysign path examples.floatCopysign
+examplesFloatCopysign exports main
+examplesFloatCopysign purpose "Compute copysign(3.0,-1.0) with a real float intrinsic"
+examplesFloatCopysign invariant "Result is -3"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute copysign(3.0,-1.0) and print it"
+main invariant "Writes exactly one float line: -3"
+main let inputA immutable Float64 3.0
+main let inputB immutable Float64 -1.0
+main let harnessName immutable String "float_copysign"
+main let harnessExpected immutable Float64 -3.0
+main let zeroFloatGuard immutable Float64 0.0
+main let noopName immutable String "float_copysign: real result (not the no-op 0.0)"
+main do calcCall
+main do writeResult
+main do noopZeroCmp
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calcCall is call
+calcCall in main
+calcCall invokes math.copysignFloat64
+calcCall arg left Float64 inputA
+calcCall arg right Float64 inputB
+calcCall out outValue Float64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualFloat64
+writeResult arg name String harnessName
+writeResult arg expected Float64 harnessExpected
+writeResult arg actual Float64 outValue
+
+
+noopZeroCmp is call
+noopZeroCmp in main
+noopZeroCmp invokes math.equalFloat64
+noopZeroCmp arg left Float64 outValue
+noopZeroCmp arg right Float64 zeroFloatGuard
+noopZeroCmp out noopIsZero Bool
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertFalse
+noopCheck arg name String noopName
+noopCheck arg value Bool noopIsZero
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

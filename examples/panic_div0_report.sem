@@ -1,0 +1,64 @@
+# panic_div0_report — RUNTIME trap test (WS1-130, §1K crash reporting). Unlike
+# div_by_zero_trap (a CONSTANT 0, rejected at compile time by SS3111), here the
+# divisor is computed at runtime (5 - 5), so it escapes the compile-time guard
+# and reaches codegen. At runtime the divide-by-zero guard fires `ss_panic`,
+# which prints a structured crash report to stderr and exits 134 — instead of a
+# silent SIGILL. This is the load-bearing test that a no-UB trap explains itself.
+#
+# Correctness observation (verified): the program compiles and runs, then traps
+# with `EAV PANIC SSR0010 divide-by-zero` naming the op, row, reason, and the
+# operands (left=10 right=0); the process exits 134 and never prints the quotient.
+# Expected: runtime panic SSR0010 (divide-by-zero), exit 134.
+
+PanicDiv0Report is project
+PanicDiv0Report module examplesPanicDiv0Report
+PanicDiv0Report target console
+PanicDiv0Report entry main
+
+examplesPanicDiv0Report is module
+examplesPanicDiv0Report path examples.panicDiv0Report
+examplesPanicDiv0Report exports main
+examplesPanicDiv0Report purpose "Trip the runtime divide-by-zero guard and report it"
+examplesPanicDiv0Report invariant "Traps via ss_panic before printing the quotient"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Divide 10 by a runtime-computed 0 and trip the ss_panic guard"
+main invariant "Never completes: panics at runtime with SSR0010"
+main let dividend immutable Int64 10
+main let five immutable Int64 5
+main let okCode immutable ExitCode 0
+main do makeZero
+main do divideCall
+main do writeResult
+main return okCode
+
+makeZero is call
+makeZero in main
+makeZero invokes math.subtractInt64
+makeZero arg left Int64 five
+makeZero arg right Int64 five
+makeZero out runtimeZero Int64
+
+divideCall is call
+divideCall in main
+divideCall invokes math.divideInt64
+divideCall arg left Int64 dividend
+divideCall arg right Int64 runtimeZero
+divideCall out quotient Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes console.writeIntegerLine
+writeResult arg value Int64 quotient

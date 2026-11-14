@@ -1,0 +1,451 @@
+# desktop-window-smoke - EAV port (apps/desktop-window-smoke, semsc v0.1).
+#
+# FULL 1:1 port of the 4-operation Windows GUI smoke app: the main composition
+# operation that builds one window (title label, greeting text box, three
+# buttons, a greeting list box, a status label) and registers the three event
+# handlers, plus the appendGreetingFromInput / inspectSelectedGreeting /
+# clearGreetings handlers themselves. Every gui.* call from the original is
+# converted against sigs/standard.gui.semsig. The original's inline `authority`
+# rows become covering `capability`/`uses` pairs (EAV's effect model, §8), and
+# `set storage HANDLE VALUE` becomes a create call whose `out` rebinds the
+# mutable module-storage handle (README §12).
+#
+# GUI execution uses the first-class `target windowsGui` plus `guiBackend headless`.
+# The headless backend lowers gui.* calls to the ss_widget_* runtime so the full
+# control tree, event wiring, and loop run in CI; the native Win32 bridge is
+# tracked separately by the ss_gui health check. (R-042)
+
+
+appDesktopWindowSmoke is module
+appDesktopWindowSmoke path apps.desktopWindowSmoke
+appDesktopWindowSmoke exports main
+appDesktopWindowSmoke purpose "Compose one native GUI window through standard.gui calls"
+appDesktopWindowSmoke invariant "GUI construction uses operation/call/arg syntax; no GUI top-level keywords"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+GuiApplication is alias
+GuiApplication for OpaquePointer
+GuiApplication purpose "An opaque GUI application handle (deferred runtime)"
+
+GuiWindow is alias
+GuiWindow for OpaquePointer
+GuiWindow purpose "An opaque GUI window handle (deferred runtime)"
+
+GuiControl is alias
+GuiControl for OpaquePointer
+GuiControl purpose "An opaque GUI control handle attachable to a window"
+
+GuiTextLabel is alias
+GuiTextLabel for OpaquePointer
+GuiTextLabel purpose "An opaque static text label control handle"
+
+GuiTextBox is alias
+GuiTextBox for OpaquePointer
+GuiTextBox purpose "An opaque single-line text input control handle"
+
+GuiButton is alias
+GuiButton for OpaquePointer
+GuiButton purpose "An opaque push-button control handle"
+
+GuiListBox is alias
+GuiListBox for OpaquePointer
+GuiListBox purpose "An opaque scrollable list control handle"
+
+GuiSession is alias
+GuiSession for OpaquePointer
+GuiSession purpose "Per-event GUI session context passed to handlers"
+
+GuiEvent is alias
+GuiEvent for OpaquePointer
+GuiEvent purpose "An opaque GUI event record passed to handlers"
+
+GuiText is alias
+GuiText for String
+GuiText purpose "GUI display text"
+
+GuiPixels is alias
+GuiPixels for Int32
+GuiPixels purpose "A pixel measurement for window/control geometry"
+
+GuiWindowLayout is enum
+GuiWindowLayout variant verticalStackGuiWindowLayout
+GuiWindowLayout purpose "Window child-control layout strategy"
+
+GuiListBoxSelectionMode is enum
+GuiListBoxSelectionMode variant singleGuiListBoxSelectionMode
+GuiListBoxSelectionMode purpose "How many list rows may be selected at once"
+
+GuiEventKind is enum
+GuiEventKind variant clickGuiEventKind
+GuiEventKind variant enterPressedGuiEventKind
+GuiEventKind purpose "The control event a handler is registered for"
+
+GuiEventHandler is operationType
+GuiEventHandler in GuiSession
+GuiEventHandler in GuiEvent
+GuiEventHandler out Int32
+GuiEventHandler purpose "A control event handler taking (session, event) and returning a status"
+
+guiComposeAuthority is capability
+guiComposeAuthority grants allocate gui.application
+guiComposeAuthority grants allocate gui.window
+guiComposeAuthority grants allocate gui.control
+guiComposeAuthority grants write gui.window
+guiComposeAuthority grants write gui.control.event
+guiComposeAuthority grants write storage.greetingInputHandle
+guiComposeAuthority grants write storage.greetingListHandle
+guiComposeAuthority grants write storage.statusLabelHandle
+guiComposeAuthority purpose "Authority to allocate the GUI app/window/controls, wire events, and record control handles"
+
+guiInputAuthority is capability
+guiInputAuthority grants read gui.control.textBox.text
+guiInputAuthority grants write gui.control.textBox.text
+guiInputAuthority grants write gui.control.listBox.items
+guiInputAuthority grants write gui.control.textLabel.text
+guiInputAuthority purpose "Authority to read the input box, append a list row, and update the status label"
+
+guiInspectAuthority is capability
+guiInspectAuthority grants read gui.control.listBox.selection
+guiInspectAuthority grants write gui.control.textLabel.text
+guiInspectAuthority purpose "Authority to observe the list selection and update the status label"
+
+guiClearAuthority is capability
+guiClearAuthority grants write gui.control.listBox.items
+guiClearAuthority grants write gui.control.textLabel.text
+guiClearAuthority purpose "Authority to clear the list and update the status label"
+
+helloGuiTitle is storage module immutable GuiText "Hello GUI"
+headingText is storage module immutable GuiText "Hello from SemanticScript"
+greetingPlaceholder is storage module immutable GuiText "Type a greeting"
+sayHelloText is storage module immutable GuiText "Say hello"
+inspectSelectedText is storage module immutable GuiText "Inspect selected"
+clearGreetingsText is storage module immutable GuiText "Clear greetings"
+statusReadyText is storage module immutable GuiText "Ready"
+emptyGuiText is storage module immutable GuiText ""
+greetingAddedStatusText is storage module immutable GuiText "Greeting added"
+selectedGreetingStatusText is storage module immutable GuiText "Selected greeting inspected"
+greetingsClearedStatusText is storage module immutable GuiText "Greeting list cleared"
+windowWidth is storage module immutable GuiPixels 640
+windowHeight is storage module immutable GuiPixels 400
+maxGreetingLength is storage module immutable Int32 200
+yesGuiFlag is storage module immutable Int32 1
+noGuiFlag is storage module immutable Int32 0
+greetingInputHandle is storage module mutable GuiTextBox
+greetingListHandle is storage module mutable GuiListBox
+statusLabelHandle is storage module mutable GuiTextLabel
+
+main is operation
+main out ExitCode
+main effect allocate gui.application
+main effect allocate gui.window
+main effect allocate gui.control
+main effect write gui.window
+main effect write gui.control.event
+main effect write storage.greetingInputHandle
+main effect write storage.greetingListHandle
+main effect write storage.statusLabelHandle
+main uses guiComposeAuthority
+main memory heap yes
+main async no
+main purpose "Compose one native GUI window using standard.gui calls and return the GUI exit status"
+main invariant "Handles are created through gui.* calls, attached to one window, and handlers registered before applicationRun"
+main do createApplicationCall
+main do createWindowCall
+main do createTitleLabelCall
+main do addTitleLabelCall
+main do createTaskInputCall
+main do addTaskInputCall
+main do createAddButtonCall
+main do addAddButtonCall
+main do createTaskListCall
+main do addTaskListCall
+main do createCompleteButtonCall
+main do addCompleteButtonCall
+main do createClearButtonCall
+main do addClearButtonCall
+main do createStatusLabelCall
+main do addStatusLabelCall
+main do registerAddButtonClickCall
+main do registerTaskInputEnterCall
+main do registerCompleteButtonClickCall
+main do registerClearButtonClickCall
+main do setMainWindowCall
+main do runApplicationCall
+main return guiExitCode
+
+createApplicationCall is call
+createApplicationCall in main
+createApplicationCall invokes gui.applicationCreate
+createApplicationCall arg title GuiText helloGuiTitle
+createApplicationCall out application GuiApplication
+
+createWindowCall is call
+createWindowCall in main
+createWindowCall invokes gui.windowCreate
+createWindowCall arg title GuiText helloGuiTitle
+createWindowCall arg width GuiPixels windowWidth
+createWindowCall arg height GuiPixels windowHeight
+createWindowCall arg layout GuiWindowLayout verticalStackGuiWindowLayout
+createWindowCall arg resizable Int32 yesGuiFlag
+createWindowCall out mainWindow GuiWindow
+
+createTitleLabelCall is call
+createTitleLabelCall in main
+createTitleLabelCall invokes gui.textLabelCreate
+createTitleLabelCall arg text GuiText headingText
+createTitleLabelCall out titleLabel GuiTextLabel
+
+addTitleLabelCall is call
+addTitleLabelCall in main
+addTitleLabelCall invokes gui.windowAddControl
+addTitleLabelCall arg window GuiWindow mainWindow
+addTitleLabelCall arg control GuiControl titleLabel
+addTitleLabelCall discards "control id is observed by the runtime, not the app"
+
+createTaskInputCall is call
+createTaskInputCall in main
+createTaskInputCall invokes gui.textBoxCreate
+createTaskInputCall arg placeholder GuiText greetingPlaceholder
+createTaskInputCall arg maxLength Int32 maxGreetingLength
+createTaskInputCall out greetingInputHandle GuiTextBox
+
+addTaskInputCall is call
+addTaskInputCall in main
+addTaskInputCall invokes gui.windowAddControl
+addTaskInputCall arg window GuiWindow mainWindow
+addTaskInputCall arg control GuiControl greetingInputHandle
+addTaskInputCall discards "control id is observed by the runtime, not the app"
+
+createAddButtonCall is call
+createAddButtonCall in main
+createAddButtonCall invokes gui.buttonCreate
+createAddButtonCall arg text GuiText sayHelloText
+createAddButtonCall arg isDefault Int32 yesGuiFlag
+createAddButtonCall out addButton GuiButton
+
+addAddButtonCall is call
+addAddButtonCall in main
+addAddButtonCall invokes gui.windowAddControl
+addAddButtonCall arg window GuiWindow mainWindow
+addAddButtonCall arg control GuiControl addButton
+addAddButtonCall discards "control id is observed by the runtime, not the app"
+
+createTaskListCall is call
+createTaskListCall in main
+createTaskListCall invokes gui.listBoxCreate
+createTaskListCall arg selectionMode GuiListBoxSelectionMode singleGuiListBoxSelectionMode
+createTaskListCall out greetingListHandle GuiListBox
+
+addTaskListCall is call
+addTaskListCall in main
+addTaskListCall invokes gui.windowAddControl
+addTaskListCall arg window GuiWindow mainWindow
+addTaskListCall arg control GuiControl greetingListHandle
+addTaskListCall discards "control id is observed by the runtime, not the app"
+
+createCompleteButtonCall is call
+createCompleteButtonCall in main
+createCompleteButtonCall invokes gui.buttonCreate
+createCompleteButtonCall arg text GuiText inspectSelectedText
+createCompleteButtonCall arg isDefault Int32 noGuiFlag
+createCompleteButtonCall out completeButton GuiButton
+
+addCompleteButtonCall is call
+addCompleteButtonCall in main
+addCompleteButtonCall invokes gui.windowAddControl
+addCompleteButtonCall arg window GuiWindow mainWindow
+addCompleteButtonCall arg control GuiControl completeButton
+addCompleteButtonCall discards "control id is observed by the runtime, not the app"
+
+createClearButtonCall is call
+createClearButtonCall in main
+createClearButtonCall invokes gui.buttonCreate
+createClearButtonCall arg text GuiText clearGreetingsText
+createClearButtonCall arg isDefault Int32 noGuiFlag
+createClearButtonCall out clearButton GuiButton
+
+addClearButtonCall is call
+addClearButtonCall in main
+addClearButtonCall invokes gui.windowAddControl
+addClearButtonCall arg window GuiWindow mainWindow
+addClearButtonCall arg control GuiControl clearButton
+addClearButtonCall discards "control id is observed by the runtime, not the app"
+
+createStatusLabelCall is call
+createStatusLabelCall in main
+createStatusLabelCall invokes gui.textLabelCreate
+createStatusLabelCall arg text GuiText statusReadyText
+createStatusLabelCall out statusLabelHandle GuiTextLabel
+
+addStatusLabelCall is call
+addStatusLabelCall in main
+addStatusLabelCall invokes gui.windowAddControl
+addStatusLabelCall arg window GuiWindow mainWindow
+addStatusLabelCall arg control GuiControl statusLabelHandle
+addStatusLabelCall discards "control id is observed by the runtime, not the app"
+
+registerAddButtonClickCall is call
+registerAddButtonClickCall in main
+registerAddButtonClickCall invokes gui.controlOnEvent
+registerAddButtonClickCall arg control GuiControl addButton
+registerAddButtonClickCall arg eventKind GuiEventKind clickGuiEventKind
+registerAddButtonClickCall arg handler GuiEventHandler appendGreetingFromInput
+registerAddButtonClickCall discards "registration id is observed by the runtime, not the app"
+
+registerTaskInputEnterCall is call
+registerTaskInputEnterCall in main
+registerTaskInputEnterCall invokes gui.controlOnEvent
+registerTaskInputEnterCall arg control GuiControl greetingInputHandle
+registerTaskInputEnterCall arg eventKind GuiEventKind enterPressedGuiEventKind
+registerTaskInputEnterCall arg handler GuiEventHandler appendGreetingFromInput
+registerTaskInputEnterCall discards "registration id is observed by the runtime, not the app"
+
+registerCompleteButtonClickCall is call
+registerCompleteButtonClickCall in main
+registerCompleteButtonClickCall invokes gui.controlOnEvent
+registerCompleteButtonClickCall arg control GuiControl completeButton
+registerCompleteButtonClickCall arg eventKind GuiEventKind clickGuiEventKind
+registerCompleteButtonClickCall arg handler GuiEventHandler inspectSelectedGreeting
+registerCompleteButtonClickCall discards "registration id is observed by the runtime, not the app"
+
+registerClearButtonClickCall is call
+registerClearButtonClickCall in main
+registerClearButtonClickCall invokes gui.controlOnEvent
+registerClearButtonClickCall arg control GuiControl clearButton
+registerClearButtonClickCall arg eventKind GuiEventKind clickGuiEventKind
+registerClearButtonClickCall arg handler GuiEventHandler clearGreetings
+registerClearButtonClickCall discards "registration id is observed by the runtime, not the app"
+
+setMainWindowCall is call
+setMainWindowCall in main
+setMainWindowCall invokes gui.applicationSetMainWindow
+setMainWindowCall arg application GuiApplication application
+setMainWindowCall arg window GuiWindow mainWindow
+setMainWindowCall discards "assignment id is observed by the runtime, not the app"
+
+runApplicationCall is call
+runApplicationCall in main
+runApplicationCall invokes gui.applicationRun
+runApplicationCall arg application GuiApplication application
+runApplicationCall out guiExitCode ExitCode
+
+appendGreetingFromInput is operation
+appendGreetingFromInput in session GuiSession
+appendGreetingFromInput in event GuiEvent
+appendGreetingFromInput out Int32
+appendGreetingFromInput effect read gui.control.textBox.text
+appendGreetingFromInput effect write gui.control.textBox.text
+appendGreetingFromInput effect write gui.control.listBox.items
+appendGreetingFromInput effect write gui.control.textLabel.text
+appendGreetingFromInput uses guiInputAuthority
+appendGreetingFromInput memory heap no
+appendGreetingFromInput async no
+appendGreetingFromInput purpose "Append the current greeting text to the list and clear the input"
+appendGreetingFromInput invariant "Reads the input once, appends one list item, clears the input, reports append status"
+appendGreetingFromInput do readTitleCall
+appendGreetingFromInput do appendTaskCall
+appendGreetingFromInput do clearTaskInputCall
+appendGreetingFromInput do setAddedStatusCall
+appendGreetingFromInput return appendTaskStatus
+
+readTitleCall is call
+readTitleCall in appendGreetingFromInput
+readTitleCall invokes gui.textBoxText
+readTitleCall arg session GuiSession session
+readTitleCall arg textBox GuiTextBox greetingInputHandle
+readTitleCall out greetingText GuiText
+
+appendTaskCall is call
+appendTaskCall in appendGreetingFromInput
+appendTaskCall invokes gui.listBoxAppendItem
+appendTaskCall arg session GuiSession session
+appendTaskCall arg listBox GuiListBox greetingListHandle
+appendTaskCall arg text String greetingText
+appendTaskCall out appendTaskStatus Int32
+
+clearTaskInputCall is call
+clearTaskInputCall in appendGreetingFromInput
+clearTaskInputCall invokes gui.textBoxSetText
+clearTaskInputCall arg session GuiSession session
+clearTaskInputCall arg textBox GuiTextBox greetingInputHandle
+clearTaskInputCall arg text String emptyGuiText
+clearTaskInputCall discards "update status is not the handler result"
+
+setAddedStatusCall is call
+setAddedStatusCall in appendGreetingFromInput
+setAddedStatusCall invokes gui.textLabelSetText
+setAddedStatusCall arg session GuiSession session
+setAddedStatusCall arg textLabel GuiTextLabel statusLabelHandle
+setAddedStatusCall arg text GuiText greetingAddedStatusText
+setAddedStatusCall discards "update status is not the handler result"
+
+inspectSelectedGreeting is operation
+inspectSelectedGreeting in session GuiSession
+inspectSelectedGreeting in event GuiEvent
+inspectSelectedGreeting out Int32
+inspectSelectedGreeting effect read gui.control.listBox.selection
+inspectSelectedGreeting effect write gui.control.textLabel.text
+inspectSelectedGreeting uses guiInspectAuthority
+inspectSelectedGreeting memory heap no
+inspectSelectedGreeting async no
+inspectSelectedGreeting purpose "Confirm the inspect click reached the handler without appending a row"
+inspectSelectedGreeting invariant "Observes the selected row and updates only the status label; never mutates the list"
+inspectSelectedGreeting do selectedIndexCall
+inspectSelectedGreeting do observeSelectedTaskIndexCall
+inspectSelectedGreeting do setCompletedStatusCall
+inspectSelectedGreeting return completeStatusUpdate
+
+selectedIndexCall is call
+selectedIndexCall in inspectSelectedGreeting
+selectedIndexCall invokes gui.listBoxSelectedIndex
+selectedIndexCall arg session GuiSession session
+selectedIndexCall arg listBox GuiListBox greetingListHandle
+selectedIndexCall out selectedTaskIndex Int32
+
+observeSelectedTaskIndexCall is call
+observeSelectedTaskIndexCall in inspectSelectedGreeting
+observeSelectedTaskIndexCall invokes compare.greaterThanOrEqualInt32
+observeSelectedTaskIndexCall arg left Int32 selectedTaskIndex
+observeSelectedTaskIndexCall arg right Int32 noGuiFlag
+observeSelectedTaskIndexCall discards "the bounds observation is not used for control flow"
+
+setCompletedStatusCall is call
+setCompletedStatusCall in inspectSelectedGreeting
+setCompletedStatusCall invokes gui.textLabelSetText
+setCompletedStatusCall arg session GuiSession session
+setCompletedStatusCall arg textLabel GuiTextLabel statusLabelHandle
+setCompletedStatusCall arg text GuiText selectedGreetingStatusText
+setCompletedStatusCall out completeStatusUpdate Int32
+
+clearGreetings is operation
+clearGreetings in session GuiSession
+clearGreetings in event GuiEvent
+clearGreetings out Int32
+clearGreetings effect write gui.control.listBox.items
+clearGreetings effect write gui.control.textLabel.text
+clearGreetings uses guiClearAuthority
+clearGreetings memory heap no
+clearGreetings async no
+clearGreetings purpose "Clear visible greetings and update the status label"
+clearGreetings invariant "Clears the list once, updates the status label, reports the clear status"
+clearGreetings do clearTaskListCall
+clearGreetings do setClearedStatusCall
+clearGreetings return clearTaskListStatus
+
+clearTaskListCall is call
+clearTaskListCall in clearGreetings
+clearTaskListCall invokes gui.listBoxClear
+clearTaskListCall arg session GuiSession session
+clearTaskListCall arg listBox GuiListBox greetingListHandle
+clearTaskListCall out clearTaskListStatus Int32
+
+setClearedStatusCall is call
+setClearedStatusCall in clearGreetings
+setClearedStatusCall invokes gui.textLabelSetText
+setClearedStatusCall arg session GuiSession session
+setClearedStatusCall arg textLabel GuiTextLabel statusLabelHandle
+setClearedStatusCall arg text GuiText greetingsClearedStatusText
+setClearedStatusCall discards "update status is not the handler result"

@@ -1,0 +1,82 @@
+# record_demo — record construction (<Record>.new) + field access
+# Expected output: 11
+# (<Record>.<field>) lowered to LLVM struct insertvalue/extractvalue.
+# Builds a Point{x,y} and prints x. (todos WS1-053/054/108, WS3-022)
+
+RecordDemo is project
+RecordDemo module examplesRecordDemo
+RecordDemo target console
+RecordDemo entry main
+
+examplesRecordDemo is module
+examplesRecordDemo path examples.recordDemo
+examplesRecordDemo exports main
+examplesRecordDemo purpose "Construct a record and read one of its fields"
+examplesRecordDemo invariant "Prints the x field of the constructed point"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Point is record
+Point field x Int64
+Point field y Int64
+Point purpose "A 2D integer point"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Point(11, 22) and print its x"
+main invariant "Writes exactly one integer line: 11"
+main let px immutable Int64 11
+main let py immutable Int64 22
+main let harnessName immutable String "record_demo"
+main let harnessExpected immutable Int64 11
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_demo: real result (not the no-op 0)"
+main do buildPoint
+main do readX
+main do writeX
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildPoint is call
+buildPoint in main
+buildPoint invokes Point.new
+buildPoint arg x Int64 px
+buildPoint arg y Int64 py
+buildPoint out point Point
+
+readX is call
+readX in main
+readX invokes Point.x
+readX arg record Point point
+readX out xValue Int64
+
+writeX is call
+writeX in main
+writeX invokes test.assertEqualInt64
+writeX arg name String harnessName
+writeX arg expected Int64 harnessExpected
+writeX arg actual Int64 xValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 xValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

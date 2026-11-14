@@ -1,0 +1,76 @@
+# float_round -- (repurposed from locale_number_format: semanticscript has no matching runtime). Real Float64
+# intrinsic math.roundFloat64 (README s10.6). Result computed by the intrinsic, not a constant.
+#
+# Correctness observation: round(3.7) = 4.
+# Expected output: 4
+
+FloatRound is project
+FloatRound module examplesFloatRound
+FloatRound target console
+FloatRound entry main
+
+examplesFloatRound is module
+examplesFloatRound path examples.floatRound
+examplesFloatRound exports main
+examplesFloatRound purpose "Compute round(3.7) with a real float intrinsic"
+examplesFloatRound invariant "Result is 4"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute round(3.7) and print it"
+main invariant "Writes exactly one float line: 4"
+main let inputA immutable Float64 3.7
+main let harnessName immutable String "float_round"
+main let harnessExpected immutable Float64 4.0
+main let zeroFloatGuard immutable Float64 0.0
+main let noopName immutable String "float_round: real result (not the no-op 0.0)"
+main do calcCall
+main do writeResult
+main do noopZeroCmp
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calcCall is call
+calcCall in main
+calcCall invokes math.roundFloat64
+calcCall arg value Float64 inputA
+calcCall out outValue Float64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualFloat64
+writeResult arg name String harnessName
+writeResult arg expected Float64 harnessExpected
+writeResult arg actual Float64 outValue
+
+
+noopZeroCmp is call
+noopZeroCmp in main
+noopZeroCmp invokes math.equalFloat64
+noopZeroCmp arg left Float64 outValue
+noopZeroCmp arg right Float64 zeroFloatGuard
+noopZeroCmp out noopIsZero Bool
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertFalse
+noopCheck arg name String noopName
+noopCheck arg value Bool noopIsZero
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

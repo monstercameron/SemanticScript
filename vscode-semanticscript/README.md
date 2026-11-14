@@ -20,9 +20,10 @@ explicit runtime checks, and refinement-only documentation forms.
 ## Current Status
 
 Active editor tooling. The package version follows `version.json` and
-`package.json`. It supports highlighting, semantic tokens, hovers,
-project-aware navigation, completions, lint integration, and direct
-`semsc.py` executable builds from VS Code. The package also includes a
+`package.json`. It supports highlighting, semantic tokens, hovers, inlay hints,
+project-aware navigation, completions, same-file rename, lint integration,
+quick-fix access to `fix --plan`, and direct `semanticscript.py` executable
+builds from VS Code. The package also includes a
 SemanticScript gallery icon, language file icon fallback, and selectable
 SemanticScript file icon theme.
 
@@ -68,10 +69,14 @@ release.
 - Completion suggestions for verbs, primitive/native call targets, and same-file
   symbols, including `html.hydrate.TemplateName` targets declared by local
   `html template` rows.
-- Optional diagnostics from the canonical `semlint.py` engine, including
-  related-span links plus quick fixes for auto-applicable single-line fixes.
-- `SemanticScript: Compile Current File` runs `semsc.py --emit-exe` with
-  configurable build profile, runtime checks, and LLVM IR persistence.
+- Same-file Rename Symbol support for declared SemanticScript symbols.
+- Inlay hints for input, local binding, result binding, and call-target shape.
+- Optional diagnostics from the canonical `semanticscript.py check --json`
+  engine, plus quick fixes that open `semanticscript.py fix --plan` for the
+  current file.
+- `SemanticScript: Compile Current File` runs `semanticscript.py build` with a
+  project directory when a nearest `build.sem` exists, or the current file
+  otherwise.
 
 ## Refined Syntax Coverage
 
@@ -211,10 +216,10 @@ suffix fragments.
 ## Linting
 
 Linting uses the structured diagnostics from
-`../SemanticScript/linter/semlint.py`. The extension
-auto-discovers the selected linter from the workspace root, the `SemanticScript`
-folder, or ancestors of the open `.sscript` file. Set `semanticScript.linter.path` if
-your checkout layout is different.
+`../SemanticScript/semanticscript/compiler/semanticscript.py check --json`. The
+extension auto-discovers the compiler from the workspace root, the
+`SemanticScript` folder, or ancestors of the open `.sscript`/`.sem` file. Set
+`semanticScript.linter.path` if your checkout layout is different.
 
 `semanticScript.linter.skipFutureSyntax` defaults to `false`. When enabled, it
 skips linter diagnostics on refinement-only files that are not executable by the
@@ -222,26 +227,25 @@ current compiler yet.
 
 ## Compiling
 
-`SemanticScript: Compile Current File` runs the current file through `semsc.py`
-with `--emit-exe`. The extension auto-discovers the compiler from common repo
-layouts:
+`SemanticScript: Compile Current File` runs the current file or nearest
+`build.sem` project through `semanticscript.py build`. The extension
+auto-discovers the compiler from common repo layouts:
 
 ```text
-SemanticScript/compiler/semsc.py
-compiler/semsc.py
-../SemanticScript/compiler/semsc.py
+SemanticScript/semanticscript/compiler/semanticscript.py
+semanticscript/compiler/semanticscript.py
+../SemanticScript/semanticscript/compiler/semanticscript.py
 ```
 
 Set `semanticScript.compiler.path` for custom layouts. The emitted executable is
 placed in a `build/` directory beside the source file unless
-`semanticScript.compiler.outputDirectory` is set. When compiling `build.sem`,
-the extension lets `semsc.py` choose the compiler-managed output path from the
-build tape.
+`semanticScript.compiler.outputDirectory` is set.
 
 ## Commands
 
 - `SemanticScript: Toggle Segment Colors`
 - `SemanticScript: Run Linter`
+- `SemanticScript: Run Fix Plan`
 - `SemanticScript: Compile Current File`
 
 ## Run Locally
@@ -286,64 +290,20 @@ Then reload VS Code.
   "semanticScript.segmentColors.enabled": true,
   "semanticScript.segmentColors.colorMode": "background",
   "semanticScript.linter.enabled": true,
-  "semanticScript.linter.engine": "semlint",
   "semanticScript.linter.run": "onSave",
   "semanticScript.linter.pythonPath": "python",
   "semanticScript.linter.path": "",
-  "semanticScript.linter.skipFutureSyntax": false,
   "semanticScript.compiler.pythonPath": "python",
   "semanticScript.compiler.path": "",
   "semanticScript.compiler.outputDirectory": "",
-  "semanticScript.compiler.buildProfile": "dev",
-  "semanticScript.compiler.runtimeChecks": "default",
-  "semanticScript.compiler.persistLlvmIr": "auto",
-  "semanticScript.compiler.optLevel": "default",
-  "semanticScript.compiler.emitLlvmIr": false,
-  "semanticScript.compiler.emitOptimizedLlvmIr": false,
-  "semanticScript.compiler.buildDir": "",
-  "semanticScript.compiler.buildRoot": "",
-  "semanticScript.compiler.buildFolderName": "",
-  "semanticScript.compiler.keepResources": false,
-  "semanticScript.compiler.resourceDir": "",
-  "semanticScript.compiler.cpuBaseline": "default",
-  "semanticScript.compiler.cpuTune": "",
-  "semanticScript.compiler.cpuFeatureCheck": "default"
+  "semanticScript.semanticHighlighting.enabled": false
 }
 ```
 
 `semanticScript.segmentColors.colorMode` can be `background`, `overview`, or
 `both`.
 
-`semanticScript.linter.engine` currently accepts `semlint`.
-
 `semanticScript.linter.run` can be `onSave`, `onType`, or `manual`.
 
-`semanticScript.compiler.buildProfile` can be `dev` or `prod`.
-
-`semanticScript.compiler.runtimeChecks` can be `default`, `off`, `traps`, or
-`panic`.
-
-`semanticScript.compiler.persistLlvmIr` can be `auto`, `yes`, or `no`.
-
-`semanticScript.compiler.optLevel` can be `default`, `0`, `1`, `2`, or `3`.
-
-`semanticScript.compiler.emitOptimizedLlvmIr` passes `--emit-optimized-ir`.
-
-`semanticScript.compiler.cpuBaseline` can be `default`, `generic`, `native`,
-`x86_64_v1`, `x86_64_v2`, `x86_64_v3`, `x86_64_v4`, `arm64_generic`, or
-`arm64_v8_2`.
-
-`semanticScript.compiler.cpuTune` passes a non-empty value through to
-`--cpu-tune`.
-
-`semanticScript.compiler.cpuFeatureCheck` can be `default`, `auto`, `off`,
-`warn`, or `require`.
-
 When a `.sem` file is inside a project, compile and lint commands use the
-nearest `build.sem` as the project root. `buildDir`, `buildRoot`, and
-`buildFolderName` pass through the matching compiler artifact-directory flags.
-CPU settings pass through the matching compiler CPU flags.
-
-`semanticScript.compiler.keepResources` and
-`semanticScript.compiler.resourceDir` pass through the matching Windows resource
-debugging flags.
+nearest `build.sem` as the project root.

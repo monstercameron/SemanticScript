@@ -1,0 +1,41 @@
+# capability_ungranted_use — NEGATIVE test. main declares `effect write
+# console.stdout` and performs a write, but `uses` NO capability granting it
+# (an uncovered effect, README §8/§12/§17 #5).
+#
+# Correctness observation (verified):
+#   * default `semanticscript check` -> ERROR SS1708 (effect not covered by a capability).
+#   * default `semanticscript run`   -> REJECTED before execution by the compile gate.
+#   * `semanticscript check --json`  -> nonzero diagnostic envelope.
+# This proves the authority model enforces the gap by default.
+
+CapabilityUngrantedUse is project
+CapabilityUngrantedUse module examplesCapabilityUngrantedUse
+CapabilityUngrantedUse target console
+CapabilityUngrantedUse entry main
+
+examplesCapabilityUngrantedUse is module
+examplesCapabilityUngrantedUse path examples.capabilityUngrantedUse
+examplesCapabilityUngrantedUse exports main
+examplesCapabilityUngrantedUse purpose "Write without granting the write capability"
+examplesCapabilityUngrantedUse invariant "The write effect is intentionally uncovered"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main memory heap no
+main async no
+main purpose "Attempt a write with no capability backing the declared effect"
+main invariant "Gate rejects the uncovered write effect"
+main let message immutable String "should never print"
+main let okCode immutable ExitCode 0
+main do writeMsg
+main return okCode
+
+writeMsg is call
+writeMsg in main
+writeMsg invokes console.writeLine
+writeMsg arg text String message

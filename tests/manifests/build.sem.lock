@@ -1,0 +1,6 @@
+TaskApp is project
+TaskApp toolchainResolved "sem1.0"
+TaskApp resolved github.com/ss-lang/http v1.4.0-rc.1 sha256 4ffcb578c548894e27867e6bcc6c7c1ee27533c16f0468e9c27d8c30584d65d6
+TaskApp resolved github.com/ss-lang/sqlite v2.1.0 sha256 2ef2d09469c242c7d08e0d8483e352521219062a07307c61c9cf19575291a88d
+TaskApp effectSurface read database
+TaskApp effectSurface write console.stdout
