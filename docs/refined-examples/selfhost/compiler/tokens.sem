@@ -1,4 +1,5 @@
-# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# Refined syntax (docs/language-refinement.md). Checks clean; its tests run with
+#   python semanticscript/compiler/refined test docs/refined-examples/selfhost
 # The next piece of a compiler front end, written to exercise what the other two
 # examples do not: an instantiated generic list, a mutable loan, an operation
 # that raises, `return error`, an error payload, `match` / `case`, and an

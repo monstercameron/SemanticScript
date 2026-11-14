@@ -1,4 +1,7 @@
-# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# Refined syntax (docs/language-refinement.md). Checks clean and runs:
+#   python semanticscript/compiler/refined run docs/refined-examples/server
+# then visit http://127.0.0.1:8080/health. It listens on loopback only; to serve the
+# network, widen the `listenAuthority` scope (for example to "0.0.0.0:8080").
 # A minimal HTTP server: listen, accept forever, one task per connection,
 # route through a static table, answer, close.
 # The project entity (target console, entry main) lives in build.sem, not here.
@@ -15,9 +18,9 @@ server imports standard.string
 server exports main
 
 listenAuthority is capability
-listenAuthority purpose "Authority to accept TCP connections on port 8080"
+listenAuthority purpose "Authority to accept TCP connections on loopback port 8080"
 listenAuthority grants listen net.tcp
-listenAuthority scope "0.0.0.0:8080"
+listenAuthority scope "127.0.0.1:8080"
 
 connectionIo is capability
 connectionIo purpose "Authority to read from and write to an accepted connection"

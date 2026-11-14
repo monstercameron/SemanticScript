@@ -1,4 +1,5 @@
-# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# Refined syntax (docs/language-refinement.md). Checks clean; its tests run with
+#   python semanticscript/compiler/refined test docs/refined-examples/selfhost
 # Tests for the `tokens` module. A test file is part of the module it sits
 # beside, so it names that module's operations without a prefix and may reach
 # private ones.

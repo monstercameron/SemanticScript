@@ -1883,6 +1883,81 @@ operations, and the host-I/O modules do not run in the backend yet; there is no
 foreign function interface, formatter, language server, debugger support, or
 package versioning.
 
+## Part 8: everything compiles and runs (2026-11-14)
+
+The owner asked to compile and run every program. Before this part, twelve
+suite cases and the server example were refused by the backend (R901). Now
+every positive and edge program in the suite runs (a test enforces it), every
+worked example runs or passes its tests, and the server answers real HTTP
+requests.
+
+What the backend gained:
+
+- **Generic operations**, compiled once per set of type arguments an
+  `operationInstance` names (direct calls and operation references).
+- **Cleanups and `defer`**: an armed cleanup runs at every later `return`,
+  newest first, at most once; `onFailure trap` traps if its call fails.
+- **Tasks, task groups, channels, async operations** (D-27, since replaced by D-31).
+- **Host targets** through one callback (D-28): `console.readLine`,
+  `time.sleep` and deadlines, `clock`, `environment`, `process` (arguments and
+  running programs), `fs`, `net`, `http`, `buffer`, `string.fromBytes`, and
+  `map`, `set`, and `channel` values.
+- `string.toBytes` (a view, no copy); `Bytes` values; handles for resources
+  and host-kept values; `refined run PATH -- <arguments>`.
+
+Decisions (by delegation):
+
+- **D-27** (replaced by D-31 below) Tasks run eagerly: `start` runs the task to completion, in program
+  order, on the program's thread; `join`, `cancel`, and `awaitSlot` then have
+  nothing to wait for. Programs written for real concurrency stay correct
+  (the checker's structure rules are unchanged), and runs are deterministic.
+  The cost: nothing overlaps, and a channel wait that only another task could
+  satisfy cannot be satisfied. Such a wait traps as a deadlock when it has no
+  deadline, and waits the deadline out (then fails with `timedOut`) when it
+  has one. A real scheduler can replace this without changing the language.
+- **D-28** Library targets that need the operating system are lowered to one
+  runtime callback, `refined_host`. Arguments are flattened into 64-bit slots
+  by machine type (an integer is one slot, a string or byte string is pointer
+  and length, an enum is tag and payload, a record is its fields), and the
+  runtime dispatches by target name (`semanticscript/compiler/refined/host.py`).
+  Values the host keeps (files, sockets, maps, sets, channels, buffers,
+  argument lists, responses) are integer handles. A handle made in a region is
+  dropped when the region is released; using a dropped or closed handle traps.
+- **D-29** `net.listen` binds the host named in the scope of the capability
+  that grants `listen net.tcp`. The server example's scope is now
+  `"127.0.0.1:8080"`, so running it never opens a port to the network;
+  widening the scope is the explicit way to serve beyond loopback.
+
+- **D-30** An enum whose payloads are all integers, `Bool`, or payload-free
+  enums keeps the compact layout `{tag, 64-bit payload}`. Any other enum (an
+  `option.Option String`, a variant carrying a record, a list, or another such
+  enum, an error carrying a message) has a wide layout: the tag, then one field
+  per variant that carries a payload. `equals` is structural for every type:
+  records field by field, enums by tag and the active payload, lists element by
+  element, text and bytes by content, host values by identity.
+
+- **D-31** (replaces D-27) Tasks run in parallel. `start` fills a frame with
+  the task's arguments and hands the runtime a generated thunk that runs the
+  task on its own thread; `join` waits and reads the results back from the
+  frame. A task group runs at most `limit` tasks at once; `awaitSlot` waits for
+  room, and starting into a full group traps (A12). Cancellation is
+  cooperative and reaches every task a cancelled task started: waits on
+  channels, sleeps, accepts, and socket reads end with `cancelled`; pure
+  computation runs to its end, and `cancel` waits for the task to stop. When
+  every task waits on another with no deadline, the program traps and names
+  each wait. Recursion depth and the stack floor are kept per thread.
+- **D-32** `fs` gains `openAppend` (write at the end, creating the file if
+  missing), `createDirectory`, `removeDirectory`, and `listDirectory` with
+  `entryCount` and `entryName` (names in sorted order, region-owned).
+
+Nothing a clean program can contain is refused any more. R901 stays as a guard:
+a library target the backend does not implement is refused by name, never
+miscompiled (`test_unknown_library_target_is_refused_not_dropped`). The suite
+proves the rest: every operation and test of every program and worked example
+compiles (`test_every_operation_compiles`), every program case runs
+(`test_every_program_case_runs`), and a tour calls every standard-library target
+no other case uses (`tests/suite/programs/19-stdlib/library-tour.sem`).
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.
@@ -2101,6 +2176,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-13 | Part 4 | Implementation started as a new front end beside the legacy compiler; decisions D-1 to D-15 recorded there (by delegation) |
 | 2026-11-13 | Part 5 | No bridge and no backwards compatibility (owner); the refined compiler has its own LLVM backend; every Part 4 open item enforced; decisions D-16 to D-23 (by delegation) |
 | 2026-11-13 | Part 6 | Earlier compiler, examples, runtime, vendored C, tests, docs, and CI lanes removed (owner); CI, editor, and docs point at the refined compiler |
+| 2026-11-14 | Part 8 | Backend completed so every program compiles and runs; decisions D-27 to D-32 (by delegation; D-31 replaces D-27) |
 | 2026-11-14 | Part 7 | Test suite and generated coverage map (owner); fixes for what it found; decisions D-24 to D-26 (by delegation) |
 
 ## Parking lot

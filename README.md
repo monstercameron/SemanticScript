@@ -109,13 +109,15 @@ Diagnostics have stable codes (`R101`...`R901`); each code's summary is in
 
 ## What runs today
 
-The checker enforces the whole language as designed. The backend compiles
-integers, booleans, floats, strings, records, enums, tables, loops with
-enforced bounds, recursion with an enforced depth, errors, regions, lists,
-optional values, and calls across modules. Tasks, cleanups, run-time string
-building, maps, sets, and network and file I/O are checked but not yet
-compiled; programs that use them are refused with `R901`. The current list is
-in Part 5 of the notes, and every item still open is listed at the end of
+The checker enforces the whole language as designed, and the backend compiles
+and runs all of it: integers, floats, strings, records, enums, tables, loops
+and recursion with enforced bounds, errors, regions, lists, maps, sets,
+generic operations, cleanups, parallel tasks, task groups and channels,
+and files and directories, sockets, HTTP, processes, the environment, and the clock. Every
+worked example runs, including an HTTP server, and every operation of every
+program in the repository compiles; `R901` is now only a guard against a library
+target the backend has not implemented.
+Every item still open is listed at the end of
 [docs/test-suite.md](docs/test-suite.md).
 
 ## Repository map

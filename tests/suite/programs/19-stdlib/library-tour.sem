@@ -1,0 +1,1551 @@
+# covers: 19 Mathematical functions
+# covers: 19 Comparison functions
+# covers: 19 String utilities
+# covers: 19 File-system utilities
+# covers: 12 Buffered I/O
+# covers: 12 Binary file operations
+# covers: 3 Bitwise operators
+# covers: 3 Logical AND / OR / NOT
+# covers: 2 Signed integers (8/16/32/64-bit)
+# covers: 2 Type conversions
+# covers: 14 Explicit conversions
+# covers: 3 Integer overflow
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: -6
+# stdout: 5
+# stdout: n=42!
+# stdout: true
+# stdout: true
+# stdout: true
+# stdout: false
+# stdout: false
+# stdout: true
+# stdout: false
+# stdout: true
+# stdout: false
+# stdout: true
+# stdout: true
+# stdout: true
+# stdout: false
+# stdout: false
+# stdout: true
+# stdout: true
+# stdout: true
+# stdout: false
+# stdout: true
+# stdout: true
+# stdout: 3
+# stdout: 2.0
+# stdout: true
+# stdout: true
+# stdout: 10
+# stdout: -4
+# stdout: 21
+# stdout: 2
+# stdout: 1
+# stdout: 0.5
+# stdout: 9223372036854775807
+# stdout: -9223372036854775808
+# stdout: 9223372036854775807
+# stdout: -9223372036854775808
+# stdout: -2
+# stdout: 0
+# stdout: xyz
+# stdout: example
+
+libraryTour is module
+libraryTour purpose "Call every standard-library target the other cases leave out, and print each result"
+libraryTour path libraryTour
+libraryTour imports standard.console
+libraryTour imports standard.bits
+libraryTour imports standard.buffer
+libraryTour imports standard.byte
+libraryTour imports standard.compare
+libraryTour imports standard.convert
+libraryTour imports standard.fs
+libraryTour imports standard.http
+libraryTour imports standard.logic
+libraryTour imports standard.math
+libraryTour imports standard.string
+libraryTour imports standard.time
+libraryTour exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showFloat is operation
+showFloat purpose "Print one floating-point number on its own line"
+showFloat invariant none
+showFloat typeParam none
+showFloat input value Float64 value
+showFloat output none
+showFloat outputOwner none
+showFloat raises none
+showFloat effect write console.stdout
+showFloat uses stdoutWriter
+showFloat memory heap false
+showFloat async false
+showFloat maxRecursion none
+showFloat label begin loopKind none
+showFloat label begin within none
+showFloat label done loopKind none
+showFloat label done within none
+showFloat at begin do writeValue
+showFloat at begin branch ifError writeValue goto done else goto done
+showFloat at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showFloat
+writeValue invokes console.writeFloatLine
+writeValue arg value Float64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+fileAccess is capability
+fileAccess purpose "Authority to read and write files whose names start with suite-"
+fileAccess grants read fs.files
+fileAccess grants write fs.files
+fileAccess scope "suite-"
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read fs.files
+main effect write console.stdout
+main effect write fs.files
+main uses fileAccess
+main uses stdoutWriter
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label afterBuffer loopKind none
+main label afterBuffer within none
+main label files loopKind none
+main label files within none
+main label reopen loopKind none
+main label reopen within none
+main label writeNew loopKind none
+main label writeNew within none
+main label closeWriterAfterFailure loopKind none
+main label closeWriterAfterFailure within none
+main label closeWriterStep loopKind none
+main label closeWriterStep within none
+main label readBack loopKind none
+main label readBack within none
+main label readChunk loopKind none
+main label readChunk within none
+main label closeReaderAfterFailure loopKind none
+main label closeReaderAfterFailure within none
+main label closeReaderStep loopKind none
+main label closeReaderStep within none
+main label decode loopKind none
+main label decode within none
+main label showChunk loopKind none
+main label showChunk within none
+main label readHeader loopKind none
+main label readHeader within none
+main label showHost loopKind none
+main label showHost within none
+main label failed loopKind none
+main label failed within none
+main let five immutable Int64 5
+main let fortyTwo immutable Int64 42
+main let bang immutable Byte 33
+main let prefix immutable String "n="
+main let letterA immutable Byte 65
+main let digitSeven immutable Byte 55
+main let small32 immutable Int32 -5
+main let big32 immutable Int32 5
+main let quarter immutable Float64 0.25
+main let half immutable Float64 0.5
+main let threeQuarters immutable Float64 0.75
+main let three immutable Int64 3
+main let two immutable Int64 2
+main let yes immutable Bool true
+main let no immutable Bool false
+main let seven32 immutable Int32 7
+main let three32 immutable Int32 3
+main let zero immutable Int64 0
+main let minusOne immutable Int64 -1
+main let largest immutable Int64 9223372036854775807
+main let smallest immutable Int64 -9223372036854775808
+main let path immutable String "suite-tour.txt"
+main let oldContent immutable String "old content"
+main let newContent immutable String "xyz"
+main let sixtyFour immutable Int64 64
+main let waitMs immutable Int64 5000
+main let request immutable String "GET /a HTTP/1.1\x0d\x0aHost: example\x0d\x0a\x0d\x0a"
+main let hostName immutable String "Host"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do notFive
+main at begin do printNotFive
+main at begin do makeBuffer
+main at begin do addText
+main at begin do addNumber
+main at begin do addBang
+main at begin do bufferLength
+main at begin do printBufferLength
+main at begin do bufferText
+main at begin branch ifError bufferText goto failed else goto afterBuffer
+main at afterBuffer do printBufferText
+main at afterBuffer do byteSame
+main at afterBuffer do printByteSame
+main at afterBuffer do isSeven
+main at afterBuffer do printIsSeven
+main at afterBuffer do cmpByteEq
+main at afterBuffer do printCmpByteEq
+main at afterBuffer do cmpByteNe
+main at afterBuffer do printCmpByteNe
+main at afterBuffer do cmpByteLt
+main at afterBuffer do printCmpByteLt
+main at afterBuffer do cmpByteLe
+main at afterBuffer do printCmpByteLe
+main at afterBuffer do cmpByteGt
+main at afterBuffer do printCmpByteGt
+main at afterBuffer do cmpByteGe
+main at afterBuffer do printCmpByteGe
+main at afterBuffer do cmpInt32Eq
+main at afterBuffer do printCmpInt32Eq
+main at afterBuffer do cmpInt32Ne
+main at afterBuffer do printCmpInt32Ne
+main at afterBuffer do cmpInt32Lt
+main at afterBuffer do printCmpInt32Lt
+main at afterBuffer do cmpInt32Le
+main at afterBuffer do printCmpInt32Le
+main at afterBuffer do cmpInt32Gt
+main at afterBuffer do printCmpInt32Gt
+main at afterBuffer do cmpInt32Ge
+main at afterBuffer do printCmpInt32Ge
+main at afterBuffer do cmpFloatNe
+main at afterBuffer do printCmpFloatNe
+main at afterBuffer do cmpFloatLt
+main at afterBuffer do printCmpFloatLt
+main at afterBuffer do cmpFloatLe
+main at afterBuffer do printCmpFloatLe
+main at afterBuffer do cmpFloatGe
+main at afterBuffer do printCmpFloatGe
+main at afterBuffer do cmpFloatLtSame
+main at afterBuffer do printCmpFloatLtSame
+main at afterBuffer do cmpFloatGtSame
+main at afterBuffer do printCmpFloatGtSame
+main at afterBuffer do toExit
+main at afterBuffer do fromExit
+main at afterBuffer do printExitBack
+main at afterBuffer do toFloat
+main at afterBuffer do printTwoFloat
+main at afterBuffer do eitherTrue
+main at afterBuffer do printEitherTrue
+main at afterBuffer do oneTrue
+main at afterBuffer do printOneTrue
+main at afterBuffer do add32
+main at afterBuffer do widenadd32
+main at afterBuffer do printadd32
+main at afterBuffer do sub32
+main at afterBuffer do widensub32
+main at afterBuffer do printsub32
+main at afterBuffer do mul32
+main at afterBuffer do widenmul32
+main at afterBuffer do printmul32
+main at afterBuffer do div32
+main at afterBuffer do widendiv32
+main at afterBuffer do printdiv32
+main at afterBuffer do rem32
+main at afterBuffer do widenrem32
+main at afterBuffer do printrem32
+main at afterBuffer do floatDifference
+main at afterBuffer do printFloatDifference
+main at afterBuffer do wrapAdd
+main at afterBuffer do printWrapAdd
+main at afterBuffer do wrapSub
+main at afterBuffer do printWrapSub
+main at afterBuffer do satAdd
+main at afterBuffer do printSatAdd
+main at afterBuffer do satSub
+main at afterBuffer do printSatSub
+main at afterBuffer do wrapMul
+main at afterBuffer do printWrapMul
+main at afterBuffer do satMul
+main at afterBuffer do printSatMul
+main at afterBuffer goto files
+main at files do makeDeadline
+main at files do contentBytes
+main at files start writeOld
+main at files join writeOld
+main at files branch ifError writeOld goto failed else goto reopen
+main at reopen do openForWrite
+main at reopen branch ifError openForWrite goto failed else goto writeNew
+main at writeNew do newBytes
+main at writeNew start writeThrough
+main at writeNew join writeThrough
+main at writeNew branch ifError writeThrough goto closeWriterAfterFailure else goto closeWriterStep
+main at closeWriterAfterFailure do closeWriterFailed
+main at closeWriterAfterFailure branch ifError closeWriterFailed goto failed else goto failed
+main at closeWriterStep do closeWriter
+main at closeWriterStep branch ifError closeWriter goto failed else goto readBack
+main at readBack do openForRead
+main at readBack branch ifError openForRead goto failed else goto readChunk
+main at readChunk start readSome
+main at readChunk join readSome
+main at readChunk branch ifError readSome goto closeReaderAfterFailure else goto closeReaderStep
+main at closeReaderAfterFailure do closeReaderFailed
+main at closeReaderAfterFailure branch ifError closeReaderFailed goto failed else goto failed
+main at closeReaderStep do closeReader
+main at closeReaderStep branch ifError closeReader goto failed else goto decode
+main at decode do chunkText
+main at decode branch ifError chunkText goto failed else goto showChunk
+main at showChunk do printChunk
+main at showChunk do requestBytes
+main at showChunk do parseIt
+main at showChunk branch ifError parseIt goto failed else goto readHeader
+main at readHeader do hostHeader
+main at readHeader branch ifError hostHeader goto failed else goto showHost
+main at showHost do printHost
+main at showHost return ok okCode
+main at failed return ok failCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+notFive is call
+notFive in main
+notFive invokes bits.notInt64
+notFive arg value Int64 five copy
+notFive out notFiveResult Int64
+notFive ownedBy none
+notFive cleanedBy none
+notFive borrows none
+notFive catch none
+
+printNotFive is call
+printNotFive in main
+printNotFive invokes showInt
+printNotFive arg value Int64 notFiveResult copy
+printNotFive out none
+printNotFive ownedBy none
+printNotFive cleanedBy none
+printNotFive borrows none
+printNotFive catch none
+
+makeBuffer is call
+makeBuffer in main
+makeBuffer invokes buffer.new
+makeBuffer arg region Region store lend
+makeBuffer out buf buffer.ByteBuffer
+makeBuffer ownedBy store
+makeBuffer cleanedBy none
+makeBuffer borrows none
+makeBuffer catch none
+
+addText is call
+addText in main
+addText invokes buffer.appendString
+addText arg buffer buffer.ByteBuffer buf lendMutable
+addText arg text String prefix lend
+addText out none
+addText ownedBy none
+addText cleanedBy none
+addText borrows none
+addText catch none
+
+addNumber is call
+addNumber in main
+addNumber invokes buffer.appendInt64
+addNumber arg buffer buffer.ByteBuffer buf lendMutable
+addNumber arg value Int64 fortyTwo copy
+addNumber out none
+addNumber ownedBy none
+addNumber cleanedBy none
+addNumber borrows none
+addNumber catch none
+
+addBang is call
+addBang in main
+addBang invokes buffer.appendByte
+addBang arg buffer buffer.ByteBuffer buf lendMutable
+addBang arg value Byte bang copy
+addBang out none
+addBang ownedBy none
+addBang cleanedBy none
+addBang borrows none
+addBang catch none
+
+bufferLength is call
+bufferLength in main
+bufferLength invokes buffer.length
+bufferLength arg buffer buffer.ByteBuffer buf lend
+bufferLength out bufLength Int64
+bufferLength ownedBy none
+bufferLength cleanedBy none
+bufferLength borrows none
+bufferLength catch none
+
+printBufferLength is call
+printBufferLength in main
+printBufferLength invokes showInt
+printBufferLength arg value Int64 bufLength copy
+printBufferLength out none
+printBufferLength ownedBy none
+printBufferLength cleanedBy none
+printBufferLength borrows none
+printBufferLength catch none
+
+bufferText is call
+bufferText in main
+bufferText invokes buffer.toString
+bufferText arg buffer buffer.ByteBuffer buf lend
+bufferText arg region Region store lend
+bufferText out bufText String
+bufferText ownedBy store
+bufferText cleanedBy none
+bufferText borrows none
+bufferText catch bufTextError string.Utf8Error
+
+printBufferText is call
+printBufferText in main
+printBufferText invokes showText
+printBufferText arg text String bufText lend
+printBufferText out none
+printBufferText ownedBy none
+printBufferText cleanedBy none
+printBufferText borrows none
+printBufferText catch none
+
+byteSame is call
+byteSame in main
+byteSame invokes byte.equals
+byteSame arg left Byte letterA copy
+byteSame arg right Byte letterA copy
+byteSame out byteSameResult Bool
+byteSame ownedBy none
+byteSame cleanedBy none
+byteSame borrows none
+byteSame catch none
+
+printByteSame is call
+printByteSame in main
+printByteSame invokes showBool
+printByteSame arg flag Bool byteSameResult copy
+printByteSame out none
+printByteSame ownedBy none
+printByteSame cleanedBy none
+printByteSame borrows none
+printByteSame catch none
+
+isSeven is call
+isSeven in main
+isSeven invokes byte.isDigit
+isSeven arg value Byte digitSeven copy
+isSeven out sevenIsDigit Bool
+isSeven ownedBy none
+isSeven cleanedBy none
+isSeven borrows none
+isSeven catch none
+
+printIsSeven is call
+printIsSeven in main
+printIsSeven invokes showBool
+printIsSeven arg flag Bool sevenIsDigit copy
+printIsSeven out none
+printIsSeven ownedBy none
+printIsSeven cleanedBy none
+printIsSeven borrows none
+printIsSeven catch none
+
+cmpByteEq is call
+cmpByteEq in main
+cmpByteEq invokes compare.equalByte
+cmpByteEq arg left Byte letterA copy
+cmpByteEq arg right Byte letterA copy
+cmpByteEq out cmpByteEqResult Bool
+cmpByteEq ownedBy none
+cmpByteEq cleanedBy none
+cmpByteEq borrows none
+cmpByteEq catch none
+
+printCmpByteEq is call
+printCmpByteEq in main
+printCmpByteEq invokes showBool
+printCmpByteEq arg flag Bool cmpByteEqResult copy
+printCmpByteEq out none
+printCmpByteEq ownedBy none
+printCmpByteEq cleanedBy none
+printCmpByteEq borrows none
+printCmpByteEq catch none
+
+cmpByteNe is call
+cmpByteNe in main
+cmpByteNe invokes compare.notEqualByte
+cmpByteNe arg left Byte letterA copy
+cmpByteNe arg right Byte letterA copy
+cmpByteNe out cmpByteNeResult Bool
+cmpByteNe ownedBy none
+cmpByteNe cleanedBy none
+cmpByteNe borrows none
+cmpByteNe catch none
+
+printCmpByteNe is call
+printCmpByteNe in main
+printCmpByteNe invokes showBool
+printCmpByteNe arg flag Bool cmpByteNeResult copy
+printCmpByteNe out none
+printCmpByteNe ownedBy none
+printCmpByteNe cleanedBy none
+printCmpByteNe borrows none
+printCmpByteNe catch none
+
+cmpByteLt is call
+cmpByteLt in main
+cmpByteLt invokes compare.lessThanByte
+cmpByteLt arg left Byte letterA copy
+cmpByteLt arg right Byte letterA copy
+cmpByteLt out cmpByteLtResult Bool
+cmpByteLt ownedBy none
+cmpByteLt cleanedBy none
+cmpByteLt borrows none
+cmpByteLt catch none
+
+printCmpByteLt is call
+printCmpByteLt in main
+printCmpByteLt invokes showBool
+printCmpByteLt arg flag Bool cmpByteLtResult copy
+printCmpByteLt out none
+printCmpByteLt ownedBy none
+printCmpByteLt cleanedBy none
+printCmpByteLt borrows none
+printCmpByteLt catch none
+
+cmpByteLe is call
+cmpByteLe in main
+cmpByteLe invokes compare.lessOrEqualByte
+cmpByteLe arg left Byte letterA copy
+cmpByteLe arg right Byte letterA copy
+cmpByteLe out cmpByteLeResult Bool
+cmpByteLe ownedBy none
+cmpByteLe cleanedBy none
+cmpByteLe borrows none
+cmpByteLe catch none
+
+printCmpByteLe is call
+printCmpByteLe in main
+printCmpByteLe invokes showBool
+printCmpByteLe arg flag Bool cmpByteLeResult copy
+printCmpByteLe out none
+printCmpByteLe ownedBy none
+printCmpByteLe cleanedBy none
+printCmpByteLe borrows none
+printCmpByteLe catch none
+
+cmpByteGt is call
+cmpByteGt in main
+cmpByteGt invokes compare.greaterThanByte
+cmpByteGt arg left Byte letterA copy
+cmpByteGt arg right Byte letterA copy
+cmpByteGt out cmpByteGtResult Bool
+cmpByteGt ownedBy none
+cmpByteGt cleanedBy none
+cmpByteGt borrows none
+cmpByteGt catch none
+
+printCmpByteGt is call
+printCmpByteGt in main
+printCmpByteGt invokes showBool
+printCmpByteGt arg flag Bool cmpByteGtResult copy
+printCmpByteGt out none
+printCmpByteGt ownedBy none
+printCmpByteGt cleanedBy none
+printCmpByteGt borrows none
+printCmpByteGt catch none
+
+cmpByteGe is call
+cmpByteGe in main
+cmpByteGe invokes compare.greaterOrEqualByte
+cmpByteGe arg left Byte letterA copy
+cmpByteGe arg right Byte letterA copy
+cmpByteGe out cmpByteGeResult Bool
+cmpByteGe ownedBy none
+cmpByteGe cleanedBy none
+cmpByteGe borrows none
+cmpByteGe catch none
+
+printCmpByteGe is call
+printCmpByteGe in main
+printCmpByteGe invokes showBool
+printCmpByteGe arg flag Bool cmpByteGeResult copy
+printCmpByteGe out none
+printCmpByteGe ownedBy none
+printCmpByteGe cleanedBy none
+printCmpByteGe borrows none
+printCmpByteGe catch none
+
+cmpInt32Eq is call
+cmpInt32Eq in main
+cmpInt32Eq invokes compare.equalInt32
+cmpInt32Eq arg left Int32 small32 copy
+cmpInt32Eq arg right Int32 big32 copy
+cmpInt32Eq out cmpInt32EqResult Bool
+cmpInt32Eq ownedBy none
+cmpInt32Eq cleanedBy none
+cmpInt32Eq borrows none
+cmpInt32Eq catch none
+
+printCmpInt32Eq is call
+printCmpInt32Eq in main
+printCmpInt32Eq invokes showBool
+printCmpInt32Eq arg flag Bool cmpInt32EqResult copy
+printCmpInt32Eq out none
+printCmpInt32Eq ownedBy none
+printCmpInt32Eq cleanedBy none
+printCmpInt32Eq borrows none
+printCmpInt32Eq catch none
+
+cmpInt32Ne is call
+cmpInt32Ne in main
+cmpInt32Ne invokes compare.notEqualInt32
+cmpInt32Ne arg left Int32 small32 copy
+cmpInt32Ne arg right Int32 big32 copy
+cmpInt32Ne out cmpInt32NeResult Bool
+cmpInt32Ne ownedBy none
+cmpInt32Ne cleanedBy none
+cmpInt32Ne borrows none
+cmpInt32Ne catch none
+
+printCmpInt32Ne is call
+printCmpInt32Ne in main
+printCmpInt32Ne invokes showBool
+printCmpInt32Ne arg flag Bool cmpInt32NeResult copy
+printCmpInt32Ne out none
+printCmpInt32Ne ownedBy none
+printCmpInt32Ne cleanedBy none
+printCmpInt32Ne borrows none
+printCmpInt32Ne catch none
+
+cmpInt32Lt is call
+cmpInt32Lt in main
+cmpInt32Lt invokes compare.lessThanInt32
+cmpInt32Lt arg left Int32 small32 copy
+cmpInt32Lt arg right Int32 big32 copy
+cmpInt32Lt out cmpInt32LtResult Bool
+cmpInt32Lt ownedBy none
+cmpInt32Lt cleanedBy none
+cmpInt32Lt borrows none
+cmpInt32Lt catch none
+
+printCmpInt32Lt is call
+printCmpInt32Lt in main
+printCmpInt32Lt invokes showBool
+printCmpInt32Lt arg flag Bool cmpInt32LtResult copy
+printCmpInt32Lt out none
+printCmpInt32Lt ownedBy none
+printCmpInt32Lt cleanedBy none
+printCmpInt32Lt borrows none
+printCmpInt32Lt catch none
+
+cmpInt32Le is call
+cmpInt32Le in main
+cmpInt32Le invokes compare.lessOrEqualInt32
+cmpInt32Le arg left Int32 small32 copy
+cmpInt32Le arg right Int32 big32 copy
+cmpInt32Le out cmpInt32LeResult Bool
+cmpInt32Le ownedBy none
+cmpInt32Le cleanedBy none
+cmpInt32Le borrows none
+cmpInt32Le catch none
+
+printCmpInt32Le is call
+printCmpInt32Le in main
+printCmpInt32Le invokes showBool
+printCmpInt32Le arg flag Bool cmpInt32LeResult copy
+printCmpInt32Le out none
+printCmpInt32Le ownedBy none
+printCmpInt32Le cleanedBy none
+printCmpInt32Le borrows none
+printCmpInt32Le catch none
+
+cmpInt32Gt is call
+cmpInt32Gt in main
+cmpInt32Gt invokes compare.greaterThanInt32
+cmpInt32Gt arg left Int32 small32 copy
+cmpInt32Gt arg right Int32 big32 copy
+cmpInt32Gt out cmpInt32GtResult Bool
+cmpInt32Gt ownedBy none
+cmpInt32Gt cleanedBy none
+cmpInt32Gt borrows none
+cmpInt32Gt catch none
+
+printCmpInt32Gt is call
+printCmpInt32Gt in main
+printCmpInt32Gt invokes showBool
+printCmpInt32Gt arg flag Bool cmpInt32GtResult copy
+printCmpInt32Gt out none
+printCmpInt32Gt ownedBy none
+printCmpInt32Gt cleanedBy none
+printCmpInt32Gt borrows none
+printCmpInt32Gt catch none
+
+cmpInt32Ge is call
+cmpInt32Ge in main
+cmpInt32Ge invokes compare.greaterOrEqualInt32
+cmpInt32Ge arg left Int32 small32 copy
+cmpInt32Ge arg right Int32 big32 copy
+cmpInt32Ge out cmpInt32GeResult Bool
+cmpInt32Ge ownedBy none
+cmpInt32Ge cleanedBy none
+cmpInt32Ge borrows none
+cmpInt32Ge catch none
+
+printCmpInt32Ge is call
+printCmpInt32Ge in main
+printCmpInt32Ge invokes showBool
+printCmpInt32Ge arg flag Bool cmpInt32GeResult copy
+printCmpInt32Ge out none
+printCmpInt32Ge ownedBy none
+printCmpInt32Ge cleanedBy none
+printCmpInt32Ge borrows none
+printCmpInt32Ge catch none
+
+cmpFloatNe is call
+cmpFloatNe in main
+cmpFloatNe invokes compare.notEqualFloat64
+cmpFloatNe arg left Float64 quarter copy
+cmpFloatNe arg right Float64 half copy
+cmpFloatNe out cmpFloatNeResult Bool
+cmpFloatNe ownedBy none
+cmpFloatNe cleanedBy none
+cmpFloatNe borrows none
+cmpFloatNe catch none
+
+printCmpFloatNe is call
+printCmpFloatNe in main
+printCmpFloatNe invokes showBool
+printCmpFloatNe arg flag Bool cmpFloatNeResult copy
+printCmpFloatNe out none
+printCmpFloatNe ownedBy none
+printCmpFloatNe cleanedBy none
+printCmpFloatNe borrows none
+printCmpFloatNe catch none
+
+cmpFloatLt is call
+cmpFloatLt in main
+cmpFloatLt invokes compare.lessThanFloat64
+cmpFloatLt arg left Float64 quarter copy
+cmpFloatLt arg right Float64 half copy
+cmpFloatLt out cmpFloatLtResult Bool
+cmpFloatLt ownedBy none
+cmpFloatLt cleanedBy none
+cmpFloatLt borrows none
+cmpFloatLt catch none
+
+printCmpFloatLt is call
+printCmpFloatLt in main
+printCmpFloatLt invokes showBool
+printCmpFloatLt arg flag Bool cmpFloatLtResult copy
+printCmpFloatLt out none
+printCmpFloatLt ownedBy none
+printCmpFloatLt cleanedBy none
+printCmpFloatLt borrows none
+printCmpFloatLt catch none
+
+cmpFloatLe is call
+cmpFloatLe in main
+cmpFloatLe invokes compare.lessOrEqualFloat64
+cmpFloatLe arg left Float64 quarter copy
+cmpFloatLe arg right Float64 half copy
+cmpFloatLe out cmpFloatLeResult Bool
+cmpFloatLe ownedBy none
+cmpFloatLe cleanedBy none
+cmpFloatLe borrows none
+cmpFloatLe catch none
+
+printCmpFloatLe is call
+printCmpFloatLe in main
+printCmpFloatLe invokes showBool
+printCmpFloatLe arg flag Bool cmpFloatLeResult copy
+printCmpFloatLe out none
+printCmpFloatLe ownedBy none
+printCmpFloatLe cleanedBy none
+printCmpFloatLe borrows none
+printCmpFloatLe catch none
+
+cmpFloatGe is call
+cmpFloatGe in main
+cmpFloatGe invokes compare.greaterOrEqualFloat64
+cmpFloatGe arg left Float64 quarter copy
+cmpFloatGe arg right Float64 half copy
+cmpFloatGe out cmpFloatGeResult Bool
+cmpFloatGe ownedBy none
+cmpFloatGe cleanedBy none
+cmpFloatGe borrows none
+cmpFloatGe catch none
+
+printCmpFloatGe is call
+printCmpFloatGe in main
+printCmpFloatGe invokes showBool
+printCmpFloatGe arg flag Bool cmpFloatGeResult copy
+printCmpFloatGe out none
+printCmpFloatGe ownedBy none
+printCmpFloatGe cleanedBy none
+printCmpFloatGe borrows none
+printCmpFloatGe catch none
+
+cmpFloatLtSame is call
+cmpFloatLtSame in main
+cmpFloatLtSame invokes compare.lessOrEqualFloat64
+cmpFloatLtSame arg left Float64 quarter copy
+cmpFloatLtSame arg right Float64 quarter copy
+cmpFloatLtSame out cmpFloatLtSameResult Bool
+cmpFloatLtSame ownedBy none
+cmpFloatLtSame cleanedBy none
+cmpFloatLtSame borrows none
+cmpFloatLtSame catch none
+
+printCmpFloatLtSame is call
+printCmpFloatLtSame in main
+printCmpFloatLtSame invokes showBool
+printCmpFloatLtSame arg flag Bool cmpFloatLtSameResult copy
+printCmpFloatLtSame out none
+printCmpFloatLtSame ownedBy none
+printCmpFloatLtSame cleanedBy none
+printCmpFloatLtSame borrows none
+printCmpFloatLtSame catch none
+
+cmpFloatGtSame is call
+cmpFloatGtSame in main
+cmpFloatGtSame invokes compare.greaterOrEqualFloat64
+cmpFloatGtSame arg left Float64 quarter copy
+cmpFloatGtSame arg right Float64 quarter copy
+cmpFloatGtSame out cmpFloatGtSameResult Bool
+cmpFloatGtSame ownedBy none
+cmpFloatGtSame cleanedBy none
+cmpFloatGtSame borrows none
+cmpFloatGtSame catch none
+
+printCmpFloatGtSame is call
+printCmpFloatGtSame in main
+printCmpFloatGtSame invokes showBool
+printCmpFloatGtSame arg flag Bool cmpFloatGtSameResult copy
+printCmpFloatGtSame out none
+printCmpFloatGtSame ownedBy none
+printCmpFloatGtSame cleanedBy none
+printCmpFloatGtSame borrows none
+printCmpFloatGtSame catch none
+
+toExit is call
+toExit in main
+toExit invokes convert.int64ToExitCode
+toExit arg value Int64 three copy
+toExit out exitThree ExitCode
+toExit ownedBy none
+toExit cleanedBy none
+toExit borrows none
+toExit catch none
+
+fromExit is call
+fromExit in main
+fromExit invokes convert.exitCodeToInt64
+fromExit arg value ExitCode exitThree copy
+fromExit out exitBack Int64
+fromExit ownedBy none
+fromExit cleanedBy none
+fromExit borrows none
+fromExit catch none
+
+printExitBack is call
+printExitBack in main
+printExitBack invokes showInt
+printExitBack arg value Int64 exitBack copy
+printExitBack out none
+printExitBack ownedBy none
+printExitBack cleanedBy none
+printExitBack borrows none
+printExitBack catch none
+
+toFloat is call
+toFloat in main
+toFloat invokes convert.int64ToFloat64
+toFloat arg value Int64 two copy
+toFloat out twoFloat Float64
+toFloat ownedBy none
+toFloat cleanedBy none
+toFloat borrows none
+toFloat catch none
+
+printTwoFloat is call
+printTwoFloat in main
+printTwoFloat invokes showFloat
+printTwoFloat arg value Float64 twoFloat copy
+printTwoFloat out none
+printTwoFloat ownedBy none
+printTwoFloat cleanedBy none
+printTwoFloat borrows none
+printTwoFloat catch none
+
+eitherTrue is call
+eitherTrue in main
+eitherTrue invokes logic.or
+eitherTrue arg left Bool yes copy
+eitherTrue arg right Bool no copy
+eitherTrue out eitherTrueResult Bool
+eitherTrue ownedBy none
+eitherTrue cleanedBy none
+eitherTrue borrows none
+eitherTrue catch none
+
+printEitherTrue is call
+printEitherTrue in main
+printEitherTrue invokes showBool
+printEitherTrue arg flag Bool eitherTrueResult copy
+printEitherTrue out none
+printEitherTrue ownedBy none
+printEitherTrue cleanedBy none
+printEitherTrue borrows none
+printEitherTrue catch none
+
+oneTrue is call
+oneTrue in main
+oneTrue invokes logic.xor
+oneTrue arg left Bool yes copy
+oneTrue arg right Bool no copy
+oneTrue out oneTrueResult Bool
+oneTrue ownedBy none
+oneTrue cleanedBy none
+oneTrue borrows none
+oneTrue catch none
+
+printOneTrue is call
+printOneTrue in main
+printOneTrue invokes showBool
+printOneTrue arg flag Bool oneTrueResult copy
+printOneTrue out none
+printOneTrue ownedBy none
+printOneTrue cleanedBy none
+printOneTrue borrows none
+printOneTrue catch none
+
+add32 is call
+add32 in main
+add32 invokes math.addInt32
+add32 arg left Int32 seven32 copy
+add32 arg right Int32 three32 copy
+add32 out add32Result Int32
+add32 ownedBy none
+add32 cleanedBy none
+add32 borrows none
+add32 catch none
+
+widenadd32 is call
+widenadd32 in main
+widenadd32 invokes convert.int32ToInt64
+widenadd32 arg value Int32 add32Result copy
+widenadd32 out add32Wide Int64
+widenadd32 ownedBy none
+widenadd32 cleanedBy none
+widenadd32 borrows none
+widenadd32 catch none
+
+printadd32 is call
+printadd32 in main
+printadd32 invokes showInt
+printadd32 arg value Int64 add32Wide copy
+printadd32 out none
+printadd32 ownedBy none
+printadd32 cleanedBy none
+printadd32 borrows none
+printadd32 catch none
+
+sub32 is call
+sub32 in main
+sub32 invokes math.subtractInt32
+sub32 arg left Int32 three32 copy
+sub32 arg right Int32 seven32 copy
+sub32 out sub32Result Int32
+sub32 ownedBy none
+sub32 cleanedBy none
+sub32 borrows none
+sub32 catch none
+
+widensub32 is call
+widensub32 in main
+widensub32 invokes convert.int32ToInt64
+widensub32 arg value Int32 sub32Result copy
+widensub32 out sub32Wide Int64
+widensub32 ownedBy none
+widensub32 cleanedBy none
+widensub32 borrows none
+widensub32 catch none
+
+printsub32 is call
+printsub32 in main
+printsub32 invokes showInt
+printsub32 arg value Int64 sub32Wide copy
+printsub32 out none
+printsub32 ownedBy none
+printsub32 cleanedBy none
+printsub32 borrows none
+printsub32 catch none
+
+mul32 is call
+mul32 in main
+mul32 invokes math.multiplyInt32
+mul32 arg left Int32 seven32 copy
+mul32 arg right Int32 three32 copy
+mul32 out mul32Result Int32
+mul32 ownedBy none
+mul32 cleanedBy none
+mul32 borrows none
+mul32 catch none
+
+widenmul32 is call
+widenmul32 in main
+widenmul32 invokes convert.int32ToInt64
+widenmul32 arg value Int32 mul32Result copy
+widenmul32 out mul32Wide Int64
+widenmul32 ownedBy none
+widenmul32 cleanedBy none
+widenmul32 borrows none
+widenmul32 catch none
+
+printmul32 is call
+printmul32 in main
+printmul32 invokes showInt
+printmul32 arg value Int64 mul32Wide copy
+printmul32 out none
+printmul32 ownedBy none
+printmul32 cleanedBy none
+printmul32 borrows none
+printmul32 catch none
+
+div32 is call
+div32 in main
+div32 invokes math.divideInt32
+div32 arg left Int32 seven32 copy
+div32 arg right Int32 three32 copy
+div32 out div32Result Int32
+div32 ownedBy none
+div32 cleanedBy none
+div32 borrows none
+div32 catch none
+
+widendiv32 is call
+widendiv32 in main
+widendiv32 invokes convert.int32ToInt64
+widendiv32 arg value Int32 div32Result copy
+widendiv32 out div32Wide Int64
+widendiv32 ownedBy none
+widendiv32 cleanedBy none
+widendiv32 borrows none
+widendiv32 catch none
+
+printdiv32 is call
+printdiv32 in main
+printdiv32 invokes showInt
+printdiv32 arg value Int64 div32Wide copy
+printdiv32 out none
+printdiv32 ownedBy none
+printdiv32 cleanedBy none
+printdiv32 borrows none
+printdiv32 catch none
+
+rem32 is call
+rem32 in main
+rem32 invokes math.remainderInt32
+rem32 arg left Int32 seven32 copy
+rem32 arg right Int32 three32 copy
+rem32 out rem32Result Int32
+rem32 ownedBy none
+rem32 cleanedBy none
+rem32 borrows none
+rem32 catch none
+
+widenrem32 is call
+widenrem32 in main
+widenrem32 invokes convert.int32ToInt64
+widenrem32 arg value Int32 rem32Result copy
+widenrem32 out rem32Wide Int64
+widenrem32 ownedBy none
+widenrem32 cleanedBy none
+widenrem32 borrows none
+widenrem32 catch none
+
+printrem32 is call
+printrem32 in main
+printrem32 invokes showInt
+printrem32 arg value Int64 rem32Wide copy
+printrem32 out none
+printrem32 ownedBy none
+printrem32 cleanedBy none
+printrem32 borrows none
+printrem32 catch none
+
+floatDifference is call
+floatDifference in main
+floatDifference invokes math.subtractFloat64
+floatDifference arg left Float64 threeQuarters copy
+floatDifference arg right Float64 quarter copy
+floatDifference out floatDifferenceResult Float64
+floatDifference ownedBy none
+floatDifference cleanedBy none
+floatDifference borrows none
+floatDifference catch none
+
+printFloatDifference is call
+printFloatDifference in main
+printFloatDifference invokes showFloat
+printFloatDifference arg value Float64 floatDifferenceResult copy
+printFloatDifference out none
+printFloatDifference ownedBy none
+printFloatDifference cleanedBy none
+printFloatDifference borrows none
+printFloatDifference catch none
+
+wrapAdd is call
+wrapAdd in main
+wrapAdd invokes math.wrappingAddInt64
+wrapAdd arg left Int64 smallest copy
+wrapAdd arg right Int64 minusOne copy
+wrapAdd out wrapAddResult Int64
+wrapAdd ownedBy none
+wrapAdd cleanedBy none
+wrapAdd borrows none
+wrapAdd catch none
+
+printWrapAdd is call
+printWrapAdd in main
+printWrapAdd invokes showInt
+printWrapAdd arg value Int64 wrapAddResult copy
+printWrapAdd out none
+printWrapAdd ownedBy none
+printWrapAdd cleanedBy none
+printWrapAdd borrows none
+printWrapAdd catch none
+
+wrapSub is call
+wrapSub in main
+wrapSub invokes math.wrappingSubtractInt64
+wrapSub arg left Int64 largest copy
+wrapSub arg right Int64 minusOne copy
+wrapSub out wrapSubResult Int64
+wrapSub ownedBy none
+wrapSub cleanedBy none
+wrapSub borrows none
+wrapSub catch none
+
+printWrapSub is call
+printWrapSub in main
+printWrapSub invokes showInt
+printWrapSub arg value Int64 wrapSubResult copy
+printWrapSub out none
+printWrapSub ownedBy none
+printWrapSub cleanedBy none
+printWrapSub borrows none
+printWrapSub catch none
+
+satAdd is call
+satAdd in main
+satAdd invokes math.saturatingAddInt64
+satAdd arg left Int64 largest copy
+satAdd arg right Int64 five copy
+satAdd out satAddResult Int64
+satAdd ownedBy none
+satAdd cleanedBy none
+satAdd borrows none
+satAdd catch none
+
+printSatAdd is call
+printSatAdd in main
+printSatAdd invokes showInt
+printSatAdd arg value Int64 satAddResult copy
+printSatAdd out none
+printSatAdd ownedBy none
+printSatAdd cleanedBy none
+printSatAdd borrows none
+printSatAdd catch none
+
+satSub is call
+satSub in main
+satSub invokes math.saturatingSubtractInt64
+satSub arg left Int64 smallest copy
+satSub arg right Int64 five copy
+satSub out satSubResult Int64
+satSub ownedBy none
+satSub cleanedBy none
+satSub borrows none
+satSub catch none
+
+printSatSub is call
+printSatSub in main
+printSatSub invokes showInt
+printSatSub arg value Int64 satSubResult copy
+printSatSub out none
+printSatSub ownedBy none
+printSatSub cleanedBy none
+printSatSub borrows none
+printSatSub catch none
+
+wrapMul is call
+wrapMul in main
+wrapMul invokes math.wrappingMultiplyInt64
+wrapMul arg left Int64 largest copy
+wrapMul arg right Int64 two copy
+wrapMul out wrapMulResult Int64
+wrapMul ownedBy none
+wrapMul cleanedBy none
+wrapMul borrows none
+wrapMul catch none
+
+printWrapMul is call
+printWrapMul in main
+printWrapMul invokes showInt
+printWrapMul arg value Int64 wrapMulResult copy
+printWrapMul out none
+printWrapMul ownedBy none
+printWrapMul cleanedBy none
+printWrapMul borrows none
+printWrapMul catch none
+
+satMul is call
+satMul in main
+satMul invokes math.saturatingMultiplyInt64
+satMul arg left Int64 zero copy
+satMul arg right Int64 largest copy
+satMul out satMulResult Int64
+satMul ownedBy none
+satMul cleanedBy none
+satMul borrows none
+satMul catch none
+
+printSatMul is call
+printSatMul in main
+printSatMul invokes showInt
+printSatMul arg value Int64 satMulResult copy
+printSatMul out none
+printSatMul ownedBy none
+printSatMul cleanedBy none
+printSatMul borrows none
+printSatMul catch none
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+contentBytes is call
+contentBytes in main
+contentBytes invokes string.toBytes
+contentBytes arg text String oldContent lend
+contentBytes out oldBytes Bytes
+contentBytes ownedBy none
+contentBytes cleanedBy none
+contentBytes borrows oldContent
+contentBytes catch none
+
+writeOld is task
+writeOld in main
+writeOld invokes fs.writeAll
+writeOld arg path String path lend
+writeOld arg bytes Bytes oldBytes lend
+writeOld arg deadline time.Deadline deadline copy
+writeOld out none
+writeOld ownedBy none
+writeOld cleanedBy none
+writeOld borrows none
+writeOld catch writeOldError fs.FileError
+
+openForWrite is call
+openForWrite in main
+openForWrite invokes fs.openWrite
+openForWrite arg path String path lend
+openForWrite out writer fs.FileHandle
+openForWrite ownedBy main
+openForWrite cleanedBy none
+openForWrite borrows none
+openForWrite catch openWriteError fs.FileError
+
+newBytes is call
+newBytes in main
+newBytes invokes string.toBytes
+newBytes arg text String newContent lend
+newBytes out freshBytes Bytes
+newBytes ownedBy none
+newBytes cleanedBy none
+newBytes borrows newContent
+newBytes catch none
+
+writeThrough is task
+writeThrough in main
+writeThrough invokes fs.write
+writeThrough arg file fs.FileHandle writer lend
+writeThrough arg bytes Bytes freshBytes lend
+writeThrough arg deadline time.Deadline deadline copy
+writeThrough out none
+writeThrough ownedBy none
+writeThrough cleanedBy none
+writeThrough borrows none
+writeThrough catch writeThroughError fs.FileError
+
+closeWriterFailed is call
+closeWriterFailed rationale "The write already failed; the case fails either way"
+closeWriterFailed in main
+closeWriterFailed invokes fs.close
+closeWriterFailed arg file fs.FileHandle writer give
+closeWriterFailed out none
+closeWriterFailed ownedBy none
+closeWriterFailed cleanedBy none
+closeWriterFailed borrows none
+closeWriterFailed catch closeWriterFailedError fs.FileError
+
+closeWriter is call
+closeWriter in main
+closeWriter invokes fs.close
+closeWriter arg file fs.FileHandle writer give
+closeWriter out none
+closeWriter ownedBy none
+closeWriter cleanedBy none
+closeWriter borrows none
+closeWriter catch closeWriterError fs.FileError
+
+openForRead is call
+openForRead in main
+openForRead invokes fs.openRead
+openForRead arg path String path lend
+openForRead out reader fs.FileHandle
+openForRead ownedBy main
+openForRead cleanedBy none
+openForRead borrows none
+openForRead catch openReadError fs.FileError
+
+readSome is task
+readSome in main
+readSome invokes fs.read
+readSome arg file fs.FileHandle reader lend
+readSome arg region Region store lend
+readSome arg maxBytes Int64 sixtyFour copy
+readSome arg deadline time.Deadline deadline copy
+readSome out chunk Bytes
+readSome ownedBy store
+readSome cleanedBy none
+readSome borrows none
+readSome catch readSomeError fs.FileError
+
+closeReaderFailed is call
+closeReaderFailed rationale "The read already failed; the case fails either way"
+closeReaderFailed in main
+closeReaderFailed invokes fs.close
+closeReaderFailed arg file fs.FileHandle reader give
+closeReaderFailed out none
+closeReaderFailed ownedBy none
+closeReaderFailed cleanedBy none
+closeReaderFailed borrows none
+closeReaderFailed catch closeReaderFailedError fs.FileError
+
+closeReader is call
+closeReader in main
+closeReader invokes fs.close
+closeReader arg file fs.FileHandle reader give
+closeReader out none
+closeReader ownedBy none
+closeReader cleanedBy none
+closeReader borrows none
+closeReader catch closeReaderError fs.FileError
+
+chunkText is call
+chunkText in main
+chunkText invokes string.fromBytes
+chunkText arg bytes Bytes chunk lend
+chunkText arg region Region store lend
+chunkText out chunkString String
+chunkText ownedBy store
+chunkText cleanedBy none
+chunkText borrows none
+chunkText catch chunkError string.Utf8Error
+
+printChunk is call
+printChunk in main
+printChunk invokes showText
+printChunk arg text String chunkString lend
+printChunk out none
+printChunk ownedBy none
+printChunk cleanedBy none
+printChunk borrows none
+printChunk catch none
+
+requestBytes is call
+requestBytes in main
+requestBytes invokes string.toBytes
+requestBytes arg text String request lend
+requestBytes out rawRequest Bytes
+requestBytes ownedBy none
+requestBytes cleanedBy none
+requestBytes borrows request
+requestBytes catch none
+
+parseIt is call
+parseIt in main
+parseIt invokes http.parseRequest
+parseIt arg bytes Bytes rawRequest lend
+parseIt arg region Region store lend
+parseIt out parsed http.HttpRequest
+parseIt ownedBy store
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch parseError http.HttpParseError
+
+hostHeader is call
+hostHeader in main
+hostHeader invokes http.header
+hostHeader arg request http.HttpRequest parsed lend
+hostHeader arg name String hostName lend
+hostHeader out hostValue String
+hostHeader ownedBy none
+hostHeader cleanedBy none
+hostHeader borrows parsed
+hostHeader catch headerError string.NotFound
+
+printHost is call
+printHost in main
+printHost invokes showText
+printHost arg text String hostValue lend
+printHost out none
+printHost ownedBy none
+printHost cleanedBy none
+printHost borrows none
+printHost catch none

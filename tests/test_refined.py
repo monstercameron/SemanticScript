@@ -53,11 +53,50 @@ def test_runnable_examples_run(project, expected):
     assert proc.stdout == expected
 
 
-def test_unsupported_features_are_refused_not_dropped():
-    proc = subprocess.run([sys.executable, os.path.join(ROOT, "semanticscript", "compiler", "refined"), "run",
-                           os.path.join(EXAMPLES, "server")], capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 1
-    assert "R901" in proc.stdout
+def test_server_example_answers_http():
+    """The worked server runs: it answers its route, a missing route, and a malformed request."""
+    import socket
+    import time
+    import urllib.error
+    import urllib.request
+    proc = subprocess.Popen([sys.executable, os.path.join(ROOT, "semanticscript", "compiler", "refined"), "run",
+                             os.path.join(EXAMPLES, "server")], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for _ in range(300):
+            if proc.poll() is not None:
+                break
+            try:
+                socket.create_connection(("127.0.0.1", 8080), timeout=0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        assert proc.poll() is None, proc.communicate()
+        with urllib.request.urlopen("http://127.0.0.1:8080/health", timeout=10) as reply:
+            assert (reply.status, reply.read()) == (200, b"ok")
+        with pytest.raises(urllib.error.HTTPError) as missing:
+            urllib.request.urlopen("http://127.0.0.1:8080/missing", timeout=10)
+        assert (missing.value.code, missing.value.read()) == (404, b"not found")
+        with socket.create_connection(("127.0.0.1", 8080), timeout=10) as raw:
+            raw.sendall(b"not http\r\n\r\n")
+            assert raw.recv(4096).startswith(b"HTTP/1.1 400 Bad Request")
+    finally:
+        proc.kill()
+        proc.communicate()
+
+
+def test_unknown_library_target_is_refused_not_dropped(tmp_path, monkeypatch):
+    """Every target the checker knows compiles (tests/test_suite.py proves it); if the library ever grows a
+    target the backend lacks, the program is refused with R901 naming it, never silently miscompiled."""
+    from refined.codegen import compile_roots
+    from refined.library import LIBRARY, P, Sig
+    mystery = Sig((P("left", "Int64", "value"), P("right", "Int64", "value")), "Int64")
+    monkeypatch.setitem(LIBRARY["math"]["targets"], "mysteryInt64", mystery)
+    d = _copy(tmp_path, "sum")
+    _mutate(d / "sum.sem", "addToTotal invokes math.addInt64", "addToTotal invokes math.mysteryInt64")
+    res = check_path(str(d))
+    assert res.ok, [x.format() for x in res.diagnostics]
+    _module, diags = compile_roots(res.world, [("sum", "main")])
+    assert [x.code for x in diags] == ["R901"] and "math.mysteryInt64" in diags[0].message
 
 
 def test_every_code_has_a_summary_and_grammar_renders():
@@ -154,7 +193,7 @@ CASES = [
     ("R505", "sum", "sum.sem", "pastLastCheck invokes compare.greaterThanInt64", "pastLastCheck invokes compare.equalInt64"),
     # capability scopes (LR-34 rule 5)
     ("R408", "server", "server.sem", "main let port immutable Int32 8080", "main let port immutable Int32 9090"),
-    ("R408", "server", "server.sem", 'listenAuthority scope "0.0.0.0:8080"', "listenAuthority scope none"),
+    ("R408", "server", "server.sem", 'listenAuthority scope "127.0.0.1:8080"', "listenAuthority scope none"),
     ("R408", "server", "server.sem", "connectionIo scope none", 'connectionIo scope "anything"'),
     # invariant coverage (LR-06 rule 3)
     ("R604", "factorial", "mathdemo.test.sem", "fiveFactorialTest verifies factorial fiveFactorial",

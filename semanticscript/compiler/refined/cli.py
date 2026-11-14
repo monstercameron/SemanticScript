@@ -57,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("path")
         p.add_argument("--json", action="store_true")
+        if name == "run":
+            p.add_argument("arguments", nargs="*", help="after `--`: what the program reads with process.argument")
     p = sub.add_parser("emit-ir")
     p.add_argument("path")
     p.add_argument("--test", default=None, help="emit the IR for one test, MODULE.TEST")
@@ -124,7 +126,9 @@ def main(argv: list[str] | None = None) -> int:
         if diags:
             _emit(diags, args.json, "refined.run.v1")
             return 1
+        from . import runtime
         from .runtime import Engine
+        runtime.PROGRAM_ARGUMENTS[:] = args.arguments
         engine = Engine(str(module))
         code, out = engine.run_entry(f"{mod}.{op}", capture=args.json)
         if args.json:

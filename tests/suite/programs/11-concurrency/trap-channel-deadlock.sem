@@ -1,0 +1,83 @@
+# covers: 11 Deadlock detection
+# covers: 11 Channels
+# kind: edge
+# expect: trap a receive waits on an empty channel
+
+channelDeadlock is module
+channelDeadlock purpose "Trap: receive with no deadline on an empty channel nothing else can fill"
+channelDeadlock path channelDeadlock
+channelDeadlock imports standard.time
+channelDeadlock imports standard.channel
+channelDeadlock exports main
+
+Mailbox is instance
+Mailbox purpose "A channel of whole numbers"
+Mailbox instantiates channel.Channel Int64
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect none
+main uses none
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label done loopKind none
+main label done within none
+main label failed loopKind none
+main label failed within none
+main let capacity immutable Int64 1
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do makeNever
+main at begin do makeMailbox
+main at begin start receiveOne
+main at begin join receiveOne
+main at begin branch ifError receiveOne goto failed else goto done
+main at done return ok okCode
+main at failed return ok failCode
+
+mail is region
+mail in main
+mail strategy arena
+mail capacity 4096
+mail released atReturn
+
+makeNever is call
+makeNever in main
+makeNever invokes time.Deadline.never
+makeNever arg none
+makeNever out never time.Deadline
+makeNever ownedBy none
+makeNever cleanedBy none
+makeNever borrows none
+makeNever catch none
+
+makeMailbox is call
+makeMailbox in main
+makeMailbox invokes Mailbox.new
+makeMailbox arg capacity Int64 capacity copy
+makeMailbox arg region Region mail lend
+makeMailbox out mailbox Mailbox
+makeMailbox ownedBy mail
+makeMailbox cleanedBy none
+makeMailbox borrows none
+makeMailbox catch none
+
+receiveOne is task
+receiveOne in main
+receiveOne invokes Mailbox.receive
+receiveOne arg channel Mailbox mailbox lend
+receiveOne arg deadline time.Deadline never copy
+receiveOne out received Int64
+receiveOne ownedBy none
+receiveOne cleanedBy none
+receiveOne borrows none
+receiveOne catch receiveError channel.ChannelError

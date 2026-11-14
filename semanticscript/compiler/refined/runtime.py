@@ -21,6 +21,8 @@ TRAP_EXIT_CODE = 70
 PROGRAM_STACK_BYTES = 128 * 1024 * 1024  # under the 256 MiB cap Python sets on Windows
 STACK_MARGIN_BYTES = 8 * 1024 * 1024
 _INITIALIZED = False
+# what `process.argumentCount` and `process.argument` read: the words after `--` on the command line
+PROGRAM_ARGUMENTS: list[str] = []
 
 
 @dataclass
@@ -106,6 +108,7 @@ def _fail(p, length, cp, cl):
 class _Region:
     def __init__(self, capacity: int, label: str):
         self.capacity, self.label, self.used, self.blocks = capacity, label, 0, []
+        self.handles: list[int] = []  # host objects (maps, channels, ...) released with the region
 
 
 _regions: dict[int, _Region] = {}
@@ -141,7 +144,64 @@ def _region_alloc(handle, size):
 
 @ctypes.CFUNCTYPE(None, ctypes.c_void_p)
 def _region_free(handle):
-    _regions.pop(handle, None)
+    reg = _regions.pop(handle, None)
+    if reg is not None:
+        from . import host
+        for h in reg.handles:
+            host.drop(h)
+
+
+def region_owns(handle: int, obj_handle: int) -> None:
+    reg = _regions.get(handle)
+    if reg is None:
+        _trap_now("allocation in a region that was already released")
+    reg.handles.append(obj_handle)
+
+
+def flush_output() -> None:
+    """Before a child process inherits stdout: nothing is buffered here except under capture."""
+    if _session.capture:
+        sys.stdout.buffer.write(b"".join(_session.stdout))
+        sys.stdout.flush()
+        _session.stdout.clear()
+
+
+def read_stdin_line(limit: int) -> bytes | None:
+    """One line from standard input, at most `limit` bytes (the caller checks the length); None at end."""
+    line = sys.stdin.buffer.readline(limit)
+    return line or None
+
+
+_SHAPES: dict[bytes, tuple[str, list[int], int]] = {}
+
+
+@ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_int64, ctypes.POINTER(ctypes.c_int64),
+                  ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_int64))
+def _host(name_ptr, name_len, args, results, payload):
+    """Every host library target (host.py). The name is `<target>|<slots per parameter>|<result slots>`."""
+    key = _bytes(name_ptr, name_len)
+    shape = _SHAPES.get(key)
+    if shape is None:
+        name, counts, nres = key.decode().split("|")
+        shape = (name, [int(c) for c in counts.split(",") if c], int(nres))
+        _SHAPES[key] = shape
+    name, counts, nres = shape
+    params, at = [], 0
+    for c in counts:
+        params.append(tuple(args[at + i] for i in range(c)))
+        at += c
+    from . import host
+    try:
+        status, slots, err = host.dispatch(name, params)
+    except Exception as exc:  # a defect in the runtime must not take the process down silently
+        _trap_now(f"`{name}` failed inside the runtime: {exc!r}")
+    if status == 0:
+        if len(slots) != nres:
+            _trap_now(f"`{name}` returned {len(slots)} values where the program expects {nres}")
+        for i, v in enumerate(slots):
+            results[i] = (int(v) + (1 << 63)) % (1 << 64) - (1 << 63)
+    payload[0] = (int(err) + (1 << 63)) % (1 << 64) - (1 << 63)
+    return status
 
 
 @ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_int32, ctypes.c_double, ctypes.c_int32)
@@ -190,7 +250,7 @@ _CALLBACKS = {
     "refined_assert_str": _assert_str, "refined_fail": _fail,
     "refined_region_new": _region_new, "refined_region_alloc": _region_alloc, "refined_region_free": _region_free,
     "refined_write_float": _write_float, "refined_format_int": _format_int, "refined_find": _find,
-    "refined_parse_int": _parse_int,
+    "refined_parse_int": _parse_int, "refined_host": _host,
 }
 
 
@@ -200,7 +260,8 @@ def _init() -> None:
         return
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
-    for name, cb in _CALLBACKS.items():
+    from . import tasks
+    for name, cb in {**_CALLBACKS, **tasks.CALLBACKS}.items():
         llvm.add_symbol(name, ctypes.cast(cb, ctypes.c_void_p).value)
     _INITIALIZED = True
 
@@ -229,12 +290,14 @@ class Engine:
     def _on_program_stack(self, call):
         """Run compiled code on a thread with a known, large stack, and tell the code where that stack
         ends, so deep recursion traps with a message instead of crashing the process."""
+        from . import tasks
         result: dict = {}
-        budget = ctypes.CFUNCTYPE(None, ctypes.c_int64)(self.address("refined_set_stack_budget"))
+        tasks.STACK_HERE = ctypes.CFUNCTYPE(ctypes.c_int64)(self.address("refined_stack_here"))
+        tasks.start_program()
 
         def runner() -> None:
             try:
-                budget(PROGRAM_STACK_BYTES - STACK_MARGIN_BYTES)
+                tasks.enter_program_thread(PROGRAM_STACK_BYTES - STACK_MARGIN_BYTES)
                 result["value"] = call()
             except BaseException as exc:  # re-raised on the calling thread
                 result["error"] = exc

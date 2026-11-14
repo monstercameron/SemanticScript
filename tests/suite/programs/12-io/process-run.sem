@@ -4,22 +4,99 @@
 # covers: 17 Privilege separation
 # covers: 13 Capability scoping
 # kind: positive
-# expect: unsupported async operations such as `main`
+# expect: run
+# exit: 0
 
-processRunCase is module
-processRunCase purpose "Use process.run under a capability"
-processRunCase path processRunCase
-processRunCase imports standard.process
-processRunCase imports standard.time
-processRunCase exports main
+processCase is module
+processCase purpose "Run git to print its version, then try a program that does not exist"
+processCase path processCase
+processCase imports standard.console
+processCase imports standard.process
+processCase imports standard.convert
+processCase imports standard.time
+processCase exports main
 
-hostAccess is capability
-hostAccess purpose "Authority for exactly this case's host access"
-hostAccess grants spawn process.programs
-hostAccess scope "git"
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+gitRunner is capability
+gitRunner purpose "Authority to run git and nothing else"
+gitRunner grants spawn process.programs
+gitRunner scope "git"
+
+missingRunner is capability
+missingRunner purpose "Authority to run a program that is not installed"
+missingRunner grants spawn process.programs
+missingRunner scope "semanticscript-no-such-program"
 
 main is operation
-main purpose "Use process.run once"
+main purpose "Run the case and print what it computes"
 main invariant none
 main typeParam none
 main input none
@@ -27,33 +104,54 @@ main output ExitCode
 main outputOwner none
 main raises none
 main effect spawn process.programs
-main uses hostAccess
+main effect write console.stdout
+main uses gitRunner
+main uses missingRunner
+main uses stdoutWriter
 main memory heap true
 main async true
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main label done loopKind none
-main label done within none
+main label ran loopKind none
+main label ran within none
+main label missing loopKind none
+main label missing within none
+main label reportMissing loopKind none
+main label reportMissing within none
 main label failed loopKind none
 main label failed within none
-main let program immutable String "git"
+main let git immutable String "git"
+main let missingProgram immutable String "semanticscript-no-such-program"
+main let versionFlag immutable String "--version"
+main let notFoundText immutable String "notFound"
+main let waitMs immutable Int64 30000
 main let okCode immutable ExitCode 0
 main let failCode immutable ExitCode 1
-main let waitMs immutable Int64 1000
 main at begin do makeDeadline
 main at begin do newArguments
-main at begin start access
-main at begin join access
-main at begin branch ifError access goto failed else goto done
-main at done return ok okCode
+main at begin do addVersion
+main at begin start runGit
+main at begin join runGit
+main at begin branch ifError runGit goto failed else goto ran
+main at ran do widenStatus
+main at ran do showStatus
+main at ran start runMissing
+main at ran join runMissing
+main at ran branch ifError runMissing goto missing else goto failed
+main at missing match missingError process.RunError
+main at missing case process.RunError.notFound bind none none goto reportMissing
+main at missing case process.RunError.timedOut bind none none goto failed
+main at missing case process.RunError.failed bind code Int32 goto failed
+main at reportMissing do printNotFound
+main at reportMissing return ok okCode
 main at failed return ok failCode
 
-io is region
-io in main
-io strategy arena
-io capacity 65536
-io released atReturn
+args is region
+args in main
+args strategy arena
+args capacity 4096
+args released atReturn
 
 makeDeadline is call
 makeDeadline in main
@@ -68,21 +166,74 @@ makeDeadline catch none
 newArguments is call
 newArguments in main
 newArguments invokes process.newArguments
-newArguments arg region Region io lend
+newArguments arg region Region args lend
 newArguments out arguments process.Arguments
-newArguments ownedBy io
+newArguments ownedBy args
 newArguments cleanedBy none
 newArguments borrows none
 newArguments catch none
 
-access is task
-access in main
-access invokes process.run
-access arg program String program lend
-access arg arguments process.Arguments arguments lend
-access arg deadline time.Deadline deadline copy
-access out status ExitCode
-access ownedBy none
-access cleanedBy none
-access borrows none
-access catch accessError process.RunError
+addVersion is call
+addVersion in main
+addVersion invokes process.addArgument
+addVersion arg arguments process.Arguments arguments lendMutable
+addVersion arg text String versionFlag lend
+addVersion out none
+addVersion ownedBy none
+addVersion cleanedBy none
+addVersion borrows none
+addVersion catch none
+
+runGit is task
+runGit in main
+runGit invokes process.run
+runGit arg program String git lend
+runGit arg arguments process.Arguments arguments lend
+runGit arg deadline time.Deadline deadline copy
+runGit out status ExitCode
+runGit ownedBy none
+runGit cleanedBy none
+runGit borrows none
+runGit catch runError process.RunError
+
+widenStatus is call
+widenStatus in main
+widenStatus invokes convert.exitCodeToInt64
+widenStatus arg value ExitCode status copy
+widenStatus out statusNumber Int64
+widenStatus ownedBy none
+widenStatus cleanedBy none
+widenStatus borrows none
+widenStatus catch none
+
+showStatus is call
+showStatus in main
+showStatus invokes showInt
+showStatus arg value Int64 statusNumber copy
+showStatus out none
+showStatus ownedBy none
+showStatus cleanedBy none
+showStatus borrows none
+showStatus catch none
+
+runMissing is task
+runMissing in main
+runMissing invokes process.run
+runMissing arg program String missingProgram lend
+runMissing arg arguments process.Arguments arguments lend
+runMissing arg deadline time.Deadline deadline copy
+runMissing out missingStatus ExitCode
+runMissing ownedBy none
+runMissing cleanedBy none
+runMissing borrows none
+runMissing catch missingError process.RunError
+
+printNotFound is call
+printNotFound in main
+printNotFound invokes showText
+printNotFound arg text String notFoundText lend
+printNotFound out none
+printNotFound ownedBy none
+printNotFound cleanedBy none
+printNotFound borrows none
+printNotFound catch none

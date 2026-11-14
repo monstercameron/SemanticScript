@@ -12,16 +12,58 @@
 # covers: 11 Producer-consumer patterns
 # covers: 11 Structured concurrency
 # covers: 21 Async restrictions are enforced
+# covers: 22 Concurrent resource contention
 # kind: positive
-# expect: unsupported task
+# expect: run
+# exit: 0
+# stdout: 9
+# stdout: 9
 
 concurrency is module
-concurrency purpose "Show tasks, a bounded task group, cancellation, deadlines, and a channel"
+concurrency purpose "Run work in tasks and a bounded group, cancel one, and pass a value through a channel"
 concurrency path concurrency
+concurrency imports standard.console
 concurrency imports standard.time
 concurrency imports standard.channel
 concurrency imports standard.math
 concurrency exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
 
 Mailbox is instance
 Mailbox purpose "A channel of whole numbers between a producer and a consumer"
@@ -85,15 +127,15 @@ squareIt borrows none
 squareIt catch none
 
 main is operation
-main purpose "Run work in tasks, bound them with a group, cancel one, and pass a value through a channel"
+main purpose "Run the case and print what it computes"
 main invariant none
 main typeParam none
 main input none
 main output ExitCode
 main outputOwner none
 main raises none
-main effect none
-main uses none
+main effect write console.stdout
+main uses stdoutWriter
 main memory heap true
 main async true
 main maxRecursion none
@@ -108,7 +150,7 @@ main label failed within none
 main let three immutable Int64 3
 main let four immutable Int64 4
 main let five immutable Int64 5
-main let napMs immutable Int64 1000
+main let napMs immutable Int64 10
 main let waitMs immutable Int64 100
 main let capacity immutable Int64 4
 main let okCode immutable ExitCode 0
@@ -116,6 +158,7 @@ main let failCode immutable ExitCode 1
 main at begin do makeDeadline
 main at begin start squareThree
 main at begin join squareThree
+main at begin do showSquare
 main at begin awaitSlot workers
 main at begin start squareFour into workers
 main at begin awaitSlot workers
@@ -131,6 +174,7 @@ main at begin branch ifError produce goto failed else goto consume
 main at consume start receiveOne
 main at consume join receiveOne
 main at consume branch ifError receiveOne goto failed else goto done
+main at done do showReceived
 main at done return ok okCode
 main at failed return ok failCode
 
@@ -163,6 +207,16 @@ squareThree ownedBy none
 squareThree cleanedBy none
 squareThree borrows none
 squareThree catch none
+
+showSquare is call
+showSquare in main
+showSquare invokes showInt
+showSquare arg value Int64 nine copy
+showSquare out none
+showSquare ownedBy none
+showSquare cleanedBy none
+showSquare borrows none
+showSquare catch none
 
 squareFour is task
 squareFour in main
@@ -227,3 +281,13 @@ receiveOne ownedBy none
 receiveOne cleanedBy none
 receiveOne borrows none
 receiveOne catch receiveError channel.ChannelError
+
+showReceived is call
+showReceived in main
+showReceived invokes showInt
+showReceived arg value Int64 received copy
+showReceived out none
+showReceived ownedBy none
+showReceived cleanedBy none
+showReceived borrows none
+showReceived catch none

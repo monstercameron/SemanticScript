@@ -27,6 +27,24 @@ have been cut yet.
   others); and the CI workflows that built and released them. All of it remains
   in git history before this change.
 
+### Everything compiles and runs
+
+- The backend now compiles generic operations, cleanups and `defer`, tasks,
+  task groups, channels, async operations, maps, sets, and the host library
+  (`fs`, `net`, `http`, `process`, `environment`, `clock`, `time`, `buffer`,
+  `console.readLine`) through one runtime callback.
+- The server example runs and answers HTTP on `127.0.0.1:8080`; every program
+  case in the suite runs, and a test keeps it that way.
+- `refined run PATH -- <arguments>` passes arguments to the program.
+- Tasks run in parallel, each on its own thread, with task-group limits,
+  blocking channels, cooperative cancellation that reaches child tasks, and
+  deadlock reports that name every wait. `fs` gains append mode and directory
+  operations.
+- Enums may carry any payload (text, records, lists, other enums), and
+  `equals` compares every type structurally. Nothing a clean program can
+  contain is refused; tests prove every operation of every program compiles
+  and every standard-library target runs.
+
 ### Test suite
 
 - `tests/suite`: program cases for every section of the language checklist

@@ -9,7 +9,8 @@ Value representation:
 - integers, `Byte`, `ExitCode`: fixed-width integers; `Bool`: i1; floats: f32/f64
 - `String`: {i8* bytes, i64 length} (not NUL-terminated, LR-27)
 - records: a literal struct of their fields, by value
-- enums (including error enums): {i32 tag, i64 payload}; payloads are integer-like
+- enums (including error enums) whose payloads are all integer-like, `Bool`, or payload-free enums:
+  {i32 tag, i64 payload}; any other enum: {i32 tag, one field per variant that has a payload}
 - operation references: function pointers
 
 Calling convention: an operation that raises returns {i1 failed, output, error};
@@ -20,9 +21,21 @@ narrowing conversions, out-of-range shifts, `maxIterations` (counted as returns
 to the loop header from inside the loop), and `maxRecursion`. Each traps through
 `refined_trap` with a message naming the source.
 
-Not supported yet (reported as R901): tasks and task groups, regions and every
-region-owned value other than string literals, cleanups, generic operations and
-instances, and library targets without an implementation below.
+Tasks run in parallel (D-31): `start` fills a frame with the task's arguments
+and hands the runtime a thunk that runs the task on its own thread; `join`
+waits for it and reads its results back from the frame. Task groups, `cancel`,
+and `awaitSlot` are runtime calls (tasks.py). Recursion depth and the stack
+floor are checked per thread. Cleanups registered with
+`defer` run at every later `return`, newest first. A generic operation is
+compiled once per set of type arguments its instances name.
+
+Library targets that need the host (files, sockets, processes, the clock,
+maps, sets, channels, byte buffers, HTTP) go through one callback,
+`refined_host`: arguments are flattened into 64-bit slots and the runtime
+dispatches by name (host.py). Values the host owns (handles) are `i64`.
+
+Every program that checks clean compiles; R901 remains only as a guard against a
+backend defect (a target or type the backend does not know).
 """
 from __future__ import annotations
 
@@ -34,7 +47,8 @@ from . import shapes as S
 from .diagnostics import Diagnostic
 from .check import TEST_OFFSET
 from .runtime import default_triple
-from .semantics import CallInfo, Module, OpInfo, World, resolve_variant
+from .host import HANDLERS as HOST_TARGETS
+from .semantics import CallInfo, Module, OpInfo, World, resolve_type, resolve_variant, type_params_of
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
 F32, F64 = ir.FloatType(), ir.DoubleType()
@@ -62,7 +76,21 @@ CALLBACKS = {
     "refined_format_int": ir.FunctionType(PTR, [I64, PTR, I64.as_pointer()]),
     "refined_find": ir.FunctionType(I64, [PTR, I64, PTR, I64]),
     "refined_parse_int": ir.FunctionType(I32, [PTR, I64, I64.as_pointer()]),
+    "refined_host": ir.FunctionType(I32, [PTR, I64, I64.as_pointer(), I64.as_pointer(), I64.as_pointer()]),
+    "refined_task_frame": ir.FunctionType(PTR, [I64]),
+    "refined_task_spawn": ir.FunctionType(I64, [PTR, PTR, I64]),
+    "refined_task_join": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_task_cancel": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_task_release": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_group_new": ir.FunctionType(I64, [I64]),
+    "refined_group_await": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_group_join": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_group_cancel": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_group_free": ir.FunctionType(ir.VoidType(), [I64]),
+    "refined_recursion_enter": ir.FunctionType(I32, [I64, I64, I64]),
+    "refined_recursion_leave": ir.FunctionType(ir.VoidType(), [I64]),
 }
+HOST_GENERICS = ("map.Map", "set.Set", "channel.Channel")
 # list.List value: pointer to {length, capacity, data, region}
 LIST_HEADER = ir.LiteralStructType([I64, I64, PTR, PTR])
 LIST = LIST_HEADER.as_pointer()
@@ -84,25 +112,20 @@ class Backend:
         self.module = ir.Module(name="refined")
         self.module.triple = default_triple()
         self.functions: dict[tuple[str, str], ir.Function] = {}
-        self.pending: list[tuple[Module, OpInfo, ir.Function]] = []
+        self.pending: list[tuple[Module, OpInfo, ir.Function, dict]] = []
         self.strings: dict[bytes, ir.GlobalVariable] = {}
         self.callbacks = {n: ir.Function(self.module, t, name=n) for n, t in CALLBACKS.items()}
         self.tables: dict[tuple[str, str], ir.GlobalVariable] = {}
-        self.depth: dict[str, ir.GlobalVariable] = {}
+        self.depth: dict[str, int] = {}
         self._types: dict[str, ir.Type] = {}
         self._stack_guard()
 
     def _stack_guard(self) -> None:
-        """A stack floor for recursive operations (LR-12): the runtime calls `refined_set_stack_budget`
-        on the thread that runs the program, and a recursive operation traps when its frame lies below
-        the floor, instead of overflowing the native stack."""
-        self.stack_floor = ir.GlobalVariable(self.module, I64, name="refined.stackFloor")
-        self.stack_floor.initializer = I64(0)
-        fn = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [I64]), name="refined_set_stack_budget")
+        """`refined_stack_here` gives the runtime an address on the calling thread's stack, from which it sets
+        that thread's stack floor; a recursive operation traps when its frame lies below it (LR-12, D-25)."""
+        fn = ir.Function(self.module, ir.FunctionType(I64, []), name="refined_stack_here")
         b = ir.IRBuilder(fn.append_basic_block("entry"))
-        here = b.ptrtoint(b.alloca(I8, name="probe"), I64)
-        b.store(b.sub(here, fn.args[0]), self.stack_floor)
-        b.ret_void()
+        b.ret(b.ptrtoint(b.alloca(I8, name="probe"), I64))
 
     # ------------------------------------------------------------ driver
 
@@ -110,8 +133,8 @@ class Backend:
         for mod, op in roots:
             self.function_for(mod, op, None, 1)
         while self.pending:
-            m, info, fn = self.pending.pop()
-            OpGen(self, m, info, fn).emit()
+            m, info, fn, sub = self.pending.pop()
+            OpGen(self, m, info, fn, sub).emit()
         return self.module
 
     # ------------------------------------------------------------ types
@@ -127,7 +150,7 @@ class Backend:
             return F64
         if canon == "Float32":
             return F32
-        if canon == "String":
+        if canon in ("String", "Bytes"):
             return STR
         if canon == "Region":
             return PTR
@@ -140,14 +163,17 @@ class Backend:
             t = ir.LiteralStructType([self.ltype(ft, file, line) for _n, ft in info.fields])
         elif info.kind in ("enum",) and not info.type_params or (info.kind == "instance" and info.variants
                                                                   and info.generic == "option.Option"):
-            for _n, p in info.variants:
-                if p is not None and p not in INT_TYPES and p != "Bool" and not self.tag_only(p):
-                    raise Unsupported(file, line, f"an enum payload of type `{p}` in `{canon}` (payloads are "
-                                      "integers, `Byte`, `Bool`, or enums without payloads)")
-            t = ENUM
+            layout = self.enum_layout(canon)
+            if layout is None:
+                t = ENUM
+            else:
+                t = ir.LiteralStructType([I32] + [self.ltype(p, file, line) for _n, p in info.variants
+                                                  if p is not None])
         elif info.kind == "instance" and info.generic == "list.List":
             self.ltype(info.args[0], file, line)  # the element type must be supported too
             t = LIST
+        elif info.kind in ("opaque", "resource") or (info.kind == "instance" and info.generic in HOST_GENERICS):
+            t = I64  # a deadline, or a handle to a value the host keeps
         elif info.kind == "alias":
             t = self.ltype(info.base, file, line)
         elif info.kind == "operationType" and info.sig is not None:
@@ -156,6 +182,21 @@ class Backend:
             raise Unsupported(file, line, f"values of type `{canon}`")
         self._types[canon] = t
         return t
+
+    def enum_layout(self, canon: Optional[str]) -> Optional[dict]:
+        """None when every payload fits the narrow layout {i32 tag, i64 payload}; otherwise the field index of
+        each payload-carrying variant in the wide layout {i32 tag, payload fields...}."""
+        info = self.world.type_info(canon)
+        if info is None or not info.variants:
+            return None
+        if all(p is None or p in INT_TYPES or p == "Bool" or self.tag_only(p) for _n, p in info.variants):
+            return None
+        out, k = {}, 1
+        for n, p in info.variants:
+            if p is not None:
+                out[n] = k
+                k += 1
+        return out
 
     def tag_only(self, canon: Optional[str]) -> bool:
         """An enum none of whose variants carries a payload: stored by its tag alone."""
@@ -173,8 +214,11 @@ class Backend:
 
     # ------------------------------------------------------------ functions, strings, tables
 
-    def function_for(self, mod: str, op: str, file: Optional[str], line: int) -> ir.Function:
-        key = (mod, op)
+    def function_for(self, mod: str, op: str, file: Optional[str], line: int,
+                     sub: Optional[dict] = None) -> ir.Function:
+        """The function for an operation; a generic operation needs `sub`, its type arguments."""
+        sub = dict(sub or {})
+        key = (mod, op, tuple(sorted(sub.items())))
         if key in self.functions:
             return self.functions[key]
         m = self.world.modules[mod]
@@ -182,13 +226,13 @@ class Backend:
         if info is None:
             raise Unsupported(file or m.file, line, f"`{mod}.{op}`")
         ent = info.entity
-        if info.tparams:
-            raise Unsupported(m.file, ent.line, f"generic operation `{op}`")
-        if ent.value("async") == "true":
-            raise Unsupported(m.file, ent.line, f"async operations such as `{op}`")
-        fn = ir.Function(self.module, self.fn_type(info.sig, m.file, ent.line), name=function_name(mod, op))
+        if info.tparams and set(info.tparams.values()) - set(sub):
+            raise Unsupported(m.file, ent.line, f"generic operation `{op}` without type arguments")
+        sig = self.world.substitute(info.sig, sub) if sub else info.sig
+        name = function_name(mod, op) + (f"<{','.join(sub[k] for k in sorted(sub))}>" if sub else "")
+        fn = ir.Function(self.module, self.fn_type(sig, m.file, ent.line), name=name)
         self.functions[key] = fn
-        self.pending.append((m, info, fn))
+        self.pending.append((m, info, fn, sub))
         return fn
 
     def string(self, text: str) -> ir.Constant:
@@ -206,7 +250,10 @@ class Backend:
     def enum_const(self, canon: str, variant: str, payload: int = 0) -> ir.Constant:
         info = self.world.type_info(canon)
         tag = [n for n, _p in info.variants].index(variant)
-        return ir.Constant(ENUM, [I32(tag), I64(payload)])
+        t = self.ltype(canon)
+        if t == ENUM:
+            return ir.Constant(ENUM, [I32(tag), I64(payload)])
+        return ir.Constant(t, [I32(tag)] + [ir.Constant(e, None) for e in t.elements[1:]])
 
     def table(self, m: Module, name: str) -> tuple[ir.GlobalVariable, int, str]:
         key = (m.short, name)
@@ -247,21 +294,33 @@ class Backend:
             return ir.Constant(t, float(raw))
         if S.is_name(raw) and raw in m.ops:
             return self.function_for(m.short, raw, m.file, line)
+        if S.is_name(raw) and raw in m.op_instances:
+            gen, sub = instance_parts(self.world, m, m.op_instances[raw])
+            return self.function_for(m.short, gen, m.file, line, sub)
         raise Unsupported(m.file, line, f"literal `{raw}` of type `{base}`")
 
-    def depth_counter(self, name: str) -> ir.GlobalVariable:
+    def recursion_id(self, name: str) -> int:
+        """A number for each recursive operation; the runtime keeps each thread's depth per number."""
         if name not in self.depth:
-            g = ir.GlobalVariable(self.module, I64, name=f"depth.{name}")
-            g.initializer = I64(0)
-            self.depth[name] = g
+            self.depth[name] = len(self.depth) + 1
         return self.depth[name]
 
 
-class OpGen:
-    """Emits the body of one operation or test."""
+def instance_parts(world: World, m: Module, ent) -> tuple[str, dict]:
+    """An `operationInstance`: its generic operation's name and the type substitution it names."""
+    row = ent.fact("instantiates")
+    gen = row.text(0)
+    params = list(type_params_of(m.ops[gen]).values())
+    args = [resolve_type(world, m, tok.raw, row.line, quiet=True) for tok in row.args[1:]]
+    return gen, dict(zip(params, args))
 
-    def __init__(self, backend: Backend, m: Module, info: OpInfo, fn: ir.Function):
+
+class OpGen:
+    """Emits the body of one operation or test (once per set of type arguments, for a generic one)."""
+
+    def __init__(self, backend: Backend, m: Module, info: OpInfo, fn: ir.Function, sub: Optional[dict] = None):
         self.be, self.m, self.info, self.fn = backend, m, info, fn
+        self.sub = sub or {}
         self.ent = info.entity
         self.world = backend.world
         self.allocas: dict[str, ir.AllocaInstr] = {}
@@ -275,8 +334,19 @@ class OpGen:
         self.counters: dict[str, ir.AllocaInstr] = {}
         self.indexes: dict[str, ir.AllocaInstr] = {}
         self.edge_cache: dict[tuple[str, str], ir.Block] = {}
-        self.depth: Optional[ir.GlobalVariable] = None
+        self.depth: Optional[int] = None
         self.max_depth: Optional[int] = None
+        self.groups: dict[str, ir.AllocaInstr] = {}
+        self.task_handles: dict[str, ir.AllocaInstr] = {}
+        self.task_frames: dict[str, ir.AllocaInstr] = {}
+        self.thunks: dict[str, tuple[ir.Function, ir.Type]] = {}
+
+    def t(self, canon: Optional[str]) -> Optional[str]:
+        """A type with this operation's type parameters replaced by its type arguments."""
+        return self.sub.get(canon, canon) if canon is not None else None
+
+    def lt(self, canon: Optional[str], line: int = 0) -> ir.Type:
+        return self.be.ltype(self.t(canon), *self.where(line))
 
     def fn_alloca(self, t: ir.Type, name: str):
         """An alloca in the entry block, so loops do not grow the stack."""
@@ -297,16 +367,18 @@ class OpGen:
 
     def emit(self) -> None:
         ent = self.ent
-        for o in self.info.owned.values():
-            if o.kind not in ("call", "region"):
-                self.unsupported(o.line, f"`{o.kind}` entities")
         self.regions = [o for o in self.info.owned.values() if o.kind == "region"]
+        self.cleanups = {o.name: o for o in self.info.owned.values() if o.kind == "cleanup"}
+        self.armed: dict[str, ir.AllocaInstr] = {}
+        self.defer_order: list[str] = []
         for r in ent.facts("at"):
             lab = r.text(0)
             if lab not in self.steps:
                 self.steps[lab] = []
                 self.order.append(lab)
             self.steps[lab].append((r.line, r.text(1), [t.raw for t in r.args[2:]]))
+            if r.text(1) == "defer" and r.text(2) not in self.defer_order:
+                self.defer_order.append(r.text(2))
         for r in ent.facts("label"):
             lab, fact, val = r.text(0), r.text(1), r.text(2)
             if fact == "loopKind":
@@ -318,7 +390,21 @@ class OpGen:
         entry = self.fn.append_basic_block("entry")
         b = ir.IRBuilder(entry)
         for name, bind in self.info.bindings.items():
-            self.allocas[name] = b.alloca(self.be.ltype(bind.type, *self.where(bind.line)), name=name)
+            if bind.kind == "group":
+                continue  # tasks run when started, so a group holds nothing at run time
+            self.allocas[name] = b.alloca(self.lt(bind.type, bind.line), name=name)
+        for name in self.cleanups:
+            self.armed[name] = b.alloca(I1, name=f"{name}.armed")
+            b.store(I1(0), self.armed[name])
+        for o in self.info.owned.values():
+            if o.kind == "taskGroup":
+                self.groups[o.name] = b.alloca(I64, name=f"{o.name}.group")
+                b.store(b.call(self.be.callbacks["refined_group_new"], [I64(int(o.value("limit")))]),
+                        self.groups[o.name])
+            elif o.kind == "task":
+                self.task_handles[o.name] = b.alloca(I64, name=f"{o.name}.task")
+                b.store(I64(0), self.task_handles[o.name])
+                self.task_frames[o.name] = b.alloca(PTR, name=f"{o.name}.frame")
         for name, ci in self.info.calls.items():
             if ci.catch is not None:
                 self.failed[name] = b.alloca(I1, name=f"{name}.failed")
@@ -343,20 +429,16 @@ class OpGen:
             if tok.kind == "word" and S.is_name(tok.raw) and tok.raw in self.info.bindings:
                 b.store(b.load(self.allocas[tok.raw]), self.allocas[bind.name])
             else:
-                b.store(self.be.literal(self.m, tok, bind.type, r.line), self.allocas[bind.name])
+                b.store(self.be.literal(self.m, tok, self.t(bind.type), r.line), self.allocas[bind.name])
         mr = ent.value("maxRecursion")
         if mr not in (None, "none"):
-            self.depth = self.be.depth_counter(function_name(self.m.short, ent.name))
+            self.depth = self.be.recursion_id(self.fn.name)
             self.max_depth = int(mr)
-            d = b.add(b.load(self.depth), I64(1))
-            b.store(d, self.depth)
-            over = b.icmp_signed(">", d, I64(self.max_depth))
-            with b.if_then(over, likely=False):
-                self.trap(b, ent.line, f"`{ent.name}` called itself deeper than maxRecursion {self.max_depth}")
             here = b.ptrtoint(b.alloca(I8, name="stack.probe"), I64)
-            floor = b.load(self.be.stack_floor)
-            low = b.and_(b.icmp_unsigned("!=", floor, I64(0)), b.icmp_unsigned("<", here, floor))
-            with b.if_then(low, likely=False):
+            status = b.call(self.be.callbacks["refined_recursion_enter"], [I64(self.depth), I64(self.max_depth), here])
+            with b.if_then(b.icmp_signed("==", status, I32(1)), likely=False):
+                self.trap(b, ent.line, f"`{ent.name}` called itself deeper than maxRecursion {self.max_depth}")
+            with b.if_then(b.icmp_signed("==", status, I32(2)), likely=False):
                 self.trap(b, ent.line, f"`{ent.name}` ran out of stack before reaching maxRecursion "
                           f"{self.max_depth}; lower the bound or recurse less deeply")
         for lab in self.order:
@@ -418,6 +500,20 @@ class OpGen:
             line, verb, a = steps[i]
             if verb == "do":
                 self.call(b, self.info.calls[a[0]], line)
+            elif verb == "start":
+                self.start_task(b, self.info.calls[a[0]], a[2] if len(a) == 3 else None, line)
+            elif verb == "join" and a[0] in self.groups:
+                b.call(self.be.callbacks["refined_group_join"], [b.load(self.groups[a[0]])])
+            elif verb == "join":
+                self.join_task(b, self.info.calls[a[0]])
+            elif verb == "cancel" and a[0] in self.groups:
+                b.call(self.be.callbacks["refined_group_cancel"], [b.load(self.groups[a[0]])])
+            elif verb == "cancel":
+                b.call(self.be.callbacks["refined_task_cancel"], [b.load(self.task_handles[a[0]])])
+            elif verb == "awaitSlot":
+                b.call(self.be.callbacks["refined_group_await"], [b.load(self.groups[a[0]])])
+            elif verb == "defer":
+                b.store(I1(1), self.armed[a[0]])
             elif verb == "set":
                 b.store(b.load(self.allocas[a[1]]), self.allocas[a[0]])
             elif verb == "goto":
@@ -455,7 +551,7 @@ class OpGen:
         if coll in self.m.tables:
             elem = tb.load(tb.gep(g, [I32(0), idx]))
         else:
-            et = self.be.ltype(self.info.bindings[item].type, *self.where(line))
+            et = self.lt(self.info.bindings[item].type, line)
             data = tb.bitcast(tb.load(tb.gep(hdr, [I32(0), I32(2)])), et.as_pointer())
             elem = tb.load(tb.gep(data, [idx]))
         tb.store(elem, self.allocas[item])
@@ -464,8 +560,9 @@ class OpGen:
 
     def match(self, b: ir.IRBuilder, lab: str, a: list, cases: list, line: int) -> None:
         value = b.load(self.allocas[a[0]])
+        layout = self.be.enum_layout(self.t(self.info.bindings[a[0]].type))
         tag = b.extract_value(value, 0)
-        payload = b.extract_value(value, 1)
+        payload = b.extract_value(value, 1) if layout is None else None
         unreachable = self.fn.append_basic_block(f"{lab}.nomatch")
         ir.IRBuilder(unreachable).unreachable()
         sw = b.switch(tag, unreachable)
@@ -476,34 +573,127 @@ class OpGen:
             blk = self.fn.append_basic_block(f"{lab}.case.{v[1]}")
             cb = ir.IRBuilder(blk)
             if ca[2] != "none":
-                cb.store(self.narrow(cb, payload, self.info.bindings[ca[2]].type), self.allocas[ca[2]])
+                if layout is None:
+                    cb.store(self.narrow(cb, payload, self.t(self.info.bindings[ca[2]].type)), self.allocas[ca[2]])
+                else:
+                    cb.store(cb.extract_value(value, layout[v[1]]), self.allocas[ca[2]])
             cb.branch(self.edge(lab, ca[-1]))
             sw.add_case(I32(tagn), blk)
 
     def ret(self, b: ir.IRBuilder, a: list, line: int) -> None:
+        # the returned value is read before cleanups run; cleanups run newest first, each at most once
+        result = b.load(self.allocas[a[1]]) if a[1] != "none" else None
+        for name in reversed(self.defer_order):
+            c = self.cleanups[name]
+            armed = self.armed[name]
+            with b.if_then(b.load(armed)):
+                b.store(I1(0), armed)
+                ci = self.info.calls[c.value("call")]
+                self.call(b, ci, c.line)
+                if c.value("onFailure") == "trap" and ci.catch is not None:
+                    with b.if_then(b.load(self.failed[ci.entity.name]), likely=False):
+                        self.trap(b, c.line, f"cleanup `{name}` in `{self.ent.name}` failed (onFailure trap)")
         for reg in self.regions:
             if reg.value("released") == "atReturn":
                 b.call(self.be.callbacks["refined_region_free"], [b.load(self.allocas[reg.name])])
+        for g in self.groups.values():
+            b.call(self.be.callbacks["refined_group_free"], [b.load(g)])
         if self.depth is not None:
-            b.store(b.sub(b.load(self.depth), I64(1)), self.depth)
+            b.call(self.be.callbacks["refined_recursion_leave"], [I64(self.depth)])
         sig = self.info.sig
         rtype = self.fn.function_type.return_type
         if sig.raises:
             out_t = rtype.elements[1]
             if a[0] == "ok":
-                out = b.load(self.allocas[a[1]]) if a[1] != "none" else ir.Constant(out_t, 0)
+                out = result if result is not None else ir.Constant(out_t, 0)
                 agg = b.insert_value(ir.Constant(rtype, ir.Undefined), I1(0), 0)
                 agg = b.insert_value(agg, out, 1)
-                agg = b.insert_value(agg, ir.Constant(ENUM, [I32(0), I64(0)]), 2)
+                agg = b.insert_value(agg, ir.Constant(rtype.elements[2], None), 2)
             else:
                 agg = b.insert_value(ir.Constant(rtype, ir.Undefined), I1(1), 0)
                 agg = b.insert_value(agg, ir.Constant(out_t, None), 1)
-                agg = b.insert_value(agg, b.load(self.allocas[a[1]]), 2)
+                agg = b.insert_value(agg, result, 2)
             b.ret(agg)
         elif a[1] == "none":
             b.ret_void()
         else:
-            b.ret(b.load(self.allocas[a[1]]))
+            b.ret(result)
+
+    # ------------------------------------------------------------ tasks (D-31)
+
+    def task_thunk(self, ci: CallInfo, line: int) -> tuple[ir.Function, ir.Type]:
+        """`void thunk(i8* frame)`: read the task's arguments from the frame, make the call exactly as a `do`
+        would, and write its result, failure flag, and error back. The frame is {args..., out?, failed, error?}."""
+        name = ci.entity.name
+        if name in self.thunks:
+            return self.thunks[name]
+        fields = [self.lt(typ, l) for _s, typ, _v, _m, l in ci.args]
+        if ci.out is not None:
+            fields.append(self.lt(ci.out[1], line))
+        fields.append(I1)
+        if ci.catch is not None:
+            fields.append(self.lt(ci.catch[1], line))
+        frame_t = ir.LiteralStructType(fields)
+        fn = ir.Function(self.be.module, ir.FunctionType(ir.VoidType(), [PTR]), name=f"{self.fn.name}.task.{name}")
+        saved = (self.fn, self.allocas, self.failed)
+        self.fn, self.allocas, self.failed = fn, {}, {}
+        try:
+            b = ir.IRBuilder(fn.append_basic_block("entry"))
+            frame = b.bitcast(fn.args[0], frame_t.as_pointer())
+            for i, (_slot, _typ, value, _m, _l) in enumerate(ci.args):
+                if value not in self.allocas:
+                    self.allocas[value] = b.alloca(fields[i], name=value)
+                    b.store(b.load(b.gep(frame, [I32(0), I32(i)])), self.allocas[value])
+            k = len(ci.args)
+            if ci.out is not None:
+                self.allocas[ci.out[0]] = b.alloca(fields[k], name=ci.out[0])
+            if ci.catch is not None:
+                self.allocas[ci.catch[0]] = b.alloca(fields[-1], name=ci.catch[0])
+                self.failed[name] = b.alloca(I1, name=f"{name}.failed")
+            # the call goes in its own block: helpers put their allocas at the top of the entry block
+            body = fn.append_basic_block("body")
+            b.branch(body)
+            b.position_at_end(body)
+            self.call(b, ci, line)
+            if ci.out is not None:
+                b.store(b.load(self.allocas[ci.out[0]]), b.gep(frame, [I32(0), I32(k)]))
+                k += 1
+            if ci.catch is not None:
+                b.store(b.load(self.failed[name]), b.gep(frame, [I32(0), I32(k)]))
+                b.store(b.load(self.allocas[ci.catch[0]]), b.gep(frame, [I32(0), I32(k + 1)]))
+            else:
+                b.store(I1(0), b.gep(frame, [I32(0), I32(k)]))
+            b.ret_void()
+        finally:
+            self.fn, self.allocas, self.failed = saved
+        self.thunks[name] = (fn, frame_t)
+        return self.thunks[name]
+
+    def start_task(self, b: ir.IRBuilder, ci: CallInfo, group: Optional[str], line: int) -> None:
+        thunk, frame_t = self.task_thunk(ci, line)
+        raw = b.call(self.be.callbacks["refined_task_frame"], [self.sizeof(b, frame_t)])
+        frame = b.bitcast(raw, frame_t.as_pointer())
+        for i, (_slot, _typ, value, _m, _l) in enumerate(ci.args):
+            b.store(self.arg_value(b, value, ci.entity.line), b.gep(frame, [I32(0), I32(i)]))
+        group_handle = b.load(self.groups[group]) if group is not None else I64(0)
+        handle = b.call(self.be.callbacks["refined_task_spawn"], [b.bitcast(thunk, PTR), raw, group_handle])
+        b.store(handle, self.task_handles[ci.entity.name])
+        b.store(raw, self.task_frames[ci.entity.name])
+
+    def join_task(self, b: ir.IRBuilder, ci: CallInfo) -> None:
+        name = ci.entity.name
+        handle = b.load(self.task_handles[name])
+        b.call(self.be.callbacks["refined_task_join"], [handle])
+        _thunk, frame_t = self.thunks[name] if name in self.thunks else self.task_thunk(ci, ci.entity.line)
+        frame = b.bitcast(b.load(self.task_frames[name]), frame_t.as_pointer())
+        k = len(ci.args)
+        if ci.out is not None:
+            b.store(b.load(b.gep(frame, [I32(0), I32(k)])), self.allocas[ci.out[0]])
+            k += 1
+        if ci.catch is not None:
+            b.store(b.load(b.gep(frame, [I32(0), I32(k)])), self.failed[name])
+            b.store(b.load(b.gep(frame, [I32(0), I32(k + 1)])), self.allocas[ci.catch[0]])
+        b.call(self.be.callbacks["refined_task_release"], [handle])
 
     # ------------------------------------------------------------ values
 
@@ -515,6 +705,7 @@ class OpGen:
         return b.sext(v, I64) if v.type != I64 else v
 
     def narrow(self, b: ir.IRBuilder, v, canon: str):
+        canon = self.t(canon)
         if self.be.tag_only(canon):
             return b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), b.trunc(v, I32), 0)
         t = self.be.ltype(canon, self.m.file, 0)
@@ -525,6 +716,9 @@ class OpGen:
             return b.load(self.allocas[value])
         if value in self.m.ops:
             return self.be.function_for(self.m.short, value, self.m.file, line)
+        if value in self.m.op_instances:
+            gen, sub = instance_parts(self.world, self.m, self.m.op_instances[value])
+            return self.be.function_for(self.m.short, gen, self.m.file, line, sub)
         self.unsupported(line, f"value `{value}`")
 
     # ------------------------------------------------------------ calls
@@ -534,10 +728,18 @@ class OpGen:
         args = {slot: self.arg_value(b, value, ent.line) for slot, _t, value, _m, _l in ci.args}
         inv = ent.value("invokes")
         out = failed = err = None
+        inst = self._instance(inv) if inv else None
         if ci.reference is not None:
             fptr = b.load(self.allocas[ci.reference])
             res = b.call(fptr, [args[p.name] for p in self._ref_sig(ci).inputs])
             out, failed, err = self._split(b, res, self._ref_sig(ci))
+        elif inst is not None:
+            owner, gen, sub = inst
+            sub = {k: self.t(v) for k, v in sub.items()}
+            fn = self.be.function_for(owner.short, gen, self.m.file, ent.line, sub)
+            sig = self.world.substitute(owner.op_infos[gen].sig, sub)
+            res = b.call(fn, [args[p.name] for p in sig.inputs])
+            out, failed, err = self._split(b, res, sig)
         elif ci.callee_op is not None or (inv and inv.split(".")[0] in self.world.modules and len(inv.split(".")) == 2):
             mod, op = (self.m.short, ci.callee_op) if ci.callee_op is not None and "." not in inv else inv.split(".")
             if mod not in self.world.modules or op not in self.world.modules[mod].op_infos:
@@ -554,6 +756,16 @@ class OpGen:
             b.store(failed if failed is not None else I1(0), self.failed[ent.name])
             if err is not None:
                 b.store(err, self.allocas[ci.catch[0]])
+
+    def _instance(self, inv: str):
+        """(module, generic operation, substitution) when `inv` names an `operationInstance`."""
+        parts = inv.split(".")
+        if len(parts) == 1 and inv in self.m.op_instances:
+            return (self.m, *instance_parts(self.world, self.m, self.m.op_instances[inv]))
+        if len(parts) == 2 and parts[0] in self.world.modules and parts[1] in self.world.modules[parts[0]].op_instances:
+            other = self.world.modules[parts[0]]
+            return (other, *instance_parts(self.world, other, other.op_instances[parts[1]]))
+        return None
 
     def _ref_sig(self, ci: CallInfo):
         t = self.info.bindings[ci.reference].type
@@ -827,15 +1039,108 @@ class OpGen:
             if name == "fail":
                 b.call(cb["refined_fail"], [b.extract_value(a[0], 0), b.extract_value(a[0], 1), cp, cl])
                 return None, None, None
+        if mod == "string" and name == "toBytes":
+            return a[0], None, None  # the same bytes, viewed as `Bytes` (it borrows `text`)
+        if inv in HOST_TARGETS:
+            extra = [self.be.string(self.scope_host("listen", "net.tcp"))] if inv == "net.listen" else []
+            return self.host_call(b, inv, ci, args, line, extra)
         self.unsupported(line, f"the library target `{inv}`")
+
+    def scope_host(self, verb: str, resource: str) -> str:
+        """The host part of the scope of the capability this operation uses for `<verb> <resource>`."""
+        for u in self.ent.facts("uses"):
+            cap = self.m.capabilities.get(u.text(0))
+            if cap is None:
+                continue
+            if any(g.text(0) == verb and g.text(1) == resource for g in cap.facts("grants")):
+                row = cap.fact("scope")
+                if row is not None and row.args and row.args[0].kind == "string":
+                    return row.args[0].value.rpartition(":")[0]
+        return "127.0.0.1"
+
+    # ------------------------------------------------------------ host calls
+
+    def flatten(self, b: ir.IRBuilder, v) -> list:
+        """A value as 64-bit slots (see host.py)."""
+        t = v.type
+        if isinstance(t, ir.IntType):
+            if t.width == 64:
+                return [v]
+            return [b.zext(v, I64) if t.width == 1 else b.sext(v, I64)]
+        if isinstance(t, ir.DoubleType):
+            return [b.bitcast(v, I64)]
+        if isinstance(t, ir.FloatType):
+            return [b.bitcast(b.fpext(v, F64), I64)]
+        if isinstance(t, ir.PointerType):
+            return [b.ptrtoint(v, I64)]
+        if isinstance(t, ir.LiteralStructType):
+            out = []
+            for i in range(len(t.elements)):
+                out += self.flatten(b, b.extract_value(v, i))
+            return out
+        raise AssertionError(f"cannot pass {t} to the host")
+
+    def slot_count(self, t: ir.Type) -> int:
+        if isinstance(t, ir.LiteralStructType):
+            return sum(self.slot_count(e) for e in t.elements)
+        return 1
+
+    def unflatten(self, b: ir.IRBuilder, slots: list, t: ir.Type):
+        if isinstance(t, ir.IntType):
+            s = slots.pop(0)
+            return s if t.width == 64 else b.trunc(s, t)
+        if isinstance(t, ir.DoubleType):
+            return b.bitcast(slots.pop(0), F64)
+        if isinstance(t, ir.FloatType):
+            return b.fptrunc(b.bitcast(slots.pop(0), F64), F32)
+        if isinstance(t, ir.PointerType):
+            return b.inttoptr(slots.pop(0), t)
+        if isinstance(t, ir.LiteralStructType):
+            agg = ir.Constant(t, ir.Undefined)
+            for i, e in enumerate(t.elements):
+                agg = b.insert_value(agg, self.unflatten(b, slots, e), i)
+            return agg
+        raise AssertionError(f"cannot take {t} from the host")
+
+    def host_call(self, b: ir.IRBuilder, name: str, ci: CallInfo, args: dict, line: int, extra=()):
+        groups = [self.flatten(b, args[s]) for s, *_ in ci.args] + [self.flatten(b, e) for e in extra]
+        sig = ci.sig
+        out_t = self.lt(sig.output, line) if sig.output else None
+        nres = self.slot_count(out_t) if out_t is not None else 0
+        total = sum(len(g) for g in groups)
+        argbuf = self.fn_alloca(ir.ArrayType(I64, max(total, 1)), f"{ci.entity.name}.hostArgs")
+        resbuf = self.fn_alloca(ir.ArrayType(I64, max(nres, 1)), f"{ci.entity.name}.hostResults")
+        payload = self.fn_alloca(I64, f"{ci.entity.name}.hostError")
+        at = 0
+        for g in groups:
+            for s in g:
+                b.store(s, b.gep(argbuf, [I32(0), I32(at)]))
+                at += 1
+        key = self.be.string(f"{name}|{','.join(str(len(g)) for g in groups)}|{nres}")
+        status = b.call(self.be.callbacks["refined_host"],
+                        [b.extract_value(key, 0), b.extract_value(key, 1), b.gep(argbuf, [I32(0), I32(0)]),
+                         b.gep(resbuf, [I32(0), I32(0)]), payload])
+        out = None
+        if out_t is not None:
+            slots = [b.load(b.gep(resbuf, [I32(0), I32(i)])) for i in range(nres)]
+            out = self.unflatten(b, slots, out_t)
+        if not sig.raises:
+            return out, None, None
+        err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), b.sub(status, I32(1)), 0)
+        err = b.insert_value(err, b.load(payload), 1)
+        return out, b.icmp_signed("!=", status, I32(0)), err
 
     def derived(self, b: ir.IRBuilder, inv: str, ci: CallInfo, args: dict, line: int):
         parts = inv.split(".")
         type_text, member = ".".join(parts[:-1]), parts[-1]
-        from .semantics import resolve_type
         canon = resolve_type(self.world, self.m, type_text, line, quiet=True)
         info = self.world.type_info(canon)
         if info is None:
+            self.unsupported(line, f"`{inv}`")
+        if info.kind in ("opaque", "resource") or (info.kind == "instance" and info.generic in HOST_GENERICS):
+            name = f"{info.generic if info.kind == 'instance' else canon}.{member}"
+            if name in HOST_TARGETS:
+                return self.host_call(b, name, ci, args, line)
             self.unsupported(line, f"`{inv}`")
         if info.kind == "instance" and info.generic == "list.List":
             return self.list_member(b, member, info.args[0], args, ci, line)
@@ -858,9 +1163,13 @@ class OpGen:
             names = [n for n, _p in info.variants]
             if member in names:
                 payload = info.variants[names.index(member)][1]
-                agg = ir.Constant(ENUM, [I32(names.index(member)), I64(0)])
+                layout = self.be.enum_layout(canon)
+                agg = self.be.enum_const(canon, member)
                 if payload is not None:
-                    agg = b.insert_value(agg, self.widen(b, args["payload"], payload), 1)
+                    if layout is None:
+                        agg = b.insert_value(agg, self.widen(b, args["payload"], payload), 1)
+                    else:
+                        agg = b.insert_value(agg, args["payload"], layout[member])
                 return agg, None, None
             if member == "equals":
                 return self.equals(b, args["left"], args["right"], canon, line), None, None
@@ -871,7 +1180,7 @@ class OpGen:
 
     def list_member(self, b: ir.IRBuilder, member: str, item: str, args: dict, ci: CallInfo, line: int):
         """list.List in a region: a header {length, capacity, data, region} and a data block that doubles."""
-        et = self.be.ltype(item, *self.where(line))
+        et = self.lt(item, line)
         alloc = self.be.callbacks["refined_region_alloc"]
         if member == "new":
             raw = b.call(alloc, [args["region"], self.sizeof(b, LIST_HEADER)])
@@ -926,24 +1235,88 @@ class OpGen:
         self.unsupported(line, f"`list.List.{member}`")
 
     def equals(self, b: ir.IRBuilder, x, y, canon: str, line: int):
+        """Structural equality: numbers by value, text and bytes by content, records field by field, enums
+        by tag and the active payload, lists element by element, host values (handles) by identity."""
+        canon = self.t(canon)
         if canon in INT_TYPES or canon == "Bool":
             return b.icmp_unsigned("==", x, y)
-        if canon == "Float64":
+        if canon in ("Float64", "Float32"):
             return b.fcmp_ordered("==", x, y)
-        if canon == "String":
+        if canon in ("String", "Bytes"):
             eq = b.call(self.be.callbacks["refined_bytes_equal"], [b.extract_value(x, 0), b.extract_value(x, 1),
                                                                    b.extract_value(y, 0), b.extract_value(y, 1)])
             return b.icmp_signed("!=", eq, I32(0))
         info = self.world.type_info(canon)
+        if info.kind == "alias":
+            return self.equals(b, x, y, info.base, line)
         if info.kind == "record":
             acc = I1(1)
             for i, (_n, ft) in enumerate(info.fields):
                 acc = b.and_(acc, self.equals(b, b.extract_value(x, i), b.extract_value(y, i), ft, line))
             return acc
-        if info.variants:
+        if info.variants and self.be.enum_layout(canon) is None:
             return b.and_(b.icmp_signed("==", b.extract_value(x, 0), b.extract_value(y, 0)),
                           b.icmp_signed("==", b.extract_value(x, 1), b.extract_value(y, 1)))
+        if info.variants:
+            return self.wide_enum_equals(b, x, y, canon, info, line)
+        if info.kind == "instance" and info.generic == "list.List":
+            return self.list_equals(b, x, y, info.args[0], line)
+        if isinstance(x.type, (ir.IntType, ir.PointerType)):
+            return b.icmp_unsigned("==", x, y)  # handles and operation references: the same value
         self.unsupported(line, f"comparing values of `{canon}`")
+
+    def wide_enum_equals(self, b: ir.IRBuilder, x, y, canon: str, info, line: int):
+        layout = self.be.enum_layout(canon)
+        same_tag = b.icmp_signed("==", b.extract_value(x, 0), b.extract_value(y, 0))
+        done = self.fn.append_basic_block("enumEq.done")
+        start = b.block
+        sw_block = self.fn.append_basic_block("enumEq.payload")
+        b.cbranch(same_tag, sw_block, done)
+        b.position_at_end(sw_block)
+        incoming = [(I1(0), start)]
+        sw = b.switch(b.extract_value(x, 0), done)
+        incoming.append((I1(1), sw_block))  # a variant without a payload: equal tags are enough
+        for tag, (n, p) in enumerate(info.variants):
+            if p is None:
+                continue
+            blk = self.fn.append_basic_block(f"enumEq.{n}")
+            sw.add_case(I32(tag), blk)
+            b.position_at_end(blk)
+            eq = self.equals(b, b.extract_value(x, layout[n]), b.extract_value(y, layout[n]), p, line)
+            incoming.append((eq, b.block))
+            b.branch(done)
+        b.position_at_end(done)
+        phi = b.phi(I1)
+        for v, blk in incoming:
+            phi.add_incoming(v, blk)
+        return phi
+
+    def list_equals(self, b: ir.IRBuilder, x, y, item: str, line: int):
+        et = self.lt(item, line)
+        lx, ly = b.load(b.gep(x, [I32(0), I32(0)])), b.load(b.gep(y, [I32(0), I32(0)]))
+        start = b.block
+        head = self.fn.append_basic_block("listEq.head")
+        body = self.fn.append_basic_block("listEq.body")
+        done = self.fn.append_basic_block("listEq.done")
+        b.cbranch(b.icmp_signed("==", lx, ly), head, done)
+        b.position_at_end(head)
+        i = b.phi(I64)
+        i.add_incoming(I64(0), start)
+        b.cbranch(b.icmp_signed("<", i, lx), body, done)
+        b.position_at_end(body)
+        dx = b.bitcast(b.load(b.gep(x, [I32(0), I32(2)])), et.as_pointer())
+        dy = b.bitcast(b.load(b.gep(y, [I32(0), I32(2)])), et.as_pointer())
+        eq = self.equals(b, b.load(b.gep(dx, [i])), b.load(b.gep(dy, [i])), item, line)
+        step_end = b.block
+        nxt = b.add(i, I64(1))
+        i.add_incoming(nxt, step_end)
+        b.cbranch(eq, head, done)
+        b.position_at_end(done)
+        phi = b.phi(I1)
+        phi.add_incoming(I1(0), start)  # lengths differ
+        phi.add_incoming(I1(1), head)  # every element matched
+        phi.add_incoming(I1(0), step_end)  # an element differed
+        return phi
 
 
 def compile_roots(world: World, roots: list[tuple[str, str]]) -> tuple[Optional[ir.Module], list[Diagnostic]]:

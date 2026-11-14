@@ -4,23 +4,67 @@
 # covers: 19 File-system utilities
 # covers: 13 Resource access permissions
 # covers: 13 Capability scoping
+# covers: 8 UTF-8 handling
 # kind: positive
-# expect: unsupported async operations such as `main`
+# expect: run
+# exit: 0
+# stdout: hello file
+# stdout: tooLarge
 
 fileReadCase is module
-fileReadCase purpose "Use fs.readAll under a capability"
+fileReadCase purpose "Write a file, read it back as text, and read it with too small a limit"
 fileReadCase path fileReadCase
+fileReadCase imports standard.console
 fileReadCase imports standard.fs
+fileReadCase imports standard.string
 fileReadCase imports standard.time
 fileReadCase exports main
 
-hostAccess is capability
-hostAccess purpose "Authority for exactly this case's host access"
-hostAccess grants read fs.files
-hostAccess scope "/srv/suite/"
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+fileAccess is capability
+fileAccess purpose "Authority to read and write files whose names start with suite-"
+fileAccess grants read fs.files
+fileAccess grants write fs.files
+fileAccess scope "suite-"
 
 main is operation
-main purpose "Use fs.readAll once"
+main purpose "Run the case and print what it computes"
 main invariant none
 main typeParam none
 main input none
@@ -28,26 +72,58 @@ main output ExitCode
 main outputOwner none
 main raises none
 main effect read fs.files
-main uses hostAccess
+main effect write console.stdout
+main effect write fs.files
+main uses fileAccess
+main uses stdoutWriter
 main memory heap true
 main async true
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main label done loopKind none
-main label done within none
+main label readBack loopKind none
+main label readBack within none
+main label decode loopKind none
+main label decode within none
+main label showIt loopKind none
+main label showIt within none
+main label small loopKind none
+main label small within none
+main label tooLarge loopKind none
+main label tooLarge within none
 main label failed loopKind none
 main label failed within none
-main let path immutable String "/srv/suite/input.bin"
+main let path immutable String "suite-input.txt"
+main let content immutable String "hello file"
+main let tooLargeText immutable String "tooLarge"
+main let waitMs immutable Int64 5000
 main let limit immutable Int64 4096
+main let smallLimit immutable Int64 4
 main let okCode immutable ExitCode 0
 main let failCode immutable ExitCode 1
-main let waitMs immutable Int64 1000
 main at begin do makeDeadline
-main at begin start access
-main at begin join access
-main at begin branch ifError access goto failed else goto done
-main at done return ok okCode
+main at begin do toBytes
+main at begin start writeIt
+main at begin join writeIt
+main at begin branch ifError writeIt goto failed else goto readBack
+main at readBack start readIt
+main at readBack join readIt
+main at readBack branch ifError readIt goto failed else goto decode
+main at decode do toText
+main at decode branch ifError toText goto failed else goto showIt
+main at showIt do printText
+main at showIt start readSmall
+main at showIt join readSmall
+main at showIt branch ifError readSmall goto small else goto failed
+main at small match smallError fs.FileError
+main at small case fs.FileError.notFound bind none none goto failed
+main at small case fs.FileError.denied bind none none goto failed
+main at small case fs.FileError.exists bind none none goto failed
+main at small case fs.FileError.tooLarge bind none none goto tooLarge
+main at small case fs.FileError.timedOut bind none none goto failed
+main at small case fs.FileError.failed bind code Int32 goto failed
+main at tooLarge do printTooLarge
+main at tooLarge return ok okCode
 main at failed return ok failCode
 
 io is region
@@ -66,15 +142,81 @@ makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
 
-access is task
-access in main
-access invokes fs.readAll
-access arg path String path lend
-access arg region Region io lend
-access arg maxBytes Int64 limit copy
-access arg deadline time.Deadline deadline copy
-access out content Bytes
-access ownedBy io
-access cleanedBy none
-access borrows none
-access catch accessError fs.FileError
+toBytes is call
+toBytes in main
+toBytes invokes string.toBytes
+toBytes arg text String content lend
+toBytes out contentBytes Bytes
+toBytes ownedBy none
+toBytes cleanedBy none
+toBytes borrows content
+toBytes catch none
+
+writeIt is task
+writeIt in main
+writeIt invokes fs.writeAll
+writeIt arg path String path lend
+writeIt arg bytes Bytes contentBytes lend
+writeIt arg deadline time.Deadline deadline copy
+writeIt out none
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch writeError fs.FileError
+
+readIt is task
+readIt in main
+readIt invokes fs.readAll
+readIt arg path String path lend
+readIt arg region Region io lend
+readIt arg maxBytes Int64 limit copy
+readIt arg deadline time.Deadline deadline copy
+readIt out readBytes Bytes
+readIt ownedBy io
+readIt cleanedBy none
+readIt borrows none
+readIt catch readError fs.FileError
+
+toText is call
+toText in main
+toText invokes string.fromBytes
+toText arg bytes Bytes readBytes lend
+toText arg region Region io lend
+toText out readText String
+toText ownedBy io
+toText cleanedBy none
+toText borrows none
+toText catch decodeError string.Utf8Error
+
+printText is call
+printText in main
+printText invokes showText
+printText arg text String readText lend
+printText out none
+printText ownedBy none
+printText cleanedBy none
+printText borrows none
+printText catch none
+
+readSmall is task
+readSmall in main
+readSmall invokes fs.readAll
+readSmall arg path String path lend
+readSmall arg region Region io lend
+readSmall arg maxBytes Int64 smallLimit copy
+readSmall arg deadline time.Deadline deadline copy
+readSmall out smallBytes Bytes
+readSmall ownedBy io
+readSmall cleanedBy none
+readSmall borrows none
+readSmall catch smallError fs.FileError
+
+printTooLarge is call
+printTooLarge in main
+printTooLarge invokes showText
+printTooLarge arg text String tooLargeText lend
+printTooLarge out none
+printTooLarge ownedBy none
+printTooLarge cleanedBy none
+printTooLarge borrows none
+printTooLarge catch none

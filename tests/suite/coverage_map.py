@@ -555,6 +555,8 @@ GENERATED: dict[str, list[str]] = {
     "test_cli_rejects_unknown_command": ["23 CLI compiler invocation"],
     "test_check_reports_unreadable_source_encoding": ["22 Invalid source encoding", "15 Lexical analysis"],
     "test_mutation": ["20 Negative compilation tests"],
+    "test_every_operation_compiles": ["15 Code generation", "15 Intermediate representation generation"],
+    "test_every_program_case_runs": ["20 End-to-end tests"],
     "test_program_case": ["20 End-to-end tests", "20 Golden-file tests", "20 Snapshot tests"],
 }
 
@@ -604,8 +606,8 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "5 Tail calls": (None, "Tail recursion runs (fibonacci in the recursion case) but is not guaranteed to reuse "
                      "the frame; `maxRecursion` bounds the depth either way.", ["06-recursion/recursion"]),
     # 6
-    "6 Recursive resource cleanup": (GAP, "No case passes an owned resource down a recursion; cleanups do not run in "
-                                     "the backend yet (see the resources case).", ["07-memory/resources"]),
+    "6 Recursive resource cleanup": (GAP, "Cleanups run (the resources case), but no case passes an owned resource "
+                                     "down a recursion.", ["07-memory/resources"]),
     # 7
     "7 Reference counting": (BY_DESIGN, "Single owners and regions: a value has one owner (`ownedBy`), and "
                              "region-owned values are freed with their region.", []),
@@ -636,12 +638,15 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "10 Exception handling": (None, "No exceptions: an operation `raises` one error enum, and every fallible call is "
                               "followed by `branch ifError` (R506).", []),
     # 11
-    "11 Deadlock detection": (GAP, "The checker proves every task and group is joined or cancelled on every path "
-                              "(R512), but channel waits are not analysed for deadlock, and tasks do not run yet.",
-                              []),
+    "11 Deadlock detection": (None, "The checker proves every task and group is joined or cancelled on every path "
+                              "(R512). At run time, when every task waits on another with no deadline, the program "
+                              "traps and names each wait (D-31).", []),
     "11 Thread-local storage": (BY_DESIGN, "No globals, so nothing to make thread-local: a task receives what it "
                                 "needs as arguments.", []),
-    "11 Concurrent recursion": (GAP, "Not exercised: tasks do not run in the backend yet.", []),
+    "11 Concurrent recursion": (None, "Recursion runs inside tasks with its depth and stack checked per thread.",
+                                ["11-concurrency/parallel"]),
+    "11 Parallel execution": (None, "Each task runs on its own thread (D-31); the parallel case measures two pauses "
+                              "overlapping and a group of two running four tasks in two waves.", []),
     "11 Mutexes": (BY_DESIGN, "No shared mutable state between tasks: values are copied, lent read-only, or given. "
                    "Coordination is by channels.", []),
     "11 Locks": (BY_DESIGN, "See mutexes: no shared mutable state, so no locks.", []),
@@ -649,10 +654,12 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     # 12
     "12 File locking": (GAP, "The `fs` module has no locking target.", []),
     "12 Stream piping": (GAP, "No pipes between processes or streams.", []),
-    "12 HTTP requests": ("static", "The `http` module parses requests and builds responses; the worked server "
-                         "example checks clean (tests/test_refined.py) but does not run yet (tasks).", []),
-    "12 File appending": (GAP, "`fs` opens files for reading or writing; there is no append mode.", []),
-    "12 Directory operations": (GAP, "`fs` has no directory listing or creation targets.", []),
+    "12 HTTP requests": ("tested", "The worked server example runs and answers real HTTP requests "
+                         "(`test_server_example_answers_http` in tests/test_refined.py). There is no HTTP client.",
+                         []),
+    "12 File appending": (None, "`fs.openAppend` writes at the end of a file, creating it if missing.", []),
+    "12 Directory operations": (None, "`fs.createDirectory`, `listDirectory`, `entryCount`, `entryName`, "
+                                "`removeDirectory`.", []),
     "12 File permissions": (None, "Access is governed by capabilities with a path-prefix scope; the case proves a "
                             "path outside the scope is rejected. File-mode bits are not modelled.", []),
     # 15
@@ -692,7 +699,7 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
                                                 "Cross-language error handling", "Cross-language memory ownership",
                                                 "Calling conventions", "Shared libraries")},
     "18 WASM integration": (GAP, "The backend targets the host through LLVM MCJIT only.", []),
-    "18 Native system APIs": ("static", "Reached only through the standard library (`fs`, `net`, `process`, "
+    "18 Native system APIs": (None, "Reached only through the standard library (`fs`, `net`, `process`, "
                               "`environment`, `clock`) under capabilities.", ["12-io/file-read", "12-io/process-run"]),
     # 19
     "19 Comparison functions": (None, "", ["03-operators/operators"]),
@@ -720,9 +727,9 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     # 22
     "22 Zero-length collections": (None, "Empty strings and a cleared list.", ["08-strings-collections/strings",
                                                                            "07-memory/region-list"]),
-    "22 Concurrent resource contention": ("static", "A task group has a `limit`; `awaitSlot` waits for room and "
-                                          "starting into a full group traps (A12). Not run: tasks do not run yet.",
-                                          ["11-concurrency/tasks-and-channels"]),
+    "22 Concurrent resource contention": (None, "A task group's `limit` bounds how many tasks run at once; "
+                                          "`awaitSlot` waits for room, and starting into a full group traps (A12).",
+                                          []),
     "22 Unexpected program termination": (None, "A trap flushes what was written to stdout, writes the message to "
                                           "stderr, and exits with code 70.", ["03-operators/trap-shift-too-far"]),
     "22 Empty program": (None, "An empty module file is rejected: a module file declares one module entity.", []),

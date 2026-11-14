@@ -1,0 +1,52 @@
+# Tests for the case beside this file.
+
+joinTest is test
+joinTest purpose "Joining abc and def gives abcdef"
+joinTest verifies join leftThenRight
+joinTest typeParam none
+joinTest input none
+joinTest output none
+joinTest outputOwner none
+joinTest raises none
+joinTest effect none
+joinTest uses none
+joinTest memory heap true
+joinTest async false
+joinTest maxRecursion none
+joinTest label begin loopKind none
+joinTest label begin within none
+joinTest let left immutable String "abc"
+joinTest let right immutable String "def"
+joinTest let expected immutable String "abcdef"
+joinTest at begin do runJoin
+joinTest at begin do expectJoined
+joinTest at begin return ok none
+
+scratch is region
+scratch in joinTest
+scratch strategy arena
+scratch capacity 1024
+scratch released atReturn
+
+runJoin is call
+runJoin in joinTest
+runJoin invokes join
+runJoin arg left String left lend
+runJoin arg right String right lend
+runJoin arg into Region scratch lend
+runJoin out joined String
+runJoin ownedBy scratch
+runJoin cleanedBy none
+runJoin borrows none
+runJoin catch none
+
+expectJoined is call
+expectJoined in joinTest
+expectJoined invokes test.assertEqualString
+expectJoined arg expected String expected lend
+expectJoined arg actual String joined lend
+expectJoined out none
+expectJoined ownedBy none
+expectJoined cleanedBy none
+expectJoined borrows none
+expectJoined catch none

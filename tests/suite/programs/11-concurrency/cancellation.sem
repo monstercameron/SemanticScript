@@ -1,0 +1,319 @@
+# covers: 11 Task cancellation
+# covers: 11 Timeouts
+# covers: 11 Thread termination
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: true
+# stdout: cancelled
+
+cancellation is module
+cancellation purpose "Cancel a long sleep and a receive that would wait forever"
+cancellation path cancellation
+cancellation imports standard.console
+cancellation imports standard.time
+cancellation imports standard.clock
+cancellation imports standard.math
+cancellation imports standard.compare
+cancellation imports standard.channel
+cancellation exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+clockReader is capability
+clockReader purpose "Authority to read the monotonic clock"
+clockReader grants read clock.monotonic
+clockReader scope none
+
+Mailbox is instance
+Mailbox purpose "A channel of whole numbers"
+Mailbox instantiates channel.Channel Int64
+
+pause is operation
+pause purpose "Sleep for the given number of milliseconds"
+pause invariant none
+pause typeParam none
+pause input milliseconds Int64 value
+pause output none
+pause outputOwner none
+pause raises none
+pause effect none
+pause uses none
+pause memory heap false
+pause async true
+pause maxRecursion none
+pause label begin loopKind none
+pause label begin within none
+pause at begin start nap
+pause at begin join nap
+pause at begin return ok none
+
+nap is task
+nap in pause
+nap invokes time.sleep
+nap arg milliseconds Int64 milliseconds copy
+nap out none
+nap ownedBy none
+nap cleanedBy none
+nap borrows none
+nap catch none
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read clock.monotonic
+main effect write console.stdout
+main uses clockReader
+main uses stdoutWriter
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label inspect loopKind none
+main label inspect within none
+main label report loopKind none
+main label report within none
+main label failed loopKind none
+main label failed within none
+main let tenSeconds immutable Int64 10000
+main let fiveSeconds immutable Int64 5000
+main let brief immutable Int64 100
+main let capacity immutable Int64 1
+main let cancelledText immutable String "cancelled"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do clockA
+main at begin start longPause
+main at begin cancel longPause
+main at begin do clockB
+main at begin do elapsed
+main at begin do stoppedEarly
+main at begin do showEarly
+main at begin do makeNever
+main at begin do makeMailbox
+main at begin start waitForever
+main at begin start pauseBriefly
+main at begin join pauseBriefly
+main at begin cancel waitForever
+main at begin join waitForever
+main at begin branch ifError waitForever goto inspect else goto failed
+main at inspect match waitError channel.ChannelError
+main at inspect case channel.ChannelError.closed bind none none goto failed
+main at inspect case channel.ChannelError.timedOut bind none none goto failed
+main at inspect case channel.ChannelError.cancelled bind none none goto report
+main at report do showCancelled
+main at report return ok okCode
+main at failed return ok failCode
+
+mail is region
+mail in main
+mail strategy arena
+mail capacity 4096
+mail released atReturn
+
+clockA is call
+clockA in main
+clockA invokes clock.monotonic
+clockA arg none
+clockA out a Int64
+clockA ownedBy none
+clockA cleanedBy none
+clockA borrows none
+clockA catch none
+
+clockB is call
+clockB in main
+clockB invokes clock.monotonic
+clockB arg none
+clockB out b Int64
+clockB ownedBy none
+clockB cleanedBy none
+clockB borrows none
+clockB catch none
+
+longPause is task
+longPause in main
+longPause invokes pause
+longPause arg milliseconds Int64 tenSeconds copy
+longPause out none
+longPause ownedBy none
+longPause cleanedBy none
+longPause borrows none
+longPause catch none
+
+elapsed is call
+elapsed in main
+elapsed invokes math.subtractInt64
+elapsed arg left Int64 b copy
+elapsed arg right Int64 a copy
+elapsed out took Int64
+elapsed ownedBy none
+elapsed cleanedBy none
+elapsed borrows none
+elapsed catch none
+
+stoppedEarly is call
+stoppedEarly in main
+stoppedEarly invokes compare.lessThanInt64
+stoppedEarly arg left Int64 took copy
+stoppedEarly arg right Int64 fiveSeconds copy
+stoppedEarly out early Bool
+stoppedEarly ownedBy none
+stoppedEarly cleanedBy none
+stoppedEarly borrows none
+stoppedEarly catch none
+
+showEarly is call
+showEarly in main
+showEarly invokes showBool
+showEarly arg flag Bool early copy
+showEarly out none
+showEarly ownedBy none
+showEarly cleanedBy none
+showEarly borrows none
+showEarly catch none
+
+makeNever is call
+makeNever in main
+makeNever invokes time.Deadline.never
+makeNever arg none
+makeNever out never time.Deadline
+makeNever ownedBy none
+makeNever cleanedBy none
+makeNever borrows none
+makeNever catch none
+
+makeMailbox is call
+makeMailbox in main
+makeMailbox invokes Mailbox.new
+makeMailbox arg capacity Int64 capacity copy
+makeMailbox arg region Region mail lend
+makeMailbox out mailbox Mailbox
+makeMailbox ownedBy mail
+makeMailbox cleanedBy none
+makeMailbox borrows none
+makeMailbox catch none
+
+waitForever is task
+waitForever in main
+waitForever invokes Mailbox.receive
+waitForever arg channel Mailbox mailbox lend
+waitForever arg deadline time.Deadline never copy
+waitForever out neverReceived Int64
+waitForever ownedBy none
+waitForever cleanedBy none
+waitForever borrows none
+waitForever catch waitError channel.ChannelError
+
+pauseBriefly is task
+pauseBriefly in main
+pauseBriefly invokes pause
+pauseBriefly arg milliseconds Int64 brief copy
+pauseBriefly out none
+pauseBriefly ownedBy none
+pauseBriefly cleanedBy none
+pauseBriefly borrows none
+pauseBriefly catch none
+
+showCancelled is call
+showCancelled in main
+showCancelled invokes showText
+showCancelled arg text String cancelledText lend
+showCancelled out none
+showCancelled ownedBy none
+showCancelled cleanedBy none
+showCancelled borrows none
+showCancelled catch none

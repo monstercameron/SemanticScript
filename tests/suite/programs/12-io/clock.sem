@@ -1,48 +1,180 @@
 # covers: 19 Date and time
 # covers: 13 Capability scoping
 # kind: positive
-# expect: unsupported `clock.now`
+# expect: run
+# exit: 0
+# stdout: true
+# stdout: true
 
 clockCase is module
-clockCase purpose "Use clock.now under a capability"
+clockCase purpose "Read the wall clock and the monotonic clock"
 clockCase path clockCase
+clockCase imports standard.console
 clockCase imports standard.clock
+clockCase imports standard.compare
 clockCase exports main
 
-hostAccess is capability
-hostAccess purpose "Authority for exactly this case's host access"
-hostAccess grants read clock.wall
-hostAccess scope none
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+clockReader is capability
+clockReader purpose "Authority to read both clocks"
+clockReader grants read clock.monotonic
+clockReader grants read clock.wall
+clockReader scope none
 
 main is operation
-main purpose "Use clock.now once"
+main purpose "Run the case and print what it computes"
 main invariant none
 main typeParam none
 main input none
 main output ExitCode
 main outputOwner none
 main raises none
+main effect read clock.monotonic
 main effect read clock.wall
-main uses hostAccess
+main effect write console.stdout
+main uses clockReader
+main uses stdoutWriter
 main memory heap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main label done loopKind none
-main label done within none
+main let zero immutable Int64 0
 main let okCode immutable ExitCode 0
 main let failCode immutable ExitCode 1
-main at begin do access
-main at begin goto done
-main at done return ok okCode
+main at begin do readWall
+main at begin do afterEpoch
+main at begin do showAfterEpoch
+main at begin do readFirst
+main at begin do readSecond
+main at begin do notBackwards
+main at begin do showNotBackwards
+main at begin return ok okCode
 
-access is call
-access in main
-access invokes clock.now
-access arg none
-access out now Int64
-access ownedBy none
-access cleanedBy none
-access borrows none
-access catch none
+readWall is call
+readWall in main
+readWall invokes clock.now
+readWall arg none
+readWall out wall Int64
+readWall ownedBy none
+readWall cleanedBy none
+readWall borrows none
+readWall catch none
+
+afterEpoch is call
+afterEpoch in main
+afterEpoch invokes compare.greaterThanInt64
+afterEpoch arg left Int64 wall copy
+afterEpoch arg right Int64 zero copy
+afterEpoch out positive Bool
+afterEpoch ownedBy none
+afterEpoch cleanedBy none
+afterEpoch borrows none
+afterEpoch catch none
+
+showAfterEpoch is call
+showAfterEpoch in main
+showAfterEpoch invokes showBool
+showAfterEpoch arg flag Bool positive copy
+showAfterEpoch out none
+showAfterEpoch ownedBy none
+showAfterEpoch cleanedBy none
+showAfterEpoch borrows none
+showAfterEpoch catch none
+
+readFirst is call
+readFirst in main
+readFirst invokes clock.monotonic
+readFirst arg none
+readFirst out earlier Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+
+readSecond is call
+readSecond in main
+readSecond invokes clock.monotonic
+readSecond arg none
+readSecond out later Int64
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+
+notBackwards is call
+notBackwards in main
+notBackwards invokes compare.greaterOrEqualInt64
+notBackwards arg left Int64 later copy
+notBackwards arg right Int64 earlier copy
+notBackwards out ordered Bool
+notBackwards ownedBy none
+notBackwards cleanedBy none
+notBackwards borrows none
+notBackwards catch none
+
+showNotBackwards is call
+showNotBackwards in main
+showNotBackwards invokes showBool
+showNotBackwards arg flag Bool ordered copy
+showNotBackwards out none
+showNotBackwards ownedBy none
+showNotBackwards cleanedBy none
+showNotBackwards borrows none
+showNotBackwards catch none

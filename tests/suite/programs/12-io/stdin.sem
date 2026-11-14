@@ -3,22 +3,63 @@
 # covers: 22 Interrupted I/O operations
 # covers: 13 Capability scoping
 # kind: positive
-# expect: unsupported async operations such as `main`
+# expect: run
+# exit: 0
+# stdout: hello world
+# stdout: end
+# stdin: hello world
 
 stdinCase is module
-stdinCase purpose "Use console.readLine under a capability"
+stdinCase purpose "Read a line from standard input, then reach the end of input"
 stdinCase path stdinCase
 stdinCase imports standard.console
 stdinCase imports standard.time
 stdinCase exports main
 
-hostAccess is capability
-hostAccess purpose "Authority for exactly this case's host access"
-hostAccess grants read console.stdin
-hostAccess scope none
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+stdinReader is capability
+stdinReader purpose "Authority to read standard input"
+stdinReader grants read console.stdin
+stdinReader scope none
 
 main is operation
-main purpose "Use console.readLine once"
+main purpose "Run the case and print what it computes"
 main invariant none
 main typeParam none
 main input none
@@ -26,32 +67,49 @@ main output ExitCode
 main outputOwner none
 main raises none
 main effect read console.stdin
-main uses hostAccess
+main effect write console.stdout
+main uses stdinReader
+main uses stdoutWriter
 main memory heap true
 main async true
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main label done loopKind none
-main label done within none
+main label showFirst loopKind none
+main label showFirst within none
+main label ended loopKind none
+main label ended within none
+main label reportEnd loopKind none
+main label reportEnd within none
 main label failed loopKind none
 main label failed within none
 main let limit immutable Int64 1024
+main let waitMs immutable Int64 5000
+main let endText immutable String "end"
 main let okCode immutable ExitCode 0
 main let failCode immutable ExitCode 1
-main let waitMs immutable Int64 1000
 main at begin do makeDeadline
-main at begin start access
-main at begin join access
-main at begin branch ifError access goto failed else goto done
-main at done return ok okCode
+main at begin start readFirst
+main at begin join readFirst
+main at begin branch ifError readFirst goto failed else goto showFirst
+main at showFirst do printFirst
+main at showFirst start readSecond
+main at showFirst join readSecond
+main at showFirst branch ifError readSecond goto ended else goto failed
+main at ended match secondError console.ReadError
+main at ended case console.ReadError.endOfInput bind none none goto reportEnd
+main at ended case console.ReadError.tooLong bind none none goto failed
+main at ended case console.ReadError.timedOut bind none none goto failed
+main at ended case console.ReadError.failed bind code Int32 goto failed
+main at reportEnd do printEnd
+main at reportEnd return ok okCode
 main at failed return ok failCode
 
-io is region
-io in main
-io strategy arena
-io capacity 65536
-io released atReturn
+text is region
+text in main
+text strategy arena
+text capacity 4096
+text released atReturn
 
 makeDeadline is call
 makeDeadline in main
@@ -63,14 +121,46 @@ makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
 
-access is task
-access in main
-access invokes console.readLine
-access arg region Region io lend
-access arg maxBytes Int64 limit copy
-access arg deadline time.Deadline deadline copy
-access out line String
-access ownedBy io
-access cleanedBy none
-access borrows none
-access catch accessError console.ReadError
+readFirst is task
+readFirst in main
+readFirst invokes console.readLine
+readFirst arg region Region text lend
+readFirst arg maxBytes Int64 limit copy
+readFirst arg deadline time.Deadline deadline copy
+readFirst out firstLine String
+readFirst ownedBy text
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch firstError console.ReadError
+
+readSecond is task
+readSecond in main
+readSecond invokes console.readLine
+readSecond arg region Region text lend
+readSecond arg maxBytes Int64 limit copy
+readSecond arg deadline time.Deadline deadline copy
+readSecond out secondLine String
+readSecond ownedBy text
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch secondError console.ReadError
+
+printFirst is call
+printFirst in main
+printFirst invokes showText
+printFirst arg text String firstLine lend
+printFirst out none
+printFirst ownedBy none
+printFirst cleanedBy none
+printFirst borrows none
+printFirst catch none
+
+printEnd is call
+printEnd in main
+printEnd invokes showText
+printEnd arg text String endText lend
+printEnd out none
+printEnd ownedBy none
+printEnd cleanedBy none
+printEnd borrows none
+printEnd catch none

@@ -4,6 +4,7 @@
 # covers: 7 Double-free prevention
 # covers: 7 Use-after-free prevention
 # covers: 7 Memory leak detection
+# covers: 7 Deterministic destruction
 # covers: 10 Cleanup after errors
 # covers: 10 Errors during resource cleanup
 # covers: 13 File-system capability enforcement
@@ -12,18 +13,114 @@
 # covers: 21 Cleanup obligations are enforced
 # covers: 12 File-not-found handling
 # kind: positive
-# expect: unsupported `cleanup` entities
+# expect: run
+# exit: 0
+# stdout: true
+# stdout: notFound
 
 resources is module
-resources purpose "Show owned file handles: released by a cleanup, or given to another operation"
+resources purpose "Write two files, release one by a deferred cleanup and give the other away, then read a missing file"
 resources path resources
+resources imports standard.console
 resources imports standard.fs
+resources imports standard.string
+resources imports standard.time
 resources exports main
 
-fileReader is capability
-fileReader purpose "Authority to open and read files under the suite's data directory"
-fileReader grants read fs.files
-fileReader scope "/srv/suite/"
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+fileAccess is capability
+fileAccess purpose "Authority to read and write files whose names start with suite-"
+fileAccess grants read fs.files
+fileAccess grants write fs.files
+fileAccess scope "suite-"
 
 closeFor is operation
 closeFor purpose "Take ownership of an open file and close it, reporting whether closing worked"
@@ -34,7 +131,7 @@ closeFor output Bool
 closeFor outputOwner none
 closeFor raises none
 closeFor effect read fs.files
-closeFor uses fileReader
+closeFor uses fileAccess
 closeFor memory heap false
 closeFor async false
 closeFor maxRecursion none
@@ -62,7 +159,7 @@ closeIt borrows none
 closeIt catch closeError fs.FileError
 
 main is operation
-main purpose "Open one file and release it with a cleanup, then open another and hand it off"
+main purpose "Run the case and print what it computes"
 main invariant none
 main typeParam none
 main input none
@@ -70,30 +167,116 @@ main output ExitCode
 main outputOwner none
 main raises none
 main effect read fs.files
-main uses fileReader
-main memory heap false
-main async false
+main effect write console.stdout
+main effect write fs.files
+main uses fileAccess
+main uses stdoutWriter
+main memory heap true
+main async true
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
+main label writeTwo loopKind none
+main label writeTwo within none
+main label openOne loopKind none
+main label openOne within none
 main label opened loopKind none
 main label opened within none
 main label handOff loopKind none
 main label handOff within none
 main label missing loopKind none
 main label missing within none
-main let firstPath immutable String "/srv/suite/first.txt"
-main let secondPath immutable String "/srv/suite/second.txt"
+main label reportMissing loopKind none
+main label reportMissing within none
+main label failed loopKind none
+main label failed within none
+main let firstPath immutable String "suite-first.txt"
+main let secondPath immutable String "suite-second.txt"
+main let missingPath immutable String "suite-missing.txt"
+main let content immutable String "data"
+main let notFoundText immutable String "notFound"
+main let waitMs immutable Int64 5000
+main let limit immutable Int64 64
 main let okCode immutable ExitCode 0
 main let failCode immutable ExitCode 1
-main at begin do openFirst
-main at begin branch ifError openFirst goto missing else goto opened
+main at begin do makeDeadline
+main at begin do toBytes
+main at begin start writeFirst
+main at begin join writeFirst
+main at begin branch ifError writeFirst goto failed else goto writeTwo
+main at writeTwo start writeSecond
+main at writeTwo join writeSecond
+main at writeTwo branch ifError writeSecond goto failed else goto openOne
+main at openOne do openFirst
+main at openOne branch ifError openFirst goto failed else goto opened
 main at opened defer closeFirstCleanup
 main at opened do openSecond
-main at opened branch ifError openSecond goto missing else goto handOff
+main at opened branch ifError openSecond goto failed else goto handOff
 main at handOff do giveSecond
-main at handOff return ok okCode
-main at missing return ok failCode
+main at handOff do showClosed
+main at handOff start readMissing
+main at handOff join readMissing
+main at handOff branch ifError readMissing goto missing else goto failed
+main at missing match missingError fs.FileError
+main at missing case fs.FileError.notFound bind none none goto reportMissing
+main at missing case fs.FileError.denied bind none none goto failed
+main at missing case fs.FileError.exists bind none none goto failed
+main at missing case fs.FileError.tooLarge bind none none goto failed
+main at missing case fs.FileError.timedOut bind none none goto failed
+main at missing case fs.FileError.failed bind code Int32 goto failed
+main at reportMissing do showNotFound
+main at reportMissing return ok okCode
+main at failed return ok failCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch capacity 65536
+scratch released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+toBytes is call
+toBytes in main
+toBytes invokes string.toBytes
+toBytes arg text String content lend
+toBytes out contentBytes Bytes
+toBytes ownedBy none
+toBytes cleanedBy none
+toBytes borrows content
+toBytes catch none
+
+writeFirst is task
+writeFirst in main
+writeFirst invokes fs.writeAll
+writeFirst arg path String firstPath lend
+writeFirst arg bytes Bytes contentBytes lend
+writeFirst arg deadline time.Deadline deadline copy
+writeFirst out none
+writeFirst ownedBy none
+writeFirst cleanedBy none
+writeFirst borrows none
+writeFirst catch writeFirstError fs.FileError
+
+writeSecond is task
+writeSecond in main
+writeSecond invokes fs.writeAll
+writeSecond arg path String secondPath lend
+writeSecond arg bytes Bytes contentBytes lend
+writeSecond arg deadline time.Deadline deadline copy
+writeSecond out none
+writeSecond ownedBy none
+writeSecond cleanedBy none
+writeSecond borrows none
+writeSecond catch writeSecondError fs.FileError
 
 openFirst is call
 openFirst in main
@@ -141,3 +324,36 @@ giveSecond ownedBy none
 giveSecond cleanedBy none
 giveSecond borrows none
 giveSecond catch none
+
+showClosed is call
+showClosed in main
+showClosed invokes showBool
+showClosed arg flag Bool closedWell copy
+showClosed out none
+showClosed ownedBy none
+showClosed cleanedBy none
+showClosed borrows none
+showClosed catch none
+
+readMissing is task
+readMissing in main
+readMissing invokes fs.readAll
+readMissing arg path String missingPath lend
+readMissing arg region Region scratch lend
+readMissing arg maxBytes Int64 limit copy
+readMissing arg deadline time.Deadline deadline copy
+readMissing out missingBytes Bytes
+readMissing ownedBy scratch
+readMissing cleanedBy none
+readMissing borrows none
+readMissing catch missingError fs.FileError
+
+showNotFound is call
+showNotFound in main
+showNotFound invokes showText
+showNotFound arg text String notFoundText lend
+showNotFound out none
+showNotFound ownedBy none
+showNotFound cleanedBy none
+showNotFound borrows none
+showNotFound catch none

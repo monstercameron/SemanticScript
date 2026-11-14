@@ -79,9 +79,31 @@ def test_every_rule_code_has_a_negative_case():
     """Every checker rule is proven to fire by at least one mutation or negative program case."""
     seen = {c for m in MUTATIONS for c in m.codes}
     seen |= {code for c in CASES if c.mode == "check" for code in c.detail.split() if code in CODES}
-    untested = sorted(set(CODES) - seen - {"R605", "R901"})  # R605 needs git history; R901 by `unsupported` cases
+    # R605 needs git history and R901 a program the backend cannot compile; tests/test_refined.py covers both
+    untested = sorted(set(CODES) - seen - {"R605", "R901"})
     assert not untested, f"rule codes with no negative case: {untested}"
-    assert any(c.mode == "unsupported" for c in CASES)
+
+
+def test_every_operation_compiles(tmp_path):
+    """Not only what `main` reaches: every operation and test in every program and worked example compiles."""
+    from refined.codegen import compile_roots
+    projects = [caselib.materialize(c, str(tmp_path / str(i))) for i, c in enumerate(CASES)
+                if not (c.mode == "check" and c.detail != "ok")]
+    examples = os.path.join(caselib.ROOT, "docs", "refined-examples")
+    projects += [os.path.join(examples, d) for d in sorted(os.listdir(examples))]
+    for project in projects:
+        res = caselib.check_path(project)
+        assert res.ok, project
+        roots = [(m.short, op) for m in res.world.modules.values() for op, info in m.op_infos.items()
+                 if not info.tparams]
+        _module, diags = compile_roots(res.world, roots)
+        assert not diags, [d.format() for d in diags]
+
+
+def test_every_program_case_runs():
+    """Every positive and edge program compiles and runs (or traps, or runs its tests); none is merely checked."""
+    idle = [c.name for c in CASES if c.kind in ("positive", "edge") and c.mode not in ("run", "trap", "test")]
+    assert not idle, f"cases that do not run: {idle}"
 
 
 # ---------------------------------------------------------------- source locations

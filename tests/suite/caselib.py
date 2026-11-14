@@ -17,6 +17,11 @@ must happen; nothing about a case's expectation lives outside the file.
     # exit: <integer>
     # stdout: <one expected line>      (repeat; `# stdout:` alone is an empty line)
     # stderr: <one expected line>      (repeat; checked only when present)
+    # args: <words>                    (the program's arguments, for `run` and `trap`)
+    # stdin: <one input line>          (repeat; fed to standard input, each with a line end)
+
+Programs run with their project directory as the working directory, so a case
+that writes files writes them there.
 
 A single-file case is placed in a fresh project: `target console` with entry
 `<module>.main` when the module exports `main`, otherwise `target library`.
@@ -50,6 +55,8 @@ class Case:
     exit_code: int | None = None
     stdout: list[str] | None = None
     stderr: list[str] | None = None
+    args: list[str] = field(default_factory=list)
+    stdin: str = ""
 
     @property
     def mode(self) -> str:
@@ -60,7 +67,7 @@ class Case:
         return self.expect.split(None, 1)[1] if " " in self.expect else ""
 
 
-_HEADER = re.compile(r"^# (covers|kind|expect|exit|stdout|stderr):(.*)$")
+_HEADER = re.compile(r"^# (covers|kind|expect|exit|stdout|stderr|args|stdin):(.*)$")
 
 
 def _parse_header(text: str, case: Case) -> None:
@@ -86,6 +93,10 @@ def _parse_header(text: str, case: Case) -> None:
             case.stdout = (case.stdout or []) + [value]
         elif key == "stderr":
             case.stderr = (case.stderr or []) + [value]
+        elif key == "args":
+            case.args = value.split()
+        elif key == "stdin":
+            case.stdin += value + "\n"
 
 
 def discover() -> list[Case]:
@@ -164,9 +175,14 @@ def diagnostics(project_dir: str) -> list[str]:
     return [d.format() for d in check_path(project_dir).diagnostics]
 
 
-def refined(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
+def refined(*args: str, timeout: int = 300, cwd: str | None = None, stdin: str = "") -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, COMPILER, *args], capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", timeout=timeout)
+                          errors="replace", timeout=timeout, cwd=cwd, input=stdin)
+
+
+def run_case(case: Case, project: str) -> subprocess.CompletedProcess:
+    extra = ["--", *case.args] if case.args else []
+    return refined("run", os.path.abspath(project), *extra, cwd=project, stdin=case.stdin)
 
 
 def evaluate(case: Case, workdir: str) -> list[str]:
@@ -192,7 +208,7 @@ def evaluate(case: Case, workdir: str) -> list[str]:
     if found:
         return problems + ["expected a clean check before running, got:\n  " + "\n  ".join(diagnostics(project))]
     if mode == "run":
-        proc = refined("run", project)
+        proc = run_case(case, project)
         if case.exit_code is not None and proc.returncode != case.exit_code:
             problems.append(f"exit code {proc.returncode}, expected {case.exit_code}\n{proc.stdout}{proc.stderr}")
         if case.stdout is not None and proc.stdout.splitlines() != case.stdout:
@@ -200,7 +216,7 @@ def evaluate(case: Case, workdir: str) -> list[str]:
         if case.stderr is not None and proc.stderr.splitlines() != case.stderr:
             problems.append(f"stderr {proc.stderr.splitlines()!r}, expected {case.stderr!r}")
     elif mode == "trap":
-        proc = refined("run", project)
+        proc = run_case(case, project)
         if proc.returncode != TRAP_EXIT_CODE or detail not in proc.stderr:
             problems.append(f"expected a trap containing {detail!r}; exit {proc.returncode}\n{proc.stdout}{proc.stderr}")
         if case.stdout is not None and proc.stdout.splitlines() != case.stdout:

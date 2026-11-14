@@ -1,0 +1,43 @@
+# covers: 20 Unit tests
+# covers: 19 String utilities
+# kind: positive
+# expect: test pass
+
+joinText is module
+joinText purpose "Join two pieces of text into a region"
+joinText path joinText
+joinText imports standard.string
+joinText imports standard.test
+joinText exports join
+
+join is operation
+join purpose "Return the left text followed by the right text, allocated in the given region"
+join invariant leftThenRight "The result is the left text followed by the right text"
+join typeParam none
+join input left String borrowed
+join input right String borrowed
+join input into Region borrowed
+join output String
+join outputOwner into
+join raises none
+join effect none
+join uses none
+join memory heap true
+join async false
+join maxRecursion none
+join label begin loopKind none
+join label begin within none
+join at begin do concatenate
+join at begin return ok joined
+
+concatenate is call
+concatenate in join
+concatenate invokes string.concat
+concatenate arg left String left lend
+concatenate arg right String right lend
+concatenate arg region Region into lend
+concatenate out joined String
+concatenate ownedBy into
+concatenate cleanedBy none
+concatenate borrows none
+concatenate catch none

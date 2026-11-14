@@ -1,4 +1,5 @@
-# Refined syntax (docs/language-refinement.md). Passes the refined checker; not runnable yet.
+# Refined syntax (docs/language-refinement.md). Checks clean; its tests run with
+#   python semanticscript/compiler/refined test docs/refined-examples/selfhost
 # A piece of a compiler front end: read one word token from source text and
 # classify it against a keyword table.
 # Check: python semanticscript/compiler/refined check docs/refined-examples/selfhost
