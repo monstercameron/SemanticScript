@@ -48,7 +48,7 @@ def test_conformance(g, check, tmp_path):
             f"{check.id}: no {check.codes[0]} diagnostic says {check.detail!r}\n{shown}"
         return
     assert not diags, "\n".join(d.format() for d in diags)
-    proc = caselib.refined("run", project, "--no-cache", cwd=project)
+    proc = caselib.refined("run", project, "--no-cache", *(("--", *check.args) if check.args else ()), cwd=project)
     if check.lines is not None:
         assert proc.stdout.splitlines() == list(check.lines), (proc.stdout, proc.stderr)
     if check.kind == "refused":

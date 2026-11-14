@@ -1,0 +1,27 @@
+# The lexer example: read a source file named on the command line, split it
+# into tokens located by line and column, write the token list to a file whose
+# name is the source's name with `.tokens` added, and print a summary.
+#
+#   cd docs/refined-examples/lexer
+#   python ../../../semanticscript/compiler/refined run . -- lexer-sample.txt
+#
+# The program may read and write only files in the working directory whose
+# names start with `lexer-`. The path comes from the command line, so the
+# scope is checked when the file is opened (D-38): any other path stops the
+# program before the file is touched.
+
+lexer is project
+lexer purpose "Tokenize a source file named on the command line and write its token list"
+lexer target console
+lexer version "0.1.0"
+lexer language refined 1
+lexer standardLibrary 1
+lexer allows read process.arguments none
+lexer allows write console.stdout none
+lexer allows write console.stderr none
+lexer allows read fs.files "lexer-*"
+lexer allows write fs.files "lexer-*"
+lexer requires none
+lexer includesModule lexer
+lexer includesModule lexfile
+lexer entry lexfile.main

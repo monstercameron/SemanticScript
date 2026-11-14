@@ -1,0 +1,1620 @@
+# A lexer for a small language, written the way a compiler written in
+# SemanticScript would start: source text in, a list of tokens out, each token
+# located by line and column. `writeListing` turns the tokens back into text,
+# one line per token, which is what the lexfile entry writes to its output.
+#
+# Tokens: identifiers (a letter or `_`, then letters, digits, and `_`),
+# integers (decimal digits that fit `Int64`), quoted text (`"` to `"` on one
+# line, any UTF-8 inside), punctuation (one printable ASCII byte that is not a
+# letter, digit, or space), and newlines. Spaces, tabs, and carriage returns
+# separate tokens. The list always ends with an `endOfInput` token.
+#
+# Positions come from `string.advancePosition` (D-71): it steps over one whole
+# UTF-8 character, so a column counts characters, not bytes, and a newline
+# moves to column 1 of the next line.
+
+lexer is module
+lexer purpose "Split source text into tokens located by line and column, and list them as text"
+lexer path lexer
+lexer imports standard.string
+lexer imports standard.byte
+lexer imports standard.buffer
+lexer imports standard.math
+lexer imports standard.compare
+lexer imports standard.logic
+lexer imports standard.list
+lexer imports standard.test
+lexer exports TokenKind
+lexer exports Token
+lexer exports Tokens
+lexer exports LexError
+lexer exports tokenize
+lexer exports writeListing
+
+TokenKind is enum
+TokenKind purpose "What a token is, with the value an integer or a punctuation mark carries"
+TokenKind typeParameter none
+TokenKind variant identifier none
+TokenKind variant integer Int64
+TokenKind variant text none
+TokenKind variant punctuation Byte
+TokenKind variant newline none
+TokenKind variant endOfInput none
+
+Token is record
+Token purpose "One token: its kind, where its first character is, and how many bytes of source it covers"
+Token typeParameter none
+Token field kind TokenKind
+Token field start string.Position
+Token field length Int64
+
+Tokens is typeInstance
+Tokens purpose "The tokens of one source text, in source order"
+Tokens instantiates list.List Token
+
+LexError is enum
+LexError purpose "Why tokenizing stopped, and where"
+LexError typeParameter none
+LexError variant invalidByte string.Position
+LexError variant unterminatedText string.Position
+LexError variant integerTooLarge string.Position
+
+ByteRule is operationType
+ByteRule purpose "A test that decides whether a byte continues the token being scanned"
+ByteRule typeParameter none
+ByteRule input value Byte copied
+ByteRule output Bool
+ByteRule outputOwnedBy none
+ByteRule raises none
+ByteRule effect none
+ByteRule async false
+
+# ---------------------------------------------------------------- byte rules
+
+isIdentifierStart is operation
+isIdentifierStart purpose "Decide whether a byte can begin an identifier: a letter or `_`"
+isIdentifierStart invariant none
+isIdentifierStart typeParameter none
+isIdentifierStart input value Byte copied
+isIdentifierStart output Bool
+isIdentifierStart outputOwnedBy none
+isIdentifierStart raises none
+isIdentifierStart effect none
+isIdentifierStart uses none
+isIdentifierStart memoryHeap false
+isIdentifierStart async false
+isIdentifierStart maxRecursion none
+isIdentifierStart label begin loopKind none
+isIdentifierStart label begin within none
+isIdentifierStart let underscore Byte 95 immutable
+isIdentifierStart at begin do letterCheck
+isIdentifierStart at begin do underscoreCheck
+isIdentifierStart at begin do either
+isIdentifierStart at begin return ok startsIdentifier
+
+letterCheck is call
+letterCheck in isIdentifierStart
+letterCheck invokes byte.isLetter
+letterCheck argument value Byte value copy
+letterCheck result isLetter Bool
+letterCheck ownedBy none
+letterCheck cleanedBy none
+letterCheck borrows none
+letterCheck catch none
+letterCheck suppresses none
+
+underscoreCheck is call
+underscoreCheck in isIdentifierStart
+underscoreCheck invokes byte.equals
+underscoreCheck argument left Byte value copy
+underscoreCheck argument right Byte underscore copy
+underscoreCheck result isUnderscore Bool
+underscoreCheck ownedBy none
+underscoreCheck cleanedBy none
+underscoreCheck borrows none
+underscoreCheck catch none
+underscoreCheck suppresses none
+
+either is call
+either in isIdentifierStart
+either invokes logic.or
+either argument left Bool isLetter copy
+either argument right Bool isUnderscore copy
+either result startsIdentifier Bool
+either ownedBy none
+either cleanedBy none
+either borrows none
+either catch none
+either suppresses none
+
+isIdentifierByte is operation
+isIdentifierByte purpose "Decide whether a byte continues an identifier: a letter, a digit, or `_`"
+isIdentifierByte invariant none
+isIdentifierByte typeParameter none
+isIdentifierByte input value Byte copied
+isIdentifierByte output Bool
+isIdentifierByte outputOwnedBy none
+isIdentifierByte raises none
+isIdentifierByte effect none
+isIdentifierByte uses none
+isIdentifierByte memoryHeap false
+isIdentifierByte async false
+isIdentifierByte maxRecursion none
+isIdentifierByte label begin loopKind none
+isIdentifierByte label begin within none
+isIdentifierByte let underscore Byte 95 immutable
+isIdentifierByte at begin do letterOrDigitCheck
+isIdentifierByte at begin do underscoreCheck
+isIdentifierByte at begin do either
+isIdentifierByte at begin return ok continuesIdentifier
+
+letterOrDigitCheck is call
+letterOrDigitCheck in isIdentifierByte
+letterOrDigitCheck invokes byte.isLetterOrDigit
+letterOrDigitCheck argument value Byte value copy
+letterOrDigitCheck result isLetterOrDigit Bool
+letterOrDigitCheck ownedBy none
+letterOrDigitCheck cleanedBy none
+letterOrDigitCheck borrows none
+letterOrDigitCheck catch none
+letterOrDigitCheck suppresses none
+
+underscoreCheck is call
+underscoreCheck in isIdentifierByte
+underscoreCheck invokes byte.equals
+underscoreCheck argument left Byte value copy
+underscoreCheck argument right Byte underscore copy
+underscoreCheck result isUnderscore Bool
+underscoreCheck ownedBy none
+underscoreCheck cleanedBy none
+underscoreCheck borrows none
+underscoreCheck catch none
+underscoreCheck suppresses none
+
+either is call
+either in isIdentifierByte
+either invokes logic.or
+either argument left Bool isLetterOrDigit copy
+either argument right Bool isUnderscore copy
+either result continuesIdentifier Bool
+either ownedBy none
+either cleanedBy none
+either borrows none
+either catch none
+either suppresses none
+
+isDigitByte is operation
+isDigitByte purpose "Decide whether a byte continues an integer: a decimal digit"
+isDigitByte invariant none
+isDigitByte typeParameter none
+isDigitByte input value Byte copied
+isDigitByte output Bool
+isDigitByte outputOwnedBy none
+isDigitByte raises none
+isDigitByte effect none
+isDigitByte uses none
+isDigitByte memoryHeap false
+isDigitByte async false
+isDigitByte maxRecursion none
+isDigitByte label begin loopKind none
+isDigitByte label begin within none
+isDigitByte let none
+isDigitByte at begin do digitCheck
+isDigitByte at begin return ok isDigit
+
+digitCheck is call
+digitCheck in isDigitByte
+digitCheck invokes byte.isDigit
+digitCheck argument value Byte value copy
+digitCheck result isDigit Bool
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+# ---------------------------------------------------------------- scanning one token
+
+scanRun is operation
+scanRun purpose "Step past every character from a position on that a rule accepts"
+scanRun invariant none
+scanRun typeParameter none
+scanRun input source String borrowed
+scanRun input start string.Position copied
+scanRun input rule ByteRule copied
+scanRun output string.Position
+scanRun outputOwnedBy none
+scanRun raises none
+scanRun effect none
+scanRun uses none
+scanRun memoryHeap false
+scanRun async false
+scanRun maxRecursion none
+scanRun label begin loopKind none
+scanRun label begin within none
+scanRun label advance loopKind while
+scanRun label advance within none
+scanRun label advance maxIterations sourceLength
+scanRun label fetch loopKind none
+scanRun label fetch within advance
+scanRun label judge loopKind none
+scanRun label judge within advance
+scanRun label step loopKind none
+scanRun label step within advance
+scanRun label moved loopKind none
+scanRun label moved within advance
+scanRun label finish loopKind none
+scanRun label finish within none
+scanRun let position string.Position start mutable
+scanRun at begin do measureSource
+# Each pass steps past at least one byte, so the loop returns to `advance`
+# at most sourceLength times.
+scanRun at begin goto advance
+scanRun at advance do readOffset
+scanRun at advance do atEndCheck
+scanRun at advance branch if atEnd goto finish else goto fetch
+scanRun at fetch do readByte
+scanRun at fetch branch ifError readByte goto finish else goto judge
+scanRun at judge do applyRule
+scanRun at judge branch if accepted goto step else goto finish
+scanRun at step do stepOver
+scanRun at step branch ifError stepOver goto finish else goto moved
+scanRun at moved set position nextPosition
+scanRun at moved goto advance
+scanRun at finish return ok position
+
+measureSource is call
+measureSource in scanRun
+measureSource invokes string.byteLength
+measureSource argument text String source lend
+measureSource result sourceLength Int64
+measureSource ownedBy none
+measureSource cleanedBy none
+measureSource borrows none
+measureSource catch none
+measureSource suppresses none
+
+readOffset is call
+readOffset in scanRun
+readOffset invokes string.Position.offset
+readOffset argument record string.Position position copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+atEndCheck is call
+atEndCheck in scanRun
+atEndCheck invokes compare.greaterOrEqualInt64
+atEndCheck argument left Int64 offset copy
+atEndCheck argument right Int64 sourceLength copy
+atEndCheck result atEnd Bool
+atEndCheck ownedBy none
+atEndCheck cleanedBy none
+atEndCheck borrows none
+atEndCheck catch none
+atEndCheck suppresses none
+
+readByte is call
+readByte in scanRun
+readByte invokes string.byteAt
+readByte argument text String source lend
+readByte argument index Int64 offset copy
+readByte result currentByte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+applyRule is call
+applyRule in scanRun
+applyRule invokesReference rule
+applyRule argument value Byte currentByte copy
+applyRule result accepted Bool
+applyRule ownedBy none
+applyRule cleanedBy none
+applyRule borrows none
+applyRule catch none
+applyRule suppresses none
+
+stepOver is call
+stepOver in scanRun
+stepOver invokes string.advancePosition
+stepOver argument text String source lend
+stepOver argument position string.Position position copy
+stepOver result nextPosition string.Position
+stepOver ownedBy none
+stepOver cleanedBy none
+stepOver borrows none
+stepOver catch stepError string.StringIndexError
+stepOver suppresses none
+
+scanText is operation
+scanText purpose "Step past quoted text that starts at a quote, through its closing quote"
+scanText invariant none
+scanText typeParameter none
+scanText input source String borrowed
+scanText input start string.Position copied
+scanText output string.Position
+scanText outputOwnedBy none
+scanText raises LexError
+scanText effect none
+scanText uses none
+scanText memoryHeap false
+scanText async false
+scanText maxRecursion none
+scanText label begin loopKind none
+scanText label begin within none
+scanText label opened loopKind none
+scanText label opened within none
+scanText label advance loopKind while
+scanText label advance within none
+scanText label advance maxIterations sourceLength
+scanText label fetch loopKind none
+scanText label fetch within advance
+scanText label quoteTest loopKind none
+scanText label quoteTest within advance
+scanText label newlineTest loopKind none
+scanText label newlineTest within advance
+scanText label step loopKind none
+scanText label step within advance
+scanText label moved loopKind none
+scanText label moved within advance
+scanText label closeQuote loopKind none
+scanText label closeQuote within none
+scanText label closed loopKind none
+scanText label closed within none
+scanText label unterminated loopKind none
+scanText label unterminated within none
+scanText let quoteByte Byte 34 immutable
+scanText let newlineByte Byte 10 immutable
+scanText let position string.Position unset mutable
+scanText at begin do measureSource
+scanText at begin do stepQuote
+scanText at begin branch ifError stepQuote goto unterminated else goto opened
+scanText at opened set position afterQuote
+scanText at opened goto advance
+scanText at advance do readOffset
+scanText at advance do atEndCheck
+scanText at advance branch if atEnd goto unterminated else goto fetch
+scanText at fetch do readByte
+scanText at fetch branch ifError readByte goto unterminated else goto quoteTest
+scanText at quoteTest do quoteCheck
+scanText at quoteTest branch if isQuote goto closeQuote else goto newlineTest
+scanText at newlineTest do newlineCheck
+scanText at newlineTest branch if isNewline goto unterminated else goto step
+# `advancePosition` steps over a whole UTF-8 character, so text may hold
+# any character and the column after it is still right.
+scanText at step do stepOver
+scanText at step branch ifError stepOver goto unterminated else goto moved
+scanText at moved set position nextPosition
+scanText at moved goto advance
+scanText at closeQuote do stepClose
+scanText at closeQuote branch ifError stepClose goto unterminated else goto closed
+scanText at closed return ok afterClose
+scanText at unterminated do makeUnterminated
+scanText at unterminated return error unterminatedError
+
+measureSource is call
+measureSource in scanText
+measureSource invokes string.byteLength
+measureSource argument text String source lend
+measureSource result sourceLength Int64
+measureSource ownedBy none
+measureSource cleanedBy none
+measureSource borrows none
+measureSource catch none
+measureSource suppresses none
+
+stepQuote is call
+stepQuote in scanText
+stepQuote invokes string.advancePosition
+stepQuote argument text String source lend
+stepQuote argument position string.Position start copy
+stepQuote result afterQuote string.Position
+stepQuote ownedBy none
+stepQuote cleanedBy none
+stepQuote borrows none
+stepQuote catch stepQuoteError string.StringIndexError
+stepQuote suppresses none
+
+readOffset is call
+readOffset in scanText
+readOffset invokes string.Position.offset
+readOffset argument record string.Position position copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+atEndCheck is call
+atEndCheck in scanText
+atEndCheck invokes compare.greaterOrEqualInt64
+atEndCheck argument left Int64 offset copy
+atEndCheck argument right Int64 sourceLength copy
+atEndCheck result atEnd Bool
+atEndCheck ownedBy none
+atEndCheck cleanedBy none
+atEndCheck borrows none
+atEndCheck catch none
+atEndCheck suppresses none
+
+readByte is call
+readByte in scanText
+readByte invokes string.byteAt
+readByte argument text String source lend
+readByte argument index Int64 offset copy
+readByte result currentByte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+quoteCheck is call
+quoteCheck in scanText
+quoteCheck invokes byte.equals
+quoteCheck argument left Byte currentByte copy
+quoteCheck argument right Byte quoteByte copy
+quoteCheck result isQuote Bool
+quoteCheck ownedBy none
+quoteCheck cleanedBy none
+quoteCheck borrows none
+quoteCheck catch none
+quoteCheck suppresses none
+
+newlineCheck is call
+newlineCheck in scanText
+newlineCheck invokes byte.equals
+newlineCheck argument left Byte currentByte copy
+newlineCheck argument right Byte newlineByte copy
+newlineCheck result isNewline Bool
+newlineCheck ownedBy none
+newlineCheck cleanedBy none
+newlineCheck borrows none
+newlineCheck catch none
+newlineCheck suppresses none
+
+stepOver is call
+stepOver in scanText
+stepOver invokes string.advancePosition
+stepOver argument text String source lend
+stepOver argument position string.Position position copy
+stepOver result nextPosition string.Position
+stepOver ownedBy none
+stepOver cleanedBy none
+stepOver borrows none
+stepOver catch stepError string.StringIndexError
+stepOver suppresses none
+
+stepClose is call
+stepClose in scanText
+stepClose invokes string.advancePosition
+stepClose argument text String source lend
+stepClose argument position string.Position position copy
+stepClose result afterClose string.Position
+stepClose ownedBy none
+stepClose cleanedBy none
+stepClose borrows none
+stepClose catch stepCloseError string.StringIndexError
+stepClose suppresses none
+
+makeUnterminated is call
+makeUnterminated in scanText
+makeUnterminated invokes LexError.unterminatedText
+makeUnterminated argument payload string.Position start copy
+makeUnterminated result unterminatedError LexError
+makeUnterminated ownedBy none
+makeUnterminated cleanedBy none
+makeUnterminated borrows none
+makeUnterminated catch none
+makeUnterminated suppresses none
+
+# ---------------------------------------------------------------- tokenize
+
+tokenize is operation
+tokenize purpose "Split source text into tokens, each located by line and column"
+tokenize invariant kindsAndPositions "Identifiers, integers, quoted text, punctuation, and newlines become tokens in source order, each with its kind, the line and column of its first character, and its length in bytes"
+tokenize invariant spacesSeparate "Spaces, tabs, and carriage returns separate tokens and produce none"
+tokenize invariant endsWithEndOfInput "The last token is endOfInput, at the position just past the source"
+tokenize invariant columnsCountCharacters "A column counts characters, so a multi-byte UTF-8 character in quoted text moves the tokens after it one column, not one per byte"
+tokenize invariant rejectsInvalidByte "A byte that begins no token is an invalidByte error at its line and column"
+tokenize invariant rejectsUnterminatedText "Quoted text with no closing quote before the end of its line is an unterminatedText error at the opening quote"
+tokenize invariant rejectsHugeInteger "An integer that does not fit Int64 is an integerTooLarge error at its first digit"
+tokenize typeParameter none
+tokenize input source String borrowed
+tokenize input resultRegion Region borrowed
+tokenize output Tokens
+tokenize outputOwnedBy resultRegion
+tokenize raises LexError
+tokenize effect none
+tokenize uses none
+tokenize memoryHeap true
+tokenize async false
+tokenize maxRecursion none
+tokenize label begin loopKind none
+tokenize label begin within none
+tokenize label scan loopKind while
+tokenize label scan within none
+tokenize label scan maxIterations sourceLength
+tokenize label peek loopKind none
+tokenize label peek within scan
+tokenize label newlineTest loopKind none
+tokenize label newlineTest within scan
+tokenize label newlineToken loopKind none
+tokenize label newlineToken within scan
+tokenize label newlineDone loopKind none
+tokenize label newlineDone within scan
+tokenize label spaceTest loopKind none
+tokenize label spaceTest within scan
+tokenize label skipSpace loopKind none
+tokenize label skipSpace within scan
+tokenize label spaceDone loopKind none
+tokenize label spaceDone within scan
+tokenize label identifierTest loopKind none
+tokenize label identifierTest within scan
+tokenize label identifierToken loopKind none
+tokenize label identifierToken within scan
+tokenize label digitTest loopKind none
+tokenize label digitTest within scan
+tokenize label integerToken loopKind none
+tokenize label integerToken within scan
+tokenize label integerParse loopKind none
+tokenize label integerParse within scan
+tokenize label integerReady loopKind none
+tokenize label integerReady within scan
+tokenize label quoteTest loopKind none
+tokenize label quoteTest within scan
+tokenize label textToken loopKind none
+tokenize label textToken within scan
+tokenize label textReady loopKind none
+tokenize label textReady within scan
+tokenize label punctuationTest loopKind none
+tokenize label punctuationTest within scan
+tokenize label punctuationToken loopKind none
+tokenize label punctuationToken within scan
+tokenize label punctuationDone loopKind none
+tokenize label punctuationDone within scan
+tokenize label tooLarge loopKind none
+tokenize label tooLarge within none
+tokenize label textFailed loopKind none
+tokenize label textFailed within none
+tokenize label invalid loopKind none
+tokenize label invalid within none
+tokenize label finished loopKind none
+tokenize label finished within none
+tokenize let zero Int64 0 immutable
+tokenize let one Int64 1 immutable
+tokenize let newlineByte Byte 10 immutable
+tokenize let quoteByte Byte 34 immutable
+tokenize let identifierRule ByteRule isIdentifierByte immutable
+tokenize let digitRule ByteRule isDigitByte immutable
+tokenize let position string.Position unset mutable
+tokenize at begin do measureSource
+tokenize at begin do makeList
+tokenize at begin do makeStart
+tokenize at begin set position startPosition
+# Every pass steps past at least one character, so the loop returns to
+# `scan` at most sourceLength times.
+tokenize at begin goto scan
+tokenize at scan do readOffset
+tokenize at scan do atEndCheck
+tokenize at scan branch if atEnd goto finished else goto peek
+tokenize at peek do readByte
+tokenize at peek branch ifError readByte goto finished else goto newlineTest
+tokenize at newlineTest do newlineCheck
+tokenize at newlineTest branch if isNewline goto newlineToken else goto spaceTest
+tokenize at newlineToken do makeNewlineKind
+tokenize at newlineToken do makeNewlineToken
+tokenize at newlineToken do appendNewline
+tokenize at newlineToken do stepNewline
+tokenize at newlineToken branch ifError stepNewline goto finished else goto newlineDone
+tokenize at newlineDone set position afterNewline
+tokenize at newlineDone goto scan
+tokenize at spaceTest do spaceCheck
+tokenize at spaceTest branch if isSpace goto skipSpace else goto identifierTest
+tokenize at skipSpace do stepSpace
+tokenize at skipSpace branch ifError stepSpace goto finished else goto spaceDone
+tokenize at spaceDone set position afterSpace
+tokenize at spaceDone goto scan
+tokenize at identifierTest do identifierStartCheck
+tokenize at identifierTest branch if startsIdentifier goto identifierToken else goto digitTest
+tokenize at identifierToken do scanIdentifier
+tokenize at identifierToken do readIdentifierEnd
+tokenize at identifierToken do measureIdentifier
+tokenize at identifierToken do makeIdentifierKind
+tokenize at identifierToken do makeIdentifierToken
+tokenize at identifierToken do appendIdentifier
+tokenize at identifierToken set position identifierEnd
+tokenize at identifierToken goto scan
+tokenize at digitTest do digitCheck
+tokenize at digitTest branch if isDigit goto integerToken else goto quoteTest
+tokenize at integerToken do scanInteger
+tokenize at integerToken do readIntegerEnd
+tokenize at integerToken do measureInteger
+tokenize at integerToken do cutDigits
+tokenize at integerToken branch ifError cutDigits goto finished else goto integerParse
+# The text is all digits, so the only way parsing fails is a number too
+# large for Int64.
+tokenize at integerParse do parseDigits
+tokenize at integerParse branch ifError parseDigits goto tooLarge else goto integerReady
+tokenize at integerReady do makeIntegerKind
+tokenize at integerReady do makeIntegerToken
+tokenize at integerReady do appendInteger
+tokenize at integerReady set position integerEnd
+tokenize at integerReady goto scan
+tokenize at quoteTest do quoteCheck
+tokenize at quoteTest branch if isQuote goto textToken else goto punctuationTest
+tokenize at textToken do scanQuoted
+tokenize at textToken branch ifError scanQuoted goto textFailed else goto textReady
+tokenize at textReady do readTextEnd
+tokenize at textReady do measureText
+tokenize at textReady do makeTextKind
+tokenize at textReady do makeTextToken
+tokenize at textReady do appendText
+tokenize at textReady set position textEnd
+tokenize at textReady goto scan
+tokenize at punctuationTest do punctuationCheck
+tokenize at punctuationTest branch if isPunctuation goto punctuationToken else goto invalid
+tokenize at punctuationToken do makePunctuationKind
+tokenize at punctuationToken do makePunctuationToken
+tokenize at punctuationToken do appendPunctuation
+tokenize at punctuationToken do stepPunctuation
+tokenize at punctuationToken branch ifError stepPunctuation goto finished else goto punctuationDone
+tokenize at punctuationDone set position afterPunctuation
+tokenize at punctuationDone goto scan
+tokenize at tooLarge do makeTooLarge
+tokenize at tooLarge return error tooLargeError
+tokenize at textFailed return error textError
+tokenize at invalid do makeInvalid
+tokenize at invalid return error invalidError
+tokenize at finished do makeEndKind
+tokenize at finished do makeEndToken
+tokenize at finished do appendEnd
+tokenize at finished return ok tokens
+
+measureSource is call
+measureSource in tokenize
+measureSource invokes string.byteLength
+measureSource argument text String source lend
+measureSource result sourceLength Int64
+measureSource ownedBy none
+measureSource cleanedBy none
+measureSource borrows none
+measureSource catch none
+measureSource suppresses none
+
+makeList is call
+makeList in tokenize
+makeList invokes Tokens.new
+makeList argument region Region resultRegion lend
+makeList result tokens Tokens
+makeList ownedBy resultRegion
+makeList cleanedBy none
+makeList borrows none
+makeList catch none
+makeList suppresses none
+
+makeStart is call
+makeStart in tokenize
+makeStart invokes string.Position.new
+makeStart argument offset Int64 zero copy
+makeStart argument line Int64 one copy
+makeStart argument column Int64 one copy
+makeStart result startPosition string.Position
+makeStart ownedBy none
+makeStart cleanedBy none
+makeStart borrows none
+makeStart catch none
+makeStart suppresses none
+
+readOffset is call
+readOffset in tokenize
+readOffset invokes string.Position.offset
+readOffset argument record string.Position position copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+atEndCheck is call
+atEndCheck in tokenize
+atEndCheck invokes compare.greaterOrEqualInt64
+atEndCheck argument left Int64 offset copy
+atEndCheck argument right Int64 sourceLength copy
+atEndCheck result atEnd Bool
+atEndCheck ownedBy none
+atEndCheck cleanedBy none
+atEndCheck borrows none
+atEndCheck catch none
+atEndCheck suppresses none
+
+readByte is call
+readByte in tokenize
+readByte invokes string.byteAt
+readByte argument text String source lend
+readByte argument index Int64 offset copy
+readByte result currentByte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+newlineCheck is call
+newlineCheck in tokenize
+newlineCheck invokes byte.equals
+newlineCheck argument left Byte currentByte copy
+newlineCheck argument right Byte newlineByte copy
+newlineCheck result isNewline Bool
+newlineCheck ownedBy none
+newlineCheck cleanedBy none
+newlineCheck borrows none
+newlineCheck catch none
+newlineCheck suppresses none
+
+makeNewlineKind is call
+makeNewlineKind in tokenize
+makeNewlineKind invokes TokenKind.newline
+makeNewlineKind argument none
+makeNewlineKind result newlineKind TokenKind
+makeNewlineKind ownedBy none
+makeNewlineKind cleanedBy none
+makeNewlineKind borrows none
+makeNewlineKind catch none
+makeNewlineKind suppresses none
+
+makeNewlineToken is call
+makeNewlineToken in tokenize
+makeNewlineToken invokes Token.new
+makeNewlineToken argument kind TokenKind newlineKind copy
+makeNewlineToken argument start string.Position position copy
+makeNewlineToken argument length Int64 one copy
+makeNewlineToken result newlineItem Token
+makeNewlineToken ownedBy none
+makeNewlineToken cleanedBy none
+makeNewlineToken borrows none
+makeNewlineToken catch none
+makeNewlineToken suppresses none
+
+appendNewline is call
+appendNewline in tokenize
+appendNewline invokes Tokens.append
+appendNewline argument list Tokens tokens lendMutable
+appendNewline argument item Token newlineItem copy
+appendNewline result none
+appendNewline ownedBy none
+appendNewline cleanedBy none
+appendNewline borrows none
+appendNewline catch none
+appendNewline suppresses none
+
+stepNewline is call
+stepNewline in tokenize
+stepNewline invokes string.advancePosition
+stepNewline argument text String source lend
+stepNewline argument position string.Position position copy
+stepNewline result afterNewline string.Position
+stepNewline ownedBy none
+stepNewline cleanedBy none
+stepNewline borrows none
+stepNewline catch stepNewlineError string.StringIndexError
+stepNewline suppresses none
+
+spaceCheck is call
+spaceCheck in tokenize
+spaceCheck invokes byte.isSpace
+spaceCheck argument value Byte currentByte copy
+spaceCheck result isSpace Bool
+spaceCheck ownedBy none
+spaceCheck cleanedBy none
+spaceCheck borrows none
+spaceCheck catch none
+spaceCheck suppresses none
+
+stepSpace is call
+stepSpace in tokenize
+stepSpace invokes string.advancePosition
+stepSpace argument text String source lend
+stepSpace argument position string.Position position copy
+stepSpace result afterSpace string.Position
+stepSpace ownedBy none
+stepSpace cleanedBy none
+stepSpace borrows none
+stepSpace catch stepSpaceError string.StringIndexError
+stepSpace suppresses none
+
+identifierStartCheck is call
+identifierStartCheck in tokenize
+identifierStartCheck invokes isIdentifierStart
+identifierStartCheck argument value Byte currentByte copy
+identifierStartCheck result startsIdentifier Bool
+identifierStartCheck ownedBy none
+identifierStartCheck cleanedBy none
+identifierStartCheck borrows none
+identifierStartCheck catch none
+identifierStartCheck suppresses none
+
+scanIdentifier is call
+scanIdentifier in tokenize
+scanIdentifier invokes scanRun
+scanIdentifier argument source String source lend
+scanIdentifier argument start string.Position position copy
+scanIdentifier argument rule ByteRule identifierRule copy
+scanIdentifier result identifierEnd string.Position
+scanIdentifier ownedBy none
+scanIdentifier cleanedBy none
+scanIdentifier borrows none
+scanIdentifier catch none
+scanIdentifier suppresses none
+
+readIdentifierEnd is call
+readIdentifierEnd in tokenize
+readIdentifierEnd invokes string.Position.offset
+readIdentifierEnd argument record string.Position identifierEnd copy
+readIdentifierEnd result identifierEndOffset Int64
+readIdentifierEnd ownedBy none
+readIdentifierEnd cleanedBy none
+readIdentifierEnd borrows none
+readIdentifierEnd catch none
+readIdentifierEnd suppresses none
+
+measureIdentifier is call
+measureIdentifier in tokenize
+measureIdentifier invokes math.subtractInt64
+measureIdentifier argument left Int64 identifierEndOffset copy
+measureIdentifier argument right Int64 offset copy
+measureIdentifier result identifierLength Int64
+measureIdentifier ownedBy none
+measureIdentifier cleanedBy none
+measureIdentifier borrows none
+measureIdentifier catch none
+measureIdentifier suppresses none
+
+makeIdentifierKind is call
+makeIdentifierKind in tokenize
+makeIdentifierKind invokes TokenKind.identifier
+makeIdentifierKind argument none
+makeIdentifierKind result identifierKind TokenKind
+makeIdentifierKind ownedBy none
+makeIdentifierKind cleanedBy none
+makeIdentifierKind borrows none
+makeIdentifierKind catch none
+makeIdentifierKind suppresses none
+
+makeIdentifierToken is call
+makeIdentifierToken in tokenize
+makeIdentifierToken invokes Token.new
+makeIdentifierToken argument kind TokenKind identifierKind copy
+makeIdentifierToken argument start string.Position position copy
+makeIdentifierToken argument length Int64 identifierLength copy
+makeIdentifierToken result identifierItem Token
+makeIdentifierToken ownedBy none
+makeIdentifierToken cleanedBy none
+makeIdentifierToken borrows none
+makeIdentifierToken catch none
+makeIdentifierToken suppresses none
+
+appendIdentifier is call
+appendIdentifier in tokenize
+appendIdentifier invokes Tokens.append
+appendIdentifier argument list Tokens tokens lendMutable
+appendIdentifier argument item Token identifierItem copy
+appendIdentifier result none
+appendIdentifier ownedBy none
+appendIdentifier cleanedBy none
+appendIdentifier borrows none
+appendIdentifier catch none
+appendIdentifier suppresses none
+
+digitCheck is call
+digitCheck in tokenize
+digitCheck invokes byte.isDigit
+digitCheck argument value Byte currentByte copy
+digitCheck result isDigit Bool
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+scanInteger is call
+scanInteger in tokenize
+scanInteger invokes scanRun
+scanInteger argument source String source lend
+scanInteger argument start string.Position position copy
+scanInteger argument rule ByteRule digitRule copy
+scanInteger result integerEnd string.Position
+scanInteger ownedBy none
+scanInteger cleanedBy none
+scanInteger borrows none
+scanInteger catch none
+scanInteger suppresses none
+
+readIntegerEnd is call
+readIntegerEnd in tokenize
+readIntegerEnd invokes string.Position.offset
+readIntegerEnd argument record string.Position integerEnd copy
+readIntegerEnd result integerEndOffset Int64
+readIntegerEnd ownedBy none
+readIntegerEnd cleanedBy none
+readIntegerEnd borrows none
+readIntegerEnd catch none
+readIntegerEnd suppresses none
+
+measureInteger is call
+measureInteger in tokenize
+measureInteger invokes math.subtractInt64
+measureInteger argument left Int64 integerEndOffset copy
+measureInteger argument right Int64 offset copy
+measureInteger result integerLength Int64
+measureInteger ownedBy none
+measureInteger cleanedBy none
+measureInteger borrows none
+measureInteger catch none
+measureInteger suppresses none
+
+cutDigits is call
+cutDigits in tokenize
+cutDigits invokes string.slice
+cutDigits argument text String source lend
+cutDigits argument start Int64 offset copy
+cutDigits argument length Int64 integerLength copy
+cutDigits result digits String
+cutDigits ownedBy none
+cutDigits cleanedBy none
+cutDigits borrows source
+cutDigits catch cutDigitsError string.StringIndexError
+cutDigits suppresses none
+
+parseDigits is call
+parseDigits in tokenize
+parseDigits invokes string.toInt64
+parseDigits argument text String digits lend
+parseDigits result integerNumber Int64
+parseDigits ownedBy none
+parseDigits cleanedBy none
+parseDigits borrows none
+parseDigits catch parseError string.ParseError
+parseDigits suppresses none
+
+makeIntegerKind is call
+makeIntegerKind in tokenize
+makeIntegerKind invokes TokenKind.integer
+makeIntegerKind argument payload Int64 integerNumber copy
+makeIntegerKind result integerKind TokenKind
+makeIntegerKind ownedBy none
+makeIntegerKind cleanedBy none
+makeIntegerKind borrows none
+makeIntegerKind catch none
+makeIntegerKind suppresses none
+
+makeIntegerToken is call
+makeIntegerToken in tokenize
+makeIntegerToken invokes Token.new
+makeIntegerToken argument kind TokenKind integerKind copy
+makeIntegerToken argument start string.Position position copy
+makeIntegerToken argument length Int64 integerLength copy
+makeIntegerToken result integerItem Token
+makeIntegerToken ownedBy none
+makeIntegerToken cleanedBy none
+makeIntegerToken borrows none
+makeIntegerToken catch none
+makeIntegerToken suppresses none
+
+appendInteger is call
+appendInteger in tokenize
+appendInteger invokes Tokens.append
+appendInteger argument list Tokens tokens lendMutable
+appendInteger argument item Token integerItem copy
+appendInteger result none
+appendInteger ownedBy none
+appendInteger cleanedBy none
+appendInteger borrows none
+appendInteger catch none
+appendInteger suppresses none
+
+quoteCheck is call
+quoteCheck in tokenize
+quoteCheck invokes byte.equals
+quoteCheck argument left Byte currentByte copy
+quoteCheck argument right Byte quoteByte copy
+quoteCheck result isQuote Bool
+quoteCheck ownedBy none
+quoteCheck cleanedBy none
+quoteCheck borrows none
+quoteCheck catch none
+quoteCheck suppresses none
+
+scanQuoted is call
+scanQuoted in tokenize
+scanQuoted invokes scanText
+scanQuoted argument source String source lend
+scanQuoted argument start string.Position position copy
+scanQuoted result textEnd string.Position
+scanQuoted ownedBy none
+scanQuoted cleanedBy none
+scanQuoted borrows none
+scanQuoted catch textError LexError
+scanQuoted suppresses none
+
+readTextEnd is call
+readTextEnd in tokenize
+readTextEnd invokes string.Position.offset
+readTextEnd argument record string.Position textEnd copy
+readTextEnd result textEndOffset Int64
+readTextEnd ownedBy none
+readTextEnd cleanedBy none
+readTextEnd borrows none
+readTextEnd catch none
+readTextEnd suppresses none
+
+measureText is call
+measureText in tokenize
+measureText invokes math.subtractInt64
+measureText argument left Int64 textEndOffset copy
+measureText argument right Int64 offset copy
+measureText result textLength Int64
+measureText ownedBy none
+measureText cleanedBy none
+measureText borrows none
+measureText catch none
+measureText suppresses none
+
+makeTextKind is call
+makeTextKind in tokenize
+makeTextKind invokes TokenKind.text
+makeTextKind argument none
+makeTextKind result textKind TokenKind
+makeTextKind ownedBy none
+makeTextKind cleanedBy none
+makeTextKind borrows none
+makeTextKind catch none
+makeTextKind suppresses none
+
+makeTextToken is call
+makeTextToken in tokenize
+makeTextToken invokes Token.new
+makeTextToken argument kind TokenKind textKind copy
+makeTextToken argument start string.Position position copy
+makeTextToken argument length Int64 textLength copy
+makeTextToken result textItem Token
+makeTextToken ownedBy none
+makeTextToken cleanedBy none
+makeTextToken borrows none
+makeTextToken catch none
+makeTextToken suppresses none
+
+appendText is call
+appendText in tokenize
+appendText invokes Tokens.append
+appendText argument list Tokens tokens lendMutable
+appendText argument item Token textItem copy
+appendText result none
+appendText ownedBy none
+appendText cleanedBy none
+appendText borrows none
+appendText catch none
+appendText suppresses none
+
+punctuationCheck is call
+punctuationCheck in tokenize
+punctuationCheck invokes byte.isPunctuation
+punctuationCheck argument value Byte currentByte copy
+punctuationCheck result isPunctuation Bool
+punctuationCheck ownedBy none
+punctuationCheck cleanedBy none
+punctuationCheck borrows none
+punctuationCheck catch none
+punctuationCheck suppresses none
+
+makePunctuationKind is call
+makePunctuationKind in tokenize
+makePunctuationKind invokes TokenKind.punctuation
+makePunctuationKind argument payload Byte currentByte copy
+makePunctuationKind result punctuationKind TokenKind
+makePunctuationKind ownedBy none
+makePunctuationKind cleanedBy none
+makePunctuationKind borrows none
+makePunctuationKind catch none
+makePunctuationKind suppresses none
+
+makePunctuationToken is call
+makePunctuationToken in tokenize
+makePunctuationToken invokes Token.new
+makePunctuationToken argument kind TokenKind punctuationKind copy
+makePunctuationToken argument start string.Position position copy
+makePunctuationToken argument length Int64 one copy
+makePunctuationToken result punctuationItem Token
+makePunctuationToken ownedBy none
+makePunctuationToken cleanedBy none
+makePunctuationToken borrows none
+makePunctuationToken catch none
+makePunctuationToken suppresses none
+
+appendPunctuation is call
+appendPunctuation in tokenize
+appendPunctuation invokes Tokens.append
+appendPunctuation argument list Tokens tokens lendMutable
+appendPunctuation argument item Token punctuationItem copy
+appendPunctuation result none
+appendPunctuation ownedBy none
+appendPunctuation cleanedBy none
+appendPunctuation borrows none
+appendPunctuation catch none
+appendPunctuation suppresses none
+
+stepPunctuation is call
+stepPunctuation in tokenize
+stepPunctuation invokes string.advancePosition
+stepPunctuation argument text String source lend
+stepPunctuation argument position string.Position position copy
+stepPunctuation result afterPunctuation string.Position
+stepPunctuation ownedBy none
+stepPunctuation cleanedBy none
+stepPunctuation borrows none
+stepPunctuation catch stepPunctuationError string.StringIndexError
+stepPunctuation suppresses none
+
+makeTooLarge is call
+makeTooLarge in tokenize
+makeTooLarge invokes LexError.integerTooLarge
+makeTooLarge argument payload string.Position position copy
+makeTooLarge result tooLargeError LexError
+makeTooLarge ownedBy none
+makeTooLarge cleanedBy none
+makeTooLarge borrows none
+makeTooLarge catch none
+makeTooLarge suppresses none
+
+makeInvalid is call
+makeInvalid in tokenize
+makeInvalid invokes LexError.invalidByte
+makeInvalid argument payload string.Position position copy
+makeInvalid result invalidError LexError
+makeInvalid ownedBy none
+makeInvalid cleanedBy none
+makeInvalid borrows none
+makeInvalid catch none
+makeInvalid suppresses none
+
+makeEndKind is call
+makeEndKind in tokenize
+makeEndKind invokes TokenKind.endOfInput
+makeEndKind argument none
+makeEndKind result endKind TokenKind
+makeEndKind ownedBy none
+makeEndKind cleanedBy none
+makeEndKind borrows none
+makeEndKind catch none
+makeEndKind suppresses none
+
+makeEndToken is call
+makeEndToken in tokenize
+makeEndToken invokes Token.new
+makeEndToken argument kind TokenKind endKind copy
+makeEndToken argument start string.Position position copy
+makeEndToken argument length Int64 zero copy
+makeEndToken result endItem Token
+makeEndToken ownedBy none
+makeEndToken cleanedBy none
+makeEndToken borrows none
+makeEndToken catch none
+makeEndToken suppresses none
+
+appendEnd is call
+appendEnd in tokenize
+appendEnd invokes Tokens.append
+appendEnd argument list Tokens tokens lendMutable
+appendEnd argument item Token endItem copy
+appendEnd result none
+appendEnd ownedBy none
+appendEnd cleanedBy none
+appendEnd borrows none
+appendEnd catch none
+appendEnd suppresses none
+
+# ---------------------------------------------------------------- listing
+
+writeToken is operation
+writeToken purpose "Write one token as a line of text: line:column, its kind, and its text or value"
+writeToken invariant none
+writeToken typeParameter none
+writeToken input listing buffer.ByteBuffer borrowedMutable
+writeToken input source String borrowed
+writeToken input token Token copied
+writeToken output none
+writeToken outputOwnedBy none
+writeToken raises string.StringIndexError
+writeToken effect none
+writeToken uses none
+writeToken memoryHeap false
+writeToken async false
+writeToken maxRecursion none
+writeToken label begin loopKind none
+writeToken label begin within none
+writeToken label classify loopKind none
+writeToken label classify within none
+writeToken label showIdentifier loopKind none
+writeToken label showIdentifier within none
+writeToken label showText loopKind none
+writeToken label showText within none
+writeToken label sourceText loopKind none
+writeToken label sourceText within none
+writeToken label copyText loopKind none
+writeToken label copyText within none
+writeToken label showInteger loopKind none
+writeToken label showInteger within none
+writeToken label showPunctuation loopKind none
+writeToken label showPunctuation within none
+writeToken label showNewline loopKind none
+writeToken label showNewline within none
+writeToken label showEnd loopKind none
+writeToken label showEnd within none
+writeToken label outside loopKind none
+writeToken label outside within none
+writeToken label finish loopKind none
+writeToken label finish within none
+writeToken let colon Byte 58 immutable
+writeToken let space Byte 32 immutable
+writeToken let lineEnd Byte 10 immutable
+writeToken let identifierWord String "identifier " immutable
+writeToken let integerWord String "integer " immutable
+writeToken let textWord String "text " immutable
+writeToken let punctuationWord String "punctuation " immutable
+writeToken let newlineWord String "newline" immutable
+writeToken let endWord String "endOfInput" immutable
+writeToken at begin do readKind
+writeToken at begin do readStart
+writeToken at begin do readLine
+writeToken at begin do readColumn
+writeToken at begin do putLine
+writeToken at begin do putColon
+writeToken at begin do putColumn
+writeToken at begin do putSpace
+writeToken at begin goto classify
+writeToken at classify match tokenKind TokenKind
+writeToken at classify case TokenKind.identifier bind none none goto showIdentifier
+writeToken at classify case TokenKind.integer bind number Int64 goto showInteger
+writeToken at classify case TokenKind.text bind none none goto showText
+writeToken at classify case TokenKind.punctuation bind mark Byte goto showPunctuation
+writeToken at classify case TokenKind.newline bind none none goto showNewline
+writeToken at classify case TokenKind.endOfInput bind none none goto showEnd
+writeToken at showIdentifier do putIdentifierWord
+writeToken at showIdentifier goto sourceText
+writeToken at showText do putTextWord
+writeToken at showText goto sourceText
+writeToken at sourceText do readOffset
+writeToken at sourceText do readLength
+writeToken at sourceText do cutText
+writeToken at sourceText branch ifError cutText goto outside else goto copyText
+writeToken at copyText do putText
+writeToken at copyText goto finish
+writeToken at showInteger do putIntegerWord
+writeToken at showInteger do putNumber
+writeToken at showInteger goto finish
+writeToken at showPunctuation do putPunctuationWord
+writeToken at showPunctuation do putMark
+writeToken at showPunctuation goto finish
+writeToken at showNewline do putNewlineWord
+writeToken at showNewline goto finish
+writeToken at showEnd do putEndWord
+writeToken at showEnd goto finish
+writeToken at outside return error cutError
+writeToken at finish do putLineEnd
+writeToken at finish return ok none
+
+readKind is call
+readKind in writeToken
+readKind invokes Token.kind
+readKind argument record Token token copy
+readKind result tokenKind TokenKind
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+readStart is call
+readStart in writeToken
+readStart invokes Token.start
+readStart argument record Token token copy
+readStart result tokenStart string.Position
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+readLine is call
+readLine in writeToken
+readLine invokes string.Position.line
+readLine argument record string.Position tokenStart copy
+readLine result tokenLine Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+readLine suppresses none
+
+readColumn is call
+readColumn in writeToken
+readColumn invokes string.Position.column
+readColumn argument record string.Position tokenStart copy
+readColumn result tokenColumn Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+readColumn suppresses none
+
+putLine is call
+putLine in writeToken
+putLine invokes buffer.appendInt64
+putLine argument buffer buffer.ByteBuffer listing lendMutable
+putLine argument value Int64 tokenLine copy
+putLine result none
+putLine ownedBy none
+putLine cleanedBy none
+putLine borrows none
+putLine catch none
+putLine suppresses none
+
+putColon is call
+putColon in writeToken
+putColon invokes buffer.appendByte
+putColon argument buffer buffer.ByteBuffer listing lendMutable
+putColon argument value Byte colon copy
+putColon result none
+putColon ownedBy none
+putColon cleanedBy none
+putColon borrows none
+putColon catch none
+putColon suppresses none
+
+putColumn is call
+putColumn in writeToken
+putColumn invokes buffer.appendInt64
+putColumn argument buffer buffer.ByteBuffer listing lendMutable
+putColumn argument value Int64 tokenColumn copy
+putColumn result none
+putColumn ownedBy none
+putColumn cleanedBy none
+putColumn borrows none
+putColumn catch none
+putColumn suppresses none
+
+putSpace is call
+putSpace in writeToken
+putSpace invokes buffer.appendByte
+putSpace argument buffer buffer.ByteBuffer listing lendMutable
+putSpace argument value Byte space copy
+putSpace result none
+putSpace ownedBy none
+putSpace cleanedBy none
+putSpace borrows none
+putSpace catch none
+putSpace suppresses none
+
+putIdentifierWord is call
+putIdentifierWord in writeToken
+putIdentifierWord invokes buffer.appendString
+putIdentifierWord argument buffer buffer.ByteBuffer listing lendMutable
+putIdentifierWord argument text String identifierWord lend
+putIdentifierWord result none
+putIdentifierWord ownedBy none
+putIdentifierWord cleanedBy none
+putIdentifierWord borrows none
+putIdentifierWord catch none
+putIdentifierWord suppresses none
+
+putTextWord is call
+putTextWord in writeToken
+putTextWord invokes buffer.appendString
+putTextWord argument buffer buffer.ByteBuffer listing lendMutable
+putTextWord argument text String textWord lend
+putTextWord result none
+putTextWord ownedBy none
+putTextWord cleanedBy none
+putTextWord borrows none
+putTextWord catch none
+putTextWord suppresses none
+
+readOffset is call
+readOffset in writeToken
+readOffset invokes string.Position.offset
+readOffset argument record string.Position tokenStart copy
+readOffset result tokenOffset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readLength is call
+readLength in writeToken
+readLength invokes Token.length
+readLength argument record Token token copy
+readLength result tokenLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+cutText is call
+cutText in writeToken
+cutText invokes string.slice
+cutText argument text String source lend
+cutText argument start Int64 tokenOffset copy
+cutText argument length Int64 tokenLength copy
+cutText result tokenText String
+cutText ownedBy none
+cutText cleanedBy none
+cutText borrows source
+cutText catch cutError string.StringIndexError
+cutText suppresses none
+
+putText is call
+putText in writeToken
+putText invokes buffer.appendString
+putText argument buffer buffer.ByteBuffer listing lendMutable
+putText argument text String tokenText lend
+putText result none
+putText ownedBy none
+putText cleanedBy none
+putText borrows none
+putText catch none
+putText suppresses none
+
+putIntegerWord is call
+putIntegerWord in writeToken
+putIntegerWord invokes buffer.appendString
+putIntegerWord argument buffer buffer.ByteBuffer listing lendMutable
+putIntegerWord argument text String integerWord lend
+putIntegerWord result none
+putIntegerWord ownedBy none
+putIntegerWord cleanedBy none
+putIntegerWord borrows none
+putIntegerWord catch none
+putIntegerWord suppresses none
+
+putNumber is call
+putNumber in writeToken
+putNumber invokes buffer.appendInt64
+putNumber argument buffer buffer.ByteBuffer listing lendMutable
+putNumber argument value Int64 number copy
+putNumber result none
+putNumber ownedBy none
+putNumber cleanedBy none
+putNumber borrows none
+putNumber catch none
+putNumber suppresses none
+
+putPunctuationWord is call
+putPunctuationWord in writeToken
+putPunctuationWord invokes buffer.appendString
+putPunctuationWord argument buffer buffer.ByteBuffer listing lendMutable
+putPunctuationWord argument text String punctuationWord lend
+putPunctuationWord result none
+putPunctuationWord ownedBy none
+putPunctuationWord cleanedBy none
+putPunctuationWord borrows none
+putPunctuationWord catch none
+putPunctuationWord suppresses none
+
+putMark is call
+putMark in writeToken
+putMark invokes buffer.appendByte
+putMark argument buffer buffer.ByteBuffer listing lendMutable
+putMark argument value Byte mark copy
+putMark result none
+putMark ownedBy none
+putMark cleanedBy none
+putMark borrows none
+putMark catch none
+putMark suppresses none
+
+putNewlineWord is call
+putNewlineWord in writeToken
+putNewlineWord invokes buffer.appendString
+putNewlineWord argument buffer buffer.ByteBuffer listing lendMutable
+putNewlineWord argument text String newlineWord lend
+putNewlineWord result none
+putNewlineWord ownedBy none
+putNewlineWord cleanedBy none
+putNewlineWord borrows none
+putNewlineWord catch none
+putNewlineWord suppresses none
+
+putEndWord is call
+putEndWord in writeToken
+putEndWord invokes buffer.appendString
+putEndWord argument buffer buffer.ByteBuffer listing lendMutable
+putEndWord argument text String endWord lend
+putEndWord result none
+putEndWord ownedBy none
+putEndWord cleanedBy none
+putEndWord borrows none
+putEndWord catch none
+putEndWord suppresses none
+
+putLineEnd is call
+putLineEnd in writeToken
+putLineEnd invokes buffer.appendByte
+putLineEnd argument buffer buffer.ByteBuffer listing lendMutable
+putLineEnd argument value Byte lineEnd copy
+putLineEnd result none
+putLineEnd ownedBy none
+putLineEnd cleanedBy none
+putLineEnd borrows none
+putLineEnd catch none
+putLineEnd suppresses none
+
+writeListing is operation
+writeListing purpose "Write every token as one line of text, in order"
+writeListing invariant oneLinePerToken "Writes one line per token: line:column, a space, the kind, and the token's source text, value, or mark"
+writeListing invariant rejectsOutsideToken "A text or identifier token that lies outside the source is an outOfRange error"
+writeListing typeParameter none
+writeListing input source String borrowed
+writeListing input tokens Tokens borrowed
+writeListing input listing buffer.ByteBuffer borrowedMutable
+writeListing output none
+writeListing outputOwnedBy none
+writeListing raises string.StringIndexError
+writeListing effect none
+writeListing uses none
+writeListing memoryHeap false
+writeListing async false
+writeListing maxRecursion none
+writeListing label begin loopKind none
+writeListing label begin within none
+writeListing label visit loopKind forEach
+writeListing label visit within none
+writeListing label visit maxIterations tokenCount
+writeListing label visit over tokens
+writeListing label writeOne loopKind none
+writeListing label writeOne within visit
+writeListing label passUp loopKind none
+writeListing label passUp within none
+writeListing label done loopKind none
+writeListing label done within none
+writeListing let none
+writeListing at begin do countTokens
+writeListing at begin goto visit
+writeListing at visit branch ifNext tokens bind token Token goto writeOne else goto done
+writeListing at writeOne do writeIt
+writeListing at writeOne branch ifError writeIt goto passUp else goto visit
+writeListing at passUp return error tokenError
+writeListing at done return ok none
+
+countTokens is call
+countTokens in writeListing
+countTokens invokes Tokens.length
+countTokens argument list Tokens tokens lend
+countTokens result tokenCount Int64
+countTokens ownedBy none
+countTokens cleanedBy none
+countTokens borrows none
+countTokens catch none
+countTokens suppresses none
+
+writeIt is call
+writeIt in writeListing
+writeIt invokes writeToken
+writeIt argument listing buffer.ByteBuffer listing lendMutable
+writeIt argument source String source lend
+writeIt argument token Token token copy
+writeIt result none
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch tokenError string.StringIndexError
+writeIt suppresses none

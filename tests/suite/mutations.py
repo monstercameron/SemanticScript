@@ -55,6 +55,7 @@ MEM = "07-memory/region-list"
 RES = "07-memory/resources"
 STR = "08-strings-collections/strings"
 SORT = "08-strings-collections/sorting"
+POSN = "08-strings-collections/positions"
 TABLE = "08-strings-collections/table"
 TREES = "08-strings-collections/trees"
 MODS = "09-modules/project"
@@ -331,6 +332,20 @@ MUTATIONS: list[Mutation] = [
       "join ownedBy text", "join ownedBy none", ("R409",)),
     M("string-is-not-integer", ("8 String comparison", "14 Type mismatch detection"), STR,
       "sameText argument right String helloWorld lend", "sameText argument right String seven lend", ("R403",)),
+    # D-70 to D-72: text positions, whole-character slices, byte classes
+    M("position-step-unchecked", ("15 Lexical analysis", "21 Error handling matches declared error types"), POSN,
+      "main at walk branch ifError stepIt goto finished else goto moved\n", "main at walk goto moved\n",
+      ("R506", "R507", "R511")),
+    M("position-is-not-an-integer", ("15 Lexical analysis", "14 Type mismatch detection"), POSN,
+      "stepIt argument position string.Position position copy", "stepIt argument position Int64 offset copy",
+      ("R403",)),
+    M("position-unknown-field", ("15 Lexical analysis", "21 Every call references an existing operation"), POSN,
+      "readLine invokes string.Position.line", "readLine invokes string.Position.row", ("R401",)),
+    M("whole-character-slice-unchecked", ("8 UTF-8 handling", "8 String slicing"), POSN,
+      "main at slices branch ifError sliceWhole goto broken else goto splitStart\n", "main at slices goto splitStart\n",
+      ("R506", "R507")),
+    M("punctuation-takes-a-byte", ("15 Lexical analysis", "14 Type mismatch detection"), POSN,
+      "parenCheck argument value Byte paren copy", "parenCheck argument value Int64 one copy", ("R403",)),
     M("list-index-unchecked", ("8 Array bounds checking", "17 Bounds checking"), SORT,
       "sortInPlace at readPair branch ifError readLeft goto brokenLeft else goto readRightStep\n",
       "sortInPlace at readPair goto readRightStep\n", ("R506", "R507", "R511")),

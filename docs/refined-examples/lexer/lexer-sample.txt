@@ -1,0 +1,5 @@
+let total = 0
+for item in items {
+  total = total + item.price * 3
+}
+print("total in €: ", total)

@@ -19,7 +19,7 @@ from refined.diagnostics import CODES  # noqa: E402
 from refined.shapes import grammar_markdown  # noqa: E402
 
 EXAMPLES = os.path.join(ROOT, "docs", "refined-examples")
-PROJECTS = ["hello", "sum", "factorial", "server", "selfhost"]
+PROJECTS = ["hello", "sum", "factorial", "server", "selfhost", "lexer"]
 
 
 def _copy(tmp_path, project):
@@ -387,7 +387,7 @@ def _refined(*args, timeout=300):
                           capture_output=True, text=True, timeout=timeout)
 
 
-@pytest.mark.parametrize("project,count", [("hello", 1), ("factorial", 1), ("selfhost", 5)])
+@pytest.mark.parametrize("project,count", [("hello", 1), ("factorial", 1), ("selfhost", 5), ("lexer", 6)])
 def test_example_tests_pass_on_the_backend(project, count):
     proc = _refined("test", os.path.join(EXAMPLES, project))
     assert proc.returncode == 0, proc.stdout + proc.stderr

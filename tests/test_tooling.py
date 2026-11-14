@@ -231,6 +231,60 @@ def test_debugger_breakpoints_values_and_stack(tmp_path):
     assert proc.returncode == 1 and "stopped by the user" in err
 
 
+def test_debugger_shows_records_and_enums(tmp_path):
+    """D-73: `vars` shows a record of integers by field and a payload enum by variant (the lexer example)."""
+    project = str(tmp_path / "lexer")
+    shutil.copytree(os.path.join(EXAMPLES, "lexer"), project)
+    proc = caselib.refined("run", project, "--debug", "--break", "lexer.writeToken:showInteger", "--no-cache", "--",
+                           "lexer-sample.txt", cwd=project, stdin="vars\nquit\n")
+    err = proc.stderr
+    assert "debug: stopped at lexer.writeToken:showInteger" in err, err
+    assert "  tokenKind lexer.TokenKind = integer(0)" in err
+    assert "  tokenStart string.Position = {offset 12, line 1, column 13}" in err
+    assert proc.returncode == 1 and "stopped by the user" in err
+
+
+# ---------------------------------------------------------------- the lexer example: arguments, files, positions
+
+def _lex(project: str, *arguments: str) -> subprocess.CompletedProcess:
+    return caselib.refined("run", project, "--no-cache", *(("--", *arguments) if arguments else ()), cwd=project)
+
+
+def test_lexer_example_tokenizes_a_file_named_on_the_command_line(tmp_path):
+    """The lexer example reads the file its argument names, writes `<name>.tokens`, and prints a summary. Columns
+    count characters: the three-byte euro sign in quoted text moves the comma after it one column."""
+    project = str(tmp_path / "lexer")
+    shutil.copytree(os.path.join(EXAMPLES, "lexer"), project)
+    proc = _lex(project, "lexer-sample.txt")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout == "lexer-sample.txt: 31 tokens, end of input at 6:1, written to lexer-sample.txt.tokens\n"
+    with open(os.path.join(project, "lexer-sample.txt.tokens"), encoding="utf-8") as fh:
+        listing = fh.read().splitlines()
+    assert listing[:5] == ["1:1 identifier let", "1:5 identifier total", "1:11 punctuation =", "1:13 integer 0",
+                           "1:14 newline"]
+    assert listing[-6:] == ['5:7 text "total in €: "', "5:21 punctuation ,", "5:23 identifier total",
+                            "5:28 punctuation )", "5:29 newline", "6:1 endOfInput"]
+
+
+def test_lexer_example_reports_problems_with_their_exit_codes(tmp_path):
+    """An invalid byte is reported as `path:line:column: why`; no argument, a missing file, and a path outside the
+    capability's scope each stop the program with their own exit code."""
+    project = str(tmp_path / "lexer")
+    shutil.copytree(os.path.join(EXAMPLES, "lexer"), project)
+    proc = _lex(project, "lexer-invalid.txt")
+    assert proc.returncode == 3 and proc.stdout == ""
+    assert proc.stderr == "lexer-invalid.txt:2:7: a byte that begins no token: 195\n"
+    assert not os.path.exists(os.path.join(project, "lexer-invalid.txt.tokens"))
+    proc = _lex(project)
+    assert proc.returncode == 2 and proc.stderr.startswith("usage: ")
+    proc = _lex(project, "lexer-missing.txt")
+    assert proc.returncode == 4 and proc.stderr == "lexer-missing.txt: cannot read the source file\n"
+    # D-38: the path is computed, so the capability's scope is checked when the file is opened
+    proc = _lex(project, "build.sem")
+    assert proc.returncode == caselib.TRAP_EXIT_CODE
+    assert "`fs.readAll` was given `build.sem`, which no capability" in proc.stderr
+
+
 # ---------------------------------------------------------------- native output
 
 def test_cross_compiles_to_other_targets(tmp_path):

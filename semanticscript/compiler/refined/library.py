@@ -223,6 +223,9 @@ LIBRARY: dict[str, dict] = {
             "ParseError": _err("string.ParseError", ("notANumber", None), ("outOfRange", None)),
             "NotFound": _err("string.NotFound", ("absent", None)),
             "Utf8Error": _err("string.Utf8Error", ("invalidAt", "Int64")),
+            # D-71: where a character starts in a text: its byte offset, and its line and column (both from 1)
+            "Position": TypeInfo("string.Position", "record", True,
+                                 fields=[("offset", "Int64"), ("line", "Int64"), ("column", "Int64")]),
         },
         "targets": {
             "byteLength": Sig((P("text", "String", "borrowed"),), "Int64"),
@@ -240,11 +243,15 @@ LIBRARY: dict[str, dict] = {
             "toInt64": Sig((P("text", "String", "borrowed"),), "Int64", raises="string.ParseError"),
             "fromBytes": Sig((P("bytes", "Bytes", "borrowed"), _RG), "String", "region", "string.Utf8Error"),
             "toBytes": Sig((P("text", "String", "borrowed"),), "Bytes", borrows="text"),
+            # D-71: the position of the character after the one at `position` (a newline starts the next line)
+            "advancePosition": Sig((P("text", "String", "borrowed"), P("position", "string.Position", "copied")),
+                                   "string.Position", raises="string.StringIndexError"),
         },
     },
     "byte": {
         "types": {},
-        "targets": {**{n: _un("Byte", "Bool") for n in ("isLetter", "isDigit", "isLetterOrDigit", "isSpace")},
+        "targets": {**{n: _un("Byte", "Bool") for n in ("isLetter", "isDigit", "isLetterOrDigit", "isSpace",
+                                                              "isPunctuation")},
                     "equals": _bin("Byte", "Bool")},
     },
     "buffer": {

@@ -1,0 +1,1000 @@
+# The lexer example's entry module: the command line, files, and messages.
+#
+# Exit codes: 0 done, 2 no source path was given, 3 the source is not valid
+# (not UTF-8, or a byte that begins no token), 4 a file could not be read or
+# written, 5 standard output failed.
+#
+# An invalid source is reported on standard error as `path:line:column: why`,
+# the shape a compiler's diagnostics take.
+
+lexfile is module
+lexfile purpose "Read a source file named on the command line, tokenize it, and write the token list"
+lexfile path lexfile
+lexfile imports standard.console
+lexfile imports standard.process
+lexfile imports standard.fs
+lexfile imports standard.string
+lexfile imports standard.buffer
+lexfile imports standard.convert
+lexfile imports standard.list
+lexfile imports standard.compare
+lexfile imports standard.math
+lexfile imports standard.time
+lexfile imports lexer
+lexfile exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to print the summary on standard output"
+stdoutWriter grants write console.stdout none
+
+stderrWriter is capability
+stderrWriter purpose "Authority to report problems on standard error"
+stderrWriter grants write console.stderr none
+
+argumentReader is capability
+argumentReader purpose "Authority to read the source path from the command line"
+argumentReader grants read process.arguments none
+
+lexerFiles is capability
+lexerFiles purpose "Authority to read and write files in the working directory whose names start with lexer-"
+lexerFiles grants read fs.files "lexer-*"
+lexerFiles grants write fs.files "lexer-*"
+
+# ---------------------------------------------------------------- reporting
+
+reportAt is operation
+reportAt purpose "Write `path:line:column: message` on standard error"
+reportAt invariant none
+reportAt typeParameter none
+reportAt input path String borrowed
+reportAt input at string.Position copied
+reportAt input message String borrowed
+reportAt output none
+reportAt outputOwnedBy none
+reportAt raises console.WriteError
+reportAt effect write console.stderr
+reportAt uses stderrWriter
+reportAt memoryHeap true
+reportAt async false
+reportAt maxRecursion none
+reportAt label begin loopKind none
+reportAt label begin within none
+reportAt label located loopKind none
+reportAt label located within none
+reportAt label plain loopKind none
+reportAt label plain within none
+reportAt label locatedFailed loopKind none
+reportAt label locatedFailed within none
+reportAt label plainFailed loopKind none
+reportAt label plainFailed within none
+reportAt label done loopKind none
+reportAt label done within none
+reportAt let colon Byte 58 immutable
+reportAt let separator String ": " immutable
+reportAt at begin do makeText
+reportAt at begin do putPath
+reportAt at begin do putFirstColon
+reportAt at begin do readLine
+reportAt at begin do putLine
+reportAt at begin do putSecondColon
+reportAt at begin do readColumn
+reportAt at begin do putColumn
+reportAt at begin do putSeparator
+reportAt at begin do putMessage
+reportAt at begin do finishText
+reportAt at begin branch ifError finishText goto plain else goto located
+reportAt at located do writeLocated
+reportAt at located branch ifError writeLocated goto locatedFailed else goto done
+# A path from the command line need not be UTF-8; the message alone still is.
+reportAt at plain do writePlain
+reportAt at plain branch ifError writePlain goto plainFailed else goto done
+reportAt at locatedFailed return error locatedError
+reportAt at plainFailed return error plainError
+reportAt at done return ok none
+
+scratch is region
+scratch in reportAt
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+makeText is call
+makeText in reportAt
+makeText invokes buffer.new
+makeText argument region Region scratch lend
+makeText result text buffer.ByteBuffer
+makeText ownedBy scratch
+makeText cleanedBy none
+makeText borrows none
+makeText catch none
+makeText suppresses none
+
+putPath is call
+putPath in reportAt
+putPath invokes buffer.appendString
+putPath argument buffer buffer.ByteBuffer text lendMutable
+putPath argument text String path lend
+putPath result none
+putPath ownedBy none
+putPath cleanedBy none
+putPath borrows none
+putPath catch none
+putPath suppresses none
+
+putFirstColon is call
+putFirstColon in reportAt
+putFirstColon invokes buffer.appendByte
+putFirstColon argument buffer buffer.ByteBuffer text lendMutable
+putFirstColon argument value Byte colon copy
+putFirstColon result none
+putFirstColon ownedBy none
+putFirstColon cleanedBy none
+putFirstColon borrows none
+putFirstColon catch none
+putFirstColon suppresses none
+
+readLine is call
+readLine in reportAt
+readLine invokes string.Position.line
+readLine argument record string.Position at copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+readLine suppresses none
+
+putLine is call
+putLine in reportAt
+putLine invokes buffer.appendInt64
+putLine argument buffer buffer.ByteBuffer text lendMutable
+putLine argument value Int64 line copy
+putLine result none
+putLine ownedBy none
+putLine cleanedBy none
+putLine borrows none
+putLine catch none
+putLine suppresses none
+
+putSecondColon is call
+putSecondColon in reportAt
+putSecondColon invokes buffer.appendByte
+putSecondColon argument buffer buffer.ByteBuffer text lendMutable
+putSecondColon argument value Byte colon copy
+putSecondColon result none
+putSecondColon ownedBy none
+putSecondColon cleanedBy none
+putSecondColon borrows none
+putSecondColon catch none
+putSecondColon suppresses none
+
+readColumn is call
+readColumn in reportAt
+readColumn invokes string.Position.column
+readColumn argument record string.Position at copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+readColumn suppresses none
+
+putColumn is call
+putColumn in reportAt
+putColumn invokes buffer.appendInt64
+putColumn argument buffer buffer.ByteBuffer text lendMutable
+putColumn argument value Int64 column copy
+putColumn result none
+putColumn ownedBy none
+putColumn cleanedBy none
+putColumn borrows none
+putColumn catch none
+putColumn suppresses none
+
+putSeparator is call
+putSeparator in reportAt
+putSeparator invokes buffer.appendString
+putSeparator argument buffer buffer.ByteBuffer text lendMutable
+putSeparator argument text String separator lend
+putSeparator result none
+putSeparator ownedBy none
+putSeparator cleanedBy none
+putSeparator borrows none
+putSeparator catch none
+putSeparator suppresses none
+
+putMessage is call
+putMessage in reportAt
+putMessage invokes buffer.appendString
+putMessage argument buffer buffer.ByteBuffer text lendMutable
+putMessage argument text String message lend
+putMessage result none
+putMessage ownedBy none
+putMessage cleanedBy none
+putMessage borrows none
+putMessage catch none
+putMessage suppresses none
+
+finishText is call
+finishText in reportAt
+finishText invokes buffer.toString
+finishText argument buffer buffer.ByteBuffer text lend
+finishText argument region Region scratch lend
+finishText result locatedText String
+finishText ownedBy scratch
+finishText cleanedBy none
+finishText borrows none
+finishText catch textError string.Utf8Error
+finishText suppresses none
+
+writeLocated is call
+writeLocated in reportAt
+writeLocated invokes console.writeError
+writeLocated argument text String locatedText lend
+writeLocated result none
+writeLocated ownedBy none
+writeLocated cleanedBy none
+writeLocated borrows none
+writeLocated catch locatedError console.WriteError
+writeLocated suppresses none
+
+writePlain is call
+writePlain in reportAt
+writePlain invokes console.writeError
+writePlain argument text String message lend
+writePlain result none
+writePlain ownedBy none
+writePlain cleanedBy none
+writePlain borrows none
+writePlain catch plainError console.WriteError
+writePlain suppresses none
+
+# ---------------------------------------------------------------- main
+
+main is operation
+main purpose "Tokenize the source file named by the first argument, write its token list, and print a summary"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect read process.arguments
+main effect write console.stdout
+main effect write console.stderr
+main effect read fs.files
+main effect write fs.files
+main uses argumentReader
+main uses stdoutWriter
+main uses stderrWriter
+main uses lexerFiles
+main memoryHeap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label usage loopKind none
+main label usage within none
+main label usageDone loopKind none
+main label usageDone within none
+main label readPath loopKind none
+main label readPath within none
+main label readSource loopKind none
+main label readSource within none
+main label decode loopKind none
+main label decode within none
+main label notText loopKind none
+main label notText within none
+main label reportNotText loopKind none
+main label reportNotText within none
+main label lex loopKind none
+main label lex within none
+main label lexFailed loopKind none
+main label lexFailed within none
+main label invalidByte loopKind none
+main label invalidByte within none
+main label describeBad loopKind none
+main label describeBad within none
+main label unterminated loopKind none
+main label unterminated within none
+main label tooLarge loopKind none
+main label tooLarge within none
+main label lexDone loopKind none
+main label lexDone within none
+main label render loopKind none
+main label render within none
+main label save loopKind none
+main label save within none
+main label summarize loopKind none
+main label summarize within none
+main label describe loopKind none
+main label describe within none
+main label printSummary loopKind none
+main label printSummary within none
+main label finished loopKind none
+main label finished within none
+main label readFailed loopKind none
+main label readFailed within none
+main label writeFailed loopKind none
+main label writeFailed within none
+main label fileDone loopKind none
+main label fileDone within none
+main label outputFailed loopKind none
+main label outputFailed within none
+main let usageText String "usage: refined run <project> -- <source file>" immutable
+main let tokensSuffix String ".tokens" immutable
+main let notTextText String ": not UTF-8 text; the first bad byte is at offset " immutable
+main let invalidByteText String "a byte that begins no token: " immutable
+main let unterminatedText String "quoted text is not closed before the end of its line" immutable
+main let tooLargeText String "an integer too large for Int64" immutable
+main let readFailedText String ": cannot read the source file" immutable
+main let writeFailedText String ": cannot write the token list" immutable
+main let countLead String ": " immutable
+main let tokensWord String " tokens, end of input at " immutable
+main let writtenWord String ", written to " immutable
+main let colon Byte 58 immutable
+main let firstIndex Int64 0 immutable
+main let one Int64 1 immutable
+main let readLimit Int64 65536 immutable
+main let waitMs Int64 5000 immutable
+main let okCode ExitCode 0 immutable
+main let usageCode ExitCode 2 immutable
+main let lexCode ExitCode 3 immutable
+main let fileCode ExitCode 4 immutable
+main let outputCode ExitCode 5 immutable
+main at begin do makeDeadline
+main at begin do countArguments
+main at begin do checkCount
+main at begin branch if noPath goto usage else goto readPath
+main at usage do writeUsage
+main at usage branch ifError writeUsage goto usageDone else goto usageDone
+main at usageDone return ok usageCode
+main at readPath do readArgument
+main at readPath branch ifError readArgument goto usage else goto readSource
+# The path is computed, so `lexerFiles`'s scope is checked when the file is
+# opened; a path outside `lexer-*` stops the program there (D-38).
+main at readSource start readTask into none
+main at readSource join readTask
+main at readSource branch ifError readTask goto readFailed else goto decode
+main at decode do decodeSource
+main at decode branch ifError decodeSource goto notText else goto lex
+main at notText match decodeError string.Utf8Error
+main at notText case string.Utf8Error.invalidAt bind badOffset Int64 goto reportNotText
+main at reportNotText do badOffsetDigits
+main at reportNotText do joinNotTextPath
+main at reportNotText do joinNotTextOffset
+main at reportNotText do writeNotText
+main at reportNotText branch ifError writeNotText goto lexDone else goto lexDone
+main at lex do tokenizeSource
+main at lex branch ifError tokenizeSource goto lexFailed else goto render
+main at lexFailed match lexError lexer.LexError
+main at lexFailed case lexer.LexError.invalidByte bind badAt string.Position goto invalidByte
+main at lexFailed case lexer.LexError.unterminatedText bind openAt string.Position goto unterminated
+main at lexFailed case lexer.LexError.integerTooLarge bind digitsAt string.Position goto tooLarge
+main at invalidByte do readBadOffset
+main at invalidByte do readBadByte
+main at invalidByte branch ifError readBadByte goto lexDone else goto describeBad
+main at describeBad do badByteValue
+main at describeBad do badByteDigits
+main at describeBad do joinBadByte
+main at describeBad do reportInvalid
+main at describeBad branch ifError reportInvalid goto lexDone else goto lexDone
+main at unterminated do reportUnterminated
+main at unterminated branch ifError reportUnterminated goto lexDone else goto lexDone
+main at tooLarge do reportTooLarge
+main at tooLarge branch ifError reportTooLarge goto lexDone else goto lexDone
+main at lexDone return ok lexCode
+main at render do newListing
+main at render do writeTokens
+main at render branch ifError writeTokens goto outputFailed else goto save
+main at save do makeOutputPath
+main at save do listingBytes
+main at save start writeTask into none
+main at save join writeTask
+main at save branch ifError writeTask goto writeFailed else goto summarize
+# The list always ends with endOfInput, so it is never empty and `readLast`
+# cannot fail; its error branch is still stated.
+main at summarize do countTokens
+main at summarize do lastIndex
+main at summarize do readLast
+main at summarize branch ifError readLast goto outputFailed else goto describe
+main at describe do readEnd
+main at describe do readEndLine
+main at describe do readEndColumn
+main at describe do newSummary
+main at describe do putSourcePath
+main at describe do putCountLead
+main at describe do putCount
+main at describe do putTokensWord
+main at describe do putEndLine
+main at describe do putEndColon
+main at describe do putEndColumn
+main at describe do putWrittenWord
+main at describe do putOutputPath
+main at describe do finishSummary
+main at describe branch ifError finishSummary goto outputFailed else goto printSummary
+main at printSummary do printIt
+main at printSummary branch ifError printIt goto outputFailed else goto finished
+main at finished return ok okCode
+main at readFailed do joinReadFailed
+main at readFailed do writeReadFailed
+main at readFailed branch ifError writeReadFailed goto fileDone else goto fileDone
+main at writeFailed do joinWriteFailed
+main at writeFailed do writeWriteFailed
+main at writeFailed branch ifError writeWriteFailed goto fileDone else goto fileDone
+main at fileDone return ok fileCode
+main at outputFailed return ok outputCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 8388608
+store released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+makeDeadline suppresses none
+
+countArguments is call
+countArguments in main
+countArguments invokes process.argumentCount
+countArguments argument none
+countArguments result argumentCount Int64
+countArguments ownedBy none
+countArguments cleanedBy none
+countArguments borrows none
+countArguments catch none
+countArguments suppresses none
+
+checkCount is call
+checkCount in main
+checkCount invokes compare.lessThanInt64
+checkCount argument left Int64 argumentCount copy
+checkCount argument right Int64 one copy
+checkCount result noPath Bool
+checkCount ownedBy none
+checkCount cleanedBy none
+checkCount borrows none
+checkCount catch none
+checkCount suppresses none
+
+writeUsage is call
+writeUsage rationale "With no path there is nothing to do; a usage line that cannot be written changes nothing"
+writeUsage in main
+writeUsage invokes console.writeError
+writeUsage argument text String usageText lend
+writeUsage result none
+writeUsage ownedBy none
+writeUsage cleanedBy none
+writeUsage borrows none
+writeUsage catch usageError console.WriteError
+writeUsage suppresses console.WriteError.failed
+
+readArgument is call
+readArgument in main
+readArgument invokes process.argument
+readArgument argument index Int64 firstIndex copy
+readArgument argument region Region store lend
+readArgument result sourcePath String
+readArgument ownedBy store
+readArgument cleanedBy none
+readArgument borrows none
+readArgument catch argumentError process.ArgumentError
+readArgument suppresses none
+
+readTask is task
+readTask in main
+readTask invokes fs.readAll
+readTask argument path String sourcePath lend
+readTask argument region Region store lend
+readTask argument maxBytes Int64 readLimit copy
+readTask argument deadline time.Deadline deadline copy
+readTask result sourceBytes Bytes
+readTask ownedBy store
+readTask cleanedBy none
+readTask borrows none
+readTask catch readError fs.FileError
+readTask suppresses none
+
+decodeSource is call
+decodeSource in main
+decodeSource invokes string.fromBytes
+decodeSource argument bytes Bytes sourceBytes lend
+decodeSource argument region Region store lend
+decodeSource result source String
+decodeSource ownedBy store
+decodeSource cleanedBy none
+decodeSource borrows none
+decodeSource catch decodeError string.Utf8Error
+decodeSource suppresses none
+
+badOffsetDigits is call
+badOffsetDigits in main
+badOffsetDigits invokes string.fromInt64
+badOffsetDigits argument value Int64 badOffset copy
+badOffsetDigits argument region Region store lend
+badOffsetDigits result badOffsetText String
+badOffsetDigits ownedBy store
+badOffsetDigits cleanedBy none
+badOffsetDigits borrows none
+badOffsetDigits catch none
+badOffsetDigits suppresses none
+
+joinNotTextPath is call
+joinNotTextPath in main
+joinNotTextPath invokes string.concat
+joinNotTextPath argument left String sourcePath lend
+joinNotTextPath argument right String notTextText lend
+joinNotTextPath argument region Region store lend
+joinNotTextPath result notTextLead String
+joinNotTextPath ownedBy store
+joinNotTextPath cleanedBy none
+joinNotTextPath borrows none
+joinNotTextPath catch none
+joinNotTextPath suppresses none
+
+joinNotTextOffset is call
+joinNotTextOffset in main
+joinNotTextOffset invokes string.concat
+joinNotTextOffset argument left String notTextLead lend
+joinNotTextOffset argument right String badOffsetText lend
+joinNotTextOffset argument region Region store lend
+joinNotTextOffset result notTextMessage String
+joinNotTextOffset ownedBy store
+joinNotTextOffset cleanedBy none
+joinNotTextOffset borrows none
+joinNotTextOffset catch none
+joinNotTextOffset suppresses none
+
+writeNotText is call
+writeNotText rationale "The exit code already says the source was refused; a lost message does not change it"
+writeNotText in main
+writeNotText invokes console.writeError
+writeNotText argument text String notTextMessage lend
+writeNotText result none
+writeNotText ownedBy none
+writeNotText cleanedBy none
+writeNotText borrows none
+writeNotText catch notTextError console.WriteError
+writeNotText suppresses console.WriteError.failed
+
+tokenizeSource is call
+tokenizeSource in main
+tokenizeSource invokes lexer.tokenize
+tokenizeSource argument source String source lend
+tokenizeSource argument resultRegion Region store lend
+tokenizeSource result tokens lexer.Tokens
+tokenizeSource ownedBy store
+tokenizeSource cleanedBy none
+tokenizeSource borrows none
+tokenizeSource catch lexError lexer.LexError
+tokenizeSource suppresses none
+
+readBadOffset is call
+readBadOffset in main
+readBadOffset invokes string.Position.offset
+readBadOffset argument record string.Position badAt copy
+readBadOffset result badByteOffset Int64
+readBadOffset ownedBy none
+readBadOffset cleanedBy none
+readBadOffset borrows none
+readBadOffset catch none
+readBadOffset suppresses none
+
+readBadByte is call
+readBadByte in main
+readBadByte invokes string.byteAt
+readBadByte argument text String source lend
+readBadByte argument index Int64 badByteOffset copy
+readBadByte result badByte Byte
+readBadByte ownedBy none
+readBadByte cleanedBy none
+readBadByte borrows none
+readBadByte catch badByteError string.StringIndexError
+readBadByte suppresses none
+
+badByteValue is call
+badByteValue in main
+badByteValue invokes convert.byteToInt64
+badByteValue argument value Byte badByte copy
+badByteValue result badByteNumber Int64
+badByteValue ownedBy none
+badByteValue cleanedBy none
+badByteValue borrows none
+badByteValue catch none
+badByteValue suppresses none
+
+badByteDigits is call
+badByteDigits in main
+badByteDigits invokes string.fromInt64
+badByteDigits argument value Int64 badByteNumber copy
+badByteDigits argument region Region store lend
+badByteDigits result badByteText String
+badByteDigits ownedBy store
+badByteDigits cleanedBy none
+badByteDigits borrows none
+badByteDigits catch none
+badByteDigits suppresses none
+
+joinBadByte is call
+joinBadByte in main
+joinBadByte invokes string.concat
+joinBadByte argument left String invalidByteText lend
+joinBadByte argument right String badByteText lend
+joinBadByte argument region Region store lend
+joinBadByte result invalidMessage String
+joinBadByte ownedBy store
+joinBadByte cleanedBy none
+joinBadByte borrows none
+joinBadByte catch none
+joinBadByte suppresses none
+
+reportInvalid is call
+reportInvalid rationale "The exit code already says the source was refused; a lost message does not change it"
+reportInvalid in main
+reportInvalid invokes reportAt
+reportInvalid argument path String sourcePath lend
+reportInvalid argument at string.Position badAt copy
+reportInvalid argument message String invalidMessage lend
+reportInvalid result none
+reportInvalid ownedBy none
+reportInvalid cleanedBy none
+reportInvalid borrows none
+reportInvalid catch invalidError console.WriteError
+reportInvalid suppresses console.WriteError.failed
+
+reportUnterminated is call
+reportUnterminated rationale "The exit code already says the source was refused; a lost message does not change it"
+reportUnterminated in main
+reportUnterminated invokes reportAt
+reportUnterminated argument path String sourcePath lend
+reportUnterminated argument at string.Position openAt copy
+reportUnterminated argument message String unterminatedText lend
+reportUnterminated result none
+reportUnterminated ownedBy none
+reportUnterminated cleanedBy none
+reportUnterminated borrows none
+reportUnterminated catch unterminatedError console.WriteError
+reportUnterminated suppresses console.WriteError.failed
+
+reportTooLarge is call
+reportTooLarge rationale "The exit code already says the source was refused; a lost message does not change it"
+reportTooLarge in main
+reportTooLarge invokes reportAt
+reportTooLarge argument path String sourcePath lend
+reportTooLarge argument at string.Position digitsAt copy
+reportTooLarge argument message String tooLargeText lend
+reportTooLarge result none
+reportTooLarge ownedBy none
+reportTooLarge cleanedBy none
+reportTooLarge borrows none
+reportTooLarge catch tooLargeError console.WriteError
+reportTooLarge suppresses console.WriteError.failed
+
+newListing is call
+newListing in main
+newListing invokes buffer.new
+newListing argument region Region store lend
+newListing result listing buffer.ByteBuffer
+newListing ownedBy store
+newListing cleanedBy none
+newListing borrows none
+newListing catch none
+newListing suppresses none
+
+writeTokens is call
+writeTokens in main
+writeTokens invokes lexer.writeListing
+writeTokens argument source String source lend
+writeTokens argument tokens lexer.Tokens tokens lend
+writeTokens argument listing buffer.ByteBuffer listing lendMutable
+writeTokens result none
+writeTokens ownedBy none
+writeTokens cleanedBy none
+writeTokens borrows none
+writeTokens catch listingError string.StringIndexError
+writeTokens suppresses none
+
+makeOutputPath is call
+makeOutputPath in main
+makeOutputPath invokes string.concat
+makeOutputPath argument left String sourcePath lend
+makeOutputPath argument right String tokensSuffix lend
+makeOutputPath argument region Region store lend
+makeOutputPath result outputPath String
+makeOutputPath ownedBy store
+makeOutputPath cleanedBy none
+makeOutputPath borrows none
+makeOutputPath catch none
+makeOutputPath suppresses none
+
+listingBytes is call
+listingBytes in main
+listingBytes invokes buffer.toBytes
+listingBytes argument buffer buffer.ByteBuffer listing lend
+listingBytes result outputBytes Bytes
+listingBytes ownedBy none
+listingBytes cleanedBy none
+listingBytes borrows listing
+listingBytes catch none
+listingBytes suppresses none
+
+writeTask is task
+writeTask in main
+writeTask invokes fs.writeAll
+writeTask argument path String outputPath lend
+writeTask argument bytes Bytes outputBytes lend
+writeTask argument deadline time.Deadline deadline copy
+writeTask result none
+writeTask ownedBy none
+writeTask cleanedBy none
+writeTask borrows none
+writeTask catch writeError fs.FileError
+writeTask suppresses none
+
+countTokens is call
+countTokens in main
+countTokens invokes lexer.Tokens.length
+countTokens argument list lexer.Tokens tokens lend
+countTokens result tokenCount Int64
+countTokens ownedBy none
+countTokens cleanedBy none
+countTokens borrows none
+countTokens catch none
+countTokens suppresses none
+
+lastIndex is call
+lastIndex in main
+lastIndex invokes math.subtractInt64
+lastIndex argument left Int64 tokenCount copy
+lastIndex argument right Int64 one copy
+lastIndex result lastAt Int64
+lastIndex ownedBy none
+lastIndex cleanedBy none
+lastIndex borrows none
+lastIndex catch none
+lastIndex suppresses none
+
+readLast is call
+readLast in main
+readLast invokes lexer.Tokens.get
+readLast argument list lexer.Tokens tokens lend
+readLast argument index Int64 lastAt copy
+readLast result lastToken lexer.Token
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch lastError list.IndexOutOfRange
+readLast suppresses none
+
+readEnd is call
+readEnd in main
+readEnd invokes lexer.Token.start
+readEnd argument record lexer.Token lastToken copy
+readEnd result endAt string.Position
+readEnd ownedBy none
+readEnd cleanedBy none
+readEnd borrows none
+readEnd catch none
+readEnd suppresses none
+
+readEndLine is call
+readEndLine in main
+readEndLine invokes string.Position.line
+readEndLine argument record string.Position endAt copy
+readEndLine result endLine Int64
+readEndLine ownedBy none
+readEndLine cleanedBy none
+readEndLine borrows none
+readEndLine catch none
+readEndLine suppresses none
+
+readEndColumn is call
+readEndColumn in main
+readEndColumn invokes string.Position.column
+readEndColumn argument record string.Position endAt copy
+readEndColumn result endColumn Int64
+readEndColumn ownedBy none
+readEndColumn cleanedBy none
+readEndColumn borrows none
+readEndColumn catch none
+readEndColumn suppresses none
+
+newSummary is call
+newSummary in main
+newSummary invokes buffer.new
+newSummary argument region Region store lend
+newSummary result summary buffer.ByteBuffer
+newSummary ownedBy store
+newSummary cleanedBy none
+newSummary borrows none
+newSummary catch none
+newSummary suppresses none
+
+putSourcePath is call
+putSourcePath in main
+putSourcePath invokes buffer.appendString
+putSourcePath argument buffer buffer.ByteBuffer summary lendMutable
+putSourcePath argument text String sourcePath lend
+putSourcePath result none
+putSourcePath ownedBy none
+putSourcePath cleanedBy none
+putSourcePath borrows none
+putSourcePath catch none
+putSourcePath suppresses none
+
+putCountLead is call
+putCountLead in main
+putCountLead invokes buffer.appendString
+putCountLead argument buffer buffer.ByteBuffer summary lendMutable
+putCountLead argument text String countLead lend
+putCountLead result none
+putCountLead ownedBy none
+putCountLead cleanedBy none
+putCountLead borrows none
+putCountLead catch none
+putCountLead suppresses none
+
+putCount is call
+putCount in main
+putCount invokes buffer.appendInt64
+putCount argument buffer buffer.ByteBuffer summary lendMutable
+putCount argument value Int64 tokenCount copy
+putCount result none
+putCount ownedBy none
+putCount cleanedBy none
+putCount borrows none
+putCount catch none
+putCount suppresses none
+
+putTokensWord is call
+putTokensWord in main
+putTokensWord invokes buffer.appendString
+putTokensWord argument buffer buffer.ByteBuffer summary lendMutable
+putTokensWord argument text String tokensWord lend
+putTokensWord result none
+putTokensWord ownedBy none
+putTokensWord cleanedBy none
+putTokensWord borrows none
+putTokensWord catch none
+putTokensWord suppresses none
+
+putEndLine is call
+putEndLine in main
+putEndLine invokes buffer.appendInt64
+putEndLine argument buffer buffer.ByteBuffer summary lendMutable
+putEndLine argument value Int64 endLine copy
+putEndLine result none
+putEndLine ownedBy none
+putEndLine cleanedBy none
+putEndLine borrows none
+putEndLine catch none
+putEndLine suppresses none
+
+putEndColon is call
+putEndColon in main
+putEndColon invokes buffer.appendByte
+putEndColon argument buffer buffer.ByteBuffer summary lendMutable
+putEndColon argument value Byte colon copy
+putEndColon result none
+putEndColon ownedBy none
+putEndColon cleanedBy none
+putEndColon borrows none
+putEndColon catch none
+putEndColon suppresses none
+
+putEndColumn is call
+putEndColumn in main
+putEndColumn invokes buffer.appendInt64
+putEndColumn argument buffer buffer.ByteBuffer summary lendMutable
+putEndColumn argument value Int64 endColumn copy
+putEndColumn result none
+putEndColumn ownedBy none
+putEndColumn cleanedBy none
+putEndColumn borrows none
+putEndColumn catch none
+putEndColumn suppresses none
+
+putWrittenWord is call
+putWrittenWord in main
+putWrittenWord invokes buffer.appendString
+putWrittenWord argument buffer buffer.ByteBuffer summary lendMutable
+putWrittenWord argument text String writtenWord lend
+putWrittenWord result none
+putWrittenWord ownedBy none
+putWrittenWord cleanedBy none
+putWrittenWord borrows none
+putWrittenWord catch none
+putWrittenWord suppresses none
+
+putOutputPath is call
+putOutputPath in main
+putOutputPath invokes buffer.appendString
+putOutputPath argument buffer buffer.ByteBuffer summary lendMutable
+putOutputPath argument text String outputPath lend
+putOutputPath result none
+putOutputPath ownedBy none
+putOutputPath cleanedBy none
+putOutputPath borrows none
+putOutputPath catch none
+putOutputPath suppresses none
+
+finishSummary is call
+finishSummary in main
+finishSummary invokes buffer.toString
+finishSummary argument buffer buffer.ByteBuffer summary lend
+finishSummary argument region Region store lend
+finishSummary result summaryText String
+finishSummary ownedBy store
+finishSummary cleanedBy none
+finishSummary borrows none
+finishSummary catch summaryError string.Utf8Error
+finishSummary suppresses none
+
+printIt is call
+printIt in main
+printIt invokes console.writeLine
+printIt argument text String summaryText lend
+printIt result none
+printIt ownedBy none
+printIt cleanedBy none
+printIt borrows none
+printIt catch printError console.WriteError
+printIt suppresses none
+
+joinReadFailed is call
+joinReadFailed in main
+joinReadFailed invokes string.concat
+joinReadFailed argument left String sourcePath lend
+joinReadFailed argument right String readFailedText lend
+joinReadFailed argument region Region store lend
+joinReadFailed result readFailedMessage String
+joinReadFailed ownedBy store
+joinReadFailed cleanedBy none
+joinReadFailed borrows none
+joinReadFailed catch none
+joinReadFailed suppresses none
+
+writeReadFailed is call
+writeReadFailed rationale "The exit code already says a file failed; a lost message does not change it"
+writeReadFailed in main
+writeReadFailed invokes console.writeError
+writeReadFailed argument text String readFailedMessage lend
+writeReadFailed result none
+writeReadFailed ownedBy none
+writeReadFailed cleanedBy none
+writeReadFailed borrows none
+writeReadFailed catch readFailedError console.WriteError
+writeReadFailed suppresses console.WriteError.failed
+
+joinWriteFailed is call
+joinWriteFailed in main
+joinWriteFailed invokes string.concat
+joinWriteFailed argument left String outputPath lend
+joinWriteFailed argument right String writeFailedText lend
+joinWriteFailed argument region Region store lend
+joinWriteFailed result writeFailedMessage String
+joinWriteFailed ownedBy store
+joinWriteFailed cleanedBy none
+joinWriteFailed borrows none
+joinWriteFailed catch none
+joinWriteFailed suppresses none
+
+writeWriteFailed is call
+writeWriteFailed rationale "The exit code already says a file failed; a lost message does not change it"
+writeWriteFailed in main
+writeWriteFailed invokes console.writeError
+writeWriteFailed argument text String writeFailedMessage lend
+writeWriteFailed result none
+writeWriteFailed ownedBy none
+writeWriteFailed cleanedBy none
+writeWriteFailed borrows none
+writeWriteFailed catch writeFailedError console.WriteError
+writeWriteFailed suppresses console.WriteError.failed
