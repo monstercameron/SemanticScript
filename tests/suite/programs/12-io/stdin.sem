@@ -99,6 +99,7 @@ main at ended match secondError console.ReadError
 main at ended case console.ReadError.endOfInput bind none none goto reportEnd
 main at ended case console.ReadError.tooLong bind none none goto failed
 main at ended case console.ReadError.timedOut bind none none goto failed
+main at ended case console.ReadError.cancelled bind none none goto failed
 main at ended case console.ReadError.failed bind code Int32 goto failed
 main at reportEnd do printEnd
 main at reportEnd return ok okCode

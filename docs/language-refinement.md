@@ -2055,6 +2055,20 @@ Decisions (by delegation):
   other scope is R408. Tools that write a build.sem for code they did not
   write (the REPL, the test harness) derive the `allows` rows from the
   capabilities in it.
+- **D-42** Every error a waiting target raises has a `cancelled` variant
+  (`console.ReadError`, `process.RunError`, `fs.FileError`), and every wait
+  honours its deadline: `readLine` and child processes stop waiting at the
+  deadline or on cancellation, and a file read or write made after its
+  deadline, or by a cancelled task, does not start. A negative duration given
+  to `time.Deadline.after` or `time.sleep` traps instead of counting as zero.
+  `process.runCaptured` output larger than `maxBytes` is
+  `process.RunError.tooLarge`, not a numbered `failed`.
+
+The `warehouse` example (`docs/refined-examples/warehouse`) uses these rules
+together: build.sem `allows`, a scoped file capability, a table loaded into
+a list, operation references, two tasks borrowing one list, cancellation on
+the failure path, a cleanup that traps, exhaustive matches, and a test per
+invariant.
 
 ## Explicitness audit (2026-11-13)
 

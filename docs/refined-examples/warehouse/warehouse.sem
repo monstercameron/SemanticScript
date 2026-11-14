@@ -1,0 +1,417 @@
+# The warehouse example's entry module. It loads an order from a table into a
+# list, prices it two ways at once (two tasks borrow the same list), prints both
+# totals, writes a one-line report file, and reads the report back.
+#
+# Exit codes: 0 done, 2 a line has a negative quantity, 3 the order is empty,
+# 4 the report file could not be written or read, 5 standard output failed.
+
+warehouse is module
+warehouse purpose "Price an order at list price and with a bulk discount, then write and read back a report"
+warehouse path warehouse
+warehouse imports standard.console
+warehouse imports standard.fs
+warehouse imports standard.string
+warehouse imports standard.time
+warehouse imports pricing
+warehouse exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+reportFiles is capability
+reportFiles purpose "Authority to write and read files in the working directory whose names start with warehouse-"
+reportFiles grants write fs.files
+reportFiles grants read fs.files
+reportFiles scope "warehouse-*"
+
+order is table
+order purpose "The order to price, one row per line"
+order of pricing.LineItem
+order row widget 1
+order row gadget 2
+order row gizmo 3
+order cell widget sku 101
+order cell widget quantity 4
+order cell widget unitCents 250
+order cell gadget sku 102
+order cell gadget quantity 2
+order cell gadget unitCents 1200
+order cell gizmo sku 103
+order cell gizmo quantity 10
+order cell gizmo unitCents 35
+
+main is operation
+main purpose "Price the order both ways, print the totals, and write and read back a report"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main effect write fs.files
+main effect read fs.files
+main uses stdoutWriter
+main uses reportFiles
+main memory heap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label fill loopKind forEach
+main label fill within none
+main label fill maxIterations 3
+main label fill over order
+main label addRow loopKind none
+main label addRow within fill
+main label price loopKind none
+main label price within none
+main label joinDiscount loopKind none
+main label joinDiscount within none
+main label stopDiscount loopKind none
+main label stopDiscount within none
+main label printTotals loopKind none
+main label printTotals within none
+main label printSecond loopKind none
+main label printSecond within none
+main label compose loopKind none
+main label compose within none
+main label checkOld loopKind none
+main label checkOld within none
+main label createNew loopKind none
+main label createNew within none
+main label opened loopKind none
+main label opened within none
+main label readBack loopKind none
+main label readBack within none
+main label decode loopKind none
+main label decode within none
+main label showReport loopKind none
+main label showReport within none
+main label finished loopKind none
+main label finished within none
+main label listFailed loopKind none
+main label listFailed within none
+main label discountFailed loopKind none
+main label discountFailed within none
+main label readFailed loopKind none
+main label readFailed within none
+main label badLine loopKind none
+main label badLine within none
+main label noLines loopKind none
+main label noLines within none
+main label fileFailed loopKind none
+main label fileFailed within none
+main label outputFailed loopKind none
+main label outputFailed within none
+main let reportPath immutable String "warehouse-report.txt"
+main let listLabel immutable String "list="
+main let discountLabel immutable String " discounted="
+main let waitMs immutable Int64 5000
+main let readLimit immutable Int64 256
+main let okCode immutable ExitCode 0
+main let badLineCode immutable ExitCode 2
+main let emptyCode immutable ExitCode 3
+main let fileCode immutable ExitCode 4
+main let outputCode immutable ExitCode 5
+main at begin do makeDeadline
+main at begin do makeLines
+main at begin goto fill
+main at fill branch ifNext order bind row pricing.LineItem goto addRow else goto price
+main at addRow do appendRow
+main at addRow goto fill
+main at price start listTask
+main at price start discountTask
+main at price join listTask
+main at price branch ifError listTask goto stopDiscount else goto joinDiscount
+main at joinDiscount join discountTask
+main at joinDiscount branch ifError discountTask goto discountFailed else goto printTotals
+main at stopDiscount cancel discountTask
+main at stopDiscount join discountTask
+main at stopDiscount branch ifError discountTask goto listFailed else goto listFailed
+main at printTotals do printList
+main at printTotals branch ifError printList goto outputFailed else goto printSecond
+main at printSecond do printDiscount
+main at printSecond branch ifError printDiscount goto outputFailed else goto compose
+main at compose do listDigits
+main at compose do discountDigits
+main at compose do joinListLabel
+main at compose do joinDiscountLabel
+main at compose do joinDiscountDigits
+main at compose do lineBytes
+main at compose do removeOld
+main at compose branch ifError removeOld goto checkOld else goto createNew
+main at checkOld match removeError fs.FileError
+main at checkOld case fs.FileError.notFound bind none none goto createNew
+main at checkOld case fs.FileError.denied bind none none goto fileFailed
+main at checkOld case fs.FileError.exists bind none none goto fileFailed
+main at checkOld case fs.FileError.tooLarge bind none none goto fileFailed
+main at checkOld case fs.FileError.timedOut bind none none goto fileFailed
+main at checkOld case fs.FileError.cancelled bind none none goto fileFailed
+main at checkOld case fs.FileError.failed bind removeCode Int32 goto fileFailed
+main at createNew do openReport
+main at createNew branch ifError openReport goto fileFailed else goto opened
+main at opened defer closeReportCleanup
+main at opened start writeReport
+main at opened join writeReport
+main at opened branch ifError writeReport goto fileFailed else goto readBack
+main at readBack start readReport
+main at readBack join readReport
+main at readBack branch ifError readReport goto readFailed else goto decode
+main at decode do decodeReport
+main at decode branch ifError decodeReport goto fileFailed else goto showReport
+main at showReport do printReport
+main at showReport branch ifError printReport goto outputFailed else goto finished
+main at finished return ok okCode
+main at listFailed match listError pricing.PricingError
+main at listFailed case pricing.PricingError.negativeQuantity bind listSku Int64 goto badLine
+main at listFailed case pricing.PricingError.emptyOrder bind none none goto noLines
+main at discountFailed match discountError pricing.PricingError
+main at discountFailed case pricing.PricingError.negativeQuantity bind discountSku Int64 goto badLine
+main at discountFailed case pricing.PricingError.emptyOrder bind none none goto noLines
+main at readFailed match readError fs.FileError
+main at readFailed case fs.FileError.notFound bind none none goto fileFailed
+main at readFailed case fs.FileError.denied bind none none goto fileFailed
+main at readFailed case fs.FileError.exists bind none none goto fileFailed
+main at readFailed case fs.FileError.tooLarge bind none none goto fileFailed
+main at readFailed case fs.FileError.timedOut bind none none goto fileFailed
+main at readFailed case fs.FileError.cancelled bind none none goto fileFailed
+main at readFailed case fs.FileError.failed bind osCode Int32 goto fileFailed
+main at badLine return ok badLineCode
+main at noLines return ok emptyCode
+main at fileFailed return ok fileCode
+main at outputFailed return ok outputCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+makeLines is call
+makeLines in main
+makeLines invokes pricing.Lines.new
+makeLines arg region Region store lend
+makeLines out lines pricing.Lines
+makeLines ownedBy store
+makeLines cleanedBy none
+makeLines borrows none
+makeLines catch none
+
+appendRow is call
+appendRow in main
+appendRow invokes pricing.Lines.append
+appendRow arg list pricing.Lines lines lendMutable
+appendRow arg item pricing.LineItem row copy
+appendRow out none
+appendRow ownedBy none
+appendRow cleanedBy none
+appendRow borrows none
+appendRow catch none
+
+# Both tasks borrow `lines` from start to join; neither may change it, and main
+# may not change it while either runs.
+
+listTask is task
+listTask in main
+listTask invokes pricing.listTotal
+listTask arg lines pricing.Lines lines lend
+listTask out listCents Int64
+listTask ownedBy none
+listTask cleanedBy none
+listTask borrows none
+listTask catch listError pricing.PricingError
+
+discountTask is task
+discountTask rationale "Once the list total has failed, the discount total is cancelled and its outcome no longer matters"
+discountTask in main
+discountTask invokes pricing.discountTotal
+discountTask arg lines pricing.Lines lines lend
+discountTask out discountCents Int64
+discountTask ownedBy none
+discountTask cleanedBy none
+discountTask borrows none
+discountTask catch discountError pricing.PricingError
+
+printList is call
+printList in main
+printList invokes console.writeIntegerLine
+printList arg value Int64 listCents copy
+printList out none
+printList ownedBy none
+printList cleanedBy none
+printList borrows none
+printList catch printListError console.WriteError
+
+printDiscount is call
+printDiscount in main
+printDiscount invokes console.writeIntegerLine
+printDiscount arg value Int64 discountCents copy
+printDiscount out none
+printDiscount ownedBy none
+printDiscount cleanedBy none
+printDiscount borrows none
+printDiscount catch printDiscountError console.WriteError
+
+listDigits is call
+listDigits in main
+listDigits invokes string.fromInt64
+listDigits arg value Int64 listCents copy
+listDigits arg region Region store lend
+listDigits out listText String
+listDigits ownedBy store
+listDigits cleanedBy none
+listDigits borrows none
+listDigits catch none
+
+discountDigits is call
+discountDigits in main
+discountDigits invokes string.fromInt64
+discountDigits arg value Int64 discountCents copy
+discountDigits arg region Region store lend
+discountDigits out discountText String
+discountDigits ownedBy store
+discountDigits cleanedBy none
+discountDigits borrows none
+discountDigits catch none
+
+joinListLabel is call
+joinListLabel in main
+joinListLabel invokes string.concat
+joinListLabel arg left String listLabel lend
+joinListLabel arg right String listText lend
+joinListLabel arg region Region store lend
+joinListLabel out listPart String
+joinListLabel ownedBy store
+joinListLabel cleanedBy none
+joinListLabel borrows none
+joinListLabel catch none
+
+joinDiscountLabel is call
+joinDiscountLabel in main
+joinDiscountLabel invokes string.concat
+joinDiscountLabel arg left String listPart lend
+joinDiscountLabel arg right String discountLabel lend
+joinDiscountLabel arg region Region store lend
+joinDiscountLabel out labelledPart String
+joinDiscountLabel ownedBy store
+joinDiscountLabel cleanedBy none
+joinDiscountLabel borrows none
+joinDiscountLabel catch none
+
+joinDiscountDigits is call
+joinDiscountDigits in main
+joinDiscountDigits invokes string.concat
+joinDiscountDigits arg left String labelledPart lend
+joinDiscountDigits arg right String discountText lend
+joinDiscountDigits arg region Region store lend
+joinDiscountDigits out reportLine String
+joinDiscountDigits ownedBy store
+joinDiscountDigits cleanedBy none
+joinDiscountDigits borrows none
+joinDiscountDigits catch none
+
+lineBytes is call
+lineBytes in main
+lineBytes invokes string.toBytes
+lineBytes arg text String reportLine lend
+lineBytes out reportBytes Bytes
+lineBytes ownedBy none
+lineBytes cleanedBy none
+lineBytes borrows reportLine
+lineBytes catch none
+
+removeOld is call
+removeOld in main
+removeOld invokes fs.remove
+removeOld arg path String reportPath lend
+removeOld out none
+removeOld ownedBy none
+removeOld cleanedBy none
+removeOld borrows none
+removeOld catch removeError fs.FileError
+
+openReport is call
+openReport in main
+openReport invokes fs.create
+openReport arg path String reportPath lend
+openReport out report fs.FileHandle
+openReport ownedBy main
+openReport cleanedBy closeReportCleanup
+openReport borrows none
+openReport catch openError fs.FileError
+
+closeReportCleanup is cleanup
+closeReportCleanup in main
+closeReportCleanup call closeReport
+closeReportCleanup cleans report
+closeReportCleanup onFailure trap
+closeReportCleanup because "A report that cannot be closed may not be fully written, so the program stops"
+
+closeReport is call
+closeReport in main
+closeReport invokes fs.close
+closeReport arg file fs.FileHandle report give
+closeReport out none
+closeReport ownedBy none
+closeReport cleanedBy none
+closeReport borrows none
+closeReport catch closeError fs.FileError
+
+writeReport is task
+writeReport in main
+writeReport invokes fs.write
+writeReport arg file fs.FileHandle report lend
+writeReport arg bytes Bytes reportBytes lend
+writeReport arg deadline time.Deadline deadline copy
+writeReport out none
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch writeError fs.FileError
+
+readReport is task
+readReport in main
+readReport invokes fs.readAll
+readReport arg path String reportPath lend
+readReport arg region Region store lend
+readReport arg maxBytes Int64 readLimit copy
+readReport arg deadline time.Deadline deadline copy
+readReport out readBytes Bytes
+readReport ownedBy store
+readReport cleanedBy none
+readReport borrows none
+readReport catch readError fs.FileError
+
+decodeReport is call
+decodeReport in main
+decodeReport invokes string.fromBytes
+decodeReport arg bytes Bytes readBytes lend
+decodeReport arg region Region store lend
+decodeReport out readText String
+decodeReport ownedBy store
+decodeReport cleanedBy none
+decodeReport borrows none
+decodeReport catch decodeError string.Utf8Error
+
+printReport is call
+printReport in main
+printReport invokes console.writeLine
+printReport arg text String readText lend
+printReport out none
+printReport ownedBy none
+printReport cleanedBy none
+printReport borrows none
+printReport catch printReportError console.WriteError

@@ -154,7 +154,7 @@ LIBRARY: dict[str, dict] = {
         "types": {
             "WriteError": _err("console.WriteError", ("failed", "Int32")),
             "ReadError": _err("console.ReadError", ("endOfInput", None), ("tooLong", None), ("timedOut", None),
-                              ("failed", "Int32")),
+                              ("cancelled", None), ("failed", "Int32")),
         },
         "targets": {
             "writeLine": Sig((P("text", "String", "borrowed"),), raises="console.WriteError", effects=_W),
@@ -287,7 +287,8 @@ LIBRARY: dict[str, dict] = {
     "process": {
         "types": {
             "ArgumentError": _err("process.ArgumentError", ("outOfRange", "Int64")),
-            "RunError": _err("process.RunError", ("notFound", None), ("timedOut", None), ("failed", "Int32")),
+            "RunError": _err("process.RunError", ("notFound", None), ("timedOut", None), ("cancelled", None),
+                             ("tooLarge", None), ("failed", "Int32")),
             "Arguments": TypeInfo("process.Arguments", "opaque", False),
             "Output": TypeInfo("process.Output", "record", False,
                                fields=[("status", "ExitCode"), ("stdout", "Bytes"), ("stderr", "Bytes")]),
@@ -312,7 +313,7 @@ LIBRARY: dict[str, dict] = {
         "types": {
             "FileHandle": TypeInfo("fs.FileHandle", "resource", False),
             "FileError": _err("fs.FileError", ("notFound", None), ("denied", None), ("exists", None),
-                              ("tooLarge", None), ("timedOut", None), ("failed", "Int32")),
+                              ("tooLarge", None), ("timedOut", None), ("cancelled", None), ("failed", "Int32")),
             "DirectoryListing": TypeInfo("fs.DirectoryListing", "opaque", False),
             "EntryIndexError": _err("fs.EntryIndexError", ("outOfRange", "Int64")),
         },

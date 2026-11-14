@@ -144,6 +144,8 @@ main at ran branch ifError runMissing goto missing else goto failed
 main at missing match missingError process.RunError
 main at missing case process.RunError.notFound bind none none goto reportMissing
 main at missing case process.RunError.timedOut bind none none goto failed
+main at missing case process.RunError.cancelled bind none none goto failed
+main at missing case process.RunError.tooLarge bind none none goto failed
 main at missing case process.RunError.failed bind code Int32 goto failed
 main at reportMissing do printNotFound
 main at reportMissing return ok okCode

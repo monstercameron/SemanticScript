@@ -24,6 +24,8 @@ import ctypes
 import os
 import socket
 import subprocess
+import sys
+import threading
 import time
 from collections import deque
 from typing import Callable
@@ -116,15 +118,64 @@ def _never(_p):
     return ok(NEVER)
 
 
+def _duration(ms: int, what: str) -> int:
+    """A duration is zero or more milliseconds; a negative one is a mistake, not `zero`."""
+    if ms < 0:
+        rt._trap_now(f"{what} was given {ms} milliseconds; a duration is zero or more")
+    return ms
+
+
 @target("time.Deadline.after")
 def _after(p):
-    return ok(now_ms() + max(0, p[0][0]))
+    return ok(now_ms() + _duration(p[0][0], "`time.Deadline.after`"))
 
 
 @target("time.sleep")
 def _sleep(p):
-    tasks.sleep(max(0, p[0][0]) / 1000.0)
+    tasks.sleep(_duration(p[0][0], "`time.sleep`") / 1000.0)
     return ok()
+
+
+def _wait_external(ready, deadline: int, what: str, error: str) -> None:
+    """Wait for something outside the program (input, a child process, a lock) until `deadline`. Such a wait is
+    never a deadlock, so it is always given a time limit; a cancelled task's wait fails with `cancelled`."""
+    left = seconds_left(deadline)
+    limit = time.monotonic() + (left if left is not None else 10 ** 9)
+    outcome = tasks.wait_until(ready, limit, what)
+    if outcome == "cancelled":
+        fail(error, "cancelled")
+    if outcome == "timedOut":
+        fail(error, "timedOut")
+
+
+class _StdinLines:
+    """Standard input is read by one thread, a line at a time, so a `readLine` can stop at its deadline or when
+    its task is cancelled; the line stays queued for the next `readLine`."""
+
+    def __init__(self):
+        self.lines: list = []
+        self.done = False
+        self.thread = None
+
+    def start(self):
+        if self.thread is None:
+            self.thread = threading.Thread(target=self._pump, daemon=True)
+            self.thread.start()
+
+    def _pump(self):
+        while True:
+            line = sys.stdin.buffer.readline()
+            with tasks._sched:
+                if line:
+                    self.lines.append(line)
+                else:
+                    self.done = True
+                tasks._sched.notify_all()
+            if not line:
+                return
+
+
+_STDIN = _StdinLines()
 
 
 @target("clock.now")
@@ -141,8 +192,12 @@ def _monotonic(_p):
 
 @target("console.readLine")
 def _read_line(p):
-    region, limit, _deadline = p[0][0], p[1][0], p[2][0]
-    line = rt.read_stdin_line(limit + 2)
+    region, limit, deadline = p[0][0], p[1][0], p[2][0]
+    _STDIN.start()
+    _wait_external(lambda: bool(_STDIN.lines) or _STDIN.done, deadline, "a read of standard input",
+                   "console.ReadError")
+    with tasks._sched:
+        line = _STDIN.lines.pop(0) if _STDIN.lines else None
     if line is None:
         fail("console.ReadError", "endOfInput")
     if line.endswith(b"\n"):
@@ -190,19 +245,42 @@ def _add_argument(p):
     return ok()
 
 
+def _child(argv: list, deadline: int, stdin_bytes=None) -> tuple:
+    """Run a child process to its end, or stop it at the deadline or when this task is cancelled. With
+    `stdin_bytes` the child reads them from a pipe and its output is collected; otherwise it shares ours."""
+    pipes = {} if stdin_bytes is None else {"stdin": subprocess.PIPE, "stdout": subprocess.PIPE,
+                                            "stderr": subprocess.PIPE}
+    try:
+        proc = subprocess.Popen(argv, **pipes)
+    except FileNotFoundError:
+        fail("process.RunError", "notFound")
+    except OSError as exc:
+        fail("process.RunError", "failed", exc.errno or 1)
+    result: dict = {}
+
+    def collect():
+        try:
+            result["out"] = proc.communicate(stdin_bytes)
+        finally:
+            with tasks._sched:
+                result["done"] = True
+                tasks._sched.notify_all()
+
+    threading.Thread(target=collect, daemon=True).start()
+    try:
+        _wait_external(lambda: result.get("done", False), deadline, "a wait for a child process", "process.RunError")
+    except Fail:
+        proc.kill()
+        raise
+    return proc.returncode, result.get("out", (None, None))
+
+
 @target("process.run")
 def _run(p):
     program, arguments, deadline = text(p[0]), get(p[1][0], Arguments), p[2][0]
     rt.flush_output()
-    try:
-        proc = subprocess.run([program, *arguments], timeout=seconds_left(deadline))
-    except FileNotFoundError:
-        fail("process.RunError", "notFound")
-    except subprocess.TimeoutExpired:
-        fail("process.RunError", "timedOut")
-    except OSError as exc:
-        fail("process.RunError", "failed", exc.errno or 1)
-    return ok(proc.returncode)
+    status, _out = _child([program, *arguments], deadline)
+    return ok(status)
 
 
 # ---------------------------------------------------------------- files
@@ -345,9 +423,20 @@ def _remove(p):
     return ok()
 
 
+def _file_wait_check(deadline: int) -> None:
+    """A local file read or write does not block for long, so the deadline and cancellation are checked before
+    it starts: a call made after its deadline, or by a cancelled task, does not touch the file."""
+    if tasks.cancelled():
+        fail("fs.FileError", "cancelled")
+    left = seconds_left(deadline)
+    if left is not None and left <= 0:
+        fail("fs.FileError", "timedOut")
+
+
 @target("fs.readAll")
 def _read_all(p):
     path, region, limit = text(p[0]), p[1][0], p[2][0]
+    _file_wait_check(p[3][0])
     try:
         with open(path, "rb") as fh:
             content = fh.read(limit + 1)
@@ -360,6 +449,7 @@ def _read_all(p):
 
 @target("fs.writeAll")
 def _write_all(p):
+    _file_wait_check(p[2][0])
     try:
         with open(text(p[0]), "wb") as fh:
             fh.write(data(p[1]))
@@ -1053,7 +1143,7 @@ def _lock(p):
         if left is not None and left <= 0:
             fail("fs.FileError", "timedOut")
         if tasks.wait_until(lambda: False, time.monotonic() + 0.05, "a wait for a file lock") == "cancelled":
-            fail("fs.FileError", "timedOut")
+            fail("fs.FileError", "cancelled")
 
 
 @target("fs.unlock")
@@ -1082,18 +1172,10 @@ def _unlock(p):
 def _run_captured(p):
     program, arguments, stdin = text(p[0]), get(p[1][0], Arguments), data(p[2])
     region, limit, deadline = p[3][0], p[4][0], p[5][0]
-    try:
-        proc = subprocess.run([program, *arguments], input=stdin, capture_output=True,
-                              timeout=seconds_left(deadline))
-    except FileNotFoundError:
-        fail("process.RunError", "notFound")
-    except subprocess.TimeoutExpired:
-        fail("process.RunError", "timedOut")
-    except OSError as exc:
-        fail("process.RunError", "failed", exc.errno or 1)
-    if len(proc.stdout) > limit or len(proc.stderr) > limit:
-        fail("process.RunError", "failed", -2)  # documented: output larger than maxBytes
-    return ok(proc.returncode, *put(region, proc.stdout), *put(region, proc.stderr))
+    status, (out, err) = _child([program, *arguments], deadline, stdin_bytes=stdin)
+    if len(out) > limit or len(err) > limit:
+        fail("process.RunError", "tooLarge")
+    return ok(status, *put(region, out), *put(region, err))
 
 
 # ---------------------------------------------------------------- foreign functions

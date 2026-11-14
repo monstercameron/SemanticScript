@@ -175,6 +175,7 @@ main at refused case fs.FileError.denied bind none none goto failed
 main at refused case fs.FileError.exists bind none none goto reportExists
 main at refused case fs.FileError.tooLarge bind none none goto failed
 main at refused case fs.FileError.timedOut bind none none goto failed
+main at refused case fs.FileError.cancelled bind none none goto failed
 main at refused case fs.FileError.failed bind code Int32 goto failed
 main at reportExists do printExists
 main at reportExists do checkThere

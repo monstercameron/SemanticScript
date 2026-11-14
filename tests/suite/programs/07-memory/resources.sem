@@ -223,6 +223,7 @@ main at missing case fs.FileError.denied bind none none goto failed
 main at missing case fs.FileError.exists bind none none goto failed
 main at missing case fs.FileError.tooLarge bind none none goto failed
 main at missing case fs.FileError.timedOut bind none none goto failed
+main at missing case fs.FileError.cancelled bind none none goto failed
 main at missing case fs.FileError.failed bind code Int32 goto failed
 main at reportMissing do showNotFound
 main at reportMissing return ok okCode

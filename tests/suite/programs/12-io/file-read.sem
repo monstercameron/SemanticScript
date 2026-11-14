@@ -121,6 +121,7 @@ main at small case fs.FileError.denied bind none none goto failed
 main at small case fs.FileError.exists bind none none goto failed
 main at small case fs.FileError.tooLarge bind none none goto tooLarge
 main at small case fs.FileError.timedOut bind none none goto failed
+main at small case fs.FileError.cancelled bind none none goto failed
 main at small case fs.FileError.failed bind code Int32 goto failed
 main at tooLarge do printTooLarge
 main at tooLarge return ok okCode
