@@ -297,6 +297,57 @@ failAccepted borrows none
 failAccepted catch none
 failAccepted suppresses none
 
+# A helper the order tests share (D-112): it lives in this file, states
+# `invariant none`, and only tests call it.
+
+appendLine is operation
+appendLine purpose "Append one line, built from its three fields, to a test's order"
+appendLine invariant none
+appendLine typeParameter none
+appendLine input lines Lines borrowedMutable
+appendLine input sku Int64 copied
+appendLine input quantity Int64 copied
+appendLine input unitCents Int64 copied
+appendLine output none
+appendLine outputOwnedBy none
+appendLine raises none
+appendLine effect none
+appendLine uses none
+appendLine memoryHeap false
+appendLine async false
+appendLine maxRecursion none
+appendLine label begin loopKind none
+appendLine label begin within none
+appendLine let none
+appendLine at begin do makeItem
+appendLine at begin do appendItem
+appendLine at begin return ok none
+
+makeItem is call
+makeItem in appendLine
+makeItem invokes LineItem.new
+makeItem argument sku Int64 sku copy
+makeItem argument quantity Int64 quantity copy
+makeItem argument unitCents Int64 unitCents copy
+makeItem result item LineItem
+makeItem ownedBy none
+makeItem cleanedBy none
+makeItem borrows none
+makeItem catch none
+makeItem suppresses none
+
+appendItem is call
+appendItem in appendLine
+appendItem invokes Lines.append
+appendItem argument list Lines lines lendMutable
+appendItem argument item LineItem item copy
+appendItem result none
+appendItem ownedBy none
+appendItem cleanedBy none
+appendItem borrows none
+appendItem catch none
+appendItem suppresses none
+
 orderTotalTest is test
 orderTotalTest purpose "Two lines, 2 at 300 and 1 at 50, total 650 at list price, by either route"
 orderTotalTest verifies orderTotal sumOfLines
@@ -327,10 +378,8 @@ orderTotalTest let sixHundredFifty Int64 650 immutable
 orderTotalTest let rule PriceRule fullPrice immutable
 orderTotalTest let refusedText String "a two-line order was refused" immutable
 orderTotalTest at begin do makeLines
-orderTotalTest at begin do makeFirst
-orderTotalTest at begin do appendFirst
-orderTotalTest at begin do makeSecond
-orderTotalTest at begin do appendSecond
+orderTotalTest at begin do addFirst
+orderTotalTest at begin do addSecond
 orderTotalTest at begin do priceOrder
 orderTotalTest at begin branch ifError priceOrder goto refused else goto priced
 orderTotalTest at priced do expectTotal
@@ -358,55 +407,33 @@ makeLines borrows none
 makeLines catch none
 makeLines suppresses none
 
-makeFirst is call
-makeFirst in orderTotalTest
-makeFirst invokes LineItem.new
-makeFirst argument sku Int64 one copy
-makeFirst argument quantity Int64 two copy
-makeFirst argument unitCents Int64 threeHundred copy
-makeFirst result first LineItem
-makeFirst ownedBy none
-makeFirst cleanedBy none
-makeFirst borrows none
-makeFirst catch none
-makeFirst suppresses none
+addFirst is call
+addFirst in orderTotalTest
+addFirst invokes appendLine
+addFirst argument lines Lines lines lendMutable
+addFirst argument sku Int64 one copy
+addFirst argument quantity Int64 two copy
+addFirst argument unitCents Int64 threeHundred copy
+addFirst result none
+addFirst ownedBy none
+addFirst cleanedBy none
+addFirst borrows none
+addFirst catch none
+addFirst suppresses none
 
-appendFirst is call
-appendFirst in orderTotalTest
-appendFirst invokes Lines.append
-appendFirst argument list Lines lines lendMutable
-appendFirst argument item LineItem first copy
-appendFirst result none
-appendFirst ownedBy none
-appendFirst cleanedBy none
-appendFirst borrows none
-appendFirst catch none
-appendFirst suppresses none
-
-makeSecond is call
-makeSecond in orderTotalTest
-makeSecond invokes LineItem.new
-makeSecond argument sku Int64 two copy
-makeSecond argument quantity Int64 one copy
-makeSecond argument unitCents Int64 fifty copy
-makeSecond result second LineItem
-makeSecond ownedBy none
-makeSecond cleanedBy none
-makeSecond borrows none
-makeSecond catch none
-makeSecond suppresses none
-
-appendSecond is call
-appendSecond in orderTotalTest
-appendSecond invokes Lines.append
-appendSecond argument list Lines lines lendMutable
-appendSecond argument item LineItem second copy
-appendSecond result none
-appendSecond ownedBy none
-appendSecond cleanedBy none
-appendSecond borrows none
-appendSecond catch none
-appendSecond suppresses none
+addSecond is call
+addSecond in orderTotalTest
+addSecond invokes appendLine
+addSecond argument lines Lines lines lendMutable
+addSecond argument sku Int64 two copy
+addSecond argument quantity Int64 one copy
+addSecond argument unitCents Int64 fifty copy
+addSecond result none
+addSecond ownedBy none
+addSecond cleanedBy none
+addSecond borrows none
+addSecond catch none
+addSecond suppresses none
 
 priceOrder is call
 priceOrder in orderTotalTest
@@ -491,8 +518,7 @@ discountOrderTest let thousand Int64 1000 immutable
 discountOrderTest let expected Int64 2700 immutable
 discountOrderTest let refusedText String "a one-line order was refused" immutable
 discountOrderTest at begin do makeLines
-discountOrderTest at begin do makeOnly
-discountOrderTest at begin do appendOnly
+discountOrderTest at begin do addOnly
 discountOrderTest at begin do priceOrder
 discountOrderTest at begin branch ifError priceOrder goto refused else goto priced
 discountOrderTest at priced do expectTotal
@@ -517,30 +543,19 @@ makeLines borrows none
 makeLines catch none
 makeLines suppresses none
 
-makeOnly is call
-makeOnly in discountOrderTest
-makeOnly invokes LineItem.new
-makeOnly argument sku Int64 sku copy
-makeOnly argument quantity Int64 three copy
-makeOnly argument unitCents Int64 thousand copy
-makeOnly result only LineItem
-makeOnly ownedBy none
-makeOnly cleanedBy none
-makeOnly borrows none
-makeOnly catch none
-makeOnly suppresses none
-
-appendOnly is call
-appendOnly in discountOrderTest
-appendOnly invokes Lines.append
-appendOnly argument list Lines lines lendMutable
-appendOnly argument item LineItem only copy
-appendOnly result none
-appendOnly ownedBy none
-appendOnly cleanedBy none
-appendOnly borrows none
-appendOnly catch none
-appendOnly suppresses none
+addOnly is call
+addOnly in discountOrderTest
+addOnly invokes appendLine
+addOnly argument lines Lines lines lendMutable
+addOnly argument sku Int64 sku copy
+addOnly argument quantity Int64 three copy
+addOnly argument unitCents Int64 thousand copy
+addOnly result none
+addOnly ownedBy none
+addOnly cleanedBy none
+addOnly borrows none
+addOnly catch none
+addOnly suppresses none
 
 priceOrder is call
 priceOrder in discountOrderTest

@@ -743,7 +743,7 @@ GUARANTEES = (
               ("R401",), "has no target `removeLast`", base="lists"),
         Check("table-unknown-target", "reject", "asking a table for a target it does not have",
               ((L, "countPairs invokes pairs.length", "countPairs invokes pairs.size"),), ("R401",),
-              "has the targets `rowAt` and `length`", base="lists"),
+              "has the targets `rowAt`, `length`, and `find`", base="lists"),
         Check("constant-wrong-type", "reject", "a constant whose value is not of its type",
               ((L, "seven value 7", 'seven value "seven"'),), ("R403",), "constant `seven`", base="lists"),
         Check("constant-shadowed", "reject", "an operation's let with a constant's name",

@@ -1,9 +1,12 @@
-# The warehouse example's entry module. It loads an order from a table into a
-# list, prices it two ways at once (two tasks borrow the same list), prints both
-# totals, writes a one-line report file, and reads the report back.
+# The warehouse example's entry module. It reads an order from a table, looks
+# each line's price up in a catalog table by its SKU, builds the priced lines
+# into a list, prices it two ways at once (two tasks borrow the same list),
+# prints both totals, writes a one-line report file, and reads the report back.
 #
 # What the checker and runtime guarantee here (docs/safety-guarantees.md):
 # - `order` has 3 rows, so `fill` states `maxIterations 3`; fewer is rejected.
+# - A SKU the catalog does not list is a value the program handles
+#   (`catalog.find` raises `list.NotFound`, exit 7), not a missing price.
 # - Both tasks hold `lines` from `start` to `join`, so nothing may change it
 #   until both are joined, including after a `cancel`.
 # - When the list total fails, the discount task is cancelled and still joined;
@@ -19,10 +22,15 @@
 # - Each dropped failure names exactly the variants it drops (`suppresses`).
 # - build.sem's authority is approved in authority.approved; asking for more
 #   stops the program before it starts (D-53).
+# - The report read back is checked for the discounted total it was written
+#   with (`string.contains`) before it is printed.
+# - The report's path and labels are module constants: immutable, typed, and
+#   set before any operation runs (D-103).
 #
 # Exit codes: 0 done, 2 a line has a negative quantity, 3 the order is empty,
-# 4 the report file could not be written or read, 5 standard output failed,
-# 6 no room left in `store` for the report.
+# 4 the report file could not be written or read back intact, 5 standard
+# output failed, 6 no room left in `store` for the report, 7 the order names a
+# SKU the catalog does not list.
 
 warehouse is module
 warehouse purpose "Price an order at list price and with a bulk discount, then write and read back a report"
@@ -32,6 +40,7 @@ warehouse imports standard.fs
 warehouse imports standard.string
 warehouse imports standard.time
 warehouse imports standard.arena
+warehouse imports standard.list
 warehouse imports pricing
 warehouse exports main
 
@@ -48,21 +57,61 @@ reportFiles purpose "Authority to write and read files in the working directory 
 reportFiles grants write fs.files "warehouse-*"
 reportFiles grants read fs.files "warehouse-*"
 
+reportPath is constant
+reportPath purpose "The report file, inside the scope `reportFiles` grants"
+reportPath type String
+reportPath value "warehouse-report.txt"
+
+listLabel is constant
+listLabel purpose "What the report writes before the list total"
+listLabel type String
+listLabel value "list="
+
+discountLabel is constant
+discountLabel purpose "What the report writes before the discounted total, and what reading it back looks for"
+discountLabel type String
+discountLabel value " discounted="
+
+OrderLine is record
+OrderLine purpose "One line as ordered: which product and how many"
+OrderLine typeParameter none
+OrderLine field sku Int64
+OrderLine field quantity Int64
+
+Product is record
+Product purpose "One product for sale; its SKU is the catalog's key (the first field)"
+Product typeParameter none
+Product field sku Int64
+Product field unitCents Int64
+
+catalog is table
+catalog purpose "Every product for sale and its unit price, looked up by SKU"
+catalog rowType Product
+catalog row widgetProduct 1
+catalog row gadgetProduct 2
+catalog row gizmoProduct 3
+catalog row sprocketProduct 4
+catalog cell widgetProduct sku 101
+catalog cell widgetProduct unitCents 250
+catalog cell gadgetProduct sku 102
+catalog cell gadgetProduct unitCents 1200
+catalog cell gizmoProduct sku 103
+catalog cell gizmoProduct unitCents 35
+catalog cell sprocketProduct sku 104
+catalog cell sprocketProduct unitCents 90
+
 order is table
 order purpose "The order to price, one row per line"
-order rowType pricing.LineItem
+order rowType OrderLine
 order row widget 1
 order row gadget 2
 order row gizmo 3
 order cell widget sku 101
 order cell widget quantity 4
-order cell widget unitCents 250
 order cell gadget sku 102
 order cell gadget quantity 2
-order cell gadget unitCents 1200
 order cell gizmo sku 103
 order cell gizmo quantity 10
-order cell gizmo unitCents 35
 
 main is operation
 main purpose "Price the order both ways, print the totals, and write and read back a report"
@@ -90,6 +139,8 @@ main label fill maxIterations 3
 main label fill over order
 main label addRow loopKind none
 main label addRow within fill
+main label priceRow loopKind none
+main label priceRow within fill
 main label price loopKind none
 main label price within none
 main label joinDiscount loopKind none
@@ -120,6 +171,8 @@ main label readBack loopKind none
 main label readBack within none
 main label decode loopKind none
 main label decode within none
+main label verifyReport loopKind none
+main label verifyReport within none
 main label showReport loopKind none
 main label showReport within none
 main label finished loopKind none
@@ -140,9 +193,8 @@ main label outputFailed loopKind none
 main label outputFailed within none
 main label noRoom loopKind none
 main label noRoom within none
-main let reportPath String "warehouse-report.txt" immutable
-main let listLabel String "list=" immutable
-main let discountLabel String " discounted=" immutable
+main label unknownProduct loopKind none
+main label unknownProduct within none
 main let waitMs Int64 5000 immutable
 main let readLimit Int64 256 immutable
 main let okCode ExitCode 0 immutable
@@ -151,14 +203,21 @@ main let emptyCode ExitCode 3 immutable
 main let fileCode ExitCode 4 immutable
 main let outputCode ExitCode 5 immutable
 main let noRoomCode ExitCode 6 immutable
+main let unknownCode ExitCode 7 immutable
 main let reportRoom Int64 512 immutable
 main let bothText String "the discount total failed too; the list total's failure decides the exit code" immutable
 main at begin do makeDeadline
 main at begin do makeLines
 main at begin goto fill
-main at fill branch ifNext order bind row pricing.LineItem goto addRow else goto price
-main at addRow do appendRow
-main at addRow goto fill
+main at fill branch ifNext order bind row OrderLine goto addRow else goto price
+main at addRow do readSku
+main at addRow do findProduct
+main at addRow branch ifError findProduct goto unknownProduct else goto priceRow
+main at priceRow do readUnit
+main at priceRow do readQuantity
+main at priceRow do makeItem
+main at priceRow do appendRow
+main at priceRow goto fill
 main at price start listTask into none
 main at price start discountTask into none
 main at price join listTask
@@ -206,7 +265,9 @@ main at readBack start readReport into none
 main at readBack join readReport
 main at readBack branch ifError readReport goto readFailed else goto decode
 main at decode do decodeReport
-main at decode branch ifError decodeReport goto fileFailed else goto showReport
+main at decode branch ifError decodeReport goto fileFailed else goto verifyReport
+main at verifyReport do findDiscount
+main at verifyReport branch if holdsDiscount goto showReport else goto fileFailed
 main at showReport do printReport
 main at showReport branch ifError printReport goto outputFailed else goto finished
 main at finished return ok okCode
@@ -230,6 +291,7 @@ main at noLines return ok emptyCode
 main at fileFailed return ok fileCode
 main at outputFailed return ok outputCode
 main at noRoom return ok noRoomCode
+main at unknownProduct return ok unknownCode
 
 store is region
 store in main
@@ -259,11 +321,68 @@ makeLines borrows none
 makeLines catch none
 makeLines suppresses none
 
+readSku is call
+readSku in main
+readSku invokes OrderLine.sku
+readSku argument record OrderLine row copy
+readSku result sku Int64
+readSku ownedBy none
+readSku cleanedBy none
+readSku borrows none
+readSku catch none
+readSku suppresses none
+
+findProduct is call
+findProduct in main
+findProduct invokes catalog.find
+findProduct argument key Int64 sku copy
+findProduct result product Product
+findProduct ownedBy none
+findProduct cleanedBy none
+findProduct borrows none
+findProduct catch missingProduct list.NotFound
+findProduct suppresses none
+
+readUnit is call
+readUnit in main
+readUnit invokes Product.unitCents
+readUnit argument record Product product copy
+readUnit result unitCents Int64
+readUnit ownedBy none
+readUnit cleanedBy none
+readUnit borrows none
+readUnit catch none
+readUnit suppresses none
+
+readQuantity is call
+readQuantity in main
+readQuantity invokes OrderLine.quantity
+readQuantity argument record OrderLine row copy
+readQuantity result quantity Int64
+readQuantity ownedBy none
+readQuantity cleanedBy none
+readQuantity borrows none
+readQuantity catch none
+readQuantity suppresses none
+
+makeItem is call
+makeItem in main
+makeItem invokes pricing.LineItem.new
+makeItem argument sku Int64 sku copy
+makeItem argument quantity Int64 quantity copy
+makeItem argument unitCents Int64 unitCents copy
+makeItem result item pricing.LineItem
+makeItem ownedBy none
+makeItem cleanedBy none
+makeItem borrows none
+makeItem catch none
+makeItem suppresses none
+
 appendRow is call
 appendRow in main
 appendRow invokes pricing.Lines.append
 appendRow argument list pricing.Lines lines lendMutable
-appendRow argument item pricing.LineItem row copy
+appendRow argument item pricing.LineItem item copy
 appendRow result none
 appendRow ownedBy none
 appendRow cleanedBy none
@@ -506,6 +625,18 @@ decodeReport cleanedBy none
 decodeReport borrows none
 decodeReport catch decodeError string.Utf8Error
 decodeReport suppresses none
+
+findDiscount is call
+findDiscount in main
+findDiscount invokes string.contains
+findDiscount argument text String readText lend
+findDiscount argument needle String discountLabel lend
+findDiscount result holdsDiscount Bool
+findDiscount ownedBy none
+findDiscount cleanedBy none
+findDiscount borrows none
+findDiscount catch none
+findDiscount suppresses none
 
 printReport is call
 printReport in main
