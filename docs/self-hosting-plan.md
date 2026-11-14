@@ -9,7 +9,7 @@ and the stages. Progress is recorded in the table at the end.
 1.0 is reached when all of these hold, each checked by a test in `tests/`:
 
 1. **A compiler written in the language.** `docs/refined-examples/stage0`
-   (renamed `selfhost` when it reaches the bar) is SemanticScript source that
+   (the first self-hosting stage; the name stays, D-119) is SemanticScript source that
    reads a project, checks that it is in the self-hosting subset, writes it
    as C, and builds it with the C compiler.
 2. **It compiles itself.** Built once by the Python compiler (`refined build
@@ -34,8 +34,10 @@ Where each stands (2026-11-14):
 | 4 Same behaviour | Yes for what stage0 accepts: every suite program it builds matches `refined run`; it builds 14 of the 52 single-file suite programs (the floor in the test) | `tests/test_selfhost_suite.py` |
 | 5 Honest refusal | Yes: every program it does not build is refused with a located message, exit 1, and no C file | `tests/test_selfhost_suite.py`, `tests/test_stage0.py` (seven refused programs) |
 
-1.0 waits on criterion 4's reach (14 of 52) and on the rename to `selfhost`,
-not on the bootstrap.
+All five hold: **1.0 is reached** (D-119). Criterion 4 is about
+correctness, not reach: everything stage0 accepts behaves as under `refined
+run`, and everything else is refused. Widening what it accepts (14 of the 52
+single-file suite programs today) is the work after 1.0, stage 5 below.
 
 The safety analyses (ownership, loans, regions, task state, exhaustive
 error handling, authority) stay in the reference checker, `refined check`,
@@ -94,4 +96,4 @@ The subset grows only as the compiler's own source needs it.
 | 2 | Lists in regions, `forEach`, tables; string targets; constants of every type | Done but for constants of record and enum types: `list.List` (`new`, `append`, `length`, `get`, `getOrTrap`), tables (`rowAt`, `length`, `forEach`), string, byte, and conversion targets; builds 12 of 52 suite programs |
 | 3 | Host targets through `refined_host` (buffer, map, fs, process, console, time); several modules; tasks | Done: projects of several modules (build.sem, `<module>.<name>`); `map.Map` with String keys and values flattened as the LLVM backend flattens them; `forEach` over a map's keys; scoped targets (`fs.readAll`, `fs.writeAll`, `fs.createDirectory`, `process.run`) given the grant scope text; `operationType` and `invokesReference`; `string.Position`; `list.set` and `<Record>.with`; operations raising standard errors; builds 14 of 52 suite programs |
 | 4 | Its own source: compile every compiler module; then the fixed point | Done: the native stage0 compiles its own project into stage0b, stage0b compiles every sample to byte-identical C and executables that behave the same and refuses the same programs, and stage0b compiles stage0 again to byte-identical C (tests/test_bootstrap.py) |
-| 5 | The rest of the suite: widen the subset program by program (integer types, `set.Set`, more library targets, dependency order among modules), then rename stage0 to `selfhost` | Next |
+| 5 | The rest of the suite: widen the subset program by program (integer types, `set.Set`, more library targets, dependency order among modules); after 1.0 | Next |

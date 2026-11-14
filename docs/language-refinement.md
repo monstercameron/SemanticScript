@@ -2315,6 +2315,18 @@ a program:
   `process.run`) passes the scope text the LLVM backend passes (D-38):
   `<verb> <resource>`, then the scope of each grant of it in the
   capabilities the calling operation uses.
+- **D-119** 1.0. The bar in `docs/self-hosting-plan.md` holds: stage0, a
+  compiler written in the language, compiles its own six modules; the
+  compiler it builds compiles them again to byte-identical C (the fixed
+  point); everything it builds behaves as under `refined run`, and
+  everything outside its subset is refused with a located message. An
+  independent audit reproduced each claim by hand. The bar measures
+  correctness, not reach, so 1.0 does not wait for stage0 to accept the
+  whole suite (14 of 52 programs today); widening it is the next stage.
+  The name `stage0` stays: it is the first stage of the bootstrap, and a
+  rename would touch every generated file for no change in meaning. The
+  safety analyses stay in `refined check`, which every program passes
+  first; porting the checker into the language comes after 1.0.
 
 ## Data structures for self-hosting (2026-11-14)
 
@@ -2805,6 +2817,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-100 to D-106 | Sound positions, trapping twins, stacks, module constants, table access, replace for nested values, linear checking |
 | 2026-11-14 | D-107 to D-109 | Collections keep what they store alive; adversarial review: results, errors, generics, `set`, and resource fields stay in their regions; approval, test runner, cache, and file identity read the program as the compiler does |
 | 2026-11-14 | D-110 to D-113 | From writing stage0: `string.contains`, `<table>.find`, helpers in test files; error propagation stays explicit |
+| 2026-11-14 | D-119 | 1.0: the language compiles its own compiler to a fixed point |
 | 2026-11-14 | D-114 to D-118 | stage0 compiles itself: projects of several modules, `string.Position` as a declared record, maps through the host, standard errors passed on, operation references and scoped host targets in C (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |

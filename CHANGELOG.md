@@ -1,10 +1,23 @@
 # Changelog
 
 All notable changes to SemanticScript are recorded here. The format is loosely
-based on [Keep a Changelog](https://keepachangelog.com/). No versioned releases
-have been cut yet.
+based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## 1.0.0 (2026-11-14)
+
+### The language compiles its own compiler
+
+- `docs/refined-examples/stage0` is a compiler written in SemanticScript: it
+  reads a project, checks it is in its subset, writes C that links the
+  native runtime, and builds it. Built once by the Python compiler, it
+  compiles its own six modules (171 operations); the compiler that produces
+  compiles them again to byte-identical C (`tests/test_bootstrap.py`).
+- Everything it builds behaves as under `refined run`, and everything outside
+  its subset is refused with a located message (`tests/test_stage0.py`,
+  `tests/test_selfhost_suite.py`). An independent audit reproduced each
+  claim. The bar and its evidence are in `docs/self-hosting-plan.md` (D-119).
+- The safety analyses stay in `refined check`, which every program passes
+  first.
 
 ### The refined compiler replaces the earlier toolchain
 
