@@ -3,5 +3,5 @@
 -r requirements-mcp.txt
 
 ruff>=0.17.4
-mypy>=1.10
+mypy>=2.4.1
 pre-commit>=4.7.0
