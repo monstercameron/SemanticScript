@@ -65,7 +65,7 @@ The subset grows only as the compiler's own source needs it.
 
 | Stage | Accepts | State |
 | --- | --- | --- |
-| 0 | One module, `main` only; `Int64`, `String`, `Bool`, `ExitCode`; 22 targets; every step and loop kind but `forEach` | Done; builds natively and emits byte-identical C (tests/test_stage0.py) |
+| 0 | One module, `main` only; `Int64`, `String`, `Bool`, `ExitCode`; 22 targets; every step and loop kind but `forEach` | Done; builds natively and emits byte-identical C (tests/test_stage0.py); builds 3 of 52 suite programs (tests/test_selfhost_suite.py) |
 | 1 | Several operations with inputs and outputs, calls between them, recursion; records; enums with payloads and `match`; `raises` | In progress |
 | 2 | Lists in regions, `forEach`, tables; string targets; constants of every type | Planned |
 | 3 | Host targets through `refined_host` (buffer, map, fs, process, console, time); several modules; tasks | Planned |
