@@ -1,0 +1,89 @@
+# effect_declared_where_used — (repurposed from effect_unused_declaration). Shows
+# the effect discipline positively: a PURE helper op declares NO effect (it only
+# does arithmetic, README §8 "pure ops omit effects"), while main declares the
+# write effect it actually uses. Both compile clean and the result is real.
+#
+# Correctness observation: pure scale(6) = 6*9 = 54, printed by the io op.
+# Expected output: 54
+
+EffectDeclaredWhereUsed is project
+EffectDeclaredWhereUsed module examplesEffectDeclaredWhereUsed
+EffectDeclaredWhereUsed target console
+EffectDeclaredWhereUsed entry main
+
+examplesEffectDeclaredWhereUsed is module
+examplesEffectDeclaredWhereUsed path examples.effectDeclaredWhereUsed
+examplesEffectDeclaredWhereUsed exports main
+examplesEffectDeclaredWhereUsed purpose "Declare effects only where they are used"
+examplesEffectDeclaredWhereUsed invariant "The pure helper carries no effect row"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+scale is operation
+scale in n Int64
+scale out Int64
+scale memory heap no
+scale async no
+scale purpose "Return n * 9 (pure: no effects)"
+scale invariant "Performs no effects; pure arithmetic"
+scale let nine immutable Int64 9
+scale do mulCall
+scale return scaled
+
+mulCall is call
+mulCall in scale
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 nine
+mulCall out scaled Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Call the pure scale op and print its result under a write effect"
+main invariant "Writes exactly one integer line: 54"
+main let six immutable Int64 6
+main let harnessName immutable String "effect_declared_where_used"
+main let harnessExpected immutable Int64 54
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "effect_declared_where_used: real result (not the no-op 0)"
+main do computeCall
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+computeCall is call
+computeCall in main
+computeCall invokes scale
+computeCall arg n Int64 six
+computeCall out total Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,0 +1,223 @@
+# collections_map — the map half of the collections runtime (R-061): a
+# String->Int64 map with create / put / get / size / release lowered to real
+# heap memory. Each entry is a [keyPtr, value] pair in a growable, stable-handle
+# buffer; lookup is a deterministic insertion-order strcmp scan. This exercises:
+#   * put + get round-trip on string keys;
+#   * replace: putting an existing key updates the value and does NOT grow size;
+#   * keying: distinct keys map to distinct values (not a constant);
+#   * missing-key safety: get of an absent key is a recoverable MapError (the
+#     `err` path), never garbage treated as a hit.
+# Expected output: 6 PASS lines then  ---- 6 passed, 0 failed ----
+
+CollectionsMap is project
+CollectionsMap module examplesCollectionsMap
+CollectionsMap target console
+CollectionsMap entry main
+
+examplesCollectionsMap is module
+examplesCollectionsMap path examples.collectionsMap
+examplesCollectionsMap exports main
+examplesCollectionsMap purpose "Build a String->Int64 map and assert its runtime behavior"
+examplesCollectionsMap invariant "Put/get, replace, keying, and missing-key safety all hold"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+MapHandle is alias
+MapHandle for OpaquePointer
+MapHandle purpose "An opaque String->Int64 map handle"
+
+MapError is error
+MapError purpose "A missing-key or allocation map failure"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Put three keys, replace one, read them back, and probe a missing key"
+main invariant "All six assertions hold"
+main let kAlpha immutable String "alpha"
+main let kBeta immutable String "beta"
+main let kGamma immutable String "gamma"
+main let kMissing immutable String "delta"
+main let n1 immutable Int64 1
+main let n2 immutable Int64 2
+main let n3 immutable Int64 3
+main let n20 immutable Int64 20
+main let three immutable Int64 3
+main let oneMark immutable Int64 1
+main let missFlag mutable Int64 0
+main let tnSize immutable String "size is 3 after three puts"
+main let tnGet immutable String "get(beta) returns its put value 2"
+main let tnReplace immutable String "putting an existing key updates it to 20"
+main let tnSizeStable immutable String "size stays 3 after replacing an existing key"
+main let tnDistinct immutable String "distinct keys map to distinct values (real keying)"
+main let tnMissing immutable String "a missing-key get is caught as a MapError, not garbage"
+main do mk
+main do putAlpha
+main do putBeta
+main do putGamma
+main do sizeCall
+main do getBeta
+main do getAlpha
+main do getGamma
+main do replaceBeta
+main do getBeta2
+main do sizeCall2
+main do getMissing
+main branch ifError getMissing goto missCaught
+main goto afterMiss
+main at missCaught set missFlag oneMark
+main at afterMiss do checkSize
+main do checkGet
+main do checkReplace
+main do checkSizeStable
+main do checkDistinct
+main do checkMissing
+main do rel
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes map.create
+mk out theMap MapHandle
+
+putAlpha is call
+putAlpha in main
+putAlpha invokes map.put
+putAlpha arg map MapHandle theMap
+putAlpha arg key String kAlpha
+putAlpha arg value Int64 n1
+putAlpha discards "put status ignored in collection example"
+
+putBeta is call
+putBeta in main
+putBeta invokes map.put
+putBeta arg map MapHandle theMap
+putBeta arg key String kBeta
+putBeta arg value Int64 n2
+putBeta discards "put status ignored in collection example"
+
+putGamma is call
+putGamma in main
+putGamma invokes map.put
+putGamma arg map MapHandle theMap
+putGamma arg key String kGamma
+putGamma arg value Int64 n3
+putGamma discards "put status ignored in collection example"
+
+sizeCall is call
+sizeCall in main
+sizeCall invokes map.size
+sizeCall arg map MapHandle theMap
+sizeCall out mapSize Int64
+
+getBeta is call
+getBeta in main
+getBeta invokes map.get
+getBeta arg map MapHandle theMap
+getBeta arg key String kBeta
+getBeta out betaVal Int64
+
+getAlpha is call
+getAlpha in main
+getAlpha invokes map.get
+getAlpha arg map MapHandle theMap
+getAlpha arg key String kAlpha
+getAlpha out alphaVal Int64
+
+getGamma is call
+getGamma in main
+getGamma invokes map.get
+getGamma arg map MapHandle theMap
+getGamma arg key String kGamma
+getGamma out gammaVal Int64
+
+replaceBeta is call
+replaceBeta in main
+replaceBeta invokes map.put
+replaceBeta arg map MapHandle theMap
+replaceBeta arg key String kBeta
+replaceBeta arg value Int64 n20
+replaceBeta discards "put status ignored in collection example"
+
+getBeta2 is call
+getBeta2 in main
+getBeta2 invokes map.get
+getBeta2 arg map MapHandle theMap
+getBeta2 arg key String kBeta
+getBeta2 out betaVal2 Int64
+
+sizeCall2 is call
+sizeCall2 in main
+sizeCall2 invokes map.size
+sizeCall2 arg map MapHandle theMap
+sizeCall2 out mapSize2 Int64
+
+getMissing is call
+getMissing in main
+getMissing invokes map.get
+getMissing arg map MapHandle theMap
+getMissing arg key String kMissing
+getMissing discards "status intentionally unused in this demonstration"
+getMissing catch missErr MapError
+
+checkSize is call
+checkSize in main
+checkSize invokes test.assertEqualInt64
+checkSize arg name String tnSize
+checkSize arg expected Int64 three
+checkSize arg actual Int64 mapSize
+
+checkGet is call
+checkGet in main
+checkGet invokes test.assertEqualInt64
+checkGet arg name String tnGet
+checkGet arg expected Int64 n2
+checkGet arg actual Int64 betaVal
+
+checkReplace is call
+checkReplace in main
+checkReplace invokes test.assertEqualInt64
+checkReplace arg name String tnReplace
+checkReplace arg expected Int64 n20
+checkReplace arg actual Int64 betaVal2
+
+checkSizeStable is call
+checkSizeStable in main
+checkSizeStable invokes test.assertEqualInt64
+checkSizeStable arg name String tnSizeStable
+checkSizeStable arg expected Int64 three
+checkSizeStable arg actual Int64 mapSize2
+
+checkDistinct is call
+checkDistinct in main
+checkDistinct invokes test.assertNotEqualInt64
+checkDistinct arg name String tnDistinct
+checkDistinct arg expected Int64 alphaVal
+checkDistinct arg actual Int64 gammaVal
+
+checkMissing is call
+checkMissing in main
+checkMissing invokes test.assertEqualInt64
+checkMissing arg name String tnMissing
+checkMissing arg expected Int64 oneMark
+checkMissing arg actual Int64 missFlag
+
+rel is call
+rel in main
+rel invokes map.release
+rel arg map MapHandle theMap
+rel discards "release status ignored during cleanup"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

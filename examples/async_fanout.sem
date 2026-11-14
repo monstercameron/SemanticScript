@@ -1,0 +1,158 @@
+# async_fanout — concurrent fan-out / join on the libuv loop (R-040). Three
+# futures with different delays (30, 10, 20 ms) are ALL armed on the event loop
+# before any is awaited, so they are genuinely in flight concurrently; the loop
+# interleaves their timers as it is driven. Awaiting all three and summing their
+# values proves they each ran to completion — the task-group pattern expressed
+# directly on the standard.async runtime (a `taskGroup` primitive would be sugar
+# over exactly this). The ops are inlined; their typed home is std/standard.async.sem.
+#   * concurrent join: 10 + 20 + 30 awaited back == 60;
+#   * the longest-delay future still resolves (30ms one returns 30);
+#   * the joined sum is real, not a constant.
+# Expected output: 3 PASS lines then  ---- 3 passed, 0 failed ----
+
+AsyncFanout is project
+AsyncFanout module examplesAsyncFanout
+AsyncFanout target console
+AsyncFanout entry main
+
+examplesAsyncFanout is module
+examplesAsyncFanout path examples.asyncFanout
+examplesAsyncFanout exports main
+examplesAsyncFanout purpose "Arm three async futures concurrently, then await and join them"
+examplesAsyncFanout invariant "All three are in flight before any await; the loop drives them to completion"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+AsyncFuture is alias
+AsyncFuture for OpaquePointer
+AsyncFuture purpose "An opaque future handle armed on the libuv loop"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+asyncDelay is operation
+asyncDelay in delayMs Int64
+asyncDelay in value Int64
+asyncDelay out AsyncFuture
+asyncDelay async yes
+asyncDelay body runtimeBinding ss_async_delay_start
+
+asyncAwait is operation
+asyncAwait in future AsyncFuture
+asyncAwait out Int64
+asyncAwait async yes
+asyncAwait body runtimeBinding ss_async_await
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Fan out three delayed futures, await them all, and assert the join"
+main invariant "All three assertions hold"
+main let delayA immutable Int64 30
+main let delayB immutable Int64 10
+main let delayC immutable Int64 20
+main let valA immutable Int64 30
+main let valB immutable Int64 10
+main let valC immutable Int64 20
+main let expectSum immutable Int64 60
+main let zeroGuard immutable Int64 0
+main let tnSum immutable String "three concurrent futures join to 10 + 20 + 30 == 60"
+main let tnSlow immutable String "the longest-delay (30ms) future still resolves to 30"
+main let tnReal immutable String "the joined sum is real (not the 0 fallback)"
+main do startA
+main do startB
+main do startC
+main do awaitA
+main do awaitB
+main do awaitC
+main do sumAB
+main do sumABC
+main do checkSum
+main do checkSlow
+main do checkReal
+main do harnessReport
+main return harnessSummaryCode
+
+startA is call
+startA in main
+startA invokes asyncDelay
+startA arg delayMs Int64 delayA
+startA arg value Int64 valA
+startA out futA AsyncFuture
+
+startB is call
+startB in main
+startB invokes asyncDelay
+startB arg delayMs Int64 delayB
+startB arg value Int64 valB
+startB out futB AsyncFuture
+
+startC is call
+startC in main
+startC invokes asyncDelay
+startC arg delayMs Int64 delayC
+startC arg value Int64 valC
+startC out futC AsyncFuture
+
+awaitA is call
+awaitA in main
+awaitA invokes asyncAwait
+awaitA arg future AsyncFuture futA
+awaitA out resA Int64
+
+awaitB is call
+awaitB in main
+awaitB invokes asyncAwait
+awaitB arg future AsyncFuture futB
+awaitB out resB Int64
+
+awaitC is call
+awaitC in main
+awaitC invokes asyncAwait
+awaitC arg future AsyncFuture futC
+awaitC out resC Int64
+
+sumAB is call
+sumAB in main
+sumAB invokes math.addInt64
+sumAB arg left Int64 resA
+sumAB arg right Int64 resB
+sumAB out partial Int64
+
+sumABC is call
+sumABC in main
+sumABC invokes math.addInt64
+sumABC arg left Int64 partial
+sumABC arg right Int64 resC
+sumABC out total Int64
+
+checkSum is call
+checkSum in main
+checkSum invokes test.assertEqualInt64
+checkSum arg name String tnSum
+checkSum arg expected Int64 expectSum
+checkSum arg actual Int64 total
+
+checkSlow is call
+checkSlow in main
+checkSlow invokes test.assertEqualInt64
+checkSlow arg name String tnSlow
+checkSlow arg expected Int64 valA
+checkSlow arg actual Int64 resA
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 zeroGuard
+checkReal arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

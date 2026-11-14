@@ -53,6 +53,8 @@ node_modules/
 .vscode-test/
 out/
 dist/
+_pyi_build/
+semanticscript/packaging/_pyi_build/
 coverage/
 **/coverage/
 .nyc_output/
@@ -175,6 +177,14 @@ experiments/*
 !experiments/kilo-port/**
 experiments/kilo-port/build/
 experiments/kilo-port/**/build/
+!experiments/eav-syntax/
+!experiments/eav-syntax/**
+experiments/eav-syntax/**/__pycache__/
+experiments/eav-syntax/**/*.pyc
+experiments/eav-syntax/runtime/_build/
+experiments/eav-syntax/dist/
+experiments/eav-syntax/_pyi_build/
+experiments/eav-syntax/_build/
 !experiments/realtime-auction-arena/
 !experiments/realtime-auction-arena/**
 experiments/realtime-auction-arena/**/__pycache__/
@@ -193,3 +203,16 @@ experiments/realtime-auction-arena/**/.coverage.*
 
 # Parser-fuzzer crash repros (only created on failure)
 SemanticScript/tests/fuzz_failures/
+
+# EAV (now root) build artifacts
+wasm_demo.wasm
+wasm_demo.run.cjs
+dom_demo.wasm
+dom_demo.run.cjs
+_dom_host.cjs
+__pycache__/
+_build/
+.coverage
+
+# Stray runtime artifact when the taskforge-tui app is run from the repo root
+/todos.json

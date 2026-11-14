@@ -1,0 +1,39 @@
+# standard.math.semsig — integer/float arithmetic API catalog (README ss26/ss27).
+
+mathSig is semsig
+mathSig version "1.0"
+mathSig generatedBy "semanticscript 0.1"
+mathSig describes standard.math
+
+addInt64 is intrinsic
+addInt64 target math.addInt64
+addInt64 arg left Int64
+addInt64 arg right Int64
+addInt64 out Int64
+addInt64 async no
+addInt64 purpose "Add two signed 64-bit integers (wraps on overflow)"
+
+subtractInt64 is intrinsic
+subtractInt64 target math.subtractInt64
+subtractInt64 arg left Int64
+subtractInt64 arg right Int64
+subtractInt64 out Int64
+subtractInt64 async no
+subtractInt64 purpose "Subtract two signed 64-bit integers (wraps on overflow)"
+
+divideInt64 is intrinsic
+divideInt64 target math.divideInt64
+divideInt64 arg left Int64
+divideInt64 arg right Int64
+divideInt64 out Int64
+divideInt64 async no
+divideInt64 risk "Traps on divide-by-zero"
+divideInt64 purpose "Divide two signed 64-bit integers (traps on divide-by-zero)"
+
+addFloat64 is intrinsic
+addFloat64 target math.addFloat64
+addFloat64 arg left Float64
+addFloat64 arg right Float64
+addFloat64 out Float64
+addFloat64 async no
+addFloat64 purpose "Add two 64-bit IEEE-754 floats"

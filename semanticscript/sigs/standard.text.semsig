@@ -1,0 +1,66 @@
+# standard.text.semsig - deferred Unicode/text contract (R-058, README ss29 #22).
+textSig is semsig
+textSig version "1.0"
+textSig generatedBy "semanticscript 0.1"
+textSig describes standard.text
+
+TextError is error
+TextError typeTrust trustedInternal
+
+invalidUtf8 is errorCase
+invalidUtf8 of TextError
+
+invalidNormalizationForm is errorCase
+invalidNormalizationForm of TextError
+
+invalidGraphemeBoundary is errorCase
+invalidGraphemeBoundary of TextError
+
+TextNormalizationForm is enum
+TextNormalizationForm variant nfc
+TextNormalizationForm variant nfd
+TextNormalizationForm variant nfkc
+TextNormalizationForm variant nfkd
+
+validateUtf8 is intrinsic
+validateUtf8 target text.validateUtf8
+validateUtf8 arg input String
+validateUtf8 out validated String
+validateUtf8 catch TextError
+validateUtf8 purpose "Validate that a runtime string is UTF-8 text with no embedded NUL; deferred in v0.x"
+
+normalizeUtf8 is intrinsic
+normalizeUtf8 target text.normalizeUtf8
+normalizeUtf8 arg input String
+normalizeUtf8 arg form TextNormalizationForm
+normalizeUtf8 out normalized String
+normalizeUtf8 catch TextError
+normalizeUtf8 purpose "Normalize UTF-8 text to NFC/NFD/NFKC/NFKD; deferred in v0.x"
+
+byteLength is intrinsic
+byteLength target text.byteLength
+byteLength arg input String
+byteLength out length Int64
+byteLength purpose "Return the UTF-8 byte length of a String"
+
+graphemeLength is intrinsic
+graphemeLength target text.graphemeLength
+graphemeLength arg input String
+graphemeLength out length Int64
+graphemeLength catch TextError
+graphemeLength purpose "Return user-visible grapheme-cluster length; deferred in v0.x"
+
+truncateGraphemes is intrinsic
+truncateGraphemes target text.truncateGraphemes
+truncateGraphemes arg input String
+truncateGraphemes arg maxGraphemes Int64
+truncateGraphemes out truncated String
+truncateGraphemes catch TextError
+truncateGraphemes purpose "Truncate without splitting a grapheme cluster or invalidating UTF-8; deferred in v0.x"
+
+caseFold is intrinsic
+caseFold target text.caseFold
+caseFold arg input String
+caseFold out folded String
+caseFold catch TextError
+caseFold purpose "Unicode case folding for comparison; deferred in v0.x"
