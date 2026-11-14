@@ -1,0 +1,9 @@
+name: "SemanticScript CodeQL config"
+
+# Scope analysis to the active compiler/tooling. The deprecated legacy product,
+# vendored third-party C (sqlite/libuv), and scratch experiments are excluded so
+# alerts reflect the code we actually maintain.
+paths-ignore:
+  - legacy
+  - third_party
+  - experiments
