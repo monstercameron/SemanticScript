@@ -1,0 +1,75 @@
+# decimal_exact_money — exact money arithmetic via Decimal (README §27/§30.5,
+# X-093). Money/Decimal is a scaled Int64 (scale 2: the raw value is amount*100),
+# so $10.50 + $5.25 = $15.75 is computed EXACTLY as 1050 + 525 = 1575 with
+# `decimal.add` — no binary-float rounding error. (Float money is rejected by the
+# gate; Decimal is the accepted exact form.)
+#
+# Correctness observation: 1050 + 525 == 1575 ($10.50 + $5.25 = $15.75).
+# Expected output: PASS lines + `---- 2 passed, 0 failed ----`
+
+DecimalExactMoney is project
+DecimalExactMoney module examplesDecimalExactMoney
+DecimalExactMoney target console
+DecimalExactMoney entry main
+
+examplesDecimalExactMoney is module
+examplesDecimalExactMoney path examples.decimalExactMoney
+examplesDecimalExactMoney exports main
+examplesDecimalExactMoney purpose "Add two money amounts exactly with Decimal"
+examplesDecimalExactMoney invariant "Scaled-integer money adds without float error"
+
+ExitCode is alias
+ExitCode for Int32
+
+Decimal is alias
+Decimal for Int64
+Decimal purpose "Fixed-scale money: the raw Int64 is the amount * 100 (scale 2)"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute $10.50 + $5.25 exactly and assert $15.75"
+main invariant "Writes the test harness summary"
+main let priceA immutable Decimal 1050
+main let priceB immutable Decimal 525
+main let harnessName immutable String "decimal_exact_money"
+main let harnessExpected immutable Decimal 1575
+main let noopDecoy immutable Decimal 0
+main let noopName immutable String "decimal_exact_money: real sum (not the no-op 0)"
+main do addPrices
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+addPrices is call
+addPrices in main
+addPrices invokes decimal.add
+addPrices arg left Decimal priceA
+addPrices arg right Decimal priceB
+addPrices out total Decimal
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

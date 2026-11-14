@@ -1,59 +1,204 @@
 name: Release
 
+# Cut a release of the `semanticscript` toolchain + VS Code extension. Push a
+# `v*` tag (matching version.json) or dispatch manually. Builds the PyInstaller
+# binary on each OS via semanticscript/packaging/package.py and packages the
+# VS Code extension VSIX via vscode-semanticscript, smoke-tests the binaries,
+# then publishes a GitHub release with the per-OS binaries, the .vsix, a
+# SHA256SUMS file, and third-party attribution. The release notes carry the MCP
+# bootstrap block and the dependencies needed to reproduce the executables.
+# Modeled on the proven compiler-exe.yml freeze step.
+
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: "Existing release tag to publish, matching version.json (for example v0.0.1)."
-        required: true
-        type: string
-      prerelease:
-        description: "Mark the GitHub release as a prerelease."
-        required: false
-        default: true
-        type: boolean
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Existing release tag to publish, matching version.json (for example v0.0.1)."
-        required: true
-        type: string
-      prerelease:
-        description: "Mark the GitHub release as a prerelease."
-        required: true
-        default: true
-        type: boolean
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (must match version.json, e.g. v0.4.0)."
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Windows release
-    runs-on: windows-latest
-
+  # R-120: resolve and validate the release tag BEFORE any matrix build, against
+  # the source AT THE TAG — not whatever branch a workflow_dispatch was started
+  # on. Both build and publish then check out exactly this tag's commit and verify
+  # their HEAD matches `sha`, so a release can never upload binaries built from a
+  # different ref that merely happens to share the tag's version string.
+  preflight:
+    name: Resolve + verify release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
-      - name: Check out repository
+      # Checking out `ref: <tag>` here also enforces that the tag EXISTS: a bogus
+      # workflow_dispatch tag fails this step before anything is built.
+      - name: Check out the requested tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
-          ref: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.tag || github.ref }}
+
+      - name: Verify the tag matches version.json at the tag
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          # The tag must be a real annotated/lightweight git tag, not just a branch
+          # name that resolves — resolve its commit explicitly.
+          if ! sha="$(git rev-parse -q --verify "refs/tags/${tag}^{commit}")"; then
+            echo "Tag '${tag}' does not exist as a git tag in the repository."
+            exit 1
+          fi
+          version="$(python -c 'import json;print(json.load(open("version.json"))["version"])')"
+          if [ "$tag" != "v$version" ]; then
+            echo "Tag '$tag' does not match version.json version '$version' (expected 'v$version')."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          # 0.x releases publish as prereleases.
+          case "$version" in 0.*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
+          echo "Releasing tag '$tag' (version '$version') at commit $sha."
+
+  build:
+    name: Freeze (${{ matrix.os }})
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: semanticscript-windows-x64.exe
+            exe: semanticscript/packaging/dist/semanticscript.exe
+          - os: ubuntu-latest
+            asset: semanticscript-linux-x64
+            exe: semanticscript/packaging/dist/semanticscript
+          - os: macos-latest
+            asset: semanticscript-macos-arm64
+            exe: semanticscript/packaging/dist/semanticscript
+    steps:
+      # R-120: build from the resolved tag's commit on every OS, not the dispatch
+      # branch, and fail if HEAD is not the SHA preflight validated.
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify the built commit is the resolved tag SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          built="$(git rev-parse HEAD)"
+          if [ "$built" != "${{ needs.preflight.outputs.sha }}" ]; then
+            echo "Checked-out commit $built != resolved tag SHA ${{ needs.preflight.outputs.sha }}."
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            constraints.txt
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller==6.20.0
+
+      - name: Freeze the compiler (PyInstaller via packaging/package.py)
+        run: python semanticscript/packaging/package.py
+
+      - name: Smoke-test the frozen executable (self-contained)
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe="${{ matrix.exe }}"
+          test -f "$exe" || { echo "Expected PyInstaller output at $exe"; exit 1; }
+          # R-110: match/exceed compiler-exe.yml — copy the exe + a program into an
+          # isolated dir with NO repo files, so the test proves the frozen asset is
+          # fully self-contained (it cannot fall back to the checkout's std /
+          # runtime / third_party / version.json).
+          box="${RUNNER_TEMP:-/tmp}/ssbox"
+          rm -rf "$box"; mkdir -p "$box"
+          cp "$exe" "$box/"; cp examples/hello_world.sem "$box/"
+          name="$(basename "$exe")"
+          cd "$box"
+          "./$name" version
+          # Bundled version.json resolves under _MEIPASS -> status carries releaseVersion.
+          "./$name" status --json | python -c "import sys,json; assert json.load(sys.stdin).get('releaseVersion'), 'status missing releaseVersion (version.json not bundled)'"
+          # JIT path: bundled std/runtime + llvmlite run a program end to end.
+          "./$name" run hello_world.sem
+          # MCP stdio server advertises its tools.
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | "./$name" mcp \
+            | python -c "import sys,json; rs=[json.loads(l) for l in sys.stdin if l.strip()]; t=[r for r in rs if r.get('id')==1][0]['result']['tools']; assert len(t)>=1, 'MCP tools/list returned no tools'"
+          # Native link path (bundled runtime C sources + clang), where a C
+          # toolchain is present on the runner; never fails the release if absent.
+          if [ "${RUNNER_OS}" = "Windows" ]; then nexe="hw.exe"; else nexe="hw"; fi
+          if "./$name" build hello_world.sem -o "$nexe" 2>build.log; then
+            "./$nexe"
+            echo "native build smoke: ok"
+          else
+            echo "native build smoke: skipped (no C toolchain on PATH)"; cat build.log || true
+          fi
+
+      - name: Stage the named artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          cp "${{ matrix.exe }}" "staging/${{ matrix.asset }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ matrix.asset }}
+          path: staging/${{ matrix.asset }}
+          if-no-files-found: error
+
+  vsix:
+    name: Package VS Code extension
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      # R-120: build the VSIX from the resolved tag's commit, same as the
+      # binaries, and fail if HEAD is not the SHA preflight validated.
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify the built commit is the resolved tag SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          built="$(git rev-parse HEAD)"
+          if [ "$built" != "${{ needs.preflight.outputs.sha }}" ]; then
+            echo "Checked-out commit $built != resolved tag SHA ${{ needs.preflight.outputs.sha }}."
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -62,494 +207,142 @@ jobs:
           cache: npm
           cache-dependency-path: vscode-semanticscript/package-lock.json
 
-      - name: Install VS Code extension dependencies
-        run: npm --prefix vscode-semanticscript ci
+      - name: Install extension dependencies (incl. @vscode/vsce)
+        working-directory: vscode-semanticscript
+        run: npm ci
 
-      - name: Install Python dependencies
+      - name: Validate extension manifests + entrypoint
+        working-directory: vscode-semanticscript
+        run: npm run check
+
+      - name: Package the VSIX
+        working-directory: vscode-semanticscript
+        # vsce is installed as a devDependency by `npm ci`; --no-install keeps the
+        # pinned local copy and never reaches the network for a different version.
+        run: npx --no-install vsce package --out "semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix"
+
+      - name: Stage the named artifact
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -c constraints.txt
-          python -m pip install -r requirements-mcp.txt
+          set -euo pipefail
+          mkdir -p staging
+          cp "vscode-semanticscript/semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix" \
+             "staging/semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix"
 
-      - name: Run fast Python suite
-        run: python SemanticScript/tests/run_suite.py ci-fast
-
-      - name: Run editor suite
-        run: python SemanticScript/tests/run_suite.py editor
-
-      - name: Run release suite
-        run: python SemanticScript/tests/run_suite.py ci-release
-
-      - name: Install release packaging dependencies
-        run: python -m pip install pyinstaller==6.20.0
-
-      - name: Build sem single-file executable
-        run: python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
-
-      # Optional Authenticode signing via Azure Trusted Signing. Skipped unless
-      # the repository variable AZURE_SIGN_ENABLED is "true" and the matching
-      # secrets/variables are configured, so unsigned releases still build.
-      # Runs before validation/bundling so the signed exe is what ships and is
-      # embedded in the .mcpb bundle.
-      - name: Sign sem.exe (Azure Trusted Signing)
-        if: ${{ vars.AZURE_SIGN_ENABLED == 'true' }}
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ vars.AZURE_SIGN_ENDPOINT }}
-          trusted-signing-account-name: ${{ vars.AZURE_SIGN_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_SIGN_PROFILE }}
-          files-folder: ${{ github.workspace }}\dist
-          files-folder-filter: exe
-
-      - name: Validate sem single-file executable
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $sem = "dist\sem.exe"
-          if (-not (Test-Path -Path $sem -PathType Leaf)) {
-            throw "Expected PyInstaller output at $sem."
-          }
-
-          & $sem version --json
-          if ($LASTEXITCODE -ne 0) { throw "sem version failed with $LASTEXITCODE." }
-
-          & $sem skills list --json
-          if ($LASTEXITCODE -ne 0) { throw "sem skills list failed with $LASTEXITCODE." }
-
-          & $sem skills get taskforge-web-patterns --json | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "sem skills get taskforge-web-patterns failed with $LASTEXITCODE." }
-
-          & $sem check --json SemanticScript\tests\agent_cli_demo.test.sem
-          if ($LASTEXITCODE -ne 0) { throw "sem check failed with $LASTEXITCODE." }
-
-          & $sem fmt --check SemanticScript\tests\agent_cli_demo.test.sem
-          if ($LASTEXITCODE -ne 0) { throw "sem fmt failed with $LASTEXITCODE." }
-
-          & $sem lint SemanticScript\tests\tiny.sem -- --summary
-          if ($LASTEXITCODE -ne 0) { throw "sem lint failed with $LASTEXITCODE." }
-
-          & $sem emit-ir SemanticScript\tests\agent_cli_demo.test.sem --quiet
-          if ($LASTEXITCODE -ne 0) { throw "sem emit-ir failed with $LASTEXITCODE." }
-
-          & $sem run SemanticScript\tests\agent_cli_demo.test.sem
-          if ($LASTEXITCODE -ne 0) { throw "sem run failed with $LASTEXITCODE." }
-
-          # MCP server reads JSON-RPC from stdin; empty stdin yields EOF so it
-          # starts, initializes, and shuts down cleanly. Proves the bundled mcp
-          # SDK loads inside the frozen executable.
-          $null | & $sem mcp
-          if ($LASTEXITCODE -ne 0) { throw "sem mcp failed to start with $LASTEXITCODE." }
-
-          # PowerShell-driven probes can prepend a UTF-8 BOM to the first
-          # stdin frame. The server accepts that on stdio so release smoke
-          # tests and real clients do not diverge.
-          $initializeMessage = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"sem-release-smoke","version":"0"}}}'
-          $mcpOutput = ([char]0xFEFF).ToString() + $initializeMessage | & $sem mcp
-          if ($LASTEXITCODE -ne 0) { throw "sem mcp BOM initialize smoke failed with $LASTEXITCODE." }
-          if (($mcpOutput -join "`n") -match "Invalid JSON") { throw "sem mcp rejected a BOM-prefixed initialize frame." }
-          if (($mcpOutput -join "`n") -notmatch '"result"') { throw "sem mcp BOM initialize smoke did not return an initialize result." }
-
-      - name: Remove stale VSIX artifacts
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path "vscode-semanticscript" -Filter "*.vsix" -File | Remove-Item -Force
-
-      - name: Package VS Code extension
-        run: npm --prefix vscode-semanticscript run package:vsix
-
-      - name: Build .mcpb Desktop Extension bundle
-        run: python packaging/mcpb/build_mcpb.py --sem-exe dist/sem.exe --output dist/semanticscript.mcpb
-
-      - name: Stamp distribution manifests (scoop, winget, registry)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $versionInfo = Get-Content -Raw -Path "version.json" | ConvertFrom-Json
-          python packaging/release_manifests.py `
-            --exe dist/sem.exe `
-            --mcpb dist/semanticscript.mcpb `
-            --tag "v$($versionInfo.version)" `
-            --outdir dist/manifests
-          if ($LASTEXITCODE -ne 0) { throw "manifest stamping failed with $LASTEXITCODE." }
-
-      - name: Generate release manifest
-        id: manifest
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $versionInfo = Get-Content -Raw -Path "version.json" | ConvertFrom-Json
-          $repoVersion = $versionInfo.version
-          if (-not $repoVersion) {
-            throw "version.json does not contain a version field."
-          }
-          $inputPrerelease = "${{ inputs.prerelease }}"
-          if ($inputPrerelease) {
-            $releaseIsPrerelease = [System.Convert]::ToBoolean($inputPrerelease)
-          } else {
-            $releaseIsPrerelease = $repoVersion.StartsWith("0.")
-          }
-
-          if (("${{ github.event_name }}" -eq "workflow_dispatch" -or "${{ github.event_name }}" -eq "workflow_call") -and "${{ github.ref_name }}" -ne "${{ github.event.repository.default_branch }}") {
-            throw "Manual or reusable release dispatch must run from the default branch."
-          }
-
-          if ("${{ github.ref_type }}" -eq "tag") {
-            $releaseTag = "${{ github.ref_name }}"
-          } else {
-            $releaseTag = "${{ inputs.tag }}"
-            if (-not $releaseTag) {
-              throw "Manual release dispatch requires an explicit tag input."
-            }
-          }
-
-          if ($releaseTag -ne "v$repoVersion") {
-            throw "Tag '$releaseTag' does not match version.json version '$repoVersion'. Expected 'v$repoVersion'."
-          }
-
-          $curatedNotesPath = Join-Path "releases" $releaseTag "notes.md"
-          $curatedNotes = ""
-          if (Test-Path -Path $curatedNotesPath -PathType Leaf) {
-            $curatedNotes = (Get-Content -Raw -Path $curatedNotesPath).Trim()
-          }
-          $curatedNotesManifestPath = ""
-          if ($curatedNotes) {
-            $curatedNotesManifestPath = $curatedNotesPath.Replace("\", "/")
-          }
-
-          git fetch --force --tags
-          $releaseCommit = (git rev-list -n 1 $releaseTag).Trim()
-          if (-not $releaseCommit) {
-            throw "Could not resolve release commit for tag '$releaseTag'."
-          }
-          $releaseShortSha = (git rev-parse --short $releaseCommit).Trim()
-          $releaseSubject = (git log -1 --format=%s $releaseCommit).Trim()
-          $releaseBody = (git log -1 --format=%b $releaseCommit).Trim()
-
-          $previousTag = ""
-          $previousTagOutput = git describe --tags --abbrev=0 "$releaseCommit^" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $previousTag = ($previousTagOutput | Select-Object -First 1).Trim()
-          }
-
-          $commitRange = $releaseCommit
-          $commitRangeLabel = $releaseShortSha
-          $commitListTruncated = $false
-          $commitLogArgs = @("log", "--reverse", "--format=%H%x09%h%x09%s")
-          if ($previousTag) {
-            $commitRange = "$previousTag..$releaseCommit"
-            $commitRangeLabel = "$previousTag..$releaseShortSha"
-            $commitLogArgs += $commitRange
-          } else {
-            $commitCount = [int](git rev-list --count $releaseCommit)
-            if ($commitCount -gt 50) {
-              $commitListTruncated = $true
-            }
-            $commitLogArgs += "--max-count=50"
-            $commitLogArgs += $releaseCommit
-          }
-
-          $commitRows = git @commitLogArgs
-          $commits = @()
-          foreach ($row in $commitRows) {
-            if (-not $row) { continue }
-            $parts = $row -split "`t", 3
-            if ($parts.Count -lt 3) { continue }
-            $commits += [ordered]@{
-              sha = $parts[0]
-              shortSha = $parts[1]
-              subject = $parts[2]
-            }
-          }
-
-          $artifactDir = "release-artifacts"
-          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
-
-          $semExecutable = "dist\sem.exe"
-          if (-not (Test-Path -Path $semExecutable -PathType Leaf)) {
-            throw "Expected sem single-file executable at $semExecutable."
-          }
-          $releaseSemExeName = "semanticscript-sem-windows-x64-$releaseTag.exe"
-          $releaseSemExePath = Join-Path $artifactDir $releaseSemExeName
-          Copy-Item -Path $semExecutable -Destination $releaseSemExePath -Force
-
-          $vsixFiles = Get-ChildItem -Path "vscode-semanticscript" -Filter "*.vsix" -File
-          if ($vsixFiles.Count -ne 1) {
-            throw "Expected exactly one VSIX artifact, found $($vsixFiles.Count)."
-          }
-
-          $vsix = $vsixFiles[0]
-          $releaseVsixName = "semanticscript-vscode-$releaseTag.vsix"
-          $releaseVsixPath = Join-Path $artifactDir $releaseVsixName
-          Copy-Item -Path $vsix.FullName -Destination $releaseVsixPath -Force
-
-          $commands = @(
-            "python SemanticScript/tests/run_suite.py ci-fast",
-            "python SemanticScript/tests/run_suite.py editor",
-            "python SemanticScript/tests/run_suite.py ci-release",
-            "python -m pip install pyinstaller==6.20.0",
-            "python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec",
-            "dist/sem.exe version --json",
-            "dist/sem.exe skills list --json",
-            "dist/sem.exe skills get taskforge-web-patterns --json",
-            "dist/sem.exe check --json SemanticScript/tests/agent_cli_demo.test.sem",
-            "dist/sem.exe fmt --check SemanticScript/tests/agent_cli_demo.test.sem",
-            "dist/sem.exe lint SemanticScript/tests/tiny.sem -- --summary",
-            "dist/sem.exe emit-ir SemanticScript/tests/agent_cli_demo.test.sem --quiet",
-            "dist/sem.exe run SemanticScript/tests/agent_cli_demo.test.sem",
-            "dist/sem.exe mcp BOM-prefixed initialize smoke",
-            "npm --prefix vscode-semanticscript ci",
-            "npm --prefix vscode-semanticscript run package:vsix"
-          )
-
-          $artifactSpecs = @(
-            @{
-              name = "semanticscript-sem-windows-x64"
-              description = "Single-file Windows sem compiler and toolchain executable"
-              path = $releaseSemExePath
-            },
-            @{
-              name = "semanticscript-vscode-vsix"
-              description = "VS Code extension package"
-              path = $releaseVsixPath
-            }
-          )
-
-          $artifacts = foreach ($artifact in $artifactSpecs) {
-            $file = Get-Item -Path $artifact.path
-            @{
-              name = $artifact.name
-              description = $artifact.description
-              fileName = $file.Name
-              path = $artifact.path.Replace("\", "/")
-              bytes = $file.Length
-              sha256 = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            }
-          }
-
-          $manifest = [ordered]@{
-            schemaVersion = "sem.releaseManifest.v1"
-            repoVersion = $repoVersion
-            versionNote = "SemanticScript $repoVersion release. Download $releaseSemExeName for the single-file Windows compiler/toolchain."
-            tag = $releaseTag
-            ref = "${{ github.ref }}"
-            refName = "${{ github.ref_name }}"
-            refType = "${{ github.ref_type }}"
-            commitSha = $releaseCommit
-            previousTag = $previousTag
-            commitRange = $commitRange
-            commitRangeLabel = $commitRangeLabel
-            commitListTruncated = $commitListTruncated
-            prerelease = $releaseIsPrerelease
-            curatedReleaseNotesPath = $curatedNotesManifestPath
-            curatedReleaseNotes = $curatedNotes
-            releaseCommit = [ordered]@{
-              sha = $releaseCommit
-              shortSha = $releaseShortSha
-              subject = $releaseSubject
-              body = $releaseBody
-            }
-            commits = $commits
-            dateUtc = (Get-Date).ToUniversalTime().ToString("o")
-            commands = $commands
-            artifacts = $artifacts
-          }
-
-          $manifestPath = Join-Path $artifactDir "semanticscript-release-manifest-$releaseTag.json"
-          $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath -Encoding utf8
-
-          $downloadLines = foreach ($artifact in $artifacts) {
-            "- $($artifact.fileName) - $($artifact.description). SHA-256: $($artifact.sha256)"
-          }
-          $changeLines = foreach ($commit in $commits) {
-            "- $($commit.shortSha) - $($commit.subject)"
-          }
-          if (-not $changeLines) {
-            $changeLines = @("- No commits were found for range $commitRangeLabel.")
-          }
-          if ($commitListTruncated) {
-            $changeLines += "- Commit list truncated to the latest 50 commits because this release has no previous tag."
-          }
-          $curatedNoteLines = @()
-          if ($curatedNotes) {
-            $curatedNoteLines = @(
-              "Curated release notes:",
-              "",
-              $curatedNotes,
-              ""
-            )
-          }
-          $mcpBootstrapLines = @(
-            "MCP bootstrap:",
-            "Copy this block into an MCP-aware agent after downloading the Windows executable:",
-            "",
-            '```text',
-            "Use the SemanticScript Windows executable from this release as an MCP stdio server.",
-            "Executable asset: $releaseSemExeName",
-            "Start command: sem.exe mcp",
-            "MCP client config JSON:",
-            '{',
-            '  "mcpServers": {',
-            '    "semanticscript": {',
-            '      "command": "C:\\path\\to\\sem.exe",',
-            '      "args": ["mcp"],',
-            '      "cwd": "<project-root>"',
-            '    }',
-            '  }',
-            '}',
-            'After connecting, call agent_docs with path "." to load project-local AGENTS.md / CLAUDE.md, then call skills_get with names ["sem-start", "sem", "sem-agent", "sem-syntax"] for version-matched startup instructions.',
-            '```',
-            ""
-          )
-
-          $noteParts = @(
-            "SemanticScript $releaseTag",
-            ""
-          )
-          if ($curatedNoteLines) {
-            $noteParts += $curatedNoteLines
-          }
-          $noteParts += @(
-            "Version note:",
-            "- Repository/toolchain version: $repoVersion",
-            "- Compiler/toolchain download: $releaseSemExeName",
-            "- VS Code extension download: $releaseVsixName",
-            "- The Windows compiler/toolchain artifact is a single-file sem.exe package; it extracts an internal temporary payload at runtime.",
-            ""
-          )
-          $noteParts += $mcpBootstrapLines
-          $noteParts += @(
-            "Release commit:",
-            "- $releaseShortSha - $releaseSubject",
-            "- Full SHA: $releaseCommit",
-            "",
-            "Changes in $commitRangeLabel:",
-            $changeLines,
-            "",
-            "Downloads:",
-            $downloadLines,
-            "- $(Split-Path -Leaf $manifestPath) - Release manifest with artifact metadata and checksums.",
-            "",
-            "Validation:",
-            "- python SemanticScript/tests/run_suite.py ci-fast",
-            "- python SemanticScript/tests/run_suite.py editor",
-            "- python SemanticScript/tests/run_suite.py ci-release",
-            "- PyInstaller sem single-file executable smoke validation",
-            "- npm --prefix vscode-semanticscript ci",
-            "- npm --prefix vscode-semanticscript run package:vsix"
-          )
-          $notes = $noteParts -join "`n"
-
-          $notesPath = Join-Path $artifactDir "semanticscript-release-notes-$releaseTag.md"
-          $notes | Set-Content -Path $notesPath -Encoding utf8
-
-          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
-          "repo_version=$repoVersion" >> $env:GITHUB_OUTPUT
-          "release_is_prerelease=$($releaseIsPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          "release_commit=$releaseCommit" >> $env:GITHUB_OUTPUT
-          "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
-          "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
-          "sem_exe_path=$releaseSemExePath" >> $env:GITHUB_OUTPUT
-          "vsix_path=$releaseVsixPath" >> $env:GITHUB_OUTPUT
-
-      - name: Upload sem executable artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: semanticscript-sem-windows-x64
-          path: ${{ steps.manifest.outputs.sem_exe_path }}
-          if-no-files-found: error
-
-      - name: Upload VSIX artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: semanticscript-vscode-vsix
-          path: ${{ steps.manifest.outputs.vsix_path }}
+          path: staging/semanticscript-vscode-${{ needs.preflight.outputs.version }}.vsix
           if-no-files-found: error
 
-      - name: Upload release manifest artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+  publish:
+    name: Publish GitHub release
+    needs: [preflight, build, vsix]
+    runs-on: ubuntu-latest
+    steps:
+      # R-120: check out exactly the resolved tag (not the dispatch branch) and
+      # confirm HEAD is the SHA preflight validated, so the published release notes
+      # / attribution / checksums come from the same commit the binaries were
+      # built from.
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          name: semanticscript-release-manifest
-          path: ${{ steps.manifest.outputs.manifest_path }}
-          if-no-files-found: error
+          ref: ${{ needs.preflight.outputs.tag }}
+          fetch-depth: 0
 
-      - name: Upload .mcpb bundle artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Verify the publish checkout is the resolved tag SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          built="$(git rev-parse HEAD)"
+          if [ "$built" != "${{ needs.preflight.outputs.sha }}" ]; then
+            echo "Publish checkout $built != resolved tag SHA ${{ needs.preflight.outputs.sha }}."
+            exit 1
+          fi
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: semanticscript-mcpb
-          path: dist/semanticscript.mcpb
-          if-no-files-found: error
+          path: artifacts
+          merge-multiple: true
 
-      - name: Upload distribution manifests artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: semanticscript-distribution-manifests
-          path: dist/manifests/**
-          if-no-files-found: error
+      - name: Assemble release assets + checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # Artifacts download nested under their artifact-name dirs; flatten.
+          find artifacts -type f -exec cp {} release/ \;
+          cp THIRD_PARTY_LICENSES.md release/
+          cp LICENSE release/LICENSE.txt
+          cd release
+          sha256sum semanticscript-* > SHA256SUMS
+          echo "Release assets:"; ls -la
 
-      - name: Create or update GitHub release
-        shell: pwsh
+      - name: Compose the release notes
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Quoted heredoc => fully literal (backticks and $ are safe); the two
+          # placeholders are substituted afterward. Keep the MCP bootstrap block
+          # and the build-dependency list in sync with semanticscript/packaging/
+          # package.py and vscode-semanticscript/package.json.
+          cat > NOTES.md <<'NOTES'
+          SemanticScript __TAG__ — beta toolchain + VS Code extension.
+
+          ## Downloads
+          - `semanticscript-windows-x64.exe`, `semanticscript-linux-x64`, `semanticscript-macos-arm64` — the single-file toolchain (compiler, linter, formatter, JIT, native builder, and MCP stdio server). No install and no adjacent folder required.
+          - `semanticscript-vscode-__VERSION__.vsix` — the VS Code extension (syntax, navigation, completion, linting, compiler integration). Install with `code --install-extension semanticscript-vscode-__VERSION__.vsix`.
+          - `SHA256SUMS` — verify every download, e.g. `sha256sum -c SHA256SUMS`.
+          - `THIRD_PARTY_LICENSES.md`, `LICENSE.txt` — attribution and license.
+
+          ## MCP bootstrap (for agents)
+          The toolchain is also an MCP stdio server. Point an MCP client at it:
+
+              command: "semanticscript"     # or the absolute path to the downloaded binary
+              args:    ["mcp"]
+              cwd:     <your project root>
+
+          Run `semanticscript mcp` for the MCP stdio JSON-RPC server. Start with the `agent_docs` and `skills` tools, then `check`, `readiness`, `graph`, `slice`, and `fix_plan`.
+
+          ## Building the executables yourself
+          The per-OS binaries are produced by `.github/workflows/release.yml`. To reproduce locally you need:
+          - Python 3.12
+          - the pinned dependencies in `requirements.txt`
+          - PyInstaller 6.20.0 (`pip install pyinstaller==6.20.0`)
+          - LLVM/clang on `PATH` for native emit and the `build` smoke test (set `SEMSC_CLANG` if clang is not discoverable)
+
+          Then run `python semanticscript/packaging/package.py`; the binary lands in `semanticscript/packaging/dist/`.
+
+          The VSIX is built with Node.js 20 and `@vscode/vsce` — `npm ci && npm run package:vsix` in `vscode-semanticscript/`.
+
+          See CHANGELOG.md for the full change list. This is a 0.x prerelease.
+          NOTES
+          # YAML's block scalar already stripped the base indent, so the body
+          # reaches bash with prose at column 0 and the MCP block at 4 spaces
+          # (rendered as a code block). Only the placeholders remain to fill in.
+          sed -i "s/__TAG__/${TAG}/g; s/__VERSION__/${VERSION}/g" NOTES.md
+          echo "----- release notes -----"; cat NOTES.md
+
+      - name: Create or update the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.manifest.outputs.release_tag }}
-          REPO_VERSION: ${{ steps.manifest.outputs.repo_version }}
-          RELEASE_IS_PRERELEASE: ${{ steps.manifest.outputs.release_is_prerelease }}
-          RELEASE_COMMIT: ${{ steps.manifest.outputs.release_commit }}
-          SEM_EXE_PATH: ${{ steps.manifest.outputs.sem_exe_path }}
-          VSIX_PATH: ${{ steps.manifest.outputs.vsix_path }}
-          MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
-          NOTES_PATH: ${{ steps.manifest.outputs.notes_path }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
-          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
-            $PSNativeCommandUseErrorActionPreference = $true
-          }
-
-          $title = "SemanticScript $env:RELEASE_TAG"
-          $releaseArgs = @(
-            $env:RELEASE_TAG,
-            "--repo", "${{ github.repository }}",
-            "--title", $title,
-            "--notes-file", $env:NOTES_PATH,
-            "--target", $env:RELEASE_COMMIT
-          )
-          if ($env:RELEASE_IS_PRERELEASE -eq "true") {
-            $releaseArgs += @("--prerelease")
-          }
-
-          gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release edit @releaseArgs
-          } else {
-            $createArgs = @($env:RELEASE_TAG)
-            $createArgs += $releaseArgs[1..($releaseArgs.Count - 1)]
-            $createArgs += @("--verify-tag")
-            if ($env:RELEASE_IS_PRERELEASE -eq "true") {
-              $createArgs += @("--latest=false")
-            }
-            gh release create @createArgs
-          }
-
-          # Stable-named copies (sem.exe, semanticscript.mcpb) plus the stamped
-          # registry server.json back the releases/download/v<version>/ URLs in
-          # the scoop, winget, and MCP registry manifests.
-          gh release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH "dist/sem.exe" "dist/semanticscript.mcpb" "dist/manifests/registry/server.json" --repo "${{ github.repository }}" --clobber
-
-          $expectedAssets = @(
-            (Split-Path -Leaf $env:SEM_EXE_PATH),
-            (Split-Path -Leaf $env:VSIX_PATH),
-            (Split-Path -Leaf $env:MANIFEST_PATH),
-            "sem.exe",
-            "semanticscript.mcpb",
-            "server.json"
-          )
-          $release = gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
-          $assetNames = @($release.assets | ForEach-Object { $_.name })
-          foreach ($assetName in $expectedAssets) {
-            if ($assetName -notin $assetNames) {
-              throw "GitHub release '$env:RELEASE_TAG' is missing downloadable asset '$assetName'."
-            }
-          }
+          set -euo pipefail
+          common=(--repo "${{ github.repository }}" --title "SemanticScript ${TAG}" --notes-file NOTES.md)
+          if [ "$PRERELEASE" = "true" ]; then common+=(--prerelease); fi
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release edit "$TAG" "${common[@]}"
+          else
+            create=("${common[@]}" --verify-tag)
+            if [ "$PRERELEASE" = "true" ]; then create+=(--latest=false); fi
+            gh release create "$TAG" "${create[@]}"
+          fi
+          gh release upload "$TAG" release/* --repo "${{ github.repository }}" --clobber

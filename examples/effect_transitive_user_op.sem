@@ -1,0 +1,87 @@
+# effect_transitive_user_op — effect coverage flows up through a called user op
+# (README §15/§17 #5, WS2-040). `announce` performs `write console.stdout`; `main`
+# activates it, so the write effect flows UP into main's effective set and must be
+# covered there — `main` declares `effect write console.stdout` and `uses` the
+# granting capability. Drop main's `uses` and the gate rejects it (uncovered
+# transitive effect).
+#
+# Correctness observation: main's effective effects include announce's write.
+# Expected output: the announced line + PASS + `---- 2 passed, 0 failed ----`
+
+EffectTransitiveUserOp is project
+EffectTransitiveUserOp module examplesEffectTransitiveUserOp
+EffectTransitiveUserOp target console
+EffectTransitiveUserOp entry main
+
+examplesEffectTransitiveUserOp is module
+examplesEffectTransitiveUserOp path examples.effectTransitiveUserOp
+examplesEffectTransitiveUserOp exports main
+examplesEffectTransitiveUserOp purpose "Cover an effect that flows up from a called op"
+examplesEffectTransitiveUserOp invariant "main covers announce's transitive write effect"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+
+announce is operation
+announce in line String
+announce out Int64
+announce effect write console.stdout
+announce uses stdoutWriter
+announce memory heap no
+announce async no
+announce purpose "Write a line (an effect that flows up to the caller)"
+announce invariant "Performs one console write; returns 0"
+announce let zero immutable Int64 0
+announce do emit
+announce return zero
+emit is call
+emit in announce
+emit invokes console.writeLine
+emit arg text String line
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Activate announce and assert the harness passes"
+main invariant "Covers announce's transitive effect; writes the summary"
+main let banner immutable String "transitive effect covered"
+main let harnessName immutable String "effect_transitive_user_op"
+main let harnessExpected immutable Int64 0
+main let nonZeroDecoy immutable Int64 1
+main let noopName immutable String "effect_transitive_user_op: announce returned its real 0"
+main do callAnnounce
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+callAnnounce is call
+callAnnounce in main
+callAnnounce invokes announce
+callAnnounce arg line String banner
+callAnnounce out announceCode Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 announceCode
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 nonZeroDecoy
+noopCheck arg actual Int64 announceCode
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

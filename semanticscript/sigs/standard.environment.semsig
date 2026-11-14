@@ -1,0 +1,64 @@
+# standard.environment.semsig - environment and dotenv platform API.
+
+environmentSig is semsig
+environmentSig version "1.0"
+environmentSig generatedBy "semanticscript 0.1"
+environmentSig describes standard.environment
+
+EnvironmentName is alias
+EnvironmentName for String
+EnvironmentName purpose "A validated process environment variable name"
+
+EnvironmentValue is alias
+EnvironmentValue for String
+EnvironmentValue purpose "An owned non-secret environment value returned by standard.environment"
+
+EnvironmentSecret is alias
+EnvironmentSecret for String
+EnvironmentSecret typeTrust secret
+EnvironmentSecret purpose "An owned secret environment value that must not be logged, printed, or serialized"
+
+EnvironmentError is error
+EnvironmentError purpose "Invalid environment name, missing required value, dotenv parse error, or allocation failure"
+
+getValue is intrinsic
+getValue target environment.get
+getValue arg name EnvironmentName
+getValue out value EnvironmentValue
+getValue catch EnvironmentError
+getValue owns value cleanedBy environment.releaseValue
+getValue purpose "Read an environment variable, returning an owned empty string when it is absent"
+
+requireValue is intrinsic
+requireValue target environment.require
+requireValue arg name EnvironmentName
+requireValue out value EnvironmentValue
+requireValue catch EnvironmentError
+requireValue owns value cleanedBy environment.releaseValue
+requireValue purpose "Read a required non-secret environment variable or raise EnvironmentError when absent"
+
+requireSecret is intrinsic
+requireSecret target environment.requireSecret
+requireSecret arg name EnvironmentName
+requireSecret out value EnvironmentSecret
+requireSecret catch EnvironmentError
+requireSecret owns value cleanedBy environment.releaseSecret
+requireSecret purpose "Read a required secret environment variable as EnvironmentSecret"
+
+loadDotenv is intrinsic
+loadDotenv target environment.loadDotenv
+loadDotenv arg path SafePath
+loadDotenv out status Int32
+loadDotenv purpose "Load KEY=VALUE rows from a SafePath dotenv file into the process environment; returns 0 on success"
+
+releaseValue is intrinsic
+releaseValue target environment.releaseValue
+releaseValue arg value EnvironmentValue
+releaseValue out released Int32
+releaseValue purpose "Release an environment string allocated by standard.environment; stale or foreign values are ignored"
+
+releaseSecret is intrinsic
+releaseSecret target environment.releaseSecret
+releaseSecret arg value EnvironmentSecret
+releaseSecret out released Int32
+releaseSecret purpose "Release a secret environment string allocated by standard.environment; stale or foreign values are ignored"

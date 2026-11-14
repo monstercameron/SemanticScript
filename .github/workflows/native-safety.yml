@@ -1,0 +1,35 @@
+name: Native safety
+
+# R-134: the memory-owning native runtimes (http / json / sqlite / event / async)
+# are otherwise only exercised by functional tests on Windows, which catch a
+# use-after-free / overflow / double-free only if it happens to crash. This job
+# compiles representative runtime harnesses under AddressSanitizer +
+# UndefinedBehaviorSanitizer on Linux (where the sanitizer runtimes ship) so those
+# bug classes fail CI deterministically. A planted-UAF seed proves the sanitizer
+# is actually live.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitizers:
+    name: ASAN + UBSAN native runtime harnesses
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Show clang version
+        run: clang --version
+
+      - name: Build + run native harnesses under ASAN/UBSAN
+        run: bash tests/native/run_sanitizers.sh
