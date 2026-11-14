@@ -1,0 +1,65 @@
+# effect_covered_console — effect and capability matching
+# (README §8 / §15). main declares `effect write console.stdout` and `uses` a
+# capability that grants exactly that effect, so the gate is satisfied and the
+# write runs. (Compare capability_ungranted_use, which omits the grant.)
+#
+# Correctness observation: the line is written under a covered effect.
+# Expected output: Hello, world
+
+EffectCoveredConsole is project
+EffectCoveredConsole module examplesEffectCovered
+EffectCoveredConsole target console
+EffectCoveredConsole entry main
+
+examplesEffectCovered is module
+examplesEffectCovered path examples.effectCoveredConsole
+examplesEffectCovered exports main
+examplesEffectCovered purpose "Demonstrate effect and capability matching"
+examplesEffectCovered invariant "Console write effect covered by capability"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Permission to write to stdout"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Write to console with proper capability authorization"
+main invariant "Effect is covered by capability"
+
+main let message immutable String "Hello, world"
+main let harnessName immutable String "effect_covered_console"
+main let harnessExpected immutable String "Hello, world"
+main let emptyGuard immutable String ""
+main let noopName immutable String "effect_covered_console: real result (not the empty string)"
+
+main do writeMessage
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+writeMessage is call
+writeMessage in main
+writeMessage invokes test.assertEqualText
+writeMessage arg name String harnessName
+writeMessage arg expected String harnessExpected
+writeMessage arg actual String message
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String message
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

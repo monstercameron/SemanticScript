@@ -1,0 +1,68 @@
+# type_bound_clamp -- (repurposed: type_constraint_bound: clamp to an upper bound). Real integer op math.minInt64 (README s10.6).
+# Expected output: 100
+
+TypeBoundClamp is project
+TypeBoundClamp module examplesTypeBoundClamp
+TypeBoundClamp target console
+TypeBoundClamp entry main
+
+examplesTypeBoundClamp is module
+examplesTypeBoundClamp path examples.typeBoundClamp
+examplesTypeBoundClamp exports main
+examplesTypeBoundClamp purpose "Compute typeBoundClamp at runtime"
+examplesTypeBoundClamp invariant "Result is computed at runtime"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute math.minInt64 and print it"
+main invariant "Writes exactly one integer line: 100"
+main let operandA immutable Int64 150
+main let operandB immutable Int64 100
+main let harnessName immutable String "type_bound_clamp"
+main let harnessExpected immutable Int64 100
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "type_bound_clamp: real result (not the no-op 0)"
+main do calc
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+calc is call
+calc in main
+calc invokes math.minInt64
+calc arg left Int64 operandA
+calc arg right Int64 operandB
+calc out outValue Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 outValue
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 outValue
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

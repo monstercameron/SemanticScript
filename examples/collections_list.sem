@@ -1,0 +1,203 @@
+# collections_list — the collections runtime (R-061): a growable Int64 list with
+# create / append / get / length / release lowered to real heap memory. The list
+# is a stable handle over a [count, capacity, data] header whose data buffer is
+# realloc-grown on append, so the handle never dangles. This exercises:
+#   * growth: 6 appends past the initial capacity (4) force a realloc to 8;
+#   * indexing: get(i) reads the i-th element back (not a constant);
+#   * bounds-safety: an out-of-bounds get is a recoverable ListError (the `err`
+#     path), never an out-of-bounds load / crash.
+# Expected output: 5 PASS lines then  ---- 5 passed, 0 failed ----
+
+CollectionsList is project
+CollectionsList module examplesCollectionsList
+CollectionsList target console
+CollectionsList entry main
+
+examplesCollectionsList is module
+examplesCollectionsList path examples.collectionsList
+examplesCollectionsList exports main
+examplesCollectionsList purpose "Build a growable list and assert its runtime behavior"
+examplesCollectionsList invariant "Growth, indexing, and out-of-bounds safety all hold"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+ListHandle is alias
+ListHandle for OpaquePointer
+ListHandle purpose "An opaque growable-list handle"
+
+ListError is error
+ListError purpose "An out-of-bounds or allocation list failure"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Append six values (forcing growth), read them back, and probe out-of-bounds"
+main invariant "All five assertions hold"
+main let v10 immutable Int64 10
+main let v20 immutable Int64 20
+main let v30 immutable Int64 30
+main let v40 immutable Int64 40
+main let v50 immutable Int64 50
+main let v60 immutable Int64 60
+main let idx0 immutable Int64 0
+main let idx5 immutable Int64 5
+main let idxOob immutable Int64 99
+main let expectLen immutable Int64 6
+main let oneMark immutable Int64 1
+main let oobFlag mutable Int64 0
+main let tnLen immutable String "list length is 6 after six appends (growth past capacity 4)"
+main let tnGet0 immutable String "get(0) returns the first appended value 10"
+main let tnGet5 immutable String "get(5) returns the sixth appended value 60"
+main let tnDiff immutable String "distinct indices return distinct values (real indexing)"
+main let tnOob immutable String "an out-of-bounds get is caught as a ListError, not a crash"
+main do mk
+main do app0
+main do app1
+main do app2
+main do app3
+main do app4
+main do app5
+main do lenCall
+main do get0
+main do get5
+main do getOob
+main branch ifError getOob goto oobCaught
+main goto afterOob
+main at oobCaught set oobFlag oneMark
+main at afterOob do checkLen
+main do checkGet0
+main do checkGet5
+main do checkDiff
+main do checkOob
+main do rel
+main do harnessReport
+main return harnessSummaryCode
+
+mk is call
+mk in main
+mk invokes list.create
+mk out theList ListHandle
+
+app0 is call
+app0 in main
+app0 invokes list.append
+app0 arg list ListHandle theList
+app0 arg value Int64 v10
+app0 discards "append status ignored in collection example"
+
+app1 is call
+app1 in main
+app1 invokes list.append
+app1 arg list ListHandle theList
+app1 arg value Int64 v20
+app1 discards "append status ignored in collection example"
+
+app2 is call
+app2 in main
+app2 invokes list.append
+app2 arg list ListHandle theList
+app2 arg value Int64 v30
+app2 discards "append status ignored in collection example"
+
+app3 is call
+app3 in main
+app3 invokes list.append
+app3 arg list ListHandle theList
+app3 arg value Int64 v40
+app3 discards "append status ignored in collection example"
+
+app4 is call
+app4 in main
+app4 invokes list.append
+app4 arg list ListHandle theList
+app4 arg value Int64 v50
+app4 discards "append status ignored in collection example"
+
+app5 is call
+app5 in main
+app5 invokes list.append
+app5 arg list ListHandle theList
+app5 arg value Int64 v60
+app5 discards "append status ignored in collection example"
+
+lenCall is call
+lenCall in main
+lenCall invokes list.length
+lenCall arg list ListHandle theList
+lenCall out listLen Int64
+
+get0 is call
+get0 in main
+get0 invokes list.get
+get0 arg list ListHandle theList
+get0 arg index Int64 idx0
+get0 out first Int64
+
+get5 is call
+get5 in main
+get5 invokes list.get
+get5 arg list ListHandle theList
+get5 arg index Int64 idx5
+get5 out sixth Int64
+
+getOob is call
+getOob in main
+getOob invokes list.get
+getOob arg list ListHandle theList
+getOob arg index Int64 idxOob
+getOob discards "status intentionally unused in this demonstration"
+getOob catch oobErr ListError
+
+checkLen is call
+checkLen in main
+checkLen invokes test.assertEqualInt64
+checkLen arg name String tnLen
+checkLen arg expected Int64 expectLen
+checkLen arg actual Int64 listLen
+
+checkGet0 is call
+checkGet0 in main
+checkGet0 invokes test.assertEqualInt64
+checkGet0 arg name String tnGet0
+checkGet0 arg expected Int64 v10
+checkGet0 arg actual Int64 first
+
+checkGet5 is call
+checkGet5 in main
+checkGet5 invokes test.assertEqualInt64
+checkGet5 arg name String tnGet5
+checkGet5 arg expected Int64 v60
+checkGet5 arg actual Int64 sixth
+
+checkDiff is call
+checkDiff in main
+checkDiff invokes test.assertNotEqualInt64
+checkDiff arg name String tnDiff
+checkDiff arg expected Int64 first
+checkDiff arg actual Int64 sixth
+
+checkOob is call
+checkOob in main
+checkOob invokes test.assertEqualInt64
+checkOob arg name String tnOob
+checkOob arg expected Int64 oneMark
+checkOob arg actual Int64 oobFlag
+
+rel is call
+rel in main
+rel invokes list.release
+rel arg list ListHandle theList
+rel discards "release status ignored during cleanup"
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

@@ -1,0 +1,71 @@
+# is_power_of_two -- power-of-two predicate, true and false cases. Load-bearing: POSITIVE and NEGATIVE assertions (false-cases,
+# inequalities, edge cases) stress the language in both directions via the
+# standard.test harness. Exit 0 iff every assertion holds.
+# Expected output: 2 PASS lines then  ---- 2 passed, 0 failed ----
+
+IsPowerOfTwo is project
+IsPowerOfTwo module examplesIsPowerOfTwo
+IsPowerOfTwo target console
+IsPowerOfTwo entry main
+
+examplesIsPowerOfTwo is module
+examplesIsPowerOfTwo path examples.isPowerOfTwo
+examplesIsPowerOfTwo exports main
+examplesIsPowerOfTwo purpose "power-of-two predicate, true and false cases"
+examplesIsPowerOfTwo invariant "Positive and negative assertions both hold"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "power-of-two predicate, true and false cases"
+main invariant "All assertions hold"
+main let sixteen immutable Int64 16
+main let fifteen immutable Int64 15
+main let tn0 immutable String "16 is a power of two"
+main let tn1 immutable String "15 is not a power of two"
+main do p1
+main do p2
+main do check0
+main do check1
+main do harnessReport
+main return harnessSummaryCode
+
+p1 is call
+p1 in main
+p1 invokes math.isPowerOfTwoInt64
+p1 arg value Int64 sixteen
+p1 out isPow Int64
+
+p2 is call
+p2 in main
+p2 invokes math.isPowerOfTwoInt64
+p2 arg value Int64 fifteen
+p2 out notPow Int64
+
+check0 is call
+check0 in main
+check0 invokes test.assertTrue
+check0 arg name String tn0
+check0 arg value Bool isPow
+
+check1 is call
+check1 in main
+check1 invokes test.assertFalse
+check1 arg name String tn1
+check1 arg value Bool notPow
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

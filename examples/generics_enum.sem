@@ -1,0 +1,131 @@
+# generics_enum — generic data-carrying enums (R-039 + R-054). `Option` is a
+# generic tagged union `none | some T`; named instantiations `OptionInt` and
+# `OptionFloat` monomorphize it at Int64 and Float64, so one definition yields
+# correctly-laid-out tagged unions per payload type. `ifVariant` resolves the
+# value's declared instantiation to pick the right payload type when extracting.
+# This exercises:
+#   * Option<Int64>: some(42) carries + extracts 42;
+#   * Option<Float64>: some(3.5) carries + extracts 3.5 (different payload type);
+#   * tag discrimination: a none value does not match the some arm;
+#   * the extracted Int64 payload is real (not the 0 fallback).
+# Expected output: 4 PASS lines then  ---- 4 passed, 0 failed ----
+
+GenericsEnum is project
+GenericsEnum module examplesGenericsEnum
+GenericsEnum target console
+GenericsEnum entry main
+
+examplesGenericsEnum is module
+examplesGenericsEnum path examples.genericsEnum
+examplesGenericsEnum exports main
+examplesGenericsEnum purpose "Monomorphize a generic option enum at two payload types and assert"
+examplesGenericsEnum invariant "One generic enum yields correct tagged unions per type"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+Option is enum
+Option typeParam T
+Option variant none
+Option variant some T
+Option purpose "A generic optional value: none, or some carrying a T"
+
+OptionInt is enum
+OptionInt instantiates Option Int64
+OptionInt purpose "Option monomorphized at Int64"
+
+OptionFloat is enum
+OptionFloat instantiates Option Float64
+OptionFloat purpose "Option monomorphized at Float64"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main purpose "Build Int64 and Float64 options, match them, and assert payloads + tags"
+main invariant "All four assertions hold"
+main let fortyTwo immutable Int64 42
+main let pointFive immutable Float64 3.5
+main let one immutable Int64 1
+main let zeroGuard immutable Int64 0
+main let extractedInt mutable Int64 0
+main let extractedFloat mutable Float64 0.0
+main let noneMatchedSome mutable Int64 0
+main let tnInt immutable String "Option<Int64> some(42) carries and extracts 42"
+main let tnFloat immutable String "Option<Float64> some(3.5) carries and extracts 3.5"
+main let tnNone immutable String "an OptionInt none does NOT match the some arm (tag discrimination)"
+main let tnReal immutable String "the extracted Int64 payload is real (not the 0 fallback)"
+main do mkSomeInt
+main do mkSomeFloat
+main do mkNoneInt
+main branch ifVariant someInt some bind gotInt goto intArm
+main goto afterInt
+main at intArm set extractedInt gotInt
+main at afterInt branch ifVariant someFloat some bind gotFloat goto floatArm
+main goto afterFloat
+main at floatArm set extractedFloat gotFloat
+main at afterFloat branch ifVariant noneInt some bind unusedInt goto wrongArm
+main goto afterNone
+main at wrongArm set noneMatchedSome one
+main at afterNone do checkInt
+main do checkFloat
+main do checkNone
+main do checkReal
+main do harnessReport
+main return harnessSummaryCode
+
+mkSomeInt is call
+mkSomeInt in main
+mkSomeInt invokes OptionInt.some
+mkSomeInt arg content Int64 fortyTwo
+mkSomeInt out someInt OptionInt
+
+mkSomeFloat is call
+mkSomeFloat in main
+mkSomeFloat invokes OptionFloat.some
+mkSomeFloat arg content Float64 pointFive
+mkSomeFloat out someFloat OptionFloat
+
+mkNoneInt is call
+mkNoneInt in main
+mkNoneInt invokes OptionInt.none
+mkNoneInt out noneInt OptionInt
+
+checkInt is call
+checkInt in main
+checkInt invokes test.assertEqualInt64
+checkInt arg name String tnInt
+checkInt arg expected Int64 fortyTwo
+checkInt arg actual Int64 extractedInt
+
+checkFloat is call
+checkFloat in main
+checkFloat invokes test.assertEqualFloat64
+checkFloat arg name String tnFloat
+checkFloat arg expected Float64 pointFive
+checkFloat arg actual Float64 extractedFloat
+
+checkNone is call
+checkNone in main
+checkNone invokes test.assertEqualInt64
+checkNone arg name String tnNone
+checkNone arg expected Int64 zeroGuard
+checkNone arg actual Int64 noneMatchedSome
+
+checkReal is call
+checkReal in main
+checkReal invokes test.assertNotEqualInt64
+checkReal arg name String tnReal
+checkReal arg expected Int64 zeroGuard
+checkReal arg actual Int64 extractedInt
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
