@@ -17,26 +17,26 @@ stdinCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -45,8 +45,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -54,22 +54,21 @@ writeValue catch writeError console.WriteError
 
 stdinReader is capability
 stdinReader purpose "Authority to read standard input"
-stdinReader grants read console.stdin
-stdinReader scope none
+stdinReader grants read console.stdin none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read console.stdin
 main effect write console.stdout
 main uses stdinReader
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -82,17 +81,17 @@ main label reportEnd loopKind none
 main label reportEnd within none
 main label failed loopKind none
 main label failed within none
-main let limit immutable Int64 1024
-main let waitMs immutable Int64 5000
-main let endText immutable String "end"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let limit Int64 1024 immutable
+main let waitMs Int64 5000 immutable
+main let endText String "end" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
-main at begin start readFirst
+main at begin start readFirst into none
 main at begin join readFirst
 main at begin branch ifError readFirst goto failed else goto showFirst
 main at showFirst do printFirst
-main at showFirst start readSecond
+main at showFirst start readSecond into none
 main at showFirst join readSecond
 main at showFirst branch ifError readSecond goto ended else goto failed
 main at ended match secondError console.ReadError
@@ -108,14 +107,14 @@ main at failed return ok failCode
 text is region
 text in main
 text strategy arena
-text capacity 4096
+text maxBytes 4096
 text released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -124,10 +123,10 @@ makeDeadline catch none
 readFirst is task
 readFirst in main
 readFirst invokes console.readLine
-readFirst arg region Region text lend
-readFirst arg maxBytes Int64 limit copy
-readFirst arg deadline time.Deadline deadline copy
-readFirst out firstLine String
+readFirst argument region Region text lend
+readFirst argument maxBytes Int64 limit copy
+readFirst argument deadline time.Deadline deadline copy
+readFirst result firstLine String
 readFirst ownedBy text
 readFirst cleanedBy none
 readFirst borrows none
@@ -136,10 +135,10 @@ readFirst catch firstError console.ReadError
 readSecond is task
 readSecond in main
 readSecond invokes console.readLine
-readSecond arg region Region text lend
-readSecond arg maxBytes Int64 limit copy
-readSecond arg deadline time.Deadline deadline copy
-readSecond out secondLine String
+readSecond argument region Region text lend
+readSecond argument maxBytes Int64 limit copy
+readSecond argument deadline time.Deadline deadline copy
+readSecond result secondLine String
 readSecond ownedBy text
 readSecond cleanedBy none
 readSecond borrows none
@@ -148,8 +147,8 @@ readSecond catch secondError console.ReadError
 printFirst is call
 printFirst in main
 printFirst invokes showText
-printFirst arg text String firstLine lend
-printFirst out none
+printFirst argument text String firstLine lend
+printFirst result none
 printFirst ownedBy none
 printFirst cleanedBy none
 printFirst borrows none
@@ -158,8 +157,8 @@ printFirst catch none
 printEnd is call
 printEnd in main
 printEnd invokes showText
-printEnd arg text String endText lend
-printEnd out none
+printEnd argument text String endText lend
+printEnd result none
 printEnd ownedBy none
 printEnd cleanedBy none
 printEnd borrows none

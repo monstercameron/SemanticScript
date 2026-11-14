@@ -25,26 +25,26 @@ sorting exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -53,28 +53,28 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
 
-Numbers is instance
+Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
 Numbers instantiates list.List Int64
 
 sortInPlace is operation
 sortInPlace purpose "Sort a list of five numbers in ascending order with a bubble sort"
 sortInPlace invariant none
-sortInPlace typeParam none
+sortInPlace typeParameter none
 sortInPlace input numbers Numbers borrowedMutable
 sortInPlace output none
-sortInPlace outputOwner none
+sortInPlace outputOwnedBy none
 sortInPlace raises list.IndexOutOfRange
 sortInPlace effect none
 sortInPlace uses none
-sortInPlace memory heap false
+sortInPlace memoryHeap false
 sortInPlace async false
 sortInPlace maxRecursion none
 sortInPlace label begin loopKind none
@@ -113,12 +113,12 @@ sortInPlace label brokenWriteLeft loopKind none
 sortInPlace label brokenWriteLeft within none
 sortInPlace label brokenWriteRight loopKind none
 sortInPlace label brokenWriteRight within none
-sortInPlace let first immutable Int64 0
-sortInPlace let one immutable Int64 1
-sortInPlace let passCount immutable Int64 5
-sortInPlace let lastPair immutable Int64 4
-sortInPlace let pass mutable Int64 0
-sortInPlace let position mutable Int64 0
+sortInPlace let first Int64 0 immutable
+sortInPlace let one Int64 1 immutable
+sortInPlace let passCount Int64 5 immutable
+sortInPlace let lastPair Int64 4 immutable
+sortInPlace let pass Int64 0 mutable
+sortInPlace let position Int64 0 mutable
 sortInPlace at begin goto passes
 sortInPlace at passes do passesDone
 sortInPlace at passes branch if allPasses goto sorted else goto startPass
@@ -151,9 +151,9 @@ sortInPlace at brokenWriteRight return error writeRightError
 passesDone is call
 passesDone in sortInPlace
 passesDone invokes compare.greaterOrEqualInt64
-passesDone arg left Int64 pass copy
-passesDone arg right Int64 passCount copy
-passesDone out allPasses Bool
+passesDone argument left Int64 pass copy
+passesDone argument right Int64 passCount copy
+passesDone result allPasses Bool
 passesDone ownedBy none
 passesDone cleanedBy none
 passesDone borrows none
@@ -162,9 +162,9 @@ passesDone catch none
 pairsDone is call
 pairsDone in sortInPlace
 pairsDone invokes compare.greaterOrEqualInt64
-pairsDone arg left Int64 position copy
-pairsDone arg right Int64 lastPair copy
-pairsDone out allPairs Bool
+pairsDone argument left Int64 position copy
+pairsDone argument right Int64 lastPair copy
+pairsDone result allPairs Bool
 pairsDone ownedBy none
 pairsDone cleanedBy none
 pairsDone borrows none
@@ -173,9 +173,9 @@ pairsDone catch none
 nextPosition is call
 nextPosition in sortInPlace
 nextPosition invokes math.addInt64
-nextPosition arg left Int64 position copy
-nextPosition arg right Int64 one copy
-nextPosition out following Int64
+nextPosition argument left Int64 position copy
+nextPosition argument right Int64 one copy
+nextPosition result following Int64
 nextPosition ownedBy none
 nextPosition cleanedBy none
 nextPosition borrows none
@@ -184,9 +184,9 @@ nextPosition catch none
 readLeft is call
 readLeft in sortInPlace
 readLeft invokes Numbers.get
-readLeft arg list Numbers numbers lend
-readLeft arg index Int64 position copy
-readLeft out leftValue Int64
+readLeft argument list Numbers numbers lend
+readLeft argument index Int64 position copy
+readLeft result leftValue Int64
 readLeft ownedBy none
 readLeft cleanedBy none
 readLeft borrows none
@@ -195,9 +195,9 @@ readLeft catch leftError list.IndexOutOfRange
 readRight is call
 readRight in sortInPlace
 readRight invokes Numbers.get
-readRight arg list Numbers numbers lend
-readRight arg index Int64 following copy
-readRight out rightValue Int64
+readRight argument list Numbers numbers lend
+readRight argument index Int64 following copy
+readRight result rightValue Int64
 readRight ownedBy none
 readRight cleanedBy none
 readRight borrows none
@@ -206,9 +206,9 @@ readRight catch rightError list.IndexOutOfRange
 outOfOrder is call
 outOfOrder in sortInPlace
 outOfOrder invokes compare.greaterThanInt64
-outOfOrder arg left Int64 leftValue copy
-outOfOrder arg right Int64 rightValue copy
-outOfOrder out needsSwap Bool
+outOfOrder argument left Int64 leftValue copy
+outOfOrder argument right Int64 rightValue copy
+outOfOrder result needsSwap Bool
 outOfOrder ownedBy none
 outOfOrder cleanedBy none
 outOfOrder borrows none
@@ -217,10 +217,10 @@ outOfOrder catch none
 writeLeft is call
 writeLeft in sortInPlace
 writeLeft invokes Numbers.set
-writeLeft arg list Numbers numbers lendMutable
-writeLeft arg index Int64 position copy
-writeLeft arg item Int64 rightValue copy
-writeLeft out none
+writeLeft argument list Numbers numbers lendMutable
+writeLeft argument index Int64 position copy
+writeLeft argument item Int64 rightValue copy
+writeLeft result none
 writeLeft ownedBy none
 writeLeft cleanedBy none
 writeLeft borrows none
@@ -229,10 +229,10 @@ writeLeft catch writeLeftError list.IndexOutOfRange
 writeRight is call
 writeRight in sortInPlace
 writeRight invokes Numbers.set
-writeRight arg list Numbers numbers lendMutable
-writeRight arg index Int64 following copy
-writeRight arg item Int64 leftValue copy
-writeRight out none
+writeRight argument list Numbers numbers lendMutable
+writeRight argument index Int64 following copy
+writeRight argument item Int64 leftValue copy
+writeRight result none
 writeRight ownedBy none
 writeRight cleanedBy none
 writeRight borrows none
@@ -241,9 +241,9 @@ writeRight catch writeRightError list.IndexOutOfRange
 countPass is call
 countPass in sortInPlace
 countPass invokes math.addInt64
-countPass arg left Int64 pass copy
-countPass arg right Int64 one copy
-countPass out nextPassValue Int64
+countPass argument left Int64 pass copy
+countPass argument right Int64 one copy
+countPass result nextPassValue Int64
 countPass ownedBy none
 countPass cleanedBy none
 countPass borrows none
@@ -252,14 +252,14 @@ countPass catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -288,16 +288,16 @@ main label notThere loopKind none
 main label notThere within none
 main label broken loopKind none
 main label broken within none
-main let five immutable Int64 5
-main let three immutable Int64 3
-main let nine immutable Int64 9
-main let one immutable Int64 1
-main let seven immutable Int64 7
-main let zero immutable Int64 0
-main let probeIndex mutable Int64 0
-main let probeLimit immutable Int64 5
-main let failCode immutable ExitCode 1
-main let okCode immutable ExitCode 0
+main let five Int64 5 immutable
+main let three Int64 3 immutable
+main let nine Int64 9 immutable
+main let one Int64 1 immutable
+main let seven Int64 7 immutable
+main let zero Int64 0 immutable
+main let probeIndex Int64 0 mutable
+main let probeLimit Int64 5 immutable
+main let failCode ExitCode 1 immutable
+main let okCode ExitCode 0 immutable
 main at begin do makeNumbers
 main at begin do appendFive
 main at begin do appendThree
@@ -327,14 +327,14 @@ main at broken return ok failCode
 scratch is region
 scratch in main
 scratch strategy arena
-scratch capacity 4096
+scratch maxBytes 4096
 scratch released atReturn
 
 makeNumbers is call
 makeNumbers in main
 makeNumbers invokes Numbers.new
-makeNumbers arg region Region scratch lend
-makeNumbers out numbers Numbers
+makeNumbers argument region Region scratch lend
+makeNumbers result numbers Numbers
 makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
@@ -343,9 +343,9 @@ makeNumbers catch none
 appendFive is call
 appendFive in main
 appendFive invokes Numbers.append
-appendFive arg list Numbers numbers lendMutable
-appendFive arg item Int64 five copy
-appendFive out none
+appendFive argument list Numbers numbers lendMutable
+appendFive argument item Int64 five copy
+appendFive result none
 appendFive ownedBy none
 appendFive cleanedBy none
 appendFive borrows none
@@ -354,9 +354,9 @@ appendFive catch none
 appendThree is call
 appendThree in main
 appendThree invokes Numbers.append
-appendThree arg list Numbers numbers lendMutable
-appendThree arg item Int64 three copy
-appendThree out none
+appendThree argument list Numbers numbers lendMutable
+appendThree argument item Int64 three copy
+appendThree result none
 appendThree ownedBy none
 appendThree cleanedBy none
 appendThree borrows none
@@ -365,9 +365,9 @@ appendThree catch none
 appendNine is call
 appendNine in main
 appendNine invokes Numbers.append
-appendNine arg list Numbers numbers lendMutable
-appendNine arg item Int64 nine copy
-appendNine out none
+appendNine argument list Numbers numbers lendMutable
+appendNine argument item Int64 nine copy
+appendNine result none
 appendNine ownedBy none
 appendNine cleanedBy none
 appendNine borrows none
@@ -376,9 +376,9 @@ appendNine catch none
 appendOne is call
 appendOne in main
 appendOne invokes Numbers.append
-appendOne arg list Numbers numbers lendMutable
-appendOne arg item Int64 one copy
-appendOne out none
+appendOne argument list Numbers numbers lendMutable
+appendOne argument item Int64 one copy
+appendOne result none
 appendOne ownedBy none
 appendOne cleanedBy none
 appendOne borrows none
@@ -387,9 +387,9 @@ appendOne catch none
 appendSeven is call
 appendSeven in main
 appendSeven invokes Numbers.append
-appendSeven arg list Numbers numbers lendMutable
-appendSeven arg item Int64 seven copy
-appendSeven out none
+appendSeven argument list Numbers numbers lendMutable
+appendSeven argument item Int64 seven copy
+appendSeven result none
 appendSeven ownedBy none
 appendSeven cleanedBy none
 appendSeven borrows none
@@ -398,8 +398,8 @@ appendSeven catch none
 sortThem is call
 sortThem in main
 sortThem invokes sortInPlace
-sortThem arg numbers Numbers numbers lendMutable
-sortThem out none
+sortThem argument numbers Numbers numbers lendMutable
+sortThem result none
 sortThem ownedBy none
 sortThem cleanedBy none
 sortThem borrows none
@@ -408,8 +408,8 @@ sortThem catch sortError list.IndexOutOfRange
 showItem is call
 showItem in main
 showItem invokes showInt
-showItem arg value Int64 item copy
-showItem out none
+showItem argument value Int64 item copy
+showItem result none
 showItem ownedBy none
 showItem cleanedBy none
 showItem borrows none
@@ -418,9 +418,9 @@ showItem catch none
 searchDone is call
 searchDone in main
 searchDone invokes compare.greaterOrEqualInt64
-searchDone arg left Int64 probeIndex copy
-searchDone arg right Int64 probeLimit copy
-searchDone out searchFinished Bool
+searchDone argument left Int64 probeIndex copy
+searchDone argument right Int64 probeLimit copy
+searchDone result searchFinished Bool
 searchDone ownedBy none
 searchDone cleanedBy none
 searchDone borrows none
@@ -429,9 +429,9 @@ searchDone catch none
 readProbe is call
 readProbe in main
 readProbe invokes Numbers.get
-readProbe arg list Numbers numbers lend
-readProbe arg index Int64 probeIndex copy
-readProbe out probed Int64
+readProbe argument list Numbers numbers lend
+readProbe argument index Int64 probeIndex copy
+readProbe result probed Int64
 readProbe ownedBy none
 readProbe cleanedBy none
 readProbe borrows none
@@ -440,9 +440,9 @@ readProbe catch probeError list.IndexOutOfRange
 isSeven is call
 isSeven in main
 isSeven invokes compare.equalInt64
-isSeven arg left Int64 probed copy
-isSeven arg right Int64 seven copy
-isSeven out foundSeven Bool
+isSeven argument left Int64 probed copy
+isSeven argument right Int64 seven copy
+isSeven result foundSeven Bool
 isSeven ownedBy none
 isSeven cleanedBy none
 isSeven borrows none
@@ -451,9 +451,9 @@ isSeven catch none
 advanceProbe is call
 advanceProbe in main
 advanceProbe invokes math.addInt64
-advanceProbe arg left Int64 probeIndex copy
-advanceProbe arg right Int64 one copy
-advanceProbe out advancedProbe Int64
+advanceProbe argument left Int64 probeIndex copy
+advanceProbe argument right Int64 one copy
+advanceProbe result advancedProbe Int64
 advanceProbe ownedBy none
 advanceProbe cleanedBy none
 advanceProbe borrows none
@@ -462,8 +462,8 @@ advanceProbe catch none
 showProbe is call
 showProbe in main
 showProbe invokes showInt
-showProbe arg value Int64 probeIndex copy
-showProbe out none
+showProbe argument value Int64 probeIndex copy
+showProbe result none
 showProbe ownedBy none
 showProbe cleanedBy none
 showProbe borrows none

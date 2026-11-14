@@ -17,26 +17,27 @@ pricing exports discountTotal
 
 LineItem is record
 LineItem purpose "One line of an order: which item, how many, and the price of one in cents"
-LineItem typeParam none
+LineItem typeParameter none
 LineItem field sku Int64
 LineItem field quantity Int64
 LineItem field unitCents Int64
 
-Lines is instance
+Lines is typeInstance
 Lines purpose "The lines of one order, in the order they were added"
 Lines instantiates list.List LineItem
 
 PricingError is enum
 PricingError purpose "Why an order could not be priced, with what the caller needs to report it"
-PricingError typeParam none
+PricingError typeParameter none
 PricingError variant negativeQuantity Int64
 PricingError variant emptyOrder none
 
 PriceRule is operationType
 PriceRule purpose "A rule that turns a gross amount in cents into the amount charged"
-PriceRule input cents Int64 value
+PriceRule typeParameter none
+PriceRule input cents Int64 copied
 PriceRule output Int64
-PriceRule outputOwner none
+PriceRule outputOwnedBy none
 PriceRule raises none
 PriceRule effect none
 PriceRule async false
@@ -46,37 +47,38 @@ PriceRule async false
 fullPrice is operation
 fullPrice purpose "Charge the gross amount unchanged"
 fullPrice invariant unchanged "Returns the amount it was given"
-fullPrice typeParam none
-fullPrice input cents Int64 value
+fullPrice typeParameter none
+fullPrice input cents Int64 copied
 fullPrice output Int64
-fullPrice outputOwner none
+fullPrice outputOwnedBy none
 fullPrice raises none
 fullPrice effect none
 fullPrice uses none
-fullPrice memory heap false
+fullPrice memoryHeap false
 fullPrice async false
 fullPrice maxRecursion none
 fullPrice label begin loopKind none
 fullPrice label begin within none
+fullPrice let none
 fullPrice at begin return ok cents
 
 bulkDiscount is operation
 bulkDiscount purpose "Charge nine tenths of the gross amount, rounded down to whole cents"
 bulkDiscount invariant tenPercentOff "Returns the amount times nine, divided by ten, rounded toward zero"
-bulkDiscount typeParam none
-bulkDiscount input cents Int64 value
+bulkDiscount typeParameter none
+bulkDiscount input cents Int64 copied
 bulkDiscount output Int64
-bulkDiscount outputOwner none
+bulkDiscount outputOwnedBy none
 bulkDiscount raises none
 bulkDiscount effect none
 bulkDiscount uses none
-bulkDiscount memory heap false
+bulkDiscount memoryHeap false
 bulkDiscount async false
 bulkDiscount maxRecursion none
 bulkDiscount label begin loopKind none
 bulkDiscount label begin within none
-bulkDiscount let nine immutable Int64 9
-bulkDiscount let ten immutable Int64 10
+bulkDiscount let nine Int64 9 immutable
+bulkDiscount let ten Int64 10 immutable
 bulkDiscount at begin do timesNine
 bulkDiscount at begin do byTen
 bulkDiscount at begin return ok discounted
@@ -84,9 +86,9 @@ bulkDiscount at begin return ok discounted
 timesNine is call
 timesNine in bulkDiscount
 timesNine invokes math.multiplyInt64
-timesNine arg left Int64 cents copy
-timesNine arg right Int64 nine copy
-timesNine out ninefold Int64
+timesNine argument left Int64 cents copy
+timesNine argument right Int64 nine copy
+timesNine result ninefold Int64
 timesNine ownedBy none
 timesNine cleanedBy none
 timesNine borrows none
@@ -95,9 +97,9 @@ timesNine catch none
 byTen is call
 byTen in bulkDiscount
 byTen invokes math.divideInt64
-byTen arg left Int64 ninefold copy
-byTen arg right Int64 ten copy
-byTen out discounted Int64
+byTen argument left Int64 ninefold copy
+byTen argument right Int64 ten copy
+byTen result discounted Int64
 byTen ownedBy none
 byTen cleanedBy none
 byTen borrows none
@@ -109,15 +111,15 @@ lineTotal is operation
 lineTotal purpose "Price one line: quantity times unit price, then the rule"
 lineTotal invariant ruleOfGross "Returns the rule applied to quantity times unit price"
 lineTotal invariant rejectsNegative "A negative quantity is a negativeQuantity error carrying the line's sku"
-lineTotal typeParam none
-lineTotal input item LineItem value
-lineTotal input rule PriceRule value
+lineTotal typeParameter none
+lineTotal input item LineItem copied
+lineTotal input rule PriceRule copied
 lineTotal output Int64
-lineTotal outputOwner none
+lineTotal outputOwnedBy none
 lineTotal raises PricingError
 lineTotal effect none
 lineTotal uses none
-lineTotal memory heap false
+lineTotal memoryHeap false
 lineTotal async false
 lineTotal maxRecursion none
 lineTotal label begin loopKind none
@@ -126,7 +128,7 @@ lineTotal label reject loopKind none
 lineTotal label reject within none
 lineTotal label charge loopKind none
 lineTotal label charge within none
-lineTotal let zero immutable Int64 0
+lineTotal let zero Int64 0 immutable
 lineTotal at begin do readQuantity
 lineTotal at begin do checkSign
 lineTotal at begin branch if isNegative goto reject else goto charge
@@ -141,8 +143,8 @@ lineTotal at charge return ok charged
 readQuantity is call
 readQuantity in lineTotal
 readQuantity invokes LineItem.quantity
-readQuantity arg record LineItem item copy
-readQuantity out quantity Int64
+readQuantity argument record LineItem item copy
+readQuantity result quantity Int64
 readQuantity ownedBy none
 readQuantity cleanedBy none
 readQuantity borrows none
@@ -151,9 +153,9 @@ readQuantity catch none
 checkSign is call
 checkSign in lineTotal
 checkSign invokes compare.lessThanInt64
-checkSign arg left Int64 quantity copy
-checkSign arg right Int64 zero copy
-checkSign out isNegative Bool
+checkSign argument left Int64 quantity copy
+checkSign argument right Int64 zero copy
+checkSign result isNegative Bool
 checkSign ownedBy none
 checkSign cleanedBy none
 checkSign borrows none
@@ -162,8 +164,8 @@ checkSign catch none
 readSku is call
 readSku in lineTotal
 readSku invokes LineItem.sku
-readSku arg record LineItem item copy
-readSku out sku Int64
+readSku argument record LineItem item copy
+readSku result sku Int64
 readSku ownedBy none
 readSku cleanedBy none
 readSku borrows none
@@ -172,8 +174,8 @@ readSku catch none
 makeNegative is call
 makeNegative in lineTotal
 makeNegative invokes PricingError.negativeQuantity
-makeNegative arg payload Int64 sku copy
-makeNegative out negativeError PricingError
+makeNegative argument payload Int64 sku copy
+makeNegative result negativeError PricingError
 makeNegative ownedBy none
 makeNegative cleanedBy none
 makeNegative borrows none
@@ -182,8 +184,8 @@ makeNegative catch none
 readUnit is call
 readUnit in lineTotal
 readUnit invokes LineItem.unitCents
-readUnit arg record LineItem item copy
-readUnit out unitCents Int64
+readUnit argument record LineItem item copy
+readUnit result unitCents Int64
 readUnit ownedBy none
 readUnit cleanedBy none
 readUnit borrows none
@@ -192,9 +194,9 @@ readUnit catch none
 gross is call
 gross in lineTotal
 gross invokes math.multiplyInt64
-gross arg left Int64 quantity copy
-gross arg right Int64 unitCents copy
-gross out grossCents Int64
+gross argument left Int64 quantity copy
+gross argument right Int64 unitCents copy
+gross result grossCents Int64
 gross ownedBy none
 gross cleanedBy none
 gross borrows none
@@ -203,8 +205,8 @@ gross catch none
 applyRule is call
 applyRule in lineTotal
 applyRule invokesReference rule
-applyRule arg cents Int64 grossCents copy
-applyRule out charged Int64
+applyRule argument cents Int64 grossCents copy
+applyRule result charged Int64
 applyRule ownedBy none
 applyRule cleanedBy none
 applyRule borrows none
@@ -216,15 +218,15 @@ orderTotal is operation
 orderTotal purpose "Price every line of an order under one rule and add the results"
 orderTotal invariant sumOfLines "Returns the sum of lineTotal over every line, under the given rule"
 orderTotal invariant rejectsEmpty "An order with no lines is an emptyOrder error"
-orderTotal typeParam none
+orderTotal typeParameter none
 orderTotal input lines Lines borrowed
-orderTotal input rule PriceRule value
+orderTotal input rule PriceRule copied
 orderTotal output Int64
-orderTotal outputOwner none
+orderTotal outputOwnedBy none
 orderTotal raises PricingError
 orderTotal effect none
 orderTotal uses none
-orderTotal memory heap false
+orderTotal memoryHeap false
 orderTotal async false
 orderTotal maxRecursion none
 orderTotal label begin loopKind none
@@ -243,8 +245,8 @@ orderTotal label passUp loopKind none
 orderTotal label passUp within none
 orderTotal label done loopKind none
 orderTotal label done within none
-orderTotal let zero immutable Int64 0
-orderTotal let running mutable Int64 0
+orderTotal let zero Int64 0 immutable
+orderTotal let running Int64 0 mutable
 orderTotal at begin do countLines
 orderTotal at begin do checkEmpty
 orderTotal at begin branch if isEmpty goto rejectEmpty else goto sumLines
@@ -262,8 +264,8 @@ orderTotal at done return ok running
 countLines is call
 countLines in orderTotal
 countLines invokes Lines.length
-countLines arg list Lines lines lend
-countLines out lineCount Int64
+countLines argument list Lines lines lend
+countLines result lineCount Int64
 countLines ownedBy none
 countLines cleanedBy none
 countLines borrows none
@@ -272,9 +274,9 @@ countLines catch none
 checkEmpty is call
 checkEmpty in orderTotal
 checkEmpty invokes compare.equalInt64
-checkEmpty arg left Int64 lineCount copy
-checkEmpty arg right Int64 zero copy
-checkEmpty out isEmpty Bool
+checkEmpty argument left Int64 lineCount copy
+checkEmpty argument right Int64 zero copy
+checkEmpty result isEmpty Bool
 checkEmpty ownedBy none
 checkEmpty cleanedBy none
 checkEmpty borrows none
@@ -283,8 +285,8 @@ checkEmpty catch none
 makeEmpty is call
 makeEmpty in orderTotal
 makeEmpty invokes PricingError.emptyOrder
-makeEmpty arg none
-makeEmpty out emptyError PricingError
+makeEmpty argument none
+makeEmpty result emptyError PricingError
 makeEmpty ownedBy none
 makeEmpty cleanedBy none
 makeEmpty borrows none
@@ -293,9 +295,9 @@ makeEmpty catch none
 priceIt is call
 priceIt in orderTotal
 priceIt invokes lineTotal
-priceIt arg item LineItem line copy
-priceIt arg rule PriceRule rule copy
-priceIt out lineAmount Int64
+priceIt argument item LineItem line copy
+priceIt argument rule PriceRule rule copy
+priceIt result lineAmount Int64
 priceIt ownedBy none
 priceIt cleanedBy none
 priceIt borrows none
@@ -304,9 +306,9 @@ priceIt catch lineError PricingError
 accumulate is call
 accumulate in orderTotal
 accumulate invokes math.addInt64
-accumulate arg left Int64 running copy
-accumulate arg right Int64 lineAmount copy
-accumulate out newRunning Int64
+accumulate argument left Int64 running copy
+accumulate argument right Int64 lineAmount copy
+accumulate result newRunning Int64
 accumulate ownedBy none
 accumulate cleanedBy none
 accumulate borrows none
@@ -317,14 +319,14 @@ accumulate catch none
 listTotal is operation
 listTotal purpose "Total an order at list price"
 listTotal invariant atListPrice "Returns orderTotal of the lines under fullPrice"
-listTotal typeParam none
+listTotal typeParameter none
 listTotal input lines Lines borrowed
 listTotal output Int64
-listTotal outputOwner none
+listTotal outputOwnedBy none
 listTotal raises PricingError
 listTotal effect none
 listTotal uses none
-listTotal memory heap false
+listTotal memoryHeap false
 listTotal async false
 listTotal maxRecursion none
 listTotal label begin loopKind none
@@ -333,7 +335,7 @@ listTotal label passUp loopKind none
 listTotal label passUp within none
 listTotal label done loopKind none
 listTotal label done within none
-listTotal let rule immutable PriceRule fullPrice
+listTotal let rule PriceRule fullPrice immutable
 listTotal at begin do total
 listTotal at begin branch ifError total goto passUp else goto done
 listTotal at passUp return error totalError
@@ -342,9 +344,9 @@ listTotal at done return ok amount
 total is call
 total in listTotal
 total invokes orderTotal
-total arg lines Lines lines lend
-total arg rule PriceRule rule copy
-total out amount Int64
+total argument lines Lines lines lend
+total argument rule PriceRule rule copy
+total result amount Int64
 total ownedBy none
 total cleanedBy none
 total borrows none
@@ -353,14 +355,14 @@ total catch totalError PricingError
 discountTotal is operation
 discountTotal purpose "Total an order with the bulk discount on every line"
 discountTotal invariant atDiscount "Returns orderTotal of the lines under bulkDiscount"
-discountTotal typeParam none
+discountTotal typeParameter none
 discountTotal input lines Lines borrowed
 discountTotal output Int64
-discountTotal outputOwner none
+discountTotal outputOwnedBy none
 discountTotal raises PricingError
 discountTotal effect none
 discountTotal uses none
-discountTotal memory heap false
+discountTotal memoryHeap false
 discountTotal async false
 discountTotal maxRecursion none
 discountTotal label begin loopKind none
@@ -369,7 +371,7 @@ discountTotal label passUp loopKind none
 discountTotal label passUp within none
 discountTotal label done loopKind none
 discountTotal label done within none
-discountTotal let rule immutable PriceRule bulkDiscount
+discountTotal let rule PriceRule bulkDiscount immutable
 discountTotal at begin do total
 discountTotal at begin branch ifError total goto passUp else goto done
 discountTotal at passUp return error totalError
@@ -378,9 +380,9 @@ discountTotal at done return ok amount
 total is call
 total in discountTotal
 total invokes orderTotal
-total arg lines Lines lines lend
-total arg rule PriceRule rule copy
-total out amount Int64
+total argument lines Lines lines lend
+total argument rule PriceRule rule copy
+total result amount Int64
 total ownedBy none
 total cleanedBy none
 total borrows none

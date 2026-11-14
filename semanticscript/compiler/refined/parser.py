@@ -82,10 +82,14 @@ def check_entity(ent: Entity, sink: Sink) -> None:
         if shape == "LABEL":
             if _check_label_row(row, sink):
                 good_rows.append(row)
+            else:
+                malformed.add(pred)
             continue
         if shape == "STEP":
             if _check_step_row(row, sink):
                 good_rows.append(row)
+            else:
+                malformed.add(pred)
             continue
         if _match_any(shape, row.args, row, ent, sink, pred):
             good_rows.append(row)
@@ -115,11 +119,16 @@ def check_entity(ent: Entity, sink: Sink) -> None:
                 sink.error("R302", ent.line, f"{ent.kind} `{ent.name}` has no {shown} row")
         if card == "some":
             if not rows:
-                sink.error("R302", ent.line, f"{ent.kind} `{ent.name}` has no {shown} row; "
-                           f"write `{ent.name} {preds[0]} none` if there are none")
+                if any((S.NONE,) == alt for p in preds for alt in (spec["shapes"].get(p) or [])
+                       if isinstance(spec["shapes"].get(p), list)):
+                    sink.error("R302", ent.line, f"{ent.kind} `{ent.name}` has no {shown} row; "
+                               f"write `{ent.name} {preds[0]} none` if there are none")
+                else:
+                    sink.error("R302", ent.line, f"{ent.kind} `{ent.name}` has no {shown} row; it needs at least one")
             elif any(_is_none_row(r) for r in rows) and len(rows) > 1:
                 sink.error("R303", rows[0].line, f"`{preds[0]} none` must be the only {shown} row")
-            _no_duplicate_rows(rows, sink)
+            if preds != ["at"]:  # a step may repeat (`awaitSlot` before each `start ... into`)
+                _no_duplicate_rows(rows, sink)
     _check_context_cardinality(ent, good_rows, sink)
     # Rows that broke their shape are reported above and dropped here, so later passes only ever see
     # well-formed rows (a malformed row must produce a diagnostic, never a crash).
@@ -245,6 +254,9 @@ def _check_context_cardinality(ent: Entity, rows: list[Row], sink: Sink) -> None
         sink.error("R304", ent.line, f"{ent.kind} `{ent.name}` needs a `purpose` row")
     if len(purposes) > 1:
         sink.error("R302", purposes[1].line, "an entity has at most one `purpose` row")
+    if ent.kind in S.RATIONALE_REQUIRED and not [r for r in rows if r.predicate == "rationale"]:
+        sink.error("R302", ent.line, f"{ent.kind} `{ent.name}` has no `rationale` row; a cleanup says why its "
+                   "`onError` policy is right")
     if ent.kind == "operation":
         inv = [r for r in rows if r.predicate == "invariant"]
         if not inv:

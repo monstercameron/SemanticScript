@@ -21,26 +21,26 @@ floats exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showFloat is operation
 showFloat purpose "Print one floating-point number on its own line"
 showFloat invariant none
-showFloat typeParam none
-showFloat input value Float64 value
+showFloat typeParameter none
+showFloat input value Float64 copied
 showFloat output none
-showFloat outputOwner none
+showFloat outputOwnedBy none
 showFloat raises none
 showFloat effect write console.stdout
 showFloat uses stdoutWriter
-showFloat memory heap false
+showFloat memoryHeap false
 showFloat async false
 showFloat maxRecursion none
 showFloat label begin loopKind none
 showFloat label begin within none
 showFloat label done loopKind none
 showFloat label done within none
+showFloat let none
 showFloat at begin do writeValue
 showFloat at begin branch ifError writeValue goto done else goto done
 showFloat at done return ok none
@@ -49,8 +49,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showFloat
 writeValue invokes console.writeFloatLine
-writeValue arg value Float64 value copy
-writeValue out none
+writeValue argument value Float64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -59,14 +59,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -77,8 +77,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -90,8 +90,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -101,8 +101,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -111,24 +111,24 @@ writeFalse catch falseError console.WriteError
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let tenth immutable Float64 0.1
-main let twoTenths immutable Float64 0.2
-main let largest immutable Float64 179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0
-main let ten immutable Float64 10.0
-main let zero immutable Float64 0.0
-main let okCode immutable ExitCode 0
+main let tenth Float64 0.1 immutable
+main let twoTenths Float64 0.2 immutable
+main let largest Float64 179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0 immutable
+main let ten Float64 10.0 immutable
+main let zero Float64 0.0 immutable
+main let okCode ExitCode 0 immutable
 main at begin do addTenths
 main at begin do showSum
 main at begin do overflow
@@ -144,9 +144,9 @@ main at begin return ok okCode
 addTenths is call
 addTenths in main
 addTenths invokes math.addFloat64
-addTenths arg left Float64 tenth copy
-addTenths arg right Float64 twoTenths copy
-addTenths out tenthsSum Float64
+addTenths argument left Float64 tenth copy
+addTenths argument right Float64 twoTenths copy
+addTenths result tenthsSum Float64
 addTenths ownedBy none
 addTenths cleanedBy none
 addTenths borrows none
@@ -155,8 +155,8 @@ addTenths catch none
 showSum is call
 showSum in main
 showSum invokes showFloat
-showSum arg value Float64 tenthsSum copy
-showSum out none
+showSum argument value Float64 tenthsSum copy
+showSum result none
 showSum ownedBy none
 showSum cleanedBy none
 showSum borrows none
@@ -165,9 +165,9 @@ showSum catch none
 overflow is call
 overflow in main
 overflow invokes math.multiplyFloat64
-overflow arg left Float64 largest copy
-overflow arg right Float64 ten copy
-overflow out infinity Float64
+overflow argument left Float64 largest copy
+overflow argument right Float64 ten copy
+overflow result infinity Float64
 overflow ownedBy none
 overflow cleanedBy none
 overflow borrows none
@@ -176,8 +176,8 @@ overflow catch none
 showInfinity is call
 showInfinity in main
 showInfinity invokes showFloat
-showInfinity arg value Float64 infinity copy
-showInfinity out none
+showInfinity argument value Float64 infinity copy
+showInfinity result none
 showInfinity ownedBy none
 showInfinity cleanedBy none
 showInfinity borrows none
@@ -186,9 +186,9 @@ showInfinity catch none
 makeNan is call
 makeNan in main
 makeNan invokes math.divideFloat64
-makeNan arg left Float64 zero copy
-makeNan arg right Float64 zero copy
-makeNan out notANumber Float64
+makeNan argument left Float64 zero copy
+makeNan argument right Float64 zero copy
+makeNan result notANumber Float64
 makeNan ownedBy none
 makeNan cleanedBy none
 makeNan borrows none
@@ -197,9 +197,9 @@ makeNan catch none
 nanSelf is call
 nanSelf in main
 nanSelf invokes compare.equalFloat64
-nanSelf arg left Float64 notANumber copy
-nanSelf arg right Float64 notANumber copy
-nanSelf out nanEqual Bool
+nanSelf argument left Float64 notANumber copy
+nanSelf argument right Float64 notANumber copy
+nanSelf result nanEqual Bool
 nanSelf ownedBy none
 nanSelf cleanedBy none
 nanSelf borrows none
@@ -208,8 +208,8 @@ nanSelf catch none
 showNanEqual is call
 showNanEqual in main
 showNanEqual invokes showBool
-showNanEqual arg flag Bool nanEqual copy
-showNanEqual out none
+showNanEqual argument flag Bool nanEqual copy
+showNanEqual result none
 showNanEqual ownedBy none
 showNanEqual cleanedBy none
 showNanEqual borrows none
@@ -218,9 +218,9 @@ showNanEqual catch none
 infinityBig is call
 infinityBig in main
 infinityBig invokes compare.greaterThanFloat64
-infinityBig arg left Float64 infinity copy
-infinityBig arg right Float64 largest copy
-infinityBig out infinityIsBigger Bool
+infinityBig argument left Float64 infinity copy
+infinityBig argument right Float64 largest copy
+infinityBig result infinityIsBigger Bool
 infinityBig ownedBy none
 infinityBig cleanedBy none
 infinityBig borrows none
@@ -229,8 +229,8 @@ infinityBig catch none
 showInfinityBig is call
 showInfinityBig in main
 showInfinityBig invokes showBool
-showInfinityBig arg flag Bool infinityIsBigger copy
-showInfinityBig out none
+showInfinityBig argument flag Bool infinityIsBigger copy
+showInfinityBig result none
 showInfinityBig ownedBy none
 showInfinityBig cleanedBy none
 showInfinityBig borrows none
@@ -239,8 +239,8 @@ showInfinityBig catch none
 showLargest is call
 showLargest in main
 showLargest invokes showFloat
-showLargest arg value Float64 largest copy
-showLargest out none
+showLargest argument value Float64 largest copy
+showLargest result none
 showLargest ownedBy none
 showLargest cleanedBy none
 showLargest borrows none

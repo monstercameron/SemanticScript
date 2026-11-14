@@ -13,17 +13,17 @@ minimal exports main
 main is operation
 main purpose "Return exit status 0"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let zero immutable ExitCode 0
+main let zero ExitCode 0 immutable
 main at begin return ok zero

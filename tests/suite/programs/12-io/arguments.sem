@@ -16,26 +16,26 @@ argumentsCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -44,8 +44,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -54,20 +54,21 @@ writeValue catch writeError console.WriteError
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -76,8 +77,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -85,22 +86,21 @@ writeValue catch writeError console.WriteError
 
 argumentReader is capability
 argumentReader purpose "Authority to read the command-line arguments"
-argumentReader grants read process.arguments
-argumentReader scope none
+argumentReader grants read process.arguments none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read process.arguments
 main effect write console.stdout
 main uses argumentReader
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -113,10 +113,10 @@ main label showBad loopKind none
 main label showBad within none
 main label failed loopKind none
 main label failed within none
-main let first immutable Int64 0
-main let sixth immutable Int64 5
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let first Int64 0 immutable
+main let sixth Int64 5 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do countArguments
 main at begin do showCount
 main at begin do readFirst
@@ -133,14 +133,14 @@ main at failed return ok failCode
 text is region
 text in main
 text strategy arena
-text capacity 4096
+text maxBytes 4096
 text released atReturn
 
 countArguments is call
 countArguments in main
 countArguments invokes process.argumentCount
-countArguments arg none
-countArguments out count Int64
+countArguments argument none
+countArguments result count Int64
 countArguments ownedBy none
 countArguments cleanedBy none
 countArguments borrows none
@@ -149,8 +149,8 @@ countArguments catch none
 showCount is call
 showCount in main
 showCount invokes showInt
-showCount arg value Int64 count copy
-showCount out none
+showCount argument value Int64 count copy
+showCount result none
 showCount ownedBy none
 showCount cleanedBy none
 showCount borrows none
@@ -159,9 +159,9 @@ showCount catch none
 readFirst is call
 readFirst in main
 readFirst invokes process.argument
-readFirst arg index Int64 first copy
-readFirst arg region Region text lend
-readFirst out firstArgument String
+readFirst argument index Int64 first copy
+readFirst argument region Region text lend
+readFirst result firstArgument String
 readFirst ownedBy text
 readFirst cleanedBy none
 readFirst borrows none
@@ -170,8 +170,8 @@ readFirst catch firstError process.ArgumentError
 showFirst is call
 showFirst in main
 showFirst invokes showText
-showFirst arg text String firstArgument lend
-showFirst out none
+showFirst argument text String firstArgument lend
+showFirst result none
 showFirst ownedBy none
 showFirst cleanedBy none
 showFirst borrows none
@@ -180,9 +180,9 @@ showFirst catch none
 readSixth is call
 readSixth in main
 readSixth invokes process.argument
-readSixth arg index Int64 sixth copy
-readSixth arg region Region text lend
-readSixth out sixthArgument String
+readSixth argument index Int64 sixth copy
+readSixth argument region Region text lend
+readSixth result sixthArgument String
 readSixth ownedBy text
 readSixth cleanedBy none
 readSixth borrows none
@@ -191,8 +191,8 @@ readSixth catch sixthError process.ArgumentError
 printBad is call
 printBad in main
 printBad invokes showInt
-printBad arg value Int64 badIndex copy
-printBad out none
+printBad argument value Int64 badIndex copy
+printBad result none
 printBad ownedBy none
 printBad cleanedBy none
 printBad borrows none

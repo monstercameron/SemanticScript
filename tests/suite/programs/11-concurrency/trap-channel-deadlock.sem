@@ -10,21 +10,21 @@ channelDeadlock imports standard.time
 channelDeadlock imports standard.channel
 channelDeadlock exports main
 
-Mailbox is instance
+Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers"
 Mailbox instantiates channel.Channel Int64
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -33,12 +33,12 @@ main label done loopKind none
 main label done within none
 main label failed loopKind none
 main label failed within none
-main let capacity immutable Int64 1
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let capacity Int64 1 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeNever
 main at begin do makeMailbox
-main at begin start receiveOne
+main at begin start receiveOne into none
 main at begin join receiveOne
 main at begin branch ifError receiveOne goto failed else goto done
 main at done return ok okCode
@@ -47,14 +47,14 @@ main at failed return ok failCode
 mail is region
 mail in main
 mail strategy arena
-mail capacity 4096
+mail maxBytes 4096
 mail released atReturn
 
 makeNever is call
 makeNever in main
 makeNever invokes time.Deadline.never
-makeNever arg none
-makeNever out never time.Deadline
+makeNever argument none
+makeNever result never time.Deadline
 makeNever ownedBy none
 makeNever cleanedBy none
 makeNever borrows none
@@ -63,9 +63,9 @@ makeNever catch none
 makeMailbox is call
 makeMailbox in main
 makeMailbox invokes Mailbox.new
-makeMailbox arg capacity Int64 capacity copy
-makeMailbox arg region Region mail lend
-makeMailbox out mailbox Mailbox
+makeMailbox argument capacity Int64 capacity copy
+makeMailbox argument region Region mail lend
+makeMailbox result mailbox Mailbox
 makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
@@ -74,9 +74,9 @@ makeMailbox catch none
 receiveOne is task
 receiveOne in main
 receiveOne invokes Mailbox.receive
-receiveOne arg channel Mailbox mailbox lend
-receiveOne arg deadline time.Deadline never copy
-receiveOne out received Int64
+receiveOne argument channel Mailbox mailbox lend
+receiveOne argument deadline time.Deadline never copy
+receiveOne result received Int64
 receiveOne ownedBy none
 receiveOne cleanedBy none
 receiveOne borrows none

@@ -215,9 +215,9 @@ def _project(tmp_path, name: str, module_text: str, extra: dict[str, str] | None
     mods = [name] + sorted(extra or {})
     rows = [f"{name}Project is project", f'{name}Project purpose "A generated stress program"',
             f"{name}Project target {'console' if entry else 'library'}", f'{name}Project version "0.1.0"',
-            f"{name}Project language refined-1", f"{name}Project standardLibrary 1",
+            f"{name}Project language refined 1", f"{name}Project standardLibrary 1",
             *allows_rows(f"{name}Project", [module_text, *(extra or {}).values()]), f"{name}Project requires none"]
-    rows += [f"{name}Project module {m}" for m in mods]
+    rows += [f"{name}Project includesModule {m}" for m in mods]
     rows.append(f"{name}Project entry {name + '.main' if entry else 'none'}")
     (d / "build.sem").write_text("\n".join(rows) + "\n", encoding="utf-8")
     with open(d / f"{name}.sem", "w", encoding="utf-8", newline="\n") as fh:
@@ -242,7 +242,7 @@ def test_stress_thousands_of_values(tmp_path):
                 imports=["standard.console", "standard.math"])
     p.add(sb.STDOUT_CAP).add(sb.show_int())
     steps = [("begin", f"do add{i}") for i in range(n)] + [("begin", "do showTotal"), ("begin", "return ok okCode")]
-    lets = ["one immutable Int64 1", "start immutable Int64 0"]
+    lets = ["one Int64 1 immutable", "start Int64 0 immutable"]
     p.add(sb.main_op(steps, lets=lets))
     prev = "start"
     for i in range(n):
@@ -262,11 +262,11 @@ def test_stress_thousands_of_operations(tmp_path):
     for i in range(n):
         if i == n - 1:
             p.add(sb.op(f"link{i}", "Return one", [("begin", "return ok one")], output="Int64",
-                        lets=("one immutable Int64 1",)))
+                        lets=("one Int64 1 immutable",)))
             continue
         p.add(sb.op(f"link{i}", "Return one more than the rest of the chain",
                     [("begin", "do next"), ("begin", "do addOne"), ("begin", "return ok total")], output="Int64",
-                    lets=("one immutable Int64 1",)) + "\n\n" +
+                    lets=("one Int64 1 immutable",)) + "\n\n" +
               sb.call("next", f"link{i}", f"link{i + 1}", (), out="rest Int64") + "\n\n" +
               sb.call("addOne", f"link{i}", "math.addInt64", ("left Int64 rest copy", "right Int64 one copy"),
                       out="total Int64"))
@@ -286,8 +286,8 @@ def test_stress_deeply_nested_control_flow(tmp_path):
     for i in range(n):
         steps.append((f"level{i}", f"branch if yes goto level{i + 1} else goto out"))
     steps += [(f"level{n}", "do showDepth"), (f"level{n}", "return ok okCode"), ("out", "return ok failCode")]
-    p.add(sb.main_op(steps, lets=("yes immutable Bool true", f"depth immutable Int64 {n}",
-                                  "failCode immutable ExitCode 1")))
+    p.add(sb.main_op(steps, lets=("yes Bool true immutable", f"depth Int64 {n} immutable",
+                                  "failCode ExitCode 1 immutable")))
     p.add(sb.printer("main", "showDepth", "Int64", "depth"))
     code, out = _run(_project(tmp_path, "deepBranches", p.render()))
     assert (code, out) == (0, [str(n)])
@@ -299,7 +299,7 @@ def test_stress_extremely_long_string(tmp_path):
     p = sb.Prog("longString", "Measure a very long string literal", imports=["standard.console", "standard.string"])
     p.add(sb.STDOUT_CAP).add(sb.show_int())
     p.add(sb.main_op([("begin", "do measure"), ("begin", "do showLength"), ("begin", "return ok okCode")],
-                     lets=(f'long immutable String "{"ab" * (n // 2)}"',)))
+                     lets=(f'long String "{"ab" * (n // 2)}" immutable',)))
     p.add(sb.call("measure", "main", "string.byteLength", ("text String long lend",), out="length Int64"))
     p.add(sb.printer("main", "showLength", "Int64", "length"))
     code, out = _run(_project(tmp_path, "longString", p.render()))
@@ -314,8 +314,8 @@ def _recursion_program(depth: int, limit: int) -> str:
                 [("begin", "do atZero"), ("begin", "branch if zeroReached goto done else goto step"),
                  ("done", "return ok zero"), ("step", "do less"), ("step", "do recurse"), ("step", "do addOne"),
                  ("step", "return ok counted")],
-                inputs=("n Int64 value",), output="Int64", recursion=str(limit),
-                lets=("zero immutable Int64 0", "one immutable Int64 1")) + "\n\n" + "\n\n".join([
+                inputs=("n Int64 copied",), output="Int64", recursion=str(limit),
+                lets=("zero Int64 0 immutable", "one Int64 1 immutable")) + "\n\n" + "\n\n".join([
         sb.call("atZero", "descend", "compare.equalInt64", ("left Int64 n copy", "right Int64 zero copy"),
                 out="zeroReached Bool"),
         sb.call("less", "descend", "math.subtractInt64", ("left Int64 n copy", "right Int64 one copy"),
@@ -324,7 +324,7 @@ def _recursion_program(depth: int, limit: int) -> str:
         sb.call("addOne", "descend", "math.addInt64", ("left Int64 inner copy", "right Int64 one copy"),
                 out="counted Int64")]))
     p.add(sb.main_op([("begin", "do goDeep"), ("begin", "do showDepth"), ("begin", "return ok okCode")],
-                     lets=(f"depth immutable Int64 {depth}",)))
+                     lets=(f"depth Int64 {depth} immutable",)))
     p.add(sb.call("goDeep", "main", "descend", ("n Int64 depth copy",), out="reached Int64"))
     p.add(sb.printer("main", "showDepth", "Int64", "reached"))
     return p.render()
@@ -352,16 +352,16 @@ def test_stress_very_large_collection(tmp_path):
     p = sb.Prog("bigList", "Grow a list to half a million items",
                 imports=["standard.console", "standard.math", "standard.compare", "standard.list"])
     p.add(sb.STDOUT_CAP).add(sb.show_int())
-    p.add('Numbers is instance\nNumbers purpose "A growable list of whole numbers"\nNumbers instantiates list.List Int64')
+    p.add('Numbers is typeInstance\nNumbers purpose "A growable list of whole numbers"\nNumbers instantiates list.List Int64')
     p.add(sb.main_op([("begin", "do makeNumbers"), ("begin", "goto fill"),
                       ("fill", "do filled"), ("fill", "branch if isFilled goto report else goto appendStep"),
                       ("appendStep", "do appendIndex"), ("appendStep", "do advance"),
                       ("appendStep", "set index nextIndex"), ("appendStep", "goto fill"),
                       ("report", "do countNumbers"), ("report", "do showCount"), ("report", "return ok okCode")],
-                     lets=("one immutable Int64 1", f"limit immutable Int64 {n}", "index mutable Int64 0"),
+                     lets=("one Int64 1 immutable", f"limit Int64 {n} immutable", "index Int64 0 mutable"),
                      loops={"fill": {"kind": "counted", "facts": [f"maxIterations {n}", "counter index"]},
                             "appendStep": {"within": "fill"}}, heap=True))
-    p.add(f"store is region\nstore in main\nstore strategy arena\nstore capacity {64 * n}\nstore released atReturn")
+    p.add(f"store is region\nstore in main\nstore strategy arena\nstore maxBytes {64 * n}\nstore released atReturn")
     p.add(sb.call("makeNumbers", "main", "Numbers.new", ("region Region store lend",), out="numbers Numbers",
                   owned="store"))
     p.add(sb.call("filled", "main", "compare.greaterOrEqualInt64", ("left Int64 index copy", "right Int64 limit copy"),
@@ -385,12 +385,12 @@ def test_stress_large_dependency_graph(tmp_path):
         if i == n - 1:
             body = sb.op("depth", "Return one", [("begin", "return ok one")], output="Int64",
                          invariant=[("countsLayers", "Returns the number of layers from here down")],
-                         lets=("one immutable Int64 1",))
+                         lets=("one Int64 1 immutable",))
         else:
             body = sb.op("depth", "Return one more than the layer below",
                          [("begin", "do below"), ("begin", "do addOne"), ("begin", "return ok total")],
                          output="Int64", invariant=[("countsLayers", "Returns the number of layers from here down")],
-                         lets=("one immutable Int64 1",)) + "\n\n" + \
+                         lets=("one Int64 1 immutable",)) + "\n\n" + \
                 sb.call("below", "depth", f"layer{i + 1}.depth", (), out="rest Int64") + "\n\n" + \
                 sb.call("addOne", "depth", "math.addInt64", ("left Int64 rest copy", "right Int64 one copy"),
                         out="total Int64")
@@ -401,7 +401,7 @@ def test_stress_large_dependency_graph(tmp_path):
         expected = n - i
         test = sb.op("depthTest", f"Layer {i} reports {expected} layers",
                      [("begin", "do run"), ("begin", "do expect"), ("begin", "return ok none")], kind="test",
-                     verifies=("depth countsLayers",), lets=(f"expected immutable Int64 {expected}",)) + "\n\n" + \
+                     verifies=("depth countsLayers",), lets=(f"expected Int64 {expected} immutable",)) + "\n\n" + \
             sb.call("run", "depthTest", "depth", (), out="actual Int64") + "\n\n" + \
             sb.call("expect", "depthTest", "test.assertEqualInt64", ("expected Int64 expected copy",
                                                                        "actual Int64 actual copy"))
@@ -566,7 +566,7 @@ def _diff_program(name: str, items: list[tuple[str, int, int]]) -> str:
     p.add(sb.STDOUT_CAP).add(sb.show_int())
     steps, lets = [], []
     for i, (op, x, y) in enumerate(items):
-        lets += [f"x{i} immutable Int64 {x}", f"y{i} immutable Int64 {y}"]
+        lets += [f"x{i} Int64 {x} immutable", f"y{i} Int64 {y} immutable"]
         steps += [("begin", f"do compute{i}"), ("begin", f"do show{i}")]
     steps.append(("begin", "return ok okCode"))
     p.add(sb.main_op(steps, lets=lets))

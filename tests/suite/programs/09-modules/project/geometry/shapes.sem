@@ -7,33 +7,34 @@ shapes exports width
 
 Rectangle is record
 Rectangle purpose "A rectangle by its side lengths"
-Rectangle typeParam none
+Rectangle typeParameter none
 Rectangle field width Int64
 Rectangle field height Int64
 
 width is operation
 width purpose "Return the width of a rectangle"
 width invariant returnsWidth "Returns the width field unchanged"
-width typeParam none
-width input shape Rectangle value
+width typeParameter none
+width input shape Rectangle copied
 width output Int64
-width outputOwner none
+width outputOwnedBy none
 width raises none
 width effect none
 width uses none
-width memory heap false
+width memoryHeap false
 width async false
 width maxRecursion none
 width label begin loopKind none
 width label begin within none
+width let none
 width at begin do readWidth
 width at begin return ok sideWidth
 
 readWidth is call
 readWidth in width
 readWidth invokes Rectangle.width
-readWidth arg record Rectangle shape copy
-readWidth out sideWidth Int64
+readWidth argument record Rectangle shape copy
+readWidth result sideWidth Int64
 readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
@@ -42,17 +43,17 @@ readWidth catch none
 hidden is operation
 hidden purpose "A helper the module does not export"
 hidden invariant none
-hidden typeParam none
+hidden typeParameter none
 hidden input none
 hidden output Int64
-hidden outputOwner none
+hidden outputOwnedBy none
 hidden raises none
 hidden effect none
 hidden uses none
-hidden memory heap false
+hidden memoryHeap false
 hidden async false
 hidden maxRecursion none
 hidden label begin loopKind none
 hidden label begin within none
-hidden let zero immutable Int64 0
+hidden let zero Int64 0 immutable
 hidden at begin return ok zero

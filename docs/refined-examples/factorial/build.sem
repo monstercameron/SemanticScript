@@ -2,9 +2,9 @@ factorial is project
 factorial purpose "Compute five factorial by recursion and print it"
 factorial target console
 factorial version "0.1.0"
-factorial language refined-1
+factorial language refined 1
 factorial standardLibrary 1
 factorial allows write console.stdout none
 factorial requires none
-factorial module mathdemo
+factorial includesModule mathdemo
 factorial entry mathdemo.main

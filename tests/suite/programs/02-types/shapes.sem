@@ -32,26 +32,26 @@ shapes exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -60,8 +60,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -70,14 +70,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -88,8 +88,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -101,8 +101,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -112,8 +112,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -121,45 +121,46 @@ writeFalse catch falseError console.WriteError
 
 Point is record
 Point purpose "A position on a grid, returned as one value with two fields"
-Point typeParam none
+Point typeParameter none
 Point field x Int64
 Point field y Int64
 
 Shape is enum
 Shape purpose "A shape that carries its size, or no shape"
-Shape typeParam none
+Shape typeParameter none
 Shape variant square Int64
 Shape variant empty none
 
 Holder is record
 Holder purpose "A generic one-field box"
-Holder typeParam T plain
+Holder typeParameter T plain
 Holder field content T
 
-IntHolder is instance
+IntHolder is typeInstance
 IntHolder purpose "A box of one whole number"
 IntHolder instantiates Holder Int64
 
-MaybeCount is instance
+MaybeCount is typeInstance
 MaybeCount purpose "A count that may be absent"
 MaybeCount instantiates option.Option Int64
 
 Meters is alias
 Meters purpose "A length in meters, kept apart from plain numbers"
-Meters for Int64
+Meters typeParameter none
+Meters aliasOf Int64
 Meters indexes none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -180,15 +181,15 @@ main label showMissing loopKind none
 main label showMissing within none
 main label finish loopKind none
 main label finish within none
-main let seven immutable Int64 7
-main let three immutable Int64 3
-main let four immutable Int64 4
-main let five immutable Int64 5
-main let zero immutable Int64 0
-main let nine immutable Int64 9
-main let answer immutable Int64 42
-main let distance immutable Meters 9
-main let okCode immutable ExitCode 0
+main let seven Int64 7 immutable
+main let three Int64 3 immutable
+main let four Int64 4 immutable
+main let five Int64 5 immutable
+main let zero Int64 0 immutable
+main let nine Int64 9 immutable
+main let answer Int64 42 immutable
+main let distance Meters 9 immutable
+main let okCode ExitCode 0 immutable
 main at begin do makePoint
 main at begin do readX
 main at begin do showX
@@ -227,9 +228,9 @@ main at finish return ok okCode
 makePoint is call
 makePoint in main
 makePoint invokes Point.new
-makePoint arg x Int64 seven copy
-makePoint arg y Int64 four copy
-makePoint out point Point
+makePoint argument x Int64 seven copy
+makePoint argument y Int64 four copy
+makePoint result point Point
 makePoint ownedBy none
 makePoint cleanedBy none
 makePoint borrows none
@@ -238,8 +239,8 @@ makePoint catch none
 readX is call
 readX in main
 readX invokes Point.x
-readX arg record Point point copy
-readX out pointX Int64
+readX argument record Point point copy
+readX result pointX Int64
 readX ownedBy none
 readX cleanedBy none
 readX borrows none
@@ -248,8 +249,8 @@ readX catch none
 showX is call
 showX in main
 showX invokes showInt
-showX arg value Int64 pointX copy
-showX out none
+showX argument value Int64 pointX copy
+showX result none
 showX ownedBy none
 showX cleanedBy none
 showX borrows none
@@ -258,9 +259,9 @@ showX catch none
 movePoint is call
 movePoint in main
 movePoint invokes Point.with
-movePoint arg record Point point copy
-movePoint arg y Int64 three copy
-movePoint out moved Point
+movePoint argument record Point point copy
+movePoint argument y Int64 three copy
+movePoint result moved Point
 movePoint ownedBy none
 movePoint cleanedBy none
 movePoint borrows none
@@ -269,8 +270,8 @@ movePoint catch none
 readY is call
 readY in main
 readY invokes Point.y
-readY arg record Point moved copy
-readY out movedY Int64
+readY argument record Point moved copy
+readY result movedY Int64
 readY ownedBy none
 readY cleanedBy none
 readY borrows none
@@ -279,8 +280,8 @@ readY catch none
 showY is call
 showY in main
 showY invokes showInt
-showY arg value Int64 movedY copy
-showY out none
+showY argument value Int64 movedY copy
+showY result none
 showY ownedBy none
 showY cleanedBy none
 showY borrows none
@@ -289,9 +290,9 @@ showY catch none
 samePoint is call
 samePoint in main
 samePoint invokes Point.equals
-samePoint arg left Point point copy
-samePoint arg right Point point copy
-samePoint out same Bool
+samePoint argument left Point point copy
+samePoint argument right Point point copy
+samePoint result same Bool
 samePoint ownedBy none
 samePoint cleanedBy none
 samePoint borrows none
@@ -300,8 +301,8 @@ samePoint catch none
 showSame is call
 showSame in main
 showSame invokes showBool
-showSame arg flag Bool same copy
-showSame out none
+showSame argument flag Bool same copy
+showSame result none
 showSame ownedBy none
 showSame cleanedBy none
 showSame borrows none
@@ -310,9 +311,9 @@ showSame catch none
 otherPoint is call
 otherPoint in main
 otherPoint invokes Point.new
-otherPoint arg x Int64 three copy
-otherPoint arg y Int64 four copy
-otherPoint out other Point
+otherPoint argument x Int64 three copy
+otherPoint argument y Int64 four copy
+otherPoint result other Point
 otherPoint ownedBy none
 otherPoint cleanedBy none
 otherPoint borrows none
@@ -321,9 +322,9 @@ otherPoint catch none
 differentPoint is call
 differentPoint in main
 differentPoint invokes Point.equals
-differentPoint arg left Point point copy
-differentPoint arg right Point other copy
-differentPoint out different Bool
+differentPoint argument left Point point copy
+differentPoint argument right Point other copy
+differentPoint result different Bool
 differentPoint ownedBy none
 differentPoint cleanedBy none
 differentPoint borrows none
@@ -332,8 +333,8 @@ differentPoint catch none
 showDifferent is call
 showDifferent in main
 showDifferent invokes showBool
-showDifferent arg flag Bool different copy
-showDifferent out none
+showDifferent argument flag Bool different copy
+showDifferent result none
 showDifferent ownedBy none
 showDifferent cleanedBy none
 showDifferent borrows none
@@ -342,8 +343,8 @@ showDifferent catch none
 makeBox is call
 makeBox in main
 makeBox invokes IntHolder.new
-makeBox arg content Int64 answer copy
-makeBox out box IntHolder
+makeBox argument content Int64 answer copy
+makeBox result box IntHolder
 makeBox ownedBy none
 makeBox cleanedBy none
 makeBox borrows none
@@ -352,8 +353,8 @@ makeBox catch none
 openBox is call
 openBox in main
 openBox invokes IntHolder.content
-openBox arg record IntHolder box copy
-openBox out boxed Int64
+openBox argument record IntHolder box copy
+openBox result boxed Int64
 openBox ownedBy none
 openBox cleanedBy none
 openBox borrows none
@@ -362,8 +363,8 @@ openBox catch none
 showBox is call
 showBox in main
 showBox invokes showInt
-showBox arg value Int64 boxed copy
-showBox out none
+showBox argument value Int64 boxed copy
+showBox result none
 showBox ownedBy none
 showBox cleanedBy none
 showBox borrows none
@@ -372,8 +373,8 @@ showBox catch none
 makeSquare is call
 makeSquare in main
 makeSquare invokes Shape.square
-makeSquare arg payload Int64 five copy
-makeSquare out square Shape
+makeSquare argument payload Int64 five copy
+makeSquare result square Shape
 makeSquare ownedBy none
 makeSquare cleanedBy none
 makeSquare borrows none
@@ -382,8 +383,8 @@ makeSquare catch none
 printSide is call
 printSide in main
 printSide invokes showInt
-printSide arg value Int64 side copy
-printSide out none
+printSide argument value Int64 side copy
+printSide result none
 printSide ownedBy none
 printSide cleanedBy none
 printSide borrows none
@@ -392,8 +393,8 @@ printSide catch none
 printZero is call
 printZero in main
 printZero invokes showInt
-printZero arg value Int64 zero copy
-printZero out none
+printZero argument value Int64 zero copy
+printZero result none
 printZero ownedBy none
 printZero cleanedBy none
 printZero borrows none
@@ -402,8 +403,8 @@ printZero catch none
 makeAbsent is call
 makeAbsent in main
 makeAbsent invokes MaybeCount.absent
-makeAbsent arg none
-makeAbsent out absentCount MaybeCount
+makeAbsent argument none
+makeAbsent result absentCount MaybeCount
 makeAbsent ownedBy none
 makeAbsent cleanedBy none
 makeAbsent borrows none
@@ -412,8 +413,8 @@ makeAbsent catch none
 printFound is call
 printFound in main
 printFound invokes showInt
-printFound arg value Int64 found copy
-printFound out none
+printFound argument value Int64 found copy
+printFound result none
 printFound ownedBy none
 printFound cleanedBy none
 printFound borrows none
@@ -422,8 +423,8 @@ printFound catch none
 printMissing is call
 printMissing in main
 printMissing invokes showInt
-printMissing arg value Int64 zero copy
-printMissing out none
+printMissing argument value Int64 zero copy
+printMissing result none
 printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
@@ -432,8 +433,8 @@ printMissing catch none
 printNine is call
 printNine in main
 printNine invokes showInt
-printNine arg value Int64 nine copy
-printNine out none
+printNine argument value Int64 nine copy
+printNine result none
 printNine ownedBy none
 printNine cleanedBy none
 printNine borrows none

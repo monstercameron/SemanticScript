@@ -17,26 +17,26 @@ pipesCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -45,8 +45,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -54,22 +54,21 @@ writeValue catch writeError console.WriteError
 
 gitRunner is capability
 gitRunner purpose "Authority to run git"
-gitRunner grants spawn process.programs
-gitRunner scope "git"
+gitRunner grants spawn process.programs "git"
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect spawn process.programs
 main effect write console.stdout
 main uses gitRunner
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -82,22 +81,22 @@ main label step3 loopKind none
 main label step3 within none
 main label failed loopKind none
 main label failed within none
-main let zero immutable Int64 0
-main let forty immutable Int64 40
-main let limit immutable Int64 4096
-main let waitMs immutable Int64 30000
-main let git immutable String "git"
-main let hashObject immutable String "hash-object"
-main let fromStdin immutable String "--stdin"
-main let piped immutable String "piped"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let zero Int64 0 immutable
+main let forty Int64 40 immutable
+main let limit Int64 4096 immutable
+main let waitMs Int64 30000 immutable
+main let git String "git" immutable
+main let hashObject String "hash-object" immutable
+main let fromStdin String "--stdin" immutable
+main let piped String "piped" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
 main at begin do newArguments
 main at begin do addhashObject
 main at begin do addfromStdin
 main at begin do pipedBytes
-main at begin start runGit
+main at begin start runGit into none
 main at begin join runGit
 main at begin branch ifError runGit goto failed else goto step1
 main at step1 do readStdout
@@ -113,14 +112,14 @@ main at failed return ok failCode
 store is region
 store in main
 store strategy arena
-store capacity 65536
+store maxBytes 65536
 store released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -129,8 +128,8 @@ makeDeadline catch none
 newArguments is call
 newArguments in main
 newArguments invokes process.newArguments
-newArguments arg region Region store lend
-newArguments out arguments process.Arguments
+newArguments argument region Region store lend
+newArguments result arguments process.Arguments
 newArguments ownedBy store
 newArguments cleanedBy none
 newArguments borrows none
@@ -139,9 +138,9 @@ newArguments catch none
 addhashObject is call
 addhashObject in main
 addhashObject invokes process.addArgument
-addhashObject arg arguments process.Arguments arguments lendMutable
-addhashObject arg text String hashObject lend
-addhashObject out none
+addhashObject argument arguments process.Arguments arguments lendMutable
+addhashObject argument text String hashObject lend
+addhashObject result none
 addhashObject ownedBy none
 addhashObject cleanedBy none
 addhashObject borrows none
@@ -150,9 +149,9 @@ addhashObject catch none
 addfromStdin is call
 addfromStdin in main
 addfromStdin invokes process.addArgument
-addfromStdin arg arguments process.Arguments arguments lendMutable
-addfromStdin arg text String fromStdin lend
-addfromStdin out none
+addfromStdin argument arguments process.Arguments arguments lendMutable
+addfromStdin argument text String fromStdin lend
+addfromStdin result none
 addfromStdin ownedBy none
 addfromStdin cleanedBy none
 addfromStdin borrows none
@@ -161,8 +160,8 @@ addfromStdin catch none
 pipedBytes is call
 pipedBytes in main
 pipedBytes invokes string.toBytes
-pipedBytes arg text String piped lend
-pipedBytes out pipedData Bytes
+pipedBytes argument text String piped lend
+pipedBytes result pipedData Bytes
 pipedBytes ownedBy none
 pipedBytes cleanedBy none
 pipedBytes borrows piped
@@ -171,13 +170,13 @@ pipedBytes catch none
 runGit is task
 runGit in main
 runGit invokes process.runCaptured
-runGit arg program String git lend
-runGit arg arguments process.Arguments arguments lend
-runGit arg input Bytes pipedData lend
-runGit arg region Region store lend
-runGit arg maxBytes Int64 limit copy
-runGit arg deadline time.Deadline deadline copy
-runGit out gitOutput process.Output
+runGit argument program String git lend
+runGit argument arguments process.Arguments arguments lend
+runGit argument input Bytes pipedData lend
+runGit argument region Region store lend
+runGit argument maxBytes Int64 limit copy
+runGit argument deadline time.Deadline deadline copy
+runGit result gitOutput process.Output
 runGit ownedBy store
 runGit cleanedBy none
 runGit borrows none
@@ -186,8 +185,8 @@ runGit catch runError process.RunError
 readStdout is call
 readStdout in main
 readStdout invokes process.Output.stdout
-readStdout arg record process.Output gitOutput lend
-readStdout out gitStdout Bytes
+readStdout argument record process.Output gitOutput lend
+readStdout result gitStdout Bytes
 readStdout ownedBy none
 readStdout cleanedBy none
 readStdout borrows gitOutput
@@ -196,9 +195,9 @@ readStdout catch none
 stdoutText is call
 stdoutText in main
 stdoutText invokes string.fromBytes
-stdoutText arg bytes Bytes gitStdout lend
-stdoutText arg region Region store lend
-stdoutText out gitText String
+stdoutText argument bytes Bytes gitStdout lend
+stdoutText argument region Region store lend
+stdoutText result gitText String
 stdoutText ownedBy store
 stdoutText cleanedBy none
 stdoutText borrows none
@@ -207,8 +206,8 @@ stdoutText catch stdoutError string.Utf8Error
 hashLength is call
 hashLength in main
 hashLength invokes string.byteLength
-hashLength arg text String gitText lend
-hashLength out gitLength Int64
+hashLength argument text String gitText lend
+hashLength result gitLength Int64
 hashLength ownedBy none
 hashLength cleanedBy none
 hashLength borrows none
@@ -217,10 +216,10 @@ hashLength catch none
 trimmedHash is call
 trimmedHash in main
 trimmedHash invokes string.slice
-trimmedHash arg text String gitText lend
-trimmedHash arg start Int64 zero copy
-trimmedHash arg length Int64 forty copy
-trimmedHash out hash String
+trimmedHash argument text String gitText lend
+trimmedHash argument start Int64 zero copy
+trimmedHash argument length Int64 forty copy
+trimmedHash result hash String
 trimmedHash ownedBy none
 trimmedHash cleanedBy none
 trimmedHash borrows gitText
@@ -229,8 +228,8 @@ trimmedHash catch trimError string.StringIndexError
 printHash is call
 printHash in main
 printHash invokes showText
-printHash arg text String hash lend
-printHash out none
+printHash argument text String hash lend
+printHash result none
 printHash ownedBy none
 printHash cleanedBy none
 printHash borrows none

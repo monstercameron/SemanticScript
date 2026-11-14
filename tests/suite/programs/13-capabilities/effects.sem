@@ -25,26 +25,26 @@ effects exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -53,8 +53,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -63,27 +63,28 @@ writeValue catch writeError console.WriteError
 square is operation
 square purpose "Return a number times itself; touches nothing outside"
 square invariant none
-square typeParam none
-square input value Int64 value
+square typeParameter none
+square input value Int64 copied
 square output Int64
-square outputOwner none
+square outputOwnedBy none
 square raises none
 square effect none
 square uses none
-square memory heap false
+square memoryHeap false
 square async false
 square maxRecursion none
 square label begin loopKind none
 square label begin within none
+square let none
 square at begin do multiply
 square at begin return ok squared
 
 multiply is call
 multiply in square
 multiply invokes math.multiplyInt64
-multiply arg left Int64 value copy
-multiply arg right Int64 value copy
-multiply out squared Int64
+multiply argument left Int64 value copy
+multiply argument right Int64 value copy
+multiply result squared Int64
 multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
@@ -92,18 +93,19 @@ multiply catch none
 report is operation
 report purpose "Print the square of a number; inherits the write effect from showInt"
 report invariant none
-report typeParam none
-report input value Int64 value
+report typeParameter none
+report input value Int64 copied
 report output none
-report outputOwner none
+report outputOwnedBy none
 report raises none
 report effect write console.stdout
 report uses stdoutWriter
-report memory heap false
+report memoryHeap false
 report async false
 report maxRecursion none
 report label begin loopKind none
 report label begin within none
+report let none
 report at begin do squareIt
 report at begin do showIt
 report at begin return ok none
@@ -111,8 +113,8 @@ report at begin return ok none
 squareIt is call
 squareIt in report
 squareIt invokes square
-squareIt arg value Int64 value copy
-squareIt out squaredValue Int64
+squareIt argument value Int64 value copy
+squareIt result squaredValue Int64
 squareIt ownedBy none
 squareIt cleanedBy none
 squareIt borrows none
@@ -121,8 +123,8 @@ squareIt catch none
 showIt is call
 showIt in report
 showIt invokes showInt
-showIt arg value Int64 squaredValue copy
-showIt out none
+showIt argument value Int64 squaredValue copy
+showIt result none
 showIt ownedBy none
 showIt cleanedBy none
 showIt borrows none
@@ -131,28 +133,28 @@ showIt catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let seven immutable Int64 7
-main let okCode immutable ExitCode 0
+main let seven Int64 7 immutable
+main let okCode ExitCode 0 immutable
 main at begin do reportSeven
 main at begin return ok okCode
 
 reportSeven is call
 reportSeven in main
 reportSeven invokes report
-reportSeven arg value Int64 seven copy
-reportSeven out none
+reportSeven argument value Int64 seven copy
+reportSeven result none
 reportSeven ownedBy none
 reportSeven cleanedBy none
 reportSeven borrows none

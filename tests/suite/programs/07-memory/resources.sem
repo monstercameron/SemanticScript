@@ -29,20 +29,19 @@ resources exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -53,8 +52,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -66,8 +65,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -77,8 +76,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -87,20 +86,21 @@ writeFalse catch falseError console.WriteError
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -109,8 +109,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -118,21 +118,20 @@ writeValue catch writeError console.WriteError
 
 fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
-fileAccess grants read fs.files
-fileAccess grants write fs.files
-fileAccess scope "suite-*"
+fileAccess grants read fs.files "suite-*"
+fileAccess grants write fs.files "suite-*"
 
 closeFor is operation
 closeFor purpose "Take ownership of an open file and close it, reporting whether closing worked"
 closeFor invariant none
-closeFor typeParam none
+closeFor typeParameter none
 closeFor input file fs.FileHandle owned
 closeFor output Bool
-closeFor outputOwner none
+closeFor outputOwnedBy none
 closeFor raises none
 closeFor effect none
 closeFor uses none
-closeFor memory heap false
+closeFor memoryHeap false
 closeFor async false
 closeFor maxRecursion none
 closeFor label begin loopKind none
@@ -141,8 +140,8 @@ closeFor label closed loopKind none
 closeFor label closed within none
 closeFor label failed loopKind none
 closeFor label failed within none
-closeFor let closedFlag immutable Bool true
-closeFor let failedFlag immutable Bool false
+closeFor let closedFlag Bool true immutable
+closeFor let failedFlag Bool false immutable
 closeFor at begin do closeIt
 closeFor at begin branch ifError closeIt goto failed else goto closed
 closeFor at closed return ok closedFlag
@@ -151,8 +150,8 @@ closeFor at failed return ok failedFlag
 closeIt is call
 closeIt in closeFor
 closeIt invokes fs.close
-closeIt arg file fs.FileHandle file give
-closeIt out none
+closeIt argument file fs.FileHandle file give
+closeIt result none
 closeIt ownedBy none
 closeIt cleanedBy none
 closeIt borrows none
@@ -161,17 +160,17 @@ closeIt catch closeError fs.FileError
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read fs.files
 main effect write console.stdout
 main effect write fs.files
 main uses fileAccess
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -190,21 +189,21 @@ main label reportMissing loopKind none
 main label reportMissing within none
 main label failed loopKind none
 main label failed within none
-main let firstPath immutable String "suite-first.txt"
-main let secondPath immutable String "suite-second.txt"
-main let missingPath immutable String "suite-missing.txt"
-main let content immutable String "data"
-main let notFoundText immutable String "notFound"
-main let waitMs immutable Int64 5000
-main let limit immutable Int64 64
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let firstPath String "suite-first.txt" immutable
+main let secondPath String "suite-second.txt" immutable
+main let missingPath String "suite-missing.txt" immutable
+main let content String "data" immutable
+main let notFoundText String "notFound" immutable
+main let waitMs Int64 5000 immutable
+main let limit Int64 64 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
 main at begin do toBytes
-main at begin start writeFirst
+main at begin start writeFirst into none
 main at begin join writeFirst
 main at begin branch ifError writeFirst goto failed else goto writeTwo
-main at writeTwo start writeSecond
+main at writeTwo start writeSecond into none
 main at writeTwo join writeSecond
 main at writeTwo branch ifError writeSecond goto failed else goto openOne
 main at openOne do openFirst
@@ -214,7 +213,7 @@ main at opened do openSecond
 main at opened branch ifError openSecond goto failed else goto handOff
 main at handOff do giveSecond
 main at handOff do showClosed
-main at handOff start readMissing
+main at handOff start readMissing into none
 main at handOff join readMissing
 main at handOff branch ifError readMissing goto missing else goto failed
 main at missing match missingError fs.FileError
@@ -232,14 +231,14 @@ main at failed return ok failCode
 scratch is region
 scratch in main
 scratch strategy arena
-scratch capacity 65536
+scratch maxBytes 65536
 scratch released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -248,8 +247,8 @@ makeDeadline catch none
 toBytes is call
 toBytes in main
 toBytes invokes string.toBytes
-toBytes arg text String content lend
-toBytes out contentBytes Bytes
+toBytes argument text String content lend
+toBytes result contentBytes Bytes
 toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
@@ -258,10 +257,10 @@ toBytes catch none
 writeFirst is task
 writeFirst in main
 writeFirst invokes fs.writeAll
-writeFirst arg path String firstPath lend
-writeFirst arg bytes Bytes contentBytes lend
-writeFirst arg deadline time.Deadline deadline copy
-writeFirst out none
+writeFirst argument path String firstPath lend
+writeFirst argument bytes Bytes contentBytes lend
+writeFirst argument deadline time.Deadline deadline copy
+writeFirst result none
 writeFirst ownedBy none
 writeFirst cleanedBy none
 writeFirst borrows none
@@ -270,10 +269,10 @@ writeFirst catch writeFirstError fs.FileError
 writeSecond is task
 writeSecond in main
 writeSecond invokes fs.writeAll
-writeSecond arg path String secondPath lend
-writeSecond arg bytes Bytes contentBytes lend
-writeSecond arg deadline time.Deadline deadline copy
-writeSecond out none
+writeSecond argument path String secondPath lend
+writeSecond argument bytes Bytes contentBytes lend
+writeSecond argument deadline time.Deadline deadline copy
+writeSecond result none
 writeSecond ownedBy none
 writeSecond cleanedBy none
 writeSecond borrows none
@@ -282,25 +281,25 @@ writeSecond catch writeSecondError fs.FileError
 openFirst is call
 openFirst in main
 openFirst invokes fs.openRead
-openFirst arg path String firstPath lend
-openFirst out first fs.FileHandle
+openFirst argument path String firstPath lend
+openFirst result first fs.FileHandle
 openFirst ownedBy main
 openFirst cleanedBy closeFirstCleanup
 openFirst borrows none
 openFirst catch firstError fs.FileError
 
 closeFirstCleanup is cleanup
+closeFirstCleanup rationale "A failed close at exit has nobody to report to"
 closeFirstCleanup in main
-closeFirstCleanup call closeFirst
+closeFirstCleanup runs closeFirst
 closeFirstCleanup cleans first
-closeFirstCleanup onFailure suppress
-closeFirstCleanup because "A failed close at exit has nobody to report to"
+closeFirstCleanup onError suppress
 
 closeFirst is call
 closeFirst in main
 closeFirst invokes fs.close
-closeFirst arg file fs.FileHandle first give
-closeFirst out none
+closeFirst argument file fs.FileHandle first give
+closeFirst result none
 closeFirst ownedBy none
 closeFirst cleanedBy none
 closeFirst borrows none
@@ -309,8 +308,8 @@ closeFirst catch closeFirstError fs.FileError
 openSecond is call
 openSecond in main
 openSecond invokes fs.openRead
-openSecond arg path String secondPath lend
-openSecond out second fs.FileHandle
+openSecond argument path String secondPath lend
+openSecond result second fs.FileHandle
 openSecond ownedBy main
 openSecond cleanedBy none
 openSecond borrows none
@@ -319,8 +318,8 @@ openSecond catch secondError fs.FileError
 giveSecond is call
 giveSecond in main
 giveSecond invokes closeFor
-giveSecond arg file fs.FileHandle second give
-giveSecond out closedWell Bool
+giveSecond argument file fs.FileHandle second give
+giveSecond result closedWell Bool
 giveSecond ownedBy none
 giveSecond cleanedBy none
 giveSecond borrows none
@@ -329,8 +328,8 @@ giveSecond catch none
 showClosed is call
 showClosed in main
 showClosed invokes showBool
-showClosed arg flag Bool closedWell copy
-showClosed out none
+showClosed argument flag Bool closedWell copy
+showClosed result none
 showClosed ownedBy none
 showClosed cleanedBy none
 showClosed borrows none
@@ -339,11 +338,11 @@ showClosed catch none
 readMissing is task
 readMissing in main
 readMissing invokes fs.readAll
-readMissing arg path String missingPath lend
-readMissing arg region Region scratch lend
-readMissing arg maxBytes Int64 limit copy
-readMissing arg deadline time.Deadline deadline copy
-readMissing out missingBytes Bytes
+readMissing argument path String missingPath lend
+readMissing argument region Region scratch lend
+readMissing argument maxBytes Int64 limit copy
+readMissing argument deadline time.Deadline deadline copy
+readMissing result missingBytes Bytes
 readMissing ownedBy scratch
 readMissing cleanedBy none
 readMissing borrows none
@@ -352,8 +351,8 @@ readMissing catch missingError fs.FileError
 showNotFound is call
 showNotFound in main
 showNotFound invokes showText
-showNotFound arg text String notFoundText lend
-showNotFound out none
+showNotFound argument text String notFoundText lend
+showNotFound result none
 showNotFound ownedBy none
 showNotFound cleanedBy none
 showNotFound borrows none

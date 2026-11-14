@@ -15,14 +15,14 @@ deepRecursion exports main
 descend is operation
 descend purpose "Recurse n times"
 descend invariant none
-descend typeParam none
-descend input n Int64 value
+descend typeParameter none
+descend input n Int64 copied
 descend output Int64
-descend outputOwner none
+descend outputOwnedBy none
 descend raises none
 descend effect none
 descend uses none
-descend memory heap false
+descend memoryHeap false
 descend async false
 descend maxRecursion 10
 descend label begin loopKind none
@@ -31,8 +31,8 @@ descend label done loopKind none
 descend label done within none
 descend label step loopKind none
 descend label step within none
-descend let zero immutable Int64 0
-descend let one immutable Int64 1
+descend let zero Int64 0 immutable
+descend let one Int64 1 immutable
 descend at begin do atZero
 descend at begin branch if zeroReached goto done else goto step
 descend at done return ok zero
@@ -43,9 +43,9 @@ descend at step return ok inner
 atZero is call
 atZero in descend
 atZero invokes compare.equalInt64
-atZero arg left Int64 n copy
-atZero arg right Int64 zero copy
-atZero out zeroReached Bool
+atZero argument left Int64 n copy
+atZero argument right Int64 zero copy
+atZero result zeroReached Bool
 atZero ownedBy none
 atZero cleanedBy none
 atZero borrows none
@@ -54,9 +54,9 @@ atZero catch none
 less is call
 less in descend
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 one copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 one copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -65,8 +65,8 @@ less catch none
 recurse is call
 recurse in descend
 recurse invokes descend
-recurse arg n Int64 smaller copy
-recurse out inner Int64
+recurse argument n Int64 smaller copy
+recurse result inner Int64
 recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
@@ -75,28 +75,28 @@ recurse catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let depth immutable Int64 50
-main let okCode immutable ExitCode 0
+main let depth Int64 50 immutable
+main let okCode ExitCode 0 immutable
 main at begin do goDeep
 main at begin return ok okCode
 
 goDeep is call
 goDeep in main
 goDeep invokes descend
-goDeep arg n Int64 depth copy
-goDeep out bottom Int64
+goDeep argument n Int64 depth copy
+goDeep result bottom Int64
 goDeep ownedBy none
 goDeep cleanedBy none
 goDeep borrows none

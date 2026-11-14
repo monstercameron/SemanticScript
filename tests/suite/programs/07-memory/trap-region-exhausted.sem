@@ -14,21 +14,21 @@ regionExhausted imports standard.compare
 regionExhausted imports standard.list
 regionExhausted exports main
 
-Numbers is instance
+Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
 Numbers instantiates list.List Int64
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -41,10 +41,10 @@ main label appendStep loopKind none
 main label appendStep within fill
 main label done loopKind none
 main label done within none
-main let one immutable Int64 1
-main let limit immutable Int64 1000
-main let index mutable Int64 0
-main let okCode immutable ExitCode 0
+main let one Int64 1 immutable
+main let limit Int64 1000 immutable
+main let index Int64 0 mutable
+main let okCode ExitCode 0 immutable
 main at begin do makeNumbers
 main at begin goto fill
 main at fill do filled
@@ -58,14 +58,14 @@ main at done return ok okCode
 tiny is region
 tiny in main
 tiny strategy arena
-tiny capacity 256
+tiny maxBytes 256
 tiny released atReturn
 
 makeNumbers is call
 makeNumbers in main
 makeNumbers invokes Numbers.new
-makeNumbers arg region Region tiny lend
-makeNumbers out numbers Numbers
+makeNumbers argument region Region tiny lend
+makeNumbers result numbers Numbers
 makeNumbers ownedBy tiny
 makeNumbers cleanedBy none
 makeNumbers borrows none
@@ -74,9 +74,9 @@ makeNumbers catch none
 filled is call
 filled in main
 filled invokes compare.greaterOrEqualInt64
-filled arg left Int64 index copy
-filled arg right Int64 limit copy
-filled out isFilled Bool
+filled argument left Int64 index copy
+filled argument right Int64 limit copy
+filled result isFilled Bool
 filled ownedBy none
 filled cleanedBy none
 filled borrows none
@@ -85,9 +85,9 @@ filled catch none
 appendIndex is call
 appendIndex in main
 appendIndex invokes Numbers.append
-appendIndex arg list Numbers numbers lendMutable
-appendIndex arg item Int64 index copy
-appendIndex out none
+appendIndex argument list Numbers numbers lendMutable
+appendIndex argument item Int64 index copy
+appendIndex result none
 appendIndex ownedBy none
 appendIndex cleanedBy none
 appendIndex borrows none
@@ -96,9 +96,9 @@ appendIndex catch none
 advance is call
 advance in main
 advance invokes math.addInt64
-advance arg left Int64 index copy
-advance arg right Int64 one copy
-advance out nextIndex Int64
+advance argument left Int64 index copy
+advance argument right Int64 one copy
+advance result nextIndex Int64
 advance ownedBy none
 advance cleanedBy none
 advance borrows none

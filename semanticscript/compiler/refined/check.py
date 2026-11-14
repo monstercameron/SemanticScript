@@ -12,7 +12,7 @@ from .flow import check_flow
 from .lexer import lex
 from .library import LIBRARY
 from .model import Entity, SourceFile
-from .semantics import Module, World, check_module, check_recursion, finish_module, index_module
+from .semantics import Module, World, check_module, check_recursion, finish_module, grant_scope, index_module
 
 # Rows from a module's `.test.sem` file are merged into the module. Their line
 # numbers are offset so every diagnostic can be routed back to the right file.
@@ -152,7 +152,7 @@ def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[
     _check_versions(proj, bsink)
     root = os.path.dirname(os.path.abspath(build_path))
     modules = []
-    for r in proj.facts("module"):
+    for r in proj.facts("includesModule"):
         dotted = r.text(0)
         file = os.path.join(root, *dotted.split(".")) + ".sem"
         if not os.path.exists(file):
@@ -294,7 +294,7 @@ def _check_import_cycles(world: World, sink: Sink) -> None:
 
 # ---------------------------------------------------------------- versions and packages (D-34)
 
-LANGUAGE = "refined-1"
+LANGUAGE = "refined 1"
 STANDARD_LIBRARY_VERSION = 1
 
 
@@ -334,7 +334,7 @@ def _check_versions(proj: Entity, sink: Sink) -> None:
     if row is not None and _semver(row.args[0].value) is None:
         sink.error("R601", row.line, f"a project version is `MAJOR.MINOR.PATCH`, not `{row.args[0].value}`")
     row = proj.fact("language")
-    if row is not None and row.text(0) != LANGUAGE:
+    if row is not None and f"{row.text(0)} {row.text(1)}" != LANGUAGE:
         sink.error("R601", row.line, f"this compiler reads `{LANGUAGE}`")
     row = proj.fact("standardLibrary")
     if row is not None and row.text(0) != str(STANDARD_LIBRARY_VERSION):
@@ -361,10 +361,8 @@ def _check_allows(world: World, proj: Entity, sink: Sink, package: str) -> None:
         if package and not (mine == package or mine.startswith(package + ".")):
             continue
         for cap in m.capabilities.values():
-            srow = cap.fact("scope")
-            scope = srow.args[0].value if srow is not None and srow.args and srow.args[0].kind == "string" else None
             for g in cap.facts("grants"):
-                verb, res = g.text(0), g.text(1)
+                verb, res, scope = g.text(0), g.text(1), grant_scope(g)
                 ok = any(v == verb and rr == res and (s is None or (scope is not None and scope_within(res, scope, s)))
                          for v, rr, s in allowed)
                 if not ok:
@@ -378,15 +376,10 @@ def allows_rows(project: str, texts: list[str]) -> list[str]:
     generate a build.sem for code they did not write (the REPL, the test harness) use this; a hand-written
     build.sem states its authority itself."""
     import re
-    grants, scopes = [], {}
-    for text in texts:
-        for cap, verb, res in re.findall(r"^(\w+) grants (\w+) ([\w.]+)\s*$", text, re.M):
-            grants.append((cap, verb, res))
-        for cap, scope in re.findall(r"^(\w+) scope (none|\"[^\"]*\")\s*$", text, re.M):
-            scopes[cap] = scope
     rows = []
-    for cap, verb, res in grants:
-        row = f"{project} allows {verb} {res} {scopes.get(cap, 'none')}"
-        if row not in rows:
-            rows.append(row)
+    for text in texts:
+        for verb, res, scope in re.findall(r"^\w+ grants (\w+) ([\w.]+) (none|\"[^\"]*\")\s*$", text, re.M):
+            row = f"{project} allows {verb} {res} {scope}"
+            if row not in rows:
+                rows.append(row)
     return rows or [f"{project} allows none"]

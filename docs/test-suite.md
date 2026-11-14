@@ -173,7 +173,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Stack allocation | tested | `heap-undeclared`, [variables](../tests/suite/programs/01-variables/variables.sem) | Plain values (integers, records of plain fields) live in the operation's frame; `memory heap false` promises nothing else is allocated. |
+| Stack allocation | tested | `heap-undeclared`, [variables](../tests/suite/programs/01-variables/variables.sem) | Plain values (integers, records of plain fields) live in the operation's frame; `memoryHeap false` promises nothing else is allocated. |
 | Heap allocation | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `heap-undeclared` |   |
 | Dynamic allocation | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `string-owner-undeclared` |   |
 | Deallocation | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
@@ -590,7 +590,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Testing framework integration | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem) |   |
 | Standard library versioning | tested | [package](../tests/suite/programs/09-modules/package), `standard-library-version` | build.sem states `standardLibrary 1`; a different version is refused. |
 | Backward compatibility | by design | `language-version` | Not promised: the owner chose no compatibility layer while the language settles (language-refinement.md, Part 5). |
-| Language feature versioning | tested | [package](../tests/suite/programs/09-modules/package), `language-version` | build.sem states `language refined-1`; anything else is refused. |
+| Language feature versioning | tested | [package](../tests/suite/programs/09-modules/package), `language-version` | build.sem states `language refined 1`; anything else is refused. |
 
 ## Open work
 

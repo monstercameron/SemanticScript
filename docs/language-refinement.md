@@ -2080,6 +2080,37 @@ Decisions (by delegation):
   passing the bound traps at run time.
 - **D-46** Capabilities are never exported (R402).
 
+- **D-47** One pattern for the whole syntax (the owner: "don't simplify
+  syntax, make sure it has a consistent pattern"). Nothing becomes implicit;
+  rows that said the same thing two ways now say it one way:
+  - one word for "why": `rationale` (the cleanup row and the `forever` label
+    fact `because` are gone; every cleanup states a `rationale` context row);
+  - context rows lead everywhere: a label's `purpose`/`rationale`/`risk`/
+    `note`/`todo` come before its `loopKind`, as an entity's do after `is`;
+  - `let <name> <Type> <value> <mutability>`, slot for slot like
+    `argument <slot> <Type> <value> <mode>`, and `let none` when there are
+    none (every `some` predicate states `none` rather than being absent);
+  - `grants <verb> <resource> <scope|none>`: each grant carries its scope,
+    the same triple as `allows` (the capability `scope` row is gone);
+  - parameter modes `copied`/`borrowed`/`borrowedMutable`/`owned` pair with
+    argument modes `copy`/`lend`/`lendMutable`/`give`;
+  - single-word predicates: `memoryHeap`, `outputOwnedBy` (beside `ownedBy`),
+    `onError` (errors are never called failures), `runs` for a cleanup's call;
+  - bounds are `max<Thing>`: `maxIterations`, `maxRecursion`, `maxBytes`
+    (region), `maxTasks` (task group);
+  - full words: `argument`, `result`, `typeParameter`;
+  - `start <task> into <group|none>` always states its group;
+  - type kinds alike: `typeInstance` (beside `operationInstance`),
+    `aliasOf`, `rowType`, and `typeParameter` on every type kind; `alias`
+    states a `purpose`;
+  - build.sem: `includesModule <path>` (a kind name is no longer a
+    predicate) and `language refined 1` (a name and a number, like
+    `standardLibrary 1`).
+  Not changed, on purpose: `raises`/`uses` keep their verbs, and loop-only
+  label facts stay on loop headers. Rows in Parts 1 to 10 show the syntax of
+  their time; `docs/refined-grammar.md`, generated from the shape table, is
+  the current reference.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.
@@ -2312,6 +2343,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | Part 8 | Backend completed so every program compiles and runs; decisions D-27 to D-32 (by delegation; D-31 replaces D-27) |
 | 2026-11-14 | Part 7 | Test suite and generated coverage map (owner); fixes for what it found; decisions D-24 to D-26 (by delegation) |
 | 2026-11-14 | Part 10 | Adversarial refinement: loan, task, scope, and test holes closed; decisions D-38 to D-41 (by delegation) |
+| 2026-11-14 | D-43 to D-47 | Exclusive handle loans, cancel-then-join, table loop bounds, no exported capabilities, a conformance suite; one consistent syntax pattern (owner) |
 
 ## Parking lot
 

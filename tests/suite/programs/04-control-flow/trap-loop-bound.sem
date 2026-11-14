@@ -15,14 +15,14 @@ runawayLoop exports main
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -34,10 +34,10 @@ main label step loopKind none
 main label step within spin
 main label done loopKind none
 main label done within none
-main let one immutable Int64 1
-main let limit immutable Int64 100
-main let count mutable Int64 0
-main let okCode immutable ExitCode 0
+main let one Int64 1 immutable
+main let limit Int64 100 immutable
+main let count Int64 0 mutable
+main let okCode ExitCode 0 immutable
 main at begin goto spin
 main at spin do below
 main at spin branch if isBelow goto step else goto done
@@ -49,9 +49,9 @@ main at done return ok okCode
 below is call
 below in main
 below invokes compare.lessThanInt64
-below arg left Int64 count copy
-below arg right Int64 limit copy
-below out isBelow Bool
+below argument left Int64 count copy
+below argument right Int64 limit copy
+below result isBelow Bool
 below ownedBy none
 below cleanedBy none
 below borrows none
@@ -60,9 +60,9 @@ below catch none
 addOne is call
 addOne in main
 addOne invokes math.addInt64
-addOne arg left Int64 count copy
-addOne arg right Int64 one copy
-addOne out nextCount Int64
+addOne argument left Int64 count copy
+addOne argument right Int64 one copy
+addOne result nextCount Int64
 addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none

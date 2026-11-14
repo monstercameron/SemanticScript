@@ -23,11 +23,11 @@ modulesDemo is project
 modulesDemo purpose "Call operations and use types from other modules, including a nested module path"
 modulesDemo target console
 modulesDemo version "0.1.0"
-modulesDemo language refined-1
+modulesDemo language refined 1
 modulesDemo standardLibrary 1
 modulesDemo allows write console.stdout none
 modulesDemo requires none
-modulesDemo module app
-modulesDemo module geometry.shapes
-modulesDemo module geometry.area
+modulesDemo includesModule app
+modulesDemo includesModule geometry.shapes
+modulesDemo includesModule geometry.area
 modulesDemo entry app.main

@@ -167,9 +167,9 @@ def materialize(case: Case, workdir: str) -> str:
     project = "case" + module[0].upper() + module[1:] if module else "case"
     rows = [f"{project} is project", f'{project} purpose "Run one test-suite case"',
             f"{project} target {'console' if console else 'library'}", f'{project} version "0.1.0"',
-            f"{project} language refined-1", f"{project} standardLibrary 1", *allows_rows(project, [text]),
+            f"{project} language refined 1", f"{project} standardLibrary 1", *allows_rows(project, [text]),
             f"{project} requires none",
-            f"{project} module {dotted}",
+            f"{project} includesModule {dotted}",
             f"{project} entry {module + '.main' if console else 'none'}"]
     with open(os.path.join(dst, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(rows) + "\n")

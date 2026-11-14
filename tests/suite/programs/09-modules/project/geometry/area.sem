@@ -9,18 +9,19 @@ area exports rectangle
 rectangle is operation
 rectangle purpose "Return the area of a rectangle"
 rectangle invariant widthTimesHeight "Returns width times height"
-rectangle typeParam none
-rectangle input shape shapes.Rectangle value
+rectangle typeParameter none
+rectangle input shape shapes.Rectangle copied
 rectangle output Int64
-rectangle outputOwner none
+rectangle outputOwnedBy none
 rectangle raises none
 rectangle effect none
 rectangle uses none
-rectangle memory heap false
+rectangle memoryHeap false
 rectangle async false
 rectangle maxRecursion none
 rectangle label begin loopKind none
 rectangle label begin within none
+rectangle let none
 rectangle at begin do readWidth
 rectangle at begin do readHeight
 rectangle at begin do multiply
@@ -29,8 +30,8 @@ rectangle at begin return ok product
 readWidth is call
 readWidth in rectangle
 readWidth invokes shapes.Rectangle.width
-readWidth arg record shapes.Rectangle shape copy
-readWidth out sideWidth Int64
+readWidth argument record shapes.Rectangle shape copy
+readWidth result sideWidth Int64
 readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
@@ -39,8 +40,8 @@ readWidth catch none
 readHeight is call
 readHeight in rectangle
 readHeight invokes shapes.Rectangle.height
-readHeight arg record shapes.Rectangle shape copy
-readHeight out sideHeight Int64
+readHeight argument record shapes.Rectangle shape copy
+readHeight result sideHeight Int64
 readHeight ownedBy none
 readHeight cleanedBy none
 readHeight borrows none
@@ -49,9 +50,9 @@ readHeight catch none
 multiply is call
 multiply in rectangle
 multiply invokes math.multiplyInt64
-multiply arg left Int64 sideWidth copy
-multiply arg right Int64 sideHeight copy
-multiply out product Int64
+multiply argument left Int64 sideWidth copy
+multiply argument right Int64 sideHeight copy
+multiply result product Int64
 multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none

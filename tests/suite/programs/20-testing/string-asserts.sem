@@ -13,30 +13,31 @@ joinText exports join
 join is operation
 join purpose "Return the left text followed by the right text, allocated in the given region"
 join invariant leftThenRight "The result is the left text followed by the right text"
-join typeParam none
+join typeParameter none
 join input left String borrowed
 join input right String borrowed
 join input into Region borrowed
 join output String
-join outputOwner into
+join outputOwnedBy into
 join raises none
 join effect none
 join uses none
-join memory heap true
+join memoryHeap true
 join async false
 join maxRecursion none
 join label begin loopKind none
 join label begin within none
+join let none
 join at begin do concatenate
 join at begin return ok joined
 
 concatenate is call
 concatenate in join
 concatenate invokes string.concat
-concatenate arg left String left lend
-concatenate arg right String right lend
-concatenate arg region Region into lend
-concatenate out joined String
+concatenate argument left String left lend
+concatenate argument right String right lend
+concatenate argument region Region into lend
+concatenate result joined String
 concatenate ownedBy into
 concatenate cleanedBy none
 concatenate borrows none

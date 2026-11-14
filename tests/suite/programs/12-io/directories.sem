@@ -21,26 +21,26 @@ directories exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -49,8 +49,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -59,20 +59,21 @@ writeValue catch writeError console.WriteError
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -81,8 +82,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -91,14 +92,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -109,8 +110,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -122,8 +123,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -133,8 +134,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -142,24 +143,23 @@ writeFalse catch falseError console.WriteError
 
 fileAccess is capability
 fileAccess purpose "Authority over the suite-dir directory"
-fileAccess grants read fs.files
-fileAccess grants write fs.files
-fileAccess scope "suite-dir/"
+fileAccess grants read fs.files "suite-dir/"
+fileAccess grants write fs.files "suite-dir/"
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read fs.files
 main effect write console.stdout
 main effect write fs.files
 main uses fileAccess
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -196,22 +196,22 @@ main label check loopKind none
 main label check within none
 main label failed loopKind none
 main label failed within none
-main let dir immutable String "suite-dir"
-main let file immutable String "suite-dir/suite-log.txt"
-main let partA immutable String "a"
-main let partB immutable String "b"
-main let waitMs immutable Int64 5000
-main let zero immutable Int64 0
-main let limit immutable Int64 64
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let dir String "suite-dir" immutable
+main let file String "suite-dir/suite-log.txt" immutable
+main let partA String "a" immutable
+main let partB String "b" immutable
+main let waitMs Int64 5000 immutable
+main let zero Int64 0 immutable
+main let limit Int64 64 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
 main at begin do makeDir
 main at begin branch ifError makeDir goto failed else goto first
 main at first do open0
 main at first branch ifError open0 goto failed else goto write0
 main at write0 do bytes0
-main at write0 start append0
+main at write0 start append0 into none
 main at write0 join append0
 main at write0 branch ifError append0 goto closeAfterFailure0 else goto close0Step
 main at closeAfterFailure0 do closeFailed0
@@ -221,7 +221,7 @@ main at close0Step branch ifError close0 goto failed else goto second
 main at second do open1
 main at second branch ifError open1 goto failed else goto write1
 main at write1 do bytes1
-main at write1 start append1
+main at write1 start append1 into none
 main at write1 join append1
 main at write1 branch ifError append1 goto closeAfterFailure1 else goto close1Step
 main at closeAfterFailure1 do closeFailed1
@@ -235,7 +235,7 @@ main at showList do printCount
 main at showList do firstName
 main at showList branch ifError firstName goto failed else goto showName
 main at showName do printName
-main at showName start readBack
+main at showName start readBack into none
 main at showName join readBack
 main at showName branch ifError readBack goto failed else goto decode
 main at decode do toText
@@ -253,14 +253,14 @@ main at failed return ok failCode
 io is region
 io in main
 io strategy arena
-io capacity 65536
+io maxBytes 65536
 io released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -269,8 +269,8 @@ makeDeadline catch none
 makeDir is call
 makeDir in main
 makeDir invokes fs.createDirectory
-makeDir arg path String dir lend
-makeDir out none
+makeDir argument path String dir lend
+makeDir result none
 makeDir ownedBy none
 makeDir cleanedBy none
 makeDir borrows none
@@ -279,8 +279,8 @@ makeDir catch makeDirError fs.FileError
 open0 is call
 open0 in main
 open0 invokes fs.openAppend
-open0 arg path String file lend
-open0 out log0 fs.FileHandle
+open0 argument path String file lend
+open0 result log0 fs.FileHandle
 open0 ownedBy main
 open0 cleanedBy none
 open0 borrows none
@@ -289,8 +289,8 @@ open0 catch open0Error fs.FileError
 bytes0 is call
 bytes0 in main
 bytes0 invokes string.toBytes
-bytes0 arg text String partA lend
-bytes0 out piece0 Bytes
+bytes0 argument text String partA lend
+bytes0 result piece0 Bytes
 bytes0 ownedBy none
 bytes0 cleanedBy none
 bytes0 borrows partA
@@ -299,10 +299,10 @@ bytes0 catch none
 append0 is task
 append0 in main
 append0 invokes fs.write
-append0 arg file fs.FileHandle log0 lendMutable
-append0 arg bytes Bytes piece0 lend
-append0 arg deadline time.Deadline deadline copy
-append0 out none
+append0 argument file fs.FileHandle log0 lendMutable
+append0 argument bytes Bytes piece0 lend
+append0 argument deadline time.Deadline deadline copy
+append0 result none
 append0 ownedBy none
 append0 cleanedBy none
 append0 borrows none
@@ -312,8 +312,8 @@ closeFailed0 is call
 closeFailed0 rationale "The write already failed; the case fails either way"
 closeFailed0 in main
 closeFailed0 invokes fs.close
-closeFailed0 arg file fs.FileHandle log0 give
-closeFailed0 out none
+closeFailed0 argument file fs.FileHandle log0 give
+closeFailed0 result none
 closeFailed0 ownedBy none
 closeFailed0 cleanedBy none
 closeFailed0 borrows none
@@ -322,8 +322,8 @@ closeFailed0 catch closeFailed0Error fs.FileError
 close0 is call
 close0 in main
 close0 invokes fs.close
-close0 arg file fs.FileHandle log0 give
-close0 out none
+close0 argument file fs.FileHandle log0 give
+close0 result none
 close0 ownedBy none
 close0 cleanedBy none
 close0 borrows none
@@ -332,8 +332,8 @@ close0 catch close0Error fs.FileError
 open1 is call
 open1 in main
 open1 invokes fs.openAppend
-open1 arg path String file lend
-open1 out log1 fs.FileHandle
+open1 argument path String file lend
+open1 result log1 fs.FileHandle
 open1 ownedBy main
 open1 cleanedBy none
 open1 borrows none
@@ -342,8 +342,8 @@ open1 catch open1Error fs.FileError
 bytes1 is call
 bytes1 in main
 bytes1 invokes string.toBytes
-bytes1 arg text String partB lend
-bytes1 out piece1 Bytes
+bytes1 argument text String partB lend
+bytes1 result piece1 Bytes
 bytes1 ownedBy none
 bytes1 cleanedBy none
 bytes1 borrows partB
@@ -352,10 +352,10 @@ bytes1 catch none
 append1 is task
 append1 in main
 append1 invokes fs.write
-append1 arg file fs.FileHandle log1 lendMutable
-append1 arg bytes Bytes piece1 lend
-append1 arg deadline time.Deadline deadline copy
-append1 out none
+append1 argument file fs.FileHandle log1 lendMutable
+append1 argument bytes Bytes piece1 lend
+append1 argument deadline time.Deadline deadline copy
+append1 result none
 append1 ownedBy none
 append1 cleanedBy none
 append1 borrows none
@@ -365,8 +365,8 @@ closeFailed1 is call
 closeFailed1 rationale "The write already failed; the case fails either way"
 closeFailed1 in main
 closeFailed1 invokes fs.close
-closeFailed1 arg file fs.FileHandle log1 give
-closeFailed1 out none
+closeFailed1 argument file fs.FileHandle log1 give
+closeFailed1 result none
 closeFailed1 ownedBy none
 closeFailed1 cleanedBy none
 closeFailed1 borrows none
@@ -375,8 +375,8 @@ closeFailed1 catch closeFailed1Error fs.FileError
 close1 is call
 close1 in main
 close1 invokes fs.close
-close1 arg file fs.FileHandle log1 give
-close1 out none
+close1 argument file fs.FileHandle log1 give
+close1 result none
 close1 ownedBy none
 close1 cleanedBy none
 close1 borrows none
@@ -385,9 +385,9 @@ close1 catch close1Error fs.FileError
 listDir is call
 listDir in main
 listDir invokes fs.listDirectory
-listDir arg path String dir lend
-listDir arg region Region io lend
-listDir out listing fs.DirectoryListing
+listDir argument path String dir lend
+listDir argument region Region io lend
+listDir result listing fs.DirectoryListing
 listDir ownedBy io
 listDir cleanedBy none
 listDir borrows none
@@ -396,8 +396,8 @@ listDir catch listError fs.FileError
 countEntries is call
 countEntries in main
 countEntries invokes fs.entryCount
-countEntries arg listing fs.DirectoryListing listing lend
-countEntries out entries Int64
+countEntries argument listing fs.DirectoryListing listing lend
+countEntries result entries Int64
 countEntries ownedBy none
 countEntries cleanedBy none
 countEntries borrows none
@@ -406,8 +406,8 @@ countEntries catch none
 printCount is call
 printCount in main
 printCount invokes showInt
-printCount arg value Int64 entries copy
-printCount out none
+printCount argument value Int64 entries copy
+printCount result none
 printCount ownedBy none
 printCount cleanedBy none
 printCount borrows none
@@ -416,10 +416,10 @@ printCount catch none
 firstName is call
 firstName in main
 firstName invokes fs.entryName
-firstName arg listing fs.DirectoryListing listing lend
-firstName arg index Int64 zero copy
-firstName arg region Region io lend
-firstName out name String
+firstName argument listing fs.DirectoryListing listing lend
+firstName argument index Int64 zero copy
+firstName argument region Region io lend
+firstName result name String
 firstName ownedBy io
 firstName cleanedBy none
 firstName borrows none
@@ -428,8 +428,8 @@ firstName catch nameError fs.EntryIndexError
 printName is call
 printName in main
 printName invokes showText
-printName arg text String name lend
-printName out none
+printName argument text String name lend
+printName result none
 printName ownedBy none
 printName cleanedBy none
 printName borrows none
@@ -438,11 +438,11 @@ printName catch none
 readBack is task
 readBack in main
 readBack invokes fs.readAll
-readBack arg path String file lend
-readBack arg region Region io lend
-readBack arg maxBytes Int64 limit copy
-readBack arg deadline time.Deadline deadline copy
-readBack out content Bytes
+readBack argument path String file lend
+readBack argument region Region io lend
+readBack argument maxBytes Int64 limit copy
+readBack argument deadline time.Deadline deadline copy
+readBack result content Bytes
 readBack ownedBy io
 readBack cleanedBy none
 readBack borrows none
@@ -451,9 +451,9 @@ readBack catch readError fs.FileError
 toText is call
 toText in main
 toText invokes string.fromBytes
-toText arg bytes Bytes content lend
-toText arg region Region io lend
-toText out contentText String
+toText argument bytes Bytes content lend
+toText argument region Region io lend
+toText result contentText String
 toText ownedBy io
 toText cleanedBy none
 toText borrows none
@@ -462,8 +462,8 @@ toText catch decodeError string.Utf8Error
 printText is call
 printText in main
 printText invokes showText
-printText arg text String contentText lend
-printText out none
+printText argument text String contentText lend
+printText result none
 printText ownedBy none
 printText cleanedBy none
 printText borrows none
@@ -472,8 +472,8 @@ printText catch none
 removeFile is call
 removeFile in main
 removeFile invokes fs.remove
-removeFile arg path String file lend
-removeFile out none
+removeFile argument path String file lend
+removeFile result none
 removeFile ownedBy none
 removeFile cleanedBy none
 removeFile borrows none
@@ -482,8 +482,8 @@ removeFile catch removeFileError fs.FileError
 removeDir is call
 removeDir in main
 removeDir invokes fs.removeDirectory
-removeDir arg path String dir lend
-removeDir out none
+removeDir argument path String dir lend
+removeDir result none
 removeDir ownedBy none
 removeDir cleanedBy none
 removeDir borrows none
@@ -492,8 +492,8 @@ removeDir catch removeDirError fs.FileError
 stillThere is call
 stillThere in main
 stillThere invokes fs.exists
-stillThere arg path String dir lend
-stillThere out there Bool
+stillThere argument path String dir lend
+stillThere result there Bool
 stillThere ownedBy none
 stillThere cleanedBy none
 stillThere borrows none
@@ -502,8 +502,8 @@ stillThere catch none
 printThere is call
 printThere in main
 printThere invokes showBool
-printThere arg flag Bool there copy
-printThere out none
+printThere argument flag Bool there copy
+printThere result none
 printThere ownedBy none
 printThere cleanedBy none
 printThere borrows none

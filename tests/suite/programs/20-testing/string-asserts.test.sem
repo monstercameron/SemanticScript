@@ -3,21 +3,21 @@
 joinTest is test
 joinTest purpose "Joining abc and def gives abcdef"
 joinTest verifies join leftThenRight
-joinTest typeParam none
+joinTest typeParameter none
 joinTest input none
 joinTest output none
-joinTest outputOwner none
+joinTest outputOwnedBy none
 joinTest raises none
 joinTest effect none
 joinTest uses none
-joinTest memory heap true
+joinTest memoryHeap true
 joinTest async false
 joinTest maxRecursion none
 joinTest label begin loopKind none
 joinTest label begin within none
-joinTest let left immutable String "abc"
-joinTest let right immutable String "def"
-joinTest let expected immutable String "abcdef"
+joinTest let left String "abc" immutable
+joinTest let right String "def" immutable
+joinTest let expected String "abcdef" immutable
 joinTest at begin do runJoin
 joinTest at begin do expectJoined
 joinTest at begin return ok none
@@ -25,16 +25,16 @@ joinTest at begin return ok none
 scratch is region
 scratch in joinTest
 scratch strategy arena
-scratch capacity 1024
+scratch maxBytes 1024
 scratch released atReturn
 
 runJoin is call
 runJoin in joinTest
 runJoin invokes join
-runJoin arg left String left lend
-runJoin arg right String right lend
-runJoin arg into Region scratch lend
-runJoin out joined String
+runJoin argument left String left lend
+runJoin argument right String right lend
+runJoin argument into Region scratch lend
+runJoin result joined String
 runJoin ownedBy scratch
 runJoin cleanedBy none
 runJoin borrows none
@@ -43,9 +43,9 @@ runJoin catch none
 expectJoined is call
 expectJoined in joinTest
 expectJoined invokes test.assertEqualString
-expectJoined arg expected String expected lend
-expectJoined arg actual String joined lend
-expectJoined out none
+expectJoined argument expected String expected lend
+expectJoined argument actual String joined lend
+expectJoined result none
 expectJoined ownedBy none
 expectJoined cleanedBy none
 expectJoined borrows none

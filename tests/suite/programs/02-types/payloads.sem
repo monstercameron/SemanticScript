@@ -34,26 +34,26 @@ payloads exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -62,8 +62,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -72,20 +72,21 @@ writeValue catch writeError console.WriteError
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -94,8 +95,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -104,14 +105,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -122,8 +123,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -135,8 +136,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -146,36 +147,36 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
 
-MaybeName is instance
+MaybeName is typeInstance
 MaybeName purpose "A name that may be absent"
 MaybeName instantiates option.Option String
 
-Numbers is instance
+Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
 Numbers instantiates list.List Int64
 
 Size is record
 Size purpose "A width and a height"
-Size typeParam none
+Size typeParameter none
 Size field width Int64
 Size field height Int64
 
 Inner is enum
 Inner purpose "A label or nothing, nested inside another enum"
-Inner typeParam none
+Inner typeParameter none
 Inner variant label String
 Inner variant blank none
 
 Shape is enum
 Shape purpose "A shape that carries a record, a list, or another enum"
-Shape typeParam none
+Shape typeParameter none
 Shape variant box Size
 Shape variant points Numbers
 Shape variant tagged Inner
@@ -183,39 +184,39 @@ Shape variant empty none
 
 InputError is enum
 InputError purpose "Why input was rejected, with a message for the person who gave it"
-InputError typeParam none
+InputError typeParameter none
 InputError variant rejected String
 
 Labelled is record
 Labelled purpose "A list of numbers with the shape it came from, compared field by field"
-Labelled typeParam none
+Labelled typeParameter none
 Labelled field numbers Numbers
 Labelled field shape Shape
 
 check is operation
 check purpose "Reject every input with a message"
 check invariant none
-check typeParam none
+check typeParameter none
 check input text String borrowed
 check output Int64
-check outputOwner none
+check outputOwnedBy none
 check raises InputError
 check effect none
 check uses none
-check memory heap false
+check memoryHeap false
 check async false
 check maxRecursion none
 check label begin loopKind none
 check label begin within none
-check let message immutable String "bad input"
+check let message String "bad input" immutable
 check at begin do makeError
 check at begin return error failure
 
 makeError is call
 makeError in check
 makeError invokes InputError.rejected
-makeError arg payload String message give
-makeError out failure InputError
+makeError argument payload String message give
+makeError result failure InputError
 makeError ownedBy none
 makeError cleanedBy none
 makeError borrows none
@@ -224,14 +225,14 @@ makeError catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -264,17 +265,17 @@ main label showLabel loopKind none
 main label showLabel within none
 main label failed loopKind none
 main label failed within none
-main let ada immutable String "Ada"
-main let nobodyText immutable String "nobody"
-main let innerText immutable String "inner"
-main let otherText immutable String "other"
-main let input immutable String "x"
-main let one immutable Int64 1
-main let two immutable Int64 2
-main let three immutable Int64 3
-main let four immutable Int64 4
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let ada String "Ada" immutable
+main let nobodyText String "nobody" immutable
+main let innerText String "inner" immutable
+main let otherText String "other" immutable
+main let input String "x" immutable
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let three Int64 3 immutable
+main let four Int64 4 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makePresent
 main at begin goto readName
 main at readName match present MaybeName
@@ -359,14 +360,14 @@ main at failed return ok failCode
 store is region
 store in main
 store strategy arena
-store capacity 65536
+store maxBytes 65536
 store released atReturn
 
 makePresent is call
 makePresent in main
 makePresent invokes MaybeName.present
-makePresent arg payload String ada give
-makePresent out present MaybeName
+makePresent argument payload String ada give
+makePresent result present MaybeName
 makePresent ownedBy none
 makePresent cleanedBy none
 makePresent borrows none
@@ -375,8 +376,8 @@ makePresent catch none
 printName is call
 printName in main
 printName invokes showText
-printName arg text String name lend
-printName out none
+printName argument text String name lend
+printName result none
 printName ownedBy none
 printName cleanedBy none
 printName borrows none
@@ -385,8 +386,8 @@ printName catch none
 makeAbsent is call
 makeAbsent in main
 makeAbsent invokes MaybeName.absent
-makeAbsent arg none
-makeAbsent out absent MaybeName
+makeAbsent argument none
+makeAbsent result absent MaybeName
 makeAbsent ownedBy none
 makeAbsent cleanedBy none
 makeAbsent borrows none
@@ -395,8 +396,8 @@ makeAbsent catch none
 printNobody is call
 printNobody in main
 printNobody invokes showText
-printNobody arg text String nobodyText lend
-printNobody out none
+printNobody argument text String nobodyText lend
+printNobody result none
 printNobody ownedBy none
 printNobody cleanedBy none
 printNobody borrows none
@@ -405,9 +406,9 @@ printNobody catch none
 makeSize is call
 makeSize in main
 makeSize invokes Size.new
-makeSize arg width Int64 three copy
-makeSize arg height Int64 four copy
-makeSize out boxSize Size
+makeSize argument width Int64 three copy
+makeSize argument height Int64 four copy
+makeSize result boxSize Size
 makeSize ownedBy none
 makeSize cleanedBy none
 makeSize borrows none
@@ -416,8 +417,8 @@ makeSize catch none
 makeBox is call
 makeBox in main
 makeBox invokes Shape.box
-makeBox arg payload Size boxSize copy
-makeBox out box Shape
+makeBox argument payload Size boxSize copy
+makeBox result box Shape
 makeBox ownedBy none
 makeBox cleanedBy none
 makeBox borrows none
@@ -426,8 +427,8 @@ makeBox catch none
 readWidth is call
 readWidth in main
 readWidth invokes Size.width
-readWidth arg record Size size copy
-readWidth out width Int64
+readWidth argument record Size size copy
+readWidth result width Int64
 readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
@@ -436,8 +437,8 @@ readWidth catch none
 printWidth is call
 printWidth in main
 printWidth invokes showInt
-printWidth arg value Int64 width copy
-printWidth out none
+printWidth argument value Int64 width copy
+printWidth result none
 printWidth ownedBy none
 printWidth cleanedBy none
 printWidth borrows none
@@ -446,8 +447,8 @@ printWidth catch none
 makeNumbers is call
 makeNumbers in main
 makeNumbers invokes Numbers.new
-makeNumbers arg region Region store lend
-makeNumbers out numbers Numbers
+makeNumbers argument region Region store lend
+makeNumbers result numbers Numbers
 makeNumbers ownedBy store
 makeNumbers cleanedBy none
 makeNumbers borrows none
@@ -456,9 +457,9 @@ makeNumbers catch none
 appendOne is call
 appendOne in main
 appendOne invokes Numbers.append
-appendOne arg list Numbers numbers lendMutable
-appendOne arg item Int64 one copy
-appendOne out none
+appendOne argument list Numbers numbers lendMutable
+appendOne argument item Int64 one copy
+appendOne result none
 appendOne ownedBy none
 appendOne cleanedBy none
 appendOne borrows none
@@ -467,9 +468,9 @@ appendOne catch none
 appendTwo is call
 appendTwo in main
 appendTwo invokes Numbers.append
-appendTwo arg list Numbers numbers lendMutable
-appendTwo arg item Int64 two copy
-appendTwo out none
+appendTwo argument list Numbers numbers lendMutable
+appendTwo argument item Int64 two copy
+appendTwo result none
 appendTwo ownedBy none
 appendTwo cleanedBy none
 appendTwo borrows none
@@ -478,9 +479,9 @@ appendTwo catch none
 appendThree is call
 appendThree in main
 appendThree invokes Numbers.append
-appendThree arg list Numbers numbers lendMutable
-appendThree arg item Int64 three copy
-appendThree out none
+appendThree argument list Numbers numbers lendMutable
+appendThree argument item Int64 three copy
+appendThree result none
 appendThree ownedBy none
 appendThree cleanedBy none
 appendThree borrows none
@@ -489,9 +490,9 @@ appendThree catch none
 appendFour is call
 appendFour in main
 appendFour invokes Numbers.append
-appendFour arg list Numbers numbers lendMutable
-appendFour arg item Int64 four copy
-appendFour out none
+appendFour argument list Numbers numbers lendMutable
+appendFour argument item Int64 four copy
+appendFour result none
 appendFour ownedBy none
 appendFour cleanedBy none
 appendFour borrows none
@@ -500,8 +501,8 @@ appendFour catch none
 makePoints is call
 makePoints in main
 makePoints invokes Shape.points
-makePoints arg payload Numbers numbers give
-makePoints out points Shape
+makePoints argument payload Numbers numbers give
+makePoints result points Shape
 makePoints ownedBy none
 makePoints cleanedBy none
 makePoints borrows none
@@ -510,8 +511,8 @@ makePoints catch none
 countPoints is call
 countPoints in main
 countPoints invokes Numbers.length
-countPoints arg list Numbers list lend
-countPoints out pointCount Int64
+countPoints argument list Numbers list lend
+countPoints result pointCount Int64
 countPoints ownedBy none
 countPoints cleanedBy none
 countPoints borrows none
@@ -520,8 +521,8 @@ countPoints catch none
 printCount is call
 printCount in main
 printCount invokes showInt
-printCount arg value Int64 pointCount copy
-printCount out none
+printCount argument value Int64 pointCount copy
+printCount result none
 printCount ownedBy none
 printCount cleanedBy none
 printCount borrows none
@@ -530,8 +531,8 @@ printCount catch none
 runCheck is call
 runCheck in main
 runCheck invokes check
-runCheck arg text String input lend
-runCheck out checked Int64
+runCheck argument text String input lend
+runCheck result checked Int64
 runCheck ownedBy none
 runCheck cleanedBy none
 runCheck borrows none
@@ -540,8 +541,8 @@ runCheck catch checkError InputError
 printWhy is call
 printWhy in main
 printWhy invokes showText
-printWhy arg text String why lend
-printWhy out none
+printWhy argument text String why lend
+printWhy result none
 printWhy ownedBy none
 printWhy cleanedBy none
 printWhy borrows none
@@ -550,8 +551,8 @@ printWhy catch none
 makeLabel is call
 makeLabel in main
 makeLabel invokes Inner.label
-makeLabel arg payload String innerText give
-makeLabel out label Inner
+makeLabel argument payload String innerText give
+makeLabel result label Inner
 makeLabel ownedBy none
 makeLabel cleanedBy none
 makeLabel borrows none
@@ -560,8 +561,8 @@ makeLabel catch none
 makeTagged is call
 makeTagged in main
 makeTagged invokes Shape.tagged
-makeTagged arg payload Inner label give
-makeTagged out tagged Shape
+makeTagged argument payload Inner label give
+makeTagged result tagged Shape
 makeTagged ownedBy none
 makeTagged cleanedBy none
 makeTagged borrows none
@@ -570,8 +571,8 @@ makeTagged catch none
 printLabel is call
 printLabel in main
 printLabel invokes showText
-printLabel arg text String labelText lend
-printLabel out none
+printLabel argument text String labelText lend
+printLabel result none
 printLabel ownedBy none
 printLabel cleanedBy none
 printLabel borrows none
@@ -580,9 +581,9 @@ printLabel catch none
 sameBox is call
 sameBox in main
 sameBox invokes Shape.equals
-sameBox arg left Shape box lend
-sameBox arg right Shape box lend
-sameBox out boxSame Bool
+sameBox argument left Shape box lend
+sameBox argument right Shape box lend
+sameBox result boxSame Bool
 sameBox ownedBy none
 sameBox cleanedBy none
 sameBox borrows none
@@ -591,8 +592,8 @@ sameBox catch none
 printSameBox is call
 printSameBox in main
 printSameBox invokes showBool
-printSameBox arg flag Bool boxSame copy
-printSameBox out none
+printSameBox argument flag Bool boxSame copy
+printSameBox result none
 printSameBox ownedBy none
 printSameBox cleanedBy none
 printSameBox borrows none
@@ -601,9 +602,9 @@ printSameBox catch none
 boxVersusPoints is call
 boxVersusPoints in main
 boxVersusPoints invokes Shape.equals
-boxVersusPoints arg left Shape box lend
-boxVersusPoints arg right Shape points lend
-boxVersusPoints out boxIsPoints Bool
+boxVersusPoints argument left Shape box lend
+boxVersusPoints argument right Shape points lend
+boxVersusPoints result boxIsPoints Bool
 boxVersusPoints ownedBy none
 boxVersusPoints cleanedBy none
 boxVersusPoints borrows none
@@ -612,8 +613,8 @@ boxVersusPoints catch none
 printBoxVersusPoints is call
 printBoxVersusPoints in main
 printBoxVersusPoints invokes showBool
-printBoxVersusPoints arg flag Bool boxIsPoints copy
-printBoxVersusPoints out none
+printBoxVersusPoints argument flag Bool boxIsPoints copy
+printBoxVersusPoints result none
 printBoxVersusPoints ownedBy none
 printBoxVersusPoints cleanedBy none
 printBoxVersusPoints borrows none
@@ -622,8 +623,8 @@ printBoxVersusPoints catch none
 makeOtherNumbers is call
 makeOtherNumbers in main
 makeOtherNumbers invokes Numbers.new
-makeOtherNumbers arg region Region store lend
-makeOtherNumbers out otherNumbers Numbers
+makeOtherNumbers argument region Region store lend
+makeOtherNumbers result otherNumbers Numbers
 makeOtherNumbers ownedBy store
 makeOtherNumbers cleanedBy none
 makeOtherNumbers borrows none
@@ -632,9 +633,9 @@ makeOtherNumbers catch none
 otherOne is call
 otherOne in main
 otherOne invokes Numbers.append
-otherOne arg list Numbers otherNumbers lendMutable
-otherOne arg item Int64 one copy
-otherOne out none
+otherOne argument list Numbers otherNumbers lendMutable
+otherOne argument item Int64 one copy
+otherOne result none
 otherOne ownedBy none
 otherOne cleanedBy none
 otherOne borrows none
@@ -643,9 +644,9 @@ otherOne catch none
 otherTwo is call
 otherTwo in main
 otherTwo invokes Numbers.append
-otherTwo arg list Numbers otherNumbers lendMutable
-otherTwo arg item Int64 two copy
-otherTwo out none
+otherTwo argument list Numbers otherNumbers lendMutable
+otherTwo argument item Int64 two copy
+otherTwo result none
 otherTwo ownedBy none
 otherTwo cleanedBy none
 otherTwo borrows none
@@ -654,9 +655,9 @@ otherTwo catch none
 otherThree is call
 otherThree in main
 otherThree invokes Numbers.append
-otherThree arg list Numbers otherNumbers lendMutable
-otherThree arg item Int64 three copy
-otherThree out none
+otherThree argument list Numbers otherNumbers lendMutable
+otherThree argument item Int64 three copy
+otherThree result none
 otherThree ownedBy none
 otherThree cleanedBy none
 otherThree borrows none
@@ -665,9 +666,9 @@ otherThree catch none
 otherFour is call
 otherFour in main
 otherFour invokes Numbers.append
-otherFour arg list Numbers otherNumbers lendMutable
-otherFour arg item Int64 four copy
-otherFour out none
+otherFour argument list Numbers otherNumbers lendMutable
+otherFour argument item Int64 four copy
+otherFour result none
 otherFour ownedBy none
 otherFour cleanedBy none
 otherFour borrows none
@@ -676,8 +677,8 @@ otherFour catch none
 makeOtherPoints is call
 makeOtherPoints in main
 makeOtherPoints invokes Shape.points
-makeOtherPoints arg payload Numbers otherNumbers give
-makeOtherPoints out otherPoints Shape
+makeOtherPoints argument payload Numbers otherNumbers give
+makeOtherPoints result otherPoints Shape
 makeOtherPoints ownedBy none
 makeOtherPoints cleanedBy none
 makeOtherPoints borrows none
@@ -686,9 +687,9 @@ makeOtherPoints catch none
 samePoints is call
 samePoints in main
 samePoints invokes Shape.equals
-samePoints arg left Shape points lend
-samePoints arg right Shape otherPoints lend
-samePoints out pointsSame Bool
+samePoints argument left Shape points lend
+samePoints argument right Shape otherPoints lend
+samePoints result pointsSame Bool
 samePoints ownedBy none
 samePoints cleanedBy none
 samePoints borrows none
@@ -697,8 +698,8 @@ samePoints catch none
 printSamePoints is call
 printSamePoints in main
 printSamePoints invokes showBool
-printSamePoints arg flag Bool pointsSame copy
-printSamePoints out none
+printSamePoints argument flag Bool pointsSame copy
+printSamePoints result none
 printSamePoints ownedBy none
 printSamePoints cleanedBy none
 printSamePoints borrows none
@@ -707,8 +708,8 @@ printSamePoints catch none
 makeShorter is call
 makeShorter in main
 makeShorter invokes Numbers.new
-makeShorter arg region Region store lend
-makeShorter out shorter Numbers
+makeShorter argument region Region store lend
+makeShorter result shorter Numbers
 makeShorter ownedBy store
 makeShorter cleanedBy none
 makeShorter borrows none
@@ -717,9 +718,9 @@ makeShorter catch none
 shorterOne is call
 shorterOne in main
 shorterOne invokes Numbers.append
-shorterOne arg list Numbers shorter lendMutable
-shorterOne arg item Int64 one copy
-shorterOne out none
+shorterOne argument list Numbers shorter lendMutable
+shorterOne argument item Int64 one copy
+shorterOne result none
 shorterOne ownedBy none
 shorterOne cleanedBy none
 shorterOne borrows none
@@ -728,8 +729,8 @@ shorterOne catch none
 makeShorterPoints is call
 makeShorterPoints in main
 makeShorterPoints invokes Shape.points
-makeShorterPoints arg payload Numbers shorter give
-makeShorterPoints out shorterPoints Shape
+makeShorterPoints argument payload Numbers shorter give
+makeShorterPoints result shorterPoints Shape
 makeShorterPoints ownedBy none
 makeShorterPoints cleanedBy none
 makeShorterPoints borrows none
@@ -738,9 +739,9 @@ makeShorterPoints catch none
 differentPoints is call
 differentPoints in main
 differentPoints invokes Shape.equals
-differentPoints arg left Shape points lend
-differentPoints arg right Shape shorterPoints lend
-differentPoints out pointsDiffer Bool
+differentPoints argument left Shape points lend
+differentPoints argument right Shape shorterPoints lend
+differentPoints result pointsDiffer Bool
 differentPoints ownedBy none
 differentPoints cleanedBy none
 differentPoints borrows none
@@ -749,8 +750,8 @@ differentPoints catch none
 printDifferentPoints is call
 printDifferentPoints in main
 printDifferentPoints invokes showBool
-printDifferentPoints arg flag Bool pointsDiffer copy
-printDifferentPoints out none
+printDifferentPoints argument flag Bool pointsDiffer copy
+printDifferentPoints result none
 printDifferentPoints ownedBy none
 printDifferentPoints cleanedBy none
 printDifferentPoints borrows none
@@ -759,10 +760,10 @@ printDifferentPoints catch none
 makeFirstLabelled is call
 makeFirstLabelled in main
 makeFirstLabelled invokes Labelled.new
-makeFirstLabelled arg numbers Numbers list lend
-makeFirstLabelled arg shape Shape tagged lend
-makeFirstLabelled arg region Region store lend
-makeFirstLabelled out firstLabelled Labelled
+makeFirstLabelled argument numbers Numbers list lend
+makeFirstLabelled argument shape Shape tagged lend
+makeFirstLabelled argument region Region store lend
+makeFirstLabelled result firstLabelled Labelled
 makeFirstLabelled ownedBy store
 makeFirstLabelled cleanedBy none
 makeFirstLabelled borrows none
@@ -771,10 +772,10 @@ makeFirstLabelled catch none
 makeSecondLabelled is call
 makeSecondLabelled in main
 makeSecondLabelled invokes Labelled.new
-makeSecondLabelled arg numbers Numbers list lend
-makeSecondLabelled arg shape Shape tagged lend
-makeSecondLabelled arg region Region store lend
-makeSecondLabelled out secondLabelled Labelled
+makeSecondLabelled argument numbers Numbers list lend
+makeSecondLabelled argument shape Shape tagged lend
+makeSecondLabelled argument region Region store lend
+makeSecondLabelled result secondLabelled Labelled
 makeSecondLabelled ownedBy store
 makeSecondLabelled cleanedBy none
 makeSecondLabelled borrows none
@@ -783,9 +784,9 @@ makeSecondLabelled catch none
 sameLabelled is call
 sameLabelled in main
 sameLabelled invokes Labelled.equals
-sameLabelled arg left Labelled firstLabelled lend
-sameLabelled arg right Labelled secondLabelled lend
-sameLabelled out labelledSame Bool
+sameLabelled argument left Labelled firstLabelled lend
+sameLabelled argument right Labelled secondLabelled lend
+sameLabelled result labelledSame Bool
 sameLabelled ownedBy none
 sameLabelled cleanedBy none
 sameLabelled borrows none
@@ -794,8 +795,8 @@ sameLabelled catch none
 printSameLabelled is call
 printSameLabelled in main
 printSameLabelled invokes showBool
-printSameLabelled arg flag Bool labelledSame copy
-printSameLabelled out none
+printSameLabelled argument flag Bool labelledSame copy
+printSameLabelled result none
 printSameLabelled ownedBy none
 printSameLabelled cleanedBy none
 printSameLabelled borrows none
@@ -804,8 +805,8 @@ printSameLabelled catch none
 makeOtherLabel is call
 makeOtherLabel in main
 makeOtherLabel invokes Inner.label
-makeOtherLabel arg payload String otherText give
-makeOtherLabel out otherLabel Inner
+makeOtherLabel argument payload String otherText give
+makeOtherLabel result otherLabel Inner
 makeOtherLabel ownedBy none
 makeOtherLabel cleanedBy none
 makeOtherLabel borrows none
@@ -814,8 +815,8 @@ makeOtherLabel catch none
 makeOtherTagged is call
 makeOtherTagged in main
 makeOtherTagged invokes Shape.tagged
-makeOtherTagged arg payload Inner otherLabel give
-makeOtherTagged out otherTagged Shape
+makeOtherTagged argument payload Inner otherLabel give
+makeOtherTagged result otherTagged Shape
 makeOtherTagged ownedBy none
 makeOtherTagged cleanedBy none
 makeOtherTagged borrows none
@@ -824,9 +825,9 @@ makeOtherTagged catch none
 differentTags is call
 differentTags in main
 differentTags invokes Shape.equals
-differentTags arg left Shape tagged lend
-differentTags arg right Shape otherTagged lend
-differentTags out tagsDiffer Bool
+differentTags argument left Shape tagged lend
+differentTags argument right Shape otherTagged lend
+differentTags result tagsDiffer Bool
 differentTags ownedBy none
 differentTags cleanedBy none
 differentTags borrows none
@@ -835,8 +836,8 @@ differentTags catch none
 printDifferentTags is call
 printDifferentTags in main
 printDifferentTags invokes showBool
-printDifferentTags arg flag Bool tagsDiffer copy
-printDifferentTags out none
+printDifferentTags argument flag Bool tagsDiffer copy
+printDifferentTags result none
 printDifferentTags ownedBy none
 printDifferentTags cleanedBy none
 printDifferentTags borrows none

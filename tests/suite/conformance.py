@@ -48,33 +48,32 @@ def _call(name, op, target, args, out="none", owned="none", catch="none", kind="
     if rationale:
         rows.append(f'{name} rationale "{rationale}"')
     rows += [f"{name} in {op}", f"{name} invokes {target}"]
-    rows += [f"{name} arg {a}" for a in args] or [f"{name} arg none"]
-    rows += [f"{name} out {out}", f"{name} ownedBy {owned}", f"{name} cleanedBy none", f"{name} borrows none",
+    rows += [f"{name} argument {a}" for a in args] or [f"{name} argument none"]
+    rows += [f"{name} result {out}", f"{name} ownedBy {owned}", f"{name} cleanedBy none", f"{name} borrows none",
              f"{name} catch {catch}"]
     return "\n".join(rows)
 
 
 CLEAR_LINES = _call("clearLines", "main", "pricing.Lines.clear", ("list pricing.Lines lines lendMutable",))
-CLEANUP = ('closeReportCleanup is cleanup\ncloseReportCleanup in main\ncloseReportCleanup call closeReport\n'
-           'closeReportCleanup cleans report\ncloseReportCleanup onFailure trap\ncloseReportCleanup because '
-           '"A report that cannot be closed may not be fully written, so the program stops"\n')
+CLEANUP = ('closeReportCleanup is cleanup\ncloseReportCleanup rationale "A report that cannot be closed may not be '
+           'fully written, so the program stops"\ncloseReportCleanup in main\ncloseReportCleanup runs closeReport\n'
+           'closeReportCleanup cleans report\ncloseReportCleanup onError trap\n')
 ANNOUNCE = '''
 announceWriter is capability
 announceWriter purpose "Authority to write notices to standard error"
-announceWriter grants write console.stderr
-announceWriter scope none
+announceWriter grants write console.stderr none
 
 announce is operation
 announce purpose "Write a notice line to standard error"
 announce invariant writesNotice "Writes the text as one line on standard error"
-announce typeParam none
+announce typeParameter none
 announce input text String borrowed
 announce output none
-announce outputOwner none
+announce outputOwnedBy none
 announce raises console.WriteError
 announce effect write console.stderr
 announce uses announceWriter
-announce memory heap false
+announce memoryHeap false
 announce async false
 announce maxRecursion none
 announce label begin loopKind none
@@ -83,6 +82,7 @@ announce label failed loopKind none
 announce label failed within none
 announce label done loopKind none
 announce label done within none
+announce let none
 announce at begin do say
 announce at begin branch ifError say goto failed else goto done
 announce at failed return error sayError
@@ -91,8 +91,8 @@ announce at done return ok none
 say is call
 say in announce
 say invokes console.writeError
-say arg text String text lend
-say out none
+say argument text String text lend
+say result none
 say ownedBy none
 say cleanedBy none
 say borrows none
@@ -101,14 +101,14 @@ ANNOUNCE_TEST = '''
 announceTest is test
 announceTest purpose "announce writes a notice without failing"
 announceTest verifies announce writesNotice
-announceTest typeParam none
+announceTest typeParameter none
 announceTest input none
 announceTest output none
-announceTest outputOwner none
+announceTest outputOwnedBy none
 announceTest raises none
 announceTest effect write console.stderr
 announceTest uses announceWriter
-announceTest memory heap false
+announceTest memoryHeap false
 announceTest async false
 announceTest maxRecursion none
 announceTest label begin loopKind none
@@ -117,8 +117,8 @@ announceTest label wrote loopKind none
 announceTest label wrote within none
 announceTest label failed loopKind none
 announceTest label failed within none
-announceTest let notice immutable String "pricing test notice"
-announceTest let failedText immutable String "writing a notice to standard error failed"
+announceTest let notice String "pricing test notice" immutable
+announceTest let failedText String "writing a notice to standard error failed" immutable
 announceTest at begin do runAnnounce
 announceTest at begin branch ifError runAnnounce goto failed else goto wrote
 announceTest at wrote return ok none
@@ -132,26 +132,26 @@ REGION_TEXT = '''
 label is operation
 label purpose "Return text built in this operation's own region"
 label invariant none
-label typeParam none
+label typeParameter none
 label input none
 label output String
-label outputOwner none
+label outputOwnedBy none
 label raises none
 label effect none
 label uses none
-label memory heap true
+label memoryHeap true
 label async false
 label maxRecursion none
 label label begin loopKind none
 label label begin within none
-label let seven immutable Int64 7
+label let seven Int64 7 immutable
 label at begin do digits
 label at begin return ok text
 
 scratch is region
 scratch in label
 scratch strategy arena
-scratch capacity 64
+scratch maxBytes 64
 scratch released atReturn
 
 ''' + _call("digits", "label", "string.fromInt64", ("value Int64 seven copy", "region Region scratch lend"),
@@ -173,12 +173,12 @@ GUARANTEES = (
                (W, "openReport cleanedBy closeReportCleanup", "openReport cleanedBy none"), (W, CLEANUP, "")),
               ("R513", "R506"), "`report` may already have been given away"),
         Check("let-aliases-a-loan", "reject", "a `let` naming a borrowed list",
-              ((P, "orderTotal let running mutable Int64 0\n",
-                "orderTotal let running mutable Int64 0\norderTotal let alias immutable Lines lines\n"),),
+              ((P, "orderTotal let running Int64 0 mutable\n",
+                "orderTotal let running Int64 0 mutable\norderTotal let alias Lines lines immutable\n"),),
               ("R514",), "a let copies only plain values"),
         Check("resource-in-collection", "reject", "a list of file handles",
               ((W, "warehouse imports pricing", "warehouse imports standard.list\nwarehouse imports pricing"),
-               (W, "<append>", 'Handles is instance\nHandles purpose "Open files kept in a list"\n'
+               (W, "<append>", 'Handles is typeInstance\nHandles purpose "Open files kept in a list"\n'
                                'Handles instantiates list.List fs.FileHandle')),
               ("R403",), "is a resource"),
     ), ("mutation:double-give", "mutation:give-borrowed", "mutation:use-after-give", "mutation:give-deferred",
@@ -193,7 +193,7 @@ GUARANTEES = (
         "allocated in a region names that region as its owner (R514, R409).",
     ), (
         Check("exclusive-while-lent-to-tasks", "reject", "clearing the list while two tasks read it",
-              ((W, "main at price start discountTask\n", "main at price start discountTask\nmain at price do clearLines\n"),
+              ((W, "main at price start discountTask into none\n", "main at price start discountTask into none\nmain at price do clearLines\n"),
                (W, "<append>", CLEAR_LINES)),
               ("R515",), "`lines` is lent to task `listTask`"),
         Check("loan-outlives-cancel", "reject", "clearing the list after cancelling, before joining",
@@ -201,7 +201,7 @@ GUARANTEES = (
                 "main at stopDiscount cancel discountTask\nmain at stopDiscount do clearLines\n"),
                (W, "<append>", CLEAR_LINES)),
               ("R515",), "`lines` is lent to task `discountTask`"),
-        Check("region-output-unowned", "reject", "returning region text with `outputOwner none`",
+        Check("region-output-unowned", "reject", "returning region text with `outputOwnedBy none`",
               ((P, "pricing imports standard.list", "pricing imports standard.list\npricing imports standard.string"),
                (P, "<append>", REGION_TEXT)),
               ("R409",), "names the `Region` input it is allocated in"),
@@ -225,7 +225,7 @@ GUARANTEES = (
                    "listFailed else goto listFailed", "main at stopDiscount goto listFailed"),),
               ("R512",), "was cancelled but is not joined"),
         Check("no-detach", "reject", "`detach` is not a step",
-              ((W, "main at price start discountTask", "main at price detach discountTask"),),
+              ((W, "main at price start discountTask into none", "main at price detach discountTask"),),
               ("R205", "R510"), "step row must be"),
         Check("runs", "run", "the program prices the order in two tasks and prints the report",
               (), (), "list=3750 discounted=3375"),
@@ -257,8 +257,8 @@ GUARANTEES = (
                 "else goto exit\nmain at exit return ok okCode"),
                (W, "main label listFailed loopKind none", "main label exit loopKind none\nmain label exit within none\n"
                                                          "main label listFailed loopKind none"),
-               (W, "main let okCode immutable ExitCode 0", 'main let okCode immutable ExitCode 0\n'
-                                                          'main let doneText immutable String "warehouse done"'),
+               (W, "main let okCode ExitCode 0 immutable", 'main let okCode ExitCode 0 immutable\n'
+                                                          'main let doneText String "warehouse done" immutable'),
                (W, "<append>", _call("announceDone", "main", "pricing.announce", ("text String doneText lend",),
                                      catch="announceError console.WriteError"))),
               ("R407",), "`main` performs `write console.stderr`"),
@@ -282,10 +282,11 @@ GUARANTEES = (
         Check("capability-of-another-module", "reject", "using a capability declared in another module",
               ((P, "listTotal uses none", "listTotal uses warehouse.reportFiles"),), ("R205",), "`uses` row"),
         Check("path-outside-scope", "reject", "a report path outside the capability's scope",
-              ((W, 'main let reportPath immutable String "warehouse-report.txt"',
-                'main let reportPath immutable String "report.txt"'),), ("R408",), "outside the scope"),
+              ((W, 'main let reportPath String "warehouse-report.txt" immutable',
+                'main let reportPath String "report.txt" immutable'),), ("R408",), "outside the scope"),
         Check("scope-wider-than-allowed", "reject", "a capability scope wider than build.sem allows",
-              ((W, 'reportFiles scope "warehouse-*"', 'reportFiles scope "ware*"'),), ("R408",),
+              ((W, 'reportFiles grants write fs.files "warehouse-*"', 'reportFiles grants write fs.files "ware*"'),),
+              ("R408",),
               "which build.sem does not allow"),
     ), ("mutation:capability-missing", "mutation:capability-unused", "mutation:capability-scope-escape",
         "mutation:capability-scope-dotdot", "mutation:host-prefix", "mutation:fs-prefix-sibling",
@@ -320,7 +321,7 @@ GUARANTEES = (
         "A cleanup is deferred after the value it cleans exists, and exactly once on a path (R507, R510); it runs at "
         "every later `return`, `ok` or `error`, newest first, and only once.",
         "A cleanup's call takes the value with `give`: the value is consumed even if releasing it fails. "
-        "`onFailure trap` stops the program; `onFailure suppress` continues and requires a `because` row (R302).",
+        "`onError trap` stops the program; `onError suppress` continues. Every cleanup states a `rationale` row saying why its policy is right (R302).",
         "A trap does not run cleanups: the process ends and the operating system releases what it held.",
         "A cancelled task runs the cleanups of the operations it unwinds through, since cancellation reaches it as "
         "an error.",
@@ -347,7 +348,7 @@ GUARANTEES = (
         "it owns cannot be returned unless the output names the region as owner (R409, R512).",
     ), (
         Check("arena-exhausted", "trap", "a 64-byte region for the whole program",
-              ((W, "store capacity 65536", "store capacity 64"),), (), "exceeded its capacity of 64 bytes"),
+              ((W, "store maxBytes 65536", "store maxBytes 64"),), (), "exceeded its capacity of 64 bytes"),
     ), ("case:07-memory/trap-region-exhausted", "mutation:region-value-without-owner", "mutation:heap-undeclared",
         "mutation:region-escape-none")),
 
@@ -359,10 +360,10 @@ GUARANTEES = (
         "several tasks, so it is lent with `lend`.",
     ), (
         Check("shared-loan-to-write", "reject", "writing through a shared loan",
-              ((W, "writeReport arg file fs.FileHandle report lendMutable", "writeReport arg file fs.FileHandle report lend"),),
+              ((W, "writeReport argument file fs.FileHandle report lendMutable", "writeReport argument file fs.FileHandle report lend"),),
               ("R406",), "passed as `lendMutable`"),
         Check("two-writers", "reject", "two tasks writing through one handle at once",
-              ((W, "main at opened start writeReport\n", "main at opened start writeReport\nmain at opened start writeAgain\n"),
+              ((W, "main at opened start writeReport into none\n", "main at opened start writeReport into none\nmain at opened start writeAgain into none\n"),
                (W, "main at opened branch ifError writeReport goto fileFailed else goto readBack",
                 "main at opened branch ifError writeReport goto stopAgain else goto joinAgain\n"
                 "main at joinAgain join writeAgain\nmain at joinAgain branch ifError writeAgain goto fileFailed else goto readBack\n"
@@ -425,7 +426,7 @@ GUARANTEES = (
         "module that could skip a check.",
     ), (
         Check("cross-module-mode", "reject", "lending the list exclusively to an imported operation that reads it",
-              ((W, "listTask arg lines pricing.Lines lines lend", "listTask arg lines pricing.Lines lines lendMutable"),),
+              ((W, "listTask argument lines pricing.Lines lines lend", "listTask argument lines pricing.Lines lines lendMutable"),),
               ("R406", "R515"), "passed as `lend`"),
         Check("cross-module-unexported", "reject", "calling an operation pricing does not export",
               ((W, "listTask invokes pricing.listTotal", "listTask invokes pricing.orderTotal"),),

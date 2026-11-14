@@ -30,11 +30,11 @@ hello is project
 hello purpose "Print one greeting line and exit"
 hello target console
 hello version "0.1.0"
-hello language refined-1
+hello language refined 1
 hello standardLibrary 1
 hello allows write console.stdout none
 hello requires none
-hello module hello
+hello includesModule hello
 hello entry hello.main
 ```
 
@@ -48,14 +48,14 @@ module, and in every package it requires, must fall within them.
 main is operation
 main purpose "Print a greeting and exit with code zero"
 main invariant printsGreeting "Writes the greeting line and exits with code zero"
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -64,9 +64,9 @@ main label succeeded loopKind none
 main label succeeded within none
 main label failed loopKind none
 main label failed within none
-main let greeting immutable String "Hello, world!"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let greeting String "Hello, world!" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do printGreeting
 main at begin branch ifError printGreeting goto failed else goto succeeded
 main at succeeded return ok okCode
@@ -75,8 +75,8 @@ main at failed return ok failCode
 printGreeting is call
 printGreeting in main
 printGreeting invokes console.writeLine
-printGreeting arg text String greeting lend
-printGreeting out none
+printGreeting argument text String greeting lend
+printGreeting result none
 printGreeting ownedBy none
 printGreeting cleanedBy none
 printGreeting borrows none

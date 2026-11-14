@@ -22,14 +22,14 @@ tokens exports firstKind
 
 LexError is enum
 LexError purpose "Why tokenizing stopped"
-LexError typeParam none
+LexError typeParameter none
 LexError variant unexpectedByte Int64
 
-TokenList is instance
+TokenList is typeInstance
 TokenList purpose "A growable list of tokens"
 TokenList instantiates list.List lexer.Token
 
-TokenKindOption is instance
+TokenKindOption is typeInstance
 TokenKindOption purpose "A token kind, or nothing"
 TokenKindOption instantiates option.Option lexer.TokenKind
 
@@ -39,15 +39,15 @@ tokenize is operation
 tokenize purpose "Split source text into word tokens separated by spaces"
 tokenize invariant emptyGivesNoTokens "Empty source text gives an empty list"
 tokenize invariant stopsAtBadByte "A byte that is neither a letter nor a space gives unexpectedByte carrying its offset"
-tokenize typeParam none
+tokenize typeParameter none
 tokenize input source String borrowed
 tokenize input resultRegion Region borrowed
 tokenize output TokenList
-tokenize outputOwner resultRegion
+tokenize outputOwnedBy resultRegion
 tokenize raises LexError
 tokenize effect none
 tokenize uses none
-tokenize memory heap true
+tokenize memoryHeap true
 tokenize async false
 tokenize maxRecursion none
 tokenize label begin loopKind none
@@ -69,8 +69,8 @@ tokenize label reject loopKind none
 tokenize label reject within none
 tokenize label finished loopKind none
 tokenize label finished within none
-tokenize let one immutable Int64 1
-tokenize let position mutable Int64 0
+tokenize let one Int64 1 immutable
+tokenize let position Int64 0 mutable
 tokenize at begin do measureSource
 tokenize at begin do makeList
 tokenize at begin goto scan
@@ -100,8 +100,8 @@ tokenize at finished return ok tokens
 measureSource is call
 measureSource in tokenize
 measureSource invokes string.byteLength
-measureSource arg text String source lend
-measureSource out sourceLength Int64
+measureSource argument text String source lend
+measureSource result sourceLength Int64
 measureSource ownedBy none
 measureSource cleanedBy none
 measureSource borrows none
@@ -110,8 +110,8 @@ measureSource catch none
 makeList is call
 makeList in tokenize
 makeList invokes TokenList.new
-makeList arg region Region resultRegion lend
-makeList out tokens TokenList
+makeList argument region Region resultRegion lend
+makeList result tokens TokenList
 makeList ownedBy resultRegion
 makeList cleanedBy none
 makeList borrows none
@@ -120,9 +120,9 @@ makeList catch none
 atEndCheck is call
 atEndCheck in tokenize
 atEndCheck invokes compare.greaterOrEqualInt64
-atEndCheck arg left Int64 position copy
-atEndCheck arg right Int64 sourceLength copy
-atEndCheck out atEnd Bool
+atEndCheck argument left Int64 position copy
+atEndCheck argument right Int64 sourceLength copy
+atEndCheck result atEnd Bool
 atEndCheck ownedBy none
 atEndCheck cleanedBy none
 atEndCheck borrows none
@@ -131,9 +131,9 @@ atEndCheck catch none
 readByte is call
 readByte in tokenize
 readByte invokes string.byteAt
-readByte arg text String source lend
-readByte arg index Int64 position copy
-readByte out currentByte Byte
+readByte argument text String source lend
+readByte argument index Int64 position copy
+readByte result currentByte Byte
 readByte ownedBy none
 readByte cleanedBy none
 readByte borrows none
@@ -142,8 +142,8 @@ readByte catch readByteError string.StringIndexError
 spaceCheck is call
 spaceCheck in tokenize
 spaceCheck invokes byte.isSpace
-spaceCheck arg value Byte currentByte copy
-spaceCheck out isSpace Bool
+spaceCheck argument value Byte currentByte copy
+spaceCheck result isSpace Bool
 spaceCheck ownedBy none
 spaceCheck cleanedBy none
 spaceCheck borrows none
@@ -152,8 +152,8 @@ spaceCheck catch none
 letterCheck is call
 letterCheck in tokenize
 letterCheck invokes byte.isLetter
-letterCheck arg value Byte currentByte copy
-letterCheck out isLetter Bool
+letterCheck argument value Byte currentByte copy
+letterCheck result isLetter Bool
 letterCheck ownedBy none
 letterCheck cleanedBy none
 letterCheck borrows none
@@ -162,9 +162,9 @@ letterCheck catch none
 scanOneWord is call
 scanOneWord in tokenize
 scanOneWord invokes lexer.scanWord
-scanOneWord arg source String source lend
-scanOneWord arg start Int64 position copy
-scanOneWord out wordToken lexer.Token
+scanOneWord argument source String source lend
+scanOneWord argument start Int64 position copy
+scanOneWord result wordToken lexer.Token
 scanOneWord ownedBy none
 scanOneWord cleanedBy none
 scanOneWord borrows none
@@ -173,9 +173,9 @@ scanOneWord catch none
 appendToken is call
 appendToken in tokenize
 appendToken invokes TokenList.append
-appendToken arg list TokenList tokens lendMutable
-appendToken arg item lexer.Token wordToken copy
-appendToken out none
+appendToken argument list TokenList tokens lendMutable
+appendToken argument item lexer.Token wordToken copy
+appendToken result none
 appendToken ownedBy none
 appendToken cleanedBy none
 appendToken borrows none
@@ -184,8 +184,8 @@ appendToken catch none
 readWordLength is call
 readWordLength in tokenize
 readWordLength invokes lexer.Token.length
-readWordLength arg record lexer.Token wordToken copy
-readWordLength out wordLength Int64
+readWordLength argument record lexer.Token wordToken copy
+readWordLength result wordLength Int64
 readWordLength ownedBy none
 readWordLength cleanedBy none
 readWordLength borrows none
@@ -194,9 +194,9 @@ readWordLength catch none
 advancePastWord is call
 advancePastWord in tokenize
 advancePastWord invokes math.addInt64
-advancePastWord arg left Int64 position copy
-advancePastWord arg right Int64 wordLength copy
-advancePastWord out afterWord Int64
+advancePastWord argument left Int64 position copy
+advancePastWord argument right Int64 wordLength copy
+advancePastWord result afterWord Int64
 advancePastWord ownedBy none
 advancePastWord cleanedBy none
 advancePastWord borrows none
@@ -205,9 +205,9 @@ advancePastWord catch none
 advanceOne is call
 advanceOne in tokenize
 advanceOne invokes math.addInt64
-advanceOne arg left Int64 position copy
-advanceOne arg right Int64 one copy
-advanceOne out afterSpace Int64
+advanceOne argument left Int64 position copy
+advanceOne argument right Int64 one copy
+advanceOne result afterSpace Int64
 advanceOne ownedBy none
 advanceOne cleanedBy none
 advanceOne borrows none
@@ -216,8 +216,8 @@ advanceOne catch none
 makeUnexpectedByte is call
 makeUnexpectedByte in tokenize
 makeUnexpectedByte invokes LexError.unexpectedByte
-makeUnexpectedByte arg payload Int64 position copy
-makeUnexpectedByte out lexError LexError
+makeUnexpectedByte argument payload Int64 position copy
+makeUnexpectedByte result lexError LexError
 makeUnexpectedByte ownedBy none
 makeUnexpectedByte cleanedBy none
 makeUnexpectedByte borrows none
@@ -228,14 +228,14 @@ makeUnexpectedByte catch none
 firstKind is operation
 firstKind purpose "Report the kind of the first token in a source text, if there is one"
 firstKind invariant badSourceGivesAbsent "Source text that fails to tokenize gives absent"
-firstKind typeParam none
+firstKind typeParameter none
 firstKind input source String borrowed
 firstKind output TokenKindOption
-firstKind outputOwner none
+firstKind outputOwnedBy none
 firstKind raises none
 firstKind effect none
 firstKind uses none
-firstKind memory heap true
+firstKind memoryHeap true
 firstKind async false
 firstKind maxRecursion none
 firstKind label begin loopKind none
@@ -248,7 +248,7 @@ firstKind label found loopKind none
 firstKind label found within none
 firstKind label missing loopKind none
 firstKind label missing within none
-firstKind let zero immutable Int64 0
+firstKind let zero Int64 0 immutable
 firstKind at begin do runTokenize
 firstKind at begin branch ifError runTokenize goto failed else goto first
 firstKind at failed match tokenizeError LexError
@@ -264,15 +264,15 @@ firstKind at missing return ok absentKind
 scratch is region
 scratch in firstKind
 scratch strategy arena
-scratch capacity 65536
+scratch maxBytes 65536
 scratch released atReturn
 
 runTokenize is call
 runTokenize in firstKind
 runTokenize invokes tokenize
-runTokenize arg source String source lend
-runTokenize arg resultRegion Region scratch lend
-runTokenize out tokens TokenList
+runTokenize argument source String source lend
+runTokenize argument resultRegion Region scratch lend
+runTokenize result tokens TokenList
 runTokenize ownedBy scratch
 runTokenize cleanedBy none
 runTokenize borrows none
@@ -281,9 +281,9 @@ runTokenize catch tokenizeError LexError
 getFirst is call
 getFirst in firstKind
 getFirst invokes TokenList.get
-getFirst arg list TokenList tokens lend
-getFirst arg index Int64 zero copy
-getFirst out firstToken lexer.Token
+getFirst argument list TokenList tokens lend
+getFirst argument index Int64 zero copy
+getFirst result firstToken lexer.Token
 getFirst ownedBy none
 getFirst cleanedBy none
 getFirst borrows none
@@ -292,8 +292,8 @@ getFirst catch firstMissing list.IndexOutOfRange
 readKind is call
 readKind in firstKind
 readKind invokes lexer.Token.kind
-readKind arg record lexer.Token firstToken copy
-readKind out firstTokenKind lexer.TokenKind
+readKind argument record lexer.Token firstToken copy
+readKind result firstTokenKind lexer.TokenKind
 readKind ownedBy none
 readKind cleanedBy none
 readKind borrows none
@@ -302,8 +302,8 @@ readKind catch none
 wrapKind is call
 wrapKind in firstKind
 wrapKind invokes TokenKindOption.present
-wrapKind arg payload lexer.TokenKind firstTokenKind copy
-wrapKind out presentKind TokenKindOption
+wrapKind argument payload lexer.TokenKind firstTokenKind copy
+wrapKind result presentKind TokenKindOption
 wrapKind ownedBy none
 wrapKind cleanedBy none
 wrapKind borrows none
@@ -312,8 +312,8 @@ wrapKind catch none
 makeAbsent is call
 makeAbsent in firstKind
 makeAbsent invokes TokenKindOption.absent
-makeAbsent arg none
-makeAbsent out absentKind TokenKindOption
+makeAbsent argument none
+makeAbsent result absentKind TokenKindOption
 makeAbsent ownedBy none
 makeAbsent cleanedBy none
 makeAbsent borrows none

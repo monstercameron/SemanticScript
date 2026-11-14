@@ -32,9 +32,10 @@ BUILTIN_TYPES = frozenset({
 
 # `load` (D-33): bringing native code into the process (the foreign function interface)
 EFFECT_VERBS = frozenset({"read", "write", "readWrite", "listen", "connect", "spawn", "load"})
-INPUT_MODES = frozenset({"value", "borrowed", "borrowedMutable", "owned"})
+# D-47: a parameter's mode is a participle and its argument's mode the matching verb, pair by pair
+INPUT_MODES = frozenset({"copied", "borrowed", "borrowedMutable", "owned"})
 ARG_MODES = frozenset({"copy", "lend", "lendMutable", "give"})
-MODE_PAIRS = {"value": "copy", "borrowed": "lend", "borrowedMutable": "lendMutable", "owned": "give"}
+MODE_PAIRS = {"copied": "copy", "borrowed": "lend", "borrowedMutable": "lendMutable", "owned": "give"}
 LOOP_KINDS = frozenset({"counted", "while", "doWhile", "forEach", "forever"})
 RISK_CATEGORIES = frozenset({"security", "failure", "timing", "concurrency", "memory", "data"})
 
@@ -112,14 +113,12 @@ SLOT_CHECKS = {
     "exportName": lambda tok: tok.kind == "word" and (is_name(tok.raw) or bool(UPPER.match(tok.raw))),
     "letValue": lambda tok: is_literal(tok.raw, tok.kind) or (tok.kind == "word" and (is_name(tok.raw) or tok.raw == "unset")),
     "cellValue": lambda tok: is_literal(tok.raw, tok.kind) or (tok.kind == "word" and is_name(tok.raw)),
-    "languageVersion": lambda tok: tok.kind == "word" and bool(re.match(r"[a-z]+-[0-9]+\Z", tok.raw)),
 }
 
 SLOT_LABELS = {
     "name": "<name>", "label": "<label>", "Type": "<Type>", "string": '"<text>"', "int": "<integer>",
     "path": "<dotted.path>", "resource": "<module.resource>", "target": "<target>", "variant": "<Enum.variant>",
     "exportName": "<name>", "letValue": "<literal|name|unset>", "cellValue": "<literal|name>",
-    "languageVersion": "<language>-<version>",
 }
 
 
@@ -167,8 +166,10 @@ CONTEXT_SHAPES = {
     "deprecated": [("string",)],
 }
 # Kinds that must state a purpose (LR-06 rule 1).
-PURPOSE_REQUIRED = frozenset({"project", "module", "operation", "test", "capability", "record", "enum",
-                              "table", "instance", "operationInstance", "operationType"})
+PURPOSE_REQUIRED = frozenset({"project", "module", "operation", "test", "capability", "record", "enum", "alias",
+                              "table", "typeInstance", "operationInstance", "operationType"})
+# D-47: a cleanup always says why its failure policy is right, in its `rationale` context row.
+RATIONALE_REQUIRED = frozenset({"cleanup"})
 # LR-42 decision D-4 (Part 4): invariants live only on operations, because only
 # operations can be named by a test's `verifies` row.
 INVARIANT_KINDS = frozenset({"operation"})
@@ -176,37 +177,39 @@ VERIFIES_KINDS = frozenset({"test"})
 
 # ---------------------------------------------------------------- structural shapes
 
+_TYPE_PARAMETER = [(NONE,), ("Type", kw("plain", "any"))]
 _OP_HEADER = {
-    "typeParam": [(NONE,), ("Type", kw("plain", "any"))],
+    "typeParameter": _TYPE_PARAMETER,
     "input": [(NONE,), ("name", "Type", INPUT_MODES)],
     "output": [(NONE,), ("Type",)],
-    "outputOwner": [(NONE,), (kw("caller"),), ("name",)],
+    "outputOwnedBy": [(NONE,), (kw("caller"),), ("name",)],
     "raises": [(NONE,), ("Type",)],
     "effect": [(NONE,), (EFFECT_VERBS, "resource")],
     "uses": [(NONE,), ("name",)],
-    "memory": [(kw("heap"), BOOL)],
+    "memoryHeap": [(BOOL,)],
     "async": [(BOOL,)],
     "maxRecursion": [(NONE,), ("int",)],
     "label": "LABEL",  # dispatched on the label fact (LABEL_FACTS)
-    "let": [("name", kw("immutable", "mutable"), "Type", "letValue")],
+    # D-47: `<name> <Type> <value> <mutability>`, slot for slot like `argument <slot> <Type> <value> <mode>`
+    "let": [(NONE,), ("name", "Type", "letValue", kw("immutable", "mutable"))],
     "at": "STEP",  # dispatched on the step verb (STEPS)
 }
-_OP_SKELETON = [("typeParam", "some"), ("input", "some"), ("output", "one"), ("outputOwner", "one"), ("raises", "one"),
-                ("effect", "some"), ("uses", "some"), ("memory", "one"), ("async", "one"),
-                ("maxRecursion", "one"), ("label", "any"), ("let", "any"), ("at", "any")]
+_OP_SKELETON = [("typeParameter", "some"), ("input", "some"), ("output", "one"), ("outputOwnedBy", "one"),
+                ("raises", "one"), ("effect", "some"), ("uses", "some"), ("memoryHeap", "one"), ("async", "one"),
+                ("maxRecursion", "one"), ("label", "some"), ("let", "some"), ("at", "some")]
 
 _CALL_SHAPES = {
     "in": [("name",)],
     "invokes": [("target",)],
     "invokesReference": [("name",)],
-    "arg": [(NONE,), ("name", "Type", "name", ARG_MODES)],
-    "out": [(NONE,), ("name", "Type")],
+    "argument": [(NONE,), ("name", "Type", "name", ARG_MODES)],
+    "result": [(NONE,), ("name", "Type")],
     "ownedBy": [(NONE,), ("name",)],
     "cleanedBy": [(NONE,), ("name",)],
     "borrows": [(NONE,), ("name",)],
     "catch": [(NONE,), ("name", "Type")],
 }
-_CALL_SKELETON = [("in", "one"), ("invokes|invokesReference", "one"), ("arg", "some"), ("out", "one"),
+_CALL_SKELETON = [("in", "one"), ("invokes|invokesReference", "one"), ("argument", "some"), ("result", "one"),
                   ("ownedBy", "one"), ("cleanedBy", "one"), ("borrows", "one"), ("catch", "one")]
 
 KINDS: dict[str, dict] = {
@@ -214,72 +217,74 @@ KINDS: dict[str, dict] = {
     # the local packages it requires with a version constraint each
     "project": {
         "shapes": {"target": [(kw("console", "library"),)], "version": [("string",)],
-                   "language": [("languageVersion",)], "standardLibrary": [("int",)],
+                   "language": [(kw("refined"), "int")], "standardLibrary": [("int",)],
                    "allows": [(NONE,), (EFFECT_VERBS, "resource", NONE), (EFFECT_VERBS, "resource", "string")],
-                   "requires": [(NONE,), ("name", "string", "string")], "module": [("path",)],
+                   "requires": [(NONE,), ("name", "string", "string")], "includesModule": [("path",)],
                    "entry": [(NONE,), ("target",)]},
         "skeleton": [("target", "one"), ("version", "one"), ("language", "one"), ("standardLibrary", "one"),
-                     ("allows", "some"), ("requires", "some"), ("module", "some"), ("entry", "one")],
+                     ("allows", "some"), ("requires", "some"), ("includesModule", "some"), ("entry", "one")],
     },
     "module": {
         "shapes": {"path": [("path",)], "imports": [(NONE,), ("path",)], "exports": [(NONE,), ("exportName",)]},
         "skeleton": [("path", "one"), ("imports", "some"), ("exports", "some")],
     },
     "record": {
-        "shapes": {"typeParam": [(NONE,), ("Type", kw("plain", "any"))], "field": [("name", "Type")]},
-        "skeleton": [("typeParam", "some"), ("field", "some")],
+        "shapes": {"typeParameter": _TYPE_PARAMETER, "field": [("name", "Type")]},
+        "skeleton": [("typeParameter", "some"), ("field", "some")],
     },
     "enum": {
-        "shapes": {"typeParam": [(NONE,), ("Type", kw("plain", "any"))], "variant": [("name", NONE), ("name", "Type")]},
-        "skeleton": [("typeParam", "some"), ("variant", "some")],
+        "shapes": {"typeParameter": _TYPE_PARAMETER, "variant": [("name", NONE), ("name", "Type")]},
+        "skeleton": [("typeParameter", "some"), ("variant", "some")],
     },
     "alias": {
-        "shapes": {"for": [("Type",)], "indexes": [(NONE,), ("Type",)]},
-        "skeleton": [("for", "one"), ("indexes", "one")],
+        "shapes": {"typeParameter": [(NONE,)], "aliasOf": [("Type",)], "indexes": [(NONE,), ("Type",)]},
+        "skeleton": [("typeParameter", "one"), ("aliasOf", "one"), ("indexes", "one")],
     },
-    "instance": {
+    "typeInstance": {
         "shapes": {"instantiates": [("Type", "Type+")]},
         "skeleton": [("instantiates", "one")],
     },
     "table": {
-        "shapes": {"of": [("Type",)], "row": [("name", "int")], "cell": [("name", "name", "cellValue")]},
-        "skeleton": [("of", "one"), ("row", "some"), ("cell", "some")],
+        "shapes": {"rowType": [("Type",)], "row": [("name", "int")], "cell": [("name", "name", "cellValue")]},
+        "skeleton": [("rowType", "one"), ("row", "some"), ("cell", "some")],
     },
+    # D-47: each grant carries its own scope, the same `<verb> <resource> <scope|none>` triple as `allows`
     "capability": {
-        "shapes": {"grants": [(EFFECT_VERBS, "resource")], "scope": [(NONE,), ("string",)]},
-        "skeleton": [("grants", "some"), ("scope", "one")],
+        "shapes": {"grants": [(EFFECT_VERBS, "resource", NONE), (EFFECT_VERBS, "resource", "string")]},
+        "skeleton": [("grants", "some")],
     },
     "operationInstance": {
         "shapes": {"instantiates": [("name", "Type+")]},
         "skeleton": [("instantiates", "one")],
     },
     "operationType": {
-        "shapes": {k: _OP_HEADER[k] for k in ("input", "output", "outputOwner", "raises", "effect", "async")},
-        "skeleton": [("input", "some"), ("output", "one"), ("outputOwner", "one"), ("raises", "one"),
-                     ("effect", "some"), ("async", "one")],
+        "shapes": {"typeParameter": [(NONE,)],
+                   **{k: _OP_HEADER[k] for k in ("input", "output", "outputOwnedBy", "raises", "effect", "async")}},
+        "skeleton": [("typeParameter", "one"), ("input", "some"), ("output", "one"), ("outputOwnedBy", "one"),
+                     ("raises", "one"), ("effect", "some"), ("async", "one")],
     },
     "operation": {"shapes": _OP_HEADER, "skeleton": _OP_SKELETON},
     "test": {"shapes": _OP_HEADER, "skeleton": _OP_SKELETON},
     "call": {"shapes": _CALL_SHAPES, "skeleton": _CALL_SKELETON},
     "task": {"shapes": _CALL_SHAPES, "skeleton": _CALL_SKELETON},
     "cleanup": {
-        "shapes": {"in": [("name",)], "call": [("name",)], "cleans": [("name",)],
-                   "onFailure": [(kw("suppress", "trap"),)], "because": [("string",)]},
-        "skeleton": [("in", "one"), ("call", "one"), ("cleans", "one"), ("onFailure", "one"), ("because", "one")],
+        "shapes": {"in": [("name",)], "runs": [("name",)], "cleans": [("name",)],
+                   "onError": [(kw("suppress", "trap"),)]},
+        "skeleton": [("in", "one"), ("runs", "one"), ("cleans", "one"), ("onError", "one")],
     },
     "region": {
-        "shapes": {"in": [("name",)], "strategy": [(kw("arena"),)], "capacity": [("int",)],
+        "shapes": {"in": [("name",)], "strategy": [(kw("arena"),)], "maxBytes": [("int",)],
                    "released": [(kw("atReturn", "atProcessExit"),)]},
-        "skeleton": [("in", "one"), ("strategy", "one"), ("capacity", "one"), ("released", "one")],
+        "skeleton": [("in", "one"), ("strategy", "one"), ("maxBytes", "one"), ("released", "one")],
     },
     "taskGroup": {
-        "shapes": {"in": [("name",)], "limit": [("int",)]},
-        "skeleton": [("in", "one"), ("limit", "one")],
+        "shapes": {"in": [("name",)], "maxTasks": [("int",)]},
+        "skeleton": [("in", "one"), ("maxTasks", "one")],
     },
 }
 
 # Kinds whose entity name is a type (upper case); every other kind is lower case.
-TYPE_KINDS = frozenset({"record", "enum", "alias", "instance", "operationType"})
+TYPE_KINDS = frozenset({"record", "enum", "alias", "typeInstance", "operationType"})
 # Kinds owned by one operation through their `in` row (LR-02): names are scoped to that operation.
 OWNED_KINDS = frozenset({"call", "task", "cleanup", "region", "taskGroup"})
 # Kinds that only appear in build.sem.
@@ -287,15 +292,15 @@ PROJECT_KINDS = frozenset({"project"})
 
 # ---------------------------------------------------------------- block labels (LR-23, LR-42 A13)
 
-LABEL_ORDER = ["loopKind", "within", "maxIterations", "counter", "over", "because",
-               "purpose", "rationale", "risk", "note", "todo"]
+# D-47: context rows lead here too, as they do after an entity's `is` row
+LABEL_ORDER = ["purpose", "rationale", "risk", "note", "todo",
+               "loopKind", "within", "maxIterations", "counter", "over"]
 LABEL_FACTS = {
     "loopKind": [(LOOP_KINDS | NONE,)],
     "within": [(NONE,), ("label",)],
     "maxIterations": [("int",), ("name",), (kw("unbounded"),)],
     "counter": [("name",)],
     "over": [("name",)],
-    "because": [("string",)],
     "purpose": [("string",)],
     "rationale": [("string",)],
     "risk": [(RISK_CATEGORIES, "string")],
@@ -308,7 +313,7 @@ LABEL_FACTS = {
 _G, _E = kw("goto"), kw("else")
 STEPS = {
     "do": [("name",)],
-    "start": [("name",), ("name", kw("into"), "name")],
+    "start": [("name", kw("into"), NONE), ("name", kw("into"), "name")],
     "join": [("name",)],
     "cancel": [("name",)],
     "awaitSlot": [("name",)],
@@ -399,7 +404,7 @@ def grammar_markdown() -> str:
            "Generated from `semanticscript/compiler/refined/shapes.py`. Do not edit by hand.", "",
            "Every row is `<subject> <predicate> <payload>`. Context rows (" +
            ", ".join(f"`{c}`" for c in CONTEXT_ORDER) + ") come directly after the `is` row, in that order.", ""]
-    card_text = {"one": "exactly one", "some": "one or more (`none` alone when empty)", "any": "zero or more"}
+    card_text = {"one": "exactly one", "some": "one or more", "any": "zero or more"}
     for kind, spec in KINDS.items():
         out += [f"## `{kind}`", "", "| Predicate | Rows | Shape |", "| --- | --- | --- |"]
         for pred, card in spec["skeleton"]:
@@ -412,6 +417,9 @@ def grammar_markdown() -> str:
                 else:
                     forms = [render(alt) for alt in shapes]
                 cell = "<br>".join("`" + f.replace("|", "\\|") + "`" for f in forms)
-                out.append(f"| `{p}` | {card_text[card]} | {cell} |")
+                rows = card_text[card]
+                if card == "some" and isinstance(shapes, list) and (NONE,) in shapes:
+                    rows += " (`none` alone when empty)"
+                out.append(f"| `{p}` | {rows} | {cell} |")
         out.append("")
     return "\n".join(out)

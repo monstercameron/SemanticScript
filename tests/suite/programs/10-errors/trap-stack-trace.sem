@@ -13,29 +13,29 @@ stackTrace exports main
 inner is operation
 inner purpose "Divide by zero"
 inner invariant none
-inner typeParam none
+inner typeParameter none
 inner input none
 inner output Int64
-inner outputOwner none
+inner outputOwnedBy none
 inner raises none
 inner effect none
 inner uses none
-inner memory heap false
+inner memoryHeap false
 inner async false
 inner maxRecursion none
 inner label begin loopKind none
 inner label begin within none
-inner let one immutable Int64 1
-inner let zero immutable Int64 0
+inner let one Int64 1 immutable
+inner let zero Int64 0 immutable
 inner at begin do divide
 inner at begin return ok quotient
 
 divide is call
 divide in inner
 divide invokes math.divideInt64
-divide arg left Int64 one copy
-divide arg right Int64 zero copy
-divide out quotient Int64
+divide argument left Int64 one copy
+divide argument right Int64 zero copy
+divide result quotient Int64
 divide ownedBy none
 divide cleanedBy none
 divide borrows none
@@ -44,26 +44,27 @@ divide catch none
 middle is operation
 middle purpose "Call inner"
 middle invariant none
-middle typeParam none
+middle typeParameter none
 middle input none
 middle output Int64
-middle outputOwner none
+middle outputOwnedBy none
 middle raises none
 middle effect none
 middle uses none
-middle memory heap false
+middle memoryHeap false
 middle async false
 middle maxRecursion none
 middle label begin loopKind none
 middle label begin within none
+middle let none
 middle at begin do callInner
 middle at begin return ok value
 
 callInner is call
 callInner in middle
 callInner invokes inner
-callInner arg none
-callInner out value Int64
+callInner argument none
+callInner result value Int64
 callInner ownedBy none
 callInner cleanedBy none
 callInner borrows none
@@ -72,26 +73,27 @@ callInner catch none
 outer is operation
 outer purpose "Call middle"
 outer invariant none
-outer typeParam none
+outer typeParameter none
 outer input none
 outer output Int64
-outer outputOwner none
+outer outputOwnedBy none
 outer raises none
 outer effect none
 outer uses none
-outer memory heap false
+outer memoryHeap false
 outer async false
 outer maxRecursion none
 outer label begin loopKind none
 outer label begin within none
+outer let none
 outer at begin do callMiddle
 outer at begin return ok value
 
 callMiddle is call
 callMiddle in outer
 callMiddle invokes middle
-callMiddle arg none
-callMiddle out value Int64
+callMiddle argument none
+callMiddle result value Int64
 callMiddle ownedBy none
 callMiddle cleanedBy none
 callMiddle borrows none
@@ -100,28 +102,28 @@ callMiddle catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do callOuter
 main at begin return ok okCode
 
 callOuter is call
 callOuter in main
 callOuter invokes outer
-callOuter arg none
-callOuter out result Int64
+callOuter argument none
+callOuter result result Int64
 callOuter ownedBy none
 callOuter cleanedBy none
 callOuter borrows none

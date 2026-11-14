@@ -63,27 +63,26 @@ def test_formatter_undoes_added_spacing():
 
 REPL_SESSION = """stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 main is operation
 main purpose "Print a greeting from the REPL"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
 main label done loopKind none
 main label done within none
-main let greeting immutable String "Hello from the REPL"
-main let okCode immutable ExitCode 0
+main let greeting String "Hello from the REPL" immutable
+main let okCode ExitCode 0 immutable
 main at begin do printIt
 main at begin branch ifError printIt goto done else goto done
 main at done return ok okCode
@@ -94,8 +93,8 @@ printIt is call
 printIt rationale "A REPL demo has nowhere to report a failed write"
 printIt in main
 printIt invokes console.writeLine
-printIt arg text String greeting lend
-printIt out none
+printIt argument text String greeting lend
+printIt result none
 printIt ownedBy none
 printIt cleanedBy none
 printIt borrows none
@@ -273,16 +272,16 @@ def test_program_sees_an_interrupt(tmp_path):
                 imports=["standard.console", "standard.signal", "standard.time"])
     p.add(sb.STDOUT_CAP).add(sb.show_text())
     p.add('interruptReader is capability\ninterruptReader purpose "Authority to observe interrupts"\n'
-          "interruptReader grants read signal.interrupts\ninterruptReader scope none")
+          "interruptReader grants read signal.interrupts none")
     p.add(sb.op("main", "Print ready, wait for an interrupt, and say it came",
-                [("begin", "do printReady"), ("begin", "do makeDeadline"), ("begin", "start waitIt"),
+                [("begin", "do printReady"), ("begin", "do makeDeadline"), ("begin", "start waitIt into none"),
                  ("begin", "join waitIt"), ("begin", "branch ifError waitIt goto failed else goto got"),
                  ("got", "do printGot"), ("got", "return ok okCode"), ("failed", "return ok failCode")],
                 output="ExitCode", effects=("read signal.interrupts", "write console.stdout"),
                 uses=("interruptReader", "stdoutWriter"), waits=True,
-                lets=('ready immutable String "ready"', 'got immutable String "interrupted"',
-                      "tenSeconds immutable Int64 10000", "okCode immutable ExitCode 0",
-                      "failCode immutable ExitCode 1")))
+                lets=('ready String "ready" immutable', 'got String "interrupted" immutable',
+                      "tenSeconds Int64 10000 immutable", "okCode ExitCode 0 immutable",
+                      "failCode ExitCode 1 immutable")))
     p.add(sb.printer("main", "printReady", "String", "ready"))
     p.add(sb.printer("main", "printGot", "String", "got"))
     p.add(sb.call("makeDeadline", "main", "time.Deadline.after", ("milliseconds Int64 tenSeconds copy",),
@@ -293,9 +292,9 @@ def test_program_sees_an_interrupt(tmp_path):
     d.mkdir()
     (d / "build.sem").write_text('interruptsProject is project\ninterruptsProject purpose "Wait for an interrupt"\n'
                                  'interruptsProject target console\ninterruptsProject version "0.1.0"\n'
-                                 "interruptsProject language refined-1\ninterruptsProject standardLibrary 1\n"
+                                 "interruptsProject language refined 1\ninterruptsProject standardLibrary 1\n"
                                  + "\n".join(allows_rows("interruptsProject", [p.render()])) + "\n"
-                                 "interruptsProject requires none\ninterruptsProject module interrupts\n"
+                                 "interruptsProject requires none\ninterruptsProject includesModule interrupts\n"
                                  "interruptsProject entry interrupts.main\n", encoding="utf-8")
     (d / "interrupts.sem").write_text(p.render(), encoding="utf-8")
     assert not caselib.diagnostics(str(d))
@@ -362,15 +361,15 @@ def test_symlink_out_of_scope_traps(tmp_path):
         link_path = "suite-dir/secret.txt"
     p = sb.Prog("linked", "Read a file through a link", imports=["standard.fs", "standard.time"])
     p.add('fileAccess is capability\nfileAccess purpose "Authority to read files whose names start with suite-"\n'
-          'fileAccess grants read fs.files\nfileAccess scope "suite-*"')
+          'fileAccess grants read fs.files "suite-*"')
     p.add(sb.op("main", "Read suite-link.txt",
-                [("begin", "do makeDeadline"), ("begin", "start readIt"), ("begin", "join readIt"),
+                [("begin", "do makeDeadline"), ("begin", "start readIt into none"), ("begin", "join readIt"),
                  ("begin", "branch ifError readIt goto failed else goto done"),
                  ("done", "return ok okCode"), ("failed", "return ok failCode")],
                 output="ExitCode", effects=("read fs.files",), uses=("fileAccess",), heap=True, waits=True,
-                lets=(f'path immutable String "{link_path}"', "limit immutable Int64 64",
-                      "waitMs immutable Int64 5000", "okCode immutable ExitCode 0", "failCode immutable ExitCode 1")))
-    p.add("io is region\nio in main\nio strategy arena\nio capacity 4096\nio released atReturn")
+                lets=(f'path String "{link_path}" immutable', "limit Int64 64 immutable",
+                      "waitMs Int64 5000 immutable", "okCode ExitCode 0 immutable", "failCode ExitCode 1 immutable")))
+    p.add("io is region\nio in main\nio strategy arena\nio maxBytes 4096\nio released atReturn")
     p.add(sb.call("makeDeadline", "main", "time.Deadline.after", ("milliseconds Int64 waitMs copy",),
                   out="deadline time.Deadline"))
     p.add(sb.call("readIt", "main", "fs.readAll", ("path String path lend", "region Region io lend",
@@ -378,9 +377,9 @@ def test_symlink_out_of_scope_traps(tmp_path):
                   out="content Bytes", owned="io", catch="readError fs.FileError", kind="task"))
     (d / "build.sem").write_text('linkedProject is project\nlinkedProject purpose "Read through a symbolic link"\n'
                                  'linkedProject target console\nlinkedProject version "0.1.0"\n'
-                                 "linkedProject language refined-1\nlinkedProject standardLibrary 1\n"
+                                 "linkedProject language refined 1\nlinkedProject standardLibrary 1\n"
                                  + "\n".join(allows_rows("linkedProject", [p.render()])) + "\n"
-                                 "linkedProject requires none\nlinkedProject module linked\n"
+                                 "linkedProject requires none\nlinkedProject includesModule linked\n"
                                  "linkedProject entry linked.main\n", encoding="utf-8")
     (d / "linked.sem").write_text(p.render(), encoding="utf-8")
     assert not caselib.diagnostics(str(d))

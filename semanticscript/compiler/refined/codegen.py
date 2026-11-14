@@ -48,7 +48,8 @@ from .diagnostics import Diagnostic
 from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
-from .semantics import CallInfo, Module, OpInfo, World, resolve_type, resolve_variant, type_params_of
+from .semantics import (CallInfo, Module, OpInfo, World, grant_scope, resolve_type, resolve_variant,
+                        type_params_of)
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
 F32, F64 = ir.FloatType(), ir.DoubleType()
@@ -267,7 +268,7 @@ class Backend:
         key = (m.short, name)
         ent = m.tables[name]
         from .semantics import resolve_type
-        rec = resolve_type(self.world, m, ent.value("of"), ent.line, quiet=True)
+        rec = resolve_type(self.world, m, ent.value("rowType"), ent.line, quiet=True)
         info = self.world.type_info(rec)
         rtype = self.ltype(rec, m.file, ent.line)
         rows = sorted(ent.facts("row"), key=lambda r: int(r.text(1)))
@@ -409,7 +410,7 @@ class OpGen:
         for o in self.info.owned.values():
             if o.kind == "taskGroup":
                 self.groups[o.name] = b.alloca(I64, name=f"{o.name}.group")
-                b.store(b.call(self.be.callbacks["refined_group_new"], [I64(int(o.value("limit")))]),
+                b.store(b.call(self.be.callbacks["refined_group_new"], [I64(int(o.value("maxTasks")))]),
                         self.groups[o.name])
             elif o.kind == "task":
                 self.task_handles[o.name] = b.alloca(I64, name=f"{o.name}.task")
@@ -429,10 +430,12 @@ class OpGen:
         for reg in self.regions:
             label = self.be.string(f"region `{reg.name}` of `{self.ent.name}`")
             handle = b.call(self.be.callbacks["refined_region_new"],
-                            [I64(int(reg.value("capacity"))), b.extract_value(label, 0), b.extract_value(label, 1)])
+                            [I64(int(reg.value("maxBytes"))), b.extract_value(label, 0), b.extract_value(label, 1)])
             b.store(handle, self.allocas[reg.name])
         for r in ent.facts("let"):
-            tok = r.args[3]
+            if r.text(0) == "none":
+                continue
+            tok = r.args[2]
             if tok.raw == "unset":
                 continue
             bind = self.info.bindings[r.text(0)]
@@ -537,7 +540,7 @@ class OpGen:
             if verb == "do":
                 self.call(b, self.info.calls[a[0]], line)
             elif verb == "start":
-                self.start_task(b, self.info.calls[a[0]], a[2] if len(a) == 3 else None, line)
+                self.start_task(b, self.info.calls[a[0]], a[2] if a[2] != "none" else None, line)
             elif verb == "join" and a[0] in self.groups:
                 b.call(self.be.callbacks["refined_group_join"], [b.load(self.groups[a[0]])])
             elif verb == "join":
@@ -624,11 +627,11 @@ class OpGen:
             armed = self.armed[name]
             with b.if_then(b.load(armed)):
                 b.store(I1(0), armed)
-                ci = self.info.calls[c.value("call")]
+                ci = self.info.calls[c.value("runs")]
                 self.call(b, ci, c.line)
-                if c.value("onFailure") == "trap" and ci.catch is not None:
+                if c.value("onError") == "trap" and ci.catch is not None:
                     with b.if_then(b.load(self.failed[ci.entity.name]), likely=False):
-                        self.trap(b, c.line, f"cleanup `{name}` in `{self.ent.name}` failed (onFailure trap)")
+                        self.trap(b, c.line, f"cleanup `{name}` in `{self.ent.name}` failed (onError trap)")
         for reg in self.regions:
             if reg.value("released") == "atReturn":
                 b.call(self.be.callbacks["refined_region_free"], [b.load(self.allocas[reg.name])])
@@ -1096,11 +1099,11 @@ class OpGen:
             lines.append(f"{verb} {res}")
             for u in self.ent.facts("uses"):
                 cap = self.m.capabilities.get(u.text(0))
-                if cap is None or not any(g.text(0) == verb and g.text(1) == res for g in cap.facts("grants")):
+                if cap is None:
                     continue
-                row = cap.fact("scope")
-                if row is not None and row.args and row.args[0].kind == "string":
-                    lines.append(row.args[0].value)
+                for g in cap.facts("grants"):
+                    if g.text(0) == verb and g.text(1) == res and grant_scope(g) is not None:
+                        lines.append(grant_scope(g))
         return "\n".join(lines)
 
     def scope_host(self, verb: str, resource: str) -> str:
@@ -1109,10 +1112,9 @@ class OpGen:
             cap = self.m.capabilities.get(u.text(0))
             if cap is None:
                 continue
-            if any(g.text(0) == verb and g.text(1) == resource for g in cap.facts("grants")):
-                row = cap.fact("scope")
-                if row is not None and row.args and row.args[0].kind == "string":
-                    return row.args[0].value.rpartition(":")[0]
+            for g in cap.facts("grants"):
+                if g.text(0) == verb and g.text(1) == resource and grant_scope(g) is not None:
+                    return grant_scope(g).rpartition(":")[0]
         return "127.0.0.1"
 
     # ------------------------------------------------------------ host calls

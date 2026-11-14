@@ -28,26 +28,26 @@ variables exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -56,8 +56,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -66,14 +66,14 @@ writeValue catch writeError console.WriteError
 choose is operation
 choose purpose "Return 7 when asked to pick seven, else 10, through a value set on either branch"
 choose invariant none
-choose typeParam none
-choose input pick Bool value
+choose typeParameter none
+choose input pick Bool copied
 choose output Int64
-choose outputOwner none
+choose outputOwnedBy none
 choose raises none
 choose effect none
 choose uses none
-choose memory heap false
+choose memoryHeap false
 choose async false
 choose maxRecursion none
 choose label begin loopKind none
@@ -84,9 +84,9 @@ choose label other loopKind none
 choose label other within none
 choose label merged loopKind none
 choose label merged within none
-choose let sevenValue immutable Int64 7
-choose let ten immutable Int64 10
-choose let chosen mutable Int64 unset
+choose let sevenValue Int64 7 immutable
+choose let ten Int64 10 immutable
+choose let chosen Int64 unset mutable
 choose at begin branch if pick goto seven else goto other
 choose at seven set chosen sevenValue
 choose at seven goto merged
@@ -97,28 +97,28 @@ choose at merged return ok chosen
 scaled is operation
 scaled purpose "Return a value from a local of the same name as one in main"
 scaled invariant none
-scaled typeParam none
-scaled input start Int64 value
+scaled typeParameter none
+scaled input start Int64 copied
 scaled output Int64
-scaled outputOwner none
+scaled outputOwnedBy none
 scaled raises none
 scaled effect none
 scaled uses none
-scaled memory heap false
+scaled memoryHeap false
 scaled async false
 scaled maxRecursion none
 scaled label begin loopKind none
 scaled label begin within none
-scaled let three immutable Int64 3
+scaled let three Int64 3 immutable
 scaled at begin do triple
 scaled at begin return ok tripled
 
 triple is call
 triple in scaled
 triple invokes math.multiplyInt64
-triple arg left Int64 start copy
-triple arg right Int64 three copy
-triple out tripled Int64
+triple argument left Int64 start copy
+triple argument right Int64 three copy
+triple result tripled Int64
 triple ownedBy none
 triple cleanedBy none
 triple borrows none
@@ -127,25 +127,25 @@ triple catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let ten immutable Int64 10
-main let one immutable Int64 1
-main let yes immutable Bool true
-main let no immutable Bool false
-main let three immutable Int64 30
-main let counter mutable Int64 ten
-main let okCode immutable ExitCode 0
+main let ten Int64 10 immutable
+main let one Int64 1 immutable
+main let yes Bool true immutable
+main let no Bool false immutable
+main let three Int64 30 immutable
+main let counter Int64 ten mutable
+main let okCode ExitCode 0 immutable
 main at begin do showStart
 main at begin do bump
 main at begin set counter bumped
@@ -162,8 +162,8 @@ main at begin return ok okCode
 showStart is call
 showStart in main
 showStart invokes showInt
-showStart arg value Int64 counter copy
-showStart out none
+showStart argument value Int64 counter copy
+showStart result none
 showStart ownedBy none
 showStart cleanedBy none
 showStart borrows none
@@ -172,9 +172,9 @@ showStart catch none
 bump is call
 bump in main
 bump invokes math.addInt64
-bump arg left Int64 counter copy
-bump arg right Int64 one copy
-bump out bumped Int64
+bump argument left Int64 counter copy
+bump argument right Int64 one copy
+bump result bumped Int64
 bump ownedBy none
 bump cleanedBy none
 bump borrows none
@@ -183,8 +183,8 @@ bump catch none
 showBumped is call
 showBumped in main
 showBumped invokes showInt
-showBumped arg value Int64 counter copy
-showBumped out none
+showBumped argument value Int64 counter copy
+showBumped result none
 showBumped ownedBy none
 showBumped cleanedBy none
 showBumped borrows none
@@ -193,8 +193,8 @@ showBumped catch none
 chooseSeven is call
 chooseSeven in main
 chooseSeven invokes choose
-chooseSeven arg pick Bool yes copy
-chooseSeven out seven Int64
+chooseSeven argument pick Bool yes copy
+chooseSeven result seven Int64
 chooseSeven ownedBy none
 chooseSeven cleanedBy none
 chooseSeven borrows none
@@ -203,8 +203,8 @@ chooseSeven catch none
 showSeven is call
 showSeven in main
 showSeven invokes showInt
-showSeven arg value Int64 seven copy
-showSeven out none
+showSeven argument value Int64 seven copy
+showSeven result none
 showSeven ownedBy none
 showSeven cleanedBy none
 showSeven borrows none
@@ -213,8 +213,8 @@ showSeven catch none
 chooseTen is call
 chooseTen in main
 chooseTen invokes choose
-chooseTen arg pick Bool no copy
-chooseTen out tenChosen Int64
+chooseTen argument pick Bool no copy
+chooseTen result tenChosen Int64
 chooseTen ownedBy none
 chooseTen cleanedBy none
 chooseTen borrows none
@@ -223,8 +223,8 @@ chooseTen catch none
 showTen is call
 showTen in main
 showTen invokes showInt
-showTen arg value Int64 tenChosen copy
-showTen out none
+showTen argument value Int64 tenChosen copy
+showTen result none
 showTen ownedBy none
 showTen cleanedBy none
 showTen borrows none
@@ -233,8 +233,8 @@ showTen catch none
 callScaled is call
 callScaled in main
 callScaled invokes scaled
-callScaled arg start Int64 one copy
-callScaled out scaledValue Int64
+callScaled argument start Int64 one copy
+callScaled result scaledValue Int64
 callScaled ownedBy none
 callScaled cleanedBy none
 callScaled borrows none
@@ -243,8 +243,8 @@ callScaled catch none
 showScaled is call
 showScaled in main
 showScaled invokes showInt
-showScaled arg value Int64 scaledValue copy
-showScaled out none
+showScaled argument value Int64 scaledValue copy
+showScaled result none
 showScaled ownedBy none
 showScaled cleanedBy none
 showScaled borrows none
@@ -253,8 +253,8 @@ showScaled catch none
 showThree is call
 showThree in main
 showThree invokes showInt
-showThree arg value Int64 three copy
-showThree out none
+showThree argument value Int64 three copy
+showThree result none
 showThree ownedBy none
 showThree cleanedBy none
 showThree borrows none

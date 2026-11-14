@@ -11,30 +11,30 @@ divideByZero exports main
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect none
 main uses none
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let one immutable Int64 1
-main let zero immutable Int64 0
-main let okCode immutable ExitCode 0
+main let one Int64 1 immutable
+main let zero Int64 0 immutable
+main let okCode ExitCode 0 immutable
 main at begin do compute
 main at begin return ok okCode
 
 compute is call
 compute in main
 compute invokes math.divideInt64
-compute arg left Int64 one copy
-compute arg right Int64 zero copy
-compute out result Int64
+compute argument left Int64 one copy
+compute argument right Int64 zero copy
+compute result result Int64
 compute ownedBy none
 compute cleanedBy none
 compute borrows none

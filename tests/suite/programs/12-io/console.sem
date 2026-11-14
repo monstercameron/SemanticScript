@@ -25,27 +25,25 @@ consoleIo exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 stderrWriter is capability
 stderrWriter purpose "Authority to write diagnostics to standard error"
-stderrWriter grants write console.stderr
-stderrWriter scope none
+stderrWriter grants write console.stderr none
 
 main is operation
 main purpose "Write three pieces of text to two streams"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stderr
 main effect write console.stdout
 main uses stdoutWriter
 main uses stderrWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -60,12 +58,12 @@ main label done loopKind none
 main label done within none
 main label failed loopKind none
 main label failed within none
-main let part immutable String "no line end, "
-main let rest immutable String "then a line"
-main let second immutable String "second line"
-main let diagnostic immutable String "a diagnostic line"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let part String "no line end, " immutable
+main let rest String "then a line" immutable
+main let second String "second line" immutable
+main let diagnostic String "a diagnostic line" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do writePart
 main at begin branch ifError writePart goto failed else goto finishLine
 main at finishLine do writeRest
@@ -80,8 +78,8 @@ main at failed return ok failCode
 writePart is call
 writePart in main
 writePart invokes console.write
-writePart arg text String part lend
-writePart out none
+writePart argument text String part lend
+writePart result none
 writePart ownedBy none
 writePart cleanedBy none
 writePart borrows none
@@ -90,8 +88,8 @@ writePart catch partError console.WriteError
 writeRest is call
 writeRest in main
 writeRest invokes console.writeLine
-writeRest arg text String rest lend
-writeRest out none
+writeRest argument text String rest lend
+writeRest result none
 writeRest ownedBy none
 writeRest cleanedBy none
 writeRest borrows none
@@ -100,8 +98,8 @@ writeRest catch restError console.WriteError
 writeSecond is call
 writeSecond in main
 writeSecond invokes console.writeLine
-writeSecond arg text String second lend
-writeSecond out none
+writeSecond argument text String second lend
+writeSecond result none
 writeSecond ownedBy none
 writeSecond cleanedBy none
 writeSecond borrows none
@@ -110,8 +108,8 @@ writeSecond catch secondError console.WriteError
 writeDiagnostic is call
 writeDiagnostic in main
 writeDiagnostic invokes console.writeError
-writeDiagnostic arg text String diagnostic lend
-writeDiagnostic out none
+writeDiagnostic argument text String diagnostic lend
+writeDiagnostic result none
 writeDiagnostic ownedBy none
 writeDiagnostic cleanedBy none
 writeDiagnostic borrows none

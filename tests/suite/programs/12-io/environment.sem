@@ -15,26 +15,26 @@ environmentCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -43,8 +43,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -52,22 +52,21 @@ writeValue catch writeError console.WriteError
 
 environmentReader is capability
 environmentReader purpose "Authority to read environment variables"
-environmentReader grants read environment.variables
-environmentReader scope none
+environmentReader grants read environment.variables none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read environment.variables
 main effect write console.stdout
 main uses environmentReader
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -78,12 +77,12 @@ main label missing loopKind none
 main label missing within none
 main label failed loopKind none
 main label failed within none
-main let pathName immutable String "PATH"
-main let unsetName immutable String "SEMANTICSCRIPT_SUITE_UNSET"
-main let foundText immutable String "found"
-main let missingText immutable String "missing"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let pathName String "PATH" immutable
+main let unsetName String "SEMANTICSCRIPT_SUITE_UNSET" immutable
+main let foundText String "found" immutable
+main let missingText String "missing" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do readPath
 main at begin branch ifError readPath goto failed else goto found
 main at found do showFound
@@ -96,15 +95,15 @@ main at failed return ok failCode
 text is region
 text in main
 text strategy arena
-text capacity 65536
+text maxBytes 65536
 text released atReturn
 
 readPath is call
 readPath in main
 readPath invokes environment.get
-readPath arg name String pathName lend
-readPath arg region Region text lend
-readPath out pathValue String
+readPath argument name String pathName lend
+readPath argument region Region text lend
+readPath result pathValue String
 readPath ownedBy text
 readPath cleanedBy none
 readPath borrows none
@@ -113,8 +112,8 @@ readPath catch pathError environment.MissingError
 showFound is call
 showFound in main
 showFound invokes showText
-showFound arg text String foundText lend
-showFound out none
+showFound argument text String foundText lend
+showFound result none
 showFound ownedBy none
 showFound cleanedBy none
 showFound borrows none
@@ -123,9 +122,9 @@ showFound catch none
 readUnset is call
 readUnset in main
 readUnset invokes environment.get
-readUnset arg name String unsetName lend
-readUnset arg region Region text lend
-readUnset out unsetValue String
+readUnset argument name String unsetName lend
+readUnset argument region Region text lend
+readUnset result unsetValue String
 readUnset ownedBy text
 readUnset cleanedBy none
 readUnset borrows none
@@ -134,8 +133,8 @@ readUnset catch unsetError environment.MissingError
 showMissing is call
 showMissing in main
 showMissing invokes showText
-showMissing arg text String missingText lend
-showMissing out none
+showMissing argument text String missingText lend
+showMissing result none
 showMissing ownedBy none
 showMissing cleanedBy none
 showMissing borrows none

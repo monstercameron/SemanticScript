@@ -12,20 +12,19 @@ logCase exports main
 
 stderrWriter is capability
 stderrWriter purpose "Authority to write log lines to standard error"
-stderrWriter grants write console.stderr
-stderrWriter scope none
+stderrWriter grants write console.stderr none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stderr
 main uses stderrWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -34,9 +33,9 @@ main label step1 loopKind none
 main label step1 within none
 main label failed loopKind none
 main label failed within none
-main let logText immutable String "logged once"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let logText String "logged once" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do logOnce
 main at begin branch ifError logOnce goto failed else goto step1
 main at step1 return ok okCode
@@ -45,14 +44,14 @@ main at failed return ok failCode
 store is region
 store in main
 store strategy arena
-store capacity 65536
+store maxBytes 65536
 store released atReturn
 
 logOnce is call
 logOnce in main
 logOnce invokes log.info
-logOnce arg text String logText lend
-logOnce out none
+logOnce argument text String logText lend
+logOnce result none
 logOnce ownedBy none
 logOnce cleanedBy none
 logOnce borrows none

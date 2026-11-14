@@ -29,26 +29,26 @@ recursion exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -57,8 +57,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -66,20 +66,20 @@ writeValue catch writeError console.WriteError
 
 CountdownError is enum
 CountdownError purpose "Why a countdown could not finish"
-CountdownError typeParam none
+CountdownError typeParameter none
 CountdownError variant wentNegative Int64
 
 factorial is operation
 factorial purpose "Return n factorial"
 factorial invariant none
-factorial typeParam none
-factorial input n Int64 value
+factorial typeParameter none
+factorial input n Int64 copied
 factorial output Int64
-factorial outputOwner none
+factorial outputOwnedBy none
 factorial raises none
 factorial effect none
 factorial uses none
-factorial memory heap false
+factorial memoryHeap false
 factorial async false
 factorial maxRecursion 25
 factorial label begin loopKind none
@@ -88,7 +88,7 @@ factorial label done loopKind none
 factorial label done within none
 factorial label recurse loopKind none
 factorial label recurse within none
-factorial let one immutable Int64 1
+factorial let one Int64 1 immutable
 factorial at begin do isBase
 factorial at begin branch if base goto done else goto recurse
 factorial at done return ok one
@@ -100,9 +100,9 @@ factorial at recurse return ok product
 isBase is call
 isBase in factorial
 isBase invokes compare.lessOrEqualInt64
-isBase arg left Int64 n copy
-isBase arg right Int64 one copy
-isBase out base Bool
+isBase argument left Int64 n copy
+isBase argument right Int64 one copy
+isBase result base Bool
 isBase ownedBy none
 isBase cleanedBy none
 isBase borrows none
@@ -111,9 +111,9 @@ isBase catch none
 less is call
 less in factorial
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 one copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 one copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -122,8 +122,8 @@ less catch none
 inner is call
 inner in factorial
 inner invokes factorial
-inner arg n Int64 smaller copy
-inner out innerResult Int64
+inner argument n Int64 smaller copy
+inner result innerResult Int64
 inner ownedBy none
 inner cleanedBy none
 inner borrows none
@@ -132,9 +132,9 @@ inner catch none
 times is call
 times in factorial
 times invokes math.multiplyInt64
-times arg left Int64 n copy
-times arg right Int64 innerResult copy
-times out product Int64
+times argument left Int64 n copy
+times argument right Int64 innerResult copy
+times result product Int64
 times ownedBy none
 times cleanedBy none
 times borrows none
@@ -143,14 +143,14 @@ times catch none
 isEven is operation
 isEven purpose "Return 1 if n is even, by asking isOdd about n minus 1"
 isEven invariant none
-isEven typeParam none
-isEven input n Int64 value
+isEven typeParameter none
+isEven input n Int64 copied
 isEven output Int64
-isEven outputOwner none
+isEven outputOwnedBy none
 isEven raises none
 isEven effect none
 isEven uses none
-isEven memory heap false
+isEven memoryHeap false
 isEven async false
 isEven maxRecursion 50
 isEven label begin loopKind none
@@ -159,9 +159,9 @@ isEven label base loopKind none
 isEven label base within none
 isEven label step loopKind none
 isEven label step within none
-isEven let zero immutable Int64 0
-isEven let one immutable Int64 1
-isEven let baseValue immutable Int64 1
+isEven let zero Int64 0 immutable
+isEven let one Int64 1 immutable
+isEven let baseValue Int64 1 immutable
 isEven at begin do atZero
 isEven at begin branch if zeroReached goto base else goto step
 isEven at base return ok baseValue
@@ -172,9 +172,9 @@ isEven at step return ok answer
 atZero is call
 atZero in isEven
 atZero invokes compare.equalInt64
-atZero arg left Int64 n copy
-atZero arg right Int64 zero copy
-atZero out zeroReached Bool
+atZero argument left Int64 n copy
+atZero argument right Int64 zero copy
+atZero result zeroReached Bool
 atZero ownedBy none
 atZero cleanedBy none
 atZero borrows none
@@ -183,9 +183,9 @@ atZero catch none
 less is call
 less in isEven
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 one copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 one copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -194,8 +194,8 @@ less catch none
 ask is call
 ask in isEven
 ask invokes isOdd
-ask arg n Int64 smaller copy
-ask out answer Int64
+ask argument n Int64 smaller copy
+ask result answer Int64
 ask ownedBy none
 ask cleanedBy none
 ask borrows none
@@ -204,14 +204,14 @@ ask catch none
 isOdd is operation
 isOdd purpose "Return 1 if n is odd, by asking isEven about n minus 1"
 isOdd invariant none
-isOdd typeParam none
-isOdd input n Int64 value
+isOdd typeParameter none
+isOdd input n Int64 copied
 isOdd output Int64
-isOdd outputOwner none
+isOdd outputOwnedBy none
 isOdd raises none
 isOdd effect none
 isOdd uses none
-isOdd memory heap false
+isOdd memoryHeap false
 isOdd async false
 isOdd maxRecursion 50
 isOdd label begin loopKind none
@@ -220,9 +220,9 @@ isOdd label base loopKind none
 isOdd label base within none
 isOdd label step loopKind none
 isOdd label step within none
-isOdd let zero immutable Int64 0
-isOdd let one immutable Int64 1
-isOdd let baseValue immutable Int64 0
+isOdd let zero Int64 0 immutable
+isOdd let one Int64 1 immutable
+isOdd let baseValue Int64 0 immutable
 isOdd at begin do atZero
 isOdd at begin branch if zeroReached goto base else goto step
 isOdd at base return ok baseValue
@@ -233,9 +233,9 @@ isOdd at step return ok answer
 atZero is call
 atZero in isOdd
 atZero invokes compare.equalInt64
-atZero arg left Int64 n copy
-atZero arg right Int64 zero copy
-atZero out zeroReached Bool
+atZero argument left Int64 n copy
+atZero argument right Int64 zero copy
+atZero result zeroReached Bool
 atZero ownedBy none
 atZero cleanedBy none
 atZero borrows none
@@ -244,9 +244,9 @@ atZero catch none
 less is call
 less in isOdd
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 one copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 one copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -255,8 +255,8 @@ less catch none
 ask is call
 ask in isOdd
 ask invokes isEven
-ask arg n Int64 smaller copy
-ask out answer Int64
+ask argument n Int64 smaller copy
+ask result answer Int64
 ask ownedBy none
 ask cleanedBy none
 ask borrows none
@@ -265,15 +265,15 @@ ask catch none
 ackermann is operation
 ackermann purpose "Return the Ackermann function, a recursion nested inside its own argument"
 ackermann invariant none
-ackermann typeParam none
-ackermann input m Int64 value
-ackermann input n Int64 value
+ackermann typeParameter none
+ackermann input m Int64 copied
+ackermann input n Int64 copied
 ackermann output Int64
-ackermann outputOwner none
+ackermann outputOwnedBy none
 ackermann raises none
 ackermann effect none
 ackermann uses none
-ackermann memory heap false
+ackermann memoryHeap false
 ackermann async false
 ackermann maxRecursion 200
 ackermann label begin loopKind none
@@ -286,8 +286,8 @@ ackermann label nZeroCase loopKind none
 ackermann label nZeroCase within none
 ackermann label general loopKind none
 ackermann label general within none
-ackermann let zero immutable Int64 0
-ackermann let one immutable Int64 1
+ackermann let zero Int64 0 immutable
+ackermann let one Int64 1 immutable
 ackermann at begin do mIsZero
 ackermann at begin branch if mZero goto plusOne else goto checkN
 ackermann at plusOne do addOne
@@ -305,9 +305,9 @@ ackermann at general return ok outer
 mIsZero is call
 mIsZero in ackermann
 mIsZero invokes compare.equalInt64
-mIsZero arg left Int64 m copy
-mIsZero arg right Int64 zero copy
-mIsZero out mZero Bool
+mIsZero argument left Int64 m copy
+mIsZero argument right Int64 zero copy
+mIsZero result mZero Bool
 mIsZero ownedBy none
 mIsZero cleanedBy none
 mIsZero borrows none
@@ -316,9 +316,9 @@ mIsZero catch none
 addOne is call
 addOne in ackermann
 addOne invokes math.addInt64
-addOne arg left Int64 n copy
-addOne arg right Int64 one copy
-addOne out nPlusOne Int64
+addOne argument left Int64 n copy
+addOne argument right Int64 one copy
+addOne result nPlusOne Int64
 addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
@@ -327,9 +327,9 @@ addOne catch none
 nIsZero is call
 nIsZero in ackermann
 nIsZero invokes compare.equalInt64
-nIsZero arg left Int64 n copy
-nIsZero arg right Int64 zero copy
-nIsZero out nZero Bool
+nIsZero argument left Int64 n copy
+nIsZero argument right Int64 zero copy
+nIsZero result nZero Bool
 nIsZero ownedBy none
 nIsZero cleanedBy none
 nIsZero borrows none
@@ -338,9 +338,9 @@ nIsZero catch none
 mLess is call
 mLess in ackermann
 mLess invokes math.subtractInt64
-mLess arg left Int64 m copy
-mLess arg right Int64 one copy
-mLess out mMinusOne Int64
+mLess argument left Int64 m copy
+mLess argument right Int64 one copy
+mLess result mMinusOne Int64
 mLess ownedBy none
 mLess cleanedBy none
 mLess borrows none
@@ -349,9 +349,9 @@ mLess catch none
 withOne is call
 withOne in ackermann
 withOne invokes ackermann
-withOne arg m Int64 mMinusOne copy
-withOne arg n Int64 one copy
-withOne out fromOne Int64
+withOne argument m Int64 mMinusOne copy
+withOne argument n Int64 one copy
+withOne result fromOne Int64
 withOne ownedBy none
 withOne cleanedBy none
 withOne borrows none
@@ -360,9 +360,9 @@ withOne catch none
 nLess is call
 nLess in ackermann
 nLess invokes math.subtractInt64
-nLess arg left Int64 n copy
-nLess arg right Int64 one copy
-nLess out nMinusOne Int64
+nLess argument left Int64 n copy
+nLess argument right Int64 one copy
+nLess result nMinusOne Int64
 nLess ownedBy none
 nLess cleanedBy none
 nLess borrows none
@@ -371,9 +371,9 @@ nLess catch none
 innerCall is call
 innerCall in ackermann
 innerCall invokes ackermann
-innerCall arg m Int64 m copy
-innerCall arg n Int64 nMinusOne copy
-innerCall out inner Int64
+innerCall argument m Int64 m copy
+innerCall argument n Int64 nMinusOne copy
+innerCall result inner Int64
 innerCall ownedBy none
 innerCall cleanedBy none
 innerCall borrows none
@@ -382,9 +382,9 @@ innerCall catch none
 outerCall is call
 outerCall in ackermann
 outerCall invokes ackermann
-outerCall arg m Int64 mMinusOne copy
-outerCall arg n Int64 inner copy
-outerCall out outer Int64
+outerCall argument m Int64 mMinusOne copy
+outerCall argument n Int64 inner copy
+outerCall result outer Int64
 outerCall ownedBy none
 outerCall cleanedBy none
 outerCall borrows none
@@ -393,16 +393,16 @@ outerCall catch none
 fibonacci is operation
 fibonacci purpose "Return the nth Fibonacci number by tail recursion with two accumulators"
 fibonacci invariant none
-fibonacci typeParam none
-fibonacci input n Int64 value
-fibonacci input current Int64 value
-fibonacci input next Int64 value
+fibonacci typeParameter none
+fibonacci input n Int64 copied
+fibonacci input current Int64 copied
+fibonacci input next Int64 copied
 fibonacci output Int64
-fibonacci outputOwner none
+fibonacci outputOwnedBy none
 fibonacci raises none
 fibonacci effect none
 fibonacci uses none
-fibonacci memory heap false
+fibonacci memoryHeap false
 fibonacci async false
 fibonacci maxRecursion 100
 fibonacci label begin loopKind none
@@ -411,8 +411,8 @@ fibonacci label result loopKind none
 fibonacci label result within none
 fibonacci label step loopKind none
 fibonacci label step within none
-fibonacci let zero immutable Int64 0
-fibonacci let one immutable Int64 1
+fibonacci let zero Int64 0 immutable
+fibonacci let one Int64 1 immutable
 fibonacci at begin do done
 fibonacci at begin branch if finished goto result else goto step
 fibonacci at result return ok current
@@ -424,9 +424,9 @@ fibonacci at step return ok answer
 done is call
 done in fibonacci
 done invokes compare.equalInt64
-done arg left Int64 n copy
-done arg right Int64 zero copy
-done out finished Bool
+done argument left Int64 n copy
+done argument right Int64 zero copy
+done result finished Bool
 done ownedBy none
 done cleanedBy none
 done borrows none
@@ -435,9 +435,9 @@ done catch none
 less is call
 less in fibonacci
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 one copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 one copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -446,9 +446,9 @@ less catch none
 advance is call
 advance in fibonacci
 advance invokes math.addInt64
-advance arg left Int64 current copy
-advance arg right Int64 next copy
-advance out following Int64
+advance argument left Int64 current copy
+advance argument right Int64 next copy
+advance result following Int64
 advance ownedBy none
 advance cleanedBy none
 advance borrows none
@@ -457,10 +457,10 @@ advance catch none
 recurse is call
 recurse in fibonacci
 recurse invokes fibonacci
-recurse arg n Int64 smaller copy
-recurse arg current Int64 next copy
-recurse arg next Int64 following copy
-recurse out answer Int64
+recurse argument n Int64 smaller copy
+recurse argument current Int64 next copy
+recurse argument next Int64 following copy
+recurse result answer Int64
 recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
@@ -469,14 +469,14 @@ recurse catch none
 countdown is operation
 countdown purpose "Count down by two to zero, failing when the count goes negative"
 countdown invariant none
-countdown typeParam none
-countdown input n Int64 value
+countdown typeParameter none
+countdown input n Int64 copied
 countdown output Int64
-countdown outputOwner none
+countdown outputOwnedBy none
 countdown raises CountdownError
 countdown effect none
 countdown uses none
-countdown memory heap false
+countdown memoryHeap false
 countdown async false
 countdown maxRecursion 50
 countdown label begin loopKind none
@@ -493,8 +493,8 @@ countdown label passUp loopKind none
 countdown label passUp within none
 countdown label ok loopKind none
 countdown label ok within none
-countdown let zero immutable Int64 0
-countdown let two immutable Int64 2
+countdown let zero Int64 0 immutable
+countdown let two Int64 2 immutable
 countdown at begin do isZero
 countdown at begin branch if atZero goto finished else goto checkSign
 countdown at finished return ok zero
@@ -511,9 +511,9 @@ countdown at ok return ok remaining
 isZero is call
 isZero in countdown
 isZero invokes compare.equalInt64
-isZero arg left Int64 n copy
-isZero arg right Int64 zero copy
-isZero out atZero Bool
+isZero argument left Int64 n copy
+isZero argument right Int64 zero copy
+isZero result atZero Bool
 isZero ownedBy none
 isZero cleanedBy none
 isZero borrows none
@@ -522,9 +522,9 @@ isZero catch none
 isNegative is call
 isNegative in countdown
 isNegative invokes compare.lessThanInt64
-isNegative arg left Int64 n copy
-isNegative arg right Int64 zero copy
-isNegative out negative Bool
+isNegative argument left Int64 n copy
+isNegative argument right Int64 zero copy
+isNegative result negative Bool
 isNegative ownedBy none
 isNegative cleanedBy none
 isNegative borrows none
@@ -533,8 +533,8 @@ isNegative catch none
 makeError is call
 makeError in countdown
 makeError invokes CountdownError.wentNegative
-makeError arg payload Int64 n copy
-makeError out failure CountdownError
+makeError argument payload Int64 n copy
+makeError result failure CountdownError
 makeError ownedBy none
 makeError cleanedBy none
 makeError borrows none
@@ -543,9 +543,9 @@ makeError catch none
 less is call
 less in countdown
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 two copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 two copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -554,8 +554,8 @@ less catch none
 recurse is call
 recurse in countdown
 recurse invokes countdown
-recurse arg n Int64 smaller copy
-recurse out remaining Int64
+recurse argument n Int64 smaller copy
+recurse result remaining Int64
 recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
@@ -564,14 +564,14 @@ recurse catch innerFailure CountdownError
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -582,13 +582,13 @@ main label showNegative loopKind none
 main label showNegative within none
 main label finish loopKind none
 main label finish within none
-main let five immutable Int64 5
-main let ten immutable Int64 10
-main let two immutable Int64 2
-main let zero immutable Int64 0
-main let one immutable Int64 1
-main let seven immutable Int64 7
-main let okCode immutable ExitCode 0
+main let five Int64 5 immutable
+main let ten Int64 10 immutable
+main let two Int64 2 immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let seven Int64 7 immutable
+main let okCode ExitCode 0 immutable
 main at begin do runFactorial
 main at begin do showFactorial
 main at begin do runEven
@@ -610,8 +610,8 @@ main at finish return ok okCode
 runFactorial is call
 runFactorial in main
 runFactorial invokes factorial
-runFactorial arg n Int64 five copy
-runFactorial out fiveFactorial Int64
+runFactorial argument n Int64 five copy
+runFactorial result fiveFactorial Int64
 runFactorial ownedBy none
 runFactorial cleanedBy none
 runFactorial borrows none
@@ -620,8 +620,8 @@ runFactorial catch none
 showFactorial is call
 showFactorial in main
 showFactorial invokes showInt
-showFactorial arg value Int64 fiveFactorial copy
-showFactorial out none
+showFactorial argument value Int64 fiveFactorial copy
+showFactorial result none
 showFactorial ownedBy none
 showFactorial cleanedBy none
 showFactorial borrows none
@@ -630,8 +630,8 @@ showFactorial catch none
 runEven is call
 runEven in main
 runEven invokes isEven
-runEven arg n Int64 ten copy
-runEven out tenEven Int64
+runEven argument n Int64 ten copy
+runEven result tenEven Int64
 runEven ownedBy none
 runEven cleanedBy none
 runEven borrows none
@@ -640,8 +640,8 @@ runEven catch none
 showEven is call
 showEven in main
 showEven invokes showInt
-showEven arg value Int64 tenEven copy
-showEven out none
+showEven argument value Int64 tenEven copy
+showEven result none
 showEven ownedBy none
 showEven cleanedBy none
 showEven borrows none
@@ -650,8 +650,8 @@ showEven catch none
 runOdd is call
 runOdd in main
 runOdd invokes isOdd
-runOdd arg n Int64 ten copy
-runOdd out tenOdd Int64
+runOdd argument n Int64 ten copy
+runOdd result tenOdd Int64
 runOdd ownedBy none
 runOdd cleanedBy none
 runOdd borrows none
@@ -660,8 +660,8 @@ runOdd catch none
 showOdd is call
 showOdd in main
 showOdd invokes showInt
-showOdd arg value Int64 tenOdd copy
-showOdd out none
+showOdd argument value Int64 tenOdd copy
+showOdd result none
 showOdd ownedBy none
 showOdd cleanedBy none
 showOdd borrows none
@@ -670,9 +670,9 @@ showOdd catch none
 runAckermann is call
 runAckermann in main
 runAckermann invokes ackermann
-runAckermann arg m Int64 two copy
-runAckermann arg n Int64 two copy
-runAckermann out ackermannValue Int64
+runAckermann argument m Int64 two copy
+runAckermann argument n Int64 two copy
+runAckermann result ackermannValue Int64
 runAckermann ownedBy none
 runAckermann cleanedBy none
 runAckermann borrows none
@@ -681,8 +681,8 @@ runAckermann catch none
 showAckermann is call
 showAckermann in main
 showAckermann invokes showInt
-showAckermann arg value Int64 ackermannValue copy
-showAckermann out none
+showAckermann argument value Int64 ackermannValue copy
+showAckermann result none
 showAckermann ownedBy none
 showAckermann cleanedBy none
 showAckermann borrows none
@@ -691,10 +691,10 @@ showAckermann catch none
 runFibonacci is call
 runFibonacci in main
 runFibonacci invokes fibonacci
-runFibonacci arg n Int64 ten copy
-runFibonacci arg current Int64 zero copy
-runFibonacci arg next Int64 one copy
-runFibonacci out tenth Int64
+runFibonacci argument n Int64 ten copy
+runFibonacci argument current Int64 zero copy
+runFibonacci argument next Int64 one copy
+runFibonacci result tenth Int64
 runFibonacci ownedBy none
 runFibonacci cleanedBy none
 runFibonacci borrows none
@@ -703,8 +703,8 @@ runFibonacci catch none
 showFibonacci is call
 showFibonacci in main
 showFibonacci invokes showInt
-showFibonacci arg value Int64 tenth copy
-showFibonacci out none
+showFibonacci argument value Int64 tenth copy
+showFibonacci result none
 showFibonacci ownedBy none
 showFibonacci cleanedBy none
 showFibonacci borrows none
@@ -713,8 +713,8 @@ showFibonacci catch none
 runCountdown is call
 runCountdown in main
 runCountdown invokes countdown
-runCountdown arg n Int64 seven copy
-runCountdown out landed Int64
+runCountdown argument n Int64 seven copy
+runCountdown result landed Int64
 runCountdown ownedBy none
 runCountdown cleanedBy none
 runCountdown borrows none
@@ -723,8 +723,8 @@ runCountdown catch countdownError CountdownError
 printNegative is call
 printNegative in main
 printNegative invokes showInt
-printNegative arg value Int64 negativeValue copy
-printNegative out none
+printNegative argument value Int64 negativeValue copy
+printNegative result none
 printNegative ownedBy none
 printNegative cleanedBy none
 printNegative borrows none

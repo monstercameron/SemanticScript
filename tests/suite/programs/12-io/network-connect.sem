@@ -20,26 +20,26 @@ networkCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -48,8 +48,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -57,26 +57,23 @@ writeValue catch writeError console.WriteError
 
 listenAuthority is capability
 listenAuthority purpose "Authority to accept connections on loopback port 47811"
-listenAuthority grants listen net.tcp
-listenAuthority scope "127.0.0.1:47811"
+listenAuthority grants listen net.tcp "127.0.0.1:47811"
 
 connectAuthority is capability
 connectAuthority purpose "Authority to connect to loopback port 47811"
-connectAuthority grants connect net.outbound
-connectAuthority scope "127.0.0.1:47811"
+connectAuthority grants connect net.outbound "127.0.0.1:47811"
 
 connectionIo is capability
 connectionIo purpose "Authority to use the connections this case opens"
-connectionIo grants readWrite net.connection
-connectionIo scope none
+connectionIo grants readWrite net.connection none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect connect net.outbound
 main effect listen net.tcp
@@ -86,7 +83,7 @@ main uses connectAuthority
 main uses connectionIo
 main uses listenAuthority
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -105,30 +102,30 @@ main label show loopKind none
 main label show within none
 main label failed loopKind none
 main label failed within none
-main let port immutable Int32 47811
-main let address immutable String "127.0.0.1:47811"
-main let message immutable String "ping"
-main let waitMs immutable Int64 5000
-main let limit immutable Int64 64
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let port Int32 47811 immutable
+main let address String "127.0.0.1:47811" immutable
+main let message String "ping" immutable
+main let waitMs Int64 5000 immutable
+main let limit Int64 64 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
 main at begin do openListener
 main at begin branch ifError openListener goto failed else goto listening
 main at listening defer closeListenerCleanup
-main at listening start connectClient
+main at listening start connectClient into none
 main at listening join connectClient
 main at listening branch ifError connectClient goto failed else goto connected
 main at connected defer closeClientCleanup
-main at connected start acceptServer
+main at connected start acceptServer into none
 main at connected join acceptServer
 main at connected branch ifError acceptServer goto failed else goto accepted
 main at accepted defer closeServerCleanup
 main at accepted do toBytes
-main at accepted start sendPing
+main at accepted start sendPing into none
 main at accepted join sendPing
 main at accepted branch ifError sendPing goto failed else goto receive
-main at receive start readPing
+main at receive start readPing into none
 main at receive join readPing
 main at receive branch ifError readPing goto failed else goto decode
 main at decode do toText
@@ -140,14 +137,14 @@ main at failed return ok failCode
 io is region
 io in main
 io strategy arena
-io capacity 65536
+io maxBytes 65536
 io released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -156,25 +153,25 @@ makeDeadline catch none
 openListener is call
 openListener in main
 openListener invokes net.listen
-openListener arg port Int32 port copy
-openListener out listener net.TcpListener
+openListener argument port Int32 port copy
+openListener result listener net.TcpListener
 openListener ownedBy main
 openListener cleanedBy closeListenerCleanup
 openListener borrows none
 openListener catch listenError net.NetError
 
 closeListenerCleanup is cleanup
+closeListenerCleanup rationale "Nothing can be done if closing fails at exit"
 closeListenerCleanup in main
-closeListenerCleanup call closeListener
+closeListenerCleanup runs closeListener
 closeListenerCleanup cleans listener
-closeListenerCleanup onFailure suppress
-closeListenerCleanup because "Nothing can be done if closing fails at exit"
+closeListenerCleanup onError suppress
 
 closeListener is call
 closeListener in main
 closeListener invokes net.closeListener
-closeListener arg listener net.TcpListener listener give
-closeListener out none
+closeListener argument listener net.TcpListener listener give
+closeListener result none
 closeListener ownedBy none
 closeListener cleanedBy none
 closeListener borrows none
@@ -183,26 +180,26 @@ closeListener catch closeListenerError net.NetError
 connectClient is task
 connectClient in main
 connectClient invokes net.connect
-connectClient arg address String address lend
-connectClient arg deadline time.Deadline deadline copy
-connectClient out client net.TcpConnection
+connectClient argument address String address lend
+connectClient argument deadline time.Deadline deadline copy
+connectClient result client net.TcpConnection
 connectClient ownedBy main
 connectClient cleanedBy closeClientCleanup
 connectClient borrows none
 connectClient catch connectError net.NetError
 
 closeClientCleanup is cleanup
+closeClientCleanup rationale "Nothing can be done if closing fails at exit"
 closeClientCleanup in main
-closeClientCleanup call closeClient
+closeClientCleanup runs closeClient
 closeClientCleanup cleans client
-closeClientCleanup onFailure suppress
-closeClientCleanup because "Nothing can be done if closing fails at exit"
+closeClientCleanup onError suppress
 
 closeClient is call
 closeClient in main
 closeClient invokes net.close
-closeClient arg connection net.TcpConnection client give
-closeClient out none
+closeClient argument connection net.TcpConnection client give
+closeClient result none
 closeClient ownedBy none
 closeClient cleanedBy none
 closeClient borrows none
@@ -211,26 +208,26 @@ closeClient catch closeClientError net.NetError
 acceptServer is task
 acceptServer in main
 acceptServer invokes net.accept
-acceptServer arg listener net.TcpListener listener lendMutable
-acceptServer arg deadline time.Deadline deadline copy
-acceptServer out server net.TcpConnection
+acceptServer argument listener net.TcpListener listener lendMutable
+acceptServer argument deadline time.Deadline deadline copy
+acceptServer result server net.TcpConnection
 acceptServer ownedBy main
 acceptServer cleanedBy closeServerCleanup
 acceptServer borrows none
 acceptServer catch acceptError net.NetError
 
 closeServerCleanup is cleanup
+closeServerCleanup rationale "Nothing can be done if closing fails at exit"
 closeServerCleanup in main
-closeServerCleanup call closeServer
+closeServerCleanup runs closeServer
 closeServerCleanup cleans server
-closeServerCleanup onFailure suppress
-closeServerCleanup because "Nothing can be done if closing fails at exit"
+closeServerCleanup onError suppress
 
 closeServer is call
 closeServer in main
 closeServer invokes net.close
-closeServer arg connection net.TcpConnection server give
-closeServer out none
+closeServer argument connection net.TcpConnection server give
+closeServer result none
 closeServer ownedBy none
 closeServer cleanedBy none
 closeServer borrows none
@@ -239,8 +236,8 @@ closeServer catch closeServerError net.NetError
 toBytes is call
 toBytes in main
 toBytes invokes string.toBytes
-toBytes arg text String message lend
-toBytes out messageBytes Bytes
+toBytes argument text String message lend
+toBytes result messageBytes Bytes
 toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows message
@@ -249,10 +246,10 @@ toBytes catch none
 sendPing is task
 sendPing in main
 sendPing invokes net.write
-sendPing arg connection net.TcpConnection client lendMutable
-sendPing arg bytes Bytes messageBytes lend
-sendPing arg deadline time.Deadline deadline copy
-sendPing out none
+sendPing argument connection net.TcpConnection client lendMutable
+sendPing argument bytes Bytes messageBytes lend
+sendPing argument deadline time.Deadline deadline copy
+sendPing result none
 sendPing ownedBy none
 sendPing cleanedBy none
 sendPing borrows none
@@ -261,11 +258,11 @@ sendPing catch sendError net.NetError
 readPing is task
 readPing in main
 readPing invokes net.read
-readPing arg connection net.TcpConnection server lendMutable
-readPing arg region Region io lend
-readPing arg maxBytes Int64 limit copy
-readPing arg deadline time.Deadline deadline copy
-readPing out received Bytes
+readPing argument connection net.TcpConnection server lendMutable
+readPing argument region Region io lend
+readPing argument maxBytes Int64 limit copy
+readPing argument deadline time.Deadline deadline copy
+readPing result received Bytes
 readPing ownedBy io
 readPing cleanedBy none
 readPing borrows none
@@ -274,9 +271,9 @@ readPing catch readError net.NetError
 toText is call
 toText in main
 toText invokes string.fromBytes
-toText arg bytes Bytes received lend
-toText arg region Region io lend
-toText out receivedText String
+toText argument bytes Bytes received lend
+toText argument region Region io lend
+toText result receivedText String
 toText ownedBy io
 toText cleanedBy none
 toText borrows none
@@ -285,8 +282,8 @@ toText catch decodeError string.Utf8Error
 printPing is call
 printPing in main
 printPing invokes showText
-printPing arg text String receivedText lend
-printPing out none
+printPing argument text String receivedText lend
+printPing result none
 printPing ownedBy none
 printPing cleanedBy none
 printPing borrows none

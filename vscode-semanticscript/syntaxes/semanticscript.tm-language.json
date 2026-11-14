@@ -49,7 +49,7 @@
       ]
     },
     "entity": {
-      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(is)[ \\t]+(operationInstance|operationType|capability|operation|taskGroup|instance|cleanup|project|module|record|region|alias|table|call|enum|task|test)\\b",
+      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(is)[ \\t]+(operationInstance|operationType|typeInstance|capability|operation|taskGroup|cleanup|project|module|record|region|alias|table|call|enum|task|test)\\b",
       "captures": {
         "1": {
           "name": "entity.name.semanticscript"
@@ -80,7 +80,7 @@
       }
     },
     "label": {
-      "match": "^([a-z][A-Za-z0-9]*)[ \\t]+(label)[ \\t]+([a-z][A-Za-z0-9]*)[ \\t]+(maxIterations|rationale|loopKind|because|counter|purpose|within|note|over|risk|todo)\\b",
+      "match": "^([a-z][A-Za-z0-9]*)[ \\t]+(label)[ \\t]+([a-z][A-Za-z0-9]*)[ \\t]+(maxIterations|rationale|loopKind|counter|purpose|within|note|over|risk|todo)\\b",
       "captures": {
         "1": {
           "name": "variable.other.subject.semanticscript"
@@ -97,7 +97,7 @@
       }
     },
     "fact": {
-      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(invokesReference|standardLibrary|instantiates|maxRecursion|outputOwner|deprecated|cleanedBy|invariant|onFailure|rationale|typeParam|capacity|language|released|requires|strategy|verifies|because|borrows|exports|imports|indexes|invokes|ownedBy|purpose|variant|version|allows|cleans|effect|grants|memory|module|output|raises|target|async|catch|entry|field|input|label|limit|scope|call|cell|note|path|risk|todo|uses|arg|for|let|out|row|at|in|of)\\b",
+      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(invokesReference|standardLibrary|includesModule|outputOwnedBy|typeParameter|instantiates|maxRecursion|deprecated|memoryHeap|cleanedBy|invariant|rationale|argument|language|maxBytes|maxTasks|released|requires|strategy|verifies|aliasOf|borrows|exports|imports|indexes|invokes|onError|ownedBy|purpose|rowType|variant|version|allows|cleans|effect|grants|output|raises|result|target|async|catch|entry|field|input|label|cell|note|path|risk|runs|todo|uses|let|row|at|in)\\b",
       "captures": {
         "1": {
           "name": "variable.other.subject.semanticscript"
@@ -121,7 +121,7 @@
     },
     "word": {
       "name": "keyword.operator.semanticscript",
-      "match": "(?<![A-Za-z0-9.])(?:borrowedMutable|atProcessExit|concurrency|lendMutable|immutable|readWrite|atReturn|borrowed|security|suppress|connect|console|counted|doWhile|failure|forEach|forever|ifError|library|mutable|ifNext|listen|memory|timing|arena|error|owned|plain|spawn|value|while|write|bind|copy|data|else|give|goto|heap|into|lend|load|read|trap|any|if|ok)\\b"
+      "match": "(?<![A-Za-z0-9.])(?:borrowedMutable|atProcessExit|concurrency|lendMutable|immutable|readWrite|atReturn|borrowed|security|suppress|connect|console|counted|doWhile|failure|forEach|forever|ifError|library|mutable|refined|copied|ifNext|listen|memory|timing|arena|error|owned|plain|spawn|while|write|bind|copy|data|else|give|goto|into|lend|load|read|trap|any|if|ok)\\b"
     },
     "type": {
       "name": "entity.name.type.semanticscript",

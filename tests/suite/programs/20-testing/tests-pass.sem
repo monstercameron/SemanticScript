@@ -16,28 +16,28 @@ testsPass exports triple
 triple is operation
 triple purpose "Return three times a number"
 triple invariant timesThree "The result is the input times three"
-triple typeParam none
-triple input value Int64 value
+triple typeParameter none
+triple input value Int64 copied
 triple output Int64
-triple outputOwner none
+triple outputOwnedBy none
 triple raises none
 triple effect none
 triple uses none
-triple memory heap false
+triple memoryHeap false
 triple async false
 triple maxRecursion none
 triple label begin loopKind none
 triple label begin within none
-triple let three immutable Int64 3
+triple let three Int64 3 immutable
 triple at begin do multiply
 triple at begin return ok tripled
 
 multiply is call
 multiply in triple
 multiply invokes math.multiplyInt64
-multiply arg left Int64 value copy
-multiply arg right Int64 three copy
-multiply out tripled Int64
+multiply argument left Int64 value copy
+multiply argument right Int64 three copy
+multiply result tripled Int64
 multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none

@@ -634,7 +634,7 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "7 Circular references": (None, "A type cannot contain itself by value (R403); single ownership leaves no "
                               "owner cycles; graphs refer to nodes by list index (LR-25 rule 5).", ["recursive-type-by-value"]),
     "7 Stack allocation": (None, "Plain values (integers, records of plain fields) live in the operation's frame; "
-                           "`memory heap false` promises nothing else is allocated.", ["01-variables/variables"]),
+                           "`memoryHeap false` promises nothing else is allocated.", ["01-variables/variables"]),
     "7 Null pointer handling": (None, "No null: absence is `option.Option` with `absent`, matched explicitly.", []),
     # 9
     "9 Module initialization": (BY_DESIGN, "Modules run no code when loaded and hold no mutable state; tables are "
@@ -762,7 +762,7 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "23 Formatter": (None, "`refined fmt [--check]`: one layout; comments kept exactly.", []),
     "23 Language Server Protocol (LSP)": (None, "`refined lsp`: diagnostics for unsaved text, hover, and formatting.", []),
     "23 Standard library versioning": (None, "build.sem states `standardLibrary 1`; a different version is refused.", []),
-    "23 Language feature versioning": (None, "build.sem states `language refined-1`; anything else is refused.", []),
+    "23 Language feature versioning": (None, "build.sem states `language refined 1`; anything else is refused.", []),
     "20 Debugger integration": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "
                    "`--trace` prints every block entered.", []),
     "20 Breakpoints": (None, "`refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; "

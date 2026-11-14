@@ -29,26 +29,26 @@ parallel exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -57,8 +57,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -67,14 +67,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -85,8 +85,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -98,8 +98,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -109,8 +109,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -118,37 +118,37 @@ writeFalse catch falseError console.WriteError
 
 clockReader is capability
 clockReader purpose "Authority to read the monotonic clock"
-clockReader grants read clock.monotonic
-clockReader scope none
+clockReader grants read clock.monotonic none
 
-Mailbox is instance
+Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers"
 Mailbox instantiates channel.Channel Int64
 
 pause is operation
 pause purpose "Sleep for the given number of milliseconds"
 pause invariant none
-pause typeParam none
-pause input milliseconds Int64 value
+pause typeParameter none
+pause input milliseconds Int64 copied
 pause output none
-pause outputOwner none
+pause outputOwnedBy none
 pause raises none
 pause effect none
 pause uses none
-pause memory heap false
+pause memoryHeap false
 pause async true
 pause maxRecursion none
 pause label begin loopKind none
 pause label begin within none
-pause at begin start nap
+pause let none
+pause at begin start nap into none
 pause at begin join nap
 pause at begin return ok none
 
 nap is task
 nap in pause
 nap invokes time.sleep
-nap arg milliseconds Int64 milliseconds copy
-nap out none
+nap argument milliseconds Int64 milliseconds copy
+nap result none
 nap ownedBy none
 nap cleanedBy none
 nap borrows none
@@ -157,14 +157,14 @@ nap catch none
 produce is operation
 produce purpose "Send the numbers 1 to 5 into a channel, one at a time"
 produce invariant none
-produce typeParam none
+produce typeParameter none
 produce input mailbox Mailbox borrowed
 produce output none
-produce outputOwner none
+produce outputOwnedBy none
 produce raises none
 produce effect none
 produce uses none
-produce memory heap false
+produce memoryHeap false
 produce async true
 produce maxRecursion none
 produce label begin loopKind none
@@ -181,15 +181,15 @@ produce label done loopKind none
 produce label done within none
 produce label failed loopKind none
 produce label failed within none
-produce let value mutable Int64 1
-produce let last immutable Int64 5
-produce let one immutable Int64 1
-produce let waitMs immutable Int64 5000
+produce let value Int64 1 mutable
+produce let last Int64 5 immutable
+produce let one Int64 1 immutable
+produce let waitMs Int64 5000 immutable
 produce at begin do makeDeadline
 produce at begin goto sendLoop
 produce at sendLoop do pastFive
 produce at sendLoop branch if allSent goto done else goto sendOne
-produce at sendOne start sendIt
+produce at sendOne start sendIt into none
 produce at sendOne join sendIt
 produce at sendOne branch ifError sendIt goto failed else goto advance
 produce at advance do nextValue
@@ -201,8 +201,8 @@ produce at failed return ok none
 makeDeadline is call
 makeDeadline in produce
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -211,9 +211,9 @@ makeDeadline catch none
 pastFive is call
 pastFive in produce
 pastFive invokes compare.greaterThanInt64
-pastFive arg left Int64 value copy
-pastFive arg right Int64 last copy
-pastFive out allSent Bool
+pastFive argument left Int64 value copy
+pastFive argument right Int64 last copy
+pastFive result allSent Bool
 pastFive ownedBy none
 pastFive cleanedBy none
 pastFive borrows none
@@ -223,10 +223,10 @@ sendIt is task
 sendIt rationale "A failed send ends the producer early"
 sendIt in produce
 sendIt invokes Mailbox.send
-sendIt arg channel Mailbox mailbox lend
-sendIt arg item Int64 value copy
-sendIt arg deadline time.Deadline deadline copy
-sendIt out none
+sendIt argument channel Mailbox mailbox lend
+sendIt argument item Int64 value copy
+sendIt argument deadline time.Deadline deadline copy
+sendIt result none
 sendIt ownedBy none
 sendIt cleanedBy none
 sendIt borrows none
@@ -235,9 +235,9 @@ sendIt catch sendError channel.ChannelError
 nextValue is call
 nextValue in produce
 nextValue invokes math.addInt64
-nextValue arg left Int64 value copy
-nextValue arg right Int64 one copy
-nextValue out afterValue Int64
+nextValue argument left Int64 value copy
+nextValue argument right Int64 one copy
+nextValue result afterValue Int64
 nextValue ownedBy none
 nextValue cleanedBy none
 nextValue borrows none
@@ -246,14 +246,14 @@ nextValue catch none
 consume is operation
 consume purpose "Receive five numbers from a channel and return their sum, or -1 if receiving fails"
 consume invariant none
-consume typeParam none
+consume typeParameter none
 consume input mailbox Mailbox borrowed
 consume output Int64
-consume outputOwner none
+consume outputOwnedBy none
 consume raises none
 consume effect none
 consume uses none
-consume memory heap false
+consume memoryHeap false
 consume async true
 consume maxRecursion none
 consume label begin loopKind none
@@ -270,17 +270,17 @@ consume label done loopKind none
 consume label done within none
 consume label failed loopKind none
 consume label failed within none
-consume let taken mutable Int64 0
-consume let count immutable Int64 5
-consume let one immutable Int64 1
-consume let total mutable Int64 0
-consume let minusOne immutable Int64 -1
-consume let waitMs immutable Int64 5000
+consume let taken Int64 0 mutable
+consume let count Int64 5 immutable
+consume let one Int64 1 immutable
+consume let total Int64 0 mutable
+consume let minusOne Int64 -1 immutable
+consume let waitMs Int64 5000 immutable
 consume at begin do makeDeadline
 consume at begin goto receiveLoop
 consume at receiveLoop do allTaken
 consume at receiveLoop branch if finished goto done else goto takeOne
-consume at takeOne start receiveIt
+consume at takeOne start receiveIt into none
 consume at takeOne join receiveIt
 consume at takeOne branch ifError receiveIt goto failed else goto add
 consume at add do addItem
@@ -294,8 +294,8 @@ consume at failed return ok minusOne
 makeDeadline is call
 makeDeadline in consume
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -304,9 +304,9 @@ makeDeadline catch none
 allTaken is call
 allTaken in consume
 allTaken invokes compare.greaterOrEqualInt64
-allTaken arg left Int64 taken copy
-allTaken arg right Int64 count copy
-allTaken out finished Bool
+allTaken argument left Int64 taken copy
+allTaken argument right Int64 count copy
+allTaken result finished Bool
 allTaken ownedBy none
 allTaken cleanedBy none
 allTaken borrows none
@@ -315,9 +315,9 @@ allTaken catch none
 receiveIt is task
 receiveIt in consume
 receiveIt invokes Mailbox.receive
-receiveIt arg channel Mailbox mailbox lend
-receiveIt arg deadline time.Deadline deadline copy
-receiveIt out item Int64
+receiveIt argument channel Mailbox mailbox lend
+receiveIt argument deadline time.Deadline deadline copy
+receiveIt result item Int64
 receiveIt ownedBy none
 receiveIt cleanedBy none
 receiveIt borrows none
@@ -326,9 +326,9 @@ receiveIt catch receiveError channel.ChannelError
 addItem is call
 addItem in consume
 addItem invokes math.addInt64
-addItem arg left Int64 total copy
-addItem arg right Int64 item copy
-addItem out newTotal Int64
+addItem argument left Int64 total copy
+addItem argument right Int64 item copy
+addItem result newTotal Int64
 addItem ownedBy none
 addItem cleanedBy none
 addItem borrows none
@@ -337,9 +337,9 @@ addItem catch none
 countIt is call
 countIt in consume
 countIt invokes math.addInt64
-countIt arg left Int64 taken copy
-countIt arg right Int64 one copy
-countIt out newTaken Int64
+countIt argument left Int64 taken copy
+countIt argument right Int64 one copy
+countIt result newTaken Int64
 countIt ownedBy none
 countIt cleanedBy none
 countIt borrows none
@@ -348,14 +348,14 @@ countIt catch none
 factorial is operation
 factorial purpose "Return n factorial"
 factorial invariant none
-factorial typeParam none
-factorial input n Int64 value
+factorial typeParameter none
+factorial input n Int64 copied
 factorial output Int64
-factorial outputOwner none
+factorial outputOwnedBy none
 factorial raises none
 factorial effect none
 factorial uses none
-factorial memory heap false
+factorial memoryHeap false
 factorial async false
 factorial maxRecursion 25
 factorial label begin loopKind none
@@ -364,7 +364,7 @@ factorial label done loopKind none
 factorial label done within none
 factorial label recurse loopKind none
 factorial label recurse within none
-factorial let one immutable Int64 1
+factorial let one Int64 1 immutable
 factorial at begin do isBase
 factorial at begin branch if base goto done else goto recurse
 factorial at done return ok one
@@ -376,9 +376,9 @@ factorial at recurse return ok product
 isBase is call
 isBase in factorial
 isBase invokes compare.lessOrEqualInt64
-isBase arg left Int64 n copy
-isBase arg right Int64 one copy
-isBase out base Bool
+isBase argument left Int64 n copy
+isBase argument right Int64 one copy
+isBase result base Bool
 isBase ownedBy none
 isBase cleanedBy none
 isBase borrows none
@@ -387,9 +387,9 @@ isBase catch none
 less is call
 less in factorial
 less invokes math.subtractInt64
-less arg left Int64 n copy
-less arg right Int64 one copy
-less out smaller Int64
+less argument left Int64 n copy
+less argument right Int64 one copy
+less result smaller Int64
 less ownedBy none
 less cleanedBy none
 less borrows none
@@ -398,8 +398,8 @@ less catch none
 inner is call
 inner in factorial
 inner invokes factorial
-inner arg n Int64 smaller copy
-inner out innerResult Int64
+inner argument n Int64 smaller copy
+inner result innerResult Int64
 inner ownedBy none
 inner cleanedBy none
 inner borrows none
@@ -408,9 +408,9 @@ inner catch none
 times is call
 times in factorial
 times invokes math.multiplyInt64
-times arg left Int64 n copy
-times arg right Int64 innerResult copy
-times out product Int64
+times argument left Int64 n copy
+times argument right Int64 innerResult copy
+times result product Int64
 times ownedBy none
 times cleanedBy none
 times borrows none
@@ -419,32 +419,32 @@ times catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read clock.monotonic
 main effect write console.stdout
 main uses clockReader
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let fourHundred immutable Int64 400
-main let threeHundred immutable Int64 300
-main let overlapLimit immutable Int64 750
-main let twoWaves immutable Int64 550
-main let sequential immutable Int64 1150
-main let capacity immutable Int64 1
-main let five immutable Int64 5
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let fourHundred Int64 400 immutable
+main let threeHundred Int64 300 immutable
+main let overlapLimit Int64 750 immutable
+main let twoWaves Int64 550 immutable
+main let sequential Int64 1150 immutable
+main let capacity Int64 1 immutable
+main let five Int64 5 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do clockA
-main at begin start pauseOne
-main at begin start pauseTwo
+main at begin start pauseOne into none
+main at begin start pauseTwo into none
 main at begin join pauseOne
 main at begin join pauseTwo
 main at begin do clockB
@@ -468,31 +468,31 @@ main at begin do notSequential
 main at begin do showTwoWaves
 main at begin do showNotSequential
 main at begin do makeMailbox
-main at begin start consumer
-main at begin start producer
+main at begin start consumer into none
+main at begin start producer into none
 main at begin join producer
 main at begin join consumer
 main at begin do showSum
-main at begin start factorialTask
+main at begin start factorialTask into none
 main at begin join factorialTask
 main at begin do showFactorial
 main at begin return ok okCode
 
 pair is taskGroup
 pair in main
-pair limit 2
+pair maxTasks 2
 
 mail is region
 mail in main
 mail strategy arena
-mail capacity 4096
+mail maxBytes 4096
 mail released atReturn
 
 clockA is call
 clockA in main
 clockA invokes clock.monotonic
-clockA arg none
-clockA out a Int64
+clockA argument none
+clockA result a Int64
 clockA ownedBy none
 clockA cleanedBy none
 clockA borrows none
@@ -501,8 +501,8 @@ clockA catch none
 clockB is call
 clockB in main
 clockB invokes clock.monotonic
-clockB arg none
-clockB out b Int64
+clockB argument none
+clockB result b Int64
 clockB ownedBy none
 clockB cleanedBy none
 clockB borrows none
@@ -511,8 +511,8 @@ clockB catch none
 clockC is call
 clockC in main
 clockC invokes clock.monotonic
-clockC arg none
-clockC out c Int64
+clockC argument none
+clockC result c Int64
 clockC ownedBy none
 clockC cleanedBy none
 clockC borrows none
@@ -521,8 +521,8 @@ clockC catch none
 clockD is call
 clockD in main
 clockD invokes clock.monotonic
-clockD arg none
-clockD out d Int64
+clockD argument none
+clockD result d Int64
 clockD ownedBy none
 clockD cleanedBy none
 clockD borrows none
@@ -531,8 +531,8 @@ clockD catch none
 pauseOne is task
 pauseOne in main
 pauseOne invokes pause
-pauseOne arg milliseconds Int64 fourHundred copy
-pauseOne out none
+pauseOne argument milliseconds Int64 fourHundred copy
+pauseOne result none
 pauseOne ownedBy none
 pauseOne cleanedBy none
 pauseOne borrows none
@@ -541,8 +541,8 @@ pauseOne catch none
 pauseTwo is task
 pauseTwo in main
 pauseTwo invokes pause
-pauseTwo arg milliseconds Int64 fourHundred copy
-pauseTwo out none
+pauseTwo argument milliseconds Int64 fourHundred copy
+pauseTwo result none
 pauseTwo ownedBy none
 pauseTwo cleanedBy none
 pauseTwo borrows none
@@ -551,9 +551,9 @@ pauseTwo catch none
 overlapTime is call
 overlapTime in main
 overlapTime invokes math.subtractInt64
-overlapTime arg left Int64 b copy
-overlapTime arg right Int64 a copy
-overlapTime out overlap Int64
+overlapTime argument left Int64 b copy
+overlapTime argument right Int64 a copy
+overlapTime result overlap Int64
 overlapTime ownedBy none
 overlapTime cleanedBy none
 overlapTime borrows none
@@ -562,9 +562,9 @@ overlapTime catch none
 overlapped is call
 overlapped in main
 overlapped invokes compare.lessThanInt64
-overlapped arg left Int64 overlap copy
-overlapped arg right Int64 overlapLimit copy
-overlapped out ranTogether Bool
+overlapped argument left Int64 overlap copy
+overlapped argument right Int64 overlapLimit copy
+overlapped result ranTogether Bool
 overlapped ownedBy none
 overlapped cleanedBy none
 overlapped borrows none
@@ -573,8 +573,8 @@ overlapped catch none
 showOverlapped is call
 showOverlapped in main
 showOverlapped invokes showBool
-showOverlapped arg flag Bool ranTogether copy
-showOverlapped out none
+showOverlapped argument flag Bool ranTogether copy
+showOverlapped result none
 showOverlapped ownedBy none
 showOverlapped cleanedBy none
 showOverlapped borrows none
@@ -583,8 +583,8 @@ showOverlapped catch none
 groupOne is task
 groupOne in main
 groupOne invokes pause
-groupOne arg milliseconds Int64 threeHundred copy
-groupOne out none
+groupOne argument milliseconds Int64 threeHundred copy
+groupOne result none
 groupOne ownedBy none
 groupOne cleanedBy none
 groupOne borrows none
@@ -593,8 +593,8 @@ groupOne catch none
 groupTwo is task
 groupTwo in main
 groupTwo invokes pause
-groupTwo arg milliseconds Int64 threeHundred copy
-groupTwo out none
+groupTwo argument milliseconds Int64 threeHundred copy
+groupTwo result none
 groupTwo ownedBy none
 groupTwo cleanedBy none
 groupTwo borrows none
@@ -603,8 +603,8 @@ groupTwo catch none
 groupThree is task
 groupThree in main
 groupThree invokes pause
-groupThree arg milliseconds Int64 threeHundred copy
-groupThree out none
+groupThree argument milliseconds Int64 threeHundred copy
+groupThree result none
 groupThree ownedBy none
 groupThree cleanedBy none
 groupThree borrows none
@@ -613,8 +613,8 @@ groupThree catch none
 groupFour is task
 groupFour in main
 groupFour invokes pause
-groupFour arg milliseconds Int64 threeHundred copy
-groupFour out none
+groupFour argument milliseconds Int64 threeHundred copy
+groupFour result none
 groupFour ownedBy none
 groupFour cleanedBy none
 groupFour borrows none
@@ -623,9 +623,9 @@ groupFour catch none
 groupTime is call
 groupTime in main
 groupTime invokes math.subtractInt64
-groupTime arg left Int64 d copy
-groupTime arg right Int64 c copy
-groupTime out grouped Int64
+groupTime argument left Int64 d copy
+groupTime argument right Int64 c copy
+groupTime result grouped Int64
 groupTime ownedBy none
 groupTime cleanedBy none
 groupTime borrows none
@@ -634,9 +634,9 @@ groupTime catch none
 atLeastTwoWaves is call
 atLeastTwoWaves in main
 atLeastTwoWaves invokes compare.greaterOrEqualInt64
-atLeastTwoWaves arg left Int64 grouped copy
-atLeastTwoWaves arg right Int64 twoWaves copy
-atLeastTwoWaves out limited Bool
+atLeastTwoWaves argument left Int64 grouped copy
+atLeastTwoWaves argument right Int64 twoWaves copy
+atLeastTwoWaves result limited Bool
 atLeastTwoWaves ownedBy none
 atLeastTwoWaves cleanedBy none
 atLeastTwoWaves borrows none
@@ -645,9 +645,9 @@ atLeastTwoWaves catch none
 notSequential is call
 notSequential in main
 notSequential invokes compare.lessThanInt64
-notSequential arg left Int64 grouped copy
-notSequential arg right Int64 sequential copy
-notSequential out concurrent Bool
+notSequential argument left Int64 grouped copy
+notSequential argument right Int64 sequential copy
+notSequential result concurrent Bool
 notSequential ownedBy none
 notSequential cleanedBy none
 notSequential borrows none
@@ -656,8 +656,8 @@ notSequential catch none
 showTwoWaves is call
 showTwoWaves in main
 showTwoWaves invokes showBool
-showTwoWaves arg flag Bool limited copy
-showTwoWaves out none
+showTwoWaves argument flag Bool limited copy
+showTwoWaves result none
 showTwoWaves ownedBy none
 showTwoWaves cleanedBy none
 showTwoWaves borrows none
@@ -666,8 +666,8 @@ showTwoWaves catch none
 showNotSequential is call
 showNotSequential in main
 showNotSequential invokes showBool
-showNotSequential arg flag Bool concurrent copy
-showNotSequential out none
+showNotSequential argument flag Bool concurrent copy
+showNotSequential result none
 showNotSequential ownedBy none
 showNotSequential cleanedBy none
 showNotSequential borrows none
@@ -676,9 +676,9 @@ showNotSequential catch none
 makeMailbox is call
 makeMailbox in main
 makeMailbox invokes Mailbox.new
-makeMailbox arg capacity Int64 capacity copy
-makeMailbox arg region Region mail lend
-makeMailbox out mailbox Mailbox
+makeMailbox argument capacity Int64 capacity copy
+makeMailbox argument region Region mail lend
+makeMailbox result mailbox Mailbox
 makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
@@ -687,8 +687,8 @@ makeMailbox catch none
 consumer is task
 consumer in main
 consumer invokes consume
-consumer arg mailbox Mailbox mailbox lend
-consumer out sum Int64
+consumer argument mailbox Mailbox mailbox lend
+consumer result sum Int64
 consumer ownedBy none
 consumer cleanedBy none
 consumer borrows none
@@ -697,8 +697,8 @@ consumer catch none
 producer is task
 producer in main
 producer invokes produce
-producer arg mailbox Mailbox mailbox lend
-producer out none
+producer argument mailbox Mailbox mailbox lend
+producer result none
 producer ownedBy none
 producer cleanedBy none
 producer borrows none
@@ -707,8 +707,8 @@ producer catch none
 showSum is call
 showSum in main
 showSum invokes showInt
-showSum arg value Int64 sum copy
-showSum out none
+showSum argument value Int64 sum copy
+showSum result none
 showSum ownedBy none
 showSum cleanedBy none
 showSum borrows none
@@ -717,8 +717,8 @@ showSum catch none
 factorialTask is task
 factorialTask in main
 factorialTask invokes factorial
-factorialTask arg n Int64 five copy
-factorialTask out fiveFactorial Int64
+factorialTask argument n Int64 five copy
+factorialTask result fiveFactorial Int64
 factorialTask ownedBy none
 factorialTask cleanedBy none
 factorialTask borrows none
@@ -727,8 +727,8 @@ factorialTask catch none
 showFactorial is call
 showFactorial in main
 showFactorial invokes showInt
-showFactorial arg value Int64 fiveFactorial copy
-showFactorial out none
+showFactorial argument value Int64 fiveFactorial copy
+showFactorial result none
 showFactorial ownedBy none
 showFactorial cleanedBy none
 showFactorial borrows none

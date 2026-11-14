@@ -44,9 +44,9 @@ def _project(rows: list[str], directory: str) -> str:
         fh.write(module_text(rows))
     build = ["replSession is project", 'replSession purpose "The REPL session"',
              f"replSession target {'console' if has_main else 'library'}", 'replSession version "0.1.0"',
-             "replSession language refined-1", "replSession standardLibrary 1",
+             "replSession language refined 1", "replSession standardLibrary 1",
              *allows_rows("replSession", [module_text(rows)]), "replSession requires none",
-             "replSession module repl",
+             "replSession includesModule repl",
              f"replSession entry {'repl.main' if has_main else 'none'}"]
     with open(os.path.join(directory, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(build) + "\n")

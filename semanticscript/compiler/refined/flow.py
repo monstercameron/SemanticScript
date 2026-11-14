@@ -176,7 +176,7 @@ class Flow:
                 self.err("R503", line, f"block `{lab}` is `within {w}`, which is not a loop header")
             if w == lab:
                 self.err("R503", line, f"block `{lab}` cannot be within itself")
-            loop_only = ("maxIterations", "counter", "over", "because")
+            loop_only = ("maxIterations", "counter", "over")
             if k == "none":
                 for f in loop_only:
                     if f in d:
@@ -192,7 +192,7 @@ class Flow:
                 if b is None or b.type != "Int64" or b.mutable:
                     self.err("R503", bound[0], f"a loop bound is an integer or an immutable `Int64` value; "
                              f"`{bound[1][0]}` is not one")
-            for kk, need in (("counted", "counter"), ("forEach", "over"), ("forever", "because")):
+            for kk, need in (("counted", "counter"), ("forEach", "over"), ("forever", "rationale")):
                 if (k == kk) != (need in d):
                     self.err("R503", d[need][0] if need in d else line,
                              f"`{need}` is stated on a `{kk}` loop, and only there")
@@ -396,8 +396,8 @@ class Flow:
 
     def _let_literal(self, name: str):
         for r in self.ent.facts("let"):
-            if r.text(0) == name and r.args[3].kind == "word" and S.INT.match(r.args[3].raw):
-                return int(r.args[3].raw)
+            if r.text(0) == name and r.args[2].kind == "word" and S.INT.match(r.args[2].raw):
+                return int(r.args[2].raw)
         return None
 
     # ------------------------------------------------------------ ownership on every path (LR-20 rules 6 and 8)
@@ -411,7 +411,7 @@ class Flow:
             if ci.out and ci.entity.value("ownedBy") == owner:
                 tracked.add(ci.out[0])
                 acquirers[ci.entity.name] = ci.out[0]
-        workers = {c.value("call") for c in op.owned.values() if c.kind == "cleanup"}
+        workers = {c.value("runs") for c in op.owned.values() if c.kind == "cleanup"}
         views = {n for n, b in op.bindings.items()
                  if b.type != "Region" and not world.plain(b.type) and
                  ((b.kind == "input" and b.mode in ("borrowed", "borrowedMutable")) or b.view_of is not None)}
@@ -540,7 +540,7 @@ class Flow:
     @property
     def _grouped(self) -> set[str]:
         return {st.args[0] for lab in self.order for st in self.blocks[lab]
-                if st.verb == "start" and len(st.args) == 3}
+                if st.verb == "start" and st.args[2] != "none"}
 
     def _activations(self) -> None:
         op = self.op
@@ -566,7 +566,7 @@ class Flow:
                     self.err("R402", st.line, f"`{st.verb}` takes a {' or '.join(sorted(want))}; `{target}` is a {ent.kind}")
                     continue
                 count.setdefault(target, {}).setdefault(st.verb, []).append(st.line)
-                if st.verb == "start" and len(st.args) == 3:
+                if st.verb == "start" and st.args[2] != "none":
                     g = op.owned.get(st.args[2])
                     if g is None or g.kind != "taskGroup":
                         self.err("R402", st.line, f"`start ... into` names a task group; `{st.args[2]}` is not one")
@@ -579,7 +579,7 @@ class Flow:
                                  "goto ...` comes directly after it")
                 if st.verb == "branch":
                     pass
-        workers = {c.value("call"): c.name for c in op.owned.values() if c.kind == "cleanup"}
+        workers = {c.value("runs"): c.name for c in op.owned.values() if c.kind == "cleanup"}
         for name, ent in op.owned.items():
             c = count.get(name, {})
             if ent.kind == "call":
@@ -599,7 +599,7 @@ class Flow:
                                  "not the task")
                     if ci is not None and (ci.out is not None or ci.catch is not None):
                         self.err("R510", ent.line, f"task `{name}` is started into a group, so its result cannot be "
-                                 f"read; it has `out none` and `catch none`")
+                                 f"read; it has `result none` and `catch none`")
                 elif not c.get("join") and not c.get("cancel"):
                     self.err("R510", ent.line, f"task `{name}` is never joined or cancelled")
             elif ent.kind == "cleanup":
@@ -702,7 +702,7 @@ class Flow:
                     cleans = c.value("cleans")
                     if cleans:
                         self._use(cleans, cur, st.line, None, f"value cleaned by `{c.name}`", report)
-                    w = op.calls.get(c.value("call"))
+                    w = op.calls.get(c.value("runs"))
                     if w is not None:
                         for slot, _t, value, _m, _l in w.args:
                             if value != cleans and value in op.bindings:
@@ -746,7 +746,7 @@ class Flow:
         m, op = self.m, self.op
         want = None
         if coll in m.tables:
-            want = resolve_type(self.world, m, m.tables[coll].value("of"), line, quiet=True)
+            want = resolve_type(self.world, m, m.tables[coll].value("rowType"), line, quiet=True)
         elif coll in op.bindings:
             info = self.world.type_info(op.bindings[coll].type)
             if info is None or info.generic != "list.List":
@@ -882,7 +882,7 @@ class Flow:
         ent = op.owned.get(holder)
         if ent is not None and ent.kind == "taskGroup":
             names = [st.args[0] for lab in self.order for st in self.blocks[lab]
-                     if st.verb == "start" and len(st.args) == 3 and st.args[2] == holder]
+                     if st.verb == "start" and st.args[2] == holder]
         out = []
         for n in names:
             ci = op.calls.get(n)
@@ -934,7 +934,7 @@ class Flow:
             if report and st.verb in ("do", "start", "set", "return", "branch", "match"):
                 self._check_loans(st, pend)
             if st.verb == "start":
-                if len(a) == 3:
+                if a[2] != "none":
                     pend.add(a[2])
                     sett.discard(a[2])
                 else:

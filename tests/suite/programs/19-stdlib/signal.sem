@@ -15,20 +15,19 @@ signalCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -39,8 +38,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -52,8 +51,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -63,8 +62,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -73,20 +72,21 @@ writeFalse catch falseError console.WriteError
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -95,8 +95,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -104,22 +104,21 @@ writeValue catch writeError console.WriteError
 
 interrupts is capability
 interrupts purpose "Authority to observe interrupts"
-interrupts grants read signal.interrupts
-interrupts scope none
+interrupts grants read signal.interrupts none
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect read signal.interrupts
 main effect write console.stdout
 main uses interrupts
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -128,14 +127,14 @@ main label step1 loopKind none
 main label step1 within none
 main label failed loopKind none
 main label failed within none
-main let fifty immutable Int64 50
-main let timedOutText immutable String "timedOut"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let fifty Int64 50 immutable
+main let timedOutText String "timedOut" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do checkInterrupt
 main at begin do printInterrupted
 main at begin do shortDeadline
-main at begin start awaitInterrupt
+main at begin start awaitInterrupt into none
 main at begin join awaitInterrupt
 main at begin branch ifError awaitInterrupt goto step1 else goto failed
 main at step1 do printTimedOut
@@ -145,14 +144,14 @@ main at failed return ok failCode
 store is region
 store in main
 store strategy arena
-store capacity 65536
+store maxBytes 65536
 store released atReturn
 
 checkInterrupt is call
 checkInterrupt in main
 checkInterrupt invokes signal.interrupted
-checkInterrupt arg none
-checkInterrupt out wasInterrupted Bool
+checkInterrupt argument none
+checkInterrupt result wasInterrupted Bool
 checkInterrupt ownedBy none
 checkInterrupt cleanedBy none
 checkInterrupt borrows none
@@ -161,8 +160,8 @@ checkInterrupt catch none
 printInterrupted is call
 printInterrupted in main
 printInterrupted invokes showBool
-printInterrupted arg flag Bool wasInterrupted copy
-printInterrupted out none
+printInterrupted argument flag Bool wasInterrupted copy
+printInterrupted result none
 printInterrupted ownedBy none
 printInterrupted cleanedBy none
 printInterrupted borrows none
@@ -171,8 +170,8 @@ printInterrupted catch none
 shortDeadline is call
 shortDeadline in main
 shortDeadline invokes time.Deadline.after
-shortDeadline arg milliseconds Int64 fifty copy
-shortDeadline out soon time.Deadline
+shortDeadline argument milliseconds Int64 fifty copy
+shortDeadline result soon time.Deadline
 shortDeadline ownedBy none
 shortDeadline cleanedBy none
 shortDeadline borrows none
@@ -181,8 +180,8 @@ shortDeadline catch none
 awaitInterrupt is task
 awaitInterrupt in main
 awaitInterrupt invokes signal.waitForInterrupt
-awaitInterrupt arg deadline time.Deadline soon copy
-awaitInterrupt out none
+awaitInterrupt argument deadline time.Deadline soon copy
+awaitInterrupt result none
 awaitInterrupt ownedBy none
 awaitInterrupt cleanedBy none
 awaitInterrupt borrows none
@@ -191,8 +190,8 @@ awaitInterrupt catch interruptError signal.SignalError
 printTimedOut is call
 printTimedOut in main
 printTimedOut invokes showText
-printTimedOut arg text String timedOutText lend
-printTimedOut out none
+printTimedOut argument text String timedOutText lend
+printTimedOut result none
 printTimedOut ownedBy none
 printTimedOut cleanedBy none
 printTimedOut borrows none

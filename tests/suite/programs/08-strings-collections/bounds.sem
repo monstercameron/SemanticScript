@@ -42,26 +42,26 @@ bounds exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -70,28 +70,28 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
 
-Numbers is instance
+Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
 Numbers instantiates list.List Int64
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -206,23 +206,23 @@ main label failed17 loopKind none
 main label failed17 within none
 main label finish loopKind none
 main label finish within none
-main let source immutable String "hello"
-main let empty immutable String ""
-main let minusOne immutable Int64 -1
-main let zero immutable Int64 0
-main let one immutable Int64 1
-main let two immutable Int64 2
-main let five immutable Int64 5
-main let six immutable Int64 6
-main let largest immutable Int64 9223372036854775807
-main let largestText immutable String "9223372036854775807"
-main let pastLargestText immutable String "9223372036854775808"
-main let smallestText immutable String "-9223372036854775808"
-main let signText immutable String "-"
-main let plusText immutable String "+5"
-main let spaceText immutable String " 5"
-main let arabicDigit immutable String "٣"
-main let okCode immutable ExitCode 0
+main let source String "hello" immutable
+main let empty String "" immutable
+main let minusOne Int64 -1 immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let five Int64 5 immutable
+main let six Int64 6 immutable
+main let largest Int64 9223372036854775807 immutable
+main let largestText String "9223372036854775807" immutable
+main let pastLargestText String "9223372036854775808" immutable
+main let smallestText String "-9223372036854775808" immutable
+main let signText String "-" immutable
+main let plusText String "+5" immutable
+main let spaceText String " 5" immutable
+main let arabicDigit String "٣" immutable
+main let okCode ExitCode 0 immutable
 main at begin do makeNumbers
 main at begin goto try0
 main at try0 do sliceNegativeStart
@@ -343,14 +343,14 @@ main at finish return ok okCode
 scratch is region
 scratch in main
 scratch strategy arena
-scratch capacity 1024
+scratch maxBytes 1024
 scratch released atReturn
 
 makeNumbers is call
 makeNumbers in main
 makeNumbers invokes Numbers.new
-makeNumbers arg region Region scratch lend
-makeNumbers out numbers Numbers
+makeNumbers argument region Region scratch lend
+makeNumbers result numbers Numbers
 makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
@@ -359,10 +359,10 @@ makeNumbers catch none
 sliceNegativeStart is call
 sliceNegativeStart in main
 sliceNegativeStart invokes string.slice
-sliceNegativeStart arg text String source lend
-sliceNegativeStart arg start Int64 minusOne copy
-sliceNegativeStart arg length Int64 two copy
-sliceNegativeStart out sliceNegativeStartResult String
+sliceNegativeStart argument text String source lend
+sliceNegativeStart argument start Int64 minusOne copy
+sliceNegativeStart argument length Int64 two copy
+sliceNegativeStart result sliceNegativeStartResult String
 sliceNegativeStart ownedBy none
 sliceNegativeStart cleanedBy none
 sliceNegativeStart borrows source
@@ -371,8 +371,8 @@ sliceNegativeStart catch sliceNegativeStartError string.StringIndexError
 measure0 is call
 measure0 in main
 measure0 invokes string.byteLength
-measure0 arg text String sliceNegativeStartResult lend
-measure0 out sliceNegativeStartLength Int64
+measure0 argument text String sliceNegativeStartResult lend
+measure0 result sliceNegativeStartLength Int64
 measure0 ownedBy none
 measure0 cleanedBy none
 measure0 borrows none
@@ -381,8 +381,8 @@ measure0 catch none
 showSliceNegativeStart is call
 showSliceNegativeStart in main
 showSliceNegativeStart invokes showInt
-showSliceNegativeStart arg value Int64 sliceNegativeStartLength copy
-showSliceNegativeStart out none
+showSliceNegativeStart argument value Int64 sliceNegativeStartLength copy
+showSliceNegativeStart result none
 showSliceNegativeStart ownedBy none
 showSliceNegativeStart cleanedBy none
 showSliceNegativeStart borrows none
@@ -391,8 +391,8 @@ showSliceNegativeStart catch none
 showFailed0 is call
 showFailed0 in main
 showFailed0 invokes showInt
-showFailed0 arg value Int64 minusOne copy
-showFailed0 out none
+showFailed0 argument value Int64 minusOne copy
+showFailed0 result none
 showFailed0 ownedBy none
 showFailed0 cleanedBy none
 showFailed0 borrows none
@@ -401,10 +401,10 @@ showFailed0 catch none
 sliceNegativeLength is call
 sliceNegativeLength in main
 sliceNegativeLength invokes string.slice
-sliceNegativeLength arg text String source lend
-sliceNegativeLength arg start Int64 one copy
-sliceNegativeLength arg length Int64 minusOne copy
-sliceNegativeLength out sliceNegativeLengthResult String
+sliceNegativeLength argument text String source lend
+sliceNegativeLength argument start Int64 one copy
+sliceNegativeLength argument length Int64 minusOne copy
+sliceNegativeLength result sliceNegativeLengthResult String
 sliceNegativeLength ownedBy none
 sliceNegativeLength cleanedBy none
 sliceNegativeLength borrows source
@@ -413,8 +413,8 @@ sliceNegativeLength catch sliceNegativeLengthError string.StringIndexError
 measure1 is call
 measure1 in main
 measure1 invokes string.byteLength
-measure1 arg text String sliceNegativeLengthResult lend
-measure1 out sliceNegativeLengthLength Int64
+measure1 argument text String sliceNegativeLengthResult lend
+measure1 result sliceNegativeLengthLength Int64
 measure1 ownedBy none
 measure1 cleanedBy none
 measure1 borrows none
@@ -423,8 +423,8 @@ measure1 catch none
 showSliceNegativeLength is call
 showSliceNegativeLength in main
 showSliceNegativeLength invokes showInt
-showSliceNegativeLength arg value Int64 sliceNegativeLengthLength copy
-showSliceNegativeLength out none
+showSliceNegativeLength argument value Int64 sliceNegativeLengthLength copy
+showSliceNegativeLength result none
 showSliceNegativeLength ownedBy none
 showSliceNegativeLength cleanedBy none
 showSliceNegativeLength borrows none
@@ -433,8 +433,8 @@ showSliceNegativeLength catch none
 showFailed1 is call
 showFailed1 in main
 showFailed1 invokes showInt
-showFailed1 arg value Int64 minusOne copy
-showFailed1 out none
+showFailed1 argument value Int64 minusOne copy
+showFailed1 result none
 showFailed1 ownedBy none
 showFailed1 cleanedBy none
 showFailed1 borrows none
@@ -443,10 +443,10 @@ showFailed1 catch none
 sliceLengthOverflows is call
 sliceLengthOverflows in main
 sliceLengthOverflows invokes string.slice
-sliceLengthOverflows arg text String source lend
-sliceLengthOverflows arg start Int64 one copy
-sliceLengthOverflows arg length Int64 largest copy
-sliceLengthOverflows out sliceLengthOverflowsResult String
+sliceLengthOverflows argument text String source lend
+sliceLengthOverflows argument start Int64 one copy
+sliceLengthOverflows argument length Int64 largest copy
+sliceLengthOverflows result sliceLengthOverflowsResult String
 sliceLengthOverflows ownedBy none
 sliceLengthOverflows cleanedBy none
 sliceLengthOverflows borrows source
@@ -455,8 +455,8 @@ sliceLengthOverflows catch sliceLengthOverflowsError string.StringIndexError
 measure2 is call
 measure2 in main
 measure2 invokes string.byteLength
-measure2 arg text String sliceLengthOverflowsResult lend
-measure2 out sliceLengthOverflowsLength Int64
+measure2 argument text String sliceLengthOverflowsResult lend
+measure2 result sliceLengthOverflowsLength Int64
 measure2 ownedBy none
 measure2 cleanedBy none
 measure2 borrows none
@@ -465,8 +465,8 @@ measure2 catch none
 showSliceLengthOverflows is call
 showSliceLengthOverflows in main
 showSliceLengthOverflows invokes showInt
-showSliceLengthOverflows arg value Int64 sliceLengthOverflowsLength copy
-showSliceLengthOverflows out none
+showSliceLengthOverflows argument value Int64 sliceLengthOverflowsLength copy
+showSliceLengthOverflows result none
 showSliceLengthOverflows ownedBy none
 showSliceLengthOverflows cleanedBy none
 showSliceLengthOverflows borrows none
@@ -475,8 +475,8 @@ showSliceLengthOverflows catch none
 showFailed2 is call
 showFailed2 in main
 showFailed2 invokes showInt
-showFailed2 arg value Int64 minusOne copy
-showFailed2 out none
+showFailed2 argument value Int64 minusOne copy
+showFailed2 result none
 showFailed2 ownedBy none
 showFailed2 cleanedBy none
 showFailed2 borrows none
@@ -485,10 +485,10 @@ showFailed2 catch none
 sliceStartPastEnd is call
 sliceStartPastEnd in main
 sliceStartPastEnd invokes string.slice
-sliceStartPastEnd arg text String source lend
-sliceStartPastEnd arg start Int64 six copy
-sliceStartPastEnd arg length Int64 zero copy
-sliceStartPastEnd out sliceStartPastEndResult String
+sliceStartPastEnd argument text String source lend
+sliceStartPastEnd argument start Int64 six copy
+sliceStartPastEnd argument length Int64 zero copy
+sliceStartPastEnd result sliceStartPastEndResult String
 sliceStartPastEnd ownedBy none
 sliceStartPastEnd cleanedBy none
 sliceStartPastEnd borrows source
@@ -497,8 +497,8 @@ sliceStartPastEnd catch sliceStartPastEndError string.StringIndexError
 measure3 is call
 measure3 in main
 measure3 invokes string.byteLength
-measure3 arg text String sliceStartPastEndResult lend
-measure3 out sliceStartPastEndLength Int64
+measure3 argument text String sliceStartPastEndResult lend
+measure3 result sliceStartPastEndLength Int64
 measure3 ownedBy none
 measure3 cleanedBy none
 measure3 borrows none
@@ -507,8 +507,8 @@ measure3 catch none
 showSliceStartPastEnd is call
 showSliceStartPastEnd in main
 showSliceStartPastEnd invokes showInt
-showSliceStartPastEnd arg value Int64 sliceStartPastEndLength copy
-showSliceStartPastEnd out none
+showSliceStartPastEnd argument value Int64 sliceStartPastEndLength copy
+showSliceStartPastEnd result none
 showSliceStartPastEnd ownedBy none
 showSliceStartPastEnd cleanedBy none
 showSliceStartPastEnd borrows none
@@ -517,8 +517,8 @@ showSliceStartPastEnd catch none
 showFailed3 is call
 showFailed3 in main
 showFailed3 invokes showInt
-showFailed3 arg value Int64 minusOne copy
-showFailed3 out none
+showFailed3 argument value Int64 minusOne copy
+showFailed3 result none
 showFailed3 ownedBy none
 showFailed3 cleanedBy none
 showFailed3 borrows none
@@ -527,10 +527,10 @@ showFailed3 catch none
 sliceEmptyAtEnd is call
 sliceEmptyAtEnd in main
 sliceEmptyAtEnd invokes string.slice
-sliceEmptyAtEnd arg text String source lend
-sliceEmptyAtEnd arg start Int64 five copy
-sliceEmptyAtEnd arg length Int64 zero copy
-sliceEmptyAtEnd out sliceEmptyAtEndResult String
+sliceEmptyAtEnd argument text String source lend
+sliceEmptyAtEnd argument start Int64 five copy
+sliceEmptyAtEnd argument length Int64 zero copy
+sliceEmptyAtEnd result sliceEmptyAtEndResult String
 sliceEmptyAtEnd ownedBy none
 sliceEmptyAtEnd cleanedBy none
 sliceEmptyAtEnd borrows source
@@ -539,8 +539,8 @@ sliceEmptyAtEnd catch sliceEmptyAtEndError string.StringIndexError
 measure4 is call
 measure4 in main
 measure4 invokes string.byteLength
-measure4 arg text String sliceEmptyAtEndResult lend
-measure4 out sliceEmptyAtEndLength Int64
+measure4 argument text String sliceEmptyAtEndResult lend
+measure4 result sliceEmptyAtEndLength Int64
 measure4 ownedBy none
 measure4 cleanedBy none
 measure4 borrows none
@@ -549,8 +549,8 @@ measure4 catch none
 showSliceEmptyAtEnd is call
 showSliceEmptyAtEnd in main
 showSliceEmptyAtEnd invokes showInt
-showSliceEmptyAtEnd arg value Int64 sliceEmptyAtEndLength copy
-showSliceEmptyAtEnd out none
+showSliceEmptyAtEnd argument value Int64 sliceEmptyAtEndLength copy
+showSliceEmptyAtEnd result none
 showSliceEmptyAtEnd ownedBy none
 showSliceEmptyAtEnd cleanedBy none
 showSliceEmptyAtEnd borrows none
@@ -559,8 +559,8 @@ showSliceEmptyAtEnd catch none
 showFailed4 is call
 showFailed4 in main
 showFailed4 invokes showInt
-showFailed4 arg value Int64 minusOne copy
-showFailed4 out none
+showFailed4 argument value Int64 minusOne copy
+showFailed4 result none
 showFailed4 ownedBy none
 showFailed4 cleanedBy none
 showFailed4 borrows none
@@ -569,9 +569,9 @@ showFailed4 catch none
 byteBeforeStart is call
 byteBeforeStart in main
 byteBeforeStart invokes string.byteAt
-byteBeforeStart arg text String source lend
-byteBeforeStart arg index Int64 minusOne copy
-byteBeforeStart out byteBeforeStartResult Byte
+byteBeforeStart argument text String source lend
+byteBeforeStart argument index Int64 minusOne copy
+byteBeforeStart result byteBeforeStartResult Byte
 byteBeforeStart ownedBy none
 byteBeforeStart cleanedBy none
 byteBeforeStart borrows none
@@ -580,8 +580,8 @@ byteBeforeStart catch byteBeforeStartError string.StringIndexError
 showByteBeforeStart is call
 showByteBeforeStart in main
 showByteBeforeStart invokes showInt
-showByteBeforeStart arg value Int64 zero copy
-showByteBeforeStart out none
+showByteBeforeStart argument value Int64 zero copy
+showByteBeforeStart result none
 showByteBeforeStart ownedBy none
 showByteBeforeStart cleanedBy none
 showByteBeforeStart borrows none
@@ -590,8 +590,8 @@ showByteBeforeStart catch none
 showFailed5 is call
 showFailed5 in main
 showFailed5 invokes showInt
-showFailed5 arg value Int64 minusOne copy
-showFailed5 out none
+showFailed5 argument value Int64 minusOne copy
+showFailed5 result none
 showFailed5 ownedBy none
 showFailed5 cleanedBy none
 showFailed5 borrows none
@@ -600,9 +600,9 @@ showFailed5 catch none
 byteAtEnd is call
 byteAtEnd in main
 byteAtEnd invokes string.byteAt
-byteAtEnd arg text String source lend
-byteAtEnd arg index Int64 five copy
-byteAtEnd out byteAtEndResult Byte
+byteAtEnd argument text String source lend
+byteAtEnd argument index Int64 five copy
+byteAtEnd result byteAtEndResult Byte
 byteAtEnd ownedBy none
 byteAtEnd cleanedBy none
 byteAtEnd borrows none
@@ -611,8 +611,8 @@ byteAtEnd catch byteAtEndError string.StringIndexError
 showByteAtEnd is call
 showByteAtEnd in main
 showByteAtEnd invokes showInt
-showByteAtEnd arg value Int64 zero copy
-showByteAtEnd out none
+showByteAtEnd argument value Int64 zero copy
+showByteAtEnd result none
 showByteAtEnd ownedBy none
 showByteAtEnd cleanedBy none
 showByteAtEnd borrows none
@@ -621,8 +621,8 @@ showByteAtEnd catch none
 showFailed6 is call
 showFailed6 in main
 showFailed6 invokes showInt
-showFailed6 arg value Int64 minusOne copy
-showFailed6 out none
+showFailed6 argument value Int64 minusOne copy
+showFailed6 result none
 showFailed6 ownedBy none
 showFailed6 cleanedBy none
 showFailed6 borrows none
@@ -631,9 +631,9 @@ showFailed6 catch none
 findEmpty is call
 findEmpty in main
 findEmpty invokes string.find
-findEmpty arg text String source lend
-findEmpty arg needle String empty lend
-findEmpty out findEmptyResult Int64
+findEmpty argument text String source lend
+findEmpty argument needle String empty lend
+findEmpty result findEmptyResult Int64
 findEmpty ownedBy none
 findEmpty cleanedBy none
 findEmpty borrows none
@@ -642,8 +642,8 @@ findEmpty catch findEmptyError string.NotFound
 showFindEmpty is call
 showFindEmpty in main
 showFindEmpty invokes showInt
-showFindEmpty arg value Int64 findEmptyResult copy
-showFindEmpty out none
+showFindEmpty argument value Int64 findEmptyResult copy
+showFindEmpty result none
 showFindEmpty ownedBy none
 showFindEmpty cleanedBy none
 showFindEmpty borrows none
@@ -652,8 +652,8 @@ showFindEmpty catch none
 showFailed7 is call
 showFailed7 in main
 showFailed7 invokes showInt
-showFailed7 arg value Int64 minusOne copy
-showFailed7 out none
+showFailed7 argument value Int64 minusOne copy
+showFailed7 result none
 showFailed7 ownedBy none
 showFailed7 cleanedBy none
 showFailed7 borrows none
@@ -662,8 +662,8 @@ showFailed7 catch none
 parseLargest is call
 parseLargest in main
 parseLargest invokes string.toInt64
-parseLargest arg text String largestText lend
-parseLargest out parseLargestResult Int64
+parseLargest argument text String largestText lend
+parseLargest result parseLargestResult Int64
 parseLargest ownedBy none
 parseLargest cleanedBy none
 parseLargest borrows none
@@ -672,8 +672,8 @@ parseLargest catch parseLargestError string.ParseError
 showParseLargest is call
 showParseLargest in main
 showParseLargest invokes showInt
-showParseLargest arg value Int64 parseLargestResult copy
-showParseLargest out none
+showParseLargest argument value Int64 parseLargestResult copy
+showParseLargest result none
 showParseLargest ownedBy none
 showParseLargest cleanedBy none
 showParseLargest borrows none
@@ -682,8 +682,8 @@ showParseLargest catch none
 showFailed8 is call
 showFailed8 in main
 showFailed8 invokes showInt
-showFailed8 arg value Int64 minusOne copy
-showFailed8 out none
+showFailed8 argument value Int64 minusOne copy
+showFailed8 result none
 showFailed8 ownedBy none
 showFailed8 cleanedBy none
 showFailed8 borrows none
@@ -692,8 +692,8 @@ showFailed8 catch none
 parsePastLargest is call
 parsePastLargest in main
 parsePastLargest invokes string.toInt64
-parsePastLargest arg text String pastLargestText lend
-parsePastLargest out parsePastLargestResult Int64
+parsePastLargest argument text String pastLargestText lend
+parsePastLargest result parsePastLargestResult Int64
 parsePastLargest ownedBy none
 parsePastLargest cleanedBy none
 parsePastLargest borrows none
@@ -702,8 +702,8 @@ parsePastLargest catch parsePastLargestError string.ParseError
 showParsePastLargest is call
 showParsePastLargest in main
 showParsePastLargest invokes showInt
-showParsePastLargest arg value Int64 parsePastLargestResult copy
-showParsePastLargest out none
+showParsePastLargest argument value Int64 parsePastLargestResult copy
+showParsePastLargest result none
 showParsePastLargest ownedBy none
 showParsePastLargest cleanedBy none
 showParsePastLargest borrows none
@@ -712,8 +712,8 @@ showParsePastLargest catch none
 showFailed9 is call
 showFailed9 in main
 showFailed9 invokes showInt
-showFailed9 arg value Int64 minusOne copy
-showFailed9 out none
+showFailed9 argument value Int64 minusOne copy
+showFailed9 result none
 showFailed9 ownedBy none
 showFailed9 cleanedBy none
 showFailed9 borrows none
@@ -722,8 +722,8 @@ showFailed9 catch none
 parseSmallest is call
 parseSmallest in main
 parseSmallest invokes string.toInt64
-parseSmallest arg text String smallestText lend
-parseSmallest out parseSmallestResult Int64
+parseSmallest argument text String smallestText lend
+parseSmallest result parseSmallestResult Int64
 parseSmallest ownedBy none
 parseSmallest cleanedBy none
 parseSmallest borrows none
@@ -732,8 +732,8 @@ parseSmallest catch parseSmallestError string.ParseError
 showParseSmallest is call
 showParseSmallest in main
 showParseSmallest invokes showInt
-showParseSmallest arg value Int64 parseSmallestResult copy
-showParseSmallest out none
+showParseSmallest argument value Int64 parseSmallestResult copy
+showParseSmallest result none
 showParseSmallest ownedBy none
 showParseSmallest cleanedBy none
 showParseSmallest borrows none
@@ -742,8 +742,8 @@ showParseSmallest catch none
 showFailed10 is call
 showFailed10 in main
 showFailed10 invokes showInt
-showFailed10 arg value Int64 minusOne copy
-showFailed10 out none
+showFailed10 argument value Int64 minusOne copy
+showFailed10 result none
 showFailed10 ownedBy none
 showFailed10 cleanedBy none
 showFailed10 borrows none
@@ -752,8 +752,8 @@ showFailed10 catch none
 parseSignOnly is call
 parseSignOnly in main
 parseSignOnly invokes string.toInt64
-parseSignOnly arg text String signText lend
-parseSignOnly out parseSignOnlyResult Int64
+parseSignOnly argument text String signText lend
+parseSignOnly result parseSignOnlyResult Int64
 parseSignOnly ownedBy none
 parseSignOnly cleanedBy none
 parseSignOnly borrows none
@@ -762,8 +762,8 @@ parseSignOnly catch parseSignOnlyError string.ParseError
 showParseSignOnly is call
 showParseSignOnly in main
 showParseSignOnly invokes showInt
-showParseSignOnly arg value Int64 parseSignOnlyResult copy
-showParseSignOnly out none
+showParseSignOnly argument value Int64 parseSignOnlyResult copy
+showParseSignOnly result none
 showParseSignOnly ownedBy none
 showParseSignOnly cleanedBy none
 showParseSignOnly borrows none
@@ -772,8 +772,8 @@ showParseSignOnly catch none
 showFailed11 is call
 showFailed11 in main
 showFailed11 invokes showInt
-showFailed11 arg value Int64 minusOne copy
-showFailed11 out none
+showFailed11 argument value Int64 minusOne copy
+showFailed11 result none
 showFailed11 ownedBy none
 showFailed11 cleanedBy none
 showFailed11 borrows none
@@ -782,8 +782,8 @@ showFailed11 catch none
 parseEmpty is call
 parseEmpty in main
 parseEmpty invokes string.toInt64
-parseEmpty arg text String empty lend
-parseEmpty out parseEmptyResult Int64
+parseEmpty argument text String empty lend
+parseEmpty result parseEmptyResult Int64
 parseEmpty ownedBy none
 parseEmpty cleanedBy none
 parseEmpty borrows none
@@ -792,8 +792,8 @@ parseEmpty catch parseEmptyError string.ParseError
 showParseEmpty is call
 showParseEmpty in main
 showParseEmpty invokes showInt
-showParseEmpty arg value Int64 parseEmptyResult copy
-showParseEmpty out none
+showParseEmpty argument value Int64 parseEmptyResult copy
+showParseEmpty result none
 showParseEmpty ownedBy none
 showParseEmpty cleanedBy none
 showParseEmpty borrows none
@@ -802,8 +802,8 @@ showParseEmpty catch none
 showFailed12 is call
 showFailed12 in main
 showFailed12 invokes showInt
-showFailed12 arg value Int64 minusOne copy
-showFailed12 out none
+showFailed12 argument value Int64 minusOne copy
+showFailed12 result none
 showFailed12 ownedBy none
 showFailed12 cleanedBy none
 showFailed12 borrows none
@@ -812,8 +812,8 @@ showFailed12 catch none
 parsePlus is call
 parsePlus in main
 parsePlus invokes string.toInt64
-parsePlus arg text String plusText lend
-parsePlus out parsePlusResult Int64
+parsePlus argument text String plusText lend
+parsePlus result parsePlusResult Int64
 parsePlus ownedBy none
 parsePlus cleanedBy none
 parsePlus borrows none
@@ -822,8 +822,8 @@ parsePlus catch parsePlusError string.ParseError
 showParsePlus is call
 showParsePlus in main
 showParsePlus invokes showInt
-showParsePlus arg value Int64 parsePlusResult copy
-showParsePlus out none
+showParsePlus argument value Int64 parsePlusResult copy
+showParsePlus result none
 showParsePlus ownedBy none
 showParsePlus cleanedBy none
 showParsePlus borrows none
@@ -832,8 +832,8 @@ showParsePlus catch none
 showFailed13 is call
 showFailed13 in main
 showFailed13 invokes showInt
-showFailed13 arg value Int64 minusOne copy
-showFailed13 out none
+showFailed13 argument value Int64 minusOne copy
+showFailed13 result none
 showFailed13 ownedBy none
 showFailed13 cleanedBy none
 showFailed13 borrows none
@@ -842,8 +842,8 @@ showFailed13 catch none
 parseSpace is call
 parseSpace in main
 parseSpace invokes string.toInt64
-parseSpace arg text String spaceText lend
-parseSpace out parseSpaceResult Int64
+parseSpace argument text String spaceText lend
+parseSpace result parseSpaceResult Int64
 parseSpace ownedBy none
 parseSpace cleanedBy none
 parseSpace borrows none
@@ -852,8 +852,8 @@ parseSpace catch parseSpaceError string.ParseError
 showParseSpace is call
 showParseSpace in main
 showParseSpace invokes showInt
-showParseSpace arg value Int64 parseSpaceResult copy
-showParseSpace out none
+showParseSpace argument value Int64 parseSpaceResult copy
+showParseSpace result none
 showParseSpace ownedBy none
 showParseSpace cleanedBy none
 showParseSpace borrows none
@@ -862,8 +862,8 @@ showParseSpace catch none
 showFailed14 is call
 showFailed14 in main
 showFailed14 invokes showInt
-showFailed14 arg value Int64 minusOne copy
-showFailed14 out none
+showFailed14 argument value Int64 minusOne copy
+showFailed14 result none
 showFailed14 ownedBy none
 showFailed14 cleanedBy none
 showFailed14 borrows none
@@ -872,8 +872,8 @@ showFailed14 catch none
 parseNonAscii is call
 parseNonAscii in main
 parseNonAscii invokes string.toInt64
-parseNonAscii arg text String arabicDigit lend
-parseNonAscii out parseNonAsciiResult Int64
+parseNonAscii argument text String arabicDigit lend
+parseNonAscii result parseNonAsciiResult Int64
 parseNonAscii ownedBy none
 parseNonAscii cleanedBy none
 parseNonAscii borrows none
@@ -882,8 +882,8 @@ parseNonAscii catch parseNonAsciiError string.ParseError
 showParseNonAscii is call
 showParseNonAscii in main
 showParseNonAscii invokes showInt
-showParseNonAscii arg value Int64 parseNonAsciiResult copy
-showParseNonAscii out none
+showParseNonAscii argument value Int64 parseNonAsciiResult copy
+showParseNonAscii result none
 showParseNonAscii ownedBy none
 showParseNonAscii cleanedBy none
 showParseNonAscii borrows none
@@ -892,8 +892,8 @@ showParseNonAscii catch none
 showFailed15 is call
 showFailed15 in main
 showFailed15 invokes showInt
-showFailed15 arg value Int64 minusOne copy
-showFailed15 out none
+showFailed15 argument value Int64 minusOne copy
+showFailed15 result none
 showFailed15 ownedBy none
 showFailed15 cleanedBy none
 showFailed15 borrows none
@@ -902,9 +902,9 @@ showFailed15 catch none
 listNegative is call
 listNegative in main
 listNegative invokes Numbers.get
-listNegative arg list Numbers numbers lend
-listNegative arg index Int64 minusOne copy
-listNegative out listNegativeResult Int64
+listNegative argument list Numbers numbers lend
+listNegative argument index Int64 minusOne copy
+listNegative result listNegativeResult Int64
 listNegative ownedBy none
 listNegative cleanedBy none
 listNegative borrows none
@@ -913,8 +913,8 @@ listNegative catch listNegativeError list.IndexOutOfRange
 showListNegative is call
 showListNegative in main
 showListNegative invokes showInt
-showListNegative arg value Int64 listNegativeResult copy
-showListNegative out none
+showListNegative argument value Int64 listNegativeResult copy
+showListNegative result none
 showListNegative ownedBy none
 showListNegative cleanedBy none
 showListNegative borrows none
@@ -923,8 +923,8 @@ showListNegative catch none
 showFailed16 is call
 showFailed16 in main
 showFailed16 invokes showInt
-showFailed16 arg value Int64 minusOne copy
-showFailed16 out none
+showFailed16 argument value Int64 minusOne copy
+showFailed16 result none
 showFailed16 ownedBy none
 showFailed16 cleanedBy none
 showFailed16 borrows none
@@ -933,9 +933,9 @@ showFailed16 catch none
 listEmptyRead is call
 listEmptyRead in main
 listEmptyRead invokes Numbers.get
-listEmptyRead arg list Numbers numbers lend
-listEmptyRead arg index Int64 zero copy
-listEmptyRead out listEmptyReadResult Int64
+listEmptyRead argument list Numbers numbers lend
+listEmptyRead argument index Int64 zero copy
+listEmptyRead result listEmptyReadResult Int64
 listEmptyRead ownedBy none
 listEmptyRead cleanedBy none
 listEmptyRead borrows none
@@ -944,8 +944,8 @@ listEmptyRead catch listEmptyReadError list.IndexOutOfRange
 showListEmptyRead is call
 showListEmptyRead in main
 showListEmptyRead invokes showInt
-showListEmptyRead arg value Int64 listEmptyReadResult copy
-showListEmptyRead out none
+showListEmptyRead argument value Int64 listEmptyReadResult copy
+showListEmptyRead result none
 showListEmptyRead ownedBy none
 showListEmptyRead cleanedBy none
 showListEmptyRead borrows none
@@ -954,8 +954,8 @@ showListEmptyRead catch none
 showFailed17 is call
 showFailed17 in main
 showFailed17 invokes showInt
-showFailed17 arg value Int64 minusOne copy
-showFailed17 out none
+showFailed17 argument value Int64 minusOne copy
+showFailed17 result none
 showFailed17 ownedBy none
 showFailed17 cleanedBy none
 showFailed17 borrows none

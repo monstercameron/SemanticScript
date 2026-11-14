@@ -32,26 +32,26 @@ errors exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -60,8 +60,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -69,21 +69,21 @@ writeValue catch writeError console.WriteError
 
 ConfigError is enum
 ConfigError purpose "Why a configuration value was rejected, with the detail needed to report it"
-ConfigError typeParam none
+ConfigError typeParameter none
 ConfigError variant notANumber none
 ConfigError variant tooLarge Int64
 
 parsePort is operation
 parsePort purpose "Parse a port number, converting the library's parse error into a ConfigError"
 parsePort invariant none
-parsePort typeParam none
+parsePort typeParameter none
 parsePort input text String borrowed
 parsePort output Int64
-parsePort outputOwner none
+parsePort outputOwnedBy none
 parsePort raises ConfigError
 parsePort effect none
 parsePort uses none
-parsePort memory heap false
+parsePort memoryHeap false
 parsePort async false
 parsePort maxRecursion none
 parsePort label begin loopKind none
@@ -96,7 +96,7 @@ parsePort label rejectLarge loopKind none
 parsePort label rejectLarge within none
 parsePort label accepted loopKind none
 parsePort label accepted within none
-parsePort let largest immutable Int64 65535
+parsePort let largest Int64 65535 immutable
 parsePort at begin do parse
 parsePort at begin branch ifError parse goto badText else goto checkRange
 parsePort at badText do makeNotANumber
@@ -110,8 +110,8 @@ parsePort at accepted return ok port
 parse is call
 parse in parsePort
 parse invokes string.toInt64
-parse arg text String text lend
-parse out port Int64
+parse argument text String text lend
+parse result port Int64
 parse ownedBy none
 parse cleanedBy none
 parse borrows none
@@ -120,8 +120,8 @@ parse catch parseError string.ParseError
 makeNotANumber is call
 makeNotANumber in parsePort
 makeNotANumber invokes ConfigError.notANumber
-makeNotANumber arg none
-makeNotANumber out notNumber ConfigError
+makeNotANumber argument none
+makeNotANumber result notNumber ConfigError
 makeNotANumber ownedBy none
 makeNotANumber cleanedBy none
 makeNotANumber borrows none
@@ -130,9 +130,9 @@ makeNotANumber catch none
 tooBig is call
 tooBig in parsePort
 tooBig invokes compare.greaterThanInt64
-tooBig arg left Int64 port copy
-tooBig arg right Int64 largest copy
-tooBig out isTooBig Bool
+tooBig argument left Int64 port copy
+tooBig argument right Int64 largest copy
+tooBig result isTooBig Bool
 tooBig ownedBy none
 tooBig cleanedBy none
 tooBig borrows none
@@ -141,8 +141,8 @@ tooBig catch none
 makeTooLarge is call
 makeTooLarge in parsePort
 makeTooLarge invokes ConfigError.tooLarge
-makeTooLarge arg payload Int64 port copy
-makeTooLarge out tooLargeError ConfigError
+makeTooLarge argument payload Int64 port copy
+makeTooLarge result tooLargeError ConfigError
 makeTooLarge ownedBy none
 makeTooLarge cleanedBy none
 makeTooLarge borrows none
@@ -151,14 +151,14 @@ makeTooLarge catch none
 loadPort is operation
 loadPort purpose "Parse a port, passing any ConfigError up unchanged"
 loadPort invariant none
-loadPort typeParam none
+loadPort typeParameter none
 loadPort input text String borrowed
 loadPort output Int64
-loadPort outputOwner none
+loadPort outputOwnedBy none
 loadPort raises ConfigError
 loadPort effect none
 loadPort uses none
-loadPort memory heap false
+loadPort memoryHeap false
 loadPort async false
 loadPort maxRecursion none
 loadPort label begin loopKind none
@@ -167,6 +167,7 @@ loadPort label passUp loopKind none
 loadPort label passUp within none
 loadPort label done loopKind none
 loadPort label done within none
+loadPort let none
 loadPort at begin do parseIt
 loadPort at begin branch ifError parseIt goto passUp else goto done
 loadPort at passUp return error innerError
@@ -175,8 +176,8 @@ loadPort at done return ok parsed
 parseIt is call
 parseIt in loadPort
 parseIt invokes parsePort
-parseIt arg text String text lend
-parseIt out parsed Int64
+parseIt argument text String text lend
+parseIt result parsed Int64
 parseIt ownedBy none
 parseIt cleanedBy none
 parseIt borrows none
@@ -185,14 +186,14 @@ parseIt catch innerError ConfigError
 portOrDefault is operation
 portOrDefault purpose "Parse a port, recovering with port 0 when the text is not a number"
 portOrDefault invariant none
-portOrDefault typeParam none
+portOrDefault typeParameter none
 portOrDefault input text String borrowed
 portOrDefault output Int64
-portOrDefault outputOwner none
+portOrDefault outputOwnedBy none
 portOrDefault raises none
 portOrDefault effect none
 portOrDefault uses none
-portOrDefault memory heap false
+portOrDefault memoryHeap false
 portOrDefault async false
 portOrDefault maxRecursion none
 portOrDefault label begin loopKind none
@@ -201,7 +202,7 @@ portOrDefault label recover loopKind none
 portOrDefault label recover within none
 portOrDefault label done loopKind none
 portOrDefault label done within none
-portOrDefault let fallback immutable Int64 0
+portOrDefault let fallback Int64 0 immutable
 portOrDefault at begin do tryParse
 portOrDefault at begin branch ifError tryParse goto recover else goto done
 portOrDefault at recover return ok fallback
@@ -211,8 +212,8 @@ tryParse is call
 tryParse rationale "Recovering with a default is this operation's purpose"
 tryParse in portOrDefault
 tryParse invokes parsePort
-tryParse arg text String text lend
-tryParse out parsed Int64
+tryParse argument text String text lend
+tryParse result parsed Int64
 tryParse ownedBy none
 tryParse cleanedBy none
 tryParse borrows none
@@ -221,14 +222,14 @@ tryParse catch ignoredError ConfigError
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -241,14 +242,14 @@ main label showRejected loopKind none
 main label showRejected within none
 main label broken loopKind none
 main label broken within none
-main let goodText immutable String "42"
-main let wordText immutable String "port"
-main let largeText immutable String "70000"
-main let two immutable Int64 2
-main let three immutable Int64 3
-main let rejectedCode immutable ExitCode 3
-main let failCode immutable ExitCode 1
-main let okCode immutable ExitCode 0
+main let goodText String "42" immutable
+main let wordText String "port" immutable
+main let largeText String "70000" immutable
+main let two Int64 2 immutable
+main let three Int64 3 immutable
+main let rejectedCode ExitCode 3 immutable
+main let failCode ExitCode 1 immutable
+main let okCode ExitCode 0 immutable
 main at begin do loadGood
 main at begin branch ifError loadGood goto broken else goto showGood
 main at showGood do printGood
@@ -267,8 +268,8 @@ main at broken return ok failCode
 loadGood is call
 loadGood in main
 loadGood invokes loadPort
-loadGood arg text String goodText lend
-loadGood out goodPort Int64
+loadGood argument text String goodText lend
+loadGood result goodPort Int64
 loadGood ownedBy none
 loadGood cleanedBy none
 loadGood borrows none
@@ -277,8 +278,8 @@ loadGood catch goodError ConfigError
 printGood is call
 printGood in main
 printGood invokes showInt
-printGood arg value Int64 goodPort copy
-printGood out none
+printGood argument value Int64 goodPort copy
+printGood result none
 printGood ownedBy none
 printGood cleanedBy none
 printGood borrows none
@@ -287,8 +288,8 @@ printGood catch none
 loadDefault is call
 loadDefault in main
 loadDefault invokes portOrDefault
-loadDefault arg text String wordText lend
-loadDefault out defaultPort Int64
+loadDefault argument text String wordText lend
+loadDefault result defaultPort Int64
 loadDefault ownedBy none
 loadDefault cleanedBy none
 loadDefault borrows none
@@ -297,8 +298,8 @@ loadDefault catch none
 printDefault is call
 printDefault in main
 printDefault invokes showInt
-printDefault arg value Int64 defaultPort copy
-printDefault out none
+printDefault argument value Int64 defaultPort copy
+printDefault result none
 printDefault ownedBy none
 printDefault cleanedBy none
 printDefault borrows none
@@ -307,8 +308,8 @@ printDefault catch none
 loadLarge is call
 loadLarge in main
 loadLarge invokes loadPort
-loadLarge arg text String largeText lend
-loadLarge out largePort Int64
+loadLarge argument text String largeText lend
+loadLarge result largePort Int64
 loadLarge ownedBy none
 loadLarge cleanedBy none
 loadLarge borrows none
@@ -317,8 +318,8 @@ loadLarge catch largeError ConfigError
 printTwo is call
 printTwo in main
 printTwo invokes showInt
-printTwo arg value Int64 two copy
-printTwo out none
+printTwo argument value Int64 two copy
+printTwo result none
 printTwo ownedBy none
 printTwo cleanedBy none
 printTwo borrows none
@@ -327,8 +328,8 @@ printTwo catch none
 printThree is call
 printThree in main
 printThree invokes showInt
-printThree arg value Int64 three copy
-printThree out none
+printThree argument value Int64 three copy
+printThree result none
 printThree ownedBy none
 printThree cleanedBy none
 printThree borrows none

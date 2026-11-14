@@ -28,26 +28,26 @@ collections exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -56,8 +56,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -66,14 +66,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -84,8 +84,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -97,8 +97,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -108,40 +108,40 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
 
-Counts is instance
+Counts is typeInstance
 Counts purpose "Whole-number counts keyed by whole numbers"
 Counts instantiates map.Map Int64 Int64
 
-Seen is instance
+Seen is typeInstance
 Seen purpose "A set of whole numbers already seen"
 Seen instantiates set.Set Int64
 
-Row is instance
+Row is typeInstance
 Row purpose "One row of a grid"
 Row instantiates list.List Int64
 
-Grid is instance
+Grid is typeInstance
 Grid purpose "Rows of whole numbers"
 Grid instantiates list.List Row
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -154,11 +154,11 @@ main label sets loopKind none
 main label sets within none
 main label failed loopKind none
 main label failed within none
-main let one immutable Int64 1
-main let two immutable Int64 2
-main let minusOne immutable Int64 -1
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let minusOne Int64 -1 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeCounts
 main at begin do putOne
 main at begin do readOne
@@ -191,14 +191,14 @@ main at failed return ok failCode
 store is region
 store in main
 store strategy arena
-store capacity 65536
+store maxBytes 65536
 store released atReturn
 
 makeCounts is call
 makeCounts in main
 makeCounts invokes Counts.new
-makeCounts arg region Region store lend
-makeCounts out counts Counts
+makeCounts argument region Region store lend
+makeCounts result counts Counts
 makeCounts ownedBy store
 makeCounts cleanedBy none
 makeCounts borrows none
@@ -207,10 +207,10 @@ makeCounts catch none
 putOne is call
 putOne in main
 putOne invokes Counts.put
-putOne arg map Counts counts lendMutable
-putOne arg key Int64 one copy
-putOne arg value Int64 two copy
-putOne out none
+putOne argument map Counts counts lendMutable
+putOne argument key Int64 one copy
+putOne argument value Int64 two copy
+putOne result none
 putOne ownedBy none
 putOne cleanedBy none
 putOne borrows none
@@ -219,9 +219,9 @@ putOne catch none
 readOne is call
 readOne in main
 readOne invokes Counts.get
-readOne arg map Counts counts lend
-readOne arg key Int64 one copy
-readOne out countOfOne Int64
+readOne argument map Counts counts lend
+readOne argument key Int64 one copy
+readOne result countOfOne Int64
 readOne ownedBy none
 readOne cleanedBy none
 readOne borrows none
@@ -230,8 +230,8 @@ readOne catch missing map.KeyMissing
 printCount is call
 printCount in main
 printCount invokes showInt
-printCount arg value Int64 countOfOne copy
-printCount out none
+printCount argument value Int64 countOfOne copy
+printCount result none
 printCount ownedBy none
 printCount cleanedBy none
 printCount borrows none
@@ -240,8 +240,8 @@ printCount catch none
 countKeys is call
 countKeys in main
 countKeys invokes Counts.length
-countKeys arg map Counts counts lend
-countKeys out keys Int64
+countKeys argument map Counts counts lend
+countKeys result keys Int64
 countKeys ownedBy none
 countKeys cleanedBy none
 countKeys borrows none
@@ -250,8 +250,8 @@ countKeys catch none
 printKeys is call
 printKeys in main
 printKeys invokes showInt
-printKeys arg value Int64 keys copy
-printKeys out none
+printKeys argument value Int64 keys copy
+printKeys result none
 printKeys ownedBy none
 printKeys cleanedBy none
 printKeys borrows none
@@ -260,9 +260,9 @@ printKeys catch none
 readTwo is call
 readTwo in main
 readTwo invokes Counts.get
-readTwo arg map Counts counts lend
-readTwo arg key Int64 two copy
-readTwo out countOfTwo Int64
+readTwo argument map Counts counts lend
+readTwo argument key Int64 two copy
+readTwo result countOfTwo Int64
 readTwo ownedBy none
 readTwo cleanedBy none
 readTwo borrows none
@@ -271,8 +271,8 @@ readTwo catch missingTwoError map.KeyMissing
 printMissing is call
 printMissing in main
 printMissing invokes showInt
-printMissing arg value Int64 minusOne copy
-printMissing out none
+printMissing argument value Int64 minusOne copy
+printMissing result none
 printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
@@ -281,8 +281,8 @@ printMissing catch none
 makeSeen is call
 makeSeen in main
 makeSeen invokes Seen.new
-makeSeen arg region Region store lend
-makeSeen out seen Seen
+makeSeen argument region Region store lend
+makeSeen result seen Seen
 makeSeen ownedBy store
 makeSeen cleanedBy none
 makeSeen borrows none
@@ -291,9 +291,9 @@ makeSeen catch none
 addOne is call
 addOne in main
 addOne invokes Seen.add
-addOne arg set Seen seen lendMutable
-addOne arg item Int64 one copy
-addOne out none
+addOne argument set Seen seen lendMutable
+addOne argument item Int64 one copy
+addOne result none
 addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
@@ -302,9 +302,9 @@ addOne catch none
 hasOne is call
 hasOne in main
 hasOne invokes Seen.contains
-hasOne arg set Seen seen lend
-hasOne arg item Int64 one copy
-hasOne out containsOne Bool
+hasOne argument set Seen seen lend
+hasOne argument item Int64 one copy
+hasOne result containsOne Bool
 hasOne ownedBy none
 hasOne cleanedBy none
 hasOne borrows none
@@ -313,8 +313,8 @@ hasOne catch none
 printHas is call
 printHas in main
 printHas invokes showBool
-printHas arg flag Bool containsOne copy
-printHas out none
+printHas argument flag Bool containsOne copy
+printHas result none
 printHas ownedBy none
 printHas cleanedBy none
 printHas borrows none
@@ -323,9 +323,9 @@ printHas catch none
 removeOne is call
 removeOne in main
 removeOne invokes Seen.remove
-removeOne arg set Seen seen lendMutable
-removeOne arg item Int64 one copy
-removeOne out none
+removeOne argument set Seen seen lendMutable
+removeOne argument item Int64 one copy
+removeOne result none
 removeOne ownedBy none
 removeOne cleanedBy none
 removeOne borrows none
@@ -334,9 +334,9 @@ removeOne catch none
 hasOneAgain is call
 hasOneAgain in main
 hasOneAgain invokes Seen.contains
-hasOneAgain arg set Seen seen lend
-hasOneAgain arg item Int64 one copy
-hasOneAgain out stillContains Bool
+hasOneAgain argument set Seen seen lend
+hasOneAgain argument item Int64 one copy
+hasOneAgain result stillContains Bool
 hasOneAgain ownedBy none
 hasOneAgain cleanedBy none
 hasOneAgain borrows none
@@ -345,8 +345,8 @@ hasOneAgain catch none
 printHasAgain is call
 printHasAgain in main
 printHasAgain invokes showBool
-printHasAgain arg flag Bool stillContains copy
-printHasAgain out none
+printHasAgain argument flag Bool stillContains copy
+printHasAgain result none
 printHasAgain ownedBy none
 printHasAgain cleanedBy none
 printHasAgain borrows none
@@ -355,8 +355,8 @@ printHasAgain catch none
 countSeen is call
 countSeen in main
 countSeen invokes Seen.length
-countSeen arg set Seen seen lend
-countSeen out seenCount Int64
+countSeen argument set Seen seen lend
+countSeen result seenCount Int64
 countSeen ownedBy none
 countSeen cleanedBy none
 countSeen borrows none
@@ -365,8 +365,8 @@ countSeen catch none
 printSeen is call
 printSeen in main
 printSeen invokes showInt
-printSeen arg value Int64 seenCount copy
-printSeen out none
+printSeen argument value Int64 seenCount copy
+printSeen result none
 printSeen ownedBy none
 printSeen cleanedBy none
 printSeen borrows none
@@ -375,8 +375,8 @@ printSeen catch none
 makeRow is call
 makeRow in main
 makeRow invokes Row.new
-makeRow arg region Region store lend
-makeRow out row Row
+makeRow argument region Region store lend
+makeRow result row Row
 makeRow ownedBy store
 makeRow cleanedBy none
 makeRow borrows none
@@ -385,9 +385,9 @@ makeRow catch none
 appendCell is call
 appendCell in main
 appendCell invokes Row.append
-appendCell arg list Row row lendMutable
-appendCell arg item Int64 one copy
-appendCell out none
+appendCell argument list Row row lendMutable
+appendCell argument item Int64 one copy
+appendCell result none
 appendCell ownedBy none
 appendCell cleanedBy none
 appendCell borrows none
@@ -396,8 +396,8 @@ appendCell catch none
 makeGrid is call
 makeGrid in main
 makeGrid invokes Grid.new
-makeGrid arg region Region store lend
-makeGrid out grid Grid
+makeGrid argument region Region store lend
+makeGrid result grid Grid
 makeGrid ownedBy store
 makeGrid cleanedBy none
 makeGrid borrows none
@@ -406,9 +406,9 @@ makeGrid catch none
 appendRow is call
 appendRow in main
 appendRow invokes Grid.append
-appendRow arg list Grid grid lendMutable
-appendRow arg item Row row give
-appendRow out none
+appendRow argument list Grid grid lendMutable
+appendRow argument item Row row give
+appendRow result none
 appendRow ownedBy none
 appendRow cleanedBy none
 appendRow borrows none
@@ -417,8 +417,8 @@ appendRow catch none
 countRows is call
 countRows in main
 countRows invokes Grid.length
-countRows arg list Grid grid lend
-countRows out rows Int64
+countRows argument list Grid grid lend
+countRows result rows Int64
 countRows ownedBy none
 countRows cleanedBy none
 countRows borrows none
@@ -427,8 +427,8 @@ countRows catch none
 printRows is call
 printRows in main
 printRows invokes showInt
-printRows arg value Int64 rows copy
-printRows out none
+printRows argument value Int64 rows copy
+printRows result none
 printRows ownedBy none
 printRows cleanedBy none
 printRows borrows none

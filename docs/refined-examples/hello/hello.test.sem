@@ -4,19 +4,19 @@
 greetingTest is test
 greetingTest purpose "Running main prints the greeting and exits with code zero"
 greetingTest verifies main printsGreeting
-greetingTest typeParam none
+greetingTest typeParameter none
 greetingTest input none
 greetingTest output none
-greetingTest outputOwner none
+greetingTest outputOwnedBy none
 greetingTest raises none
 greetingTest effect write console.stdout
 greetingTest uses stdoutWriter
-greetingTest memory heap false
+greetingTest memoryHeap false
 greetingTest async false
 greetingTest maxRecursion none
 greetingTest label begin loopKind none
 greetingTest label begin within none
-greetingTest let expectedCode immutable ExitCode 0
+greetingTest let expectedCode ExitCode 0 immutable
 greetingTest at begin do runMain
 greetingTest at begin do expectZero
 greetingTest at begin return ok none
@@ -24,8 +24,8 @@ greetingTest at begin return ok none
 runMain is call
 runMain in greetingTest
 runMain invokes main
-runMain arg none
-runMain out mainCode ExitCode
+runMain argument none
+runMain result mainCode ExitCode
 runMain ownedBy none
 runMain cleanedBy none
 runMain borrows none
@@ -34,9 +34,9 @@ runMain catch none
 expectZero is call
 expectZero in greetingTest
 expectZero invokes test.assertEqualExitCode
-expectZero arg expected ExitCode expectedCode copy
-expectZero arg actual ExitCode mainCode copy
-expectZero out none
+expectZero argument expected ExitCode expectedCode copy
+expectZero argument actual ExitCode mainCode copy
+expectZero result none
 expectZero ownedBy none
 expectZero cleanedBy none
 expectZero borrows none

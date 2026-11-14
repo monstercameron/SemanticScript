@@ -39,7 +39,7 @@ CODES: dict[str, str] = {
     "R407": "Declared effects differ from performed effects",
     "R408": "Capability rule broken",
     "R409": "Ownership row disagrees with the target",
-    "R410": "Declared fact differs from the program (async, memory heap, maxRecursion)",
+    "R410": "Declared fact differs from the program (async, memoryHeap, maxRecursion)",
     "R411": "Duplicate name in an operation's scope",
     # R5xx control flow
     "R501": "Block structure",

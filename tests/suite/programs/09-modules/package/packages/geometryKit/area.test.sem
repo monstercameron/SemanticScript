@@ -3,20 +3,20 @@
 squareTest is test
 squareTest purpose "Three squared is nine"
 squareTest verifies square sideTimesSide
-squareTest typeParam none
+squareTest typeParameter none
 squareTest input none
 squareTest output none
-squareTest outputOwner none
+squareTest outputOwnedBy none
 squareTest raises none
 squareTest effect none
 squareTest uses none
-squareTest memory heap false
+squareTest memoryHeap false
 squareTest async false
 squareTest maxRecursion none
 squareTest label begin loopKind none
 squareTest label begin within none
-squareTest let three immutable Int64 3
-squareTest let nine immutable Int64 9
+squareTest let three Int64 3 immutable
+squareTest let nine Int64 9 immutable
 squareTest at begin do run
 squareTest at begin do expect
 squareTest at begin return ok none
@@ -24,8 +24,8 @@ squareTest at begin return ok none
 run is call
 run in squareTest
 run invokes square
-run arg side Int64 three copy
-run out result Int64
+run argument side Int64 three copy
+run result result Int64
 run ownedBy none
 run cleanedBy none
 run borrows none
@@ -34,9 +34,9 @@ run catch none
 expect is call
 expect in squareTest
 expect invokes test.assertEqualInt64
-expect arg expected Int64 nine copy
-expect arg actual Int64 result copy
-expect out none
+expect argument expected Int64 nine copy
+expect argument actual Int64 result copy
+expect result none
 expect ownedBy none
 expect cleanedBy none
 expect borrows none

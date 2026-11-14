@@ -3,20 +3,20 @@
 fiveFactorialTest is test
 fiveFactorialTest purpose "The factorial of 5 is computed as 120"
 fiveFactorialTest verifies factorial fiveFactorial
-fiveFactorialTest typeParam none
+fiveFactorialTest typeParameter none
 fiveFactorialTest input none
 fiveFactorialTest output none
-fiveFactorialTest outputOwner none
+fiveFactorialTest outputOwnedBy none
 fiveFactorialTest raises none
 fiveFactorialTest effect none
 fiveFactorialTest uses none
-fiveFactorialTest memory heap false
+fiveFactorialTest memoryHeap false
 fiveFactorialTest async false
 fiveFactorialTest maxRecursion none
 fiveFactorialTest label begin loopKind none
 fiveFactorialTest label begin within none
-fiveFactorialTest let five immutable Int64 5
-fiveFactorialTest let expected immutable Int64 120
+fiveFactorialTest let five Int64 5 immutable
+fiveFactorialTest let expected Int64 120 immutable
 fiveFactorialTest at begin do computeFive
 fiveFactorialTest at begin do expectOneHundredTwenty
 fiveFactorialTest at begin return ok none
@@ -24,8 +24,8 @@ fiveFactorialTest at begin return ok none
 computeFive is call
 computeFive in fiveFactorialTest
 computeFive invokes factorial
-computeFive arg n Int64 five copy
-computeFive out actual Int64
+computeFive argument n Int64 five copy
+computeFive result actual Int64
 computeFive ownedBy none
 computeFive cleanedBy none
 computeFive borrows none
@@ -34,9 +34,9 @@ computeFive catch none
 expectOneHundredTwenty is call
 expectOneHundredTwenty in fiveFactorialTest
 expectOneHundredTwenty invokes test.assertEqualInt64
-expectOneHundredTwenty arg expected Int64 expected copy
-expectOneHundredTwenty arg actual Int64 actual copy
-expectOneHundredTwenty out none
+expectOneHundredTwenty argument expected Int64 expected copy
+expectOneHundredTwenty argument actual Int64 actual copy
+expectOneHundredTwenty result none
 expectOneHundredTwenty ownedBy none
 expectOneHundredTwenty cleanedBy none
 expectOneHundredTwenty borrows none

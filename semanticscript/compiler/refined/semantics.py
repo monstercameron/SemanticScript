@@ -5,8 +5,8 @@ Covers enforcement-plan steps 3, 4, 6, and the static half of 8:
 - every stated type matches what it describes (LR-05);
 - every call's arguments match the target's parameters, in order, with the
   paired passing mode (LR-20, LR-31);
-- `out`, `catch`, `ownedBy`, `cleanedBy`, and `borrows` agree with the target;
-- `effect`, `uses`, `async`, `memory heap`, and `maxRecursion` state exactly
+- `result`, `catch`, `ownedBy`, `cleanedBy`, and `borrows` agree with the target;
+- `effect`, `uses`, `async`, `memoryHeap`, and `maxRecursion` state exactly
   what the operation does (LR-07, LR-10, LR-20, LR-22, LR-33).
 """
 from __future__ import annotations
@@ -141,7 +141,7 @@ class World:
         """LR-31: the passing mode a type takes when it is only read."""
         if canon == "Region":
             return "borrowed"
-        return "value" if self.plain(canon) else "borrowed"
+        return "copied" if self.plain(canon) else "borrowed"
 
     def _local_type_info(self, m: Module, name: str) -> Optional[TypeInfo]:
         ent = m.types.get(name)
@@ -157,10 +157,10 @@ class World:
                         for r in ent.facts("variant")]
             return TypeInfo(canon, "enum", None, variants=variants, type_params=list(tparams.values()))
         if ent.kind == "alias":
-            return TypeInfo(canon, "alias", None, base=resolve_type(self, m, ent.value("for"), ent.line, quiet=True))
+            return TypeInfo(canon, "alias", None, base=resolve_type(self, m, ent.value("aliasOf"), ent.line, quiet=True))
         if ent.kind == "operationType":
             return TypeInfo(canon, "operationType", True, sig=header_sig(self, m, ent, quiet=True))
-        if ent.kind == "instance":
+        if ent.kind == "typeInstance":
             row = ent.fact("instantiates")
             if row is None:
                 return None
@@ -206,7 +206,7 @@ class World:
             out["equals"] = Sig((Param("left", canon, mode(canon)), Param("right", canon, mode(canon))), "Bool")
         if info.kind in ("enum", "instance") and info.variants and not info.type_params:
             for n, p in info.variants:
-                out[n] = Sig(() if p is None else (Param("payload", p, "value" if self.plain(p) else "owned"),), canon)
+                out[n] = Sig(() if p is None else (Param("payload", p, "copied" if self.plain(p) else "owned"),), canon)
             out["equals"] = Sig((Param("left", canon, mode(canon)), Param("right", canon, mode(canon))), "Bool")
         return out
 
@@ -215,7 +215,7 @@ class World:
 
 def type_params_of(ent: Entity) -> dict[str, str]:
     """`T typeParam plain` -> {"T": "T@plain"}."""
-    return {r.text(0): f"{r.text(0)}@{r.text(1)}" for r in ent.facts("typeParam") if r.text(0) != "none"}
+    return {r.text(0): f"{r.text(0)}@{r.text(1)}" for r in ent.facts("typeParameter") if r.text(0) != "none"}
 
 
 def resolve_type(world: World, m: Module, text: Optional[str], line: int, tparams=None, quiet: bool = False) -> Optional[str]:
@@ -270,7 +270,7 @@ def header_sig(world: World, m: Module, ent: Entity, quiet: bool = False) -> Sig
             inputs.append(Param(r.text(0), resolve_type(world, m, r.text(1), r.line, tp, quiet=quiet), r.text(2)))
     out = ent.value("output")
     raises = ent.value("raises")
-    owner = ent.value("outputOwner")
+    owner = ent.value("outputOwnedBy")
     effects = frozenset((r.text(0), r.text(1)) for r in ent.facts("effect") if r.text(0) != "none")
     return Sig(tuple(inputs),
                None if out in (None, "none") else resolve_type(world, m, out, ent.line, tp, quiet=True),
@@ -457,26 +457,23 @@ def _check_invariant_coverage(m: Module) -> None:
                              f"add a test in `{m.short}.test.sem` with `verifies {op.name} {r.text(0)}`")
 
 
+def grant_scope(row) -> Optional[str]:
+    """The scope a `grants <verb> <resource> <scope|none>` row states, or None for `none` (D-47)."""
+    return row.args[2].value if len(row.args) > 2 and row.args[2].kind == "string" else None
+
+
 def _check_capability(m: Module, cap: Entity) -> None:
-    """LR-34 rule 5: a capability over a scoped resource states its scope; others state `scope none`."""
-    kinds = {SCOPED_RESOURCES.get(r.text(1)) for r in cap.facts("grants")}
-    scope_row = cap.fact("scope")
-    if scope_row is None:
-        return
-    scoped = {k for k in kinds if k is not None}
-    if len(scoped) > 1 or (scoped and None in kinds):
-        m.sink.error("R408", scope_row.line, f"capability `{cap.name}` grants resources that are scoped differently; "
-                     "split it into one capability per kind of scope")
-    elif scoped and scope_row.text(0) == "none":
-        res = next(r.text(1) for r in cap.facts("grants") if r.text(1) in SCOPED_RESOURCES)
-        m.sink.error("R408", scope_row.line, f"`{res}` is a scoped resource, so `{cap.name} scope` states which part "
-                     "of it the capability covers")
-    elif not scoped and scope_row.text(0) != "none":
-        m.sink.error("R408", scope_row.line, f"nothing `{cap.name}` grants takes a scope; write `{cap.name} scope none`")
-    elif "fs.files" in {r.text(1) for r in cap.facts("grants")} and scope_row.args and \
-            scope_row.args[0].kind == "string" and not scope_row.args[0].value.endswith(("/", "*")):
-        m.sink.error("R408", scope_row.line, f"an `fs.files` scope is a directory ending in `/` (`\"data/\"`) or a name "
-                     f"pattern ending in `*` (`\"suite-*\"`); `{scope_row.args[0].value}` is neither")
+    """LR-34 rule 5: a grant of a scoped resource states its scope; any other grant states `none`."""
+    for g in cap.facts("grants"):
+        res, scope = g.text(1), grant_scope(g)
+        if res in SCOPED_RESOURCES and scope is None:
+            m.sink.error("R408", g.line, f"`{res}` is a scoped resource, so the grant states which part of it "
+                         f"`{cap.name}` covers")
+        elif res not in SCOPED_RESOURCES and scope is not None:
+            m.sink.error("R408", g.line, f"`{res}` takes no scope; this grant ends in `none`")
+        elif res == "fs.files" and scope is not None and not scope.endswith(("/", "*")):
+            m.sink.error("R408", g.line, f"an `fs.files` scope is a directory ending in `/` (`\"data/\"`) or a name "
+                         f"pattern ending in `*` (`\"suite-*\"`); `{scope}` is neither")
 
 
 def _check_op_instance(world: World, m: Module, ent: Entity) -> None:
@@ -541,13 +538,13 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
         if r.text(1) != "none":
             resolve_type(world, m, r.text(1), r.line, tparams)
     if ent.kind == "alias":
-        resolve_type(world, m, ent.value("for"), ent.line)
+        resolve_type(world, m, ent.value("aliasOf"), ent.line)
         idx = ent.value("indexes")
         if idx not in (None, "none"):
             resolve_type(world, m, idx, ent.line)
     if ent.kind == "operationType":
         _check_header(world, m, ent)
-    if ent.kind == "instance":
+    if ent.kind == "typeInstance":
         row = ent.fact("instantiates")
         if row is None:
             return
@@ -590,7 +587,7 @@ def _check_foreign(world: World, m: Module, row, canon: str) -> None:
         m.sink.error("R403", row.line, f"`ffi.Function` takes an operation type; `{canon}` is not one")
         return
     sig = info.sig
-    bad = [p.type for p in sig.inputs if p.type not in FOREIGN_TYPES or p.mode != "value"]
+    bad = [p.type for p in sig.inputs if p.type not in FOREIGN_TYPES or p.mode != "copied"]
     if sig.output is not None and sig.output not in FOREIGN_TYPES:
         bad.append(sig.output)
     if bad:
@@ -603,7 +600,7 @@ def _check_foreign(world: World, m: Module, row, canon: str) -> None:
 
 def _check_table(world: World, m: Module, ent: Entity) -> None:
     sink = m.sink
-    rec = resolve_type(world, m, ent.value("of"), ent.line)
+    rec = resolve_type(world, m, ent.value("rowType"), ent.line)
     info = world.type_info(rec)
     if rec is not None and (info is None or info.kind != "record"):
         sink.error("R306", ent.line, f"a table holds records; `{ent.value('of')}` is not a record")
@@ -672,7 +669,7 @@ def _check_op_reference(world: World, m: Module, op_name: str, canon: Optional[s
     problems = []
     if [(p.name, p.type, p.mode) for p in got.inputs] != [(p.name, p.type, p.mode) for p in want.inputs]:
         problems.append("its inputs differ")
-    for attr, label in (("output", "output"), ("output_owner", "outputOwner"), ("raises", "raises"), ("waits", "async")):
+    for attr, label in (("output", "output"), ("output_owner", "outputOwnedBy"), ("raises", "raises"), ("waits", "async")):
         if getattr(got, attr) != getattr(want, attr):
             problems.append(f"its `{label}` differs")
     if not got.effects <= want.effects:
@@ -699,18 +696,18 @@ def _check_header(world: World, m: Module, ent: Entity) -> None:
         _check_mode(world, m, t, r.text(2), r.line, f"input `{r.text(0)}`")
     out = ent.value("output")
     out_t = None if out in (None, "none") else resolve_type(world, m, out, ent.fact("output").line, tp)
-    owner = ent.value("outputOwner")
-    oline = ent.fact("outputOwner").line if ent.fact("outputOwner") else ent.line
+    owner = ent.value("outputOwnedBy")
+    oline = ent.fact("outputOwnedBy").line if ent.fact("outputOwnedBy") else ent.line
     if out_t is None or world.plain(out_t):
         if owner not in (None, "none"):
-            sink.error("R409", oline, "`outputOwner` is `none` when there is no output or the output is a plain value")
+            sink.error("R409", oline, "`outputOwnedBy` is `none` when there is no output or the output is a plain value")
     else:
         info = world.type_info(out_t)
         if info is not None and info.kind == "resource":
             if owner != "caller":
-                sink.error("R409", oline, f"`{out}` is a resource, so `outputOwner caller` hands it to the caller")
+                sink.error("R409", oline, f"`{out}` is a resource, so `outputOwnedBy caller` hands it to the caller")
         elif owner == "caller" or owner == "none" or owner not in inputs or inputs[owner] != "Region":
-            sink.error("R409", oline, f"`{out}` is region-owned, so `outputOwner` names the `Region` input it is "
+            sink.error("R409", oline, f"`{out}` is region-owned, so `outputOwnedBy` names the `Region` input it is "
                        "allocated in")
     raises = ent.value("raises")
     if raises not in (None, "none"):
@@ -727,9 +724,9 @@ def _check_mode(world: World, m: Module, t: Optional[str], mode: str, line: int,
         if mode != "borrowed":
             m.sink.error("R406", line, f"{what} is a `Region`, which is always `borrowed`")
         return
-    if world.plain(t) and mode != "value":
+    if world.plain(t) and mode != "copied":
         m.sink.error("R406", line, f"{what} has the plain type `{_show(t)}`, so it is passed as `value`")
-    if not world.plain(t) and mode == "value":
+    if not world.plain(t) and mode == "copied":
         m.sink.error("R406", line, f"{what} has the non-plain type `{_show(t)}`, so it cannot be copied; use "
                      "`borrowed`, `borrowedMutable`, or `owned`")
 
@@ -754,20 +751,22 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
         names.setdefault(name, line)
 
     if ent.kind == "test" and tp:
-        sink.error("R604", ent.fact("typeParam").line, "a test is not generic; it states `typeParam none`")
+        sink.error("R604", ent.fact("typeParameter").line, "a test is not generic; it states `typeParameter none`")
     for r in ent.facts("input"):
         if r.text(0) != "none":
             t = resolve_type(world, m, r.text(1), r.line, tp, quiet=True)
             info.bindings[r.text(0)] = Binding(r.text(0), t, "input", r.line, mode=r.text(2))
             claim(r.text(0), r.line, "input")
     for r in ent.facts("let"):
-        t = resolve_type(world, m, r.text(2), r.line, tp)
-        tok = r.args[3]
+        if r.text(0) == "none":
+            continue
+        t = resolve_type(world, m, r.text(1), r.line, tp)
+        tok = r.args[2]
         lit = None
-        if r.text(1) == "immutable" and (tok.kind == "string" or not S.is_name(tok.raw)):
+        if r.text(3) == "immutable" and (tok.kind == "string" or not S.is_name(tok.raw)):
             lit = literal_value(tok)
-        info.bindings[r.text(0)] = Binding(r.text(0), t, "let", r.line, mutable=r.text(1) == "mutable",
-                                           unset=r.text(3) == "unset", literal=lit)
+        info.bindings[r.text(0)] = Binding(r.text(0), t, "let", r.line, mutable=r.text(3) == "mutable",
+                                           unset=tok.raw == "unset", literal=lit)
         claim(r.text(0), r.line, "let")
     for r in ent.facts("at"):
         lab = r.text(0)
@@ -790,9 +789,9 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
             info.calls[o.name] = ci
             if ci.out:
                 b = o.value("borrows")
-                info.bindings[ci.out[0]] = Binding(ci.out[0], ci.out[1], "out", o.fact("out").line,
+                info.bindings[ci.out[0]] = Binding(ci.out[0], ci.out[1], "out", o.fact("result").line,
                                                    view_of=None if b in (None, "none") else b)
-                claim(ci.out[0], o.fact("out").line, f"result of `{o.name}`")
+                claim(ci.out[0], o.fact("result").line, f"result of `{o.name}`")
             if ci.catch:
                 info.bindings[ci.catch[0]] = Binding(ci.catch[0], ci.catch[1], "catch", o.fact("catch").line)
                 claim(ci.catch[0], o.fact("catch").line, f"error of `{o.name}`")
@@ -815,10 +814,10 @@ def _build_op(world: World, m: Module, ent: Entity) -> OpInfo:
 def _build_call(world: World, m: Module, op: OpInfo, ent: Entity) -> CallInfo:
     tp = op.tparams
     args = []
-    for r in ent.facts("arg"):
+    for r in ent.facts("argument"):
         if r.text(0) != "none":
             args.append((r.text(0), resolve_type(world, m, r.text(1), r.line, tp), r.text(2), r.text(3), r.line))
-    outr, catchr = ent.fact("out"), ent.fact("catch")
+    outr, catchr = ent.fact("result"), ent.fact("catch")
     out = None
     if outr is not None and outr.text(0) != "none":
         out = (outr.text(0), resolve_type(world, m, outr.text(1), outr.line, tp))
@@ -921,7 +920,7 @@ def value_type(world: World, m: Module, op: OpInfo, name: str) -> tuple[str, Opt
     if name in m.ops:
         return "op", None
     if name in m.tables:
-        return "table", resolve_type(world, m, m.tables[name].value("of"), m.tables[name].line, quiet=True)
+        return "table", resolve_type(world, m, m.tables[name].value("rowType"), m.tables[name].line, quiet=True)
     return "unknown", None
 
 
@@ -930,7 +929,7 @@ def _check_op(world: World, m: Module, op: OpInfo) -> None:
     ent = op.entity
     _check_header(world, m, ent)
     if ent.kind == "test":
-        for pred in ("input", "output", "outputOwner", "raises"):
+        for pred in ("input", "output", "outputOwnedBy", "raises"):
             v = ent.value(pred)
             if v not in (None, "none"):
                 sink.error("R604", ent.fact(pred).line, f"a test states `{pred} none`")
@@ -969,8 +968,10 @@ def _check_op(world: World, m: Module, op: OpInfo) -> None:
 
 
 def _check_let(world: World, m: Module, op: OpInfo, r: Row) -> None:
+    if r.text(0) == "none":
+        return
     b = op.bindings.get(r.text(0))
-    tok = r.args[3]
+    tok = r.args[2]
     if b is None or b.type is None:
         return
     if tok.raw == "unset":
@@ -1025,7 +1026,7 @@ def _check_call(world: World, m: Module, op: OpInfo, ci: CallInfo) -> None:
     got = [a[0] for a in ci.args]
     if want != got:
         if not want:
-            sink.error("R405", ent.line, f"`{ent.name}`'s target takes no arguments; write `{ent.name} arg none`")
+            sink.error("R405", ent.line, f"`{ent.name}`'s target takes no arguments; write `{ent.name} argument none`")
         else:
             sink.error("R405", ent.line, f"`{ent.name}` passes ({', '.join(got) or 'none'}); its target takes "
                        f"({', '.join(want)}), in that order")
@@ -1056,13 +1057,13 @@ def _check_call(world: World, m: Module, op: OpInfo, ci: CallInfo) -> None:
     if sig.scoped and sig.scoped in passed:
         _check_scope(m, op, ci, sig, passed[sig.scoped])
     # out and catch
-    outr, catchr = ent.fact("out"), ent.fact("catch")
+    outr, catchr = ent.fact("result"), ent.fact("catch")
     if outr is not None:
         if sig.output is None and ci.out is not None:
-            sink.error("R403", outr.line, f"`{ent.name}`'s target returns nothing; write `{ent.name} out none`")
+            sink.error("R403", outr.line, f"`{ent.name}`'s target returns nothing; write `{ent.name} result none`")
         elif sig.output is not None and ci.out is None:
             sink.error("R403", outr.line, f"`{ent.name}`'s target returns `{_show(sig.output)}`; name it with "
-                       f"`{ent.name} out <name> {_show(sig.output)}`")
+                       f"`{ent.name} result <name> {_show(sig.output)}`")
         elif ci.out is not None and ci.out[1] is not None and ci.out[1] != sig.output:
             sink.error("R403", outr.line, f"`{ent.name}`'s target returns `{_show(sig.output)}`, not `{_show(ci.out[1])}`")
     if catchr is not None:
@@ -1150,11 +1151,10 @@ def _check_scope(m: Module, op: OpInfo, ci: CallInfo, sig: Sig, value: str) -> N
         scopes = []
         for r in op.entity.facts("uses"):
             cap = m.capabilities.get(r.text(0))
-            if cap is None or (verb, res) not in {(g.text(0), g.text(1)) for g in cap.facts("grants")}:
+            if cap is None:
                 continue
-            srow = cap.fact("scope")
-            if srow is not None and srow.args[0].kind == "string":
-                scopes.append(srow.args[0].value)
+            scopes += [grant_scope(g) for g in cap.facts("grants")
+                       if (g.text(0), g.text(1)) == (verb, res) and grant_scope(g) is not None]
         ok = False
         for s in scopes:
             if kind == "port":
@@ -1194,20 +1194,20 @@ def _check_cleanups(world: World, m: Module, op: OpInfo) -> None:
     for c in op.owned.values():
         if c.kind != "cleanup":
             continue
-        worker, cleans = c.value("call"), c.value("cleans")
+        worker, cleans = c.value("runs"), c.value("cleans")
         b = op.bindings.get(cleans)
         owned_input = b is not None and b.kind == "input" and b.mode == "owned"
         owned_out = any(ci.out and ci.out[0] == cleans and ci.entity.value("ownedBy") == op.entity.name
                         for ci in op.calls.values())
         if not (owned_input or owned_out):
-            sink.error("R409", c.fact("cleans").line, f"cleanup `{c.name}` cleans `{cleans}`, which `{op.entity.name}` "
+            sink.error("R409", (c.fact("cleans") or c).line, f"cleanup `{c.name}` cleans `{cleans}`, which `{op.entity.name}` "
                        "does not own (an `owned` input or a result with `ownedBy " + op.entity.name + "`)")
         w = op.calls.get(worker)
         if w is None or w.entity.kind != "call":
-            sink.error("R402", c.fact("call").line, f"cleanup `{c.name}` runs `{worker}`, which is not a call of "
+            sink.error("R402", (c.fact("runs") or c).line, f"cleanup `{c.name}` runs `{worker}`, which is not a call of "
                        f"`{op.entity.name}`")
         elif not any(a[2] == cleans and a[3] == "give" for a in w.args):
-            sink.error("R409", c.fact("call").line, f"the cleanup's call `{worker}` must take `{cleans}` with `give`")
+            sink.error("R409", (c.fact("runs") or c).line, f"the cleanup's call `{worker}` must take `{cleans}` with `give`")
         for ci in op.calls.values():
             if ci.out and ci.out[0] == cleans and ci.entity.value("cleanedBy") != c.name:
                 row = ci.entity.fact("cleanedBy")
@@ -1253,10 +1253,10 @@ def _check_exact_facts(world: World, m: Module, op: OpInfo) -> None:
                    f"step; `{ent.name}` should state `async {'true' if waits else 'false'}`")
     heap = any(o.kind == "region" for o in op.owned.values()) or \
         any(b.kind == "input" and b.type == "Region" for b in op.bindings.values())
-    mrow = ent.fact("memory")
-    if mrow is not None and (mrow.text(1) == "true") != heap:
-        sink.error("R410", mrow.line, f"`memory heap` is `true` exactly when the operation owns a region or takes "
-                   f"one as input; `{ent.name}` should state `memory heap {'true' if heap else 'false'}`")
+    mrow = ent.fact("memoryHeap")
+    if mrow is not None and (mrow.text(0) == "true") != heap:
+        sink.error("R410", mrow.line, f"`memoryHeap` is `true` exactly when the operation owns a region or takes "
+                   f"one as input; `{ent.name}` should state `memoryHeap {'true' if heap else 'false'}`")
 
 
 def check_recursion(world: World) -> None:

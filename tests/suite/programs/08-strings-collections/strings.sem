@@ -44,26 +44,26 @@ strings exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -72,8 +72,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -82,14 +82,14 @@ writeValue catch writeError console.WriteError
 showBool is operation
 showBool purpose "Print true or false on its own line"
 showBool invariant none
-showBool typeParam none
-showBool input flag Bool value
+showBool typeParameter none
+showBool input flag Bool copied
 showBool output none
-showBool outputOwner none
+showBool outputOwnedBy none
 showBool raises none
 showBool effect write console.stdout
 showBool uses stdoutWriter
-showBool memory heap false
+showBool memoryHeap false
 showBool async false
 showBool maxRecursion none
 showBool label begin loopKind none
@@ -100,8 +100,8 @@ showBool label sayFalse loopKind none
 showBool label sayFalse within none
 showBool label done loopKind none
 showBool label done within none
-showBool let trueText immutable String "true"
-showBool let falseText immutable String "false"
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
 showBool at begin branch if flag goto sayTrue else goto sayFalse
 showBool at sayTrue do writeTrue
 showBool at sayTrue branch ifError writeTrue goto done else goto done
@@ -113,8 +113,8 @@ writeTrue is call
 writeTrue rationale "A test program has nowhere to report a failed write"
 writeTrue in showBool
 writeTrue invokes console.writeLine
-writeTrue arg text String trueText lend
-writeTrue out none
+writeTrue argument text String trueText lend
+writeTrue result none
 writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
@@ -124,8 +124,8 @@ writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
 writeFalse in showBool
 writeFalse invokes console.writeLine
-writeFalse arg text String falseText lend
-writeFalse out none
+writeFalse argument text String falseText lend
+writeFalse result none
 writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
@@ -134,20 +134,21 @@ writeFalse catch falseError console.WriteError
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -156,8 +157,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -166,14 +167,14 @@ writeValue catch writeError console.WriteError
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -198,26 +199,26 @@ main label showByte loopKind none
 main label showByte within none
 main label broken loopKind none
 main label broken within none
-main let empty immutable String ""
-main let accented immutable String "héllo"
-main let hello immutable String "Hello, "
-main let world immutable String "world"
-main let helloWorld immutable String "Hello, world"
-main let seven immutable Int64 7
-main let five immutable Int64 5
-main let twenty immutable Int64 20
-main let needle immutable String "wor"
-main let absent immutable String "xyz"
-main let minusFortyTwo immutable Int64 -42
-main let goodNumber immutable String "123"
-main let badNumberText immutable String "12a"
-main let escaped immutable String "say \"hi\"\tok\\"
-main let zero immutable Int64 0
-main let one immutable Int64 1
-main let minusOne immutable Int64 -1
-main let rawByte immutable String "\xff"
-main let failCode immutable ExitCode 1
-main let okCode immutable ExitCode 0
+main let empty String "" immutable
+main let accented String "héllo" immutable
+main let hello String "Hello, " immutable
+main let world String "world" immutable
+main let helloWorld String "Hello, world" immutable
+main let seven Int64 7 immutable
+main let five Int64 5 immutable
+main let twenty Int64 20 immutable
+main let needle String "wor" immutable
+main let absent String "xyz" immutable
+main let minusFortyTwo Int64 -42 immutable
+main let goodNumber String "123" immutable
+main let badNumberText String "12a" immutable
+main let escaped String "say \"hi\"\tok\\" immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let minusOne Int64 -1 immutable
+main let rawByte String "\xff" immutable
+main let failCode ExitCode 1 immutable
+main let okCode ExitCode 0 immutable
 main at begin do emptyLength
 main at begin do showEmpty
 main at begin do accentLength
@@ -266,14 +267,14 @@ main at broken return ok failCode
 text is region
 text in main
 text strategy arena
-text capacity 4096
+text maxBytes 4096
 text released atReturn
 
 emptyLength is call
 emptyLength in main
 emptyLength invokes string.byteLength
-emptyLength arg text String empty lend
-emptyLength out emptyBytes Int64
+emptyLength argument text String empty lend
+emptyLength result emptyBytes Int64
 emptyLength ownedBy none
 emptyLength cleanedBy none
 emptyLength borrows none
@@ -282,8 +283,8 @@ emptyLength catch none
 showEmpty is call
 showEmpty in main
 showEmpty invokes showInt
-showEmpty arg value Int64 emptyBytes copy
-showEmpty out none
+showEmpty argument value Int64 emptyBytes copy
+showEmpty result none
 showEmpty ownedBy none
 showEmpty cleanedBy none
 showEmpty borrows none
@@ -292,8 +293,8 @@ showEmpty catch none
 accentLength is call
 accentLength in main
 accentLength invokes string.byteLength
-accentLength arg text String accented lend
-accentLength out accentBytes Int64
+accentLength argument text String accented lend
+accentLength result accentBytes Int64
 accentLength ownedBy none
 accentLength cleanedBy none
 accentLength borrows none
@@ -302,8 +303,8 @@ accentLength catch none
 showAccent is call
 showAccent in main
 showAccent invokes showInt
-showAccent arg value Int64 accentBytes copy
-showAccent out none
+showAccent argument value Int64 accentBytes copy
+showAccent result none
 showAccent ownedBy none
 showAccent cleanedBy none
 showAccent borrows none
@@ -312,10 +313,10 @@ showAccent catch none
 join is call
 join in main
 join invokes string.concat
-join arg left String hello lend
-join arg right String world lend
-join arg region Region text lend
-join out joined String
+join argument left String hello lend
+join argument right String world lend
+join argument region Region text lend
+join result joined String
 join ownedBy text
 join cleanedBy none
 join borrows none
@@ -324,8 +325,8 @@ join catch none
 showJoined is call
 showJoined in main
 showJoined invokes showText
-showJoined arg text String joined lend
-showJoined out none
+showJoined argument text String joined lend
+showJoined result none
 showJoined ownedBy none
 showJoined cleanedBy none
 showJoined borrows none
@@ -334,9 +335,9 @@ showJoined catch none
 sameText is call
 sameText in main
 sameText invokes string.equals
-sameText arg left String joined lend
-sameText arg right String helloWorld lend
-sameText out same Bool
+sameText argument left String joined lend
+sameText argument right String helloWorld lend
+sameText result same Bool
 sameText ownedBy none
 sameText cleanedBy none
 sameText borrows none
@@ -345,8 +346,8 @@ sameText catch none
 showSame is call
 showSame in main
 showSame invokes showBool
-showSame arg flag Bool same copy
-showSame out none
+showSame argument flag Bool same copy
+showSame result none
 showSame ownedBy none
 showSame cleanedBy none
 showSame borrows none
@@ -355,9 +356,9 @@ showSame catch none
 hasPrefix is call
 hasPrefix in main
 hasPrefix invokes string.startsWith
-hasPrefix arg text String joined lend
-hasPrefix arg prefix String hello lend
-hasPrefix out prefixed Bool
+hasPrefix argument text String joined lend
+hasPrefix argument prefix String hello lend
+hasPrefix result prefixed Bool
 hasPrefix ownedBy none
 hasPrefix cleanedBy none
 hasPrefix borrows none
@@ -366,8 +367,8 @@ hasPrefix catch none
 showPrefix is call
 showPrefix in main
 showPrefix invokes showBool
-showPrefix arg flag Bool prefixed copy
-showPrefix out none
+showPrefix argument flag Bool prefixed copy
+showPrefix result none
 showPrefix ownedBy none
 showPrefix cleanedBy none
 showPrefix borrows none
@@ -376,10 +377,10 @@ showPrefix catch none
 cut is call
 cut in main
 cut invokes string.slice
-cut arg text String joined lend
-cut arg start Int64 seven copy
-cut arg length Int64 five copy
-cut out piece String
+cut argument text String joined lend
+cut argument start Int64 seven copy
+cut argument length Int64 five copy
+cut result piece String
 cut ownedBy none
 cut cleanedBy none
 cut borrows joined
@@ -388,8 +389,8 @@ cut catch cutFailed string.StringIndexError
 printCut is call
 printCut in main
 printCut invokes showText
-printCut arg text String piece lend
-printCut out none
+printCut argument text String piece lend
+printCut result none
 printCut ownedBy none
 printCut cleanedBy none
 printCut borrows none
@@ -398,10 +399,10 @@ printCut catch none
 cutTooFar is call
 cutTooFar in main
 cutTooFar invokes string.slice
-cutTooFar arg text String joined lend
-cutTooFar arg start Int64 seven copy
-cutTooFar arg length Int64 twenty copy
-cutTooFar out tooLong String
+cutTooFar argument text String joined lend
+cutTooFar argument start Int64 seven copy
+cutTooFar argument length Int64 twenty copy
+cutTooFar result tooLong String
 cutTooFar ownedBy none
 cutTooFar cleanedBy none
 cutTooFar borrows joined
@@ -410,8 +411,8 @@ cutTooFar catch cutError string.StringIndexError
 printTooFar is call
 printTooFar in main
 printTooFar invokes showInt
-printTooFar arg value Int64 badStart copy
-printTooFar out none
+printTooFar argument value Int64 badStart copy
+printTooFar result none
 printTooFar ownedBy none
 printTooFar cleanedBy none
 printTooFar borrows none
@@ -420,9 +421,9 @@ printTooFar catch none
 search is call
 search in main
 search invokes string.find
-search arg text String joined lend
-search arg needle String needle lend
-search out foundAt Int64
+search argument text String joined lend
+search argument needle String needle lend
+search result foundAt Int64
 search ownedBy none
 search cleanedBy none
 search borrows none
@@ -431,8 +432,8 @@ search catch searchError string.NotFound
 printFound is call
 printFound in main
 printFound invokes showInt
-printFound arg value Int64 foundAt copy
-printFound out none
+printFound argument value Int64 foundAt copy
+printFound result none
 printFound ownedBy none
 printFound cleanedBy none
 printFound borrows none
@@ -441,9 +442,9 @@ printFound catch none
 searchMissing is call
 searchMissing in main
 searchMissing invokes string.find
-searchMissing arg text String joined lend
-searchMissing arg needle String absent lend
-searchMissing out missingAt Int64
+searchMissing argument text String joined lend
+searchMissing argument needle String absent lend
+searchMissing result missingAt Int64
 searchMissing ownedBy none
 searchMissing cleanedBy none
 searchMissing borrows none
@@ -452,8 +453,8 @@ searchMissing catch missingError string.NotFound
 printMissing is call
 printMissing in main
 printMissing invokes showInt
-printMissing arg value Int64 minusOne copy
-printMissing out none
+printMissing argument value Int64 minusOne copy
+printMissing result none
 printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
@@ -462,9 +463,9 @@ printMissing catch none
 numberText is call
 numberText in main
 numberText invokes string.fromInt64
-numberText arg value Int64 minusFortyTwo copy
-numberText arg region Region text lend
-numberText out minusText String
+numberText argument value Int64 minusFortyTwo copy
+numberText argument region Region text lend
+numberText result minusText String
 numberText ownedBy text
 numberText cleanedBy none
 numberText borrows none
@@ -473,8 +474,8 @@ numberText catch none
 printNumber is call
 printNumber in main
 printNumber invokes showText
-printNumber arg text String minusText lend
-printNumber out none
+printNumber argument text String minusText lend
+printNumber result none
 printNumber ownedBy none
 printNumber cleanedBy none
 printNumber borrows none
@@ -483,8 +484,8 @@ printNumber catch none
 parseGood is call
 parseGood in main
 parseGood invokes string.toInt64
-parseGood arg text String goodNumber lend
-parseGood out parsed Int64
+parseGood argument text String goodNumber lend
+parseGood result parsed Int64
 parseGood ownedBy none
 parseGood cleanedBy none
 parseGood borrows none
@@ -493,8 +494,8 @@ parseGood catch goodError string.ParseError
 printParsed is call
 printParsed in main
 printParsed invokes showInt
-printParsed arg value Int64 parsed copy
-printParsed out none
+printParsed argument value Int64 parsed copy
+printParsed result none
 printParsed ownedBy none
 printParsed cleanedBy none
 printParsed borrows none
@@ -503,8 +504,8 @@ printParsed catch none
 parseBad is call
 parseBad in main
 parseBad invokes string.toInt64
-parseBad arg text String badNumberText lend
-parseBad out unparsed Int64
+parseBad argument text String badNumberText lend
+parseBad result unparsed Int64
 parseBad ownedBy none
 parseBad cleanedBy none
 parseBad borrows none
@@ -513,8 +514,8 @@ parseBad catch parseError string.ParseError
 printOne is call
 printOne in main
 printOne invokes showInt
-printOne arg value Int64 one copy
-printOne out none
+printOne argument value Int64 one copy
+printOne result none
 printOne ownedBy none
 printOne cleanedBy none
 printOne borrows none
@@ -523,8 +524,8 @@ printOne catch none
 printEscaped is call
 printEscaped in main
 printEscaped invokes showText
-printEscaped arg text String escaped lend
-printEscaped out none
+printEscaped argument text String escaped lend
+printEscaped result none
 printEscaped ownedBy none
 printEscaped cleanedBy none
 printEscaped borrows none
@@ -533,9 +534,9 @@ printEscaped catch none
 firstByte is call
 firstByte in main
 firstByte invokes string.byteAt
-firstByte arg text String helloWorld lend
-firstByte arg index Int64 zero copy
-firstByte out letterH Byte
+firstByte argument text String helloWorld lend
+firstByte argument index Int64 zero copy
+firstByte result letterH Byte
 firstByte ownedBy none
 firstByte cleanedBy none
 firstByte borrows none
@@ -544,8 +545,8 @@ firstByte catch byteError string.StringIndexError
 widenByte is call
 widenByte in main
 widenByte invokes convert.byteToInt64
-widenByte arg value Byte letterH copy
-widenByte out letterCode Int64
+widenByte argument value Byte letterH copy
+widenByte result letterCode Int64
 widenByte ownedBy none
 widenByte cleanedBy none
 widenByte borrows none
@@ -554,8 +555,8 @@ widenByte catch none
 printByte is call
 printByte in main
 printByte invokes showInt
-printByte arg value Int64 letterCode copy
-printByte out none
+printByte argument value Int64 letterCode copy
+printByte result none
 printByte ownedBy none
 printByte cleanedBy none
 printByte borrows none
@@ -564,8 +565,8 @@ printByte catch none
 rawLength is call
 rawLength in main
 rawLength invokes string.byteLength
-rawLength arg text String rawByte lend
-rawLength out rawBytes Int64
+rawLength argument text String rawByte lend
+rawLength result rawBytes Int64
 rawLength ownedBy none
 rawLength cleanedBy none
 rawLength borrows none
@@ -574,8 +575,8 @@ rawLength catch none
 printRaw is call
 printRaw in main
 printRaw invokes showInt
-printRaw arg value Int64 rawBytes copy
-printRaw out none
+printRaw argument value Int64 rawBytes copy
+printRaw result none
 printRaw ownedBy none
 printRaw cleanedBy none
 printRaw borrows none

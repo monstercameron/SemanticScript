@@ -40,26 +40,26 @@ memory exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -68,28 +68,28 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
 
-Numbers is instance
+Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
 Numbers instantiates list.List Int64
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async false
 main maxRecursion none
 main label begin loopKind none
@@ -122,15 +122,15 @@ main label summed loopKind none
 main label summed within none
 main label broken loopKind none
 main label broken within none
-main let zero immutable Int64 0
-main let one immutable Int64 1
-main let hundred immutable Int64 100
-main let lastIndex immutable Int64 99
-main let fortyTwo immutable Int64 42
-main let index mutable Int64 0
-main let total mutable Int64 0
-main let failCode immutable ExitCode 1
-main let okCode immutable ExitCode 0
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let hundred Int64 100 immutable
+main let lastIndex Int64 99 immutable
+main let fortyTwo Int64 42 immutable
+main let index Int64 0 mutable
+main let total Int64 0 mutable
+main let failCode ExitCode 1 immutable
+main let okCode ExitCode 0 immutable
 main at begin do makeNumbers
 main at begin goto fill
 main at fill do filled
@@ -169,14 +169,14 @@ main at broken return ok failCode
 scratch is region
 scratch in main
 scratch strategy arena
-scratch capacity 65536
+scratch maxBytes 65536
 scratch released atReturn
 
 makeNumbers is call
 makeNumbers in main
 makeNumbers invokes Numbers.new
-makeNumbers arg region Region scratch lend
-makeNumbers out numbers Numbers
+makeNumbers argument region Region scratch lend
+makeNumbers result numbers Numbers
 makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
@@ -185,9 +185,9 @@ makeNumbers catch none
 filled is call
 filled in main
 filled invokes compare.greaterOrEqualInt64
-filled arg left Int64 index copy
-filled arg right Int64 hundred copy
-filled out isFilled Bool
+filled argument left Int64 index copy
+filled argument right Int64 hundred copy
+filled result isFilled Bool
 filled ownedBy none
 filled cleanedBy none
 filled borrows none
@@ -196,9 +196,9 @@ filled catch none
 appendIndex is call
 appendIndex in main
 appendIndex invokes Numbers.append
-appendIndex arg list Numbers numbers lendMutable
-appendIndex arg item Int64 index copy
-appendIndex out none
+appendIndex argument list Numbers numbers lendMutable
+appendIndex argument item Int64 index copy
+appendIndex result none
 appendIndex ownedBy none
 appendIndex cleanedBy none
 appendIndex borrows none
@@ -207,9 +207,9 @@ appendIndex catch none
 advance is call
 advance in main
 advance invokes math.addInt64
-advance arg left Int64 index copy
-advance arg right Int64 one copy
-advance out nextIndex Int64
+advance argument left Int64 index copy
+advance argument right Int64 one copy
+advance result nextIndex Int64
 advance ownedBy none
 advance cleanedBy none
 advance borrows none
@@ -218,8 +218,8 @@ advance catch none
 countNumbers is call
 countNumbers in main
 countNumbers invokes Numbers.length
-countNumbers arg list Numbers numbers lend
-countNumbers out count Int64
+countNumbers argument list Numbers numbers lend
+countNumbers result count Int64
 countNumbers ownedBy none
 countNumbers cleanedBy none
 countNumbers borrows none
@@ -228,8 +228,8 @@ countNumbers catch none
 showCount is call
 showCount in main
 showCount invokes showInt
-showCount arg value Int64 count copy
-showCount out none
+showCount argument value Int64 count copy
+showCount result none
 showCount ownedBy none
 showCount cleanedBy none
 showCount borrows none
@@ -238,9 +238,9 @@ showCount catch none
 readLast is call
 readLast in main
 readLast invokes Numbers.get
-readLast arg list Numbers numbers lend
-readLast arg index Int64 lastIndex copy
-readLast out last Int64
+readLast argument list Numbers numbers lend
+readLast argument index Int64 lastIndex copy
+readLast result last Int64
 readLast ownedBy none
 readLast cleanedBy none
 readLast borrows none
@@ -249,8 +249,8 @@ readLast catch lastError list.IndexOutOfRange
 showLast is call
 showLast in main
 showLast invokes showInt
-showLast arg value Int64 last copy
-showLast out none
+showLast argument value Int64 last copy
+showLast result none
 showLast ownedBy none
 showLast cleanedBy none
 showLast borrows none
@@ -259,10 +259,10 @@ showLast catch none
 replaceFirst is call
 replaceFirst in main
 replaceFirst invokes Numbers.set
-replaceFirst arg list Numbers numbers lendMutable
-replaceFirst arg index Int64 zero copy
-replaceFirst arg item Int64 fortyTwo copy
-replaceFirst out none
+replaceFirst argument list Numbers numbers lendMutable
+replaceFirst argument index Int64 zero copy
+replaceFirst argument item Int64 fortyTwo copy
+replaceFirst result none
 replaceFirst ownedBy none
 replaceFirst cleanedBy none
 replaceFirst borrows none
@@ -271,9 +271,9 @@ replaceFirst catch replaceError list.IndexOutOfRange
 readFirst is call
 readFirst in main
 readFirst invokes Numbers.get
-readFirst arg list Numbers numbers lend
-readFirst arg index Int64 zero copy
-readFirst out first Int64
+readFirst argument list Numbers numbers lend
+readFirst argument index Int64 zero copy
+readFirst result first Int64
 readFirst ownedBy none
 readFirst cleanedBy none
 readFirst borrows none
@@ -282,8 +282,8 @@ readFirst catch firstError list.IndexOutOfRange
 showFirst is call
 showFirst in main
 showFirst invokes showInt
-showFirst arg value Int64 first copy
-showFirst out none
+showFirst argument value Int64 first copy
+showFirst result none
 showFirst ownedBy none
 showFirst cleanedBy none
 showFirst borrows none
@@ -292,9 +292,9 @@ showFirst catch none
 readPastEnd is call
 readPastEnd in main
 readPastEnd invokes Numbers.get
-readPastEnd arg list Numbers numbers lend
-readPastEnd arg index Int64 hundred copy
-readPastEnd out beyond Int64
+readPastEnd argument list Numbers numbers lend
+readPastEnd argument index Int64 hundred copy
+readPastEnd result beyond Int64
 readPastEnd ownedBy none
 readPastEnd cleanedBy none
 readPastEnd borrows none
@@ -303,8 +303,8 @@ readPastEnd catch pastEndError list.IndexOutOfRange
 printBad is call
 printBad in main
 printBad invokes showInt
-printBad arg value Int64 badIndex copy
-printBad out none
+printBad argument value Int64 badIndex copy
+printBad result none
 printBad ownedBy none
 printBad cleanedBy none
 printBad borrows none
@@ -313,9 +313,9 @@ printBad catch none
 addToTotal is call
 addToTotal in main
 addToTotal invokes math.addInt64
-addToTotal arg left Int64 total copy
-addToTotal arg right Int64 item copy
-addToTotal out newTotal Int64
+addToTotal argument left Int64 total copy
+addToTotal argument right Int64 item copy
+addToTotal result newTotal Int64
 addToTotal ownedBy none
 addToTotal cleanedBy none
 addToTotal borrows none
@@ -324,8 +324,8 @@ addToTotal catch none
 showTotal is call
 showTotal in main
 showTotal invokes showInt
-showTotal arg value Int64 total copy
-showTotal out none
+showTotal argument value Int64 total copy
+showTotal result none
 showTotal ownedBy none
 showTotal cleanedBy none
 showTotal borrows none
@@ -334,8 +334,8 @@ showTotal catch none
 emptyIt is call
 emptyIt in main
 emptyIt invokes Numbers.clear
-emptyIt arg list Numbers numbers lendMutable
-emptyIt out none
+emptyIt argument list Numbers numbers lendMutable
+emptyIt result none
 emptyIt ownedBy none
 emptyIt cleanedBy none
 emptyIt borrows none
@@ -344,8 +344,8 @@ emptyIt catch none
 countAgain is call
 countAgain in main
 countAgain invokes Numbers.length
-countAgain arg list Numbers numbers lend
-countAgain out emptyCount Int64
+countAgain argument list Numbers numbers lend
+countAgain result emptyCount Int64
 countAgain ownedBy none
 countAgain cleanedBy none
 countAgain borrows none
@@ -354,8 +354,8 @@ countAgain catch none
 showEmpty is call
 showEmpty in main
 showEmpty invokes showInt
-showEmpty arg value Int64 emptyCount copy
-showEmpty out none
+showEmpty argument value Int64 emptyCount copy
+showEmpty result none
 showEmpty ownedBy none
 showEmpty cleanedBy none
 showEmpty borrows none

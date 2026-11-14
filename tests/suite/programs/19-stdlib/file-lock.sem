@@ -15,26 +15,26 @@ fileLockCase exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showText is operation
 showText purpose "Print one line of text"
 showText invariant none
-showText typeParam none
+showText typeParameter none
 showText input text String borrowed
 showText output none
-showText outputOwner none
+showText outputOwnedBy none
 showText raises none
 showText effect write console.stdout
 showText uses stdoutWriter
-showText memory heap false
+showText memoryHeap false
 showText async false
 showText maxRecursion none
 showText label begin loopKind none
 showText label begin within none
 showText label done loopKind none
 showText label done within none
+showText let none
 showText at begin do writeValue
 showText at begin branch ifError writeValue goto done else goto done
 showText at done return ok none
@@ -43,8 +43,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showText
 writeValue invokes console.writeLine
-writeValue arg text String text lend
-writeValue out none
+writeValue argument text String text lend
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -52,23 +52,22 @@ writeValue catch writeError console.WriteError
 
 fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
-fileAccess grants read fs.files
-fileAccess grants write fs.files
-fileAccess scope "suite-*"
+fileAccess grants read fs.files "suite-*"
+fileAccess grants write fs.files "suite-*"
 
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main effect write fs.files
 main uses fileAccess
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -83,21 +82,21 @@ main label step4 loopKind none
 main label step4 within none
 main label failed loopKind none
 main label failed within none
-main let waitMs immutable Int64 30000
-main let abc immutable String "abc"
-main let lockPath immutable String "suite-lock.txt"
-main let lockedText immutable String "locked"
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let waitMs Int64 30000 immutable
+main let abc String "abc" immutable
+main let lockPath String "suite-lock.txt" immutable
+main let lockedText String "locked" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
 main at begin do lockedBytes
-main at begin start writeLockFile
+main at begin start writeLockFile into none
 main at begin join writeLockFile
 main at begin branch ifError writeLockFile goto failed else goto step1
 main at step1 do openLockFile
 main at step1 branch ifError openLockFile goto failed else goto step2
 main at step2 defer closeLockCleanup
-main at step2 start takeLock
+main at step2 start takeLock into none
 main at step2 join takeLock
 main at step2 branch ifError takeLock goto failed else goto step3
 main at step3 do printLocked
@@ -109,14 +108,14 @@ main at failed return ok failCode
 store is region
 store in main
 store strategy arena
-store capacity 65536
+store maxBytes 65536
 store released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -125,8 +124,8 @@ makeDeadline catch none
 lockedBytes is call
 lockedBytes in main
 lockedBytes invokes string.toBytes
-lockedBytes arg text String abc lend
-lockedBytes out lockedData Bytes
+lockedBytes argument text String abc lend
+lockedBytes result lockedData Bytes
 lockedBytes ownedBy none
 lockedBytes cleanedBy none
 lockedBytes borrows abc
@@ -135,10 +134,10 @@ lockedBytes catch none
 writeLockFile is task
 writeLockFile in main
 writeLockFile invokes fs.writeAll
-writeLockFile arg path String lockPath lend
-writeLockFile arg bytes Bytes lockedData lend
-writeLockFile arg deadline time.Deadline deadline copy
-writeLockFile out none
+writeLockFile argument path String lockPath lend
+writeLockFile argument bytes Bytes lockedData lend
+writeLockFile argument deadline time.Deadline deadline copy
+writeLockFile result none
 writeLockFile ownedBy none
 writeLockFile cleanedBy none
 writeLockFile borrows none
@@ -147,25 +146,25 @@ writeLockFile catch writeLockError fs.FileError
 openLockFile is call
 openLockFile in main
 openLockFile invokes fs.openAppend
-openLockFile arg path String lockPath lend
-openLockFile out lockFile fs.FileHandle
+openLockFile argument path String lockPath lend
+openLockFile result lockFile fs.FileHandle
 openLockFile ownedBy main
 openLockFile cleanedBy closeLockCleanup
 openLockFile borrows none
 openLockFile catch openLockError fs.FileError
 
 closeLockCleanup is cleanup
+closeLockCleanup rationale "A failed close at exit has nobody to report to"
 closeLockCleanup in main
-closeLockCleanup call closeLock
+closeLockCleanup runs closeLock
 closeLockCleanup cleans lockFile
-closeLockCleanup onFailure suppress
-closeLockCleanup because "A failed close at exit has nobody to report to"
+closeLockCleanup onError suppress
 
 closeLock is call
 closeLock in main
 closeLock invokes fs.close
-closeLock arg file fs.FileHandle lockFile give
-closeLock out none
+closeLock argument file fs.FileHandle lockFile give
+closeLock result none
 closeLock ownedBy none
 closeLock cleanedBy none
 closeLock borrows none
@@ -174,9 +173,9 @@ closeLock catch closeLockError fs.FileError
 takeLock is task
 takeLock in main
 takeLock invokes fs.lock
-takeLock arg file fs.FileHandle lockFile lendMutable
-takeLock arg deadline time.Deadline deadline copy
-takeLock out none
+takeLock argument file fs.FileHandle lockFile lendMutable
+takeLock argument deadline time.Deadline deadline copy
+takeLock result none
 takeLock ownedBy none
 takeLock cleanedBy none
 takeLock borrows none
@@ -185,8 +184,8 @@ takeLock catch lockError fs.FileError
 printLocked is call
 printLocked in main
 printLocked invokes showText
-printLocked arg text String lockedText lend
-printLocked out none
+printLocked argument text String lockedText lend
+printLocked result none
 printLocked ownedBy none
 printLocked cleanedBy none
 printLocked borrows none
@@ -195,8 +194,8 @@ printLocked catch none
 releaseLock is call
 releaseLock in main
 releaseLock invokes fs.unlock
-releaseLock arg file fs.FileHandle lockFile lendMutable
-releaseLock out none
+releaseLock argument file fs.FileHandle lockFile lendMutable
+releaseLock result none
 releaseLock ownedBy none
 releaseLock cleanedBy none
 releaseLock borrows none

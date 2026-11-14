@@ -3,10 +3,10 @@ helloServer is project
 helloServer purpose "A minimal HTTP server that answers one health route"
 helloServer target console
 helloServer version "0.1.0"
-helloServer language refined-1
+helloServer language refined 1
 helloServer standardLibrary 1
 helloServer allows listen net.tcp "127.0.0.1:8080"
 helloServer allows readWrite net.connection none
 helloServer requires none
-helloServer module server
+helloServer includesModule server
 helloServer entry server.main

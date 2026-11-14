@@ -30,26 +30,26 @@ concurrency exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -58,41 +58,42 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
 
-Mailbox is instance
+Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers between a producer and a consumer"
 Mailbox instantiates channel.Channel Int64
 
 square is operation
 square purpose "Return a number times itself"
 square invariant none
-square typeParam none
-square input value Int64 value
+square typeParameter none
+square input value Int64 copied
 square output Int64
-square outputOwner none
+square outputOwnedBy none
 square raises none
 square effect none
 square uses none
-square memory heap false
+square memoryHeap false
 square async false
 square maxRecursion none
 square label begin loopKind none
 square label begin within none
+square let none
 square at begin do multiply
 square at begin return ok squared
 
 multiply is call
 multiply in square
 multiply invokes math.multiplyInt64
-multiply arg left Int64 value copy
-multiply arg right Int64 value copy
-multiply out squared Int64
+multiply argument left Int64 value copy
+multiply argument right Int64 value copy
+multiply result squared Int64
 multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
@@ -101,26 +102,27 @@ multiply catch none
 warm is operation
 warm purpose "Square a number and keep nothing; work started into a group returns nothing"
 warm invariant none
-warm typeParam none
-warm input value Int64 value
+warm typeParameter none
+warm input value Int64 copied
 warm output none
-warm outputOwner none
+warm outputOwnedBy none
 warm raises none
 warm effect none
 warm uses none
-warm memory heap false
+warm memoryHeap false
 warm async false
 warm maxRecursion none
 warm label begin loopKind none
 warm label begin within none
+warm let none
 warm at begin do squareIt
 warm at begin return ok none
 
 squareIt is call
 squareIt in warm
 squareIt invokes square
-squareIt arg value Int64 value copy
-squareIt out ignored Int64
+squareIt argument value Int64 value copy
+squareIt result ignored Int64
 squareIt ownedBy none
 squareIt cleanedBy none
 squareIt borrows none
@@ -129,14 +131,14 @@ squareIt catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap true
+main memoryHeap true
 main async true
 main maxRecursion none
 main label begin loopKind none
@@ -147,16 +149,16 @@ main label done loopKind none
 main label done within none
 main label failed loopKind none
 main label failed within none
-main let three immutable Int64 3
-main let four immutable Int64 4
-main let five immutable Int64 5
-main let napMs immutable Int64 10
-main let waitMs immutable Int64 100
-main let capacity immutable Int64 4
-main let okCode immutable ExitCode 0
-main let failCode immutable ExitCode 1
+main let three Int64 3 immutable
+main let four Int64 4 immutable
+main let five Int64 5 immutable
+main let napMs Int64 10 immutable
+main let waitMs Int64 100 immutable
+main let capacity Int64 4 immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
 main at begin do makeDeadline
-main at begin start squareThree
+main at begin start squareThree into none
 main at begin join squareThree
 main at begin do showSquare
 main at begin awaitSlot workers
@@ -164,14 +166,14 @@ main at begin start squareFour into workers
 main at begin awaitSlot workers
 main at begin start squareFive into workers
 main at begin join workers
-main at begin start nap
+main at begin start nap into none
 main at begin cancel nap
 main at begin join nap
 main at begin do makeMailbox
-main at begin start produce
+main at begin start produce into none
 main at begin join produce
 main at begin branch ifError produce goto failed else goto consume
-main at consume start receiveOne
+main at consume start receiveOne into none
 main at consume join receiveOne
 main at consume branch ifError receiveOne goto failed else goto done
 main at done do showReceived
@@ -180,19 +182,19 @@ main at failed return ok failCode
 
 workers is taskGroup
 workers in main
-workers limit 2
+workers maxTasks 2
 
 mail is region
 mail in main
 mail strategy arena
-mail capacity 4096
+mail maxBytes 4096
 mail released atReturn
 
 makeDeadline is call
 makeDeadline in main
 makeDeadline invokes time.Deadline.after
-makeDeadline arg milliseconds Int64 waitMs copy
-makeDeadline out deadline time.Deadline
+makeDeadline argument milliseconds Int64 waitMs copy
+makeDeadline result deadline time.Deadline
 makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
@@ -201,8 +203,8 @@ makeDeadline catch none
 squareThree is task
 squareThree in main
 squareThree invokes square
-squareThree arg value Int64 three copy
-squareThree out nine Int64
+squareThree argument value Int64 three copy
+squareThree result nine Int64
 squareThree ownedBy none
 squareThree cleanedBy none
 squareThree borrows none
@@ -211,8 +213,8 @@ squareThree catch none
 showSquare is call
 showSquare in main
 showSquare invokes showInt
-showSquare arg value Int64 nine copy
-showSquare out none
+showSquare argument value Int64 nine copy
+showSquare result none
 showSquare ownedBy none
 showSquare cleanedBy none
 showSquare borrows none
@@ -221,8 +223,8 @@ showSquare catch none
 squareFour is task
 squareFour in main
 squareFour invokes warm
-squareFour arg value Int64 four copy
-squareFour out none
+squareFour argument value Int64 four copy
+squareFour result none
 squareFour ownedBy none
 squareFour cleanedBy none
 squareFour borrows none
@@ -231,8 +233,8 @@ squareFour catch none
 squareFive is task
 squareFive in main
 squareFive invokes warm
-squareFive arg value Int64 five copy
-squareFive out none
+squareFive argument value Int64 five copy
+squareFive result none
 squareFive ownedBy none
 squareFive cleanedBy none
 squareFive borrows none
@@ -241,8 +243,8 @@ squareFive catch none
 nap is task
 nap in main
 nap invokes time.sleep
-nap arg milliseconds Int64 napMs copy
-nap out none
+nap argument milliseconds Int64 napMs copy
+nap result none
 nap ownedBy none
 nap cleanedBy none
 nap borrows none
@@ -251,9 +253,9 @@ nap catch none
 makeMailbox is call
 makeMailbox in main
 makeMailbox invokes Mailbox.new
-makeMailbox arg capacity Int64 capacity copy
-makeMailbox arg region Region mail lend
-makeMailbox out mailbox Mailbox
+makeMailbox argument capacity Int64 capacity copy
+makeMailbox argument region Region mail lend
+makeMailbox result mailbox Mailbox
 makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
@@ -262,10 +264,10 @@ makeMailbox catch none
 produce is task
 produce in main
 produce invokes Mailbox.send
-produce arg channel Mailbox mailbox lend
-produce arg item Int64 nine copy
-produce arg deadline time.Deadline deadline copy
-produce out none
+produce argument channel Mailbox mailbox lend
+produce argument item Int64 nine copy
+produce argument deadline time.Deadline deadline copy
+produce result none
 produce ownedBy none
 produce cleanedBy none
 produce borrows none
@@ -274,9 +276,9 @@ produce catch sendError channel.ChannelError
 receiveOne is task
 receiveOne in main
 receiveOne invokes Mailbox.receive
-receiveOne arg channel Mailbox mailbox lend
-receiveOne arg deadline time.Deadline deadline copy
-receiveOne out received Int64
+receiveOne argument channel Mailbox mailbox lend
+receiveOne argument deadline time.Deadline deadline copy
+receiveOne result received Int64
 receiveOne ownedBy none
 receiveOne cleanedBy none
 receiveOne borrows none
@@ -285,8 +287,8 @@ receiveOne catch receiveError channel.ChannelError
 showReceived is call
 showReceived in main
 showReceived invokes showInt
-showReceived arg value Int64 received copy
-showReceived out none
+showReceived argument value Int64 received copy
+showReceived result none
 showReceived ownedBy none
 showReceived cleanedBy none
 showReceived borrows none

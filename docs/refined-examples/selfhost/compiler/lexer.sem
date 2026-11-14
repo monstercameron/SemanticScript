@@ -19,7 +19,7 @@ lexer exports TokenKind
 
 TokenKind is enum
 TokenKind purpose "What a token is"
-TokenKind typeParam none
+TokenKind typeParameter none
 TokenKind variant word none
 TokenKind variant keywordIs none
 TokenKind variant keywordAt none
@@ -27,20 +27,20 @@ TokenKind variant endOfInput none
 
 Token is record
 Token purpose "One token, located by byte offset and length in the source text"
-Token typeParam none
+Token typeParameter none
 Token field kind TokenKind
 Token field start Int64
 Token field length Int64
 
 Keyword is record
 Keyword purpose "One reserved word and the token kind it produces"
-Keyword typeParam none
+Keyword typeParameter none
 Keyword field text String
 Keyword field kind TokenKind
 
 keywords is table
 keywords purpose "Every reserved word of the language"
-keywords of Keyword
+keywords rowType Keyword
 keywords row isWord 1
 keywords row atWord 2
 keywords cell isWord text "is"
@@ -53,15 +53,15 @@ keywords cell atWord kind TokenKind.keywordAt
 scanWord is operation
 scanWord purpose "Read one word token that starts at a given byte offset"
 scanWord invariant wordIsMaximal "The token ends at the first byte that is not a letter or digit, or at the end of the source"
-scanWord typeParam none
+scanWord typeParameter none
 scanWord input source String borrowed
-scanWord input start Int64 value
+scanWord input start Int64 copied
 scanWord output Token
-scanWord outputOwner none
+scanWord outputOwnedBy none
 scanWord raises none
 scanWord effect none
 scanWord uses none
-scanWord memory heap false
+scanWord memoryHeap false
 scanWord async false
 scanWord maxRecursion none
 scanWord label begin loopKind none
@@ -77,8 +77,8 @@ scanWord label step loopKind none
 scanWord label step within advance
 scanWord label finish loopKind none
 scanWord label finish within none
-scanWord let one immutable Int64 1
-scanWord let position mutable Int64 start
+scanWord let one Int64 1 immutable
+scanWord let position Int64 start mutable
 scanWord at begin do measureSource
 scanWord at begin goto advance
 scanWord at advance do atEndCheck
@@ -98,8 +98,8 @@ scanWord at finish return ok token
 measureSource is call
 measureSource in scanWord
 measureSource invokes string.byteLength
-measureSource arg text String source lend
-measureSource out sourceLength Int64
+measureSource argument text String source lend
+measureSource result sourceLength Int64
 measureSource ownedBy none
 measureSource cleanedBy none
 measureSource borrows none
@@ -108,9 +108,9 @@ measureSource catch none
 atEndCheck is call
 atEndCheck in scanWord
 atEndCheck invokes compare.greaterOrEqualInt64
-atEndCheck arg left Int64 position copy
-atEndCheck arg right Int64 sourceLength copy
-atEndCheck out atEnd Bool
+atEndCheck argument left Int64 position copy
+atEndCheck argument right Int64 sourceLength copy
+atEndCheck result atEnd Bool
 atEndCheck ownedBy none
 atEndCheck cleanedBy none
 atEndCheck borrows none
@@ -119,9 +119,9 @@ atEndCheck catch none
 readByte is call
 readByte in scanWord
 readByte invokes string.byteAt
-readByte arg text String source lend
-readByte arg index Int64 position copy
-readByte out currentByte Byte
+readByte argument text String source lend
+readByte argument index Int64 position copy
+readByte result currentByte Byte
 readByte ownedBy none
 readByte cleanedBy none
 readByte borrows none
@@ -130,8 +130,8 @@ readByte catch readByteError string.StringIndexError
 wordByteCheck is call
 wordByteCheck in scanWord
 wordByteCheck invokes byte.isLetterOrDigit
-wordByteCheck arg value Byte currentByte copy
-wordByteCheck out isWordByte Bool
+wordByteCheck argument value Byte currentByte copy
+wordByteCheck result isWordByte Bool
 wordByteCheck ownedBy none
 wordByteCheck cleanedBy none
 wordByteCheck borrows none
@@ -140,9 +140,9 @@ wordByteCheck catch none
 addOne is call
 addOne in scanWord
 addOne invokes math.addInt64
-addOne arg left Int64 position copy
-addOne arg right Int64 one copy
-addOne out nextPosition Int64
+addOne argument left Int64 position copy
+addOne argument right Int64 one copy
+addOne result nextPosition Int64
 addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
@@ -151,9 +151,9 @@ addOne catch none
 measureWord is call
 measureWord in scanWord
 measureWord invokes math.subtractInt64
-measureWord arg left Int64 position copy
-measureWord arg right Int64 start copy
-measureWord out wordLength Int64
+measureWord argument left Int64 position copy
+measureWord argument right Int64 start copy
+measureWord result wordLength Int64
 measureWord ownedBy none
 measureWord cleanedBy none
 measureWord borrows none
@@ -162,8 +162,8 @@ measureWord catch none
 makeWordKind is call
 makeWordKind in scanWord
 makeWordKind invokes TokenKind.word
-makeWordKind arg none
-makeWordKind out wordKind TokenKind
+makeWordKind argument none
+makeWordKind result wordKind TokenKind
 makeWordKind ownedBy none
 makeWordKind cleanedBy none
 makeWordKind borrows none
@@ -172,10 +172,10 @@ makeWordKind catch none
 buildToken is call
 buildToken in scanWord
 buildToken invokes Token.new
-buildToken arg kind TokenKind wordKind copy
-buildToken arg start Int64 start copy
-buildToken arg length Int64 wordLength copy
-buildToken out token Token
+buildToken argument kind TokenKind wordKind copy
+buildToken argument start Int64 start copy
+buildToken argument length Int64 wordLength copy
+buildToken result token Token
 buildToken ownedBy none
 buildToken cleanedBy none
 buildToken borrows none
@@ -186,14 +186,14 @@ buildToken catch none
 classifyWord is operation
 classifyWord purpose "Decide whether a word is a reserved word"
 classifyWord invariant keywordsWin "A word equal to a keyword's text gets that keyword's kind; any other word stays a word"
-classifyWord typeParam none
+classifyWord typeParameter none
 classifyWord input word String borrowed
 classifyWord output TokenKind
-classifyWord outputOwner none
+classifyWord outputOwnedBy none
 classifyWord raises none
 classifyWord effect none
 classifyWord uses none
-classifyWord memory heap false
+classifyWord memoryHeap false
 classifyWord async false
 classifyWord maxRecursion none
 classifyWord label begin loopKind none
@@ -208,6 +208,7 @@ classifyWord label matched loopKind none
 classifyWord label matched within none
 classifyWord label plainWord loopKind none
 classifyWord label plainWord within none
+classifyWord let none
 classifyWord at begin goto visit
 classifyWord at visit branch ifNext keywords bind candidate Keyword goto compareText else goto plainWord
 classifyWord at compareText do readKeywordText
@@ -221,8 +222,8 @@ classifyWord at plainWord return ok plainKind
 readKeywordText is call
 readKeywordText in classifyWord
 readKeywordText invokes Keyword.text
-readKeywordText arg record Keyword candidate lend
-readKeywordText out keywordText String
+readKeywordText argument record Keyword candidate lend
+readKeywordText result keywordText String
 readKeywordText ownedBy none
 readKeywordText cleanedBy none
 readKeywordText borrows candidate
@@ -231,9 +232,9 @@ readKeywordText catch none
 textsEqual is call
 textsEqual in classifyWord
 textsEqual invokes string.equals
-textsEqual arg left String word lend
-textsEqual arg right String keywordText lend
-textsEqual out sameText Bool
+textsEqual argument left String word lend
+textsEqual argument right String keywordText lend
+textsEqual result sameText Bool
 textsEqual ownedBy none
 textsEqual cleanedBy none
 textsEqual borrows none
@@ -242,8 +243,8 @@ textsEqual catch none
 readKeywordKind is call
 readKeywordKind in classifyWord
 readKeywordKind invokes Keyword.kind
-readKeywordKind arg record Keyword candidate lend
-readKeywordKind out keywordKind TokenKind
+readKeywordKind argument record Keyword candidate lend
+readKeywordKind result keywordKind TokenKind
 readKeywordKind ownedBy none
 readKeywordKind cleanedBy none
 readKeywordKind borrows none
@@ -252,8 +253,8 @@ readKeywordKind catch none
 makePlainKind is call
 makePlainKind in classifyWord
 makePlainKind invokes TokenKind.word
-makePlainKind arg none
-makePlainKind out plainKind TokenKind
+makePlainKind argument none
+makePlainKind result plainKind TokenKind
 makePlainKind ownedBy none
 makePlainKind cleanedBy none
 makePlainKind borrows none

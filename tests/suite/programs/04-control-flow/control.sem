@@ -36,26 +36,26 @@ control exports main
 
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
-stdoutWriter grants write console.stdout
-stdoutWriter scope none
+stdoutWriter grants write console.stdout none
 
 showInt is operation
 showInt purpose "Print one whole number on its own line"
 showInt invariant none
-showInt typeParam none
-showInt input value Int64 value
+showInt typeParameter none
+showInt input value Int64 copied
 showInt output none
-showInt outputOwner none
+showInt outputOwnedBy none
 showInt raises none
 showInt effect write console.stdout
 showInt uses stdoutWriter
-showInt memory heap false
+showInt memoryHeap false
 showInt async false
 showInt maxRecursion none
 showInt label begin loopKind none
 showInt label begin within none
 showInt label done loopKind none
 showInt label done within none
+showInt let none
 showInt at begin do writeValue
 showInt at begin branch ifError writeValue goto done else goto done
 showInt at done return ok none
@@ -64,8 +64,8 @@ writeValue is call
 writeValue rationale "A test program has nowhere to report a failed write"
 writeValue in showInt
 writeValue invokes console.writeIntegerLine
-writeValue arg value Int64 value copy
-writeValue out none
+writeValue argument value Int64 value copy
+writeValue result none
 writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
@@ -74,14 +74,14 @@ writeValue catch writeError console.WriteError
 grade is operation
 grade purpose "Return 1 below 10, 2 below 20, and 3 otherwise"
 grade invariant none
-grade typeParam none
-grade input score Int64 value
+grade typeParameter none
+grade input score Int64 copied
 grade output Int64
-grade outputOwner none
+grade outputOwnedBy none
 grade raises none
 grade effect none
 grade uses none
-grade memory heap false
+grade memoryHeap false
 grade async false
 grade maxRecursion none
 grade label begin loopKind none
@@ -94,11 +94,11 @@ grade label middle loopKind none
 grade label middle within none
 grade label high loopKind none
 grade label high within none
-grade let one immutable Int64 1
-grade let two immutable Int64 2
-grade let three immutable Int64 3
-grade let ten immutable Int64 10
-grade let twenty immutable Int64 20
+grade let one Int64 1 immutable
+grade let two Int64 2 immutable
+grade let three Int64 3 immutable
+grade let ten Int64 10 immutable
+grade let twenty Int64 20 immutable
 grade at begin do belowTen
 grade at begin branch if isBelowTen goto low else goto notLow
 grade at low return ok one
@@ -110,9 +110,9 @@ grade at high return ok three
 belowTen is call
 belowTen in grade
 belowTen invokes compare.lessThanInt64
-belowTen arg left Int64 score copy
-belowTen arg right Int64 ten copy
-belowTen out isBelowTen Bool
+belowTen argument left Int64 score copy
+belowTen argument right Int64 ten copy
+belowTen result isBelowTen Bool
 belowTen ownedBy none
 belowTen cleanedBy none
 belowTen borrows none
@@ -121,9 +121,9 @@ belowTen catch none
 belowTwenty is call
 belowTwenty in grade
 belowTwenty invokes compare.lessThanInt64
-belowTwenty arg left Int64 score copy
-belowTwenty arg right Int64 twenty copy
-belowTwenty out isBelowTwenty Bool
+belowTwenty argument left Int64 score copy
+belowTwenty argument right Int64 twenty copy
+belowTwenty result isBelowTwenty Bool
 belowTwenty ownedBy none
 belowTwenty cleanedBy none
 belowTwenty borrows none
@@ -132,14 +132,14 @@ belowTwenty catch none
 sumToFive is operation
 sumToFive purpose "Add the whole numbers from 1 to 5 with a counted loop"
 sumToFive invariant none
-sumToFive typeParam none
+sumToFive typeParameter none
 sumToFive input none
 sumToFive output Int64
-sumToFive outputOwner none
+sumToFive outputOwnedBy none
 sumToFive raises none
 sumToFive effect none
 sumToFive uses none
-sumToFive memory heap false
+sumToFive memoryHeap false
 sumToFive async false
 sumToFive maxRecursion none
 sumToFive label begin loopKind none
@@ -152,10 +152,10 @@ sumToFive label addStep loopKind none
 sumToFive label addStep within sumLoop
 sumToFive label done loopKind none
 sumToFive label done within none
-sumToFive let last immutable Int64 5
-sumToFive let step immutable Int64 1
-sumToFive let total mutable Int64 0
-sumToFive let index mutable Int64 1
+sumToFive let last Int64 5 immutable
+sumToFive let step Int64 1 immutable
+sumToFive let total Int64 0 mutable
+sumToFive let index Int64 1 mutable
 sumToFive at begin goto sumLoop
 sumToFive at sumLoop do pastLast
 sumToFive at sumLoop branch if isPast goto done else goto addStep
@@ -169,9 +169,9 @@ sumToFive at done return ok total
 pastLast is call
 pastLast in sumToFive
 pastLast invokes compare.greaterThanInt64
-pastLast arg left Int64 index copy
-pastLast arg right Int64 last copy
-pastLast out isPast Bool
+pastLast argument left Int64 index copy
+pastLast argument right Int64 last copy
+pastLast result isPast Bool
 pastLast ownedBy none
 pastLast cleanedBy none
 pastLast borrows none
@@ -180,9 +180,9 @@ pastLast catch none
 addToTotal is call
 addToTotal in sumToFive
 addToTotal invokes math.addInt64
-addToTotal arg left Int64 total copy
-addToTotal arg right Int64 index copy
-addToTotal out newTotal Int64
+addToTotal argument left Int64 total copy
+addToTotal argument right Int64 index copy
+addToTotal result newTotal Int64
 addToTotal ownedBy none
 addToTotal cleanedBy none
 addToTotal borrows none
@@ -191,9 +191,9 @@ addToTotal catch none
 advance is call
 advance in sumToFive
 advance invokes math.addInt64
-advance arg left Int64 index copy
-advance arg right Int64 step copy
-advance out nextIndex Int64
+advance argument left Int64 index copy
+advance argument right Int64 step copy
+advance result nextIndex Int64
 advance ownedBy none
 advance cleanedBy none
 advance borrows none
@@ -202,14 +202,14 @@ advance catch none
 oddSum is operation
 oddSum purpose "Add odd numbers from 1 upward, skipping evens, stopping before the total passes 10"
 oddSum invariant none
-oddSum typeParam none
+oddSum typeParameter none
 oddSum input none
 oddSum output Int64
-oddSum outputOwner none
+oddSum outputOwnedBy none
 oddSum raises none
 oddSum effect none
 oddSum uses none
-oddSum memory heap false
+oddSum memoryHeap false
 oddSum async false
 oddSum maxRecursion none
 oddSum label begin loopKind none
@@ -225,12 +225,12 @@ oddSum label keep loopKind none
 oddSum label keep within scan
 oddSum label done loopKind none
 oddSum label done within none
-oddSum let one immutable Int64 1
-oddSum let two immutable Int64 2
-oddSum let twenty immutable Int64 20
-oddSum let ten immutable Int64 10
-oddSum let total mutable Int64 0
-oddSum let current mutable Int64 1
+oddSum let one Int64 1 immutable
+oddSum let two Int64 2 immutable
+oddSum let twenty Int64 20 immutable
+oddSum let ten Int64 10 immutable
+oddSum let total Int64 0 mutable
+oddSum let current Int64 1 mutable
 oddSum at begin goto scan
 oddSum at scan do moreLeft
 oddSum at scan branch if hasMore goto examine else goto done
@@ -249,9 +249,9 @@ oddSum at done return ok total
 moreLeft is call
 moreLeft in oddSum
 moreLeft invokes compare.lessThanInt64
-moreLeft arg left Int64 current copy
-moreLeft arg right Int64 twenty copy
-moreLeft out hasMore Bool
+moreLeft argument left Int64 current copy
+moreLeft argument right Int64 twenty copy
+moreLeft result hasMore Bool
 moreLeft ownedBy none
 moreLeft cleanedBy none
 moreLeft borrows none
@@ -260,9 +260,9 @@ moreLeft catch none
 parity is call
 parity in oddSum
 parity invokes math.remainderInt64
-parity arg left Int64 current copy
-parity arg right Int64 two copy
-parity out leftover Int64
+parity argument left Int64 current copy
+parity argument right Int64 two copy
+parity result leftover Int64
 parity ownedBy none
 parity cleanedBy none
 parity borrows none
@@ -271,9 +271,9 @@ parity catch none
 isOdd is call
 isOdd in oddSum
 isOdd invokes compare.equalInt64
-isOdd arg left Int64 leftover copy
-isOdd arg right Int64 one copy
-isOdd out odd Bool
+isOdd argument left Int64 leftover copy
+isOdd argument right Int64 one copy
+isOdd result odd Bool
 isOdd ownedBy none
 isOdd cleanedBy none
 isOdd borrows none
@@ -282,9 +282,9 @@ isOdd catch none
 advance is call
 advance in oddSum
 advance invokes math.addInt64
-advance arg left Int64 current copy
-advance arg right Int64 one copy
-advance out nextCurrent Int64
+advance argument left Int64 current copy
+advance argument right Int64 one copy
+advance result nextCurrent Int64
 advance ownedBy none
 advance cleanedBy none
 advance borrows none
@@ -293,9 +293,9 @@ advance catch none
 addOdd is call
 addOdd in oddSum
 addOdd invokes math.addInt64
-addOdd arg left Int64 total copy
-addOdd arg right Int64 current copy
-addOdd out newTotal Int64
+addOdd argument left Int64 total copy
+addOdd argument right Int64 current copy
+addOdd result newTotal Int64
 addOdd ownedBy none
 addOdd cleanedBy none
 addOdd borrows none
@@ -304,9 +304,9 @@ addOdd catch none
 tooBig is call
 tooBig in oddSum
 tooBig invokes compare.greaterThanInt64
-tooBig arg left Int64 newTotal copy
-tooBig arg right Int64 ten copy
-tooBig out overTen Bool
+tooBig argument left Int64 newTotal copy
+tooBig argument right Int64 ten copy
+tooBig result overTen Bool
 tooBig ownedBy none
 tooBig cleanedBy none
 tooBig borrows none
@@ -315,14 +315,14 @@ tooBig catch none
 atLeastOnce is operation
 atLeastOnce purpose "Count passes of a loop whose test is false from the start; it still runs once"
 atLeastOnce invariant none
-atLeastOnce typeParam none
+atLeastOnce typeParameter none
 atLeastOnce input none
 atLeastOnce output Int64
-atLeastOnce outputOwner none
+atLeastOnce outputOwnedBy none
 atLeastOnce raises none
 atLeastOnce effect none
 atLeastOnce uses none
-atLeastOnce memory heap false
+atLeastOnce memoryHeap false
 atLeastOnce async false
 atLeastOnce maxRecursion none
 atLeastOnce label begin loopKind none
@@ -334,9 +334,9 @@ atLeastOnce label test loopKind none
 atLeastOnce label test within body
 atLeastOnce label done loopKind none
 atLeastOnce label done within none
-atLeastOnce let one immutable Int64 1
-atLeastOnce let keepGoing immutable Bool false
-atLeastOnce let passes mutable Int64 0
+atLeastOnce let one Int64 1 immutable
+atLeastOnce let keepGoing Bool false immutable
+atLeastOnce let passes Int64 0 mutable
 atLeastOnce at begin goto body
 atLeastOnce at body do countPass
 atLeastOnce at body set passes newPasses
@@ -347,9 +347,9 @@ atLeastOnce at done return ok passes
 countPass is call
 countPass in atLeastOnce
 countPass invokes math.addInt64
-countPass arg left Int64 passes copy
-countPass arg right Int64 one copy
-countPass out newPasses Int64
+countPass argument left Int64 passes copy
+countPass argument right Int64 one copy
+countPass result newPasses Int64
 countPass ownedBy none
 countPass cleanedBy none
 countPass borrows none
@@ -358,14 +358,14 @@ countPass catch none
 gridCells is operation
 gridCells purpose "Count the cells of a 5 by 5 grid with two nested counted loops"
 gridCells invariant none
-gridCells typeParam none
+gridCells typeParameter none
 gridCells input none
 gridCells output Int64
-gridCells outputOwner none
+gridCells outputOwnedBy none
 gridCells raises none
 gridCells effect none
 gridCells uses none
-gridCells memory heap false
+gridCells memoryHeap false
 gridCells async false
 gridCells maxRecursion none
 gridCells label begin loopKind none
@@ -386,12 +386,12 @@ gridCells label nextRow loopKind none
 gridCells label nextRow within rows
 gridCells label done loopKind none
 gridCells label done within none
-gridCells let first immutable Int64 1
-gridCells let size immutable Int64 5
-gridCells let one immutable Int64 1
-gridCells let row mutable Int64 1
-gridCells let column mutable Int64 1
-gridCells let cells mutable Int64 0
+gridCells let first Int64 1 immutable
+gridCells let size Int64 5 immutable
+gridCells let one Int64 1 immutable
+gridCells let row Int64 1 mutable
+gridCells let column Int64 1 mutable
+gridCells let cells Int64 0 mutable
 gridCells at begin goto rows
 gridCells at rows do rowsDone
 gridCells at rows branch if allRows goto done else goto startRow
@@ -412,9 +412,9 @@ gridCells at done return ok cells
 rowsDone is call
 rowsDone in gridCells
 rowsDone invokes compare.greaterThanInt64
-rowsDone arg left Int64 row copy
-rowsDone arg right Int64 size copy
-rowsDone out allRows Bool
+rowsDone argument left Int64 row copy
+rowsDone argument right Int64 size copy
+rowsDone result allRows Bool
 rowsDone ownedBy none
 rowsDone cleanedBy none
 rowsDone borrows none
@@ -423,9 +423,9 @@ rowsDone catch none
 columnsDone is call
 columnsDone in gridCells
 columnsDone invokes compare.greaterThanInt64
-columnsDone arg left Int64 column copy
-columnsDone arg right Int64 size copy
-columnsDone out allColumns Bool
+columnsDone argument left Int64 column copy
+columnsDone argument right Int64 size copy
+columnsDone result allColumns Bool
 columnsDone ownedBy none
 columnsDone cleanedBy none
 columnsDone borrows none
@@ -434,9 +434,9 @@ columnsDone catch none
 addCell is call
 addCell in gridCells
 addCell invokes math.addInt64
-addCell arg left Int64 cells copy
-addCell arg right Int64 one copy
-addCell out newCells Int64
+addCell argument left Int64 cells copy
+addCell argument right Int64 one copy
+addCell result newCells Int64
 addCell ownedBy none
 addCell cleanedBy none
 addCell borrows none
@@ -445,9 +445,9 @@ addCell catch none
 nextColumn is call
 nextColumn in gridCells
 nextColumn invokes math.addInt64
-nextColumn arg left Int64 column copy
-nextColumn arg right Int64 one copy
-nextColumn out advancedColumn Int64
+nextColumn argument left Int64 column copy
+nextColumn argument right Int64 one copy
+nextColumn result advancedColumn Int64
 nextColumn ownedBy none
 nextColumn cleanedBy none
 nextColumn borrows none
@@ -456,9 +456,9 @@ nextColumn catch none
 advanceRow is call
 advanceRow in gridCells
 advanceRow invokes math.addInt64
-advanceRow arg left Int64 row copy
-advanceRow arg right Int64 one copy
-advanceRow out advancedRow Int64
+advanceRow argument left Int64 row copy
+advanceRow argument right Int64 one copy
+advanceRow result advancedRow Int64
 advanceRow ownedBy none
 advanceRow cleanedBy none
 advanceRow borrows none
@@ -467,30 +467,30 @@ advanceRow catch none
 halvings is operation
 halvings purpose "Halve 4096 until it reaches 1 in a service-style loop with an explicit exit"
 halvings invariant none
-halvings typeParam none
+halvings typeParameter none
 halvings input none
 halvings output Int64
-halvings outputOwner none
+halvings outputOwnedBy none
 halvings raises none
 halvings effect none
 halvings uses none
-halvings memory heap false
+halvings memoryHeap false
 halvings async false
 halvings maxRecursion none
 halvings label begin loopKind none
 halvings label begin within none
+halvings label halve rationale "The loop shows a forever loop that still leaves"
 halvings label halve loopKind forever
 halvings label halve within none
 halvings label halve maxIterations unbounded
-halvings label halve because "The loop shows a forever loop that still leaves"
 halvings label step loopKind none
 halvings label step within halve
 halvings label done loopKind none
 halvings label done within none
-halvings let one immutable Int64 1
-halvings let two immutable Int64 2
-halvings let value mutable Int64 4096
-halvings let steps mutable Int64 0
+halvings let one Int64 1 immutable
+halvings let two Int64 2 immutable
+halvings let value Int64 4096 mutable
+halvings let steps Int64 0 mutable
 halvings at begin goto halve
 halvings at halve do reachedOne
 halvings at halve branch if isOne goto done else goto step
@@ -504,9 +504,9 @@ halvings at done return ok steps
 reachedOne is call
 reachedOne in halvings
 reachedOne invokes compare.equalInt64
-reachedOne arg left Int64 value copy
-reachedOne arg right Int64 one copy
-reachedOne out isOne Bool
+reachedOne argument left Int64 value copy
+reachedOne argument right Int64 one copy
+reachedOne result isOne Bool
 reachedOne ownedBy none
 reachedOne cleanedBy none
 reachedOne borrows none
@@ -515,9 +515,9 @@ reachedOne catch none
 half is call
 half in halvings
 half invokes math.divideInt64
-half arg left Int64 value copy
-half arg right Int64 two copy
-half out halved Int64
+half argument left Int64 value copy
+half argument right Int64 two copy
+half result halved Int64
 half ownedBy none
 half cleanedBy none
 half borrows none
@@ -526,9 +526,9 @@ half catch none
 countStep is call
 countStep in halvings
 countStep invokes math.addInt64
-countStep arg left Int64 steps copy
-countStep arg right Int64 one copy
-countStep out newSteps Int64
+countStep argument left Int64 steps copy
+countStep argument right Int64 one copy
+countStep result newSteps Int64
 countStep ownedBy none
 countStep cleanedBy none
 countStep borrows none
@@ -537,24 +537,24 @@ countStep catch none
 main is operation
 main purpose "Run the case and print what it computes"
 main invariant none
-main typeParam none
+main typeParameter none
 main input none
 main output ExitCode
-main outputOwner none
+main outputOwnedBy none
 main raises none
 main effect write console.stdout
 main uses stdoutWriter
-main memory heap false
+main memoryHeap false
 main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main let fifteen immutable Int64 15
-main let five immutable Int64 5
-main let twentyFive immutable Int64 25
-main let eight immutable Int64 8
-main let two immutable Int64 2
-main let okCode immutable ExitCode 0
+main let fifteen Int64 15 immutable
+main let five Int64 5 immutable
+main let twentyFive Int64 25 immutable
+main let eight Int64 8 immutable
+main let two Int64 2 immutable
+main let okCode ExitCode 0 immutable
 main at begin do gradeFifteen
 main at begin do showGrade
 main at begin do runSum
@@ -578,8 +578,8 @@ main at begin return ok okCode
 gradeFifteen is call
 gradeFifteen in main
 gradeFifteen invokes grade
-gradeFifteen arg score Int64 fifteen copy
-gradeFifteen out fifteenGrade Int64
+gradeFifteen argument score Int64 fifteen copy
+gradeFifteen result fifteenGrade Int64
 gradeFifteen ownedBy none
 gradeFifteen cleanedBy none
 gradeFifteen borrows none
@@ -588,8 +588,8 @@ gradeFifteen catch none
 showGrade is call
 showGrade in main
 showGrade invokes showInt
-showGrade arg value Int64 fifteenGrade copy
-showGrade out none
+showGrade argument value Int64 fifteenGrade copy
+showGrade result none
 showGrade ownedBy none
 showGrade cleanedBy none
 showGrade borrows none
@@ -598,8 +598,8 @@ showGrade catch none
 runSum is call
 runSum in main
 runSum invokes sumToFive
-runSum arg none
-runSum out summed Int64
+runSum argument none
+runSum result summed Int64
 runSum ownedBy none
 runSum cleanedBy none
 runSum borrows none
@@ -608,8 +608,8 @@ runSum catch none
 showSum is call
 showSum in main
 showSum invokes showInt
-showSum arg value Int64 summed copy
-showSum out none
+showSum argument value Int64 summed copy
+showSum result none
 showSum ownedBy none
 showSum cleanedBy none
 showSum borrows none
@@ -618,8 +618,8 @@ showSum catch none
 runOdd is call
 runOdd in main
 runOdd invokes oddSum
-runOdd arg none
-runOdd out odds Int64
+runOdd argument none
+runOdd result odds Int64
 runOdd ownedBy none
 runOdd cleanedBy none
 runOdd borrows none
@@ -628,8 +628,8 @@ runOdd catch none
 showOdd is call
 showOdd in main
 showOdd invokes showInt
-showOdd arg value Int64 odds copy
-showOdd out none
+showOdd argument value Int64 odds copy
+showOdd result none
 showOdd ownedBy none
 showOdd cleanedBy none
 showOdd borrows none
@@ -638,8 +638,8 @@ showOdd catch none
 runOnce is call
 runOnce in main
 runOnce invokes atLeastOnce
-runOnce arg none
-runOnce out onePass Int64
+runOnce argument none
+runOnce result onePass Int64
 runOnce ownedBy none
 runOnce cleanedBy none
 runOnce borrows none
@@ -648,8 +648,8 @@ runOnce catch none
 showOnce is call
 showOnce in main
 showOnce invokes showInt
-showOnce arg value Int64 onePass copy
-showOnce out none
+showOnce argument value Int64 onePass copy
+showOnce result none
 showOnce ownedBy none
 showOnce cleanedBy none
 showOnce borrows none
@@ -658,8 +658,8 @@ showOnce catch none
 runGrid is call
 runGrid in main
 runGrid invokes gridCells
-runGrid arg none
-runGrid out gridCount Int64
+runGrid argument none
+runGrid result gridCount Int64
 runGrid ownedBy none
 runGrid cleanedBy none
 runGrid borrows none
@@ -668,8 +668,8 @@ runGrid catch none
 showGrid is call
 showGrid in main
 showGrid invokes showInt
-showGrid arg value Int64 gridCount copy
-showGrid out none
+showGrid argument value Int64 gridCount copy
+showGrid result none
 showGrid ownedBy none
 showGrid cleanedBy none
 showGrid borrows none
@@ -678,8 +678,8 @@ showGrid catch none
 runHalvings is call
 runHalvings in main
 runHalvings invokes halvings
-runHalvings arg none
-runHalvings out halvingCount Int64
+runHalvings argument none
+runHalvings result halvingCount Int64
 runHalvings ownedBy none
 runHalvings cleanedBy none
 runHalvings borrows none
@@ -688,8 +688,8 @@ runHalvings catch none
 showHalvings is call
 showHalvings in main
 showHalvings invokes showInt
-showHalvings arg value Int64 halvingCount copy
-showHalvings out none
+showHalvings argument value Int64 halvingCount copy
+showHalvings result none
 showHalvings ownedBy none
 showHalvings cleanedBy none
 showHalvings borrows none
@@ -698,8 +698,8 @@ showHalvings catch none
 gradeFive is call
 gradeFive in main
 gradeFive invokes grade
-gradeFive arg score Int64 five copy
-gradeFive out fiveGrade Int64
+gradeFive argument score Int64 five copy
+gradeFive result fiveGrade Int64
 gradeFive ownedBy none
 gradeFive cleanedBy none
 gradeFive borrows none
@@ -708,8 +708,8 @@ gradeFive catch none
 gradeTwenty is call
 gradeTwenty in main
 gradeTwenty invokes grade
-gradeTwenty arg score Int64 twentyFive copy
-gradeTwenty out highGrade Int64
+gradeTwenty argument score Int64 twentyFive copy
+gradeTwenty result highGrade Int64
 gradeTwenty ownedBy none
 gradeTwenty cleanedBy none
 gradeTwenty borrows none
@@ -718,9 +718,9 @@ gradeTwenty catch none
 sumGrades is call
 sumGrades in main
 sumGrades invokes math.addInt64
-sumGrades arg left Int64 fiveGrade copy
-sumGrades arg right Int64 highGrade copy
-sumGrades out gradeSum Int64
+sumGrades argument left Int64 fiveGrade copy
+sumGrades argument right Int64 highGrade copy
+sumGrades result gradeSum Int64
 sumGrades ownedBy none
 sumGrades cleanedBy none
 sumGrades borrows none
@@ -729,8 +729,8 @@ sumGrades catch none
 showGrades is call
 showGrades in main
 showGrades invokes showInt
-showGrades arg value Int64 gradeSum copy
-showGrades out none
+showGrades argument value Int64 gradeSum copy
+showGrades result none
 showGrades ownedBy none
 showGrades cleanedBy none
 showGrades borrows none
@@ -739,9 +739,9 @@ showGrades catch none
 squareEight is call
 squareEight in main
 squareEight invokes math.powerInt64
-squareEight arg base Int64 eight copy
-squareEight arg exponent Int64 two copy
-squareEight out squared Int64
+squareEight argument base Int64 eight copy
+squareEight argument exponent Int64 two copy
+squareEight result squared Int64
 squareEight ownedBy none
 squareEight cleanedBy none
 squareEight borrows none
@@ -750,8 +750,8 @@ squareEight catch none
 showSquare is call
 showSquare in main
 showSquare invokes showInt
-showSquare arg value Int64 squared copy
-showSquare out none
+showSquare argument value Int64 squared copy
+showSquare result none
 showSquare ownedBy none
 showSquare cleanedBy none
 showSquare borrows none

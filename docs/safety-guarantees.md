@@ -29,7 +29,7 @@ Also: `mutation:double-give`, `mutation:give-borrowed`, `mutation:use-after-give
 | --- | --- | --- |
 | `exclusive-while-lent-to-tasks` | rejected: R515 | clearing the list while two tasks read it |
 | `loan-outlives-cancel` | rejected: R515 | clearing the list after cancelling, before joining |
-| `region-output-unowned` | rejected: R409 | returning region text with `outputOwner none` |
+| `region-output-unowned` | rejected: R409 | returning region text with `outputOwnedBy none` |
 
 Also: `mutation:mutable-loan-of-read-loan`, `mutation:change-through-read-loan`, `mutation:give-while-lent-to-task`, `mutation:return-borrowed-resource`, `mutation:region-escape-none`, `mutation:effect-laundering-ref`, `mutation:by-reference-needs-mutable-loan`.
 
@@ -94,7 +94,7 @@ Also: `mutation:catch-missing`, `mutation:catch-wrong-type`, `mutation:raise-und
 ## Deterministic cleanup
 
 - A cleanup is deferred after the value it cleans exists, and exactly once on a path (R507, R510); it runs at every later `return`, `ok` or `error`, newest first, and only once.
-- A cleanup's call takes the value with `give`: the value is consumed even if releasing it fails. `onFailure trap` stops the program; `onFailure suppress` continues and requires a `because` row (R302).
+- A cleanup's call takes the value with `give`: the value is consumed even if releasing it fails. `onError trap` stops the program; `onError suppress` continues. Every cleanup states a `rationale` row saying why its policy is right (R302).
 - A trap does not run cleanups: the process ends and the operating system releases what it held.
 - A cancelled task runs the cleanups of the operations it unwinds through, since cancellation reaches it as an error.
 

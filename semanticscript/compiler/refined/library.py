@@ -73,7 +73,7 @@ INTEGER_RANGES = {
 FLOAT_TYPES = {"Float32", "Float64"}
 
 # LR-34 rule 5: resources whose capability must state a scope, and how a literal
-# argument is compared with it. Every other resource takes `scope none`.
+# argument is compared with it. Every other resource is granted with `none` as its scope.
 SCOPED_RESOURCES = {
     "net.tcp": "port",  # scope "<address>:<port>"; the literal is the port
     "net.outbound": "prefix",  # scope "<host>:<port>" prefix; the literal is the address
@@ -125,11 +125,11 @@ FOREIGN_TYPES = {"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32",
 
 
 def _bin(t: str, out: str) -> Sig:
-    return Sig((P("left", t, "value"), P("right", t, "value")), out)
+    return Sig((P("left", t, "copied"), P("right", t, "copied")), out)
 
 
 def _un(t: str, out: str) -> Sig:
-    return Sig((P("value", t, "value"),), out)
+    return Sig((P("value", t, "copied"),), out)
 
 
 def _compare(t: str) -> dict:
@@ -147,7 +147,7 @@ def _err(name: str, *variants: tuple) -> TypeInfo:
 
 _W = E("write console.stdout")
 _RG = P("region", "Region", "borrowed")
-_DL = P("deadline", "time.Deadline", "value")
+_DL = P("deadline", "time.Deadline", "copied")
 
 LIBRARY: dict[str, dict] = {
     "console": {
@@ -159,11 +159,11 @@ LIBRARY: dict[str, dict] = {
         "targets": {
             "writeLine": Sig((P("text", "String", "borrowed"),), raises="console.WriteError", effects=_W),
             "write": Sig((P("text", "String", "borrowed"),), raises="console.WriteError", effects=_W),
-            "writeIntegerLine": Sig((P("value", "Int64", "value"),), raises="console.WriteError", effects=_W),
-            "writeFloatLine": Sig((P("value", "Float64", "value"),), raises="console.WriteError", effects=_W),
+            "writeIntegerLine": Sig((P("value", "Int64", "copied"),), raises="console.WriteError", effects=_W),
+            "writeFloatLine": Sig((P("value", "Float64", "copied"),), raises="console.WriteError", effects=_W),
             "writeError": Sig((P("text", "String", "borrowed"),), raises="console.WriteError",
                               effects=E("write console.stderr")),
-            "readLine": Sig((_RG, P("maxBytes", "Int64", "value"), _DL), "String", "region", "console.ReadError",
+            "readLine": Sig((_RG, P("maxBytes", "Int64", "copied"), _DL), "String", "region", "console.ReadError",
                             E("read console.stdin"), waits=True),
         },
     },
@@ -177,7 +177,7 @@ LIBRARY: dict[str, dict] = {
             **{f"{op}Float64": _bin("Float64", "Float64") for op in ("add", "subtract", "multiply", "divide")},
             "negateInt64": _un("Int64", "Int64"),
             "absoluteInt64": _un("Int64", "Int64"),
-            "powerInt64": Sig((P("base", "Int64", "value"), P("exponent", "Int64", "value")), "Int64"),
+            "powerInt64": Sig((P("base", "Int64", "copied"), P("exponent", "Int64", "copied")), "Int64"),
         },
     },
     "compare": {
@@ -198,8 +198,8 @@ LIBRARY: dict[str, dict] = {
         "targets": {
             **{f"{op}Int64": _bin("Int64", "Int64") for op in ("and", "or", "xor")},
             "notInt64": _un("Int64", "Int64"),
-            "shiftLeftInt64": Sig((P("value", "Int64", "value"), P("amount", "Int64", "value")), "Int64"),
-            "shiftRightInt64": Sig((P("value", "Int64", "value"), P("amount", "Int64", "value")), "Int64"),
+            "shiftLeftInt64": Sig((P("value", "Int64", "copied"), P("amount", "Int64", "copied")), "Int64"),
+            "shiftRightInt64": Sig((P("value", "Int64", "copied"), P("amount", "Int64", "copied")), "Int64"),
         },
     },
     "convert": {
@@ -224,17 +224,17 @@ LIBRARY: dict[str, dict] = {
         },
         "targets": {
             "byteLength": Sig((P("text", "String", "borrowed"),), "Int64"),
-            "byteAt": Sig((P("text", "String", "borrowed"), P("index", "Int64", "value")), "Byte",
+            "byteAt": Sig((P("text", "String", "borrowed"), P("index", "Int64", "copied")), "Byte",
                           raises="string.StringIndexError"),
             "equals": Sig((P("left", "String", "borrowed"), P("right", "String", "borrowed")), "Bool"),
             "startsWith": Sig((P("text", "String", "borrowed"), P("prefix", "String", "borrowed")), "Bool"),
             "find": Sig((P("text", "String", "borrowed"), P("needle", "String", "borrowed")), "Int64",
                         raises="string.NotFound"),
-            "slice": Sig((P("text", "String", "borrowed"), P("start", "Int64", "value"), P("length", "Int64", "value")),
+            "slice": Sig((P("text", "String", "borrowed"), P("start", "Int64", "copied"), P("length", "Int64", "copied")),
                          "String", raises="string.StringIndexError", borrows="text"),
             "concat": Sig((P("left", "String", "borrowed"), P("right", "String", "borrowed"), _RG), "String",
                           output_owner="region"),
-            "fromInt64": Sig((P("value", "Int64", "value"), _RG), "String", output_owner="region"),
+            "fromInt64": Sig((P("value", "Int64", "copied"), _RG), "String", output_owner="region"),
             "toInt64": Sig((P("text", "String", "borrowed"),), "Int64", raises="string.ParseError"),
             "fromBytes": Sig((P("bytes", "Bytes", "borrowed"), _RG), "String", "region", "string.Utf8Error"),
             "toBytes": Sig((P("text", "String", "borrowed"),), "Bytes", borrows="text"),
@@ -252,8 +252,8 @@ LIBRARY: dict[str, dict] = {
         "targets": {
             "new": Sig((_RG,), "buffer.ByteBuffer", "region"),
             "appendString": Sig((P("buffer", "buffer.ByteBuffer", "borrowedMutable"), P("text", "String", "borrowed"))),
-            "appendByte": Sig((P("buffer", "buffer.ByteBuffer", "borrowedMutable"), P("value", "Byte", "value"))),
-            "appendInt64": Sig((P("buffer", "buffer.ByteBuffer", "borrowedMutable"), P("value", "Int64", "value"))),
+            "appendByte": Sig((P("buffer", "buffer.ByteBuffer", "borrowedMutable"), P("value", "Byte", "copied"))),
+            "appendInt64": Sig((P("buffer", "buffer.ByteBuffer", "borrowedMutable"), P("value", "Int64", "copied"))),
             "length": Sig((P("buffer", "buffer.ByteBuffer", "borrowed"),), "Int64"),
             "toString": Sig((P("buffer", "buffer.ByteBuffer", "borrowed"), _RG), "String", "region", "string.Utf8Error"),
             "toBytes": Sig((P("buffer", "buffer.ByteBuffer", "borrowed"),), "Bytes", borrows="buffer"),
@@ -263,11 +263,11 @@ LIBRARY: dict[str, dict] = {
         "types": {
             "Deadline": TypeInfo("time.Deadline", "opaque", True, targets={
                 "never": Sig((), "time.Deadline"),
-                "after": Sig((P("milliseconds", "Int64", "value"),), "time.Deadline"),
+                "after": Sig((P("milliseconds", "Int64", "copied"),), "time.Deadline"),
             }),
         },
         "targets": {
-            "sleep": Sig((P("milliseconds", "Int64", "value"),), waits=True),
+            "sleep": Sig((P("milliseconds", "Int64", "copied"),), waits=True),
         },
     },
     "clock": {
@@ -295,7 +295,7 @@ LIBRARY: dict[str, dict] = {
         },
         "targets": {
             "argumentCount": Sig((), "Int64", effects=E("read process.arguments")),
-            "argument": Sig((P("index", "Int64", "value"), _RG), "String", "region", "process.ArgumentError",
+            "argument": Sig((P("index", "Int64", "copied"), _RG), "String", "region", "process.ArgumentError",
                             E("read process.arguments")),
             "newArguments": Sig((_RG,), "process.Arguments", "region"),
             "addArgument": Sig((P("arguments", "process.Arguments", "borrowedMutable"), P("text", "String", "borrowed"))),
@@ -304,7 +304,7 @@ LIBRARY: dict[str, dict] = {
                        scoped="program"),
             # run a program with `input` on its standard input, collecting what it writes (a pipe each way)
             "runCaptured": Sig((P("program", "String", "borrowed"), P("arguments", "process.Arguments", "borrowed"),
-                                P("input", "Bytes", "borrowed"), _RG, P("maxBytes", "Int64", "value"), _DL),
+                                P("input", "Bytes", "borrowed"), _RG, P("maxBytes", "Int64", "copied"), _DL),
                                "process.Output", "region", "process.RunError", E("spawn process.programs"),
                                waits=True, scoped="program"),
         },
@@ -340,9 +340,9 @@ LIBRARY: dict[str, dict] = {
                         effects=E("write fs.files"), waits=True),
             "unlock": Sig((P("file", "fs.FileHandle", "borrowedMutable"),), raises="fs.FileError",
                           effects=E("write fs.files")),
-            "entryName": Sig((P("listing", "fs.DirectoryListing", "borrowed"), P("index", "Int64", "value"), _RG),
+            "entryName": Sig((P("listing", "fs.DirectoryListing", "borrowed"), P("index", "Int64", "copied"), _RG),
                              "String", "region", "fs.EntryIndexError"),
-            "read": Sig((P("file", "fs.FileHandle", "borrowedMutable"), _RG, P("maxBytes", "Int64", "value"), _DL),
+            "read": Sig((P("file", "fs.FileHandle", "borrowedMutable"), _RG, P("maxBytes", "Int64", "copied"), _DL),
                         "Bytes", "region", "fs.FileError", E("read fs.files"), waits=True),
             "write": Sig((P("file", "fs.FileHandle", "borrowedMutable"), P("bytes", "Bytes", "borrowed"), _DL),
                          raises="fs.FileError", effects=E("write fs.files"), waits=True),
@@ -351,7 +351,7 @@ LIBRARY: dict[str, dict] = {
             "exists": Sig((P("path", "String", "borrowed"),), "Bool", effects=E("read fs.files"), scoped="path"),
             "remove": Sig((P("path", "String", "borrowed"),), raises="fs.FileError", effects=E("write fs.files"),
                           scoped="path"),
-            "readAll": Sig((P("path", "String", "borrowed"), _RG, P("maxBytes", "Int64", "value"), _DL),
+            "readAll": Sig((P("path", "String", "borrowed"), _RG, P("maxBytes", "Int64", "copied"), _DL),
                            "Bytes", "region", "fs.FileError", E("read fs.files"), waits=True, scoped="path"),
             "writeAll": Sig((P("path", "String", "borrowed"), P("bytes", "Bytes", "borrowed"), _DL),
                             raises="fs.FileError", effects=E("write fs.files"), waits=True, scoped="path"),
@@ -365,7 +365,7 @@ LIBRARY: dict[str, dict] = {
                              ("cancelled", None), ("failed", "Int32")),
         },
         "targets": {
-            "listen": Sig((P("port", "Int32", "value"),), "net.TcpListener", "caller", "net.NetError",
+            "listen": Sig((P("port", "Int32", "copied"),), "net.TcpListener", "caller", "net.NetError",
                           E("listen net.tcp"), scoped="port"),
             "closeListener": Sig((P("listener", "net.TcpListener", "owned"),), raises="net.NetError",
                                  effects=E("listen net.tcp")),
@@ -373,7 +373,7 @@ LIBRARY: dict[str, dict] = {
                           "net.TcpConnection", "caller", "net.NetError", E("listen net.tcp"), waits=True),
             "connect": Sig((P("address", "String", "borrowed"), _DL), "net.TcpConnection", "caller", "net.NetError",
                            E("connect net.outbound"), waits=True, scoped="address"),
-            "read": Sig((P("connection", "net.TcpConnection", "borrowedMutable"), _RG, P("maxBytes", "Int64", "value"), _DL),
+            "read": Sig((P("connection", "net.TcpConnection", "borrowedMutable"), _RG, P("maxBytes", "Int64", "copied"), _DL),
                         "Bytes", "region", "net.NetError", E("readWrite net.connection"), waits=True),
             "write": Sig((P("connection", "net.TcpConnection", "borrowedMutable"), P("bytes", "Bytes", "borrowed"), _DL),
                          raises="net.NetError", effects=E("readWrite net.connection"), waits=True),
@@ -394,7 +394,7 @@ LIBRARY: dict[str, dict] = {
         "targets": {
             "parseRequest": Sig((P("bytes", "Bytes", "borrowed"), _RG), "http.HttpRequest", "region",
                                 "http.HttpParseError"),
-            "response": Sig((P("status", "Int32", "value"), P("body", "String", "borrowed"), _RG),
+            "response": Sig((P("status", "Int32", "copied"), P("body", "String", "borrowed"), _RG),
                             "http.HttpResponse", "region"),
             "serializeResponse": Sig((P("response", "http.HttpResponse", "borrowed"), _RG), "Bytes", "region"),
             "header": Sig((P("request", "http.HttpRequest", "borrowed"), P("name", "String", "borrowed")), "String",
@@ -446,12 +446,12 @@ LIBRARY: dict[str, dict] = {
         },
         "targets": {
             # a fresh number from the operating system's entropy source, in [low, high]
-            "int64Between": Sig((P("low", "Int64", "value"), P("high", "Int64", "value")), "Int64",
+            "int64Between": Sig((P("low", "Int64", "copied"), P("high", "Int64", "copied")), "Int64",
                                 raises="random.RangeError", effects=E("read random.entropy")),
             # a deterministic generator: the same seed gives the same numbers
-            "newGenerator": Sig((P("seed", "Int64", "value"), _RG), "random.Generator", "region"),
-            "nextInt64": Sig((P("generator", "random.Generator", "borrowedMutable"), P("low", "Int64", "value"),
-                              P("high", "Int64", "value")), "Int64", raises="random.RangeError"),
+            "newGenerator": Sig((P("seed", "Int64", "copied"), _RG), "random.Generator", "region"),
+            "nextInt64": Sig((P("generator", "random.Generator", "borrowedMutable"), P("low", "Int64", "copied"),
+                              P("high", "Int64", "copied")), "Int64", raises="random.RangeError"),
         },
     },
     "crypto": {
@@ -488,21 +488,21 @@ LIBRARY: dict[str, dict] = {
             "asBool": Sig((P("value", "json.Value", "borrowed"),), "Bool", raises="json.AccessError"),
             "asText": Sig((P("value", "json.Value", "borrowed"), _RG), "String", "region", "json.AccessError"),
             "length": Sig((P("value", "json.Value", "borrowed"),), "Int64", raises="json.AccessError"),
-            "item": Sig((P("value", "json.Value", "borrowed"), P("index", "Int64", "value"), _RG), "json.Value",
+            "item": Sig((P("value", "json.Value", "borrowed"), P("index", "Int64", "copied"), _RG), "json.Value",
                         "region", "json.AccessError"),
             "field": Sig((P("value", "json.Value", "borrowed"), P("name", "String", "borrowed"), _RG), "json.Value",
                          "region", "json.AccessError"),
             "newObject": Sig((_RG,), "json.Value", "region"),
             "newArray": Sig((_RG,), "json.Value", "region"),
             "setInt64": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
-                             P("number", "Int64", "value")), raises="json.AccessError"),
+                             P("number", "Int64", "copied")), raises="json.AccessError"),
             "setText": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
                             P("text", "String", "borrowed")), raises="json.AccessError"),
             "setBool": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
-                            P("flag", "Bool", "value")), raises="json.AccessError"),
+                            P("flag", "Bool", "copied")), raises="json.AccessError"),
             "setValue": Sig((P("object", "json.Value", "borrowedMutable"), P("name", "String", "borrowed"),
                              P("value", "json.Value", "borrowed")), raises="json.AccessError"),
-            "appendInt64": Sig((P("array", "json.Value", "borrowedMutable"), P("number", "Int64", "value")),
+            "appendInt64": Sig((P("array", "json.Value", "borrowedMutable"), P("number", "Int64", "copied")),
                                raises="json.AccessError"),
             "appendText": Sig((P("array", "json.Value", "borrowedMutable"), P("text", "String", "borrowed")),
                               raises="json.AccessError"),
@@ -535,10 +535,10 @@ LIBRARY: dict[str, dict] = {
     "test": {
         "types": {},
         "targets": {
-            "assertEqualInt64": Sig((P("expected", "Int64", "value"), P("actual", "Int64", "value"))),
-            "assertEqualExitCode": Sig((P("expected", "ExitCode", "value"), P("actual", "ExitCode", "value"))),
+            "assertEqualInt64": Sig((P("expected", "Int64", "copied"), P("actual", "Int64", "copied"))),
+            "assertEqualExitCode": Sig((P("expected", "ExitCode", "copied"), P("actual", "ExitCode", "copied"))),
             "assertEqualString": Sig((P("expected", "String", "borrowed"), P("actual", "String", "borrowed"))),
-            "assertTrue": Sig((P("value", "Bool", "value"),)),
+            "assertTrue": Sig((P("value", "Bool", "copied"),)),
             "fail": Sig((P("message", "String", "borrowed"),)),
         },
     },
@@ -548,19 +548,19 @@ LIBRARY: dict[str, dict] = {
 def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str, Sig]:
     """Call targets of an instantiated library generic (LR-24, LR-25, LR-33)."""
     def own_mode(t: str) -> str:
-        return "value" if plain(t) else "owned"
+        return "copied" if plain(t) else "owned"
 
     def read_mode(t: str) -> str:
-        return "value" if plain(t) else "borrowed"
+        return "copied" if plain(t) else "borrowed"
 
     if generic == "list.List":
         item = args[0]
         return {
             "new": Sig((_RG,), inst, "region"),
             "append": Sig((P("list", inst, "borrowedMutable"), P("item", item, own_mode(item)))),
-            "get": Sig((P("list", inst, "borrowed"), P("index", "Int64", "value")), item,
+            "get": Sig((P("list", inst, "borrowed"), P("index", "Int64", "copied")), item,
                        raises="list.IndexOutOfRange", borrows=None if plain(item) else "list"),
-            "set": Sig((P("list", inst, "borrowedMutable"), P("index", "Int64", "value"), P("item", item, own_mode(item))),
+            "set": Sig((P("list", inst, "borrowedMutable"), P("index", "Int64", "copied"), P("item", item, own_mode(item))),
                        raises="list.IndexOutOfRange"),
             "length": Sig((P("list", inst, "borrowed"),), "Int64"),
             "clear": Sig((P("list", inst, "borrowedMutable"),)),
@@ -569,20 +569,20 @@ def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str
         key, value = args
         return {
             "new": Sig((_RG,), inst, "region"),
-            "put": Sig((P("map", inst, "borrowedMutable"), P("key", key, "value"), P("value", value, own_mode(value)))),
-            "get": Sig((P("map", inst, "borrowed"), P("key", key, "value")), value, raises="map.KeyMissing",
+            "put": Sig((P("map", inst, "borrowedMutable"), P("key", key, "copied"), P("value", value, own_mode(value)))),
+            "get": Sig((P("map", inst, "borrowed"), P("key", key, "copied")), value, raises="map.KeyMissing",
                        borrows=None if plain(value) else "map"),
-            "contains": Sig((P("map", inst, "borrowed"), P("key", key, "value")), "Bool"),
-            "remove": Sig((P("map", inst, "borrowedMutable"), P("key", key, "value")), raises="map.KeyMissing"),
+            "contains": Sig((P("map", inst, "borrowed"), P("key", key, "copied")), "Bool"),
+            "remove": Sig((P("map", inst, "borrowedMutable"), P("key", key, "copied")), raises="map.KeyMissing"),
             "length": Sig((P("map", inst, "borrowed"),), "Int64"),
         }
     if generic == "set.Set":
         item = args[0]
         return {
             "new": Sig((_RG,), inst, "region"),
-            "add": Sig((P("set", inst, "borrowedMutable"), P("item", item, "value"))),
-            "contains": Sig((P("set", inst, "borrowed"), P("item", item, "value")), "Bool"),
-            "remove": Sig((P("set", inst, "borrowedMutable"), P("item", item, "value"))),
+            "add": Sig((P("set", inst, "borrowedMutable"), P("item", item, "copied"))),
+            "contains": Sig((P("set", inst, "borrowed"), P("item", item, "copied")), "Bool"),
+            "remove": Sig((P("set", inst, "borrowedMutable"), P("item", item, "copied"))),
             "length": Sig((P("set", inst, "borrowed"),), "Int64"),
         }
     if generic == "option.Option":
@@ -595,7 +595,7 @@ def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str
     if generic == "channel.Channel":
         item = args[0]
         return {
-            "new": Sig((P("capacity", "Int64", "value"), _RG), inst, "region"),
+            "new": Sig((P("capacity", "Int64", "copied"), _RG), inst, "region"),
             "send": Sig((P("channel", inst, "borrowed"), P("item", item, own_mode(item)), _DL),
                         raises="channel.ChannelError", waits=True),
             "receive": Sig((P("channel", inst, "borrowed"), _DL), item, "caller" if not plain(item) else None,
