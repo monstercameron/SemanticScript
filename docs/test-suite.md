@@ -207,9 +207,9 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | String concatenation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-owner-undeclared` |   |
 | String comparison | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-is-not-integer` |   |
 | String interpolation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
-| String slicing | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-slice-unchecked`, `string-borrow-undeclared` |   |
-| Unicode support | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
-| UTF-8 handling | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [file-read](../tests/suite/programs/12-io/file-read.sem) |   |
+| String slicing | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-slice-unchecked`, `string-borrow-undeclared`, `whole-character-slice-unchecked` |   |
+| Unicode support | tested | [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
+| UTF-8 handling | tested | [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), `whole-character-slice-unchecked`, `test_lexer_example_tokenizes_a_file_named_on_the_command_line` |   |
 | String escaping | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), `lex-bad-escape` |   |
 | Empty strings | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | Array initialization | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `table-position-gap`, `table-missing-cell` |   |
@@ -303,7 +303,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Standard input | tested | [stdin](../tests/suite/programs/12-io/stdin.sem) |   |
 | Standard error | tested | [console](../tests/suite/programs/12-io/console.sem) |   |
 | File reading | tested | [file-read](../tests/suite/programs/12-io/file-read.sem) |   |
-| File writing | tested | [directories](../tests/suite/programs/12-io/directories.sem), [file-write](../tests/suite/programs/12-io/file-write.sem) |   |
+| File writing | tested | [directories](../tests/suite/programs/12-io/directories.sem), [file-write](../tests/suite/programs/12-io/file-write.sem), `test_lexer_example_tokenizes_a_file_named_on_the_command_line` |   |
 | File appending | tested | [directories](../tests/suite/programs/12-io/directories.sem) | `fs.openAppend` writes at the end of a file, creating it if missing. |
 | Binary file operations | tested | [file-read](../tests/suite/programs/12-io/file-read.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Directory operations | tested | [directories](../tests/suite/programs/12-io/directories.sem) | `fs.createDirectory`, `listDirectory`, `entryCount`, `entryName`, `removeDirectory`. |
@@ -318,7 +318,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | HTTP requests | tested |   | The worked server example runs and answers real HTTP requests (`test_server_example_answers_http` in tests/test_refined.py). There is no HTTP client. |
 | Process execution | tested | [process-run](../tests/suite/programs/12-io/process-run.sem), [process-pipes](../tests/suite/programs/19-stdlib/process-pipes.sem) |   |
 | Environment variables | tested | [environment](../tests/suite/programs/12-io/environment.sem) |   |
-| Command-line arguments | tested | [arguments](../tests/suite/programs/12-io/arguments.sem) |   |
+| Command-line arguments | tested | [arguments](../tests/suite/programs/12-io/arguments.sem), `test_lexer_example_tokenizes_a_file_named_on_the_command_line` |   |
 
 ## 13. Capabilities & Effect System
 
@@ -341,7 +341,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | File-system capability enforcement | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-dotdot`, `capability-scope-escape`, `fs-prefix-sibling`, `allows-scope-narrower` |   |
 | Network capability enforcement | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem), `capability-scope-host`, `host-prefix` |   |
 | Console capability enforcement | tested | [console](../tests/suite/programs/12-io/console.sem), `capability-missing` |   |
-| Capability escalation prevention | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-escape`, `effect-laundering-ref`, `test_symlink_out_of_scope_traps` |   |
+| Capability escalation prevention | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-escape`, `effect-laundering-ref`, `test_lexer_example_reports_problems_with_their_exit_codes`, `test_symlink_out_of_scope_traps` |   |
 | Effect polymorphism | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 
 ## 14. Type System & Generics
@@ -350,7 +350,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | Static type checking | rejected | `operator-type-mismatch` |   |
 | Type inference | rejected | `var-no-inference` |   |
-| Type mismatch detection | rejected | `var-annotation-mismatch`, `string-is-not-integer` |   |
+| Type mismatch detection | rejected | `var-annotation-mismatch`, `string-is-not-integer`, `position-is-not-an-integer`, `punctuation-takes-a-byte` |   |
 | Implicit conversions | rejected | `no-implicit-widening`, `float-into-integer` |   |
 | Explicit conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Generic functions | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
@@ -371,7 +371,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Lexical analysis | tested | [comments-and-context](../tests/suite/programs/15-compiler/comments-and-context.sem), `lex-other-whitespace`, `test_check_reports_unreadable_source_encoding` |   |
+| Lexical analysis | tested | [positions](../tests/suite/programs/08-strings-collections/positions.sem), [comments-and-context](../tests/suite/programs/15-compiler/comments-and-context.sem), `position-step-unchecked`, `position-is-not-an-integer`, `position-unknown-field`, `punctuation-takes-a-byte`, `lex-other-whitespace`, `test_check_reports_unreadable_source_encoding`, `test_lexer_example_tokenizes_a_file_named_on_the_command_line` |   |
 | Token recognition | tested | [comments-and-context](../tests/suite/programs/15-compiler/comments-and-context.sem), `lex-control-character`, `lex-misplaced-quote`, `lex-unterminated-string` |   |
 | Syntax parsing | rejected | `label-missing-declaration`, `row-outside-entity`, `unknown-kind`, `row-shape`, `skeleton-order`, `none-beside-rows` |   |
 | Abstract syntax tree generation | rejected | `row-outside-entity` | The model is rows grouped into entities; malformed rows are reported and dropped before later passes. |
@@ -391,8 +391,8 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Code generation | tested | `test_stress_thousands_of_values`, `test_cross_compiles_to_other_targets`, `test_every_operation_compiles` |   |
 | Linking | by design |   | `run` and `test` JIT-compile in process; there is no separate link step or executable yet. |
 | Incremental compilation | tested | `test_build_cache_reuses_only_identical_projects` | An unchanged project is neither checked nor compiled again (the build cache); a change rechecks the whole project, since checks span modules. |
-| Compiler error diagnostics | tested | `test_fuzz_checker_never_crashes`, `test_a_single_edit_is_reported_on_its_own_line` |   |
-| Source-location tracking | tested | [path-mismatch](../tests/suite/programs/09-modules/path-mismatch.sem), `test_fuzz_checker_never_crashes`, `test_diagnostics_point_at_real_lines`, `test_a_single_edit_is_reported_on_its_own_line` |   |
+| Compiler error diagnostics | tested | `test_fuzz_checker_never_crashes`, `test_a_single_edit_is_reported_on_its_own_line`, `test_lexer_example_reports_problems_with_their_exit_codes` |   |
+| Source-location tracking | tested | [path-mismatch](../tests/suite/programs/09-modules/path-mismatch.sem), `test_fuzz_checker_never_crashes`, `test_diagnostics_point_at_real_lines`, `test_a_single_edit_is_reported_on_its_own_line`, `test_lexer_example_reports_problems_with_their_exit_codes` |   |
 | Compiler determinism | tested | `test_check_output_is_deterministic`, `test_emitted_ir_is_deterministic` |   |
 
 ## 16. Runtime & Execution
@@ -497,9 +497,9 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Memory profiling | tested | `test_trace_coverage_and_profile` | `refined run --profile` reports each region's peak use against its capacity. |
 | CPU profiling | tested | `test_trace_coverage_and_profile` | `refined run --profile` reports calls and time per operation. |
 | Code coverage | tested | `test_trace_coverage_and_profile` | `refined run --coverage` reports which blocks ran and lists the ones that never did. |
-| Debugger integration | tested | `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
+| Debugger integration | tested | `test_debugger_breakpoints_values_and_stack`, `test_debugger_shows_records_and_enums` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
 | Breakpoints | tested | `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
-| Variable inspection | tested | `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
+| Variable inspection | tested | `test_debugger_breakpoints_values_and_stack`, `test_debugger_shows_records_and_enums` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
 | Stack inspection | tested | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem), `test_debugger_breakpoints_values_and_stack` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
 | Execution tracing | tested | `test_trace_coverage_and_profile` | `refined run --debug --break M.OP[:LABEL]`: stops, prints values and the call stack, steps; `--trace` prints every block entered. |
 
@@ -508,7 +508,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
 | Every operation has a valid declaration | rejected | `row-shape`, `missing-skeleton-row`, `purpose-missing` |   |
-| Every call references an existing operation | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `call-unknown-operation` |   |
+| Every call references an existing operation | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `call-unknown-operation`, `position-unknown-field` |   |
 | Every call belongs to a valid operation | rejected | `call-in-unknown-operation` |   |
 | Every label exists | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `branch-unknown-label` |   |
 | Branch targets exist | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `branch-unknown-label` |   |
@@ -529,7 +529,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Recursion limits are enforced | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem), `recursion-undeclared`, `recursion-declared-not-recursive` |   |
 | Heap restrictions are enforced | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `heap-undeclared` |   |
 | Async restrictions are enforced | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `task-not-joined` |   |
-| Error handling matches declared error types | tested | [errors](../tests/suite/programs/10-errors/errors.sem), `string-slice-unchecked`, `raise-undeclared` |   |
+| Error handling matches declared error types | tested | [errors](../tests/suite/programs/10-errors/errors.sem), `string-slice-unchecked`, `position-step-unchecked`, `raise-undeclared` |   |
 | Invariants are validated | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem), `test-verifies-unknown`, `invariant-unverified`, `test-never-calls-verified-op`, `verifies-unknown-additive` |   |
 | Module dependency cycles are handled | rejected | `module-cycle` |   |
 | Invalid operation graphs are rejected | tested | [trap-loop-bound](../tests/suite/programs/04-control-flow/trap-loop-bound.sem), `block-falls-through`, `call-never-activated` |   |
@@ -553,7 +553,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Minimum integer values | tested | [integers](../tests/suite/programs/02-types/integers.sem), [trap-negate-minimum](../tests/suite/programs/03-operators/trap-negate-minimum.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), `int16-literal-too-small` |   |
 | Floating-point extremes | tested | [floats](../tests/suite/programs/02-types/floats.sem) |   |
 | Extremely long strings | tested | `test_stress_extremely_long_string` |   |
-| Invalid Unicode | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
+| Invalid Unicode | tested | [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | Invalid source encoding | tested | `test_check_reports_unreadable_source_encoding` |   |
 | Repeated allocation/deallocation | tested | `test_stress_very_large_collection` |   |
 | Memory exhaustion | tested | [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |

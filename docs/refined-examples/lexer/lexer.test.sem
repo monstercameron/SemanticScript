@@ -1,0 +1,739 @@
+# Tests for lexer.sem: every invariant of `tokenize` and `writeListing` is
+# verified by a test below. Most tokenize a short source, list the tokens with
+# `writeListing`, and compare the listing with the expected text, so one string
+# shows each token's position, kind, and text at a glance.
+
+tokenizeTest is test
+tokenizeTest purpose "Two lines of identifiers, an integer, punctuation, quoted text, a CRLF and a tab list as expected"
+tokenizeTest verifies tokenize kindsAndPositions
+tokenizeTest verifies tokenize spacesSeparate
+tokenizeTest verifies tokenize endsWithEndOfInput
+tokenizeTest verifies writeListing oneLinePerToken
+tokenizeTest typeParameter none
+tokenizeTest input none
+tokenizeTest output none
+tokenizeTest outputOwnedBy none
+tokenizeTest raises none
+tokenizeTest effect none
+tokenizeTest uses none
+tokenizeTest memoryHeap true
+tokenizeTest async false
+tokenizeTest maxRecursion none
+tokenizeTest label begin loopKind none
+tokenizeTest label begin within none
+tokenizeTest label render loopKind none
+tokenizeTest label render within none
+tokenizeTest label decode loopKind none
+tokenizeTest label decode within none
+tokenizeTest label compare loopKind none
+tokenizeTest label compare within none
+tokenizeTest label refused loopKind none
+tokenizeTest label refused within none
+tokenizeTest let source String "count = 42\x0d\n\tsay(\"hi\")\n" immutable
+tokenizeTest let expected String "1:1 identifier count\n1:7 punctuation =\n1:9 integer 42\n1:12 newline\n2:2 identifier say\n2:5 punctuation (\n2:6 text \"hi\"\n2:10 punctuation )\n2:11 newline\n3:1 endOfInput\n" immutable
+tokenizeTest let refusedText String "the source was refused or could not be listed" immutable
+tokenizeTest at begin do makeTokens
+tokenizeTest at begin branch ifError makeTokens goto refused else goto render
+tokenizeTest at render do newListing
+tokenizeTest at render do writeTokens
+tokenizeTest at render branch ifError writeTokens goto refused else goto decode
+tokenizeTest at decode do readListing
+tokenizeTest at decode branch ifError readListing goto refused else goto compare
+tokenizeTest at compare do expectListing
+tokenizeTest at compare return ok none
+tokenizeTest at refused do failRefused
+tokenizeTest at refused return ok none
+
+store is region
+store in tokenizeTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeTokens is call
+makeTokens in tokenizeTest
+makeTokens invokes tokenize
+makeTokens argument source String source lend
+makeTokens argument resultRegion Region store lend
+makeTokens result tokens Tokens
+makeTokens ownedBy store
+makeTokens cleanedBy none
+makeTokens borrows none
+makeTokens catch lexError LexError
+
+newListing is call
+newListing in tokenizeTest
+newListing invokes buffer.new
+newListing argument region Region store lend
+newListing result listing buffer.ByteBuffer
+newListing ownedBy store
+newListing cleanedBy none
+newListing borrows none
+newListing catch none
+
+writeTokens is call
+writeTokens in tokenizeTest
+writeTokens invokes writeListing
+writeTokens argument source String source lend
+writeTokens argument tokens Tokens tokens lend
+writeTokens argument listing buffer.ByteBuffer listing lendMutable
+writeTokens result none
+writeTokens ownedBy none
+writeTokens cleanedBy none
+writeTokens borrows none
+writeTokens catch listingError string.StringIndexError
+
+readListing is call
+readListing in tokenizeTest
+readListing invokes buffer.toString
+readListing argument buffer buffer.ByteBuffer listing lend
+readListing argument region Region store lend
+readListing result listed String
+readListing ownedBy store
+readListing cleanedBy none
+readListing borrows none
+readListing catch decodeError string.Utf8Error
+
+expectListing is call
+expectListing in tokenizeTest
+expectListing invokes test.assertEqualString
+expectListing argument expected String expected lend
+expectListing argument actual String listed lend
+expectListing result none
+expectListing ownedBy none
+expectListing cleanedBy none
+expectListing borrows none
+expectListing catch none
+
+failRefused is call
+failRefused in tokenizeTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+
+columnsTest is test
+columnsTest purpose "The two-byte character in quoted text takes one column, so x is at column 5 and byte offset 6"
+columnsTest verifies tokenize columnsCountCharacters
+columnsTest typeParameter none
+columnsTest input none
+columnsTest output none
+columnsTest outputOwnedBy none
+columnsTest raises none
+columnsTest effect none
+columnsTest uses none
+columnsTest memoryHeap true
+columnsTest async false
+columnsTest maxRecursion none
+columnsTest label begin loopKind none
+columnsTest label begin within none
+columnsTest label render loopKind none
+columnsTest label render within none
+columnsTest label decode loopKind none
+columnsTest label decode within none
+columnsTest label compare loopKind none
+columnsTest label compare within none
+columnsTest label refused loopKind none
+columnsTest label refused within none
+columnsTest let source String "\"\xc3\xa9\" x" immutable
+columnsTest let expected String "1:1 text \"\xc3\xa9\"\n1:5 identifier x\n1:6 endOfInput\n" immutable
+columnsTest let refusedText String "the source was refused or could not be listed" immutable
+columnsTest at begin do makeTokens
+columnsTest at begin branch ifError makeTokens goto refused else goto render
+columnsTest at render do newListing
+columnsTest at render do writeTokens
+columnsTest at render branch ifError writeTokens goto refused else goto decode
+columnsTest at decode do readListing
+columnsTest at decode branch ifError readListing goto refused else goto compare
+columnsTest at compare do expectListing
+columnsTest at compare return ok none
+columnsTest at refused do failRefused
+columnsTest at refused return ok none
+
+store is region
+store in columnsTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeTokens is call
+makeTokens in columnsTest
+makeTokens invokes tokenize
+makeTokens argument source String source lend
+makeTokens argument resultRegion Region store lend
+makeTokens result tokens Tokens
+makeTokens ownedBy store
+makeTokens cleanedBy none
+makeTokens borrows none
+makeTokens catch lexError LexError
+
+newListing is call
+newListing in columnsTest
+newListing invokes buffer.new
+newListing argument region Region store lend
+newListing result listing buffer.ByteBuffer
+newListing ownedBy store
+newListing cleanedBy none
+newListing borrows none
+newListing catch none
+
+writeTokens is call
+writeTokens in columnsTest
+writeTokens invokes writeListing
+writeTokens argument source String source lend
+writeTokens argument tokens Tokens tokens lend
+writeTokens argument listing buffer.ByteBuffer listing lendMutable
+writeTokens result none
+writeTokens ownedBy none
+writeTokens cleanedBy none
+writeTokens borrows none
+writeTokens catch listingError string.StringIndexError
+
+readListing is call
+readListing in columnsTest
+readListing invokes buffer.toString
+readListing argument buffer buffer.ByteBuffer listing lend
+readListing argument region Region store lend
+readListing result listed String
+readListing ownedBy store
+readListing cleanedBy none
+readListing borrows none
+readListing catch decodeError string.Utf8Error
+
+expectListing is call
+expectListing in columnsTest
+expectListing invokes test.assertEqualString
+expectListing argument expected String expected lend
+expectListing argument actual String listed lend
+expectListing result none
+expectListing ownedBy none
+expectListing cleanedBy none
+expectListing borrows none
+expectListing catch none
+
+failRefused is call
+failRefused in columnsTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+
+invalidByteTest is test
+invalidByteTest purpose "A two-byte character outside quoted text on line 2 is refused at 2:3"
+invalidByteTest verifies tokenize rejectsInvalidByte
+invalidByteTest typeParameter none
+invalidByteTest input none
+invalidByteTest output none
+invalidByteTest outputOwnedBy none
+invalidByteTest raises none
+invalidByteTest effect none
+invalidByteTest uses none
+invalidByteTest memoryHeap true
+invalidByteTest async false
+invalidByteTest maxRecursion none
+invalidByteTest label begin loopKind none
+invalidByteTest label begin within none
+invalidByteTest label inspect loopKind none
+invalidByteTest label inspect within none
+invalidByteTest label rightVariant loopKind none
+invalidByteTest label rightVariant within none
+invalidByteTest label wrongVariant loopKind none
+invalidByteTest label wrongVariant within none
+invalidByteTest label accepted loopKind none
+invalidByteTest label accepted within none
+invalidByteTest let source String "ok\n  \xc3\xa9" immutable
+invalidByteTest let expectedLine Int64 2 immutable
+invalidByteTest let expectedColumn Int64 3 immutable
+invalidByteTest let acceptedText String "the source was accepted" immutable
+invalidByteTest let wrongText String "the source was refused for the wrong reason" immutable
+invalidByteTest at begin do makeTokens
+invalidByteTest at begin branch ifError makeTokens goto inspect else goto accepted
+invalidByteTest at inspect match lexError LexError
+invalidByteTest at inspect case LexError.invalidByte bind where string.Position goto rightVariant
+invalidByteTest at inspect case LexError.unterminatedText bind unterminatedTextAt string.Position goto wrongVariant
+invalidByteTest at inspect case LexError.integerTooLarge bind integerTooLargeAt string.Position goto wrongVariant
+invalidByteTest at rightVariant do readLine
+invalidByteTest at rightVariant do expectLine
+invalidByteTest at rightVariant do readColumn
+invalidByteTest at rightVariant do expectColumn
+invalidByteTest at rightVariant return ok none
+invalidByteTest at wrongVariant do failWrong
+invalidByteTest at wrongVariant return ok none
+invalidByteTest at accepted do failAccepted
+invalidByteTest at accepted return ok none
+
+store is region
+store in invalidByteTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeTokens is call
+makeTokens in invalidByteTest
+makeTokens invokes tokenize
+makeTokens argument source String source lend
+makeTokens argument resultRegion Region store lend
+makeTokens result tokens Tokens
+makeTokens ownedBy store
+makeTokens cleanedBy none
+makeTokens borrows none
+makeTokens catch lexError LexError
+
+readLine is call
+readLine in invalidByteTest
+readLine invokes string.Position.line
+readLine argument record string.Position where copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+
+expectLine is call
+expectLine in invalidByteTest
+expectLine invokes test.assertEqualInt64
+expectLine argument expected Int64 expectedLine copy
+expectLine argument actual Int64 line copy
+expectLine result none
+expectLine ownedBy none
+expectLine cleanedBy none
+expectLine borrows none
+expectLine catch none
+
+readColumn is call
+readColumn in invalidByteTest
+readColumn invokes string.Position.column
+readColumn argument record string.Position where copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+
+expectColumn is call
+expectColumn in invalidByteTest
+expectColumn invokes test.assertEqualInt64
+expectColumn argument expected Int64 expectedColumn copy
+expectColumn argument actual Int64 column copy
+expectColumn result none
+expectColumn ownedBy none
+expectColumn cleanedBy none
+expectColumn borrows none
+expectColumn catch none
+
+failWrong is call
+failWrong in invalidByteTest
+failWrong invokes test.fail
+failWrong argument message String wrongText lend
+failWrong result none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+
+failAccepted is call
+failAccepted in invalidByteTest
+failAccepted invokes test.fail
+failAccepted argument message String acceptedText lend
+failAccepted result none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none
+
+unterminatedTest is test
+unterminatedTest purpose "Quoted text that a newline ends early is refused at its opening quote, 1:3"
+unterminatedTest verifies tokenize rejectsUnterminatedText
+unterminatedTest typeParameter none
+unterminatedTest input none
+unterminatedTest output none
+unterminatedTest outputOwnedBy none
+unterminatedTest raises none
+unterminatedTest effect none
+unterminatedTest uses none
+unterminatedTest memoryHeap true
+unterminatedTest async false
+unterminatedTest maxRecursion none
+unterminatedTest label begin loopKind none
+unterminatedTest label begin within none
+unterminatedTest label inspect loopKind none
+unterminatedTest label inspect within none
+unterminatedTest label rightVariant loopKind none
+unterminatedTest label rightVariant within none
+unterminatedTest label wrongVariant loopKind none
+unterminatedTest label wrongVariant within none
+unterminatedTest label accepted loopKind none
+unterminatedTest label accepted within none
+unterminatedTest let source String "x \"abc\n\"" immutable
+unterminatedTest let expectedLine Int64 1 immutable
+unterminatedTest let expectedColumn Int64 3 immutable
+unterminatedTest let acceptedText String "the source was accepted" immutable
+unterminatedTest let wrongText String "the source was refused for the wrong reason" immutable
+unterminatedTest at begin do makeTokens
+unterminatedTest at begin branch ifError makeTokens goto inspect else goto accepted
+unterminatedTest at inspect match lexError LexError
+unterminatedTest at inspect case LexError.invalidByte bind invalidByteAt string.Position goto wrongVariant
+unterminatedTest at inspect case LexError.unterminatedText bind where string.Position goto rightVariant
+unterminatedTest at inspect case LexError.integerTooLarge bind integerTooLargeAt string.Position goto wrongVariant
+unterminatedTest at rightVariant do readLine
+unterminatedTest at rightVariant do expectLine
+unterminatedTest at rightVariant do readColumn
+unterminatedTest at rightVariant do expectColumn
+unterminatedTest at rightVariant return ok none
+unterminatedTest at wrongVariant do failWrong
+unterminatedTest at wrongVariant return ok none
+unterminatedTest at accepted do failAccepted
+unterminatedTest at accepted return ok none
+
+store is region
+store in unterminatedTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeTokens is call
+makeTokens in unterminatedTest
+makeTokens invokes tokenize
+makeTokens argument source String source lend
+makeTokens argument resultRegion Region store lend
+makeTokens result tokens Tokens
+makeTokens ownedBy store
+makeTokens cleanedBy none
+makeTokens borrows none
+makeTokens catch lexError LexError
+
+readLine is call
+readLine in unterminatedTest
+readLine invokes string.Position.line
+readLine argument record string.Position where copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+
+expectLine is call
+expectLine in unterminatedTest
+expectLine invokes test.assertEqualInt64
+expectLine argument expected Int64 expectedLine copy
+expectLine argument actual Int64 line copy
+expectLine result none
+expectLine ownedBy none
+expectLine cleanedBy none
+expectLine borrows none
+expectLine catch none
+
+readColumn is call
+readColumn in unterminatedTest
+readColumn invokes string.Position.column
+readColumn argument record string.Position where copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+
+expectColumn is call
+expectColumn in unterminatedTest
+expectColumn invokes test.assertEqualInt64
+expectColumn argument expected Int64 expectedColumn copy
+expectColumn argument actual Int64 column copy
+expectColumn result none
+expectColumn ownedBy none
+expectColumn cleanedBy none
+expectColumn borrows none
+expectColumn catch none
+
+failWrong is call
+failWrong in unterminatedTest
+failWrong invokes test.fail
+failWrong argument message String wrongText lend
+failWrong result none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+
+failAccepted is call
+failAccepted in unterminatedTest
+failAccepted invokes test.fail
+failAccepted argument message String acceptedText lend
+failAccepted result none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none
+
+tooLargeTest is test
+tooLargeTest purpose "An integer of twenty nines is refused at its first digit, 1:3"
+tooLargeTest verifies tokenize rejectsHugeInteger
+tooLargeTest typeParameter none
+tooLargeTest input none
+tooLargeTest output none
+tooLargeTest outputOwnedBy none
+tooLargeTest raises none
+tooLargeTest effect none
+tooLargeTest uses none
+tooLargeTest memoryHeap true
+tooLargeTest async false
+tooLargeTest maxRecursion none
+tooLargeTest label begin loopKind none
+tooLargeTest label begin within none
+tooLargeTest label inspect loopKind none
+tooLargeTest label inspect within none
+tooLargeTest label rightVariant loopKind none
+tooLargeTest label rightVariant within none
+tooLargeTest label wrongVariant loopKind none
+tooLargeTest label wrongVariant within none
+tooLargeTest label accepted loopKind none
+tooLargeTest label accepted within none
+tooLargeTest let source String "1 99999999999999999999" immutable
+tooLargeTest let expectedLine Int64 1 immutable
+tooLargeTest let expectedColumn Int64 3 immutable
+tooLargeTest let acceptedText String "the source was accepted" immutable
+tooLargeTest let wrongText String "the source was refused for the wrong reason" immutable
+tooLargeTest at begin do makeTokens
+tooLargeTest at begin branch ifError makeTokens goto inspect else goto accepted
+tooLargeTest at inspect match lexError LexError
+tooLargeTest at inspect case LexError.invalidByte bind invalidByteAt string.Position goto wrongVariant
+tooLargeTest at inspect case LexError.unterminatedText bind unterminatedTextAt string.Position goto wrongVariant
+tooLargeTest at inspect case LexError.integerTooLarge bind where string.Position goto rightVariant
+tooLargeTest at rightVariant do readLine
+tooLargeTest at rightVariant do expectLine
+tooLargeTest at rightVariant do readColumn
+tooLargeTest at rightVariant do expectColumn
+tooLargeTest at rightVariant return ok none
+tooLargeTest at wrongVariant do failWrong
+tooLargeTest at wrongVariant return ok none
+tooLargeTest at accepted do failAccepted
+tooLargeTest at accepted return ok none
+
+store is region
+store in tooLargeTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeTokens is call
+makeTokens in tooLargeTest
+makeTokens invokes tokenize
+makeTokens argument source String source lend
+makeTokens argument resultRegion Region store lend
+makeTokens result tokens Tokens
+makeTokens ownedBy store
+makeTokens cleanedBy none
+makeTokens borrows none
+makeTokens catch lexError LexError
+
+readLine is call
+readLine in tooLargeTest
+readLine invokes string.Position.line
+readLine argument record string.Position where copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+
+expectLine is call
+expectLine in tooLargeTest
+expectLine invokes test.assertEqualInt64
+expectLine argument expected Int64 expectedLine copy
+expectLine argument actual Int64 line copy
+expectLine result none
+expectLine ownedBy none
+expectLine cleanedBy none
+expectLine borrows none
+expectLine catch none
+
+readColumn is call
+readColumn in tooLargeTest
+readColumn invokes string.Position.column
+readColumn argument record string.Position where copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+
+expectColumn is call
+expectColumn in tooLargeTest
+expectColumn invokes test.assertEqualInt64
+expectColumn argument expected Int64 expectedColumn copy
+expectColumn argument actual Int64 column copy
+expectColumn result none
+expectColumn ownedBy none
+expectColumn cleanedBy none
+expectColumn borrows none
+expectColumn catch none
+
+failWrong is call
+failWrong in tooLargeTest
+failWrong invokes test.fail
+failWrong argument message String wrongText lend
+failWrong result none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+
+failAccepted is call
+failAccepted in tooLargeTest
+failAccepted invokes test.fail
+failAccepted argument message String acceptedText lend
+failAccepted result none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none
+
+outsideTokenTest is test
+outsideTokenTest purpose "An identifier token at offset 5 of the one-byte source x is refused with outOfRange 5"
+outsideTokenTest verifies writeListing rejectsOutsideToken
+outsideTokenTest typeParameter none
+outsideTokenTest input none
+outsideTokenTest output none
+outsideTokenTest outputOwnedBy none
+outsideTokenTest raises none
+outsideTokenTest effect none
+outsideTokenTest uses none
+outsideTokenTest memoryHeap true
+outsideTokenTest async false
+outsideTokenTest maxRecursion none
+outsideTokenTest label begin loopKind none
+outsideTokenTest label begin within none
+outsideTokenTest label inspect loopKind none
+outsideTokenTest label inspect within none
+outsideTokenTest label rightStart loopKind none
+outsideTokenTest label rightStart within none
+outsideTokenTest label accepted loopKind none
+outsideTokenTest label accepted within none
+outsideTokenTest let source String "x" immutable
+outsideTokenTest let five Int64 5 immutable
+outsideTokenTest let three Int64 3 immutable
+outsideTokenTest let one Int64 1 immutable
+outsideTokenTest let acceptedText String "a token outside the source was listed" immutable
+outsideTokenTest at begin do makeTokens
+outsideTokenTest at begin do makeKind
+outsideTokenTest at begin do makeStart
+outsideTokenTest at begin do makeToken
+outsideTokenTest at begin do appendToken
+outsideTokenTest at begin do newListing
+outsideTokenTest at begin do writeTokens
+outsideTokenTest at begin branch ifError writeTokens goto inspect else goto accepted
+outsideTokenTest at inspect match listingError string.StringIndexError
+outsideTokenTest at inspect case string.StringIndexError.outOfRange bind badStart Int64 goto rightStart
+outsideTokenTest at rightStart do expectStart
+outsideTokenTest at rightStart return ok none
+outsideTokenTest at accepted do failAccepted
+outsideTokenTest at accepted return ok none
+
+store is region
+store in outsideTokenTest
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeTokens is call
+makeTokens in outsideTokenTest
+makeTokens invokes Tokens.new
+makeTokens argument region Region store lend
+makeTokens result tokens Tokens
+makeTokens ownedBy store
+makeTokens cleanedBy none
+makeTokens borrows none
+makeTokens catch none
+
+makeKind is call
+makeKind in outsideTokenTest
+makeKind invokes TokenKind.identifier
+makeKind argument none
+makeKind result kind TokenKind
+makeKind ownedBy none
+makeKind cleanedBy none
+makeKind borrows none
+makeKind catch none
+
+makeStart is call
+makeStart in outsideTokenTest
+makeStart invokes string.Position.new
+makeStart argument offset Int64 five copy
+makeStart argument line Int64 one copy
+makeStart argument column Int64 one copy
+makeStart result start string.Position
+makeStart ownedBy none
+makeStart cleanedBy none
+makeStart borrows none
+makeStart catch none
+
+makeToken is call
+makeToken in outsideTokenTest
+makeToken invokes Token.new
+makeToken argument kind TokenKind kind copy
+makeToken argument start string.Position start copy
+makeToken argument length Int64 three copy
+makeToken result token Token
+makeToken ownedBy none
+makeToken cleanedBy none
+makeToken borrows none
+makeToken catch none
+
+appendToken is call
+appendToken in outsideTokenTest
+appendToken invokes Tokens.append
+appendToken argument list Tokens tokens lendMutable
+appendToken argument item Token token copy
+appendToken result none
+appendToken ownedBy none
+appendToken cleanedBy none
+appendToken borrows none
+appendToken catch none
+
+newListing is call
+newListing in outsideTokenTest
+newListing invokes buffer.new
+newListing argument region Region store lend
+newListing result listing buffer.ByteBuffer
+newListing ownedBy store
+newListing cleanedBy none
+newListing borrows none
+newListing catch none
+
+writeTokens is call
+writeTokens in outsideTokenTest
+writeTokens invokes writeListing
+writeTokens argument source String source lend
+writeTokens argument tokens Tokens tokens lend
+writeTokens argument listing buffer.ByteBuffer listing lendMutable
+writeTokens result none
+writeTokens ownedBy none
+writeTokens cleanedBy none
+writeTokens borrows none
+writeTokens catch listingError string.StringIndexError
+
+expectStart is call
+expectStart in outsideTokenTest
+expectStart invokes test.assertEqualInt64
+expectStart argument expected Int64 five copy
+expectStart argument actual Int64 badStart copy
+expectStart result none
+expectStart ownedBy none
+expectStart cleanedBy none
+expectStart borrows none
+expectStart catch none
+
+failAccepted is call
+failAccepted in outsideTokenTest
+failAccepted invokes test.fail
+failAccepted argument message String acceptedText lend
+failAccepted result none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none

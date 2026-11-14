@@ -97,6 +97,22 @@ Also: `mutation:capability-missing`, `mutation:capability-unused`, `mutation:cap
 
 Also: `mutation:catch-missing`, `mutation:catch-wrong-type`, `mutation:raise-undeclared`, `mutation:raise-wrong-type`, `mutation:error-not-passed-up`, `mutation:error-match-incomplete`, `mutation:error-match-duplicate`, `case:10-errors/errors`.
 
+## Text and source positions
+
+- Text is read a byte at a time with `string.byteAt`, and every index is checked: an index outside the text is a typed `outOfRange` error, never a read past its end.
+- `string.slice` keeps characters whole: a slice that would start or end inside a UTF-8 sequence is `outOfRange` (D-70), so a slice of UTF-8 text is UTF-8 text.
+- `string.advancePosition` steps over one whole character and keeps its line and column: a newline starts the next line at column 1 and any other character moves one column, so columns count characters, not bytes. Stepping from outside the text is `outOfRange` (D-71).
+- A file path computed at run time (from the command line, say) is checked against the capability's scope when the file is opened; outside the scope the program stops before the file is touched (D-38).
+
+| Check | Expect | What it shows |
+| --- | --- | --- |
+| `position-step-unchecked` | rejected: R506, R507 | stepping past a space without its error branch |
+| `position-is-a-record` | rejected: R403 | reporting a too-large integer at a byte offset, not a position |
+| `lexes-a-named-file` | runs | the lexer example tokenizes the file its argument names |
+| `computed-path-outside-scope` | traps | the lexer example given a path outside `lexer-*` |
+
+Also: `case:08-strings-collections/positions`, `case:08-strings-collections/bounds`, `mutation:whole-character-slice-unchecked`, `mutation:position-step-unchecked`, `mutation:position-is-not-an-integer`, `mutation:punctuation-takes-a-byte`, `test:test_lexer_example_tokenizes_a_file_named_on_the_command_line`, `test:test_lexer_example_reports_problems_with_their_exit_codes`.
+
 ## Deterministic cleanup
 
 - A cleanup is deferred after the value it cleans exists, and exactly once on a path (R507, R510); it runs at every later `return`, `ok` or `error`, newest first, and only once.

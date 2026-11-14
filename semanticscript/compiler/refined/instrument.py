@@ -61,6 +61,26 @@ def _value(addr: int, kind: str) -> str:
         if not ptr or not 0 <= length <= 1 << 20:
             return '""' if not ptr else "<unreadable>"
         return '"' + ctypes.string_at(ptr, length).decode("utf-8", "replace") + '"'
+    if kind.startswith("record(") and kind.endswith(")"):
+        # D-73: integer and Bool fields in order, each at the next offset its own size aligns to
+        shown, offset = [], 0
+        for field in kind[7:-1].split(","):
+            fname, fkind = field.split(" ")
+            size = max(1, int(fkind[1:]) // 8)
+            offset = (offset + size - 1) // size * size
+            shown.append(f"{fname} {_value(addr + offset, 'i1' if fkind == 'i1' else f'i{size * 8}')}")
+            offset += size
+        return "{" + ", ".join(shown) + "}"
+    if kind.startswith("enum(") and kind.endswith(")"):
+        # D-73: the narrow layout {i32 tag, i64 payload}
+        variants = kind[5:-1].split(",")
+        tag = ctypes.c_int32.from_address(addr).value
+        if not 0 <= tag < len(variants):
+            return "<unreadable>"
+        name = variants[tag]
+        if name.endswith("*"):
+            return f"{name[:-1]}({ctypes.c_int64.from_address(addr + 8).value})"
+        return name
     return "<value>"
 
 

@@ -2140,6 +2140,54 @@ a list, operation references, two tasks borrowing one list, cancellation on
 the failure path, a cleanup that traps, exhaustive matches, and a test per
 invariant.
 
+### Text, source positions, and tooling for a compiler (D-70 to D-73)
+
+Toward a compiler written in SemanticScript: what a lexer needs from text,
+positions for diagnostics, and the tools to look inside one. The `lexer`
+example (`docs/refined-examples/lexer`) is the proof: it reads the file its
+command-line argument names, tokenizes it with a line and column per token,
+reports an invalid byte as `path:line:column: why`, and writes the token list
+to `<path>.tokens`.
+
+- **D-70** `string.slice` keeps characters whole. A slice whose start or end
+  falls inside a UTF-8 sequence (on a continuation byte, `10xxxxxx`) is
+  `outOfRange` carrying the start, like any other bad range. Before, a slice
+  could cut a character in two and hand back text that is not UTF-8; byte
+  offsets a lexer computes from whole characters never hit the new error.
+- **D-71** `string.Position` is a library record (`offset`, `line`,
+  `column`, all `Int64`; line and column count from 1), built with
+  `string.Position.new` and read by field like any record.
+  `string.advancePosition text position` returns the position after the
+  character at `position`'s offset: a character is the UTF-8 sequence its lead
+  byte announces when that many continuation bytes follow, and any other byte
+  is a character of its own, so invalid text still advances. A newline byte
+  moves to column 1 of the next line; anything else moves one column. An
+  offset outside the text is `outOfRange` carrying the offset; a line or
+  column past `Int64` traps. Why a target: every lexer and every diagnostic
+  needs it, getting UTF-8 widths right takes some thirty rows, and it is
+  lowered inline, so it runs the same in `run`, standalone executables, and
+  WebAssembly.
+- **D-72** `byte.isPunctuation`: the 32 printable ASCII bytes that are not
+  letters, digits, or space (`!` to `/`, `:` to `@`, `[` to `` ` ``, `{` to
+  `~`). It includes `"` and `_`, so a lexer that gives them their own meaning
+  tests for them first, as the example does. Nothing else was missing: the
+  lexer's arithmetic and comparisons (`compare.*Byte`, `compare.*Int64`,
+  `math.subtractInt64`, `logic.or`, `convert.byteToInt64`) were already named
+  targets, so no expression syntax was needed (the owner's instruction).
+- **D-73** The debugger's `vars` shows a record whose fields are integers or
+  `Bool` by field (`{offset 12, line 1, column 13}`) and an enum in the narrow
+  layout by variant (`integer(42)`, `newline`), where it showed `<value>`.
+  Other records and enums still show `<value>`.
+
+Also confirmed on the example: `match`/`case` binds token-kind payloads
+(`Int64`, `Byte`) and a record payload (`LexError` carries a
+`string.Position`); a path taken from `process.argument` is checked against
+the capability's scope when the file is opened (D-38), and a path outside it
+traps before the file is touched; `buffer.ByteBuffer` builds the output and
+`fs.writeAll` writes it; `--trace`, `--coverage`, `--profile`, and `--debug`
+all work on it. The conformance suite gains a "Text and source positions"
+guarantee whose run checks pass command-line arguments (`Check.args`).
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.
@@ -2363,6 +2411,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | Part 7 | Test suite and generated coverage map (owner); fixes for what it found; decisions D-24 to D-26 (by delegation) |
 | 2026-11-14 | Part 10 | Adversarial refinement: loan, task, scope, and test holes closed; decisions D-38 to D-41 (by delegation) |
 | 2026-11-14 | D-43 to D-47 | Exclusive handle loans, cancel-then-join, table loop bounds, no exported capabilities, a conformance suite; one consistent syntax pattern (owner) |
+| 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 
 ## Parking lot
 

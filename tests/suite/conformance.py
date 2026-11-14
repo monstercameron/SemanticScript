@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.join(HERE, "conformance", "warehouse")
 BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups"),
-         "cleanups": os.path.join(HERE, "conformance", "cleanups")}
+         "cleanups": os.path.join(HERE, "conformance", "cleanups"),
+         "lexer": os.path.join(HERE, "..", "..", "docs", "refined-examples", "lexer")}
 DOC = os.path.join(HERE, "..", "..", "docs", "safety-guarantees.md")
 
 W, P, B = "warehouse.sem", "pricing.sem", "build.sem"
@@ -37,6 +38,7 @@ class Check:
     base: str = "warehouse"  # which program in tests/suite/conformance the edits apply to
     exit: int = 0  # run: the exit code
     lines: tuple = ()  # run and trap: the exact stdout, line by line, when the order matters
+    args: tuple = ()  # run and trap: the program's command-line arguments (what follows `--`)
 
 
 @dataclass(frozen=True)
@@ -349,6 +351,36 @@ GUARANTEES = (
     ), ("mutation:catch-missing", "mutation:catch-wrong-type", "mutation:raise-undeclared", "mutation:raise-wrong-type",
         "mutation:error-not-passed-up", "mutation:error-match-incomplete", "mutation:error-match-duplicate",
         "case:10-errors/errors")),
+
+    Guarantee("text", "Text and source positions", (
+        "Text is read a byte at a time with `string.byteAt`, and every index is checked: an index outside the text is "
+        "a typed `outOfRange` error, never a read past its end.",
+        "`string.slice` keeps characters whole: a slice that would start or end inside a UTF-8 sequence is "
+        "`outOfRange` (D-70), so a slice of UTF-8 text is UTF-8 text.",
+        "`string.advancePosition` steps over one whole character and keeps its line and column: a newline starts the "
+        "next line at column 1 and any other character moves one column, so columns count characters, not bytes. "
+        "Stepping from outside the text is `outOfRange` (D-71).",
+        "A file path computed at run time (from the command line, say) is checked against the capability's scope "
+        "when the file is opened; outside the scope the program stops before the file is touched (D-38).",
+    ), (
+        Check("position-step-unchecked", "reject", "stepping past a space without its error branch",
+              (("lexer.sem", "tokenize at skipSpace branch ifError stepSpace goto finished else goto spaceDone\n",
+                "tokenize at skipSpace goto spaceDone\n"),), ("R506", "R507"), "`stepSpace` can fail",
+              base="lexer"),
+        Check("position-is-a-record", "reject", "reporting a too-large integer at a byte offset, not a position",
+              (("lexer.sem", "makeTooLarge argument payload string.Position position copy",
+                "makeTooLarge argument payload Int64 offset copy"),), ("R403",), "is `string.Position`, not `Int64`",
+              base="lexer"),
+        Check("lexes-a-named-file", "run", "the lexer example tokenizes the file its argument names",
+              (), (), "lexer-sample.txt: 31 tokens, end of input at 6:1, written to lexer-sample.txt.tokens",
+              base="lexer", args=("lexer-sample.txt",)),
+        Check("computed-path-outside-scope", "trap", "the lexer example given a path outside `lexer-*`",
+              (), (), "which no capability this operation uses allows", base="lexer", args=("build.sem",)),
+    ), ("case:08-strings-collections/positions", "case:08-strings-collections/bounds",
+        "mutation:whole-character-slice-unchecked", "mutation:position-step-unchecked",
+        "mutation:position-is-not-an-integer", "mutation:punctuation-takes-a-byte",
+        "test:test_lexer_example_tokenizes_a_file_named_on_the_command_line",
+        "test:test_lexer_example_reports_problems_with_their_exit_codes")),
 
     Guarantee("cleanup", "Deterministic cleanup", (
         "A cleanup is deferred after the value it cleans exists, and exactly once on a path (R507, R510); it runs at "
