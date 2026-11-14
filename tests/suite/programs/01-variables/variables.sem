@@ -15,7 +15,9 @@
 # stdout: 10
 # stdout: 11
 # stdout: 7
+# stdout: 10
 # stdout: 3
+# stdout: 30
 
 variables is module
 variables purpose "Show declaring, setting, and merging values"
@@ -60,6 +62,37 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+
+choose is operation
+choose purpose "Return 7 when asked to pick seven, else 10, through a value set on either branch"
+choose invariant none
+choose typeParam none
+choose input pick Bool value
+choose output Int64
+choose outputOwner none
+choose raises none
+choose effect none
+choose uses none
+choose memory heap false
+choose async false
+choose maxRecursion none
+choose label begin loopKind none
+choose label begin within none
+choose label seven loopKind none
+choose label seven within none
+choose label other loopKind none
+choose label other within none
+choose label merged loopKind none
+choose label merged within none
+choose let sevenValue immutable Int64 7
+choose let ten immutable Int64 10
+choose let chosen mutable Int64 unset
+choose at begin branch if pick goto seven else goto other
+choose at seven set chosen sevenValue
+choose at seven goto merged
+choose at other set chosen ten
+choose at other goto merged
+choose at merged return ok chosen
 
 scaled is operation
 scaled purpose "Return a value from a local of the same name as one in main"
@@ -106,32 +139,25 @@ main async false
 main maxRecursion none
 main label begin loopKind none
 main label begin within none
-main label seven loopKind none
-main label seven within none
-main label other loopKind none
-main label other within none
-main label merged loopKind none
-main label merged within none
 main let ten immutable Int64 10
 main let one immutable Int64 1
-main let sevenValue immutable Int64 7
-main let pickSeven immutable Bool true
+main let yes immutable Bool true
+main let no immutable Bool false
+main let three immutable Int64 30
 main let counter mutable Int64 ten
-main let chosen mutable Int64 unset
 main let okCode immutable ExitCode 0
 main at begin do showStart
 main at begin do bump
 main at begin set counter bumped
 main at begin do showBumped
-main at begin branch if pickSeven goto seven else goto other
-main at seven set chosen sevenValue
-main at seven goto merged
-main at other set chosen ten
-main at other goto merged
-main at merged do showChosen
-main at merged do callScaled
-main at merged do showScaled
-main at merged return ok okCode
+main at begin do chooseSeven
+main at begin do showSeven
+main at begin do chooseTen
+main at begin do showTen
+main at begin do callScaled
+main at begin do showScaled
+main at begin do showThree
+main at begin return ok okCode
 
 showStart is call
 showStart in main
@@ -164,15 +190,45 @@ showBumped cleanedBy none
 showBumped borrows none
 showBumped catch none
 
-showChosen is call
-showChosen in main
-showChosen invokes showInt
-showChosen arg value Int64 chosen copy
-showChosen out none
-showChosen ownedBy none
-showChosen cleanedBy none
-showChosen borrows none
-showChosen catch none
+chooseSeven is call
+chooseSeven in main
+chooseSeven invokes choose
+chooseSeven arg pick Bool yes copy
+chooseSeven out seven Int64
+chooseSeven ownedBy none
+chooseSeven cleanedBy none
+chooseSeven borrows none
+chooseSeven catch none
+
+showSeven is call
+showSeven in main
+showSeven invokes showInt
+showSeven arg value Int64 seven copy
+showSeven out none
+showSeven ownedBy none
+showSeven cleanedBy none
+showSeven borrows none
+showSeven catch none
+
+chooseTen is call
+chooseTen in main
+chooseTen invokes choose
+chooseTen arg pick Bool no copy
+chooseTen out tenChosen Int64
+chooseTen ownedBy none
+chooseTen cleanedBy none
+chooseTen borrows none
+chooseTen catch none
+
+showTen is call
+showTen in main
+showTen invokes showInt
+showTen arg value Int64 tenChosen copy
+showTen out none
+showTen ownedBy none
+showTen cleanedBy none
+showTen borrows none
+showTen catch none
 
 callScaled is call
 callScaled in main
@@ -193,3 +249,13 @@ showScaled ownedBy none
 showScaled cleanedBy none
 showScaled borrows none
 showScaled catch none
+
+showThree is call
+showThree in main
+showThree invokes showInt
+showThree arg value Int64 three copy
+showThree out none
+showThree ownedBy none
+showThree cleanedBy none
+showThree borrows none
+showThree catch none

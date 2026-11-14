@@ -1,0 +1,484 @@
+# covers: 19 JSON parsing
+# covers: 19 Serialization
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: Ada
+# stdout: 3
+# stdout: 2
+# stdout: true
+# stdout: missing
+# stdout: 6
+# stdout: {"a":"x","n":5}
+
+jsonCase is module
+jsonCase purpose "Use the json targets"
+jsonCase path jsonCase
+jsonCase imports standard.console
+jsonCase imports standard.json
+jsonCase exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParam none
+showInt input value Int64 value
+showInt output none
+showInt outputOwner none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memory heap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue arg value Int64 value copy
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label step1 loopKind none
+main label step1 within none
+main label step2 loopKind none
+main label step2 within none
+main label step3 loopKind none
+main label step3 within none
+main label step4 loopKind none
+main label step4 within none
+main label step5 loopKind none
+main label step5 within none
+main label step6 loopKind none
+main label step6 within none
+main label step7 loopKind none
+main label step7 within none
+main label step8 loopKind none
+main label step8 within none
+main label step9 loopKind none
+main label step9 within none
+main label step10 loopKind none
+main label step10 within none
+main label step11 loopKind none
+main label step11 within none
+main label showBadAt loopKind none
+main label showBadAt within none
+main label step12 loopKind none
+main label step12 within none
+main label step13 loopKind none
+main label step13 within none
+main label failed loopKind none
+main label failed within none
+main let one immutable Int64 1
+main let five immutable Int64 5
+main let document immutable String "{\"name\":\"Ada\",\"tags\":[1,2,3],\"ok\":true}"
+main let badDocument immutable String "{\"a\": tru}"
+main let nameKey immutable String "name"
+main let tagsKey immutable String "tags"
+main let okKey immutable String "ok"
+main let absentKey immutable String "absent"
+main let missingText immutable String "missing"
+main let aKey immutable String "a"
+main let nKey immutable String "n"
+main let xText immutable String "x"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do parseDocument
+main at begin branch ifError parseDocument goto failed else goto step1
+main at step1 do nameField
+main at step1 branch ifError nameField goto failed else goto step2
+main at step2 do nameText
+main at step2 branch ifError nameText goto failed else goto step3
+main at step3 do printName
+main at step3 do tagsField
+main at step3 branch ifError tagsField goto failed else goto step4
+main at step4 do tagCount
+main at step4 branch ifError tagCount goto failed else goto step5
+main at step5 do printTagCount
+main at step5 do secondTag
+main at step5 branch ifError secondTag goto failed else goto step6
+main at step6 do tagNumber
+main at step6 branch ifError tagNumber goto failed else goto step7
+main at step7 do printTag
+main at step7 do okField
+main at step7 branch ifError okField goto failed else goto step8
+main at step8 do okFlag
+main at step8 branch ifError okFlag goto failed else goto step9
+main at step9 do printFlag
+main at step9 do absentField
+main at step9 branch ifError absentField goto step10 else goto failed
+main at step10 do printMissing
+main at step10 do parseBad
+main at step10 branch ifError parseBad goto step11 else goto failed
+main at step11 match badError json.ParseError
+main at step11 case json.ParseError.invalidAt bind badAt Int64 goto showBadAt
+main at step11 case json.ParseError.tooDeep bind none none goto failed
+main at showBadAt do printBadAt
+main at showBadAt do newObject
+main at showBadAt do setA
+main at showBadAt branch ifError setA goto failed else goto step12
+main at step12 do setN
+main at step12 branch ifError setN goto failed else goto step13
+main at step13 do serialize
+main at step13 do printSerialized
+main at step13 return ok okCode
+main at failed return ok failCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+parseDocument is call
+parseDocument in main
+parseDocument invokes json.parse
+parseDocument arg text String document lend
+parseDocument arg region Region store lend
+parseDocument out doc json.Value
+parseDocument ownedBy store
+parseDocument cleanedBy none
+parseDocument borrows none
+parseDocument catch parseError json.ParseError
+
+nameField is call
+nameField in main
+nameField invokes json.field
+nameField arg value json.Value doc lend
+nameField arg name String nameKey lend
+nameField arg region Region store lend
+nameField out nameValue json.Value
+nameField ownedBy store
+nameField cleanedBy none
+nameField borrows none
+nameField catch nameError json.AccessError
+
+nameText is call
+nameText in main
+nameText invokes json.asText
+nameText arg value json.Value nameValue lend
+nameText arg region Region store lend
+nameText out name String
+nameText ownedBy store
+nameText cleanedBy none
+nameText borrows none
+nameText catch nameTextError json.AccessError
+
+printName is call
+printName in main
+printName invokes showText
+printName arg text String name lend
+printName out none
+printName ownedBy none
+printName cleanedBy none
+printName borrows none
+printName catch none
+
+tagsField is call
+tagsField in main
+tagsField invokes json.field
+tagsField arg value json.Value doc lend
+tagsField arg name String tagsKey lend
+tagsField arg region Region store lend
+tagsField out tags json.Value
+tagsField ownedBy store
+tagsField cleanedBy none
+tagsField borrows none
+tagsField catch tagsError json.AccessError
+
+tagCount is call
+tagCount in main
+tagCount invokes json.length
+tagCount arg value json.Value tags lend
+tagCount out tagsLength Int64
+tagCount ownedBy none
+tagCount cleanedBy none
+tagCount borrows none
+tagCount catch tagCountError json.AccessError
+
+printTagCount is call
+printTagCount in main
+printTagCount invokes showInt
+printTagCount arg value Int64 tagsLength copy
+printTagCount out none
+printTagCount ownedBy none
+printTagCount cleanedBy none
+printTagCount borrows none
+printTagCount catch none
+
+secondTag is call
+secondTag in main
+secondTag invokes json.item
+secondTag arg value json.Value tags lend
+secondTag arg index Int64 one copy
+secondTag arg region Region store lend
+secondTag out tagValue json.Value
+secondTag ownedBy store
+secondTag cleanedBy none
+secondTag borrows none
+secondTag catch tagError json.AccessError
+
+tagNumber is call
+tagNumber in main
+tagNumber invokes json.asInt64
+tagNumber arg value json.Value tagValue lend
+tagNumber out tag Int64
+tagNumber ownedBy none
+tagNumber cleanedBy none
+tagNumber borrows none
+tagNumber catch tagNumberError json.AccessError
+
+printTag is call
+printTag in main
+printTag invokes showInt
+printTag arg value Int64 tag copy
+printTag out none
+printTag ownedBy none
+printTag cleanedBy none
+printTag borrows none
+printTag catch none
+
+okField is call
+okField in main
+okField invokes json.field
+okField arg value json.Value doc lend
+okField arg name String okKey lend
+okField arg region Region store lend
+okField out okValue json.Value
+okField ownedBy store
+okField cleanedBy none
+okField borrows none
+okField catch okError json.AccessError
+
+okFlag is call
+okFlag in main
+okFlag invokes json.asBool
+okFlag arg value json.Value okValue lend
+okFlag out flag Bool
+okFlag ownedBy none
+okFlag cleanedBy none
+okFlag borrows none
+okFlag catch okFlagError json.AccessError
+
+printFlag is call
+printFlag in main
+printFlag invokes showBool
+printFlag arg flag Bool flag copy
+printFlag out none
+printFlag ownedBy none
+printFlag cleanedBy none
+printFlag borrows none
+printFlag catch none
+
+absentField is call
+absentField in main
+absentField invokes json.field
+absentField arg value json.Value doc lend
+absentField arg name String absentKey lend
+absentField arg region Region store lend
+absentField out absentValue json.Value
+absentField ownedBy store
+absentField cleanedBy none
+absentField borrows none
+absentField catch absentError json.AccessError
+
+printMissing is call
+printMissing in main
+printMissing invokes showText
+printMissing arg text String missingText lend
+printMissing out none
+printMissing ownedBy none
+printMissing cleanedBy none
+printMissing borrows none
+printMissing catch none
+
+parseBad is call
+parseBad in main
+parseBad invokes json.parse
+parseBad arg text String badDocument lend
+parseBad arg region Region store lend
+parseBad out badDoc json.Value
+parseBad ownedBy store
+parseBad cleanedBy none
+parseBad borrows none
+parseBad catch badError json.ParseError
+
+printBadAt is call
+printBadAt in main
+printBadAt invokes showInt
+printBadAt arg value Int64 badAt copy
+printBadAt out none
+printBadAt ownedBy none
+printBadAt cleanedBy none
+printBadAt borrows none
+printBadAt catch none
+
+newObject is call
+newObject in main
+newObject invokes json.newObject
+newObject arg region Region store lend
+newObject out built json.Value
+newObject ownedBy store
+newObject cleanedBy none
+newObject borrows none
+newObject catch none
+
+setA is call
+setA in main
+setA invokes json.setText
+setA arg object json.Value built lendMutable
+setA arg name String aKey lend
+setA arg text String xText lend
+setA out none
+setA ownedBy none
+setA cleanedBy none
+setA borrows none
+setA catch setAError json.AccessError
+
+setN is call
+setN in main
+setN invokes json.setInt64
+setN arg object json.Value built lendMutable
+setN arg name String nKey lend
+setN arg number Int64 five copy
+setN out none
+setN ownedBy none
+setN cleanedBy none
+setN borrows none
+setN catch setNError json.AccessError
+
+serialize is call
+serialize in main
+serialize invokes json.stringify
+serialize arg value json.Value built lend
+serialize arg region Region store lend
+serialize out serialized String
+serialize ownedBy store
+serialize cleanedBy none
+serialize borrows none
+serialize catch none
+
+printSerialized is call
+printSerialized in main
+printSerialized invokes showText
+printSerialized arg text String serialized lend
+printSerialized out none
+printSerialized ownedBy none
+printSerialized cleanedBy none
+printSerialized borrows none
+printSerialized catch none

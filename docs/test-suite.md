@@ -11,8 +11,8 @@ Run the suite with `python -m pytest tests/test_suite.py`. How cases are written
 
 | Status | Meaning | Items |
 | --- | --- | --- |
-| **tested** | a program runs (or traps, or its tests run) and its output is checked | 374 |
-| **rejected** | the language forbids it, and a negative case proves the checker reports it | 44 |
+| **tested** | a program runs (or traps, or its tests run) and its output is checked | 375 |
+| **rejected** | the language forbids it, and a negative case proves the checker reports it | 43 |
 | **static** | the checker accepts and checks it, but the backend refuses to run it yet (R901); the case asserts that refusal, so it fails as soon as the backend learns the feature | 0 |
 | **by design** | absent on purpose; the note says what to write instead | 31 |
 | **gap** | wanted, not there yet; the note says what is missing | 0 |
@@ -108,7 +108,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Nested conditionals | tested | [control](../tests/suite/programs/04-control-flow/control.sem) |   |
 | Switch / Match | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `error-match-incomplete` |   |
 | Pattern matching | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem), `error-match-duplicate` |   |
-| While loops | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `loop-without-bound`, `unbounded-while` |   |
+| While loops | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `var-unset-after-zero-pass-loop`, `loop-without-bound`, `unbounded-while` |   |
 | For loops | tested | [control](../tests/suite/programs/04-control-flow/control.sem), [region-list](../tests/suite/programs/07-memory/region-list.sem), `counted-not-advancing`, `counted-wrong-direction` |   |
 | Do-while loops | tested | [control](../tests/suite/programs/04-control-flow/control.sem) |   |
 | Infinite loops | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `cycle-without-header`, `forever-with-bound` |   |
@@ -178,7 +178,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Dynamic allocation | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `string-owner-undeclared` |   |
 | Deallocation | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
 | Ownership | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `region-value-without-owner` |   |
-| Ownership transfer | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give` |   |
+| Ownership transfer | tested | [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `double-give` |   |
 | Borrowing | rejected | `give-borrowed` |   |
 | Mutable borrowing | rejected | `by-reference-needs-mutable-loan` |   |
 | Immutable borrowing | rejected | `change-through-read-loan`, `mutable-loan-of-read-loan` |   |
@@ -195,8 +195,8 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Memory alignment | n/a |   | Handled by the backend's LLVM data layout and the host allocator; not observable in the language. |
 | Memory fragmentation | by design |   | Region values are released all at once with their region, so programs do not free individual values. |
 | Circular references | rejected | `recursive-type-by-value` | A type cannot contain itself by value (R403); single ownership leaves no owner cycles; graphs refer to nodes by list index (LR-25 rule 5). |
-| Resource cleanup | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred`, `cleanup-wrong-value` |   |
-| Deterministic destruction | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [region-list](../tests/suite/programs/07-memory/region-list.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
+| Resource cleanup | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred`, `cleanup-wrong-value` |   |
+| Deterministic destruction | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [region-list](../tests/suite/programs/07-memory/region-list.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
 | Memory exhaustion | tested | [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |
 
 ## 8. Strings & Collections
@@ -262,7 +262,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Assertion failures | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem) |   |
 | Nested error handling | tested | [errors](../tests/suite/programs/10-errors/errors.sem) |   |
 | Error handling during recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
-| Cleanup after errors | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
+| Cleanup after errors | tested | [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
 | Error context preservation | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [errors](../tests/suite/programs/10-errors/errors.sem) |   |
 | Stack traces | tested | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem) | A trap prints the operations it passed through, innermost first, with repeated frames collapsed into a count. |
 | Unhandled errors | rejected | `error-not-passed-up`, `catch-missing` |   |
@@ -309,14 +309,14 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Directory operations | tested | [directories](../tests/suite/programs/12-io/directories.sem) | `fs.createDirectory`, `listDirectory`, `entryCount`, `entryName`, `removeDirectory`. |
 | File permissions | tested | [file-write](../tests/suite/programs/12-io/file-write.sem) | Access is governed by capabilities with a path-prefix scope; the case proves a path outside the scope is rejected. File-mode bits are not modelled. |
 | File-not-found handling | tested | [resources](../tests/suite/programs/07-memory/resources.sem) |   |
-| File locking | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `fs.lock` takes an exclusive advisory lock on an open file; `fs.unlock` releases it. |
+| File locking | tested | [file-lock](../tests/suite/programs/19-stdlib/file-lock.sem) | `fs.lock` takes an exclusive advisory lock on an open file; `fs.unlock` releases it. |
 | Buffered I/O | tested | [file-read](../tests/suite/programs/12-io/file-read.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Stream operations | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem), [stdin](../tests/suite/programs/12-io/stdin.sem) |   |
-| Stream piping | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `process.runCaptured` pipes bytes into a program and collects its standard output and error. |
+| Stream piping | tested | [process-pipes](../tests/suite/programs/19-stdlib/process-pipes.sem) | `process.runCaptured` pipes bytes into a program and collects its standard output and error. |
 | Network I/O | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem) |   |
 | Socket operations | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem) |   |
 | HTTP requests | tested |   | The worked server example runs and answers real HTTP requests (`test_server_example_answers_http` in tests/test_refined.py). There is no HTTP client. |
-| Process execution | tested | [process-run](../tests/suite/programs/12-io/process-run.sem), [modules](../tests/suite/programs/19-stdlib/modules.sem) |   |
+| Process execution | tested | [process-run](../tests/suite/programs/12-io/process-run.sem), [process-pipes](../tests/suite/programs/19-stdlib/process-pipes.sem) |   |
 | Environment variables | tested | [environment](../tests/suite/programs/12-io/environment.sem) |   |
 | Command-line arguments | tested | [arguments](../tests/suite/programs/12-io/arguments.sem) |   |
 
@@ -330,18 +330,18 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Capability propagation | tested | [console](../tests/suite/programs/12-io/console.sem) |   |
 | Capability revocation | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 | Capability scoping | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [arguments](../tests/suite/programs/12-io/arguments.sem), [clock](../tests/suite/programs/12-io/clock.sem), [environment](../tests/suite/programs/12-io/environment.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [file-write](../tests/suite/programs/12-io/file-write.sem), [network-connect](../tests/suite/programs/12-io/network-connect.sem), [process-run](../tests/suite/programs/12-io/process-run.sem), [stdin](../tests/suite/programs/12-io/stdin.sem) |   |
-| Unauthorized capability access | rejected | `capability-missing` |   |
+| Unauthorized capability access | rejected | `secret-reveal-without-capability`, `capability-missing` |   |
 | Effect declaration | tested | [console](../tests/suite/programs/12-io/console.sem), `effect-declared-not-performed` |   |
 | Effect validation | tested | [console](../tests/suite/programs/12-io/console.sem), `effect-undeclared` |   |
 | Effect inference | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 | Pure operation enforcement | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `effect-declared-not-performed` |   |
 | Nested operation effects | tested | [console](../tests/suite/programs/12-io/console.sem), `effect-undeclared` |   |
 | Cross-module effects | tested | [project](../tests/suite/programs/09-modules/project) |   |
-| Resource access permissions | tested | [file-read](../tests/suite/programs/12-io/file-read.sem), `capability-scope-program` |   |
-| File-system capability enforcement | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `capability-scope-escape` |   |
+| Resource access permissions | tested | [file-read](../tests/suite/programs/12-io/file-read.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-program` |   |
+| File-system capability enforcement | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-dotdot`, `capability-scope-escape` |   |
 | Network capability enforcement | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem), `capability-scope-host` |   |
 | Console capability enforcement | tested | [console](../tests/suite/programs/12-io/console.sem), `capability-missing` |   |
-| Capability escalation prevention | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `capability-scope-escape` |   |
+| Capability escalation prevention | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-escape`, `test_symlink_out_of_scope_traps` |   |
 | Effect polymorphism | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 
 ## 14. Type System & Generics
@@ -381,7 +381,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Semantic analysis | rejected | `predicate-not-allowed` |   |
 | Type checking | rejected | `operator-type-mismatch`, `var-annotation-mismatch`, `no-implicit-widening` |   |
 | Control-flow graph generation | rejected | `unreachable-block`, `cycle-without-header`, `jump-into-loop` |   |
-| Dataflow analysis | rejected | `var-uninitialized-path`, `double-give`, `owned-never-released` |   |
+| Dataflow analysis | rejected | `var-unset-after-zero-pass-loop`, `var-uninitialized-path`, `double-give`, `owned-never-released` |   |
 | Constant folding | n/a |   | An optimisation inside LLVM; the language makes no promise about it. |
 | Dead-code elimination | n/a | `unreachable-block` | An optimisation inside LLVM. Unreachable blocks are a check error (R511), so source has no dead blocks. |
 | Inlining | n/a |   | An optimisation inside LLVM; the language makes no promise about it. |
@@ -408,7 +408,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Heap management | tested | `test_stress_very_large_collection` |   |
 | Function call stack | tested | `test_stress_thousands_of_operations`, `test_stress_deep_recursion` |   |
 | Runtime error handling | tested | [errors](../tests/suite/programs/10-errors/errors.sem), [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem) |   |
-| Signal handling | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem), `test_program_sees_an_interrupt` | `signal.interrupted` and `signal.waitForInterrupt`: the first interrupt goes to the program, a second ends it. The delivery test runs on POSIX systems. |
+| Signal handling | tested | [signal](../tests/suite/programs/19-stdlib/signal.sem), `test_program_sees_an_interrupt` | `signal.interrupted` and `signal.waitForInterrupt`: the first interrupt goes to the program, a second ends it. The delivery test runs on POSIX systems. |
 | Process termination | tested | [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
 | Exit status reporting | tested | [errors](../tests/suite/programs/10-errors/errors.sem), [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
 | Runtime assertions | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem) |   |
@@ -423,20 +423,20 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
 | Memory safety | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), `give-borrowed` |   |
-| Type safety | rejected | `var-set-wrong-type`, `enum-payload-type` |   |
+| Type safety | rejected | `secret-printed-as-text`, `var-set-wrong-type`, `enum-payload-type` |   |
 | Bounds checking | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), `list-index-unchecked` |   |
 | Stack overflow protection | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `test_stress_stack_exhaustion_traps` |   |
 | Integer overflow protection | tested | [trap-add-overflow](../tests/suite/programs/03-operators/trap-add-overflow.sem) |   |
 | Resource exhaustion protection | tested | [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |
-| Sandboxing | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `capability-scope-escape` |   |
-| Capability isolation | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
-| Privilege separation | tested | [process-run](../tests/suite/programs/12-io/process-run.sem), `capability-scope-program` |   |
+| Sandboxing | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-escape`, `test_symlink_out_of_scope_traps` |   |
+| Capability isolation | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem) |   |
+| Privilege separation | tested | [process-run](../tests/suite/programs/12-io/process-run.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-program` |   |
 | Input validation | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
-| Injection resistance | rejected | `capability-scope-escape` |   |
+| Injection resistance | tested | [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-dotdot`, `capability-scope-escape` |   |
 | Unsafe operation restrictions | by design |   | There are no unsafe operations: no pointers, casts, or unchecked arithmetic outside the `wrapping` targets. |
 | Module isolation | rejected | [standard-name](../tests/suite/programs/09-modules/standard-name.sem), `module-private-symbol` |   |
 | Secure error handling | tested | [errors](../tests/suite/programs/10-errors/errors.sem) |   |
-| Sensitive data handling | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `secret.Secret` has no conversion to text except `reveal`, which needs a capability for `read secret.values`; `matches` compares in constant time. |
+| Sensitive data handling | tested | [secret](../tests/suite/programs/19-stdlib/secret.sem), `secret-reveal-without-capability`, `secret-printed-as-text` | `secret.Secret` has no conversion to text except `reveal`, which needs a capability for `read secret.values`; `matches` compares in constant time. |
 | Denial-of-service resistance | tested | `test_differential_integer_arithmetic`, [trap-loop-bound](../tests/suite/programs/04-control-flow/trap-loop-bound.sem), [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) | Loops, recursion, and regions have stated bounds that trap; `powerInt64` takes at most 63 steps whatever the exponent. |
 
 ## 18. Interoperability
@@ -467,12 +467,12 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Collection utilities | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | File-system utilities | tested | [directories](../tests/suite/programs/12-io/directories.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Date and time | tested | [clock](../tests/suite/programs/12-io/clock.sem) |   |
-| Random number generation | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `random.int64Between` from the operating system, and seeded generators. |
-| Cryptographic primitives | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `crypto.sha256`, `hmacSha256`, `toHex`, and `constantTimeEquals`. |
-| Serialization | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `json` builds values and writes them with `stringify`. |
-| JSON parsing | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `json.parse` with typed access to fields and items, and error positions. |
+| Random number generation | tested | [random](../tests/suite/programs/19-stdlib/random.sem) | `random.int64Between` from the operating system, and seeded generators. |
+| Cryptographic primitives | tested | [crypto](../tests/suite/programs/19-stdlib/crypto.sem) | `crypto.sha256`, `hmacSha256`, `toHex`, and `constantTimeEquals`. |
+| Serialization | tested | [json](../tests/suite/programs/19-stdlib/json.sem) | `json` builds values and writes them with `stringify`. |
+| JSON parsing | tested | [json](../tests/suite/programs/19-stdlib/json.sem) | `json.parse` with typed access to fields and items, and error positions. |
 | Regular expressions | by design |   | No regex engine; `string.find`, `startsWith`, and byte classes cover matching, written out explicitly. |
-| Logging | tested | [modules](../tests/suite/programs/19-stdlib/modules.sem) | `log.debug`, `info`, `warn`, and `error` write levelled lines to standard error. |
+| Logging | tested | [log](../tests/suite/programs/19-stdlib/log.sem) | `log.debug`, `info`, `warn`, and `error` write levelled lines to standard error. |
 | Networking | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem) |   |
 | Process management | tested | [process-run](../tests/suite/programs/12-io/process-run.sem) |   |
 | Environment utilities | tested | [environment](../tests/suite/programs/12-io/environment.sem) |   |
@@ -513,7 +513,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Every label exists | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `branch-unknown-label` |   |
 | Branch targets exist | tested | [control](../tests/suite/programs/04-control-flow/control.sem), `branch-unknown-label` |   |
 | Every referenced variable is defined | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-undefined` |   |
-| Variables are initialized before use | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-uninitialized-path` |   |
+| Variables are initialized before use | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-uninitialized-path`, `var-unset-after-zero-pass-loop` |   |
 | Call argument types match parameters | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `operator-wrong-mode` |   |
 | Return types match operation declarations | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `return-wrong-type` |   |
 | Required outputs are assigned | rejected | `missing-output` |   |

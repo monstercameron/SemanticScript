@@ -570,6 +570,7 @@ GENERATED: dict[str, list[str]] = {
     "test_webassembly_runs_under_node": ["18 WASM integration"],
     "test_program_sees_an_interrupt": ["16 Signal handling"],
     "test_standalone_executables_match_the_jit": ["18 Static linking", "16 Program startup"],
+    "test_symlink_out_of_scope_traps": ["13 Capability escalation prevention", "17 Sandboxing"],
     "test_every_operation_compiles": ["15 Code generation", "15 Intermediate representation generation"],
     "test_every_program_case_runs": ["20 End-to-end tests"],
     "test_program_case": ["20 End-to-end tests", "20 Golden-file tests", "20 Snapshot tests"],
@@ -734,7 +735,7 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "15 Incremental compilation": (None, "An unchanged project is neither checked nor compiled again (the build cache); a "
                                   "change rechecks the whole project, since checks span modules.", []),
     "16 Signal handling": (None, "`signal.interrupted` and `signal.waitForInterrupt`: the first interrupt goes to the "
-                          "program, a second ends it. The delivery test runs on POSIX systems.", ["19-stdlib/modules"]),
+                          "program, a second ends it. The delivery test runs on POSIX systems.", ["19-stdlib/signal"]),
     "16 Runtime performance": (None, "`refined bench` times repeated runs; the stress tests bound sizes.", []),
     "17 Sensitive data handling": (None, "`secret.Secret` has no conversion to text except `reveal`, which needs a capability "
                                   "for `read secret.values`; `matches` compares in constant time.", []),

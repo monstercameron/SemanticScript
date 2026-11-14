@@ -336,3 +336,49 @@ def test_standalone_executables_match_the_jit(tmp_path):
             assert proc.returncode == 70 and case.detail in proc.stderr, (case.name, proc.stderr)
         linked += 1
     assert linked >= 30 and host_only >= 1
+
+
+# ---------------------------------------------------------------- capability scopes at run time
+
+def test_symlink_out_of_scope_traps(tmp_path):
+    """13 Capability escalation prevention, 17 Sandboxing: a symbolic link inside the scope that points outside it
+    is followed before the scope is checked, so reading through it traps."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("not yours", encoding="utf-8")
+    d = tmp_path / "linked"
+    d.mkdir()
+    link_path = "suite-link.txt"
+    try:
+        os.symlink(outside / "secret.txt", d / "suite-link.txt")
+    except (OSError, NotImplementedError):
+        if os.name != "nt":
+            pytest.skip("this system does not let the test create symbolic links")
+        import _winapi  # a directory junction needs no privilege on Windows, and escapes the same way
+        _winapi.CreateJunction(str(outside), str(d / "suite-dir"))
+        link_path = "suite-dir/secret.txt"
+    p = sb.Prog("linked", "Read a file through a link", imports=["standard.fs", "standard.time"])
+    p.add('fileAccess is capability\nfileAccess purpose "Authority to read files whose names start with suite-"\n'
+          'fileAccess grants read fs.files\nfileAccess scope "suite-"')
+    p.add(sb.op("main", "Read suite-link.txt",
+                [("begin", "do makeDeadline"), ("begin", "start readIt"), ("begin", "join readIt"),
+                 ("begin", "branch ifError readIt goto failed else goto done"),
+                 ("done", "return ok okCode"), ("failed", "return ok failCode")],
+                output="ExitCode", effects=("read fs.files",), uses=("fileAccess",), heap=True, waits=True,
+                lets=(f'path immutable String "{link_path}"', "limit immutable Int64 64",
+                      "waitMs immutable Int64 5000", "okCode immutable ExitCode 0", "failCode immutable ExitCode 1")))
+    p.add("io is region\nio in main\nio strategy arena\nio capacity 4096\nio released atReturn")
+    p.add(sb.call("makeDeadline", "main", "time.Deadline.after", ("milliseconds Int64 waitMs copy",),
+                  out="deadline time.Deadline"))
+    p.add(sb.call("readIt", "main", "fs.readAll", ("path String path lend", "region Region io lend",
+                                                   "maxBytes Int64 limit copy", "deadline time.Deadline deadline copy"),
+                  out="content Bytes", owned="io", catch="readError fs.FileError", kind="task"))
+    (d / "build.sem").write_text('linkedProject is project\nlinkedProject purpose "Read through a symbolic link"\n'
+                                 'linkedProject target console\nlinkedProject version "0.1.0"\n'
+                                 "linkedProject language refined-1\nlinkedProject standardLibrary 1\n"
+                                 "linkedProject requires none\nlinkedProject module linked\n"
+                                 "linkedProject entry linked.main\n", encoding="utf-8")
+    (d / "linked.sem").write_text(p.render(), encoding="utf-8")
+    assert not caselib.diagnostics(str(d))
+    proc = caselib.refined("run", str(d), "--no-cache", cwd=str(d))
+    assert proc.returncode == 70 and "which no capability this operation uses allows" in proc.stderr, proc.stderr

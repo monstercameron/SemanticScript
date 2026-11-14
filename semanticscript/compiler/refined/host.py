@@ -1146,10 +1146,68 @@ def _ffi_bind(p):
     return ok(ctypes.cast(fn, ctypes.c_void_p).value)
 
 
+# ---------------------------------------------------------------- capability scopes at run time (D-38)
+
+def _scoped_params() -> dict[str, int]:
+    """target -> index of its scoped parameter (the one a capability's scope limits)."""
+    out = {}
+    for mod, spec in LIBRARY.items():
+        for name, sig in spec["targets"].items():
+            if sig.scoped:
+                out[f"{mod}.{name}"] = [p.name for p in sig.inputs].index(sig.scoped)
+    return out
+
+
+SCOPED = _scoped_params()
+
+
+def path_within(path: str, scope: str) -> bool:
+    """A file path is inside a `fs.files` scope when, after resolving `..` and symbolic links, it lies in the
+    scope's directory and its first name there starts with the scope's last part (all of the directory when
+    the scope ends with a separator)."""
+    real = os.path.normcase(os.path.realpath(path))
+    head, tail = os.path.split(scope)
+    base = os.path.normcase(os.path.realpath(head or "."))
+    if real == base:
+        return tail == ""
+    if not real.startswith(base.rstrip(os.sep) + os.sep):
+        return False
+    first = real[len(base.rstrip(os.sep)) + 1:].split(os.sep)[0]
+    return first.startswith(os.path.normcase(tail))
+
+
+def _check_scope(name: str, value, scope_text: str) -> None:
+    from .library import SCOPED_RESOURCES
+    lines = scope_text.split("\n")
+    allowed = False
+    resource = ""
+    for line in lines:
+        if " " in line and line.split(" ", 1)[1] in SCOPED_RESOURCES:
+            resource = line.split(" ", 1)[1]
+            continue
+        kind = SCOPED_RESOURCES.get(resource)
+        if kind == "port":
+            allowed = allowed or line.rsplit(":", 1)[-1] == str(value)
+        elif kind == "exact":
+            allowed = allowed or value == line
+        elif resource == "fs.files":
+            allowed = allowed or path_within(value, line)
+        elif kind == "prefix":
+            allowed = allowed or str(value).startswith(line)
+    if not allowed:
+        rt._trap_now(f"`{name}` was given `{value}`, which no capability this operation uses allows "
+                     f"(scopes: {', '.join(repr(x) for x in lines if ' ' not in x or x.split(' ', 1)[1] not in SCOPED_RESOURCES) or 'none'})")
+
+
 def dispatch(name: str, params: list[tuple]) -> tuple[int, tuple, int]:
     handler = HANDLERS.get(name)
     if handler is None:
         rt._trap_now(f"the runtime has no implementation of `{name}`")
+    if name in SCOPED:
+        scope_text = text(params[-1])
+        params = params[:-1]
+        raw = params[SCOPED[name]]
+        _check_scope(name, raw[0] if len(raw) == 1 else text(raw), scope_text)
     try:
         return handler(params)
     except Fail as f:

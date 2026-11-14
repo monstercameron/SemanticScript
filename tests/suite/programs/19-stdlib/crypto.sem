@@ -1,0 +1,283 @@
+# covers: 19 Cryptographic primitives
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+# stdout: 6e9ef29b75fffc5b7abae527d58fdadb2fe42e7219011976917343065f58ed4a
+# stdout: true
+# stdout: false
+
+cryptoCase is module
+cryptoCase purpose "Use the crypto targets"
+cryptoCase path cryptoCase
+cryptoCase imports standard.console
+cryptoCase imports standard.crypto
+cryptoCase imports standard.string
+cryptoCase exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let abc immutable String "abc"
+main let keyText immutable String "key"
+main let messageText immutable String "message"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do abcBytes
+main at begin do hashAbc
+main at begin do hexAbc
+main at begin do printAbcHex
+main at begin do keyBytes
+main at begin do messageBytes
+main at begin do signMessage
+main at begin do hexSignature
+main at begin do printSignature
+main at begin do sameHash
+main at begin do printHashSame
+main at begin do hashVersusMac
+main at begin do printHashIsMac
+main at begin return ok okCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+abcBytes is call
+abcBytes in main
+abcBytes invokes string.toBytes
+abcBytes arg text String abc lend
+abcBytes out abcData Bytes
+abcBytes ownedBy none
+abcBytes cleanedBy none
+abcBytes borrows abc
+abcBytes catch none
+
+hashAbc is call
+hashAbc in main
+hashAbc invokes crypto.sha256
+hashAbc arg bytes Bytes abcData lend
+hashAbc arg region Region store lend
+hashAbc out abcHash Bytes
+hashAbc ownedBy store
+hashAbc cleanedBy none
+hashAbc borrows none
+hashAbc catch none
+
+hexAbc is call
+hexAbc in main
+hexAbc invokes crypto.toHex
+hexAbc arg bytes Bytes abcHash lend
+hexAbc arg region Region store lend
+hexAbc out abcHex String
+hexAbc ownedBy store
+hexAbc cleanedBy none
+hexAbc borrows none
+hexAbc catch none
+
+printAbcHex is call
+printAbcHex in main
+printAbcHex invokes showText
+printAbcHex arg text String abcHex lend
+printAbcHex out none
+printAbcHex ownedBy none
+printAbcHex cleanedBy none
+printAbcHex borrows none
+printAbcHex catch none
+
+keyBytes is call
+keyBytes in main
+keyBytes invokes string.toBytes
+keyBytes arg text String keyText lend
+keyBytes out keyData Bytes
+keyBytes ownedBy none
+keyBytes cleanedBy none
+keyBytes borrows keyText
+keyBytes catch none
+
+messageBytes is call
+messageBytes in main
+messageBytes invokes string.toBytes
+messageBytes arg text String messageText lend
+messageBytes out messageData Bytes
+messageBytes ownedBy none
+messageBytes cleanedBy none
+messageBytes borrows messageText
+messageBytes catch none
+
+signMessage is call
+signMessage in main
+signMessage invokes crypto.hmacSha256
+signMessage arg key Bytes keyData lend
+signMessage arg message Bytes messageData lend
+signMessage arg region Region store lend
+signMessage out signature Bytes
+signMessage ownedBy store
+signMessage cleanedBy none
+signMessage borrows none
+signMessage catch none
+
+hexSignature is call
+hexSignature in main
+hexSignature invokes crypto.toHex
+hexSignature arg bytes Bytes signature lend
+hexSignature arg region Region store lend
+hexSignature out signatureHex String
+hexSignature ownedBy store
+hexSignature cleanedBy none
+hexSignature borrows none
+hexSignature catch none
+
+printSignature is call
+printSignature in main
+printSignature invokes showText
+printSignature arg text String signatureHex lend
+printSignature out none
+printSignature ownedBy none
+printSignature cleanedBy none
+printSignature borrows none
+printSignature catch none
+
+sameHash is call
+sameHash in main
+sameHash invokes crypto.constantTimeEquals
+sameHash arg left Bytes abcHash lend
+sameHash arg right Bytes abcHash lend
+sameHash out hashSame Bool
+sameHash ownedBy none
+sameHash cleanedBy none
+sameHash borrows none
+sameHash catch none
+
+printHashSame is call
+printHashSame in main
+printHashSame invokes showBool
+printHashSame arg flag Bool hashSame copy
+printHashSame out none
+printHashSame ownedBy none
+printHashSame cleanedBy none
+printHashSame borrows none
+printHashSame catch none
+
+hashVersusMac is call
+hashVersusMac in main
+hashVersusMac invokes crypto.constantTimeEquals
+hashVersusMac arg left Bytes abcHash lend
+hashVersusMac arg right Bytes signature lend
+hashVersusMac out hashIsMac Bool
+hashVersusMac ownedBy none
+hashVersusMac cleanedBy none
+hashVersusMac borrows none
+hashVersusMac catch none
+
+printHashIsMac is call
+printHashIsMac in main
+printHashIsMac invokes showBool
+printHashIsMac arg flag Bool hashIsMac copy
+printHashIsMac out none
+printHashIsMac ownedBy none
+printHashIsMac cleanedBy none
+printHashIsMac borrows none
+printHashIsMac catch none

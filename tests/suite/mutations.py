@@ -51,6 +51,7 @@ SORT = "08-strings-collections/sorting"
 TABLE = "08-strings-collections/table"
 MODS = "09-modules/project"
 PKG = "09-modules/package"
+SECRET = "19-stdlib/secret"
 ERR = "10-errors/errors"
 CONC = "11-concurrency/tasks-and-channels"
 CONS = "12-io/console"
@@ -68,21 +69,36 @@ MUTATIONS: list[Mutation] = [
     M("var-shadowing", ("1 Variable shadowing", "21 Duplicate declarations are rejected"), V,
       "main let one immutable Int64 1\n", "main let one immutable Int64 1\nmain let one immutable Int64 2\n", ("R411",)),
     M("var-shadow-label", ("1 Variable scope", "21 Duplicate symbols are rejected"), V,
-      "main let one immutable Int64 1\n", "main let one immutable Int64 1\nmain let merged immutable Int64 2\n", ("R411",)),
+      "choose let ten immutable Int64 10\n", "choose let ten immutable Int64 10\nchoose let merged immutable Int64 2\n",
+      ("R411",)),
     M("var-uninitialized-path", ("1 Uninitialized variables", "21 Variables are initialized before use"), V,
-      "main at seven set chosen sevenValue\n", "", ("R507",)),
+      "choose at seven set chosen sevenValue\n", "", ("R507",)),
     M("var-set-immutable", ("1 Immutable variables", "1 Constants"), V,
       "main at begin set counter bumped", "main at begin set ten bumped", ("R403",)),
     M("var-undefined", ("21 Every referenced variable is defined",), V,
       "showStart arg value Int64 counter copy", "showStart arg value Int64 countr copy", ("R401",)),
     M("var-global", ("1 Global variables",), V,
       "variables exports main\n", "variables exports main\nvariables let shared mutable Int64 0\n", ("R204",)),
+    M("var-unset-after-zero-pass-loop", ("21 Variables are initialized before use", "4 While loops",
+                                         "15 Dataflow analysis"), CTRL,
+      ("sumToFive let index mutable Int64 1\n", "sumToFive at addStep set index nextIndex\n",
+       "sumToFive at done return ok total"),
+      ("sumToFive let index mutable Int64 1\nsumToFive let lastSeen mutable Int64 unset\n",
+       "sumToFive at addStep set index nextIndex\nsumToFive at addStep set lastSeen nextIndex\n",
+       "sumToFive at done return ok lastSeen"), ("R507",)),
+    M("secret-reveal-without-capability", ("17 Sensitive data handling", "13 Unauthorized capability access"), SECRET,
+      "main uses secretReader\n", "", ("R408",)),
+    M("secret-printed-as-text", ("17 Sensitive data handling", "17 Type safety"), SECRET,
+      "printRevealed arg text String revealed lend", "printRevealed arg text String hidden lend", ("R403",)),
+    M("capability-scope-dotdot", ("13 File-system capability enforcement", "17 Injection resistance"), FREAD,
+      'main let path immutable String "suite-input.txt"', 'main let path immutable String "suite-x/../../input.txt"',
+      ("R408",)),
     M("var-annotation-mismatch", ("1 Type annotations", "14 Type mismatch detection"), V,
       "main let ten immutable Int64 10", 'main let ten immutable Int64 "ten"', ("R403",)),
     M("var-no-inference", ("1 Type inference", "14 Type inference"), V,
       "main let ten immutable Int64 10", "main let ten immutable 10", ("R205", "R401")),
     M("var-set-wrong-type", ("1 Variable reassignment", "17 Type safety"), V,
-      "main at seven set chosen sevenValue", "main at seven set chosen pickSeven", ("R403",)),
+      "choose at seven set chosen sevenValue", "choose at seven set chosen pick", ("R403",)),
     # ---------------------------------------------------------------- 2 data types
     M("int8-literal-too-large", ("2 Signed integers (8/16/32/64-bit)", "22 Maximum integer values"), INTS,
       "main let max8 immutable Int8 127", "main let max8 immutable Int8 128", ("R403",)),
@@ -145,7 +161,7 @@ MUTATIONS: list[Mutation] = [
     M("statement-after-return", ("4 Early return", "4 Control-flow validation"), CTRL,
       "grade at low return ok one\n", "grade at low return ok one\ngrade at low goto high\n", ("R501",)),
     M("block-falls-through", ("4 Control-flow validation", "21 Invalid operation graphs are rejected"), V,
-      "main at merged return ok okCode\n", "", ("R501",)),
+      "main at begin return ok okCode\n", "", ("R501",)),
     M("branch-on-integer", ("4 If / Else", "4 Conditional expressions"), CTRL,
       "grade at begin branch if isBelowTen goto low else goto notLow",
       "grade at begin branch if score goto low else goto notLow", ("R403",)),

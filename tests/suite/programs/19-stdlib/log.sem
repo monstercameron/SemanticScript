@@ -1,0 +1,59 @@
+# covers: 19 Logging
+# kind: positive
+# expect: run
+# exit: 0
+# stderr: [info] logged once
+
+logCase is module
+logCase purpose "Use the log targets"
+logCase path logCase
+logCase imports standard.log
+logCase exports main
+
+stderrWriter is capability
+stderrWriter purpose "Authority to write log lines to standard error"
+stderrWriter grants write console.stderr
+stderrWriter scope none
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect write console.stderr
+main uses stderrWriter
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label step1 loopKind none
+main label step1 within none
+main label failed loopKind none
+main label failed within none
+main let logText immutable String "logged once"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do logOnce
+main at begin branch ifError logOnce goto failed else goto step1
+main at step1 return ok okCode
+main at failed return ok failCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+logOnce is call
+logOnce in main
+logOnce invokes log.info
+logOnce arg text String logText lend
+logOnce out none
+logOnce ownedBy none
+logOnce cleanedBy none
+logOnce borrows none
+logOnce catch logError log.LogError

@@ -1,0 +1,312 @@
+# covers: 19 Random number generation
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: true
+# stdout: true
+# stdout: true
+# stdout: emptyRange
+
+randomCase is module
+randomCase purpose "Use the random targets"
+randomCase path randomCase
+randomCase imports standard.compare
+randomCase imports standard.console
+randomCase imports standard.random
+randomCase exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParam none
+showBool input flag Bool value
+showBool output none
+showBool outputOwner none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memory heap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText immutable String "true"
+showBool let falseText immutable String "false"
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue arg text String trueText lend
+writeTrue out none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse arg text String falseText lend
+writeFalse out none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+entropy is capability
+entropy purpose "Authority to read random numbers from the operating system"
+entropy grants read random.entropy
+entropy scope none
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read random.entropy
+main effect write console.stdout
+main uses entropy
+main uses stdoutWriter
+main memory heap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label step1 loopKind none
+main label step1 within none
+main label step2 loopKind none
+main label step2 within none
+main label step3 loopKind none
+main label step3 within none
+main label step4 loopKind none
+main label step4 within none
+main label failed loopKind none
+main label failed within none
+main let seed immutable Int64 42
+main let one immutable Int64 1
+main let six immutable Int64 6
+main let hundred immutable Int64 100
+main let emptyRangeText immutable String "emptyRange"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do firstGenerator
+main at begin do secondGenerator
+main at begin do drawFirst
+main at begin branch ifError drawFirst goto failed else goto step1
+main at step1 do drawSecond
+main at step1 branch ifError drawSecond goto failed else goto step2
+main at step2 do sameDraw
+main at step2 do printRepeatable
+main at step2 do rollDie
+main at step2 branch ifError rollDie goto failed else goto step3
+main at step3 do atLeastOne
+main at step3 do atMostSix
+main at step3 do printAboveLow
+main at step3 do printBelowHigh
+main at step3 do emptyDraw
+main at step3 branch ifError emptyDraw goto step4 else goto failed
+main at step4 do printEmptyRange
+main at step4 return ok okCode
+main at failed return ok failCode
+
+store is region
+store in main
+store strategy arena
+store capacity 65536
+store released atReturn
+
+firstGenerator is call
+firstGenerator in main
+firstGenerator invokes random.newGenerator
+firstGenerator arg seed Int64 seed copy
+firstGenerator arg region Region store lend
+firstGenerator out first random.Generator
+firstGenerator ownedBy store
+firstGenerator cleanedBy none
+firstGenerator borrows none
+firstGenerator catch none
+
+secondGenerator is call
+secondGenerator in main
+secondGenerator invokes random.newGenerator
+secondGenerator arg seed Int64 seed copy
+secondGenerator arg region Region store lend
+secondGenerator out second random.Generator
+secondGenerator ownedBy store
+secondGenerator cleanedBy none
+secondGenerator borrows none
+secondGenerator catch none
+
+drawFirst is call
+drawFirst in main
+drawFirst invokes random.nextInt64
+drawFirst arg generator random.Generator first lendMutable
+drawFirst arg low Int64 one copy
+drawFirst arg high Int64 hundred copy
+drawFirst out firstDraw Int64
+drawFirst ownedBy none
+drawFirst cleanedBy none
+drawFirst borrows none
+drawFirst catch drawFirstError random.RangeError
+
+drawSecond is call
+drawSecond in main
+drawSecond invokes random.nextInt64
+drawSecond arg generator random.Generator second lendMutable
+drawSecond arg low Int64 one copy
+drawSecond arg high Int64 hundred copy
+drawSecond out secondDraw Int64
+drawSecond ownedBy none
+drawSecond cleanedBy none
+drawSecond borrows none
+drawSecond catch drawSecondError random.RangeError
+
+sameDraw is call
+sameDraw in main
+sameDraw invokes compare.equalInt64
+sameDraw arg left Int64 firstDraw copy
+sameDraw arg right Int64 secondDraw copy
+sameDraw out repeatable Bool
+sameDraw ownedBy none
+sameDraw cleanedBy none
+sameDraw borrows none
+sameDraw catch none
+
+printRepeatable is call
+printRepeatable in main
+printRepeatable invokes showBool
+printRepeatable arg flag Bool repeatable copy
+printRepeatable out none
+printRepeatable ownedBy none
+printRepeatable cleanedBy none
+printRepeatable borrows none
+printRepeatable catch none
+
+rollDie is call
+rollDie in main
+rollDie invokes random.int64Between
+rollDie arg low Int64 one copy
+rollDie arg high Int64 six copy
+rollDie out roll Int64
+rollDie ownedBy none
+rollDie cleanedBy none
+rollDie borrows none
+rollDie catch rollError random.RangeError
+
+atLeastOne is call
+atLeastOne in main
+atLeastOne invokes compare.greaterOrEqualInt64
+atLeastOne arg left Int64 roll copy
+atLeastOne arg right Int64 one copy
+atLeastOne out aboveLow Bool
+atLeastOne ownedBy none
+atLeastOne cleanedBy none
+atLeastOne borrows none
+atLeastOne catch none
+
+atMostSix is call
+atMostSix in main
+atMostSix invokes compare.lessOrEqualInt64
+atMostSix arg left Int64 roll copy
+atMostSix arg right Int64 six copy
+atMostSix out belowHigh Bool
+atMostSix ownedBy none
+atMostSix cleanedBy none
+atMostSix borrows none
+atMostSix catch none
+
+printAboveLow is call
+printAboveLow in main
+printAboveLow invokes showBool
+printAboveLow arg flag Bool aboveLow copy
+printAboveLow out none
+printAboveLow ownedBy none
+printAboveLow cleanedBy none
+printAboveLow borrows none
+printAboveLow catch none
+
+printBelowHigh is call
+printBelowHigh in main
+printBelowHigh invokes showBool
+printBelowHigh arg flag Bool belowHigh copy
+printBelowHigh out none
+printBelowHigh ownedBy none
+printBelowHigh cleanedBy none
+printBelowHigh borrows none
+printBelowHigh catch none
+
+emptyDraw is call
+emptyDraw in main
+emptyDraw invokes random.nextInt64
+emptyDraw arg generator random.Generator first lendMutable
+emptyDraw arg low Int64 six copy
+emptyDraw arg high Int64 one copy
+emptyDraw out neverDrawn Int64
+emptyDraw ownedBy none
+emptyDraw cleanedBy none
+emptyDraw borrows none
+emptyDraw catch emptyError random.RangeError
+
+printEmptyRange is call
+printEmptyRange in main
+printEmptyRange invokes showText
+printEmptyRange arg text String emptyRangeText lend
+printEmptyRange out none
+printEmptyRange ownedBy none
+printEmptyRange cleanedBy none
+printEmptyRange borrows none
+printEmptyRange catch none

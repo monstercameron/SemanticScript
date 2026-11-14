@@ -19,6 +19,7 @@ must happen; nothing about a case's expectation lives outside the file.
     # stderr: <one expected line>      (repeat; checked only when present)
     # args: <words>                    (the program's arguments, for `run` and `trap`)
     # stdin: <one input line>          (repeat; fed to standard input, each with a line end)
+    # requires: <program>              (the case is skipped where this program is not installed)
 
 Programs run with their project directory as the working directory, so a case
 that writes files writes them there.
@@ -57,6 +58,10 @@ class Case:
     stderr: list[str] | None = None
     args: list[str] = field(default_factory=list)
     stdin: str = ""
+    requires: list[str] = field(default_factory=list)
+
+    def missing_tools(self) -> list[str]:
+        return [r for r in self.requires if shutil.which(r) is None]
 
     @property
     def mode(self) -> str:
@@ -67,7 +72,7 @@ class Case:
         return self.expect.split(None, 1)[1] if " " in self.expect else ""
 
 
-_HEADER = re.compile(r"^# (covers|kind|expect|exit|stdout|stderr|args|stdin):(.*)$")
+_HEADER = re.compile(r"^# (covers|kind|expect|exit|stdout|stderr|args|stdin|requires):(.*)$")
 
 
 def _parse_header(text: str, case: Case) -> None:
@@ -93,6 +98,8 @@ def _parse_header(text: str, case: Case) -> None:
             case.stdout = (case.stdout or []) + [value]
         elif key == "stderr":
             case.stderr = (case.stderr or []) + [value]
+        elif key == "requires":
+            case.requires.append(value.strip())
         elif key == "args":
             case.args = value.split()
         elif key == "stdin":

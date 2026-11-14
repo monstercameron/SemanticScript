@@ -1,0 +1,274 @@
+# covers: 10 Cleanup after errors
+# covers: 7 Resource cleanup
+# covers: 7 Deterministic destruction
+# covers: 7 Ownership transfer
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: opened
+# stdout: missing
+# stdout: closed
+
+cleanupOnError is module
+cleanupOnError purpose "Open a file, register its cleanup, fail on a second file, and show the cleanup ran exactly once after the failure was handled"
+cleanupOnError path cleanupOnError
+cleanupOnError imports standard.console
+cleanupOnError imports standard.fs
+cleanupOnError imports standard.string
+cleanupOnError imports standard.time
+cleanupOnError exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout
+stdoutWriter scope none
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParam none
+showText input text String borrowed
+showText output none
+showText outputOwner none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memory heap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue arg text String text lend
+writeValue out none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+
+fileAccess is capability
+fileAccess purpose "Authority over files whose names start with suite-"
+fileAccess grants read fs.files
+fileAccess grants write fs.files
+fileAccess scope "suite-"
+
+closeAndReport is operation
+closeAndReport purpose "Take ownership of a file, close it, and say whether closing worked"
+closeAndReport invariant none
+closeAndReport typeParam none
+closeAndReport input file fs.FileHandle owned
+closeAndReport output none
+closeAndReport outputOwner none
+closeAndReport raises none
+closeAndReport effect read fs.files
+closeAndReport effect write console.stdout
+closeAndReport uses fileAccess
+closeAndReport uses stdoutWriter
+closeAndReport memory heap false
+closeAndReport async false
+closeAndReport maxRecursion none
+closeAndReport label begin loopKind none
+closeAndReport label begin within none
+closeAndReport label closed loopKind none
+closeAndReport label closed within none
+closeAndReport label failed loopKind none
+closeAndReport label failed within none
+closeAndReport let closedText immutable String "closed"
+closeAndReport let closeFailedText immutable String "close failed"
+closeAndReport at begin do closeIt
+closeAndReport at begin branch ifError closeIt goto failed else goto closed
+closeAndReport at closed do printClosed
+closeAndReport at closed return ok none
+closeAndReport at failed do printCloseFailed
+closeAndReport at failed return ok none
+
+closeIt is call
+closeIt in closeAndReport
+closeIt invokes fs.close
+closeIt arg file fs.FileHandle file give
+closeIt out none
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch closeError fs.FileError
+
+printClosed is call
+printClosed in closeAndReport
+printClosed invokes showText
+printClosed arg text String closedText lend
+printClosed out none
+printClosed ownedBy none
+printClosed cleanedBy none
+printClosed borrows none
+printClosed catch none
+
+printCloseFailed is call
+printCloseFailed in closeAndReport
+printCloseFailed invokes showText
+printCloseFailed arg text String closeFailedText lend
+printCloseFailed out none
+printCloseFailed ownedBy none
+printCloseFailed cleanedBy none
+printCloseFailed borrows none
+printCloseFailed catch none
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParam none
+main input none
+main output ExitCode
+main outputOwner none
+main raises none
+main effect read fs.files
+main effect write console.stdout
+main effect write fs.files
+main uses fileAccess
+main uses stdoutWriter
+main memory heap false
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label openFirst loopKind none
+main label openFirst within none
+main label opened loopKind none
+main label opened within none
+main label closeMissing loopKind none
+main label closeMissing within none
+main label missing loopKind none
+main label missing within none
+main label failed loopKind none
+main label failed within none
+main let path immutable String "suite-cleanup.txt"
+main let missingPath immutable String "suite-not-there.txt"
+main let content immutable String "x"
+main let waitMs immutable Int64 5000
+main let openedText immutable String "opened"
+main let missingText immutable String "missing"
+main let okCode immutable ExitCode 0
+main let failCode immutable ExitCode 1
+main at begin do makeDeadline
+main at begin do toBytes
+main at begin start writeIt
+main at begin join writeIt
+main at begin branch ifError writeIt goto failed else goto openFirst
+main at openFirst do openIt
+main at openFirst branch ifError openIt goto failed else goto opened
+main at opened defer reportCleanup
+main at opened do printOpened
+main at opened do openMissing
+main at opened branch ifError openMissing goto missing else goto closeMissing
+main at closeMissing do closeUnexpected
+main at closeMissing return ok failCode
+main at missing do printMissing
+main at missing return ok okCode
+main at failed return ok failCode
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline arg milliseconds Int64 waitMs copy
+makeDeadline out deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+
+toBytes is call
+toBytes in main
+toBytes invokes string.toBytes
+toBytes arg text String content lend
+toBytes out contentBytes Bytes
+toBytes ownedBy none
+toBytes cleanedBy none
+toBytes borrows content
+toBytes catch none
+
+writeIt is task
+writeIt in main
+writeIt invokes fs.writeAll
+writeIt arg path String path lend
+writeIt arg bytes Bytes contentBytes lend
+writeIt arg deadline time.Deadline deadline copy
+writeIt out none
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch writeError fs.FileError
+
+openIt is call
+openIt in main
+openIt invokes fs.openRead
+openIt arg path String path lend
+openIt out file fs.FileHandle
+openIt ownedBy main
+openIt cleanedBy reportCleanup
+openIt borrows none
+openIt catch openError fs.FileError
+
+reportCleanup is cleanup
+reportCleanup in main
+reportCleanup call release
+reportCleanup cleans file
+reportCleanup onFailure suppress
+reportCleanup because "closeAndReport reports a failed close itself"
+
+release is call
+release in main
+release invokes closeAndReport
+release arg file fs.FileHandle file give
+release out none
+release ownedBy none
+release cleanedBy none
+release borrows none
+release catch none
+
+printOpened is call
+printOpened in main
+printOpened invokes showText
+printOpened arg text String openedText lend
+printOpened out none
+printOpened ownedBy none
+printOpened cleanedBy none
+printOpened borrows none
+printOpened catch none
+
+openMissing is call
+openMissing in main
+openMissing invokes fs.openRead
+openMissing arg path String missingPath lend
+openMissing out other fs.FileHandle
+openMissing ownedBy main
+openMissing cleanedBy none
+openMissing borrows none
+openMissing catch missingError fs.FileError
+
+closeUnexpected is call
+closeUnexpected in main
+closeUnexpected invokes closeAndReport
+closeUnexpected arg file fs.FileHandle other give
+closeUnexpected out none
+closeUnexpected ownedBy none
+closeUnexpected cleanedBy none
+closeUnexpected borrows none
+closeUnexpected catch none
+
+printMissing is call
+printMissing in main
+printMissing invokes showText
+printMissing arg text String missingText lend
+printMissing out none
+printMissing ownedBy none
+printMissing cleanedBy none
+printMissing borrows none
+printMissing catch none

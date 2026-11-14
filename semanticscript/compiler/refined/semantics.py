@@ -1103,8 +1103,12 @@ def _check_scope(m: Module, op: OpInfo, ci: CallInfo, sig: Sig, value: str) -> N
     """LR-34 rule 5: a literal argument outside every granting capability's scope is a check error."""
     b = op.bindings.get(value)
     if b is None or b.literal is None:
-        return
+        return  # a computed value is checked at run time, before the call happens (D-38)
     lit = b.literal
+    if any(r in ("fs.files",) for _v, r in sig.effects) and ".." in str(lit).replace("\\", "/").split("/"):
+        m.sink.error("R408", ci.entity.line, f"`{ci.entity.name}` passes `{lit}`, whose `..` would step out of "
+                     "the capability's scope; name the file directly")
+        return
     resources = [(v, r) for v, r in sig.effects if r in SCOPED_RESOURCES]
     for verb, res in resources:
         kind = SCOPED_RESOURCES[res]

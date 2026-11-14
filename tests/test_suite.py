@@ -37,6 +37,8 @@ INT64_MIN, INT64_MAX = -(1 << 63), (1 << 63) - 1
 
 @pytest.mark.parametrize("case", CASES, ids=[c.name for c in CASES])
 def test_program_case(case, tmp_path):
+    if case.missing_tools():
+        pytest.skip(f"needs {', '.join(case.missing_tools())}")
     problems = caselib.evaluate(case, str(tmp_path))
     assert not problems, "\n".join(problems)
 

@@ -1080,8 +1080,28 @@ class OpGen:
             return a[0], None, None  # the same bytes, viewed as `Bytes` (it borrows `text`)
         if inv in HOST_TARGETS:
             extra = [self.be.string(self.scope_host("listen", "net.tcp"))] if inv == "net.listen" else []
+            if ci.sig is not None and ci.sig.scoped:
+                extra.append(self.be.string(self.scope_text(ci.sig)))
             return self.host_call(b, inv, ci, args, line, extra)
         self.unsupported(line, f"the library target `{inv}`")
+
+    def scope_text(self, sig) -> str:
+        """D-38: what the runtime checks a scoped argument against before the call happens:
+        `<resource>` then each scope of the capabilities this operation uses that grant the call's effect."""
+        lines = []
+        for verb, res in sorted(sig.effects):
+            from .library import SCOPED_RESOURCES
+            if res not in SCOPED_RESOURCES:
+                continue
+            lines.append(f"{verb} {res}")
+            for u in self.ent.facts("uses"):
+                cap = self.m.capabilities.get(u.text(0))
+                if cap is None or not any(g.text(0) == verb and g.text(1) == res for g in cap.facts("grants")):
+                    continue
+                row = cap.fact("scope")
+                if row is not None and row.args and row.args[0].kind == "string":
+                    lines.append(row.args[0].value)
+        return "\n".join(lines)
 
     def scope_host(self, verb: str, resource: str) -> str:
         """The host part of the scope of the capability this operation uses for `<verb> <resource>`."""
