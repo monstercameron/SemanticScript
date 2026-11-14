@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -59,6 +60,42 @@ def test_conformance(g, check, tmp_path):
     else:
         assert proc.returncode == check.exit, (proc.returncode, proc.stderr)
         assert check.detail in proc.stdout.splitlines(), proc.stdout
+
+
+# D-83: an executable runs a task to its end when it is started (D-37), so a sibling's failure cannot cut a
+# waiting task short; only timing-dependent cancellation differs, and those checks run under the JIT only.
+SEQUENTIAL_TASKS = {"group-first-failure": "a ten-second sleep is cancelled by its sibling's failure"}
+RUNNING = [(g, c) for g, c in CHECKS if c.kind in ("run", "trap") and c.id not in SEQUENTIAL_TASKS]
+
+
+def _has_cc() -> bool:
+    from refined.native import find_cc
+    return find_cc() is not None
+
+
+@pytest.mark.skipif(not _has_cc(), reason="linking an executable needs a C compiler")
+def test_conformance_as_executables(tmp_path):
+    """D-80: every check that runs a program behaves the same as a standalone executable as under `refined run`:
+    the same output, errors, and exit code (D-51 releasing files at a trap, D-52 one writer per file, D-49 region
+    traps, D-38 scopes)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(i):
+        g, check = RUNNING[i]
+        jit_dir, exe_dir = _apply(tmp_path / f"{i}j", check), _apply(tmp_path / f"{i}e", check)
+        exe = os.path.join(exe_dir, "program.exe")
+        built = caselib.refined("build", exe_dir, "--kind", "executable", "--output", exe)
+        assert built.returncode == 0, (check.id, built.stdout)
+        jit = caselib.refined("run", jit_dir, "--no-cache", *(("--", *check.args) if check.args else ()), cwd=jit_dir)
+        ran = subprocess.run([exe, *check.args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             cwd=exe_dir, timeout=120)
+        jit_err = jit.stderr.replace(os.path.normpath(jit_dir), "<project>")
+        exe_err = ran.stderr.replace(os.path.normpath(exe_dir), "<project>")
+        assert (ran.returncode, ran.stdout, exe_err) == (jit.returncode, jit.stdout, jit_err), check.id
+        return check.id
+
+    with ThreadPoolExecutor(6) as pool:
+        assert len(list(pool.map(one, range(len(RUNNING))))) == len(RUNNING) >= 10
 
 
 def test_evidence_names_real_tests():

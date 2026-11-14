@@ -9,8 +9,10 @@ stack pointer, and runtime functions from the `env` namespace, and a host
 supplies them (tests/suite/wasm_host.mjs is a small one for Node).
 
 `--kind executable` links the object, the C runtime in native_runtime.c, and a
-generated `main` into a standalone executable with the system C compiler
-(cc, gcc, or clang, or $REFINED_CC), statically when the C library allows.
+generated `main(argc, argv)` into a standalone executable with the system C
+compiler (cc, gcc, or clang, or $REFINED_CC), statically when the C library
+allows. The C runtime implements most of the host library natively (D-80); a
+program that calls a target it does not implement is refused (R901, D-81).
 """
 from __future__ import annotations
 
@@ -60,6 +62,37 @@ def emit(ir_text: str, triple: str | None, kind: str) -> bytes:
 
 RUNTIME_C = os.path.join(os.path.dirname(os.path.abspath(__file__)), "native_runtime.c")
 STACK_BYTES = 256 * 1024 * 1024
+_TARGET_ROW = re.compile(r'^\s*\{"([A-Za-z.]+)", (\w+), (-?\d+)\},$', re.M)
+
+
+def native_targets() -> dict[str, int]:
+    """D-80: the host targets the C runtime implements (its `TARGETS` table), each with the index of its scoped
+    parameter or -1. A program that calls any other host target is refused as an executable (R901, D-81)."""
+    with open(RUNTIME_C, encoding="utf-8") as fh:
+        return {m.group(1): int(m.group(3)) for m in _TARGET_ROW.finditer(fh.read())}
+
+
+def _runtime_object(cc: list[str], machine: str, folder: str) -> str:
+    """The C runtime compiled once per compiler and source text, kept in the temporary directory, so linking a
+    program compiles only its small `main`."""
+    import hashlib
+    with open(RUNTIME_C, "rb") as fh:
+        source = fh.read()
+    digest = hashlib.sha256(source + "\0".join(cc + [machine]).encode()).hexdigest()[:20]
+    cached = os.path.join(tempfile.gettempdir(), f"refined-runtime-{digest}.o")
+    if os.path.exists(cached):
+        return cached
+    fresh = os.path.join(folder, "runtime.o")
+    proc = subprocess.run(cc + ["-O2", "-c", "-o", fresh, RUNTIME_C], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return RUNTIME_C  # let the link report the error
+    try:
+        partial = f"{cached}.{os.getpid()}"
+        shutil.copyfile(fresh, partial)
+        os.replace(partial, cached)
+        return cached
+    except OSError:
+        return fresh
 
 
 def find_cc() -> list[str] | None:
@@ -80,10 +113,12 @@ def find_cc() -> list[str] | None:
 
 def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
     """Link the program's object, the C runtime (native_runtime.c), and a `main` into one executable."""
-    needs = sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z.]+)\|', ir_text)))
+    native = native_targets()
+    needs = sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z.]+)\|', ir_text)) - set(native))
     if needs:
         return False, ("R901 this program calls " + ", ".join(f"`{n}`" for n in needs) + ", which need the host "
-                       "library; standalone executables include only the core runtime, so run it with `refined run`")
+                       "library; standalone executables include the native part of it only (D-81), so run it with "
+                       "`refined run`")
     cc = find_cc()
     if cc is None:
         return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
@@ -109,11 +144,13 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
                      f'extern int32_t refined_entry(void) __asm__("{symbol}");\n'
                      f'extern int64_t refined_stack_here(void) __asm__("{"_" if apple else ""}refined_stack_here");\n'
                      "void refined_set_floor(int64_t floor);\n"
-                     f"int main(void) {{ refined_set_floor(refined_stack_here() - {budget}LL); "
+                     "void refined_start(int argc, char **argv);\n"
+                     "int main(int argc, char **argv) { refined_start(argc, argv); "
+                     f"refined_set_floor(refined_stack_here() - {budget}LL); "
                      "return (int)refined_entry(); }\n")
-        base = cc + ["-O2", "-o", output, obj, RUNTIME_C, main_c]
+        base = cc + ["-O2", "-o", output, obj, _runtime_object(cc, machine, d), main_c]
         if windows:
-            base.append(f"-Wl,--stack,{STACK_BYTES}")
+            base += [f"-Wl,--stack,{STACK_BYTES}", "-lshell32"]
         last = None
         for extra in (["-static"], []):  # static when the platform's C library allows it
             proc = subprocess.run(base + extra, capture_output=True, text=True)
