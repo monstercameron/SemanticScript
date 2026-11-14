@@ -27,6 +27,19 @@ have been cut yet.
   others); and the CI workflows that built and released them. All of it remains
   in git history before this change.
 
+### The self-hosted compiler compiles itself
+
+- `docs/refined-examples/stage0`, a SemanticScript-to-C compiler written in
+  SemanticScript, compiles projects of several modules (build.sem, names
+  spelled `<module>.<name>`), maps with String keys, `forEach` over a map,
+  `string.Position`, operation references, `<Record>.with`, `list.set`,
+  operations raising standard errors, and scoped host targets (`fs`,
+  `process.run`) given their capability scopes.
+- It compiles its own source: built by `refined build --kind executable`, it
+  builds a second compiler that compiles the samples to the same C and
+  compiles stage0 again to byte-identical C (`tests/test_bootstrap.py`).
+  Decisions D-114 to D-118.
+
 ### The checklist closed
 
 - Library modules `random`, `crypto`, `log`, `json`, `secret`, `signal`, and

@@ -1,0 +1,907 @@
+# A stage0 sample: maps with String keys, through the host's map. It counts
+# words in a map of numbers (putting a key again replaces its value), keeps
+# records holding text in a second map (the text is copied into the map's
+# region), reads them back by key, branches on a missing key, removes one,
+# and walks a map's keys with `forEach` in the order they were first put. It
+# exits with code 0:
+#
+#   the: 3
+#   cat: 1
+#   keys: 4
+#   no dog
+#   counted: the cat sat mat
+#   Ada is 36, likes tea
+#   Linus is 54, likes coffee
+#   removed Ada: 1
+#   no Ada
+maps is module
+maps purpose "Count words in a map and keep records by name in another"
+maps path maps
+maps imports standard.console
+maps imports standard.math
+maps imports standard.map
+maps imports standard.string
+maps exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Person is record
+Person purpose "Someone's age and favourite drink"
+Person typeParameter none
+Person field age Int64
+Person field drink String
+
+Counts is typeInstance
+Counts purpose "How many times each word was seen"
+Counts in none
+Counts instantiates map.Map String Int64
+
+People is typeInstance
+People purpose "People by name"
+People in none
+People instantiates map.Map String Person
+
+count is operation
+count purpose "Count one more sighting of a word"
+count invariant none
+count typeParameter none
+count input counts Counts borrowedMutable
+count input word String borrowed
+count output none
+count outputOwnedBy none
+count raises none
+count effect none
+count uses none
+count memoryHeap false
+count async false
+count maxRecursion none
+count label begin loopKind none
+count label begin within none
+count label readSeenDone loopKind none
+count label readSeenDone within none
+count label fresh loopKind none
+count label fresh within none
+count label add loopKind none
+count label add within none
+count let seen Int64 0 mutable
+count let one Int64 1 immutable
+count at begin do readSeen
+count at begin branch ifError readSeen goto fresh else goto readSeenDone
+count at readSeenDone set seen before
+count at readSeenDone goto add
+count at fresh goto add
+count at add do addOne
+count at add do putIt
+count at add return ok none
+
+readSeen is call
+readSeen in count
+readSeen invokes Counts.get
+readSeen argument map Counts counts lend
+readSeen argument key String word lend
+readSeen result before Int64
+readSeen ownedBy none
+readSeen cleanedBy none
+readSeen borrows none
+readSeen catch readSeenError map.KeyMissing
+readSeen suppresses none
+
+addOne is call
+addOne in count
+addOne invokes math.addInt64
+addOne argument left Int64 seen copy
+addOne argument right Int64 one copy
+addOne result after Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+putIt is call
+putIt in count
+putIt invokes Counts.put
+putIt argument map Counts counts lendMutable
+putIt argument key String word lend
+putIt argument value Int64 after copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+report is operation
+report purpose "Print a label and a number on one line; a failed write is discarded"
+report invariant none
+report typeParameter none
+report input label String borrowed
+report input value Int64 copied
+report output none
+report outputOwnedBy none
+report raises none
+report effect write console.stdout
+report uses stdoutWriter
+report memoryHeap false
+report async false
+report maxRecursion none
+report label begin loopKind none
+report label begin within none
+report label writeLabelDone loopKind none
+report label writeLabelDone within none
+report label writeValueDone loopKind none
+report label writeValueDone within none
+report let none
+report at begin do writeLabel
+report at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+report at writeLabelDone do writeValue
+report at writeLabelDone branch ifError writeValue goto writeValueDone else goto writeValueDone
+report at writeValueDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in report
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeValue is call
+writeValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeValue in report
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeValueError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+describe is operation
+describe purpose "Print a person's name, age, and drink, or that nobody has that name"
+describe invariant none
+describe typeParameter none
+describe input people People borrowed
+describe input name String borrowed
+describe output none
+describe outputOwnedBy none
+describe raises none
+describe effect write console.stdout
+describe uses stdoutWriter
+describe memoryHeap true
+describe async false
+describe maxRecursion none
+describe label begin loopKind none
+describe label begin within none
+describe label findPersonDone loopKind none
+describe label findPersonDone within none
+describe label writeLineDone loopKind none
+describe label writeLineDone within none
+describe label missing loopKind none
+describe label missing within none
+describe label writeNoDone loopKind none
+describe label writeNoDone within none
+describe let isText String " is " immutable
+describe let likesText String ", likes " immutable
+describe let noText String "no " immutable
+describe at begin do findPerson
+describe at begin branch ifError findPerson goto missing else goto findPersonDone
+describe at findPersonDone do readAge
+describe at findPersonDone do readDrink
+describe at findPersonDone do ageText
+describe at findPersonDone do joinName
+describe at findPersonDone do joinAge
+describe at findPersonDone do joinLikes
+describe at findPersonDone do joinDrink
+describe at findPersonDone do writeLine
+describe at findPersonDone branch ifError writeLine goto writeLineDone else goto writeLineDone
+describe at writeLineDone return ok none
+describe at missing do joinNo
+describe at missing do writeNo
+describe at missing branch ifError writeNo goto writeNoDone else goto writeNoDone
+describe at writeNoDone return ok none
+
+scratch is region
+scratch in describe
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+findPerson is call
+findPerson in describe
+findPerson invokes People.get
+findPerson argument map People people lend
+findPerson argument key String name lend
+findPerson result person Person
+findPerson ownedBy none
+findPerson cleanedBy none
+findPerson borrows people
+findPerson catch findPersonError map.KeyMissing
+findPerson suppresses none
+
+readAge is call
+readAge in describe
+readAge invokes Person.age
+readAge argument record Person person lend
+readAge result age Int64
+readAge ownedBy none
+readAge cleanedBy none
+readAge borrows none
+readAge catch none
+readAge suppresses none
+
+readDrink is call
+readDrink in describe
+readDrink invokes Person.drink
+readDrink argument record Person person lend
+readDrink result drink String
+readDrink ownedBy none
+readDrink cleanedBy none
+readDrink borrows person
+readDrink catch none
+readDrink suppresses none
+
+ageText is call
+ageText in describe
+ageText invokes string.fromInt64
+ageText argument value Int64 age copy
+ageText argument region Region scratch lend
+ageText result ageDigits String
+ageText ownedBy scratch
+ageText cleanedBy none
+ageText borrows none
+ageText catch none
+ageText suppresses none
+
+joinName is call
+joinName in describe
+joinName invokes string.concat
+joinName argument left String name lend
+joinName argument right String isText lend
+joinName argument region Region scratch lend
+joinName result withIs String
+joinName ownedBy scratch
+joinName cleanedBy none
+joinName borrows none
+joinName catch none
+joinName suppresses none
+
+joinAge is call
+joinAge in describe
+joinAge invokes string.concat
+joinAge argument left String withIs lend
+joinAge argument right String ageDigits lend
+joinAge argument region Region scratch lend
+joinAge result withAge String
+joinAge ownedBy scratch
+joinAge cleanedBy none
+joinAge borrows none
+joinAge catch none
+joinAge suppresses none
+
+joinLikes is call
+joinLikes in describe
+joinLikes invokes string.concat
+joinLikes argument left String withAge lend
+joinLikes argument right String likesText lend
+joinLikes argument region Region scratch lend
+joinLikes result withLikes String
+joinLikes ownedBy scratch
+joinLikes cleanedBy none
+joinLikes borrows none
+joinLikes catch none
+joinLikes suppresses none
+
+joinDrink is call
+joinDrink in describe
+joinDrink invokes string.concat
+joinDrink argument left String withLikes lend
+joinDrink argument right String drink lend
+joinDrink argument region Region scratch lend
+joinDrink result line String
+joinDrink ownedBy scratch
+joinDrink cleanedBy none
+joinDrink borrows none
+joinDrink catch none
+joinDrink suppresses none
+
+writeLine is call
+writeLine rationale "The failure has nowhere to be reported, so it is discarded"
+writeLine in describe
+writeLine invokes console.writeLine
+writeLine argument text String line lend
+writeLine result none
+writeLine ownedBy none
+writeLine cleanedBy none
+writeLine borrows none
+writeLine catch writeLineError console.WriteError
+writeLine suppresses console.WriteError.failed
+
+joinNo is call
+joinNo in describe
+joinNo invokes string.concat
+joinNo argument left String noText lend
+joinNo argument right String name lend
+joinNo argument region Region scratch lend
+joinNo result noLine String
+joinNo ownedBy scratch
+joinNo cleanedBy none
+joinNo borrows none
+joinNo catch none
+joinNo suppresses none
+
+writeNo is call
+writeNo rationale "The failure has nowhere to be reported, so it is discarded"
+writeNo in describe
+writeNo invokes console.writeLine
+writeNo argument text String noLine lend
+writeNo result none
+writeNo ownedBy none
+writeNo cleanedBy none
+writeNo borrows none
+writeNo catch writeNoError console.WriteError
+writeNo suppresses console.WriteError.failed
+
+addPerson is operation
+addPerson purpose "Keep a person whose drink is built in a region of this operation, released at its return: the map keeps its own copy of the text"
+addPerson invariant none
+addPerson typeParameter none
+addPerson input people People borrowedMutable
+addPerson input name String borrowed
+addPerson input age Int64 copied
+addPerson input drink String borrowed
+addPerson output none
+addPerson outputOwnedBy none
+addPerson raises none
+addPerson effect none
+addPerson uses none
+addPerson memoryHeap true
+addPerson async false
+addPerson maxRecursion none
+addPerson label begin loopKind none
+addPerson label begin within none
+addPerson let emptyText String "" immutable
+addPerson at begin do copyDrink
+addPerson at begin do makePerson
+addPerson at begin do putPerson
+addPerson at begin return ok none
+
+scratch is region
+scratch in addPerson
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+copyDrink is call
+copyDrink in addPerson
+copyDrink invokes string.concat
+copyDrink argument left String drink lend
+copyDrink argument right String emptyText lend
+copyDrink argument region Region scratch lend
+copyDrink result drinkCopy String
+copyDrink ownedBy scratch
+copyDrink cleanedBy none
+copyDrink borrows none
+copyDrink catch none
+copyDrink suppresses none
+
+makePerson is call
+makePerson in addPerson
+makePerson invokes Person.new
+makePerson argument age Int64 age copy
+makePerson argument drink String drinkCopy lend
+makePerson argument region Region scratch lend
+makePerson result person Person
+makePerson ownedBy scratch
+makePerson cleanedBy none
+makePerson borrows none
+makePerson catch none
+makePerson suppresses none
+
+putPerson is call
+putPerson in addPerson
+putPerson invokes People.put
+putPerson argument map People people lendMutable
+putPerson argument key String name lend
+putPerson argument value Person person give
+putPerson result none
+putPerson ownedBy none
+putPerson cleanedBy none
+putPerson borrows none
+putPerson catch none
+putPerson suppresses none
+
+main is operation
+main purpose "Count words, keep people, and read both maps back"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label readTheDone loopKind none
+main label readTheDone within none
+main label readCatDone loopKind none
+main label readCatDone within none
+main label dogFound loopKind none
+main label dogFound within none
+main label writeDogDone loopKind none
+main label writeDogDone within none
+main label noDog loopKind none
+main label noDog within none
+main label writeNoDogDone loopKind none
+main label writeNoDogDone within none
+main label listKeys loopKind none
+main label listKeys within none
+main label writeCountedDone loopKind none
+main label writeCountedDone within none
+main label eachKey loopKind forEach
+main label eachKey within none
+main label eachKey maxIterations keyCount
+main label eachKey over counts
+main label printKey loopKind none
+main label printKey within eachKey
+main label writeSpaceDone loopKind none
+main label writeSpaceDone within eachKey
+main label writeKeyDone loopKind none
+main label writeKeyDone within eachKey
+main label keysDone loopKind none
+main label keysDone within none
+main label writeEndDone loopKind none
+main label writeEndDone within none
+main label removeAdaDone loopKind none
+main label removeAdaDone within none
+main label noThe loopKind none
+main label noThe within none
+main label writeMissingDone loopKind none
+main label writeMissingDone within none
+main let okCode ExitCode 0 immutable
+main let the String "the" immutable
+main let cat String "cat" immutable
+main let sat String "sat" immutable
+main let mat String "mat" immutable
+main let theText String "the: " immutable
+main let catText String "cat: " immutable
+main let keysText String "keys: " immutable
+main let dog String "dog" immutable
+main let dogText String "a dog" immutable
+main let noDogText String "no dog" immutable
+main let countedText String "counted:" immutable
+main let space String " " immutable
+main let empty String "" immutable
+main let ada String "Ada" immutable
+main let thirtySix Int64 36 immutable
+main let tea String "tea" immutable
+main let linus String "Linus" immutable
+main let fiftyFour Int64 54 immutable
+main let coffee String "coffee" immutable
+main let removedText String "removed Ada: " immutable
+main let missingText String "a word went missing" immutable
+main at begin do makeCounts
+main at begin do countThe
+main at begin do countCat
+main at begin do countThe2
+main at begin do countSat
+main at begin do countThe3
+main at begin do countMat
+main at begin do readThe
+main at begin branch ifError readThe goto noThe else goto readTheDone
+main at readTheDone do reportThe
+main at readTheDone do readCat
+main at readTheDone branch ifError readCat goto noThe else goto readCatDone
+main at readCatDone do reportCat
+main at readCatDone do countKeys
+main at readCatDone do reportKeys
+main at readCatDone do dogCheck
+main at readCatDone branch if hasDog goto dogFound else goto noDog
+main at dogFound do writeDog
+main at dogFound branch ifError writeDog goto writeDogDone else goto writeDogDone
+main at writeDogDone goto listKeys
+main at noDog do writeNoDog
+main at noDog branch ifError writeNoDog goto writeNoDogDone else goto writeNoDogDone
+main at writeNoDogDone goto listKeys
+main at listKeys do writeCounted
+main at listKeys branch ifError writeCounted goto writeCountedDone else goto writeCountedDone
+main at writeCountedDone goto eachKey
+main at eachKey branch ifNext counts bind key String goto printKey else goto keysDone
+main at printKey do writeSpace
+main at printKey branch ifError writeSpace goto writeSpaceDone else goto writeSpaceDone
+main at writeSpaceDone do writeKey
+main at writeSpaceDone branch ifError writeKey goto writeKeyDone else goto writeKeyDone
+main at writeKeyDone goto eachKey
+main at keysDone do writeEnd
+main at keysDone branch ifError writeEnd goto writeEndDone else goto writeEndDone
+main at writeEndDone do makePeople
+main at writeEndDone do addAda
+main at writeEndDone do addLinus
+main at writeEndDone do describeAda
+main at writeEndDone do describeLinus
+main at writeEndDone do removeAda
+main at writeEndDone branch ifError removeAda goto noThe else goto removeAdaDone
+main at removeAdaDone do countPeople
+main at removeAdaDone do reportPeople
+main at removeAdaDone do describeAgain
+main at removeAdaDone return ok okCode
+main at noThe do writeMissing
+main at noThe branch ifError writeMissing goto writeMissingDone else goto writeMissingDone
+main at writeMissingDone return ok okCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 1048576
+store released atReturn
+
+makeCounts is call
+makeCounts in main
+makeCounts invokes Counts.new
+makeCounts argument region Region store lend
+makeCounts result counts Counts
+makeCounts ownedBy store
+makeCounts cleanedBy none
+makeCounts borrows none
+makeCounts catch none
+makeCounts suppresses none
+
+countThe is call
+countThe in main
+countThe invokes count
+countThe argument counts Counts counts lendMutable
+countThe argument word String the lend
+countThe result none
+countThe ownedBy none
+countThe cleanedBy none
+countThe borrows none
+countThe catch none
+countThe suppresses none
+
+countCat is call
+countCat in main
+countCat invokes count
+countCat argument counts Counts counts lendMutable
+countCat argument word String cat lend
+countCat result none
+countCat ownedBy none
+countCat cleanedBy none
+countCat borrows none
+countCat catch none
+countCat suppresses none
+
+countThe2 is call
+countThe2 in main
+countThe2 invokes count
+countThe2 argument counts Counts counts lendMutable
+countThe2 argument word String the lend
+countThe2 result none
+countThe2 ownedBy none
+countThe2 cleanedBy none
+countThe2 borrows none
+countThe2 catch none
+countThe2 suppresses none
+
+countSat is call
+countSat in main
+countSat invokes count
+countSat argument counts Counts counts lendMutable
+countSat argument word String sat lend
+countSat result none
+countSat ownedBy none
+countSat cleanedBy none
+countSat borrows none
+countSat catch none
+countSat suppresses none
+
+countThe3 is call
+countThe3 in main
+countThe3 invokes count
+countThe3 argument counts Counts counts lendMutable
+countThe3 argument word String the lend
+countThe3 result none
+countThe3 ownedBy none
+countThe3 cleanedBy none
+countThe3 borrows none
+countThe3 catch none
+countThe3 suppresses none
+
+countMat is call
+countMat in main
+countMat invokes count
+countMat argument counts Counts counts lendMutable
+countMat argument word String mat lend
+countMat result none
+countMat ownedBy none
+countMat cleanedBy none
+countMat borrows none
+countMat catch none
+countMat suppresses none
+
+readThe is call
+readThe in main
+readThe invokes Counts.get
+readThe argument map Counts counts lend
+readThe argument key String the lend
+readThe result theCount Int64
+readThe ownedBy none
+readThe cleanedBy none
+readThe borrows none
+readThe catch readTheError map.KeyMissing
+readThe suppresses none
+
+reportThe is call
+reportThe in main
+reportThe invokes report
+reportThe argument label String theText lend
+reportThe argument value Int64 theCount copy
+reportThe result none
+reportThe ownedBy none
+reportThe cleanedBy none
+reportThe borrows none
+reportThe catch none
+reportThe suppresses none
+
+readCat is call
+readCat in main
+readCat invokes Counts.get
+readCat argument map Counts counts lend
+readCat argument key String cat lend
+readCat result catCount Int64
+readCat ownedBy none
+readCat cleanedBy none
+readCat borrows none
+readCat catch readCatError map.KeyMissing
+readCat suppresses none
+
+reportCat is call
+reportCat in main
+reportCat invokes report
+reportCat argument label String catText lend
+reportCat argument value Int64 catCount copy
+reportCat result none
+reportCat ownedBy none
+reportCat cleanedBy none
+reportCat borrows none
+reportCat catch none
+reportCat suppresses none
+
+countKeys is call
+countKeys in main
+countKeys invokes Counts.length
+countKeys argument map Counts counts lend
+countKeys result keyCount Int64
+countKeys ownedBy none
+countKeys cleanedBy none
+countKeys borrows none
+countKeys catch none
+countKeys suppresses none
+
+reportKeys is call
+reportKeys in main
+reportKeys invokes report
+reportKeys argument label String keysText lend
+reportKeys argument value Int64 keyCount copy
+reportKeys result none
+reportKeys ownedBy none
+reportKeys cleanedBy none
+reportKeys borrows none
+reportKeys catch none
+reportKeys suppresses none
+
+dogCheck is call
+dogCheck in main
+dogCheck invokes Counts.contains
+dogCheck argument map Counts counts lend
+dogCheck argument key String dog lend
+dogCheck result hasDog Bool
+dogCheck ownedBy none
+dogCheck cleanedBy none
+dogCheck borrows none
+dogCheck catch none
+dogCheck suppresses none
+
+writeDog is call
+writeDog rationale "The failure has nowhere to be reported, so it is discarded"
+writeDog in main
+writeDog invokes console.writeLine
+writeDog argument text String dogText lend
+writeDog result none
+writeDog ownedBy none
+writeDog cleanedBy none
+writeDog borrows none
+writeDog catch writeDogError console.WriteError
+writeDog suppresses console.WriteError.failed
+
+writeNoDog is call
+writeNoDog rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoDog in main
+writeNoDog invokes console.writeLine
+writeNoDog argument text String noDogText lend
+writeNoDog result none
+writeNoDog ownedBy none
+writeNoDog cleanedBy none
+writeNoDog borrows none
+writeNoDog catch writeNoDogError console.WriteError
+writeNoDog suppresses console.WriteError.failed
+
+writeCounted is call
+writeCounted rationale "The failure has nowhere to be reported, so it is discarded"
+writeCounted in main
+writeCounted invokes console.write
+writeCounted argument text String countedText lend
+writeCounted result none
+writeCounted ownedBy none
+writeCounted cleanedBy none
+writeCounted borrows none
+writeCounted catch writeCountedError console.WriteError
+writeCounted suppresses console.WriteError.failed
+
+writeSpace is call
+writeSpace rationale "The failure has nowhere to be reported, so it is discarded"
+writeSpace in main
+writeSpace invokes console.write
+writeSpace argument text String space lend
+writeSpace result none
+writeSpace ownedBy none
+writeSpace cleanedBy none
+writeSpace borrows none
+writeSpace catch writeSpaceError console.WriteError
+writeSpace suppresses console.WriteError.failed
+
+writeKey is call
+writeKey rationale "The failure has nowhere to be reported, so it is discarded"
+writeKey in main
+writeKey invokes console.write
+writeKey argument text String key lend
+writeKey result none
+writeKey ownedBy none
+writeKey cleanedBy none
+writeKey borrows none
+writeKey catch writeKeyError console.WriteError
+writeKey suppresses console.WriteError.failed
+
+writeEnd is call
+writeEnd rationale "The failure has nowhere to be reported, so it is discarded"
+writeEnd in main
+writeEnd invokes console.writeLine
+writeEnd argument text String empty lend
+writeEnd result none
+writeEnd ownedBy none
+writeEnd cleanedBy none
+writeEnd borrows none
+writeEnd catch writeEndError console.WriteError
+writeEnd suppresses console.WriteError.failed
+
+makePeople is call
+makePeople in main
+makePeople invokes People.new
+makePeople argument region Region store lend
+makePeople result people People
+makePeople ownedBy store
+makePeople cleanedBy none
+makePeople borrows none
+makePeople catch none
+makePeople suppresses none
+
+addAda is call
+addAda in main
+addAda invokes addPerson
+addAda argument people People people lendMutable
+addAda argument name String ada lend
+addAda argument age Int64 thirtySix copy
+addAda argument drink String tea lend
+addAda result none
+addAda ownedBy none
+addAda cleanedBy none
+addAda borrows none
+addAda catch none
+addAda suppresses none
+
+addLinus is call
+addLinus in main
+addLinus invokes addPerson
+addLinus argument people People people lendMutable
+addLinus argument name String linus lend
+addLinus argument age Int64 fiftyFour copy
+addLinus argument drink String coffee lend
+addLinus result none
+addLinus ownedBy none
+addLinus cleanedBy none
+addLinus borrows none
+addLinus catch none
+addLinus suppresses none
+
+describeAda is call
+describeAda in main
+describeAda invokes describe
+describeAda argument people People people lend
+describeAda argument name String ada lend
+describeAda result none
+describeAda ownedBy none
+describeAda cleanedBy none
+describeAda borrows none
+describeAda catch none
+describeAda suppresses none
+
+describeLinus is call
+describeLinus in main
+describeLinus invokes describe
+describeLinus argument people People people lend
+describeLinus argument name String linus lend
+describeLinus result none
+describeLinus ownedBy none
+describeLinus cleanedBy none
+describeLinus borrows none
+describeLinus catch none
+describeLinus suppresses none
+
+removeAda is call
+removeAda in main
+removeAda invokes People.remove
+removeAda argument map People people lendMutable
+removeAda argument key String ada lend
+removeAda result none
+removeAda ownedBy none
+removeAda cleanedBy none
+removeAda borrows none
+removeAda catch removeAdaError map.KeyMissing
+removeAda suppresses none
+
+countPeople is call
+countPeople in main
+countPeople invokes People.length
+countPeople argument map People people lend
+countPeople result peopleCount Int64
+countPeople ownedBy none
+countPeople cleanedBy none
+countPeople borrows none
+countPeople catch none
+countPeople suppresses none
+
+reportPeople is call
+reportPeople in main
+reportPeople invokes report
+reportPeople argument label String removedText lend
+reportPeople argument value Int64 peopleCount copy
+reportPeople result none
+reportPeople ownedBy none
+reportPeople cleanedBy none
+reportPeople borrows none
+reportPeople catch none
+reportPeople suppresses none
+
+describeAgain is call
+describeAgain in main
+describeAgain invokes describe
+describeAgain argument people People people lend
+describeAgain argument name String ada lend
+describeAgain result none
+describeAgain ownedBy none
+describeAgain cleanedBy none
+describeAgain borrows none
+describeAgain catch none
+describeAgain suppresses none
+
+writeMissing is call
+writeMissing rationale "The failure has nowhere to be reported, so it is discarded"
+writeMissing in main
+writeMissing invokes console.writeLine
+writeMissing argument text String missingText lend
+writeMissing result none
+writeMissing ownedBy none
+writeMissing cleanedBy none
+writeMissing borrows none
+writeMissing catch writeMissingError console.WriteError
+writeMissing suppresses console.WriteError.failed

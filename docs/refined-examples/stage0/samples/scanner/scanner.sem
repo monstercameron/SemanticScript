@@ -1,0 +1,1408 @@
+# A stage0 sample: operations as values, positions in text, a list changed
+# in place, and an operation that raises a standard library error. It steps
+# through UTF-8 text a character at a time with `string.advancePosition`,
+# choosing what to step over by a value of an `operationType` (called with
+# `invokesReference`), counts vowels the same way, changes a list's items
+# with `set` (branching on a position past its end), and exits with code 0:
+#
+#   word ends at 6, line 1, column 6
+#   next word at 7, line 1, column 7
+#   line 2 starts at 14
+#   vowels: 5
+#   counts: 1 5 3
+#   no slot 7
+#   byte after: 195
+#   nothing after the end
+scanner is module
+scanner purpose "Step through text by rules passed as values, and change a list in place"
+scanner path scanner
+scanner imports standard.console
+scanner imports standard.math
+scanner imports standard.compare
+scanner imports standard.string
+scanner imports standard.byte
+scanner imports standard.list
+scanner imports standard.logic
+scanner imports standard.convert
+scanner exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+ByteTest is operationType
+ByteTest purpose "A test of one byte"
+ByteTest typeParameter none
+ByteTest input value Byte copied
+ByteTest output Bool
+ByteTest outputOwnedBy none
+ByteTest raises none
+ByteTest effect none
+ByteTest async false
+
+Counts is typeInstance
+Counts purpose "A few numbers changed in place"
+Counts in none
+Counts instantiates list.List Int64
+
+isWordByte is operation
+isWordByte purpose "Decide whether a byte belongs to a word: anything but a space or a newline"
+isWordByte invariant none
+isWordByte typeParameter none
+isWordByte input value Byte copied
+isWordByte output Bool
+isWordByte outputOwnedBy none
+isWordByte raises none
+isWordByte effect none
+isWordByte uses none
+isWordByte memoryHeap false
+isWordByte async false
+isWordByte maxRecursion none
+isWordByte label begin loopKind none
+isWordByte label begin within none
+isWordByte let none
+isWordByte at begin do spaceCheck
+isWordByte at begin do wordCheck
+isWordByte at begin return ok isWord
+
+spaceCheck is call
+spaceCheck in isWordByte
+spaceCheck invokes byte.isSpace
+spaceCheck argument value Byte value copy
+spaceCheck result isSpace Bool
+spaceCheck ownedBy none
+spaceCheck cleanedBy none
+spaceCheck borrows none
+spaceCheck catch none
+spaceCheck suppresses none
+
+wordCheck is call
+wordCheck in isWordByte
+wordCheck invokes logic.not
+wordCheck argument value Bool isSpace copy
+wordCheck result isWord Bool
+wordCheck ownedBy none
+wordCheck cleanedBy none
+wordCheck borrows none
+wordCheck catch none
+wordCheck suppresses none
+
+isBlankByte is operation
+isBlankByte purpose "Decide whether a byte is a space"
+isBlankByte invariant none
+isBlankByte typeParameter none
+isBlankByte input value Byte copied
+isBlankByte output Bool
+isBlankByte outputOwnedBy none
+isBlankByte raises none
+isBlankByte effect none
+isBlankByte uses none
+isBlankByte memoryHeap false
+isBlankByte async false
+isBlankByte maxRecursion none
+isBlankByte label begin loopKind none
+isBlankByte label begin within none
+isBlankByte let space Byte 32 immutable
+isBlankByte at begin do sameCheck
+isBlankByte at begin return ok isBlank
+
+sameCheck is call
+sameCheck in isBlankByte
+sameCheck invokes compare.equalByte
+sameCheck argument left Byte value copy
+sameCheck argument right Byte space copy
+sameCheck result isBlank Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+isVowel is operation
+isVowel purpose "Decide whether a byte is a lowercase ASCII vowel"
+isVowel invariant none
+isVowel typeParameter none
+isVowel input value Byte copied
+isVowel output Bool
+isVowel outputOwnedBy none
+isVowel raises none
+isVowel effect none
+isVowel uses none
+isVowel memoryHeap false
+isVowel async false
+isVowel maxRecursion none
+isVowel label begin loopKind none
+isVowel label begin within none
+isVowel let a Byte 97 immutable
+isVowel let e Byte 101 immutable
+isVowel let i Byte 105 immutable
+isVowel let o Byte 111 immutable
+isVowel let u Byte 117 immutable
+isVowel at begin do aCheck
+isVowel at begin do eCheck
+isVowel at begin do iCheck
+isVowel at begin do oCheck
+isVowel at begin do uCheck
+isVowel at begin do ae
+isVowel at begin do io
+isVowel at begin do aeio
+isVowel at begin do all
+isVowel at begin return ok isVowelByte
+
+aCheck is call
+aCheck in isVowel
+aCheck invokes compare.equalByte
+aCheck argument left Byte value copy
+aCheck argument right Byte a copy
+aCheck result isA Bool
+aCheck ownedBy none
+aCheck cleanedBy none
+aCheck borrows none
+aCheck catch none
+aCheck suppresses none
+
+eCheck is call
+eCheck in isVowel
+eCheck invokes compare.equalByte
+eCheck argument left Byte value copy
+eCheck argument right Byte e copy
+eCheck result isE Bool
+eCheck ownedBy none
+eCheck cleanedBy none
+eCheck borrows none
+eCheck catch none
+eCheck suppresses none
+
+iCheck is call
+iCheck in isVowel
+iCheck invokes compare.equalByte
+iCheck argument left Byte value copy
+iCheck argument right Byte i copy
+iCheck result isI Bool
+iCheck ownedBy none
+iCheck cleanedBy none
+iCheck borrows none
+iCheck catch none
+iCheck suppresses none
+
+oCheck is call
+oCheck in isVowel
+oCheck invokes compare.equalByte
+oCheck argument left Byte value copy
+oCheck argument right Byte o copy
+oCheck result isO Bool
+oCheck ownedBy none
+oCheck cleanedBy none
+oCheck borrows none
+oCheck catch none
+oCheck suppresses none
+
+uCheck is call
+uCheck in isVowel
+uCheck invokes compare.equalByte
+uCheck argument left Byte value copy
+uCheck argument right Byte u copy
+uCheck result isU Bool
+uCheck ownedBy none
+uCheck cleanedBy none
+uCheck borrows none
+uCheck catch none
+uCheck suppresses none
+
+ae is call
+ae in isVowel
+ae invokes logic.or
+ae argument left Bool isA copy
+ae argument right Bool isE copy
+ae result eitherAE Bool
+ae ownedBy none
+ae cleanedBy none
+ae borrows none
+ae catch none
+ae suppresses none
+
+io is call
+io in isVowel
+io invokes logic.or
+io argument left Bool isI copy
+io argument right Bool isO copy
+io result eitherIO Bool
+io ownedBy none
+io cleanedBy none
+io borrows none
+io catch none
+io suppresses none
+
+aeio is call
+aeio in isVowel
+aeio invokes logic.or
+aeio argument left Bool eitherAE copy
+aeio argument right Bool eitherIO copy
+aeio result anyAEIO Bool
+aeio ownedBy none
+aeio cleanedBy none
+aeio borrows none
+aeio catch none
+aeio suppresses none
+
+all is call
+all in isVowel
+all invokes logic.or
+all argument left Bool anyAEIO copy
+all argument right Bool isU copy
+all result isVowelByte Bool
+all ownedBy none
+all cleanedBy none
+all borrows none
+all catch none
+all suppresses none
+
+skipWhile is operation
+skipWhile purpose "Step past every character from a position on that a test accepts"
+skipWhile invariant none
+skipWhile typeParameter none
+skipWhile input text String borrowed
+skipWhile input start string.Position copied
+skipWhile input test ByteTest copied
+skipWhile output string.Position
+skipWhile outputOwnedBy none
+skipWhile raises none
+skipWhile effect none
+skipWhile uses none
+skipWhile memoryHeap false
+skipWhile async false
+skipWhile maxRecursion none
+skipWhile label begin loopKind none
+skipWhile label begin within none
+skipWhile label advance loopKind while
+skipWhile label advance within none
+skipWhile label advance maxIterations length
+skipWhile label readByteDone loopKind none
+skipWhile label readByteDone within advance
+skipWhile label step loopKind none
+skipWhile label step within advance
+skipWhile label stepOverDone loopKind none
+skipWhile label stepOverDone within advance
+skipWhile label finish loopKind none
+skipWhile label finish within none
+skipWhile let position string.Position start mutable
+skipWhile at begin do measure
+skipWhile at begin goto advance
+skipWhile at advance do readOffset
+skipWhile at advance do readByte
+skipWhile at advance branch ifError readByte goto finish else goto readByteDone
+skipWhile at readByteDone do judge
+skipWhile at readByteDone branch if accepted goto step else goto finish
+skipWhile at step do stepOver
+skipWhile at step branch ifError stepOver goto finish else goto stepOverDone
+skipWhile at stepOverDone set position nextPosition
+skipWhile at stepOverDone goto advance
+skipWhile at finish return ok position
+
+measure is call
+measure in skipWhile
+measure invokes string.byteLength
+measure argument text String text lend
+measure result length Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+readOffset is call
+readOffset in skipWhile
+readOffset invokes string.Position.offset
+readOffset argument record string.Position position copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readByte is call
+readByte in skipWhile
+readByte invokes string.byteAt
+readByte argument text String text lend
+readByte argument index Int64 offset copy
+readByte result current Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+judge is call
+judge in skipWhile
+judge invokesReference test
+judge argument value Byte current copy
+judge result accepted Bool
+judge ownedBy none
+judge cleanedBy none
+judge borrows none
+judge catch none
+judge suppresses none
+
+stepOver is call
+stepOver in skipWhile
+stepOver invokes string.advancePosition
+stepOver argument text String text lend
+stepOver argument position string.Position position copy
+stepOver result nextPosition string.Position
+stepOver ownedBy none
+stepOver cleanedBy none
+stepOver borrows none
+stepOver catch stepOverError string.StringIndexError
+stepOver suppresses none
+
+countMatching is operation
+countMatching purpose "Count the bytes of a text a test accepts"
+countMatching invariant none
+countMatching typeParameter none
+countMatching input text String borrowed
+countMatching input test ByteTest copied
+countMatching output Int64
+countMatching outputOwnedBy none
+countMatching raises none
+countMatching effect none
+countMatching uses none
+countMatching memoryHeap false
+countMatching async false
+countMatching maxRecursion none
+countMatching label begin loopKind none
+countMatching label begin within none
+countMatching label eachByte loopKind while
+countMatching label eachByte within none
+countMatching label eachByte maxIterations length
+countMatching label readByte loopKind none
+countMatching label readByte within eachByte
+countMatching label countIt loopKind none
+countMatching label countIt within eachByte
+countMatching label done loopKind none
+countMatching label done within none
+countMatching let index Int64 0 mutable
+countMatching let total Int64 0 mutable
+countMatching let one Int64 1 immutable
+countMatching at begin do measure
+countMatching at begin goto eachByte
+countMatching at eachByte do doneCheck
+countMatching at eachByte branch if allRead goto done else goto readByte
+countMatching at readByte do fetch
+countMatching at readByte do stepIndex
+countMatching at readByte set index nextIndex
+countMatching at readByte do judge
+countMatching at readByte branch if accepted goto countIt else goto eachByte
+countMatching at countIt do addOne
+countMatching at countIt set total nextTotal
+countMatching at countIt goto eachByte
+countMatching at done return ok total
+
+measure is call
+measure in countMatching
+measure invokes string.byteLength
+measure argument text String text lend
+measure result length Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+doneCheck is call
+doneCheck in countMatching
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 index copy
+doneCheck argument right Int64 length copy
+doneCheck result allRead Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+fetch is call
+fetch in countMatching
+fetch invokes string.byteAtOrTrap
+fetch argument text String text lend
+fetch argument index Int64 index copy
+fetch result current Byte
+fetch ownedBy none
+fetch cleanedBy none
+fetch borrows none
+fetch catch none
+fetch suppresses none
+
+stepIndex is call
+stepIndex in countMatching
+stepIndex invokes math.addInt64
+stepIndex argument left Int64 index copy
+stepIndex argument right Int64 one copy
+stepIndex result nextIndex Int64
+stepIndex ownedBy none
+stepIndex cleanedBy none
+stepIndex borrows none
+stepIndex catch none
+stepIndex suppresses none
+
+judge is call
+judge in countMatching
+judge invokesReference test
+judge argument value Byte current copy
+judge result accepted Bool
+judge ownedBy none
+judge cleanedBy none
+judge borrows none
+judge catch none
+judge suppresses none
+
+addOne is call
+addOne in countMatching
+addOne invokes math.addInt64
+addOne argument left Int64 total copy
+addOne argument right Int64 one copy
+addOne result nextTotal Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+byteAfter is operation
+byteAfter purpose "The first byte of the character after a position's, or the standard library's error when there is none"
+byteAfter invariant none
+byteAfter typeParameter none
+byteAfter input text String borrowed
+byteAfter input position string.Position copied
+byteAfter output Byte
+byteAfter outputOwnedBy none
+byteAfter raises string.StringIndexError
+byteAfter effect none
+byteAfter uses none
+byteAfter memoryHeap false
+byteAfter async false
+byteAfter maxRecursion none
+byteAfter label begin loopKind none
+byteAfter label begin within none
+byteAfter label stepOverDone loopKind none
+byteAfter label stepOverDone within none
+byteAfter label readByteDone loopKind none
+byteAfter label readByteDone within none
+byteAfter label stepOverFailed loopKind none
+byteAfter label stepOverFailed within none
+byteAfter label readByteFailed loopKind none
+byteAfter label readByteFailed within none
+byteAfter let none
+byteAfter at begin do stepOver
+byteAfter at begin branch ifError stepOver goto stepOverFailed else goto stepOverDone
+byteAfter at stepOverDone do readOffset
+byteAfter at stepOverDone do readByte
+byteAfter at stepOverDone branch ifError readByte goto readByteFailed else goto readByteDone
+byteAfter at readByteDone return ok value
+byteAfter at stepOverFailed return error stepOverError
+byteAfter at readByteFailed return error readByteError
+
+stepOver is call
+stepOver in byteAfter
+stepOver invokes string.advancePosition
+stepOver argument text String text lend
+stepOver argument position string.Position position copy
+stepOver result moved string.Position
+stepOver ownedBy none
+stepOver cleanedBy none
+stepOver borrows none
+stepOver catch stepOverError string.StringIndexError
+stepOver suppresses none
+
+readOffset is call
+readOffset in byteAfter
+readOffset invokes string.Position.offset
+readOffset argument record string.Position moved copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readByte is call
+readByte in byteAfter
+readByte invokes string.byteAt
+readByte argument text String text lend
+readByte argument index Int64 offset copy
+readByte result value Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch readByteError string.StringIndexError
+readByte suppresses none
+
+main is operation
+main purpose "Step through text by rules, count vowels, and change a list in place"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label stepLineDone loopKind none
+main label stepLineDone within none
+main label writeLineLabelDone loopKind none
+main label writeLineLabelDone within none
+main label writeLineOffsetDone loopKind none
+main label writeLineOffsetDone within none
+main label writeVowelsDone loopKind none
+main label writeVowelsDone within none
+main label writeVowelCountDone loopKind none
+main label writeVowelCountDone within none
+main label setSecondDone loopKind none
+main label setSecondDone within none
+main label setSeventhDone loopKind none
+main label setSeventhDone within none
+main label noSeventh loopKind none
+main label noSeventh within none
+main label writeCountsLabelDone loopKind none
+main label writeCountsLabelDone within none
+main label eachCount loopKind forEach
+main label eachCount within none
+main label eachCount maxIterations itemCount
+main label eachCount over counts
+main label printItem loopKind none
+main label printItem within eachCount
+main label writeSpaceDone loopKind none
+main label writeSpaceDone within eachCount
+main label writeItemDone loopKind none
+main label writeItemDone within eachCount
+main label countsDone loopKind none
+main label countsDone within none
+main label writeEndDone loopKind none
+main label writeEndDone within none
+main label writeNoSlotDone loopKind none
+main label writeNoSlotDone within none
+main label readAfterDone loopKind none
+main label readAfterDone within none
+main label writeAfterDone loopKind none
+main label writeAfterDone within none
+main label writeAfterValueDone loopKind none
+main label writeAfterValueDone within none
+main label readAfterEndDone loopKind none
+main label readAfterEndDone within none
+main label nothingAfter loopKind none
+main label nothingAfter within none
+main label writeNothingDone loopKind none
+main label writeNothingDone within none
+main label printCounts loopKind none
+main label printCounts within none
+main label writeOopsDone loopKind none
+main label writeOopsDone within none
+main label noSlot loopKind none
+main label noSlot within none
+main label writeNoSecondDone loopKind none
+main label writeNoSecondDone within none
+main label noLine loopKind none
+main label noLine within none
+main label writeNoLineDone loopKind none
+main label writeNoLineDone within none
+main label noAfter loopKind none
+main label noAfter within none
+main label writeNoAfterDone loopKind none
+main label writeNoAfterDone within none
+main label finished loopKind none
+main label finished within none
+main let text String "héllo wörld\nsecond line" immutable
+main let wordTest ByteTest isWordByte immutable
+main let blankTest ByteTest isBlankByte immutable
+main let vowelTest ByteTest isVowel immutable
+main let okCode ExitCode 0 immutable
+main let zero Int64 0 immutable
+main let one Int64 1 immutable
+main let wordText String "word ends at " immutable
+main let nextText String "next word at " immutable
+main let lineWord String "line " immutable
+main let startsText String " starts at " immutable
+main let vowelsText String "vowels: " immutable
+main let two Int64 2 immutable
+main let three Int64 3 immutable
+main let five Int64 5 immutable
+main let seven Int64 7 immutable
+main let nine Int64 9 immutable
+main let countsText String "counts:" immutable
+main let space String " " immutable
+main let empty String "" immutable
+main let noSlotText String "no slot 7" immutable
+main let afterText String "byte after: " immutable
+main let twentySix Int64 26 immutable
+main let nothingText String "nothing after the end" immutable
+main let oopsText String "position 7 was set" immutable
+main let noSecondText String "no slot 1" immutable
+main let noLineText String "no second line" immutable
+main let noAfterText String "no byte after the start" immutable
+main at begin do makeStart
+main at begin do skipWord
+main at begin do describeWordEnd
+main at begin do skipBlank
+main at begin do describeNextWord
+main at begin do skipSecond
+main at begin do stepLine
+main at begin branch ifError stepLine goto noLine else goto stepLineDone
+main at stepLineDone do readLineStart
+main at stepLineDone do readLineNumber
+main at stepLineDone do lineText
+main at stepLineDone do joinLine
+main at stepLineDone do joinStarts
+main at stepLineDone do writeLineLabel
+main at stepLineDone branch ifError writeLineLabel goto writeLineLabelDone else goto writeLineLabelDone
+main at writeLineLabelDone do writeLineOffset
+main at writeLineLabelDone branch ifError writeLineOffset goto writeLineOffsetDone else goto writeLineOffsetDone
+main at writeLineOffsetDone do countVowels
+main at writeLineOffsetDone do writeVowels
+main at writeLineOffsetDone branch ifError writeVowels goto writeVowelsDone else goto writeVowelsDone
+main at writeVowelsDone do writeVowelCount
+main at writeVowelsDone branch ifError writeVowelCount goto writeVowelCountDone else goto writeVowelCountDone
+main at writeVowelCountDone do makeCounts
+main at writeVowelCountDone do addFirst
+main at writeVowelCountDone do addSecond
+main at writeVowelCountDone do addThird
+main at writeVowelCountDone do setSecond
+main at writeVowelCountDone branch ifError setSecond goto noSlot else goto setSecondDone
+main at setSecondDone do setSeventh
+main at setSecondDone branch ifError setSeventh goto noSeventh else goto setSeventhDone
+main at setSeventhDone goto printCounts
+main at noSeventh do writeCountsLabel
+main at noSeventh branch ifError writeCountsLabel goto writeCountsLabelDone else goto writeCountsLabelDone
+main at writeCountsLabelDone do countItems
+main at writeCountsLabelDone goto eachCount
+main at eachCount branch ifNext counts bind item Int64 goto printItem else goto countsDone
+main at printItem do writeSpace
+main at printItem branch ifError writeSpace goto writeSpaceDone else goto writeSpaceDone
+main at writeSpaceDone do itemText
+main at writeSpaceDone do writeItem
+main at writeSpaceDone branch ifError writeItem goto writeItemDone else goto writeItemDone
+main at writeItemDone goto eachCount
+main at countsDone do writeEnd
+main at countsDone branch ifError writeEnd goto writeEndDone else goto writeEndDone
+main at writeEndDone do writeNoSlot
+main at writeEndDone branch ifError writeNoSlot goto writeNoSlotDone else goto writeNoSlotDone
+main at writeNoSlotDone do readAfter
+main at writeNoSlotDone branch ifError readAfter goto noAfter else goto readAfterDone
+main at readAfterDone do readAfterValue
+main at readAfterDone do writeAfter
+main at readAfterDone branch ifError writeAfter goto writeAfterDone else goto writeAfterDone
+main at writeAfterDone do writeAfterValue
+main at writeAfterDone branch ifError writeAfterValue goto writeAfterValueDone else goto writeAfterValueDone
+main at writeAfterValueDone do makeEnd
+main at writeAfterValueDone do readAfterEnd
+main at writeAfterValueDone branch ifError readAfterEnd goto nothingAfter else goto readAfterEndDone
+main at readAfterEndDone goto finished
+main at nothingAfter do writeNothing
+main at nothingAfter branch ifError writeNothing goto writeNothingDone else goto writeNothingDone
+main at writeNothingDone goto finished
+main at printCounts do writeOops
+main at printCounts branch ifError writeOops goto writeOopsDone else goto writeOopsDone
+main at writeOopsDone goto finished
+main at noSlot do writeNoSecond
+main at noSlot branch ifError writeNoSecond goto writeNoSecondDone else goto writeNoSecondDone
+main at writeNoSecondDone goto finished
+main at noLine do writeNoLine
+main at noLine branch ifError writeNoLine goto writeNoLineDone else goto writeNoLineDone
+main at writeNoLineDone goto finished
+main at noAfter do writeNoAfter
+main at noAfter branch ifError writeNoAfter goto writeNoAfterDone else goto writeNoAfterDone
+main at writeNoAfterDone goto finished
+main at finished return ok okCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 1048576
+store released atReturn
+
+makeStart is call
+makeStart in main
+makeStart invokes string.Position.new
+makeStart argument offset Int64 zero copy
+makeStart argument line Int64 one copy
+makeStart argument column Int64 one copy
+makeStart result start string.Position
+makeStart ownedBy none
+makeStart cleanedBy none
+makeStart borrows none
+makeStart catch none
+makeStart suppresses none
+
+skipWord is call
+skipWord in main
+skipWord invokes skipWhile
+skipWord argument text String text lend
+skipWord argument start string.Position start copy
+skipWord argument test ByteTest wordTest copy
+skipWord result wordEnd string.Position
+skipWord ownedBy none
+skipWord cleanedBy none
+skipWord borrows none
+skipWord catch none
+skipWord suppresses none
+
+describeWordEnd is call
+describeWordEnd in main
+describeWordEnd invokes describePosition
+describeWordEnd argument label String wordText lend
+describeWordEnd argument position string.Position wordEnd copy
+describeWordEnd result none
+describeWordEnd ownedBy none
+describeWordEnd cleanedBy none
+describeWordEnd borrows none
+describeWordEnd catch none
+describeWordEnd suppresses none
+
+skipBlank is call
+skipBlank in main
+skipBlank invokes skipWhile
+skipBlank argument text String text lend
+skipBlank argument start string.Position wordEnd copy
+skipBlank argument test ByteTest blankTest copy
+skipBlank result nextWord string.Position
+skipBlank ownedBy none
+skipBlank cleanedBy none
+skipBlank borrows none
+skipBlank catch none
+skipBlank suppresses none
+
+describeNextWord is call
+describeNextWord in main
+describeNextWord invokes describePosition
+describeNextWord argument label String nextText lend
+describeNextWord argument position string.Position nextWord copy
+describeNextWord result none
+describeNextWord ownedBy none
+describeNextWord cleanedBy none
+describeNextWord borrows none
+describeNextWord catch none
+describeNextWord suppresses none
+
+skipSecond is call
+skipSecond in main
+skipSecond invokes skipWhile
+skipSecond argument text String text lend
+skipSecond argument start string.Position nextWord copy
+skipSecond argument test ByteTest wordTest copy
+skipSecond result secondEnd string.Position
+skipSecond ownedBy none
+skipSecond cleanedBy none
+skipSecond borrows none
+skipSecond catch none
+skipSecond suppresses none
+
+stepLine is call
+stepLine in main
+stepLine invokes string.advancePosition
+stepLine argument text String text lend
+stepLine argument position string.Position secondEnd copy
+stepLine result lineStart string.Position
+stepLine ownedBy none
+stepLine cleanedBy none
+stepLine borrows none
+stepLine catch stepLineError string.StringIndexError
+stepLine suppresses none
+
+readLineStart is call
+readLineStart in main
+readLineStart invokes string.Position.offset
+readLineStart argument record string.Position lineStart copy
+readLineStart result lineOffset Int64
+readLineStart ownedBy none
+readLineStart cleanedBy none
+readLineStart borrows none
+readLineStart catch none
+readLineStart suppresses none
+
+readLineNumber is call
+readLineNumber in main
+readLineNumber invokes string.Position.line
+readLineNumber argument record string.Position lineStart copy
+readLineNumber result lineNumber Int64
+readLineNumber ownedBy none
+readLineNumber cleanedBy none
+readLineNumber borrows none
+readLineNumber catch none
+readLineNumber suppresses none
+
+lineText is call
+lineText in main
+lineText invokes string.fromInt64
+lineText argument value Int64 lineNumber copy
+lineText argument region Region store lend
+lineText result lineDigits String
+lineText ownedBy store
+lineText cleanedBy none
+lineText borrows none
+lineText catch none
+lineText suppresses none
+
+joinLine is call
+joinLine in main
+joinLine invokes string.concat
+joinLine argument left String lineWord lend
+joinLine argument right String lineDigits lend
+joinLine argument region Region store lend
+joinLine result lineLead String
+joinLine ownedBy store
+joinLine cleanedBy none
+joinLine borrows none
+joinLine catch none
+joinLine suppresses none
+
+joinStarts is call
+joinStarts in main
+joinStarts invokes string.concat
+joinStarts argument left String lineLead lend
+joinStarts argument right String startsText lend
+joinStarts argument region Region store lend
+joinStarts result lineLabel String
+joinStarts ownedBy store
+joinStarts cleanedBy none
+joinStarts borrows none
+joinStarts catch none
+joinStarts suppresses none
+
+writeLineLabel is call
+writeLineLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLineLabel in main
+writeLineLabel invokes console.write
+writeLineLabel argument text String lineLabel lend
+writeLineLabel result none
+writeLineLabel ownedBy none
+writeLineLabel cleanedBy none
+writeLineLabel borrows none
+writeLineLabel catch writeLineLabelError console.WriteError
+writeLineLabel suppresses console.WriteError.failed
+
+writeLineOffset is call
+writeLineOffset rationale "The failure has nowhere to be reported, so it is discarded"
+writeLineOffset in main
+writeLineOffset invokes console.writeIntegerLine
+writeLineOffset argument value Int64 lineOffset copy
+writeLineOffset result none
+writeLineOffset ownedBy none
+writeLineOffset cleanedBy none
+writeLineOffset borrows none
+writeLineOffset catch writeLineOffsetError console.WriteError
+writeLineOffset suppresses console.WriteError.failed
+
+countVowels is call
+countVowels in main
+countVowels invokes countMatching
+countVowels argument text String text lend
+countVowels argument test ByteTest vowelTest copy
+countVowels result vowels Int64
+countVowels ownedBy none
+countVowels cleanedBy none
+countVowels borrows none
+countVowels catch none
+countVowels suppresses none
+
+writeVowels is call
+writeVowels rationale "The failure has nowhere to be reported, so it is discarded"
+writeVowels in main
+writeVowels invokes console.write
+writeVowels argument text String vowelsText lend
+writeVowels result none
+writeVowels ownedBy none
+writeVowels cleanedBy none
+writeVowels borrows none
+writeVowels catch writeVowelsError console.WriteError
+writeVowels suppresses console.WriteError.failed
+
+writeVowelCount is call
+writeVowelCount rationale "The failure has nowhere to be reported, so it is discarded"
+writeVowelCount in main
+writeVowelCount invokes console.writeIntegerLine
+writeVowelCount argument value Int64 vowels copy
+writeVowelCount result none
+writeVowelCount ownedBy none
+writeVowelCount cleanedBy none
+writeVowelCount borrows none
+writeVowelCount catch writeVowelCountError console.WriteError
+writeVowelCount suppresses console.WriteError.failed
+
+makeCounts is call
+makeCounts in main
+makeCounts invokes Counts.new
+makeCounts argument region Region store lend
+makeCounts result counts Counts
+makeCounts ownedBy store
+makeCounts cleanedBy none
+makeCounts borrows none
+makeCounts catch none
+makeCounts suppresses none
+
+addFirst is call
+addFirst in main
+addFirst invokes Counts.append
+addFirst argument list Counts counts lendMutable
+addFirst argument item Int64 one copy
+addFirst result none
+addFirst ownedBy none
+addFirst cleanedBy none
+addFirst borrows none
+addFirst catch none
+addFirst suppresses none
+
+addSecond is call
+addSecond in main
+addSecond invokes Counts.append
+addSecond argument list Counts counts lendMutable
+addSecond argument item Int64 two copy
+addSecond result none
+addSecond ownedBy none
+addSecond cleanedBy none
+addSecond borrows none
+addSecond catch none
+addSecond suppresses none
+
+addThird is call
+addThird in main
+addThird invokes Counts.append
+addThird argument list Counts counts lendMutable
+addThird argument item Int64 three copy
+addThird result none
+addThird ownedBy none
+addThird cleanedBy none
+addThird borrows none
+addThird catch none
+addThird suppresses none
+
+setSecond is call
+setSecond in main
+setSecond invokes Counts.set
+setSecond argument list Counts counts lendMutable
+setSecond argument index Int64 one copy
+setSecond argument item Int64 five copy
+setSecond result none
+setSecond ownedBy none
+setSecond cleanedBy none
+setSecond borrows none
+setSecond catch setSecondError list.IndexOutOfRange
+setSecond suppresses none
+
+setSeventh is call
+setSeventh in main
+setSeventh invokes Counts.set
+setSeventh argument list Counts counts lendMutable
+setSeventh argument index Int64 seven copy
+setSeventh argument item Int64 nine copy
+setSeventh result none
+setSeventh ownedBy none
+setSeventh cleanedBy none
+setSeventh borrows none
+setSeventh catch setSeventhError list.IndexOutOfRange
+setSeventh suppresses none
+
+writeCountsLabel is call
+writeCountsLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeCountsLabel in main
+writeCountsLabel invokes console.write
+writeCountsLabel argument text String countsText lend
+writeCountsLabel result none
+writeCountsLabel ownedBy none
+writeCountsLabel cleanedBy none
+writeCountsLabel borrows none
+writeCountsLabel catch writeCountsLabelError console.WriteError
+writeCountsLabel suppresses console.WriteError.failed
+
+countItems is call
+countItems in main
+countItems invokes Counts.length
+countItems argument list Counts counts lend
+countItems result itemCount Int64
+countItems ownedBy none
+countItems cleanedBy none
+countItems borrows none
+countItems catch none
+countItems suppresses none
+
+writeSpace is call
+writeSpace rationale "The failure has nowhere to be reported, so it is discarded"
+writeSpace in main
+writeSpace invokes console.write
+writeSpace argument text String space lend
+writeSpace result none
+writeSpace ownedBy none
+writeSpace cleanedBy none
+writeSpace borrows none
+writeSpace catch writeSpaceError console.WriteError
+writeSpace suppresses console.WriteError.failed
+
+itemText is call
+itemText in main
+itemText invokes string.fromInt64
+itemText argument value Int64 item copy
+itemText argument region Region store lend
+itemText result itemDigits String
+itemText ownedBy store
+itemText cleanedBy none
+itemText borrows none
+itemText catch none
+itemText suppresses none
+
+writeItem is call
+writeItem rationale "The failure has nowhere to be reported, so it is discarded"
+writeItem in main
+writeItem invokes console.write
+writeItem argument text String itemDigits lend
+writeItem result none
+writeItem ownedBy none
+writeItem cleanedBy none
+writeItem borrows none
+writeItem catch writeItemError console.WriteError
+writeItem suppresses console.WriteError.failed
+
+writeEnd is call
+writeEnd rationale "The failure has nowhere to be reported, so it is discarded"
+writeEnd in main
+writeEnd invokes console.writeLine
+writeEnd argument text String empty lend
+writeEnd result none
+writeEnd ownedBy none
+writeEnd cleanedBy none
+writeEnd borrows none
+writeEnd catch writeEndError console.WriteError
+writeEnd suppresses console.WriteError.failed
+
+writeNoSlot is call
+writeNoSlot rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoSlot in main
+writeNoSlot invokes console.writeLine
+writeNoSlot argument text String noSlotText lend
+writeNoSlot result none
+writeNoSlot ownedBy none
+writeNoSlot cleanedBy none
+writeNoSlot borrows none
+writeNoSlot catch writeNoSlotError console.WriteError
+writeNoSlot suppresses console.WriteError.failed
+
+readAfter is call
+readAfter in main
+readAfter invokes byteAfter
+readAfter argument text String text lend
+readAfter argument position string.Position start copy
+readAfter result after Byte
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch readAfterError string.StringIndexError
+readAfter suppresses none
+
+readAfterValue is call
+readAfterValue in main
+readAfterValue invokes convert.byteToInt64
+readAfterValue argument value Byte after copy
+readAfterValue result afterNumber Int64
+readAfterValue ownedBy none
+readAfterValue cleanedBy none
+readAfterValue borrows none
+readAfterValue catch none
+readAfterValue suppresses none
+
+writeAfter is call
+writeAfter rationale "The failure has nowhere to be reported, so it is discarded"
+writeAfter in main
+writeAfter invokes console.write
+writeAfter argument text String afterText lend
+writeAfter result none
+writeAfter ownedBy none
+writeAfter cleanedBy none
+writeAfter borrows none
+writeAfter catch writeAfterError console.WriteError
+writeAfter suppresses console.WriteError.failed
+
+writeAfterValue is call
+writeAfterValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeAfterValue in main
+writeAfterValue invokes console.writeIntegerLine
+writeAfterValue argument value Int64 afterNumber copy
+writeAfterValue result none
+writeAfterValue ownedBy none
+writeAfterValue cleanedBy none
+writeAfterValue borrows none
+writeAfterValue catch writeAfterValueError console.WriteError
+writeAfterValue suppresses console.WriteError.failed
+
+makeEnd is call
+makeEnd in main
+makeEnd invokes string.Position.new
+makeEnd argument offset Int64 twentySix copy
+makeEnd argument line Int64 two copy
+makeEnd argument column Int64 three copy
+makeEnd result endPosition string.Position
+makeEnd ownedBy none
+makeEnd cleanedBy none
+makeEnd borrows none
+makeEnd catch none
+makeEnd suppresses none
+
+readAfterEnd is call
+readAfterEnd in main
+readAfterEnd invokes byteAfter
+readAfterEnd argument text String text lend
+readAfterEnd argument position string.Position endPosition copy
+readAfterEnd result afterEnd Byte
+readAfterEnd ownedBy none
+readAfterEnd cleanedBy none
+readAfterEnd borrows none
+readAfterEnd catch readAfterEndError string.StringIndexError
+readAfterEnd suppresses none
+
+writeNothing is call
+writeNothing rationale "The failure has nowhere to be reported, so it is discarded"
+writeNothing in main
+writeNothing invokes console.writeLine
+writeNothing argument text String nothingText lend
+writeNothing result none
+writeNothing ownedBy none
+writeNothing cleanedBy none
+writeNothing borrows none
+writeNothing catch writeNothingError console.WriteError
+writeNothing suppresses console.WriteError.failed
+
+writeOops is call
+writeOops rationale "The failure has nowhere to be reported, so it is discarded"
+writeOops in main
+writeOops invokes console.writeLine
+writeOops argument text String oopsText lend
+writeOops result none
+writeOops ownedBy none
+writeOops cleanedBy none
+writeOops borrows none
+writeOops catch writeOopsError console.WriteError
+writeOops suppresses console.WriteError.failed
+
+writeNoSecond is call
+writeNoSecond rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoSecond in main
+writeNoSecond invokes console.writeLine
+writeNoSecond argument text String noSecondText lend
+writeNoSecond result none
+writeNoSecond ownedBy none
+writeNoSecond cleanedBy none
+writeNoSecond borrows none
+writeNoSecond catch writeNoSecondError console.WriteError
+writeNoSecond suppresses console.WriteError.failed
+
+writeNoLine is call
+writeNoLine rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoLine in main
+writeNoLine invokes console.writeLine
+writeNoLine argument text String noLineText lend
+writeNoLine result none
+writeNoLine ownedBy none
+writeNoLine cleanedBy none
+writeNoLine borrows none
+writeNoLine catch writeNoLineError console.WriteError
+writeNoLine suppresses console.WriteError.failed
+
+writeNoAfter is call
+writeNoAfter rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoAfter in main
+writeNoAfter invokes console.writeLine
+writeNoAfter argument text String noAfterText lend
+writeNoAfter result none
+writeNoAfter ownedBy none
+writeNoAfter cleanedBy none
+writeNoAfter borrows none
+writeNoAfter catch writeNoAfterError console.WriteError
+writeNoAfter suppresses console.WriteError.failed
+
+describePosition is operation
+describePosition purpose "Print a label, then a position as `<offset>, line <line>, column <column>`"
+describePosition invariant none
+describePosition typeParameter none
+describePosition input label String borrowed
+describePosition input position string.Position copied
+describePosition output none
+describePosition outputOwnedBy none
+describePosition raises none
+describePosition effect write console.stdout
+describePosition uses stdoutWriter
+describePosition memoryHeap true
+describePosition async false
+describePosition maxRecursion none
+describePosition label begin loopKind none
+describePosition label begin within none
+describePosition label writeItDone loopKind none
+describePosition label writeItDone within none
+describePosition let lineWord String ", line " immutable
+describePosition let columnWord String ", column " immutable
+describePosition at begin do readOffset
+describePosition at begin do readLine
+describePosition at begin do readColumn
+describePosition at begin do offsetText
+describePosition at begin do lineText
+describePosition at begin do columnText
+describePosition at begin do joinLabel
+describePosition at begin do joinLineWord
+describePosition at begin do joinLine
+describePosition at begin do joinColumnWord
+describePosition at begin do joinColumn
+describePosition at begin do writeIt
+describePosition at begin branch ifError writeIt goto writeItDone else goto writeItDone
+describePosition at writeItDone return ok none
+
+scratch is region
+scratch in describePosition
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+readOffset is call
+readOffset in describePosition
+readOffset invokes string.Position.offset
+readOffset argument record string.Position position copy
+readOffset result offset Int64
+readOffset ownedBy none
+readOffset cleanedBy none
+readOffset borrows none
+readOffset catch none
+readOffset suppresses none
+
+readLine is call
+readLine in describePosition
+readLine invokes string.Position.line
+readLine argument record string.Position position copy
+readLine result line Int64
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+readLine suppresses none
+
+readColumn is call
+readColumn in describePosition
+readColumn invokes string.Position.column
+readColumn argument record string.Position position copy
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+readColumn suppresses none
+
+offsetText is call
+offsetText in describePosition
+offsetText invokes string.fromInt64
+offsetText argument value Int64 offset copy
+offsetText argument region Region scratch lend
+offsetText result offsetDigits String
+offsetText ownedBy scratch
+offsetText cleanedBy none
+offsetText borrows none
+offsetText catch none
+offsetText suppresses none
+
+lineText is call
+lineText in describePosition
+lineText invokes string.fromInt64
+lineText argument value Int64 line copy
+lineText argument region Region scratch lend
+lineText result lineDigits String
+lineText ownedBy scratch
+lineText cleanedBy none
+lineText borrows none
+lineText catch none
+lineText suppresses none
+
+columnText is call
+columnText in describePosition
+columnText invokes string.fromInt64
+columnText argument value Int64 column copy
+columnText argument region Region scratch lend
+columnText result columnDigits String
+columnText ownedBy scratch
+columnText cleanedBy none
+columnText borrows none
+columnText catch none
+columnText suppresses none
+
+joinLabel is call
+joinLabel in describePosition
+joinLabel invokes string.concat
+joinLabel argument left String label lend
+joinLabel argument right String offsetDigits lend
+joinLabel argument region Region scratch lend
+joinLabel result withOffset String
+joinLabel ownedBy scratch
+joinLabel cleanedBy none
+joinLabel borrows none
+joinLabel catch none
+joinLabel suppresses none
+
+joinLineWord is call
+joinLineWord in describePosition
+joinLineWord invokes string.concat
+joinLineWord argument left String withOffset lend
+joinLineWord argument right String lineWord lend
+joinLineWord argument region Region scratch lend
+joinLineWord result withLineWord String
+joinLineWord ownedBy scratch
+joinLineWord cleanedBy none
+joinLineWord borrows none
+joinLineWord catch none
+joinLineWord suppresses none
+
+joinLine is call
+joinLine in describePosition
+joinLine invokes string.concat
+joinLine argument left String withLineWord lend
+joinLine argument right String lineDigits lend
+joinLine argument region Region scratch lend
+joinLine result withLine String
+joinLine ownedBy scratch
+joinLine cleanedBy none
+joinLine borrows none
+joinLine catch none
+joinLine suppresses none
+
+joinColumnWord is call
+joinColumnWord in describePosition
+joinColumnWord invokes string.concat
+joinColumnWord argument left String withLine lend
+joinColumnWord argument right String columnWord lend
+joinColumnWord argument region Region scratch lend
+joinColumnWord result withColumnWord String
+joinColumnWord ownedBy scratch
+joinColumnWord cleanedBy none
+joinColumnWord borrows none
+joinColumnWord catch none
+joinColumnWord suppresses none
+
+joinColumn is call
+joinColumn in describePosition
+joinColumn invokes string.concat
+joinColumn argument left String withColumnWord lend
+joinColumn argument right String columnDigits lend
+joinColumn argument region Region scratch lend
+joinColumn result described String
+joinColumn ownedBy scratch
+joinColumn cleanedBy none
+joinColumn borrows none
+joinColumn catch none
+joinColumn suppresses none
+
+writeIt is call
+writeIt rationale "The failure has nowhere to be reported, so it is discarded"
+writeIt in describePosition
+writeIt invokes console.writeLine
+writeIt argument text String described lend
+writeIt result none
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch writeItError console.WriteError
+writeIt suppresses console.WriteError.failed

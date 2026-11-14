@@ -1,19 +1,23 @@
-# stage0: the first stage of a SemanticScript compiler written in
-# SemanticScript. It compiles one module in a small subset to C and builds it
-# with the C compiler:
+# stage0: a SemanticScript compiler written in SemanticScript. It compiles a
+# project (build.sem and the modules it includes) in the stage0 subset to C and
+# builds it with the C compiler:
 #
 #   cd docs/refined-examples/stage0
-#   python ../../../semanticscript/compiler/refined run . -- samples/hello/hello.sem build/hello
+#   python ../../../semanticscript/compiler/refined run . -- samples/hello build/hello
 #
-# The tokenizer (lexer.sem) is a copy of the lexer example's module, adapted
-# for SemanticScript's comments and escapes; the reasons are in its header.
+# It compiles itself: built once by `refined build --kind executable`, it
+# compiles this project into a second executable that compiles it again to the
+# same C (tests/test_bootstrap.py). The tokenizer (lexer.sem) is a copy of the
+# lexer example's module, adapted for SemanticScript's comments and escapes;
+# the reasons are in its header. model, subset, emitc, and stage0 are written
+# by the generators in tools/.
 #
 # What the program may do is listed here and approved in authority.approved:
 # read the command line, read files under the working directory, write files
 # under build/, and run a C compiler named exactly cc, gcc, or clang.
 
 stage0 is project
-stage0 purpose "Compile a SemanticScript module in a small subset to C and build it with the C compiler"
+stage0 purpose "Compile a SemanticScript project in a small subset to C and build it with the C compiler"
 stage0 target console
 stage0 version "0.1.0"
 stage0 language refined 1

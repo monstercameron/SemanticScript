@@ -1,54 +1,66 @@
 # The stage0 compiler's checker. It reads the model's entities row by row,
 # accepts the stage0 subset, and refuses anything else with a `Rejection` at the
-# word concerned. It works in two passes, and collects what the emitter needs:
+# word concerned. A program is several modules, each starting with its module
+# entity; they are checked one after another, and what one declares is seen by
+# the modules after it as `<module>.<name>` (D-114). For each module:
 #
-# - checkDeclarations reads every entity. Types are numbered: the built-in
-#   types 1 to 6 (String, Int64, ExitCode, Bool, Byte, Region), the standard
-#   error types together as 7 (a caught standard error can only be branched
-#   on), the host library's handles and `Bytes` 8 to 11 (ByteBuffer,
-#   process.Arguments, time.Deadline, Bytes), and the module's records, enums,
-#   `list.List` typeInstances, and tables from 12 in source order. Record
-#   fields and enum variants become members; every standard library target the
-#   subset compiles (the `builtinTargets` table), every operation, every record
-#   constructor and field reader, every variant constructor, every list member,
-#   and every table's `rowAt` and `length` becomes a call target with its
-#   argument slots, types, and passing modes, its result type, and what it
-#   raises. Each call, task, and region is tied to the operation its `in` row
-#   names.
+# - checkModuleDeclarations reads every entity of the module. Types are
+#   numbered for the whole program: the built-in types 1 to 11 (String, Int64,
+#   ExitCode, Bool, Byte, Region, the standard errors together as 7 (a
+#   standard error is only branched on or passed on), the host library's
+#   handles and `Bytes`: ByteBuffer, process.Arguments, time.Deadline, Bytes),
+#   then the records, enums, `list.List` and `map.Map` typeInstances, tables,
+#   and operationTypes of each module in source order; string.Position, which
+#   the driver declares in a module of its own before the program's, is 12
+#   (D-115). Record fields and enum variants become members; every standard
+#   library target the subset compiles (the `builtinTargets` table), every
+#   operation, every record constructor, field reader, and `with`, every
+#   variant constructor, every list and map member, and every table's `rowAt`
+#   and `length` becomes a call target with its argument slots, types, and
+#   passing modes, its result type, and what it raises. The module's names are
+#   entered in maps seeded with the built-in names and every earlier module's
+#   names, and published to the program's maps as `<module>.<name>` when the
+#   module is declared. Each call, task, and region is tied to the operation
+#   its `in` row names.
 # - checkOperation reads one operation: its inputs, lets, labels, and regions,
 #   the values its steps bind (`branch ifNext` items, `case` payloads), each of
 #   its calls against the call's target, and each step in order.
 #
-# The subset: a module of constants (built-in types, literal values),
-# records, enums with payloads, lists, tables of records (cells are literals
-# or variants without payload), and operations with copied, borrowed,
-# and borrowedMutable inputs, one output (or none), an output owned by a region
-# input, `raises none` or an enum of the module, `maxRecursion` on recursive
-# operations, and regions. main takes no input, gives an ExitCode, and raises
-# nothing; an `async true` operation is compiled like any other, and a task
-# runs when it is started, as in an executable (D-37). Steps: `do`, `set`,
-# `goto`, `branch if`, `branch ifError`, `branch ifNext` over a list or a
-# table in a forEach loop, `match` and `case` on an enum of the module,
-# `return ok`, `return error`, `start <task> into none`, and `join`. Labels
-# may be loops of any kind; `maxIterations` is kept so the emitted program
-# traps where `refined run` would. A type held by value in a record or enum (or a list's item) must
-# be declared above the type holding it, so the C structs follow source order.
+# The subset: modules of constants (built-in types, literal values),
+# records, enums with payloads, lists, maps with String keys, tables of records
+# (cells are literals or variants without payload), operationTypes, and
+# operations with copied, borrowed, and borrowedMutable inputs, one output (or
+# none), an output owned by a region input, `raises none`, an enum of the
+# program, or a standard library error, `maxRecursion` on recursive
+# operations, and regions. A main takes no input, gives an ExitCode, and
+# raises nothing; an `async true` operation is compiled like any other, and a
+# task runs when it is started, as in an executable (D-37). Steps: `do`,
+# `set`, `goto`, `branch if`, `branch ifError`, `branch ifNext` over a list,
+# a map's keys, or a table in a forEach loop, `match` and `case` on an enum of
+# the program, `return ok`, `return error`, `start <task> into none`, and
+# `join`. A call names its target with `invokes`, or calls through a value of
+# an operationType with `invokesReference`. Labels may be loops of any kind;
+# `maxIterations` is kept so the emitted program traps where `refined run`
+# would. A type held by value in a record or enum (or a list's item or a
+# map's value) must be declared above the type holding it, so the C structs
+# follow source order.
 #
 # What is checked: every row's predicate is one the subset reads, on an entity
 # of the kind it belongs to; fixed payloads (`typeParameter none`, `async
-# false`, `cleanedBy none`, ...) are exactly those; types are known; literals
-# fit their types; argument slots, types, and passing modes match the target;
-# results and caught errors have the target's types; the values a call passes
-# and a step names exist with the types they need; `set` changes only mutable
-# lets; labels and calls a step names exist; a case's variant belongs to the
-# matched enum; returns give the operation's output or error type; and each
-# label's steps are together. The flow rules (`refined check`'s R5xx: values
-# set before use, every block ending in a jump, exhaustive matches, ownership)
-# are not repeated: run `refined check` on a program before compiling it with
-# stage0.
+# false` on an operationType, `cleanedBy none`, ...) are exactly those; types
+# are known; literals fit their types; argument slots, types, and passing
+# modes match the target; results and caught errors have the target's types;
+# the values a call passes and a step names exist with the types they need;
+# `set` changes only mutable lets; a let of an operationType names an
+# operation of that signature; labels and calls a step names exist; a case's
+# variant belongs to the matched enum; returns give the operation's output or
+# error type; and each label's steps are together. The flow rules (`refined
+# check`'s R5xx: values set before use, every block ending in a jump,
+# exhaustive matches, ownership) and imports and exports are not repeated: run
+# `refined check` on a program before compiling it with stage0.
 #
-# This module is generated from a shorter description by a generator kept
-# outside the repository; it is ordinary SemanticScript and is edited as such.
+# This module is generated from tools/subset.dsl by tools/build.py; it is
+# ordinary SemanticScript and is checked as such.
 
 subset is module
 subset purpose "Check that a program is in the stage0 subset and collect what the emitter needs"
@@ -230,6 +242,7 @@ TargetKind variant mapContains none
 TargetKind variant mapRemove none
 TargetKind variant mapLength none
 TargetKind variant reference none
+TargetKind variant recordWith none
 
 BuiltinRow is record
 BuiltinRow purpose "A standard library target the subset compiles: up to four argument slots with their types (numbered as the types table numbers them; 12 is string.Position, the first type the program declares) and passing modes (1 copy, 2 lend, 3 lendMutable, 4 give), its result type (0 for none), and its error (raises 7, a standard error, with the error type's name; 0 when it cannot fail)"
@@ -1957,7 +1970,7 @@ Values in none
 Values instantiates map.Map String ValueInfo
 
 CallInfo is record
-CallInfo purpose "A call of an operation: its name, its target, the value of an operationType it calls through (`invokesReference`; its name otherwise), where its arguments start in the argument list and how many, the value it sets, and the name its error is caught as"
+CallInfo purpose "A call of an operation: its name, its target, the value of an operationType it calls through (`invokesReference`) or the field a record's `with` changes (its name otherwise), where its arguments start in the argument list and how many, the value it sets, and the name its error is caught as"
 CallInfo typeParameter none
 CallInfo field name syntax.Word
 CallInfo field target TargetInfo
@@ -7755,7 +7768,7 @@ readHolds catch none
 readHolds suppresses none
 
 registerRecord is operation
-registerRecord purpose "Enter a record's constructor (its fields in order, then a region when it holds a value that is not plain) and a reader for each field"
+registerRecord purpose "Enter a record's constructor (its fields in order, then a region when it holds a value that is not plain), a reader for each field, and `with`, which copies a record with one field changed (its second slot is named by the field)"
 registerRecord invariant none
 registerRecord typeParameter none
 registerRecord input source String borrowed
@@ -7805,6 +7818,10 @@ registerRecord label enterReaderDone loopKind none
 registerRecord label enterReaderDone within eachReader
 registerRecord label done loopKind none
 registerRecord label done within none
+registerRecord label withKeyDone loopKind none
+registerRecord label withKeyDone within none
+registerRecord label enterWithDone loopKind none
+registerRecord label enterWithDone within none
 registerRecord label copyMemberNameFailed loopKind none
 registerRecord label copyMemberNameFailed within none
 registerRecord label newKeyFailed loopKind none
@@ -7817,6 +7834,10 @@ registerRecord label readerKeyFailed loopKind none
 registerRecord label readerKeyFailed within none
 registerRecord label enterReaderFailed loopKind none
 registerRecord label enterReaderFailed within none
+registerRecord label withKeyFailed loopKind none
+registerRecord label withKeyFailed within none
+registerRecord label enterWithFailed loopKind none
+registerRecord label enterWithFailed within none
 registerRecord let index Int64 0 mutable
 registerRecord let one Int64 1 immutable
 registerRecord let regionSlot String "region" immutable
@@ -7825,6 +7846,7 @@ registerRecord let two Int64 2 immutable
 registerRecord let newWord String "new" immutable
 registerRecord let zero Int64 0 immutable
 registerRecord let recordSlot String "record" immutable
+registerRecord let withWord String "with" immutable
 registerRecord at begin do readInfo
 registerRecord at begin do readName
 registerRecord at begin do readFirst
@@ -7878,13 +7900,23 @@ registerRecord at readerKeyDone branch ifError enterReader goto enterReaderFaile
 registerRecord at enterReaderDone do countReader
 registerRecord at enterReaderDone set index nextReader
 registerRecord at enterReaderDone goto eachReader
-registerRecord at done return ok none
+registerRecord at done do withFirst
+registerRecord at done do addWithRecord
+registerRecord at done do withKey
+registerRecord at done branch ifError withKey goto withKeyFailed else goto withKeyDone
+registerRecord at withKeyDone do makeWithKind
+registerRecord at withKeyDone do makeWith
+registerRecord at withKeyDone do enterWith
+registerRecord at withKeyDone branch ifError enterWith goto enterWithFailed else goto enterWithDone
+registerRecord at enterWithDone return ok none
 registerRecord at copyMemberNameFailed return error copyMemberNameError
 registerRecord at newKeyFailed return error newKeyError
 registerRecord at enterNewFailed return error enterNewError
 registerRecord at copyReaderNameFailed return error copyReaderNameError
 registerRecord at readerKeyFailed return error readerKeyError
 registerRecord at enterReaderFailed return error enterReaderError
+registerRecord at withKeyFailed return error withKeyError
+registerRecord at enterWithFailed return error enterWithError
 
 readInfo is call
 readInfo in registerRecord
@@ -8335,6 +8367,89 @@ countReader cleanedBy none
 countReader borrows none
 countReader catch none
 countReader suppresses none
+
+withFirst is call
+withFirst in registerRecord
+withFirst invokes Params.length
+withFirst argument list Params params lend
+withFirst result withParam Int64
+withFirst ownedBy none
+withFirst cleanedBy none
+withFirst borrows none
+withFirst catch none
+withFirst suppresses none
+
+addWithRecord is call
+addWithRecord in registerRecord
+addWithRecord invokes addParam
+addWithRecord argument params Params params lendMutable
+addWithRecord argument slot String recordSlot lend
+addWithRecord argument type Int64 code copy
+addWithRecord argument mode Int64 recordMode copy
+addWithRecord argument region Region region lend
+addWithRecord result none
+addWithRecord ownedBy none
+addWithRecord cleanedBy none
+addWithRecord borrows none
+addWithRecord catch none
+addWithRecord suppresses none
+
+withKey is call
+withKey in registerRecord
+withKey invokes memberKey
+withKey argument source String source lend
+withKey argument typeName syntax.Word name copy
+withKey argument member String withWord lend
+withKey argument region Region region lend
+withKey result withName String
+withKey ownedBy region
+withKey cleanedBy none
+withKey borrows none
+withKey catch withKeyError syntax.Rejection
+withKey suppresses none
+
+makeWithKind is call
+makeWithKind in registerRecord
+makeWithKind invokes TargetKind.recordWith
+makeWithKind argument none
+makeWithKind result withKind TargetKind
+makeWithKind ownedBy none
+makeWithKind cleanedBy none
+makeWithKind borrows none
+makeWithKind catch none
+makeWithKind suppresses none
+
+makeWith is call
+makeWith in registerRecord
+makeWith invokes TargetInfo.new
+makeWith argument kind TargetKind withKind copy
+makeWith argument owner Int64 code copy
+makeWith argument member Int64 zero copy
+makeWith argument firstParam Int64 withParam copy
+makeWith argument paramCount Int64 two copy
+makeWith argument output Int64 code copy
+makeWith argument raises Int64 zero copy
+makeWith result withTarget TargetInfo
+makeWith ownedBy none
+makeWith cleanedBy none
+makeWith borrows none
+makeWith catch none
+makeWith suppresses none
+
+enterWith is call
+enterWith in registerRecord
+enterWith invokes putTarget
+enterWith argument source String source lend
+enterWith argument targets Targets targets lendMutable
+enterWith argument key String withName lend
+enterWith argument info TargetInfo withTarget copy
+enterWith argument word syntax.Word name copy
+enterWith result none
+enterWith ownedBy none
+enterWith cleanedBy none
+enterWith borrows none
+enterWith catch enterWithError syntax.Rejection
+enterWith suppresses none
 
 narrowPayload is operation
 narrowPayload purpose "Decide whether an enum payload fits the narrow layout: an Int64, ExitCode, Bool, or Byte, or an enum none of whose variants carries a payload"
@@ -12113,6 +12228,7 @@ checkCell at findVariantDone case TargetKind.mapContains bind none none goto bad
 checkCell at findVariantDone case TargetKind.mapRemove bind none none goto badVariant
 checkCell at findVariantDone case TargetKind.mapLength bind none none goto badVariant
 checkCell at findVariantDone case TargetKind.reference bind none none goto badVariant
+checkCell at findVariantDone case TargetKind.recordWith bind none none goto badVariant
 checkCell at variantOwner do ownerCheck
 checkCell at variantOwner do bareCheck
 checkCell at variantOwner do bothCheck
@@ -17688,6 +17804,7 @@ signatureFits at begin case TargetKind.mapContains bind none none goto different
 signatureFits at begin case TargetKind.mapRemove bind none none goto different
 signatureFits at begin case TargetKind.mapLength bind none none goto different
 signatureFits at begin case TargetKind.reference bind none none goto different
+signatureFits at begin case TargetKind.recordWith bind none none goto different
 signatureFits at compareShape do readWantCount
 signatureFits at compareShape do readHaveCount
 signatureFits at compareShape do readWantOutput
@@ -20811,6 +20928,7 @@ catchFits at begin case TargetKind.mapNew bind none none goto listError
 catchFits at begin case TargetKind.mapPut bind none none goto listError
 catchFits at begin case TargetKind.mapContains bind none none goto listError
 catchFits at begin case TargetKind.mapLength bind none none goto listError
+catchFits at begin case TargetKind.recordWith bind none none goto listError
 catchFits at builtinError do readOwner
 catchFits at builtinError do readRow
 catchFits at builtinError branch ifError readRow goto listError else goto readRowDone
@@ -20936,6 +21054,7 @@ checkCall input words syntax.Words borrowed
 checkCall input rows syntax.Rows borrowed
 checkCall input entity model.Entity copied
 checkCall input types Types borrowed
+checkCall input members Members borrowed
 checkCall input typeNames TypeNames borrowed
 checkCall input params Params borrowed
 checkCall input targets Targets borrowed
@@ -20990,6 +21109,14 @@ checkCall label argumentFitsDone loopKind none
 checkCall label argumentFitsDone within eachRow
 checkCall label readParam loopKind none
 checkCall label readParam within eachRow
+checkCall label withSlotCheck loopKind none
+checkCall label withSlotCheck within eachRow
+checkCall label withField loopKind none
+checkCall label withField within eachRow
+checkCall label findFieldDone loopKind none
+checkCall label findFieldDone within eachRow
+checkCall label plainParam loopKind none
+checkCall label plainParam within eachRow
 checkCall label slotCheckDone loopKind none
 checkCall label slotCheckDone within eachRow
 checkCall label typeCheck loopKind none
@@ -21102,6 +21229,8 @@ checkCall label argumentFixedFailed loopKind none
 checkCall label argumentFixedFailed within none
 checkCall label argumentFitsFailed loopKind none
 checkCall label argumentFitsFailed within none
+checkCall label findFieldFailed loopKind none
+checkCall label findFieldFailed within none
 checkCall label slotCheckFailed loopKind none
 checkCall label slotCheckFailed within none
 checkCall label findArgumentTypeFailed loopKind none
@@ -21130,6 +21259,8 @@ checkCall label freshCatchFailed loopKind none
 checkCall label freshCatchFailed within none
 checkCall label enterCatchValueFailed loopKind none
 checkCall label enterCatchValueFailed within none
+checkCall let wantType Int64 0 mutable
+checkCall let wantMode Int64 0 mutable
 checkCall let target TargetInfo unset mutable
 checkCall let hasTarget Bool false mutable
 checkCall let reference syntax.Word unset mutable
@@ -21260,14 +21391,51 @@ checkCall at argumentFitsDone do readModeWord
 checkCall at argumentFitsDone do readParamCount
 checkCall at argumentFitsDone do overCheck
 checkCall at argumentFitsDone branch if tooMany goto wrongCount else goto readParam
-checkCall at readParam do readFirstParam
-checkCall at readParam do findParam
-checkCall at readParam do readParamInfo
-checkCall at readParam do readSlot
-checkCall at readParam do readType
-checkCall at readParam do readParamMode
-checkCall at readParam do slotCheck
-checkCall at readParam branch ifError slotCheck goto slotCheckFailed else goto slotCheckDone
+checkCall at readParam do readTargetKind
+checkCall at readParam do secondCheck
+checkCall at readParam match targetKind TargetKind
+checkCall at readParam case TargetKind.recordWith bind none none goto withSlotCheck
+checkCall at readParam case TargetKind.builtin bind none none goto plainParam
+checkCall at readParam case TargetKind.operation bind none none goto plainParam
+checkCall at readParam case TargetKind.recordNew bind none none goto plainParam
+checkCall at readParam case TargetKind.fieldRead bind none none goto plainParam
+checkCall at readParam case TargetKind.variantMake bind none none goto plainParam
+checkCall at readParam case TargetKind.listNew bind none none goto plainParam
+checkCall at readParam case TargetKind.listAppend bind none none goto plainParam
+checkCall at readParam case TargetKind.listLength bind none none goto plainParam
+checkCall at readParam case TargetKind.listGet bind none none goto plainParam
+checkCall at readParam case TargetKind.listGetOrTrap bind none none goto plainParam
+checkCall at readParam case TargetKind.tableRowAt bind none none goto plainParam
+checkCall at readParam case TargetKind.tableLength bind none none goto plainParam
+checkCall at readParam case TargetKind.listSet bind none none goto plainParam
+checkCall at readParam case TargetKind.mapNew bind none none goto plainParam
+checkCall at readParam case TargetKind.mapPut bind none none goto plainParam
+checkCall at readParam case TargetKind.mapGet bind none none goto plainParam
+checkCall at readParam case TargetKind.mapContains bind none none goto plainParam
+checkCall at readParam case TargetKind.mapRemove bind none none goto plainParam
+checkCall at readParam case TargetKind.mapLength bind none none goto plainParam
+checkCall at readParam case TargetKind.reference bind none none goto plainParam
+checkCall at withSlotCheck branch if isSecond goto withField else goto plainParam
+checkCall at withField do readWithOwner
+checkCall at withField do findField
+checkCall at withField branch ifError findField goto findFieldFailed else goto findFieldDone
+checkCall at findFieldDone do readField
+checkCall at findFieldDone do readFieldType
+checkCall at findFieldDone do fieldModeCheck
+checkCall at findFieldDone set wantType fieldType
+checkCall at findFieldDone set wantMode fieldMode
+checkCall at findFieldDone set reference slotWord
+checkCall at findFieldDone goto typeCheck
+checkCall at plainParam do readFirstParam
+checkCall at plainParam do findParam
+checkCall at plainParam do readParamInfo
+checkCall at plainParam do readSlot
+checkCall at plainParam do readType
+checkCall at plainParam do readParamMode
+checkCall at plainParam set wantType paramType
+checkCall at plainParam set wantMode paramMode
+checkCall at plainParam do slotCheck
+checkCall at plainParam branch ifError slotCheck goto slotCheckFailed else goto slotCheckDone
 checkCall at slotCheckDone branch if slotFits goto typeCheck else goto mismatchSlot
 checkCall at typeCheck do findArgumentType
 checkCall at typeCheck branch ifError findArgumentType goto findArgumentTypeFailed else goto findArgumentTypeDone
@@ -21389,6 +21557,7 @@ checkCall at referenceShapeFailed return error referenceShapeError
 checkCall at findReferenceFailed return error findReferenceError
 checkCall at argumentFixedFailed return error argumentFixedError
 checkCall at argumentFitsFailed return error argumentFitsError
+checkCall at findFieldFailed return error findFieldError
 checkCall at slotCheckFailed return error slotCheckError
 checkCall at findArgumentTypeFailed return error findArgumentTypeError
 checkCall at findModeFailed return error findModeError
@@ -21916,6 +22085,90 @@ overCheck borrows none
 overCheck catch none
 overCheck suppresses none
 
+readTargetKind is call
+readTargetKind in checkCall
+readTargetKind invokes TargetInfo.kind
+readTargetKind argument record TargetInfo target copy
+readTargetKind result targetKind TargetKind
+readTargetKind ownedBy none
+readTargetKind cleanedBy none
+readTargetKind borrows none
+readTargetKind catch none
+readTargetKind suppresses none
+
+secondCheck is call
+secondCheck in checkCall
+secondCheck invokes compare.equalInt64
+secondCheck argument left Int64 argumentIndex copy
+secondCheck argument right Int64 one copy
+secondCheck result isSecond Bool
+secondCheck ownedBy none
+secondCheck cleanedBy none
+secondCheck borrows none
+secondCheck catch none
+secondCheck suppresses none
+
+readWithOwner is call
+readWithOwner in checkCall
+readWithOwner invokes TargetInfo.owner
+readWithOwner argument record TargetInfo target copy
+readWithOwner result withOwner Int64
+readWithOwner ownedBy none
+readWithOwner cleanedBy none
+readWithOwner borrows none
+readWithOwner catch none
+readWithOwner suppresses none
+
+findField is call
+findField in checkCall
+findField invokes lookupMember
+findField argument source String source lend
+findField argument types Types types lend
+findField argument members Members members lend
+findField argument code Int64 withOwner copy
+findField argument word syntax.Word slotWord copy
+findField result fieldIndex Int64
+findField ownedBy none
+findField cleanedBy none
+findField borrows none
+findField catch findFieldError syntax.Rejection
+findField suppresses none
+
+readField is call
+readField in checkCall
+readField invokes Members.getOrTrap
+readField argument list Members members lend
+readField argument index Int64 fieldIndex copy
+readField result field MemberInfo
+readField ownedBy none
+readField cleanedBy none
+readField borrows none
+readField catch none
+readField suppresses none
+
+readFieldType is call
+readFieldType in checkCall
+readFieldType invokes MemberInfo.type
+readFieldType argument record MemberInfo field copy
+readFieldType result fieldType Int64
+readFieldType ownedBy none
+readFieldType cleanedBy none
+readFieldType borrows none
+readFieldType catch none
+readFieldType suppresses none
+
+fieldModeCheck is call
+fieldModeCheck in checkCall
+fieldModeCheck invokes readMode
+fieldModeCheck argument types Types types lend
+fieldModeCheck argument code Int64 fieldType copy
+fieldModeCheck result fieldMode Int64
+fieldModeCheck ownedBy none
+fieldModeCheck cleanedBy none
+fieldModeCheck borrows none
+fieldModeCheck catch none
+fieldModeCheck suppresses none
+
 readFirstParam is call
 readFirstParam in checkCall
 readFirstParam invokes TargetInfo.firstParam
@@ -22014,7 +22267,7 @@ typeFitCheck is call
 typeFitCheck in checkCall
 typeFitCheck invokes compare.equalInt64
 typeFitCheck argument left Int64 argumentCode copy
-typeFitCheck argument right Int64 paramType copy
+typeFitCheck argument right Int64 wantType copy
 typeFitCheck result typeFits Bool
 typeFitCheck ownedBy none
 typeFitCheck cleanedBy none
@@ -22038,7 +22291,7 @@ modeFitCheck is call
 modeFitCheck in checkCall
 modeFitCheck invokes compare.equalInt64
 modeFitCheck argument left Int64 modeCode copy
-modeFitCheck argument right Int64 paramMode copy
+modeFitCheck argument right Int64 wantMode copy
 modeFitCheck result modeFits Bool
 modeFitCheck ownedBy none
 modeFitCheck cleanedBy none
@@ -22050,7 +22303,7 @@ makeArgument is call
 makeArgument in checkCall
 makeArgument invokes ArgumentInfo.new
 makeArgument argument value syntax.Word valueWord copy
-makeArgument argument code Int64 paramType copy
+makeArgument argument code Int64 wantType copy
 makeArgument result argumentInfo ArgumentInfo
 makeArgument ownedBy none
 makeArgument cleanedBy none
@@ -22736,6 +22989,7 @@ collectOwned input owners Owners borrowed
 collectOwned input op OpInfo copied
 collectOwned input opIndex Int64 copied
 collectOwned input types Types borrowed
+collectOwned input members Members borrowed
 collectOwned input typeNames TypeNames borrowed
 collectOwned input params Params borrowed
 collectOwned input targets Targets borrowed
@@ -23077,6 +23331,7 @@ checkTheCall argument words syntax.Words words lend
 checkTheCall argument rows syntax.Rows rows lend
 checkTheCall argument entity model.Entity callEntity copy
 checkTheCall argument types Types types lend
+checkTheCall argument members Members members lend
 checkTheCall argument typeNames TypeNames typeNames lend
 checkTheCall argument params Params params lend
 checkTheCall argument targets Targets targets lend
@@ -24306,6 +24561,7 @@ checkStep at findVariantDone case TargetKind.mapContains bind none none goto unk
 checkStep at findVariantDone case TargetKind.mapRemove bind none none goto unknownVariant
 checkStep at findVariantDone case TargetKind.mapLength bind none none goto unknownVariant
 checkStep at findVariantDone case TargetKind.reference bind none none goto unknownVariant
+checkStep at findVariantDone case TargetKind.recordWith bind none none goto unknownVariant
 checkStep at variantOwner do readOwner
 checkStep at variantOwner do ownerCheck
 checkStep at variantOwner branch if sameEnum goto readVariant else goto unknownVariant
@@ -27207,6 +27463,7 @@ ownedCheck argument owners Owners owners lend
 ownedCheck argument op OpInfo op copy
 ownedCheck argument opIndex Int64 opIndex copy
 ownedCheck argument types Types types lend
+ownedCheck argument members Members members lend
 ownedCheck argument typeNames TypeNames typeNames lend
 ownedCheck argument params Params params lend
 ownedCheck argument targets Targets targets lend

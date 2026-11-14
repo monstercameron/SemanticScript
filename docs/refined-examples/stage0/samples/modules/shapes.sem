@@ -1,0 +1,195 @@
+# The first module of the stage0 sample `modules`: rectangles, what kind of
+# rectangle one is, and a constant and a record whose names the module after
+# it also uses for things of its own.
+shapes is module
+shapes purpose "Rectangles, their areas and kinds, for the app module to use"
+shapes path shapes
+shapes imports standard.math
+shapes imports standard.compare
+shapes imports standard.test
+shapes exports Kind
+shapes exports Rectangle
+shapes exports Label
+shapes exports area
+shapes exports kindOf
+shapes exports sideCount
+
+Kind is enum
+Kind purpose "Whether a rectangle's sides are all the same length"
+Kind typeParameter none
+Kind variant square none
+Kind variant oblong none
+
+Rectangle is record
+Rectangle purpose "A rectangle's width and height"
+Rectangle typeParameter none
+Rectangle field width Int64
+Rectangle field height Int64
+
+Label is record
+Label purpose "A name shapes gives a rectangle"
+Label typeParameter none
+Label field text String
+
+sides is constant
+sides purpose "How many sides a rectangle has"
+sides type Int64
+sides value 4
+
+area is operation
+area purpose "A rectangle's area"
+area invariant multipliesSides "\"The area is the width times the height\""
+area typeParameter none
+area input shape Rectangle copied
+area output Int64
+area outputOwnedBy none
+area raises none
+area effect none
+area uses none
+area memoryHeap false
+area async false
+area maxRecursion none
+area label begin loopKind none
+area label begin within none
+area let none
+area at begin do readWidth
+area at begin do readHeight
+area at begin do multiply
+area at begin return ok product
+
+readWidth is call
+readWidth in area
+readWidth invokes Rectangle.width
+readWidth argument record Rectangle shape copy
+readWidth result width Int64
+readWidth ownedBy none
+readWidth cleanedBy none
+readWidth borrows none
+readWidth catch none
+readWidth suppresses none
+
+readHeight is call
+readHeight in area
+readHeight invokes Rectangle.height
+readHeight argument record Rectangle shape copy
+readHeight result height Int64
+readHeight ownedBy none
+readHeight cleanedBy none
+readHeight borrows none
+readHeight catch none
+readHeight suppresses none
+
+multiply is call
+multiply in area
+multiply invokes math.multiplyInt64
+multiply argument left Int64 width copy
+multiply argument right Int64 height copy
+multiply result product Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+multiply suppresses none
+
+kindOf is operation
+kindOf purpose "Whether a rectangle is a square or an oblong"
+kindOf invariant comparesSides "\"A rectangle whose width is its height is a square; any other is an oblong\""
+kindOf typeParameter none
+kindOf input shape Rectangle copied
+kindOf output Kind
+kindOf outputOwnedBy none
+kindOf raises none
+kindOf effect none
+kindOf uses none
+kindOf memoryHeap false
+kindOf async false
+kindOf maxRecursion none
+kindOf label begin loopKind none
+kindOf label begin within none
+kindOf label square loopKind none
+kindOf label square within none
+kindOf label oblong loopKind none
+kindOf label oblong within none
+kindOf let none
+kindOf at begin do readWidth
+kindOf at begin do readHeight
+kindOf at begin do sameCheck
+kindOf at begin branch if same goto square else goto oblong
+kindOf at square do makeSquare
+kindOf at square return ok squareKind
+kindOf at oblong do makeOblong
+kindOf at oblong return ok oblongKind
+
+readWidth is call
+readWidth in kindOf
+readWidth invokes Rectangle.width
+readWidth argument record Rectangle shape copy
+readWidth result width Int64
+readWidth ownedBy none
+readWidth cleanedBy none
+readWidth borrows none
+readWidth catch none
+readWidth suppresses none
+
+readHeight is call
+readHeight in kindOf
+readHeight invokes Rectangle.height
+readHeight argument record Rectangle shape copy
+readHeight result height Int64
+readHeight ownedBy none
+readHeight cleanedBy none
+readHeight borrows none
+readHeight catch none
+readHeight suppresses none
+
+sameCheck is call
+sameCheck in kindOf
+sameCheck invokes compare.equalInt64
+sameCheck argument left Int64 width copy
+sameCheck argument right Int64 height copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+makeSquare is call
+makeSquare in kindOf
+makeSquare invokes Kind.square
+makeSquare argument none
+makeSquare result squareKind Kind
+makeSquare ownedBy none
+makeSquare cleanedBy none
+makeSquare borrows none
+makeSquare catch none
+makeSquare suppresses none
+
+makeOblong is call
+makeOblong in kindOf
+makeOblong invokes Kind.oblong
+makeOblong argument none
+makeOblong result oblongKind Kind
+makeOblong ownedBy none
+makeOblong cleanedBy none
+makeOblong borrows none
+makeOblong catch none
+makeOblong suppresses none
+
+sideCount is operation
+sideCount purpose "How many sides a rectangle has: this module's constant `sides`"
+sideCount invariant countsSides "\"Gives the module's own constant: a rectangle has 4 sides\""
+sideCount typeParameter none
+sideCount input none
+sideCount output Int64
+sideCount outputOwnedBy none
+sideCount raises none
+sideCount effect none
+sideCount uses none
+sideCount memoryHeap false
+sideCount async false
+sideCount maxRecursion none
+sideCount label begin loopKind none
+sideCount label begin within none
+sideCount let none
+sideCount at begin return ok sides

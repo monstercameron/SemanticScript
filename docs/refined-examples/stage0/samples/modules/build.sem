@@ -1,0 +1,14 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+modules is project
+modules purpose "Measure rectangles with the shapes module, and keep names of its own; a stage0 sample both runs agree on"
+modules target console
+modules version "0.1.0"
+modules language refined 1
+modules standardLibrary 1
+modules allows write console.stdout none
+modules requires none
+modules includesModule shapes
+modules includesModule app
+modules entry app.main

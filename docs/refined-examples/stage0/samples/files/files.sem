@@ -1,0 +1,305 @@
+# A stage0 sample: files through the host library, each target checked
+# against the scope of the capability that grants it (D-38). It makes the
+# build/ directory, writes a file there from an operation that raises the
+# standard library's fs.FileError, reads it back, and then reads a file
+# outside build/, which the runtime refuses before the file is touched: the
+# program stops with the trap exit code, 70, after printing
+#
+#   wrote 2 lines
+#   first line
+#   second line
+files is module
+files purpose "Write a file under build/, read it back, and try to read outside build/"
+files path files
+files imports standard.console
+files imports standard.fs
+files imports standard.string
+files imports standard.time
+files exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+buildFiles is capability
+buildFiles purpose "Authority to read and write files under build/"
+buildFiles grants read fs.files "build/"
+buildFiles grants write fs.files "build/"
+
+save is operation
+save purpose "Make the build/ directory when it is missing and write a text to a file in it"
+save invariant none
+save typeParameter none
+save input path String borrowed
+save input text String borrowed
+save input deadline time.Deadline copied
+save output none
+save outputOwnedBy none
+save raises fs.FileError
+save effect write fs.files
+save uses buildFiles
+save memoryHeap false
+save async true
+save maxRecursion none
+save label begin loopKind none
+save label begin within none
+save label makeDirectoryDone loopKind none
+save label makeDirectoryDone within none
+save label writeItDone loopKind none
+save label writeItDone within none
+save label writeItFailed loopKind none
+save label writeItFailed within none
+save let directory String "build" immutable
+save at begin do makeDirectory
+save at begin branch ifError makeDirectory goto makeDirectoryDone else goto makeDirectoryDone
+save at makeDirectoryDone do makeBytes
+save at makeDirectoryDone start writeIt into none
+save at makeDirectoryDone join writeIt
+save at makeDirectoryDone branch ifError writeIt goto writeItFailed else goto writeItDone
+save at writeItDone return ok none
+save at writeItFailed return error writeItError
+
+makeDirectory is call
+makeDirectory rationale "The directory usually exists already; if it cannot be made, writing the file fails next and says so"
+makeDirectory in save
+makeDirectory invokes fs.createDirectory
+makeDirectory argument path String directory lend
+makeDirectory result none
+makeDirectory ownedBy none
+makeDirectory cleanedBy none
+makeDirectory borrows none
+makeDirectory catch makeDirectoryError fs.FileError
+makeDirectory suppresses fs.FileError.notFound
+makeDirectory suppresses fs.FileError.denied
+makeDirectory suppresses fs.FileError.exists
+makeDirectory suppresses fs.FileError.tooLarge
+makeDirectory suppresses fs.FileError.timedOut
+makeDirectory suppresses fs.FileError.cancelled
+makeDirectory suppresses fs.FileError.busy
+makeDirectory suppresses fs.FileError.failed
+
+makeBytes is call
+makeBytes in save
+makeBytes invokes string.toBytes
+makeBytes argument text String text lend
+makeBytes result textBytes Bytes
+makeBytes ownedBy none
+makeBytes cleanedBy none
+makeBytes borrows text
+makeBytes catch none
+makeBytes suppresses none
+
+writeIt is task
+writeIt in save
+writeIt invokes fs.writeAll
+writeIt argument path String path lend
+writeIt argument bytes Bytes textBytes lend
+writeIt argument deadline time.Deadline deadline copy
+writeIt result none
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch writeItError fs.FileError
+writeIt suppresses none
+
+main is operation
+main purpose "Write a file, read it back, then try to read outside build/"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main effect read fs.files
+main effect write fs.files
+main uses stdoutWriter
+main uses buildFiles
+main memoryHeap true
+main async true
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label saveItDone loopKind none
+main label saveItDone within none
+main label writeWroteDone loopKind none
+main label writeWroteDone within none
+main label readItDone loopKind none
+main label readItDone within none
+main label decodeDone loopKind none
+main label decodeDone within none
+main label writeReadBackDone loopKind none
+main label writeReadBackDone within none
+main label readOutsideDone loopKind none
+main label readOutsideDone within none
+main label writeOutsideDone loopKind none
+main label writeOutsideDone within none
+main label failed loopKind none
+main label failed within none
+main label writeFailedDone loopKind none
+main label writeFailedDone within none
+main let path String "build/files-sample.txt" immutable
+main let outsideName String "outside.txt" immutable
+main let text String "first line\nsecond line" immutable
+main let limit Int64 4096 immutable
+main let okCode ExitCode 0 immutable
+main let failedCode ExitCode 3 immutable
+main let tenSeconds Int64 10000 immutable
+main let wroteText String "wrote 2 lines" immutable
+main let outsideLead String "files-" immutable
+main let outsideText String "read outside build/" immutable
+main let failedText String "a file could not be written or read" immutable
+main at begin do makeDeadline
+main at begin start saveIt into none
+main at begin join saveIt
+main at begin branch ifError saveIt goto failed else goto saveItDone
+main at saveItDone do writeWrote
+main at saveItDone branch ifError writeWrote goto writeWroteDone else goto writeWroteDone
+main at writeWroteDone start readIt into none
+main at writeWroteDone join readIt
+main at writeWroteDone branch ifError readIt goto failed else goto readItDone
+main at readItDone do decode
+main at readItDone branch ifError decode goto failed else goto decodeDone
+main at decodeDone do writeReadBack
+main at decodeDone branch ifError writeReadBack goto writeReadBackDone else goto writeReadBackDone
+main at writeReadBackDone do makeOutsidePath
+main at writeReadBackDone start readOutside into none
+main at writeReadBackDone join readOutside
+main at writeReadBackDone branch ifError readOutside goto failed else goto readOutsideDone
+main at readOutsideDone do writeOutside
+main at readOutsideDone branch ifError writeOutside goto writeOutsideDone else goto writeOutsideDone
+main at writeOutsideDone return ok okCode
+main at failed do writeFailed
+main at failed branch ifError writeFailed goto writeFailedDone else goto writeFailedDone
+main at writeFailedDone return ok failedCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 1048576
+store released atReturn
+
+makeDeadline is call
+makeDeadline in main
+makeDeadline invokes time.Deadline.after
+makeDeadline argument milliseconds Int64 tenSeconds copy
+makeDeadline result deadline time.Deadline
+makeDeadline ownedBy none
+makeDeadline cleanedBy none
+makeDeadline borrows none
+makeDeadline catch none
+makeDeadline suppresses none
+
+saveIt is task
+saveIt in main
+saveIt invokes save
+saveIt argument path String path lend
+saveIt argument text String text lend
+saveIt argument deadline time.Deadline deadline copy
+saveIt result none
+saveIt ownedBy none
+saveIt cleanedBy none
+saveIt borrows none
+saveIt catch saveItError fs.FileError
+saveIt suppresses none
+
+writeWrote is call
+writeWrote rationale "The failure has nowhere to be reported, so it is discarded"
+writeWrote in main
+writeWrote invokes console.writeLine
+writeWrote argument text String wroteText lend
+writeWrote result none
+writeWrote ownedBy none
+writeWrote cleanedBy none
+writeWrote borrows none
+writeWrote catch writeWroteError console.WriteError
+writeWrote suppresses console.WriteError.failed
+
+readIt is task
+readIt in main
+readIt invokes fs.readAll
+readIt argument path String path lend
+readIt argument region Region store lend
+readIt argument maxBytes Int64 limit copy
+readIt argument deadline time.Deadline deadline copy
+readIt result bytes Bytes
+readIt ownedBy store
+readIt cleanedBy none
+readIt borrows none
+readIt catch readItError fs.FileError
+readIt suppresses none
+
+decode is call
+decode in main
+decode invokes string.fromBytes
+decode argument bytes Bytes bytes lend
+decode argument region Region store lend
+decode result readBack String
+decode ownedBy store
+decode cleanedBy none
+decode borrows none
+decode catch decodeError string.Utf8Error
+decode suppresses none
+
+writeReadBack is call
+writeReadBack rationale "The failure has nowhere to be reported, so it is discarded"
+writeReadBack in main
+writeReadBack invokes console.writeLine
+writeReadBack argument text String readBack lend
+writeReadBack result none
+writeReadBack ownedBy none
+writeReadBack cleanedBy none
+writeReadBack borrows none
+writeReadBack catch writeReadBackError console.WriteError
+writeReadBack suppresses console.WriteError.failed
+
+makeOutsidePath is call
+makeOutsidePath in main
+makeOutsidePath invokes string.concat
+makeOutsidePath argument left String outsideLead lend
+makeOutsidePath argument right String outsideName lend
+makeOutsidePath argument region Region store lend
+makeOutsidePath result outsidePath String
+makeOutsidePath ownedBy store
+makeOutsidePath cleanedBy none
+makeOutsidePath borrows none
+makeOutsidePath catch none
+makeOutsidePath suppresses none
+
+readOutside is task
+readOutside in main
+readOutside invokes fs.readAll
+readOutside argument path String outsidePath lend
+readOutside argument region Region store lend
+readOutside argument maxBytes Int64 limit copy
+readOutside argument deadline time.Deadline deadline copy
+readOutside result outsideBytes Bytes
+readOutside ownedBy store
+readOutside cleanedBy none
+readOutside borrows none
+readOutside catch readOutsideError fs.FileError
+readOutside suppresses none
+
+writeOutside is call
+writeOutside rationale "The failure has nowhere to be reported, so it is discarded"
+writeOutside in main
+writeOutside invokes console.writeLine
+writeOutside argument text String outsideText lend
+writeOutside result none
+writeOutside ownedBy none
+writeOutside cleanedBy none
+writeOutside borrows none
+writeOutside catch writeOutsideError console.WriteError
+writeOutside suppresses console.WriteError.failed
+
+writeFailed is call
+writeFailed rationale "The failure has nowhere to be reported, so it is discarded"
+writeFailed in main
+writeFailed invokes console.writeLine
+writeFailed argument text String failedText lend
+writeFailed result none
+writeFailed ownedBy none
+writeFailed cleanedBy none
+writeFailed borrows none
+writeFailed catch writeFailedError console.WriteError
+writeFailed suppresses console.WriteError.failed

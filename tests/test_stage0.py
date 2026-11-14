@@ -1,10 +1,13 @@
-"""stage0 (docs/refined-examples/stage0): the first stage of a SemanticScript compiler written in SemanticScript.
+"""stage0 (docs/refined-examples/stage0): a SemanticScript compiler written in SemanticScript.
 
-stage0 runs under `refined run`, reads a sample module, checks that it is in the stage0 subset, writes it as C, and
-builds it with the C compiler through `process.run`, linked with the runtime of refined executables
-(native_runtime.c). Each executable it builds must print what `refined run` prints for the same sample and exit with
-the same code, traps included: a loop that passes its bound, a recursion that passes its maxRecursion, and a list read
-past its end."""
+stage0 reads a project (its build.sem and the modules it includes), checks that the program is in the stage0 subset,
+writes it as C, and builds it with the C compiler through `process.run`, linked with the runtime of refined
+executables (native_runtime.c). Each executable it builds must print what `refined run` prints for the same sample
+and exit with the same code, traps included: a loop that passes its bound, a recursion that passes its maxRecursion,
+a list read past its end, and a file read outside a capability's scope.
+
+stage0 runs here as the standalone executable the session builds once (conftest.stage0_native); one test runs it
+under `refined run` on a few samples and checks it writes the same C, byte for byte."""
 from __future__ import annotations
 
 import os
@@ -18,8 +21,8 @@ SUITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "suite")
 sys.path.insert(0, SUITE)
 
 import caselib  # noqa: E402
+from conftest import EXE, STAGE0, c_compiler  # noqa: E402
 
-STAGE0 = os.path.join(caselib.ROOT, "docs", "refined-examples", "stage0")
 RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c")
 
 # what each sample prints and its exit code, under `refined run` and as an executable
@@ -36,19 +39,20 @@ SAMPLES = {
     "strings": ("brown\nbyte: 113\nlength: 19\nquick brown fox 42\nequal: true\nfox at 16\nno cat\nlimit: 3\n", 0),
     "buffers": ("total: 42!\nlength: 10\nparsed: 1234\nnot a number\ndigit, letter\nround trip: abc\n", 0),
     "tables": ("Mercury 0\nVenus 0\nEarth 1\nMars 2\nmoons: 3\nrows: 4\nrocky: Venus\nno row 5\n", 0),
+    "maps": ("the: 3\ncat: 1\nkeys: 4\nno dog\ncounted: the cat sat mat\nAda is 36, likes tea\n"
+             "Linus is 54, likes coffee\nremoved Ada: 1\nno Ada\n", 0),
+    "scanner": ("word ends at 6, line 1, column 6\nnext word at 7, line 1, column 7\nline 2 starts at 14\nvowels: 5\n"
+                "counts: 1 5 3\nno slot 7\nbyte after: 195\nnothing after the end\n", 0),
+    "modules": ("area: 12\noblong\narea: 25\nsquare\narea: 35\noblong\napp label: app (width 3)\n"
+                "shapes label: shapes\napp sides: 3\nshapes sides: 4\n", 0),
+    "files": ("wrote 2 lines\nfirst line\nsecond line\n", 70),
 }
 OUTSIDE = "samples/outside/outside.sem:12:11: this entity kind is outside the stage0 subset (alias)\n"
+# the samples stage0 also compiles under `refined run`, whose C must equal the executable's byte for byte: a
+# map of records holding text, and a program of two modules with records, enums, and `with`
+UNDER_REFINED_RUN = ["maps", "modules"]
 
-
-def _compiler() -> str | None:
-    """stage0 may run only a C compiler named exactly cc, gcc, or clang: those are its capability's scopes."""
-    for name in ("cc", "gcc", "clang"):
-        if shutil.which(name):
-            return name
-    return None
-
-
-CC = _compiler()
+CC = c_compiler()
 # what stage0 passes the C compiler after the C file: the runtime to link, and on Windows the library it needs
 LINK = [RUNTIME] + (["-lshell32"] if os.name == "nt" else [])
 
@@ -61,37 +65,40 @@ def project(tmp_path_factory) -> str:
     return dst
 
 
-def _stage0(project: str, *arguments: str) -> subprocess.CompletedProcess:
-    return caselib.refined("run", project, "--", *arguments, cwd=project, timeout=900)
+def _native(stage0: str, project: str, *arguments: str) -> subprocess.CompletedProcess:
+    return subprocess.run([stage0, *arguments], capture_output=True, text=True, cwd=project, timeout=600)
 
 
 def _executable(folder: str, sample: str) -> str:
-    return os.path.join(folder, "build", sample + (".exe" if os.name == "nt" else ""))
+    return os.path.join(folder, "build", sample + EXE)
 
 
 @pytest.mark.skipif(CC is None, reason="no C compiler named cc, gcc, or clang on PATH")
 @pytest.mark.parametrize("sample", sorted(SAMPLES))
-def test_stage0_builds_executables_that_behave_like_refined_run(project, sample):
-    built = _stage0(project, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC, *LINK)
+def test_stage0_builds_executables_that_behave_like_refined_run(stage0_native, project, sample):
+    built = _native(stage0_native, project, f"samples/{sample}", f"build/{sample}", CC, *LINK)
     assert built.returncode == 0, built.stdout + built.stderr
-    assert built.stdout == f"stage0: samples/{sample}/{sample}.sem -> build/{sample}.c -> build/{sample}\n"
+    assert built.stdout == f"stage0: samples/{sample} -> build/{sample}.c -> build/{sample}\n"
     assert os.path.isfile(os.path.join(project, "build", f"{sample}.c"))
     reference = caselib.refined("run", os.path.join(project, "samples", sample), cwd=project)
-    ran = subprocess.run([_executable(project, sample)], capture_output=True, text=True, timeout=60)
+    ran = subprocess.run([_executable(project, sample)], capture_output=True, text=True, cwd=project, timeout=60)
     assert (reference.stdout, reference.returncode) == SAMPLES[sample], reference.stderr
     assert (ran.stdout, ran.returncode) == (reference.stdout, reference.returncode), ran.stderr
 
 
-def test_stage0_refuses_a_source_outside_its_subset(project):
-    """A refused source is reported as `path:line:column: message (word)` with exit code 1, and nothing is written;
-    no arguments is a usage error, exit code 2."""
-    proc = _stage0(project, "samples/outside/outside.sem", "build/outside")
+@pytest.mark.skipif(CC is None, reason="no C compiler named cc, gcc, or clang on PATH")
+def test_stage0_refuses_a_program_outside_its_subset(stage0_native, project):
+    """A refused program is reported as `path:line:column: message (word)`, naming the module's file, with exit code
+    1, and nothing is written; no arguments is a usage error, exit code 2; a project with no build.sem is exit 3."""
+    proc = _native(stage0_native, project, "samples/outside", "build/outside")
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert proc.stdout == ""
     assert proc.stderr == OUTSIDE
     assert not os.path.exists(os.path.join(project, "build", "outside.c"))
-    proc = caselib.refined("run", project, cwd=project)
+    proc = _native(stage0_native, project)
     assert proc.returncode == 2 and proc.stderr.startswith("usage: "), proc.stderr
+    proc = _native(stage0_native, project, "samples/missing", "build/missing")
+    assert (proc.returncode, proc.stderr) == (3, "samples/missing/build.sem: cannot read the source file\n")
 
 
 def test_stage0_module_tests_pass():
@@ -102,26 +109,23 @@ def test_stage0_module_tests_pass():
 
 
 @pytest.mark.skipif(CC is None, reason="no C compiler named cc, gcc, or clang on PATH")
-def test_stage0_as_an_executable_emits_the_same_c(project, tmp_path):
-    """stage0 itself builds as a standalone executable (the native host library, D-80 to D-85), and with no Python
-    it writes the same C, byte for byte, as stage0 under `refined run`: the first step of the bootstrap."""
-    exe = str(tmp_path / ("stage0" + (".exe" if os.name == "nt" else "")))
-    built = caselib.refined("build", STAGE0, "--kind", "executable", "--output", exe, cwd=STAGE0, timeout=900)
-    assert built.returncode == 0, built.stdout + built.stderr
-    native = str(tmp_path / "native")
-    shutil.copytree(STAGE0, native, ignore=shutil.ignore_patterns("build"))
-    for sample in sorted(SAMPLES):
-        jit_c = os.path.join(project, "build", f"{sample}.c")
-        if not os.path.isfile(jit_c):
-            assert _stage0(project, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC, *LINK).returncode == 0
-        proc = subprocess.run([exe, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC, *LINK],
-                              capture_output=True, text=True, cwd=native, timeout=300)
+def test_stage0_under_refined_run_writes_the_same_c(stage0_native, project, tmp_path):
+    """stage0 under `refined run` (the LLVM backend's JIT) and stage0 as a standalone executable (the native host
+    library, D-80 to D-85) write the same C, byte for byte, for a representative few samples, and refuse the same
+    program with the same diagnostic."""
+    jit = str(tmp_path / "jit")
+    shutil.copytree(STAGE0, jit, ignore=shutil.ignore_patterns("build"))
+    for sample in UNDER_REFINED_RUN:
+        native_c = os.path.join(project, "build", f"{sample}.c")
+        if not os.path.isfile(native_c):
+            assert _native(stage0_native, project, f"samples/{sample}", f"build/{sample}", CC, *LINK).returncode == 0
+        proc = caselib.refined("run", jit, "--", f"samples/{sample}", f"build/{sample}", CC, *LINK, cwd=jit,
+                               timeout=1800)
         assert proc.returncode == 0, proc.stdout + proc.stderr
-        assert proc.stdout == f"stage0: samples/{sample}/{sample}.sem -> build/{sample}.c -> build/{sample}\n"
-        with open(jit_c, "rb") as a, open(os.path.join(native, "build", f"{sample}.c"), "rb") as b:
+        assert proc.stdout == f"stage0: samples/{sample} -> build/{sample}.c -> build/{sample}\n"
+        with open(native_c, "rb") as a, open(os.path.join(jit, "build", f"{sample}.c"), "rb") as b:
             assert a.read() == b.read(), sample
-        ran = subprocess.run([_executable(native, sample)], capture_output=True, text=True, timeout=60)
+        ran = subprocess.run([_executable(jit, sample)], capture_output=True, text=True, cwd=jit, timeout=60)
         assert (ran.stdout, ran.returncode) == SAMPLES[sample], ran.stderr
-    proc = subprocess.run([exe, "samples/outside/outside.sem", "build/outside"], capture_output=True, text=True,
-                          cwd=native, timeout=300)
+    proc = caselib.refined("run", jit, "--", "samples/outside", "build/outside", cwd=jit, timeout=1800)
     assert (proc.returncode, proc.stderr) == (1, OUTSIDE)

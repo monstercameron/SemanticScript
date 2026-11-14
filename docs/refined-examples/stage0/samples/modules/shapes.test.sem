@@ -1,0 +1,151 @@
+# Tests for the shapes module of the stage0 sample `modules`.
+
+shapesTest is test
+shapesTest purpose "A 3 by 4 rectangle has area 12 and is an oblong; a 2 by 2 one is a square; a rectangle has 4 sides"
+shapesTest verifies area multipliesSides
+shapesTest verifies kindOf comparesSides
+shapesTest verifies sideCount countsSides
+shapesTest typeParameter none
+shapesTest input none
+shapesTest output none
+shapesTest outputOwnedBy none
+shapesTest raises none
+shapesTest effect none
+shapesTest uses none
+shapesTest memoryHeap false
+shapesTest async false
+shapesTest maxRecursion none
+shapesTest label begin loopKind none
+shapesTest label begin within none
+shapesTest label checkSquare loopKind none
+shapesTest label checkSquare within none
+shapesTest label checkSides loopKind none
+shapesTest label checkSides within none
+shapesTest label wrong loopKind none
+shapesTest label wrong within none
+shapesTest let yes Bool true immutable
+shapesTest let three Int64 3 immutable
+shapesTest let four Int64 4 immutable
+shapesTest let twelve Int64 12 immutable
+shapesTest let two Int64 2 immutable
+shapesTest let wrongText String "a rectangle was given the wrong kind" immutable
+shapesTest at begin do makeOblong
+shapesTest at begin do readArea
+shapesTest at begin do expectArea
+shapesTest at begin do readOblongKind
+shapesTest at begin match oblongKind Kind
+shapesTest at begin case Kind.square bind none none goto wrong
+shapesTest at begin case Kind.oblong bind none none goto checkSquare
+shapesTest at checkSquare do makeSquare
+shapesTest at checkSquare do readSquareKind
+shapesTest at checkSquare match squareKind Kind
+shapesTest at checkSquare case Kind.square bind none none goto checkSides
+shapesTest at checkSquare case Kind.oblong bind none none goto wrong
+shapesTest at checkSides do readSides
+shapesTest at checkSides do expectSides
+shapesTest at checkSides return ok none
+shapesTest at wrong do failKind
+shapesTest at wrong return ok none
+
+makeOblong is call
+makeOblong in shapesTest
+makeOblong invokes Rectangle.new
+makeOblong argument width Int64 three copy
+makeOblong argument height Int64 four copy
+makeOblong result oblong Rectangle
+makeOblong ownedBy none
+makeOblong cleanedBy none
+makeOblong borrows none
+makeOblong catch none
+makeOblong suppresses none
+
+readArea is call
+readArea in shapesTest
+readArea invokes area
+readArea argument shape Rectangle oblong copy
+readArea result oblongArea Int64
+readArea ownedBy none
+readArea cleanedBy none
+readArea borrows none
+readArea catch none
+readArea suppresses none
+
+expectArea is call
+expectArea in shapesTest
+expectArea invokes test.assertEqualInt64
+expectArea argument expected Int64 twelve copy
+expectArea argument actual Int64 oblongArea copy
+expectArea result none
+expectArea ownedBy none
+expectArea cleanedBy none
+expectArea borrows none
+expectArea catch none
+expectArea suppresses none
+
+readOblongKind is call
+readOblongKind in shapesTest
+readOblongKind invokes kindOf
+readOblongKind argument shape Rectangle oblong copy
+readOblongKind result oblongKind Kind
+readOblongKind ownedBy none
+readOblongKind cleanedBy none
+readOblongKind borrows none
+readOblongKind catch none
+readOblongKind suppresses none
+
+makeSquare is call
+makeSquare in shapesTest
+makeSquare invokes Rectangle.new
+makeSquare argument width Int64 two copy
+makeSquare argument height Int64 two copy
+makeSquare result square Rectangle
+makeSquare ownedBy none
+makeSquare cleanedBy none
+makeSquare borrows none
+makeSquare catch none
+makeSquare suppresses none
+
+readSquareKind is call
+readSquareKind in shapesTest
+readSquareKind invokes kindOf
+readSquareKind argument shape Rectangle square copy
+readSquareKind result squareKind Kind
+readSquareKind ownedBy none
+readSquareKind cleanedBy none
+readSquareKind borrows none
+readSquareKind catch none
+readSquareKind suppresses none
+
+readSides is call
+readSides in shapesTest
+readSides invokes sideCount
+readSides argument none
+readSides result sideTotal Int64
+readSides ownedBy none
+readSides cleanedBy none
+readSides borrows none
+readSides catch none
+readSides suppresses none
+
+expectSides is call
+expectSides in shapesTest
+expectSides invokes test.assertEqualInt64
+expectSides argument expected Int64 four copy
+expectSides argument actual Int64 sideTotal copy
+expectSides result none
+expectSides ownedBy none
+expectSides cleanedBy none
+expectSides borrows none
+expectSides catch none
+expectSides suppresses none
+
+failKind is call
+failKind in shapesTest
+failKind invokes test.fail
+failKind argument message String wrongText lend
+failKind result none
+failKind ownedBy none
+failKind cleanedBy none
+failKind borrows none
+failKind catch none
+failKind suppresses none

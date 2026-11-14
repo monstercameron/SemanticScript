@@ -416,44 +416,69 @@ SAMPLE_BUILD = """# A stage0 sample program (docs/refined-examples/stage0/sample
 {name} version "0.1.0"
 {name} language refined 1
 {name} standardLibrary 1
-{name} allows write console.stdout none
+{allows}
 {name} requires none
-{name} includesModule {name}
-{name} entry {name}.main
+{includes}
+{name} entry {entry}.main
 """
 SAMPLE_AUTHORITY = """# Authority approved for this project (`refined approve`). A program runs only with authority
 # listed here; build.sem asking for more stops `refined run`, `test`, and executable builds.
-write console.stdout none
+{authority}
 """
+# what each sample may do besides writing to standard output
+SAMPLE_ALLOWS = {"files": ['read fs.files "build/"', 'write fs.files "build/"']}
+# a sample of several modules is a folder of .dsl files, one per module, in the order build.sem includes them
+SAMPLE_PROJECTS = {"modules": ["shapes", "app"]}
+
+
+def sample_modules(name):
+    """[(module name, dsl text)] of a sample, in the order build.sem includes them."""
+    folder = os.path.join(HERE, "samples")
+    if name in SAMPLE_PROJECTS:
+        out = []
+        for module in SAMPLE_PROJECTS[name]:
+            with open(os.path.join(folder, name, module + ".dsl"), encoding="utf-8") as fh:
+                out.append((module, fh.read()))
+        return out
+    with open(os.path.join(folder, name + ".dsl"), encoding="utf-8") as fh:
+        return [(name, fh.read())]
 
 
 def generate_samples(prog, names):
     folder = os.path.join(HERE, "samples")
-    for fn in sorted(os.listdir(folder)):
-        if not fn.endswith(".dsl"):
-            continue
-        name = fn[:-4]
+    found = sorted([fn[:-4] for fn in os.listdir(folder) if fn.endswith(".dsl")] + list(SAMPLE_PROJECTS))
+    for name in found:
         if names and name not in names:
             continue
-        with open(os.path.join(folder, fn), encoding="utf-8") as fh:
-            text = fh.read()
-        m = Module(name)
-        prog.modules[name] = m
-        g = Generator(prog, m)
-        g.declare(text)
-        g.parse(text)
-        purpose = re.search(r'^module \w+ "([^"]*)"', text, re.M).group(1)
-        f, _tf = g.render([])
-        f = f.lstrip("\n")
+        modules = sample_modules(name)
         out = os.path.join(STAGE0, "samples", name)
         os.makedirs(out, exist_ok=True)
-        with open(os.path.join(out, name + ".sem"), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(f)
+        lines = 0
+        for module, text in modules:
+            m = Module(module)
+            prog.modules[module] = m
+            g = Generator(prog, m)
+            g.declare(text)
+            g.parse(text)
+            purpose = re.search(r'^module \w+ "([^"]*)"', text, re.M).group(1)
+            header = ["# Tests for the " + module + " module of the stage0 sample `" + name + "`."]
+            f, tf = g.render([], header)
+            f = f.lstrip("\n")
+            with open(os.path.join(out, module + ".sem"), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(f)
+            if tf is not None:
+                with open(os.path.join(out, module + ".test.sem"), "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write(tf)
+            lines += f.count(chr(10))
+        allows = ["write console.stdout none"] + SAMPLE_ALLOWS.get(name, [])
         with open(os.path.join(out, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(SAMPLE_BUILD.format(name=name, purpose=purpose + "; a stage0 sample both runs agree on"))
+            fh.write(SAMPLE_BUILD.format(
+                name=name, purpose=purpose + "; a stage0 sample both runs agree on", entry=modules[-1][0],
+                allows="\n".join(f"{name} allows {a}" for a in allows),
+                includes="\n".join(f"{name} includesModule {module}" for module, _t in modules)))
         with open(os.path.join(out, "authority.approved"), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(SAMPLE_AUTHORITY)
-        print(f"sample {name}: {f.count(chr(10))} lines")
+            fh.write(SAMPLE_AUTHORITY.format(authority="\n".join(allows)))
+        print(f"sample {name}: {lines} lines")
 
 
 def main(which):

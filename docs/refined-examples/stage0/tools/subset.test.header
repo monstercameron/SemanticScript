@@ -1,4 +1,5 @@
-# Tests for subset.sem: every invariant of `checkDeclarations`,
-# `checkOperation`, `checkModule`, and `diagnose` is verified below, on a small
-# module of records, enums, and a list, on the squares sample
-# (samples/squares/squares.sem), and on copies of it changed one row at a time.
+# Tests for subset.sem: every invariant of `declareBuiltins`, `nextModule`,
+# `checkModuleDeclarations`, `checkOperation`, `checkProgram`, and `diagnose` is
+# verified below, on a small module of records, enums, and a list, on the
+# squares sample (samples/squares/squares.sem), and on copies of it changed one
+# row at a time.

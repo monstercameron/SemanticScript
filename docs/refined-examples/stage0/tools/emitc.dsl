@@ -1848,6 +1848,7 @@ op putCall "Write a call as one C statement: its failure flag or result set from
   case mapContains mapContainsCall
   case mapRemove mapRemoveCall
   case mapLength mapLengthCall
+  case recordWith recordWithCall
 :builtinCall
   readSpelling: spelling = cTargets.rowAt(owner) ? lost
   readBefore: before = CTarget.before(spelling)
@@ -2021,6 +2022,22 @@ op putCall "Write a call as one C statement: its failure flag or result set from
   @s mapLengthPrefix "ml_"
   putMapLengthName: putCodeName(buffer, source, types, owner)
   goto helperArguments
+:recordWithCall
+  if hasResult withValue withNothing
+:withValue
+  readWithRecord: withRecord = argumentAt(arguments, info, 0)
+  readWithValue: withNew = argumentAt(arguments, info, 1)
+  readWithField: withField = subset.CallInfo.reference(info)
+  putWithRecord: putValue(buffer, source, withRecord)
+  @s statementEnd "; "
+  putWithResult: putValue(buffer, source, result)
+  @w withField fieldPrefix
+  @s assign
+  putWithNew: putValue(buffer, source, withNew)
+  goto finish
+:withNothing
+  @s nothingText "(void)0"
+  goto finish
 :outArguments
   @s open
   if hasResult outAddress outNull

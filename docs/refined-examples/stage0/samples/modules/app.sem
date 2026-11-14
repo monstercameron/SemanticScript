@@ -1,0 +1,524 @@
+# A stage0 sample of two modules: `app` uses the record, enum, and
+# operations of `shapes`, which build.sem includes before it, by their
+# qualified names (`shapes.Rectangle.new`, `shapes.area`, `shapes.Kind`),
+# widens a square with `shapes.Rectangle.with`, and declares a record `Label`
+# and a constant `sides` of its own whose names shapes also uses. It exits
+# with code 0:
+#
+#   area: 12
+#   oblong
+#   area: 25
+#   square
+#   area: 35
+#   oblong
+#   app label: app (width 3)
+#   shapes label: shapes
+#   app sides: 3
+#   shapes sides: 4
+app is module
+app purpose "Measure rectangles with the shapes module, and keep names of its own"
+app path app
+app imports standard.console
+app imports standard.string
+app imports shapes
+app exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Label is record
+Label purpose "A name the app gives something, with a width of its own"
+Label typeParameter none
+Label field text String
+Label field width Int64
+
+sides is constant
+sides purpose "How many sides the app's own shape, a triangle, has"
+sides type Int64
+sides value 3
+
+report is operation
+report purpose "Print a label and a number on one line; a failed write is discarded"
+report invariant none
+report typeParameter none
+report input label String borrowed
+report input value Int64 copied
+report output none
+report outputOwnedBy none
+report raises none
+report effect write console.stdout
+report uses stdoutWriter
+report memoryHeap false
+report async false
+report maxRecursion none
+report label begin loopKind none
+report label begin within none
+report label writeLabelDone loopKind none
+report label writeLabelDone within none
+report label writeValueDone loopKind none
+report label writeValueDone within none
+report let none
+report at begin do writeLabel
+report at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+report at writeLabelDone do writeValue
+report at writeLabelDone branch ifError writeValue goto writeValueDone else goto writeValueDone
+report at writeValueDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in report
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeValue is call
+writeValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeValue in report
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeValueError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+measure is operation
+measure purpose "Print a rectangle's area and kind"
+measure invariant none
+measure typeParameter none
+measure input shape shapes.Rectangle copied
+measure output none
+measure outputOwnedBy none
+measure raises none
+measure effect write console.stdout
+measure uses stdoutWriter
+measure memoryHeap false
+measure async false
+measure maxRecursion none
+measure label begin loopKind none
+measure label begin within none
+measure label square loopKind none
+measure label square within none
+measure label writeSquareDone loopKind none
+measure label writeSquareDone within none
+measure label oblong loopKind none
+measure label oblong within none
+measure label writeOblongDone loopKind none
+measure label writeOblongDone within none
+measure let areaText String "area: " immutable
+measure let squareText String "square" immutable
+measure let oblongText String "oblong" immutable
+measure at begin do readArea
+measure at begin do reportArea
+measure at begin do readKind
+measure at begin match kind shapes.Kind
+measure at begin case shapes.Kind.square bind none none goto square
+measure at begin case shapes.Kind.oblong bind none none goto oblong
+measure at square do writeSquare
+measure at square branch ifError writeSquare goto writeSquareDone else goto writeSquareDone
+measure at writeSquareDone return ok none
+measure at oblong do writeOblong
+measure at oblong branch ifError writeOblong goto writeOblongDone else goto writeOblongDone
+measure at writeOblongDone return ok none
+
+readArea is call
+readArea in measure
+readArea invokes shapes.area
+readArea argument shape shapes.Rectangle shape copy
+readArea result shapeArea Int64
+readArea ownedBy none
+readArea cleanedBy none
+readArea borrows none
+readArea catch none
+readArea suppresses none
+
+reportArea is call
+reportArea in measure
+reportArea invokes report
+reportArea argument label String areaText lend
+reportArea argument value Int64 shapeArea copy
+reportArea result none
+reportArea ownedBy none
+reportArea cleanedBy none
+reportArea borrows none
+reportArea catch none
+reportArea suppresses none
+
+readKind is call
+readKind in measure
+readKind invokes shapes.kindOf
+readKind argument shape shapes.Rectangle shape copy
+readKind result kind shapes.Kind
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+writeSquare is call
+writeSquare rationale "The failure has nowhere to be reported, so it is discarded"
+writeSquare in measure
+writeSquare invokes console.writeLine
+writeSquare argument text String squareText lend
+writeSquare result none
+writeSquare ownedBy none
+writeSquare cleanedBy none
+writeSquare borrows none
+writeSquare catch writeSquareError console.WriteError
+writeSquare suppresses console.WriteError.failed
+
+writeOblong is call
+writeOblong rationale "The failure has nowhere to be reported, so it is discarded"
+writeOblong in measure
+writeOblong invokes console.writeLine
+writeOblong argument text String oblongText lend
+writeOblong result none
+writeOblong ownedBy none
+writeOblong cleanedBy none
+writeOblong borrows none
+writeOblong catch writeOblongError console.WriteError
+writeOblong suppresses console.WriteError.failed
+
+main is operation
+main purpose "Measure two rectangles and print labels and constants of both modules"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label writeAppLeadDone loopKind none
+main label writeAppLeadDone within none
+main label writeAppTextDone loopKind none
+main label writeAppTextDone within none
+main label writeAppOpenDone loopKind none
+main label writeAppOpenDone within none
+main label writeAppWidthDone loopKind none
+main label writeAppWidthDone within none
+main label writeAppCloseDone loopKind none
+main label writeAppCloseDone within none
+main label writeShapesLeadDone loopKind none
+main label writeShapesLeadDone within none
+main label writeShapesTextDone loopKind none
+main label writeShapesTextDone within none
+main let seven Int64 7 immutable
+main let okCode ExitCode 0 immutable
+main let three Int64 3 immutable
+main let four Int64 4 immutable
+main let five Int64 5 immutable
+main let appName String "app" immutable
+main let appLead String "app label: " immutable
+main let widthOpen String " (width " immutable
+main let close String ")" immutable
+main let shapesName String "shapes" immutable
+main let shapesLead String "shapes label: " immutable
+main let appSidesText String "app sides: " immutable
+main let shapesSidesText String "shapes sides: " immutable
+main at begin do makeOblong
+main at begin do measureOblong
+main at begin do makeSquare
+main at begin do measureSquare
+main at begin do widenSquare
+main at begin do measureWide
+main at begin do makeAppLabel
+main at begin do readAppText
+main at begin do readAppWidth
+main at begin do writeAppLead
+main at begin branch ifError writeAppLead goto writeAppLeadDone else goto writeAppLeadDone
+main at writeAppLeadDone do writeAppText
+main at writeAppLeadDone branch ifError writeAppText goto writeAppTextDone else goto writeAppTextDone
+main at writeAppTextDone do writeAppOpen
+main at writeAppTextDone branch ifError writeAppOpen goto writeAppOpenDone else goto writeAppOpenDone
+main at writeAppOpenDone do widthText
+main at writeAppOpenDone do writeAppWidth
+main at writeAppOpenDone branch ifError writeAppWidth goto writeAppWidthDone else goto writeAppWidthDone
+main at writeAppWidthDone do writeAppClose
+main at writeAppWidthDone branch ifError writeAppClose goto writeAppCloseDone else goto writeAppCloseDone
+main at writeAppCloseDone do makeShapesLabel
+main at writeAppCloseDone do readShapesText
+main at writeAppCloseDone do writeShapesLead
+main at writeAppCloseDone branch ifError writeShapesLead goto writeShapesLeadDone else goto writeShapesLeadDone
+main at writeShapesLeadDone do writeShapesText
+main at writeShapesLeadDone branch ifError writeShapesText goto writeShapesTextDone else goto writeShapesTextDone
+main at writeShapesTextDone do reportAppSides
+main at writeShapesTextDone do readShapesSides
+main at writeShapesTextDone do reportShapesSides
+main at writeShapesTextDone return ok okCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeOblong is call
+makeOblong in main
+makeOblong invokes shapes.Rectangle.new
+makeOblong argument width Int64 three copy
+makeOblong argument height Int64 four copy
+makeOblong result oblong shapes.Rectangle
+makeOblong ownedBy none
+makeOblong cleanedBy none
+makeOblong borrows none
+makeOblong catch none
+makeOblong suppresses none
+
+measureOblong is call
+measureOblong in main
+measureOblong invokes measure
+measureOblong argument shape shapes.Rectangle oblong copy
+measureOblong result none
+measureOblong ownedBy none
+measureOblong cleanedBy none
+measureOblong borrows none
+measureOblong catch none
+measureOblong suppresses none
+
+makeSquare is call
+makeSquare in main
+makeSquare invokes shapes.Rectangle.new
+makeSquare argument width Int64 five copy
+makeSquare argument height Int64 five copy
+makeSquare result square shapes.Rectangle
+makeSquare ownedBy none
+makeSquare cleanedBy none
+makeSquare borrows none
+makeSquare catch none
+makeSquare suppresses none
+
+measureSquare is call
+measureSquare in main
+measureSquare invokes measure
+measureSquare argument shape shapes.Rectangle square copy
+measureSquare result none
+measureSquare ownedBy none
+measureSquare cleanedBy none
+measureSquare borrows none
+measureSquare catch none
+measureSquare suppresses none
+
+widenSquare is call
+widenSquare in main
+widenSquare invokes shapes.Rectangle.with
+widenSquare argument record shapes.Rectangle square copy
+widenSquare argument width Int64 seven copy
+widenSquare result wide shapes.Rectangle
+widenSquare ownedBy none
+widenSquare cleanedBy none
+widenSquare borrows none
+widenSquare catch none
+widenSquare suppresses none
+
+measureWide is call
+measureWide in main
+measureWide invokes measure
+measureWide argument shape shapes.Rectangle wide copy
+measureWide result none
+measureWide ownedBy none
+measureWide cleanedBy none
+measureWide borrows none
+measureWide catch none
+measureWide suppresses none
+
+makeAppLabel is call
+makeAppLabel in main
+makeAppLabel invokes Label.new
+makeAppLabel argument text String appName lend
+makeAppLabel argument width Int64 three copy
+makeAppLabel argument region Region store lend
+makeAppLabel result appLabel Label
+makeAppLabel ownedBy store
+makeAppLabel cleanedBy none
+makeAppLabel borrows none
+makeAppLabel catch none
+makeAppLabel suppresses none
+
+readAppText is call
+readAppText in main
+readAppText invokes Label.text
+readAppText argument record Label appLabel lend
+readAppText result appText String
+readAppText ownedBy none
+readAppText cleanedBy none
+readAppText borrows appLabel
+readAppText catch none
+readAppText suppresses none
+
+readAppWidth is call
+readAppWidth in main
+readAppWidth invokes Label.width
+readAppWidth argument record Label appLabel lend
+readAppWidth result appWidth Int64
+readAppWidth ownedBy none
+readAppWidth cleanedBy none
+readAppWidth borrows none
+readAppWidth catch none
+readAppWidth suppresses none
+
+writeAppLead is call
+writeAppLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeAppLead in main
+writeAppLead invokes console.write
+writeAppLead argument text String appLead lend
+writeAppLead result none
+writeAppLead ownedBy none
+writeAppLead cleanedBy none
+writeAppLead borrows none
+writeAppLead catch writeAppLeadError console.WriteError
+writeAppLead suppresses console.WriteError.failed
+
+writeAppText is call
+writeAppText rationale "The failure has nowhere to be reported, so it is discarded"
+writeAppText in main
+writeAppText invokes console.write
+writeAppText argument text String appText lend
+writeAppText result none
+writeAppText ownedBy none
+writeAppText cleanedBy none
+writeAppText borrows none
+writeAppText catch writeAppTextError console.WriteError
+writeAppText suppresses console.WriteError.failed
+
+writeAppOpen is call
+writeAppOpen rationale "The failure has nowhere to be reported, so it is discarded"
+writeAppOpen in main
+writeAppOpen invokes console.write
+writeAppOpen argument text String widthOpen lend
+writeAppOpen result none
+writeAppOpen ownedBy none
+writeAppOpen cleanedBy none
+writeAppOpen borrows none
+writeAppOpen catch writeAppOpenError console.WriteError
+writeAppOpen suppresses console.WriteError.failed
+
+widthText is call
+widthText in main
+widthText invokes string.fromInt64
+widthText argument value Int64 appWidth copy
+widthText argument region Region store lend
+widthText result widthDigits String
+widthText ownedBy store
+widthText cleanedBy none
+widthText borrows none
+widthText catch none
+widthText suppresses none
+
+writeAppWidth is call
+writeAppWidth rationale "The failure has nowhere to be reported, so it is discarded"
+writeAppWidth in main
+writeAppWidth invokes console.write
+writeAppWidth argument text String widthDigits lend
+writeAppWidth result none
+writeAppWidth ownedBy none
+writeAppWidth cleanedBy none
+writeAppWidth borrows none
+writeAppWidth catch writeAppWidthError console.WriteError
+writeAppWidth suppresses console.WriteError.failed
+
+writeAppClose is call
+writeAppClose rationale "The failure has nowhere to be reported, so it is discarded"
+writeAppClose in main
+writeAppClose invokes console.writeLine
+writeAppClose argument text String close lend
+writeAppClose result none
+writeAppClose ownedBy none
+writeAppClose cleanedBy none
+writeAppClose borrows none
+writeAppClose catch writeAppCloseError console.WriteError
+writeAppClose suppresses console.WriteError.failed
+
+makeShapesLabel is call
+makeShapesLabel in main
+makeShapesLabel invokes shapes.Label.new
+makeShapesLabel argument text String shapesName lend
+makeShapesLabel argument region Region store lend
+makeShapesLabel result shapesLabel shapes.Label
+makeShapesLabel ownedBy store
+makeShapesLabel cleanedBy none
+makeShapesLabel borrows none
+makeShapesLabel catch none
+makeShapesLabel suppresses none
+
+readShapesText is call
+readShapesText in main
+readShapesText invokes shapes.Label.text
+readShapesText argument record shapes.Label shapesLabel lend
+readShapesText result shapesText String
+readShapesText ownedBy none
+readShapesText cleanedBy none
+readShapesText borrows shapesLabel
+readShapesText catch none
+readShapesText suppresses none
+
+writeShapesLead is call
+writeShapesLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeShapesLead in main
+writeShapesLead invokes console.write
+writeShapesLead argument text String shapesLead lend
+writeShapesLead result none
+writeShapesLead ownedBy none
+writeShapesLead cleanedBy none
+writeShapesLead borrows none
+writeShapesLead catch writeShapesLeadError console.WriteError
+writeShapesLead suppresses console.WriteError.failed
+
+writeShapesText is call
+writeShapesText rationale "The failure has nowhere to be reported, so it is discarded"
+writeShapesText in main
+writeShapesText invokes console.writeLine
+writeShapesText argument text String shapesText lend
+writeShapesText result none
+writeShapesText ownedBy none
+writeShapesText cleanedBy none
+writeShapesText borrows none
+writeShapesText catch writeShapesTextError console.WriteError
+writeShapesText suppresses console.WriteError.failed
+
+reportAppSides is call
+reportAppSides in main
+reportAppSides invokes report
+reportAppSides argument label String appSidesText lend
+reportAppSides argument value Int64 sides copy
+reportAppSides result none
+reportAppSides ownedBy none
+reportAppSides cleanedBy none
+reportAppSides borrows none
+reportAppSides catch none
+reportAppSides suppresses none
+
+readShapesSides is call
+readShapesSides in main
+readShapesSides invokes shapes.sideCount
+readShapesSides argument none
+readShapesSides result shapesSides Int64
+readShapesSides ownedBy none
+readShapesSides cleanedBy none
+readShapesSides borrows none
+readShapesSides catch none
+readShapesSides suppresses none
+
+reportShapesSides is call
+reportShapesSides in main
+reportShapesSides invokes report
+reportShapesSides argument label String shapesSidesText lend
+reportShapesSides argument value Int64 shapesSides copy
+reportShapesSides result none
+reportShapesSides ownedBy none
+reportShapesSides cleanedBy none
+reportShapesSides borrows none
+reportShapesSides catch none
+reportShapesSides suppresses none

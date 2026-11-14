@@ -1,0 +1,15 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+files is project
+files purpose "Write a file under build/, read it back, and try to read outside build/; a stage0 sample both runs agree on"
+files target console
+files version "0.1.0"
+files language refined 1
+files standardLibrary 1
+files allows write console.stdout none
+files allows read fs.files "build/"
+files allows write fs.files "build/"
+files requires none
+files includesModule files
+files entry files.main

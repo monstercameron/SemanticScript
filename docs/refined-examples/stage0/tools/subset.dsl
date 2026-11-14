@@ -118,6 +118,7 @@ enum TargetKind "What a call target is"
   variant mapRemove
   variant mapLength
   variant reference
+  variant recordWith
 
 record BuiltinRow "A standard library target the subset compiles: up to four argument slots with their types (numbered as the types table numbers them; 12 is string.Position, the first type the program declares) and passing modes (1 copy, 2 lend, 3 lendMutable, 4 give), its result type (0 for none), and its error (raises 7, a standard error, with the error type's name; 0 when it cannot fail)"
   field text String
@@ -221,7 +222,7 @@ record ValueInfo "A value of an operation: its name, type, whether `set` may cha
 
 instance Values "Every value by name, in the order they are declared" map.Map String ValueInfo
 
-record CallInfo "A call of an operation: its name, its target, the value of an operationType it calls through (`invokesReference`; its name otherwise), where its arguments start in the argument list and how many, the value it sets, and the name its error is caught as"
+record CallInfo "A call of an operation: its name, its target, the value of an operationType it calls through (`invokesReference`) or the field a record's `with` changes (its name otherwise), where its arguments start in the argument list and how many, the value it sets, and the name its error is caught as"
   field name syntax.Word
   field target TargetInfo
   field reference syntax.Word
@@ -1072,7 +1073,7 @@ op holdsTextOf "Decide whether a value of a type holds text (String or Bytes), d
   readHolds: holds = TypeInfo.holdsText(info)
   return holds
 
-op registerRecord "Enter a record's constructor (its fields in order, then a region when it holds a value that is not plain) and a reader for each field"
+op registerRecord "Enter a record's constructor (its fields in order, then a region when it holds a value that is not plain), a reader for each field, and `with`, which copies a record with one field changed (its second slot is named by the field)"
   input source String borrowed
   input code Int64 copied
   input types Types borrowed
@@ -1138,6 +1139,12 @@ op registerRecord "Enter a record's constructor (its fields in order, then a reg
   set index nextReader
   goto eachReader
 :done
+  withFirst: withParam = Params.length(params)
+  addWithRecord: addParam(params, recordSlot, code, recordMode, region)
+  withKey: withName = memberKey(source, name, withWord="with", region) ?^
+  makeWithKind: withKind = TargetKind.recordWith()
+  makeWith: withTarget = TargetInfo.new(withKind, code, 0, withParam, 2, code, 0)
+  enterWith: putTarget(source, targets, withName, withTarget, name) ?^
   return
 
 op narrowPayload "Decide whether an enum payload fits the narrow layout: an Int64, ExitCode, Bool, or Byte, or an enum none of whose variants carries a payload"
@@ -2622,6 +2629,7 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   input rows syntax.Rows borrowed
   input entity model.Entity copied
   input types Types borrowed
+  input members Members borrowed
   input typeNames TypeNames borrowed
   input params Params borrowed
   input targets Targets borrowed
@@ -2630,6 +2638,8 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   input calls Calls borrowedMutable
   input arguments Arguments borrowedMutable
   raises syntax.Rejection
+  let wantType Int64 0 mut
+  let wantMode Int64 0 mut
   let target TargetInfo unset mut
   let hasTarget Bool false mut
   let reference syntax.Word unset mut
@@ -2703,24 +2713,44 @@ op checkCall "Check a call's rows against its target: the slot, type, and mode o
   overCheck: tooMany = compare.greaterOrEqualInt64(argumentIndex, paramCount)
   if tooMany wrongCount readParam
 :readParam in=eachRow
+  readTargetKind: targetKind = TargetInfo.kind(target)
+  secondCheck: isSecond = compare.equalInt64(argumentIndex, 1)
+  match targetKind
+  case recordWith withSlotCheck
+  others plainParam
+:withSlotCheck in=eachRow
+  if isSecond withField plainParam
+:withField in=eachRow
+  readWithOwner: withOwner = TargetInfo.owner(target)
+  findField: fieldIndex = lookupMember(source, types, members, withOwner, slotWord) ?^
+  readField: field = Members.getOrTrap(members, fieldIndex)
+  readFieldType: fieldType = MemberInfo.type(field)
+  fieldModeCheck: fieldMode = readMode(types, fieldType)
+  set wantType fieldType
+  set wantMode fieldMode
+  set reference slotWord
+  goto typeCheck
+:plainParam in=eachRow
   readFirstParam: firstParam = TargetInfo.firstParam(target)
   findParam: paramIndex = math.addInt64(firstParam, argumentIndex)
   readParamInfo: param = Params.getOrTrap(params, paramIndex)
   readSlot: slot = ParamInfo.slot(param)
   readType: paramType = ParamInfo.type(param)
   readParamMode: paramMode = ParamInfo.mode(param)
+  set wantType paramType
+  set wantMode paramMode
   slotCheck: slotFits = syntax.isText(source, slotWord, slot) ?^
   if slotFits typeCheck mismatchSlot
 :typeCheck in=eachRow
   findArgumentType: argumentCode = findType(source, typeNames, typeWord) ?^
-  typeFitCheck: typeFits = compare.equalInt64(argumentCode, paramType)
+  typeFitCheck: typeFits = compare.equalInt64(argumentCode, wantType)
   if typeFits modeCheck mismatchType
 :modeCheck in=eachRow
   findMode: modeCode = modeOf(source, modeWord) ?^
-  modeFitCheck: modeFits = compare.equalInt64(modeCode, paramMode)
+  modeFitCheck: modeFits = compare.equalInt64(modeCode, wantMode)
   if modeFits keepArgument mismatchMode
 :keepArgument in=eachRow
-  makeArgument: argumentInfo = ArgumentInfo.new(valueWord, paramType)
+  makeArgument: argumentInfo = ArgumentInfo.new(valueWord, wantType)
   appendArgument: Arguments.append(arguments, argumentInfo)
   countArgument: nextArgument = math.addInt64(argumentIndex, 1)
   set argumentIndex nextArgument
@@ -2822,6 +2852,7 @@ op collectOwned "Enter the regions of an operation as values, and check its call
   input op OpInfo copied
   input opIndex Int64 copied
   input types Types borrowed
+  input members Members borrowed
   input typeNames TypeNames borrowed
   input params Params borrowed
   input targets Targets borrowed
@@ -2874,7 +2905,7 @@ op collectOwned "Enter the regions of an operation as values, and check its call
   callOrTask: runs = logic.or(isCall, isTask)
   if runs enterCall eachCall
 :enterCall in=eachCall
-  checkTheCall: checkCall(source, words, rows, callEntity, types, typeNames, params, targets, values, constants, calls, arguments) ?^
+  checkTheCall: checkCall(source, words, rows, callEntity, types, members, typeNames, params, targets, values, constants, calls, arguments) ?^
   goto eachCall
 :done
   return
@@ -3339,7 +3370,7 @@ op checkOperation "Check one operation: its inputs, lets, labels, regions, calls
   readEntityIndex: entityIndex = OpInfo.entity(op)
   readEntity: entity = model.Entities.getOrTrap(entities, entityIndex)
   rowsCheck: collectRows(source, words, rows, entity, types, typeNames, params, targets, values, constants, labels) ?^
-  ownedCheck: collectOwned(source, words, rows, entities, owners, op, opIndex, types, typeNames, params, targets, values, constants, calls, arguments) ?^
+  ownedCheck: collectOwned(source, words, rows, entities, owners, op, opIndex, types, members, typeNames, params, targets, values, constants, calls, arguments) ?^
   stepsCheck: collectSteps(source, words, rows, entity, types, members, targets, op, values, constants, calls, arguments, labels, steps, typeNames) ?^
   return
 

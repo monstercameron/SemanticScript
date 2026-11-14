@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+maps is project
+maps purpose "Count words in a map and keep records by name in another; a stage0 sample both runs agree on"
+maps target console
+maps version "0.1.0"
+maps language refined 1
+maps standardLibrary 1
+maps allows write console.stdout none
+maps requires none
+maps includesModule maps
+maps entry maps.main

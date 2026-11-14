@@ -32,19 +32,26 @@ source is checked by it like any other program.
 
 ## The self-hosting subset
 
-Measured from the compiler's own source (stage0, 15,735 rows):
+Measured from the compiler's own source (stage0's six modules, 54,469 rows;
+`docs/refined-examples/stage0/tools/usage.py` lists every use and finds none
+outside the subset):
 
-- Entities: `module`, `operation`, `record`, `enum` with payloads,
-  `typeInstance` (`list.List`, `map.Map` with `String` keys), `table`,
-  `constant`, `capability`, `region`, `task`, `operationType`.
+- Entities: `module` (six, in one project), `operation`, `record`, `enum`
+  with payloads, `typeInstance` (`list.List`, `map.Map` with `String` keys),
+  `table`, `constant`, `capability`, `region`, `task`, `operationType`.
 - Steps: `do`, `set`, `goto`, `branch if`, `branch ifError`, `branch ifNext`,
   `match` and `case`, `return ok`, `return error`, `start`, `join`.
-- Loops: plain labels, `forEach` over lists and tables, `while`.
-- Library targets: about 120 from `string`, `buffer`, `byte`, `compare`,
-  `math`, `logic`, `convert`, `console`, `fs`, `process`, `time`; derived
-  targets `<Record>.new`, `<Record>.<field>`, `<Record>.with`,
-  `<Enum>.<variant>`, `<List>.new/append/length/getOrTrap`,
-  `<Map>.new/put/get/contains`, `<table>.rowAt`.
+- Loops: plain labels, `forEach` over lists, maps, and tables, `while`.
+- Library targets: 48 from `string` (with `string.Position` and
+  `advancePosition`), `buffer`, `byte`, `compare`, `math`, `logic`,
+  `convert`, `console`, `fs` (`readAll`, `writeAll`, `createDirectory`),
+  `process` (`run`, arguments), and `time.Deadline.after`; derived targets
+  `<Record>.new`, `<Record>.<field>`, `<Enum>.<variant>`,
+  `<List>.new/append/length/get/getOrTrap/set`,
+  `<Map>.new/put/get/contains/length`, `<table>.rowAt`, and calls through
+  an operation reference (`invokesReference`). stage0 also compiles
+  `<Record>.with`, `<Map>.remove`, and the rest of the targets its samples
+  use: 72 standard library targets in all.
 
 The subset grows only as the compiler's own source needs it.
 
@@ -56,7 +63,11 @@ The subset grows only as the compiler's own source needs it.
   64-bit slots exactly as `codegen.py` does; traps go through `refined_trap`
   so messages match the JIT; regions use the runtime's arena functions.
 - The compiler is several modules (lexer, syntax, model, subset checker, C
-  emitter, driver), each with module tests for every exported invariant.
+  emitter, driver), each with module tests for every exported invariant. It
+  compiles a project: build.sem's modules, read in order and checked one
+  after another as one program, each seeing the names of the modules above
+  it as `<module>.<name>`, written as one C file in which every declared
+  name is `<module>_<name>` (D-114 to D-118).
 - Its source is long because the syntax is explicit (about 17 rows per
   call, D-113). Generator scripts that write it are kept in `tools/` beside
   the source they produce, so a reader can regenerate and diff.
@@ -68,5 +79,5 @@ The subset grows only as the compiler's own source needs it.
 | 0 | One module, `main` only; `Int64`, `String`, `Bool`, `ExitCode`; 22 targets; every step and loop kind but `forEach` | Done; builds natively and emits byte-identical C (tests/test_stage0.py); builds 3 of 52 suite programs (tests/test_selfhost_suite.py) |
 | 1 | Several operations with inputs and outputs, calls between them, recursion; records; enums with payloads and `match`; `raises` | Done: copied, borrowed, and borrowedMutable inputs, outputs owned by a region input, `raises` an enum of the module, `maxRecursion`; the C links `native_runtime.c` |
 | 2 | Lists in regions, `forEach`, tables; string targets; constants of every type | Done but for constants of record and enum types: `list.List` (`new`, `append`, `length`, `get`, `getOrTrap`), tables (`rowAt`, `length`, `forEach`), string, byte, and conversion targets; builds 12 of 52 suite programs |
-| 3 | Host targets through `refined_host` (buffer, map, fs, process, console, time); several modules; tasks | In progress: `buffer`, process arguments, `string.fromBytes`, `time.sleep`, and `log` through `refined_host`; tasks run when started; not yet `map.Map`, targets checked against a capability scope (`fs`, `process.run`), `operationType`, or several modules |
-| 4 | Its own source: compile every compiler module; then the fixed point | Planned |
+| 3 | Host targets through `refined_host` (buffer, map, fs, process, console, time); several modules; tasks | Done: projects of several modules (build.sem, `<module>.<name>`); `map.Map` with String keys and values flattened as the LLVM backend flattens them; `forEach` over a map's keys; scoped targets (`fs.readAll`, `fs.writeAll`, `fs.createDirectory`, `process.run`) given the grant scope text; `operationType` and `invokesReference`; `string.Position`; `list.set` and `<Record>.with`; operations raising standard errors; builds 14 of 52 suite programs |
+| 4 | Its own source: compile every compiler module; then the fixed point | Done: the native stage0 compiles its own project into stage0b, stage0b compiles every sample to byte-identical C and executables that behave the same, and stage0b compiles stage0 again to byte-identical C (tests/test_bootstrap.py) |

@@ -2273,6 +2273,49 @@ unknown SKU handled as exit 7), the report's path and labels are module
 constants (D-103), the report read back is checked with `string.contains`
 (D-110), and its order tests share a helper in the test file (D-112).
 
+## stage0 compiles itself (2026-11-14)
+
+stage0 (`docs/refined-examples/stage0`) now compiles its own six modules, and
+the compiler it builds compiles them again to the same C (the fixed point,
+`tests/test_bootstrap.py`). What that took, decided by delegation; none of
+it changes the language, only how the self-hosted compiler reads and writes
+a program:
+
+- **D-114** stage0 compiles a project, not a file. It reads build.sem's
+  `includesModule` rows and `entry <module>.main`, reads each module's file,
+  and checks and writes the modules one after another as one program and
+  one C file. Each module is checked with its own names plus the names of
+  the modules included above it, spelled `<module>.<name>`; a module may
+  not refer to one included below it (it is refused at the name). Every
+  name a module declares is written in C as `<module>_<name>`, so modules
+  may share names. A diagnostic names the module's file and the line in
+  that file. A project that requires another project, or includes a module
+  with a dotted path, is refused at build.sem's row.
+- **D-115** `string.Position` is a record of the standard library. stage0
+  declares it in a module of its own, `string`, which it puts before every
+  program's modules, so it is the first declared type (12) and its members
+  (`new`, `offset`, `line`, `column`) are ordinary record members;
+  `string.advancePosition` is written in C over its fields (D-71's rules).
+- **D-116** A map is the host's map in C as under the JIT: each map type
+  gets helpers that call `refined_host` with keys `map.Map.<member>|...`,
+  its String keys passed as a pointer and a length and its values flattened
+  to 64-bit slots exactly as the LLVM backend flattens them (`fl_<Type>` and
+  `uf_<Type>` for records and enums). A stored record or enum that holds
+  text is copied into the map's region first (D-107). `forEach` over a map
+  reads its keys in the order they were first put (D-62).
+- **D-117** An operation may raise an error enum of the standard library
+  (`raises string.StringIndexError`). Since a program can only branch on
+  such an error or pass it on, never match it, stage0 treats every standard
+  error as one opaque type and passes its value through the error out
+  pointer unchanged.
+- **D-118** A value of an `operationType` is a C function pointer of the
+  operation signature stage0 writes; a `let` of that type names an
+  operation, and `invokesReference` calls through the value. A call of a
+  scoped host target (`fs.readAll`, `fs.writeAll`, `fs.createDirectory`,
+  `process.run`) passes the scope text the LLVM backend passes (D-38):
+  `<verb> <resource>`, then the scope of each grant of it in the
+  capabilities the calling operation uses.
+
 ## Data structures for self-hosting (2026-11-14)
 
 A compiler written in the language needs tokens and AST nodes (records and
@@ -2762,6 +2805,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-100 to D-106 | Sound positions, trapping twins, stacks, module constants, table access, replace for nested values, linear checking |
 | 2026-11-14 | D-107 to D-109 | Collections keep what they store alive; adversarial review: results, errors, generics, `set`, and resource fields stay in their regions; approval, test runner, cache, and file identity read the program as the compiler does |
 | 2026-11-14 | D-110 to D-113 | From writing stage0: `string.contains`, `<table>.find`, helpers in test files; error propagation stays explicit |
+| 2026-11-14 | D-114 to D-118 | stage0 compiles itself: projects of several modules, `string.Position` as a declared record, maps through the host, standard errors passed on, operation references and scoped host targets in C (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

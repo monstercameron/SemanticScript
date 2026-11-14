@@ -628,7 +628,16 @@ class OpBuilder:
             raise GenError(f"{self.name}: cannot read statement: {line}")
         cname, result, target, argtext, mark = mt.groups()
         reference = None
-        if target.startswith("*"):
+        if target.endswith(".with"):
+            # `<Record>.with`: the record, then one slot named by the field it changes (`field:value`)
+            canon = self.prog.canon(self.m, target[:-len(".with")]) if not target.count(".") > 1 else \
+                target[:-len(".with")]
+            field, _sep, _v = split_args(argtext)[1].partition(":")
+            ftype = dict(self.prog.fields(canon))[field]
+            sig = S([P("record", canon, self.prog.read_mode(canon)), P(field, ftype, self.prog.read_mode(ftype))],
+                    canon)
+            argtext = ", ".join([split_args(argtext)[0], _v])
+        elif target.startswith("*"):
             # a call through a value of an operationType: `invokesReference <value>`
             reference = target[1:]
             sig = self.prog.optype_sig(self.type_of(reference))

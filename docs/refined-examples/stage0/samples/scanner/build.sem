@@ -1,0 +1,13 @@
+# A stage0 sample program (docs/refined-examples/stage0/samples). Run it with
+# `refined run`, or compile it with stage0 and run what stage0 builds.
+
+scanner is project
+scanner purpose "Step through text by rules passed as values, and change a list in place; a stage0 sample both runs agree on"
+scanner target console
+scanner version "0.1.0"
+scanner language refined 1
+scanner standardLibrary 1
+scanner allows write console.stdout none
+scanner requires none
+scanner includesModule scanner
+scanner entry scanner.main

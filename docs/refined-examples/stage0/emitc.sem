@@ -1,35 +1,43 @@
-# The stage0 compiler's back end: a checked module written as one C file, to
+# The stage0 compiler's back end: a checked program written as one C file, to
 # be linked with the runtime of refined executables
 # (semanticscript/compiler/refined/native_runtime.c), which writes output,
-# traps with exit code 70, and keeps regions as `refined build --kind
-# executable` programs do. The file is:
+# traps with exit code 70, keeps regions, and runs the host library as
+# `refined build --kind executable` programs do. The file is:
 #
 # - a fixed prelude: declarations of the runtime functions it calls, text as a
-#   pointer and a length, the checked arithmetic, and lists (a header
-#   {length, capacity, data, region, identity} and a data block that starts at
-#   four items and doubles, allocated in the list's region as the LLVM backend
-#   allocates them, so a region's maxBytes is reached at the same call);
-# - each record as a struct of its fields (`m_<field>`), each enum as a struct
-#   of an `int32_t tag` and either one `int64_t payload` (the narrow layout,
-#   when every payload is an integer, a Bool, or an enum without payloads) or
-#   one field per payload (`p_<variant>`), the LLVM backend's layouts, so
-#   sizes agree; `rl_<Type>` for a type that holds text, which copies the text
-#   into a region (as a list does with what it stores, and a return with an
-#   output owned by a region); `la_`, `lg_`, and `lt_<List>` for each list's
-#   append, get, and getOrTrap; each table as a static array `tb_<table>` of
-#   its rows and `tr_<table>` reading row 1 to n;
-# - module constants as static C values;
-# - each operation as `static ... o_<name>(...)`: it returns its output, or,
-#   when it raises, a bool that is true on failure with the output and error
-#   written through `ss_out` and `ss_err`. Its values are C locals `v_<name>`,
-#   each call that can fail has a flag `f_<call>`, each bounded loop a counter
-#   `n_<label>`, each forEach loop a position `i_<label>`, and each label a C
-#   label `l_<label>` followed by its steps. A recursive operation counts its
-#   depth in `d_<name>` and traps past its maxRecursion. A target of the host
+#   pointer and a length, the checked arithmetic, string.advancePosition, and
+#   lists (a header {length, capacity, data, region, identity} and a data block
+#   that starts at four items and doubles, allocated in the list's region as
+#   the LLVM backend allocates them, so a region's maxBytes is reached at the
+#   same call);
+# - then each module in source order. Every name a module declares is written
+#   `<module>_<name>` (D-114). Each record is a struct of its fields
+#   (`m_<field>`), each enum a struct of an `int32_t tag` and either one
+#   `int64_t payload` (the narrow layout, when every payload is an integer, a
+#   Bool, or an enum without payloads) or one field per payload (`p_<variant>`),
+#   the LLVM backend's layouts, so sizes agree; `rl_<Type>` for a type that
+#   holds text, which copies the text into a region (as a collection does with
+#   what it stores, and a return with an output owned by a region);
+#   `fl_<Type>` and `uf_<Type>`, which flatten a value to the 64-bit slots
+#   the host reads and read it back; `la_`, `lg_`, `lt_`, and `ls_<List>` for
+#   each list's append, get, getOrTrap, and set; `mn_`, `mp_`, `mg_`, `mc_`,
+#   `mr_`, `ml_`, and `mk_<Map>` for each map's members, calls of the host's
+#   map (D-116); each operationType as a function pointer type; each table as
+#   a static array `tb_<table>` of its rows and `tr_<table>` reading row 1 to
+#   n; the module's constants as static C values `k_<module>_<name>`; and
+#   each operation as `static ... o_<module>_<name>(...)`: it returns its
+#   output, or, when it raises, a bool that is true on failure with the output
+#   and error written through `ss_out` and `ss_err`. Its values are C locals
+#   `v_<name>` (its module's constants among them), each call that can fail
+#   has a flag `f_<call>`, each bounded loop a counter `n_<label>`, each
+#   forEach loop a position `i_<label>`, and each label a C label `l_<label>`
+#   followed by its steps. A recursive operation counts its depth in
+#   `d_<module>_<name>` and traps past its maxRecursion. A target of the host
 #   library is one call of the runtime's `refined_host`, its arguments and
-#   result flattened to 64-bit slots as the LLVM backend flattens them;
-# - a C `main` that hands the command line to the runtime and returns main's
-#   ExitCode.
+#   result flattened to 64-bit slots as the LLVM backend flattens them, a
+#   scoped target's last argument the scope text (D-38);
+# - a C `main` that hands the command line to the runtime and returns the
+#   entry operation's ExitCode.
 #
 # A jump to a bounded loop header counts the pass when it comes from inside
 # the loop (from the header or a block within it) and resets the count (and a
@@ -37,8 +45,8 @@
 # LLVM backend follows, so a loop that passes its bound traps in C as it does
 # under `refined run`.
 #
-# This module is generated from a shorter description by a generator kept
-# outside the repository; it is ordinary SemanticScript and is edited as such.
+# This module is generated from tools/emitc.dsl by tools/build.py; it is
+# ordinary SemanticScript and is checked as such.
 
 emitc is module
 emitc purpose "Write a checked stage0 program as one C file"
@@ -14110,6 +14118,12 @@ putCall label mapRemoveCall loopKind none
 putCall label mapRemoveCall within none
 putCall label mapLengthCall loopKind none
 putCall label mapLengthCall within none
+putCall label recordWithCall loopKind none
+putCall label recordWithCall within none
+putCall label withValue loopKind none
+putCall label withValue within none
+putCall label withNothing loopKind none
+putCall label withNothing within none
 putCall label outArguments loopKind none
 putCall label outArguments within none
 putCall label outAddress loopKind none
@@ -14162,6 +14176,9 @@ putCall let mapGetPrefix String "mg_" immutable
 putCall let mapContainsPrefix String "mc_" immutable
 putCall let mapRemovePrefix String "mr_" immutable
 putCall let mapLengthPrefix String "ml_" immutable
+putCall let one Int64 1 immutable
+putCall let statementEnd String "; " immutable
+putCall let nothingText String "(void)0" immutable
 putCall let lineEnd String ";\n" immutable
 putCall at begin do readName
 putCall at begin do readTarget
@@ -14193,6 +14210,7 @@ putCall at begin case subset.TargetKind.mapContains bind none none goto inline
 putCall at begin case subset.TargetKind.mapRemove bind none none goto inline
 putCall at begin case subset.TargetKind.mapLength bind none none goto inline
 putCall at begin case subset.TargetKind.reference bind none none goto inline
+putCall at begin case subset.TargetKind.recordWith bind none none goto inline
 putCall at hostCheck do readHostRow
 putCall at hostCheck branch ifError readHostRow goto lost else goto readHostRowDone
 putCall at readHostRowDone do readHost
@@ -14231,6 +14249,7 @@ putCall at dispatch case subset.TargetKind.mapGet bind none none goto mapGetCall
 putCall at dispatch case subset.TargetKind.mapContains bind none none goto mapContainsCall
 putCall at dispatch case subset.TargetKind.mapRemove bind none none goto mapRemoveCall
 putCall at dispatch case subset.TargetKind.mapLength bind none none goto mapLengthCall
+putCall at dispatch case subset.TargetKind.recordWith bind none none goto recordWithCall
 putCall at builtinCall do readSpelling
 putCall at builtinCall branch ifError readSpelling goto lost else goto readSpellingDone
 putCall at readSpellingDone do readBefore
@@ -14370,21 +14389,35 @@ putCall at mapRemoveCall goto helperArguments
 putCall at mapLengthCall do doAppendString42
 putCall at mapLengthCall do putMapLengthName
 putCall at mapLengthCall goto helperArguments
-putCall at outArguments do doAppendString43
+putCall at recordWithCall branch if hasResult goto withValue else goto withNothing
+putCall at withValue do readWithRecord
+putCall at withValue do readWithValue
+putCall at withValue do readWithField
+putCall at withValue do putWithRecord
+putCall at withValue do doAppendString43
+putCall at withValue do putWithResult
+putCall at withValue do doAppendString44
+putCall at withValue do doPutWord4
+putCall at withValue do doAppendString45
+putCall at withValue do putWithNew
+putCall at withValue goto finish
+putCall at withNothing do doAppendString46
+putCall at withNothing goto finish
+putCall at outArguments do doAppendString47
 putCall at outArguments branch if hasResult goto outAddress else goto outNull
-putCall at outAddress do doAppendString44
+putCall at outAddress do doAppendString48
 putCall at outAddress do putHelperOut
 putCall at outAddress goto outRest
-putCall at outNull do doAppendString45
+putCall at outNull do doAppendString49
 putCall at outNull goto outRest
 putCall at outRest do putOutArguments
-putCall at outRest do doAppendString46
+putCall at outRest do doAppendString50
 putCall at outRest goto finish
-putCall at helperArguments do doAppendString47
+putCall at helperArguments do doAppendString51
 putCall at helperArguments do putHelperArguments
-putCall at helperArguments do doAppendString48
+putCall at helperArguments do doAppendString52
 putCall at helperArguments goto finish
-putCall at finish do doAppendString49
+putCall at finish do doAppendString53
 putCall at finish return ok none
 putCall at lost do makeLost
 putCall at lost return error lostError
@@ -15833,11 +15866,61 @@ putMapLengthName borrows none
 putMapLengthName catch none
 putMapLengthName suppresses none
 
+readWithRecord is call
+readWithRecord in putCall
+readWithRecord invokes argumentAt
+readWithRecord argument arguments subset.Arguments arguments lend
+readWithRecord argument info subset.CallInfo info copy
+readWithRecord argument position Int64 zero copy
+readWithRecord result withRecord syntax.Word
+readWithRecord ownedBy none
+readWithRecord cleanedBy none
+readWithRecord borrows none
+readWithRecord catch none
+readWithRecord suppresses none
+
+readWithValue is call
+readWithValue in putCall
+readWithValue invokes argumentAt
+readWithValue argument arguments subset.Arguments arguments lend
+readWithValue argument info subset.CallInfo info copy
+readWithValue argument position Int64 one copy
+readWithValue result withNew syntax.Word
+readWithValue ownedBy none
+readWithValue cleanedBy none
+readWithValue borrows none
+readWithValue catch none
+readWithValue suppresses none
+
+readWithField is call
+readWithField in putCall
+readWithField invokes subset.CallInfo.reference
+readWithField argument record subset.CallInfo info copy
+readWithField result withField syntax.Word
+readWithField ownedBy none
+readWithField cleanedBy none
+readWithField borrows none
+readWithField catch none
+readWithField suppresses none
+
+putWithRecord is call
+putWithRecord in putCall
+putWithRecord invokes putValue
+putWithRecord argument buffer buffer.ByteBuffer buffer lendMutable
+putWithRecord argument source String source lend
+putWithRecord argument word syntax.Word withRecord copy
+putWithRecord result none
+putWithRecord ownedBy none
+putWithRecord cleanedBy none
+putWithRecord borrows none
+putWithRecord catch none
+putWithRecord suppresses none
+
 doAppendString43 is call
 doAppendString43 in putCall
 doAppendString43 invokes buffer.appendString
 doAppendString43 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString43 argument text String open lend
+doAppendString43 argument text String statementEnd lend
 doAppendString43 result none
 doAppendString43 ownedBy none
 doAppendString43 cleanedBy none
@@ -15845,11 +15928,24 @@ doAppendString43 borrows none
 doAppendString43 catch none
 doAppendString43 suppresses none
 
+putWithResult is call
+putWithResult in putCall
+putWithResult invokes putValue
+putWithResult argument buffer buffer.ByteBuffer buffer lendMutable
+putWithResult argument source String source lend
+putWithResult argument word syntax.Word result copy
+putWithResult result none
+putWithResult ownedBy none
+putWithResult cleanedBy none
+putWithResult borrows none
+putWithResult catch none
+putWithResult suppresses none
+
 doAppendString44 is call
 doAppendString44 in putCall
 doAppendString44 invokes buffer.appendString
 doAppendString44 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString44 argument text String address lend
+doAppendString44 argument text String fieldPrefix lend
 doAppendString44 result none
 doAppendString44 ownedBy none
 doAppendString44 cleanedBy none
@@ -15857,24 +15953,24 @@ doAppendString44 borrows none
 doAppendString44 catch none
 doAppendString44 suppresses none
 
-putHelperOut is call
-putHelperOut in putCall
-putHelperOut invokes putValue
-putHelperOut argument buffer buffer.ByteBuffer buffer lendMutable
-putHelperOut argument source String source lend
-putHelperOut argument word syntax.Word result copy
-putHelperOut result none
-putHelperOut ownedBy none
-putHelperOut cleanedBy none
-putHelperOut borrows none
-putHelperOut catch none
-putHelperOut suppresses none
+doPutWord4 is call
+doPutWord4 in putCall
+doPutWord4 invokes syntax.putWord
+doPutWord4 argument buffer buffer.ByteBuffer buffer lendMutable
+doPutWord4 argument source String source lend
+doPutWord4 argument word syntax.Word withField copy
+doPutWord4 result none
+doPutWord4 ownedBy none
+doPutWord4 cleanedBy none
+doPutWord4 borrows none
+doPutWord4 catch none
+doPutWord4 suppresses none
 
 doAppendString45 is call
 doAppendString45 in putCall
 doAppendString45 invokes buffer.appendString
 doAppendString45 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString45 argument text String null lend
+doAppendString45 argument text String assign lend
 doAppendString45 result none
 doAppendString45 ownedBy none
 doAppendString45 cleanedBy none
@@ -15882,28 +15978,24 @@ doAppendString45 borrows none
 doAppendString45 catch none
 doAppendString45 suppresses none
 
-putOutArguments is call
-putOutArguments in putCall
-putOutArguments invokes putArguments
-putOutArguments argument buffer buffer.ByteBuffer buffer lendMutable
-putOutArguments argument source String source lend
-putOutArguments argument arguments subset.Arguments arguments lend
-putOutArguments argument info subset.CallInfo info copy
-putOutArguments argument between String comma lend
-putOutArguments argument skipRegions Bool no copy
-putOutArguments argument started Bool yes copy
-putOutArguments result none
-putOutArguments ownedBy none
-putOutArguments cleanedBy none
-putOutArguments borrows none
-putOutArguments catch none
-putOutArguments suppresses none
+putWithNew is call
+putWithNew in putCall
+putWithNew invokes putValue
+putWithNew argument buffer buffer.ByteBuffer buffer lendMutable
+putWithNew argument source String source lend
+putWithNew argument word syntax.Word withNew copy
+putWithNew result none
+putWithNew ownedBy none
+putWithNew cleanedBy none
+putWithNew borrows none
+putWithNew catch none
+putWithNew suppresses none
 
 doAppendString46 is call
 doAppendString46 in putCall
 doAppendString46 invokes buffer.appendString
 doAppendString46 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString46 argument text String close lend
+doAppendString46 argument text String nothingText lend
 doAppendString46 result none
 doAppendString46 ownedBy none
 doAppendString46 cleanedBy none
@@ -15923,6 +16015,84 @@ doAppendString47 borrows none
 doAppendString47 catch none
 doAppendString47 suppresses none
 
+doAppendString48 is call
+doAppendString48 in putCall
+doAppendString48 invokes buffer.appendString
+doAppendString48 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString48 argument text String address lend
+doAppendString48 result none
+doAppendString48 ownedBy none
+doAppendString48 cleanedBy none
+doAppendString48 borrows none
+doAppendString48 catch none
+doAppendString48 suppresses none
+
+putHelperOut is call
+putHelperOut in putCall
+putHelperOut invokes putValue
+putHelperOut argument buffer buffer.ByteBuffer buffer lendMutable
+putHelperOut argument source String source lend
+putHelperOut argument word syntax.Word result copy
+putHelperOut result none
+putHelperOut ownedBy none
+putHelperOut cleanedBy none
+putHelperOut borrows none
+putHelperOut catch none
+putHelperOut suppresses none
+
+doAppendString49 is call
+doAppendString49 in putCall
+doAppendString49 invokes buffer.appendString
+doAppendString49 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString49 argument text String null lend
+doAppendString49 result none
+doAppendString49 ownedBy none
+doAppendString49 cleanedBy none
+doAppendString49 borrows none
+doAppendString49 catch none
+doAppendString49 suppresses none
+
+putOutArguments is call
+putOutArguments in putCall
+putOutArguments invokes putArguments
+putOutArguments argument buffer buffer.ByteBuffer buffer lendMutable
+putOutArguments argument source String source lend
+putOutArguments argument arguments subset.Arguments arguments lend
+putOutArguments argument info subset.CallInfo info copy
+putOutArguments argument between String comma lend
+putOutArguments argument skipRegions Bool no copy
+putOutArguments argument started Bool yes copy
+putOutArguments result none
+putOutArguments ownedBy none
+putOutArguments cleanedBy none
+putOutArguments borrows none
+putOutArguments catch none
+putOutArguments suppresses none
+
+doAppendString50 is call
+doAppendString50 in putCall
+doAppendString50 invokes buffer.appendString
+doAppendString50 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString50 argument text String close lend
+doAppendString50 result none
+doAppendString50 ownedBy none
+doAppendString50 cleanedBy none
+doAppendString50 borrows none
+doAppendString50 catch none
+doAppendString50 suppresses none
+
+doAppendString51 is call
+doAppendString51 in putCall
+doAppendString51 invokes buffer.appendString
+doAppendString51 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString51 argument text String open lend
+doAppendString51 result none
+doAppendString51 ownedBy none
+doAppendString51 cleanedBy none
+doAppendString51 borrows none
+doAppendString51 catch none
+doAppendString51 suppresses none
+
 putHelperArguments is call
 putHelperArguments in putCall
 putHelperArguments invokes putArguments
@@ -15940,29 +16110,29 @@ putHelperArguments borrows none
 putHelperArguments catch none
 putHelperArguments suppresses none
 
-doAppendString48 is call
-doAppendString48 in putCall
-doAppendString48 invokes buffer.appendString
-doAppendString48 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString48 argument text String close lend
-doAppendString48 result none
-doAppendString48 ownedBy none
-doAppendString48 cleanedBy none
-doAppendString48 borrows none
-doAppendString48 catch none
-doAppendString48 suppresses none
+doAppendString52 is call
+doAppendString52 in putCall
+doAppendString52 invokes buffer.appendString
+doAppendString52 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString52 argument text String close lend
+doAppendString52 result none
+doAppendString52 ownedBy none
+doAppendString52 cleanedBy none
+doAppendString52 borrows none
+doAppendString52 catch none
+doAppendString52 suppresses none
 
-doAppendString49 is call
-doAppendString49 in putCall
-doAppendString49 invokes buffer.appendString
-doAppendString49 argument buffer buffer.ByteBuffer buffer lendMutable
-doAppendString49 argument text String lineEnd lend
-doAppendString49 result none
-doAppendString49 ownedBy none
-doAppendString49 cleanedBy none
-doAppendString49 borrows none
-doAppendString49 catch none
-doAppendString49 suppresses none
+doAppendString53 is call
+doAppendString53 in putCall
+doAppendString53 invokes buffer.appendString
+doAppendString53 argument buffer buffer.ByteBuffer buffer lendMutable
+doAppendString53 argument text String lineEnd lend
+doAppendString53 result none
+doAppendString53 ownedBy none
+doAppendString53 cleanedBy none
+doAppendString53 borrows none
+doAppendString53 catch none
+doAppendString53 suppresses none
 
 makeLost is call
 makeLost in putCall
@@ -21060,6 +21230,7 @@ emitProgram at findEntryDone case subset.TargetKind.mapContains bind none none g
 emitProgram at findEntryDone case subset.TargetKind.mapRemove bind none none goto noEntry
 emitProgram at findEntryDone case subset.TargetKind.mapLength bind none none goto noEntry
 emitProgram at findEntryDone case subset.TargetKind.reference bind none none goto noEntry
+emitProgram at findEntryDone case subset.TargetKind.recordWith bind none none goto noEntry
 emitProgram at entryOperation do readOwner
 emitProgram at entryOperation do readEntryOp
 emitProgram at entryOperation do doAppendString2
