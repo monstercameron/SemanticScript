@@ -108,6 +108,10 @@ Also: `mutation:catch-missing`, `mutation:catch-wrong-type`, `mutation:raise-und
 | --- | --- | --- |
 | `cleanup-deferred-twice` | rejected: R510 | deferring the report's cleanup twice |
 | `cleanup-before-acquire` | rejected: R507, R513 | deferring the cleanup before the file is open |
+| `cleanup-order` | runs | two deferred cleanups run at the return, newest first |
+| `partial-initialization` | runs | the second file fails to open: only the first file's cleanup exists, and only it runs |
+| `cleanup-fails-trap` | traps | a cleanup that fails under `onError trap` stops the program; the older cleanup does not run |
+| `cleanup-fails-suppress` | runs | a cleanup that fails under `onError suppress` is passed over; the handle is consumed and the older cleanup still runs |
 | `cleanup-missing` | rejected: R513, R510 | never deferring the report's cleanup |
 
 Also: `mutation:cleanup-not-deferred`, `mutation:cleanup-wrong-value`, `mutation:cleanup-suppress-without-reason`, `mutation:cleanup-before-acquire`, `case:07-memory/cleanup-on-error`, `case:06-recursion/recursive-cleanup`, `case:07-memory/resources`.

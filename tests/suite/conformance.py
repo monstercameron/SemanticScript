@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.join(HERE, "conformance", "warehouse")
-BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups")}
+BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups"),
+         "cleanups": os.path.join(HERE, "conformance", "cleanups")}
 DOC = os.path.join(HERE, "..", "..", "docs", "safety-guarantees.md")
 
 W, P, B = "warehouse.sem", "pricing.sem", "build.sem"
@@ -35,6 +36,7 @@ class Check:
     detail: str = ""  # reject: text of the rule's own diagnostic; trap: text in stderr; run: a stdout line
     base: str = "warehouse"  # which program in tests/suite/conformance the edits apply to
     exit: int = 0  # run: the exit code
+    lines: tuple = ()  # run and trap: the exact stdout, line by line, when the order matters
 
 
 @dataclass(frozen=True)
@@ -131,6 +133,15 @@ announceTest at failed return ok none
 ''' + _call("runAnnounce", "announceTest", "announce", ("text String notice lend",),
              catch="announceError console.WriteError") + "\n\n" + _call(
     "failWrite", "announceTest", "test.fail", ("message String failedText lend",))
+FAILING = (("cleanups.sem", "closeSecond invokes closeNoting\ncloseSecond argument file fs.FileHandle second give\n"
+                 "closeSecond argument note String secondNote lend",
+                 "closeSecond invokes closeFailing\ncloseSecond argument file fs.FileHandle second give"),
+                ("cleanups.sem", "closeSecond catch closeSecondError fs.FileError",
+                 "closeSecond catch closeSecondError CloseError"),
+                ("cleanups.sem", 'main let secondNote String "closing second" immutable\n', ""))
+FAILING_TRAP = FAILING + (("cleanups.sem", "releaseSecond runs closeSecond\nreleaseSecond cleans second\n"
+                                           "releaseSecond onError suppress",
+                           "releaseSecond runs closeSecond\nreleaseSecond cleans second\nreleaseSecond onError trap"),)
 REGION_TEXT = '''
 label is operation
 label purpose "Return text built in this operation's own region"
@@ -357,6 +368,18 @@ GUARANTEES = (
                                                         "main at createNew do openReport\n"),
                (W, "main at opened defer closeReportCleanup\n", "")),
               ("R507", "R513"), "may not be set here"),
+        Check("cleanup-order", "run", "two deferred cleanups run at the return, newest first", (), (), "body",
+              base="cleanups", lines=("body", "closing second", "closing first")),
+        Check("partial-initialization", "run", "the second file fails to open: only the first file's cleanup "
+              "exists, and only it runs", (("cleanups.sem", 'main let secondPath String "cleanup-second.txt" immutable',
+                                            'main let secondPath String "cleanup-missing/second.txt" immutable'),),
+              (), "closing first", base="cleanups", exit=1, lines=("closing first",)),
+        Check("cleanup-fails-trap", "trap", "a cleanup that fails under `onError trap` stops the program; the "
+              "older cleanup does not run", FAILING_TRAP, (), "failed (onError trap)", base="cleanups",
+              lines=("body",)),
+        Check("cleanup-fails-suppress", "run", "a cleanup that fails under `onError suppress` is passed over; the "
+              "handle is consumed and the older cleanup still runs", FAILING, (), "closing first",
+              base="cleanups", lines=("body", "closing first")),
         Check("cleanup-missing", "reject", "never deferring the report's cleanup",
               ((W, "main at opened defer closeReportCleanup\n", ""),), ("R513", "R510"), "may still be owned"),
     ), ("mutation:cleanup-not-deferred", "mutation:cleanup-wrong-value", "mutation:cleanup-suppress-without-reason",

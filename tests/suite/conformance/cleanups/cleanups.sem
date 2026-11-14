@@ -1,0 +1,229 @@
+# Opens `cleanup-first.txt` then `cleanup-second.txt`, defers a cleanup for each,
+# prints "body", and returns. The cleanups run at the return, newest first, so the
+# output is: body, closing second, closing first. `closeFailing` closes its file
+# and then reports a failure, for the conformance checks of `onError`.
+
+cleanups is module
+cleanups purpose "Release two files with deferred cleanups and show their order"
+cleanups path cleanups
+cleanups imports standard.console
+cleanups imports standard.fs
+cleanups exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+cleanupFiles is capability
+cleanupFiles purpose "Authority to create files whose names start with cleanup-"
+cleanupFiles grants write fs.files "cleanup-*"
+
+CloseError is enum
+CloseError purpose "A close that was made to fail, for the cleanup-failure checks"
+CloseError typeParameter none
+CloseError variant refused none
+
+closeNoting is operation
+closeNoting purpose "Say which file is being closed, then close it"
+closeNoting invariant none
+closeNoting typeParameter none
+closeNoting input file fs.FileHandle owned
+closeNoting input note String borrowed
+closeNoting output none
+closeNoting outputOwnedBy none
+closeNoting raises fs.FileError
+closeNoting effect write console.stdout
+closeNoting uses stdoutWriter
+closeNoting memoryHeap false
+closeNoting async false
+closeNoting maxRecursion none
+closeNoting label begin loopKind none
+closeNoting label begin within none
+closeNoting label closing loopKind none
+closeNoting label closing within none
+closeNoting label failed loopKind none
+closeNoting label failed within none
+closeNoting label closed loopKind none
+closeNoting label closed within none
+closeNoting let none
+closeNoting at begin do sayNote
+closeNoting at begin branch ifError sayNote goto closing else goto closing
+closeNoting at closing do closeIt
+closeNoting at closing branch ifError closeIt goto failed else goto closed
+closeNoting at failed return error closeError
+closeNoting at closed return ok none
+
+sayNote is call
+sayNote rationale "The note only reports progress; the file is closed whether or not it could be printed"
+sayNote in closeNoting
+sayNote invokes console.writeLine
+sayNote argument text String note lend
+sayNote result none
+sayNote ownedBy none
+sayNote cleanedBy none
+sayNote borrows none
+sayNote catch noteError console.WriteError
+
+closeIt is call
+closeIt in closeNoting
+closeIt invokes fs.close
+closeIt argument file fs.FileHandle file give
+closeIt result none
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch closeError fs.FileError
+
+closeFailing is operation
+closeFailing purpose "Close a file, then report that closing failed"
+closeFailing invariant none
+closeFailing typeParameter none
+closeFailing input file fs.FileHandle owned
+closeFailing output none
+closeFailing outputOwnedBy none
+closeFailing raises CloseError
+closeFailing effect none
+closeFailing uses none
+closeFailing memoryHeap false
+closeFailing async false
+closeFailing maxRecursion none
+closeFailing label begin loopKind none
+closeFailing label begin within none
+closeFailing label refuse loopKind none
+closeFailing label refuse within none
+closeFailing let none
+closeFailing at begin do closeQuietly
+closeFailing at begin branch ifError closeQuietly goto refuse else goto refuse
+closeFailing at refuse do makeRefused
+closeFailing at refuse return error refused
+
+closeQuietly is call
+closeQuietly rationale "This operation reports a failure in every case, which is what the checks need"
+closeQuietly in closeFailing
+closeQuietly invokes fs.close
+closeQuietly argument file fs.FileHandle file give
+closeQuietly result none
+closeQuietly ownedBy none
+closeQuietly cleanedBy none
+closeQuietly borrows none
+closeQuietly catch quietError fs.FileError
+
+makeRefused is call
+makeRefused in closeFailing
+makeRefused invokes CloseError.refused
+makeRefused argument none
+makeRefused result refused CloseError
+makeRefused ownedBy none
+makeRefused cleanedBy none
+makeRefused borrows none
+makeRefused catch none
+
+main is operation
+main purpose "Open two files, defer a cleanup for each, and return"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main effect write fs.files
+main uses stdoutWriter
+main uses cleanupFiles
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label openedFirst loopKind none
+main label openedFirst within none
+main label openedSecond loopKind none
+main label openedSecond within none
+main label printed loopKind none
+main label printed within none
+main label failed loopKind none
+main label failed within none
+main let firstPath String "cleanup-first.txt" immutable
+main let secondPath String "cleanup-second.txt" immutable
+main let firstNote String "closing first" immutable
+main let secondNote String "closing second" immutable
+main let bodyText String "body" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin do openFirst
+main at begin branch ifError openFirst goto failed else goto openedFirst
+main at openedFirst defer releaseFirst
+main at openedFirst do openSecond
+main at openedFirst branch ifError openSecond goto failed else goto openedSecond
+main at openedSecond defer releaseSecond
+main at openedSecond do printBody
+main at openedSecond branch ifError printBody goto printed else goto printed
+main at printed return ok okCode
+main at failed return ok failCode
+
+openFirst is call
+openFirst in main
+openFirst invokes fs.openAppend
+openFirst argument path String firstPath lend
+openFirst result first fs.FileHandle
+openFirst ownedBy main
+openFirst cleanedBy releaseFirst
+openFirst borrows none
+openFirst catch firstError fs.FileError
+
+releaseFirst is cleanup
+releaseFirst rationale "Closing an empty append handle cannot lose data, so the program goes on"
+releaseFirst in main
+releaseFirst runs closeFirst
+releaseFirst cleans first
+releaseFirst onError suppress
+
+closeFirst is call
+closeFirst in main
+closeFirst invokes closeNoting
+closeFirst argument file fs.FileHandle first give
+closeFirst argument note String firstNote lend
+closeFirst result none
+closeFirst ownedBy none
+closeFirst cleanedBy none
+closeFirst borrows none
+closeFirst catch closeFirstError fs.FileError
+
+openSecond is call
+openSecond in main
+openSecond invokes fs.openAppend
+openSecond argument path String secondPath lend
+openSecond result second fs.FileHandle
+openSecond ownedBy main
+openSecond cleanedBy releaseSecond
+openSecond borrows none
+openSecond catch secondError fs.FileError
+
+releaseSecond is cleanup
+releaseSecond rationale "Closing an empty append handle cannot lose data, so the program goes on"
+releaseSecond in main
+releaseSecond runs closeSecond
+releaseSecond cleans second
+releaseSecond onError suppress
+
+closeSecond is call
+closeSecond in main
+closeSecond invokes closeNoting
+closeSecond argument file fs.FileHandle second give
+closeSecond argument note String secondNote lend
+closeSecond result none
+closeSecond ownedBy none
+closeSecond cleanedBy none
+closeSecond borrows none
+closeSecond catch closeSecondError fs.FileError
+
+printBody is call
+printBody rationale "The cleanups run and report whether or not the body line could be printed"
+printBody in main
+printBody invokes console.writeLine
+printBody argument text String bodyText lend
+printBody result none
+printBody ownedBy none
+printBody cleanedBy none
+printBody borrows none
+printBody catch bodyError console.WriteError

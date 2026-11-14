@@ -1,0 +1,14 @@
+# Conformance base for cleanup order and cleanup failure: two files, each released
+# by a deferred cleanup that says when it runs.
+
+cleanupOrder is project
+cleanupOrder purpose "Show deferred cleanups running newest first, and what a failing cleanup does"
+cleanupOrder target console
+cleanupOrder version "0.1.0"
+cleanupOrder language refined 1
+cleanupOrder standardLibrary 1
+cleanupOrder allows write console.stdout none
+cleanupOrder allows write fs.files "cleanup-*"
+cleanupOrder requires none
+cleanupOrder includesModule cleanups
+cleanupOrder entry cleanups.main
