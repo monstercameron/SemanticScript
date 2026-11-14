@@ -2386,9 +2386,7 @@ op putLocals "Declare an operation's values, failure flags, loop counters and po
   readOrigin: origin = subset.ValueInfo.origin(info)
   readCode: code = subset.ValueInfo.code(info)
   inputCheck: isInput = compare.equalInt64(origin, 4)
-  errorCheck: isStandardError = compare.equalInt64(code, 7)
-  skipCheck: skip = logic.or(isInput, isStandardError)
-  if skip eachValue declare
+  if isInput eachValue declare
 :declare in=eachValue
   readName: name = subset.ValueInfo.name(info)
   @s indent

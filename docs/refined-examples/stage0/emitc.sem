@@ -18695,7 +18695,6 @@ putLocals let constantStart String " = k_" immutable
 putLocals let underscore String "_" immutable
 putLocals let lineEnd String ";\n" immutable
 putLocals let four Int64 4 immutable
-putLocals let seven Int64 7 immutable
 putLocals let zeroText String " = {0};\n" immutable
 putLocals let zero Int64 0 immutable
 putLocals let flagStart String "  bool f_" immutable
@@ -18704,6 +18703,7 @@ putLocals let counterStart String "  int64_t n_" immutable
 putLocals let counterEnd String " = 0;\n" immutable
 putLocals let five Int64 5 immutable
 putLocals let indexStart String "  int64_t i_" immutable
+putLocals let seven Int64 7 immutable
 putLocals let regionStart String " = ss_region_new(" immutable
 putLocals let regionLabel String ", \"region `" immutable
 putLocals let regionOf String "` of `" immutable
@@ -18740,9 +18740,7 @@ putLocals at readValue branch ifError readInfo goto lost else goto readInfoDone
 putLocals at readInfoDone do readOrigin
 putLocals at readInfoDone do readCode
 putLocals at readInfoDone do inputCheck
-putLocals at readInfoDone do errorCheck
-putLocals at readInfoDone do skipCheck
-putLocals at readInfoDone branch if skip goto eachValue else goto declare
+putLocals at readInfoDone branch if isInput goto eachValue else goto declare
 putLocals at declare do readName
 putLocals at declare do doAppendString6
 putLocals at declare do putType
@@ -19082,30 +19080,6 @@ inputCheck cleanedBy none
 inputCheck borrows none
 inputCheck catch none
 inputCheck suppresses none
-
-errorCheck is call
-errorCheck in putLocals
-errorCheck invokes compare.equalInt64
-errorCheck argument left Int64 code copy
-errorCheck argument right Int64 seven copy
-errorCheck result isStandardError Bool
-errorCheck ownedBy none
-errorCheck cleanedBy none
-errorCheck borrows none
-errorCheck catch none
-errorCheck suppresses none
-
-skipCheck is call
-skipCheck in putLocals
-skipCheck invokes logic.or
-skipCheck argument left Bool isInput copy
-skipCheck argument right Bool isStandardError copy
-skipCheck result skip Bool
-skipCheck ownedBy none
-skipCheck cleanedBy none
-skipCheck borrows none
-skipCheck catch none
-skipCheck suppresses none
 
 readName is call
 readName in putLocals

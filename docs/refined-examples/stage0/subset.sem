@@ -3607,6 +3607,434 @@ enterBuiltins borrows none
 enterBuiltins catch enterBuiltinsError syntax.Rejection
 enterBuiltins suppresses none
 
+isStandardError is operation
+isStandardError purpose "Decide whether a word names an error type of the standard library the subset compiles: the error of a builtin target, list.IndexOutOfRange, or map.KeyMissing"
+isStandardError invariant none
+isStandardError typeParameter none
+isStandardError input source String borrowed
+isStandardError input word syntax.Word copied
+isStandardError output Bool
+isStandardError outputOwnedBy none
+isStandardError raises syntax.Rejection
+isStandardError effect none
+isStandardError uses none
+isStandardError memoryHeap false
+isStandardError async false
+isStandardError maxRecursion none
+isStandardError label begin loopKind none
+isStandardError label begin within none
+isStandardError label listCheckDone loopKind none
+isStandardError label listCheckDone within none
+isStandardError label mapCheckDone loopKind none
+isStandardError label mapCheckDone within none
+isStandardError label scan loopKind none
+isStandardError label scan within none
+isStandardError label eachTarget loopKind forEach
+isStandardError label eachTarget within none
+isStandardError label eachTarget maxIterations 72
+isStandardError label eachTarget over builtinTargets
+isStandardError label readEntry loopKind none
+isStandardError label readEntry within eachTarget
+isStandardError label sameCheckDone loopKind none
+isStandardError label sameCheckDone within eachTarget
+isStandardError label found loopKind none
+isStandardError label found within none
+isStandardError label missing loopKind none
+isStandardError label missing within none
+isStandardError label listCheckFailed loopKind none
+isStandardError label listCheckFailed within none
+isStandardError label mapCheckFailed loopKind none
+isStandardError label mapCheckFailed within none
+isStandardError label sameCheckFailed loopKind none
+isStandardError label sameCheckFailed within none
+isStandardError let yes Bool true immutable
+isStandardError let no Bool false immutable
+isStandardError let indexError String "list.IndexOutOfRange" immutable
+isStandardError let keyError String "map.KeyMissing" immutable
+isStandardError at begin do listCheck
+isStandardError at begin branch ifError listCheck goto listCheckFailed else goto listCheckDone
+isStandardError at listCheckDone do mapCheck
+isStandardError at listCheckDone branch ifError mapCheck goto mapCheckFailed else goto mapCheckDone
+isStandardError at mapCheckDone do collectionCheck
+isStandardError at mapCheckDone branch if isCollection goto found else goto scan
+isStandardError at scan goto eachTarget
+isStandardError at eachTarget branch ifNext builtinTargets bind entry BuiltinRow goto readEntry else goto missing
+isStandardError at readEntry do readError
+isStandardError at readEntry do sameCheck
+isStandardError at readEntry branch ifError sameCheck goto sameCheckFailed else goto sameCheckDone
+isStandardError at sameCheckDone branch if same goto found else goto eachTarget
+isStandardError at found return ok yes
+isStandardError at missing return ok no
+isStandardError at listCheckFailed return error listCheckError
+isStandardError at mapCheckFailed return error mapCheckError
+isStandardError at sameCheckFailed return error sameCheckError
+
+listCheck is call
+listCheck in isStandardError
+listCheck invokes syntax.isText
+listCheck argument source String source lend
+listCheck argument word syntax.Word word copy
+listCheck argument text String indexError lend
+listCheck result isList Bool
+listCheck ownedBy none
+listCheck cleanedBy none
+listCheck borrows none
+listCheck catch listCheckError syntax.Rejection
+listCheck suppresses none
+
+mapCheck is call
+mapCheck in isStandardError
+mapCheck invokes syntax.isText
+mapCheck argument source String source lend
+mapCheck argument word syntax.Word word copy
+mapCheck argument text String keyError lend
+mapCheck result isMap Bool
+mapCheck ownedBy none
+mapCheck cleanedBy none
+mapCheck borrows none
+mapCheck catch mapCheckError syntax.Rejection
+mapCheck suppresses none
+
+collectionCheck is call
+collectionCheck in isStandardError
+collectionCheck invokes logic.or
+collectionCheck argument left Bool isList copy
+collectionCheck argument right Bool isMap copy
+collectionCheck result isCollection Bool
+collectionCheck ownedBy none
+collectionCheck cleanedBy none
+collectionCheck borrows none
+collectionCheck catch none
+collectionCheck suppresses none
+
+readError is call
+readError in isStandardError
+readError invokes BuiltinRow.error
+readError argument record BuiltinRow entry lend
+readError result error String
+readError ownedBy none
+readError cleanedBy none
+readError borrows entry
+readError catch none
+readError suppresses none
+
+sameCheck is call
+sameCheck in isStandardError
+sameCheck invokes syntax.isText
+sameCheck argument source String source lend
+sameCheck argument word syntax.Word word copy
+sameCheck argument text String error lend
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch sameCheckError syntax.Rejection
+sameCheck suppresses none
+
+findRaises is operation
+findRaises purpose "Find the error type a raises row names: a type the program declares, or an error of the standard library, which are all type 7 (a standard error is only branched on or passed on, never matched)"
+findRaises invariant none
+findRaises typeParameter none
+findRaises input source String borrowed
+findRaises input typeNames TypeNames borrowed
+findRaises input word syntax.Word copied
+findRaises output Int64
+findRaises outputOwnedBy none
+findRaises raises syntax.Rejection
+findRaises effect none
+findRaises uses none
+findRaises memoryHeap false
+findRaises async false
+findRaises maxRecursion none
+findRaises label begin loopKind none
+findRaises label begin within none
+findRaises label cutTextDone loopKind none
+findRaises label cutTextDone within none
+findRaises label getCodeDone loopKind none
+findRaises label getCodeDone within none
+findRaises label standardCheck loopKind none
+findRaises label standardCheck within none
+findRaises label standardTestDone loopKind none
+findRaises label standardTestDone within none
+findRaises label standard loopKind none
+findRaises label standard within none
+findRaises label unknown loopKind none
+findRaises label unknown within none
+findRaises label outside loopKind none
+findRaises label outside within none
+findRaises label standardTestFailed loopKind none
+findRaises label standardTestFailed within none
+findRaises let seven Int64 7 immutable
+findRaises at begin do readTextStart
+findRaises at begin do readTextOffset
+findRaises at begin do readTextLength
+findRaises at begin do cutText
+findRaises at begin branch ifError cutText goto outside else goto cutTextDone
+findRaises at cutTextDone do getCode
+findRaises at cutTextDone branch ifError getCode goto standardCheck else goto getCodeDone
+findRaises at getCodeDone return ok code
+findRaises at standardCheck do standardTest
+findRaises at standardCheck branch ifError standardTest goto standardTestFailed else goto standardTestDone
+findRaises at standardTestDone branch if isStandard goto standard else goto unknown
+findRaises at standard return ok seven
+findRaises at unknown do makeUnknown
+findRaises at unknown return error unknownError
+findRaises at outside do makeOutside
+findRaises at outside return error outsideError
+findRaises at standardTestFailed return error standardTestError
+
+readTextStart is call
+readTextStart in findRaises
+readTextStart invokes syntax.Word.start
+readTextStart argument record syntax.Word word copy
+readTextStart result textStart string.Position
+readTextStart ownedBy none
+readTextStart cleanedBy none
+readTextStart borrows none
+readTextStart catch none
+readTextStart suppresses none
+
+readTextOffset is call
+readTextOffset in findRaises
+readTextOffset invokes string.Position.offset
+readTextOffset argument record string.Position textStart copy
+readTextOffset result textOffset Int64
+readTextOffset ownedBy none
+readTextOffset cleanedBy none
+readTextOffset borrows none
+readTextOffset catch none
+readTextOffset suppresses none
+
+readTextLength is call
+readTextLength in findRaises
+readTextLength invokes syntax.Word.length
+readTextLength argument record syntax.Word word copy
+readTextLength result textLength Int64
+readTextLength ownedBy none
+readTextLength cleanedBy none
+readTextLength borrows none
+readTextLength catch none
+readTextLength suppresses none
+
+cutText is call
+cutText in findRaises
+cutText invokes string.slice
+cutText argument text String source lend
+cutText argument start Int64 textOffset copy
+cutText argument length Int64 textLength copy
+cutText result text String
+cutText ownedBy none
+cutText cleanedBy none
+cutText borrows source
+cutText catch cutTextError string.StringIndexError
+cutText suppresses none
+
+getCode is call
+getCode in findRaises
+getCode invokes TypeNames.get
+getCode argument map TypeNames typeNames lend
+getCode argument key String text lend
+getCode result code Int64
+getCode ownedBy none
+getCode cleanedBy none
+getCode borrows none
+getCode catch getCodeError map.KeyMissing
+getCode suppresses none
+
+standardTest is call
+standardTest in findRaises
+standardTest invokes isStandardError
+standardTest argument source String source lend
+standardTest argument word syntax.Word word copy
+standardTest result isStandard Bool
+standardTest ownedBy none
+standardTest cleanedBy none
+standardTest borrows none
+standardTest catch standardTestError syntax.Rejection
+standardTest suppresses none
+
+makeUnknown is call
+makeUnknown in findRaises
+makeUnknown invokes syntax.Rejection.unsupportedType
+makeUnknown argument payload syntax.Word word copy
+makeUnknown result unknownError syntax.Rejection
+makeUnknown ownedBy none
+makeUnknown cleanedBy none
+makeUnknown borrows none
+makeUnknown catch none
+makeUnknown suppresses none
+
+makeOutside is call
+makeOutside in findRaises
+makeOutside invokes syntax.Rejection.outsideSource
+makeOutside argument payload syntax.Word word copy
+makeOutside result outsideError syntax.Rejection
+makeOutside ownedBy none
+makeOutside cleanedBy none
+makeOutside borrows none
+makeOutside catch none
+makeOutside suppresses none
+
+hexEscaped is operation
+hexEscaped purpose "Decide whether quoted text holds a `\\x` escape: a backslash that is not itself escaped, followed by x"
+hexEscaped invariant none
+hexEscaped typeParameter none
+hexEscaped input text String borrowed
+hexEscaped output Bool
+hexEscaped outputOwnedBy none
+hexEscaped raises none
+hexEscaped effect none
+hexEscaped uses none
+hexEscaped memoryHeap false
+hexEscaped async false
+hexEscaped maxRecursion none
+hexEscaped label begin loopKind none
+hexEscaped label begin within none
+hexEscaped label eachByte loopKind while
+hexEscaped label eachByte within none
+hexEscaped label eachByte maxIterations length
+hexEscaped label readByte loopKind none
+hexEscaped label readByte within eachByte
+hexEscaped label readEscaped loopKind none
+hexEscaped label readEscaped within eachByte
+hexEscaped label readNext loopKind none
+hexEscaped label readNext within eachByte
+hexEscaped label found loopKind none
+hexEscaped label found within none
+hexEscaped label clean loopKind none
+hexEscaped label clean within none
+hexEscaped let index Int64 0 mutable
+hexEscaped let yes Bool true immutable
+hexEscaped let no Bool false immutable
+hexEscaped let backslash Byte 92 immutable
+hexEscaped let lowerX Byte 120 immutable
+hexEscaped let one Int64 1 immutable
+hexEscaped at begin do measure
+hexEscaped at begin goto eachByte
+hexEscaped at eachByte do doneCheck
+hexEscaped at eachByte branch if allRead goto clean else goto readByte
+hexEscaped at readByte do fetch
+hexEscaped at readByte do stepIndex
+hexEscaped at readByte set index nextIndex
+hexEscaped at readByte do escapeCheck
+hexEscaped at readByte branch if isEscape goto readEscaped else goto eachByte
+hexEscaped at readEscaped do endCheck
+hexEscaped at readEscaped branch if atEnd goto clean else goto readNext
+hexEscaped at readNext do fetchNext
+hexEscaped at readNext do skipIndex
+hexEscaped at readNext set index afterEscape
+hexEscaped at readNext do hexCheck
+hexEscaped at readNext branch if isHex goto found else goto eachByte
+hexEscaped at found return ok yes
+hexEscaped at clean return ok no
+
+measure is call
+measure in hexEscaped
+measure invokes string.byteLength
+measure argument text String text lend
+measure result length Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+doneCheck is call
+doneCheck in hexEscaped
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 index copy
+doneCheck argument right Int64 length copy
+doneCheck result allRead Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+fetch is call
+fetch in hexEscaped
+fetch invokes string.byteAtOrTrap
+fetch argument text String text lend
+fetch argument index Int64 index copy
+fetch result byte Byte
+fetch ownedBy none
+fetch cleanedBy none
+fetch borrows none
+fetch catch none
+fetch suppresses none
+
+stepIndex is call
+stepIndex in hexEscaped
+stepIndex invokes math.addInt64
+stepIndex argument left Int64 index copy
+stepIndex argument right Int64 one copy
+stepIndex result nextIndex Int64
+stepIndex ownedBy none
+stepIndex cleanedBy none
+stepIndex borrows none
+stepIndex catch none
+stepIndex suppresses none
+
+escapeCheck is call
+escapeCheck in hexEscaped
+escapeCheck invokes compare.equalByte
+escapeCheck argument left Byte byte copy
+escapeCheck argument right Byte backslash copy
+escapeCheck result isEscape Bool
+escapeCheck ownedBy none
+escapeCheck cleanedBy none
+escapeCheck borrows none
+escapeCheck catch none
+escapeCheck suppresses none
+
+endCheck is call
+endCheck in hexEscaped
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 index copy
+endCheck argument right Int64 length copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+fetchNext is call
+fetchNext in hexEscaped
+fetchNext invokes string.byteAtOrTrap
+fetchNext argument text String text lend
+fetchNext argument index Int64 index copy
+fetchNext result escaped Byte
+fetchNext ownedBy none
+fetchNext cleanedBy none
+fetchNext borrows none
+fetchNext catch none
+fetchNext suppresses none
+
+skipIndex is call
+skipIndex in hexEscaped
+skipIndex invokes math.addInt64
+skipIndex argument left Int64 index copy
+skipIndex argument right Int64 one copy
+skipIndex result afterEscape Int64
+skipIndex ownedBy none
+skipIndex cleanedBy none
+skipIndex borrows none
+skipIndex catch none
+skipIndex suppresses none
+
+hexCheck is call
+hexCheck in hexEscaped
+hexCheck invokes compare.equalByte
+hexCheck argument left Byte escaped copy
+hexCheck argument right Byte lowerX copy
+hexCheck result isHex Bool
+hexCheck ownedBy none
+hexCheck cleanedBy none
+hexCheck borrows none
+hexCheck catch none
+hexCheck suppresses none
+
 literalFits is operation
 literalFits purpose "Refuse a literal that does not fit the type whose literals are given"
 literalFits invariant none
@@ -3630,8 +4058,6 @@ literalFits label escapeCheck loopKind none
 literalFits label escapeCheck within none
 literalFits label cutWordTextDone loopKind none
 literalFits label cutWordTextDone within none
-literalFits label findHexDone loopKind none
-literalFits label findHexDone within none
 literalFits label wantInteger loopKind none
 literalFits label wantInteger within none
 literalFits label wantSmall loopKind none
@@ -3657,7 +4083,6 @@ literalFits label trueCheckFailed within none
 literalFits label falseCheckFailed loopKind none
 literalFits label falseCheckFailed within none
 literalFits let maxSmall Int64 255 immutable
-literalFits let hexEscape String "\\x" immutable
 literalFits let zero Int64 0 immutable
 literalFits let trueWord String "true" immutable
 literalFits let falseWord String "false" immutable
@@ -3678,9 +4103,8 @@ literalFits at escapeCheck do readWordTextOffset
 literalFits at escapeCheck do readWordTextLength
 literalFits at escapeCheck do cutWordText
 literalFits at escapeCheck branch ifError cutWordText goto outside else goto cutWordTextDone
-literalFits at cutWordTextDone do findHex
-literalFits at cutWordTextDone branch ifError findHex goto fits else goto findHexDone
-literalFits at findHexDone goto escaped
+literalFits at cutWordTextDone do hexCheck
+literalFits at cutWordTextDone branch if hasHex goto escaped else goto fits
 literalFits at wantInteger match wordKind syntax.WordKind
 literalFits at wantInteger case syntax.WordKind.name bind none none goto bad
 literalFits at wantInteger case syntax.WordKind.integer bind integerNumber Int64 goto fits
@@ -3766,17 +4190,16 @@ cutWordText borrows source
 cutWordText catch cutWordTextError string.StringIndexError
 cutWordText suppresses none
 
-findHex is call
-findHex in literalFits
-findHex invokes string.find
-findHex argument text String wordText lend
-findHex argument needle String hexEscape lend
-findHex result hexAt Int64
-findHex ownedBy none
-findHex cleanedBy none
-findHex borrows none
-findHex catch findHexError string.NotFound
-findHex suppresses none
+hexCheck is call
+hexCheck in literalFits
+hexCheck invokes hexEscaped
+hexCheck argument text String wordText lend
+hexCheck result hasHex Bool
+hexCheck ownedBy none
+hexCheck cleanedBy none
+hexCheck borrows none
+hexCheck catch none
+hexCheck suppresses none
 
 lowCheck is call
 lowCheck in literalFits
@@ -13048,7 +13471,9 @@ declareOperationType at raisesType branch ifError findRaisesType goto findRaises
 declareOperationType at findRaisesTypeDone do readRaisesInfo
 declareOperationType at findRaisesTypeDone do readRaisesKind
 declareOperationType at findRaisesTypeDone do enumCheck
-declareOperationType at findRaisesTypeDone branch if raisesEnum goto keepRaises else goto badRaises
+declareOperationType at findRaisesTypeDone do standardCheck
+declareOperationType at findRaisesTypeDone do eitherCheck
+declareOperationType at findRaisesTypeDone branch if raisesFits goto keepRaises else goto badRaises
 declareOperationType at keepRaises set raises raisesCode
 declareOperationType at keepRaises goto nextRow
 declareOperationType at finish do lastCheck
@@ -13479,7 +13904,7 @@ raisesNoneCheck suppresses none
 
 findRaisesType is call
 findRaisesType in declareOperationType
-findRaisesType invokes findType
+findRaisesType invokes findRaises
 findRaisesType argument source String source lend
 findRaisesType argument typeNames TypeNames typeNames lend
 findRaisesType argument word syntax.Word raisesWord copy
@@ -13524,6 +13949,30 @@ enumCheck cleanedBy none
 enumCheck borrows none
 enumCheck catch none
 enumCheck suppresses none
+
+standardCheck is call
+standardCheck in declareOperationType
+standardCheck invokes compare.equalInt64
+standardCheck argument left Int64 raisesKind copy
+standardCheck argument right Int64 two copy
+standardCheck result raisesStandard Bool
+standardCheck ownedBy none
+standardCheck cleanedBy none
+standardCheck borrows none
+standardCheck catch none
+standardCheck suppresses none
+
+eitherCheck is call
+eitherCheck in declareOperationType
+eitherCheck invokes logic.or
+eitherCheck argument left Bool raisesEnum copy
+eitherCheck argument right Bool raisesStandard copy
+eitherCheck result raisesFits Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
 
 lastCheck is call
 lastCheck in declareOperationType
@@ -13988,7 +14437,9 @@ declareOperation at raisesType branch ifError findRaisesType goto findRaisesType
 declareOperation at findRaisesTypeDone do readRaisesInfo
 declareOperation at findRaisesTypeDone do readRaisesKind
 declareOperation at findRaisesTypeDone do enumCheck
-declareOperation at findRaisesTypeDone branch if raisesEnum goto keepRaises else goto badRaises
+declareOperation at findRaisesTypeDone do standardCheck
+declareOperation at findRaisesTypeDone do eitherCheck
+declareOperation at findRaisesTypeDone branch if raisesFits goto keepRaises else goto badRaises
 declareOperation at keepRaises set raises raisesCode
 declareOperation at keepRaises goto nextRow
 declareOperation at recursion do readDepthWord
@@ -14556,7 +15007,7 @@ raisesNoneCheck suppresses none
 
 findRaisesType is call
 findRaisesType in declareOperation
-findRaisesType invokes findType
+findRaisesType invokes findRaises
 findRaisesType argument source String source lend
 findRaisesType argument typeNames TypeNames typeNames lend
 findRaisesType argument word syntax.Word raisesWord copy
@@ -14601,6 +15052,30 @@ enumCheck cleanedBy none
 enumCheck borrows none
 enumCheck catch none
 enumCheck suppresses none
+
+standardCheck is call
+standardCheck in declareOperation
+standardCheck invokes compare.equalInt64
+standardCheck argument left Int64 raisesKind copy
+standardCheck argument right Int64 two copy
+standardCheck result raisesStandard Bool
+standardCheck ownedBy none
+standardCheck cleanedBy none
+standardCheck borrows none
+standardCheck catch none
+standardCheck suppresses none
+
+eitherCheck is call
+eitherCheck in declareOperation
+eitherCheck invokes logic.or
+eitherCheck argument left Bool raisesEnum copy
+eitherCheck argument right Bool raisesStandard copy
+eitherCheck result raisesFits Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
 
 readDepthWord is call
 readDepthWord in declareOperation
@@ -20296,6 +20771,10 @@ catchFits label mapError loopKind none
 catchFits label mapError within none
 catchFits label mapCheckDone loopKind none
 catchFits label mapCheckDone within none
+catchFits label operationError loopKind none
+catchFits label operationError within none
+catchFits label operationCheckDone loopKind none
+catchFits label operationCheckDone within none
 catchFits label listError loopKind none
 catchFits label listError within none
 catchFits label listCheckDone loopKind none
@@ -20304,6 +20783,8 @@ catchFits label builtinCheckFailed loopKind none
 catchFits label builtinCheckFailed within none
 catchFits label mapCheckFailed loopKind none
 catchFits label mapCheckFailed within none
+catchFits label operationCheckFailed loopKind none
+catchFits label operationCheckFailed within none
 catchFits label listCheckFailed loopKind none
 catchFits label listCheckFailed within none
 catchFits let indexError String "list.IndexOutOfRange" immutable
@@ -20313,7 +20794,8 @@ catchFits at begin match kind TargetKind
 catchFits at begin case TargetKind.builtin bind none none goto builtinError
 catchFits at begin case TargetKind.mapGet bind none none goto mapError
 catchFits at begin case TargetKind.mapRemove bind none none goto mapError
-catchFits at begin case TargetKind.operation bind none none goto listError
+catchFits at begin case TargetKind.operation bind none none goto operationError
+catchFits at begin case TargetKind.reference bind none none goto operationError
 catchFits at begin case TargetKind.recordNew bind none none goto listError
 catchFits at begin case TargetKind.fieldRead bind none none goto listError
 catchFits at begin case TargetKind.variantMake bind none none goto listError
@@ -20329,7 +20811,6 @@ catchFits at begin case TargetKind.mapNew bind none none goto listError
 catchFits at begin case TargetKind.mapPut bind none none goto listError
 catchFits at begin case TargetKind.mapContains bind none none goto listError
 catchFits at begin case TargetKind.mapLength bind none none goto listError
-catchFits at begin case TargetKind.reference bind none none goto listError
 catchFits at builtinError do readOwner
 catchFits at builtinError do readRow
 catchFits at builtinError branch ifError readRow goto listError else goto readRowDone
@@ -20340,11 +20821,15 @@ catchFits at builtinCheckDone return ok builtinFits
 catchFits at mapError do mapCheck
 catchFits at mapError branch ifError mapCheck goto mapCheckFailed else goto mapCheckDone
 catchFits at mapCheckDone return ok mapFits
+catchFits at operationError do operationCheck
+catchFits at operationError branch ifError operationCheck goto operationCheckFailed else goto operationCheckDone
+catchFits at operationCheckDone return ok operationFits
 catchFits at listError do listCheck
 catchFits at listError branch ifError listCheck goto listCheckFailed else goto listCheckDone
 catchFits at listCheckDone return ok listFits
 catchFits at builtinCheckFailed return error builtinCheckError
 catchFits at mapCheckFailed return error mapCheckError
+catchFits at operationCheckFailed return error operationCheckError
 catchFits at listCheckFailed return error listCheckError
 
 readKind is call
@@ -20416,6 +20901,18 @@ mapCheck cleanedBy none
 mapCheck borrows none
 mapCheck catch mapCheckError syntax.Rejection
 mapCheck suppresses none
+
+operationCheck is call
+operationCheck in catchFits
+operationCheck invokes isStandardError
+operationCheck argument source String source lend
+operationCheck argument word syntax.Word word copy
+operationCheck result operationFits Bool
+operationCheck ownedBy none
+operationCheck cleanedBy none
+operationCheck borrows none
+operationCheck catch operationCheckError syntax.Rejection
+operationCheck suppresses none
 
 listCheck is call
 listCheck in catchFits

@@ -251,7 +251,8 @@ def emitc_tests(stage0):
     squares = sample(stage0, "squares")
     bad = squares.replace("square invokes math.multiplyInt64", "square invokes math.wrappingMultiplyInt64")
     bad_line = bad.split("\n").index("square invokes math.wrappingMultiplyInt64") + 1
-    bad_where = f"{bad_line}:15: this call target is outside the stage0 subset (math.wrappingMultiplyInt64)"
+    bad_column = "square invokes math.wrappingMultiplyInt64".index("math.") + 1
+    bad_where = f"{bad_line}:{bad_column}: this call target is outside the stage0 subset (math.wrappingMultiplyInt64)"
     no_entry_where = f"{squares.split(chr(10)).index('squares is module') + 1}:1: the module has no main operation (squares)"
     snippets = [
         ("mainWrapper", "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_squares_main();\n}\n"),

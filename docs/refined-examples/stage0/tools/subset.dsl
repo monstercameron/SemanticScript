@@ -463,6 +463,84 @@ op declareBuiltins "Number the built-in types 1 to 11 and enter every standard l
   enterBuiltins: registerBuiltins(source, params, targets, region) ?^
   return
 
+op isStandardError "Decide whether a word names an error type of the standard library the subset compiles: the error of a builtin target, list.IndexOutOfRange, or map.KeyMissing"
+  input source String borrowed
+  input word syntax.Word copied
+  output Bool
+  raises syntax.Rejection
+  let yes Bool true
+  let no Bool false
+:begin
+  listCheck: isList = syntax.isText(source, word, indexError="list.IndexOutOfRange") ?^
+  mapCheck: isMap = syntax.isText(source, word, keyError="map.KeyMissing") ?^
+  collectionCheck: isCollection = logic.or(isList, isMap)
+  if isCollection found scan
+:scan
+  goto eachTarget
+:eachTarget loop=forEach max=%%BUILTIN_COUNT%% over=builtinTargets
+  next builtinTargets entry readEntry missing
+:readEntry in=eachTarget
+  readError: error = BuiltinRow.error(entry)
+  sameCheck: same = syntax.isText(source, word, error) ?^
+  if same found eachTarget
+:found
+  return yes
+:missing
+  return no
+
+op findRaises "Find the error type a raises row names: a type the program declares, or an error of the standard library, which are all type 7 (a standard error is only branched on or passed on, never matched)"
+  input source String borrowed
+  input typeNames TypeNames borrowed
+  input word syntax.Word copied
+  output Int64
+  raises syntax.Rejection
+  let seven Int64 7
+:begin
+  @view text word outside
+  getCode: code = TypeNames.get(typeNames, text) ? standardCheck
+  return code
+:standardCheck
+  standardTest: isStandard = isStandardError(source, word) ?^
+  if isStandard standard unknown
+:standard
+  return seven
+@reject unsupportedType word unknown
+@reject outsideSource word outside
+
+op hexEscaped "Decide whether quoted text holds a `\\x` escape: a backslash that is not itself escaped, followed by x"
+  input text String borrowed
+  output Bool
+  let index Int64 0 mut
+  let yes Bool true
+  let no Bool false
+  let backslash Byte 92
+  let lowerX Byte 120
+:begin
+  measure: length = string.byteLength(text)
+  goto eachByte
+:eachByte loop=while max=length
+  doneCheck: allRead = compare.greaterOrEqualInt64(index, length)
+  if allRead clean readByte
+:readByte in=eachByte
+  fetch: byte = string.byteAtOrTrap(text, index)
+  stepIndex: nextIndex = math.addInt64(index, 1)
+  set index nextIndex
+  escapeCheck: isEscape = compare.equalByte(byte, backslash)
+  if isEscape readEscaped eachByte
+:readEscaped in=eachByte
+  endCheck: atEnd = compare.greaterOrEqualInt64(index, length)
+  if atEnd clean readNext
+:readNext in=eachByte
+  fetchNext: escaped = string.byteAtOrTrap(text, index)
+  skipIndex: afterEscape = math.addInt64(index, 1)
+  set index afterEscape
+  hexCheck: isHex = compare.equalByte(escaped, lowerX)
+  if isHex found eachByte
+:found
+  return yes
+:clean
+  return no
+
 op literalFits "Refuse a literal that does not fit the type whose literals are given"
   input source String borrowed
   input word syntax.Word copied
@@ -485,8 +563,8 @@ op literalFits "Refuse a literal that does not fit the type whose literals are g
   case text escapeCheck
 :escapeCheck
   @view wordText word outside
-  findHex: hexAt = string.find(wordText, hexEscape="\\x") ? fits
-  goto escaped
+  hexCheck: hasHex = hexEscaped(wordText)
+  if hasHex escaped fits
 :wantInteger
   match wordKind
   case name bad
@@ -1634,11 +1712,13 @@ op declareOperationType "Check an operationType: its inputs (copied, borrowed, o
   raisesNoneCheck: raisesNone = syntax.isText(source, raisesWord, noneWord) ?^
   if raisesNone nextRow raisesType
 :raisesType in=eachRow
-  findRaisesType: raisesCode = findType(source, typeNames, raisesWord) ?^
+  findRaisesType: raisesCode = findRaises(source, typeNames, raisesWord) ?^
   readRaisesInfo: raisesInfo = typeInfoOf(types, raisesCode)
   readRaisesKind: raisesKind = TypeInfo.kind(raisesInfo)
   enumCheck: raisesEnum = compare.equalInt64(raisesKind, 4)
-  if raisesEnum keepRaises badRaises
+  standardCheck: raisesStandard = compare.equalInt64(raisesKind, 2)
+  eitherCheck: raisesFits = logic.or(raisesEnum, raisesStandard)
+  if raisesFits keepRaises badRaises
 :keepRaises in=eachRow
   set raises raisesCode
   goto nextRow
@@ -1758,11 +1838,13 @@ op declareOperation "Check an operation's signature rows, add its slots, and ent
   raisesNoneCheck: raisesNone = syntax.isText(source, raisesWord, noneWord) ?^
   if raisesNone nextRow raisesType
 :raisesType in=eachRow
-  findRaisesType: raisesCode = findType(source, typeNames, raisesWord) ?^
+  findRaisesType: raisesCode = findRaises(source, typeNames, raisesWord) ?^
   readRaisesInfo: raisesInfo = typeInfoOf(types, raisesCode)
   readRaisesKind: raisesKind = TypeInfo.kind(raisesInfo)
   enumCheck: raisesEnum = compare.equalInt64(raisesKind, 4)
-  if raisesEnum keepRaises badRaises
+  standardCheck: raisesStandard = compare.equalInt64(raisesKind, 2)
+  eitherCheck: raisesFits = logic.or(raisesEnum, raisesStandard)
+  if raisesFits keepRaises badRaises
 :keepRaises in=eachRow
   set raises raisesCode
   goto nextRow
@@ -2515,6 +2597,8 @@ op catchFits "Decide whether a catch row's type word names the standard error a 
   case builtin builtinError
   case mapGet mapError
   case mapRemove mapError
+  case operation operationError
+  case reference operationError
   others listError
 :builtinError
   readOwner: row = TargetInfo.owner(target)
@@ -2525,6 +2609,9 @@ op catchFits "Decide whether a catch row's type word names the standard error a 
 :mapError
   mapCheck: mapFits = syntax.isText(source, word, keyError) ?^
   return mapFits
+:operationError
+  operationCheck: operationFits = isStandardError(source, word) ?^
+  return operationFits
 :listError
   listCheck: listFits = syntax.isText(source, word, indexError) ?^
   return listFits
