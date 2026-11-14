@@ -20,10 +20,12 @@ from dataclasses import dataclass, field
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.join(HERE, "conformance", "warehouse")
 BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups"),
-         "cleanups": os.path.join(HERE, "conformance", "cleanups")}
+         "cleanups": os.path.join(HERE, "conformance", "cleanups"),
+         "symbols": os.path.join(HERE, "conformance", "symbols")}
 DOC = os.path.join(HERE, "..", "..", "docs", "safety-guarantees.md")
 
 W, P, B = "warehouse.sem", "pricing.sem", "build.sem"
+SM, SE = "symbols.sem", "expressions.sem"  # the symbols example (D-60 to D-62)
 
 
 @dataclass(frozen=True)
@@ -462,6 +464,53 @@ GUARANTEES = (
               "more than maxIterations 2 times"),
     ), ("mutation:append-during-foreach", "mutation:list-index-unchecked", "mutation:table-missing-cell",
         "mutation:table-cell-wrong-type", "case:04-control-flow/trap-loop-bound")),
+
+    Guarantee("trees", "Trees and symbol tables", (
+        "A type never holds itself, by value or inside a collection (R403). A tree is a list of nodes that refer to "
+        "each other by position: `<Alias> aliasOf Int64` with `<Alias> indexes <List>` makes the alias that list "
+        "type's only position type, so `get` and `set` take it and a plain `Int64` is refused (R403, D-60).",
+        "A position has no literal; it comes only from `<List>.appendIndexed`, and reading a position the list does "
+        "not have is `list.IndexOutOfRange`, never a stray read. Recursion over a tree is bounded by "
+        "`maxRecursion`; deeper traps.",
+        "A map's key is a plain value or a `String` (R403). A `String` key is lent, compared by content, and copied "
+        "into the map's region when first put, so keys read back live as long as the map (D-61).",
+        "A `forEach` over a map reads its keys in first-put order. Inside the loop the map cannot be changed, lent "
+        "exclusively, or given away (R515); passing the loop's bound, which may be the map's length read at run "
+        "time, traps (D-62).",
+    ), (
+        Check("forged-position", "reject", "writing a node position as a literal",
+              ((SM, "main let one Int64 1 immutable", "main let one Int64 1 immutable\n"
+                "main let forged expressions.NodeId 0 immutable"),), ("R403",), "a position has no literal",
+              base="symbols"),
+        Check("integer-as-position", "reject", "evaluating the tree at a plain whole number",
+              ((SM, "evaluateFirst argument at expressions.NodeId rootAt copy",
+                "evaluateFirst argument at expressions.NodeId one copy"),), ("R403",), "but `one` is `Int64`",
+              base="symbols"),
+        Check("node-holds-its-children", "reject", "a node type that holds a list of itself",
+              ((SE, "<append>", 'Branch is record\nBranch purpose "A tree node that holds its children directly"\n'
+                "Branch typeParameter none\nBranch field value Int64\nBranch field children Branches\n\n"
+                'Branches is typeInstance\nBranches purpose "The children of one branch"\n'
+                "Branches instantiates list.List Branch"),), ("R403",), "holds itself inside a collection",
+              base="symbols"),
+        Check("table-changed-while-listed", "reject", "redefining a name while the listing reads the table",
+              ((SM, "main at printValue do printValueLine", "main at printValue do redefineAgain\n"
+                "main at printValue do printValueLine"),
+               (SM, "<append>", _call("redefineAgain", "main", "expressions.Symbols.put",
+                                      ("map expressions.Symbols symbolTable lendMutable", "key String xName lend",
+                                       "value Int64 five copy")))),
+              ("R515",), "is being iterated by loop `showNames`", base="symbols"),
+        Check("tree-deeper-than-bound", "trap", "a two-level tree evaluated with maxRecursion 1",
+              ((SE, "evaluate maxRecursion 64", "evaluate maxRecursion 1"),), (),
+              "called itself deeper than maxRecursion 1", base="symbols"),
+        Check("listing-exceeds-bound", "trap", "a two-name table listed by a loop bounded at 1",
+              ((SM, "main label showNames maxIterations nameCount", "main label showNames maxIterations one"),), (),
+              "more than maxIterations one times", base="symbols"),
+        Check("names-in-definition-order", "run", "the table lists x, then y, after x is redefined",
+              (), (), "y", base="symbols", lines=("15", "30", "2", "x", "10", "y", "7")),
+    ), ("mutation:recursive-type-by-value", "mutation:recursive-type-through-list", "mutation:index-literal",
+        "mutation:index-from-integer", "mutation:index-alias-twice", "mutation:map-key-not-plain",
+        "mutation:map-text-key-copied", "mutation:map-changed-while-listed", "case:08-strings-collections/trees",
+        "test:test_symbols_example_runs_and_its_tests_pass")),
 
     Guarantee("modules", "Module contracts", (
         "A module uses another's operation, type, or variant only through `imports` and only if it is exported "

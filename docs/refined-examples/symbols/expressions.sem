@@ -1,0 +1,650 @@
+# The core data of a compiler: expression trees and a symbol table.
+#
+# A tree lives in one list of nodes. A node refers to its operands by their
+# position in that list, a `NodeId`, never by holding them (D-60): a type may
+# not contain itself, by value or inside a collection. A `NodeId` has no
+# literal; it comes only from `Nodes.appendIndexed`, and reading a node at a
+# position the list does not have is an error, never a stray read.
+#
+# Names live in a symbol table, a map from `String` to `Int64` (D-61). The map
+# copies each new name into its own region, and a `forEach` over the map reads
+# the names in the order they were first defined (D-62).
+
+expressions is module
+expressions purpose "Build expression trees as node lists, keep names in a symbol table, and evaluate trees by recursion"
+expressions path expressions
+expressions imports standard.list
+expressions imports standard.map
+expressions imports standard.math
+expressions imports standard.string
+expressions imports standard.test
+expressions exports Operands
+expressions exports Expr
+expressions exports Nodes
+expressions exports NodeId
+expressions exports Symbols
+expressions exports EvalError
+expressions exports addNumber
+expressions exports addName
+expressions exports addSum
+expressions exports addProduct
+expressions exports evaluate
+expressions exports countNumbers
+expressions exports joinNames
+
+Operands is record
+Operands purpose "The two operands of a sum or product node, by their positions in the node list"
+Operands typeParameter none
+Operands field left NodeId
+Operands field right NodeId
+
+Expr is enum
+Expr purpose "One node of an expression tree: a number, a name, or the sum or product of two other nodes"
+Expr typeParameter none
+Expr variant number Int64
+Expr variant name String
+Expr variant sum Operands
+Expr variant product Operands
+
+Nodes is typeInstance
+Nodes purpose "The nodes of one or more expression trees, in the order they were added"
+Nodes instantiates list.List Expr
+
+NodeId is alias
+NodeId purpose "The position of a node in a Nodes list, received when the node is added"
+NodeId typeParameter none
+NodeId aliasOf Int64
+NodeId indexes Nodes
+
+Symbols is typeInstance
+Symbols purpose "The value of each defined name, in the order the names were first defined"
+Symbols instantiates map.Map String Int64
+
+EvalError is enum
+EvalError purpose "Why an expression could not be evaluated, with what the caller needs to report it"
+EvalError typeParameter none
+EvalError variant unknownName none
+EvalError variant missingNode Int64
+
+# ---------------------------------------------------------------- building a tree
+
+addNumber is operation
+addNumber purpose "Add a number node to the list and return its position"
+addNumber invariant holdsNumber "Returns the position of a new node that evaluates to the given number"
+addNumber typeParameter none
+addNumber input nodes Nodes borrowedMutable
+addNumber input value Int64 copied
+addNumber output NodeId
+addNumber outputOwnedBy none
+addNumber raises none
+addNumber effect none
+addNumber uses none
+addNumber memoryHeap false
+addNumber async false
+addNumber maxRecursion none
+addNumber label begin loopKind none
+addNumber label begin within none
+addNumber let none
+addNumber at begin do makeNumber
+addNumber at begin do storeNumber
+addNumber at begin return ok id
+
+makeNumber is call
+makeNumber in addNumber
+makeNumber invokes Expr.number
+makeNumber argument payload Int64 value copy
+makeNumber result node Expr
+makeNumber ownedBy none
+makeNumber cleanedBy none
+makeNumber borrows none
+makeNumber catch none
+
+storeNumber is call
+storeNumber in addNumber
+storeNumber invokes Nodes.appendIndexed
+storeNumber argument list Nodes nodes lendMutable
+storeNumber argument item Expr node give
+storeNumber result id NodeId
+storeNumber ownedBy none
+storeNumber cleanedBy none
+storeNumber borrows none
+storeNumber catch none
+
+addName is operation
+addName purpose "Add a name node to the list and return its position"
+addName invariant holdsName "Returns the position of a new node that evaluates to the name's value in the symbol table"
+addName typeParameter none
+addName input nodes Nodes borrowedMutable
+addName input text String owned
+addName output NodeId
+addName outputOwnedBy none
+addName raises none
+addName effect none
+addName uses none
+addName memoryHeap false
+addName async false
+addName maxRecursion none
+addName label begin loopKind none
+addName label begin within none
+addName let none
+addName at begin do makeName
+addName at begin do storeName
+addName at begin return ok id
+
+makeName is call
+makeName in addName
+makeName invokes Expr.name
+makeName argument payload String text give
+makeName result node Expr
+makeName ownedBy none
+makeName cleanedBy none
+makeName borrows none
+makeName catch none
+
+storeName is call
+storeName in addName
+storeName invokes Nodes.appendIndexed
+storeName argument list Nodes nodes lendMutable
+storeName argument item Expr node give
+storeName result id NodeId
+storeName ownedBy none
+storeName cleanedBy none
+storeName borrows none
+storeName catch none
+
+addSum is operation
+addSum purpose "Add a node for the sum of two existing nodes and return its position"
+addSum invariant holdsSum "Returns the position of a new node that evaluates to the sum of the two operands' values"
+addSum typeParameter none
+addSum input nodes Nodes borrowedMutable
+addSum input left NodeId copied
+addSum input right NodeId copied
+addSum output NodeId
+addSum outputOwnedBy none
+addSum raises none
+addSum effect none
+addSum uses none
+addSum memoryHeap false
+addSum async false
+addSum maxRecursion none
+addSum label begin loopKind none
+addSum label begin within none
+addSum let none
+addSum at begin do pairOperands
+addSum at begin do makeSum
+addSum at begin do storeSum
+addSum at begin return ok id
+
+pairOperands is call
+pairOperands in addSum
+pairOperands invokes Operands.new
+pairOperands argument left NodeId left copy
+pairOperands argument right NodeId right copy
+pairOperands result operands Operands
+pairOperands ownedBy none
+pairOperands cleanedBy none
+pairOperands borrows none
+pairOperands catch none
+
+makeSum is call
+makeSum in addSum
+makeSum invokes Expr.sum
+makeSum argument payload Operands operands copy
+makeSum result node Expr
+makeSum ownedBy none
+makeSum cleanedBy none
+makeSum borrows none
+makeSum catch none
+
+storeSum is call
+storeSum in addSum
+storeSum invokes Nodes.appendIndexed
+storeSum argument list Nodes nodes lendMutable
+storeSum argument item Expr node give
+storeSum result id NodeId
+storeSum ownedBy none
+storeSum cleanedBy none
+storeSum borrows none
+storeSum catch none
+
+addProduct is operation
+addProduct purpose "Add a node for the product of two existing nodes and return its position"
+addProduct invariant holdsProduct "Returns the position of a new node that evaluates to the product of the two operands' values"
+addProduct typeParameter none
+addProduct input nodes Nodes borrowedMutable
+addProduct input left NodeId copied
+addProduct input right NodeId copied
+addProduct output NodeId
+addProduct outputOwnedBy none
+addProduct raises none
+addProduct effect none
+addProduct uses none
+addProduct memoryHeap false
+addProduct async false
+addProduct maxRecursion none
+addProduct label begin loopKind none
+addProduct label begin within none
+addProduct let none
+addProduct at begin do pairOperands
+addProduct at begin do makeProduct
+addProduct at begin do storeProduct
+addProduct at begin return ok id
+
+pairOperands is call
+pairOperands in addProduct
+pairOperands invokes Operands.new
+pairOperands argument left NodeId left copy
+pairOperands argument right NodeId right copy
+pairOperands result operands Operands
+pairOperands ownedBy none
+pairOperands cleanedBy none
+pairOperands borrows none
+pairOperands catch none
+
+makeProduct is call
+makeProduct in addProduct
+makeProduct invokes Expr.product
+makeProduct argument payload Operands operands copy
+makeProduct result node Expr
+makeProduct ownedBy none
+makeProduct cleanedBy none
+makeProduct borrows none
+makeProduct catch none
+
+storeProduct is call
+storeProduct in addProduct
+storeProduct invokes Nodes.appendIndexed
+storeProduct argument list Nodes nodes lendMutable
+storeProduct argument item Expr node give
+storeProduct result id NodeId
+storeProduct ownedBy none
+storeProduct cleanedBy none
+storeProduct borrows none
+storeProduct catch none
+
+# ---------------------------------------------------------------- evaluating a tree
+
+evaluate is operation
+evaluate purpose "Evaluate the tree whose root is at a position, operands first, by recursion"
+evaluate invariant numberIsItself "A number node evaluates to its number"
+evaluate invariant nameFromSymbols "A name node evaluates to the name's value in the symbol table"
+evaluate invariant operandsFirst "A sum or product node evaluates to the sum or product of its operands' values"
+evaluate invariant rejectsUnknownName "A name with no value in the symbol table is an unknownName error"
+evaluate invariant rejectsMissingNode "A position the node list does not have is a missingNode error carrying the position"
+evaluate typeParameter none
+evaluate input nodes Nodes borrowed
+evaluate input symbols Symbols borrowed
+evaluate input at NodeId copied
+evaluate output Int64
+evaluate outputOwnedBy none
+evaluate raises EvalError
+evaluate effect none
+evaluate uses none
+evaluate memoryHeap false
+evaluate async false
+evaluate maxRecursion 64
+evaluate label begin loopKind none
+evaluate label begin within none
+evaluate label missing loopKind none
+evaluate label missing within none
+evaluate label reportMissing loopKind none
+evaluate label reportMissing within none
+evaluate label inspect loopKind none
+evaluate label inspect within none
+evaluate label isNumber loopKind none
+evaluate label isNumber within none
+evaluate label isName loopKind none
+evaluate label isName within none
+evaluate label found loopKind none
+evaluate label found within none
+evaluate label unknown loopKind none
+evaluate label unknown within none
+evaluate label isSum loopKind none
+evaluate label isSum within none
+evaluate label sumSecond loopKind none
+evaluate label sumSecond within none
+evaluate label sumBoth loopKind none
+evaluate label sumBoth within none
+evaluate label isProduct loopKind none
+evaluate label isProduct within none
+evaluate label productSecond loopKind none
+evaluate label productSecond within none
+evaluate label productBoth loopKind none
+evaluate label productBoth within none
+evaluate label passSumLeft loopKind none
+evaluate label passSumLeft within none
+evaluate label passSumRight loopKind none
+evaluate label passSumRight within none
+evaluate label passProductLeft loopKind none
+evaluate label passProductLeft within none
+evaluate label passProductRight loopKind none
+evaluate label passProductRight within none
+evaluate let none
+evaluate at begin do readNode
+evaluate at begin branch ifError readNode goto missing else goto inspect
+evaluate at missing match readError list.IndexOutOfRange
+evaluate at missing case list.IndexOutOfRange.outOfRange bind badPosition Int64 goto reportMissing
+evaluate at reportMissing do makeMissing
+evaluate at reportMissing return error missingError
+evaluate at inspect match node Expr
+evaluate at inspect case Expr.number bind number Int64 goto isNumber
+evaluate at inspect case Expr.name bind text String goto isName
+evaluate at inspect case Expr.sum bind sumOperands Operands goto isSum
+evaluate at inspect case Expr.product bind productOperands Operands goto isProduct
+evaluate at isNumber return ok number
+evaluate at isName do lookUp
+evaluate at isName branch ifError lookUp goto unknown else goto found
+evaluate at found return ok named
+evaluate at unknown do makeUnknown
+evaluate at unknown return error unknownError
+evaluate at isSum do sumLeftId
+evaluate at isSum do sumLeft
+evaluate at isSum branch ifError sumLeft goto passSumLeft else goto sumSecond
+evaluate at sumSecond do sumRightId
+evaluate at sumSecond do sumRight
+evaluate at sumSecond branch ifError sumRight goto passSumRight else goto sumBoth
+evaluate at sumBoth do addBoth
+evaluate at sumBoth return ok total
+evaluate at isProduct do productLeftId
+evaluate at isProduct do productLeft
+evaluate at isProduct branch ifError productLeft goto passProductLeft else goto productSecond
+evaluate at productSecond do productRightId
+evaluate at productSecond do productRight
+evaluate at productSecond branch ifError productRight goto passProductRight else goto productBoth
+evaluate at productBoth do multiplyBoth
+evaluate at productBoth return ok product
+evaluate at passSumLeft return error sumLeftError
+evaluate at passSumRight return error sumRightError
+evaluate at passProductLeft return error productLeftError
+evaluate at passProductRight return error productRightError
+
+readNode is call
+readNode in evaluate
+readNode invokes Nodes.get
+readNode argument list Nodes nodes lend
+readNode argument index NodeId at copy
+readNode result node Expr
+readNode ownedBy none
+readNode cleanedBy none
+readNode borrows nodes
+readNode catch readError list.IndexOutOfRange
+
+makeMissing is call
+makeMissing in evaluate
+makeMissing invokes EvalError.missingNode
+makeMissing argument payload Int64 badPosition copy
+makeMissing result missingError EvalError
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+
+lookUp is call
+lookUp in evaluate
+lookUp invokes Symbols.get
+lookUp argument map Symbols symbols lend
+lookUp argument key String text lend
+lookUp result named Int64
+lookUp ownedBy none
+lookUp cleanedBy none
+lookUp borrows none
+lookUp catch lookUpError map.KeyMissing
+
+makeUnknown is call
+makeUnknown in evaluate
+makeUnknown invokes EvalError.unknownName
+makeUnknown argument none
+makeUnknown result unknownError EvalError
+makeUnknown ownedBy none
+makeUnknown cleanedBy none
+makeUnknown borrows none
+makeUnknown catch none
+
+sumLeftId is call
+sumLeftId in evaluate
+sumLeftId invokes Operands.left
+sumLeftId argument record Operands sumOperands copy
+sumLeftId result sumLeftAt NodeId
+sumLeftId ownedBy none
+sumLeftId cleanedBy none
+sumLeftId borrows none
+sumLeftId catch none
+
+sumLeft is call
+sumLeft in evaluate
+sumLeft invokes evaluate
+sumLeft argument nodes Nodes nodes lend
+sumLeft argument symbols Symbols symbols lend
+sumLeft argument at NodeId sumLeftAt copy
+sumLeft result sumLeftValue Int64
+sumLeft ownedBy none
+sumLeft cleanedBy none
+sumLeft borrows none
+sumLeft catch sumLeftError EvalError
+
+sumRightId is call
+sumRightId in evaluate
+sumRightId invokes Operands.right
+sumRightId argument record Operands sumOperands copy
+sumRightId result sumRightAt NodeId
+sumRightId ownedBy none
+sumRightId cleanedBy none
+sumRightId borrows none
+sumRightId catch none
+
+sumRight is call
+sumRight in evaluate
+sumRight invokes evaluate
+sumRight argument nodes Nodes nodes lend
+sumRight argument symbols Symbols symbols lend
+sumRight argument at NodeId sumRightAt copy
+sumRight result sumRightValue Int64
+sumRight ownedBy none
+sumRight cleanedBy none
+sumRight borrows none
+sumRight catch sumRightError EvalError
+
+addBoth is call
+addBoth in evaluate
+addBoth invokes math.addInt64
+addBoth argument left Int64 sumLeftValue copy
+addBoth argument right Int64 sumRightValue copy
+addBoth result total Int64
+addBoth ownedBy none
+addBoth cleanedBy none
+addBoth borrows none
+addBoth catch none
+
+productLeftId is call
+productLeftId in evaluate
+productLeftId invokes Operands.left
+productLeftId argument record Operands productOperands copy
+productLeftId result productLeftAt NodeId
+productLeftId ownedBy none
+productLeftId cleanedBy none
+productLeftId borrows none
+productLeftId catch none
+
+productLeft is call
+productLeft in evaluate
+productLeft invokes evaluate
+productLeft argument nodes Nodes nodes lend
+productLeft argument symbols Symbols symbols lend
+productLeft argument at NodeId productLeftAt copy
+productLeft result productLeftValue Int64
+productLeft ownedBy none
+productLeft cleanedBy none
+productLeft borrows none
+productLeft catch productLeftError EvalError
+
+productRightId is call
+productRightId in evaluate
+productRightId invokes Operands.right
+productRightId argument record Operands productOperands copy
+productRightId result productRightAt NodeId
+productRightId ownedBy none
+productRightId cleanedBy none
+productRightId borrows none
+productRightId catch none
+
+productRight is call
+productRight in evaluate
+productRight invokes evaluate
+productRight argument nodes Nodes nodes lend
+productRight argument symbols Symbols symbols lend
+productRight argument at NodeId productRightAt copy
+productRight result productRightValue Int64
+productRight ownedBy none
+productRight cleanedBy none
+productRight borrows none
+productRight catch productRightError EvalError
+
+multiplyBoth is call
+multiplyBoth in evaluate
+multiplyBoth invokes math.multiplyInt64
+multiplyBoth argument left Int64 productLeftValue copy
+multiplyBoth argument right Int64 productRightValue copy
+multiplyBoth result product Int64
+multiplyBoth ownedBy none
+multiplyBoth cleanedBy none
+multiplyBoth borrows none
+multiplyBoth catch none
+
+# ---------------------------------------------------------------- reading every node
+
+countNumbers is operation
+countNumbers purpose "Count the number nodes in a node list"
+countNumbers invariant countsNumbers "Returns how many nodes are numbers, reading every node once"
+countNumbers typeParameter none
+countNumbers input nodes Nodes borrowed
+countNumbers output Int64
+countNumbers outputOwnedBy none
+countNumbers raises none
+countNumbers effect none
+countNumbers uses none
+countNumbers memoryHeap false
+countNumbers async false
+countNumbers maxRecursion none
+countNumbers label begin loopKind none
+countNumbers label begin within none
+countNumbers label visit note "The list's length is known only at run time, so the bound is that length, read before the loop"
+countNumbers label visit loopKind forEach
+countNumbers label visit within none
+countNumbers label visit maxIterations nodeCount
+countNumbers label visit over nodes
+countNumbers label inspect loopKind none
+countNumbers label inspect within visit
+countNumbers label isNumber loopKind none
+countNumbers label isNumber within visit
+countNumbers label other loopKind none
+countNumbers label other within visit
+countNumbers label done loopKind none
+countNumbers label done within none
+countNumbers let one Int64 1 immutable
+countNumbers let count Int64 0 mutable
+countNumbers at begin do measure
+countNumbers at begin goto visit
+countNumbers at visit branch ifNext nodes bind node Expr goto inspect else goto done
+countNumbers at inspect match node Expr
+countNumbers at inspect case Expr.number bind number Int64 goto isNumber
+countNumbers at inspect case Expr.name bind text String goto other
+countNumbers at inspect case Expr.sum bind sumOperands Operands goto other
+countNumbers at inspect case Expr.product bind productOperands Operands goto other
+countNumbers at isNumber do addOne
+countNumbers at isNumber set count nextCount
+countNumbers at isNumber goto visit
+countNumbers at other goto visit
+countNumbers at done return ok count
+
+measure is call
+measure in countNumbers
+measure invokes Nodes.length
+measure argument list Nodes nodes lend
+measure result nodeCount Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+
+addOne is call
+addOne in countNumbers
+addOne invokes math.addInt64
+addOne argument left Int64 count copy
+addOne argument right Int64 one copy
+addOne result nextCount Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+
+# ---------------------------------------------------------------- reading every name
+
+joinNames is operation
+joinNames purpose "Join the symbol table's names into one text, in the order they were first defined"
+joinNames invariant definitionOrder "Returns every name once, in first-definition order, each followed by a comma"
+joinNames typeParameter none
+joinNames input symbols Symbols borrowed
+joinNames input region Region borrowed
+joinNames output String
+joinNames outputOwnedBy region
+joinNames raises none
+joinNames effect none
+joinNames uses none
+joinNames memoryHeap true
+joinNames async false
+joinNames maxRecursion none
+joinNames label begin loopKind none
+joinNames label begin within none
+joinNames label visit note "The table's size is known only at run time, so the bound is its length, read before the loop"
+joinNames label visit loopKind forEach
+joinNames label visit within none
+joinNames label visit maxIterations nameCount
+joinNames label visit over symbols
+joinNames label append loopKind none
+joinNames label append within visit
+joinNames label done loopKind none
+joinNames label done within none
+joinNames let comma String "," immutable
+joinNames let joined String "" mutable
+joinNames at begin do countNames
+joinNames at begin goto visit
+joinNames at visit branch ifNext symbols bind name String goto append else goto done
+joinNames at append do withName
+joinNames at append do withComma
+joinNames at append set joined withCommaText
+joinNames at append goto visit
+joinNames at done return ok joined
+
+countNames is call
+countNames in joinNames
+countNames invokes Symbols.length
+countNames argument map Symbols symbols lend
+countNames result nameCount Int64
+countNames ownedBy none
+countNames cleanedBy none
+countNames borrows none
+countNames catch none
+
+withName is call
+withName in joinNames
+withName invokes string.concat
+withName argument left String joined lend
+withName argument right String name lend
+withName argument region Region region lend
+withName result withNameText String
+withName ownedBy region
+withName cleanedBy none
+withName borrows none
+withName catch none
+
+withComma is call
+withComma in joinNames
+withComma invokes string.concat
+withComma argument left String withNameText lend
+withComma argument right String comma lend
+withComma argument region Region region lend
+withComma result withCommaText String
+withComma ownedBy region
+withComma cleanedBy none
+withComma borrows none
+withComma catch none

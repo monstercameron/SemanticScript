@@ -391,6 +391,17 @@ def test_example_tests_pass_on_the_backend(project, count):
     assert f"{count} of {count} tests passed" in proc.stdout
 
 
+def test_symbols_example_runs_and_its_tests_pass():
+    """The symbols example (D-60 to D-62): a tree in a node list evaluated by recursion against a symbol table
+    keyed by `String`, which is then listed in definition order; its tests verify every exported invariant."""
+    project = os.path.join(EXAMPLES, "symbols")
+    proc = _refined("run", project, "--no-cache")
+    assert (proc.returncode, proc.stdout.splitlines()) == (0, ["15", "30", "2", "x", "10", "y", "7"]), proc.stderr
+    proc = _refined("test", project)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "7 of 7 tests passed" in proc.stdout
+
+
 def test_backend_reports_failures_and_traps(tmp_path):
     d = _copy(tmp_path, "selfhost")
     _mutate(d / "compiler" / "tokens.test.sem", "badByteTest let expectedOffset Int64 3 immutable",

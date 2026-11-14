@@ -1,0 +1,15 @@
+# The symbols example: the core data of a compiler. It builds an expression
+# tree in a node list, keeps names in a symbol table, and evaluates the tree by
+# recursion. Everything the program may do is listed here.
+
+symbols is project
+symbols purpose "Build an expression tree, define its names in a symbol table, evaluate it, and print the results"
+symbols target console
+symbols version "0.1.0"
+symbols language refined 1
+symbols standardLibrary 1
+symbols allows write console.stdout none
+symbols requires none
+symbols includesModule expressions
+symbols includesModule symbols
+symbols entry symbols.main

@@ -1,0 +1,362 @@
+# The symbols example's entry module. It builds the tree for `(1 + 2) * x` in a
+# node list, defines `x` and `y` in a symbol table, evaluates the tree, defines
+# `x` again and evaluates it once more, counts the number nodes, and lists the
+# symbol table.
+#
+# What the checker and runtime guarantee here (docs/safety-guarantees.md):
+# - Nodes refer to each other by `NodeId`, a position in `nodes` (D-60). A
+#   position has no literal: each one comes from `appendIndexed`, and reading
+#   a position the list does not have is an error, not a stray read.
+# - `evaluate` calls itself at most 64 deep (`maxRecursion 64`); deeper traps.
+# - The symbol table copies each new name into `store` (D-61), so the names
+#   the listing reads stay valid as long as the table.
+# - The listing reads the table in first-definition order (D-62); it may not
+#   change the table while it reads it, and it states its bound, the table's
+#   length, which it reads first.
+# - Every allocation goes into `store`; passing its 65536 bytes traps.
+#
+# Prints 15, then 30, then 2, then each name and its value: x, 10, y, 7.
+# Exit codes: 0 done, 2 a name has no value, 3 a node is missing, 5 standard
+# output failed.
+
+symbols is module
+symbols purpose "Build and evaluate one expression tree against a symbol table and print what it finds"
+symbols path symbols
+symbols imports standard.console
+symbols imports standard.map
+symbols imports expressions
+symbols exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+main is operation
+main purpose "Build the tree for (1 + 2) * x, evaluate it under two values of x, and list the symbol table"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label printFirst loopKind none
+main label printFirst within none
+main label redefine loopKind none
+main label redefine within none
+main label printSecond loopKind none
+main label printSecond within none
+main label count loopKind none
+main label count within none
+main label showNames note "The table's size is known only at run time, so the bound is its length, read before the loop"
+main label showNames loopKind forEach
+main label showNames within none
+main label showNames maxIterations nameCount
+main label showNames over symbolTable
+main label showName loopKind none
+main label showName within showNames
+main label showValue loopKind none
+main label showValue within showNames
+main label printValue loopKind none
+main label printValue within showNames
+main label finished loopKind none
+main label finished within none
+main label firstFailed loopKind none
+main label firstFailed within none
+main label secondFailed loopKind none
+main label secondFailed within none
+main label noName loopKind none
+main label noName within none
+main label noNode loopKind none
+main label noNode within none
+main label outputFailed loopKind none
+main label outputFailed within none
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let five Int64 5 immutable
+main let seven Int64 7 immutable
+main let ten Int64 10 immutable
+main let xInTree String "x" immutable
+main let xName String "x" immutable
+main let yName String "y" immutable
+main let okCode ExitCode 0 immutable
+main let noNameCode ExitCode 2 immutable
+main let noNodeCode ExitCode 3 immutable
+main let outputCode ExitCode 5 immutable
+main at begin do makeNodes
+main at begin do makeSymbols
+main at begin do addOne
+main at begin do addTwo
+main at begin do addOnePlusTwo
+main at begin do addX
+main at begin do addRoot
+main at begin do defineX
+main at begin do defineY
+main at begin do evaluateFirst
+main at begin branch ifError evaluateFirst goto firstFailed else goto printFirst
+main at printFirst do printFirstValue
+main at printFirst branch ifError printFirstValue goto outputFailed else goto redefine
+main at redefine do redefineX
+main at redefine do evaluateSecond
+main at redefine branch ifError evaluateSecond goto secondFailed else goto printSecond
+main at printSecond do printSecondValue
+main at printSecond branch ifError printSecondValue goto outputFailed else goto count
+main at count do countThem
+main at count do measureTable
+main at count do printCount
+main at count branch ifError printCount goto outputFailed else goto showNames
+main at showNames branch ifNext symbolTable bind name String goto showName else goto finished
+main at showName do printName
+main at showName branch ifError printName goto outputFailed else goto showValue
+main at showValue do readValue
+main at showValue branch ifError readValue goto noName else goto printValue
+main at printValue do printValueLine
+main at printValue branch ifError printValueLine goto outputFailed else goto showNames
+main at finished return ok okCode
+main at firstFailed match firstError expressions.EvalError
+main at firstFailed case expressions.EvalError.unknownName bind none none goto noName
+main at firstFailed case expressions.EvalError.missingNode bind firstPosition Int64 goto noNode
+main at secondFailed match secondError expressions.EvalError
+main at secondFailed case expressions.EvalError.unknownName bind none none goto noName
+main at secondFailed case expressions.EvalError.missingNode bind secondPosition Int64 goto noNode
+main at noName return ok noNameCode
+main at noNode return ok noNodeCode
+main at outputFailed return ok outputCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 65536
+store released atReturn
+
+makeNodes is call
+makeNodes in main
+makeNodes invokes expressions.Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes expressions.Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+
+makeSymbols is call
+makeSymbols in main
+makeSymbols invokes expressions.Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable expressions.Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+
+# ---------------------------------------------------------------- the tree for (1 + 2) * x
+
+addOne is call
+addOne in main
+addOne invokes expressions.addNumber
+addOne argument nodes expressions.Nodes nodes lendMutable
+addOne argument value Int64 one copy
+addOne result oneAt expressions.NodeId
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+
+addTwo is call
+addTwo in main
+addTwo invokes expressions.addNumber
+addTwo argument nodes expressions.Nodes nodes lendMutable
+addTwo argument value Int64 two copy
+addTwo result twoAt expressions.NodeId
+addTwo ownedBy none
+addTwo cleanedBy none
+addTwo borrows none
+addTwo catch none
+
+addOnePlusTwo is call
+addOnePlusTwo in main
+addOnePlusTwo invokes expressions.addSum
+addOnePlusTwo argument nodes expressions.Nodes nodes lendMutable
+addOnePlusTwo argument left expressions.NodeId oneAt copy
+addOnePlusTwo argument right expressions.NodeId twoAt copy
+addOnePlusTwo result sumAt expressions.NodeId
+addOnePlusTwo ownedBy none
+addOnePlusTwo cleanedBy none
+addOnePlusTwo borrows none
+addOnePlusTwo catch none
+
+addX is call
+addX in main
+addX invokes expressions.addName
+addX argument nodes expressions.Nodes nodes lendMutable
+addX argument text String xInTree give
+addX result xAt expressions.NodeId
+addX ownedBy none
+addX cleanedBy none
+addX borrows none
+addX catch none
+
+addRoot is call
+addRoot in main
+addRoot invokes expressions.addProduct
+addRoot argument nodes expressions.Nodes nodes lendMutable
+addRoot argument left expressions.NodeId sumAt copy
+addRoot argument right expressions.NodeId xAt copy
+addRoot result rootAt expressions.NodeId
+addRoot ownedBy none
+addRoot cleanedBy none
+addRoot borrows none
+addRoot catch none
+
+# ---------------------------------------------------------------- the symbol table
+
+defineX is call
+defineX in main
+defineX invokes expressions.Symbols.put
+defineX argument map expressions.Symbols symbolTable lendMutable
+defineX argument key String xName lend
+defineX argument value Int64 five copy
+defineX result none
+defineX ownedBy none
+defineX cleanedBy none
+defineX borrows none
+defineX catch none
+
+defineY is call
+defineY in main
+defineY invokes expressions.Symbols.put
+defineY argument map expressions.Symbols symbolTable lendMutable
+defineY argument key String yName lend
+defineY argument value Int64 seven copy
+defineY result none
+defineY ownedBy none
+defineY cleanedBy none
+defineY borrows none
+defineY catch none
+
+redefineX is call
+redefineX in main
+redefineX invokes expressions.Symbols.put
+redefineX argument map expressions.Symbols symbolTable lendMutable
+redefineX argument key String xName lend
+redefineX argument value Int64 ten copy
+redefineX result none
+redefineX ownedBy none
+redefineX cleanedBy none
+redefineX borrows none
+redefineX catch none
+
+# ---------------------------------------------------------------- evaluating and printing
+
+evaluateFirst is call
+evaluateFirst in main
+evaluateFirst invokes expressions.evaluate
+evaluateFirst argument nodes expressions.Nodes nodes lend
+evaluateFirst argument symbols expressions.Symbols symbolTable lend
+evaluateFirst argument at expressions.NodeId rootAt copy
+evaluateFirst result firstValue Int64
+evaluateFirst ownedBy none
+evaluateFirst cleanedBy none
+evaluateFirst borrows none
+evaluateFirst catch firstError expressions.EvalError
+
+printFirstValue is call
+printFirstValue in main
+printFirstValue invokes console.writeIntegerLine
+printFirstValue argument value Int64 firstValue copy
+printFirstValue result none
+printFirstValue ownedBy none
+printFirstValue cleanedBy none
+printFirstValue borrows none
+printFirstValue catch printFirstError console.WriteError
+
+evaluateSecond is call
+evaluateSecond in main
+evaluateSecond invokes expressions.evaluate
+evaluateSecond argument nodes expressions.Nodes nodes lend
+evaluateSecond argument symbols expressions.Symbols symbolTable lend
+evaluateSecond argument at expressions.NodeId rootAt copy
+evaluateSecond result secondValue Int64
+evaluateSecond ownedBy none
+evaluateSecond cleanedBy none
+evaluateSecond borrows none
+evaluateSecond catch secondError expressions.EvalError
+
+printSecondValue is call
+printSecondValue in main
+printSecondValue invokes console.writeIntegerLine
+printSecondValue argument value Int64 secondValue copy
+printSecondValue result none
+printSecondValue ownedBy none
+printSecondValue cleanedBy none
+printSecondValue borrows none
+printSecondValue catch printSecondError console.WriteError
+
+countThem is call
+countThem in main
+countThem invokes expressions.countNumbers
+countThem argument nodes expressions.Nodes nodes lend
+countThem result numberCount Int64
+countThem ownedBy none
+countThem cleanedBy none
+countThem borrows none
+countThem catch none
+
+printCount is call
+printCount in main
+printCount invokes console.writeIntegerLine
+printCount argument value Int64 numberCount copy
+printCount result none
+printCount ownedBy none
+printCount cleanedBy none
+printCount borrows none
+printCount catch printCountError console.WriteError
+
+# ---------------------------------------------------------------- listing the symbol table
+
+measureTable is call
+measureTable in main
+measureTable invokes expressions.Symbols.length
+measureTable argument map expressions.Symbols symbolTable lend
+measureTable result nameCount Int64
+measureTable ownedBy none
+measureTable cleanedBy none
+measureTable borrows none
+measureTable catch none
+
+printName is call
+printName in main
+printName invokes console.writeLine
+printName argument text String name lend
+printName result none
+printName ownedBy none
+printName cleanedBy none
+printName borrows none
+printName catch printNameError console.WriteError
+
+readValue is call
+readValue in main
+readValue invokes expressions.Symbols.get
+readValue argument map expressions.Symbols symbolTable lend
+readValue argument key String name lend
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch readValueError map.KeyMissing
+
+printValueLine is call
+printValueLine in main
+printValueLine invokes console.writeIntegerLine
+printValueLine argument value Int64 value copy
+printValueLine result none
+printValueLine ownedBy none
+printValueLine cleanedBy none
+printValueLine borrows none
+printValueLine catch printValueError console.WriteError

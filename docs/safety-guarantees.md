@@ -165,6 +165,25 @@ Also: `mutation:var-uninitialized-path`, `mutation:var-unset-after-zero-pass-loo
 
 Also: `mutation:append-during-foreach`, `mutation:list-index-unchecked`, `mutation:table-missing-cell`, `mutation:table-cell-wrong-type`, `case:04-control-flow/trap-loop-bound`.
 
+## Trees and symbol tables
+
+- A type never holds itself, by value or inside a collection (R403). A tree is a list of nodes that refer to each other by position: `<Alias> aliasOf Int64` with `<Alias> indexes <List>` makes the alias that list type's only position type, so `get` and `set` take it and a plain `Int64` is refused (R403, D-60).
+- A position has no literal; it comes only from `<List>.appendIndexed`, and reading a position the list does not have is `list.IndexOutOfRange`, never a stray read. Recursion over a tree is bounded by `maxRecursion`; deeper traps.
+- A map's key is a plain value or a `String` (R403). A `String` key is lent, compared by content, and copied into the map's region when first put, so keys read back live as long as the map (D-61).
+- A `forEach` over a map reads its keys in first-put order. Inside the loop the map cannot be changed, lent exclusively, or given away (R515); passing the loop's bound, which may be the map's length read at run time, traps (D-62).
+
+| Check | Expect | What it shows |
+| --- | --- | --- |
+| `forged-position` | rejected: R403 | writing a node position as a literal |
+| `integer-as-position` | rejected: R403 | evaluating the tree at a plain whole number |
+| `node-holds-its-children` | rejected: R403 | a node type that holds a list of itself |
+| `table-changed-while-listed` | rejected: R515 | redefining a name while the listing reads the table |
+| `tree-deeper-than-bound` | traps | a two-level tree evaluated with maxRecursion 1 |
+| `listing-exceeds-bound` | traps | a two-name table listed by a loop bounded at 1 |
+| `names-in-definition-order` | runs | the table lists x, then y, after x is redefined |
+
+Also: `mutation:recursive-type-by-value`, `mutation:recursive-type-through-list`, `mutation:index-literal`, `mutation:index-from-integer`, `mutation:index-alias-twice`, `mutation:map-key-not-plain`, `mutation:map-text-key-copied`, `mutation:map-changed-while-listed`, `case:08-strings-collections/trees`, `test:test_symbols_example_runs_and_its_tests_pass`.
+
 ## Module contracts
 
 - A module uses another's operation, type, or variant only through `imports` and only if it is exported (R404). Calls across modules are checked against the callee's declared signature: argument types and loan modes, output owner, error type, effects, and generic constraints, exactly as within a module.
