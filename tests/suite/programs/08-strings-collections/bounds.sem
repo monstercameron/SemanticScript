@@ -80,6 +80,7 @@ writeValue suppresses console.WriteError.failed
 
 Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
+Numbers in none
 Numbers instantiates list.List Int64
 
 main is operation

@@ -1,0 +1,500 @@
+# covers: 14 Generic functions
+# covers: 14 Nested generics
+# covers: 2 Function types
+# covers: 5 Higher-order functions
+# covers: 14 Generic constraints
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 9
+# stdout: 97
+
+layeredGenerics is module
+layeredGenerics purpose "A generic operation that calls another generic operation at its own type parameter and takes a generic operation type"
+layeredGenerics path layeredGenerics
+layeredGenerics imports standard.console
+layeredGenerics imports standard.list
+layeredGenerics imports standard.compare
+layeredGenerics imports standard.convert
+layeredGenerics exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParameter none
+showInt input value Int64 copied
+showInt output none
+showInt outputOwnedBy none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memoryHeap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt let none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+Better is operationType
+Better purpose "Whether the left value should be kept over the right one"
+Better typeParameter T plain
+Better input left T copied
+Better input right T copied
+Better output Bool
+Better outputOwnedBy none
+Better raises none
+Better effect none
+Better async false
+
+pick is operation
+pick purpose "Return the first value when the flag is true, else the second"
+pick invariant none
+pick typeParameter T plain
+pick input flag Bool copied
+pick input first T copied
+pick input second T copied
+pick output T
+pick outputOwnedBy none
+pick raises none
+pick effect none
+pick uses none
+pick memoryHeap false
+pick async false
+pick maxRecursion none
+pick label begin loopKind none
+pick label begin within none
+pick label takeFirst loopKind none
+pick label takeFirst within none
+pick label takeSecond loopKind none
+pick label takeSecond within none
+pick let none
+pick at begin branch if flag goto takeFirst else goto takeSecond
+pick at takeFirst return ok first
+pick at takeSecond return ok second
+
+bestOf is operation
+bestOf purpose "The value every other value of the list loses to under `better`, the first among equals"
+bestOf invariant none
+bestOf typeParameter T plain
+bestOf input items ItemsT borrowed
+bestOf input better BetterT copied
+bestOf output T
+bestOf outputOwnedBy none
+bestOf raises list.IndexOutOfRange
+bestOf effect none
+bestOf uses none
+bestOf memoryHeap false
+bestOf async false
+bestOf maxRecursion none
+bestOf label begin loopKind none
+bestOf label begin within none
+bestOf label start loopKind none
+bestOf label start within none
+bestOf label scan loopKind forEach
+bestOf label scan within none
+bestOf label scan maxIterations count
+bestOf label scan over items
+bestOf label compare loopKind none
+bestOf label compare within scan
+bestOf label done loopKind none
+bestOf label done within none
+bestOf label empty loopKind none
+bestOf label empty within none
+bestOf let best T unset mutable
+bestOf let zero Int64 0 immutable
+bestOf at begin do countItems
+bestOf at begin do readFirst
+bestOf at begin branch ifError readFirst goto empty else goto start
+bestOf at start set best first
+bestOf at start goto scan
+bestOf at scan branch ifNext items bind item T goto compare else goto done
+bestOf at compare do judge
+bestOf at compare do choose
+bestOf at compare set best chosen
+bestOf at compare goto scan
+bestOf at done return ok best
+bestOf at empty return error emptyError
+
+countItems is call
+countItems in bestOf
+countItems invokes ItemsT.length
+countItems argument list ItemsT items lend
+countItems result count Int64
+countItems ownedBy none
+countItems cleanedBy none
+countItems borrows none
+countItems catch none
+countItems suppresses none
+
+readFirst is call
+readFirst in bestOf
+readFirst invokes ItemsT.get
+readFirst argument list ItemsT items lend
+readFirst argument index Int64 zero copy
+readFirst result first T
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch emptyError list.IndexOutOfRange
+readFirst suppresses none
+
+judge is call
+judge in bestOf
+judge invokesReference better
+judge argument left T best copy
+judge argument right T item copy
+judge result keep Bool
+judge ownedBy none
+judge cleanedBy none
+judge borrows none
+judge catch none
+judge suppresses none
+
+choose is call
+choose in bestOf
+choose invokes pickAt
+choose argument flag Bool keep copy
+choose argument first T best copy
+choose argument second T item copy
+choose result chosen T
+choose ownedBy none
+choose cleanedBy none
+choose borrows none
+choose catch none
+choose suppresses none
+
+ItemsT is typeInstance
+ItemsT purpose "The list bestOf reads"
+ItemsT in bestOf
+ItemsT instantiates list.List T
+
+BetterT is typeInstance
+BetterT purpose "The comparison bestOf is given"
+BetterT in bestOf
+BetterT instantiates Better T
+
+pickAt is operationInstance
+pickAt purpose "pick at bestOf's own type"
+pickAt in bestOf
+pickAt instantiates pick T
+
+Numbers is typeInstance
+Numbers purpose "Whole numbers in a list"
+Numbers in none
+Numbers instantiates list.List Int64
+
+BetterNumber is typeInstance
+BetterNumber purpose "A comparison of whole numbers"
+BetterNumber in none
+BetterNumber instantiates Better Int64
+
+bestNumber is operationInstance
+bestNumber purpose "bestOf for whole numbers"
+bestNumber in none
+bestNumber instantiates bestOf Int64
+
+Bytes8 is typeInstance
+Bytes8 purpose "Bytes in a list"
+Bytes8 in none
+Bytes8 instantiates list.List Byte
+
+BetterByte is typeInstance
+BetterByte purpose "A comparison of bytes"
+BetterByte in none
+BetterByte instantiates Better Byte
+
+bestByte is operationInstance
+bestByte purpose "bestOf for bytes"
+bestByte in none
+bestByte instantiates bestOf Byte
+
+larger is operation
+larger purpose "Whether the left number is greater than the right one"
+larger invariant none
+larger typeParameter none
+larger input left Int64 copied
+larger input right Int64 copied
+larger output Bool
+larger outputOwnedBy none
+larger raises none
+larger effect none
+larger uses none
+larger memoryHeap false
+larger async false
+larger maxRecursion none
+larger label begin loopKind none
+larger label begin within none
+larger let none
+larger at begin do compareNumbers
+larger at begin return ok greater
+
+compareNumbers is call
+compareNumbers in larger
+compareNumbers invokes compare.greaterThanInt64
+compareNumbers argument left Int64 left copy
+compareNumbers argument right Int64 right copy
+compareNumbers result greater Bool
+compareNumbers ownedBy none
+compareNumbers cleanedBy none
+compareNumbers borrows none
+compareNumbers catch none
+compareNumbers suppresses none
+
+smallerByte is operation
+smallerByte purpose "Whether the left byte is less than the right one"
+smallerByte invariant none
+smallerByte typeParameter none
+smallerByte input left Byte copied
+smallerByte input right Byte copied
+smallerByte output Bool
+smallerByte outputOwnedBy none
+smallerByte raises none
+smallerByte effect none
+smallerByte uses none
+smallerByte memoryHeap false
+smallerByte async false
+smallerByte maxRecursion none
+smallerByte label begin loopKind none
+smallerByte label begin within none
+smallerByte let none
+smallerByte at begin do compareBytes
+smallerByte at begin return ok less
+
+compareBytes is call
+compareBytes in smallerByte
+compareBytes invokes compare.lessThanByte
+compareBytes argument left Byte left copy
+compareBytes argument right Byte right copy
+compareBytes result less Bool
+compareBytes ownedBy none
+compareBytes cleanedBy none
+compareBytes borrows none
+compareBytes catch none
+compareBytes suppresses none
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label showLargest loopKind none
+main label showLargest within none
+main label showSmallest loopKind none
+main label showSmallest within none
+main label failed loopKind none
+main label failed within none
+main let three Int64 3 immutable
+main let nine Int64 9 immutable
+main let four Int64 4 immutable
+main let bq Byte 113 immutable
+main let ba Byte 97 immutable
+main let bm Byte 109 immutable
+main let byLarger BetterNumber larger immutable
+main let bySmaller BetterByte smallerByte immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin do step1
+main at begin do putThree
+main at begin do putNine
+main at begin do putFour
+main at begin do findLargest
+main at begin branch ifError findLargest goto failed else goto showLargest
+main at showLargest do step6
+main at showLargest do step7
+main at showLargest do putBq
+main at showLargest do putBa
+main at showLargest do putBm
+main at showLargest do findSmallest
+main at showLargest branch ifError findSmallest goto failed else goto showSmallest
+main at showSmallest do step12
+main at showSmallest do step13
+main at showSmallest return ok okCode
+main at failed return ok failCode
+
+step1 is call
+step1 in main
+step1 invokes Numbers.new
+step1 argument region Region scratch lend
+step1 result numbers Numbers
+step1 ownedBy scratch
+step1 cleanedBy none
+step1 borrows none
+step1 catch none
+step1 suppresses none
+
+putThree is call
+putThree in main
+putThree invokes Numbers.append
+putThree argument list Numbers numbers lendMutable
+putThree argument item Int64 three copy
+putThree result none
+putThree ownedBy none
+putThree cleanedBy none
+putThree borrows none
+putThree catch none
+putThree suppresses none
+
+putNine is call
+putNine in main
+putNine invokes Numbers.append
+putNine argument list Numbers numbers lendMutable
+putNine argument item Int64 nine copy
+putNine result none
+putNine ownedBy none
+putNine cleanedBy none
+putNine borrows none
+putNine catch none
+putNine suppresses none
+
+putFour is call
+putFour in main
+putFour invokes Numbers.append
+putFour argument list Numbers numbers lendMutable
+putFour argument item Int64 four copy
+putFour result none
+putFour ownedBy none
+putFour cleanedBy none
+putFour borrows none
+putFour catch none
+putFour suppresses none
+
+findLargest is call
+findLargest in main
+findLargest invokes bestNumber
+findLargest argument items Numbers numbers lend
+findLargest argument better BetterNumber byLarger copy
+findLargest result largest Int64
+findLargest ownedBy none
+findLargest cleanedBy none
+findLargest borrows none
+findLargest catch noNumbers list.IndexOutOfRange
+findLargest suppresses none
+
+step6 is call
+step6 in main
+step6 invokes showInt
+step6 argument value Int64 largest copy
+step6 result none
+step6 ownedBy none
+step6 cleanedBy none
+step6 borrows none
+step6 catch none
+step6 suppresses none
+
+step7 is call
+step7 in main
+step7 invokes Bytes8.new
+step7 argument region Region scratch lend
+step7 result letters Bytes8
+step7 ownedBy scratch
+step7 cleanedBy none
+step7 borrows none
+step7 catch none
+step7 suppresses none
+
+putBq is call
+putBq in main
+putBq invokes Bytes8.append
+putBq argument list Bytes8 letters lendMutable
+putBq argument item Byte bq copy
+putBq result none
+putBq ownedBy none
+putBq cleanedBy none
+putBq borrows none
+putBq catch none
+putBq suppresses none
+
+putBa is call
+putBa in main
+putBa invokes Bytes8.append
+putBa argument list Bytes8 letters lendMutable
+putBa argument item Byte ba copy
+putBa result none
+putBa ownedBy none
+putBa cleanedBy none
+putBa borrows none
+putBa catch none
+putBa suppresses none
+
+putBm is call
+putBm in main
+putBm invokes Bytes8.append
+putBm argument list Bytes8 letters lendMutable
+putBm argument item Byte bm copy
+putBm result none
+putBm ownedBy none
+putBm cleanedBy none
+putBm borrows none
+putBm catch none
+putBm suppresses none
+
+findSmallest is call
+findSmallest in main
+findSmallest invokes bestByte
+findSmallest argument items Bytes8 letters lend
+findSmallest argument better BetterByte bySmaller copy
+findSmallest result smallest Byte
+findSmallest ownedBy none
+findSmallest cleanedBy none
+findSmallest borrows none
+findSmallest catch noBytes list.IndexOutOfRange
+findSmallest suppresses none
+
+step12 is call
+step12 in main
+step12 invokes convert.byteToInt64
+step12 argument value Byte smallest copy
+step12 result smallestWide Int64
+step12 ownedBy none
+step12 cleanedBy none
+step12 borrows none
+step12 catch none
+step12 suppresses none
+
+step13 is call
+step13 in main
+step13 invokes showInt
+step13 argument value Int64 smallestWide copy
+step13 result none
+step13 ownedBy none
+step13 cleanedBy none
+step13 borrows none
+step13 catch none
+step13 suppresses none
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn

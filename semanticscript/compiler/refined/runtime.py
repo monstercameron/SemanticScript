@@ -278,6 +278,36 @@ def _parse_int(p, length, out):
     return 0
 
 
+@ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_double, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64))
+def _format_float(value, region, out_len):
+    """D-91: the shortest text that reads back as the same Float64, as `console.writeFloatLine` prints it."""
+    data = repr(float(value)).encode()
+    out_len[0] = len(data)
+    return _region_copy(region, data)
+
+
+_FLOAT_TEXT = None
+
+
+@ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_int64, ctypes.POINTER(ctypes.c_double))
+def _parse_float(p, length, out):
+    """D-91: 0 parsed, 1 not a number, 2 out of range (too large for a Float64). The text is an optional `-`,
+    digits, optionally `.` and digits, optionally `e` or `E`, an optional sign, and digits."""
+    global _FLOAT_TEXT
+    import re
+    if _FLOAT_TEXT is None:
+        _FLOAT_TEXT = re.compile(rb"-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?")
+    text = _bytes(p, length)
+    out[0] = 0.0
+    if not _FLOAT_TEXT.fullmatch(text):
+        return 1
+    value = float(text)
+    if value in (float("inf"), float("-inf")):
+        return 2
+    out[0] = value
+    return 0
+
+
 _CALLBACKS = {
     "refined_trap": _trap, "refined_write": _write, "refined_write_int": _write_int,
     "refined_bytes_equal": _bytes_equal, "refined_assert_int": _assert_int, "refined_assert_true": _assert_true,
@@ -286,6 +316,7 @@ _CALLBACKS = {
     "refined_region_remaining": _region_remaining,
     "refined_write_float": _write_float, "refined_format_int": _format_int, "refined_find": _find,
     "refined_parse_int": _parse_int, "refined_host": _host,
+    "refined_format_float": _format_float, "refined_parse_float": _parse_float,
 }
 
 

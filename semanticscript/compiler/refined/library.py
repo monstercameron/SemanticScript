@@ -49,6 +49,8 @@ class TypeInfo:
     base: Optional[str] = None  # for alias
     # D-60: for an alias, the list type it indexes; for a list instance, the alias that indexes it
     index: Optional[str] = None
+    # D-92: for an instance stated `in <operation>`, that generic operation
+    owner: Optional[str] = None
 
 
 def P(name: str, type_: str, mode: str) -> Param:
@@ -139,6 +141,61 @@ def _compare(t: str) -> dict:
     return {f"{n}{t}": _bin(t, "Bool") for n in names}
 
 
+# D-90: every integer type the language declares has the same arithmetic, comparison, bit, and conversion
+# targets, named `<operation><Type>`; checked arithmetic traps, and the wrapping and saturating forms are named.
+# `ExitCode` is a status, not a number to compute with: it converts to and from `Int64` only.
+INTEGER_TYPES = ("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte")
+SIGNED_TYPES = ("Int8", "Int16", "Int32", "Int64")
+UNSIGNED_SMALL = ("UInt8", "UInt16", "UInt32", "Byte")  # unsigned types narrower than `UInt64`
+
+
+def conversion_name(source: str, target: str) -> str:
+    """D-90: `convert.<source>To<Target>`; the source's leading capitals are lower case (`uint64ToInt64`)."""
+    lead = source[:2].lower() + source[2:] if source.startswith("UInt") else source[0].lower() + source[1:]
+    return f"{lead}To{target}"
+
+
+def _conversions() -> dict:
+    """D-90: every integer type to and from `Int64`, the unsigned types to and from `UInt64`, two's-complement
+    reinterpretation between `Int64` and `UInt64`, and the float conversions. A conversion that can lose the value
+    traps when it would; one that cannot never does."""
+    pairs = [(t, "Int64") for t in INTEGER_TYPES if t != "Int64"] + [("Int64", t) for t in INTEGER_TYPES if t != "Int64"]
+    pairs += [(t, "UInt64") for t in UNSIGNED_SMALL] + [("UInt64", t) for t in UNSIGNED_SMALL]
+    pairs += [("ExitCode", "Int64"), ("Int64", "ExitCode"), ("Int64", "Float64"), ("Float64", "Int64"),
+              ("Float32", "Float64"), ("Float64", "Float32")]
+    out = {conversion_name(s, t): _un(s, t) for s, t in pairs}
+    out["int64BitsToUInt64"] = _un("Int64", "UInt64")
+    out["uint64BitsToInt64"] = _un("UInt64", "Int64")
+    return out
+
+
+def _math() -> dict:
+    out = {}
+    for t in INTEGER_TYPES:
+        out.update({f"{op}{t}": _bin(t, t) for op in ("add", "subtract", "multiply", "divide", "remainder")})
+        out.update({f"{kind}{op}{t}": _bin(t, t) for kind in ("wrapping", "saturating")
+                    for op in ("Add", "Subtract", "Multiply")})
+    for t in SIGNED_TYPES:
+        out[f"negate{t}"] = _un(t, t)
+        out[f"absolute{t}"] = _un(t, t)
+    for t in ("Float32", "Float64"):
+        out.update({f"{op}{t}": _bin(t, t) for op in ("add", "subtract", "multiply", "divide")})
+    out["powerInt64"] = Sig((P("base", "Int64", "copied"), P("exponent", "Int64", "copied")), "Int64")
+    return out
+
+
+def _bits() -> dict:
+    out = {}
+    for t in INTEGER_TYPES:
+        out.update({f"{op}{t}": _bin(t, t) for op in ("and", "or", "xor")})
+        out[f"not{t}"] = _un(t, t)
+        # the amount is a whole number from 0 to the type's width less one; any other amount traps.
+        # `shiftRight` keeps the sign of a signed type and fills with zeros for an unsigned one
+        for op in ("shiftLeft", "shiftRight"):
+            out[f"{op}{t}"] = Sig((P("value", t, "copied"), P("amount", "Int64", "copied")), t)
+    return out
+
+
 def _generic(name: str, params: list[str], plain: Optional[bool] = False, variants=None) -> TypeInfo:
     return TypeInfo(name, "generic", plain, type_params=params, variants=variants or [])
 
@@ -171,20 +228,11 @@ LIBRARY: dict[str, dict] = {
     },
     "math": {
         "types": {},
-        "targets": {
-            **{f"{op}Int64": _bin("Int64", "Int64") for op in ("add", "subtract", "multiply", "divide", "remainder")},
-            **{f"{op}Int32": _bin("Int32", "Int32") for op in ("add", "subtract", "multiply", "divide", "remainder")},
-            **{f"{kind}{op}Int64": _bin("Int64", "Int64") for kind in ("wrapping", "saturating")
-               for op in ("Add", "Subtract", "Multiply")},
-            **{f"{op}Float64": _bin("Float64", "Float64") for op in ("add", "subtract", "multiply", "divide")},
-            "negateInt64": _un("Int64", "Int64"),
-            "absoluteInt64": _un("Int64", "Int64"),
-            "powerInt64": Sig((P("base", "Int64", "copied"), P("exponent", "Int64", "copied")), "Int64"),
-        },
+        "targets": _math(),
     },
     "compare": {
         "types": {},
-        "targets": {**_compare("Int64"), **_compare("Int32"), **_compare("Byte"), **_compare("Float64")},
+        "targets": {k: v for t in INTEGER_TYPES + ("Float32", "Float64") for k, v in _compare(t).items()},
     },
     "logic": {
         "types": {},
@@ -197,25 +245,11 @@ LIBRARY: dict[str, dict] = {
     },
     "bits": {
         "types": {},
-        "targets": {
-            **{f"{op}Int64": _bin("Int64", "Int64") for op in ("and", "or", "xor")},
-            "notInt64": _un("Int64", "Int64"),
-            "shiftLeftInt64": Sig((P("value", "Int64", "copied"), P("amount", "Int64", "copied")), "Int64"),
-            "shiftRightInt64": Sig((P("value", "Int64", "copied"), P("amount", "Int64", "copied")), "Int64"),
-        },
+        "targets": _bits(),
     },
     "convert": {
         "types": {},
-        "targets": {
-            "int32ToInt64": _un("Int32", "Int64"),
-            "int64ToInt32": _un("Int64", "Int32"),
-            "byteToInt64": _un("Byte", "Int64"),
-            "int64ToByte": _un("Int64", "Byte"),
-            "int64ToFloat64": _un("Int64", "Float64"),
-            "float64ToInt64": _un("Float64", "Int64"),
-            "exitCodeToInt64": _un("ExitCode", "Int64"),
-            "int64ToExitCode": _un("Int64", "ExitCode"),
-        },
+        "targets": _conversions(),
     },
     "string": {
         "types": {
@@ -223,6 +257,10 @@ LIBRARY: dict[str, dict] = {
             "ParseError": _err("string.ParseError", ("notANumber", None), ("outOfRange", None)),
             "NotFound": _err("string.NotFound", ("absent", None)),
             "Utf8Error": _err("string.Utf8Error", ("invalidAt", "Int64")),
+            # D-91: how two texts order, byte by byte (which is code point order for UTF-8), then by length
+            "Ordering": _err("string.Ordering", ("less", None), ("equal", None), ("greater", None)),
+            # D-91: a search from an offset: nothing found, or an offset outside the text
+            "FindError": _err("string.FindError", ("absent", None), ("outOfRange", "Int64")),
             # D-71: where a character starts in a text: its byte offset, and its line and column (both from 1)
             "Position": TypeInfo("string.Position", "record", True,
                                  fields=[("offset", "Int64"), ("line", "Int64"), ("column", "Int64")]),
@@ -246,6 +284,30 @@ LIBRARY: dict[str, dict] = {
             # D-71: the position of the character after the one at `position` (a newline starts the next line)
             "advancePosition": Sig((P("text", "String", "borrowed"), P("position", "string.Position", "copied")),
                                    "string.Position", raises="string.StringIndexError"),
+            # D-91: text, numbers, and bytes for a compiler, all lowered inline (no host)
+            "endsWith": Sig((P("text", "String", "borrowed"), P("suffix", "String", "borrowed")), "Bool"),
+            "compare": Sig((P("left", "String", "borrowed"), P("right", "String", "borrowed")), "string.Ordering"),
+            "findFrom": Sig((P("text", "String", "borrowed"), P("needle", "String", "borrowed"),
+                             P("start", "Int64", "copied")), "Int64", raises="string.FindError"),
+            "fromByte": Sig((P("value", "Byte", "copied"), _RG), "String", "region", "string.Utf8Error"),
+            "fromUInt64": Sig((P("value", "UInt64", "copied"), _RG), "String", output_owner="region"),
+            "toUInt64": Sig((P("text", "String", "borrowed"),), "UInt64", raises="string.ParseError"),
+            "fromUInt64Hex": Sig((P("value", "UInt64", "copied"), _RG), "String", output_owner="region"),
+            "fromByteHex": Sig((P("value", "Byte", "copied"), _RG), "String", output_owner="region"),
+            "fromFloat64": Sig((P("value", "Float64", "copied"), _RG), "String", output_owner="region"),
+            "toFloat64": Sig((P("text", "String", "borrowed"),), "Float64", raises="string.ParseError"),
+        },
+    },
+    # D-91: reading bytes. A `Bytes` value is a byte sequence with no encoding; these read it without the host
+    "bytes": {
+        "types": {"BytesIndexError": _err("bytes.BytesIndexError", ("outOfRange", "Int64"))},
+        "targets": {
+            "length": Sig((P("bytes", "Bytes", "borrowed"),), "Int64"),
+            "byteAt": Sig((P("bytes", "Bytes", "borrowed"), P("index", "Int64", "copied")), "Byte",
+                          raises="bytes.BytesIndexError"),
+            "slice": Sig((P("bytes", "Bytes", "borrowed"), P("start", "Int64", "copied"), P("length", "Int64", "copied")),
+                         "Bytes", raises="bytes.BytesIndexError", borrows="bytes"),
+            "equals": Sig((P("left", "Bytes", "borrowed"), P("right", "Bytes", "borrowed")), "Bool"),
         },
     },
     "byte": {
@@ -423,7 +485,8 @@ LIBRARY: dict[str, dict] = {
         "targets": {},
     },
     "set": {
-        "types": {"Set": _generic("set.Set", ["T@plain"])},
+        # D-93: an item is a plain value or a String, like a map's key (D-61)
+        "types": {"Set": _generic("set.Set", ["T@key"])},
         "targets": {},
     },
     "option": {
@@ -606,11 +669,12 @@ def generic_members(generic: str, inst: str, args: list[str], plain, index: Opti
         }
     if generic == "set.Set":
         item = args[0]
+        imode = read_mode(item)  # D-93: a String item is lent; `add` copies it into the set's region
         return {
             "new": Sig((_RG,), inst, "region"),
-            "add": Sig((P("set", inst, "borrowedMutable"), P("item", item, "copied"))),
-            "contains": Sig((P("set", inst, "borrowed"), P("item", item, "copied")), "Bool"),
-            "remove": Sig((P("set", inst, "borrowedMutable"), P("item", item, "copied"))),
+            "add": Sig((P("set", inst, "borrowedMutable"), P("item", item, imode))),
+            "contains": Sig((P("set", inst, "borrowed"), P("item", item, imode)), "Bool"),
+            "remove": Sig((P("set", inst, "borrowedMutable"), P("item", item, imode))),
             "length": Sig((P("set", inst, "borrowed"),), "Int64"),
         }
     if generic == "option.Option":

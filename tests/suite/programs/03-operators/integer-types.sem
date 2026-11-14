@@ -1,0 +1,790 @@
+# covers: 2 Signed integers (8/16/32/64-bit)
+# covers: 2 Unsigned integers
+# covers: 3 Bitwise operators
+# covers: 3 Bit shifting
+# covers: 2 Type conversions
+# covers: 14 Explicit conversions
+# covers: 2 Floating-point numbers
+# covers: 19 Mathematical functions
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 127
+# stdout: 18446744073709551614
+# stdout: 4294901760
+# stdout: -32768
+# stdout: 255
+# stdout: 0
+# stdout: 2147483647
+# stdout: 15
+# stdout: -4
+# stdout: true
+# stdout: ffffffffffffffff
+# stdout: 3.75
+# stdout: 6148914691236517205
+# stdout: 100
+# stdout: 56
+
+integerTypes is module
+integerTypes purpose "Compute with every integer width, unsigned values past Int64, and Float32"
+integerTypes path integerTypes
+integerTypes imports standard.console
+integerTypes imports standard.math
+integerTypes imports standard.bits
+integerTypes imports standard.compare
+integerTypes imports standard.convert
+integerTypes imports standard.string
+integerTypes exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParameter none
+showInt input value Int64 copied
+showInt output none
+showInt outputOwnedBy none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memoryHeap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt let none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParameter none
+showText input text String borrowed
+showText output none
+showText outputOwnedBy none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memoryHeap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText let none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue argument text String text lend
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showFloat is operation
+showFloat purpose "Print one floating-point number on its own line"
+showFloat invariant none
+showFloat typeParameter none
+showFloat input value Float64 copied
+showFloat output none
+showFloat outputOwnedBy none
+showFloat raises none
+showFloat effect write console.stdout
+showFloat uses stdoutWriter
+showFloat memoryHeap false
+showFloat async false
+showFloat maxRecursion none
+showFloat label begin loopKind none
+showFloat label begin within none
+showFloat label done loopKind none
+showFloat label done within none
+showFloat let none
+showFloat at begin do writeValue
+showFloat at begin branch ifError writeValue goto done else goto done
+showFloat at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showFloat
+writeValue invokes console.writeFloatLine
+writeValue argument value Float64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParameter none
+showBool input flag Bool copied
+showBool output none
+showBool outputOwnedBy none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memoryHeap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue argument text String trueText lend
+writeTrue result none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse argument text String falseText lend
+writeFalse result none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let a8 Int8 100 immutable
+main let b8 Int8 27 immutable
+main let big UInt64 18446744073709551615 immutable
+main let one64 UInt64 1 immutable
+main let m32 UInt32 65536 immutable
+main let n32 UInt32 65535 immutable
+main let top16 Int16 32767 immutable
+main let one16 Int16 1 immutable
+main let u200 UInt8 200 immutable
+main let u100 UInt8 100 immutable
+main let u10 UInt8 10 immutable
+main let u20 UInt8 20 immutable
+main let sixty Int64 60 immutable
+main let two Int64 2 immutable
+main let minus16 Int64 -16 immutable
+main let minusOne Int64 -1 immutable
+main let three64 UInt64 3 immutable
+main let f1 Float32 1.5 immutable
+main let f2 Float32 2.25 immutable
+main let minus100 Int8 -100 immutable
+main let b7 Byte 7 immutable
+main let b9 Byte 9 immutable
+main let i32a Int32 2000000000 immutable
+main let i32b Int32 2000000000 immutable
+main let okCode ExitCode 0 immutable
+main at begin do step1
+main at begin do step2
+main at begin do step3
+main at begin do dropOne
+main at begin do step5
+main at begin do step6
+main at begin do step7
+main at begin do step8
+main at begin do step9
+main at begin do step10
+main at begin do step11
+main at begin do step12
+main at begin do step13
+main at begin do step14
+main at begin do step15
+main at begin do step16
+main at begin do step17
+main at begin do step18
+main at begin do step19
+main at begin do step20
+main at begin do step21
+main at begin do step22
+main at begin do step23
+main at begin do step24
+main at begin do step25
+main at begin do step26
+main at begin do step27
+main at begin do step28
+main at begin do step29
+main at begin do step30
+main at begin do step31
+main at begin do step32
+main at begin do step33
+main at begin do step34
+main at begin do step35
+main at begin do step36
+main at begin do step37
+main at begin do step38
+main at begin do step39
+main at begin do step40
+main at begin do step41
+main at begin do step43
+main at begin do step44
+main at begin do step45
+main at begin return ok okCode
+
+step1 is call
+step1 in main
+step1 invokes math.addInt8
+step1 argument left Int8 a8 copy
+step1 argument right Int8 b8 copy
+step1 result sum8 Int8
+step1 ownedBy none
+step1 cleanedBy none
+step1 borrows none
+step1 catch none
+step1 suppresses none
+
+step2 is call
+step2 in main
+step2 invokes convert.int8ToInt64
+step2 argument value Int8 sum8 copy
+step2 result sum8Wide Int64
+step2 ownedBy none
+step2 cleanedBy none
+step2 borrows none
+step2 catch none
+step2 suppresses none
+
+step3 is call
+step3 in main
+step3 invokes showInt
+step3 argument value Int64 sum8Wide copy
+step3 result none
+step3 ownedBy none
+step3 cleanedBy none
+step3 borrows none
+step3 catch none
+step3 suppresses none
+
+dropOne is call
+dropOne in main
+dropOne invokes math.subtractUInt64
+dropOne argument left UInt64 big copy
+dropOne argument right UInt64 one64 copy
+dropOne result less UInt64
+dropOne ownedBy none
+dropOne cleanedBy none
+dropOne borrows none
+dropOne catch none
+dropOne suppresses none
+
+step5 is call
+step5 in main
+step5 invokes string.fromUInt64
+step5 argument value UInt64 less copy
+step5 argument region Region scratch lend
+step5 result lessText String
+step5 ownedBy scratch
+step5 cleanedBy none
+step5 borrows none
+step5 catch none
+step5 suppresses none
+
+step6 is call
+step6 in main
+step6 invokes showText
+step6 argument text String lessText lend
+step6 result none
+step6 ownedBy none
+step6 cleanedBy none
+step6 borrows none
+step6 catch none
+step6 suppresses none
+
+step7 is call
+step7 in main
+step7 invokes math.multiplyUInt32
+step7 argument left UInt32 m32 copy
+step7 argument right UInt32 n32 copy
+step7 result prod32 UInt32
+step7 ownedBy none
+step7 cleanedBy none
+step7 borrows none
+step7 catch none
+step7 suppresses none
+
+step8 is call
+step8 in main
+step8 invokes convert.uint32ToInt64
+step8 argument value UInt32 prod32 copy
+step8 result prodWide Int64
+step8 ownedBy none
+step8 cleanedBy none
+step8 borrows none
+step8 catch none
+step8 suppresses none
+
+step9 is call
+step9 in main
+step9 invokes showInt
+step9 argument value Int64 prodWide copy
+step9 result none
+step9 ownedBy none
+step9 cleanedBy none
+step9 borrows none
+step9 catch none
+step9 suppresses none
+
+step10 is call
+step10 in main
+step10 invokes math.wrappingAddInt16
+step10 argument left Int16 top16 copy
+step10 argument right Int16 one16 copy
+step10 result wrap16 Int16
+step10 ownedBy none
+step10 cleanedBy none
+step10 borrows none
+step10 catch none
+step10 suppresses none
+
+step11 is call
+step11 in main
+step11 invokes convert.int16ToInt64
+step11 argument value Int16 wrap16 copy
+step11 result wrapWide Int64
+step11 ownedBy none
+step11 cleanedBy none
+step11 borrows none
+step11 catch none
+step11 suppresses none
+
+step12 is call
+step12 in main
+step12 invokes showInt
+step12 argument value Int64 wrapWide copy
+step12 result none
+step12 ownedBy none
+step12 cleanedBy none
+step12 borrows none
+step12 catch none
+step12 suppresses none
+
+step13 is call
+step13 in main
+step13 invokes math.saturatingAddUInt8
+step13 argument left UInt8 u200 copy
+step13 argument right UInt8 u100 copy
+step13 result sat8 UInt8
+step13 ownedBy none
+step13 cleanedBy none
+step13 borrows none
+step13 catch none
+step13 suppresses none
+
+step14 is call
+step14 in main
+step14 invokes convert.uint8ToInt64
+step14 argument value UInt8 sat8 copy
+step14 result satWide Int64
+step14 ownedBy none
+step14 cleanedBy none
+step14 borrows none
+step14 catch none
+step14 suppresses none
+
+step15 is call
+step15 in main
+step15 invokes showInt
+step15 argument value Int64 satWide copy
+step15 result none
+step15 ownedBy none
+step15 cleanedBy none
+step15 borrows none
+step15 catch none
+step15 suppresses none
+
+step16 is call
+step16 in main
+step16 invokes math.saturatingSubtractUInt8
+step16 argument left UInt8 u10 copy
+step16 argument right UInt8 u20 copy
+step16 result floor8 UInt8
+step16 ownedBy none
+step16 cleanedBy none
+step16 borrows none
+step16 catch none
+step16 suppresses none
+
+step17 is call
+step17 in main
+step17 invokes convert.uint8ToInt64
+step17 argument value UInt8 floor8 copy
+step17 result floorWide Int64
+step17 ownedBy none
+step17 cleanedBy none
+step17 borrows none
+step17 catch none
+step17 suppresses none
+
+step18 is call
+step18 in main
+step18 invokes showInt
+step18 argument value Int64 floorWide copy
+step18 result none
+step18 ownedBy none
+step18 cleanedBy none
+step18 borrows none
+step18 catch none
+step18 suppresses none
+
+step19 is call
+step19 in main
+step19 invokes math.saturatingMultiplyInt32
+step19 argument left Int32 i32a copy
+step19 argument right Int32 i32b copy
+step19 result sat32 Int32
+step19 ownedBy none
+step19 cleanedBy none
+step19 borrows none
+step19 catch none
+step19 suppresses none
+
+step20 is call
+step20 in main
+step20 invokes convert.int32ToInt64
+step20 argument value Int32 sat32 copy
+step20 result sat32Wide Int64
+step20 ownedBy none
+step20 cleanedBy none
+step20 borrows none
+step20 catch none
+step20 suppresses none
+
+step21 is call
+step21 in main
+step21 invokes showInt
+step21 argument value Int64 sat32Wide copy
+step21 result none
+step21 ownedBy none
+step21 cleanedBy none
+step21 borrows none
+step21 catch none
+step21 suppresses none
+
+step22 is call
+step22 in main
+step22 invokes bits.shiftRightUInt64
+step22 argument value UInt64 big copy
+step22 argument amount Int64 sixty copy
+step22 result shifted UInt64
+step22 ownedBy none
+step22 cleanedBy none
+step22 borrows none
+step22 catch none
+step22 suppresses none
+
+step23 is call
+step23 in main
+step23 invokes convert.uint64ToInt64
+step23 argument value UInt64 shifted copy
+step23 result shiftedWide Int64
+step23 ownedBy none
+step23 cleanedBy none
+step23 borrows none
+step23 catch none
+step23 suppresses none
+
+step24 is call
+step24 in main
+step24 invokes showInt
+step24 argument value Int64 shiftedWide copy
+step24 result none
+step24 ownedBy none
+step24 cleanedBy none
+step24 borrows none
+step24 catch none
+step24 suppresses none
+
+step25 is call
+step25 in main
+step25 invokes bits.shiftRightInt64
+step25 argument value Int64 minus16 copy
+step25 argument amount Int64 two copy
+step25 result quarter Int64
+step25 ownedBy none
+step25 cleanedBy none
+step25 borrows none
+step25 catch none
+step25 suppresses none
+
+step26 is call
+step26 in main
+step26 invokes showInt
+step26 argument value Int64 quarter copy
+step26 result none
+step26 ownedBy none
+step26 cleanedBy none
+step26 borrows none
+step26 catch none
+step26 suppresses none
+
+step27 is call
+step27 in main
+step27 invokes compare.lessThanUInt64
+step27 argument left UInt64 one64 copy
+step27 argument right UInt64 big copy
+step27 result isLess Bool
+step27 ownedBy none
+step27 cleanedBy none
+step27 borrows none
+step27 catch none
+step27 suppresses none
+
+step28 is call
+step28 in main
+step28 invokes showBool
+step28 argument flag Bool isLess copy
+step28 result none
+step28 ownedBy none
+step28 cleanedBy none
+step28 borrows none
+step28 catch none
+step28 suppresses none
+
+step29 is call
+step29 in main
+step29 invokes convert.int64BitsToUInt64
+step29 argument value Int64 minusOne copy
+step29 result allOnes UInt64
+step29 ownedBy none
+step29 cleanedBy none
+step29 borrows none
+step29 catch none
+step29 suppresses none
+
+step30 is call
+step30 in main
+step30 invokes string.fromUInt64Hex
+step30 argument value UInt64 allOnes copy
+step30 argument region Region scratch lend
+step30 result hexText String
+step30 ownedBy scratch
+step30 cleanedBy none
+step30 borrows none
+step30 catch none
+step30 suppresses none
+
+step31 is call
+step31 in main
+step31 invokes showText
+step31 argument text String hexText lend
+step31 result none
+step31 ownedBy none
+step31 cleanedBy none
+step31 borrows none
+step31 catch none
+step31 suppresses none
+
+step32 is call
+step32 in main
+step32 invokes math.addFloat32
+step32 argument left Float32 f1 copy
+step32 argument right Float32 f2 copy
+step32 result fsum Float32
+step32 ownedBy none
+step32 cleanedBy none
+step32 borrows none
+step32 catch none
+step32 suppresses none
+
+step33 is call
+step33 in main
+step33 invokes convert.float32ToFloat64
+step33 argument value Float32 fsum copy
+step33 result fsumWide Float64
+step33 ownedBy none
+step33 cleanedBy none
+step33 borrows none
+step33 catch none
+step33 suppresses none
+
+step34 is call
+step34 in main
+step34 invokes showFloat
+step34 argument value Float64 fsumWide copy
+step34 result none
+step34 ownedBy none
+step34 cleanedBy none
+step34 borrows none
+step34 catch none
+step34 suppresses none
+
+step35 is call
+step35 in main
+step35 invokes math.divideUInt64
+step35 argument left UInt64 big copy
+step35 argument right UInt64 three64 copy
+step35 result third UInt64
+step35 ownedBy none
+step35 cleanedBy none
+step35 borrows none
+step35 catch none
+step35 suppresses none
+
+step36 is call
+step36 in main
+step36 invokes string.fromUInt64
+step36 argument value UInt64 third copy
+step36 argument region Region scratch lend
+step36 result thirdText String
+step36 ownedBy scratch
+step36 cleanedBy none
+step36 borrows none
+step36 catch none
+step36 suppresses none
+
+step37 is call
+step37 in main
+step37 invokes showText
+step37 argument text String thirdText lend
+step37 result none
+step37 ownedBy none
+step37 cleanedBy none
+step37 borrows none
+step37 catch none
+step37 suppresses none
+
+step38 is call
+step38 in main
+step38 invokes math.absoluteInt8
+step38 argument value Int8 minus100 copy
+step38 result abs8 Int8
+step38 ownedBy none
+step38 cleanedBy none
+step38 borrows none
+step38 catch none
+step38 suppresses none
+
+step39 is call
+step39 in main
+step39 invokes convert.int8ToInt64
+step39 argument value Int8 abs8 copy
+step39 result abs8Wide Int64
+step39 ownedBy none
+step39 cleanedBy none
+step39 borrows none
+step39 catch none
+step39 suppresses none
+
+step40 is call
+step40 in main
+step40 invokes showInt
+step40 argument value Int64 abs8Wide copy
+step40 result none
+step40 ownedBy none
+step40 cleanedBy none
+step40 borrows none
+step40 catch none
+step40 suppresses none
+
+step41 is call
+step41 in main
+step41 invokes math.multiplyByte
+step41 argument left Byte b7 copy
+step41 argument right Byte b9 copy
+step41 result b63 Byte
+step41 ownedBy none
+step41 cleanedBy none
+step41 borrows none
+step41 catch none
+step41 suppresses none
+
+step43 is call
+step43 in main
+step43 invokes bits.xorByte
+step43 argument left Byte b63 copy
+step43 argument right Byte b7 copy
+step43 result bx Byte
+step43 ownedBy none
+step43 cleanedBy none
+step43 borrows none
+step43 catch none
+step43 suppresses none
+
+step44 is call
+step44 in main
+step44 invokes convert.byteToInt64
+step44 argument value Byte bx copy
+step44 result bxWide Int64
+step44 ownedBy none
+step44 cleanedBy none
+step44 borrows none
+step44 catch none
+step44 suppresses none
+
+step45 is call
+step45 in main
+step45 invokes showInt
+step45 argument value Int64 bxWide copy
+step45 result none
+step45 ownedBy none
+step45 cleanedBy none
+step45 borrows none
+step45 catch none
+step45 suppresses none
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn

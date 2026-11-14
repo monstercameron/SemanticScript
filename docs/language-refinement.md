@@ -2277,6 +2277,100 @@ traps before the file is touched; `buffer.ByteBuffer` builds the output and
 all work on it. The conformance suite gains a "Text and source positions"
 guarantee whose run checks pass command-line arguments (`Check.args`).
 
+### Library and generics for self-hosting (D-90 to D-94)
+
+From `docs/self-hosting-gaps.md` (roadmap items 7, 10, and 11): the numbers,
+text, and bytes a compiler written in the language computes with, and generic
+code that can be layered. Every new target is lowered inline, so it runs the
+same under `refined run`, in standalone executables, and in WebAssembly; only
+the two float conversions call the core runtime, as `string.fromInt64`
+already did.
+
+- **D-90** Every integer type the language declares computes. `Int8`,
+  `Int16`, `Int32`, `Int64`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, and
+  `Byte` each have `math.{add,subtract,multiply,divide,remainder}<Type>`
+  (trapping on overflow, on an unsigned result below zero, and on division
+  by zero), `math.{wrapping,saturating}{Add,Subtract,Multiply}<Type>`,
+  `compare.<six comparisons><Type>`, and `bits.{and,or,xor,not,shiftLeft,
+  shiftRight}<Type>`; the signed types also have `math.negate<Type>` and
+  `math.absolute<Type>`. A shift amount is an `Int64` from 0 to the width
+  less one (any other amount traps); `shiftRight` keeps the sign of a signed
+  type and fills with zeros for an unsigned one. `Float32` gains the four
+  arithmetic targets and the comparisons. Conversions go through two hubs:
+  every integer type to and from `Int64`, every narrower unsigned type to and
+  from `UInt64`, `ExitCode` to and from `Int64`, `Float32` to and from
+  `Float64`; a conversion traps exactly when the value does not fit (so
+  `int64ToExitCode` now traps outside 0 to 255, the range `ExitCode`
+  declares, where it used to check the `Int32` range).
+  `convert.int64BitsToUInt64` and `uint64BitsToInt64` reinterpret the 64
+  bits and never trap, for hashing. A conversion is named
+  `<source>To<Target>` with the source's leading capitals in lower case
+  (`uint64ToInt64`, `int8ToInt64`). Why every type, not removal: the types
+  were already declared and range-checked as literals, `UInt64` is what a
+  compiler needs to read a literal above `Int64` maximum and to hash, and a
+  name per type keeps the one pattern (no overloading, D-47). `ExitCode` stays
+  a status: it converts and nothing more.
+- **D-91** Text and bytes without the host. `string.compare` returns
+  `string.Ordering` (`less`, `equal`, `greater`), comparing bytes as unsigned
+  numbers (code point order for UTF-8), a prefix ordering first.
+  `string.endsWith`. `string.findFrom text needle start` searches from a byte
+  offset and returns the offset in the whole text; it fails with
+  `string.FindError` (`absent`, or `outOfRange` carrying a start outside 0 to
+  the length). `string.fromByte` makes a one-byte text and fails with
+  `string.Utf8Error.invalidAt 0` for a byte of 128 or more, since that byte
+  alone is not UTF-8. `string.fromUInt64` and `string.toUInt64` (decimal;
+  `notANumber` outranks `outOfRange`: every byte is read before deciding),
+  `string.fromUInt64Hex` (lower-case, no prefix, no padding) and
+  `string.fromByteHex` (exactly two digits) are the hex formatting an emitter
+  needs; they stand in for `buffer.appendHex`, since `buffer` is a host
+  target and composing `fromByteHex` with `buffer.appendString` gives the
+  same text. `string.fromFloat64` writes the shortest text that reads back as
+  the same value (as `console.writeFloatLine` prints it), and
+  `string.toFloat64` reads `-`? digits (`.` digits)? (`e` sign? digits)?,
+  nothing else, failing with `notANumber` or `outOfRange` (too large for a
+  `Float64`). The `bytes` module reads a `Bytes`: `length`, `byteAt`,
+  `slice` (a view, like `string.slice`, but with no character rule), and
+  `equals`; positions outside it are `bytes.BytesIndexError.outOfRange`.
+- **D-92** Generic code layers. A `typeInstance` or `operationInstance`
+  states `<name> in none` (it belongs to the module, and names concrete
+  types) or `<name> in <operation>`: it belongs to that generic operation of
+  the same module, its type arguments may name that operation's type
+  parameters, and only that operation uses it (R402 elsewhere, and it is
+  never exported). So a generic operation calls another generic operation at
+  its own type parameter (`pickAt in bestOf`, `pickAt instantiates pick T`)
+  and holds lists, options, and operation types of it (`ItemsT in bestOf`,
+  `ItemsT instantiates list.List T`). An instance's signature is seen in the
+  caller's types: where the generic operation's signature uses one of its own
+  instances, the caller must have declared the instance of the same generic
+  at the same arguments in its own scope (R403 at the `instantiates` row,
+  naming what is missing), so every value passed has a type the caller names.
+  Instances stay named entities with no inference (LR-24); the backend
+  compiles one copy of the generic operation per set of concrete arguments,
+  as before. Why an `in` row and not a different kind: it is the row calls,
+  tasks, and regions already use to say which operation owns them, and `in
+  none` keeps every instance's rows the same.
+- **D-93** Sets of text, read in order. A set's item is a plain value or a
+  `String`, like a map's key (D-61): a `String` item is lent (R406 for
+  `copy`), compared by content, and copied into the set's region when first
+  added. A `forEach` reads a set with `branch ifNext <set> bind <item>
+  <Type>`, item by item in the order first added (adding an item again keeps
+  its place), under the loop rules of a list or map (R515). Sets remain host
+  targets until the native runtime has them; the host keeps the order (the
+  compiler asks `set.Set.itemAt` for each position below the length).
+- **D-94** An operation type may be generic: `typeParameter <T> plain|any`
+  rows, as on records and enums (the row was `none` only). Like every
+  generic, it is used through a `typeInstance` (`BetterNumber instantiates
+  Better Int64`), whose type is an operation type with the arguments put in;
+  inside a generic operation, an instance stated `in` it names the
+  operation's own parameter (`BetterT instantiates Better T`), so a
+  comparison over `T` is passed in. Naming any generic type directly where a
+  type is expected, outside an `instantiates` row, is R402.
+
+The `layered-generics` case (`tests/suite/programs/14-types-generics`) uses
+D-92 and D-94 together: `bestOf<T>` reads a `list.List T` by `forEach`, judges
+items with a `Better T` passed in, and keeps the winner through `pick` at its
+own `T`; it runs at `Int64` and at `Byte`, under the JIT and as an executable.
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.
@@ -2503,6 +2597,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-48 to D-56 | Group failure propagation, region trap rationale, task state on every path, release on trap, one writer per file, approved authority, exact suppression, recoverable allocation, run-time loop bounds |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
+| 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
 
 ## Parking lot
 

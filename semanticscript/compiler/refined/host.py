@@ -791,8 +791,9 @@ class Map(dict):
         return self.order[i]
 
 
-class Set(set):
-    pass
+class Set(Map):
+    """D-93: a set is a map with no values: items in the order they were first added, `String` items compared by
+    their bytes and copied into the set's region."""
 
 
 class Channel:
@@ -863,29 +864,53 @@ def _map_key_at(p):
 
 @target("set.Set.new")
 def _set_new(p):
-    return ok(new_handle(Set(), p[0][0]))
+    # the compiler adds one slot: 1 when the items are `String` (D-93)
+    return ok(new_handle(Set(p[0][0], bool(p[1][0]) if len(p) > 1 else False), p[0][0]))
 
 
 @target("set.Set.add")
 def _set_add(p):
-    get(p[0][0], Set).add(p[1])
+    s = get(p[0][0], Set)
+    k = s.key(p[1])
+    if k not in s:
+        if s.text:
+            s.copies[k] = put(s.region, k)
+        s.order = None
+        s[k] = ()
     return ok()
 
 
 @target("set.Set.contains")
 def _set_contains(p):
-    return ok(1 if p[1] in get(p[0][0], Set) else 0)
+    s = get(p[0][0], Set)
+    return ok(1 if s.key(p[1]) in s else 0)
 
 
 @target("set.Set.remove")
 def _set_remove(p):
-    get(p[0][0], Set).discard(p[1])
+    s = get(p[0][0], Set)
+    k = s.key(p[1])
+    if k in s:
+        del s[k]
+        s.order = None
     return ok()
 
 
 @target("set.Set.length")
 def _set_length(p):
     return ok(len(get(p[0][0], Set)))
+
+
+@target("set.Set.itemAt")
+def _set_item_at(p):
+    """The item at a position in first-added order, for `forEach` over a set (D-93); the compiler asks only for
+    positions below the length."""
+    s = get(p[0][0], Set)
+    i = p[1][0]
+    if not 0 <= i < len(s):
+        rt._trap_now(f"a set was read at position {i} of {len(s)}")
+    k = s.key_at(i)
+    return ok(*(s.copies[k] if s.text else k))
 
 
 @target("channel.Channel.new")

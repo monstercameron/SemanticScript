@@ -125,6 +125,7 @@ clockReader grants read clock.monotonic none
 
 Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers"
+Mailbox in none
 Mailbox instantiates channel.Channel Int64
 
 pause is operation

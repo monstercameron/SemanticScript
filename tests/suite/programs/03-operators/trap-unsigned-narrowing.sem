@@ -1,0 +1,41 @@
+# covers: 14 Explicit conversions
+# covers: 2 Unsigned integers
+# kind: edge
+# expect: trap value out of range for `Int64`
+
+unsignedNarrowing is module
+unsignedNarrowing purpose "Trap: an unsigned value past Int64 converted to Int64"
+unsignedNarrowing path unsignedNarrowing
+unsignedNarrowing imports standard.convert
+unsignedNarrowing exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect none
+main uses none
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let big UInt64 9223372036854775808 immutable
+main let okCode ExitCode 0 immutable
+main at begin do step1
+main at begin return ok okCode
+
+step1 is call
+step1 in main
+step1 invokes convert.uint64ToInt64
+step1 argument value UInt64 big copy
+step1 result result Int64
+step1 ownedBy none
+step1 cleanedBy none
+step1 borrows none
+step1 catch none
+step1 suppresses none

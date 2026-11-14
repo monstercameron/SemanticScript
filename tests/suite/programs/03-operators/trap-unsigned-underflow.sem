@@ -1,0 +1,43 @@
+# covers: 3 Integer underflow
+# covers: 2 Unsigned integers
+# kind: edge
+# expect: trap overflowed `UInt32`
+
+unsignedUnderflow is module
+unsignedUnderflow purpose "Trap: an unsigned subtract below zero"
+unsignedUnderflow path unsignedUnderflow
+unsignedUnderflow imports standard.math
+unsignedUnderflow exports main
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect none
+main uses none
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let low UInt32 0 immutable
+main let high UInt32 1 immutable
+main let okCode ExitCode 0 immutable
+main at begin do step1
+main at begin return ok okCode
+
+step1 is call
+step1 in main
+step1 invokes math.subtractUInt32
+step1 argument left UInt32 low copy
+step1 argument right UInt32 high copy
+step1 result result UInt32
+step1 ownedBy none
+step1 cleanedBy none
+step1 borrows none
+step1 catch none
+step1 suppresses none

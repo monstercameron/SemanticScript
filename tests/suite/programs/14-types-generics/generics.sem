@@ -137,10 +137,12 @@ pick at takeSecond return ok second
 
 pickInt is operationInstance
 pickInt purpose "pick for whole numbers"
+pickInt in none
 pickInt instantiates pick Int64
 
 pickBool is operationInstance
 pickBool purpose "pick for true or false"
+pickBool in none
 pickBool instantiates pick Bool
 
 main is operation

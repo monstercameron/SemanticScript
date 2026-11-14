@@ -32,7 +32,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Mutable variables | tested | [variables](../tests/suite/programs/01-variables/variables.sem) |   |
 | Constants | tested | [variables](../tests/suite/programs/01-variables/variables.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `var-set-immutable` |   |
 | Variable shadowing | rejected | `var-shadowing` | A name is declared once per operation, across labels, values, and owned entities (R411). The same name in two operations is fine: each operation is its own scope. |
-| Variable scope | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-shadow-label` |   |
+| Variable scope | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-shadow-label`, `instance-states-owner`, `instance-parameter-needs-owner` |   |
 | Global variables | rejected | `var-global` | Modules hold no variables (R204); shared constant data lives in `table` entities. |
 | Local variables | tested | [variables](../tests/suite/programs/01-variables/variables.sem) |   |
 | Uninitialized variables | rejected | `var-uninitialized-path` |   |
@@ -46,13 +46,13 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Signed integers (8/16/32/64-bit) | tested | [integers](../tests/suite/programs/02-types/integers.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), `int8-literal-too-large`, `int16-literal-too-small` |   |
-| Unsigned integers | tested | [integers](../tests/suite/programs/02-types/integers.sem), `uint-negative`, `uint64-too-large` |   |
-| Floating-point numbers | tested | [floats](../tests/suite/programs/02-types/floats.sem), `float-into-integer` |   |
+| Signed integers (8/16/32/64-bit) | tested | [integers](../tests/suite/programs/02-types/integers.sem), [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), `int8-literal-too-large`, `int16-literal-too-small` |   |
+| Unsigned integers | tested | [integers](../tests/suite/programs/02-types/integers.sem), [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [trap-unsigned-narrowing](../tests/suite/programs/03-operators/trap-unsigned-narrowing.sem), [trap-unsigned-underflow](../tests/suite/programs/03-operators/trap-unsigned-underflow.sem), `uint-negative`, `uint64-too-large`, `unsigned-not-signed` |   |
+| Floating-point numbers | tested | [floats](../tests/suite/programs/02-types/floats.sem), [integer-types](../tests/suite/programs/03-operators/integer-types.sem), `float-into-integer` |   |
 | Boolean | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [floats](../tests/suite/programs/02-types/floats.sem) | `Bool` with `true` and `false`; printed by the operators and floats cases. |
 | Characters | tested | [integers](../tests/suite/programs/02-types/integers.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) | There is no character type: text is UTF-8 `String`, read a `Byte` at a time. |
-| Strings | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
-| Byte arrays | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
+| Strings | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem) |   |
+| Byte arrays | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem), `bytes-slice-is-a-view` |   |
 | Arrays | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
 | Lists | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `list-wrong-item-type` |   |
 | Tuples | by design | [shapes](../tests/suite/programs/02-types/shapes.sem) | No anonymous tuples: a record names every field. |
@@ -60,15 +60,15 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Enumerations | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `enum-unknown-variant` |   |
 | Unions | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem), `enum-unknown-variant`, `enum-payload-type` | Enums with payloads are the tagged unions; untagged unions do not exist. |
 | Maps / Dictionaries | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `map-key-not-plain`, `map-text-key-copied`, `map-key-wrong-item-type` |   |
-| Sets | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
+| Sets | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [text-sets](../tests/suite/programs/08-strings-collections/text-sets.sem), `set-item-not-key`, `set-text-item-lent`, `set-changed-in-forEach` |   |
 | Optional / Nullable types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem), `option-wrong-payload` |   |
 | Result types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [errors](../tests/suite/programs/10-errors/errors.sem) |   |
 | Generic types | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `generic-instance-arity` |   |
 | User-defined types | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `type-wrong-case` |   |
 | Recursive types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `recursive-type-by-value`, `recursive-type-through-list` |   |
-| Function types | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-signature-mismatch` |   |
+| Function types | tested | [functions](../tests/suite/programs/05-functions/functions.sem), [layered-generics](../tests/suite/programs/14-types-generics/layered-generics.sem), `reference-signature-mismatch`, `generic-type-unapplied` |   |
 | Type aliases | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `alias-is-distinct`, `index-literal`, `index-from-integer`, `index-of-a-map`, `index-not-int64`, `index-alias-twice`, `append-indexed-without-index` |   |
-| Type conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [trap-byte-out-of-range](../tests/suite/programs/03-operators/trap-byte-out-of-range.sem), [trap-nan-to-integer](../tests/suite/programs/03-operators/trap-nan-to-integer.sem), [trap-narrowing-out-of-range](../tests/suite/programs/03-operators/trap-narrowing-out-of-range.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
+| Type conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [trap-byte-out-of-range](../tests/suite/programs/03-operators/trap-byte-out-of-range.sem), [trap-nan-to-integer](../tests/suite/programs/03-operators/trap-nan-to-integer.sem), [trap-narrowing-out-of-range](../tests/suite/programs/03-operators/trap-narrowing-out-of-range.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Type compatibility | rejected | `no-implicit-widening`, `table-cell-wrong-type` |   |
 
 ## 3. Operators & Expressions
@@ -85,8 +85,8 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Inequality | tested | [operators](../tests/suite/programs/03-operators/operators.sem) |   |
 | Greater than / Less than | tested | [operators](../tests/suite/programs/03-operators/operators.sem) |   |
 | Logical AND / OR / NOT | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), `logic-on-integers` |   |
-| Bitwise operators | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
-| Bit shifting | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [trap-shift-too-far](../tests/suite/programs/03-operators/trap-shift-too-far.sem) |   |
+| Bitwise operators | tested | [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [operators](../tests/suite/programs/03-operators/operators.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
+| Bit shifting | tested | [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [operators](../tests/suite/programs/03-operators/operators.sem), [trap-shift-too-far](../tests/suite/programs/03-operators/trap-shift-too-far.sem) |   |
 | Unary operators | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [trap-negate-minimum](../tests/suite/programs/03-operators/trap-negate-minimum.sem) |   |
 | Operator precedence | by design |   | No infix operators, so no precedence: every operation is a call with named slots `left` and `right`. |
 | Operator associativity | by design |   | No infix operators: grouping is the order of the steps. |
@@ -94,7 +94,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Compound assignment | by design | `compound-assignment` | No `+=`: compute with a call, then `set` (and only a mutable let). |
 | Expression evaluation order | tested | [operators](../tests/suite/programs/03-operators/operators.sem) |   |
 | Integer overflow | tested | [trap-add-overflow](../tests/suite/programs/03-operators/trap-add-overflow.sem), [trap-divide-min-by-minus-one](../tests/suite/programs/03-operators/trap-divide-min-by-minus-one.sem), [trap-power-overflow](../tests/suite/programs/03-operators/trap-power-overflow.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), `test_differential_integer_arithmetic` |   |
-| Integer underflow | tested | [trap-subtract-underflow](../tests/suite/programs/03-operators/trap-subtract-underflow.sem) |   |
+| Integer underflow | tested | [trap-subtract-underflow](../tests/suite/programs/03-operators/trap-subtract-underflow.sem), [trap-unsigned-underflow](../tests/suite/programs/03-operators/trap-unsigned-underflow.sem) |   |
 | Division by zero | tested | [trap-divide-by-zero](../tests/suite/programs/03-operators/trap-divide-by-zero.sem), [trap-remainder-by-zero](../tests/suite/programs/03-operators/trap-remainder-by-zero.sem) |   |
 | Floating-point precision | tested | [floats](../tests/suite/programs/02-types/floats.sem) |   |
 | NaN / Infinity handling | tested | [floats](../tests/suite/programs/02-types/floats.sem), [trap-nan-to-integer](../tests/suite/programs/03-operators/trap-nan-to-integer.sem) |   |
@@ -140,14 +140,14 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Anonymous functions | by design |   | Every operation is named; references point at named operations. |
 | Lambdas | by design |   | No lambdas: pass a named operation through an `operationType` value. |
 | Closures | by design |   | No captured environment: an operation sees only its inputs and lets. |
-| Higher-order functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-not-an-operation`, `recursion-through-reference` |   |
+| Higher-order functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), [layered-generics](../tests/suite/programs/14-types-generics/layered-generics.sem), `reference-not-an-operation`, `recursion-through-reference` |   |
 | Function references | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-signature-mismatch`, `reference-not-an-operation`, `effect-laundering-ref` |   |
 | Pure functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 | Impure functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 | Tail calls | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) | Tail recursion runs (fibonacci in the recursion case) but is not guaranteed to reuse the frame; `maxRecursion` bounds the depth either way. |
 | Function composition | tested | [functions](../tests/suite/programs/05-functions/functions.sem) |   |
 | Parameter passing by value | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `operator-wrong-mode` |   |
-| Parameter passing by reference | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `map-text-key-copied`, `change-through-read-loan`, `by-reference-needs-mutable-loan`, `task-wrong-loan-mode` |   |
+| Parameter passing by reference | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `map-text-key-copied`, `change-through-read-loan`, `by-reference-needs-mutable-loan`, `task-wrong-loan-mode`, `set-text-item-lent` |   |
 
 ## 6. Recursion
 
@@ -188,7 +188,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Memory leak detection | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `owned-never-released`, `leak-on-error-path` |   |
 | Double-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give`, `give-deferred` |   |
 | Use-after-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give`, `use-after-give` |   |
-| Dangling references | rejected | `index-literal`, `double-give`, `use-after-give`, `give-while-lent-to-task`, `return-borrowed-resource` |   |
+| Dangling references | rejected | `index-literal`, `double-give`, `use-after-give`, `give-while-lent-to-task`, `return-borrowed-resource`, `bytes-slice-is-a-view` |   |
 | Null pointer handling | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), `option-wrong-payload` | No null: absence is `option.Option` with `absent`, matched explicitly. |
 | Out-of-bounds memory access | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem) |   |
 | Buffer overflow protection | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem) |   |
@@ -205,7 +205,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | String creation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | String concatenation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-owner-undeclared` |   |
-| String comparison | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-is-not-integer` |   |
+| String comparison | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem), `string-is-not-integer` |   |
 | String interpolation | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | String slicing | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), `string-slice-unchecked`, `string-borrow-undeclared`, `whole-character-slice-unchecked` |   |
 | Unicode support | tested | [positions](../tests/suite/programs/08-strings-collections/positions.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
@@ -217,11 +217,11 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Array bounds checking | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), `list-index-unchecked` |   |
 | Array resizing | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
 | Multidimensional arrays | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
-| Collection iteration | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `map-key-wrong-item-type`, `map-changed-while-listed`, `append-during-foreach` |   |
-| Collection insertion | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `list-wrong-item-type` |   |
-| Collection removal | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
+| Collection iteration | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), [text-sets](../tests/suite/programs/08-strings-collections/text-sets.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `map-key-wrong-item-type`, `map-changed-while-listed`, `append-during-foreach`, `set-changed-in-forEach` |   |
+| Collection insertion | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [text-sets](../tests/suite/programs/08-strings-collections/text-sets.sem), `list-wrong-item-type` |   |
+| Collection removal | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem), [text-sets](../tests/suite/programs/08-strings-collections/text-sets.sem) |   |
 | Collection sorting | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
-| Collection searching | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [sorting](../tests/suite/programs/08-strings-collections/sorting.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
+| Collection searching | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [sorting](../tests/suite/programs/08-strings-collections/sorting.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem) |   |
 | Collection copying | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
 | Collection equality | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem) |   |
 | Nested collections | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
@@ -238,7 +238,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Circular imports | rejected | `module-cycle` |   |
 | Import resolution | tested | [project](../tests/suite/programs/09-modules/project), `module-missing-import`, `module-file-missing`, `module-unknown-standard` |   |
 | Namespace collisions | tested | [standard-name](../tests/suite/programs/09-modules/standard-name.sem), [project](../tests/suite/programs/09-modules/project) |   |
-| Visibility / Access modifiers | tested | [project](../tests/suite/programs/09-modules/project), `module-private-symbol` |   |
+| Visibility / Access modifiers | tested | [project](../tests/suite/programs/09-modules/project), `module-private-symbol`, `scoped-type-used-elsewhere`, `scoped-instance-called-elsewhere`, `scoped-instance-exported` |   |
 | Public / Private symbols | tested | [project](../tests/suite/programs/09-modules/project), `module-private-symbol` |   |
 | Dependency management | tested | [package](../tests/suite/programs/09-modules/package), [project](../tests/suite/programs/09-modules/project), `test_stress_large_dependency_graph` |   |
 | Module initialization | by design |   | Modules run no code when loaded and hold no mutable state; tables are constant data. |
@@ -350,14 +350,14 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | Static type checking | rejected | `operator-type-mismatch` |   |
 | Type inference | rejected | `var-no-inference` |   |
-| Type mismatch detection | rejected | `var-annotation-mismatch`, `index-from-integer`, `string-is-not-integer`, `position-is-not-an-integer`, `punctuation-takes-a-byte` |   |
+| Type mismatch detection | rejected | `var-annotation-mismatch`, `index-from-integer`, `string-is-not-integer`, `position-is-not-an-integer`, `punctuation-takes-a-byte`, `unsigned-not-signed`, `instance-signature-type-missing` |   |
 | Implicit conversions | rejected | `no-implicit-widening`, `float-into-integer` |   |
-| Explicit conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
-| Generic functions | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
-| Generic structures | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `generic-instance-arity` |   |
-| Generic constraints | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `map-key-not-plain`, `generic-wrong-argument`, `generic-constraint-isolated` |   |
+| Explicit conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [trap-unsigned-narrowing](../tests/suite/programs/03-operators/trap-unsigned-narrowing.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
+| Generic functions | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), [layered-generics](../tests/suite/programs/14-types-generics/layered-generics.sem), `generic-called-directly`, `instance-states-owner`, `instance-parameter-needs-owner`, `instance-owner-not-generic`, `scoped-type-used-elsewhere`, `scoped-instance-called-elsewhere`, `scoped-instance-exported`, `instance-signature-type-missing` |   |
+| Generic structures | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `generic-instance-arity`, `generic-type-unapplied` |   |
+| Generic constraints | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), [layered-generics](../tests/suite/programs/14-types-generics/layered-generics.sem), `map-key-not-plain`, `generic-wrong-argument`, `generic-constraint-isolated`, `set-item-not-key` |   |
 | Type parameter inference | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
-| Nested generics | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
+| Nested generics | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem), [layered-generics](../tests/suite/programs/14-types-generics/layered-generics.sem) |   |
 | Recursive generics | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem) |   |
 | Trait / Interface implementation | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem) |   |
 | Trait bounds | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-wrong-argument`, `generic-constraint-isolated` |   |
@@ -461,9 +461,9 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Mathematical functions | tested | [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), `test_differential_integer_arithmetic`, [operators](../tests/suite/programs/03-operators/operators.sem) |   |
+| Mathematical functions | tested | [integer-types](../tests/suite/programs/03-operators/integer-types.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), `test_differential_integer_arithmetic`, [operators](../tests/suite/programs/03-operators/operators.sem) |   |
 | Comparison functions | tested | [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), [operators](../tests/suite/programs/03-operators/operators.sem) |   |
-| String utilities | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), [string-asserts](../tests/suite/programs/20-testing/string-asserts.sem) |   |
+| String utilities | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem), [text-and-bytes](../tests/suite/programs/08-strings-collections/text-and-bytes.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem), [string-asserts](../tests/suite/programs/20-testing/string-asserts.sem) |   |
 | Collection utilities | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | File-system utilities | tested | [directories](../tests/suite/programs/12-io/directories.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Date and time | tested | [clock](../tests/suite/programs/12-io/clock.sem) |   |

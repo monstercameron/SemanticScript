@@ -141,10 +141,12 @@ Holder field content T
 
 IntHolder is typeInstance
 IntHolder purpose "A box of one whole number"
+IntHolder in none
 IntHolder instantiates Holder Int64
 
 MaybeCount is typeInstance
 MaybeCount purpose "A count that may be absent"
+MaybeCount in none
 MaybeCount instantiates option.Option Int64
 
 Meters is alias

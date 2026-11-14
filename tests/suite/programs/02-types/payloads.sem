@@ -160,10 +160,12 @@ writeFalse suppresses console.WriteError.failed
 
 MaybeName is typeInstance
 MaybeName purpose "A name that may be absent"
+MaybeName in none
 MaybeName instantiates option.Option String
 
 Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
+Numbers in none
 Numbers instantiates list.List Int64
 
 Size is record

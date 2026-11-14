@@ -1,0 +1,670 @@
+# covers: 8 String comparison
+# covers: 8 Collection searching
+# covers: 2 Byte arrays
+# covers: 2 Strings
+# covers: 2 Type conversions
+# covers: 19 String utilities
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: less
+# stdout: true
+# stdout: 3
+# stdout: A
+# stdout: not a character
+# stdout: 0a
+# stdout: 18446744073709551615
+# stdout: 3.25
+# stdout: not a number
+# stdout: 0.1
+# stdout: 9
+# stdout: 108
+# stdout: true
+
+textAndBytes is module
+textAndBytes purpose "Order, search, build, and parse text, and read bytes, without the host"
+textAndBytes path textAndBytes
+textAndBytes imports standard.console
+textAndBytes imports standard.string
+textAndBytes imports standard.bytes
+textAndBytes imports standard.convert
+textAndBytes exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+showInt is operation
+showInt purpose "Print one whole number on its own line"
+showInt invariant none
+showInt typeParameter none
+showInt input value Int64 copied
+showInt output none
+showInt outputOwnedBy none
+showInt raises none
+showInt effect write console.stdout
+showInt uses stdoutWriter
+showInt memoryHeap false
+showInt async false
+showInt maxRecursion none
+showInt label begin loopKind none
+showInt label begin within none
+showInt label done loopKind none
+showInt label done within none
+showInt let none
+showInt at begin do writeValue
+showInt at begin branch ifError writeValue goto done else goto done
+showInt at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showInt
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showText is operation
+showText purpose "Print one line of text"
+showText invariant none
+showText typeParameter none
+showText input text String borrowed
+showText output none
+showText outputOwnedBy none
+showText raises none
+showText effect write console.stdout
+showText uses stdoutWriter
+showText memoryHeap false
+showText async false
+showText maxRecursion none
+showText label begin loopKind none
+showText label begin within none
+showText label done loopKind none
+showText label done within none
+showText let none
+showText at begin do writeValue
+showText at begin branch ifError writeValue goto done else goto done
+showText at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showText
+writeValue invokes console.writeLine
+writeValue argument text String text lend
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showFloat is operation
+showFloat purpose "Print one floating-point number on its own line"
+showFloat invariant none
+showFloat typeParameter none
+showFloat input value Float64 copied
+showFloat output none
+showFloat outputOwnedBy none
+showFloat raises none
+showFloat effect write console.stdout
+showFloat uses stdoutWriter
+showFloat memoryHeap false
+showFloat async false
+showFloat maxRecursion none
+showFloat label begin loopKind none
+showFloat label begin within none
+showFloat label done loopKind none
+showFloat label done within none
+showFloat let none
+showFloat at begin do writeValue
+showFloat at begin branch ifError writeValue goto done else goto done
+showFloat at done return ok none
+
+writeValue is call
+writeValue rationale "A test program has nowhere to report a failed write"
+writeValue in showFloat
+writeValue invokes console.writeFloatLine
+writeValue argument value Float64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+showBool is operation
+showBool purpose "Print true or false on its own line"
+showBool invariant none
+showBool typeParameter none
+showBool input flag Bool copied
+showBool output none
+showBool outputOwnedBy none
+showBool raises none
+showBool effect write console.stdout
+showBool uses stdoutWriter
+showBool memoryHeap false
+showBool async false
+showBool maxRecursion none
+showBool label begin loopKind none
+showBool label begin within none
+showBool label sayTrue loopKind none
+showBool label sayTrue within none
+showBool label sayFalse loopKind none
+showBool label sayFalse within none
+showBool label done loopKind none
+showBool label done within none
+showBool let trueText String "true" immutable
+showBool let falseText String "false" immutable
+showBool at begin branch if flag goto sayTrue else goto sayFalse
+showBool at sayTrue do writeTrue
+showBool at sayTrue branch ifError writeTrue goto done else goto done
+showBool at sayFalse do writeFalse
+showBool at sayFalse branch ifError writeFalse goto done else goto done
+showBool at done return ok none
+
+writeTrue is call
+writeTrue rationale "A test program has nowhere to report a failed write"
+writeTrue in showBool
+writeTrue invokes console.writeLine
+writeTrue argument text String trueText lend
+writeTrue result none
+writeTrue ownedBy none
+writeTrue cleanedBy none
+writeTrue borrows none
+writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
+
+writeFalse is call
+writeFalse rationale "A test program has nowhere to report a failed write"
+writeFalse in showBool
+writeFalse invokes console.writeLine
+writeFalse argument text String falseText lend
+writeFalse result none
+writeFalse ownedBy none
+writeFalse cleanedBy none
+writeFalse borrows none
+writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
+
+main is operation
+main purpose "Run the case and print what it computes"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label sayLess loopKind none
+main label sayLess within none
+main label showFound loopKind none
+main label showFound within none
+main label showLetter loopKind none
+main label showLetter within none
+main label refused loopKind none
+main label refused within none
+main label showParsed loopKind none
+main label showParsed within none
+main label showReal loopKind none
+main label showReal within none
+main label rejected loopKind none
+main label rejected within none
+main label showFirst loopKind none
+main label showFirst within none
+main label compareTail loopKind none
+main label compareTail within none
+main label finish loopKind none
+main label finish within none
+main label failed loopKind none
+main label failed within none
+main let apple String "apple" immutable
+main let apricot String "apricot" immutable
+main let fileName String "lexer.sem" immutable
+main let suffix String ".sem" immutable
+main let haystack String "a,b,c" immutable
+main let comma String "," immutable
+main let start Int64 2 immutable
+main let letter Byte 65 immutable
+main let high Byte 200 immutable
+main let ten Byte 10 immutable
+main let digits String "18446744073709551615" immutable
+main let decimal String "3.25" immutable
+main let broken String "1.5x" immutable
+main let tenth Float64 0.1 immutable
+main let zero Int64 0 immutable
+main let five Int64 5 immutable
+main let four Int64 4 immutable
+main let lessWord String "less" immutable
+main let notCharacter String "not a character" immutable
+main let notNumber String "not a number" immutable
+main let okCode ExitCode 0 immutable
+main let failCode ExitCode 1 immutable
+main at begin do step1
+main at begin match order string.Ordering
+main at begin case string.Ordering.less bind none none goto sayLess
+main at begin case string.Ordering.equal bind none none goto failed
+main at begin case string.Ordering.greater bind none none goto failed
+main at sayLess do step2
+main at sayLess do step3
+main at sayLess do step4
+main at sayLess do findComma
+main at sayLess branch ifError findComma goto failed else goto showFound
+main at showFound do step6
+main at showFound do makeLetter
+main at showFound branch ifError makeLetter goto failed else goto showLetter
+main at showLetter do step8
+main at showLetter do makeHigh
+main at showLetter branch ifError makeHigh goto refused else goto failed
+main at refused do step10
+main at refused do step11
+main at refused do step12
+main at refused do parseDigits
+main at refused branch ifError parseDigits goto failed else goto showParsed
+main at showParsed do step14
+main at showParsed do step15
+main at showParsed do parseDecimal
+main at showParsed branch ifError parseDecimal goto failed else goto showReal
+main at showReal do step17
+main at showReal do parseBroken
+main at showReal branch ifError parseBroken goto rejected else goto failed
+main at rejected do step19
+main at rejected do step20
+main at rejected do step21
+main at rejected do viewName
+main at rejected do step23
+main at rejected do step24
+main at rejected do readFirst
+main at rejected branch ifError readFirst goto failed else goto showFirst
+main at showFirst do step26
+main at showFirst do step27
+main at showFirst do cutTail
+main at showFirst branch ifError cutTail goto failed else goto compareTail
+main at compareTail do viewSuffix
+main at compareTail do step30
+main at compareTail do step31
+main at compareTail do readThird
+main at compareTail branch ifError readThird goto failed else goto finish
+main at finish return ok okCode
+main at failed return ok failCode
+
+step1 is call
+step1 in main
+step1 invokes string.compare
+step1 argument left String apple lend
+step1 argument right String apricot lend
+step1 result order string.Ordering
+step1 ownedBy none
+step1 cleanedBy none
+step1 borrows none
+step1 catch none
+step1 suppresses none
+
+step2 is call
+step2 in main
+step2 invokes showText
+step2 argument text String lessWord lend
+step2 result none
+step2 ownedBy none
+step2 cleanedBy none
+step2 borrows none
+step2 catch none
+step2 suppresses none
+
+step3 is call
+step3 in main
+step3 invokes string.endsWith
+step3 argument text String fileName lend
+step3 argument suffix String suffix lend
+step3 result ends Bool
+step3 ownedBy none
+step3 cleanedBy none
+step3 borrows none
+step3 catch none
+step3 suppresses none
+
+step4 is call
+step4 in main
+step4 invokes showBool
+step4 argument flag Bool ends copy
+step4 result none
+step4 ownedBy none
+step4 cleanedBy none
+step4 borrows none
+step4 catch none
+step4 suppresses none
+
+findComma is call
+findComma in main
+findComma invokes string.findFrom
+findComma argument text String haystack lend
+findComma argument needle String comma lend
+findComma argument start Int64 start copy
+findComma result found Int64
+findComma ownedBy none
+findComma cleanedBy none
+findComma borrows none
+findComma catch findError string.FindError
+findComma suppresses none
+
+step6 is call
+step6 in main
+step6 invokes showInt
+step6 argument value Int64 found copy
+step6 result none
+step6 ownedBy none
+step6 cleanedBy none
+step6 borrows none
+step6 catch none
+step6 suppresses none
+
+makeLetter is call
+makeLetter in main
+makeLetter invokes string.fromByte
+makeLetter argument value Byte letter copy
+makeLetter argument region Region scratch lend
+makeLetter result letterText String
+makeLetter ownedBy scratch
+makeLetter cleanedBy none
+makeLetter borrows none
+makeLetter catch letterError string.Utf8Error
+makeLetter suppresses none
+
+step8 is call
+step8 in main
+step8 invokes showText
+step8 argument text String letterText lend
+step8 result none
+step8 ownedBy none
+step8 cleanedBy none
+step8 borrows none
+step8 catch none
+step8 suppresses none
+
+makeHigh is call
+makeHigh in main
+makeHigh invokes string.fromByte
+makeHigh argument value Byte high copy
+makeHigh argument region Region scratch lend
+makeHigh result highText String
+makeHigh ownedBy scratch
+makeHigh cleanedBy none
+makeHigh borrows none
+makeHigh catch highError string.Utf8Error
+makeHigh suppresses none
+
+step10 is call
+step10 in main
+step10 invokes showText
+step10 argument text String notCharacter lend
+step10 result none
+step10 ownedBy none
+step10 cleanedBy none
+step10 borrows none
+step10 catch none
+step10 suppresses none
+
+step11 is call
+step11 in main
+step11 invokes string.fromByteHex
+step11 argument value Byte ten copy
+step11 argument region Region scratch lend
+step11 result hexByte String
+step11 ownedBy scratch
+step11 cleanedBy none
+step11 borrows none
+step11 catch none
+step11 suppresses none
+
+step12 is call
+step12 in main
+step12 invokes showText
+step12 argument text String hexByte lend
+step12 result none
+step12 ownedBy none
+step12 cleanedBy none
+step12 borrows none
+step12 catch none
+step12 suppresses none
+
+parseDigits is call
+parseDigits in main
+parseDigits invokes string.toUInt64
+parseDigits argument text String digits lend
+parseDigits result parsed UInt64
+parseDigits ownedBy none
+parseDigits cleanedBy none
+parseDigits borrows none
+parseDigits catch parseError string.ParseError
+parseDigits suppresses none
+
+step14 is call
+step14 in main
+step14 invokes string.fromUInt64
+step14 argument value UInt64 parsed copy
+step14 argument region Region scratch lend
+step14 result parsedText String
+step14 ownedBy scratch
+step14 cleanedBy none
+step14 borrows none
+step14 catch none
+step14 suppresses none
+
+step15 is call
+step15 in main
+step15 invokes showText
+step15 argument text String parsedText lend
+step15 result none
+step15 ownedBy none
+step15 cleanedBy none
+step15 borrows none
+step15 catch none
+step15 suppresses none
+
+parseDecimal is call
+parseDecimal in main
+parseDecimal invokes string.toFloat64
+parseDecimal argument text String decimal lend
+parseDecimal result real Float64
+parseDecimal ownedBy none
+parseDecimal cleanedBy none
+parseDecimal borrows none
+parseDecimal catch realError string.ParseError
+parseDecimal suppresses none
+
+step17 is call
+step17 in main
+step17 invokes showFloat
+step17 argument value Float64 real copy
+step17 result none
+step17 ownedBy none
+step17 cleanedBy none
+step17 borrows none
+step17 catch none
+step17 suppresses none
+
+parseBroken is call
+parseBroken in main
+parseBroken invokes string.toFloat64
+parseBroken argument text String broken lend
+parseBroken result junk Float64
+parseBroken ownedBy none
+parseBroken cleanedBy none
+parseBroken borrows none
+parseBroken catch junkError string.ParseError
+parseBroken suppresses none
+
+step19 is call
+step19 in main
+step19 invokes showText
+step19 argument text String notNumber lend
+step19 result none
+step19 ownedBy none
+step19 cleanedBy none
+step19 borrows none
+step19 catch none
+step19 suppresses none
+
+step20 is call
+step20 in main
+step20 invokes string.fromFloat64
+step20 argument value Float64 tenth copy
+step20 argument region Region scratch lend
+step20 result tenthText String
+step20 ownedBy scratch
+step20 cleanedBy none
+step20 borrows none
+step20 catch none
+step20 suppresses none
+
+step21 is call
+step21 in main
+step21 invokes showText
+step21 argument text String tenthText lend
+step21 result none
+step21 ownedBy none
+step21 cleanedBy none
+step21 borrows none
+step21 catch none
+step21 suppresses none
+
+viewName is call
+viewName in main
+viewName invokes string.toBytes
+viewName argument text String fileName lend
+viewName result raw Bytes
+viewName ownedBy none
+viewName cleanedBy none
+viewName borrows fileName
+viewName catch none
+viewName suppresses none
+
+step23 is call
+step23 in main
+step23 invokes bytes.length
+step23 argument bytes Bytes raw lend
+step23 result rawLength Int64
+step23 ownedBy none
+step23 cleanedBy none
+step23 borrows none
+step23 catch none
+step23 suppresses none
+
+step24 is call
+step24 in main
+step24 invokes showInt
+step24 argument value Int64 rawLength copy
+step24 result none
+step24 ownedBy none
+step24 cleanedBy none
+step24 borrows none
+step24 catch none
+step24 suppresses none
+
+readFirst is call
+readFirst in main
+readFirst invokes bytes.byteAt
+readFirst argument bytes Bytes raw lend
+readFirst argument index Int64 zero copy
+readFirst result firstByte Byte
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch byteError bytes.BytesIndexError
+readFirst suppresses none
+
+step26 is call
+step26 in main
+step26 invokes convert.byteToInt64
+step26 argument value Byte firstByte copy
+step26 result firstWide Int64
+step26 ownedBy none
+step26 cleanedBy none
+step26 borrows none
+step26 catch none
+step26 suppresses none
+
+step27 is call
+step27 in main
+step27 invokes showInt
+step27 argument value Int64 firstWide copy
+step27 result none
+step27 ownedBy none
+step27 cleanedBy none
+step27 borrows none
+step27 catch none
+step27 suppresses none
+
+cutTail is call
+cutTail in main
+cutTail invokes bytes.slice
+cutTail argument bytes Bytes raw lend
+cutTail argument start Int64 five copy
+cutTail argument length Int64 four copy
+cutTail result tail Bytes
+cutTail ownedBy none
+cutTail cleanedBy none
+cutTail borrows raw
+cutTail catch sliceError bytes.BytesIndexError
+cutTail suppresses none
+
+viewSuffix is call
+viewSuffix in main
+viewSuffix invokes string.toBytes
+viewSuffix argument text String suffix lend
+viewSuffix result suffixBytes Bytes
+viewSuffix ownedBy none
+viewSuffix cleanedBy none
+viewSuffix borrows suffix
+viewSuffix catch none
+viewSuffix suppresses none
+
+step30 is call
+step30 in main
+step30 invokes bytes.equals
+step30 argument left Bytes tail lend
+step30 argument right Bytes suffixBytes lend
+step30 result same Bool
+step30 ownedBy none
+step30 cleanedBy none
+step30 borrows none
+step30 catch none
+step30 suppresses none
+
+step31 is call
+step31 in main
+step31 invokes showBool
+step31 argument flag Bool same copy
+step31 result none
+step31 ownedBy none
+step31 cleanedBy none
+step31 borrows none
+step31 catch none
+step31 suppresses none
+
+readThird is call
+readThird in main
+readThird invokes bytes.byteAt
+readThird argument bytes Bytes raw lend
+readThird argument index Int64 start copy
+readThird result never Byte
+readThird ownedBy none
+readThird cleanedBy none
+readThird borrows none
+readThird catch pastError bytes.BytesIndexError
+readThird suppresses none
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn

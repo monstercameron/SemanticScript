@@ -48,7 +48,8 @@ from .diagnostics import Diagnostic
 from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
-from .semantics import (CallInfo, Module, OpInfo, World, grant_scope, resolve_type, resolve_variant,
+from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES
+from .semantics import (CallInfo, Module, OpInfo, World, grant_scope, instance_scope, resolve_type, resolve_variant,
                         type_params_of)
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
@@ -78,6 +79,9 @@ CALLBACKS = {
     "refined_format_int": ir.FunctionType(PTR, [I64, PTR, I64.as_pointer()]),
     "refined_find": ir.FunctionType(I64, [PTR, I64, PTR, I64]),
     "refined_parse_int": ir.FunctionType(I32, [PTR, I64, I64.as_pointer()]),
+    # D-91: a Float64 as the shortest text that reads back as it, and decimal text as a Float64
+    "refined_format_float": ir.FunctionType(PTR, [F64, PTR, I64.as_pointer()]),
+    "refined_parse_float": ir.FunctionType(I32, [PTR, I64, F64.as_pointer()]),
     "refined_host": ir.FunctionType(I32, [PTR, I64, I64.as_pointer(), I64.as_pointer(), I64.as_pointer()]),
     "refined_task_frame": ir.FunctionType(PTR, [I64]),
     "refined_task_spawn": ir.FunctionType(I64, [PTR, PTR, I64]),
@@ -241,7 +245,7 @@ class Backend:
         ent = info.entity
         if info.tparams and set(info.tparams.values()) - set(sub):
             raise Unsupported(m.file, ent.line, f"generic operation `{op}` without type arguments")
-        sig = self.world.substitute(info.sig, sub) if sub else info.sig
+        sig = self.world.concrete_sig(info.sig, sub) if sub else info.sig
         name = function_name(mod, op) + (f"<{','.join(sub[k] for k in sorted(sub))}>" if sub else "")
         fn = ir.Function(self.module, self.fn_type(sig, m.file, ent.line), name=name)
         self.functions[key] = fn
@@ -300,7 +304,9 @@ class Backend:
             return ir.Constant(I1, 1 if raw == "true" else 0)
         if S.is_variant(raw):
             v = resolve_variant(self.world, m, raw, line, quiet=True)
-            return self.enum_const(v[0], v[1])
+            # the value's own type: in a generic operation's copy it is the concrete instance (D-92)
+            info = self.world.type_info(canon)
+            return self.enum_const(canon if info is not None and info.variants else v[0], v[1])
         if S.INT.match(raw):
             return ir.Constant(t, int(raw))
         if S.FLOAT.match(raw):
@@ -324,7 +330,7 @@ def instance_parts(world: World, m: Module, ent) -> tuple[str, dict]:
     row = ent.fact("instantiates")
     gen = row.text(0)
     params = list(type_params_of(m.ops[gen]).values())
-    args = [resolve_type(world, m, tok.raw, row.line, quiet=True) for tok in row.args[1:]]
+    args = [resolve_type(world, m, tok.raw, row.line, instance_scope(m, ent), quiet=True) for tok in row.args[1:]]
     return gen, dict(zip(params, args))
 
 
@@ -356,7 +362,7 @@ class OpGen:
 
     def t(self, canon: Optional[str]) -> Optional[str]:
         """A type with this operation's type parameters replaced by its type arguments."""
-        return self.sub.get(canon, canon) if canon is not None else None
+        return self.world.concrete(canon, self.sub) if canon is not None else None
 
     def lt(self, canon: Optional[str], line: int = 0) -> ir.Type:
         return self.be.ltype(self.t(canon), *self.where(line))
@@ -603,15 +609,18 @@ class OpGen:
         idx_ptr = self.indexes[lab]
         idx = b.load(idx_ptr)
         cinfo = self.world.type_info(self.t(self.info.bindings[coll].type)) if coll in self.info.bindings else None
-        if cinfo is not None and cinfo.generic == "map.Map":
-            # D-62: a map is read key by key, in the order keys were first put; the host keeps the order
+        if cinfo is not None and cinfo.generic in ("map.Map", "set.Set"):
+            # D-62, D-93: a map is read key by key, a set item by item, in the order they were first put; the
+            # host keeps the order
             handle = b.load(self.allocas[coll])
-            more = b.icmp_signed("<", idx, self.host_value(b, "map.Map.length", [handle], I64, f"{lab}.count"))
+            gen = cinfo.generic
+            more = b.icmp_signed("<", idx, self.host_value(b, f"{gen}.length", [handle], I64, f"{lab}.count"))
             take = self.fn.append_basic_block(f"{lab}.take")
             b.cbranch(more, take, self.edge(lab, no))
             tb = ir.IRBuilder(take)
             et = self.lt(self.info.bindings[item].type, line)
-            tb.store(self.host_value(tb, "map.Map.keyAt", [handle, idx], et, f"{lab}.key"), self.allocas[item])
+            at = "keyAt" if gen == "map.Map" else "itemAt"
+            tb.store(self.host_value(tb, f"{gen}.{at}", [handle, idx], et, f"{lab}.key"), self.allocas[item])
             tb.store(tb.add(idx, I64(1)), idx_ptr)
             tb.branch(self.edge(lab, yes))
             return
@@ -820,7 +829,7 @@ class OpGen:
             owner, gen, sub = inst
             sub = {k: self.t(v) for k, v in sub.items()}
             fn = self.be.function_for(owner.short, gen, self.m.file, ent.line, sub)
-            sig = self.world.substitute(owner.op_infos[gen].sig, sub)
+            sig = self.world.concrete_sig(owner.op_infos[gen].sig, sub)
             res = b.call(fn, [args[p.name] for p in sig.inputs])
             out, failed, err = self._split(b, res, sig)
         elif ci.callee_op is not None or (inv and inv.split(".")[0] in self.world.modules and len(inv.split(".")) == 2):
@@ -852,7 +861,7 @@ class OpGen:
 
     def _ref_sig(self, ci: CallInfo):
         t = self.info.bindings[ci.reference].type
-        return self.world.type_info(t).sig
+        return self.world.type_info(self.t(t)).sig
 
     def _split(self, b: ir.IRBuilder, res, sig):
         if sig.raises:
@@ -879,52 +888,86 @@ class OpGen:
                 self.trap(b, line, message)
 
         def arith(op: str, x, y, t: str):
+            signed = t not in UNSIGNED
             if op in ("add", "subtract", "multiply"):
-                fn = {"add": b.sadd_with_overflow, "subtract": b.ssub_with_overflow, "multiply": b.smul_with_overflow}[op]
+                fn = ({"add": b.sadd_with_overflow, "subtract": b.ssub_with_overflow, "multiply": b.smul_with_overflow}
+                      if signed else
+                      {"add": b.uadd_with_overflow, "subtract": b.usub_with_overflow, "multiply": b.umul_with_overflow})[op]
                 r = fn(x, y)
                 trap_if(b.extract_value(r, 1), f"`{inv}` overflowed `{t}` in `{ci.entity.name}`")
                 return b.extract_value(r, 0)
             width = x.type.width
-            trap_if(b.icmp_signed("==", y, ir.Constant(x.type, 0)), f"`{inv}` divided by zero in `{ci.entity.name}`")
+            trap_if(b.icmp_unsigned("==", y, ir.Constant(x.type, 0)), f"`{inv}` divided by zero in `{ci.entity.name}`")
+            if not signed:
+                return b.udiv(x, y) if op == "divide" else b.urem(x, y)
             trap_if(b.and_(b.icmp_signed("==", x, ir.Constant(x.type, -(1 << (width - 1)))),
                            b.icmp_signed("==", y, ir.Constant(x.type, -1))),
                     f"`{inv}` overflowed `{t}` in `{ci.entity.name}`")
             return b.sdiv(x, y) if op == "divide" else b.srem(x, y)
 
+        def numeric(prefixes: tuple, types) -> Optional[tuple[str, str]]:
+            """(operation, type) when `name` is `<operation><type>` for one of them."""
+            for t in types:
+                if name.endswith(t) and name[:-len(t)] in prefixes:
+                    return name[:-len(t)], t
+            return None
+
         if mod == "math":
-            for t in ("Int64", "Int32"):
-                for op in ("add", "subtract", "multiply", "divide", "remainder"):
-                    if name == f"{op}{t}":
-                        return arith(op, a[0], a[1], t), None, None
-            for op, fn in (("Add", b.add), ("Subtract", b.sub), ("Multiply", b.mul)):
-                if name == f"wrapping{op}Int64":
-                    return fn(a[0], a[1]), None, None
-            for op, fn in (("Add", b.sadd_with_overflow), ("Subtract", b.ssub_with_overflow),
-                           ("Multiply", b.smul_with_overflow)):
-                if name == f"saturating{op}Int64":
-                    # on overflow the result clamps to the end of the range the exact result lies past
+            # longest type names first, so `addUInt64` is not read as `addUInt6` + ... (and `Int64` not `UInt64`)
+            ints = sorted(INTEGER_TARGET_TYPES, key=len, reverse=True)
+            hit = numeric(("add", "subtract", "multiply", "divide", "remainder"), ints)
+            if hit:
+                return arith(hit[0], a[0], a[1], hit[1]), None, None
+            hit = numeric(("wrappingAdd", "wrappingSubtract", "wrappingMultiply"), ints)
+            if hit:
+                fn = {"wrappingAdd": b.add, "wrappingSubtract": b.sub, "wrappingMultiply": b.mul}[hit[0]]
+                return fn(a[0], a[1]), None, None
+            hit = numeric(("saturatingAdd", "saturatingSubtract", "saturatingMultiply"), ints)
+            if hit:
+                op, t = hit[0][len("saturating"):], hit[1]
+                ty = a[0].type
+                if t in UNSIGNED:
+                    fn = {"Add": b.uadd_with_overflow, "Subtract": b.usub_with_overflow,
+                          "Multiply": b.umul_with_overflow}[op]
                     r = fn(a[0], a[1])
-                    overflowed = b.extract_value(r, 1)
-                    # an add or subtract overflows past the end its left operand's sign points to;
-                    # a multiply past the end the product's sign points to
-                    sign_of = b.xor(a[0], a[1]) if op == "Multiply" else a[0]
-                    negative = b.icmp_signed("<", sign_of, I64(0))
-                    clamp = b.select(negative, I64(-(1 << 63)), I64((1 << 63) - 1))
-                    return b.select(overflowed, clamp, b.extract_value(r, 0)), None, None
-            for op, ff in (("add", b.fadd), ("subtract", b.fsub), ("multiply", b.fmul), ("divide", b.fdiv)):
-                if name == f"{op}Float64":
-                    return ff(a[0], a[1]), None, None
+                    # an unsigned result overflows only upward, except a subtract, which overflows below zero
+                    clamp = ir.Constant(ty, 0) if op == "Subtract" else ir.Constant(ty, (1 << ty.width) - 1)
+                    return b.select(b.extract_value(r, 1), clamp, b.extract_value(r, 0)), None, None
+                fn = {"Add": b.sadd_with_overflow, "Subtract": b.ssub_with_overflow, "Multiply": b.smul_with_overflow}[op]
+                # on overflow the result clamps to the end of the range the exact result lies past
+                r = fn(a[0], a[1])
+                overflowed = b.extract_value(r, 1)
+                # an add or subtract overflows past the end its left operand's sign points to;
+                # a multiply past the end the product's sign points to
+                sign_of = b.xor(a[0], a[1]) if op == "Multiply" else a[0]
+                negative = b.icmp_signed("<", sign_of, ir.Constant(ty, 0))
+                clamp = b.select(negative, ir.Constant(ty, -(1 << (ty.width - 1))),
+                                 ir.Constant(ty, (1 << (ty.width - 1)) - 1))
+                return b.select(overflowed, clamp, b.extract_value(r, 0)), None, None
+            hit = numeric(("negate", "absolute"), sorted(("Int8", "Int16", "Int32", "Int64"), key=len, reverse=True))
+            if hit:
+                ty = a[0].type
+                r = b.ssub_with_overflow(ir.Constant(ty, 0), a[0])
+                trap_if(b.extract_value(r, 1), f"`{inv}` overflowed `{hit[1]}` in `{ci.entity.name}`")
+                neg = b.extract_value(r, 0)
+                if hit[0] == "negate":
+                    return neg, None, None
+                return b.select(b.icmp_signed("<", a[0], ir.Constant(ty, 0)), neg, a[0]), None, None
+            hit = numeric(("add", "subtract", "multiply", "divide"), ("Float64", "Float32"))
+            if hit:
+                ff = {"add": b.fadd, "subtract": b.fsub, "multiply": b.fmul, "divide": b.fdiv}[hit[0]]
+                return ff(a[0], a[1]), None, None
         if mod == "compare":
             ops = {"equal": "==", "notEqual": "!=", "lessThan": "<", "lessOrEqual": "<=", "greaterThan": ">",
                    "greaterOrEqual": ">="}
-            for op, sym in ops.items():
-                for t in ("Int64", "Int32", "Byte", "Float64"):
-                    if name == f"{op}{t}":
-                        if t == "Float64":
-                            return b.fcmp_ordered(sym, a[0], a[1]), None, None
-                        if t == "Byte":
-                            return b.icmp_unsigned(sym, a[0], a[1]), None, None
-                        return b.icmp_signed(sym, a[0], a[1]), None, None
+            hit = numeric(tuple(ops), sorted(INTEGER_TARGET_TYPES + ("Float32", "Float64"), key=len, reverse=True))
+            if hit:
+                sym, t = ops[hit[0]], hit[1]
+                if t in ("Float64", "Float32"):
+                    return b.fcmp_ordered(sym, a[0], a[1]), None, None
+                if t in UNSIGNED:
+                    return b.icmp_unsigned(sym, a[0], a[1]), None, None
+                return b.icmp_signed(sym, a[0], a[1]), None, None
         if mod == "logic":
             if name == "and":
                 return b.and_(a[0], a[1]), None, None
@@ -934,13 +977,6 @@ class OpGen:
                 return b.xor(a[0], a[1]), None, None
             if name == "not":
                 return b.not_(a[0]), None, None
-        if mod == "math" and name in ("negateInt64", "absoluteInt64"):
-            r = b.ssub_with_overflow(I64(0), a[0])
-            trap_if(b.extract_value(r, 1), f"`{inv}` overflowed `Int64` in `{ci.entity.name}`")
-            neg = b.extract_value(r, 0)
-            if name == "negateInt64":
-                return neg, None, None
-            return b.select(b.icmp_signed("<", a[0], I64(0)), neg, a[0]), None, None
         if mod == "math" and name == "powerInt64":
             base, exp = a
             trap_if(b.icmp_signed("<", exp, I64(0)), f"`{inv}` with a negative exponent in `{ci.entity.name}`")
@@ -978,28 +1014,29 @@ class OpGen:
             b.position_at_end(done)
             return b.load(res_ptr), None, None
         if mod == "bits":
-            simple = {"andInt64": b.and_, "orInt64": b.or_, "xorInt64": b.xor}
-            if name in simple:
-                return simple[name](a[0], a[1]), None, None
-            if name == "notInt64":
-                return b.not_(a[0]), None, None
-            if name in ("shiftLeftInt64", "shiftRightInt64"):
-                bad = b.or_(b.icmp_signed("<", a[1], I64(0)), b.icmp_signed(">=", a[1], I64(64)))
-                trap_if(bad, f"`{inv}` shift amount outside 0..63 in `{ci.entity.name}`")
-                return (b.shl(a[0], a[1]) if name == "shiftLeftInt64" else b.ashr(a[0], a[1])), None, None
+            hit = numeric(("and", "or", "xor", "not", "shiftLeft", "shiftRight"),
+                          sorted(INTEGER_TARGET_TYPES, key=len, reverse=True))
+            if hit:
+                op, t = hit
+                simple = {"and": b.and_, "or": b.or_, "xor": b.xor}
+                if op in simple:
+                    return simple[op](a[0], a[1]), None, None
+                if op == "not":
+                    return b.not_(a[0]), None, None
+                ty = a[0].type
+                bad = b.or_(b.icmp_signed("<", a[1], I64(0)), b.icmp_signed(">=", a[1], I64(ty.width)))
+                trap_if(bad, f"`{inv}` shift amount outside 0..{ty.width - 1} in `{ci.entity.name}`")
+                amount = b.trunc(a[1], ty) if ty.width < 64 else a[1]
+                if op == "shiftLeft":
+                    return b.shl(a[0], amount), None, None
+                return (b.lshr(a[0], amount) if t in UNSIGNED else b.ashr(a[0], amount)), None, None
         if mod == "convert":
-            def ranged(v, lo: int, hi: int, to, what: str):
-                trap_if(b.or_(b.icmp_signed("<", v, ir.Constant(v.type, lo)), b.icmp_signed(">", v, ir.Constant(v.type, hi))),
-                        f"`{inv}`: value out of range for `{what}` in `{ci.entity.name}`")
-                return b.trunc(v, to)
-            if name == "int32ToInt64" or name == "exitCodeToInt64":
-                return b.sext(a[0], I64), None, None
-            if name == "byteToInt64":
-                return b.zext(a[0], I64), None, None
-            if name in ("int64ToInt32", "int64ToExitCode"):
-                return ranged(a[0], -(1 << 31), (1 << 31) - 1, I32, "Int32"), None, None
-            if name == "int64ToByte":
-                return ranged(a[0], 0, 255, I8, "Byte"), None, None
+            if name in ("int64BitsToUInt64", "uint64BitsToInt64"):
+                return a[0], None, None  # the same 64 bits, read with the other signedness
+            sig = ci.sig
+            src, dst = sig.inputs[0].type, sig.output
+            if src in INTEGER_RANGES and dst in INTEGER_RANGES:
+                return self.convert_integer(b, a[0], src, dst, inv, ci, line), None, None
             if name == "int64ToFloat64":
                 return b.sitofp(a[0], F64), None, None
             if name == "float64ToInt64":
@@ -1007,6 +1044,16 @@ class OpGen:
                             b.fcmp_ordered("<", a[0], F64(9.223372036854775808e18)))
                 trap_if(b.not_(ok), f"`{inv}`: value out of range for `Int64` in `{ci.entity.name}`")
                 return b.fptosi(a[0], I64), None, None
+            if name == "float32ToFloat64":
+                return b.fpext(a[0], F64), None, None
+            if name == "float64ToFloat32":
+                # rounds to the nearest Float32; a finite value too large for Float32 traps
+                r = b.fptrunc(a[0], F32)
+                inf32 = b.or_(b.fcmp_ordered("==", r, F32(float("inf"))), b.fcmp_ordered("==", r, F32(float("-inf"))))
+                inf64 = b.or_(b.fcmp_ordered("==", a[0], F64(float("inf"))),
+                              b.fcmp_ordered("==", a[0], F64(float("-inf"))))
+                trap_if(b.and_(inf32, b.not_(inf64)), f"`{inv}`: value out of range for `Float32` in `{ci.entity.name}`")
+                return r, None, None
         if mod == "console" and name in ("writeLine", "write", "writeError", "writeIntegerLine", "writeFloatLine"):
             fd = I32(2 if name == "writeError" else 1)
             newline = I32(0 if name in ("write",) else 1)
@@ -1079,23 +1126,32 @@ class OpGen:
                                                         b.extract_value(a[1], 0), plen])
                 return b.and_(long_enough, b.icmp_signed("!=", eq, I32(0))), None, None
             if name == "byteAt":
-                text, idx = a
-                inside = b.and_(b.icmp_signed(">=", idx, I64(0)), b.icmp_signed("<", idx, b.extract_value(text, 1)))
-                start = b.block
-                read = self.fn.append_basic_block(f"{ci.entity.name}.read")
-                done = self.fn.append_basic_block(f"{ci.entity.name}.done")
-                b.cbranch(inside, read, done)
-                rb = ir.IRBuilder(read)
-                byte = rb.load(rb.gep(rb.extract_value(text, 0), [idx]))
-                rb.branch(done)
-                b.position_at_end(done)
-                phi = b.phi(I8)
-                phi.add_incoming(byte, read)
-                phi.add_incoming(I8(0), start)
-                err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), idx, 1)
-                return phi, b.not_(inside), err
+                return self.byte_at(b, a[0], a[1], ci)
             if name == "advancePosition":
                 return self.advance_position(b, a[0], a[1], ci, line)
+            done = self.text_target(b, name, a, ci, line)
+            if done is not None:
+                return done
+        if mod == "bytes":
+            if name == "length":
+                return b.extract_value(a[0], 1), None, None
+            if name == "byteAt":
+                return self.byte_at(b, a[0], a[1], ci)
+            if name == "equals":
+                eq = b.call(cb["refined_bytes_equal"], [b.extract_value(a[0], 0), b.extract_value(a[0], 1),
+                                                        b.extract_value(a[1], 0), b.extract_value(a[1], 1)])
+                return b.icmp_signed("!=", eq, I32(0)), None, None
+            if name == "slice":
+                data, start, length = a
+                size = b.extract_value(data, 1)
+                ok = b.and_(b.icmp_signed(">=", start, I64(0)), b.icmp_signed(">=", length, I64(0)))
+                ok = b.and_(ok, b.icmp_signed("<=", start, size))
+                ok = b.and_(ok, b.icmp_signed("<=", length, b.sub(size, start)))
+                s = b.insert_value(ir.Constant(STR, ir.Undefined),
+                                   b.gep(b.extract_value(data, 0), [b.select(ok, start, I64(0))]), 0)
+                s = b.insert_value(s, b.select(ok, length, I64(0)), 1)
+                err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), start, 1)
+                return s, b.not_(ok), err
         if mod == "arena":
             left = b.call(cb["refined_region_remaining"], [a[0]])
             if name == "remaining":
@@ -1154,6 +1210,193 @@ class OpGen:
                 extra.append(self.be.string(self.scope_text(ci.sig)))
             return self.host_call(b, inv, ci, args, line, extra)
         self.unsupported(line, f"the library target `{inv}`")
+
+    def byte_at(self, b: ir.IRBuilder, text, idx, ci: CallInfo):
+        """The byte at a position of a `String` or `Bytes`, or `outOfRange` carrying the position."""
+        inside = b.and_(b.icmp_signed(">=", idx, I64(0)), b.icmp_signed("<", idx, b.extract_value(text, 1)))
+        start = b.block
+        read = self.fn.append_basic_block(f"{ci.entity.name}.read")
+        done = self.fn.append_basic_block(f"{ci.entity.name}.done")
+        b.cbranch(inside, read, done)
+        rb = ir.IRBuilder(read)
+        byte = rb.load(rb.gep(rb.extract_value(text, 0), [idx]))
+        rb.branch(done)
+        b.position_at_end(done)
+        phi = b.phi(I8)
+        phi.add_incoming(byte, read)
+        phi.add_incoming(I8(0), start)
+        err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), idx, 1)
+        return phi, b.not_(inside), err
+
+    def loop(self, b: ir.IRBuilder, tag: str):
+        """Blocks for an inline loop: (head, body, exit). `b` branches to the head; the caller fills the head's
+        test, the body, and continues at the exit."""
+        head = self.fn.append_basic_block(f"{tag}.head")
+        body = self.fn.append_basic_block(f"{tag}.body")
+        out = self.fn.append_basic_block(f"{tag}.exit")
+        b.branch(head)
+        return head, body, out
+
+    def format_unsigned(self, b: ir.IRBuilder, value, region, base: int, room: int, least: int, tag: str):
+        """D-91: an unsigned 64-bit value as text in base 10 or 16 (lower-case digits), at least `least` digits,
+        written from the end of a `room`-byte block taken from the region."""
+        buf = b.call(self.be.callbacks["refined_region_alloc"], [region, I64(room)])
+        v_ptr, at_ptr = self.fn_alloca(I64, f"{tag}.value"), self.fn_alloca(I64, f"{tag}.at")
+        b.store(value, v_ptr)
+        b.store(I64(room), at_ptr)
+        head, body, out = self.loop(b, tag)
+        hb = ir.IRBuilder(body)
+        v = hb.load(v_ptr)
+        digit = hb.trunc(hb.urem(v, I64(base)), I8)
+        char = hb.select(hb.icmp_unsigned("<", digit, I8(10)), hb.add(digit, I8(ord("0"))),
+                         hb.add(digit, I8(ord("a") - 10)))
+        at = hb.sub(hb.load(at_ptr), I64(1))
+        hb.store(char, hb.gep(buf, [at]))
+        hb.store(at, at_ptr)
+        rest = hb.udiv(v, I64(base))
+        hb.store(rest, v_ptr)
+        written = hb.sub(I64(room), at)
+        more = hb.or_(hb.icmp_unsigned("!=", rest, I64(0)), hb.icmp_signed("<", written, I64(least)))
+        hb.cbranch(more, body, out)
+        ir.IRBuilder(head).branch(body)
+        b.position_at_end(out)
+        at = b.load(at_ptr)
+        s = b.insert_value(ir.Constant(STR, ir.Undefined), b.gep(buf, [at]), 0)
+        return b.insert_value(s, b.sub(I64(room), at), 1)
+
+    def text_target(self, b: ir.IRBuilder, name: str, a: list, ci: CallInfo, line: int):
+        """D-91: the `string` targets a compiler needs beyond D-70 and D-71, lowered inline (the two float
+        conversions call the core runtime, as `fromInt64` does)."""
+        cb = self.be.callbacks
+        tag = ci.entity.name
+        zero_enum = ir.Constant(ENUM, [I32(0), I64(0)])
+        if name == "endsWith":
+            text, suffix = a
+            tl, sl = b.extract_value(text, 1), b.extract_value(suffix, 1)
+            long_enough = b.icmp_signed(">=", tl, sl)
+            at = b.select(long_enough, b.sub(tl, sl), I64(0))
+            eq = b.call(cb["refined_bytes_equal"], [b.gep(b.extract_value(text, 0), [at]),
+                                                    b.select(long_enough, sl, I64(0)), b.extract_value(suffix, 0), sl])
+            return b.and_(long_enough, b.icmp_signed("!=", eq, I32(0))), None, None
+        if name == "compare":
+            left, right = a
+            lp, ll, rp, rl = (b.extract_value(left, 0), b.extract_value(left, 1), b.extract_value(right, 0),
+                              b.extract_value(right, 1))
+            shorter = b.select(b.icmp_signed("<", ll, rl), ll, rl)
+            # by length when one text is a prefix of the other: less (0), equal (1), greater (2)
+            by_length = b.select(b.icmp_signed("<", ll, rl), I32(0), b.select(b.icmp_signed("==", ll, rl), I32(1), I32(2)))
+            i_ptr, r_ptr = self.fn_alloca(I64, f"{tag}.at"), self.fn_alloca(I32, f"{tag}.order")
+            b.store(I64(0), i_ptr)
+            b.store(by_length, r_ptr)
+            head, body, out = self.loop(b, tag)
+            hb = ir.IRBuilder(head)
+            i = hb.load(i_ptr)
+            hb.cbranch(hb.icmp_signed("<", i, shorter), body, out)
+            bb = ir.IRBuilder(body)
+            x, y = bb.load(bb.gep(lp, [i])), bb.load(bb.gep(rp, [i]))
+            differ = bb.icmp_unsigned("!=", x, y)
+            nxt = self.fn.append_basic_block(f"{tag}.next")
+            found = self.fn.append_basic_block(f"{tag}.differ")
+            bb.cbranch(differ, found, nxt)
+            fb = ir.IRBuilder(found)
+            fb.store(fb.select(fb.icmp_unsigned("<", x, y), I32(0), I32(2)), r_ptr)
+            fb.branch(out)
+            nb = ir.IRBuilder(nxt)
+            nb.store(nb.add(i, I64(1)), i_ptr)
+            nb.branch(head)
+            b.position_at_end(out)
+            return b.insert_value(zero_enum, b.load(r_ptr), 0), None, None
+        if name == "findFrom":
+            text, needle, start = a
+            size = b.extract_value(text, 1)
+            ok = b.and_(b.icmp_signed(">=", start, I64(0)), b.icmp_signed("<=", start, size))
+            from_ = b.select(ok, start, I64(0))
+            at = b.call(cb["refined_find"], [b.gep(b.extract_value(text, 0), [from_]), b.sub(size, from_),
+                                             b.extract_value(needle, 0), b.extract_value(needle, 1)])
+            absent = b.icmp_signed("<", at, I64(0))
+            # absent (tag 0) when the search ran and found nothing; outOfRange (tag 1, the start) when it could not run
+            err = b.insert_value(zero_enum, b.select(ok, I32(0), I32(1)), 0)
+            err = b.insert_value(err, b.select(ok, I64(0), start), 1)
+            return b.add(at, from_), b.or_(b.not_(ok), absent), err
+        if name == "fromByte":
+            value, region = a
+            ok = b.icmp_unsigned("<", value, I8(0x80))  # one byte is one character only below 128 (UTF-8)
+            p_ptr = self.fn_alloca(PTR, f"{tag}.bytes")
+            b.store(ir.Constant(PTR, None), p_ptr)
+            with b.if_then(ok):
+                p = b.call(cb["refined_region_alloc"], [region, I64(1)])
+                b.store(value, p)
+                b.store(p, p_ptr)
+            s = b.insert_value(ir.Constant(STR, ir.Undefined), b.load(p_ptr), 0)
+            s = b.insert_value(s, b.select(ok, I64(1), I64(0)), 1)
+            return s, b.not_(ok), zero_enum  # invalidAt 0
+        if name == "fromUInt64":
+            return self.format_unsigned(b, a[0], a[1], 10, 20, 1, tag), None, None
+        if name == "fromUInt64Hex":
+            return self.format_unsigned(b, a[0], a[1], 16, 16, 1, tag), None, None
+        if name == "fromByteHex":
+            return self.format_unsigned(b, b.zext(a[0], I64), a[1], 16, 2, 2, tag), None, None
+        if name == "toUInt64":
+            text = a[0]
+            p, n = b.extract_value(text, 0), b.extract_value(text, 1)
+            acc, i_ptr = self.fn_alloca(I64, f"{tag}.value"), self.fn_alloca(I64, f"{tag}.at")
+            bad, over = self.fn_alloca(I1, f"{tag}.bad"), self.fn_alloca(I1, f"{tag}.over")
+            b.store(I64(0), acc)
+            b.store(I64(0), i_ptr)
+            b.store(b.icmp_signed("==", n, I64(0)), bad)
+            b.store(I1(0), over)
+            head, body, out = self.loop(b, tag)
+            hb = ir.IRBuilder(head)
+            i = hb.load(i_ptr)
+            hb.cbranch(hb.icmp_signed("<", i, n), body, out)
+            bb = ir.IRBuilder(body)
+            c = bb.load(bb.gep(p, [i]))
+            digit = bb.and_(bb.icmp_unsigned(">=", c, I8(ord("0"))), bb.icmp_unsigned("<=", c, I8(ord("9"))))
+            bb.store(bb.or_(bb.load(bad), bb.not_(digit)), bad)
+            times = bb.umul_with_overflow(bb.load(acc), I64(10))
+            plus = bb.uadd_with_overflow(bb.extract_value(times, 0), bb.zext(bb.sub(c, I8(ord("0"))), I64))
+            bb.store(bb.extract_value(plus, 0), acc)
+            bb.store(bb.or_(bb.load(over), bb.or_(bb.extract_value(times, 1), bb.extract_value(plus, 1))), over)
+            bb.store(bb.add(i, I64(1)), i_ptr)
+            bb.branch(head)
+            b.position_at_end(out)
+            # not a number (tag 0) outranks out of range (tag 1): every byte is read before deciding
+            is_bad, is_over = b.load(bad), b.load(over)
+            err = b.insert_value(zero_enum, b.select(is_bad, I32(0), I32(1)), 0)
+            return b.select(b.or_(is_bad, is_over), I64(0), b.load(acc)), b.or_(is_bad, is_over), err
+        if name == "fromFloat64":
+            len_ptr = self.fn_alloca(I64, f"{tag}.len")
+            p = b.call(cb["refined_format_float"], [a[0], a[1], len_ptr])
+            s = b.insert_value(ir.Constant(STR, ir.Undefined), p, 0)
+            return b.insert_value(s, b.load(len_ptr), 1), None, None
+        if name == "toFloat64":
+            out_ptr = self.fn_alloca(F64, f"{tag}.parsed")
+            status = b.call(cb["refined_parse_float"], [b.extract_value(a[0], 0), b.extract_value(a[0], 1), out_ptr])
+            err = b.insert_value(zero_enum, b.sub(status, I32(1)), 0)
+            return b.load(out_ptr), b.icmp_signed("!=", status, I32(0)), err
+        return None
+
+    def convert_integer(self, b: ir.IRBuilder, v, src: str, dst: str, inv: str, ci: CallInfo, line: int):
+        """D-90: an integer conversion. Each end of the target's range that the source can pass is checked (a
+        value past it traps); then the value is cut down or extended by the source's signedness."""
+        slo, shi = INTEGER_RANGES[src]
+        dlo, dhi = INTEGER_RANGES[dst]
+        signed = src not in UNSIGNED
+        cmp = b.icmp_signed if signed else b.icmp_unsigned
+        bad = I1(0)
+        if dlo > slo:
+            bad = b.or_(bad, cmp("<", v, ir.Constant(v.type, dlo)))
+        if dhi < shi:
+            bad = b.or_(bad, cmp(">", v, ir.Constant(v.type, dhi)))
+        if dlo > slo or dhi < shi:
+            with b.if_then(bad, likely=False):
+                self.trap(b, line, f"`{inv}`: value out of range for `{dst}` in `{ci.entity.name}`")
+        to = INT_TYPES[dst]
+        if to.width < v.type.width:
+            return b.trunc(v, to)
+        if to.width > v.type.width:
+            return b.sext(v, to) if signed else b.zext(v, to)
+        return v
 
     def advance_position(self, b: ir.IRBuilder, text, pos, ci: CallInfo, line: int):
         """D-71: the position after the character at `pos`'s offset. A character is the UTF-8 sequence its lead
@@ -1320,7 +1563,7 @@ class OpGen:
     def derived(self, b: ir.IRBuilder, inv: str, ci: CallInfo, args: dict, line: int):
         parts = inv.split(".")
         type_text, member = ".".join(parts[:-1]), parts[-1]
-        canon = resolve_type(self.world, self.m, type_text, line, quiet=True)
+        canon = self.t(resolve_type(self.world, self.m, type_text, line, self.info.tparams, quiet=True))
         info = self.world.type_info(canon)
         if info is None:
             self.unsupported(line, f"`{inv}`")
@@ -1328,8 +1571,8 @@ class OpGen:
             name = f"{info.generic if info.kind == 'instance' else canon}.{member}"
             if name in HOST_TARGETS:
                 extra = [self.be.string(self.scope_text(ci.sig))] if ci.sig is not None and ci.sig.scoped else []
-                if name == "map.Map.new":
-                    # D-61: the map learns whether its keys are text, compared by content and copied into it
+                if name in ("map.Map.new", "set.Set.new"):
+                    # D-61, D-93: the map or set learns whether its keys are text, compared by content and copied
                     extra.append(I64(1 if self.t(info.args[0]) == "String" else 0))
                 return self.host_call(b, name, ci, args, line, extra)
             self.unsupported(line, f"`{inv}`")
